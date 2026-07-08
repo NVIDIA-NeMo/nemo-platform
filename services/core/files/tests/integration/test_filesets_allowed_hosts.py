@@ -7,7 +7,11 @@ import uuid
 from collections.abc import Iterator
 
 import pytest
-from nemo_platform import APIStatusError, NeMoPlatform
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NemoHTTPError
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest
 from nmp.common.auth import AuthClient, get_auth_client
 from nmp.common.auth.models import Principal
 from nmp.common.config import AuthConfig, Configuration
@@ -69,18 +73,20 @@ class TestAllowedExternalHostsRejection:
         sdk.secrets.create(workspace=DEFAULT_WORKSPACE, name=secret_name, value="nvapi-dummy")
         try:
             name = f"ngc-disallowed-{uuid.uuid4().hex[:8]}"
-            with pytest.raises(APIStatusError) as exc_info:
-                sdk.files.filesets.create(
+            with pytest.raises(NemoHTTPError) as exc_info:
+                client_from_platform(sdk, FilesClient).create_fileset(
                     workspace=DEFAULT_WORKSPACE,
-                    name=name,
-                    storage={
-                        "type": "ngc",
-                        "host": "https://disallowed.example.com",
-                        "org": "nvidia",
-                        "team": "team",
-                        "target": "some-resource",
-                        "api_key_secret": f"{DEFAULT_WORKSPACE}/{secret_name}",
-                    },
+                    body=CreateFilesetRequest(
+                        name=name,
+                        storage={
+                            "type": "ngc",
+                            "host": "https://disallowed.example.com",
+                            "org": "nvidia",
+                            "team": "team",
+                            "target": "some-resource",
+                            "api_key_secret": f"{DEFAULT_WORKSPACE}/{secret_name}",
+                        },
+                    ),
                 )
             assert exc_info.value.status_code == 400
             detail = str(exc_info.value).lower()
@@ -100,15 +106,17 @@ class TestAllowedExternalHostsRejection:
         """Creating a HuggingFace fileset with endpoint outside allowed_external_hosts returns 400."""
         sdk = sdk_with_restrictive_hosts
         name = f"hf-disallowed-{uuid.uuid4().hex[:8]}"
-        with pytest.raises(APIStatusError) as exc_info:
-            sdk.files.filesets.create(
+        with pytest.raises(NemoHTTPError) as exc_info:
+            client_from_platform(sdk, FilesClient).create_fileset(
                 workspace=DEFAULT_WORKSPACE,
-                name=name,
-                storage={
-                    "type": "huggingface",
-                    "repo_id": "some-org/some-repo",
-                    "endpoint": "https://disallowed.example.com",
-                },
+                body=CreateFilesetRequest(
+                    name=name,
+                    storage={
+                        "type": "huggingface",
+                        "repo_id": "some-org/some-repo",
+                        "endpoint": "https://disallowed.example.com",
+                    },
+                ),
             )
         assert exc_info.value.status_code == 400
         detail = str(exc_info.value).lower()

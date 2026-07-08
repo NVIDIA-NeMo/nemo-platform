@@ -45,6 +45,10 @@ from typing import Any, Literal
 
 from huggingface_hub import HfApi
 from nemo_platform import ConflictError, NeMoPlatform, NotFoundError
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest, ListFilesetsQueryParams
 
 logger = logging.getLogger(__name__)
 
@@ -337,11 +341,12 @@ def _ensure_fileset(
     """
     if dry_run:
         return "dry_run"
+    files = client_from_platform(sdk, FilesClient)
     try:
-        sdk.files.filesets.retrieve(name=fileset, workspace=workspace)
+        files.get_fileset(name=fileset, workspace=workspace)
         return "exists"
-    except NotFoundError:
-        sdk.files.filesets.create(name=fileset, workspace=workspace)
+    except ClientNotFoundError:
+        files.create_fileset(body=CreateFilesetRequest(name=fileset), workspace=workspace)
         return "created"
 
 
@@ -552,8 +557,9 @@ def run_setup(args: argparse.Namespace) -> int:
 
     try:
         sdk = _get_files_sdk(cfg)
+        files = client_from_platform(sdk, FilesClient)
         # Lightweight Files API connectivity check against default workspace.
-        _ = next(iter(sdk.files.filesets.list(workspace="default", page_size=1)), None)
+        files.list_filesets(workspace="default", query_params=ListFilesetsQueryParams(page_size=1))
         print(f"  files service: OK (resolved base_url: {sdk.base_url}, check_workspace=default)")
     except Exception as exc:
         print(f"  files service: FAIL ({exc})")

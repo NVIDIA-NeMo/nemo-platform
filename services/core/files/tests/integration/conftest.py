@@ -15,7 +15,10 @@ import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
 from nemo_platform import NeMoPlatform
-from nemo_platform.types.files.fileset import Fileset
+from nemo_platform.filesets.resources import FilesResource
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import FilesetOutput
 from nmp.common.auth import AuthClient, get_auth_client
 from nmp.common.auth.models import Principal
 from nmp.common.config import AuthConfig
@@ -107,6 +110,18 @@ def sdk() -> Iterator[NeMoPlatform]:
 
 
 @pytest.fixture
+def files_client(sdk: NeMoPlatform) -> FilesClient:
+    """Provide a FilesClient derived from the SDK."""
+    return client_from_platform(sdk, FilesClient)
+
+
+@pytest.fixture
+def files_resource(files_client: FilesClient) -> FilesResource:
+    """Provide a FilesResource backed by the test FilesClient."""
+    return FilesResource(None, files_client=files_client)
+
+
+@pytest.fixture
 def sdk_allow_user_local_storage(tmp_path) -> Iterator[NeMoPlatform]:
     """SDK client with allow_user_local_storage enabled."""
     files_config = FilesConfig(
@@ -141,13 +156,13 @@ def files_config() -> FilesConfig:
 
 
 @pytest.fixture
-def fileset(sdk: NeMoPlatform) -> Iterator[Fileset]:
+def fileset(sdk: NeMoPlatform) -> Iterator[FilesetOutput]:
     with create_fileset(sdk) as fileset:
         yield fileset
 
 
 @pytest.fixture
-def fileset_cleanup(sdk: NeMoPlatform) -> Iterator[Callable[[str], None]]:
+def fileset_cleanup(sdk: NeMoPlatform, files_client: FilesClient) -> Iterator[Callable[[str], None]]:
     """Fixture that provides a function to register filesets for cleanup.
 
     Usage:
@@ -164,10 +179,9 @@ def fileset_cleanup(sdk: NeMoPlatform) -> Iterator[Callable[[str], None]]:
 
     yield register
 
-    # Cleanup all registered filesets
     for name, ws in to_cleanup:
         try:
-            sdk.files.filesets.delete(name=name, workspace=ws)
+            files_client.delete_fileset(name=name, workspace=ws)
         except Exception:
             pass
 

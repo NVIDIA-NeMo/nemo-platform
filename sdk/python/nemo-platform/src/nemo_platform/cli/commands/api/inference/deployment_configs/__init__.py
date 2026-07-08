@@ -4,11 +4,11 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
+from importlib import import_module as _importlib_import_module
 from typing import Annotated, Literal
 
 import typer
 
-from nemo_platform.cli.commands.api.inference.deployment_configs import versions
 from nemo_platform.cli.core.api import build_kwargs, merge_filter_dict
 from nemo_platform.cli.core.code_generator import handle_code_generation
 from nemo_platform.cli.core.context import CLIContext
@@ -24,9 +24,13 @@ from nemo_platform.cli.core.types import (
     OutputColumnsOption,
 )
 
+_cli_child_versions = _importlib_import_module(
+    "nemo_platform.cli.commands.api.inference.deployment_configs.versions"
+)
+
 app = create_typer_app(name="deployment_configs", help="Manage deployment_configs")
 
-app.add_typer(versions.app, name="versions")
+app.add_typer(_cli_child_versions.app, name="versions")
 
 
 @app.command("create")

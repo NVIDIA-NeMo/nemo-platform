@@ -6,8 +6,12 @@ from dataclasses import dataclass
 from typing import Literal
 
 from data_designer.config.utils.constants import NEMOTRON_PERSONAS_DATASET_SIZES
-from nemo_platform import ConflictError, NeMoPlatform
-from nemo_platform.types.files import NGCStorageConfigParam
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import ConflictError
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.storage_config import NGCStorageConfig
+from nemo_platform_plugin.files.types import CreateFilesetRequest
 
 logger = logging.getLogger(__name__)
 
@@ -90,20 +94,23 @@ def sync_nemotron_personas_fileset(
 
 
 def _create_fileset(sdk: NeMoPlatform, locale: str, api_key_secret: str) -> None:
-    sdk.files.filesets.create(
+    files = client_from_platform(sdk, FilesClient)
+    files.create_fileset(
         workspace=WORKSPACE,
-        name=get_resource_name_for_locale(locale),
-        description=f"Nemotron Personas dataset for locale: {locale!r}",
-        purpose="dataset",
-        storage=_get_storage_config_for_locale(locale, api_key_secret),
-        cache=True,
+        body=CreateFilesetRequest(
+            name=get_resource_name_for_locale(locale),
+            description=f"Nemotron Personas dataset for locale: {locale!r}",
+            purpose="dataset",
+            storage=_get_storage_config_for_locale(locale, api_key_secret),
+            cache=True,
+        ),
     )
 
 
-def _get_storage_config_for_locale(locale: str, api_key_secret: str) -> NGCStorageConfigParam:
+def _get_storage_config_for_locale(locale: str, api_key_secret: str) -> NGCStorageConfig:
     resource_name = get_resource_name_for_locale(locale)
 
-    return NGCStorageConfigParam(
+    return NGCStorageConfig(
         api_key_secret=api_key_secret,
         org=NGC_ORG,
         team=NGC_TEAM,

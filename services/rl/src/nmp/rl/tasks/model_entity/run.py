@@ -20,6 +20,7 @@ import re
 import time
 from pathlib import Path
 
+import httpx
 from nemo_platform import (
     APIConnectionError,
     APITimeoutError,
@@ -37,6 +38,9 @@ from nemo_platform.types.inference import (
 )
 from nemo_platform.types.models import LoraParam, ModelEntity
 from nemo_platform.types.shared_params.tool_call_config import ToolCallConfig as ToolCallConfigParam
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import InternalServerError as ClientInternalServerError
+from nemo_platform_plugin.files.client import FilesClient
 from nmp.common.sdk_factory import get_task_sdk
 from nmp.customization_common.schemas.model_entity import (
     DeploymentParameters,
@@ -165,12 +169,18 @@ class ModelEntityRunner:
 
         logger.info(f"Validating fileset exists: {fileset_workspace}/{config.fileset.name}")
         try:
-            self.sdk.files.filesets.retrieve(workspace=fileset_workspace, name=config.fileset.name)
+            client_from_platform(self.sdk, FilesClient).get_fileset(
+                workspace=fileset_workspace, name=config.fileset.name
+            )
             logger.info(f"Fileset validation successful: {fileset_workspace}/{config.fileset.name}")
-        except (InternalServerError, APITimeoutError, APIConnectionError):
-            # Transient API failures must propagate so the @retry wrapping
-            # create_model_entity can retry them, instead of being masked as a
-            # permanent (non-retryable) ModelEntityCreationError.
+        except (
+            InternalServerError,
+            APITimeoutError,
+            APIConnectionError,
+            ClientInternalServerError,
+            httpx.TimeoutException,
+            httpx.ConnectError,
+        ):
             raise
         except Exception as e:
             logger.error(f"Fileset validation failed: {fileset_workspace}/{config.fileset.name}")

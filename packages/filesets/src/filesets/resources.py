@@ -12,23 +12,16 @@ from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import PurePath
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-import nemo_platform
 from fsspec.callbacks import Callback
 from fsspec.core import has_magic
-from nemo_platform_plugin.client.errors import NemoHTTPError
-from nemo_platform_plugin.client.response import AsyncNemoPaginatedResponse, NemoPaginatedResponse
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.files.types import (
     CacheStatus,
     CreateFilesetRequest,
     FilesetFileOutput,
-    FilesetMetadata,
     FilesetOutput,
-    FilesetPurpose,
-    StorageConfig,
-    UpdateFilesetRequest,
 )
 
 from filesets.filesystem.filesystem import (
@@ -36,85 +29,6 @@ from filesets.filesystem.filesystem import (
     build_fileset_ref,
     parse_fileset_path,
 )
-
-
-def _build_error_map() -> dict[type[NemoHTTPError], type[nemo_platform.APIStatusError]]:
-    """Build a mapping from NemoClient errors to Stainless SDK errors.
-
-    Lazy import to avoid hard-coding the Stainless error classes at module level.
-    This mapping is temporary — remove when all consumers import errors from
-    nemo_platform_plugin.client.errors instead of nemo_platform (AIRCORE-840).
-    """
-    from nemo_platform_plugin.client import errors
-
-    return {
-        errors.BadRequestError: nemo_platform.BadRequestError,
-        errors.AuthenticationError: nemo_platform.AuthenticationError,
-        errors.PermissionDeniedError: nemo_platform.PermissionDeniedError,
-        errors.NotFoundError: nemo_platform.NotFoundError,
-        errors.ConflictError: nemo_platform.ConflictError,
-        errors.UnprocessableEntityError: nemo_platform.UnprocessableEntityError,
-        errors.RateLimitError: nemo_platform.RateLimitError,
-        errors.InternalServerError: nemo_platform.InternalServerError,
-    }
-
-
-_ERROR_MAP: dict[type[NemoHTTPError], type[nemo_platform.APIStatusError]] | None = None
-
-
-def _get_error_map() -> dict[type[NemoHTTPError], type[nemo_platform.APIStatusError]]:
-    global _ERROR_MAP
-    if _ERROR_MAP is None:
-        _ERROR_MAP = _build_error_map()
-    return _ERROR_MAP
-
-
-def _raise_as_stainless(e: NemoHTTPError) -> None:
-    """Re-raise a NemoClient error as its Stainless SDK equivalent.
-
-    Preserves backward compatibility for consumers that catch
-    ``nemo_platform.NotFoundError`` etc. Remove with AIRCORE-840.
-    """
-    error_map = _get_error_map()
-    stainless_cls = error_map.get(type(e))
-    if stainless_cls is not None:
-        raise stainless_cls(
-            message=str(e),
-            response=e.http_response,
-            body=e.body,
-        ) from e
-    raise
-
-
-class _RemappingFilesClient(FilesClient):
-    """FilesClient that re-raises NemoClient errors as Stainless SDK errors.
-
-    Wraps ``send()`` so ALL operations through this client (filesets, files,
-    fsspec) raise Stainless-compatible exceptions. Remove with AIRCORE-840.
-    """
-
-    # Used by FilesetFileSystem._ensure_async to create the matching async
-    # remapping client when converting sync → async.
-    _async_cls: type[AsyncFilesClient] | None = None
-
-    def send(self, request, *, headers=None, retry=None):  # type: ignore[override]
-        try:
-            return super().send(request, headers=headers, retry=retry)
-        except NemoHTTPError as e:
-            _raise_as_stainless(e)
-
-
-class _RemappingAsyncFilesClient(AsyncFilesClient):
-    """AsyncFilesClient that re-raises NemoClient errors as Stainless SDK errors."""
-
-    async def send(self, request, *, headers=None, retry=None):  # type: ignore[override]
-        try:
-            return await super().send(request, headers=headers, retry=retry)
-        except NemoHTTPError as e:
-            _raise_as_stainless(e)
-
-
-_RemappingFilesClient._async_cls = _RemappingAsyncFilesClient
 
 
 @dataclass
@@ -216,199 +130,6 @@ def _matches_glob(filepath: str, pattern: str) -> bool:
     return PurePath(filepath).match(pattern)
 
 
-class FilesetsSubResource:
-    """Fileset CRUD operations (create, retrieve, update, list, delete).
-
-    Wraps ``FilesClient`` methods with higher-level convenience signatures
-    (unwrapped params, ``exist_ok`` support).
-
-    .. deprecated::
-        Temporary shim for the ``sdk.files`` fileset interface.
-        New code should use ``FilesClient`` directly.
-        Once all callers are migrated, this class will be removed.
-    """
-
-    def __init__(self, client: FilesClient) -> None:
-        self._client = client
-
-    def create(
-        self,
-        *,
-        name: str,
-        workspace: str | None = None,
-        exist_ok: bool = False,
-        description: str | None = None,
-        project: str | None = None,
-        purpose: FilesetPurpose | None = None,
-        metadata: FilesetMetadata | None = None,
-        storage: StorageConfig | None = None,
-        custom_fields: dict[str, Any] | None = None,
-        cache: bool = False,
-    ) -> FilesetOutput:
-        body = CreateFilesetRequest(
-            name=name,
-            description=description,
-            project=project,
-            purpose=purpose or FilesetPurpose.GENERIC,
-            metadata=metadata or FilesetMetadata(),
-            storage=storage,
-            custom_fields=custom_fields or {},
-            cache=cache,
-        )
-        return self._client.create_fileset(workspace=workspace, body=body, exist_ok=exist_ok).data()
-
-    def retrieve(self, name: str, *, workspace: str | None = None) -> FilesetOutput:
-        return self._client.get_fileset(workspace=workspace, name=name).data()
-
-    def update(
-        self,
-        name: str,
-        *,
-        workspace: str | None = None,
-        description: str | None = None,
-        project: str | None = None,
-        purpose: FilesetPurpose | None = None,
-        metadata: FilesetMetadata | None = None,
-        custom_fields: dict[str, Any] | None = None,
-        timeout: float | None = None,
-    ) -> FilesetOutput:
-        # Only include explicitly provided fields so exclude_unset works correctly
-        kwargs = {
-            k: v
-            for k, v in dict(
-                description=description,
-                project=project,
-                purpose=purpose,
-                metadata=metadata,
-                custom_fields=custom_fields,
-            ).items()
-            if v is not None
-        }
-        body = UpdateFilesetRequest(**kwargs)
-        client = self._client.with_options(timeout=timeout) if timeout is not None else self._client
-        return client.update_fileset(workspace=workspace, name=name, body=body).data()
-
-    def list(
-        self,
-        *,
-        workspace: str | None = None,
-        page: int | None = None,
-        page_size: int | None = None,
-        sort: str | None = None,
-        filter: str | dict | None = None,
-    ) -> NemoPaginatedResponse[FilesetOutput]:
-        query_params = {
-            k: v
-            for k, v in dict(
-                page=page,
-                page_size=page_size,
-                sort=sort,
-                filter=filter,
-            ).items()
-            if v is not None
-        }
-        return self._client.list_filesets(workspace=workspace, query_params=query_params or None)
-
-    def delete(self, name: str, *, workspace: str | None = None) -> FilesetOutput:
-        return self._client.delete_fileset(workspace=workspace, name=name).data()
-
-
-class AsyncFilesetsSubResource:
-    """Async fileset CRUD operations (create, retrieve, update, list, delete).
-
-    Wraps ``AsyncFilesClient`` methods with higher-level convenience signatures
-    (unwrapped params, ``exist_ok`` support).
-
-    .. deprecated::
-        Temporary shim for the ``sdk.files`` fileset interface.
-        New code should use ``AsyncFilesClient`` directly.
-        Once all callers are migrated, this class will be removed.
-    """
-
-    def __init__(self, client: AsyncFilesClient) -> None:
-        self._client = client
-
-    async def create(
-        self,
-        *,
-        name: str,
-        workspace: str | None = None,
-        exist_ok: bool = False,
-        description: str | None = None,
-        project: str | None = None,
-        purpose: FilesetPurpose | None = None,
-        metadata: FilesetMetadata | None = None,
-        storage: StorageConfig | None = None,
-        custom_fields: dict[str, Any] | None = None,
-        cache: bool = False,
-    ) -> FilesetOutput:
-        body = CreateFilesetRequest(
-            name=name,
-            description=description,
-            project=project,
-            purpose=purpose or FilesetPurpose.GENERIC,
-            metadata=metadata or FilesetMetadata(),
-            storage=storage,
-            custom_fields=custom_fields or {},
-            cache=cache,
-        )
-        return (await self._client.create_fileset(workspace=workspace, body=body, exist_ok=exist_ok)).data()
-
-    async def retrieve(self, name: str, *, workspace: str | None = None) -> FilesetOutput:
-        return (await self._client.get_fileset(workspace=workspace, name=name)).data()
-
-    async def update(
-        self,
-        name: str,
-        *,
-        workspace: str | None = None,
-        description: str | None = None,
-        project: str | None = None,
-        purpose: FilesetPurpose | None = None,
-        metadata: FilesetMetadata | None = None,
-        custom_fields: dict[str, Any] | None = None,
-        timeout: float | None = None,
-    ) -> FilesetOutput:
-        kwargs = {
-            k: v
-            for k, v in dict(
-                description=description,
-                project=project,
-                purpose=purpose,
-                metadata=metadata,
-                custom_fields=custom_fields,
-            ).items()
-            if v is not None
-        }
-        body = UpdateFilesetRequest(**kwargs)
-        client = self._client.with_options(timeout=timeout) if timeout is not None else self._client
-        return (await client.update_fileset(workspace=workspace, name=name, body=body)).data()
-
-    async def list(
-        self,
-        *,
-        workspace: str | None = None,
-        page: int | None = None,
-        page_size: int | None = None,
-        sort: str | None = None,
-        filter: str | dict | None = None,
-    ) -> AsyncNemoPaginatedResponse[FilesetOutput]:
-        query_params = {
-            k: v
-            for k, v in dict(
-                page=page,
-                page_size=page_size,
-                sort=sort,
-                filter=filter,
-            ).items()
-            if v is not None
-        }
-        return await self._client.list_filesets(workspace=workspace, query_params=query_params or None)
-
-    async def delete(self, name: str, *, workspace: str | None = None) -> FilesetOutput:
-        return (await self._client.delete_fileset(workspace=workspace, name=name)).data()
-
-
 class FilesResource:
     """FilesResource with high-level file operations.
 
@@ -416,15 +137,18 @@ class FilesResource:
     For fsspec filesystem access, use ``resource.fsspec``.
     """
 
-    def __init__(self, client) -> None:
-        from nemo_platform_plugin.client.adapter import client_from_platform
+    def __init__(self, client, *, files_client: FilesClient | None = None) -> None:
+        if files_client is not None:
+            self._client = files_client
+        else:
+            from nemo_platform_plugin.client.adapter import client_from_platform
 
-        self._client = client_from_platform(client, _RemappingFilesClient)
+            self._client = client_from_platform(client, FilesClient)
 
     @cached_property
-    def filesets(self) -> FilesetsSubResource:
-        """Access fileset CRUD operations (create, retrieve, update, list, delete)."""
-        return FilesetsSubResource(self._client)
+    def client(self) -> FilesClient:
+        """Access the underlying FilesClient for direct API calls."""
+        return self._client
 
     @cached_property
     def fsspec(self) -> FilesetFileSystem:
@@ -433,7 +157,11 @@ class FilesResource:
 
     def _ensure_fileset_exists(self, workspace: str, fileset: str) -> None:
         """Create fileset if it doesn't exist (idempotent)."""
-        self.filesets.create(name=fileset, workspace=workspace, exist_ok=True)
+        self._client.create_fileset(
+            workspace=workspace,
+            body=CreateFilesetRequest(name=fileset),
+            exist_ok=True,
+        )
 
     def download(
         self,
@@ -650,7 +378,7 @@ class FilesResource:
             kwargs["callback"] = callback
         self.fsspec.put(**kwargs)
 
-        return self.filesets.retrieve(name=fileset, workspace=ws)
+        return self._client.get_fileset(name=fileset, workspace=ws).data()
 
     def upload_content(
         self,
@@ -751,7 +479,7 @@ class FilesResource:
             case _:
                 raise TypeError(f"Unsupported content type: {type(content)}")
 
-        return self.filesets.retrieve(name=fileset, workspace=ws)
+        return self._client.get_fileset(name=fileset, workspace=ws).data()
 
     def download_content(
         self,
@@ -938,15 +666,18 @@ class AsyncFilesResource:
     For fsspec filesystem access, use ``resource.fsspec``.
     """
 
-    def __init__(self, client) -> None:
-        from nemo_platform_plugin.client.adapter import client_from_platform
+    def __init__(self, client, *, files_client: AsyncFilesClient | None = None) -> None:
+        if files_client is not None:
+            self._client = files_client
+        else:
+            from nemo_platform_plugin.client.adapter import client_from_platform
 
-        self._client = client_from_platform(client, _RemappingAsyncFilesClient)
+            self._client = client_from_platform(client, AsyncFilesClient)
 
     @cached_property
-    def filesets(self) -> AsyncFilesetsSubResource:
-        """Access fileset CRUD operations (create, retrieve, update, list, delete)."""
-        return AsyncFilesetsSubResource(self._client)
+    def client(self) -> AsyncFilesClient:
+        """Access the underlying AsyncFilesClient for direct API calls."""
+        return self._client
 
     @cached_property
     def fsspec(self) -> FilesetFileSystem:
@@ -955,7 +686,11 @@ class AsyncFilesResource:
 
     async def _ensure_fileset_exists(self, workspace: str, fileset: str) -> None:
         """Create fileset if it doesn't exist (idempotent)."""
-        await self.filesets.create(name=fileset, workspace=workspace, exist_ok=True)
+        await self._client.create_fileset(
+            workspace=workspace,
+            body=CreateFilesetRequest(name=fileset),
+            exist_ok=True,
+        )
 
     async def download(
         self,
@@ -1151,7 +886,7 @@ class AsyncFilesResource:
             kwargs["callback"] = callback
         await self.fsspec._put(**kwargs)
 
-        return await self.filesets.retrieve(name=fileset, workspace=ws)
+        return (await self._client.get_fileset(name=fileset, workspace=ws)).data()
 
     async def upload_content(
         self,
@@ -1256,7 +991,7 @@ class AsyncFilesResource:
             case _:
                 raise TypeError(f"Unsupported content type: {type(content)}")
 
-        return await self.filesets.retrieve(name=fileset, workspace=ws)
+        return (await self._client.get_fileset(name=fileset, workspace=ws)).data()
 
     async def download_content(
         self,

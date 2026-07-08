@@ -4,11 +4,11 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
+from importlib import import_module as _importlib_import_module
 from typing import Annotated, Literal
 
 import typer
 
-from nemo_platform_ext.cli.commands.api.jobs import results, steps, tasks
 from nemo_platform_ext.cli.core.api import build_kwargs, merge_filter_dict
 from nemo_platform_ext.cli.core.code_generator import handle_code_generation
 from nemo_platform_ext.cli.core.context import CLIContext
@@ -24,11 +24,15 @@ from nemo_platform_ext.cli.core.types import (
     OutputColumnsOption,
 )
 
+_cli_child_results = _importlib_import_module("nemo_platform_ext.cli.commands.api.jobs.results")
+_cli_child_steps = _importlib_import_module("nemo_platform_ext.cli.commands.api.jobs.steps")
+_cli_child_tasks = _importlib_import_module("nemo_platform_ext.cli.commands.api.jobs.tasks")
+
 app = create_typer_app(name="jobs", help="Manage jobs")
 
-app.add_typer(results.app, name="results")
-app.add_typer(steps.app, name="steps")
-app.add_typer(tasks.app, name="tasks")
+app.add_typer(_cli_child_results.app, name="results")
+app.add_typer(_cli_child_steps.app, name="steps")
+app.add_typer(_cli_child_tasks.app, name="tasks")
 
 
 @app.command("cancel")

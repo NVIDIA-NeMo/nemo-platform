@@ -14,7 +14,11 @@ to our own API.
 
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform._exceptions import NotFoundError, PermissionDeniedError
-from nemo_platform.types.files import Fileset
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
+from nemo_platform_plugin.client.errors import PermissionDeniedError as ClientPermissionDeniedError
+from nemo_platform_plugin.files.client import AsyncFilesClient
+from nemo_platform_plugin.files.types import FilesetOutput
 from nmp.common.auth import AuthClient
 from nmp.common.entities.utils import parse_entity_ref
 
@@ -34,7 +38,7 @@ async def check_secret_access(nmp_sdk: AsyncNeMoPlatform, secret_name: str, work
         raise ValueError(f"Secret '{secret_name}' not found in workspace '{workspace}'") from None
 
 
-async def check_fileset_access(nmp_sdk: AsyncNeMoPlatform, fileset: str, workspace: str) -> Fileset:
+async def check_fileset_access(nmp_sdk: AsyncNeMoPlatform, fileset: str, workspace: str) -> FilesetOutput:
     """Check that the current user can access the referenced fileset.
 
     Retrieves fileset metadata via the Files API; AuthZ middleware enforces
@@ -46,12 +50,13 @@ async def check_fileset_access(nmp_sdk: AsyncNeMoPlatform, fileset: str, workspa
     """
     _fs_ref = parse_entity_ref(fileset, default_workspace=workspace)
     fs_workspace, fs_name = _fs_ref.workspace, _fs_ref.name
+    files = client_from_platform(nmp_sdk, AsyncFilesClient)
     try:
-        fs = await nmp_sdk.files.filesets.retrieve(workspace=fs_workspace, name=fs_name)
+        fs = (await files.get_fileset(workspace=fs_workspace, name=fs_name)).data()
         return fs
-    except PermissionDeniedError:
+    except ClientPermissionDeniedError:
         raise PermissionError(f"Access denied to fileset '{fileset}'") from None
-    except NotFoundError:
+    except ClientNotFoundError:
         raise ValueError(f"Fileset '{fileset}' not found in workspace '{fs_workspace}'") from None
 
 

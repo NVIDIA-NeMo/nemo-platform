@@ -4,11 +4,11 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
+from importlib import import_module as _importlib_import_module
 from typing import Annotated
 
 import typer
 
-from nemo_platform_ext.cli.commands.api.guardrail import configs
 from nemo_platform_ext.cli.core.code_generator import handle_code_generation
 from nemo_platform_ext.cli.core.context import CLIContext
 from nemo_platform_ext.cli.core.errors import handle_errors
@@ -17,9 +17,11 @@ from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_t
 from nemo_platform_ext.cli.core.stdin_utils import read_data_input_with_flags, read_payload, validate_required_fields
 from nemo_platform_ext.cli.core.types import EntityOutputFormatOption
 
+_cli_child_configs = _importlib_import_module("nemo_platform_ext.cli.commands.api.guardrail.configs")
+
 app = create_typer_app(name="guardrail", help="Manage guardrail")
 
-app.add_typer(configs.app, name="configs")
+app.add_typer(_cli_child_configs.app, name="configs")
 
 
 @app.command("check")

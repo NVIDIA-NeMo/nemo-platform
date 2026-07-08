@@ -35,9 +35,11 @@ from collections.abc import AsyncIterator, Iterator
 import pytest
 from aiobotocore.session import get_session
 from botocore.exceptions import ClientError
-from nemo_platform import APIStatusError, NeMoPlatform
-from nemo_platform.types.files import S3StorageConfigParam
-from nemo_platform.types.files.fileset import Fileset
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NemoHTTPError as ClientBadRequestError
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest, FilesetOutput
 from nmp.common.auth import AuthClient, get_auth_client
 from nmp.common.auth.models import Principal
 from nmp.common.config import AuthConfig
@@ -76,9 +78,9 @@ def s3_storage_config(
     access_key_secret: str,
     secret_key_secret: str,
     prefix: str | None = None,
-) -> S3StorageConfigParam:
+) -> dict[str, object]:
     """Helper to create S3 storage config dict with explicit credentials."""
-    config: S3StorageConfigParam = {
+    config: dict[str, object] = {
         "type": "s3",
         "bucket": bucket,
         "endpoint_url": S3_TEST_ENDPOINT,
@@ -132,7 +134,7 @@ def s3_credentials(sdk: NeMoPlatform) -> Iterator[tuple[str, str]]:
 
 
 @pytest.fixture
-def s3_fileset(sdk: NeMoPlatform, s3_test_bucket: str, s3_credentials: tuple[str, str]) -> Iterator[Fileset]:
+def s3_fileset(sdk: NeMoPlatform, s3_test_bucket: str, s3_credentials: tuple[str, str]) -> Iterator[FilesetOutput]:
     """Create a fileset with S3 storage for testing."""
     name = f"s3-test-{uuid.uuid4().hex[:8]}"
     access_key_secret, secret_key_secret = s3_credentials
@@ -160,7 +162,8 @@ class TestS3StorageBackend:
             name,
             storage=s3_storage_config(s3_test_bucket, access_key_secret, secret_key_secret),
         ) as fileset:
-            persisted = sdk.files.filesets.retrieve(name=fileset.name, workspace=fileset.workspace)
+            files = client_from_platform(sdk, FilesClient)
+            persisted = files.get_fileset(name=fileset.name, workspace=fileset.workspace).data()
             assert persisted.storage.type == "s3"
             assert persisted.storage.bucket == s3_test_bucket
 
@@ -169,19 +172,22 @@ class TestS3StorageBackend:
         name = f"s3-test-{uuid.uuid4().hex[:8]}"
         access_key_secret, secret_key_secret = s3_credentials
 
-        with pytest.raises(APIStatusError) as exc_info:
-            sdk.files.filesets.create(
-                name=name,
+        files = client_from_platform(sdk, FilesClient)
+        with pytest.raises(ClientBadRequestError) as exc_info:
+            files.create_fileset(
                 workspace=DEFAULT_WORKSPACE,
-                storage=s3_storage_config(
-                    f"nonexistent-bucket-{uuid.uuid4().hex[:8]}",
-                    access_key_secret,
-                    secret_key_secret,
+                body=CreateFilesetRequest(
+                    name=name,
+                    storage=s3_storage_config(
+                        f"nonexistent-bucket-{uuid.uuid4().hex[:8]}",
+                        access_key_secret,
+                        secret_key_secret,
+                    ),
                 ),
             )
 
         assert exc_info.value.status_code == 400
-        assert "Not found" in str(exc_info.value.body) or "bucket" in str(exc_info.value.body).lower()
+        assert "Not found" in str(exc_info.value) or "bucket" in str(exc_info.value).lower()
 
     def test_invalid_credentials(self, sdk: NeMoPlatform, s3_test_bucket: str):
         """Test that invalid credentials raise an error during fileset creation."""
@@ -193,20 +199,23 @@ class TestS3StorageBackend:
         sdk.secrets.create(workspace=DEFAULT_WORKSPACE, name=bad_secret_secret, value="invalid-secret")
 
         try:
-            with pytest.raises(APIStatusError) as exc_info:
-                sdk.files.filesets.create(
-                    name=name,
+            files = client_from_platform(sdk, FilesClient)
+            with pytest.raises(ClientBadRequestError) as exc_info:
+                files.create_fileset(
                     workspace=DEFAULT_WORKSPACE,
-                    storage=s3_storage_config(s3_test_bucket, bad_access_secret, bad_secret_secret),
+                    body=CreateFilesetRequest(
+                        name=name,
+                        storage=s3_storage_config(s3_test_bucket, bad_access_secret, bad_secret_secret),
+                    ),
                 )
 
             assert exc_info.value.status_code == 400
-            assert "Access denied" in str(exc_info.value.body) or "credentials" in str(exc_info.value.body).lower()
+            assert "Access denied" in str(exc_info.value) or "credentials" in str(exc_info.value).lower()
         finally:
             sdk.secrets.delete(workspace=DEFAULT_WORKSPACE, name=bad_access_secret)
             sdk.secrets.delete(workspace=DEFAULT_WORKSPACE, name=bad_secret_secret)
 
-    def test_upload_and_download_roundtrip(self, sdk: NeMoPlatform, s3_fileset: Fileset, tmp_path):
+    def test_upload_and_download_roundtrip(self, sdk: NeMoPlatform, s3_fileset: FilesetOutput, tmp_path):
         """Test upload file, download it back, verify content matches."""
         test_content = b"Hello, S3 storage backend test!"
         upload_file = tmp_path / "test-file.txt"
@@ -243,7 +252,7 @@ class TestS3StorageBackend:
         )
         assert download_path.read_bytes() == test_content
 
-    def test_upload_and_download_empty_file(self, sdk: NeMoPlatform, s3_fileset: Fileset, tmp_path):
+    def test_upload_and_download_empty_file(self, sdk: NeMoPlatform, s3_fileset: FilesetOutput, tmp_path):
         """Test upload and download of an empty file.
 
         This exercises the edge case where iter_chunked yields no chunks,
@@ -274,7 +283,7 @@ class TestS3StorageBackend:
         )
         assert downloaded_content == test_content
 
-    def test_upload_large_file(self, sdk: NeMoPlatform, s3_fileset: Fileset, tmp_path):
+    def test_upload_large_file(self, sdk: NeMoPlatform, s3_fileset: FilesetOutput, tmp_path):
         """Test upload of a large file via presigned URL streaming.
 
         Validates that large file uploads work correctly through the presigned
@@ -303,7 +312,7 @@ class TestS3StorageBackend:
         )
         assert downloaded_content == test_content
 
-    def test_download_with_byte_range(self, sdk: NeMoPlatform, s3_fileset: Fileset, tmp_path):
+    def test_download_with_byte_range(self, sdk: NeMoPlatform, s3_fileset: FilesetOutput, tmp_path):
         """Test partial download using HTTP Range header."""
         test_content = b"0123456789ABCDEF"
         upload_file = tmp_path / "range-test.txt"
@@ -327,7 +336,7 @@ class TestS3StorageBackend:
         assert range_response.status_code == 206  # Partial Content
         assert range_response.read() == b"56789A"
 
-    def test_delete_file(self, sdk: NeMoPlatform, s3_fileset: Fileset, tmp_path):
+    def test_delete_file(self, sdk: NeMoPlatform, s3_fileset: FilesetOutput, tmp_path):
         """Test upload, delete, verify gone."""
         upload_file = tmp_path / "to-delete.txt"
         upload_file.write_bytes(b"Delete me!")
@@ -370,11 +379,14 @@ class TestS3StorageBackend:
         prefix = f"delete-test-{uuid.uuid4().hex[:8]}"
 
         # Create fileset with a unique prefix so we can verify cleanup
-        fileset = sdk.files.filesets.create(
-            name=name,
+        files_client = client_from_platform(sdk, FilesClient)
+        fileset = files_client.create_fileset(
             workspace=DEFAULT_WORKSPACE,
-            storage=s3_storage_config(s3_test_bucket, access_key_secret, secret_key_secret, prefix=prefix),
-        )
+            body=CreateFilesetRequest(
+                name=name,
+                storage=s3_storage_config(s3_test_bucket, access_key_secret, secret_key_secret, prefix=prefix),
+            ),
+        ).data()
 
         try:
             # Upload multiple files to exercise bulk delete
@@ -395,26 +407,27 @@ class TestS3StorageBackend:
                 )
 
             # Verify files exist
-            files = sdk.files.list(fileset=fileset.name, workspace=fileset.workspace)
-            assert len(files.data) == 3
+            file_list = sdk.files.list(fileset=fileset.name, workspace=fileset.workspace)
+            assert len(file_list.data) == 3
 
             # Delete the fileset - this calls delete_all() on the S3 backend
-            sdk.files.filesets.delete(name=fileset.name, workspace=fileset.workspace)
+            files_client.delete_fileset(name=fileset.name, workspace=fileset.workspace)
 
             # Verify fileset is gone
-            with pytest.raises(APIStatusError) as exc_info:
-                sdk.files.filesets.retrieve(name=name, workspace=DEFAULT_WORKSPACE)
-            assert exc_info.value.status_code == 404
+            from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
+
+            with pytest.raises(ClientNotFoundError):
+                files_client.get_fileset(name=name, workspace=DEFAULT_WORKSPACE)
 
         except Exception:
             # Cleanup on failure - delete fileset if it still exists
             try:
-                sdk.files.filesets.delete(name=name, workspace=DEFAULT_WORKSPACE)
-            except APIStatusError:
+                files_client.delete_fileset(name=name, workspace=DEFAULT_WORKSPACE)
+            except Exception:
                 pass
             raise
 
-    def test_multiple_files_with_directory_structure(self, sdk: NeMoPlatform, s3_fileset: Fileset, tmp_path):
+    def test_multiple_files_with_directory_structure(self, sdk: NeMoPlatform, s3_fileset: FilesetOutput, tmp_path):
         """Test uploading multiple files with directory structure."""
         files_to_upload = {
             "file1.txt": b"content1",
@@ -543,11 +556,11 @@ class TestS3DefaultStorageConfig:
         name = f"default-storage-test-{uuid.uuid4().hex[:8]}"
 
         # Create fileset WITHOUT specifying storage - should use S3 default
-        fileset = sdk_with_s3_default.files.filesets.create(
-            name=name,
+        files = client_from_platform(sdk_with_s3_default, FilesClient)
+        fileset = files.create_fileset(
             workspace=DEFAULT_WORKSPACE,
-            # Note: no storage parameter
-        )
+            body=CreateFilesetRequest(name=name),
+        ).data()
 
         try:
             # Verify it was created with S3 storage
@@ -557,7 +570,7 @@ class TestS3DefaultStorageConfig:
             assert "default-storage" in fileset.storage.prefix
             assert name in fileset.storage.prefix
         finally:
-            sdk_with_s3_default.files.filesets.delete(name=name, workspace=DEFAULT_WORKSPACE)
+            files.delete_fileset(name=name, workspace=DEFAULT_WORKSPACE)
 
     def test_upload_download_with_s3_default(self, sdk_with_s3_default: NeMoPlatform, tmp_path):
         """Test file upload/download on fileset using S3 default storage."""
@@ -565,10 +578,11 @@ class TestS3DefaultStorageConfig:
         test_content = b"Hello from S3 default storage!"
 
         # Create fileset without explicit storage
-        fileset = sdk_with_s3_default.files.filesets.create(
-            name=name,
+        files = client_from_platform(sdk_with_s3_default, FilesClient)
+        fileset = files.create_fileset(
             workspace=DEFAULT_WORKSPACE,
-        )
+            body=CreateFilesetRequest(name=name),
+        ).data()
 
         try:
             # Upload file
@@ -598,15 +612,16 @@ class TestS3DefaultStorageConfig:
             )
             assert downloaded == test_content
         finally:
-            sdk_with_s3_default.files.filesets.delete(name=name, workspace=DEFAULT_WORKSPACE)
+            files.delete_fileset(name=name, workspace=DEFAULT_WORKSPACE)
 
     def test_multiple_filesets_isolated_with_s3_default(self, sdk_with_s3_default: NeMoPlatform, tmp_path):
         """Test that multiple filesets using S3 default are isolated via prefix."""
         name1 = f"default-test-1-{uuid.uuid4().hex[:8]}"
         name2 = f"default-test-2-{uuid.uuid4().hex[:8]}"
 
-        fileset1 = sdk_with_s3_default.files.filesets.create(name=name1, workspace=DEFAULT_WORKSPACE)
-        fileset2 = sdk_with_s3_default.files.filesets.create(name=name2, workspace=DEFAULT_WORKSPACE)
+        files = client_from_platform(sdk_with_s3_default, FilesClient)
+        fileset1 = files.create_fileset(workspace=DEFAULT_WORKSPACE, body=CreateFilesetRequest(name=name1)).data()
+        fileset2 = files.create_fileset(workspace=DEFAULT_WORKSPACE, body=CreateFilesetRequest(name=name2)).data()
 
         try:
             # Both should have different prefixes (S3 storage has prefix attribute)
@@ -651,8 +666,8 @@ class TestS3DefaultStorageConfig:
             assert content1 == b"content for fileset 1"
             assert content2 == b"content for fileset 2"
         finally:
-            sdk_with_s3_default.files.filesets.delete(name=name1, workspace=DEFAULT_WORKSPACE)
-            sdk_with_s3_default.files.filesets.delete(name=name2, workspace=DEFAULT_WORKSPACE)
+            files.delete_fileset(name=name1, workspace=DEFAULT_WORKSPACE)
+            files.delete_fileset(name=name2, workspace=DEFAULT_WORKSPACE)
 
     def test_download_from_huggingface_fileset_with_s3_default(self, sdk_with_s3_default: NeMoPlatform):
         """Test downloading from a HuggingFace fileset works with S3 as default storage.
@@ -665,16 +680,19 @@ class TestS3DefaultStorageConfig:
         name = f"hf-with-s3-default-{uuid.uuid4().hex[:8]}"
 
         # Create a HuggingFace-backed fileset (explicitly specifying storage)
-        fileset = sdk_with_s3_default.files.filesets.create(
-            name=name,
+        files_client = client_from_platform(sdk_with_s3_default, FilesClient)
+        fileset = files_client.create_fileset(
             workspace=DEFAULT_WORKSPACE,
-            storage={
-                "type": "huggingface",
-                "repo_id": "hf-internal-testing/tiny-random-bert",
-                "repo_type": "model",
-                "revision": "main",
-            },
-        )
+            body=CreateFilesetRequest(
+                name=name,
+                storage={
+                    "type": "huggingface",
+                    "repo_id": "hf-internal-testing/tiny-random-bert",
+                    "repo_type": "model",
+                    "revision": "main",
+                },
+            ),
+        ).data()
 
         try:
             # List files to verify connection works
@@ -707,4 +725,4 @@ class TestS3DefaultStorageConfig:
                 assert isinstance(parsed, dict), "config.json should be a JSON object"
 
         finally:
-            sdk_with_s3_default.files.filesets.delete(name=name, workspace=DEFAULT_WORKSPACE)
+            files_client.delete_fileset(name=name, workspace=DEFAULT_WORKSPACE)

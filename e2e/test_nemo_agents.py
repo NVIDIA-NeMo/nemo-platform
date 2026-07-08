@@ -3,6 +3,7 @@
 These tests cover the backend-agnostic API and SDK surface.
 """
 
+import time
 import uuid
 from collections.abc import Callable
 from typing import Any
@@ -10,12 +11,46 @@ from typing import Any
 import httpx
 import pytest
 from nemo_platform import NeMoPlatform
+from nmp.testing import MockProviderResponse, add_mock_provider
 
 pytestmark = [pytest.mark.e2e_config("e2e/configs/local-subprocess.yaml")]
+
+_TEST_AGENT_RESPONSE = "The answer to your question is 42."
 
 
 def _unique_name(prefix: str) -> str:
     return f"e2e-{prefix}-{uuid.uuid4().hex[:8]}"
+
+
+def _chat_completion_response(content: str, model: str) -> dict[str, Any]:
+    return {
+        "id": "chatcmpl-agents-e2e",
+        "object": "chat.completion",
+        "model": model,
+        "choices": [
+            {
+                "message": {"role": "assistant", "content": content},
+                "finish_reason": "stop",
+                "index": 0,
+            }
+        ],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+    }
+
+
+def _mock_backed_agent_config(model_name: str) -> dict[str, Any]:
+    return {
+        "llms": {
+            "main": {
+                "_type": "openai",
+                "model_name": model_name,
+            }
+        },
+        "workflow": {
+            "_type": "chat_completion",
+            "llm_name": "main",
+        },
+    }
 
 
 def _agent_config(label: str) -> dict[str, Any]:
@@ -54,6 +89,10 @@ def _assert_http_status(exc_info: pytest.ExceptionInfo[httpx.HTTPStatusError], s
     assert exc_info.value.response.status_code == status_code
 
 
+def _assert_deployment_status(status: str) -> None:
+    assert status in {"pending", "starting", "running", "failed"}
+
+
 def _get_agents_page(
     sdk: NeMoPlatform,
     workspace: str,
@@ -74,6 +113,80 @@ def _delete_agent_if_exists(sdk: NeMoPlatform, *, workspace: str, name: str) -> 
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code != 404:
             raise
+
+
+def _delete_deployment_if_exists(sdk: NeMoPlatform, *, workspace: str, name: str) -> None:
+    try:
+        sdk.agents.deployments.delete(name, workspace=workspace)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 404:
+            raise
+
+
+def _get_deployment_log_text(sdk: NeMoPlatform, *, workspace: str, name: str) -> str:
+    try:
+        response = sdk._client.get(
+            f"/apis/agents/v2/workspaces/{workspace}/deployments/{name}/logs",
+            params={"tail": 50},
+        )
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        return exc.response.text
+
+    payload = response.json()
+    lines = _page_data(payload)
+    return "\n".join(str(line.get("message", line)) for line in lines)
+
+
+def _wait_for_deployment_deleted(
+    sdk: NeMoPlatform,
+    *,
+    workspace: str,
+    name: str,
+    timeout_seconds: float = 60,
+) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    last_status: str | None = None
+
+    while time.monotonic() < deadline:
+        try:
+            deployment = sdk.agents.deployments.get(name, workspace=workspace)
+            last_status = deployment.get("status")
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return
+            raise
+
+        time.sleep(1)
+
+    pytest.fail(f"Deployment {name!r} was not deleted within {timeout_seconds}s; last status={last_status!r}")
+
+
+def _wait_for_deployment_running(
+    sdk: NeMoPlatform,
+    *,
+    workspace: str,
+    name: str,
+    timeout_seconds: float = 300,
+) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout_seconds
+    last_deployment: dict[str, Any] | None = None
+
+    while time.monotonic() < deadline:
+        deployment = sdk.agents.deployments.get(name, workspace=workspace)
+        last_deployment = deployment
+        status = deployment["status"]
+
+        if status == "running":
+            assert deployment["endpoint"]
+            return deployment
+        if status == "failed":
+            logs = _get_deployment_log_text(sdk, workspace=workspace, name=name)
+            pytest.fail(f"Deployment {name!r} failed: {deployment.get('error', '')}\n{logs}")
+
+        time.sleep(2)
+
+    pytest.fail(f"Deployment {name!r} did not reach running within {timeout_seconds}s: {last_deployment}")
 
 
 def test_agent_create_list_get_delete_lifecycle(sdk: NeMoPlatform, workspace: str) -> None:
@@ -235,3 +348,125 @@ def test_agents_sdk_missing_get_raises_not_found(sdk: NeMoPlatform, workspace: s
     with pytest.raises(httpx.HTTPStatusError) as exc_info:
         sdk.agents.get(_unique_name("sdk-missing"), workspace=workspace)
     _assert_http_status(exc_info, 404)
+
+
+@pytest.mark.container_only
+def test_agent_deployment_missing_agent_returns_not_found(sdk: NeMoPlatform, workspace: str) -> None:
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        sdk.agents.deployments.create(
+            workspace=workspace,
+            agent=_unique_name("missing-agent"),
+            name=_unique_name("missing-agent-deployment"),
+        )
+    _assert_http_status(exc_info, 404)
+
+
+@pytest.mark.container_only
+def test_agent_deployment_create_list_get_delete_lifecycle(sdk: NeMoPlatform, workspace: str) -> None:
+    agent_name = _unique_name("deployment-agent")
+    deployment_name = _unique_name("deployment")
+    sdk.agents.create(workspace=workspace, name=agent_name, config=_agent_config(agent_name))
+
+    try:
+        created = sdk.agents.deployments.create(
+            workspace=workspace,
+            agent=agent_name,
+            name=deployment_name,
+        )
+        assert created["name"] == deployment_name
+        assert created["workspace"] == workspace
+        assert created["agent"] == agent_name
+        _assert_deployment_status(created["status"])
+
+        deployments = sdk.agents.deployments.list(workspace=workspace)
+        deployment_names = {deployment["name"] for deployment in _page_data(deployments)}
+        assert deployment_name in deployment_names
+
+        retrieved = sdk.agents.deployments.get(deployment_name, workspace=workspace)
+        assert retrieved["name"] == deployment_name
+        assert retrieved["workspace"] == workspace
+        assert retrieved["agent"] == agent_name
+        assert isinstance(retrieved["config"], dict)
+        _assert_deployment_status(retrieved["status"])
+    finally:
+        _delete_deployment_if_exists(sdk, workspace=workspace, name=deployment_name)
+        _wait_for_deployment_deleted(sdk, workspace=workspace, name=deployment_name)
+        _delete_agent_if_exists(sdk, workspace=workspace, name=agent_name)
+
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        sdk.agents.deployments.get(deployment_name, workspace=workspace)
+    _assert_http_status(exc_info, 404)
+
+
+@pytest.mark.container_only
+def test_agent_delete_is_blocked_while_deployment_is_active(sdk: NeMoPlatform, workspace: str) -> None:
+    agent_name = _unique_name("blocked-delete-agent")
+    deployment_name = _unique_name("blocked-delete-deployment")
+    sdk.agents.create(workspace=workspace, name=agent_name, config=_agent_config(agent_name))
+
+    try:
+        deployment = sdk.agents.deployments.create(
+            workspace=workspace,
+            agent=agent_name,
+            name=deployment_name,
+        )
+        _assert_deployment_status(deployment["status"])
+
+        with pytest.raises(httpx.HTTPStatusError) as exc_info:
+            sdk.agents.delete(agent_name, workspace=workspace)
+        _assert_http_status(exc_info, 409)
+
+        agent = sdk.agents.get(agent_name, workspace=workspace)
+        assert agent["name"] == agent_name
+    finally:
+        _delete_deployment_if_exists(sdk, workspace=workspace, name=deployment_name)
+        _wait_for_deployment_deleted(sdk, workspace=workspace, name=deployment_name)
+        _delete_agent_if_exists(sdk, workspace=workspace, name=agent_name)
+
+
+@pytest.mark.container_only
+def test_agent_gateway_missing_deployment_returns_not_found(sdk: NeMoPlatform, workspace: str) -> None:
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        sdk.agents.invoke(
+            workspace=workspace,
+            deployment=_unique_name("missing-deployment"),
+            input="hello",
+        )
+    _assert_http_status(exc_info, 404)
+
+
+@pytest.mark.container_only
+def test_agent_deployment_reaches_running(sdk: NeMoPlatform, workspace: str) -> None:
+    agent_name = _unique_name("running-agent")
+    deployment_name = _unique_name("running-deployment")
+    model_name = _unique_name("agent-model")
+    add_mock_provider(
+        sdk,
+        workspace=workspace,
+        name=_unique_name("agent-provider"),
+        mock_response_body_by_model={
+            f"{workspace}/{model_name}": [
+                MockProviderResponse(response_body=_chat_completion_response(_TEST_AGENT_RESPONSE, model_name)),
+            ],
+        },
+        served_models={model_name: model_name},
+    )
+    sdk.agents.create(
+        workspace=workspace,
+        name=agent_name,
+        config=_mock_backed_agent_config(f"{workspace}/{model_name}"),
+    )
+
+    try:
+        sdk.agents.deployments.create(
+            workspace=workspace,
+            agent=agent_name,
+            name=deployment_name,
+        )
+        deployment = _wait_for_deployment_running(sdk, workspace=workspace, name=deployment_name)
+        assert deployment["agent"] == agent_name
+        assert deployment["endpoint"]
+    finally:
+        _delete_deployment_if_exists(sdk, workspace=workspace, name=deployment_name)
+        _wait_for_deployment_deleted(sdk, workspace=workspace, name=deployment_name)
+        _delete_agent_if_exists(sdk, workspace=workspace, name=agent_name)

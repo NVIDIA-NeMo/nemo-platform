@@ -103,9 +103,9 @@ class NemoJobScheduler:
             workspace: Workspace scope for the local context.
             sdk: Optional :class:`~nemo_platform.NeMoPlatform` handle.
                 Bound to an ``sdk`` kwarg on ``run`` if the signature
-                declares one. Jobs navigate the SDK tree themselves
-                (``sdk.files.filesets.create(...)``) — typed per-service
-                resources land in a follow-up alongside ``NemoSDK``.
+                declares one. Jobs obtain typed service clients via
+                ``client_from_platform(sdk, FilesClient)`` for
+                per-service operations.
             async_sdk: Optional :class:`~nemo_platform.AsyncNeMoPlatform`
                 handle, bound the same way when an ``async_sdk`` kwarg
                 is declared. Sync ``run`` cannot consume this directly

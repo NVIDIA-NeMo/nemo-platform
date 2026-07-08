@@ -9,7 +9,8 @@ import re
 from collections import defaultdict
 
 from nemo_platform import AsyncNeMoPlatform, NotFoundError, PermissionDeniedError
-from nemo_platform.types.files import Fileset, FilesetFile, HuggingfaceStorageConfig, NGCStorageConfig
+from nemo_platform_plugin.files.storage_config import HuggingfaceStorageConfig, NGCStorageConfig
+from nemo_platform_plugin.files.types import FilesetFileOutput, FilesetOutput
 from nmp.common.api.common import Page, PaginationData
 from nmp.common.api.filter import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
 from nmp.common.api.parsed_filter import ParsedFilter
@@ -58,7 +59,7 @@ def _repo_id_matches_trusted(repo_id: str, patterns: list[str]) -> bool:
 
 async def get_fileset_and_files_list(
     sdk: AsyncNeMoPlatform, workspace: str, fileset_ref: str | None
-) -> tuple[Fileset, list[FilesetFile]]:
+) -> tuple[FilesetOutput, list[FilesetFileOutput]]:
     """Validate that the fileset exists and the user has access."""
     if not fileset_ref:
         raise FilesetValidationError("Fileset reference is required")
@@ -200,7 +201,7 @@ def _has_tool_call_plugin(request) -> bool:
     return False
 
 
-def fileset_has_tool_call_plugin(fileset: Fileset) -> bool:
+def fileset_has_tool_call_plugin(fileset: FilesetOutput) -> bool:
     """Return True if a fileset's metadata contains a tool_call_plugin value."""
     if not fileset.metadata:
         return False

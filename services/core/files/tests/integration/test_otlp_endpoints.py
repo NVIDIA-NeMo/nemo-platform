@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 import httpx
 import pytest
-from nemo_platform.types.files.fileset import Fileset
+from nemo_platform_plugin.files.types import FilesetOutput
 from opentelemetry.proto.collector.logs.v1 import logs_service_pb2
 
 
@@ -155,7 +155,7 @@ def otlp_request_factory(otlp_format):
 
 def test_upload_and_query_logs_roundtrip(
     client: httpx.Client,
-    fileset: Fileset,
+    fileset: FilesetOutput,
     otlp_request_factory,
     otlp_format: str,
 ):
@@ -197,7 +197,7 @@ def test_upload_and_query_logs_roundtrip(
 
 def test_query_logs_with_filters(
     client: httpx.Client,
-    fileset: Fileset,
+    fileset: FilesetOutput,
     otlp_request_factory,
     otlp_format: str,
 ):
@@ -241,7 +241,7 @@ def test_query_logs_with_filters(
 
 def test_query_logs_pagination(
     client: httpx.Client,
-    fileset: Fileset,
+    fileset: FilesetOutput,
     otlp_request_factory,
     otlp_format: str,
 ):
@@ -308,7 +308,7 @@ def test_query_logs_pagination(
 
 def test_multiple_batches_same_partition(
     client: httpx.Client,
-    fileset: Fileset,
+    fileset: FilesetOutput,
     otlp_request_factory,
     otlp_format: str,
 ):
@@ -360,7 +360,7 @@ def test_multiple_batches_same_partition(
 
 def test_query_empty_fileset(
     client: httpx.Client,
-    fileset: Fileset,
+    fileset: FilesetOutput,
 ):
     """Test querying a fileset with no logs returns empty result."""
     workspace = fileset.workspace
@@ -380,7 +380,7 @@ def test_query_empty_fileset(
 
 def test_upload_logs_missing_attributes_partial_success(
     client: httpx.Client,
-    fileset: Fileset,
+    fileset: FilesetOutput,
 ):
     """Test that logs with missing required attributes are rejected (JSON format)."""
     workspace = fileset.workspace
@@ -454,7 +454,7 @@ def test_upload_logs_missing_attributes_partial_success(
 
 def test_upload_logs_invalid_json(
     client: httpx.Client,
-    fileset: Fileset,
+    fileset: FilesetOutput,
 ):
     """Test that invalid JSON returns 400 error."""
     workspace = fileset.workspace
@@ -471,7 +471,7 @@ def test_upload_logs_invalid_json(
 
 def test_upload_logs_invalid_protobuf(
     client: httpx.Client,
-    fileset: Fileset,
+    fileset: FilesetOutput,
 ):
     """Test that invalid protobuf returns 400 error."""
     workspace = fileset.workspace
@@ -522,7 +522,7 @@ def test_upload_logs_nonexistent_fileset(
 
 def test_query_logs_invalid_filter_key_returns_400(
     client: httpx.Client,
-    fileset: Fileset,
+    fileset: FilesetOutput,
 ):
     """Test invalid filter key is rejected with a 400 response."""
     workspace = fileset.workspace
@@ -539,7 +539,7 @@ def test_query_logs_invalid_filter_key_returns_400(
 
 def test_query_logs_invalid_partition_value_does_not_leak_internal_details(
     client: httpx.Client,
-    fileset: Fileset,
+    fileset: FilesetOutput,
 ):
     """Test invalid partition filter input does not leak internal details."""
     workspace = fileset.workspace
@@ -559,7 +559,7 @@ def test_query_logs_invalid_partition_value_does_not_leak_internal_details(
 
 def test_query_logs_invalid_partition_value_returns_400(
     client: httpx.Client,
-    fileset: Fileset,
+    fileset: FilesetOutput,
 ):
     """Test unsafe partition filter values are rejected before query execution."""
     workspace = fileset.workspace
@@ -576,7 +576,7 @@ def test_query_logs_invalid_partition_value_returns_400(
 
 def test_query_logs_log_message_allows_apostrophe(
     client: httpx.Client,
-    fileset: Fileset,
+    fileset: FilesetOutput,
 ):
     """Test log_message filter remains usable for normal text with apostrophes."""
     workspace = fileset.workspace
