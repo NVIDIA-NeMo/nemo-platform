@@ -56,6 +56,25 @@ def test_intake_ready_when_clickhouse_is_unavailable(
     assert not any("ClickHouse readiness check failed" in record.message for record in caplog.records)
 
 
+def test_shutdown_clears_runtime_when_clickhouse_close_fails() -> None:
+    class FailingClickHouseClient(ClickHouseSpanClient):
+        async def close(self) -> None:
+            raise RuntimeError("close failed")
+
+    fake_client = FailingClickHouseClient.__new__(FailingClickHouseClient)
+    service = IntakeService()
+    service.clickhouse_client = fake_client
+    service._ready = True
+    get_intake_runtime().configure(fake_client, IntakeConfig())
+
+    with pytest.raises(RuntimeError, match="close failed"):
+        asyncio.run(service.on_shutdown())
+
+    assert service.clickhouse_client is None
+    assert get_intake_runtime().clickhouse_client is None
+    assert asyncio.run(service.is_ready()) is False
+
+
 def test_platform_mounted_request_resolves_plugin_owned_clickhouse_client() -> None:
     class FakeClickHouseClient(ClickHouseSpanClient):
         def __init__(self) -> None:

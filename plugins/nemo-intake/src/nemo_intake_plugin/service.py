@@ -121,9 +121,11 @@ class IntakeService(NemoService):
         self._ready = False
         if self.clickhouse_client is not None:
             client = self.clickhouse_client
-            await client.close()
-            get_intake_runtime().clear(client)
-            self.clickhouse_client = None
+            try:
+                await client.close()
+            finally:
+                get_intake_runtime().clear(client)
+                self.clickhouse_client = None
         await super().on_shutdown()
 
     async def is_ready(self) -> bool:
