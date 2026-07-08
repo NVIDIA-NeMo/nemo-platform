@@ -2366,6 +2366,19 @@ components:
           title: Config
           description: Resolved agent config with IGW URL injected, written when the
             deployment is created.
+        image:
+          type: string
+          title: Image
+          description: Container image to deploy. Used by the 'deployments' runner
+            backend; ignored by 'in_memory'.
+          default: ''
+        env:
+          additionalProperties:
+            type: string
+          type: object
+          title: Env
+          description: Environment variables injected into the agent container. Used
+            by the 'deployments' backend.
         status:
           type: string
           enum:
@@ -2654,6 +2667,19 @@ components:
           description: Optional deployment name.  Auto-generated from agent name +
             random suffix if omitted.
           type: string
+        image:
+          title: Image
+          description: Container image to deploy.  Required when the 'deployments'
+            runner backend is active.
+          type: string
+        env:
+          title: Env
+          description: 'Environment variables to inject into the agent container (e.g.
+            {''NVIDIA_API_KEY'': ''...''}). Used by the ''deployments'' runner backend;
+            ignored by ''in_memory''.'
+          additionalProperties:
+            type: string
+          type: object
       type: object
       required:
       - agent
