@@ -14,29 +14,29 @@ import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataView
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import type {
-  ExperimentFilter,
+  EvaluationFilter,
   ExperimentGroupResponse,
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/ExperimentGroupDataView/Empty';
 import { MeanValueTooltipCell } from '@studio/components/dataViews/ExperimentGroupDataView/MeanValueTooltipCell';
 import {
-  type ExperimentRow,
-  type ListExperimentsSortParam,
-  useExperimentGroupExperiments,
-} from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupExperiments';
+  type EvaluationRow,
+  type ListEvaluationsSortParam,
+  useExperimentGroupEvaluations,
+} from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupEvaluations';
 import { useSortErrorRecovery } from '@studio/components/dataViews/ExperimentGroupDataView/useSortErrorRecovery';
 import { deriveEvaluatorNames } from '@studio/components/dataViews/ExperimentGroupDataView/util';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { getExperimentDetailRoute } from '@studio/routes/utils';
+import { getEvaluationDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { Columns3, Pin } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-export type { ExperimentRow };
+export type { EvaluationRow };
 
-const DEFAULT_SORT: ListExperimentsSortParam = '-created_at';
+const DEFAULT_SORT: ListEvaluationsSortParam = '-created_at';
 
 // Maps sortable static column ids to their API sort fields.
 const STATIC_SORT_FIELD_MAP: Readonly<Record<string, string>> = {
@@ -68,8 +68,8 @@ const seedSortFromDefault = (
 };
 
 // Maps a filter column id to its dotted API rollup-stat field (required by the backend parser).
-// Evaluator ids are dynamic, so derive `evaluators.<name>.mean` here, like getExperimentSortParam.
-const getExperimentFilterField = (id: string): string | undefined => {
+// Evaluator ids are dynamic, so derive `evaluators.<name>.mean` here, like getEvaluationSortParam.
+const getEvaluationFilterField = (id: string): string | undefined => {
   if (id === 'cost_usd') return 'cost_usd.mean';
   if (id === 'latency_ms') return 'latency_ms.mean';
   const evaluatorMatch = id.match(/^evaluator-(.+)$/);
@@ -77,9 +77,9 @@ const getExperimentFilterField = (id: string): string | undefined => {
   return undefined;
 };
 
-const getExperimentSortParam = (
+const getEvaluationSortParam = (
   sortingState: { id: string; desc: boolean }[]
-): ListExperimentsSortParam | undefined => {
+): ListEvaluationsSortParam | undefined => {
   const [first] = sortingState;
   // No column sort -> omit `sort`; the API then defaults to -created_at with pinned first.
   if (!first) return undefined;
@@ -91,7 +91,7 @@ const getExperimentSortParam = (
     if (evaluatorMatch) field = `evaluators.${evaluatorMatch[1]}.mean`;
   }
   if (!field) return DEFAULT_SORT;
-  return `${first.desc ? '-' : ''}${field}` as ListExperimentsSortParam;
+  return `${first.desc ? '-' : ''}${field}` as ListEvaluationsSortParam;
 };
 
 interface ExperimentGroupDataViewProps {
@@ -122,17 +122,17 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
   // reference is stable across renders (until default_sort changes).
   const defaultSort = useMemo(() => seedSortFromDefault(group.default_sort), [group.default_sort]);
 
-  const dataViewState = useStudioDataViewState<ExperimentFilter>({
+  const dataViewState = useStudioDataViewState<EvaluationFilter>({
     defaultSort,
     columnVisibility: { created_by: false, updated_at: false },
     // Keep the pin toggle reachable while horizontally scrolling this wide table.
     columnPinning: { left: ['pin'] },
-    filterFieldMap: getExperimentFilterField,
+    filterFieldMap: getEvaluationFilterField,
   });
 
   const page = dataViewState.pagination.state.pageIndex + 1;
   const pageSize = dataViewState.pagination.state.pageSize;
-  const sortParam = getExperimentSortParam(dataViewState.sorting.state);
+  const sortParam = getEvaluationSortParam(dataViewState.sorting.state);
 
   const {
     rows: orderedData,
@@ -141,7 +141,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
     error,
     isLoading,
     isSuccess,
-  } = useExperimentGroupExperiments({
+  } = useExperimentGroupEvaluations({
     workspace,
     experimentGroupId,
     filter: dataViewState.apiFilter.filter,
@@ -182,7 +182,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
   );
 
   const makeColumns = useCallback<
-    ComponentProps<typeof DataViewRoot<ExperimentRow>>['makeColumns']
+    ComponentProps<typeof DataViewRoot<EvaluationRow>>['makeColumns']
   >(
     ({ accessor, display }) => [
       display({
@@ -416,7 +416,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
       makeColumns={makeColumns}
       searchField="name"
       onRowClick={(row) =>
-        navigate(getExperimentDetailRoute(workspace, experimentGroupName, row.name))
+        navigate(getEvaluationDetailRoute(workspace, experimentGroupName, row.name))
       }
       toolbarSlotEnd={
         <EditColumnsMenu

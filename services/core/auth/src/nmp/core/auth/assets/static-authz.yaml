@@ -299,6 +299,7 @@ authz:
       - inference.virtual-models.read
       - intake.annotations.list
       - intake.annotations.read
+      - intake.evaluations.read
       - intake.evaluator-results.list
       - intake.evaluator-results.read
       - intake.experiment-groups.read
@@ -346,6 +347,9 @@ authz:
       - inference.virtual-models.update
       - intake.annotations.create
       - intake.annotations.delete
+      - intake.evaluations.create
+      - intake.evaluations.delete
+      - intake.evaluations.update
       - intake.evaluator-results.create
       - intake.experiment-groups.create
       - intake.experiment-groups.delete
@@ -870,6 +874,58 @@ authz:
         scopes:
         - intake:read
         - platform:read
+    /apis/intake/v2/workspaces/{workspace}/evaluations:
+      get:
+        permissions:
+        - intake.evaluations.read
+        scopes:
+        - intake:read
+        - platform:read
+      post:
+        permissions:
+        - intake.evaluations.create
+        scopes:
+        - intake:write
+        - platform:write
+    /apis/intake/v2/workspaces/{workspace}/evaluations/{name}:
+      delete:
+        permissions:
+        - intake.evaluations.delete
+        scopes:
+        - intake:write
+        - platform:write
+      get:
+        permissions:
+        - intake.evaluations.read
+        scopes:
+        - intake:read
+        - platform:read
+      put:
+        permissions:
+        - intake.evaluations.update
+        scopes:
+        - intake:write
+        - platform:write
+    /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/pin:
+      delete:
+        permissions:
+        - intake.evaluations.delete
+        scopes:
+        - intake:write
+        - platform:write
+      post:
+        permissions:
+        - intake.evaluations.create
+        scopes:
+        - intake:write
+        - platform:write
+    /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/sessions:
+      get:
+        permissions:
+        - intake.evaluations.read
+        scopes:
+        - intake:read
+        - platform:read
     /apis/intake/v2/workspaces/{workspace}/evaluator-results:
       get:
         permissions:
@@ -922,58 +978,6 @@ authz:
         scopes:
         - intake:write
         - platform:write
-    /apis/intake/v2/workspaces/{workspace}/experiments:
-      get:
-        permissions:
-        - intake.experiments.read
-        scopes:
-        - intake:read
-        - platform:read
-      post:
-        permissions:
-        - intake.experiments.create
-        scopes:
-        - intake:write
-        - platform:write
-    /apis/intake/v2/workspaces/{workspace}/experiments/{name}:
-      delete:
-        permissions:
-        - intake.experiments.delete
-        scopes:
-        - intake:write
-        - platform:write
-      get:
-        permissions:
-        - intake.experiments.read
-        scopes:
-        - intake:read
-        - platform:read
-      put:
-        permissions:
-        - intake.experiments.update
-        scopes:
-        - intake:write
-        - platform:write
-    /apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin:
-      delete:
-        permissions:
-        - intake.experiments.update
-        scopes:
-        - intake:write
-        - platform:write
-      post:
-        permissions:
-        - intake.experiments.update
-        scopes:
-        - intake:write
-        - platform:write
-    /apis/intake/v2/workspaces/{workspace}/experiments/{name}/sessions:
-      get:
-        permissions:
-        - intake.experiments.read
-        scopes:
-        - intake:read
-        - platform:read
     /apis/intake/v2/workspaces/{workspace}/ingest/atif:
       post:
         permissions:

@@ -5393,6 +5393,347 @@ nemo workspaces members update [OPTIONS] PRINCIPAL_ID
 
 * `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
 
+### nemo evaluations
+
+Manage evaluations
+
+**Usage:**
+
+```shell
+nemo evaluations [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Create Evaluation
+* `delete`: Delete Evaluation
+* `list`: List Evaluations
+* `pin`: Pin an evaluation to the top of the list (workspace-shared).
+* `get`: Get Evaluation
+* `unpin`: Unpin an evaluation.
+* `update`: Update Evaluation
+* `sessions`: Manage sessions
+
+#### nemo evaluations create
+
+Create Evaluation
+
+**Required fields:** dataset_name, experiment_group_id, name
+
+**Examples:**
+
+```shell
+nemo evaluations create <name> --input-file config.json
+nemo evaluations create <name> --input-data '{"dataset_name": "value", "experiment_group_id": "value", "name": "value"}'
+echo '{"json": "data"}' | nemo evaluations create <name> --input-file -
+nemo evaluations create <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo evaluations create [OPTIONS] [NAME]
+```
+
+**Arguments:**
+
+* `<NAME>`: Producer-supplied, workspace-unique evaluation id.
+
+**Options:**
+
+* `--workspace`
+* `--dataset-name`: Producer-supplied dataset name.
+* `--experiment-group-id`: Entity id of the owning ExperimentGroup. Required — the group must already exist.
+* `--dataset-version`: Producer-supplied dataset version.
+* `--description`: Human-readable description.
+* `--metadata`: Free-form producer metadata. (JSON string)
+* `--parent-evaluation-id`: Entity id of the evaluation this one was derived from (e.g. a variant of a baseline), if any.
+* `--root-cause`: Human- or agent-authored explanation of the evaluation's outcome (e.g. why it was killed).
+* `--source-link`: Optional URL for the source evaluation.
+* `--status`: Producer-defined lifecycle status of the evaluation.
+* `--exist-ok`: Do not raise an error if the resource already exists. Returns the existing resource.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo evaluations delete
+
+Delete Evaluation
+
+**Usage:**
+
+```shell
+nemo evaluations delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo evaluations list
+
+List Evaluations
+
+**Usage:**
+
+```shell
+nemo evaluations list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--page <INTEGER>`: Page number.
+* `--page-size <INTEGER>`: Page size.
+* `--sort`: Field to sort by; prefix with '-' for descending. Sort by an evaluation attribute (name, created_at, updated_at, pinned_at) or by an aggregate metric: run_count, cost_usd.\<stat>, latency_ms.\<stat>, or evaluators.\<name>.\<stat>, where \<stat> is one of mean, median, p90, p95, p99, sum, count. When omitted, defaults to -created_at with pinned evaluations first.
+* `--all-pages`: Fetch all pages
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  cost_usd: \{count: NumberFilterParam, mean: NumberFilterParam, median: NumberFilterParam, p90: NumberFilterParam, p95: NumberFilterParam, p99: NumberFilterParam, sum: NumberFilterParam}
+  created_at: \{gte: str, lte: str}
+  evaluators: dict[str, MetricStatFiltersParam]
+  latency_ms: \{count: NumberFilterParam, mean: NumberFilterParam, median: NumberFilterParam, p90: NumberFilterParam, p95: NumberFilterParam, p99: NumberFilterParam, sum: NumberFilterParam}
+  run_count: \{eq: float, gt: float, gte: float, lt: float, lte: float}
+  updated_at: \{gte: str, lte: str}
+
+Filter evaluations by name, experiment_group_id, dataset_name, dataset_version, created_by, created_at, or updated_at. Pass is_deleted=true to return only soft-deleted evaluations; omit to see only live ones. Pass is_pinned=true (or false) to filter by pinned state; omit to return both. Filter by a rollup metric with numeric range operators ($gte/$lte/$gt/$lt/`$eq`): filter[`$gte`]=5, filter[cost_usd.mean][`$lte`]=0.5, filter[latency_ms.p95][`$lte`]=1000, or filter[evaluators.\<name>.mean][`$gte`]=0.8.
+* `--filter.created-by`
+* `--filter.dataset-name`
+* `--filter.dataset-version`
+* `--filter.experiment-group-id`
+* `--filter.is-deleted`
+* `--filter.is-pinned`
+* `--filter.name`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+#### nemo evaluations pin
+
+Pin an evaluation to the top of the list (workspace-shared).
+
+Re-pinning an already-pinned evaluation refreshes `pinned_at` to the current
+timestamp, which is intentional (most-recently-pinned sorts first).
+
+**Usage:**
+
+```shell
+nemo evaluations pin [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo evaluations get
+
+Get Evaluation
+
+**Usage:**
+
+```shell
+nemo evaluations get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo evaluations unpin
+
+Unpin an evaluation.
+
+Idempotent: unpinning an already-unpinned evaluation is a
+no-op.
+
+**Usage:**
+
+```shell
+nemo evaluations unpin [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo evaluations update
+
+Update Evaluation
+
+**Required fields:** dataset_name, experiment_group_id, body_name
+
+**Examples:**
+
+```shell
+nemo evaluations update <path_name> --input-file config.json
+nemo evaluations update <path_name> --input-data '{"dataset_name": "value", "experiment_group_id": "value", "body_name": "value"}'
+echo '{"json": "data"}' | nemo evaluations update <path_name> --input-file -
+nemo evaluations update <path_name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo evaluations update [OPTIONS] PATH_NAME
+```
+
+**Arguments:**
+
+* `<PATH_NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--dataset-name`: Producer-supplied dataset name.
+* `--experiment-group-id`: Entity id of the owning ExperimentGroup. Required — the group must already exist.
+* `--body-name`: Producer-supplied, workspace-unique evaluation id.
+* `--dataset-version`: Producer-supplied dataset version.
+* `--description`: Human-readable description.
+* `--metadata`: Free-form producer metadata. (JSON string)
+* `--parent-evaluation-id`: Entity id of the evaluation this one was derived from (e.g. a variant of a baseline), if any.
+* `--root-cause`: Human- or agent-authored explanation of the evaluation's outcome (e.g. why it was killed).
+* `--source-link`: Optional URL for the source evaluation.
+* `--status`: Producer-defined lifecycle status of the evaluation.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo evaluations sessions
+
+Manage sessions
+
+**Usage:**
+
+```shell
+nemo evaluations sessions [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `list`: List Evaluation Sessions
+
+##### nemo evaluations sessions list
+
+List Evaluation Sessions
+
+**Usage:**
+
+```shell
+nemo evaluations sessions list [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--mode <CHOICE>`: Response payload mode. summary keeps the same session row fields but truncates root-span input to 1000 characters; detailed returns the full root-span input. [possible values: summary, detailed]
+* `--page <INTEGER>`: Page number.
+* `--page-size <INTEGER>`: Page size.
+* `--all-pages`: Fetch all pages
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+
+Filter sessions by test_case_id and status.
+* `--filter.status`
+* `--filter.test-case-id`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
 ## Functional plugins
 
 ### nemo guardrail
