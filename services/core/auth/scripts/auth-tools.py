@@ -106,6 +106,22 @@ def extract_openapi_endpoints(openapi_path: Path) -> Dict[str, Set[str]]:
     return endpoints
 
 
+def merge_openapi_endpoints(*endpoint_sets: Dict[str, Set[str]]) -> Dict[str, Set[str]]:
+    """Merge endpoint maps without mutating their source sets."""
+    merged: Dict[str, Set[str]] = {}
+    for endpoints in endpoint_sets:
+        for path, methods in endpoints.items():
+            merged.setdefault(path, set()).update(methods)
+    return merged
+
+
+def extract_plugin_openapi_endpoints(project_root: Path) -> Dict[str, Set[str]]:
+    """Extract endpoints advertised by generated plugin-owned OpenAPI specs."""
+    return merge_openapi_endpoints(
+        *(extract_openapi_endpoints(path) for path in sorted((project_root / "plugins").glob("*/openapi/openapi.yaml")))
+    )
+
+
 def extract_auth_endpoints(auth_path: Path) -> Dict[str, Set[str]]:
     """Extract all endpoints and their methods from the auth configuration."""
     auth_config = load_yaml(auth_path)
@@ -463,6 +479,7 @@ def check(
 
     # Extract endpoints from both sources
     openapi_endpoints = extract_openapi_endpoints(openapi_path)
+    known_openapi_endpoints = merge_openapi_endpoints(openapi_endpoints, extract_plugin_openapi_endpoints(project_root))
     auth_endpoints = extract_auth_endpoints(auth_path)
 
     # Find missing endpoints (in openapi but not in auth config)
@@ -479,7 +496,7 @@ def check(
     opt_out_endpoints = extract_openapi_opt_out_endpoints(auth_path)
     orphaned = []
     for path, methods in auth_endpoints.items():
-        openapi_methods = openapi_endpoints.get(path, set())
+        openapi_methods = known_openapi_endpoints.get(path, set())
         opted_out = opt_out_endpoints.get(path, set())
         orphaned_methods = methods - openapi_methods - opted_out
         for method in orphaned_methods:
@@ -488,7 +505,7 @@ def check(
     # Find stale opt-outs (marked x-not-in-openapi: true but the endpoint is in openapi)
     stale_opt_outs = []
     for path, methods in opt_out_endpoints.items():
-        openapi_methods = openapi_endpoints.get(path, set())
+        openapi_methods = known_openapi_endpoints.get(path, set())
         for method in methods & openapi_methods:
             stale_opt_outs.append((path, method))
 
@@ -731,6 +748,7 @@ def update(
 
     # Load configurations
     openapi_endpoints = extract_openapi_endpoints(openapi_path)
+    known_openapi_endpoints = merge_openapi_endpoints(openapi_endpoints, extract_plugin_openapi_endpoints(project_root))
     auth_config = load_yaml(auth_path)
     auth_endpoints = extract_auth_endpoints(auth_path)
 
@@ -762,7 +780,7 @@ def update(
     opt_out_endpoints = extract_openapi_opt_out_endpoints(auth_path)
     removed = []
     for path, methods in list(auth_endpoints.items()):
-        openapi_methods = openapi_endpoints.get(path, set())
+        openapi_methods = known_openapi_endpoints.get(path, set())
         opted_out = opt_out_endpoints.get(path, set())
         methods_to_remove = methods - openapi_methods - opted_out
 
@@ -780,7 +798,7 @@ def update(
     # Strip stale opt-out markers (endpoint is now advertised in openapi → marker lies)
     stale_opt_outs_cleared = []
     for path, methods in opt_out_endpoints.items():
-        openapi_methods = openapi_endpoints.get(path, set())
+        openapi_methods = known_openapi_endpoints.get(path, set())
         for method in methods & openapi_methods:
             stale_opt_outs_cleared.append((path, method))
             if not dry_run:

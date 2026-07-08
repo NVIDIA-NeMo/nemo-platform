@@ -36,6 +36,7 @@ COPY plugins/nemo-data-designer/openapi /app/plugins/nemo-data-designer/openapi
 COPY plugins/nemo-agents/openapi /app/plugins/nemo-agents/openapi
 COPY plugins/nemo-safe-synthesizer/openapi /app/plugins/nemo-safe-synthesizer/openapi
 COPY plugins/nemo-evaluator/openapi /app/plugins/nemo-evaluator/openapi
+COPY plugins/nemo-intake/openapi /app/plugins/nemo-intake/openapi
 
 # Install pnpm modules and generate SDK artifacts during postinstall.
 RUN pnpm install --frozen-lockfile
