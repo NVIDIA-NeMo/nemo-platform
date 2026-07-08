@@ -27,7 +27,12 @@ from nmp.core.secrets.entities import PlatformSecret
 
 
 class PlatformSecretResponse(_PlatformSecretResponse):
-    """Server-side response model — adds entity conversion."""
+    """Response model for a platform secret."""
+
+    # NB: the docstring mirrors the base model's on purpose — FastAPI uses the
+    # response_model's docstring as the OpenAPI schema description, so a
+    # server-only note here would leak into the public API spec. This subclass
+    # exists solely to add ``from_entity``.
 
     @classmethod
     def from_entity(cls, secret: PlatformSecret) -> PlatformSecretResponse:

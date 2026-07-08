@@ -29,7 +29,7 @@ _NAME_RE: re.Pattern[str] = re.compile(_NAME_REGEX)
 
 
 class PlatformSecretResponse(BaseModel):
-    """Response DTO for secret metadata operations (never carries the value)."""
+    """Response model for a platform secret."""
 
     name: str = Field(description="The name of the secret")
     workspace: str = Field(description="The workspace ID the secret belongs to")
@@ -39,11 +39,11 @@ class PlatformSecretResponse(BaseModel):
 
 
 class PlatformSecretAccessResponse(BaseModel):
-    """Response DTO for accessing a secret's plaintext value."""
+    """Response model for accessing a platform secret's value."""
 
     name: str = Field(description="The name of the secret")
     workspace: str = Field(description="The workspace ID the secret belongs to")
-    value: str = Field(description="The plaintext payload of the secret")
+    value: str = Field(description="The payload of the secret")
 
 
 class PlatformSecretAdminRotationResponse(BaseModel):
@@ -59,20 +59,23 @@ class PlatformSecretAdminRotationResponse(BaseModel):
 
 
 class PlatformSecretCreateRequest(BaseModel):
-    """Request body for creating a new secret.
+    """Request body for creating a new platform secret."""
 
-    ``value`` is a :class:`~pydantic.SecretStr` so it is masked in reprs/logs,
-    but a JSON serializer emits the real plaintext on the wire — without it,
-    ``model_dump_json`` would send ``"**********"`` and the server would store
-    the mask instead of the secret.
-    """
+    # ``value`` is a ``SecretStr`` so it is masked in reprs/logs, but the
+    # ``_serialize_value`` JSON serializer below emits the real plaintext on the
+    # wire — without it, ``model_dump_json`` would send ``"**********"`` and the
+    # server would store the mask instead of the secret. (Keep this as a comment,
+    # not the class docstring, so it does not leak into the OpenAPI schema.)
 
     name: str = Field(
-        description="The name of the secret to create.",
+        description=(
+            "The name of the secret to create. Allowed characters: letters (a-z, A-Z), "
+            "digits (0-9), underscores, hyphens, and dots."
+        ),
         examples=["hf-token", "wandb-api-key"],
     )
     description: str | None = Field(default=None, description="An optional description of the secret")
-    value: SecretStr = Field(description="The plaintext payload of the secret")
+    value: SecretStr = Field(description="The payload of the secret")
 
     @field_validator("name")
     @classmethod
@@ -96,10 +99,10 @@ class PlatformSecretCreateRequest(BaseModel):
 
 
 class PlatformSecretUpdateRequest(BaseModel):
-    """Request body for updating a secret's metadata and/or value."""
+    """Request body for updating a platform secret's metadata."""
 
     description: str | None = Field(default=None, description="An optional description of the secret")
-    value: SecretStr | None = Field(default=None, description="The new plaintext secret value")
+    value: SecretStr | None = Field(default=None, description="The new secret value")
 
     @field_serializer("value", when_used="json")
     def _serialize_value(self, value: SecretStr | None) -> str | None:

@@ -130,7 +130,9 @@ def test_update_secret(sdk: SecretsClient):
     assert create_resp.description is None
     # Update the secret's description
     updated_secret = sdk.update_secret(
-        name=secret_name, workspace=DEFAULT_WORKSPACE, body=PlatformSecretUpdateRequest(description="Updated description")
+        name=secret_name,
+        workspace=DEFAULT_WORKSPACE,
+        body=PlatformSecretUpdateRequest(description="Updated description"),
     ).data()
     assert updated_secret.description == "Updated description"
     # Update description and value together
