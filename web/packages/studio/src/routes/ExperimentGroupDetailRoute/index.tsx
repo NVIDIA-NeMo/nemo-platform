@@ -58,10 +58,10 @@ export const ExperimentGroupDetailRoute: FC = () => {
             <ExperimentGroupMetrics experimentGroupName={experimentGroupName} />
             <div className="flex flex-col gap-4 border-t border-base pt-4">
               <div className="flex items-center gap-3">
-                <Text kind="title/sm">Experiments</Text>
-                {group?.experiment_count !== undefined && (
+                <Text kind="title/sm">Evaluations</Text>
+                {group?.evaluation_count !== undefined && (
                   <Badge color="gray" kind="solid" className="text-sm">
-                    {group.experiment_count}
+                    {group.evaluation_count}
                   </Badge>
                 )}
               </div>

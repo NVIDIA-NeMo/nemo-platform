@@ -910,29 +910,29 @@ resources:
       retrieve: get /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}
       update: put /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}
       delete: delete /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}
-  experiments:
+  evaluations:
     standalone_api: true
     models:
       evaluator_aggregate: EvaluatorAggregate
-      experiment_filter: ExperimentFilter
-      experiment_request: ExperimentRequest
-      experiment_response: ExperimentResponse
-      experiment_responses_page: ExperimentResponsesPage
+      evaluation_filter: EvaluationFilter
+      evaluation_request: EvaluationRequest
+      evaluation_response: EvaluationResponse
+      evaluation_responses_page: EvaluationResponsesPage
       metric_stat_filters: MetricStatFilters
       number_filter: NumberFilter
     methods:
-      create: post /apis/intake/v2/workspaces/{workspace}/experiments
-      list: get /apis/intake/v2/workspaces/{workspace}/experiments
-      retrieve: get /apis/intake/v2/workspaces/{workspace}/experiments/{name}
-      update: put /apis/intake/v2/workspaces/{workspace}/experiments/{name}
-      delete: delete /apis/intake/v2/workspaces/{workspace}/experiments/{name}
-      pin: post /apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin
-      unpin: delete /apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin
+      create: post /apis/intake/v2/workspaces/{workspace}/evaluations
+      list: get /apis/intake/v2/workspaces/{workspace}/evaluations
+      retrieve: get /apis/intake/v2/workspaces/{workspace}/evaluations/{name}
+      update: put /apis/intake/v2/workspaces/{workspace}/evaluations/{name}
+      delete: delete /apis/intake/v2/workspaces/{workspace}/evaluations/{name}
+      pin: post /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/pin
+      unpin: delete /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/pin
     subresources:
       sessions:
         models:
-          experiment_session_filter: ExperimentSessionFilter
-          experiment_session_response: ExperimentSessionResponse
-          experiment_session_responses_page: ExperimentSessionResponsesPage
+          evaluation_session_filter: EvaluationSessionFilter
+          evaluation_session_response: EvaluationSessionResponse
+          evaluation_session_responses_page: EvaluationSessionResponsesPage
         methods:
-          list: get /apis/intake/v2/workspaces/{workspace}/experiments/{name}/sessions
+          list: get /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/sessions

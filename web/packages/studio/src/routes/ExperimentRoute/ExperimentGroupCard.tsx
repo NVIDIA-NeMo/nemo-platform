@@ -48,7 +48,7 @@ export const ExperimentGroupCard: FC<ExperimentGroupCardProps> = ({ group, works
 
       {/* Stats */}
       <div className="flex shrink-0 items-center gap-6">
-        <Metric title="Experiments" value={String(group.experiment_count ?? 0)} />
+        <Metric title="Evaluations" value={String(group.evaluation_count ?? 0)} />
       </div>
     </Card>
   );

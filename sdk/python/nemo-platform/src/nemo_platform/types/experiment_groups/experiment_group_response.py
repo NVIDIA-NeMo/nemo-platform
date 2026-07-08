@@ -38,8 +38,8 @@ class ExperimentGroupResponse(BaseModel):
 
     description: Optional[str] = None
 
-    experiment_count: Optional[int] = None
-    """Number of live (non-soft-deleted) experiments in this group."""
+    evaluation_count: Optional[int] = None
+    """Number of live (non-soft-deleted) evaluations in this group."""
 
     insight_id: Optional[str] = None
 

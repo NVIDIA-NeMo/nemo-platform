@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Experiment and ExperimentGroup entity definitions for the Intake service.
+"""Evaluation and ExperimentGroup entity definitions for the Intake service.
 
 These are entity-store rows, distinct from ClickHouse telemetry. They hold the
 durable, producer-supplied metadata that organizes telemetry into leaderboard
@@ -18,9 +18,9 @@ from pydantic import AnyUrl, Field, field_validator
 
 
 class ExperimentGroup(EntityBase):
-    """A named container of Experiments pursuing a single optimization goal.
+    """A named container of Evaluations pursuing a single optimization goal.
 
-    A group does not constrain dataset or agent identity across its Experiments.
+    A group does not constrain dataset or agent identity across its Evaluations.
     """
 
     __entity_type__: ClassVar[str] = "experiment_group"
@@ -35,8 +35,8 @@ class ExperimentGroup(EntityBase):
     default_sort: str = Field(
         default="-created_at",
         description=(
-            "Default sort for this group's experiments list, as a `sort`-param string (leading '-' = "
-            "descending); defaults to '-created_at'. Accepts any field the experiments list `sort` "
+            "Default sort for this group's evaluations list, as a `sort`-param string (leading '-' = "
+            "descending); defaults to '-created_at'. Accepts any field the evaluations list `sort` "
             "param does. The client applies it as the list `sort` param; this endpoint does not "
             "consult it."
         ),
@@ -53,56 +53,56 @@ class ExperimentGroup(EntityBase):
     is_deleted: bool = Field(
         default=False,
         description=(
-            "Soft-delete flag. DELETE flips this to true and cascades to child experiments. "
+            "Soft-delete flag. DELETE flips this to true and cascades to child evaluations. "
             "Deleted groups are hidden from list/get unless `filter[is_deleted]=true` is supplied."
         ),
     )
 
 
-class Experiment(EntityBase):
+class Evaluation(EntityBase):
     """A single agent/config run against a dataset: one row on a leaderboard.
 
-    ``name`` is the producer-supplied, workspace-unique experiment id.
+    ``name`` is the producer-supplied, workspace-unique evaluation id.
     """
 
-    __entity_type__: ClassVar[str] = "experiment"
+    __entity_type__: ClassVar[str] = "evaluation"
 
     experiment_group_id: str = Field(
         description=(
-            "Entity id of the owning ExperimentGroup. Required — every Experiment must belong to a Group. "
-            "Validated at create/update time; deleting a Group cascades to its Experiments."
+            "Entity id of the owning ExperimentGroup. Required — every Evaluation must belong to a Group. "
+            "Validated at create/update time; deleting a Group cascades to its Evaluations."
         ),
     )
 
     dataset_name: str = Field(description="Producer-supplied dataset name.")
     dataset_version: str | None = Field(default=None, description="Producer-supplied dataset version.")
-    source_link: AnyUrl | None = Field(default=None, description="Optional URL for the source experiment.")
+    source_link: AnyUrl | None = Field(default=None, description="Optional URL for the source evaluation.")
 
     metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Free-form producer metadata (config snapshot, domain-specific attributes, etc.).",
     )
 
-    description: str | None = Field(default=None, description="Human-readable description of the experiment.")
+    description: str | None = Field(default=None, description="Human-readable description of the evaluation.")
 
-    parent_experiment_id: str | None = Field(
+    parent_evaluation_id: str | None = Field(
         default=None,
-        description="Entity id of the experiment this one was derived from (e.g. a variant of a baseline), if any.",
+        description="Entity id of the evaluation this one was derived from (e.g. a variant of a baseline), if any.",
     )
     status: str | None = Field(
         default=None,
-        description="Producer-defined lifecycle status of the experiment.",
+        description="Producer-defined lifecycle status of the evaluation.",
     )
     root_cause: str | None = Field(
         default=None,
-        description="Human- or agent-authored explanation of the experiment's outcome (e.g. why it was killed).",
+        description="Human- or agent-authored explanation of the evaluation's outcome (e.g. why it was killed).",
     )
 
     is_deleted: bool = Field(
         default=False,
         description=(
             "Soft-delete flag. DELETE flips this to true; on delete the entity is also renamed "
-            "(`<name>-deleted-<utc-iso>`) so the original name is free for reuse. Deleted experiments "
+            "(`<name>-deleted-<utc-iso>`) so the original name is free for reuse. Deleted evaluations "
             "are hidden from list/get and rejected by ATIF ingest unless `filter[is_deleted]=true`."
         ),
     )
@@ -110,8 +110,8 @@ class Experiment(EntityBase):
     pinned_at: datetime | None = Field(
         default=None,
         description=(
-            "Timestamp at which the experiment was pinned to the top of the list, or null if unpinned. "
-            "Managed via POST/DELETE /experiments/{name}/pin (not via the create or update body). "
+            "Timestamp at which the evaluation was pinned to the top of the list, or null if unpinned. "
+            "Managed via POST/DELETE /evaluations/{name}/pin (not via the create or update body). "
             "Pin state is workspace-shared: every user with workspace access sees the same pinned set."
         ),
     )

@@ -33,9 +33,9 @@ class ExperimentGroupUpdateParams(TypedDict, total=False):
 
     default_sort: str
     """
-    Default sort for this group's experiments list, as a `sort`-param string
+    Default sort for this group's evaluations list, as a `sort`-param string
     (leading '-' = descending); defaults to '-created_at'. Accepts any field the
-    experiments list `sort` param does; clients apply it as the list `sort` param.
+    evaluations list `sort` param does; clients apply it as the list `sort` param.
     """
 
     description: str

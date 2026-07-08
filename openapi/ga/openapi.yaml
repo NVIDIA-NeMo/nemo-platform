@@ -3307,6 +3307,384 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/evaluations:
+    post:
+      tags:
+      - Evaluations
+      summary: Create Evaluation
+      operationId: create_evaluation_apis_intake_v2_workspaces__workspace__evaluations_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResponse'
+        '409':
+          description: Evaluation already exists
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Evaluations
+      summary: List Evaluations
+      operationId: list_evaluations_apis_intake_v2_workspaces__workspace__evaluations_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 100
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          description: 'Field to sort by; prefix with ''-'' for descending. Sort by
+            an evaluation attribute (name, created_at, updated_at, pinned_at) or by
+            an aggregate metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or
+            evaluators.<name>.<stat>, where <stat> is one of mean, median, p90, p95,
+            p99, sum, count. When omitted, defaults to -created_at with pinned evaluations
+            first.'
+          title: Sort
+          type: string
+        description: 'Field to sort by; prefix with ''-'' for descending. Sort by
+          an evaluation attribute (name, created_at, updated_at, pinned_at) or by
+          an aggregate metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>,
+          where <stat> is one of mean, median, p90, p95, p99, sum, count. When omitted,
+          defaults to -created_at with pinned evaluations first.'
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/EvaluationFilter'
+        description: 'Filter evaluations by name, experiment_group_id, dataset_name,
+          dataset_version, created_by, created_at, or updated_at. Pass is_deleted=true
+          to return only soft-deleted evaluations; omit to see only live ones. Pass
+          is_pinned=true (or false) to filter by pinned state; omit to return both.
+          Filter by a rollup metric with numeric range operators ($gte/$lte/$gt/$lt/$eq):
+          filter[run_count][$gte]=5, filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000,
+          or filter[evaluators.<name>.mean][$gte]=0.8.'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResponsesPage'
+        '400':
+          description: Unsupported sort or filter field
+        '413':
+          description: Too many evaluations selected to sort in one request
+        '503':
+          description: Telemetry store unavailable for a metric-based sort or filter
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/evaluations/{name}:
+    get:
+      tags:
+      - Evaluations
+      summary: Get Evaluation
+      operationId: get_evaluation_apis_intake_v2_workspaces__workspace__evaluations__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResponse'
+        '404':
+          description: Evaluation not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      tags:
+      - Evaluations
+      summary: Update Evaluation
+      operationId: update_evaluation_apis_intake_v2_workspaces__workspace__evaluations__name__put
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResponse'
+        '404':
+          description: Evaluation not found
+        '409':
+          description: Attempt to change an immutable field
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Evaluations
+      summary: Delete Evaluation
+      operationId: delete_evaluation_apis_intake_v2_workspaces__workspace__evaluations__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '404':
+          description: Evaluation not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/pin:
+    post:
+      tags:
+      - Evaluations
+      summary: Pin Evaluation
+      description: 'Pin an evaluation to the top of the list (workspace-shared).
+
+
+        Re-pinning an already-pinned evaluation refreshes ``pinned_at`` to the current
+        timestamp,
+
+        which is intentional (most-recently-pinned sorts first).'
+      operationId: pin_evaluation_apis_intake_v2_workspaces__workspace__evaluations__name__pin_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResponse'
+        '404':
+          description: Evaluation not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Evaluations
+      summary: Unpin Evaluation
+      description: 'Unpin an evaluation. Idempotent: unpinning an already-unpinned
+        evaluation is a no-op.'
+      operationId: unpin_evaluation_apis_intake_v2_workspaces__workspace__evaluations__name__pin_delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResponse'
+        '404':
+          description: Evaluation not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/sessions:
+    get:
+      tags:
+      - Evaluations
+      summary: List Evaluation Sessions
+      operationId: list_evaluation_sessions_apis_intake_v2_workspaces__workspace__evaluations__name__sessions_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 100
+          title: Page Size
+        description: Page size.
+      - name: mode
+        in: query
+        required: false
+        schema:
+          enum:
+          - summary
+          - detailed
+          type: string
+          description: Response payload mode. summary keeps the same session row fields
+            but truncates root-span input to 1000 characters; detailed returns the
+            full root-span input.
+          default: detailed
+          title: Mode
+        description: Response payload mode. summary keeps the same session row fields
+          but truncates root-span input to 1000 characters; detailed returns the full
+          root-span input.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/EvaluationSessionFilter'
+        description: Filter sessions by test_case_id and status.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationSessionResponsesPage'
+        '404':
+          description: Evaluation not found
+        '503':
+          description: ClickHouse unavailable
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/intake/v2/workspaces/{workspace}/evaluator-results:
     post:
       tags:
@@ -3635,384 +4013,6 @@ paths:
           description: Successful Response
         '404':
           description: Experiment group not found
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/experiments:
-    post:
-      tags:
-      - Experiments
-      summary: Create Experiment
-      operationId: create_experiment_apis_intake_v2_workspaces__workspace__experiments_post
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ExperimentRequest'
-      responses:
-        '201':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ExperimentResponse'
-        '409':
-          description: Experiment already exists
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    get:
-      tags:
-      - Experiments
-      summary: List Experiments
-      operationId: list_experiments_apis_intake_v2_workspaces__workspace__experiments_get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: page
-        in: query
-        required: false
-        schema:
-          type: integer
-          minimum: 1
-          description: Page number.
-          default: 1
-          title: Page
-        description: Page number.
-      - name: page_size
-        in: query
-        required: false
-        schema:
-          type: integer
-          maximum: 1000
-          minimum: 1
-          description: Page size.
-          default: 100
-          title: Page Size
-        description: Page size.
-      - name: sort
-        in: query
-        required: false
-        schema:
-          description: 'Field to sort by; prefix with ''-'' for descending. Sort by
-            an experiment attribute (name, created_at, updated_at, pinned_at) or by
-            an aggregate metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or
-            evaluators.<name>.<stat>, where <stat> is one of mean, median, p90, p95,
-            p99, sum, count. When omitted, defaults to -created_at with pinned experiments
-            first.'
-          title: Sort
-          type: string
-        description: 'Field to sort by; prefix with ''-'' for descending. Sort by
-          an experiment attribute (name, created_at, updated_at, pinned_at) or by
-          an aggregate metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>,
-          where <stat> is one of mean, median, p90, p95, p99, sum, count. When omitted,
-          defaults to -created_at with pinned experiments first.'
-      - in: query
-        name: filter
-        style: deepObject
-        required: false
-        explode: true
-        schema:
-          $ref: '#/components/schemas/ExperimentFilter'
-        description: 'Filter experiments by name, experiment_group_id, dataset_name,
-          dataset_version, created_by, created_at, or updated_at. Pass is_deleted=true
-          to return only soft-deleted experiments; omit to see only live ones. Pass
-          is_pinned=true (or false) to filter by pinned state; omit to return both.
-          Filter by a rollup metric with numeric range operators ($gte/$lte/$gt/$lt/$eq):
-          filter[run_count][$gte]=5, filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000,
-          or filter[evaluators.<name>.mean][$gte]=0.8.'
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ExperimentResponsesPage'
-        '400':
-          description: Unsupported sort or filter field
-        '413':
-          description: Too many experiments selected to sort in one request
-        '503':
-          description: Telemetry store unavailable for a metric-based sort or filter
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/experiments/{name}:
-    get:
-      tags:
-      - Experiments
-      summary: Get Experiment
-      operationId: get_experiment_apis_intake_v2_workspaces__workspace__experiments__name__get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ExperimentResponse'
-        '404':
-          description: Experiment not found
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    put:
-      tags:
-      - Experiments
-      summary: Update Experiment
-      operationId: update_experiment_apis_intake_v2_workspaces__workspace__experiments__name__put
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ExperimentRequest'
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ExperimentResponse'
-        '404':
-          description: Experiment not found
-        '409':
-          description: Attempt to change an immutable field
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    delete:
-      tags:
-      - Experiments
-      summary: Delete Experiment
-      operationId: delete_experiment_apis_intake_v2_workspaces__workspace__experiments__name__delete
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      responses:
-        '204':
-          description: Successful Response
-        '404':
-          description: Experiment not found
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin:
-    post:
-      tags:
-      - Experiments
-      summary: Pin Experiment
-      description: 'Pin an experiment to the top of the list (workspace-shared).
-
-
-        Re-pinning an already-pinned experiment refreshes ``pinned_at`` to the current
-        timestamp,
-
-        which is intentional (most-recently-pinned sorts first).'
-      operationId: pin_experiment_apis_intake_v2_workspaces__workspace__experiments__name__pin_post
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ExperimentResponse'
-        '404':
-          description: Experiment not found
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    delete:
-      tags:
-      - Experiments
-      summary: Unpin Experiment
-      description: 'Unpin an experiment. Idempotent: unpinning an already-unpinned
-        experiment is a no-op.'
-      operationId: unpin_experiment_apis_intake_v2_workspaces__workspace__experiments__name__pin_delete
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ExperimentResponse'
-        '404':
-          description: Experiment not found
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/experiments/{name}/sessions:
-    get:
-      tags:
-      - Experiments
-      summary: List Experiment Sessions
-      operationId: list_experiment_sessions_apis_intake_v2_workspaces__workspace__experiments__name__sessions_get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      - name: page
-        in: query
-        required: false
-        schema:
-          type: integer
-          minimum: 1
-          description: Page number.
-          default: 1
-          title: Page
-        description: Page number.
-      - name: page_size
-        in: query
-        required: false
-        schema:
-          type: integer
-          maximum: 1000
-          minimum: 1
-          description: Page size.
-          default: 100
-          title: Page Size
-        description: Page size.
-      - name: mode
-        in: query
-        required: false
-        schema:
-          enum:
-          - summary
-          - detailed
-          type: string
-          description: Response payload mode. summary keeps the same session row fields
-            but truncates root-span input to 1000 characters; detailed returns the
-            full root-span input.
-          default: detailed
-          title: Mode
-        description: Response payload mode. summary keeps the same session row fields
-          but truncates root-span input to 1000 characters; detailed returns the full
-          root-span input.
-      - in: query
-        name: filter
-        style: deepObject
-        required: false
-        explode: true
-        schema:
-          $ref: '#/components/schemas/ExperimentSessionFilter'
-        description: Filter sessions by test_case_id and status.
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ExperimentSessionResponsesPage'
-        '404':
-          description: Experiment not found
-        '503':
-          description: ClickHouse unavailable
         '422':
           description: Validation Error
           content:
@@ -10117,6 +10117,379 @@ components:
       additionalProperties: false
       type: object
       title: EvaluationContext
+    EvaluationFilter:
+      additionalProperties: false
+      description: Filter for listing Evaluations.
+      properties:
+        name:
+          description: Filter evaluations by name.
+          title: Name
+          type: string
+        experiment_group_id:
+          description: Filter evaluations by owning group id.
+          title: Experiment Group Id
+          type: string
+        dataset_name:
+          description: Filter evaluations by dataset name.
+          title: Dataset Name
+          type: string
+        dataset_version:
+          description: Filter evaluations by dataset version.
+          title: Dataset Version
+          type: string
+        created_by:
+          description: Filter evaluations by the principal that created them.
+          title: Created By
+          type: string
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter evaluations by creation timestamp; supports `$gte` and
+            `$lte` for ranges.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter evaluations by last-updated timestamp; supports `$gte`
+            and `$lte` for ranges.
+        is_deleted:
+          description: When true, returns only soft-deleted evaluations. Omit (or
+            false) to see only live evaluations.
+          title: Is Deleted
+          type: boolean
+        is_pinned:
+          description: When true, returns only pinned evaluations. When false, returns
+            only unpinned evaluations. Omit to return both.
+          title: Is Pinned
+          type: boolean
+        run_count:
+          allOf:
+          - $ref: '#/components/schemas/NumberFilter'
+          description: Filter by run count, e.g. filter[run_count][$gte]=5.
+        cost_usd:
+          allOf:
+          - $ref: '#/components/schemas/MetricStatFilters'
+          description: Filter by a cost_usd rollup stat, e.g. filter[cost_usd.mean][$lte]=0.5.
+        latency_ms:
+          allOf:
+          - $ref: '#/components/schemas/MetricStatFilters'
+          description: Filter by a latency_ms rollup stat, e.g. filter[latency_ms.p95][$lte]=1000.
+        evaluators:
+          description: Filter by an evaluator rollup stat, e.g. filter[evaluators.<name>.mean][$gte]=0.8.
+          title: Evaluators
+          additionalProperties:
+            $ref: '#/components/schemas/MetricStatFilters'
+          type: object
+      title: EvaluationFilter
+      type: object
+    EvaluationRequest:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Producer-supplied, workspace-unique evaluation id.
+        experiment_group_id:
+          type: string
+          title: Experiment Group Id
+          description: "Entity id of the owning ExperimentGroup. Required \u2014 the\
+            \ group must already exist."
+        dataset_name:
+          type: string
+          title: Dataset Name
+          description: Producer-supplied dataset name.
+        dataset_version:
+          title: Dataset Version
+          description: Producer-supplied dataset version.
+          type: string
+        source_link:
+          title: Source Link
+          description: Optional URL for the source evaluation.
+          type: string
+          minLength: 1
+          format: uri
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: Free-form producer metadata.
+        description:
+          title: Description
+          description: Human-readable description.
+          type: string
+        parent_evaluation_id:
+          title: Parent Evaluation Id
+          description: Entity id of the evaluation this one was derived from (e.g.
+            a variant of a baseline), if any.
+          type: string
+        status:
+          title: Status
+          description: Producer-defined lifecycle status of the evaluation.
+          type: string
+        root_cause:
+          title: Root Cause
+          description: Human- or agent-authored explanation of the evaluation's outcome
+            (e.g. why it was killed).
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - experiment_group_id
+      - dataset_name
+      title: EvaluationRequest
+      description: Request body for creating an Evaluation.
+    EvaluationResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        workspace:
+          type: string
+          title: Workspace
+        experiment_group_id:
+          type: string
+          title: Experiment Group Id
+          description: Entity id of the owning ExperimentGroup. Required for every
+            Evaluation.
+        dataset_name:
+          type: string
+          title: Dataset Name
+        dataset_version:
+          title: Dataset Version
+          type: string
+        source_link:
+          title: Source Link
+          type: string
+          minLength: 1
+          format: uri
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        description:
+          title: Description
+          type: string
+        parent_evaluation_id:
+          title: Parent Evaluation Id
+          type: string
+        status:
+          title: Status
+          type: string
+        root_cause:
+          title: Root Cause
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        pinned_at:
+          title: Pinned At
+          description: Timestamp at which the evaluation was pinned, or null if unpinned.
+            Managed via POST/DELETE /evaluations/{name}/pin.
+          nullable: true
+          type: string
+          format: date-time
+        evaluator_names:
+          items:
+            type: string
+          type: array
+          title: Evaluator Names
+        model_names:
+          items:
+            type: string
+          type: array
+          uniqueItems: true
+          title: Model Names
+          description: Distinct model names observed across ingested sessions for
+            this evaluation.
+        agent_names:
+          items:
+            type: string
+          type: array
+          uniqueItems: true
+          title: Agent Names
+          description: Distinct agent names observed across ingested sessions for
+            this evaluation.
+        agent_versions:
+          items:
+            type: string
+          type: array
+          uniqueItems: true
+          title: Agent Versions
+          description: Distinct agent versions observed across ingested sessions for
+            this evaluation.
+        aggregate_scores:
+          title: Aggregate Scores
+          additionalProperties:
+            $ref: '#/components/schemas/EvaluatorAggregate'
+          type: object
+        run_count:
+          type: integer
+          title: Run Count
+          description: Number of distinct ingested evaluation sessions; one session
+            is treated as one run.
+          default: 0
+        cost_usd:
+          $ref: '#/components/schemas/EvaluatorAggregate'
+        latency_ms:
+          $ref: '#/components/schemas/EvaluatorAggregate'
+      type: object
+      required:
+      - id
+      - name
+      - workspace
+      - experiment_group_id
+      - dataset_name
+      title: EvaluationResponse
+      description: Evaluation as served by the API, including ClickHouse-hydrated
+        rollups.
+    EvaluationResponsesPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/EvaluationResponse'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: EvaluationResponsesPage
+    EvaluationSessionFilter:
+      additionalProperties: false
+      description: Filter for listing EvaluationSessions.
+      properties:
+        test_case_id:
+          description: Filter by producer-supplied test case id.
+          title: Test Case Id
+          type: string
+        status:
+          description: Filter by root-span status (success, error, cancelled, unknown).
+          title: Status
+          type: string
+      title: EvaluationSessionFilter
+      type: object
+    EvaluationSessionResponse:
+      properties:
+        workspace:
+          type: string
+          title: Workspace
+        evaluation_name:
+          type: string
+          title: Evaluation Name
+        session_id:
+          type: string
+          title: Session Id
+        test_case_id:
+          title: Test Case Id
+          description: Producer-supplied test case identifier; null when the producer
+            did not set one.
+          type: string
+        trace_id:
+          type: string
+          title: Trace Id
+        root_span_id:
+          type: string
+          title: Root Span Id
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        ended_at:
+          title: Ended At
+          type: string
+          format: date-time
+        latency_ms:
+          title: Latency Ms
+          type: number
+        status:
+          allOf:
+          - $ref: '#/components/schemas/SpanStatus'
+          description: 'Root-span status: success, error, cancelled, or unknown.'
+        input:
+          title: Input
+          description: Root-span input text. In summary mode this is truncated to
+            1000 characters.
+          type: string
+        input_tokens:
+          title: Input Tokens
+          description: Sum of input tokens across this session's spans.
+          type: integer
+        output_tokens:
+          title: Output Tokens
+          description: Sum of output tokens across this session's spans.
+          type: integer
+        cached_tokens:
+          title: Cached Tokens
+          description: Sum of cached tokens across this session's spans.
+          type: integer
+        cost_total_usd:
+          title: Cost Total Usd
+          description: Sum of cost across this session's spans.
+          type: number
+        evaluator_scores:
+          additionalProperties:
+            type: number
+          type: object
+          title: Evaluator Scores
+          description: Per-evaluator session-mean score. Includes NUMERIC and BOOLEAN
+            evaluator results only; text/categorical results are omitted.
+      type: object
+      required:
+      - workspace
+      - evaluation_name
+      - session_id
+      - trace_id
+      - root_span_id
+      - started_at
+      - status
+      title: EvaluationSessionResponse
+      description: "One ingested session of an Evaluation \u2014 a single test case\
+        \ execution.\n\nHydrated from ClickHouse at read time by reading root/session\
+        \ membership from\n``trace_index`` and joining page-bounded span/evaluator\
+        \ rollups."
+    EvaluationSessionResponsesPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/EvaluationSessionResponse'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: EvaluationSessionResponsesPage
     EvaluatorAggregate:
       properties:
         sum:
@@ -10367,70 +10740,6 @@ components:
       - experiment_id
       title: ExperimentContext
       description: Experiment context accepted by ingest endpoints.
-    ExperimentFilter:
-      additionalProperties: false
-      description: Filter for listing Experiments.
-      properties:
-        name:
-          description: Filter experiments by name.
-          title: Name
-          type: string
-        experiment_group_id:
-          description: Filter experiments by owning group id.
-          title: Experiment Group Id
-          type: string
-        dataset_name:
-          description: Filter experiments by dataset name.
-          title: Dataset Name
-          type: string
-        dataset_version:
-          description: Filter experiments by dataset version.
-          title: Dataset Version
-          type: string
-        created_by:
-          description: Filter experiments by the principal that created them.
-          title: Created By
-          type: string
-        created_at:
-          allOf:
-          - $ref: '#/components/schemas/DatetimeFilter'
-          description: Filter experiments by creation timestamp; supports `$gte` and
-            `$lte` for ranges.
-        updated_at:
-          allOf:
-          - $ref: '#/components/schemas/DatetimeFilter'
-          description: Filter experiments by last-updated timestamp; supports `$gte`
-            and `$lte` for ranges.
-        is_deleted:
-          description: When true, returns only soft-deleted experiments. Omit (or
-            false) to see only live experiments.
-          title: Is Deleted
-          type: boolean
-        is_pinned:
-          description: When true, returns only pinned experiments. When false, returns
-            only unpinned experiments. Omit to return both.
-          title: Is Pinned
-          type: boolean
-        run_count:
-          allOf:
-          - $ref: '#/components/schemas/NumberFilter'
-          description: Filter by run count, e.g. filter[run_count][$gte]=5.
-        cost_usd:
-          allOf:
-          - $ref: '#/components/schemas/MetricStatFilters'
-          description: Filter by a cost_usd rollup stat, e.g. filter[cost_usd.mean][$lte]=0.5.
-        latency_ms:
-          allOf:
-          - $ref: '#/components/schemas/MetricStatFilters'
-          description: Filter by a latency_ms rollup stat, e.g. filter[latency_ms.p95][$lte]=1000.
-        evaluators:
-          description: Filter by an evaluator rollup stat, e.g. filter[evaluators.<name>.mean][$gte]=0.8.
-          title: Evaluators
-          additionalProperties:
-            $ref: '#/components/schemas/MetricStatFilters'
-          type: object
-      title: ExperimentFilter
-      type: object
     ExperimentGroupFilter:
       additionalProperties: false
       description: Filter for listing ExperimentGroups.
@@ -10473,9 +10782,9 @@ components:
         default_sort:
           type: string
           title: Default Sort
-          description: Default sort for this group's experiments list, as a `sort`-param
+          description: Default sort for this group's evaluations list, as a `sort`-param
             string (leading '-' = descending); defaults to '-created_at'. Accepts
-            any field the experiments list `sort` param does; clients apply it as
+            any field the evaluations list `sort` param does; clients apply it as
             the list `sort` param.
           default: -created_at
       additionalProperties: false
@@ -10519,10 +10828,10 @@ components:
           title: Updated At
           type: string
           format: date-time
-        experiment_count:
+        evaluation_count:
           type: integer
-          title: Experiment Count
-          description: Number of live (non-soft-deleted) experiments in this group.
+          title: Evaluation Count
+          description: Number of live (non-soft-deleted) evaluations in this group.
           default: 0
       type: object
       required:
@@ -10556,315 +10865,6 @@ components:
       required:
       - data
       title: ExperimentGroupResponsesPage
-    ExperimentRequest:
-      properties:
-        name:
-          type: string
-          title: Name
-          description: Producer-supplied, workspace-unique experiment id.
-        experiment_group_id:
-          type: string
-          title: Experiment Group Id
-          description: "Entity id of the owning ExperimentGroup. Required \u2014 the\
-            \ group must already exist."
-        dataset_name:
-          type: string
-          title: Dataset Name
-          description: Producer-supplied dataset name.
-        dataset_version:
-          title: Dataset Version
-          description: Producer-supplied dataset version.
-          type: string
-        source_link:
-          title: Source Link
-          description: Optional URL for the source experiment.
-          type: string
-          minLength: 1
-          format: uri
-        metadata:
-          additionalProperties: true
-          type: object
-          title: Metadata
-          description: Free-form producer metadata.
-        description:
-          title: Description
-          description: Human-readable description.
-          type: string
-        parent_experiment_id:
-          title: Parent Experiment Id
-          description: Entity id of the experiment this one was derived from (e.g.
-            a variant of a baseline), if any.
-          type: string
-        status:
-          title: Status
-          description: Producer-defined lifecycle status of the experiment.
-          type: string
-        root_cause:
-          title: Root Cause
-          description: Human- or agent-authored explanation of the experiment's outcome
-            (e.g. why it was killed).
-          type: string
-      additionalProperties: false
-      type: object
-      required:
-      - name
-      - experiment_group_id
-      - dataset_name
-      title: ExperimentRequest
-      description: Request body for creating an Experiment.
-    ExperimentResponse:
-      properties:
-        id:
-          type: string
-          title: Id
-        name:
-          type: string
-          title: Name
-        workspace:
-          type: string
-          title: Workspace
-        experiment_group_id:
-          type: string
-          title: Experiment Group Id
-          description: Entity id of the owning ExperimentGroup. Required for every
-            Experiment.
-        dataset_name:
-          type: string
-          title: Dataset Name
-        dataset_version:
-          title: Dataset Version
-          type: string
-        source_link:
-          title: Source Link
-          type: string
-          minLength: 1
-          format: uri
-        metadata:
-          additionalProperties: true
-          type: object
-          title: Metadata
-        description:
-          title: Description
-          type: string
-        parent_experiment_id:
-          title: Parent Experiment Id
-          type: string
-        status:
-          title: Status
-          type: string
-        root_cause:
-          title: Root Cause
-          type: string
-        created_at:
-          title: Created At
-          type: string
-          format: date-time
-        updated_at:
-          title: Updated At
-          type: string
-          format: date-time
-        pinned_at:
-          title: Pinned At
-          description: Timestamp at which the experiment was pinned, or null if unpinned.
-            Managed via POST/DELETE /experiments/{name}/pin.
-          nullable: true
-          type: string
-          format: date-time
-        evaluator_names:
-          items:
-            type: string
-          type: array
-          title: Evaluator Names
-        model_names:
-          items:
-            type: string
-          type: array
-          uniqueItems: true
-          title: Model Names
-          description: Distinct model names observed across ingested sessions for
-            this experiment.
-        agent_names:
-          items:
-            type: string
-          type: array
-          uniqueItems: true
-          title: Agent Names
-          description: Distinct agent names observed across ingested sessions for
-            this experiment.
-        agent_versions:
-          items:
-            type: string
-          type: array
-          uniqueItems: true
-          title: Agent Versions
-          description: Distinct agent versions observed across ingested sessions for
-            this experiment.
-        aggregate_scores:
-          title: Aggregate Scores
-          additionalProperties:
-            $ref: '#/components/schemas/EvaluatorAggregate'
-          type: object
-        run_count:
-          type: integer
-          title: Run Count
-          description: Number of distinct ingested experiment sessions; one session
-            is treated as one run.
-          default: 0
-        cost_usd:
-          $ref: '#/components/schemas/EvaluatorAggregate'
-        latency_ms:
-          $ref: '#/components/schemas/EvaluatorAggregate'
-      type: object
-      required:
-      - id
-      - name
-      - workspace
-      - experiment_group_id
-      - dataset_name
-      title: ExperimentResponse
-      description: Experiment as served by the API, including ClickHouse-hydrated
-        rollups.
-    ExperimentResponsesPage:
-      properties:
-        data:
-          items:
-            $ref: '#/components/schemas/ExperimentResponse'
-          type: array
-          title: Data
-        pagination:
-          allOf:
-          - $ref: '#/components/schemas/PaginationData'
-          description: Pagination information.
-        sort:
-          title: Sort
-          description: The field on which the results are sorted.
-          type: string
-        filter:
-          title: Filter
-          description: Filtering information.
-          additionalProperties: true
-          type: object
-      type: object
-      required:
-      - data
-      title: ExperimentResponsesPage
-    ExperimentSessionFilter:
-      additionalProperties: false
-      description: Filter for listing ExperimentSessions.
-      properties:
-        test_case_id:
-          description: Filter by producer-supplied test case id.
-          title: Test Case Id
-          type: string
-        status:
-          description: Filter by root-span status (success, error, cancelled, unknown).
-          title: Status
-          type: string
-      title: ExperimentSessionFilter
-      type: object
-    ExperimentSessionResponse:
-      properties:
-        workspace:
-          type: string
-          title: Workspace
-        experiment_name:
-          type: string
-          title: Experiment Name
-        session_id:
-          type: string
-          title: Session Id
-        test_case_id:
-          title: Test Case Id
-          description: Producer-supplied test case identifier; null when the producer
-            did not set one.
-          type: string
-        trace_id:
-          type: string
-          title: Trace Id
-        root_span_id:
-          type: string
-          title: Root Span Id
-        started_at:
-          type: string
-          format: date-time
-          title: Started At
-        ended_at:
-          title: Ended At
-          type: string
-          format: date-time
-        latency_ms:
-          title: Latency Ms
-          type: number
-        status:
-          allOf:
-          - $ref: '#/components/schemas/SpanStatus'
-          description: 'Root-span status: success, error, cancelled, or unknown.'
-        input:
-          title: Input
-          description: Root-span input text. In summary mode this is truncated to
-            1000 characters.
-          type: string
-        input_tokens:
-          title: Input Tokens
-          description: Sum of input tokens across this session's spans.
-          type: integer
-        output_tokens:
-          title: Output Tokens
-          description: Sum of output tokens across this session's spans.
-          type: integer
-        cached_tokens:
-          title: Cached Tokens
-          description: Sum of cached tokens across this session's spans.
-          type: integer
-        cost_total_usd:
-          title: Cost Total Usd
-          description: Sum of cost across this session's spans.
-          type: number
-        evaluator_scores:
-          additionalProperties:
-            type: number
-          type: object
-          title: Evaluator Scores
-          description: Per-evaluator session-mean score. Includes NUMERIC and BOOLEAN
-            evaluator results only; text/categorical results are omitted.
-      type: object
-      required:
-      - workspace
-      - experiment_name
-      - session_id
-      - trace_id
-      - root_span_id
-      - started_at
-      - status
-      title: ExperimentSessionResponse
-      description: "One ingested session of an Experiment \u2014 a single test case\
-        \ execution.\n\nHydrated from ClickHouse at read time by reading root/session\
-        \ membership from\n``trace_index`` and joining page-bounded span/evaluator\
-        \ rollups."
-    ExperimentSessionResponsesPage:
-      properties:
-        data:
-          items:
-            $ref: '#/components/schemas/ExperimentSessionResponse'
-          type: array
-          title: Data
-        pagination:
-          allOf:
-          - $ref: '#/components/schemas/PaginationData'
-          description: Pagination information.
-        sort:
-          title: Sort
-          description: The field on which the results are sorted.
-          type: string
-        filter:
-          title: Filter
-          description: Filtering information.
-          additionalProperties: true
-          type: object
-      type: object
-      required:
-      - data
-      title: ExperimentSessionResponsesPage
     FactCheckingRailConfig:
       properties:
         parameters:
@@ -13144,7 +13144,7 @@ components:
         These stats must
 
         stay in sync with the runtime sort/filter grammar (``_METRIC_STATS`` in the
-        experiments
+        evaluations
 
         endpoints); a unit test guards the parity.'
       properties:

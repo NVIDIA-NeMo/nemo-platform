@@ -29,7 +29,7 @@ export const Empty = ({ experimentGroupName }: EmptyProps) => {
   return (
     <TableEmptyState
       icon={<FlaskConical className="size-12" />}
-      header="No Experiments"
+      header="No Evaluations"
       emptyMessage="Run an experiment to see results for this group."
       actions={
         <div className="w-[560px] border border-base rounded-lg overflow-hidden bg-surface-overlay">

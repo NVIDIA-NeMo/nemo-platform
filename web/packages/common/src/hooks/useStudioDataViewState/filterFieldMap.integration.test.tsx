@@ -135,7 +135,7 @@ const EVALUATOR_DATA: EvaluatorRow[] = [
   { aggregate_scores: { accuracy: { mean: 0.95 } } },
 ];
 
-// Mirrors ExperimentGroupDataView's getExperimentFilterField for the dynamic evaluator id.
+// Mirrors ExperimentGroupDataView's getEvaluationFilterField for the dynamic evaluator id.
 const evaluatorFilterField = (id: string): string | undefined => {
   const match = id.match(/^evaluator-(.+)$/);
   return match ? `evaluators.${match[1]}.mean` : undefined;

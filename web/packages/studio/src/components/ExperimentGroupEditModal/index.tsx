@@ -6,7 +6,7 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
   getGetExperimentGroupQueryKey,
   getListExperimentGroupsQueryKey,
-  useListExperiments,
+  useListEvaluations,
   useUpdateExperimentGroup,
 } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
@@ -40,7 +40,7 @@ export const ExperimentGroupEditModal: FC<ExperimentGroupEditModalProps> = ({
   }, [open, group]);
 
   // Offer the group's discovered evaluators as first-class sort fields (only fetched while open).
-  const { data: experimentsPage } = useListExperiments(
+  const { data: experimentsPage } = useListEvaluations(
     workspace,
     { filter: { experiment_group_id: group.id }, page_size: 100 },
     { query: { enabled: open && !!group.id } }

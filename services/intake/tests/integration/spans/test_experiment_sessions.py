@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Integration tests for the per-session experiment endpoint."""
+"""Integration tests for the per-session evaluation endpoint."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 ATIF_INGEST = "/apis/intake/v2/workspaces/default/ingest/atif"
-EXPERIMENTS = "/apis/intake/v2/workspaces/default/experiments"
+EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
 GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
 
 
@@ -25,13 +25,13 @@ def _ensure_group(client: TestClient, name: str = "sessions-test-group") -> str:
     return response.json()["id"]
 
 
-def test_list_experiment_sessions_returns_joined_session_rows(client: TestClient) -> None:
-    experiment_name = "sessions-exp"
+def test_list_evaluation_sessions_returns_joined_session_rows(client: TestClient) -> None:
+    evaluation_name = "sessions-exp"
     group_id = _ensure_group(client)
     created = client.post(
-        EXPERIMENTS,
+        EVALUATIONS,
         json={
-            "name": experiment_name,
+            "name": evaluation_name,
             "experiment_group_id": group_id,
             "dataset_name": "sessions-dataset",
             "dataset_version": "v1",
@@ -58,7 +58,7 @@ def test_list_experiment_sessions_returns_joined_session_rows(client: TestClient
             ATIF_INGEST,
             json=_atif_body(
                 started_at=started_at,
-                experiment_name=experiment_name,
+                evaluation_name=evaluation_name,
                 test_case_id=test_case_id,
                 score=score,
                 cost_usd=cost_usd,
@@ -71,7 +71,7 @@ def test_list_experiment_sessions_returns_joined_session_rows(client: TestClient
         )
         assert response.status_code == 201, response.text
 
-    listed = client.get(f"{EXPERIMENTS}/{experiment_name}/sessions")
+    listed = client.get(f"{EVALUATIONS}/{evaluation_name}/sessions")
     assert listed.status_code == 200, listed.text
     body = listed.json()
     assert body["pagination"]["total_results"] == 3
@@ -81,7 +81,7 @@ def test_list_experiment_sessions_returns_joined_session_rows(client: TestClient
     assert set(rows_by_case) == {"case-a", "case-b", "case-c"}
 
     case_a = rows_by_case["case-a"]
-    assert case_a["experiment_name"] == experiment_name
+    assert case_a["evaluation_name"] == evaluation_name
     assert case_a["session_id"]
     assert case_a["trace_id"]
     assert case_a["root_span_id"]
@@ -92,7 +92,7 @@ def test_list_experiment_sessions_returns_joined_session_rows(client: TestClient
     assert case_a["evaluator_scores"] == {"reward": pytest.approx(1.0)}
     assert case_a["status"] in {"success", "unknown"}
 
-    paged = client.get(f"{EXPERIMENTS}/{experiment_name}/sessions", params={"page": 2, "page_size": 1})
+    paged = client.get(f"{EVALUATIONS}/{evaluation_name}/sessions", params={"page": 2, "page_size": 1})
     assert paged.status_code == 200, paged.text
     paged_body = paged.json()
     assert paged_body["pagination"]["total_results"] == 3
@@ -101,13 +101,13 @@ def test_list_experiment_sessions_returns_joined_session_rows(client: TestClient
     assert paged_body["data"][0]["evaluator_scores"] == {"reward": pytest.approx(0.5)}
 
 
-def test_list_experiment_sessions_filter_by_test_case(client: TestClient) -> None:
-    experiment_name = "sessions-filter-exp"
+def test_list_evaluation_sessions_filter_by_test_case(client: TestClient) -> None:
+    evaluation_name = "sessions-filter-exp"
     group_id = _ensure_group(client)
     created = client.post(
-        EXPERIMENTS,
+        EVALUATIONS,
         json={
-            "name": experiment_name,
+            "name": evaluation_name,
             "experiment_group_id": group_id,
             "dataset_name": "sessions-dataset",
             "dataset_version": "v1",
@@ -121,7 +121,7 @@ def test_list_experiment_sessions_filter_by_test_case(client: TestClient) -> Non
             ATIF_INGEST,
             json=_atif_body(
                 started_at=started_at,
-                experiment_name=experiment_name,
+                evaluation_name=evaluation_name,
                 test_case_id=test_case_id,
                 score=1.0,
                 cost_usd=0.01,
@@ -135,7 +135,7 @@ def test_list_experiment_sessions_filter_by_test_case(client: TestClient) -> Non
         assert response.status_code == 201, response.text
 
     filtered = client.get(
-        f"{EXPERIMENTS}/{experiment_name}/sessions",
+        f"{EVALUATIONS}/{evaluation_name}/sessions",
         params={"filter[test_case_id]": "alpha"},
     )
     assert filtered.status_code == 200, filtered.text
@@ -145,16 +145,16 @@ def test_list_experiment_sessions_filter_by_test_case(client: TestClient) -> Non
     assert body["data"][0]["test_case_id"] == "alpha"
 
 
-def test_list_experiment_sessions_filter_by_status(client: TestClient) -> None:
+def test_list_evaluation_sessions_filter_by_status(client: TestClient) -> None:
     # ATIF ingest doesn't expose explicit per-span status, so all seeded sessions land with the
     # default root-span status. This test verifies the filter is wired through (no SQL break and
     # mismatched filters return zero) rather than per-status seeding.
-    experiment_name = "sessions-status-exp"
+    evaluation_name = "sessions-status-exp"
     group_id = _ensure_group(client)
     created = client.post(
-        EXPERIMENTS,
+        EVALUATIONS,
         json={
-            "name": experiment_name,
+            "name": evaluation_name,
             "experiment_group_id": group_id,
             "dataset_name": "sessions-dataset",
             "dataset_version": "v1",
@@ -166,7 +166,7 @@ def test_list_experiment_sessions_filter_by_status(client: TestClient) -> None:
         ATIF_INGEST,
         json=_atif_body(
             started_at=datetime.now(timezone.utc).replace(microsecond=0),
-            experiment_name=experiment_name,
+            evaluation_name=evaluation_name,
             test_case_id="case-1",
             score=1.0,
             cost_usd=0.01,
@@ -179,12 +179,12 @@ def test_list_experiment_sessions_filter_by_status(client: TestClient) -> None:
     )
     assert response.status_code == 201, response.text
 
-    listed = client.get(f"{EXPERIMENTS}/{experiment_name}/sessions")
+    listed = client.get(f"{EVALUATIONS}/{evaluation_name}/sessions")
     assert listed.status_code == 200, listed.text
     seeded_status = listed.json()["data"][0]["status"]
 
     matching = client.get(
-        f"{EXPERIMENTS}/{experiment_name}/sessions",
+        f"{EVALUATIONS}/{evaluation_name}/sessions",
         params={"filter[status]": seeded_status},
     )
     assert matching.status_code == 200, matching.text
@@ -192,21 +192,21 @@ def test_list_experiment_sessions_filter_by_status(client: TestClient) -> None:
 
     other_status = "error" if seeded_status != "error" else "cancelled"
     mismatched = client.get(
-        f"{EXPERIMENTS}/{experiment_name}/sessions",
+        f"{EVALUATIONS}/{evaluation_name}/sessions",
         params={"filter[status]": other_status},
     )
     assert mismatched.status_code == 200, mismatched.text
     assert mismatched.json()["pagination"]["total_results"] == 0
 
 
-def test_list_experiment_sessions_returns_404_for_unknown_experiment(client: TestClient) -> None:
-    response = client.get(f"{EXPERIMENTS}/does-not-exist/sessions")
+def test_list_evaluation_sessions_returns_404_for_unknown_evaluation(client: TestClient) -> None:
+    response = client.get(f"{EVALUATIONS}/does-not-exist/sessions")
     assert response.status_code == 404, response.text
 
 
-def test_list_experiment_sessions_rejects_unknown_query_param(client: TestClient) -> None:
+def test_list_evaluation_sessions_rejects_unknown_query_param(client: TestClient) -> None:
     response = client.get(
-        f"{EXPERIMENTS}/does-not-exist/sessions",
+        f"{EVALUATIONS}/does-not-exist/sessions",
         params={"test_caseid": "case-1"},
     )
     assert response.status_code == 400, response.text
@@ -216,7 +216,7 @@ def test_list_experiment_sessions_rejects_unknown_query_param(client: TestClient
 def _atif_body(
     *,
     started_at: datetime,
-    experiment_name: str,
+    evaluation_name: str,
     test_case_id: str,
     score: float,
     cost_usd: float,
@@ -228,12 +228,12 @@ def _atif_body(
 ) -> dict[str, Any]:
     session_started_at = started_at + timedelta(seconds=offset_seconds)
     finished_at = session_started_at + timedelta(milliseconds=latency_ms)
-    session_id = f"{experiment_name}-{run_id}-{test_case_id}"
+    session_id = f"{evaluation_name}-{run_id}-{test_case_id}"
     return {
         "schema_version": "ATIF-v1.7",
         "session_id": session_id,
-        "experiment_context": {
-            "experiment_id": experiment_name,
+        "evaluation_context": {
+            "evaluation_id": evaluation_name,
             "test_case_id": test_case_id,
         },
         "extra": {
