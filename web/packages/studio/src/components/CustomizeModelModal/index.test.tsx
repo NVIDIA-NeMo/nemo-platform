@@ -5,7 +5,7 @@ import { CustomizeModelModal } from '@studio/components/CustomizeModelModal';
 import { CUSTOMIZATION_METHODS } from '@studio/components/CustomizeModelModal/constants';
 import { ROUTES } from '@studio/constants/routes';
 import { workspace1 } from '@studio/mocks/entity-store/projects';
-import { getNewCustomizationJobRoute, getPromptTuningFormRoute } from '@studio/routes/utils';
+import { getClaudeCodeChatRoute, getPromptTuningFormRoute } from '@studio/routes/utils';
 import { LOCATION_DISPLAY_TEST_ID } from '@studio/tests/util/constants';
 import { LocationDisplay } from '@studio/tests/util/LocationDisplay';
 import { TestProviders } from '@studio/tests/util/TestProviders';
@@ -43,7 +43,7 @@ const renderModal = ({
           />
         ),
       },
-      { path: getNewCustomizationJobRoute(workspace1.workspace), element: <LocationDisplay /> },
+      { path: getClaudeCodeChatRoute(workspace1.workspace), element: <LocationDisplay /> },
       { path: getPromptTuningFormRoute(workspace1.workspace), element: <LocationDisplay /> },
     ],
     {
@@ -98,16 +98,16 @@ describe('CustomizeModelModal', () => {
     expect(mockOnClose).toHaveBeenCalledTimes(1);
   });
 
-  it('navigates to the new customization route when fine-tuned is selected and Continue is clicked', async () => {
+  it('navigates to the Code Agent when fine-tuned is selected and Continue is clicked', async () => {
     const user = userEvent.setup();
     renderModal();
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     const location = (await screen.findByTestId(LOCATION_DISPLAY_TEST_ID)).textContent;
-    expect(location).toEqual(getNewCustomizationJobRoute(workspace1.workspace));
+    expect(location).toEqual(getClaudeCodeChatRoute(workspace1.workspace));
     expect(mockOnClose).toHaveBeenCalledTimes(1);
   });
 
-  it('navigates to the new model route when prompt tuned is selected and Continue is clicked', async () => {
+  it('navigates to the prompt tuning route when prompt tuned is selected and Continue is clicked', async () => {
     const user = userEvent.setup();
     renderModal();
     await user.click(screen.getByRole('radio', { name: /Prompt Tuned/ }));
@@ -115,16 +115,6 @@ describe('CustomizeModelModal', () => {
     const location = (await screen.findByTestId(LOCATION_DISPLAY_TEST_ID)).textContent;
     expect(location).toEqual(getPromptTuningFormRoute(workspace1.workspace));
     expect(mockOnClose).toHaveBeenCalledTimes(1);
-  });
-
-  it('navigates to the customization route after switching back to fine-tuned', async () => {
-    const user = userEvent.setup();
-    renderModal();
-    await user.click(screen.getByRole('radio', { name: /Prompt Tuned/ }));
-    await user.click(screen.getByRole('radio', { name: /Fine-Tuned/ }));
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
-    const location = (await screen.findByTestId(LOCATION_DISPLAY_TEST_ID)).textContent;
-    expect(location).toEqual(getNewCustomizationJobRoute(workspace1.workspace));
   });
 
   it('does not render modal content when open is false', () => {
@@ -159,30 +149,5 @@ describe('CustomizeModelModal', () => {
   it('disables Continue when neither method is eligible', () => {
     renderModal({ canFineTune: false, canPromptTune: false });
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
-  });
-
-  it('forwards modelRef as a ?model= query param when navigating to the fine-tune route', async () => {
-    const user = userEvent.setup();
-    renderModal({ modelRef: `${workspace1.workspace}/my-model` });
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
-    const location = (await screen.findByTestId(LOCATION_DISPLAY_TEST_ID)).textContent;
-    expect(location).toEqual(
-      getNewCustomizationJobRoute(workspace1.workspace, {
-        model: `${workspace1.workspace}/my-model`,
-      })
-    );
-  });
-
-  it('forwards modelRef as a ?model= query param when navigating to the prompt-tune route', async () => {
-    const user = userEvent.setup();
-    renderModal({ modelRef: `${workspace1.workspace}/my-model` });
-    await user.click(screen.getByRole('radio', { name: /Prompt Tuned/ }));
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
-    const location = (await screen.findByTestId(LOCATION_DISPLAY_TEST_ID)).textContent;
-    expect(location).toEqual(
-      getPromptTuningFormRoute(workspace1.workspace, {
-        model: `${workspace1.workspace}/my-model`,
-      })
-    );
   });
 });

@@ -62,6 +62,13 @@ describe('ClaudeCodeHistoryPanel', () => {
         token_count: 100,
         tool_call_count: 1,
         tool_calls: ['Bash'],
+        chat_artifacts: {
+          selections: [],
+          files: [],
+          links: [],
+          jobs: [],
+          tools: [],
+        },
       },
     ]);
 
@@ -81,6 +88,44 @@ describe('ClaudeCodeHistoryPanel', () => {
 
     await user.click(screen.getByRole('button', { name: /Review the latest agent work/ }));
     expect(onSelectSession).toHaveBeenCalledWith('session-1');
+  });
+
+  it('shows the summarized title while preserving the full first prompt in the tooltip', async () => {
+    const firstPrompt = 'I want to create an agent that does spam detection for incoming email.';
+    mocks.listClaudeCodeHistorySessions.mockResolvedValue([
+      {
+        session_id: 'session-1',
+        mtime: Date.now() / 1000,
+        title: 'Create Spam Detector Agent',
+        first_prompt: firstPrompt,
+        message_count: 2,
+        token_count: 100,
+        tool_call_count: 0,
+        tool_calls: [],
+        chat_artifacts: {
+          selections: [],
+          files: [],
+          links: [],
+          jobs: [],
+          tools: [],
+        },
+      },
+    ]);
+
+    render(
+      <ClaudeCodeHistoryPanel
+        activeSessionId="session-1"
+        onNewChat={vi.fn()}
+        onSelectSession={vi.fn()}
+      />
+    );
+
+    const sessionButton = await screen.findByRole('button', {
+      name: 'Create Spam Detector Agent now',
+    });
+
+    expect(sessionButton).toHaveAttribute('title', expect.stringContaining(firstPrompt));
+    expect(screen.queryByText(firstPrompt)).not.toBeInTheDocument();
   });
 
   it('renders job artifacts as Studio links', () => {

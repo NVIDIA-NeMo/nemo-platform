@@ -2,24 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Text } from '@nvidia/foundations-react-core';
-import { RUNNING_TOOL_CALL_CLASS } from '@studio/routes/agents/ClaudeCodeChatRoute/toolCall/constants';
 import { summarizeRepeatedSubtleToolActions } from '@studio/routes/agents/ClaudeCodeChatRoute/toolCall/helpers';
 import type { SubtleToolAction } from '@studio/routes/agents/ClaudeCodeChatRoute/toolCall/types';
-import cn from 'classnames';
 import { ChevronRight } from 'lucide-react';
 
 interface SubtleToolCallRowProps {
   readonly actions: readonly SubtleToolAction[];
-  readonly isRunning?: boolean;
 }
 
-export const SubtleToolCallRow = ({ actions, isRunning = false }: SubtleToolCallRowProps) => (
+export const SubtleToolCallRow = ({ actions }: SubtleToolCallRowProps) => (
   <Text asChild kind="body/regular/sm">
     <div
-      className={cn(
-        'my-density-xs flex max-w-full flex-wrap items-center gap-x-density-sm gap-y-density-xs rounded border border-base border-l-2 border-l-[var(--border-color-accent-blue)] bg-[color-mix(in_srgb,var(--background-color-accent-blue-subtle)_38%,var(--background-color-surface-base))] px-density-sm py-density-xs text-secondary',
-        isRunning && RUNNING_TOOL_CALL_CLASS
-      )}
+      className="my-density-xs flex max-w-full flex-wrap items-center gap-x-density-sm gap-y-density-xs rounded border border-base border-l-2 border-l-[var(--border-color-accent-blue)] bg-[color-mix(in_srgb,var(--background-color-accent-blue-subtle)_38%,var(--background-color-surface-base))] px-density-sm py-density-xs text-secondary"
       data-testid="claude-code-tool-call-subtle"
       title={actions.map((action) => action.title ?? action.message).join(' | ')}
     >

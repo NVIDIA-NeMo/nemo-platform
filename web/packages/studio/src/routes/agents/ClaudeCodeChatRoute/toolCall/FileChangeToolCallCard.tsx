@@ -6,13 +6,10 @@ import {
   CODE_BLOCK_SURFACE_CLASS,
   FILE_CHANGE_ADDITION_CLASS,
   FILE_CHANGE_DELETION_CLASS,
-  RUNNING_TOOL_CALL_CLASS,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/toolCall/constants';
-import cn from 'classnames';
 import { ChevronRight, FilePenLine, FilePlus2 } from 'lucide-react';
 
 interface FileChangeToolCallCardProps {
-  readonly isRunning?: boolean;
   readonly summary: {
     readonly action: 'Edited' | 'Wrote';
     readonly additions: number;
@@ -22,10 +19,7 @@ interface FileChangeToolCallCardProps {
   };
 }
 
-export const FileChangeToolCallCard = ({
-  isRunning = false,
-  summary,
-}: FileChangeToolCallCardProps) => {
+export const FileChangeToolCallCard = ({ summary }: FileChangeToolCallCardProps) => {
   const Icon = summary.action === 'Wrote' ? FilePlus2 : FilePenLine;
 
   return (
@@ -39,10 +33,7 @@ export const FileChangeToolCallCard = ({
             <Icon size={16} />
           </div>
           <div className="min-w-0 flex-1">
-            <Text
-              kind="label/bold/md"
-              className={cn('block', isRunning && RUNNING_TOOL_CALL_CLASS)}
-            >
+            <Text kind="label/bold/md" className="block">
               {summary.action} 1 file
             </Text>
             <Text kind="body/regular/sm" className="block tabular-nums">

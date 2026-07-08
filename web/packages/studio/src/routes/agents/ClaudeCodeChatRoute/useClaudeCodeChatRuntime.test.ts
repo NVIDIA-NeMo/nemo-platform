@@ -67,15 +67,25 @@ const renderUseClaudeCodeChatRuntime = (options?: Parameters<typeof useClaudeCod
 
 interface PermissionRequestTestHandlers {
   onPermissionRequest: (request: unknown) => void;
+  onDone: () => void;
 }
 
 interface InputRequestTestHandlers {
   onInputRequest: (request: unknown) => void;
+  onDone: () => void;
 }
 
 describe('useClaudeCodeChatRuntime', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: a stream that completes immediately and successfully.
+    // Tests that need custom behaviour (permission requests, finishStream, etc.)
+    // override this in their own setup.
+    mocks.streamClaudeCodeMessage.mockImplementation(
+      async ({ handlers }: { handlers: { onDone: () => void } }) => {
+        handlers.onDone();
+      }
+    );
   });
 
   afterEach(() => {
@@ -85,7 +95,11 @@ describe('useClaudeCodeChatRuntime', () => {
   it('exposes the latest streamed coding-agent model without promoting it to selected model', async () => {
     mocks.createClaudeCodeSession.mockResolvedValue('session-1');
     mocks.streamClaudeCodeMessage.mockImplementation(
-      async ({ handlers }: { handlers: { onClaudeEvent: (event: unknown) => void } }) => {
+      async ({
+        handlers,
+      }: {
+        handlers: { onClaudeEvent: (event: unknown) => void; onDone: () => void };
+      }) => {
         handlers.onClaudeEvent({
           type: 'assistant',
           message: { model: 'claude-sonnet-4-5', content: [] },
@@ -94,6 +108,7 @@ describe('useClaudeCodeChatRuntime', () => {
           type: 'assistant',
           message: { model: 'claude-sonnet-4-6', content: [] },
         });
+        handlers.onDone();
       }
     );
 
@@ -112,7 +127,6 @@ describe('useClaudeCodeChatRuntime', () => {
 
   it('passes Studio route context to streamed messages', async () => {
     mocks.createClaudeCodeSession.mockResolvedValue('session-1');
-    mocks.streamClaudeCodeMessage.mockResolvedValue(undefined);
 
     const { result } = renderUseClaudeCodeChatRuntime({
       studioPathname: '/workspaces/default/jobs?status=running',
@@ -169,7 +183,6 @@ describe('useClaudeCodeChatRuntime', () => {
     let submitPromise!: Promise<void>;
     mockFeatureFlags({ guardrailsEnabled: true });
     mocks.createClaudeCodeSession.mockResolvedValue('session-1');
-    mocks.streamClaudeCodeMessage.mockResolvedValue(undefined);
 
     const { result } = renderUseClaudeCodeChatRuntime({ workspace: 'default' });
 
@@ -231,7 +244,11 @@ describe('useClaudeCodeChatRuntime', () => {
     let submitPromise!: Promise<void>;
     mocks.createClaudeCodeSession.mockResolvedValue('session-1');
     mocks.streamClaudeCodeMessage.mockImplementation(
-      async ({ handlers }: { handlers: { onPermissionRequest: (request: unknown) => void } }) => {
+      async ({
+        handlers,
+      }: {
+        handlers: { onPermissionRequest: (request: unknown) => void; onDone: () => void };
+      }) => {
         handlers.onPermissionRequest({
           requestId: 'request-1',
           toolName: 'Bash',
@@ -240,6 +257,7 @@ describe('useClaudeCodeChatRuntime', () => {
         await new Promise<void>((resolve) => {
           finishStream = resolve;
         });
+        handlers.onDone();
       }
     );
     mocks.resolveClaudeCodePermission.mockRejectedValue(new Error('permission failed'));
@@ -283,7 +301,11 @@ describe('useClaudeCodeChatRuntime', () => {
     let submitPromise!: Promise<void>;
     mocks.createClaudeCodeSession.mockResolvedValue('session-1');
     mocks.streamClaudeCodeMessage.mockImplementation(
-      async ({ handlers }: { handlers: { onPermissionRequest: (request: unknown) => void } }) => {
+      async ({
+        handlers,
+      }: {
+        handlers: { onPermissionRequest: (request: unknown) => void; onDone: () => void };
+      }) => {
         handlers.onPermissionRequest({
           requestId: 'request-1',
           toolName: 'Bash',
@@ -292,6 +314,7 @@ describe('useClaudeCodeChatRuntime', () => {
         await new Promise<void>((resolve) => {
           finishStream = resolve;
         });
+        handlers.onDone();
       }
     );
     mocks.resolveClaudeCodePermission.mockResolvedValue(undefined);
@@ -338,6 +361,7 @@ describe('useClaudeCodeChatRuntime', () => {
         await new Promise<void>((resolve) => {
           finishStream = resolve;
         });
+        handlers.onDone();
       }
     );
     mocks.resolveClaudeCodePermission.mockImplementation(
@@ -390,7 +414,11 @@ describe('useClaudeCodeChatRuntime', () => {
     let submitPromise!: Promise<void>;
     mocks.createClaudeCodeSession.mockResolvedValue('session-1');
     mocks.streamClaudeCodeMessage.mockImplementation(
-      async ({ handlers }: { handlers: { onInputRequest: (request: unknown) => void } }) => {
+      async ({
+        handlers,
+      }: {
+        handlers: { onInputRequest: (request: unknown) => void; onDone: () => void };
+      }) => {
         handlers.onInputRequest({
           requestId: 'request-1',
           kind: 'agent',
@@ -399,6 +427,7 @@ describe('useClaudeCodeChatRuntime', () => {
         await new Promise<void>((resolve) => {
           finishStream = resolve;
         });
+        handlers.onDone();
       }
     );
     mocks.resolveClaudeCodeInput.mockResolvedValue(undefined);
@@ -456,6 +485,7 @@ describe('useClaudeCodeChatRuntime', () => {
         await new Promise<void>((resolve) => {
           finishStream = resolve;
         });
+        handlers.onDone();
       }
     );
     mocks.resolveClaudeCodeInput.mockImplementation(
@@ -517,7 +547,11 @@ describe('useClaudeCodeChatRuntime', () => {
     let submitPromise!: Promise<void>;
     mocks.createClaudeCodeSession.mockResolvedValue('session-1');
     mocks.streamClaudeCodeMessage.mockImplementation(
-      async ({ handlers }: { handlers: { onPermissionRequest: (request: unknown) => void } }) => {
+      async ({
+        handlers,
+      }: {
+        handlers: { onPermissionRequest: (request: unknown) => void; onDone: () => void };
+      }) => {
         handlers.onPermissionRequest({
           requestId: 'request-1',
           toolName: 'AskUserQuestion',
@@ -545,6 +579,7 @@ describe('useClaudeCodeChatRuntime', () => {
         await new Promise<void>((resolve) => {
           finishStream = resolve;
         });
+        handlers.onDone();
       }
     );
     mocks.resolveClaudeCodePermission.mockResolvedValue(undefined);
@@ -616,7 +651,11 @@ describe('useClaudeCodeChatRuntime', () => {
     let submitPromise!: Promise<void>;
     mocks.createClaudeCodeSession.mockResolvedValue('session-1');
     mocks.streamClaudeCodeMessage.mockImplementation(
-      async ({ handlers }: { handlers: { onPermissionRequest: (request: unknown) => void } }) => {
+      async ({
+        handlers,
+      }: {
+        handlers: { onPermissionRequest: (request: unknown) => void; onDone: () => void };
+      }) => {
         handlers.onPermissionRequest({
           requestId: 'request-1',
           toolName: 'AskUserQuestion',
@@ -637,6 +676,7 @@ describe('useClaudeCodeChatRuntime', () => {
         await new Promise<void>((resolve) => {
           finishStream = resolve;
         });
+        handlers.onDone();
       }
     );
     mocks.resolveClaudeCodePermission.mockResolvedValue(undefined);

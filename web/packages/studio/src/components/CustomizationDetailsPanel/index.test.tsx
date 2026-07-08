@@ -9,10 +9,7 @@ import { customizationJob1 } from '@studio/mocks/customizer/customization-jobs';
 import { server } from '@studio/mocks/node';
 import { XL_SELECTOR_TIMEOUT } from '@studio/tests/util/constants';
 import { TestProviders } from '@studio/tests/util/TestProviders';
-import {
-  getCustomizationConfigurationName,
-  getCustomizationTrainingProgress,
-} from '@studio/util/customizations';
+import { getBaseModel, getCustomizationTrainingProgress } from '@studio/util/customizations';
 import { render, screen, waitFor, waitForElementToBeRemoved } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
@@ -46,9 +43,7 @@ describe('CustomizationDetailsPanel', () => {
     expect(screen.getByText(customizationJob1.spec?.output?.name ?? '-')).toBeInTheDocument();
 
     expect(screen.getByText('Configuration')).toBeInTheDocument();
-    expect(
-      screen.getByText(getCustomizationConfigurationName(customizationJob1.spec?.model) ?? '-')
-    ).toBeInTheDocument();
+    expect(screen.getByText(getBaseModel(customizationJob1) || '-')).toBeInTheDocument();
 
     expect(screen.getByText('Description')).toBeInTheDocument();
     expect(screen.getByText(customizationJob1.description!)).toBeInTheDocument();

@@ -56,3 +56,98 @@ from the hyphen-joined string, so pairs like ``foo``/``bar-baz`` and
 ``nemo_platform_plugin.k8s_naming`` (same module used by the models service).
 Orphan cleanup matches identity labels, not names alone; existing containers
 keep their old names after upgrade.
+
+## Kubernetes executors
+
+The k8s backend emits native `apps/v1.Deployment` + `v1.Service` for
+`restart_policy: Always` workloads, `batch/v1.Job` for finite (`Never`/
+`OnFailure`) workloads, and `v1.PersistentVolumeClaim` for volumes — no
+`k8s-nim-operator` dependency. Configure a named executor in platform YAML:
+
+```yaml
+deployments:
+  executors:
+    - name: local-k8s
+      backend: k8s
+      config:
+        kubeconfig_path: /path/to/kubeconfig  # unset: in-cluster config, then default kubeconfig
+        default_namespace: default  # namespace the controller's ServiceAccount has RBAC in
+        request_timeout: 60
+  default_executor: local-k8s
+```
+
+Entity-level `backend_config.k8s.namespace` overrides `default_namespace` per
+deployment/volume; it must be a namespace the controller's ServiceAccount has
+RBAC in (see below).
+
+### RBAC
+
+The `DeploymentsController` runs inside the `nmp-core` controller pod
+(registered via the `nemo.controllers` entry point), so it reuses that pod's
+existing ServiceAccount and Role rather than a dedicated one. The deploy
+chart's `k8s/helm/templates/core/controller-role.yaml` grants that Role the
+verbs the k8s backend needs in `.Release.Namespace`: `get`/`list`/`watch` on
+pods, `get`/`list` on pods/log, `create`/`get`/`list`/`watch`/`update`/`patch`/`delete` on
+`batch/v1.Job`, `get`/`list`/`create`/`delete` on PVCs, ConfigMaps, and
+Services, and `get`/`list`/`watch`/`create`/`delete` on `apps/v1.Deployment`.
+
+This Role is namespace-scoped to the release namespace. Pointing
+`backend_config.k8s.namespace` at a namespace outside the release namespace
+requires additional RBAC that the chart does not provision today;
+namespace-per-workspace provisioning is a documented future enhancement.
+
+### Native sidecars
+
+The LoRA-adapter-style native sidecar pattern (an `init_containers` entry with
+`restart_policy: "Always"`) requires Kubernetes >= 1.29. On older clusters,
+omit the per-container `restart_policy` on init containers and run that
+container as a regular main container instead — the compiler does not
+fall back to legacy sidecar emulation (emptyDir readiness files, etc.)
+automatically.
+
+## Cluster validation
+
+`tests/integration/backends/k8s/` and `tests/integration/test_reconcile_k8s.py`
+exercise the k8s backend and reconciler against a real cluster. Like the Docker
+integration tests above, they skip automatically (CI stays green) when no
+cluster is reachable.
+
+**Prerequisites:**
+
+- `kind` and `kubectl` on your `PATH` (for the local run) or an existing
+  cluster context (for the dev-blue run).
+- `uv` for running the test suite.
+- A kubeconfig pointing at a reachable cluster — either the one `kind create
+  cluster` sets automatically, or your own context via `kubectl config
+  use-context`.
+
+**Local run against kind** (no dev-blue access needed):
+
+```bash
+kind create cluster  # or reuse an existing one; sets your kubeconfig context
+uv run pytest plugins/nemo-deployments/tests/integration/backends/k8s -v
+uv run pytest plugins/nemo-deployments/tests/integration/test_reconcile_k8s.py -v
+```
+
+**Run against dev-blue** (uses your namespace and your own RBAC there):
+
+```bash
+kubectl config use-context <dev-blue>
+export NMP_K8S_ITEST_NAMESPACE=<your-namespace>  # defaults to "default"
+uv run pytest plugins/nemo-deployments/tests/integration/backends/k8s -v
+```
+
+Tests authenticate with whatever kubeconfig identity is currently active in
+your shell, not the restricted `nmp-core` controller ServiceAccount, so they
+validate backend behavior against a real API server but do **not** exercise
+the RBAC scope granted by the deploy chart's `controller-role.yaml`. That
+still needs a manual smoke test of the deployed platform pod.
+
+`test_reconcile_k8s.py` covers prerequisite gating (one deployment blocking on
+another) but not PVC-mount gating: kind's default `local-path` StorageClass uses
+`WaitForFirstConsumer` binding, so an unconsumed PVC never reaches `BOUND`, and
+`DeploymentReconciler` requires a mounted volume to already be `BOUND` before it
+creates the pod that would consume it — a chicken-and-egg specific to
+`WaitForFirstConsumer` storage classes that doesn't arise on `Immediate`-binding
+classes (the common case outside kind). The standalone PVC lifecycle scenario in
+`test_k8s_backend.py` accepts `PENDING` as a valid terminal state for this reason.

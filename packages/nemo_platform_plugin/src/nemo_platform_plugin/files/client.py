@@ -30,6 +30,8 @@ class _FilesMethods:
     upload_file = method(endpoints.upload_file)
     download_file = method(endpoints.download_file)
     delete_file = method(endpoints.delete_file)
+    upload_otlp_logs = method(endpoints.upload_otlp_logs)
+    query_otlp_logs = method(endpoints.query_otlp_logs)
 
 
 class FilesClient(_FilesMethods, NemoClient):

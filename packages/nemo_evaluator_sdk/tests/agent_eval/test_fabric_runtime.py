@@ -182,6 +182,8 @@ async def test_fabric_runtime_maps_succeeded_result_to_completed_trial(
     assert trial.metadata["harness"] == "codex"
     assert trial.metadata["adapter_id"] == "nvidia.fabric.codex.cli"
     assert trial.metadata["generated"] is True
+    # agent_ok mirrors the Codex runtime so AgentPhaseSuccessMetric scores the phase as clean.
+    assert trial.metadata["agent_ok"] is True
     # Evidence: the persisted result envelope + each Fabric artifact by name.
     assert trial.evidence is not None
     assert trial.evidence.descriptors["result"].ref.endswith("fabric_result.json")
@@ -224,6 +226,96 @@ async def test_fabric_runtime_maps_atif_artifact_to_trace_evidence(
     assert trace.ref == str(tmp_path / "trajectory.atif.json")
 
 
+def _workspace_from_profiles(profiles: list[Any]) -> Path:
+    """Pull the staged workspace path out of the ``eval_workspace`` profile overlay."""
+    profile = next(p for p in profiles if p.name == fabric_runtime._WORKSPACE_PROFILE_NAME)
+    return Path(profile.mapping["environment"]["workspace"])
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_seeds_workspace_and_exposes_workspace_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task = AgentEvalTask(
+        id="fix/bug",
+        intent="Fix the bug.",
+        inputs={"instruction": "make the tests pass", "files": {"calc.py": "value = 1\n"}},
+    )
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        # The harness runs in the staged workspace; simulate an edit it leaves behind.
+        workspace = _workspace_from_profiles(kwargs["profiles"])
+        (workspace / "result.txt").write_text("done", encoding="utf-8")
+        return _FakeResult(status="succeeded", output={"response": "ok"})
+
+    client_cls = _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric")
+
+    trials = await runtime.run_tasks([task])
+
+    trial = trials[0]
+    assert trial.status == "completed"
+    # A dedicated workspace profile overlay carries environment.workspace (the harness's cwd).
+    profiles = client_cls.recorded[0]["profiles"]
+    assert fabric_runtime._WORKSPACE_PROFILE_NAME in [p.name for p in profiles]
+    workspace = _workspace_from_profiles(profiles)
+    # The seed file is staged and the agent's edit is present in the same dir.
+    assert (workspace / "calc.py").read_text(encoding="utf-8") == "value = 1\n"
+    assert (workspace / "result.txt").read_text(encoding="utf-8") == "done"
+    # The final workspace is exposed as filesystem evidence (same key/kind as the Codex runtime).
+    assert trial.evidence is not None
+    workspace_evidence = trial.evidence.descriptors["workspace"]
+    assert workspace_evidence.kind == "filesystem"
+    assert workspace_evidence.ref == str(workspace)
+    # Seed-file contents are listed by name in the input, not dumped inline (they are already on disk).
+    harness_input = client_cls.recorded[0]["input"]
+    assert "calc.py" in harness_input
+    assert "value = 1" not in harness_input
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_stages_workspace_even_without_seed_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Every task gets a workspace, even with no inputs['files'] — the harness may still create files,
+    # and the per-task dir is exposed as evidence uniformly (a from-scratch coding task, say).
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output="ok")
+
+    client_cls = _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric")
+
+    trials = await runtime.run_tasks([_TASK])  # _TASK has no 'files' input
+
+    profiles = client_cls.recorded[0]["profiles"]
+    assert fabric_runtime._WORKSPACE_PROFILE_NAME in [p.name for p in profiles]
+    workspace = _workspace_from_profiles(profiles)
+    assert workspace.is_dir()
+    assert trials[0].evidence is not None
+    assert trials[0].evidence.descriptors["workspace"].ref == str(workspace)
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_bad_seed_fails_only_that_task(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A seed path escaping the workspace must fail just this task (as a failed trial), not abort the run.
+    bad_task = AgentEvalTask(
+        id="bad/seed",
+        intent="unused",
+        inputs={"files": {"../escape.py": "nope"}},
+    )
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output="unreached")
+
+    _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric")
+
+    trials = await runtime.run_tasks([bad_task])
+
+    assert trials[0].status == "failed"
+    assert trials[0].metadata["error_type"] == "WorkspaceSeedError"
+
+
 @pytest.mark.asyncio
 async def test_fabric_runtime_capture_trajectory_false_skips_relay_overlay(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -260,6 +352,7 @@ async def test_fabric_runtime_maps_failed_result_to_failed_trial(
     assert trial.output is None
     assert trial.metadata["error_type"] == "process_exit_nonzero"
     assert trial.metadata["error"] == "boom"
+    assert trial.metadata["agent_ok"] is False
     assert trial.evidence is not None
     assert "error" in trial.evidence.descriptors
 
@@ -323,3 +416,27 @@ async def test_fabric_runtime_trajectory_capture_requires_nemo_relay(
     runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric")
     with pytest.raises(RuntimeError, match="nemo-relay"):
         await runtime.run_tasks([_TASK])
+
+
+@pytest.mark.asyncio
+async def test_fabric_success_trial_scores_agent_phase_success_true(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Regression guard: AgentPhaseSuccessMetric reads candidate.metadata["agent_ok"]; a successful Fabric
+    # trial must set it (via the same _trial_sample path the evaluator uses) so the metric scores True.
+    from nemo_evaluator_sdk.agent_eval.evaluator import _metric_row, _trial_sample
+    from nemo_evaluator_sdk.agent_eval.metrics import AgentPhaseSuccessMetric
+    from nemo_evaluator_sdk.execution.samples import build_metric_input
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output={"response": "ok"})
+
+    _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric")
+
+    trial = (await runtime.run_tasks([_TASK]))[0]
+    metric_input = build_metric_input(_metric_row(_TASK, trial), _trial_sample(trial), 0)
+    result = await AgentPhaseSuccessMetric().compute_scores(metric_input)
+
+    assert result.outputs[0].name == "agent_phase_success"
+    assert result.outputs[0].value is True

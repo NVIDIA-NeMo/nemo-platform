@@ -104,6 +104,27 @@ def _should_retry(
     return None
 
 
+def _should_resolve_conflict(response: httpx.Response, request: PreparedRequest) -> bool:
+    """Whether a 409 should be resolved by replaying the linked retrieve request.
+
+    True when the create was sent with ``exist_ok=True``, the server responded
+    409 Conflict, and the endpoint declared a ``get_on_conflict`` resolver (whose
+    prebuilt GET is on ``request.on_conflict_get``). In that case ``send()``
+    replays that GET and returns the existing entity instead of raising.
+    """
+    if response.status_code != 409:
+        return False
+    if not (request.client_options or {}).get("exist_ok"):
+        return False
+    if request.on_conflict_get is None:
+        raise ValueError(
+            "exist_ok=True was set on a create request whose endpoint declares no "
+            "get_on_conflict resolver, so the existing entity cannot be retrieved "
+            "on conflict. Add get_on_conflict=<resolver> to the @post endpoint."
+        )
+    return True
+
+
 class BaseNemoClient:
     """Shared logic for sync and async NeMo clients.
 
@@ -380,9 +401,9 @@ class NemoClient(BaseNemoClient):
             )
 
         raw = self._request_with_retry(request, url, req_headers, params, resolved_retry)
-        # NOTE: client_options (e.g. exist_ok) from PreparedRequest are not
-        # acted on here yet — see AIRCORE-866 for the planned server-side
-        # fix that would let the client handle them properly.
+        if _should_resolve_conflict(raw, request):
+            assert request.on_conflict_get is not None
+            return self.send(request.on_conflict_get, headers=headers, retry=retry)
         raise_for_status(raw)
         body = None
         if request.response_type is not None:
@@ -584,9 +605,9 @@ class AsyncNemoClient(BaseNemoClient):
             )
 
         raw = await self._request_with_retry(request, url, req_headers, params, resolved_retry)
-        # NOTE: client_options (e.g. exist_ok) from PreparedRequest are not
-        # acted on here yet — see AIRCORE-866 for the planned server-side
-        # fix that would let the client handle them properly.
+        if _should_resolve_conflict(raw, request):
+            assert request.on_conflict_get is not None
+            return await self.send(request.on_conflict_get, headers=headers, retry=retry)
         raise_for_status(raw)
         body = None
         if request.response_type is not None:

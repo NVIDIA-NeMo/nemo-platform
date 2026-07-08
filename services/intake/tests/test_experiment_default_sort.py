@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Experiment group default sort: multi-key ordering, pinned-first, fallback, and validation.
+"""Experiment group default sort: string storage/validation and the sort helper.
 
-The shared ``client`` fixture overrides the rollup repository to ``None`` (ClickHouse unavailable),
-which lets us verify that a metric-based *default* sort degrades to ``-created_at`` instead of
-failing — distinct from an explicit metric sort, which still 503s.
+``default_sort`` is a single ``sort``-param string (e.g. ``-cost_usd.mean`` or ``-created_at``) stored
+on the group — any field the experiments list can sort by. The client reads it and applies it as the
+list ``sort`` param; the list endpoint itself never consults it. The ``_sort_experiments`` helper
+remains multi-key capable (pinned-first + tiebreaks), so its unit tests still exercise lists.
 """
 
 from datetime import datetime, timezone
@@ -15,7 +16,6 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from nmp.intake.api.v2.experiments.endpoints import _sort_experiments, _validate_default_sort
 from nmp.intake.api.v2.experiments.schemas import EvaluatorAggregate, ExperimentResponse
-from nmp.intake.entities.experiments import SortCriterion
 
 EXPERIMENTS = "/apis/intake/v2/workspaces/default/experiments"
 GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
@@ -76,38 +76,56 @@ def test_falls_back_to_created_at_when_sorted_metric_missing() -> None:
 # ----------------------------- default-sort validation -----------------------------
 
 
-def test_validate_default_sort_accepts_metric_fields() -> None:
-    _validate_default_sort(
-        [
-            SortCriterion(field="cost_usd.mean", direction="asc"),
-            SortCriterion(field="latency_ms.p95", direction="asc"),
-            SortCriterion(field="run_count", direction="desc"),
-            SortCriterion(field="evaluators.harbor.verifier.mean", direction="desc"),
-        ]
-    )
+def test_validate_default_sort_accepts_any_sortable_field() -> None:
+    # Entity columns and rollup-metric paths, ascending or descending ('-'), are all valid.
+    for value in (
+        "name",
+        "-created_at",
+        "cost_usd.mean",
+        "-latency_ms.p95",
+        "run_count",
+        "-evaluators.harbor.verifier.mean",
+    ):
+        _validate_default_sort(value)
+    _validate_default_sort(None)  # absent default sort is fine
 
 
-def test_validate_default_sort_rejects_non_metric_fields() -> None:
-    for field in ("name", "created_at", "cost_usd.bogus", "evaluators.reward"):
+def test_validate_default_sort_rejects_unsortable_fields() -> None:
+    for value in ("bogus", "-description", "cost_usd.bogus", "evaluators.reward"):
         with pytest.raises(HTTPException) as exc:
-            _validate_default_sort([SortCriterion(field=field, direction="asc")])
+            _validate_default_sort(value)
         assert exc.value.status_code == 400
+
+
+def test_entity_coerces_legacy_default_sort_to_created_at() -> None:
+    # Schema-on-read: rows persisted before default_sort was a non-null string stored it as null (or,
+    # earlier, a SortCriterion list). Both must deserialize to the default, not raise.
+    from nmp.intake.entities.experiments import ExperimentGroup
+
+    for stored in (None, [{"field": "cost_usd.mean", "direction": "asc"}]):
+        group = ExperimentGroup.model_validate({"name": "g", "workspace": "default", "default_sort": stored})
+        assert group.default_sort == "-created_at"
 
 
 # ----------------------------- endpoint wiring -----------------------------
 
 
-def test_create_group_with_default_sort_round_trips(client: TestClient) -> None:
-    resp = client.post(
-        GROUPS, json={"name": "g-sort", "default_sort": [{"field": "cost_usd.mean", "direction": "asc"}]}
-    )
+def test_create_group_defaults_sort_to_created_at(client: TestClient) -> None:
+    resp = client.post(GROUPS, json={"name": "g-default"})
     assert resp.status_code == 201, resp.text
-    assert resp.json()["default_sort"] == [{"field": "cost_usd.mean", "direction": "asc"}]
+    assert resp.json()["default_sort"] == "-created_at"
 
 
-def test_create_group_rejects_non_metric_sort_field(client: TestClient) -> None:
-    for field in ("name", "created_at", "cost_usd.bogus"):
-        resp = client.post(GROUPS, json={"name": f"g-{field}", "default_sort": [{"field": field, "direction": "asc"}]})
+def test_create_group_with_default_sort_round_trips(client: TestClient) -> None:
+    for i, value in enumerate(("-cost_usd.mean", "-created_at")):
+        resp = client.post(GROUPS, json={"name": f"g-sort-{i}", "default_sort": value})
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["default_sort"] == value
+
+
+def test_create_group_rejects_unsortable_field(client: TestClient) -> None:
+    for i, value in enumerate(("bogus", "cost_usd.bogus")):
+        resp = client.post(GROUPS, json={"name": f"g-bad-{i}", "default_sort": value})
         assert resp.status_code == 400, resp.text
 
 
@@ -125,28 +143,3 @@ def test_default_order_floats_pinned_first(client: TestClient) -> None:
     listed = client.get(EXPERIMENTS, params={"filter[experiment_group_id]": group["id"]})
     assert listed.status_code == 200, listed.text
     assert [r["name"] for r in listed.json()["data"]] == ["exp-a", "exp-b"]
-
-
-def test_default_metric_sort_degrades_without_rollups(client: TestClient) -> None:
-    # Group's default sort is a metric, but rollups are unavailable. The default sort must NOT 503 — it
-    # falls back to -created_at (unlike an explicit metric sort, which does 503).
-    group = client.post(
-        GROUPS, json={"name": "g-deg", "default_sort": [{"field": "cost_usd.mean", "direction": "asc"}]}
-    ).json()
-    for name in ("e1", "e2", "e3"):
-        created = client.post(
-            EXPERIMENTS, json={"name": name, "experiment_group_id": group["id"], "dataset_name": "ds"}
-        )
-        assert created.status_code == 201, created.text
-
-    default_sorted = client.get(EXPERIMENTS, params={"filter[experiment_group_id]": group["id"]})
-    assert default_sorted.status_code == 200, default_sorted.text
-    # The cost rollup is unset, so the default sort falls back to -created_at: newest first.
-    # (ISO-8601 UTC timestamps sort lexicographically == chronologically.)
-    created_ats = [row["created_at"] for row in default_sorted.json()["data"]]
-    assert created_ats == sorted(created_ats, reverse=True)
-
-    explicit_metric = client.get(
-        EXPERIMENTS, params={"filter[experiment_group_id]": group["id"], "sort": "-cost_usd.mean"}
-    )
-    assert explicit_metric.status_code == 503, explicit_metric.text

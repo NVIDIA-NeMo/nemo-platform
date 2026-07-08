@@ -389,7 +389,7 @@ describe('ClaudeCodeToolCallPart', () => {
     expect(screen.queryByText('web/packages/studio/src/App.tsx')).not.toBeInTheDocument();
   });
 
-  it('animates subtle tool text while the tool call is running', () => {
+  it('renders running subtle tool text without special color or animation', () => {
     render(
       <ClaudeCodeToolCallPart
         addResult={vi.fn()}
@@ -403,9 +403,7 @@ describe('ClaudeCodeToolCallPart', () => {
       />
     );
 
-    expect(screen.getByTestId('claude-code-tool-call-subtle')).toHaveClass(
-      'claude-code-tool-call-running'
-    );
+    expectSubtleToolBlock(screen.getByTestId('claude-code-tool-call-subtle'));
   });
 
   it('renders Write as a file change summary with expandable content', async () => {
@@ -451,7 +449,7 @@ describe('ClaudeCodeToolCallPart', () => {
     );
   });
 
-  it('animates file change text while the tool call is running', () => {
+  it('renders running file change text without special color or animation', () => {
     render(
       <ClaudeCodeToolCallPart
         addResult={vi.fn()}
@@ -468,7 +466,8 @@ describe('ClaudeCodeToolCallPart', () => {
       />
     );
 
-    expect(screen.getByText('Wrote 1 file')).toHaveClass('claude-code-tool-call-running');
+    expect(screen.getByText('Wrote 1 file')).toHaveClass('block');
+    expect(screen.getByText('Wrote 1 file')).not.toHaveClass('claude-code-tool-call-running');
   });
 
   it('renders Edit as a file change summary with edited stats', () => {

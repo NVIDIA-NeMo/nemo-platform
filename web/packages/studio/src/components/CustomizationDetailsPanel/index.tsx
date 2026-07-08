@@ -12,7 +12,6 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { formatTimeInSeconds, utcToLocalDate } from '@nemo/common/src/utils/date';
 import { formatLogs } from '@nemo/common/src/utils/logs';
 import { getJobRefetchInterval } from '@nemo/common/src/utils/query';
-import { useCustomizationGetJob } from '@nemo/sdk/vendored/customizer/api';
 import {
   Button,
   CodeSnippet,
@@ -27,11 +26,14 @@ import { ErrorMessageWithRetry } from '@studio/components/ErrorMessageWithRetry'
 import { Loading } from '@studio/components/Layouts/Loading';
 import { CustomizationConfigSidePanel } from '@studio/components/sidePanels/CustomizationConfigSidePanel';
 import { useCustomizationFilesAsRows } from '@studio/hooks/useCustomizationFiles';
+import { useCustomizationJob } from '@studio/hooks/useCustomizationJob';
 import { hasMetrics } from '@studio/types/customization';
 import {
-  getCustomizationConfigurationName,
+  getBaseModel,
   getCustomizationTrainingProgress,
   getCustomizationTrainingSteps,
+  getDatasetUri,
+  getTrainingBatchSize,
 } from '@studio/util/customizations';
 import { formatElapsedTime } from '@studio/util/date';
 import { Cog, LayoutList, Play } from 'lucide-react';
@@ -45,14 +47,12 @@ export const CustomizationDetailsPanel: FC<Props> = ({ customizationJobName, wor
   const toast = useToast();
   const [openConfigSidePanel, setOpenConfigSidePanel] = useState(false);
   const {
-    data: customization,
+    job: customization,
     isLoading: isLoadingCustomization,
     isError,
     refetch,
-  } = useCustomizationGetJob(workspace, customizationJobName, {
-    query: {
-      refetchInterval: (query) => getJobRefetchInterval(query.state.data?.status),
-    },
+  } = useCustomizationJob(workspace, customizationJobName, {
+    refetchInterval: (query) => getJobRefetchInterval(query.state.data?.status),
   });
 
   const { data: logs } = useJobLogs({
@@ -79,15 +79,14 @@ export const CustomizationDetailsPanel: FC<Props> = ({ customizationJobName, wor
     validationRecords,
     isPending: isFilesLoading,
   } = useCustomizationFilesAsRows({
-    fileset: customization?.spec?.dataset,
+    fileset: getDatasetUri(customization) || undefined,
   });
 
-  const training = customization?.spec?.training;
-  const epochs = training && 'epochs' in training ? training.epochs : undefined;
-  const batchSize = training && 'batch_size' in training ? training.batch_size : undefined;
+  const epochs = customization?.spec?.schedule?.epochs;
+  const batchSize = getTrainingBatchSize(customization);
   const maxXAxisValue = getCustomizationTrainingSteps({
     epochs: epochs ?? 0,
-    batchSize: batchSize ?? 0,
+    batchSize,
     trainingRecords,
     hasValidationDataset: validationRecords > 0,
   });
@@ -128,10 +127,7 @@ export const CustomizationDetailsPanel: FC<Props> = ({ customizationJobName, wor
           />
           <KVPair label="Customization ID" value={customization.id} />
           <KVPair label="Output Model" value={customization.spec?.output?.name ?? '-'} />
-          <KVPair
-            label="Configuration"
-            value={getCustomizationConfigurationName(customization.spec?.model) ?? '-'}
-          />
+          <KVPair label="Configuration" value={getBaseModel(customization) || '-'} />
           <KVPair label="Description" value={customization.description || '-'} />
           <KVPair
             label="Created"

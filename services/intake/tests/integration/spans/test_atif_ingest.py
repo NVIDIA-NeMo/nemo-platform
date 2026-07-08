@@ -12,10 +12,14 @@ from fastapi.testclient import TestClient
 
 _HISTORICAL_GTE = "2024-01-01T00:00:00Z"
 
-
-def _recent_base_time() -> datetime:
-    """Return a UTC timestamp safely inside the spans list 30-day default lookback."""
-    return datetime.now(timezone.utc) - timedelta(hours=2)
+# Seeded relative to "now" (not a fixed calendar date) with a fixed sub-second offset:
+#   - relative so the spans stay inside the 90-day ClickHouse TTL (see clickhouse_migrations.py); a
+#     fixed past date silently ages out of retention and this test flakes red (TTL eviction runs on
+#     async merges). ~45 days is well beyond the (removed) 30-day list lookback yet within retention.
+#   - .500000 microseconds so no derived timestamp lands on a whole second, which the span read-side
+#     returns without a fractional part (e.g. "...:12" vs "...:12.000000") and would fail exact matches.
+# Everything derived from this base moves with it, so the reconstructed-timestamp assertions stay exact.
+_BASE_TIME = (datetime.now(timezone.utc) - timedelta(days=45)).replace(microsecond=500_000)
 
 
 def _atif_timestamp(dt: datetime) -> str:
@@ -193,7 +197,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         "metadata": {"trial": "sample-test-case-a__trial-a"},
     }
     _create_experiment(client, evaluation_context["evaluation_id"])
-    base_time = _recent_base_time()
+    base_time = _BASE_TIME
     user_step_time = base_time
     agent_step_2_time = base_time + timedelta(seconds=5, milliseconds=636)
     agent_step_3_time = base_time + timedelta(seconds=10, milliseconds=528)
@@ -587,7 +591,7 @@ def test_atif_trace_tokens_do_not_double_count_when_trajectory_and_steps_both_ca
     per-step metrics that sum to it. The trajectory span must NOT carry token attributes,
     or the trace-level rollup would sum them and report 2x the real total.
     """
-    base_time = _recent_base_time()
+    base_time = _BASE_TIME
     user_step_time = base_time
     agent_step_2_time = base_time + timedelta(seconds=5)
     agent_step_3_time = base_time + timedelta(seconds=10)

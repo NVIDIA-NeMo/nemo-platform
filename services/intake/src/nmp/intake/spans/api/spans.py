@@ -5,8 +5,6 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
-
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from nmp.common.api.common import Page
 from nmp.common.api.filter import FilterOperator
@@ -33,11 +31,9 @@ from nmp.intake.spans.api.spans_schemas import (
 )
 from nmp.intake.spans.domain import SpanAttributeFilter, SpanListFilter
 from nmp.intake.spans.service import SpanNotFoundError
-from nmp.intake.spans.storage import utc_now
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Spans"
-DEFAULT_LIST_LOOKBACK_DAYS = 30
 ATTRIBUTE_EQ_FILTER_FIELDS = frozenset(
     {
         "project",
@@ -85,7 +81,6 @@ async def list_spans(
 ) -> Page[Span]:
     validate_list_query_params(request, additional_params={"mode"})
     filters = _span_filter(workspace, parsed)
-    _apply_default_time_bound(filters)
     result = await service.list_spans(
         filters=filters,
         page=page,
@@ -141,7 +136,6 @@ async def list_span_groups(
     validate_list_query_params(request, additional_params={"by"})
     grouped_by = _parse_group_by(by)
     filters = _span_filter(workspace, parsed)
-    _apply_default_time_bound(filters)
     result = await service.list_span_groups(
         filters=filters,
         group_by=[field.value for field in grouped_by],
@@ -234,8 +228,3 @@ def _span_filter(workspace: str, parsed: ParsedFilter) -> SpanListFilter:
 
 def _add_attribute_eq_filter(filters: SpanListFilter, field: str, value: str) -> None:
     filters.attribute_filters.append(SpanAttributeFilter(field=field, operator=FilterOperator.EQ.value, value=value))
-
-
-def _apply_default_time_bound(filters: SpanListFilter) -> None:
-    if filters.started_at_gte is None and filters.started_at_lte is None:
-        filters.started_at_gte = utc_now() - timedelta(days=DEFAULT_LIST_LOOKBACK_DAYS)

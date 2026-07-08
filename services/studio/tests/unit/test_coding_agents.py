@@ -320,6 +320,7 @@ def test_list_and_get_history_sessions(
         {
             "session_id": session_id,
             "mtime": history.stat().st_mtime,
+            "title": None,
             "first_prompt": "first prompt",
             "message_count": 1,
             "token_count": 30,
@@ -695,6 +696,7 @@ def test_build_studio_system_prompt_includes_message_summary_contract():
     assert "Required message-summary behavior:" in prompt
     assert coding_agents.STUDIO_MESSAGE_SUMMARY_START in prompt
     assert coding_agents.STUDIO_MESSAGE_SUMMARY_END in prompt
+    assert "title: <meaningful 3-7 word title" in prompt
     assert "worked_for: <elapsed time if you know it, otherwise unknown>" in prompt
     assert "summary: <concise Markdown" in prompt
     assert "details_label: worked for <same elapsed time or unknown>" in prompt
@@ -710,6 +712,43 @@ def test_build_studio_system_prompt_includes_message_summary_contract():
     assert "repeat those links at the bottom of the summary" in prompt
     assert "Put repeated links on separate lines without a heading" in prompt
     assert "Do not omit the summary block because the message is short." in prompt
+
+
+def test_history_summary_reads_model_generated_session_title(tmp_path: Path):
+    history = tmp_path / "session.jsonl"
+    history.write_text(
+        "\n".join(
+            [
+                json.dumps({"type": "user", "message": {"content": "A long initial request"}}),
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "message": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "\n".join(
+                                        [
+                                            coding_agents.STUDIO_MESSAGE_SUMMARY_START,
+                                            "title: Create Spam Detector Agent",
+                                            "worked_for: unknown",
+                                            "summary: Created the requested agent.",
+                                            "details_label: worked for unknown",
+                                            coding_agents.STUDIO_MESSAGE_SUMMARY_END,
+                                        ]
+                                    ),
+                                }
+                            ]
+                        },
+                    }
+                ),
+            ]
+        )
+    )
+
+    summary = coding_agents._summarize_history_session(history)
+
+    assert summary.title == "Create Spam Detector Agent"
 
 
 def test_studio_link_destinations_cover_registered_workspace_routes():

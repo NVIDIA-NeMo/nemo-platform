@@ -122,3 +122,121 @@ describe('useStudioDataViewState range-filter integration', () => {
     );
   });
 });
+
+/** Evaluator columns use dynamic `evaluator-<name>` ids, so the view passes a function-form
+ * `filterFieldMap` deriving `evaluators.<name>.mean`. Guards that path end-to-end. */
+interface EvaluatorRow {
+  aggregate_scores?: { [name: string]: { mean?: number } };
+}
+
+const EVALUATOR_DATA: EvaluatorRow[] = [
+  { aggregate_scores: { accuracy: { mean: 0.2 } } },
+  { aggregate_scores: { accuracy: { mean: 0.6 } } },
+  { aggregate_scores: { accuracy: { mean: 0.95 } } },
+];
+
+// Mirrors ExperimentGroupDataView's getExperimentFilterField for the dynamic evaluator id.
+const evaluatorFilterField = (id: string): string | undefined => {
+  const match = id.match(/^evaluator-(.+)$/);
+  return match ? `evaluators.${match[1]}.mean` : undefined;
+};
+
+function useEvaluatorHarness() {
+  const dataViewState = useStudioDataViewState({ filterFieldMap: evaluatorFilterField });
+  const columns = useMakeColumns<EvaluatorRow>({
+    makeColumns: (columnHelper) => [
+      columnHelper.accessor((r) => r.aggregate_scores?.accuracy?.mean, {
+        id: 'evaluator-accuracy',
+        header: 'Avg Accuracy',
+        meta: { filter: numberRangeFilter('Avg Accuracy') },
+      }),
+    ],
+    overrideToLoadingCells: false,
+  });
+  const table = useCustomReactTable<EvaluatorRow>({
+    columns,
+    data: EVALUATOR_DATA,
+    dataMode: 'manual',
+    state: dataViewState,
+    totalCount: EVALUATOR_DATA.length,
+  });
+  return { dataViewState, table };
+}
+
+describe('useStudioDataViewState range-filter integration (function-form filterFieldMap)', () => {
+  it('remaps a dynamic evaluator column id to its dotted API key', async () => {
+    const { result } = renderHook(() => useEvaluatorHarness(), { wrapper: MemoryRouter });
+
+    // Same regression guard as latency: the column must resolve to the numberRange filterFn.
+    expect(result.current.table.getColumn('evaluator-accuracy')?.columnDef.filterFn).toBe(
+      'numberRange'
+    );
+
+    act(() => {
+      result.current.table
+        .getColumn('evaluator-accuracy')
+        ?.setFilterValue({ $gte: 0.5, $lte: 0.9 });
+    });
+
+    await waitFor(
+      () =>
+        expect(result.current.dataViewState.apiFilter.filter).toEqual({
+          'evaluators.accuracy.mean': { $gte: 0.5, $lte: 0.9 },
+        }),
+      { timeout: 2000 }
+    );
+  });
+});
+
+/** run_count is a flat scalar metric (not a `.<stat>` rollup), so the view's filter-field function
+ * returns undefined for it and the range filter must emit under the plain `run_count` key —
+ * matching the backend's `filter[run_count][$gte]=5` shape. */
+interface RunCountRow {
+  run_count?: number;
+}
+
+const RUN_COUNT_DATA: RunCountRow[] = [{ run_count: 1 }, { run_count: 5 }, { run_count: 20 }];
+
+function useRunCountHarness() {
+  // Mirrors ExperimentGroupDataView: run_count isn't remapped, so the function returns undefined.
+  const dataViewState = useStudioDataViewState({ filterFieldMap: () => undefined });
+  const columns = useMakeColumns<RunCountRow>({
+    makeColumns: (columnHelper) => [
+      columnHelper.accessor((r) => r.run_count, {
+        id: 'run_count',
+        header: 'Run Count',
+        meta: { filter: numberRangeFilter('Run Count') },
+      }),
+    ],
+    overrideToLoadingCells: false,
+  });
+  const table = useCustomReactTable<RunCountRow>({
+    columns,
+    data: RUN_COUNT_DATA,
+    dataMode: 'manual',
+    state: dataViewState,
+    totalCount: RUN_COUNT_DATA.length,
+  });
+  return { dataViewState, table };
+}
+
+describe('useStudioDataViewState range-filter integration (flat run_count key)', () => {
+  it('emits a run_count range under its own flat key when the field function returns undefined', async () => {
+    const { result } = renderHook(() => useRunCountHarness(), { wrapper: MemoryRouter });
+
+    // Regression guard: numeric rows must still resolve to numberRange, not TanStack's inNumberRange.
+    expect(result.current.table.getColumn('run_count')?.columnDef.filterFn).toBe('numberRange');
+
+    act(() => {
+      result.current.table.getColumn('run_count')?.setFilterValue({ $gte: 5, $lte: 20 });
+    });
+
+    await waitFor(
+      () =>
+        expect(result.current.dataViewState.apiFilter.filter).toEqual({
+          run_count: { $gte: 5, $lte: 20 },
+        }),
+      { timeout: 2000 }
+    );
+  });
+});

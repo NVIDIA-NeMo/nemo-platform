@@ -4,64 +4,62 @@
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { CJobCancellableStatuses, CJobLaunchableStatuses } from '@nemo/common/src/constants/query';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
-import {
-  getCustomizationGetJobQueryKey,
-  CustomizationGetJobQueryResult,
-  useCustomizationCancelJob,
-} from '@nemo/sdk/vendored/customizer/api';
+import { getJobsGetJobQueryKey } from '@nemo/sdk/generated/platform/api';
+import { PlatformJobStatus, type PlatformJobResponse } from '@nemo/sdk/generated/platform/schema';
+import { useCustomizationCancelJob } from '@nemo/sdk/vendored/customizer/api';
+import type { CustomizationBackend } from '@nemo/sdk/vendored/customizer/schema';
 import { Button } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
-import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getNewEvaluationMetricRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
 import { FC } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 interface DetailActionsProps {
   model?: string;
   status?: PlatformJobStatus;
+  /** Training backend of this job, needed to target the correct per-backend cancel endpoint. */
+  backend?: CustomizationBackend;
+  /** Job name (from the route). */
+  name: string;
 }
 
 /**
  * This component renders the primary top-level CTAs for the customization job details page.
  */
-export const DetailActions: FC<DetailActionsProps> = ({ model, status }) => {
+export const DetailActions: FC<DetailActionsProps> = ({ model, status, backend, name }) => {
   const toast = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const workspace = useWorkspaceFromPath();
-  const { [ROUTE_PARAMS.customizationJobId]: jobId } = useParams();
   const { mutateAsync, isPending } = useCustomizationCancelJob({
     mutation: {
       onSuccess: () => {
         toast.success('Job cancelled successfully.');
-        if (jobId) {
-          // Optimistically update the job status to cancelled
-          queryClient.setQueryData(
-            getCustomizationGetJobQueryKey(workspace, jobId),
-            (oldData: CustomizationGetJobQueryResult | undefined) => {
-              if (!oldData) return oldData;
-              return {
-                ...oldData,
-                status: PlatformJobStatus.cancelled,
-              };
-            }
-          );
-        }
+        // Optimistically update the cached (generic) job status to cancelled
+        queryClient.setQueryData(
+          getJobsGetJobQueryKey(workspace, name),
+          (oldData: PlatformJobResponse | undefined) => {
+            if (!oldData) return oldData;
+            return {
+              ...oldData,
+              status: PlatformJobStatus.cancelled,
+            };
+          }
+        );
       },
     },
   });
 
   const cancelJob = async () => {
-    if (!jobId) {
-      toast.error('Job ID is required');
+    if (!backend) {
+      toast.error('Unable to determine the training backend for this job.');
       return;
     }
     try {
-      await mutateAsync({ workspace, name: jobId });
+      await mutateAsync({ workspace, backend, name });
     } catch (e) {
       if (e instanceof AxiosError || e instanceof Error) {
         toast.error(`Failed to cancel job: ${getErrorMessage(e)}`);
@@ -71,7 +69,7 @@ export const DetailActions: FC<DetailActionsProps> = ({ model, status }) => {
     }
   };
 
-  const disabled = isPending || !jobId;
+  const disabled = isPending || !backend;
   if (isPending || status === PlatformJobStatus.cancelling) {
     return (
       <LoadingButton kind="secondary" loading disabled>

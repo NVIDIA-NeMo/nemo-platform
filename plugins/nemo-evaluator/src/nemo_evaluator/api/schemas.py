@@ -133,16 +133,30 @@ class MetricInline(BaseModel):
     payload: MetricPayload = Field(description="Format-specific serialized metric.")
 
 
-# A reference is ``name`` or ``workspace/name``, each segment using the platform name charset.
-# Enforced on the field so empty/malformed refs are rejected at validation rather than during parsing.
-_METRIC_REF_PATTERN = r"^[\w\-.]+(/[\w\-.]+)?$"
+# An entity reference is ``name`` or ``workspace/name``, each segment using the platform name charset.
+# Shared by every ``workspace/name`` reference type (metrics, tasks). Enforced on the field so
+# empty/malformed refs are rejected at validation rather than during parsing.
+_ENTITY_REF_PATTERN = r"^[\w\-.]+(/[\w\-.]+)?$"
+
+
+def parse_entity_ref(root: str, default_workspace: str) -> tuple[str, str]:
+    """Split a validated ``workspace/name`` (or bare ``name``) reference into ``(workspace, name)``.
+
+    The ``workspace/name`` vs bare-``name`` shape is guaranteed by the field's ``_ENTITY_REF_PATTERN``,
+    so this only needs to split. Shared by every reference type (metrics, tasks); lives here — next to
+    the pattern, with no entity dependency — so ref-owning modules can reuse it without cycling.
+    """
+    workspace, separator, name = root.partition("/")
+    if separator:
+        return workspace, name
+    return default_workspace, root
 
 
 class MetricRef(RootModel[str]):
     """Reference to a persisted metric (format: ``workspace/name`` or ``name``)."""
 
     root: str = Field(
-        pattern=_METRIC_REF_PATTERN,
+        pattern=_ENTITY_REF_PATTERN,
         description="Reference to a stored metric (format: workspace/metric-name, or metric-name in the job workspace).",
     )
 
@@ -151,6 +165,19 @@ class MetricRef(RootModel[str]):
 #: ``MetricInline``) rather than in ``metric_refs`` so entity/DTO modules can use it without importing
 #: the ref-resolution logic (which depends on ``entities`` and would cycle); ``metric_refs`` re-exports.
 MetricRefOrInline: TypeAlias = MetricInline | MetricRef
+
+
+class TaskRef(RootModel[str]):
+    """Reference to a persisted task (format: ``workspace/name`` or ``name``).
+
+    Same shape and charset as :class:`MetricRef` — a taskset points at its member tasks by reference
+    (there are no inline tasks), so a stored taskset only ever holds refs.
+    """
+
+    root: str = Field(
+        pattern=_ENTITY_REF_PATTERN,
+        description="Reference to a stored task (format: workspace/task-name, or task-name in the taskset workspace).",
+    )
 
 
 class Metric(BaseModel):
@@ -345,6 +372,77 @@ class TaskSort(StrEnum):
 
 class TaskFilter(Filter):
     """Filter for task queries (top-level entity columns only; custom-field filtering is a follow-up)."""
+
+    workspace: str | None = Field(None, description="Filter by workspace.")
+    name: str | None = Field(None, description="Filter by name.")
+    created_at: DatetimeFilter | None = Field(None, description="Filter by creation date.")
+    updated_at: DatetimeFilter | None = Field(None, description="Filter by update date.")
+
+
+def _reject_duplicate_task_refs(refs: list[TaskRef]) -> list[TaskRef]:
+    """A taskset's members are an unordered set expressed as a list; a repeated ref is ambiguous
+    (it can't mean anything more than membership), so reject duplicates at validation."""
+    seen: set[str] = set()
+    for ref in refs:
+        if ref.root in seen:
+            raise ValueError(f"duplicate task reference: {ref.root!r}")
+        seen.add(ref.root)
+    return refs
+
+
+#: A list of task references with set semantics (order not significant, duplicates rejected).
+TaskRefList: TypeAlias = Annotated[list[TaskRef], AfterValidator(_reject_duplicate_task_refs)]
+
+
+class Taskset(BaseModel):
+    """API representation of a stored taskset — a flexible grouping of tasks with metadata.
+
+    Members are referenced by ``workspace/name`` (there are no inline tasks). Membership is a set:
+    order is not significant and duplicate references are rejected.
+    """
+
+    id: str = Field(description="Unique identifier for the stored taskset record.")
+    name: str = Field(description="Taskset name — the stable id, unique within its workspace.")
+    workspace: str = Field(description="Workspace the taskset belongs to.")
+    project: str | None = Field(default=None, description="The project associated with this taskset.")
+    description: str | None = Field(default=None, description="Human-readable description of the grouping.")
+    tasks: TaskRefList = Field(
+        default_factory=list, description="References to the member tasks (set semantics; duplicates rejected)."
+    )
+    metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the taskset.")
+    created_at: datetime = Field(description="Timestamp the taskset was created.")
+    updated_at: datetime = Field(description="Timestamp the taskset was last updated.")
+
+
+class TasksetInput(BaseModel):
+    """Create/replace body for a stored taskset (the name comes from the path).
+
+    The authorable subset of :class:`Taskset` — minus server-owned fields (id, name, workspace,
+    timestamps).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    description: str | None = Field(default=None, description="Human-readable description of the grouping.")
+    tasks: TaskRefList = Field(
+        default_factory=list, description="References to the member tasks (set semantics; duplicates rejected)."
+    )
+    metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the taskset.")
+
+
+class TasksetSort(StrEnum):
+    """Sort fields for taskset queries."""
+
+    NAME_ASC = "name"
+    NAME_DESC = "-name"
+    CREATED_AT_ASC = "created_at"
+    CREATED_AT_DESC = "-created_at"
+    UPDATED_AT_ASC = "updated_at"
+    UPDATED_AT_DESC = "-updated_at"
+
+
+class TasksetFilter(Filter):
+    """Filter for taskset queries (top-level entity columns only; custom-field filtering is a follow-up)."""
 
     workspace: str | None = Field(None, description="Filter by workspace.")
     name: str | None = Field(None, description="Filter by name.")

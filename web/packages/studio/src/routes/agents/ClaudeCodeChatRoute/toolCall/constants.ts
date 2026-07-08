@@ -47,7 +47,6 @@ export const CODE_BLOCK_SURFACE_CLASS = 'bg-gray-050 dark:bg-gray-900';
 export const FILE_CHANGE_ADDITION_CLASS = 'text-feedback-success';
 export const FILE_CHANGE_DELETION_CLASS = 'text-feedback-danger';
 export const SUBTLE_MESSAGE_MAX_LENGTH = 160;
-export const RUNNING_TOOL_CALL_CLASS = 'claude-code-tool-call-running';
 
 export const SUBTLE_TOOL_ICONS: Record<string, LucideIcon> = {
   AskUserQuestion: CircleHelp,

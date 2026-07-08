@@ -1,35 +1,38 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-vi.mock('@nemo/common/src/namedEntity', () => ({
-  getURNFromNamedEntityRef: vi.fn(),
-}));
-
-import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
-import type { ModelEntity } from '@nemo/sdk/generated/platform/schema';
+import type { FinetuningType } from '@nemo/sdk/generated/platform/schema';
 import type {
   CustomizationJob,
   CustomizationJobStatusDetails,
-  FinetuningType,
 } from '@nemo/sdk/vendored/customizer/schema';
 import {
   formatFinetuningType,
   getBaseModel,
-  getCustomizationConfigurationName,
-  getCustomizationConfigurationURN,
   getCustomizationTrainingProgress,
   getCustomizationTrainingSteps,
-  getDatasetName,
+  getDatasetUri,
   getFailureMessage,
   getFormattedCustomizationStatus,
   getFormattedTrainingType,
   getProgressLogs,
+  getTrainingBatchSize,
 } from '@studio/util/customizations';
+
+/** Minimal automodel job (carries `parallelism`). */
+const automodelJob = (spec: Record<string, unknown>): CustomizationJob =>
+  ({ spec: { parallelism: {}, ...spec } }) as unknown as CustomizationJob;
+
+/** Minimal unsloth job (carries `hardware`). */
+const unslothJob = (spec: Record<string, unknown>): CustomizationJob =>
+  ({ spec: { hardware: {}, ...spec } }) as unknown as CustomizationJob;
 
 describe('getFormattedTrainingType', () => {
   it('Returns the correctly formatted training type', () => {
     expect(getFormattedTrainingType('lora')).toEqual('LoRA');
     expect(getFormattedTrainingType('sft')).toEqual('SFT');
+    expect(getFormattedTrainingType('distillation')).toEqual('Distillation');
+    expect(getFormattedTrainingType('all_weights')).toEqual('All Weights');
   });
 });
 
@@ -38,28 +41,7 @@ describe('formatFinetuningType', () => {
     ['lora', 'LoRA'],
     ['lora_merged', 'LoRA Merged'],
     ['all_weights', 'All Weights'],
-    ['last_layer', 'Last Layer'],
-    ['top_layers', 'Top Layers'],
-    ['gradual_unfreezing', 'Gradual Unfreezing'],
-    ['bias_only', 'Bias Only'],
-    ['attention_only', 'Attention Only'],
-    ['qlora', 'QLoRA'],
-    ['adalora', 'AdaLoRA'],
     ['dora', 'DoRA'],
-    ['lora_plus', 'LoRA+'],
-    ['prompt_tuning', 'Prompt Tuning'],
-    ['prefix_tuning', 'Prefix Tuning'],
-    ['p_tuning', 'P-Tuning'],
-    ['p_tuning_v2', 'P-Tuning v2'],
-    ['soft_prompt', 'Soft Prompt'],
-    ['ppo', 'PPO'],
-    ['dpo', 'DPO'],
-    ['cdpo', 'cDPO'],
-    ['ipo', 'IPO'],
-    ['orpo', 'ORPO'],
-    ['kto', 'KTO'],
-    ['rrhf', 'RRHF'],
-    ['grpo', 'GRPO'],
   ])('formats %s as %s', (input, expected) => {
     expect(formatFinetuningType(input as FinetuningType)).toEqual(expected);
   });
@@ -83,31 +65,44 @@ describe('getBaseModel', () => {
     expect(getBaseModel(undefined)).toBe('');
   });
 
-  it('returns model from spec', () => {
-    const job = { spec: { model: 'my-model' } } as unknown as CustomizationJob;
-    expect(getBaseModel(job)).toBe('my-model');
+  it('returns model string for automodel jobs', () => {
+    expect(getBaseModel(automodelJob({ model: 'my-model' }))).toBe('my-model');
   });
 
-  it('returns empty string when spec.model is missing', () => {
-    const job = { spec: {} } as unknown as CustomizationJob;
-    expect(getBaseModel(job)).toBe('');
+  it('returns model.name for unsloth jobs', () => {
+    expect(getBaseModel(unslothJob({ model: { name: 'my-model' } }))).toBe('my-model');
+  });
+
+  it('returns empty string when the model is missing', () => {
+    expect(getBaseModel(automodelJob({}))).toBe('');
   });
 });
 
-describe('getDatasetName', () => {
-  it('returns string dataset URI', () => {
-    const job = { spec: { dataset: 'urn:dataset:abc' } } as unknown as CustomizationJob;
-    expect(getDatasetName(job)).toBe('urn:dataset:abc');
+describe('getDatasetUri', () => {
+  it('returns dataset.training for automodel jobs', () => {
+    expect(getDatasetUri(automodelJob({ dataset: { training: 'urn:dataset:abc' } }))).toBe(
+      'urn:dataset:abc'
+    );
   });
 
-  it('returns empty string for non-string dataset', () => {
-    const job = { spec: { dataset: 123 } } as unknown as CustomizationJob;
-    expect(getDatasetName(job)).toBe('');
+  it('returns dataset.path for unsloth jobs', () => {
+    expect(getDatasetUri(unslothJob({ dataset: { path: 'urn:dataset:xyz' } }))).toBe(
+      'urn:dataset:xyz'
+    );
   });
 
-  it('returns empty string when dataset is undefined', () => {
-    const job = { spec: {} } as unknown as CustomizationJob;
-    expect(getDatasetName(job)).toBe('');
+  it('returns empty string when job is undefined', () => {
+    expect(getDatasetUri(undefined)).toBe('');
+  });
+});
+
+describe('getTrainingBatchSize', () => {
+  it('uses global_batch_size for automodel', () => {
+    expect(getTrainingBatchSize(automodelJob({ batch: { global_batch_size: 16 } }))).toBe(16);
+  });
+
+  it('uses per_device_train_batch_size for unsloth', () => {
+    expect(getTrainingBatchSize(unslothJob({ batch: { per_device_train_batch_size: 4 } }))).toBe(4);
   });
 });
 
@@ -155,75 +150,21 @@ describe('getCustomizationTrainingProgress', () => {
   });
 
   it('returns empty string when epoch and percentage_done are both null', () => {
-    const job = {
-      status_details: {},
-      spec: { training: { epochs: 5 } },
-    } as unknown as CustomizationJob;
+    const job = automodelJob({ schedule: { epochs: 5 } });
+    (job as { status_details?: unknown }).status_details = {};
     expect(getCustomizationTrainingProgress(job)).toBe('');
   });
 
   it('returns formatted progress string', () => {
-    const job = {
-      status_details: { epoch: 2, percentage_done: 40 },
-      spec: { training: { epochs: 5 } },
-    } as unknown as CustomizationJob;
+    const job = automodelJob({ schedule: { epochs: 5 } });
+    (job as { status_details?: unknown }).status_details = { epoch: 2, percentage_done: 40 };
     expect(getCustomizationTrainingProgress(job)).toBe('2/5 (40%)');
   });
 
   it('handles missing epoch gracefully', () => {
-    const job = {
-      status_details: { percentage_done: 60 },
-      spec: { training: { epochs: 3 } },
-    } as unknown as CustomizationJob;
+    const job = automodelJob({ schedule: { epochs: 3 } });
+    (job as { status_details?: unknown }).status_details = { percentage_done: 60 };
     expect(getCustomizationTrainingProgress(job)).toBe('0/3 (60%)');
-  });
-});
-
-describe('getCustomizationConfigurationName', () => {
-  it('returns empty string for falsy input', () => {
-    expect(getCustomizationConfigurationName('' as unknown as ModelEntity)).toBe('');
-  });
-
-  it('returns string input as-is', () => {
-    expect(getCustomizationConfigurationName('my-config')).toBe('my-config');
-  });
-
-  it('returns name from ModelEntity', () => {
-    const model = { name: 'test-model' } as unknown as ModelEntity;
-    expect(getCustomizationConfigurationName(model)).toBe('test-model');
-  });
-});
-
-describe('getCustomizationConfigurationURN', () => {
-  beforeEach(() => {
-    vi.mocked(getURNFromNamedEntityRef).mockReset();
-  });
-
-  it('returns undefined when customization is undefined', () => {
-    expect(getCustomizationConfigurationURN(undefined)).toBeUndefined();
-  });
-
-  it('returns undefined when model is missing', () => {
-    const job = { spec: {} } as unknown as CustomizationJob;
-    expect(getCustomizationConfigurationURN(job)).toBeUndefined();
-  });
-
-  it('returns string model as a resource ref', () => {
-    const job = { spec: { model: 'default/model-123' } } as unknown as CustomizationJob;
-    expect(getCustomizationConfigurationURN(job)).toBe('default/model-123');
-  });
-
-  it('returns undefined for string model that is not a resource ref', () => {
-    const job = { spec: { model: 'urn:model:123' } } as unknown as CustomizationJob;
-    expect(getCustomizationConfigurationURN(job)).toBeUndefined();
-  });
-
-  it('calls getURNFromNamedEntityRef for object model', () => {
-    vi.mocked(getURNFromNamedEntityRef).mockReturnValue('default/model-456' as never);
-    const modelObj = { name: 'obj-model' };
-    const job = { spec: { model: modelObj } } as unknown as CustomizationJob;
-    expect(getCustomizationConfigurationURN(job)).toBe('default/model-456');
-    expect(getURNFromNamedEntityRef).toHaveBeenCalledWith(modelObj);
   });
 });
 

@@ -1,14 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
-import { resourceRefSchema, type ResourceRef } from '@nemo/common/src/types';
 import { formatFinetuningType } from '@nemo/common/src/utils/formatters';
-import type { ModelEntity, PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
-import type {
-  CustomizationJob,
-  CustomizationJobStatusDetails,
-  ParallelismParams,
+import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
+import {
+  isAutomodelJob,
+  isUnslothJob,
+  type CustomizationJob,
+  type CustomizationJobStatusDetails,
 } from '@nemo/sdk/vendored/customizer/schema';
 import { Badge } from '@nvidia/foundations-react-core';
 import { getTextWithCount } from '@studio/util/strings';
@@ -19,7 +18,7 @@ export { formatFinetuningType };
 
 export type FileType = 'training' | 'testing' | 'validation';
 
-/** Training/finetuning type for display (API uses training.type and training.peft). */
+/** Training/finetuning type for display (e.g. training.training_type / training.finetuning_type). */
 export const getFormattedTrainingType = (type?: string) => {
   if (type === undefined) {
     return '';
@@ -28,11 +27,14 @@ export const getFormattedTrainingType = (type?: string) => {
     case 'lora': {
       return 'LoRA';
     }
+    case 'lora_merged': {
+      return 'LoRA (merged)';
+    }
+    case 'all_weights': {
+      return 'All Weights';
+    }
     case 'sft': {
       return 'SFT';
-    }
-    case 'dpo': {
-      return 'DPO';
     }
     case 'distillation': {
       return 'Distillation';
@@ -68,25 +70,54 @@ export const getFormattedCustomizationStatus = (
 };
 
 /**
- * Returns the name of the parent model from a given customization job.
+ * Returns the base model reference for a customization job. Automodel stores it as a string;
+ * unsloth stores it as a `ModelLoadSpec` whose `name` is the reference.
  */
-export const getBaseModel = (customizationJob?: CustomizationJob) => {
+export const getBaseModel = (customizationJob?: CustomizationJob): string => {
   if (!customizationJob) {
     return '';
   }
-  return customizationJob.spec?.model ?? '';
+  if (isUnslothJob(customizationJob)) {
+    return customizationJob.spec.model.name ?? '';
+  }
+  if (isAutomodelJob(customizationJob)) {
+    return customizationJob.spec.model ?? '';
+  }
+  return '';
 };
 
 /**
- * Returns the name of the dataset from a given customization job.
+ * Returns the training dataset URI for a customization job. Automodel stores it under
+ * `dataset.training`; unsloth stores it under `dataset.path`.
  */
-export const getDatasetName = (customization: CustomizationJob) => {
-  // Platform: dataset is always a URI string in spec
-  const datasetURI = customization.spec?.dataset;
-  if (typeof datasetURI === 'string') {
-    return datasetURI;
+export const getDatasetUri = (customizationJob?: CustomizationJob): string => {
+  if (!customizationJob) {
+    return '';
+  }
+  if (isAutomodelJob(customizationJob)) {
+    return customizationJob.spec.dataset.training ?? '';
+  }
+  if (isUnslothJob(customizationJob)) {
+    return customizationJob.spec.dataset.path ?? '';
   }
   return '';
+};
+
+/**
+ * Effective training batch size, used to compute the loss-chart x-axis. Automodel uses
+ * `batch.global_batch_size`; unsloth uses `batch.per_device_train_batch_size`.
+ */
+export const getTrainingBatchSize = (customizationJob?: CustomizationJob): number => {
+  if (!customizationJob) {
+    return 0;
+  }
+  if (isAutomodelJob(customizationJob)) {
+    return customizationJob.spec.batch.global_batch_size ?? 0;
+  }
+  if (isUnslothJob(customizationJob)) {
+    return customizationJob.spec.batch.per_device_train_batch_size ?? 0;
+  }
+  return 0;
 };
 
 /** Log entry in customization job status_details.status_logs */
@@ -120,7 +151,7 @@ export const getCustomizationTrainingProgress = (customization: CustomizationJob
     return '';
   }
 
-  const { epochs } = customization.spec?.training || {};
+  const epochs = customization.spec?.schedule?.epochs;
 
   const { epoch, percentage_done: percentageDone } = customization.status_details || {};
 
@@ -131,84 +162,49 @@ export const getCustomizationTrainingProgress = (customization: CustomizationJob
   return `${epoch ?? 0}/${epochs ?? '?'} (${Math.floor(Number(percentageDone) || 0)}%)`;
 };
 
-export const getCustomizationConfigurationName = (config: ModelEntity | string) => {
-  if (!config) {
-    return '';
-  }
-  if (typeof config === 'string') {
-    return config;
-  }
-  if ('name' in config) {
-    return config.name || '';
-  }
-  return '';
-};
+const badge = (key: string, icon: ReactNode, label: string): ReactNode => (
+  <Badge key={key} color="gray" kind="solid">
+    {icon}
+    {label}
+  </Badge>
+);
 
-export const getCustomizationConfigurationURN = (
-  customization?: CustomizationJob
-): ResourceRef | undefined => {
-  const model = customization?.spec?.model;
-  if (!customization || !model) {
-    return undefined;
-  }
-  if (typeof model === 'string') {
-    const parsed = resourceRefSchema.safeParse(model);
-    return parsed.success ? parsed.data : undefined;
-  }
-  return getURNFromNamedEntityRef(model);
-};
+/**
+ * Compute-configuration badges for a customization job. Automodel exposes distributed-training
+ * `parallelism`; unsloth exposes single-node `hardware` (GPU list + precision).
+ */
+export const getTrainingOptionBadges = (job: CustomizationJob | null | undefined): ReactNode[] => {
+  if (!job) return [];
 
-// Platform: training.parallelism has num_gpus_per_node, num_nodes, etc.
-type TrainingOptionKey =
-  | 'num_gpus_per_node'
-  | 'num_nodes'
-  | 'tensor_parallel_size'
-  | 'sequence_parallel';
-const keysToUse: TrainingOptionKey[] = [
-  'num_gpus_per_node',
-  'num_nodes',
-  'tensor_parallel_size',
-  'sequence_parallel',
-];
-const keyToMeta: Partial<
-  Record<TrainingOptionKey, { icon?: ReactNode; label: (val: string) => string }>
-> = {
-  num_gpus_per_node: {
-    icon: <Gpu />,
-    label: (val: string) => getTextWithCount('GPU', parseInt(val)),
-  },
-  num_nodes: {
-    icon: <Circle />,
-    label: (val: string) => getTextWithCount('Node', parseInt(val)),
-  },
-  tensor_parallel_size: {
-    icon: <Gpu />,
-    label: (val: string) => getTextWithCount('Tensor Parallel', parseInt(val)),
-  },
-  sequence_parallel: {
-    label: (val: string) => `Sequence: ${val}`,
-  },
-};
+  if (isAutomodelJob(job)) {
+    const p = job.spec.parallelism;
+    const badges: ReactNode[] = [
+      badge('num_gpus_per_node', <Gpu />, getTextWithCount('GPU', p.num_gpus_per_node)),
+      badge('num_nodes', <Circle />, getTextWithCount('Node', p.num_nodes)),
+      badge(
+        'tensor_parallel_size',
+        <Gpu />,
+        getTextWithCount('Tensor Parallel', p.tensor_parallel_size)
+      ),
+    ];
+    if (p.sequence_parallel) {
+      badges.push(badge('sequence_parallel', undefined, 'Sequence Parallel'));
+    }
+    return badges;
+  }
 
-/** Accepts spec.training (has optional parallelism). */
-export const getTrainingOptionBadges = (
-  training: { parallelism?: ParallelismParams } | null | undefined
-): ReactNode[] => {
-  const p = training?.parallelism;
-  if (!p) return [];
-  return keysToUse
-    .map((key) => {
-      const val = p[key as keyof ParallelismParams]?.toString() ?? '';
-      if (val === '' && key !== 'sequence_parallel') return null;
-      const meta = keyToMeta[key];
-      return (
-        <Badge key={key} color="gray" kind="solid">
-          {meta?.icon}
-          {meta?.label(val)}
-        </Badge>
-      );
-    })
-    .filter(Boolean) as ReactNode[];
+  if (isUnslothJob(job)) {
+    const { gpus, precision } = job.spec.hardware;
+    const badges: ReactNode[] = [];
+    if (gpus) {
+      const gpuCount = gpus.split(',').filter(Boolean).length;
+      badges.push(badge('gpus', <Gpu />, getTextWithCount('GPU', gpuCount)));
+    }
+    badges.push(badge('precision', undefined, `Precision: ${precision}`));
+    return badges;
+  }
+
+  return [];
 };
 
 /**

@@ -19,12 +19,10 @@ import {
   getPromptTuningFormRoute,
   getSecretsRoute,
   getWorkspaceBaseModelsRoute,
-  getWorkspaceCustomizationJobListRoute,
   getWorkspaceDeploymentsRoute,
   getWorkspaceInferenceProvidersRoute,
   getWorkspaceJobsRoute,
   getWorkspaceMembersRoute,
-  getWorkspaceNewCustomizationJobRoute,
   getWorkspaceSafeSynthesizerRoute,
   getWorkspaceSettingsRoute,
 } from '@studio/routes/utils';
@@ -179,19 +177,6 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
     patterns: [/\bprompt[-\s]?tun(e|ing)\b/i],
   },
   {
-    id: 'fine-tuning',
-    title: 'Open Fine-Tuning',
-    description: 'Studio has a UI for creating fine-tuned custom models.',
-    getHref: getWorkspaceNewCustomizationJobRoute,
-    requiredFeatureFlags: ['customizerEnabled'],
-    patterns: [
-      /\bfine[-\s]?tun(e|ing)\b/i,
-      /\bfinetun(e|ing)\b/i,
-      /\btrain (a )?(model|custom model)\b/i,
-      /\bcustomi[sz]e (a )?model\b/i,
-    ],
-  },
-  {
     id: 'model-playground',
     title: 'Open Playground',
     description: 'Studio has a playground UI for chatting with and comparing models.',
@@ -229,14 +214,6 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
       /\bbrowse models?\b/i,
       /\blist models?\b/i,
     ],
-  },
-  {
-    id: 'custom-models',
-    title: 'Open Custom Models',
-    description: 'Studio has a UI for managing custom models and customization jobs.',
-    getHref: getWorkspaceCustomizationJobListRoute,
-    requiredFeatureFlags: ['customizerEnabled'],
-    patterns: [/\bcustom models?\b/i, /\bcustomization jobs?\b/i],
   },
   {
     id: 'agents',

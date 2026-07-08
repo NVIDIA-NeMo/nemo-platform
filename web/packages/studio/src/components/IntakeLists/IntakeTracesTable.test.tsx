@@ -28,6 +28,32 @@ describe('IntakeTracesTable', () => {
     expect(requestedModes).not.toContain('summary');
   });
 
+  it('seeds a clearable 30-day started_at filter into trace list requests', async () => {
+    const user = userEvent.setup();
+    const startedAtParams: Array<string | null> = [];
+    server.use(
+      http.get('*/apis/intake/v2/workspaces/:workspace/traces', ({ request }) => {
+        startedAtParams.push(new URL(request.url).searchParams.get('filter[started_at][$gte]'));
+        return HttpResponse.json(mockTracesPage);
+      })
+    );
+
+    renderRoute(<IntakeTracesTable workspace="default" />, {
+      history: '/workspaces/default/intake/traces',
+    });
+
+    await screen.findByText('Answer customer policy question');
+    await waitFor(() => expect(startedAtParams.filter(Boolean).length).toBeGreaterThan(0));
+
+    const seededGte = new Date(startedAtParams.filter(Boolean).at(-1) as string);
+    const daysAgo = (Date.now() - seededGte.getTime()) / 86_400_000;
+    expect(daysAgo).toBeGreaterThanOrEqual(29);
+    expect(daysAgo).toBeLessThanOrEqual(31);
+
+    await user.click(screen.getByTestId('clear-filters'));
+    await waitFor(() => expect(startedAtParams.at(-1)).toBeNull());
+  });
+
   it('shows explicit trace filter facets', async () => {
     const user = userEvent.setup();
 

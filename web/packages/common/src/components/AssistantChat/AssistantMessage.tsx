@@ -17,6 +17,9 @@ import type { MessageRenderProps } from '@nemo/common/src/components/AssistantCh
 import { Skeleton, Tooltip } from '@nvidia/foundations-react-core';
 import { RefreshCw } from 'lucide-react';
 
+const ASSISTANT_MESSAGE_SURFACE_CLASS =
+  'w-full max-w-full rounded-lg border border-base border-l-4 border-l-[var(--border-color-brand)] bg-surface-base px-density-lg py-density-md shadow ring-1 ring-black/5 dark:ring-white/10';
+
 export const AssistantMessage = ({
   hideAssistantMessageActions,
   messageContentProps,
@@ -26,10 +29,9 @@ export const AssistantMessage = ({
   hideAssistantMessageActions?: boolean;
   showRunningIndicator?: boolean;
 }) => {
-  const isToolOnlyMessage = useAuiState((state) => {
-    const { parts } = state.message;
-    return parts.length > 0 && parts.every((part) => part.type === 'tool-call');
-  });
+  const hasRenderableContent = useAuiState((state) =>
+    state.message.parts.some((part) => part.type !== 'text' || part.text.trim().length > 0)
+  );
 
   return (
     <MessagePrimitive.Root
@@ -37,22 +39,13 @@ export const AssistantMessage = ({
       data-testspeaker="assistant"
       className="group/message flex w-full flex-col items-start gap-density-xs whitespace-normal"
     >
-      {isToolOnlyMessage ? (
+      {hasRenderableContent ? (
         <AssistantChatMessageContent
+          contentSurfaceClassName={ASSISTANT_MESSAGE_SURFACE_CLASS}
           messageContentProps={messageContentProps}
           toolCallPartComponent={toolCallPartComponent}
         />
-      ) : (
-        <div
-          className="w-full max-w-full rounded-lg border border-base border-l-4 border-l-[var(--border-color-brand)] bg-surface-base px-density-lg py-density-md shadow ring-1 ring-black/5 dark:ring-white/10"
-          data-testid="assistant-chat-message-surface"
-        >
-          <AssistantChatMessageContent
-            messageContentProps={messageContentProps}
-            toolCallPartComponent={toolCallPartComponent}
-          />
-        </div>
-      )}
+      ) : null}
       {showRunningIndicator ? (
         <MessagePrimitive.If last>
           <ThreadPrimitive.If running>

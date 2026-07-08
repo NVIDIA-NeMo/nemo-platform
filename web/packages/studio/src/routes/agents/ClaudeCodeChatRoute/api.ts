@@ -188,6 +188,7 @@ const parseHistorySession = (value: unknown): ClaudeCodeHistorySession | undefin
   return {
     session_id: sessionId,
     mtime: getNumber(value.mtime),
+    title: getOptionalString(value.title),
     first_prompt: getString(value.first_prompt),
     message_count: getNumber(value.message_count),
     token_count: getNumber(value.token_count),

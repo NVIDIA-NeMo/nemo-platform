@@ -40,6 +40,7 @@ from nemo_platform_plugin.entities import (
     EntityNotFoundError,
 )
 from nemo_platform_plugin.filter_ops import FilterOperation
+from nemo_platform_plugin.log_utils import sanitize_for_log
 from nemo_platform_plugin.schema import Page, PaginationData
 
 #: Reserved name prefix for content-addressed derived metrics (auto-stored from inline task metrics).
@@ -52,11 +53,6 @@ _MAX_ENTITY_NAME_LENGTH = 63
 _DERIVED_DIGEST_LENGTH = _MAX_ENTITY_NAME_LENGTH - len(_DERIVED_METRIC_PREFIX)
 
 logger = logging.getLogger(__name__)
-
-
-def _sanitize_for_log(value: object) -> str:
-    """Strip line-break/control characters to prevent log injection."""
-    return str(value).replace("\r", "").replace("\n", "")
 
 
 def _and_exclude_derived(filter_operation: FilterOperation | None) -> FilterOperation:
@@ -142,7 +138,7 @@ class MetricService:
     ) -> Metric:
         """Store a new metric (addressed by workspace/name): upload its bundle, then index it."""
         logger.debug(
-            "Creating metric", extra={"workspace": _sanitize_for_log(workspace), "metric_name": _sanitize_for_log(name)}
+            "Creating metric", extra={"workspace": sanitize_for_log(workspace), "metric_name": sanitize_for_log(name)}
         )
 
         # Cheap pre-check to avoid uploading a (potentially large) bundle we would
@@ -179,7 +175,7 @@ class MetricService:
 
         logger.info(
             "Metric created",
-            extra={"workspace": _sanitize_for_log(created.workspace), "metric_name": _sanitize_for_log(created.name)},
+            extra={"workspace": sanitize_for_log(created.workspace), "metric_name": sanitize_for_log(created.name)},
         )
         return _entity_to_schema(created)
 
@@ -283,7 +279,7 @@ class MetricService:
             return False
         await self._discard_bundle(entity.bundle_ref)
         logger.info(
-            "Metric deleted", extra={"workspace": _sanitize_for_log(workspace), "metric_name": _sanitize_for_log(name)}
+            "Metric deleted", extra={"workspace": sanitize_for_log(workspace), "metric_name": sanitize_for_log(name)}
         )
         return True
 
@@ -300,6 +296,6 @@ class MetricService:
         except Exception:
             logger.warning(
                 "Failed to delete unreferenced metric bundle fileset; storage may be leaked",
-                extra={"bundle_ref": _sanitize_for_log(bundle_ref)},
+                extra={"bundle_ref": sanitize_for_log(bundle_ref)},
                 exc_info=True,
             )
