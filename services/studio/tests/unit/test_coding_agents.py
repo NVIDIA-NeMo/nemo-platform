@@ -685,7 +685,7 @@ def test_build_studio_system_prompt_preserves_empty_enabled_destinations():
     assert destinations_line == "Enabled Studio link destinations for this Studio instance: ."
 
 
-def test_build_studio_system_prompt_includes_message_summary_contract():
+def test_build_studio_system_prompt_includes_interactive_input_contract():
     prompt = coding_agents._build_studio_system_prompt(
         "default",
         "https://studio.test",
@@ -693,25 +693,11 @@ def test_build_studio_system_prompt_includes_message_summary_contract():
         {},
     )
 
-    assert "Required message-summary behavior:" in prompt
-    assert coding_agents.STUDIO_MESSAGE_SUMMARY_START in prompt
-    assert coding_agents.STUDIO_MESSAGE_SUMMARY_END in prompt
-    assert "title: <meaningful 3-7 word title" in prompt
-    assert "worked_for: <elapsed time if you know it, otherwise unknown>" in prompt
-    assert "summary: <concise Markdown" in prompt
-    assert "details_label: worked for <same elapsed time or unknown>" in prompt
-    assert "behind a 'worked for <time>' accordion" in prompt
     assert "Never end a message with only a plain-text question" in prompt
     assert "call the matching select_* tool before completing the message" in prompt
     assert "use Claude Code's AskUserQuestion tool" in prompt
     assert "For AskUserQuestion, provide input shaped as" in prompt
     assert "A timeout, disconnect, or other interactive-tool error is not permission to continue" in prompt
-    assert "summary's final sentence MUST state the exact unresolved selection or action" in prompt
-    assert "Never show only the investigation result" in prompt
-    assert "use a numbered or bulleted list" in prompt
-    assert "repeat those links at the bottom of the summary" in prompt
-    assert "Put repeated links on separate lines without a heading" in prompt
-    assert "Do not omit the summary block because the message is short." in prompt
 
 
 def test_history_summary_reads_model_generated_session_title(tmp_path: Path):
