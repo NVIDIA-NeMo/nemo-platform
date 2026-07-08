@@ -12,7 +12,7 @@ It references an **existing** Experiment (created by the caller via the platform
 Experiments SDK) and never creates one. Per Trial it: POSTs the ATIF trajectory,
 resolves the trajectory's root span, then POSTs one evaluator-result per metric
 output. All request shapes come from :mod:`nemo_evaluator.intake.mapping`; the
-HTTP calls go through the generated platform SDK's ``intake`` resources.
+HTTP calls go through Intake's plugin-owned typed client.
 """
 
 from __future__ import annotations
@@ -25,8 +25,9 @@ from nemo_evaluator.sdk import http_utils
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
+from nemo_intake_plugin.client.client import AsyncIntakeClient
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.types.intake.trace_filter_param import TraceFilterParam
+from nemo_platform_plugin.client.adapter import client_from_platform
 from pydantic import BaseModel, ConfigDict, Field
 
 #: Default ceiling on concurrent per-trial publishes.
@@ -126,6 +127,7 @@ async def publish_to_intake(
     not carry (design §3.9 #6).
     """
     resolved_workspace = http_utils.resolve_workspace(platform, workspace, strict=True)
+    intake = client_from_platform(platform, AsyncIntakeClient)
 
     scores_by_trial: dict[str, list[AgentEvalTaskScore]] = defaultdict(list)
     for score in result.scores:
@@ -144,18 +146,16 @@ async def publish_to_intake(
                 agent_version=agent_version,
                 model_name=model_name,
             )
-            body["workspace"] = resolved_workspace
-            await platform.intake.ingest.atif.create(**body)
+            await intake.create_atif(workspace=resolved_workspace, body=body)
 
             session_id = mapping.session_id_for(result.run_id, trial.id)
-            span_id = await _resolve_root_span_id(platform, workspace=resolved_workspace, session_id=session_id)
+            span_id = await _resolve_root_span_id(intake, workspace=resolved_workspace, session_id=session_id)
 
             written = 0
             for score in scores_by_trial.get(trial.id, []):
                 rows, omitted = mapping.score_to_evaluator_results(score, session_id=session_id, span_id=span_id)
                 for row in rows:
-                    row["workspace"] = resolved_workspace
-                    await platform.intake.evaluator_results.create(**row)
+                    await intake.create_evaluator_result(workspace=resolved_workspace, body=row)
                     written += 1
                 skipped.extend(SkippedScore(trial_id=trial.id, name=item.name, reason=item.reason) for item in omitted)
 
@@ -204,10 +204,10 @@ def _publish_failure_message(
     )
 
 
-async def _resolve_root_span_id(platform: AsyncNeMoPlatform, *, workspace: str, session_id: str) -> str:
+async def _resolve_root_span_id(intake: AsyncIntakeClient, *, workspace: str, session_id: str) -> str:
     """Return the root AGENT span id for a freshly-ingested trajectory (design §3.5, option 1)."""
-    trace_filter: TraceFilterParam = {"session_id": session_id}
-    async for trace in platform.intake.traces.list(workspace=workspace, filter=trace_filter):
+    response = await intake.list_traces(workspace=workspace, query_params={"filter": {"session_id": session_id}})
+    async for trace in response.items():
         if trace.root_span_id:
             return trace.root_span_id
     raise PublishError(f"No root span resolved for session {session_id!r} after ATIF ingest")

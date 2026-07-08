@@ -3,7 +3,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import argparse
-import copy
 import inspect
 import json
 import os
@@ -127,7 +126,6 @@ FINAL_SPEC_FILES = [
     "openapi/ga/openapi.yaml",
     "openapi/ea/openapi.yaml",
 ]
-SDK_SPEC_FILE = "openapi/sdk/openapi.yaml"
 
 
 def extract_openapi_spec(service: ServiceConfig) -> tuple[str, bool, str]:
@@ -692,7 +690,7 @@ def validate_final_specs(spec_files: List[str]) -> None:
         raise RuntimeError(f"{sum(len(d) for _, d in all_dangling)} dangling $refs detected")
 
 
-def process_plugin_specs() -> list[PluginConfig]:
+def process_plugin_specs() -> None:
     """Generate, fix, and validate OpenAPI specs for all opted-in plugins.
 
     Plugin specs land in ``plugins/<dir>/openapi/`` and are never merged into
@@ -700,7 +698,7 @@ def process_plugin_specs() -> list[PluginConfig]:
     """
     plugins = discover_plugins()
     if not plugins:
-        return []
+        return
 
     print_green(f"=== STEP 5: Generating OpenAPI specs for {len(plugins)} plugin(s) ===")
     extract_plugin_specs_with_process_pool(plugins)
@@ -713,84 +711,6 @@ def process_plugin_specs() -> list[PluginConfig]:
     apply_schema_fixes(plugin_spec_files)
     fix_ref_not_allowed_errors(plugin_spec_files)
     validate_final_specs(plugin_spec_files)
-    return plugins
-
-
-def merge_sdk_specs_strict(specs_with_files: list[tuple[dict, str]]) -> dict:
-    """Merge platform and SDK-opted plugin OpenAPI specs for Python SDK generation.
-
-    Paths must be disjoint. Component schema duplicates are accepted only when
-    the definitions are identical; the first definition wins.
-    """
-    if not specs_with_files:
-        raise ValueError("No specifications provided for SDK OpenAPI merge")
-
-    merged = copy.deepcopy(specs_with_files[0][0])
-    first_file = specs_with_files[0][1]
-    merged.setdefault("paths", {})
-    merged.setdefault("components", {})
-    merged["components"].setdefault("schemas", {})
-
-    schema_sources = {name: first_file for name in merged["components"]["schemas"]}
-
-    for spec, filename in specs_with_files[1:]:
-        for path, methods in spec.get("paths", {}).items():
-            if path in merged["paths"]:
-                raise ValueError(f"SDK OpenAPI merge path collision for {path!r}: {filename}")
-            merged["paths"][path] = methods
-
-        for component_type, components in spec.get("components", {}).items():
-            merged["components"].setdefault(component_type, {})
-            for name, component in components.items():
-                if name not in merged["components"][component_type]:
-                    merged["components"][component_type][name] = component
-                    if component_type == "schemas":
-                        schema_sources[name] = filename
-                    continue
-
-                existing = merged["components"][component_type][name]
-                if existing == component:
-                    continue
-                if component_type == "schemas":
-                    raise ValueError(
-                        f"SDK OpenAPI merge schema collision for {name!r}: {schema_sources[name]} and {filename} differ"
-                    )
-                raise ValueError(f"SDK OpenAPI merge component collision for {component_type}.{name}: {filename}")
-
-        existing_tag_names = {
-            tag.get("name") for tag in merged.get("tags", []) if isinstance(tag, dict) and "name" in tag
-        }
-        for tag in spec.get("tags", []):
-            if not isinstance(tag, dict):
-                continue
-            tag_name = tag.get("name")
-            if tag_name not in existing_tag_names:
-                merged.setdefault("tags", []).append(tag)
-                existing_tag_names.add(tag_name)
-
-    return reorder_spec(merged)
-
-
-def write_sdk_openapi_spec(plugins: list[PluginConfig]) -> None:
-    """Write the merged OpenAPI spec consumed by Stainless/Python SDK generation."""
-    print_green("=== STEP 6: Generating SDK OpenAPI input spec ===")
-
-    specs_with_files = [(load_openapi_spec("openapi/openapi.yaml"), "openapi/openapi.yaml")]
-    for plugin in plugins:
-        if not plugin.sdk:
-            continue
-        plugin_spec_file = plugin.output_path()
-        if not os.path.exists(plugin_spec_file):
-            raise FileNotFoundError(
-                f"SDK-enabled plugin '{plugin.dir}' is missing generated OpenAPI spec at {plugin_spec_file}"
-            )
-        specs_with_files.append((load_openapi_spec(plugin_spec_file), plugin_spec_file))
-
-    merged = merge_sdk_specs_strict(specs_with_files)
-    os.makedirs(os.path.dirname(SDK_SPEC_FILE), exist_ok=True)
-    save_openapi_spec(merged, SDK_SPEC_FILE)
-    fix_ref_not_allowed_errors([SDK_SPEC_FILE])
-    validate_final_specs([SDK_SPEC_FILE])
 
 
 def main():
@@ -883,8 +803,7 @@ def main():
         fix_ref_not_allowed_errors(platform_spec_files)
         validate_final_specs(platform_spec_files)
 
-        plugins = process_plugin_specs()
-        write_sdk_openapi_spec(plugins)
+        process_plugin_specs()
 
         print_green("=== OpenAPI spec generation completed successfully! ===")
 

@@ -26,6 +26,7 @@ import urllib.request
 from collections.abc import Iterator
 from importlib.util import find_spec
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 from nemo_evaluator.intake.publish import publish_to_intake
@@ -33,13 +34,16 @@ from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSumm
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
+from nemo_intake_plugin.api.v2.experiments.schemas import ExperimentGroupRequest, ExperimentRequest
+from nemo_intake_plugin.client.client import AsyncIntakeClient
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.types.intake.trace_filter_param import TraceFilterParam
+from nemo_platform_plugin.client.adapter import client_from_platform
 
 pytestmark = pytest.mark.integration
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 BASE_URL = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
+BASE_PORT = urlsplit(BASE_URL).port or 8080
 WORKSPACE = "default"
 GROUP_NAME = "intake-it-group"
 EXPERIMENT_NAME = "intake-it-exp"
@@ -110,7 +114,17 @@ def _clickhouse() -> Iterator[None]:
 @pytest.fixture(scope="session")
 def platform_base_url(_clickhouse: None) -> Iterator[str]:
     process = subprocess.Popen(
-        ["uv", "run", "nemo", "services", "run", "--services", "auth,entities,intake"],
+        [
+            "uv",
+            "run",
+            "nemo",
+            "services",
+            "run",
+            "--services",
+            "auth,entities,intake",
+            "--port",
+            str(BASE_PORT),
+        ],
         cwd=REPO_ROOT,
         env={**os.environ, "NMP_BASE_URL": BASE_URL},
     )
@@ -174,16 +188,23 @@ def _result() -> AgentEvalResult:
 
 async def test_publish_to_intake_round_trip(platform_base_url: str) -> None:
     async with AsyncNeMoPlatform(base_url=platform_base_url, max_retries=2) as client:
+        intake = client_from_platform(client, AsyncIntakeClient)
         # Precondition: the Experiment must exist before ingest.
-        group = await client.experiment_groups.create(
-            workspace=WORKSPACE, name=GROUP_NAME, description="Intake IT", exist_ok=True
-        )
-        await client.experiments.create(
+        group = (
+            await intake.create_experiment_group(
+                workspace=WORKSPACE,
+                body=ExperimentGroupRequest(name=GROUP_NAME, description="Intake IT"),
+                exist_ok=True,
+            )
+        ).data()
+        await intake.create_experiment(
             workspace=WORKSPACE,
-            name=EXPERIMENT_NAME,
-            experiment_group_id=group.id,
-            dataset_name="intake-it-dataset",
-            dataset_version="v1",
+            body=ExperimentRequest(
+                name=EXPERIMENT_NAME,
+                experiment_group_id=group.id,
+                dataset_name="intake-it-dataset",
+                dataset_version="v1",
+            ),
             exist_ok=True,
         )
 
@@ -202,8 +223,11 @@ async def test_publish_to_intake_round_trip(platform_base_url: str) -> None:
 
         # --- trial-1: trajectory + experiment-context propagation, read back via the Intake API.
         t1 = published["trial-1"]
-        trace_filter: TraceFilterParam = {"session_id": t1.session_id}
-        traces = [trace async for trace in client.intake.traces.list(workspace=WORKSPACE, filter=trace_filter)]
+        trace_response = await intake.list_traces(
+            workspace=WORKSPACE,
+            query_params={"filter": {"session_id": t1.session_id}},
+        )
+        traces = [trace async for trace in trace_response.items()]
         assert len(traces) == 1
         trace = traces[0]
         assert trace.session_id == t1.session_id
@@ -213,7 +237,7 @@ async def test_publish_to_intake_round_trip(platform_base_url: str) -> None:
         assert trace.experiment_context.test_case_id == "task-1"
 
         # --- trial-1 scores: every field, every data_type coercion.
-        rows = await client.intake.spans.evaluator_results.list(t1.span_id, workspace=WORKSPACE)
+        rows = (await intake.list_span_evaluator_results(span_id=t1.span_id, workspace=WORKSPACE)).data().root
         by_name = {row.name: row for row in rows}
         assert set(by_name) == {"accuracy.score", "accuracy.passed", "judge.verdict"}
         for row in rows:
@@ -231,7 +255,7 @@ async def test_publish_to_intake_round_trip(platform_base_url: str) -> None:
         t2 = published["trial-2"]
         assert t2.session_id != t1.session_id
         assert t2.span_id != t1.span_id
-        rows2 = await client.intake.spans.evaluator_results.list(t2.span_id, workspace=WORKSPACE)
+        rows2 = (await intake.list_span_evaluator_results(span_id=t2.span_id, workspace=WORKSPACE)).data().root
         by_name2 = {row.name: row for row in rows2}
         assert set(by_name2) == {"accuracy.score", "accuracy.passed"}
         assert by_name2["accuracy.passed"].data_type == "BOOLEAN"
@@ -274,13 +298,22 @@ async def test_publish_skips_nan_and_failed_scores(platform_base_url: str) -> No
     # A NaN value is not representable in JSON and a FAILED score is not a real measurement; neither
     # should reach Intake. Only the finite, completed output should be stored.
     async with AsyncNeMoPlatform(base_url=platform_base_url, max_retries=2) as client:
-        group = await client.experiment_groups.create(workspace=WORKSPACE, name=GROUP_NAME, exist_ok=True)
-        await client.experiments.create(
+        intake = client_from_platform(client, AsyncIntakeClient)
+        group = (
+            await intake.create_experiment_group(
+                workspace=WORKSPACE,
+                body=ExperimentGroupRequest(name=GROUP_NAME),
+                exist_ok=True,
+            )
+        ).data()
+        await intake.create_experiment(
             workspace=WORKSPACE,
-            name=NAN_EXPERIMENT_NAME,
-            experiment_group_id=group.id,
-            dataset_name="intake-it-nan-dataset",
-            dataset_version="v1",
+            body=ExperimentRequest(
+                name=NAN_EXPERIMENT_NAME,
+                experiment_group_id=group.id,
+                dataset_name="intake-it-nan-dataset",
+                dataset_version="v1",
+            ),
             exist_ok=True,
         )
 
@@ -293,7 +326,7 @@ async def test_publish_skips_nan_and_failed_scores(platform_base_url: str) -> No
         )
 
         published = report.published_trials[0]
-        rows = await client.intake.spans.evaluator_results.list(published.span_id, workspace=WORKSPACE)
+        rows = (await intake.list_span_evaluator_results(span_id=published.span_id, workspace=WORKSPACE)).data().root
         assert {row.name for row in rows} == {"accuracy.score"}
         assert report.evaluator_result_count == 1
 

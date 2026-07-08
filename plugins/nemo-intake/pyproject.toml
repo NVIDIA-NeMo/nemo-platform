@@ -26,6 +26,9 @@ version = "0.0.0"
 [project.entry-points."nemo.services"]
 intake = "nemo_intake_plugin.service:IntakeService"
 
+[project.entry-points."nemo.sdk"]
+intake = "nemo_intake_plugin.sdk:intake_sdk_resources"
+
 [project.optional-dependencies]
 test = [
     "nmp-testing",
@@ -54,7 +57,6 @@ asyncio_mode = "auto"
 pythonpath = ["src"]
 
 [tool.nemo.openapi]
-sdk = true
 
 [build-system]
 requires = ["hatchling"]

@@ -275,6 +275,7 @@ nemo-data-designer-plugin = [
 nemo-evaluator-plugin = [
   "cloudpickle>=3.1.1",
   "nemo-evaluator-sdk",
+  "nemo-intake-plugin",
   "nemo-platform-plugin",
   "nemo-platform-sdk",
   "pydantic>=2.10.6",
@@ -532,6 +533,7 @@ auditor = "nemo_auditor.sdk:auditor_sdk_resources"
 data_designer = "nemo_data_designer_plugin.sdk.resources:data_designer_sdk_resources"
 evaluator = "nemo_evaluator.sdk.resources:evaluator_sdk_resources"
 safe_synthesizer = "nemo_safe_synthesizer_plugin.sdk.resources:safe_synthesizer_sdk_resources"
+intake = "nemo_intake_plugin.sdk:intake_sdk_resources"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.sdk_provider"]

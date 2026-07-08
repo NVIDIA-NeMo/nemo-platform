@@ -24,7 +24,11 @@ def deprecated_intake_env_vars() -> list[str]:
 class ClickHouseConfig(EnvironmentFirstSettings):
     """Configuration for Intake's ClickHouse-backed spans storage."""
 
-    model_config = SettingsConfigDict(extra="allow", populate_by_name=True)
+    model_config = SettingsConfigDict(
+        env_prefix="NEMO_INTAKE_CLICKHOUSE_",
+        extra="allow",
+        populate_by_name=True,
+    )
 
     url: str = Field(
         default="http://localhost:8123",

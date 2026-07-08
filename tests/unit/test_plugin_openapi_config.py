@@ -57,7 +57,6 @@ def test_from_pyproject_empty_table_uses_defaults(tmp_path):
         service_name=None,
         env_vars=None,
         factory_override=None,
-        sdk=False,
     )
 
 
@@ -84,39 +83,7 @@ def test_from_pyproject_reads_overrides(tmp_path):
         service_name="svc-a",
         env_vars={"FOO": "bar", "BAZ": "qux"},
         factory_override="pkg.factories:make_app",
-        sdk=False,
     )
-
-
-def test_from_pyproject_reads_sdk_opt_in(tmp_path):
-    pyproject = _write_pyproject(
-        tmp_path / "sdk-plugin",
-        """
-        [project.entry-points."nemo.services"]
-        sdk-plugin = "pkg:S"
-
-        [tool.nemo.openapi]
-        sdk = true
-        """,
-    )
-    config = PluginConfig.from_pyproject(pyproject)
-    assert config is not None
-    assert config.sdk is True
-
-
-def test_from_pyproject_rejects_non_boolean_sdk(tmp_path):
-    pyproject = _write_pyproject(
-        tmp_path / "bad-sdk",
-        """
-        [project.entry-points."nemo.services"]
-        svc = "pkg:S"
-
-        [tool.nemo.openapi]
-        sdk = "yes"
-        """,
-    )
-    with pytest.raises(ValueError, match="sdk must be a boolean"):
-        PluginConfig.from_pyproject(pyproject)
 
 
 def test_from_pyproject_rejects_non_table_env_vars(tmp_path):

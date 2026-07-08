@@ -34,10 +34,6 @@ top_level:
   inference:
     panel: Core plugins
     help: Inference operations.
-  intake:
-    panel: Functional plugins
-    help: Intake operations.
-    hidden: true
   jobs:
     panel: Core plugins
     help: Manage jobs.

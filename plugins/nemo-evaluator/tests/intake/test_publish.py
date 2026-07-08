@@ -16,49 +16,55 @@ from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSumm
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
+from nemo_intake_plugin.spans.api.evaluator_results_schemas import EvaluatorResultInput
+from nemo_intake_plugin.spans.ingest.atif import AtifIngestRequest
 from nemo_platform import AsyncNeMoPlatform
 
 # --- fakes ------------------------------------------------------------------
 
 
-class _FakeAtif:
-    def __init__(self, calls: list[dict[str, Any]], *, fail: bool = False) -> None:
-        self._calls = calls
-        self._fail = fail
+class _FakePaginatedTraces:
+    def __init__(self, *, root_span_id: str | None, session_id: str) -> None:
+        self._root_span_id = root_span_id
+        self._session_id = session_id
 
-    async def create(self, **kwargs: Any) -> None:
-        if self._fail:
+    async def items(self) -> AsyncIterator[object]:
+        if self._root_span_id is not None:
+            yield SimpleNamespace(
+                session_id=self._session_id,
+                root_span_id=f"{self._root_span_id}:{self._session_id}",
+            )
+
+
+class _FakeIntakeClient:
+    def __init__(
+        self,
+        *,
+        root_span_id: str | None,
+        atif_fail: bool,
+        fail_eval_session: str | None,
+    ) -> None:
+        self.root_span_id = root_span_id
+        self.atif_fail = atif_fail
+        self.fail_eval_session = fail_eval_session
+        self.atif_calls: list[dict[str, Any]] = []
+        self.eval_calls: list[dict[str, Any]] = []
+
+    async def create_atif(self, *, workspace: str, body: AtifIngestRequest) -> None:
+        if self.atif_fail:
             raise RuntimeError("atif ingest 400")
-        self._calls.append(kwargs)
+        self.atif_calls.append({"workspace": workspace, **body.model_dump(mode="json", exclude_none=True)})
 
-
-class _FakeEvaluatorResults:
-    def __init__(self, calls: list[dict[str, Any]], *, fail_session: str | None = None) -> None:
-        self._calls = calls
-        self._fail_session = fail_session
-
-    async def create(self, **kwargs: Any) -> object:
-        if self._fail_session is not None and kwargs.get("session_id") == self._fail_session:
-            raise RuntimeError(f"evaluator-results 500 for {kwargs['session_id']}")
-        self._calls.append(kwargs)
+    async def create_evaluator_result(self, *, workspace: str, body: EvaluatorResultInput) -> object:
+        if self.fail_eval_session is not None and body.session_id == self.fail_eval_session:
+            raise RuntimeError(f"evaluator-results 500 for {body.session_id}")
+        self.eval_calls.append({"workspace": workspace, **body.model_dump(mode="json", exclude_none=True)})
         return SimpleNamespace(evaluator_result_id="eval-1")
 
-
-class _FakeTraces:
-    """Returns one root-span trace per requested session id (or none, to test resolution failure)."""
-
-    def __init__(self, *, root_span_id: str | None) -> None:
-        self._root_span_id = root_span_id
-
-    def list(self, *, workspace: str, filter: dict[str, Any]) -> AsyncIterator[object]:  # noqa: A002
-        root_span_id = self._root_span_id
-        session_id = filter["session_id"]
-
-        async def _gen() -> AsyncIterator[object]:
-            if root_span_id is not None:
-                yield SimpleNamespace(session_id=session_id, root_span_id=f"{root_span_id}:{session_id}")
-
-        return _gen()
+    async def list_traces(self, *, workspace: str, query_params: dict[str, Any]) -> _FakePaginatedTraces:
+        del workspace
+        session_id = str(query_params["filter"]["session_id"])
+        return _FakePaginatedTraces(root_span_id=self.root_span_id, session_id=session_id)
 
 
 class _FakeClient:
@@ -71,17 +77,25 @@ class _FakeClient:
         fail_eval_session: str | None = None,
     ) -> None:
         self.workspace = workspace
-        self.atif_calls: list[dict[str, Any]] = []
-        self.eval_calls: list[dict[str, Any]] = []
-        self.intake = SimpleNamespace(
-            ingest=SimpleNamespace(atif=_FakeAtif(self.atif_calls, fail=atif_fail)),
-            evaluator_results=_FakeEvaluatorResults(self.eval_calls, fail_session=fail_eval_session),
-            traces=_FakeTraces(root_span_id=root_span_id),
+        self.intake_client = _FakeIntakeClient(
+            root_span_id=root_span_id,
+            atif_fail=atif_fail,
+            fail_eval_session=fail_eval_session,
         )
+        self.atif_calls = self.intake_client.atif_calls
+        self.eval_calls = self.intake_client.eval_calls
 
 
 def _client(**kwargs: Any) -> AsyncNeMoPlatform:
     return cast(AsyncNeMoPlatform, _FakeClient(**kwargs))
+
+
+@pytest.fixture(autouse=True)
+def _adapt_intake_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "nemo_evaluator.intake.publish.client_from_platform",
+        lambda platform, _client_type: platform.intake_client,
+    )
 
 
 # --- fixtures ---------------------------------------------------------------

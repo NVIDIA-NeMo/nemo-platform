@@ -5,7 +5,7 @@
 set -euo pipefail
 
 container_name="nemo-intake-plugin-clickhouse"
-legacy_container_names=("nmp-intake-clickhouse")
+legacy_container_names=("nmp-intake-clickhouse" "nemo-intake-clickhouse")
 image="${CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:24.3}"
 clickhouse_user="${CLICKHOUSE_USER:-default}"
 clickhouse_password="${CLICKHOUSE_PASSWORD:-}"

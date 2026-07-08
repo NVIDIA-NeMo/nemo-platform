@@ -47,7 +47,7 @@ def get_sdk_info() -> SdkInfo:
         overrides_dir=overrides_dir,
         readme_dir=overrides_dir / "README",
         stainless_config_file=sdks_root_dir / "stainless.yaml",
-        openapi_spec_file=project_dir / "openapi" / "sdk" / "openapi.yaml",
+        openapi_spec_file=project_dir / "openapi" / "openapi.yaml",
     )
 
 

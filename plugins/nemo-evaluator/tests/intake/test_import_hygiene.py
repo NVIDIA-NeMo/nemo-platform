@@ -1,13 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Guardrail: the intake mapping module must not import the Intake service.
+"""Guardrail: Intake publishing must use the plugin client boundary.
 
-The mapping is pure boundary code: it reads SDK types and returns plain dicts
-shaped for Intake's requests, but it must not depend on the Intake service
-(``nemo_intake_plugin.*``), an HTTP client, or the platform client. This keeps the
-translation isolated so D3/D4/D5 can build the wire calls on top of it without
-the mapping itself pulling in the service.
+The mapping and publisher may import Intake's plugin-owned schemas and client,
+but must not reach into the legacy service package or raw HTTP transport.
 """
 
 from __future__ import annotations
@@ -19,11 +16,8 @@ import nemo_evaluator.intake as intake
 
 INTAKE_ROOT = Path(next(iter(intake.__path__))).resolve()
 
-# Imports that would couple the pure mapping to the Intake service or transport.
-_FORBIDDEN = re.compile(
-    r"^\s*(?:from|import)\s+(nemo_intake_plugin|nmp\.intake|nmp_intake|httpx)",
-    re.MULTILINE,
-)
+# Imports that bypass the plugin-owned client contract.
+_FORBIDDEN = re.compile(r"^\s*(?:from|import)\s+(nmp\.intake|nmp_intake|httpx)", re.MULTILINE)
 
 
 def test_intake_mapping_has_no_service_imports() -> None:
@@ -34,6 +28,4 @@ def test_intake_mapping_has_no_service_imports() -> None:
             line_no = text.count("\n", 0, match.start()) + 1
             offenders.append(f"{path.relative_to(INTAKE_ROOT)}:{line_no}: {match.group(0).strip()}")
 
-    assert not offenders, "nemo_evaluator.intake must not import the Intake service / transport:\n" + "\n".join(
-        offenders
-    )
+    assert not offenders, "nemo_evaluator.intake must not import legacy Intake or raw HTTP:\n" + "\n".join(offenders)

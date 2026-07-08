@@ -11,16 +11,11 @@ one-file change.
 
 Design constraints (see AALGO-289):
 
-* **Pure.** Every function reads SDK types and returns request params. No HTTP,
-  no platform client, no imports from the Intake *service* (``nemo_intake_plugin.*``).
-* **Typed at the boundary.** The returned values are the generated platform
-  SDK's ``TypedDict`` params (``AtifCreateParams`` / ``EvaluatorResultCreateParams``).
-  At runtime they are plain dicts the adapter splats into the client
-  (``client.intake.ingest.atif.create(**body)``); statically, ``ty`` checks our
-  field names, literals, and nested shapes against the real generated schema, so
-  an API change that regenerates the SDK surfaces here as a type error instead of
-  drifting silently. We depend on the client SDK (already a plugin dependency),
-  never on the Intake service package.
+* **Pure.** Every function reads domain values and returns Intake request models.
+  No HTTP or platform client is used here.
+* **Typed at the boundary.** The returned Pydantic models are shared by Intake's
+  server routes and plugin-owned typed client, so API changes surface here as type
+  or validation errors without routing through the generated platform SDK.
 * The well-known evidence-key constants (``initial_state``/``trace``/``logs``/
   ``final_state``/``verifier_logs``) belong with the SDK evidence work (D1,
   AALGO-281). Until D1 lands, this module references them as string literals so
@@ -35,13 +30,11 @@ from typing import Literal
 
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
-from nemo_platform.types.intake.evaluator_result_create_params import EvaluatorResultCreateParams
-from nemo_platform.types.intake.evaluator_result_data_type import EvaluatorResultDataType
-from nemo_platform.types.intake.experiment_context_param import ExperimentContextParam
-from nemo_platform.types.intake.ingest.atif_agent_param import AtifAgentParam
-from nemo_platform.types.intake.ingest.atif_create_params import AtifCreateParams
-from nemo_platform.types.intake.ingest.atif_final_metrics_param import AtifFinalMetricsParam
-from nemo_platform.types.intake.ingest.atif_step_agent_param import AtifStepAgentParam
+from nemo_intake_plugin.spans.api.evaluator_results_schemas import EvaluatorResultInput
+from nemo_intake_plugin.spans.domain import EvaluatorResultDataType
+from nemo_intake_plugin.spans.ingest.atif import AtifIngestRequest
+from nemo_intake_plugin.spans.ingest.atif_domain import AtifAgent, AtifFinalMetrics, AtifStepAgent
+from nemo_intake_plugin.spans.ingest.evaluation_context import ExperimentContext
 
 # --- Shared conventions -----------------------------------------------------
 
@@ -69,14 +62,14 @@ def session_id_for(run_id: str, trial_id: str) -> str:
     return f"{run_id}:{trial_id}"
 
 
-def run_task_to_experiment_context(trial: AgentEvalTrial, *, experiment_id: str) -> ExperimentContextParam:
+def run_task_to_experiment_context(trial: AgentEvalTrial, *, experiment_id: str) -> ExperimentContext:
     """Build the lean ingest ``experiment_context`` for a trial.
 
     Only ``experiment_id`` and ``test_case_id`` live here. Dataset, group, and
     free-form metadata belong on the Experiment entity (created separately via
     the platform Experiments SDK), not on the per-ingest context.
     """
-    return {"experiment_id": experiment_id, "test_case_id": trial.task_id}
+    return ExperimentContext(experiment_id=experiment_id, test_case_id=trial.task_id)
 
 
 def trial_to_atif_ingest(
@@ -87,8 +80,8 @@ def trial_to_atif_ingest(
     agent_name: str,
     agent_version: str = DEFAULT_AGENT_VERSION,
     model_name: str | None = None,
-    final_metrics: AtifFinalMetricsParam | None = None,
-) -> AtifCreateParams:
+    final_metrics: AtifFinalMetrics | None = None,
+) -> AtifIngestRequest:
     """Build the ATIF ingest params for a single Trial.
 
     Until ATIF normalization of trace evidence lands (D2, AALGO-282), this emits
@@ -97,21 +90,14 @@ def trial_to_atif_ingest(
     ``trial.evidence`` arrive with D2.
     """
     output_text = trial.output.output_text if trial.output is not None else None
-    agent: AtifAgentParam = {"name": agent_name, "version": agent_version}
-    if model_name is not None:
-        agent["model_name"] = model_name
-    step: AtifStepAgentParam = {"source": "agent", "step_id": 1, "message": output_text or ""}
-
-    body: AtifCreateParams = {
-        "schema_version": ATIF_SCHEMA_VERSION,
-        "session_id": session_id_for(run_id, trial.id),
-        "agent": agent,
-        "steps": [step],
-        "experiment_context": run_task_to_experiment_context(trial, experiment_id=experiment_id),
-    }
-    if final_metrics is not None:
-        body["final_metrics"] = final_metrics
-    return body
+    return AtifIngestRequest(
+        schema_version=ATIF_SCHEMA_VERSION,
+        session_id=session_id_for(run_id, trial.id),
+        agent=AtifAgent(name=agent_name, version=agent_version, model_name=model_name),
+        steps=[AtifStepAgent(source="agent", step_id=1, message=output_text or "")],
+        experiment_context=run_task_to_experiment_context(trial, experiment_id=experiment_id),
+        final_metrics=final_metrics,
+    )
 
 
 @dataclass(frozen=True)
@@ -127,7 +113,7 @@ def score_to_evaluator_results(
     *,
     session_id: str,
     span_id: str,
-) -> tuple[list[EvaluatorResultCreateParams], list[SkippedOutput]]:
+) -> tuple[list[EvaluatorResultInput], list[SkippedOutput]]:
     """Map one ``AgentEvalTaskScore`` to ``(rows, skipped)`` for Intake.
 
     ``rows`` is one evaluator-result param per publishable output: ``name`` is
@@ -153,7 +139,7 @@ def score_to_evaluator_results(
         return [], skipped
 
     comment = score.diagnostics[0].message if score.diagnostics else None
-    rows: list[EvaluatorResultCreateParams] = []
+    rows: list[EvaluatorResultInput] = []
     skipped: list[SkippedOutput] = []
     for output in score.outputs:
         name = f"{score.metric_type}.{output.name}"
@@ -161,19 +147,17 @@ def score_to_evaluator_results(
         if value is not None and not math.isfinite(value):
             skipped.append(SkippedOutput(name=name, reason="non-finite value"))
             continue
-        row: EvaluatorResultCreateParams = {
-            "session_id": session_id,
-            "span_id": span_id,
-            "name": name,
-            "data_type": data_type,
-        }
-        if value is not None:
-            row["value"] = value
-        if string_value is not None:
-            row["string_value"] = string_value
-        if comment is not None:
-            row["comment"] = comment
-        rows.append(row)
+        rows.append(
+            EvaluatorResultInput(
+                session_id=session_id,
+                span_id=span_id,
+                name=name,
+                data_type=data_type,
+                value=value,
+                string_value=string_value,
+                comment=comment,
+            )
+        )
     return rows, skipped
 
 
@@ -193,7 +177,7 @@ def _coerce_metric_value(value: object) -> tuple[EvaluatorResultDataType, float 
     """
     unwrapped = getattr(value, "root", value)
     if isinstance(unwrapped, bool):
-        return "BOOLEAN", (1.0 if unwrapped else 0.0), None
+        return EvaluatorResultDataType.BOOLEAN, (1.0 if unwrapped else 0.0), None
     if isinstance(unwrapped, (int, float)):
-        return "NUMERIC", float(unwrapped), None
-    return "TEXT", None, str(unwrapped)
+        return EvaluatorResultDataType.NUMERIC, float(unwrapped), None
+    return EvaluatorResultDataType.TEXT, None, str(unwrapped)

@@ -21,7 +21,6 @@ class PluginConfig:
     service_name: Optional[str] = None
     env_vars: Optional[Dict[str, str]] = None
     factory_override: Optional[str] = None  # "module:callable" escape hatch
-    sdk: bool = False
 
     @classmethod
     def from_pyproject(cls, pyproject_path: Path) -> Optional["PluginConfig"]:
@@ -41,16 +40,12 @@ class PluginConfig:
         env_vars = opts.get("env_vars")
         if env_vars is not None and not isinstance(env_vars, dict):
             raise ValueError(f"plugin '{plugin_dir}': [tool.nemo.openapi].env_vars must be a table")
-        sdk = opts.get("sdk", False)
-        if not isinstance(sdk, bool):
-            raise ValueError(f"plugin '{plugin_dir}': [tool.nemo.openapi].sdk must be a boolean")
 
         return cls(
             dir=plugin_dir,
             service_name=opts.get("service_name"),
             env_vars=env_vars,
             factory_override=opts.get("factory_override"),
-            sdk=sdk,
         )
 
     def resolve_service_name(self) -> str:

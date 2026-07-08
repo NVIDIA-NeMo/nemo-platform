@@ -52,6 +52,14 @@ def test_nemo_intake_env_vars_win_over_deprecated_aliases(monkeypatch: pytest.Mo
     assert cfg.clickhouse_config.password == "new-password"
 
 
+def test_generic_user_env_var_does_not_override_clickhouse_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("USER", "local-shell-user")
+
+    cfg = IntakeConfig()
+
+    assert cfg.clickhouse_config.user == "default"
+
+
 def test_deprecated_nmp_intake_env_vars_load_and_warn(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
