@@ -6,7 +6,7 @@ import { useInnerDataViewContext } from '@nemo/common/src/components/DataView/in
 import { useHandleResize } from '@nemo/common/src/components/DataView/internal/hooks/useResizableColumns';
 import type { IntentionalAny } from '@nemo/common/src/components/DataView/internal/types';
 import { getHeaderId } from '@nemo/common/src/components/DataView/internal/utils/header-utils';
-import { Button, ButtonGroup, TableHeaderCell } from '@nvidia/foundations-react-core';
+import { Button, TableHeaderCell } from '@nvidia/foundations-react-core';
 import { childrenToText } from '@nvidia/foundations-react-core/lib';
 import { flexRender, type Header, type SortDirection } from '@tanstack/react-table';
 import classnames from 'classnames';
@@ -118,20 +118,16 @@ function TableHeaderControlCell({
     );
   }
 
-  const sortButton = (
-    <Button kind="tertiary" onClick={header.column.getToggleSortingHandler()}>
-      <span className="truncate leading-[normal]">{children}</span>
-      <SortIcon sort={sort} />
-    </Button>
-  );
-
-  // Sort + drag — ButtonGroup keeps them together
+  // Sort + drag — flex wrapper keeps them together without ButtonGroup chrome
   if (grip) {
     return (
-      <ButtonGroup className="data-view-header-control" kind="tertiary">
+      <div className="data-view-header-control flex items-center">
         {grip}
-        {sortButton}
-      </ButtonGroup>
+        <Button kind="tertiary" onClick={header.column.getToggleSortingHandler()}>
+          <span className="truncate leading-[normal]">{children}</span>
+          <SortIcon sort={sort} />
+        </Button>
+      </div>
     );
   }
 
