@@ -125,6 +125,11 @@ Free functions, decorated + `@abstractmethod` + `...` body. One function per rou
 including the `/apis/<service>` gateway prefix. Use the `get_on_conflict` + `exist_ok` pattern for
 create-if-not-exists (see Files' `create_fileset`).
 
+The decorator's `body` path only serializes a `BaseModel` — there's **no raw-dict body path**. If an
+endpoint sends a bare JSON object (`dict[str, Any]`), wrap it in a `RootModel`
+(`class XUpdate(RootModel[dict[str, Any]])`) for the client `body`; the server can keep its `dict`
+alias. (From the Jobs migration — `update_job_status_details`.)
+
 ### 3c. `client.py` — bind endpoints onto clients
 
 ```python
@@ -177,6 +182,40 @@ This is exactly what `services/core/files/.../filesets/schemas.py` does. The ser
 `nemo_platform_plugin` without adding an explicit dependency (it's available through the workspace),
 so no `pyproject.toml` change is needed — but verify the server still imports (`uv run python -c
 "import nmp.core.<svc>.service"`) and that any field validators / `from_entity` behavior survives.
+
+#### The data-vs-behavior split (when moving types is hard)
+
+Secrets was easy — its types are pure data. Richer services (Jobs, Models) hit a wall: moving a type
+to the plugin drags **runtime deps** (kubernetes, docker) or **server modules** with it, because the
+*behavior* lives on the model. The rule: **the plugin holds pure-pydantic wire shapes; the server
+subclasses them to re-add behavior.** E.g. `nemo_platform_plugin.<svc>.types` has
+`class KubernetesVolume(BaseModel)` (data only); the server's `common.py` has
+`class KubernetesVolume(PluginKubernetesVolume)` with `to_k8s()`. No kubernetes/docker import enters
+the plugin. Watch for these (all from the Jobs migration, AIRCORE-874 / PR #585):
+
+- **Behavior that pulls deps** — methods that build `kubernetes.client.V1*` objects, `to_k8s()`,
+  validators that import auth/config server modules. These stay on the *server subclass*, not the
+  plugin model.
+- **Import-time env defaults stay server-side.** A field defaulting to `os.getenv(...)` at import
+  (e.g. a docker network name set by quickstart/e2e) must NOT be inlined as a literal in the plugin —
+  that silently drops runtime configurability. Plugin gets a plain literal default; the server
+  subclass restores the env-driven one.
+- **Nested field types silently defeat the split.** Subclassing `KubernetesVolume` to add `to_k8s()`
+  isn't enough — a field `additional_volumes: list[KubernetesVolume]` on some *other* config still
+  resolves to the plugin (behavior-less) type, so `.to_k8s()` `AttributeError`s at runtime. The server
+  subclass must **re-type the nested fields too**, cascading all the way up the config tree. Only the
+  service's own backend tests catch this; the type checker won't.
+- **Same-named pydantic classes are NOT interchangeable.** A field typed as the *plugin's* `AuthContext`
+  rejects a *server* `AuthContext` instance at construction — pydantic treats identically-named classes
+  as distinct types. And a re-export line (`AuthContext as AuthContext`) in the server schemas module
+  can silently **shadow** the server import so a subclass field resolves back to the plugin type. Fix:
+  the server subclass overrides the field with the server type, and you do **not** re-export the plugin
+  version from the server schemas module.
+- **Some types are genuinely server-only — don't move them.** A list *filter* that subclasses
+  `nmp.common.entities.Filter` (entity-store field translation) or a response that wraps raw entity
+  instances cannot live in the plugin (`Field 'source' does not exist on model DBEntity`). Leave them
+  server-side; the client uses query-param strings and DTO equivalents instead. Not everything belongs
+  in the leaf node.
 
 ---
 
@@ -311,22 +350,18 @@ can be produced:
 **Hand-written** CLI code (use-case commands, `setup.py` helpers) migrates like any other consumer:
 `client_from_platform(state.get_client(), <Client>)`. Do it in the PR.
 
-**The generated commands are the nuance.** How much you can do in a per-service PR depends on how many
-of that service's commands already have overrides:
+**For the generated commands, check `cli_config.yaml` for the service's existing overrides.** How much
+you can do in-PR depends on how many commands already have one:
 - Editing an **existing** override to call `client_from_platform(sdk, <Client>).<method>(...)` is cheap
-  — that's how **Files** migrated its CLI (PR #584): Files already had overrides for *every* command it
-  needed (`delete`/`download`/`list`/`upload`), so it was pure edits, no new files.
-- Creating **net-new** overrides for template-generated commands, purely to swap the client, is a poor
-  trade: each override becomes a hand-maintained full command body that diverges from the template
-  forever. **Secrets is this case** — only `create`/`update` have overrides (they need `--from-file`
-  stdin handling); `access`/`delete`/`list`/`get`/`rotate` are template-generated. Converting five
-  commands to overrides just to change the client isn't worth it.
+  — do it in the PR. (Files migrated its CLI this way; it happened to already have an override for every
+  command it touched.)
+- Creating a **net-new** override for a template-generated command, purely to swap the client, is a
+  poor trade — the override becomes a hand-maintained command body that diverges from the template
+  forever. Leave those to the generator fix. (Secrets is mostly this case, so its CLI is deferred.)
 
-So: **check `cli_config.yaml` for the service's existing overrides.** Migrate the ones that already
-have overrides (edit them); leave the template-generated ones to the generator fix. The durable answer
-for template-generated commands is teaching the *template* to emit typed-client calls — **AIRCORE-893**
-— so every generated command migrates at once without proliferating overrides. (A per-service `.secrets`
-proxy shim was prototyped here and reverted as the wrong shape; don't repeat it.)
+The durable answer for template-generated commands is teaching the *template* to emit typed-client
+calls — **AIRCORE-893** — so they all migrate at once. (A per-service proxy shim mimicking the Stainless
+resource was tried and reverted as the wrong shape; don't repeat it.)
 
 When either the template or an override moves to the typed client, mind these output-shape points
 (Files' overrides show the pattern):
@@ -400,63 +435,23 @@ The models now live in `nemo_platform_plugin/secrets/types.py` as the single sou
   "json")` returning `get_secret_value()`; covered by `test_create_secret_serializes_real_value`.
   See the boxed warning in 3a.
 
-### What this PR migrated
+### How the general steps played out for Secrets
 
-Client + shared contract:
-- `nemo_platform_plugin/secrets/{types,endpoints,client}.py` + tests (`tests/secrets/`).
-- Server `api/v2/secrets/schemas.py` → re-exports the shared types (subclass only for `from_entity`).
+- **Contract** was small and pure-data, so §3a–3e went straight through: the models moved to
+  `nemo_platform_plugin/secrets/types.py` and the server `schemas.py` re-exports them, subclassing only
+  to keep `from_entity`. No data-vs-behavior split needed.
+- **Consumers** ranged across the shapes §4 describes: production s2s callers (files/jobs/models/
+  inference-gateway/data_designer) and hand-written CLI helpers via `client_from_platform` at the leaf;
+  the RBAC integration suite via `client_from_platform(as_user(sdk, email), SecretsClient)` per
+  principal (confirming per-principal/on-behalf-of auth is just headers the adapter carries); and a long
+  tail of test setup/harness/e2e calls. Stale `mock.secrets.*` stubs were removed once the code routed
+  through the adapter.
+- **Left out** (per "stop using Stainless," not "force NemoClient on everything"): the generated
+  `nemo secrets` CLI (mostly template-generated commands → AIRCORE-893, §4), a raw-HTTP caller that
+  never used the SDK, and a few docstring examples.
 
-Every `sdk.secrets.*` call site, via `client_from_platform(sdk, <SecretsClient>)` at the leaf (the
-`sdk` keeps being passed around unchanged):
-- `services/core/files/.../api/endpoint_helpers.py` — `resolve_storage_secrets` → `access_secret`.
-- `services/core/jobs/.../app/dispatcher.py` — `validate_job_secrets` → `get_secret` (aliased
-  `ClientNotFoundError`/`ClientPermissionDeniedError`; the file's other `NotFoundError` stays
-  Stainless for `sdk.files.filesets.delete`).
-- `services/core/models/.../api/permissions.py` — `check_secret_access` → `get_secret` (aliased
-  errors; `check_fileset_access` untouched).
-- `services/core/models/.../controllers/backends/docker/{backend,creation_reconciler}.py` →
-  `access_secret`.
-- `services/core/inference-gateway/.../api/proxy.py` — `retrieve_secret_value` → `access_secret`.
-- `packages/data_designer_nemo/.../secret_resolver.py` — sync + async paths → `access_secret`.
-- `packages/nemo_platform_ext/.../cli/commands/setup.py` — hand-written `_secret_exists`/
-  `_create_secret`/`_update_secret` helpers.
-
-Consumer tests updated to match (patch `client_from_platform` in the consumer module; assert on the
-wrapped `.data()` response and kwargs call shape): `files/tests/test_endpoint_helpers.py`,
-`nemo_platform_ext/tests/cli/commands/test_setup.py`, and the secrets service's own
-`test_secrets_sdk.py` + `integration/test_secrets_workspace_validation.py` + `conftest.py` fixture.
-
-`integration/test_secrets_with_auth.py` — the RBAC suite (~40 secrets call sites across
-Viewer/Editor/Admin/PlatformAdmin + on-behalf-of delegation). Migrated via the same leaf adapter:
-`client_from_platform(as_user(sdk, email), SecretsClient)` per principal. This proves **NemoClient
-handles multi-service RBAC fine** — per-principal auth is just headers (`as_user` →
-`with_options(set_default_headers=...)`), and `client_from_platform` copies them. The Stainless `sdk`
-stays only for out-of-scope *setup* (`sdk.workspaces.*`, `grant_workspace_role` →
-`workspaces.members`) and the raw `sdk._client.post/get` no-auth (401) probes.
-
-Beyond the production consumers above, the migration also covered **all remaining `sdk.secrets.*`
-usage** — test setup/harness helpers and e2e suites: the inference-gateway `testing/harness.py`,
-data-designer `testing/utils.py` + `test_personas_cli`, `test_secrets_entities.py`, the cross-service
-integration tests that create secrets as setup (files `test_s3_storage`/`test_ngc_storage`/
-`test_filesets_allowed_hosts`/`tests_filesets_with_auth_secrets`, models `test_models_with_auth`,
-jobs `test_task_auth_runtime`/`test_jobs_secrets_access`), and the `tests/agentic-use/*` e2e suites +
-`nemo-evaluator/examples`. Stale `mock.secrets.*` stubs in already-migrated consumers' unit tests were
-removed (dead — the code now routes through `client_from_platform`; nothing asserted on them).
-
-### Genuinely left (not Stainless *usage*, or a separate workstream)
-
-- The **`nemo secrets` CLI** — 7 generated commands, but only `create`/`update` have overrides (they
-  need `--from-file` stdin handling); `access`/`delete`/`list`/`get`/`rotate` are template-generated.
-  Unlike Files (which had overrides for every command it migrated and so did its CLI in-PR), migrating
-  Secrets' CLI would mean creating ~5 net-new overrides just to swap the client — not worth it. Left
-  to the generator fix (**AIRCORE-893**), which migrates all generated commands at once. See §4.
-- `services/core/jobs/.../controllers/backends/subprocess_runtime.py` — **raw HTTP** to
-  `/apis/secrets/v2/.../access` (own `SecretReference` dataclass, **never used the SDK**). Since the
-  goal is to stop *using Stainless*, not force every consumer onto NemoClient, this stays as-is.
-- Three docstring/comment examples that mention `sdk.secrets.*` for illustration (`nmp_common/
-  sdk_factory.py`, `nmp_testing/client.py`, `test_secret_value_kwarg.py`) — prose, not calls.
-- The Stainless secrets resource itself (`sdk/.../resources/secrets/`) — remove once the CLI generator
-  (893) no longer references it.
+The concrete per-file inventory lives in the PR description, not here — this doc is the reusable
+playbook.
 
 ---
 
@@ -489,7 +484,13 @@ removed (dead — the code now routes through `client_from_platform`; nothing as
       pre-existing lint errors.
 - [ ] **Preserve auth semantics** — privileged routers, on-behalf-of checks, scopes.
 - [ ] **Run** `uv run --frozen ty check`, `uv run ruff check`, `make test-package PACKAGE=nemo_platform_plugin`,
-      `make test-unit-<service>`, and the service's integration tests.
+      `make test-unit-<service>`, and the service's integration tests. **For `ty`, measure against a
+      baseline, not zero** — services carry many pre-existing diagnostics (Jobs had ~115). Stash your
+      change, capture the diagnostics, then diff categories (line numbers shift, so location diffs are
+      noise). Goal: **0 net-new** errors.
+- [ ] **Run the service's own backend/integration tests**, not just unit — the data-vs-behavior split
+      (3e) fails in ways the type checker misses (a nested field resolving to the behavior-less plugin
+      type only `AttributeError`s at runtime, caught by the k8s/docker backend tests).
 - [ ] **Drop the Stainless resource** for this service once nothing imports it, and feed the pattern
       into AIRCORE-882 (server route gen). AIRCORE-883 (job factory hands out typed clients) is a
       *separate* cleanup — it removes the per-call-site adapter, it does **not** gate this migration.
