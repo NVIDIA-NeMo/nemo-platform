@@ -6,7 +6,7 @@ import { useInnerDataViewContext } from '@nemo/common/src/components/DataView/in
 import { useHandleResize } from '@nemo/common/src/components/DataView/internal/hooks/useResizableColumns';
 import type { IntentionalAny } from '@nemo/common/src/components/DataView/internal/types';
 import { getHeaderId } from '@nemo/common/src/components/DataView/internal/utils/header-utils';
-import { Button, TableHeaderCell } from '@nvidia/foundations-react-core';
+import { Button, ButtonGroup, TableHeaderCell } from '@nvidia/foundations-react-core';
 import { childrenToText } from '@nvidia/foundations-react-core/lib';
 import { flexRender, type Header, type SortDirection } from '@tanstack/react-table';
 import classnames from 'classnames';
@@ -15,6 +15,7 @@ import type { ComponentProps, JSX, ReactNode, Ref } from 'react';
 
 interface DragProps {
   setNodeRef?: (node: HTMLElement | null) => void;
+  setActivatorNodeRef?: (node: HTMLElement | null) => void;
   attributes: DraggableAttributes;
   listeners: Record<string, unknown> | undefined;
   isDragging: boolean;
@@ -57,18 +58,9 @@ export function TableColumnHeader({
       {...(dragProps?.attributes ?? {})}
       {...props}
     >
-      {dragProps?.listeners && (
-        <button
-          className="cursor-grab active:cursor-grabbing p-0.5 text-secondary hover:text-primary focus:outline-none shrink-0"
-          aria-label="Drag to reorder column"
-          type="button"
-          {...dragProps.listeners}
-        >
-          <GripVertical size={14} />
-        </button>
-      )}
       <TableHeaderControlCell
         disabled={isDataViewLoadingState || isDataViewErrorState}
+        dragProps={dragProps}
         header={header}
       >
         {children as ReactNode}
@@ -86,25 +78,69 @@ export function TableColumnHeader({
 interface TableHeaderControlCellProps {
   children: ReactNode;
   disabled: boolean;
+  dragProps?: DragProps;
   header: Header<IntentionalAny, unknown>;
 }
 
 function TableHeaderControlCell({
   children,
   disabled,
+  dragProps,
   header,
-  ...props
 }: TableHeaderControlCellProps): JSX.Element {
-  if (!header.column.getCanSort() || disabled) {
-    return <>{children}</>;
-  }
+  if (disabled) return <>{children}</>;
+
+  const canSort = header.column.getCanSort();
   const sort = header.column.getIsSorted();
+  const grip = dragProps?.listeners ? (
+    <button
+      ref={dragProps.setActivatorNodeRef}
+      className="cursor-grab active:cursor-grabbing p-0.5 text-secondary hover:text-primary focus:outline-none shrink-0"
+      aria-label="Drag to reorder column"
+      type="button"
+      {...dragProps.attributes}
+      {...dragProps.listeners}
+    >
+      <GripVertical size={14} />
+    </button>
+  ) : null;
+
+  // Neither interactive — plain label
+  if (!canSort && !grip) return <>{children}</>;
+
+  // Drag only — grip alongside plain label, no sort button
+  if (!canSort) {
+    return (
+      <>
+        {grip}
+        {children}
+      </>
+    );
+  }
+
+  const sortButton = (
+    <Button kind="tertiary" onClick={header.column.getToggleSortingHandler()}>
+      <span className="truncate leading-[normal]">{children}</span>
+      <SortIcon sort={sort} />
+    </Button>
+  );
+
+  // Sort + drag — ButtonGroup keeps them together
+  if (grip) {
+    return (
+      <ButtonGroup className="data-view-header-control" kind="tertiary">
+        {grip}
+        {sortButton}
+      </ButtonGroup>
+    );
+  }
+
+  // Sort only — current behavior
   return (
     <Button
       className="data-view-header-control"
       kind="tertiary"
       onClick={header.column.getToggleSortingHandler()}
-      {...props}
     >
       <span className="truncate leading-[normal]">{children}</span>
       <SortIcon sort={sort} />
