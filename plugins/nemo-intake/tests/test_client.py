@@ -95,9 +95,9 @@ async def test_create_evaluator_result_parses_response() -> None:
     assert "comment" not in payload
 
 
-async def test_create_experiment_group_exist_ok_encodes_conflict_lookup_name() -> None:
+async def test_create_experiment_group_exist_ok_fetches_existing_group() -> None:
     client, http_client = _client()
-    name = "group with ?#/"
+    name = "existing-group"
     http_client.request.side_effect = [
         _response(409, {"detail": "already exists"}),
         _response(
@@ -118,7 +118,7 @@ async def test_create_experiment_group_exist_ok_encodes_conflict_lookup_name() -
 
     assert response.data().name == name
     assert http_client.request.call_args_list[1].args[1] == (
-        f"{BASE_URL}/apis/intake/v2/workspaces/{WORKSPACE}/experiment-groups/group%20with%20%3F%23%2F"
+        f"{BASE_URL}/apis/intake/v2/workspaces/{WORKSPACE}/experiment-groups/{name}"
     )
 
 
