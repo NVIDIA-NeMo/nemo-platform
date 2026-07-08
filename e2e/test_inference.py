@@ -9,12 +9,14 @@ env var set in conftest.py. Tests use ``add_mock_provider()`` from nmp.testing
 to create providers that return canned responses without a real inference backend.
 """
 
-import json
 import uuid
+from typing import Any, cast
 
 import pytest
 from nemo_platform import NeMoPlatform
 from nmp.testing import MockProviderResponse, add_mock_provider
+
+from e2e.utils import collect_sse_chunks
 
 
 def _unique_name(prefix: str) -> str:
@@ -89,6 +91,7 @@ def test_chat_completion_via_provider_route(sdk: NeMoPlatform, workspace: str):
         workspace=workspace,
         body={"model": "test", "messages": [{"role": "user", "content": "Hi"}]},
     )
+    response = cast(dict[str, Any], response)
 
     assert response["id"] == "chatcmpl-provider"
     assert response["choices"][0]["message"]["content"] == "Hello from provider route!"
@@ -128,6 +131,7 @@ def test_chat_completion_via_model_entity_route(sdk: NeMoPlatform, workspace: st
         workspace=workspace,
         body={"model": "test", "messages": [{"role": "user", "content": "Hi"}]},
     )
+    response = cast(dict[str, Any], response)
 
     assert response["id"] == "chatcmpl-model"
     assert response["choices"][0]["message"]["content"] == "Hello from model route!"
@@ -168,6 +172,7 @@ def test_chat_completion_via_openai_route(sdk: NeMoPlatform, workspace: str):
             "messages": [{"role": "user", "content": "Hi"}],
         },
     )
+    response = cast(dict[str, Any], response)
 
     assert response["id"] == "chatcmpl-openai"
     assert response["choices"][0]["message"]["content"] == "Hello from OpenAI route!"
@@ -212,10 +217,7 @@ def test_streaming_chat_completion(sdk: NeMoPlatform, workspace: str):
         assert response.status_code == 200
         assert "text/event-stream" in response.headers.get("content-type", "")
 
-        chunks = []
-        for line in response.iter_lines():
-            if line.startswith("data: ") and line != "data: [DONE]":
-                chunks.append(json.loads(line[len("data: ") :]))
+        chunks = collect_sse_chunks(response)
 
     assert len(chunks) > 0
     # Reassemble streamed content
