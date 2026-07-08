@@ -4,7 +4,7 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
-from importlib import import_module as _cli_import_module
+from importlib import import_module as _importlib_import_module
 from typing import Annotated, Literal
 
 import typer
@@ -24,9 +24,9 @@ from nemo_platform.cli.core.types import (
     OutputColumnsOption,
 )
 
-_cli_child_results = _cli_import_module("nemo_platform.cli.commands.api.jobs.results")
-_cli_child_steps = _cli_import_module("nemo_platform.cli.commands.api.jobs.steps")
-_cli_child_tasks = _cli_import_module("nemo_platform.cli.commands.api.jobs.tasks")
+_cli_child_results = _importlib_import_module("nemo_platform.cli.commands.api.jobs.results")
+_cli_child_steps = _importlib_import_module("nemo_platform.cli.commands.api.jobs.steps")
+_cli_child_tasks = _importlib_import_module("nemo_platform.cli.commands.api.jobs.tasks")
 
 app = create_typer_app(name="jobs", help="Manage jobs")
 

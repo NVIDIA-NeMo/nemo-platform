@@ -4,11 +4,11 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
-from importlib import import_module as _cli_import_module
+from importlib import import_module as _importlib_import_module
 
 from nemo_platform.cli.core.help_formatter import create_typer_app
 
-_cli_child_models = _cli_import_module("nemo_platform.cli.commands.api.inference.gateway.openai.v1.models")
+_cli_child_models = _importlib_import_module("nemo_platform.cli.commands.api.inference.gateway.openai.v1.models")
 
 app = create_typer_app(name="v1", help="V1 operations")
 

@@ -4,13 +4,13 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
-from importlib import import_module as _cli_import_module
+from importlib import import_module as _importlib_import_module
 
 from nemo_platform.cli.core.help_formatter import create_typer_app
 
-_cli_child_model = _cli_import_module("nemo_platform.cli.commands.api.inference.gateway.model")
-_cli_child_openai = _cli_import_module("nemo_platform.cli.commands.api.inference.gateway.openai")
-_cli_child_provider = _cli_import_module("nemo_platform.cli.commands.api.inference.gateway.provider")
+_cli_child_model = _importlib_import_module("nemo_platform.cli.commands.api.inference.gateway.model")
+_cli_child_openai = _importlib_import_module("nemo_platform.cli.commands.api.inference.gateway.openai")
+_cli_child_provider = _importlib_import_module("nemo_platform.cli.commands.api.inference.gateway.provider")
 
 app = create_typer_app(name="gateway", help="Gateway operations")
 

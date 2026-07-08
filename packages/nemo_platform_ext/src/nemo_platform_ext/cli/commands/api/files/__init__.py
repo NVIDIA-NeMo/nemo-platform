@@ -4,7 +4,7 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
-from importlib import import_module as _cli_import_module
+from importlib import import_module as _importlib_import_module
 from pathlib import Path
 from typing import Annotated
 
@@ -16,8 +16,8 @@ from nemo_platform_ext.cli.core.formatters import Column, check_output_columns_w
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform_ext.cli.core.types import ListOutputFormatOption, NoTruncateOption, OutputColumnsOption
 
-_cli_child_filesets = _cli_import_module("nemo_platform_ext.cli.commands.api.files.filesets")
-_cli_child_otlp = _cli_import_module("nemo_platform_ext.cli.commands.api.files.otlp")
+_cli_child_filesets = _importlib_import_module("nemo_platform_ext.cli.commands.api.files.filesets")
+_cli_child_otlp = _importlib_import_module("nemo_platform_ext.cli.commands.api.files.otlp")
 
 app = create_typer_app(name="files", help="Manage files")
 

@@ -4,7 +4,7 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
-from importlib import import_module as _cli_import_module
+from importlib import import_module as _importlib_import_module
 from typing import Annotated, Literal
 
 import typer
@@ -26,7 +26,7 @@ from nemo_platform.cli.core.types import (
 )
 from nemo_platform.cli.core.waiters import wait_for_inference_deployment
 
-_cli_child_versions = _cli_import_module("nemo_platform.cli.commands.api.inference.deployments.versions")
+_cli_child_versions = _importlib_import_module("nemo_platform.cli.commands.api.inference.deployments.versions")
 
 app = create_typer_app(name="deployments", help="Manage deployments")
 

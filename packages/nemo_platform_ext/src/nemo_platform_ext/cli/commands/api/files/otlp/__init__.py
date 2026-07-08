@@ -4,11 +4,11 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
-from importlib import import_module as _cli_import_module
+from importlib import import_module as _importlib_import_module
 
 from nemo_platform_ext.cli.core.help_formatter import create_typer_app
 
-_cli_child_logs = _cli_import_module("nemo_platform_ext.cli.commands.api.files.otlp.logs")
+_cli_child_logs = _importlib_import_module("nemo_platform_ext.cli.commands.api.files.otlp.logs")
 
 app = create_typer_app(name="otlp", help="Otlp operations")
 

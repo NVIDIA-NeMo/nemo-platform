@@ -195,9 +195,7 @@ def _collapse_typer_union_types(type_names: list[str]) -> list[str]:
         return type_names
 
     has_none = len(concrete_types) != len(type_names)
-    if "str" in concrete_types or any(type_name.startswith("Literal[") for type_name in concrete_types):
-        collapsed = ["str"]
-    elif set(concrete_types) <= {"int", "float"}:
+    if set(concrete_types) <= {"int", "float"}:
         collapsed = ["float"]
     else:
         collapsed = ["str"]

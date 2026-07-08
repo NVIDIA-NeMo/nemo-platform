@@ -7,6 +7,7 @@ import importlib
 import sys
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import Any
 
 import pytest
 from nemo_platform._types import Omit
@@ -157,6 +158,20 @@ class TestCleanTypeAnnotation:
 
         result = clean_type_annotation(Literal["positive", "negative"] | str | float | None)
         assert result == "str | None"
+
+    @pytest.mark.parametrize(
+        ("annotation", "expected"),
+        [
+            (str | int, "str"),
+            (int | float, "float"),
+            (int | float | None, "float | None"),
+            (int | bool, "str"),
+            (list[str] | float, "str"),
+        ],
+    )
+    def test_collapse_mixed_union_types(self, annotation: Any, expected: str):
+        """Should collapse mixed unions to one Typer-compatible runtime type."""
+        assert clean_type_annotation(annotation) == expected
 
     def test_deduplicate_types(self):
         """Should deduplicate type names in union."""
@@ -383,10 +398,13 @@ class TestInitFileGeneration:
         content = (intake_dir / "__init__.py").read_text()
         assert "from __future__ import annotations" in content
         assert (
-            '_cli_child_annotations = _cli_import_module("nemo_platform_ext.cli.commands.api.intake.annotations")'
+            '_cli_child_annotations = _importlib_import_module("nemo_platform_ext.cli.commands.api.intake.annotations")'
             in content
         )
-        assert '_cli_child_traces = _cli_import_module("nemo_platform_ext.cli.commands.api.intake.traces")' in content
+        assert (
+            '_cli_child_traces = _importlib_import_module("nemo_platform_ext.cli.commands.api.intake.traces")'
+            in content
+        )
         assert 'app.add_typer(_cli_child_annotations.app, name="annotations")' in content
         assert 'app.add_typer(_cli_child_traces.app, name="traces")' in content
         assert "from nemo_platform_ext.cli.commands.api.intake import annotations" not in content

@@ -4,7 +4,7 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
-from importlib import import_module as _cli_import_module
+from importlib import import_module as _importlib_import_module
 from typing import Annotated
 
 import typer
@@ -13,13 +13,15 @@ from nemo_platform.cli.core.context import CLIContext
 from nemo_platform.cli.core.errors import handle_errors
 from nemo_platform.cli.core.help_formatter import create_typer_app
 
-_cli_child_deployment_configs = _cli_import_module("nemo_platform.cli.commands.api.inference.deployment_configs")
-_cli_child_deployments = _cli_import_module("nemo_platform.cli.commands.api.inference.deployments")
-_cli_child_gateway = _cli_import_module("nemo_platform.cli.commands.api.inference.gateway")
-_cli_child_models = _cli_import_module("nemo_platform.cli.commands.api.inference.models")
-_cli_child_prompts = _cli_import_module("nemo_platform.cli.commands.api.inference.prompts")
-_cli_child_providers = _cli_import_module("nemo_platform.cli.commands.api.inference.providers")
-_cli_child_virtual_models = _cli_import_module("nemo_platform.cli.commands.api.inference.virtual_models")
+_cli_child_deployment_configs = _importlib_import_module(
+    "nemo_platform.cli.commands.api.inference.deployment_configs"
+)
+_cli_child_deployments = _importlib_import_module("nemo_platform.cli.commands.api.inference.deployments")
+_cli_child_gateway = _importlib_import_module("nemo_platform.cli.commands.api.inference.gateway")
+_cli_child_models = _importlib_import_module("nemo_platform.cli.commands.api.inference.models")
+_cli_child_prompts = _importlib_import_module("nemo_platform.cli.commands.api.inference.prompts")
+_cli_child_providers = _importlib_import_module("nemo_platform.cli.commands.api.inference.providers")
+_cli_child_virtual_models = _importlib_import_module("nemo_platform.cli.commands.api.inference.virtual_models")
 
 app = create_typer_app(name="inference", help="Manage inference")
 

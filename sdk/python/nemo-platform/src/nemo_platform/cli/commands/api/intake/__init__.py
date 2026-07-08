@@ -4,15 +4,15 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
-from importlib import import_module as _cli_import_module
+from importlib import import_module as _importlib_import_module
 
 from nemo_platform.cli.core.help_formatter import create_typer_app
 
-_cli_child_annotations = _cli_import_module("nemo_platform.cli.commands.api.intake.annotations")
-_cli_child_evaluator_results = _cli_import_module("nemo_platform.cli.commands.api.intake.evaluator_results")
-_cli_child_ingest = _cli_import_module("nemo_platform.cli.commands.api.intake.ingest")
-_cli_child_spans = _cli_import_module("nemo_platform.cli.commands.api.intake.spans")
-_cli_child_traces = _cli_import_module("nemo_platform.cli.commands.api.intake.traces")
+_cli_child_annotations = _importlib_import_module("nemo_platform.cli.commands.api.intake.annotations")
+_cli_child_evaluator_results = _importlib_import_module("nemo_platform.cli.commands.api.intake.evaluator_results")
+_cli_child_ingest = _importlib_import_module("nemo_platform.cli.commands.api.intake.ingest")
+_cli_child_spans = _importlib_import_module("nemo_platform.cli.commands.api.intake.spans")
+_cli_child_traces = _importlib_import_module("nemo_platform.cli.commands.api.intake.traces")
 
 app = create_typer_app(name="intake", help="Intake operations")
 

@@ -4,7 +4,7 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
-from importlib import import_module as _cli_import_module
+from importlib import import_module as _importlib_import_module
 from typing import Annotated, Literal
 
 import typer
@@ -23,8 +23,10 @@ from nemo_platform_ext.cli.core.types import (
     OutputColumnsOption,
 )
 
-_cli_child_evaluator_results = _cli_import_module("nemo_platform_ext.cli.commands.api.intake.spans.evaluator_results")
-_cli_child_groups = _cli_import_module("nemo_platform_ext.cli.commands.api.intake.spans.groups")
+_cli_child_evaluator_results = _importlib_import_module(
+    "nemo_platform_ext.cli.commands.api.intake.spans.evaluator_results"
+)
+_cli_child_groups = _importlib_import_module("nemo_platform_ext.cli.commands.api.intake.spans.groups")
 
 app = create_typer_app(name="spans", help="Manage spans")
 
