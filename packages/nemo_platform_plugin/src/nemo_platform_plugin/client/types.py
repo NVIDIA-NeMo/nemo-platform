@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterable, Iterable
 from dataclasses import dataclass, replace
-from typing import Any, ClassVar, Generic, ParamSpec, Protocol, TypeVar
+from typing import Any, ClassVar, Generic, ParamSpec, Protocol, TypeAlias, TypeVar
 
 from pydantic import BaseModel
 from typing_extensions import TypeVar as TypeVarExt
@@ -19,6 +19,10 @@ from typing_extensions import TypeVar as TypeVarExt
 P = ParamSpec("P")
 ModelT = TypeVar("ModelT", bound=BaseModel)
 ResponseT = TypeVar("ResponseT")
+
+JsonScalar: TypeAlias = str | int | float | bool | None
+JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
+QueryParamValue: TypeAlias = JsonValue | BaseModel
 
 
 class BinaryContent:
@@ -244,7 +248,7 @@ class PreparedRequest(Generic[ResponseT]):
     content: bytes | Iterable[bytes] | AsyncIterable[bytes] | None
     content_type: str | None
     response_type: type[ResponseT] | None
-    query_params: dict[str, str | int | bool | None] | None = None
+    query_params: dict[str, QueryParamValue] | None = None
     extra_headers: dict[str, str] | None = None
     client_options: dict[str, Any] | None = None
     # Prebuilt GET to replay on a 409 when ``exist_ok`` is set. Produced by a

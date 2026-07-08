@@ -42,6 +42,7 @@ from nemo_platform_plugin.client.types import (
     ConflictResolver,
     P,
     PreparedRequest,
+    QueryParamValue,
     ResponseT,
 )
 from pydantic import BaseModel
@@ -118,7 +119,7 @@ def _build_prepared_request(
     bound.apply_defaults()
 
     path_params: dict[str, str] = {}
-    query_params: dict[str, str | int | bool | None] | None = None
+    query_params: dict[str, QueryParamValue] | None = None
     content: bytes | Iterable[bytes] | AsyncIterable[bytes] | None = None
     content_type: str | None = None
     client_options: dict[str, Any] | None = None
