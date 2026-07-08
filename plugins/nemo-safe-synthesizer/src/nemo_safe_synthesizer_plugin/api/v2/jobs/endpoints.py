@@ -14,7 +14,11 @@ from urllib.parse import urlparse
 from nemo_platform import AsyncNeMoPlatform, NotFoundError, PermissionDeniedError
 from nemo_platform.filesets import FilesetPathError, parse_fileset_ref
 from nemo_platform_plugin.authz import AuthzScope
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
+from nemo_platform_plugin.client.errors import PermissionDeniedError as ClientPermissionDeniedError
 from nemo_platform_plugin.entities import EntityClient
+from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     EnvironmentVariable,
@@ -116,13 +120,14 @@ async def job_config_compiler(
         ds_workspace, fileset_name, _ = parse_fileset_ref(transformed_spec.data_source, workspace_fallback=workspace)
     except FilesetPathError as e:
         raise PlatformJobCompilationError(f"Invalid data_source format: {transformed_spec.data_source!r}") from e
+    files = client_from_platform(sdk, AsyncFilesClient)
     try:
-        await sdk.files.filesets.retrieve(name=fileset_name, workspace=ds_workspace)
-    except NotFoundError as e:
+        await files.get_fileset(name=fileset_name, workspace=ds_workspace)
+    except ClientNotFoundError as e:
         raise PlatformJobCompilationError(
             f"Could not find fileset {fileset_name!r} in workspace {ds_workspace!r}"
         ) from e
-    except PermissionDeniedError as e:
+    except ClientPermissionDeniedError as e:
         raise PermissionError(f"Access denied to fileset {fileset_name!r} in workspace {ds_workspace!r}") from e
 
     environment = [

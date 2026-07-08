@@ -30,7 +30,9 @@ from nemo_platform.filesets import (
     parse_fileset_path,
     parse_fileset_ref,
 )
-from nemo_platform.types.files.fileset import Fileset
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import FilesetOutput
 
 
 class TestParseFilesetRef:
@@ -298,13 +300,13 @@ class TestFilesetFileSystem:
         """Create a FilesetFileSystem backed by the test SDK."""
         return sdk.files.fsspec
 
-    def test_ls_empty_fileset(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_ls_empty_fileset(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test listing an empty fileset."""
         path = f"{fileset.workspace}/{fileset.name}"
         result = fs.ls(path)
         assert result == []
 
-    def test_ls_with_files(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_ls_with_files(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test listing a fileset with files."""
         base = f"{fileset.workspace}/{fileset.name}"
         fs.pipe(f"{base}/file1.txt", b"content1")
@@ -317,7 +319,7 @@ class TestFilesetFileSystem:
         assert f"{base}#file1.txt" in names
         assert f"{base}#file2.txt" in names
 
-    def test_ls_with_directories(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_ls_with_directories(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test that nested files show as directories in listing."""
         base = f"{fileset.workspace}/{fileset.name}"
         fs.pipe(f"{base}/root.txt", b"root")
@@ -331,7 +333,7 @@ class TestFilesetFileSystem:
         assert types[f"{base}#root.txt"] == "file"
         assert types[f"{base}#subdir"] == "directory"
 
-    def test_ls_subdirectory(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_ls_subdirectory(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test listing files in a subdirectory."""
         base = f"{fileset.workspace}/{fileset.name}"
         fs.pipe(f"{base}/subdir/file1.txt", b"content1")
@@ -343,7 +345,7 @@ class TestFilesetFileSystem:
         assert f"{base}#subdir/file1.txt" in result
         assert f"{base}#subdir/file2.txt" in result
 
-    def test_ls_subdirectory_trailing_slash(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_ls_subdirectory_trailing_slash(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test that ls with trailing slash returns same result as without.
 
         ls("workspace/fileset/subdir/") should return
@@ -362,7 +364,7 @@ class TestFilesetFileSystem:
         assert len(result_with_slash) == 2
         assert set(result_no_slash) == set(result_with_slash)
 
-    def test_cat_file(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_cat_file(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test reading file content with cat."""
         content = b"Hello, fsspec!"
         path = f"{fileset.workspace}/{fileset.name}/test.txt"
@@ -372,7 +374,7 @@ class TestFilesetFileSystem:
 
         assert result == content
 
-    def test_cat_file_with_range(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_cat_file_with_range(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test reading partial file content with byte range."""
         content = b"0123456789ABCDEF"
         path = f"{fileset.workspace}/{fileset.name}/test.txt"
@@ -382,7 +384,7 @@ class TestFilesetFileSystem:
 
         assert result == b"456789"
 
-    def test_open_read(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_open_read(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test opening a file for reading."""
         content = b"File content for reading"
         path = f"{fileset.workspace}/{fileset.name}/readable.txt"
@@ -393,7 +395,7 @@ class TestFilesetFileSystem:
 
         assert result == content
 
-    def test_open_write(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_open_write(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test opening a file for writing."""
         path = f"{fileset.workspace}/{fileset.name}/writable.txt"
         content = b"Written via fsspec"
@@ -405,7 +407,7 @@ class TestFilesetFileSystem:
         result = fs.cat(path)
         assert result == content
 
-    def test_pipe(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_pipe(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test writing file content with pipe."""
         path = f"{fileset.workspace}/{fileset.name}/piped.txt"
         content = b"Piped content"
@@ -415,7 +417,7 @@ class TestFilesetFileSystem:
         result = fs.cat(path)
         assert result == content
 
-    def test_put_file(self, fs: FilesetFileSystem, fileset: Fileset, tmp_path: Path):
+    def test_put_file(self, fs: FilesetFileSystem, fileset: FilesetOutput, tmp_path: Path):
         """Test uploading a local file with put_file."""
         # Create a local file
         local_file = tmp_path / "upload.txt"
@@ -430,7 +432,7 @@ class TestFilesetFileSystem:
         result = fs.cat(remote_path)
         assert result == content
 
-    def test_put_file_nested_path(self, fs: FilesetFileSystem, fileset: Fileset, tmp_path: Path):
+    def test_put_file_nested_path(self, fs: FilesetFileSystem, fileset: FilesetOutput, tmp_path: Path):
         """Test uploading a file to a nested path with put_file."""
         # Create a local file
         local_file = tmp_path / "nested_upload.txt"
@@ -449,7 +451,7 @@ class TestFilesetFileSystem:
         parent_info = fs.info(f"{fileset.workspace}/{fileset.name}/subdir/nested")
         assert parent_info["type"] == "directory"
 
-    def test_rm(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_rm(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test deleting a file."""
         path = f"{fileset.workspace}/{fileset.name}/to_delete.txt"
         fs.pipe(path, b"delete me")
@@ -460,7 +462,7 @@ class TestFilesetFileSystem:
 
         assert not fs.exists(path)
 
-    def test_info(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_info(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test getting file info."""
         content = b"Content for info test"
         path = f"{fileset.workspace}/{fileset.name}/info.txt"
@@ -474,14 +476,14 @@ class TestFilesetFileSystem:
         assert info["size"] == len(content)
         assert info["type"] == "file"
 
-    def test_info_directory(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_info_directory(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test getting info for fileset root (directory)."""
         path = f"{fileset.workspace}/{fileset.name}"
         info = fs.info(path)
 
         assert info["type"] == "directory"
 
-    def test_exists(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_exists(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test checking file existence."""
         base = f"{fileset.workspace}/{fileset.name}"
         fs.pipe(f"{base}/exists.txt", b"I exist")
@@ -489,7 +491,7 @@ class TestFilesetFileSystem:
         assert fs.exists(f"{base}/exists.txt")
         assert not fs.exists(f"{base}/does_not_exist.txt")
 
-    def test_parquet_read(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_parquet_read(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test reading a parquet file via fsspec.
 
         This validates that range requests work correctly for formats
@@ -512,7 +514,7 @@ class TestFilesetFileSystem:
 
         pd.testing.assert_frame_equal(result, df)
 
-    def test_protocol_url(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_protocol_url(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test that protocol prefix is handled correctly."""
         content = b"Protocol test"
         base = f"{fileset.workspace}/{fileset.name}"
@@ -525,12 +527,12 @@ class TestFilesetFileSystem:
         assert fs.cat(path_no_proto) == content
         assert fs.cat(path_with_proto) == content
 
-    def test_fsspec_filesystem_registration(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_fsspec_filesystem_registration(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test that FilesetFileSystem can be instantiated via fsspec.filesystem()."""
         # Protocol is registered by the autouse fixture
         fs = fsspec.filesystem(
             "fileset",
-            sdk=sdk,
+            client=client_from_platform(sdk, FilesClient),
             skip_instance_cache=True,
         )
 
@@ -541,7 +543,7 @@ class TestFilesetFileSystem:
         result = fs.ls(path)
         assert result == []
 
-    def test_find(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_find(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test recursive file discovery with find."""
         base = f"{fileset.workspace}/{fileset.name}"
         fs.pipe(f"{base}/root.txt", b"root")
@@ -558,7 +560,7 @@ class TestFilesetFileSystem:
         assert f"{base}#dir1/file1.txt" in result
         assert f"{base}#dir1/subdir/nested.txt" in result
 
-    def test_glob(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_glob(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test pattern matching with glob."""
         base = f"{fileset.workspace}/{fileset.name}"
         fs.pipe(f"{base}/data.csv", b"csv")
@@ -579,7 +581,7 @@ class TestFilesetFileSystem:
         # All json files including nested
         assert len(json_all) == 3
 
-    def test_isdir_isfile(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_isdir_isfile(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test isdir and isfile type checking."""
         base = f"{fileset.workspace}/{fileset.name}"
         fs.pipe(f"{base}/file.txt", b"content")
@@ -597,7 +599,7 @@ class TestFilesetFileSystem:
         assert fs.isdir(f"{base}/subdir")
         assert not fs.isfile(f"{base}/subdir")
 
-    def test_cat_multiple_files(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_cat_multiple_files(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test reading multiple files at once with cat."""
         base = f"{fileset.workspace}/{fileset.name}"
         fs.pipe(f"{base}/file1.txt", b"content1")
@@ -613,7 +615,7 @@ class TestFilesetFileSystem:
         assert result[f"{base}#file2.txt"] == b"content2"
         assert result[f"{base}#file3.txt"] == b"content3"
 
-    def test_walk(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_walk(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test directory traversal with walk."""
         base = f"{fileset.workspace}/{fileset.name}"
         fs.pipe(f"{base}/root.txt", b"root")
@@ -630,7 +632,7 @@ class TestFilesetFileSystem:
         # Walk returns files with fileset#path format relative to walked directory
         assert any("root.txt" in f for f in files)
 
-    def test_head_tail(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_head_tail(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test reading first/last bytes of a file."""
         content = b"0123456789ABCDEFGHIJ"
         path = f"{fileset.workspace}/{fileset.name}/test.txt"
@@ -644,7 +646,7 @@ class TestFilesetFileSystem:
         result = fs.tail(path, size=5)
         assert result == b"FGHIJ"
 
-    def test_get_single_file(self, fs: FilesetFileSystem, fileset: Fileset, tmp_path: Path):
+    def test_get_single_file(self, fs: FilesetFileSystem, fileset: FilesetOutput, tmp_path: Path):
         """Test downloading a single file with get().
 
         Tests three behaviors:
@@ -676,7 +678,7 @@ class TestFilesetFileSystem:
         assert (existing_dir / "test.txt").is_file()
         assert (existing_dir / "test.txt").read_bytes() == content
 
-    def test_get_trailing_slash_semantics(self, fs: FilesetFileSystem, fileset: Fileset, tmp_path: Path):
+    def test_get_trailing_slash_semantics(self, fs: FilesetFileSystem, fileset: FilesetOutput, tmp_path: Path):
         """Test trailing slash semantics for get() per fsspec docs.
 
         From https://filesystem-spec.readthedocs.io/en/latest/copying.html:
@@ -745,7 +747,7 @@ class TestFilesetFileSystem:
         assert (dest_source_slash / "file1.txt").read_bytes() == b"file1"
         assert not (dest_source_slash / "subdir").exists()
 
-    def test_get_fileset_root(self, fs: FilesetFileSystem, fileset: Fileset, tmp_path: Path):
+    def test_get_fileset_root(self, fs: FilesetFileSystem, fileset: FilesetOutput, tmp_path: Path):
         """Test downloading from fileset root path (workspace/fileset without subpath).
 
         When the source path is just the fileset root (no subpath), the trailing
@@ -783,7 +785,7 @@ class TestFilesetFileSystem:
         assert (dest_no_slash / "data" / "nested" / "deep.txt").read_bytes() == b"deep"
         assert not (dest_no_slash / fileset.name).exists()
 
-    def test_put_fileset_root(self, fs: FilesetFileSystem, fileset: Fileset, tmp_path: Path):
+    def test_put_fileset_root(self, fs: FilesetFileSystem, fileset: FilesetOutput, tmp_path: Path):
         """Test uploading to fileset root path (workspace/fileset without subpath).
 
         When the dest path is just the fileset root (no subpath), the trailing
@@ -822,7 +824,7 @@ class TestFilesetFileSystem:
         assert fs.cat(f"{base}/my_data/file2.txt") == b"file2"
         assert fs.cat(f"{base}/my_data/subdir/nested.txt") == b"nested"
 
-    def test_put_single_file_to_fileset_root(self, fs: FilesetFileSystem, fileset: Fileset, tmp_path: Path):
+    def test_put_single_file_to_fileset_root(self, fs: FilesetFileSystem, fileset: FilesetOutput, tmp_path: Path):
         """Test uploading a single file to fileset root path.
 
         This tests the case: fs.put("local_file.txt", "workspace/fileset")
@@ -861,7 +863,7 @@ class TestFilesetFileSystem:
         # File should be renamed
         assert fs.cat(f"{base}/renamed.txt") == b"single file content"
 
-    def test_put_file_requires_file_path(self, fs: FilesetFileSystem, fileset: Fileset, tmp_path: Path):
+    def test_put_file_requires_file_path(self, fs: FilesetFileSystem, fileset: FilesetOutput, tmp_path: Path):
         """Test that put_file (not put) requires a file path in rpath.
 
         The low-level put_file method requires rpath to include a file path.
@@ -882,7 +884,7 @@ class TestFilesetFileSystem:
         fs.put_file(str(local_file), f"{base}/test.txt")
         assert fs.cat(f"{base}/test.txt") == b"content"
 
-    def test_put_trailing_slash_semantics(self, fs: FilesetFileSystem, fileset: Fileset, tmp_path: Path):
+    def test_put_trailing_slash_semantics(self, fs: FilesetFileSystem, fileset: FilesetOutput, tmp_path: Path):
         """Test trailing slash semantics for put() per fsspec docs.
 
         Source trailing slash controls whether to preserve source directory name:
@@ -918,7 +920,7 @@ class TestFilesetFileSystem:
     def test_download_entire_fileset(
         self,
         fs: FilesetFileSystem,
-        fileset: Fileset,
+        fileset: FilesetOutput,
         sample_dataset: Path,
         tmp_path: Path,
     ):
@@ -974,7 +976,7 @@ class TestFilesetFileSystem:
         assert (download_without_slash / "config" / "settings.json").read_bytes() == b'{"batch_size": 32}'
         assert not (download_without_slash / fileset.name).exists()
 
-    def test_concurrent_download_failure_hang(self, fs: FilesetFileSystem, fileset: Fileset, tmp_path: Path):
+    def test_concurrent_download_failure_hang(self, fs: FilesetFileSystem, fileset: FilesetOutput, tmp_path: Path):
         """Test that a failure in one concurrent download doesn't cause a hang (sync)."""
         from unittest.mock import patch
 
@@ -1004,7 +1006,7 @@ class TestFilesetFileSystem:
 
         # If we get here without hanging, the test passes
 
-    def test_concurrent_upload_failure_hang(self, fs: FilesetFileSystem, fileset: Fileset, tmp_path: Path):
+    def test_concurrent_upload_failure_hang(self, fs: FilesetFileSystem, fileset: FilesetOutput, tmp_path: Path):
         """Test that a failure in one concurrent upload doesn't cause a hang (sync)."""
         from unittest.mock import patch
 
@@ -1033,7 +1035,7 @@ class TestFilesetFileSystem:
 
         # If we get here without hanging, the test passes
 
-    def test_get_callback_hooks(self, fs: FilesetFileSystem, fileset: Fileset, tmp_path: Path):
+    def test_get_callback_hooks(self, fs: FilesetFileSystem, fileset: FilesetOutput, tmp_path: Path):
         """Test that get() properly calls callback hooks for progress tracking (sync)."""
         from fsspec.callbacks import Callback
 
@@ -1093,15 +1095,15 @@ class TestFilesetFileSystemAsync:
     @pytest.fixture
     def fs(self, sdk: NeMoPlatform) -> FilesetFileSystem:
         """Create a FilesetFileSystem backed by the test SDK."""
-        return FilesetFileSystem(sdk=sdk, skip_instance_cache=True)
+        return FilesetFileSystem(client=client_from_platform(sdk, FilesClient), skip_instance_cache=True)
 
-    async def test_ls_empty_fileset(self, fs: FilesetFileSystem, fileset: Fileset):
+    async def test_ls_empty_fileset(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test listing an empty fileset."""
         path = f"{fileset.workspace}/{fileset.name}"
         result = await fs._ls(path)
         assert result == []
 
-    async def test_ls_with_files(self, fs: FilesetFileSystem, fileset: Fileset):
+    async def test_ls_with_files(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test listing a fileset with files."""
         base = f"{fileset.workspace}/{fileset.name}"
         await fs._pipe_file(f"{base}/file1.txt", b"content1")
@@ -1114,7 +1116,7 @@ class TestFilesetFileSystemAsync:
         assert f"{base}#file1.txt" in names
         assert f"{base}#file2.txt" in names
 
-    async def test_ls_with_directories(self, fs: FilesetFileSystem, fileset: Fileset):
+    async def test_ls_with_directories(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test that nested files show as directories in listing."""
         base = f"{fileset.workspace}/{fileset.name}"
         await fs._pipe_file(f"{base}/root.txt", b"root")
@@ -1128,7 +1130,7 @@ class TestFilesetFileSystemAsync:
         assert types[f"{base}#root.txt"] == "file"
         assert types[f"{base}#subdir"] == "directory"
 
-    async def test_ls_subdirectory(self, fs: FilesetFileSystem, fileset: Fileset):
+    async def test_ls_subdirectory(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test listing files in a subdirectory."""
         base = f"{fileset.workspace}/{fileset.name}"
         await fs._pipe_file(f"{base}/subdir/file1.txt", b"content1")
@@ -1140,7 +1142,7 @@ class TestFilesetFileSystemAsync:
         assert f"{base}#subdir/file1.txt" in result
         assert f"{base}#subdir/file2.txt" in result
 
-    async def test_cat_file(self, fs: FilesetFileSystem, fileset: Fileset):
+    async def test_cat_file(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test reading file content with cat."""
         content = b"Hello, fsspec!"
         path = f"{fileset.workspace}/{fileset.name}/test.txt"
@@ -1150,7 +1152,7 @@ class TestFilesetFileSystemAsync:
 
         assert result == content
 
-    async def test_cat_file_with_range(self, fs: FilesetFileSystem, fileset: Fileset):
+    async def test_cat_file_with_range(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test reading partial file content with byte range."""
         content = b"0123456789ABCDEF"
         path = f"{fileset.workspace}/{fileset.name}/test.txt"
@@ -1160,7 +1162,7 @@ class TestFilesetFileSystemAsync:
 
         assert result == b"456789"
 
-    async def test_pipe_file(self, fs: FilesetFileSystem, fileset: Fileset):
+    async def test_pipe_file(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test writing file content with pipe."""
         path = f"{fileset.workspace}/{fileset.name}/piped.txt"
         content = b"Piped content"
@@ -1170,7 +1172,7 @@ class TestFilesetFileSystemAsync:
         result = await fs._cat_file(path)
         assert result == content
 
-    async def test_put_file(self, fs: FilesetFileSystem, fileset: Fileset, tmp_path: Path):
+    async def test_put_file(self, fs: FilesetFileSystem, fileset: FilesetOutput, tmp_path: Path):
         """Test uploading a local file with _put_file."""
         # Create a local file
         local_file = tmp_path / "upload.txt"
@@ -1185,7 +1187,7 @@ class TestFilesetFileSystemAsync:
         result = await fs._cat_file(remote_path)
         assert result == content
 
-    async def test_put_file_nested_path(self, fs: FilesetFileSystem, fileset: Fileset, tmp_path: Path):
+    async def test_put_file_nested_path(self, fs: FilesetFileSystem, fileset: FilesetOutput, tmp_path: Path):
         """Test uploading a file to a nested path with _put_file."""
         # Create a local file
         local_file = tmp_path / "nested_upload.txt"
@@ -1204,7 +1206,7 @@ class TestFilesetFileSystemAsync:
         parent_info = await fs._info(f"{fileset.workspace}/{fileset.name}/subdir/nested")
         assert parent_info["type"] == "directory"
 
-    async def test_rm_file(self, fs: FilesetFileSystem, fileset: Fileset):
+    async def test_rm_file(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test deleting a file."""
         path = f"{fileset.workspace}/{fileset.name}/to_delete.txt"
         await fs._pipe_file(path, b"delete me")
@@ -1217,7 +1219,7 @@ class TestFilesetFileSystemAsync:
         with pytest.raises(FileNotFoundError):
             await fs._info(path)
 
-    async def test_info(self, fs: FilesetFileSystem, fileset: Fileset):
+    async def test_info(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test getting file info."""
         content = b"Content for info test"
         path = f"{fileset.workspace}/{fileset.name}/info.txt"
@@ -1231,14 +1233,14 @@ class TestFilesetFileSystemAsync:
         assert info["size"] == len(content)
         assert info["type"] == "file"
 
-    async def test_info_directory(self, fs: FilesetFileSystem, fileset: Fileset):
+    async def test_info_directory(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test getting info for fileset root (directory)."""
         path = f"{fileset.workspace}/{fileset.name}"
         info = await fs._info(path)
 
         assert info["type"] == "directory"
 
-    async def test_protocol_url(self, fs: FilesetFileSystem, fileset: Fileset):
+    async def test_protocol_url(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test that protocol prefix is handled correctly."""
         content = b"Protocol test"
         base = f"{fileset.workspace}/{fileset.name}"
@@ -1251,7 +1253,7 @@ class TestFilesetFileSystemAsync:
         assert await fs._cat_file(path_no_proto) == content
         assert await fs._cat_file(path_with_proto) == content
 
-    async def test_find(self, fs: FilesetFileSystem, fileset: Fileset):
+    async def test_find(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test recursive file discovery with find (async)."""
         base = f"{fileset.workspace}/{fileset.name}"
         await fs._pipe_file(f"{base}/root.txt", b"root")
@@ -1268,7 +1270,7 @@ class TestFilesetFileSystemAsync:
         assert f"{base}#dir1/file1.txt" in result
         assert f"{base}#dir1/subdir/nested.txt" in result
 
-    async def test_glob(self, fs: FilesetFileSystem, fileset: Fileset):
+    async def test_glob(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test pattern matching with glob (async)."""
         base = f"{fileset.workspace}/{fileset.name}"
         await fs._pipe_file(f"{base}/data.csv", b"csv")
@@ -1289,7 +1291,7 @@ class TestFilesetFileSystemAsync:
         # All json files including nested
         assert len(json_all) == 3
 
-    async def test_isdir_isfile(self, fs: FilesetFileSystem, fileset: Fileset):
+    async def test_isdir_isfile(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test isdir and isfile type checking (async)."""
         base = f"{fileset.workspace}/{fileset.name}"
         await fs._pipe_file(f"{base}/file.txt", b"content")
@@ -1305,7 +1307,7 @@ class TestFilesetFileSystemAsync:
         # Subdirectory checks
         assert await fs._isdir(f"{base}/subdir")
 
-    async def test_cat_multiple_files(self, fs: FilesetFileSystem, fileset: Fileset):
+    async def test_cat_multiple_files(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test reading multiple files at once with cat (async)."""
         base = f"{fileset.workspace}/{fileset.name}"
         await fs._pipe_file(f"{base}/file1.txt", b"content1")
@@ -1321,7 +1323,7 @@ class TestFilesetFileSystemAsync:
         assert result[f"{base}#file2.txt"] == b"content2"
         assert result[f"{base}#file3.txt"] == b"content3"
 
-    async def test_head_tail(self, fs: FilesetFileSystem, fileset: Fileset):
+    async def test_head_tail(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test reading first/last bytes of a file (async)."""
         content = b"0123456789ABCDEFGHIJ"
         path = f"{fileset.workspace}/{fileset.name}/test.txt"
@@ -1335,7 +1337,7 @@ class TestFilesetFileSystemAsync:
         result = await fs._cat_file(path, start=15, end=20)
         assert result == b"FGHIJ"
 
-    async def test_get_single_file(self, fs: FilesetFileSystem, fileset: Fileset, tmp_path: Path):
+    async def test_get_single_file(self, fs: FilesetFileSystem, fileset: FilesetOutput, tmp_path: Path):
         """Test downloading a single file with _get() (async version).
 
         Tests three behaviors:
@@ -1370,7 +1372,7 @@ class TestFilesetFileSystemAsync:
     async def test_download_entire_fileset(
         self,
         fs: FilesetFileSystem,
-        fileset: Fileset,
+        fileset: FilesetOutput,
         sample_dataset: Path,
         tmp_path: Path,
     ):
@@ -1426,7 +1428,9 @@ class TestFilesetFileSystemAsync:
         assert (download_without_slash / "config" / "settings.json").read_bytes() == b'{"batch_size": 32}'
         assert not (download_without_slash / fileset.name).exists()
 
-    async def test_concurrent_download_failure_hang(self, fs: FilesetFileSystem, fileset: Fileset, tmp_path: Path):
+    async def test_concurrent_download_failure_hang(
+        self, fs: FilesetFileSystem, fileset: FilesetOutput, tmp_path: Path
+    ):
         """Test that a failure in one concurrent download doesn't cause a hang.
 
         This reproduces an issue where orphaned asyncio tasks from failed concurrent
@@ -1461,7 +1465,7 @@ class TestFilesetFileSystemAsync:
 
         # If we get here without hanging, the test passes
 
-    async def test_concurrent_upload_failure_hang(self, fs: FilesetFileSystem, fileset: Fileset, tmp_path: Path):
+    async def test_concurrent_upload_failure_hang(self, fs: FilesetFileSystem, fileset: FilesetOutput, tmp_path: Path):
         """Test that a failure in one concurrent upload doesn't cause a hang.
 
         Similar to test_concurrent_download_failure_hang, this ensures that the
@@ -1494,7 +1498,7 @@ class TestFilesetFileSystemAsync:
 
         # If we get here without hanging, the test passes
 
-    async def test_batch_size_limits_concurrency(self, sdk: NeMoPlatform, fileset: Fileset, tmp_path: Path):
+    async def test_batch_size_limits_concurrency(self, sdk: NeMoPlatform, fileset: FilesetOutput, tmp_path: Path):
         """Test that batch_size properly limits concurrent operations.
 
         Creates a filesystem with batch_size=4, then downloads 8 files and verifies
@@ -1505,7 +1509,7 @@ class TestFilesetFileSystemAsync:
         total_files = 8
 
         # Create filesystem with limited concurrency
-        fs = FilesetFileSystem(sdk=sdk, batch_size=batch_size)
+        fs = FilesetFileSystem(client=client_from_platform(sdk, FilesClient), batch_size=batch_size)
 
         # Upload files
         base = f"{fileset.workspace}/{fileset.name}"
@@ -1560,7 +1564,7 @@ class TestFilesetFileSystemAsync:
         downloaded_files = list(download_dir.iterdir())
         assert len(downloaded_files) == total_files
 
-    async def test_get_callback_hooks(self, fs: FilesetFileSystem, fileset: Fileset, tmp_path: Path):
+    async def test_get_callback_hooks(self, fs: FilesetFileSystem, fileset: FilesetOutput, tmp_path: Path):
         """Test that _get properly calls callback hooks for progress tracking.
 
         This test demonstrates two callback features:
@@ -1622,7 +1626,7 @@ class TestFilesetFileSystemAsync:
         assert (download_dir / "file2.txt").read_bytes() == b"content2"
         assert (download_dir / "file3.txt").read_bytes() == b"content3"
 
-    async def test_get_per_chunk_callbacks(self, fs: FilesetFileSystem, fileset: Fileset, tmp_path: Path):
+    async def test_get_per_chunk_callbacks(self, fs: FilesetFileSystem, fileset: FilesetOutput, tmp_path: Path):
         """Test that _get passes branched callbacks to _get_file for per-chunk progress.
 
         This test verifies the full callback hierarchy:
@@ -1711,7 +1715,7 @@ class TestFilesetFileSystemAsync:
         # Verify file was actually downloaded correctly
         assert (download_dir / "large_file.bin").read_bytes() == large_content
 
-    async def test_put_per_chunk_callbacks(self, fs: FilesetFileSystem, fileset: Fileset, tmp_path: Path):
+    async def test_put_per_chunk_callbacks(self, fs: FilesetFileSystem, fileset: FilesetOutput, tmp_path: Path):
         """Test that _put passes branched callbacks to _put_file for per-chunk progress.
 
         This test verifies the full callback hierarchy for uploads:
@@ -1812,7 +1816,7 @@ class TestDuckDBIntegration:
     protocol registry and creates it automatically.
     """
 
-    def test_duckdb_parquet_query(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_duckdb_parquet_query(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test querying a parquet file with DuckDB via fileset:// protocol."""
         # Create test data
         df = pd.DataFrame(
@@ -1835,7 +1839,7 @@ class TestDuckDBIntegration:
         )
 
         # Create filesystem via fsspec (how users would configure it)
-        fs = fsspec.filesystem("fileset", sdk=sdk)
+        fs = fsspec.filesystem("fileset", client=client_from_platform(sdk, FilesClient))
 
         # Query with DuckDB using fileset:// URL with new # format
         fileset_url = f"fileset://{fileset.workspace}/{fileset.name}#{file_path}"
@@ -1859,7 +1863,7 @@ class TestDuckDBIntegration:
         assert len(result) == 2
         assert set(result["category"]) == {"A", "B"}
 
-    def test_duckdb_parquet_range_read(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_duckdb_parquet_range_read(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test that DuckDB performs efficient range reads on parquet files.
 
         Parquet files store metadata at the end (footer), so DuckDB reads:
@@ -1889,7 +1893,7 @@ class TestDuckDBIntegration:
         )
 
         # Create filesystem via fsspec
-        fs = fsspec.filesystem("fileset", sdk=sdk)
+        fs = fsspec.filesystem("fileset", client=client_from_platform(sdk, FilesClient))
         fileset_url = f"fileset://{fileset.workspace}/{fileset.name}#{file_path}"
         conn = duckdb.connect()
         conn.register_filesystem(fs)
@@ -1901,7 +1905,7 @@ class TestDuckDBIntegration:
         assert list(result["id"]) == list(range(100, 111))
         assert list(result["value"]) == [float(i) for i in range(100, 111)]
 
-    def test_duckdb_legacy_path_format(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_duckdb_legacy_path_format(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test DuckDB queries using legacy workspace/fileset/path format.
 
         This validates backwards compatibility with the legacy path format
@@ -1926,7 +1930,7 @@ class TestDuckDBIntegration:
         )
 
         # Create filesystem via fsspec
-        fs = fsspec.filesystem("fileset", sdk=sdk)
+        fs = fsspec.filesystem("fileset", client=client_from_platform(sdk, FilesClient))
 
         # Query with DuckDB using LEGACY path format: workspace/fileset/path
         fileset_url = f"fileset://{fileset.workspace}/{fileset.name}/{file_path}"
@@ -1950,7 +1954,7 @@ class TestDirCache:
         """Create a FilesetFileSystem backed by the test SDK."""
         return sdk.files.fsspec
 
-    def test_ls_populates_cache_for_nested_dirs(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_ls_populates_cache_for_nested_dirs(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """_ls should populate cache for all directory levels in the response."""
         base = f"{fileset.workspace}/{fileset.name}"
 
@@ -1969,7 +1973,7 @@ class TestDirCache:
         assert f"{base}#subdir" in fs.dircache
         assert f"{base}#subdir/nested" in fs.dircache
 
-    def test_deeply_nested_tree(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_deeply_nested_tree(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Cache should handle deeply nested directory structures."""
         base = f"{fileset.workspace}/{fileset.name}"
 
@@ -2003,7 +2007,7 @@ class TestDirCache:
         info = fs.info(f"{base}/a/b/c/mid.txt")
         assert info["type"] == "file"
 
-    def test_nested_ls_uses_cache(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_nested_ls_uses_cache(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Subsequent _ls calls for nested paths should use cache."""
         base = f"{fileset.workspace}/{fileset.name}"
 
@@ -2028,7 +2032,7 @@ class TestDirCache:
         # Nested ls used cache, didn't add new entries
         assert after_nested_ls == after_root_ls
 
-    def test_find_populates_cache(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_find_populates_cache(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """_find should populate cache for subsequent _ls calls."""
         base = f"{fileset.workspace}/{fileset.name}"
 
@@ -2046,7 +2050,7 @@ class TestDirCache:
         assert base in fs.dircache
         assert f"{base}#subdir" in fs.dircache
 
-    def test_info_uses_cache(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_info_uses_cache(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """_info should use dircache instead of making API calls."""
         base = f"{fileset.workspace}/{fileset.name}"
 
@@ -2069,7 +2073,7 @@ class TestDirCache:
         assert info["type"] == "file"
         assert info["size"] == len(b"content")
 
-    def test_cache_invalidation_on_write(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_cache_invalidation_on_write(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Cache should be invalidated when files are written."""
         base = f"{fileset.workspace}/{fileset.name}"
 
@@ -2089,7 +2093,7 @@ class TestDirCache:
         assert f"{base}#file1.txt" in result
         assert f"{base}#file2.txt" in result
 
-    def test_cache_invalidation_on_delete(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_cache_invalidation_on_delete(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Cache should be invalidated when files are deleted."""
         base = f"{fileset.workspace}/{fileset.name}"
 
@@ -2110,7 +2114,7 @@ class TestDirCache:
         assert f"{base}#file1.txt" not in result
         assert f"{base}#file2.txt" in result
 
-    def test_refresh_bypasses_cache(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_refresh_bypasses_cache(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """_ls with refresh=True should bypass cache."""
         base = f"{fileset.workspace}/{fileset.name}"
 
@@ -2125,7 +2129,7 @@ class TestDirCache:
         result = fs.ls(base, refresh=True)
         assert len(result) == 1
 
-    def test_info_file_not_found(self, fs: FilesetFileSystem, fileset: Fileset):
+    def test_info_file_not_found(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """_info should raise FileNotFoundError for non-existent paths."""
         base = f"{fileset.workspace}/{fileset.name}"
 
@@ -2138,7 +2142,7 @@ class TestDirCache:
             fs.info(f"{base}/nonexistent.txt")
 
     @pytest.mark.parametrize("detail", [True, False])
-    def test_ls_detail_parameter(self, fs: FilesetFileSystem, fileset: Fileset, detail: bool):
+    def test_ls_detail_parameter(self, fs: FilesetFileSystem, fileset: FilesetOutput, detail: bool):
         """_ls should respect the detail parameter."""
         base = f"{fileset.workspace}/{fileset.name}"
 
@@ -2154,10 +2158,10 @@ class TestDirCache:
         else:
             assert all(isinstance(item, str) for item in result)
 
-    def test_cache_disabled(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_cache_disabled(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """When use_listings_cache=False, cache should not be used."""
         # Create filesystem with cache disabled
-        fs = FilesetFileSystem(sdk=sdk)
+        fs = FilesetFileSystem(client=client_from_platform(sdk, FilesClient))
         fs.dircache.use_listings_cache = False
 
         base = f"{fileset.workspace}/{fileset.name}"

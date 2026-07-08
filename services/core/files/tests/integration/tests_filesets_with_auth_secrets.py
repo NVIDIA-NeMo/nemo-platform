@@ -8,8 +8,11 @@ from typing import Generator
 from unittest.mock import patch
 
 import pytest
-from nemo_platform import APIStatusError, NeMoPlatform
+from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NemoHTTPError
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest
 from nemo_platform_plugin.secrets.client import SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 from nmp.core.auth.app.bundle import (
@@ -113,17 +116,20 @@ class TestFilesetCreateWithSecretAuth:
         )
 
         editor_sdk = as_user(sdk, editor_email)
-        created = editor_sdk.files.filesets.create(
+        files = client_from_platform(editor_sdk, FilesClient)
+        created = files.create_fileset(
             workspace=workspace,
-            name=fileset_name,
-            description="hf fileset",
-            storage={
-                "type": "huggingface",
-                "repo_id": "Qwen/Qwen3-0.6B",
-                "repo_type": "model",
-                "token_secret": secret_name,
-            },
-        )
+            body=CreateFilesetRequest(
+                name=fileset_name,
+                description="hf fileset",
+                storage={
+                    "type": "huggingface",
+                    "repo_id": "Qwen/Qwen3-0.6B",
+                    "repo_type": "model",
+                    "token_secret": secret_name,
+                },
+            ),
+        ).data()
 
         assert created.name == fileset_name
         assert created.storage.type == "huggingface"
@@ -152,17 +158,20 @@ class TestFilesetCreateWithSecretAuth:
             )
 
             user_sdk = as_user(sdk, user_email)
-            with pytest.raises(APIStatusError) as exc_info:
-                user_sdk.files.filesets.create(
+            user_files = client_from_platform(user_sdk, FilesClient)
+            with pytest.raises(NemoHTTPError) as exc_info:
+                user_files.create_fileset(
                     workspace=workspace,
-                    name=short_unique_name("fileset"),
-                    description="should fail",
-                    storage={
-                        "type": "huggingface",
-                        "repo_id": "Qwen/Qwen3-0.6B",
-                        "repo_type": "model",
-                        "token_secret": secret_name,
-                    },
+                    body=CreateFilesetRequest(
+                        name=short_unique_name("fileset"),
+                        description="should fail",
+                        storage={
+                            "type": "huggingface",
+                            "repo_id": "Qwen/Qwen3-0.6B",
+                            "repo_type": "model",
+                            "token_secret": secret_name,
+                        },
+                    ),
                 )
 
             assert exc_info.value.status_code == 400
@@ -186,17 +195,20 @@ class TestFilesetCreateWithSecretAuth:
         )
 
         editor_sdk = as_user(sdk, editor_email)
-        with pytest.raises(APIStatusError) as exc_info:
-            editor_sdk.files.filesets.create(
+        editor_files = client_from_platform(editor_sdk, FilesClient)
+        with pytest.raises(NemoHTTPError) as exc_info:
+            editor_files.create_fileset(
                 workspace=workspace,
-                name=short_unique_name("fileset"),
-                description="missing secret",
-                storage={
-                    "type": "huggingface",
-                    "repo_id": "Qwen/Qwen3-0.6B",
-                    "repo_type": "model",
-                    "token_secret": "does-not-exist",
-                },
+                body=CreateFilesetRequest(
+                    name=short_unique_name("fileset"),
+                    description="missing secret",
+                    storage={
+                        "type": "huggingface",
+                        "repo_id": "Qwen/Qwen3-0.6B",
+                        "repo_type": "model",
+                        "token_secret": "does-not-exist",
+                    },
+                ),
             )
 
         assert exc_info.value.status_code == 400
@@ -221,17 +233,20 @@ class TestFilesetCreateWithSecretAuth:
         )
 
         editor_sdk = as_user(sdk, editor_email)
-        created = editor_sdk.files.filesets.create(
+        editor_files = client_from_platform(editor_sdk, FilesClient)
+        created = editor_files.create_fileset(
             workspace=workspace,
-            name=fileset_name,
-            description="no token",
-            storage={
-                "type": "huggingface",
-                "repo_id": "Qwen/Qwen3-0.6B",
-                "repo_type": "model",
-                # no token_secret
-            },
-        )
+            body=CreateFilesetRequest(
+                name=fileset_name,
+                description="no token",
+                storage={
+                    "type": "huggingface",
+                    "repo_id": "Qwen/Qwen3-0.6B",
+                    "repo_type": "model",
+                    # no token_secret
+                },
+            ),
+        ).data()
 
         assert created.name == fileset_name
         assert created.storage.type == "huggingface"
@@ -266,16 +281,19 @@ class TestFilesetCreateWithSecretAuth:
         )
 
         editor_sdk = as_user(sdk, editor_email)
-        editor_sdk.files.filesets.create(
+        editor_files = client_from_platform(editor_sdk, FilesClient)
+        editor_files.create_fileset(
             workspace=workspace,
-            name=fileset_name,
-            description="hf fileset read test",
-            storage={
-                "type": "huggingface",
-                "repo_id": "Qwen/Qwen3-0.6B",
-                "repo_type": "model",
-                "token_secret": secret_name,
-            },
+            body=CreateFilesetRequest(
+                name=fileset_name,
+                description="hf fileset read test",
+                storage={
+                    "type": "huggingface",
+                    "repo_id": "Qwen/Qwen3-0.6B",
+                    "repo_type": "model",
+                    "token_secret": secret_name,
+                },
+            ),
         )
 
         files = editor_sdk.files.list(fileset=fileset_name, workspace=workspace)

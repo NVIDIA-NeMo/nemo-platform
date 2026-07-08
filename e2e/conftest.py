@@ -65,6 +65,8 @@ from pathlib import Path
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
 
 from e2e.services_pool import E2EServicesPool, RunningServices, admin_headers
 
@@ -257,6 +259,12 @@ def sdk(_services: str, _services_instance: RunningServices) -> NeMoPlatform:
         max_retries=2,
         default_headers=headers,
     )
+
+
+@pytest.fixture(scope="module")
+def files_client(sdk: NeMoPlatform) -> FilesClient:
+    """Provide a FilesClient derived from the SDK."""
+    return client_from_platform(sdk, FilesClient)
 
 
 @pytest.fixture(scope="function")

@@ -10,6 +10,7 @@ from data_designer_nemo.nemotron_personas import WORKSPACE, get_resource_name_fo
 from nemo_data_designer_plugin.cli import personas as personas_module
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.storage_config import NGCStorageConfig
 from nemo_platform_plugin.secrets.client import SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
@@ -79,10 +80,11 @@ def test_make_fileset_creates_requested_locale_with_existing_secret(cli_sdk: NeM
     )
 
     assert result.exit_code == 0, result.output
-    filesets = cli_sdk.files.filesets.list(workspace=WORKSPACE)
-    assert [fileset.name for fileset in filesets.items()] == [get_resource_name_for_locale("en_US")]
+    files = client_from_platform(cli_sdk, FilesClient)
+    filesets_page = files.list_filesets(workspace=WORKSPACE)
+    assert [fileset.name for fileset in filesets_page.items()] == [get_resource_name_for_locale("en_US")]
 
-    fileset = cli_sdk.files.filesets.retrieve(name=get_resource_name_for_locale("en_US"), workspace=WORKSPACE)
+    fileset = files.get_fileset(name=get_resource_name_for_locale("en_US"), workspace=WORKSPACE).data()
     assert isinstance(fileset.storage, NGCStorageConfig)
     assert fileset.storage.api_key_secret.root == "system/ngc-api-key"
 
@@ -109,7 +111,8 @@ def test_make_fileset_creates_secret_from_env_then_fileset(
     secret = client_from_platform(cli_sdk, SecretsClient).access_secret(name="my-ngc-key", workspace="system").data()
     assert secret.value == "nvapi-from-env"
 
-    fileset = cli_sdk.files.filesets.retrieve(name=get_resource_name_for_locale("en_US"), workspace=WORKSPACE)
+    files = client_from_platform(cli_sdk, FilesClient)
+    fileset = files.get_fileset(name=get_resource_name_for_locale("en_US"), workspace=WORKSPACE).data()
     assert isinstance(fileset.storage, NGCStorageConfig)
     assert fileset.storage.api_key_secret.root == "system/my-ngc-key"
 
@@ -190,8 +193,8 @@ def test_make_fileset_create_secret_conflict_does_not_create_fileset(
 
     assert result.exit_code == 1
     assert "already exists" in result.output
-    filesets = cli_sdk.files.filesets.list(workspace=WORKSPACE)
-    assert list(filesets.items()) == []
+    files = client_from_platform(cli_sdk, FilesClient)
+    assert list(files.list_filesets(workspace=WORKSPACE).items()) == []
 
 
 def test_make_fileset_create_secret_internal_error_surfaces_clearly(
@@ -224,8 +227,8 @@ def test_make_fileset_create_secret_internal_error_surfaces_clearly(
     assert result.exit_code == 1
     assert "Failed to create secret" in result.output
     assert "secrets backend exploded" in result.output
-    filesets = cli_sdk.files.filesets.list(workspace=WORKSPACE)
-    assert list(filesets.items()) == []
+    files = client_from_platform(cli_sdk, FilesClient)
+    assert list(files.list_filesets(workspace=WORKSPACE).items()) == []
 
 
 def test_make_fileset_is_idempotent_when_fileset_already_exists(cli_sdk: NeMoPlatform) -> None:
@@ -259,17 +262,19 @@ def test_make_fileset_is_idempotent_when_fileset_already_exists(cli_sdk: NeMoPla
     assert second.exit_code == 0, second.output
     assert "already exists" in second.output
 
-    filesets = cli_sdk.files.filesets.list(workspace=WORKSPACE)
-    assert [fileset.name for fileset in filesets.items()] == [get_resource_name_for_locale("en_US")]
+    files = client_from_platform(cli_sdk, FilesClient)
+    assert [fileset.name for fileset in files.list_filesets(workspace=WORKSPACE).items()] == [
+        get_resource_name_for_locale("en_US")
+    ]
 
 
 def test_make_fileset_create_fileset_internal_error_surfaces_clearly(cli_sdk: NeMoPlatform) -> None:
     error_message = "kaboom-fileset-error"
 
-    def _boom(*args: object, **kwargs: object) -> None:
-        raise RuntimeError(error_message)
+    mock_files = Mock()
+    mock_files.create_fileset.side_effect = RuntimeError(error_message)
 
-    with patch.object(cli_sdk.files.filesets, "create", side_effect=_boom):
+    with patch("data_designer_nemo.nemotron_personas.client_from_platform", return_value=mock_files):
         result = u.invoke_cli(
             [
                 "personas",
@@ -284,5 +289,5 @@ def test_make_fileset_create_fileset_internal_error_surfaces_clearly(cli_sdk: Ne
     assert result.exit_code == 1
     assert "Failed to create fileset" in result.output
     assert error_message in result.output
-    filesets = cli_sdk.files.filesets.list(workspace=WORKSPACE)
-    assert list(filesets.items()) == []
+    files = client_from_platform(cli_sdk, FilesClient)
+    assert list(files.list_filesets(workspace=WORKSPACE).items()) == []

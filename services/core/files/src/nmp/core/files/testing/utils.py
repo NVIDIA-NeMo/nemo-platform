@@ -12,7 +12,9 @@ from urllib.parse import urlparse
 import httpx
 from fsspec.spec import AbstractBufferedFile, AbstractFileSystem
 from nemo_platform import NeMoPlatform
-from nemo_platform.types.files.fileset import Fileset
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest, FilesetOutput
 
 DEFAULT_WORKSPACE_ID = "default"
 
@@ -109,15 +111,14 @@ def create_fileset(
     name: str | None = None,
     workspace: str = DEFAULT_WORKSPACE_ID,
     **kwargs,
-) -> Iterator[Fileset]:
+) -> Iterator[FilesetOutput]:
     if name is None:
         name = test_fileset_name()
 
-    fileset = sdk.files.filesets.create(
+    files = client_from_platform(sdk, FilesClient)
+    fileset = files.create_fileset(
         workspace=workspace,
-        name=name,
-        description="Test fileset",
-        **kwargs,
-    )
+        body=CreateFilesetRequest(name=name, description="Test fileset", **kwargs),
+    ).data()
     yield fileset
-    sdk.files.filesets.delete(name, workspace=workspace)
+    files.delete_fileset(name=name, workspace=workspace)

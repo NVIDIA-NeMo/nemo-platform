@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
+import importlib
+import sys
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import Any
 
 import pytest
 from nemo_platform._types import Omit
@@ -97,9 +100,9 @@ class TestCleanTypeAnnotation:
         assert clean_type_annotation(str | None) == "str | None"
 
     def test_handle_multiple_union_members(self):
-        """Should handle types with multiple union members."""
+        """Should collapse mixed scalar unions to a Typer-compatible type."""
         result = clean_type_annotation(str | int | Omit)
-        assert result == "str | int | None"
+        assert result == "str | None"
 
     def test_handle_no_omit(self):
         """Should return unchanged if no Omit present."""
@@ -143,13 +146,32 @@ class TestCleanTypeAnnotation:
         assert "bool" not in result  # Only one of True/False, not full bool
 
     def test_literal_with_other_types(self):
-        """Should handle Literal[True] | Literal[False] combined with other types."""
+        """Should collapse Literal[True] | Literal[False] combined with other types."""
         from typing import Literal
 
         result = clean_type_annotation(Literal[True] | Literal[False] | str | None)
-        assert "bool" in result
-        assert "str" in result
-        assert "None" in result
+        assert result == "str | None"
+
+    def test_literal_string_with_str_and_float_simplifies_to_str(self):
+        """Should collapse mixed string/numeric value unions for Typer."""
+        from typing import Literal
+
+        result = clean_type_annotation(Literal["positive", "negative"] | str | float | None)
+        assert result == "str | None"
+
+    @pytest.mark.parametrize(
+        ("annotation", "expected"),
+        [
+            (str | int, "str"),
+            (int | float, "float"),
+            (int | float | None, "float | None"),
+            (int | bool, "str"),
+            (list[str] | float, "str"),
+        ],
+    )
+    def test_collapse_mixed_union_types(self, annotation: Any, expected: str):
+        """Should collapse mixed unions to one Typer-compatible runtime type."""
+        assert clean_type_annotation(annotation) == expected
 
     def test_deduplicate_types(self):
         """Should deduplicate type names in union."""
@@ -320,6 +342,91 @@ def test_func():
         result = self._filter_skip_lines(content)
         assert "from typing import Annotated" in result
         assert "@app.command" in result
+
+
+class TestInitFileGeneration:
+    def test_imports_subresources_without_annotations_package_attribute_collision(self, tmp_path: Path):
+        class _NoResourceConfig:
+            def get_resource_config(self, resource_path: list[str]) -> None:
+                return None
+
+        def get_sub_resources(resource_path: list[str]) -> list[str]:
+            return ["annotations", "traces"]
+
+        package_root = tmp_path
+        target_dir = package_root / "nemo_platform_ext" / "cli" / "commands" / "api"
+        for package_dir in [
+            package_root / "nemo_platform_ext",
+            package_root / "nemo_platform_ext" / "cli",
+            package_root / "nemo_platform_ext" / "cli" / "commands",
+            target_dir,
+        ]:
+            package_dir.mkdir(parents=True, exist_ok=True)
+            (package_dir / "__init__.py").write_text("")
+
+        core_dir = package_root / "nemo_platform_ext" / "cli" / "core"
+        core_dir.mkdir(parents=True, exist_ok=True)
+        (core_dir / "__init__.py").write_text("")
+        (core_dir / "help_formatter.py").write_text(
+            "\n".join(
+                [
+                    "class _App:",
+                    "    def __init__(self):",
+                    "        self.children = []",
+                    "",
+                    "    def add_typer(self, app, name):",
+                    "        self.children.append((name, app))",
+                    "",
+                    "def create_typer_app(*, name: str, help: str):",
+                    "    return _App()",
+                    "",
+                ]
+            )
+        )
+
+        generator = SimpleGenerator.__new__(SimpleGenerator)
+        generator._target_dir = target_dir
+        generator._cli_config = _NoResourceConfig()
+        generator._get_sub_resources = get_sub_resources
+
+        generator._generate_init_with_commands(["intake"], "", [])
+
+        intake_dir = target_dir / "intake"
+        (intake_dir / "annotations.py").write_text('app = "annotations-app"\n')
+        (intake_dir / "traces.py").write_text('app = "traces-app"\n')
+
+        content = (intake_dir / "__init__.py").read_text()
+        assert "from __future__ import annotations" in content
+        assert (
+            '_cli_child_annotations = _importlib_import_module("nemo_platform_ext.cli.commands.api.intake.annotations")'
+            in content
+        )
+        assert (
+            '_cli_child_traces = _importlib_import_module("nemo_platform_ext.cli.commands.api.intake.traces")'
+            in content
+        )
+        assert 'app.add_typer(_cli_child_annotations.app, name="annotations")' in content
+        assert 'app.add_typer(_cli_child_traces.app, name="traces")' in content
+        assert "from nemo_platform_ext.cli.commands.api.intake import annotations" not in content
+        assert "app.add_typer(annotations.app" not in content
+
+        saved_modules = {
+            name: module
+            for name, module in sys.modules.items()
+            if name == "nemo_platform_ext" or name.startswith("nemo_platform_ext.")
+        }
+        sys.path.insert(0, str(package_root))
+        try:
+            for name in saved_modules:
+                sys.modules.pop(name, None)
+            module = importlib.import_module("nemo_platform_ext.cli.commands.api.intake")
+            assert module.app.children == [("annotations", "annotations-app"), ("traces", "traces-app")]
+        finally:
+            sys.path.pop(0)
+            for name in list(sys.modules):
+                if name == "nemo_platform_ext" or name.startswith("nemo_platform_ext."):
+                    sys.modules.pop(name, None)
+            sys.modules.update(saved_modules)
 
 
 class TestGetApiModules:

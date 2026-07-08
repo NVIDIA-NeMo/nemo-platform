@@ -5,7 +5,7 @@ import datetime
 import tempfile
 from pathlib import Path
 from typing import AsyncGenerator
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
@@ -243,7 +243,20 @@ def sample_job_dict():
 
 
 @fixture
-def mock_nmp_client():
+def _mock_files_client():
+    """Create a mock AsyncFilesClient for testing."""
+    mock_files = AsyncMock()
+    mock_fileset = MagicMock()
+    mock_fileset.name = "test-fileset-id"
+    mock_response = MagicMock()
+    mock_response.data.return_value = mock_fileset
+    mock_files.create_fileset.return_value = mock_response
+    mock_files.delete_fileset.return_value = None
+    return mock_files
+
+
+@fixture
+def mock_nmp_client(_mock_files_client):
     """Create a flexible mock of NeMoPlatform for testing."""
     mock_client = MagicMock()
 
@@ -257,17 +270,8 @@ def mock_nmp_client():
     mock_client.jobs.steps.retrieve = MagicMock()
     mock_client.jobs.steps.update_status = MagicMock()
 
-    # Mock filesets API for log storage
-    mock_client.files = MagicMock()
-    mock_client.files.filesets = MagicMock()
-    mock_client.files.filesets.create = AsyncMock()
-    mock_client.files.filesets.delete = AsyncMock()
-    # Return a mock fileset object with an id
-    mock_fileset = MagicMock()
-    mock_fileset.name = "test-fileset-id"
-    mock_client.files.filesets.create.return_value = mock_fileset
-
-    return mock_client
+    with patch("nmp.core.jobs.app.dispatcher.client_from_platform", return_value=_mock_files_client):
+        yield mock_client
 
 
 @fixture

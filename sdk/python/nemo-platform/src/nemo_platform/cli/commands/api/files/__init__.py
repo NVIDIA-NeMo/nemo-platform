@@ -4,22 +4,27 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
+from importlib import import_module as _importlib_import_module
 from pathlib import Path
 from typing import Annotated
 
 import typer
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
 
-from nemo_platform.cli.commands.api.files import filesets, otlp
 from nemo_platform.cli.core.context import CLIContext
 from nemo_platform.cli.core.errors import handle_errors
 from nemo_platform.cli.core.formatters import Column, check_output_columns_with_format, format_output
 from nemo_platform.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform.cli.core.types import ListOutputFormatOption, NoTruncateOption, OutputColumnsOption
 
+_cli_child_filesets = _importlib_import_module("nemo_platform.cli.commands.api.files.filesets")
+_cli_child_otlp = _importlib_import_module("nemo_platform.cli.commands.api.files.otlp")
+
 app = create_typer_app(name="files", help="Manage files")
 
-app.add_typer(filesets.app, name="filesets")
-app.add_typer(otlp.app, name="otlp")
+app.add_typer(_cli_child_filesets.app, name="filesets")
+app.add_typer(_cli_child_otlp.app, name="otlp")
 
 
 @app.command("upload")
@@ -60,6 +65,7 @@ def upload_files(
     raw_local_path: str = ctx.params.get("local_path")
 
     client = state.get_client()
+    files = client_from_platform(client, FilesClient)
     if workspace is None:
         workspace = client._get_workspace_path_param()
 
@@ -68,7 +74,7 @@ def upload_files(
     with RichProgressCallback(description="Uploading") as callback:
         if fileset is not None:
             # Validate fileset exists before uploading
-            client.files.filesets.retrieve(fileset, workspace=workspace)
+            files.get_fileset(name=fileset, workspace=workspace)
             client.files.upload(
                 local_path=raw_local_path,
                 remote_path=remote_path,

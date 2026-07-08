@@ -21,7 +21,12 @@ import logging
 import os
 import sys
 
-from nemo_platform import APIStatusError, ConflictError, NeMoPlatform, NotFoundError
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import ConflictError, NemoHTTPError, NotFoundError
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.storage_config import HuggingfaceStorageConfig
+from nemo_platform_plugin.files.types import CreateFilesetRequest
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -87,6 +92,7 @@ def create_filesets(
     Returns:
         List of created fileset names
     """
+    files = client_from_platform(sdk, FilesClient)
     created = []
     for fileset_config in MODEL_FILESETS:
         name = fileset_config["name"]
@@ -99,7 +105,7 @@ def create_filesets(
             continue
 
         try:
-            sdk.files.filesets.retrieve(name=name, workspace=workspace)
+            files.get_fileset(name=name, workspace=workspace)
             logger.info("Fileset already exists: %s", full_name)
             created.append(name)
             continue
@@ -107,19 +113,22 @@ def create_filesets(
             logger.debug("Fileset does not exist yet: %s", full_name)
 
         try:
-            sdk.files.filesets.create(
+            storage = HuggingfaceStorageConfig.model_validate(fileset_config["storage"])
+            files.create_fileset(
                 workspace=workspace,
-                name=name,
-                description=fileset_config.get("description", ""),
-                purpose="generic",
-                storage=fileset_config["storage"],
+                body=CreateFilesetRequest(
+                    name=name,
+                    description=fileset_config.get("description", ""),
+                    purpose="generic",
+                    storage=storage,
+                ),
             )
             logger.info("Created fileset: %s", full_name)
             created.append(name)
         except ConflictError:
             logger.info("Fileset already exists: %s", full_name)
             created.append(name)
-        except APIStatusError as e:
+        except NemoHTTPError as e:
             logger.error("Failed to create fileset %s: %s", full_name, e)
         except ValueError as e:
             logger.error("Invalid fileset config for %s: %s", full_name, e)

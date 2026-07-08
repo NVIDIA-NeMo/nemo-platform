@@ -11,19 +11,21 @@ from pathlib import Path
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest
 from nemo_platform_plugin.files.types import FilesetOutput as Fileset
 
 
 @pytest.fixture
-def fileset(sdk: NeMoPlatform, workspace: str) -> Iterator[Fileset]:
+def fileset(files_client: FilesClient, workspace: str) -> Iterator[Fileset]:
     """Create a unique fileset for each test with automatic cleanup."""
     fileset_name = f"e2e-fileset-{uuid.uuid4().hex[:8]}"
-    fileset = sdk.files.filesets.create(workspace=workspace, name=fileset_name)
+    fileset = files_client.create_fileset(body=CreateFilesetRequest(name=fileset_name), workspace=workspace).data()
     yield fileset
     try:
-        sdk.files.filesets.delete(fileset_name, workspace=workspace)
+        files_client.delete_fileset(name=fileset_name, workspace=workspace)
     except Exception:
-        pass  # Ignore cleanup errors
+        pass
 
 
 def test_file_upload_and_download(sdk: NeMoPlatform, workspace: str, fileset: Fileset):

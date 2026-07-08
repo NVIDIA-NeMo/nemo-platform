@@ -9,7 +9,7 @@ import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from nemo_unsloth_plugin.schema import (
@@ -44,8 +44,19 @@ def _stub_sdk(*, is_embedding: bool = False) -> SimpleNamespace:
     )
 
 
+def _mock_files_client() -> AsyncMock:
+    """Build a mock AsyncFilesClient for check_dataset_access."""
+    mock = AsyncMock()
+    mock.get_fileset.return_value = MagicMock()
+    return mock
+
+
 def _run_transform(spec: UnslothJobInput) -> UnslothJobOutput:
-    return asyncio.run(transform_input_to_output(spec, "default", _stub_sdk()))
+    with patch(
+        "nmp.customization_common.service.platform_client.client_from_platform",
+        return_value=_mock_files_client(),
+    ):
+        return asyncio.run(transform_input_to_output(spec, "default", _stub_sdk()))
 
 
 class TestCanonicalReexport:
@@ -225,7 +236,13 @@ class TestTransformOutput:
     def test_embedding_model_rejected(self) -> None:
         sdk = _stub_sdk(is_embedding=True)
         spec = UnslothJobInput.model_validate(_minimal_payload())
-        with pytest.raises(ValueError, match="Embedding-model SFT"):
+        with (
+            patch(
+                "nmp.customization_common.service.platform_client.client_from_platform",
+                return_value=_mock_files_client(),
+            ),
+            pytest.raises(ValueError, match="Embedding-model SFT"),
+        ):
             asyncio.run(transform_input_to_output(spec, "default", sdk))
 
 

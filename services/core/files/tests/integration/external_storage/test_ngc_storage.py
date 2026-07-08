@@ -24,6 +24,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.secrets.client import SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 from nmp.core.files.app.backends.base import StorageImpl
@@ -86,10 +87,11 @@ class TestNGCVersionResolution:
             },
         ) as fileset:
             # Get the persisted fileset to check resolved values
-            persisted = sdk.files.filesets.retrieve(
+            files = client_from_platform(sdk, FilesClient)
+            persisted = files.get_fileset(
                 name=fileset.name,
                 workspace=fileset.workspace,
-            )
+            ).data()
 
             storage = persisted.storage
             assert storage.type == "ngc"
@@ -117,10 +119,11 @@ class TestNGCVersionResolution:
                 "api_key_secret": ngc_api_key_secret,
             },
         ) as fileset:
-            persisted = sdk.files.filesets.retrieve(
+            files = client_from_platform(sdk, FilesClient)
+            persisted = files.get_fileset(
                 name=fileset.name,
                 workspace=fileset.workspace,
-            )
+            ).data()
 
             storage = persisted.storage
 
@@ -268,10 +271,11 @@ class TestNGCCaching:
             },
         ) as fileset:
             # Get the resolved version ID
-            persisted = sdk.files.filesets.retrieve(
+            files = client_from_platform(sdk, FilesClient)
+            persisted = files.get_fileset(
                 name=fileset.name,
                 workspace=fileset.workspace,
-            )
+            ).data()
             version_id = persisted.storage.version
             assert version_id is not None, "version should be resolved"
 

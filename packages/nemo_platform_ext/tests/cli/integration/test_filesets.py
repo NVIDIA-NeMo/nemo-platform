@@ -8,15 +8,20 @@ from pathlib import Path
 import pytest
 from nemo_platform import NeMoPlatform
 from nemo_platform_ext.cli.app import app
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest
 
 from ..utils import assert_exit_code
 from .conftest import NmpCliRunner
 
 
 @pytest.fixture
-def test_fileset(sdk: NeMoPlatform, random_workspace: str) -> dict:
+def test_fileset(files_client: FilesClient, random_workspace: str) -> dict:
     """Create a test fileset."""
-    fileset = sdk.files.filesets.create(workspace=random_workspace, name="test-fileset")
+    fileset = files_client.create_fileset(
+        body=CreateFilesetRequest(name="test-fileset"), workspace=random_workspace
+    ).data()
     return {"workspace": random_workspace, "name": fileset.name}
 
 
@@ -138,7 +143,7 @@ class TestFilesetsUpload:
         )
 
         assert_exit_code(result, 1)
-        assert "Not found" in result.stderr
+        assert "not found" in result.stderr.lower()
 
     @pytest.mark.parametrize(
         ("remote_path", "expected_suffix"),
@@ -196,10 +201,8 @@ class TestFilesetsUpload:
         fileset_name = match.group(1)
 
         # Verify fileset exists
-        fileset = runner.client.files.filesets.retrieve(
-            name=fileset_name,
-            workspace=random_workspace,
-        )
+        files = client_from_platform(runner.client, FilesClient)
+        fileset = files.get_fileset(name=fileset_name, workspace=random_workspace).data()
         assert fileset.name == fileset_name
 
         # Verify file was uploaded
@@ -212,7 +215,9 @@ class TestFilesetsUpload:
 
 
 @pytest.fixture
-def fileset_with_nested_files(sdk: NeMoPlatform, random_workspace: str, tmp_path: Path) -> dict:
+def fileset_with_nested_files(
+    sdk: NeMoPlatform, files_client: FilesClient, random_workspace: str, tmp_path: Path
+) -> dict:
     """Create a fileset with nested file structure for download tests.
 
     Structure:
@@ -222,7 +227,9 @@ def fileset_with_nested_files(sdk: NeMoPlatform, random_workspace: str, tmp_path
                 file2.txt
                 file3.txt
     """
-    fileset = sdk.files.filesets.create(workspace=random_workspace, name="download-test-fileset")
+    fileset = files_client.create_fileset(
+        body=CreateFilesetRequest(name="download-test-fileset"), workspace=random_workspace
+    ).data()
 
     # Create nested directory structure locally
     dir_a = tmp_path / "a"

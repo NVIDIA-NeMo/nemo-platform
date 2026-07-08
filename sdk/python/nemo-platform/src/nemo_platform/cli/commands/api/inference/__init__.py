@@ -4,32 +4,34 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
+from importlib import import_module as _importlib_import_module
 from typing import Annotated
 
 import typer
 
-from nemo_platform.cli.commands.api.inference import (
-    deployment_configs,
-    deployments,
-    gateway,
-    models,
-    prompts,
-    providers,
-    virtual_models,
-)
 from nemo_platform.cli.core.context import CLIContext
 from nemo_platform.cli.core.errors import handle_errors
 from nemo_platform.cli.core.help_formatter import create_typer_app
 
+_cli_child_deployment_configs = _importlib_import_module(
+    "nemo_platform.cli.commands.api.inference.deployment_configs"
+)
+_cli_child_deployments = _importlib_import_module("nemo_platform.cli.commands.api.inference.deployments")
+_cli_child_gateway = _importlib_import_module("nemo_platform.cli.commands.api.inference.gateway")
+_cli_child_models = _importlib_import_module("nemo_platform.cli.commands.api.inference.models")
+_cli_child_prompts = _importlib_import_module("nemo_platform.cli.commands.api.inference.prompts")
+_cli_child_providers = _importlib_import_module("nemo_platform.cli.commands.api.inference.providers")
+_cli_child_virtual_models = _importlib_import_module("nemo_platform.cli.commands.api.inference.virtual_models")
+
 app = create_typer_app(name="inference", help="Manage inference")
 
-app.add_typer(deployment_configs.app, name="deployment-configs")
-app.add_typer(deployments.app, name="deployments")
-app.add_typer(gateway.app, name="gateway")
-app.add_typer(models.app, name="models")
-app.add_typer(prompts.app, name="prompts")
-app.add_typer(providers.app, name="providers")
-app.add_typer(virtual_models.app, name="virtual-models")
+app.add_typer(_cli_child_deployment_configs.app, name="deployment-configs")
+app.add_typer(_cli_child_deployments.app, name="deployments")
+app.add_typer(_cli_child_gateway.app, name="gateway")
+app.add_typer(_cli_child_models.app, name="models")
+app.add_typer(_cli_child_prompts.app, name="prompts")
+app.add_typer(_cli_child_providers.app, name="providers")
+app.add_typer(_cli_child_virtual_models.app, name="virtual-models")
 
 
 @app.command("get-url")

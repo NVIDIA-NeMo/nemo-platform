@@ -13,6 +13,9 @@ import anyio
 import fsspec.asyn
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform.filesets import FilesetFileSystem, build_fileset_ref, parse_fileset_ref
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest
 from nemo_platform_plugin.jobs.schemas import FileStorageType
 
 logger = logging.getLogger(__name__)
@@ -139,7 +142,11 @@ class BaseFilesetFileManager:
     _fs: FilesetFileSystem = field(init=False)
 
     def __post_init__(self):
-        self._fs = FilesetFileSystem(sdk=self.sdk)
+        if isinstance(self.sdk, AsyncNeMoPlatform):
+            files_client = client_from_platform(self.sdk, AsyncFilesClient)
+        else:
+            files_client = client_from_platform(self.sdk, FilesClient)
+        self._fs = FilesetFileSystem(client=files_client)
 
     def url(self, remote_path: str | None = None) -> str:
         """Return fileset reference for the given path."""
@@ -163,7 +170,9 @@ class BaseFilesetFileManager:
         except FileNotFoundError:
             if self.ensure_fileset_exists:
                 logger.info(f"Creating new fileset: [{self.fileset_name}] in workspace [{self.workspace}]")
-                await self._fs._sdk.files.filesets.create(name=self.fileset_name, workspace=self.workspace)
+                await self._fs._client.create_fileset(
+                    body=CreateFilesetRequest(name=self.fileset_name), workspace=self.workspace
+                )
             else:
                 raise FileStorageDoesNotExist(
                     f"Fileset [{self.fileset_name}] in workspace [{self.workspace}] does not exist."

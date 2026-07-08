@@ -4,11 +4,11 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
+from importlib import import_module as _importlib_import_module
 from typing import Annotated, Literal
 
 import typer
 
-from nemo_platform.cli.commands.api.workspaces import members
 from nemo_platform.cli.core.api import build_kwargs
 from nemo_platform.cli.core.api import merge_filter_dict as merge_filter_dict
 from nemo_platform.cli.core.code_generator import handle_code_generation
@@ -26,9 +26,11 @@ from nemo_platform.cli.core.types import (
     OutputColumnsOption,
 )
 
+_cli_child_members = _importlib_import_module("nemo_platform.cli.commands.api.workspaces.members")
+
 app = create_typer_app(name="workspaces", help="Manage workspaces")
 
-app.add_typer(members.app, name="members")
+app.add_typer(_cli_child_members.app, name="members")
 
 
 @app.command("create")
