@@ -6,7 +6,7 @@
 from fastapi import HTTPException, status
 from nemo_intake_plugin.entities.experiments import Experiment
 from nemo_intake_plugin.spans.ingest.evaluation_context import EvaluationContext, ExperimentContext
-from nmp.common.entities.client import EntityClient, EntityNotFoundError
+from nemo_platform_plugin.entities import EntityClient, EntityNotFoundError
 
 
 async def validate_experiment_context(

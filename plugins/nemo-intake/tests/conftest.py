@@ -3,13 +3,15 @@
 
 """Pytest configuration and fixtures for Intake tests using MockEntityClient."""
 
+from typing import cast
+
 import pytest
 from fastapi.testclient import TestClient
 from nemo_intake_plugin.api.v2.experiments.endpoints import get_experiment_rollup_repository
 from nemo_intake_plugin.service import IntakeService
-from nmp.common.service import Service
 from nmp.platform_runner.plugin_adapter import NemoServiceAdapter
 from nmp.testing import create_test_client
+from nmp.testing.client import ServiceFactory
 
 
 class _IntakeTestService(NemoServiceAdapter):
@@ -18,14 +20,14 @@ class _IntakeTestService(NemoServiceAdapter):
 
 
 @pytest.fixture(scope="session")
-def intake_service_factory() -> type[Service]:
+def intake_service_factory() -> ServiceFactory:
     """Create Intake through the same adapter used by plugin discovery."""
 
-    return _IntakeTestService
+    return cast(ServiceFactory, _IntakeTestService)
 
 
 @pytest.fixture
-def client(intake_service_factory: type[Service]):
+def client(intake_service_factory: ServiceFactory):
     """Create test client with mocked entity client."""
     with create_test_client(
         intake_service_factory,

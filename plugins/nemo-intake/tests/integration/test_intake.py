@@ -8,12 +8,11 @@ from collections.abc import Generator
 import pytest
 from fastapi.testclient import TestClient
 from nemo_platform import NeMoPlatform
-from nmp.common.service import Service
-from nmp.testing.client import create_test_client
+from nmp.testing.client import ServiceFactory, create_test_client
 
 
 @pytest.fixture(scope="module")
-def http_client(intake_service_factory: type[Service]) -> Generator[TestClient, None, None]:
+def http_client(intake_service_factory: ServiceFactory) -> Generator[TestClient, None, None]:
     """TestClient with IntakeService."""
     with create_test_client(
         intake_service_factory,

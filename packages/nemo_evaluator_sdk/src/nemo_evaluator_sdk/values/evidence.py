@@ -13,6 +13,7 @@ import os
 import shutil
 import signal
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlparse
@@ -213,27 +214,36 @@ class LocalFilesystemEvidence:
         command: list[str],
         *,
         cwd: str = ".",
+        overlay_files: Mapping[str, str] | None = None,
         timeout_s: float | None = None,
     ) -> CommandResult:
-        """Run ``command`` (no shell) against a throwaway copy of the evidence; not a sandbox (host privileges)."""
-        overlay = Path(tempfile.mkdtemp(prefix="evidence-verify-")).resolve()
+        """Run ``command`` (no shell) against a throwaway copy of the evidence; not a sandbox (host privileges).
+
+        ``overlay_files`` is a ``{relative_path: contents}`` map of trusted files written *over* the copy
+        after it is made, before the command runs. This is how a grader supplies held-out artifacts (a
+        canonical test suite, a reference implementation) that must not live in — and cannot be edited
+        through — the agent's own workspace. Overlay paths that escape the copy are rejected.
+        """
+        sandbox = Path(tempfile.mkdtemp(prefix="evidence-verify-")).resolve()
         try:
-            workdir = (overlay / cwd).resolve()
-            if workdir != overlay and overlay not in workdir.parents:
+            workdir = (sandbox / cwd).resolve()
+            if workdir != sandbox and sandbox not in workdir.parents:
                 raise ValueError(f"verifier cwd {cwd!r} resolves outside evidence overlay")
             # symlinks=True copies links as-is (no host deref); the ignore hook drops links whose
             # target escapes the evidence root so the verifier can't read or write through them.
             await asyncio.to_thread(
                 shutil.copytree,
                 self._root,
-                overlay,
+                sandbox,
                 dirs_exist_ok=True,
                 symlinks=True,
                 ignore=self._ignore_escaping_symlinks,
             )
+            if overlay_files:
+                await asyncio.to_thread(_write_overlay_files, sandbox, overlay_files)
             return await self._exec(command, workdir, timeout_s)
         finally:
-            await asyncio.to_thread(shutil.rmtree, overlay, True)
+            await asyncio.to_thread(shutil.rmtree, sandbox, True)
 
     def _ignore_escaping_symlinks(self, directory: str, names: list[str]) -> set[str]:
         """copytree ignore hook: drop absolute symlinks and links whose target escapes the evidence root."""
@@ -271,6 +281,17 @@ class LocalFilesystemEvidence:
             stdout=stdout.decode(errors="replace"),
             stderr=stderr.decode(errors="replace"),
         )
+
+
+def _write_overlay_files(root: Path, files: Mapping[str, str]) -> None:
+    """Write ``{relative_path: contents}`` into ``root``, rejecting paths that escape it."""
+    resolved_root = root.resolve()
+    for rel_path, contents in files.items():
+        target = (resolved_root / str(rel_path)).resolve()
+        if target != resolved_root and resolved_root not in target.parents:
+            raise ValueError(f"overlay file path escapes the verifier copy: {rel_path!r}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(contents, encoding="utf-8")
 
 
 class EvidenceDescriptor(BaseModel):

@@ -16,7 +16,7 @@ from typing import Annotated, Any, Literal, Self, cast
 
 from nemo_intake_plugin.spans.domain import Annotation as DomainAnnotation
 from nemo_intake_plugin.spans.domain import AnnotationKind
-from nmp.common.entities.values import DatetimeFilter, Filter
+from nemo_platform_plugin.schema import DatetimeFilter, Filter
 from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
 
 

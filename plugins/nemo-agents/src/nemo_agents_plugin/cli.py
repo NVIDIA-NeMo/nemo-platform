@@ -45,6 +45,18 @@ from typing import Any, ClassVar, Literal, Optional, cast
 import httpx
 import typer
 import yaml
+from nemo_agents_plugin.cli_context import (
+    DEFAULT_BASE_URL as _DEFAULT_BASE_URL,
+)
+from nemo_agents_plugin.cli_context import (
+    BaseUrlOption,
+)
+from nemo_agents_plugin.cli_context import (
+    resolve_base_url as _resolve_base_url,
+)
+from nemo_agents_plugin.cli_context import (
+    resolve_context_headers as _resolve_context_headers,
+)
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
 from nemo_agents_plugin.usage.cli import register_usage_commands
 from nemo_platform.cli.core.formatters import Column, format_output
@@ -54,7 +66,6 @@ from nemo_platform_plugin.cli_progress import request_progress
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_BASE_URL = "http://localhost:8080"
 _DEFAULT_WORKSPACE = "default"
 _LIST_OUTPUT_FORMAT = Literal["table", "json", "yaml", "csv", "markdown", "raw"]
 _AGENT_LIST_COLUMNS = [
@@ -145,7 +156,7 @@ def _register_local_commands(app: typer.Typer) -> None:
             help="Name of a specific deployment to invoke (platform required).",
         ),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: str = typer.Option(_DEFAULT_BASE_URL, "--base-url", envvar="NEMO_BASE_URL"),
+        base_url: BaseUrlOption = None,
         timeout: float = typer.Option(
             300,
             "--timeout",
@@ -160,6 +171,7 @@ def _register_local_commands(app: typer.Typer) -> None:
         ),
     ) -> None:
         """Invoke an agent — locally (with --agent-config) or via the platform (with --agent or --agent-deployment)."""
+        base_url = _resolve_base_url(base_url)
         if agent_config:
             _local_invoke(agent_config, input, input_file, workspace=workspace, base_url=base_url)
         elif agent or agent_deployment:
@@ -628,9 +640,10 @@ def _register_platform_commands(app: typer.Typer) -> None:
         ),
         description: str = typer.Option("", "--description"),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: str = typer.Option(_DEFAULT_BASE_URL, "--base-url", envvar="NEMO_BASE_URL"),
+        base_url: BaseUrlOption = None,
     ) -> None:
         """Register an agent on the platform."""
+        base_url = _resolve_base_url(base_url)
         from nemo_agents_plugin.utils import inject_default_model
 
         config_dict = _load_yaml(agent_config)
@@ -653,7 +666,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
     def list_agents(
         ctx: typer.Context,
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: str = typer.Option(_DEFAULT_BASE_URL, "--base-url", envvar="NEMO_BASE_URL"),
+        base_url: BaseUrlOption = None,
         output_format: Optional[_LIST_OUTPUT_FORMAT] = typer.Option(
             None,
             "--format",
@@ -671,6 +684,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
         ),
     ) -> None:
         """List agents on the platform."""
+        base_url = _resolve_base_url(base_url)
         resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents")
         _print_list_response(
             ctx,
@@ -684,9 +698,10 @@ def _register_platform_commands(app: typer.Typer) -> None:
     def get(
         name: str = typer.Argument(..., help="Agent name."),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: str = typer.Option(_DEFAULT_BASE_URL, "--base-url", envvar="NEMO_BASE_URL"),
+        base_url: BaseUrlOption = None,
     ) -> None:
         """Get an agent by name."""
+        base_url = _resolve_base_url(base_url)
         resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents/{name}")
         typer.echo(json.dumps(resp, indent=2))
 
@@ -694,10 +709,11 @@ def _register_platform_commands(app: typer.Typer) -> None:
     def delete(
         name: str = typer.Argument(..., help="Agent name."),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: str = typer.Option(_DEFAULT_BASE_URL, "--base-url", envvar="NEMO_BASE_URL"),
+        base_url: BaseUrlOption = None,
         yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
     ) -> None:
         """Delete an agent from the platform."""
+        base_url = _resolve_base_url(base_url)
         if not yes:
             typer.confirm(f"Delete agent '{name}'?", abort=True)
         _api_request("DELETE", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents/{name}")
@@ -725,7 +741,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
             help="Maximum seconds to wait for a terminal status (only with --wait).",
         ),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: str = typer.Option(_DEFAULT_BASE_URL, "--base-url", envvar="NEMO_BASE_URL"),
+        base_url: BaseUrlOption = None,
     ) -> None:
         """Deploy an agent on the platform.
 
@@ -736,6 +752,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
         scripted pipelines that prefer to poll separately via ``nemo agents
         deployments wait``.
         """
+        base_url = _resolve_base_url(base_url)
         payload: dict = {"agent": agent}
         if name:
             payload["name"] = name
@@ -792,7 +809,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
             help="Print only the absolute log file path and exit (useful for scripting).",
         ),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: str = typer.Option(_DEFAULT_BASE_URL, "--base-url", envvar="NEMO_BASE_URL"),
+        base_url: BaseUrlOption = None,
     ) -> None:
         """Show logs for an agent deployment.
 
@@ -816,6 +833,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
             raise typer.Exit(code=1)
 
         if agent and not name:
+            base_url = _resolve_base_url(base_url)
             candidates = [
                 d
                 for d in _unwrap_list(
@@ -859,10 +877,11 @@ def _register_platform_commands(app: typer.Typer) -> None:
             None, "--agent", "--all", "-a", help="Remove all deployments for this agent."
         ),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: str = typer.Option(_DEFAULT_BASE_URL, "--base-url", envvar="NEMO_BASE_URL"),
+        base_url: BaseUrlOption = None,
         yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
     ) -> None:
         """Stop and remove a deployment (or all deployments for an agent)."""
+        base_url = _resolve_base_url(base_url)
         if name:
             if not yes:
                 typer.confirm(f"Undeploy '{name}'?", abort=True)
@@ -888,7 +907,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
     def deployments_list(
         ctx: typer.Context,
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: str = typer.Option(_DEFAULT_BASE_URL, "--base-url", envvar="NEMO_BASE_URL"),
+        base_url: BaseUrlOption = None,
         output_format: Optional[_LIST_OUTPUT_FORMAT] = typer.Option(
             None,
             "--format",
@@ -906,6 +925,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
         ),
     ) -> None:
         """List deployments."""
+        base_url = _resolve_base_url(base_url)
         resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/deployments")
         _print_list_response(
             ctx,
@@ -919,9 +939,10 @@ def _register_platform_commands(app: typer.Typer) -> None:
     def deployments_get(
         name: str = typer.Argument(..., help="Deployment name."),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: str = typer.Option(_DEFAULT_BASE_URL, "--base-url", envvar="NEMO_BASE_URL"),
+        base_url: BaseUrlOption = None,
     ) -> None:
         """Get a deployment by name."""
+        base_url = _resolve_base_url(base_url)
         resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/deployments/{name}")
         typer.echo(json.dumps(resp, indent=2))
 
@@ -929,10 +950,11 @@ def _register_platform_commands(app: typer.Typer) -> None:
     def deployments_delete(
         name: str = typer.Argument(..., help="Deployment name."),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: str = typer.Option(_DEFAULT_BASE_URL, "--base-url", envvar="NEMO_BASE_URL"),
+        base_url: BaseUrlOption = None,
         yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
     ) -> None:
         """Delete a deployment by name."""
+        base_url = _resolve_base_url(base_url)
         if not yes:
             typer.confirm(f"Delete deployment '{name}'?", abort=True)
         _api_request("DELETE", base_url, f"/apis/agents/v2/workspaces/{workspace}/deployments/{name}")
@@ -950,7 +972,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
         timeout: int = typer.Option(300, "--timeout", "-t", help="Maximum seconds to wait."),
         interval: float = typer.Option(2.0, "--interval", help="Poll interval in seconds."),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        base_url: str = typer.Option(_DEFAULT_BASE_URL, "--base-url", envvar="NEMO_BASE_URL"),
+        base_url: BaseUrlOption = None,
     ) -> None:
         """Wait for a deployment to reach 'running' or 'failed' status.
 
@@ -960,6 +982,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
         Provide either a deployment name directly or --agent to resolve the
         latest active deployment for that agent automatically.
         """
+        base_url = _resolve_base_url(base_url)
         if not name and not agent:
             typer.echo("Error: provide a deployment name or --agent.", err=True)
             raise typer.Exit(code=1)
@@ -1200,13 +1223,14 @@ def _platform_invoke(
         path = f"/apis/agents/v2/workspaces/{workspace}/deployments/{deployment}/-/v1/chat/completions"
 
     url = base_url.rstrip("/") + path
+    headers = _resolve_context_headers()
     target_label = agent or deployment
     for query in queries:
         payload = {"messages": [{"role": "user", "content": query}], "stream": False}
         try:
             with request_progress(f"Waiting for agent '{target_label}'...", disabled=no_progress):
                 with httpx.Client(timeout=timeout) as client:
-                    resp = client.post(url, json=payload)
+                    resp = client.post(url, json=payload, headers=headers or None)
                     resp.raise_for_status()
                     body = resp.json()
                 typer.echo(json.dumps(body, indent=2))
@@ -1299,6 +1323,9 @@ def _api_request(method: str, base_url: str, path: str, *, json_body: dict[str, 
     request_kwargs: dict[str, Any] = {}
     if json_body is not None:
         request_kwargs["json"] = json_body
+    headers = _resolve_context_headers()
+    if headers:
+        request_kwargs["headers"] = headers
     try:
         with httpx.Client(timeout=30) as client:
             resp = client.request(method, url, **request_kwargs)

@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from nemo_intake_plugin.schema import PaginatedResult
 from nemo_intake_plugin.spans.clickhouse_client import ClickHouseSpanClient
 from nemo_intake_plugin.spans.domain import IntakeTrace, TraceListFilter, TraceMode
 from nemo_intake_plugin.spans.span_attribute_catalog import COST_SCALE, SpanAttributeField, spec_for_field
@@ -18,7 +19,6 @@ from nemo_intake_plugin.spans.storage import (
     normalize_span_status,
     result_rows,
 )
-from nmp.common.api.common import PaginatedResult
 
 TRACE_SORT_COLUMNS = {
     "started_at": "started_at",

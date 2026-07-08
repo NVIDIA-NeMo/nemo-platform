@@ -26,8 +26,8 @@ from nemo_intake_plugin.spans.ingest.experiment_context_validation import valida
 from nemo_intake_plugin.spans.span_attribute_bags import SpanAttributeBags
 from nemo_intake_plugin.spans.span_semantic_attributes import SpanSemanticAttributes
 from nemo_intake_plugin.spans.storage import json_dumps_preserve, stable_id, utc_now
-from nmp.common.entities.client import EntityClient
-from nmp.common.service.dependencies import get_entity_client
+from nemo_platform_plugin.dependencies import get_entity_client
+from nemo_platform_plugin.entities import EntityClient
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])

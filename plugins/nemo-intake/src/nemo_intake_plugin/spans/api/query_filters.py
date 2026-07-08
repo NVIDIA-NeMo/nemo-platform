@@ -11,8 +11,8 @@ from enum import Enum
 from typing import Any, TypeVar
 
 from fastapi import HTTPException, status
-from nmp.common.api.filter import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
-from nmp.common.api.parsed_filter import ParsedFilter
+from nemo_platform_plugin.api.filter import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
+from nemo_platform_plugin.api.parsed_filter import ParsedFilter
 from pydantic import TypeAdapter, ValidationError
 
 _DATETIME_ADAPTER = TypeAdapter(datetime)

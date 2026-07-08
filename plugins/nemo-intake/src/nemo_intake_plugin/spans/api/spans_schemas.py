@@ -14,8 +14,7 @@ from nemo_intake_plugin.spans.domain import IntakeSpan, SpanKind, SpanStatus
 from nemo_intake_plugin.spans.domain import SpanGroup as IntakeSpanGroup
 from nemo_intake_plugin.spans.span_attribute_bags import SpanAttributeBags
 from nemo_intake_plugin.spans.span_semantic_attributes import SpanSemanticAttributes
-from nmp.common.api.common import Page
-from nmp.common.entities.values import DatetimeFilter
+from nemo_platform_plugin.schema import DatetimeFilter, Page
 from pydantic import BaseModel, ConfigDict, Field
 
 

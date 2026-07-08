@@ -9,7 +9,7 @@ import asyncio
 from collections.abc import Callable
 from datetime import datetime, timezone
 from importlib.util import find_spec
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -20,8 +20,8 @@ from nemo_intake_plugin.spans.clickhouse_client import (
     ClickHouseSpanClient,
     bootstrap_schema,
 )
-from nmp.common.service import Service
 from nmp.testing import create_test_client
+from nmp.testing.client import ServiceFactory
 
 
 def _run(coro: Any) -> Any:
@@ -96,11 +96,11 @@ def clean_clickhouse(clickhouse_client: ClickHouseSpanClient):
 
 
 @pytest.fixture
-def client(intake_config: IntakeConfig, intake_service_factory: type[Service]):
+def client(intake_config: IntakeConfig, intake_service_factory: ServiceFactory):
     with create_test_client(
         intake_service_factory,
         client_type=TestClient,
-        service_configs={intake_service_factory: intake_config},
+        service_configs=cast(Any, {intake_service_factory: intake_config}),
     ) as test_client:
         yield test_client
 

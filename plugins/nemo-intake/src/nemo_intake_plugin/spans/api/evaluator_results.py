@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from nemo_intake_plugin.spans.api.dependencies import (
     SpansServiceDep,
+    get_created_by,
     require_workspace_access,
     validate_list_query_params,
 )
@@ -31,11 +32,10 @@ from nemo_intake_plugin.spans.domain import EvaluatorResult as DomainEvaluatorRe
 from nemo_intake_plugin.spans.domain import EvaluatorResultListFilter
 from nemo_intake_plugin.spans.service import EvaluatorResultNotFoundError
 from nemo_intake_plugin.spans.storage import stable_id
-from nmp.common.api.common import Page
-from nmp.common.api.filter import FilterOperator
-from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
-from nmp.common.api.utils import generate_openapi_extra_params
-from nmp.common.auth import AuthClient, get_auth_client
+from nemo_platform_plugin.api.filter import FilterOperator
+from nemo_platform_plugin.api.parsed_filter import ParsedFilter, make_filter_dep
+from nemo_platform_plugin.jobs.openapi_utils import generate_openapi_extra_params
+from nemo_platform_plugin.schema import Page
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Evaluator Results"
@@ -52,7 +52,7 @@ async def create_evaluator_result(
     workspace: str,
     body: EvaluatorResultInput,
     service: SpansServiceDep,
-    auth_client: AuthClient = Depends(get_auth_client),
+    created_by: str | None = Depends(get_created_by),
 ) -> EvaluatorResult:
     now = datetime.now(timezone.utc)
     # Identity-derived id: one result per (workspace, session, span, evaluator name). Re-POSTing
@@ -75,7 +75,7 @@ async def create_evaluator_result(
         string_value=body.string_value,
         data_type=body.data_type,
         comment=body.comment,
-        created_by=_resolve_created_by(auth_client),
+        created_by=created_by,
         created_at=now,
         ingested_at=now,
     )
@@ -155,13 +155,6 @@ async def list_evaluator_results_for_span(
 ) -> list[EvaluatorResult]:
     results = await service.list_evaluator_results_for_span(workspace=workspace, span_id=span_id)
     return [EvaluatorResult.from_domain(item) for item in results]
-
-
-def _resolve_created_by(auth_client: AuthClient) -> str | None:
-    if not getattr(auth_client, "auth_enabled", False):
-        return None
-    principal_id = getattr(getattr(auth_client, "principal", None), "id", None)
-    return principal_id or None
 
 
 def _evaluator_result_filter(workspace: str, parsed: ParsedFilter) -> EvaluatorResultListFilter:

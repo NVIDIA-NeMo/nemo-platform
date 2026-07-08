@@ -31,10 +31,10 @@ from nemo_intake_plugin.spans.api.spans_schemas import (
 )
 from nemo_intake_plugin.spans.domain import SpanAttributeFilter, SpanListFilter
 from nemo_intake_plugin.spans.service import SpanNotFoundError
-from nmp.common.api.common import Page
-from nmp.common.api.filter import FilterOperator
-from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
-from nmp.common.api.utils import generate_openapi_extra_params
+from nemo_platform_plugin.api.filter import FilterOperator
+from nemo_platform_plugin.api.parsed_filter import ParsedFilter, make_filter_dep
+from nemo_platform_plugin.jobs.openapi_utils import generate_openapi_extra_params
+from nemo_platform_plugin.schema import Page
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Spans"

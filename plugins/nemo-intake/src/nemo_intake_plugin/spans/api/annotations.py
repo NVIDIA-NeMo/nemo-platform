@@ -19,6 +19,7 @@ from nemo_intake_plugin.spans.api.annotations_schemas import (
 )
 from nemo_intake_plugin.spans.api.dependencies import (
     SpansServiceDep,
+    get_created_by,
     require_workspace_access,
     validate_list_query_params,
 )
@@ -32,11 +33,10 @@ from nemo_intake_plugin.spans.api.query_filters import (
 from nemo_intake_plugin.spans.domain import Annotation as DomainAnnotation
 from nemo_intake_plugin.spans.domain import AnnotationKind, AnnotationListFilter
 from nemo_intake_plugin.spans.service import AnnotationNotFoundError
-from nmp.common.api.common import Page
-from nmp.common.api.filter import FilterOperator
-from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
-from nmp.common.api.utils import generate_openapi_extra_params
-from nmp.common.auth import AuthClient, get_auth_client
+from nemo_platform_plugin.api.filter import FilterOperator
+from nemo_platform_plugin.api.parsed_filter import ParsedFilter, make_filter_dep
+from nemo_platform_plugin.jobs.openapi_utils import generate_openapi_extra_params
+from nemo_platform_plugin.schema import Page
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Annotations"
@@ -53,14 +53,14 @@ async def create_annotation(
     workspace: str,
     body: AnnotationInput,
     service: SpansServiceDep,
-    auth_client: AuthClient = Depends(get_auth_client),
+    created_by: str | None = Depends(get_created_by),
 ) -> Annotation:
     now = datetime.now(timezone.utc)
     fields = annotation_input_to_domain_fields(body.root)
     domain_annotation = DomainAnnotation(
         annotation_id=f"ann-{uuid4().hex}",
         workspace=workspace,
-        created_by=_resolve_created_by(auth_client),
+        created_by=created_by,
         created_at=now,
         ingested_at=now,
         **fields,
@@ -144,13 +144,6 @@ async def delete_annotation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Annotation {workspace}/{annotation_id} not found",
         ) from None
-
-
-def _resolve_created_by(auth_client: AuthClient) -> str | None:
-    if not getattr(auth_client, "auth_enabled", False):
-        return None
-    principal_id = getattr(getattr(auth_client, "principal", None), "id", None)
-    return principal_id or None
 
 
 def _annotation_filter(workspace: str, parsed: ParsedFilter) -> AnnotationListFilter:

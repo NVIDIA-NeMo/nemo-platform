@@ -11,7 +11,7 @@ from typing import Literal, Self
 
 from nemo_intake_plugin.spans.domain import IntakeTrace, SpanStatus
 from nemo_intake_plugin.spans.ingest.evaluation_context import ExperimentContext
-from nmp.common.entities.values import DatetimeFilter
+from nemo_platform_plugin.schema import DatetimeFilter
 from pydantic import BaseModel, Field
 
 

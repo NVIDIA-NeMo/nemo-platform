@@ -13,9 +13,10 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from nemo_intake_plugin.entities.experiments import Experiment, ExperimentGroup
+from nemo_intake_plugin.schema import EntityFilter, NumberFilter, map_entity_field
 from nemo_intake_plugin.spans.domain import SpanStatus
 from nemo_intake_plugin.spans.experiment_session_repository import ExperimentSessionRow
-from nmp.common.entities.values import DatetimeFilter, Filter, NumberFilter, map_entity_field
+from nemo_platform_plugin.schema import DatetimeFilter
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
 ExperimentSessionMode = Literal["summary", "detailed"]
@@ -208,7 +209,7 @@ class MetricStatFilters(BaseModel):
     count: NumberFilter | None = None
 
 
-class ExperimentGroupFilter(Filter):
+class ExperimentGroupFilter(EntityFilter):
     """Filter for listing ExperimentGroups."""
 
     name: str | None = Field(default=None, description="Filter groups by name.")
@@ -218,7 +219,7 @@ class ExperimentGroupFilter(Filter):
     )
 
 
-class ExperimentFilter(Filter):
+class ExperimentFilter(EntityFilter):
     """Filter for listing Experiments."""
 
     name: str | None = Field(default=None, description="Filter experiments by name.")
@@ -264,7 +265,7 @@ class ExperimentFilter(Filter):
     )
 
 
-class ExperimentSessionFilter(Filter):
+class ExperimentSessionFilter(EntityFilter):
     """Filter for listing ExperimentSessions."""
 
     test_case_id: str | None = Field(default=None, description="Filter by producer-supplied test case id.")

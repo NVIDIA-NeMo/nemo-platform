@@ -9,7 +9,7 @@ from typing import cast
 import pytest
 from nemo_intake_plugin.spans.api.spans_schemas import SpanGroupBy
 from nemo_intake_plugin.spans.clickhouse_client import ClickHouseSpanClient
-from nemo_intake_plugin.spans.domain import SpanListFilter
+from nemo_intake_plugin.spans.domain import SpanListFilter, SpanStatus
 from nemo_intake_plugin.spans.span_repository import SPAN_COLUMNS, SPAN_GROUP_COLUMN_FIELDS, SpanRepository, _order_by
 from nemo_intake_plugin.spans.storage import make_pagination
 
@@ -155,7 +155,7 @@ async def test_list_span_groups_reuses_span_filters():
     repository = _repository(client)
 
     await repository.list_span_groups(
-        filters=SpanListFilter(workspace="workspace-a", status="error"),
+        filters=SpanListFilter(workspace="workspace-a", status=SpanStatus.ERROR),
         group_by=["trace_id"],
         page=1,
         page_size=10,

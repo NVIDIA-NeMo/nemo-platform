@@ -11,7 +11,7 @@ from typing import Self
 
 from nemo_intake_plugin.spans.domain import EvaluatorResult as DomainEvaluatorResult
 from nemo_intake_plugin.spans.domain import EvaluatorResultDataType
-from nmp.common.entities.values import DatetimeFilter, Filter
+from nemo_platform_plugin.schema import DatetimeFilter, Filter
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 

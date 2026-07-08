@@ -3,16 +3,18 @@
 
 """OTLP ingest body size limit tests."""
 
+from typing import Any, cast
+
 import pytest
 from fastapi.testclient import TestClient
 from nemo_intake_plugin.config import ClickHouseConfig, IntakeConfig
 from nemo_intake_plugin.spans.clickhouse_client import ClickHouseSettings
-from nmp.common.service import Service
 from nmp.testing import create_test_client
+from nmp.testing.client import ServiceFactory
 
 
 @pytest.fixture
-def small_limit_client(clickhouse_settings: ClickHouseSettings, intake_service_factory: type[Service]):
+def small_limit_client(clickhouse_settings: ClickHouseSettings, intake_service_factory: ServiceFactory):
     intake_config = IntakeConfig(
         clickhouse_config=ClickHouseConfig(
             url=clickhouse_settings.url,
@@ -25,7 +27,7 @@ def small_limit_client(clickhouse_settings: ClickHouseSettings, intake_service_f
     with create_test_client(
         intake_service_factory,
         client_type=TestClient,
-        service_configs={intake_service_factory: intake_config},
+        service_configs=cast(Any, {intake_service_factory: intake_config}),
     ) as test_client:
         yield test_client
 

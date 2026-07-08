@@ -42,12 +42,12 @@ from nemo_intake_plugin.spans.experiment_rollup_repository import (
 )
 from nemo_intake_plugin.spans.experiment_session_repository import ExperimentSessionRepository
 from nemo_intake_plugin.spans.storage import make_pagination
-from nmp.common.api.common import Page, PaginationData
-from nmp.common.api.filter import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
-from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
-from nmp.common.api.utils import generate_openapi_extra_params
-from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError
-from nmp.common.service.dependencies import get_entity_client
+from nemo_platform_plugin.api.filter import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
+from nemo_platform_plugin.api.parsed_filter import ParsedFilter, make_filter_dep
+from nemo_platform_plugin.dependencies import get_entity_client
+from nemo_platform_plugin.entities import EntityClient, EntityConflictError, EntityNotFoundError
+from nemo_platform_plugin.jobs.openapi_utils import generate_openapi_extra_params
+from nemo_platform_plugin.schema import Page, PaginationData
 
 logger = logging.getLogger(__name__)
 

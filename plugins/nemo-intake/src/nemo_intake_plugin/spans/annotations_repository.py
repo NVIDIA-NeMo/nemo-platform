@@ -9,10 +9,10 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
+from nemo_intake_plugin.schema import PaginatedResult
 from nemo_intake_plugin.spans.clickhouse_client import ClickHouseSpanClient
 from nemo_intake_plugin.spans.domain import Annotation, AnnotationKind, AnnotationListFilter
 from nemo_intake_plugin.spans.storage import dict_to_row, make_pagination, result_rows
-from nmp.common.api.common import PaginatedResult
 
 ANNOTATION_COLUMNS = [
     "annotation_id",

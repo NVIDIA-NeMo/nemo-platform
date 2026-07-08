@@ -74,6 +74,14 @@ class _FailJob(NemoJob):
         raise RuntimeError("job exploded")
 
 
+class _RunNamedJob(NemoJob):
+    name = "run"
+    description = "A job whose name collides with the local run verb."
+
+    def run(self, config: dict) -> dict:
+        return config
+
+
 runner = CliRunner()
 
 
@@ -143,6 +151,17 @@ class TestSubgroupRegistration:
         app = _app_with_jobs(_GreetJob)
         result = runner.invoke(app, ["greet", "--help"])
         assert "Return a greeting." in result.output
+
+    def test_job_verb_help_text_does_not_repeat_job_name(self) -> None:
+        app = _app_with_jobs(_RunNamedJob)
+        result = runner.invoke(app, ["run", "--help"])
+
+        assert result.exit_code == 0
+        assert "Run locally, in-process." in result.output
+        assert "Submit to a cluster." in result.output
+        assert "Show input/output schemas." in result.output
+        assert "Run run locally" not in result.output
+        assert "schemas for run" not in result.output
 
 
 # ---------------------------------------------------------------------------

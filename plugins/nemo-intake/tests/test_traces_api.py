@@ -11,8 +11,8 @@ from fastapi import HTTPException
 from nemo_intake_plugin.spans.api.traces import _trace_filter
 from nemo_intake_plugin.spans.api.traces_schemas import TraceFilter
 from nemo_intake_plugin.spans.domain import SpanStatus
-from nmp.common.api.filter import parse_json_filter
-from nmp.common.api.parsed_filter import ParsedFilter
+from nemo_platform_plugin.api.filter import parse_json_filter
+from nemo_platform_plugin.api.parsed_filter import ParsedFilter
 
 
 def test_trace_filter_maps_public_fields_to_repository_filter():

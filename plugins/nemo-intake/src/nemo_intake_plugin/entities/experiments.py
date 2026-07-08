@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, ClassVar
 
-from nmp.common.entities.client import EntityBase
+from nemo_platform_plugin.entities import EntityBase
 from pydantic import AnyUrl, Field, field_validator
 
 

@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from nemo_intake_plugin.spans.domain import SpanKind, SpanStatus
-from nmp.common.api.common import PaginationData
+from nemo_platform_plugin.schema import PaginationData
 
 
 def utc_now() -> datetime:

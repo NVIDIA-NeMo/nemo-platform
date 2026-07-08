@@ -6,6 +6,10 @@ Make the agents you ship faster, more accurate, and safer.
 
 NeMo Platform brings NVIDIA NeMo libraries together under one CLI, Python SDK, and web UI. Hardening, evaluation, and tuning for the agents you put in production.
 
+## Architecture
+
+NeMo Platform exposes the same local services through the CLI, Python SDK, Studio, and REST APIs. First-party capabilities share platform infrastructure for inference, credentials, files, entities, and job execution.
+
 ## What You Can Do
 
 - **Secure agents.** Guardrails (content safety, jailbreak detection, PII redaction), Auditor (red-teaming via garak), Anonymizer (PII handling for training data).
@@ -24,6 +28,74 @@ The platform provides several shared capabilities to NeMo libraries.
 - [Files](/documentation/get-started/core-concepts/manage-files), [Secrets](/documentation/get-started/core-concepts/manage-secrets),
   [Entities](/documentation/get-started/core-concepts/entities), and jobs for storing state and
   running local work.
+
+## Architecture Diagram
+
+```mermaid
+flowchart TB
+    Users["Users and applications"]
+
+    subgraph AccessTier["UNIFIED ACCESS"]
+        direction LR
+        CLI["NeMo CLI"]
+        SDK["Python SDK"]
+        Studio["NeMo Studio"]
+        REST["REST APIs"]
+        CLI ~~~ SDK ~~~ Studio ~~~ REST
+    end
+
+    subgraph CapabilityTier["SERVICES"]
+        direction LR
+        Agents["Agents with NAT"]
+        Optimization["Optimization"]
+        Guardrails["Guardrails"]
+        Evaluator["Evaluator"]
+        FineTuning["Fine Tuning"]
+        Auditor["Auditor"]
+        DataDesigner["Data Designer"]
+        Anonymizer["Anonymizer"]
+        SafeSynthesizer["Safe Synthesizer"]
+        Agents ~~~ Optimization ~~~ Guardrails
+        Evaluator ~~~ FineTuning ~~~ Auditor
+        DataDesigner ~~~ Anonymizer ~~~ SafeSynthesizer
+    end
+
+    subgraph SharedTier["PLATFORM CAPABILITIES"]
+        direction LR
+        IGW["Models and Inference"]
+        Secrets["Secrets"]
+        Files["Files"]
+        Entities["Entity Store"]
+        Jobs["Jobs"]
+        IGW ~~~ Secrets ~~~ Files
+        Entities ~~~ Jobs
+    end
+
+    subgraph ProviderTier["MODEL PROVIDERS"]
+        direction TB
+        NVIDIABuild["NVIDIA Build"]
+        OpenAI["OpenAI"]
+        Anthropic["Anthropic"]
+        Gemini["Gemini"]
+        Ollama["Ollama"]
+        NVIDIABuild ~~~ OpenAI ~~~ Anthropic ~~~ Gemini ~~~ Ollama
+    end
+
+    subgraph OutputTier["OUTPUTS"]
+        direction TB
+        Datasets["Datasets"]
+        Configs["Configs"]
+        Reports["Reports"]
+        JobArtifacts["Job artifacts"]
+        Datasets ~~~ Configs ~~~ Reports ~~~ JobArtifacts
+    end
+
+    Users --> AccessTier
+    AccessTier --> CapabilityTier
+    CapabilityTier --> SharedTier
+    SharedTier --> ProviderTier
+    SharedTier --> OutputTier
+```
 
 ## Where to Go Next
 

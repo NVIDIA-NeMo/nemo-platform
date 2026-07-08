@@ -20,7 +20,7 @@ from nemo_intake_plugin.api.v2.experiments.endpoints import (
     _operation_references_metric,
 )
 from nemo_intake_plugin.api.v2.experiments.schemas import EvaluatorAggregate, ExperimentResponse, MetricStatFilters
-from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
+from nemo_platform_plugin.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
 
 EXPERIMENTS = "/apis/intake/v2/workspaces/default/experiments"
 GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"

@@ -23,8 +23,8 @@ from nemo_intake_plugin.spans.ingest.atif_mapping import trajectory_to_evaluator
 from nemo_intake_plugin.spans.ingest.evaluation_context import ExperimentContextIngestModel
 from nemo_intake_plugin.spans.ingest.experiment_context_validation import validate_experiment_context
 from nemo_intake_plugin.spans.storage import utc_now
-from nmp.common.entities.client import EntityClient
-from nmp.common.service.dependencies import get_entity_client
+from nemo_platform_plugin.dependencies import get_entity_client
+from nemo_platform_plugin.entities import EntityClient
 from pydantic import ConfigDict, Field, model_validator
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])

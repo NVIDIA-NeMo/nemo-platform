@@ -5,6 +5,7 @@
 
 from typing import Any
 
+from nemo_intake_plugin.schema import PaginatedResult
 from nemo_intake_plugin.spans.clickhouse_client import ClickHouseSpanClient
 from nemo_intake_plugin.spans.domain import (
     EvaluatorResult,
@@ -12,7 +13,6 @@ from nemo_intake_plugin.spans.domain import (
     EvaluatorResultListFilter,
 )
 from nemo_intake_plugin.spans.storage import dict_to_row, make_pagination, result_rows
-from nmp.common.api.common import PaginatedResult
 
 EVALUATOR_RESULT_COLUMNS = [
     "evaluator_result_id",

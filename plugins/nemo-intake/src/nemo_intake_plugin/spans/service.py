@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from nemo_intake_plugin.schema import PaginatedResult
 from nemo_intake_plugin.spans.annotations_repository import AnnotationsRepository
 from nemo_intake_plugin.spans.domain import (
     Annotation,
@@ -22,7 +23,6 @@ from nemo_intake_plugin.spans.domain import (
 from nemo_intake_plugin.spans.evaluator_results_repository import EvaluatorResultsRepository
 from nemo_intake_plugin.spans.span_repository import SpanRepository
 from nemo_intake_plugin.spans.trace_repository import TraceRepository
-from nmp.common.api.common import PaginatedResult
 
 
 class SpanNotFoundError(Exception):

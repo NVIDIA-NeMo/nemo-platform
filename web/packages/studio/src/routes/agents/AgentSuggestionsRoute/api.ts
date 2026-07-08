@@ -226,10 +226,24 @@ export const uploadToFileset = async (
 // Idempotent: existing files are left untouched (the fileset may have been
 // customized by the user). Failures here surface as the apply step failing —
 // the agent + deployment are already in place at that point.
+export interface EvalSeedFile {
+  path: string;
+  content: string;
+  type: string;
+}
+
+/** Default seed files: the bundled react sample. Used by the optimizer apply
+ *  flow and by the eval modal's fallback. */
+const defaultEvalSeedFiles = (): EvalSeedFile[] => [
+  { path: SAMPLE_EVAL_CONFIG_PATH, content: SAMPLE_EVAL_YAML, type: 'application/yaml' },
+  { path: SAMPLE_EVAL_DATA_PATH, content: SAMPLE_EVAL_DATA_JSON, type: 'application/json' },
+];
+
 export const ensureEvalConfigFileset = async (
   workspace: string,
   fileset: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  files: EvalSeedFile[] = defaultEvalSeedFiles()
 ): Promise<void> => {
   let existingPaths = new Set<string>();
   try {
@@ -245,21 +259,8 @@ export const ensureEvalConfigFileset = async (
       // 409 is fine — a parallel apply already created it.
     }
   }
-  const uploads: Array<{ path: string; content: string; type: string }> = [];
-  if (!existingPaths.has(SAMPLE_EVAL_CONFIG_PATH)) {
-    uploads.push({
-      path: SAMPLE_EVAL_CONFIG_PATH,
-      content: SAMPLE_EVAL_YAML,
-      type: 'application/yaml',
-    });
-  }
-  if (!existingPaths.has(SAMPLE_EVAL_DATA_PATH)) {
-    uploads.push({
-      path: SAMPLE_EVAL_DATA_PATH,
-      content: SAMPLE_EVAL_DATA_JSON,
-      type: 'application/json',
-    });
-  }
+  // Idempotent: never overwrite files already present in the fileset.
+  const uploads = files.filter((f) => !existingPaths.has(f.path));
   for (const u of uploads) {
     const blob = new Blob([u.content], { type: u.type });
     await filesUploadFile(workspace, fileset, u.path, blob, signal);

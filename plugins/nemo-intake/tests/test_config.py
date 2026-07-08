@@ -124,7 +124,8 @@ intake:
         encoding="utf-8",
     )
 
-    cfg = Configuration.get_service_config_from_file(str(config_path), IntakeConfig)
+    settings = Configuration.get_global_settings_from_file(str(config_path))
+    cfg = IntakeConfig(**settings["intake"])
 
     assert cfg.clickhouse_config.url == "http://yaml-clickhouse:8123"
     assert cfg.clickhouse_config.user == "yaml-user"

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from nemo_intake_plugin.schema import PaginatedResult
 from nemo_intake_plugin.spans.clickhouse_client import ClickHouseSpanClient
 from nemo_intake_plugin.spans.domain import IntakeSpan, SpanGroup, SpanListFilter
 from nemo_intake_plugin.spans.span_attribute_catalog import where_clause
@@ -19,7 +20,6 @@ from nemo_intake_plugin.spans.storage import (
     normalize_span_status,
     result_rows,
 )
-from nmp.common.api.common import PaginatedResult
 
 SPAN_COLUMNS = [
     "workspace",

@@ -14,7 +14,6 @@ classifiers = [
 
 dependencies = [
     "nemo-platform-plugin",
-    "nmp-common",
     "fastapi>=0.115.5, <1.0.0",
     "uvicorn>=0.22.0, <1.0.0",
     "pydantic>=2.9.2, <3.0.0",
@@ -47,7 +46,6 @@ packages = ["src/nemo_intake_plugin"]
 
 [tool.uv.sources]
 nemo-platform-plugin = { workspace = true }
-nmp-common = { workspace = true }
 nmp-testing = { workspace = true }
 
 [tool.pytest.ini_options]

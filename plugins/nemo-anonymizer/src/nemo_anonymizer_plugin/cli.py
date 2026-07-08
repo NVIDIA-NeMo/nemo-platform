@@ -5,14 +5,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, ClassVar, Optional
+from typing import Any, ClassVar, Optional, cast
 
 import typer
 import yaml
 from anonymizer.config.anonymizer_config import AnonymizerConfig
 from nemo_anonymizer_plugin.app.upstream_logging import preserve_root_logging
 from nemo_platform_plugin.cli import NemoCLI
+from nemo_platform_plugin.job import NemoJob
 
 
 class AnonymizerCLI(NemoCLI):
@@ -32,6 +34,27 @@ class AnonymizerCLI(NemoCLI):
 
         app.command("validate")(validate_command)
         return app
+
+    def update_job_cli(self, job_cls: type[NemoJob], group: typer.Typer) -> None:
+        if job_cls.name != "run":
+            return
+
+        run_command = next((command for command in group.registered_commands if command.name == "run"), None)
+        if run_command is None or run_command.callback is None:
+            return
+
+        run_callback = cast(Callable[..., None], run_command.callback)
+        signature = getattr(run_callback, "__signature__", None)
+        if signature is None:
+            return
+
+        def _collapsed_run(typer_ctx: typer.Context, **kwargs: object) -> None:
+            if typer_ctx.invoked_subcommand is not None:
+                return
+            run_callback(typer_ctx, **kwargs)
+
+        setattr(_collapsed_run, "__signature__", signature)
+        group.callback(invoke_without_command=True)(_collapsed_run)
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:

@@ -13,7 +13,15 @@ from nemo_intake_plugin.spans.service import IntakeSpansService
 from nemo_intake_plugin.spans.span_repository import SpanRepository
 from nemo_intake_plugin.spans.trace_repository import TraceRepository
 from nemo_platform import AsyncNeMoPlatform
-from nmp.common.service.dependencies import get_sdk_client
+from nemo_platform_plugin.dependencies import get_sdk_client
+
+_PRINCIPAL_ID_HEADER = "X-NMP-Principal-Id"
+
+
+def get_created_by(request: Request) -> str | None:
+    """Return the principal validated by the platform auth middleware."""
+
+    return request.headers.get(_PRINCIPAL_ID_HEADER) or None
 
 
 async def require_workspace_access(
