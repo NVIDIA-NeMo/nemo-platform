@@ -56,9 +56,6 @@ def _load_agents_sdk() -> SandboxSDK:
         # The OpenAI Agents SDK ships under the `nemo-evaluator-sdk[agent-runtimes]` extra and is
         # imported only when this Docker runtime is actually used, so it is absent from the default
         # type-checking environment.
-        from docker import from_env as docker_from_env
-
-        from agents import Runner  # ty: ignore[unresolved-import]
         from agents.run import RunConfig  # ty: ignore[unresolved-import]
         from agents.sandbox import Manifest, SandboxAgent, SandboxRunConfig  # ty: ignore[unresolved-import]
         from agents.sandbox.config import DEFAULT_PYTHON_SANDBOX_IMAGE  # ty: ignore[unresolved-import]
@@ -67,6 +64,9 @@ def _load_agents_sdk() -> SandboxSDK:
             DockerSandboxClient,
             DockerSandboxClientOptions,
         )
+
+        from agents import Runner  # ty: ignore[unresolved-import]
+        from docker import from_env as docker_from_env
     except ImportError as exc:
         raise RuntimeError("DockerSandboxAgentRuntime requires `nemo-evaluator-sdk[agent-runtimes]`") from exc
 

@@ -558,7 +558,7 @@ class TestStreamingTypedResult:
 
         async def _src():
             return
-            yield  # noqa: unreachable
+            yield  # type: ignore[unreachable]
 
         typed_stream = TypedResponseStream(BackendFormat.OPENAI_CHAT, _src())
         response = InferenceResponse(result={"raw": True}, headers={}, typed_body=typed_stream)
