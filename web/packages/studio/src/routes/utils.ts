@@ -23,6 +23,7 @@ import {
   MEMBERS_ENABLED,
   MODEL_COMPARE_ENABLED,
   OPTIMIZER_ENABLED,
+  PLUGINS_ENABLED,
   SAFE_SYNTHESIZER_ENABLED,
   SECRETS_ENABLED,
   SETTINGS_ENABLED,
@@ -94,6 +95,9 @@ export const gateMembersRoutes = (routes: RouteObject | RouteObject[]) =>
 
 export const agentsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(AGENTS_ENABLED, routes);
+
+export const gatePluginRoutes = (routes: RouteObject | RouteObject[]) =>
+  gateRoutes(PLUGINS_ENABLED, routes);
 
 export const gateCopilotStudioRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(COPILOT_STUDIO_ENABLED, routes);

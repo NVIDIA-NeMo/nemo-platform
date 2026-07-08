@@ -74,6 +74,7 @@ export const flagDefinitions = {
   membersEnabled: previewFlag('VITE_FF_MEMBERS_ENABLED'),
   modelCompareEnabled: previewFlag('VITE_FF_MODEL_COMPARE_ENABLED'),
   optimizerEnabled: previewFlag('VITE_FF_OPTIMIZER_ENABLED', true),
+  pluginsEnabled: previewFlag('VITE_FF_PLUGINS_ENABLED', true),
   safeSynthesizerEnabled: previewFlag('VITE_FF_SAFE_SYNTHESIZER_ENABLED', true),
   secretsEnabled: previewFlag('VITE_FF_SECRETS_ENABLED', true),
   settingsEnabled: previewFlag('VITE_FF_SETTINGS_ENABLED', true),
