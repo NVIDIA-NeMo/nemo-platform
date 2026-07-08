@@ -23,14 +23,10 @@ from nemo_platform_plugin.api.parsed_filter import ParsedFilter, make_filter_dep
 from nemo_platform_plugin.authz import CallerKind, PermissionSet, path_rule, perm
 from nemo_platform_plugin.entities import EntityValidationError
 from nemo_platform_plugin.jobs.openapi_utils import generate_openapi_extra_params
+from nemo_platform_plugin.log_utils import sanitize_for_log
 from nemo_platform_plugin.schema import Page
 
 logger = logging.getLogger(__name__)
-
-
-def _sanitize_for_log(value: object) -> str:
-    """Prevent log injection by removing line-break/control characters."""
-    return str(value).replace("\r", "").replace("\n", "")
 
 
 class MetricPerms(PermissionSet, namespace="evaluator.metrics"):
@@ -87,7 +83,7 @@ async def list_metrics(
             include_derived=include_derived,
         )
     except Exception:
-        logger.exception(f"Failed to list metrics for workspace {_sanitize_for_log(workspace)}")
+        logger.exception(f"Failed to list metrics for workspace {sanitize_for_log(workspace)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
 
 
@@ -108,8 +104,8 @@ async def create_metric(
     service: MetricService = Depends(get_metric_service),
 ) -> Metric:
     """Store a new metric, addressed by workspace/name."""
-    safe_workspace = _sanitize_for_log(workspace)
-    safe_name = _sanitize_for_log(name)
+    safe_workspace = sanitize_for_log(workspace)
+    safe_name = sanitize_for_log(name)
     logger.info(f"Creating metric: {safe_workspace}/{safe_name}")
     try:
         return await service.create_metric(name, metric, workspace=workspace, project=project)
@@ -147,7 +143,7 @@ async def get_metric(
     service: MetricService = Depends(get_metric_service),
 ) -> Metric:
     """Get a stored metric by workspace and name."""
-    logger.debug(f"Getting metric: {_sanitize_for_log(workspace)}/{_sanitize_for_log(name)}")
+    logger.debug(f"Getting metric: {sanitize_for_log(workspace)}/{sanitize_for_log(name)}")
     try:
         metric = await service.get_metric(workspace, name)
         if not metric:
@@ -159,7 +155,7 @@ async def get_metric(
     except HTTPException:
         raise
     except Exception:
-        logger.exception(f"Failed to get metric {_sanitize_for_log(workspace)}/{_sanitize_for_log(name)}")
+        logger.exception(f"Failed to get metric {sanitize_for_log(workspace)}/{sanitize_for_log(name)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
 
 
@@ -178,7 +174,7 @@ async def delete_metric(
     service: MetricService = Depends(get_metric_service),
 ):
     """Delete a stored metric by workspace and name."""
-    logger.info(f"Deleting metric: {_sanitize_for_log(workspace)}/{_sanitize_for_log(name)}")
+    logger.info(f"Deleting metric: {sanitize_for_log(workspace)}/{sanitize_for_log(name)}")
     try:
         deleted = await service.delete_metric(workspace, name)
         if not deleted:
@@ -190,5 +186,5 @@ async def delete_metric(
     except HTTPException:
         raise
     except Exception:
-        logger.exception(f"Failed to delete metric {_sanitize_for_log(workspace)}/{_sanitize_for_log(name)}")
+        logger.exception(f"Failed to delete metric {sanitize_for_log(workspace)}/{sanitize_for_log(name)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")

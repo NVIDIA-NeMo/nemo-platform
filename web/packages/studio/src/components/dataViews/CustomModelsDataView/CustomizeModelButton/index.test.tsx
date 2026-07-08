@@ -83,10 +83,7 @@ describe('CustomizeModelButton', () => {
       const button = screen.getByRole('button', { name: 'Customize a Model' });
       expect(button).not.toBeDisabled();
       await user.click(button);
-      expect(await screen.findByRole('radio', { name: /Fine-Tuned/ })).not.toHaveAttribute(
-        'data-disabled'
-      );
-      expect(screen.getByRole('radio', { name: /Prompt Tuned/ })).not.toHaveAttribute(
+      expect(await screen.findByRole('radio', { name: /Prompt Tuned/ })).not.toHaveAttribute(
         'data-disabled'
       );
     });

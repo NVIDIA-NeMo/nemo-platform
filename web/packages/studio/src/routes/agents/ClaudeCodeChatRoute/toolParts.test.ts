@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ThreadAssistantMessagePart } from '@assistant-ui/react';
+import { CLAUDE_CODE_JOB_PROGRESS_MCP_TOOL_NAME } from '@studio/routes/agents/ClaudeCodeChatRoute/jobProgressConsts';
 import {
   CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
   getClaudeCodeCompletedMessageParts,
@@ -263,6 +264,76 @@ describe('Claude Code tool parts', () => {
         toolName: CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
       },
       { type: 'text', text: markdownSummary },
+    ]);
+  });
+
+  it('keeps tables and prominent custom components visible with the final summary', () => {
+    const bashPart: ThreadAssistantMessagePart = {
+      type: 'tool-call',
+      toolCallId: 'toolu_bash',
+      toolName: 'Bash',
+      args: { command: 'inspect results' },
+      argsText: '{"command":"inspect results"}',
+    };
+    const jobPart: ThreadAssistantMessagePart = {
+      type: 'tool-call',
+      toolCallId: 'toolu_job',
+      toolName: CLAUDE_CODE_JOB_PROGRESS_MCP_TOOL_NAME,
+      args: { job_name: 'spam-detector-eval' },
+      argsText: '{"job_name":"spam-detector-eval"}',
+    };
+    const fileChangePart: ThreadAssistantMessagePart = {
+      type: 'tool-call',
+      toolCallId: 'toolu_write',
+      toolName: 'Write',
+      args: { file_path: 'agents/spam-detector.yml', content: 'workflow: spam-detector' },
+      argsText: '{"file_path":"agents/spam-detector.yml","content":"workflow: spam-detector"}',
+    };
+    const markdownTable = [
+      '| Metric | Result |',
+      '| --- | ---: |',
+      '| Precision | 0.98 |',
+      '| Recall | 0.96 |',
+    ].join('\n');
+    const parts: readonly ThreadAssistantMessagePart[] = [
+      {
+        type: 'text',
+        text: `I inspected the evaluation output.\n\n${markdownTable}\n\nThe detailed logs are available.`,
+      },
+      bashPart,
+      jobPart,
+      fileChangePart,
+      {
+        type: 'text',
+        text: [
+          STUDIO_MESSAGE_SUMMARY_START,
+          'title: Evaluate Spam Detector',
+          'worked_for: 20s',
+          'summary: The spam detector evaluation completed successfully.',
+          'details_label: worked for 20s',
+          STUDIO_MESSAGE_SUMMARY_END,
+        ].join('\n'),
+      },
+    ];
+
+    expect(getClaudeCodeCompletedMessageParts(parts)).toMatchObject([
+      {
+        type: 'tool-call',
+        toolName: CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
+        args: {
+          parts: [
+            {
+              type: 'text',
+              text: 'I inspected the evaluation output.\n\nThe detailed logs are available.',
+            },
+            { type: 'tool-call', toolName: 'Bash' },
+          ],
+        },
+      },
+      { type: 'text', text: markdownTable },
+      { type: 'tool-call', toolName: CLAUDE_CODE_JOB_PROGRESS_MCP_TOOL_NAME },
+      { type: 'tool-call', toolName: 'Write' },
+      { type: 'text', text: 'The spam detector evaluation completed successfully.' },
     ]);
   });
 

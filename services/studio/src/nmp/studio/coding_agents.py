@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Mapping
@@ -104,6 +105,7 @@ class HistorySessionResponse(BaseModel):
 
     session_id: str
     mtime: float
+    title: str | None = None
     first_prompt: str
     message_count: int
     token_count: int
@@ -131,6 +133,7 @@ _AGENT_INPUT_RESPONSE_RESERVED_KEYS = frozenset({"message", "status"})
 class HistorySummary:
     """Aggregated metadata from a Claude session history file."""
 
+    title: str | None = None
     first_prompt: str | None = None
     message_count: int = 0
     token_count: int = 0
@@ -323,6 +326,7 @@ def _build_studio_system_prompt(
         f"Start the summary block on its own line with {STUDIO_MESSAGE_SUMMARY_START} and end it on its own line with {STUDIO_MESSAGE_SUMMARY_END}.",
         "Inside the summary block, use exactly these fields on separate lines:",
         f"{STUDIO_MESSAGE_SUMMARY_START}",
+        "title: <meaningful 3-7 word title naming the user's overall task; keep it stable across messages unless the topic clearly changes>",
         "worked_for: <elapsed time if you know it, otherwise unknown>",
         "summary: <concise Markdown, at most 60 words, describing the user-visible result and current state>",
         "details_label: worked for <same elapsed time or unknown>",
@@ -440,6 +444,24 @@ def _append_tool_call(summary: HistorySummary, tool_name: str) -> None:
     record_tool_name(summary.chat_artifacts, tool_name)
 
 
+def _studio_message_title(text: str) -> str | None:
+    summary_start = text.find(STUDIO_MESSAGE_SUMMARY_START)
+    if summary_start < 0:
+        return None
+
+    summary_end = text.find(STUDIO_MESSAGE_SUMMARY_END, summary_start)
+    block = text[summary_start + len(STUDIO_MESSAGE_SUMMARY_START) : summary_end if summary_end >= 0 else None]
+    match = re.search(
+        r"(?:^|\s)title:\s*(.+?)(?=\s+(?:worked_for|summary|details_label):\s*|$)",
+        block,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return None
+
+    return _trimmed_string(" ".join(match.group(1).split()))
+
+
 def _record_assistant_tool_calls(
     summary: HistorySummary,
     message: dict[str, Any],
@@ -452,6 +474,7 @@ def _record_assistant_tool_calls(
         if part.get("type") == "text":
             text = string_value(part.get("text"))
             if text:
+                summary.title = _studio_message_title(text) or summary.title
                 record_spec_text_artifacts(summary.chat_artifacts, text)
             continue
         if part.get("type") != "tool_use":
@@ -595,6 +618,7 @@ def list_history_sessions() -> list[HistorySessionResponse]:
             HistorySessionResponse(
                 session_id=history_file.stem,
                 mtime=mtime,
+                title=summary.title,
                 first_prompt=summary.first_prompt or "",
                 message_count=summary.message_count,
                 token_count=summary.token_count,

@@ -407,6 +407,58 @@ async def test_docker_backend_create_model_deployment(
     assert mock_container.start.call_count == 2
 
 
+@pytest.mark.asyncio
+async def test_docker_backend_adds_configured_labels_to_managed_containers(
+    mock_nmp_sdk,
+    mock_docker_client,
+    reset_shared_resource_manager_base,
+    sample_deployment,
+    sample_config,
+):
+    """Configured owner labels are copied to managed NIM and sidecar containers."""
+    owner_labels = {
+        "nmp.nvidia.com/test-run": "run-1",
+        "nmp.nvidia.com/test-worker": "gw0",
+    }
+    platform_config = PlatformConfig(  # type: ignore[abstract]
+        files_url="http://files-service:8000",
+    )
+    with (
+        patch("nmp.core.models.controllers.backends.docker.backend.get_platform_config", return_value=platform_config),
+        patch("nmp.common.resources.manager.get_platform_config") as mock_resource_config,
+        patch("nmp.common.resources.manager.detect_gpu_device_ids") as mock_detect_gpu_device_ids,
+    ):
+        mock_resource_config.return_value.docker = create_mock_docker_config("0,1,2,3")
+        mock_detect_gpu_device_ids.return_value = [0, 1, 2, 3]
+        backend = DockerServiceBackend(
+            nmp_sdk=mock_nmp_sdk,
+            config={
+                "model_labels": owner_labels,
+                "models_docker_networking_mode": "dond",
+            },
+        )
+
+    mock_container = MagicMock()
+    mock_container.id = "1234567890abcdef"
+    mock_container.start = MagicMock()
+    mock_docker_client.containers.create.return_value = mock_container
+    mock_docker_client.images.get.return_value = MagicMock()
+    mock_docker_client.containers.list.return_value = []
+    sample_config.model_spec.lora_enabled = True
+
+    await backend.create_model_deployment(
+        ModelContext(model_deployment=sample_deployment, model_deployment_config=sample_config)
+    )
+    await drive_creation_to_completion(backend, sample_deployment)
+
+    assert mock_docker_client.containers.create.call_count == 2
+    for call in mock_docker_client.containers.create.call_args_list:
+        labels = call.kwargs["labels"]
+        assert labels[MODEL_MANAGED_BY_LABEL] == MODEL_MANAGED_BY_MODELS_CONTROLLER
+        assert labels["nmp.nvidia.com/test-run"] == "run-1"
+        assert labels["nmp.nvidia.com/test-worker"] == "gw0"
+
+
 def _make_vllm_config(*, lora_enabled: bool = False, image_name=None, image_tag=None):
     config = MagicMock()
     kwargs = dict(
@@ -1127,6 +1179,22 @@ def test_docker_backend_dind_mode_initialization(docker_backend_with_dind_mode):
     assert docker_backend_with_dind_mode._backend_config.models_docker_host_service_name == "docker"
     assert docker_backend_with_dind_mode._backend_config.models_docker_port_range_start == 49152
     assert docker_backend_with_dind_mode._backend_config.models_docker_port_range_end == 49652
+
+
+@pytest.mark.asyncio
+async def test_find_available_port_ignores_containers_removed_during_list(docker_backend_with_dind_mode):
+    """Port allocation tolerates another worker removing a container during Docker list hydration."""
+    reconciler = docker_backend_with_dind_mode._reconciler
+
+    with patch.object(reconciler, "list_containers", return_value=[]) as list_containers:
+        port = await reconciler.find_available_port()
+
+    assert port == 49152
+    list_containers.assert_called_once_with(
+        all=True,
+        filters={"label": f"{MODEL_MANAGED_BY_LABEL}={MODEL_MANAGED_BY_MODELS_CONTROLLER}"},
+        ignore_removed=True,
+    )
 
 
 def test_docker_backend_local_mode_initialization(mock_nmp_sdk, mock_docker_client):
@@ -4233,6 +4301,46 @@ async def test_list_managed_deployment_names_skips_missing_labels(backend_with_m
     with patch.object(backend._reconciler, "list_containers", return_value=[c1]):
         names = await backend.list_managed_deployment_names()
     assert names == []
+
+
+@pytest.mark.asyncio
+async def test_list_managed_deployment_names_filters_by_owner_labels(mock_nmp_sdk, mock_docker_client):
+    """Owner labels keep orphan reconciliation scoped to this backend owner."""
+    platform_config = PlatformConfig(  # type: ignore[abstract]
+        files_url="http://files-service:8000",
+    )
+    owner_labels = {
+        "nmp.nvidia.com/test-run": "run-1",
+        "nmp.nvidia.com/test-worker": "gw0",
+    }
+    with patch("nmp.core.models.controllers.backends.docker.backend.get_platform_config", return_value=platform_config):
+        backend = DockerServiceBackend(
+            nmp_sdk=mock_nmp_sdk,
+            config={"model_labels": owner_labels},
+        )
+
+    matching_container = MagicMock()
+    matching_container.labels = {
+        MODEL_MANAGED_BY_LABEL: MODEL_MANAGED_BY_MODELS_CONTROLLER,
+        "nmp.nvidia.com/deployment-workspace": "ws-a",
+        "nmp.nvidia.com/deployment-name": "dep1",
+        **owner_labels,
+    }
+    other_worker_container = MagicMock()
+    other_worker_container.labels = {
+        MODEL_MANAGED_BY_LABEL: MODEL_MANAGED_BY_MODELS_CONTROLLER,
+        "nmp.nvidia.com/deployment-workspace": "ws-b",
+        "nmp.nvidia.com/deployment-name": "dep2",
+        "nmp.nvidia.com/test-run": "run-1",
+        "nmp.nvidia.com/test-worker": "gw1",
+    }
+
+    with patch.object(
+        backend._reconciler, "list_containers", return_value=[matching_container, other_worker_container]
+    ):
+        names = await backend.list_managed_deployment_names()
+
+    assert names == ["ws-a/dep1"]
 
 
 @pytest.mark.asyncio

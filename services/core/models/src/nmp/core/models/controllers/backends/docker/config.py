@@ -174,6 +174,11 @@ class DockerBackendConfig(BaseModel):
         "ChunkedEncodingError, connection broken). Same volume is reused so partial downloads can be completed.",
     )
 
+    model_labels: dict[str, str] = Field(
+        default_factory=dict,
+        description=("Additional labels copied onto model resources managed by the models controller. "),
+    )
+
     busybox_image: str = Field(
         default="busybox",
         description="BusyBox image repository used for helper containers (permissions/find/chown).",

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from nemo_evaluator.api.schemas import MetricRef, TaskInputs, TaskMetadataList
+from nemo_evaluator.api.schemas import MetricRef, TaskInputs, TaskMetadataList, TaskRefList
 from nemo_evaluator.shared.metric_bundles.bundles import BundledMetricOutputSpec
 from nemo_evaluator_sdk.agent_eval.tasks import SemanticView
 from nemo_evaluator_sdk.values.common import SecretRef
@@ -187,3 +187,25 @@ class TaskEntity(EntityBase):
         description="Optional reporting views mapping this task's metric outputs into named semantic scores.",
     )
     metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the task.")
+
+
+class TasksetEntity(EntityBase):
+    """Persisted, queryable taskset, addressed by workspace/name.
+
+    A taskset is a flexible grouping of stored tasks: it holds references to its members
+    (``workspace/name``) plus free-form annotations. Membership is a set — order is not significant
+    and duplicate references are rejected. Referenced tasks are validated to exist at create time.
+    """
+
+    __entity_type__: ClassVar[str] = "taskset"
+
+    description: str | None = Field(
+        default=None,
+        description="Human-readable description of the grouping.",
+        max_length=MAX_DESCRIPTION_LENGTH,
+    )
+    tasks: TaskRefList = Field(
+        default_factory=list,
+        description="References to the member tasks (set semantics; duplicates rejected).",
+    )
+    metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the taskset.")

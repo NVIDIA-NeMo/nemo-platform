@@ -2,17 +2,74 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { KVPair } from '@nemo/common/src/components/KVPair';
-import { useCustomizationGetJob } from '@nemo/sdk/vendored/customizer/api';
+import {
+  isAutomodelJob,
+  isUnslothJob,
+  type CustomizationJob,
+} from '@nemo/sdk/vendored/customizer/schema';
 import { Divider, Flex, SidePanel, Stack, Text } from '@nvidia/foundations-react-core';
 import { ErrorMessageWithRetry } from '@studio/components/ErrorMessageWithRetry';
 import { Loading } from '@studio/components/Layouts/Loading';
+import { useCustomizationJob } from '@studio/hooks/useCustomizationJob';
 import {
   getBaseModel,
-  getCustomizationConfigurationName,
   getFormattedTrainingType,
   getTrainingOptionBadges,
 } from '@studio/util/customizations';
-import { ComponentProps, FC } from 'react';
+import { ComponentProps, FC, ReactNode } from 'react';
+
+/** Hyperparameter rows specific to each backend. */
+const HyperparameterRows: FC<{ job: CustomizationJob }> = ({ job }) => {
+  const rows: ReactNode[] = [];
+  const { schedule, optimizer, training } = job.spec;
+
+  rows.push(<KVPair key="epochs" label="Epochs" value={schedule.epochs} />);
+  rows.push(<KVPair key="max-steps" label="Max Steps" value={schedule.max_steps} />);
+  rows.push(<KVPair key="seed" label="Seed" value={schedule.seed} />);
+  rows.push(<KVPair key="lr" label="Learning Rate" value={optimizer.learning_rate} />);
+  rows.push(<KVPair key="wd" label="Weight Decay" value={optimizer.weight_decay} />);
+
+  if (isAutomodelJob(job)) {
+    const { batch } = job.spec;
+    rows.push(<KVPair key="gbs" label="Global Batch Size" value={batch.global_batch_size} />);
+    rows.push(<KVPair key="mbs" label="Micro Batch Size" value={batch.micro_batch_size} />);
+    rows.push(<KVPair key="warmup" label="Warmup Steps" value={job.spec.optimizer.warmup_steps} />);
+    rows.push(<KVPair key="beta1" label="Adam Beta 1" value={job.spec.optimizer.adam_beta1} />);
+    rows.push(<KVPair key="beta2" label="Adam Beta 2" value={job.spec.optimizer.adam_beta2} />);
+    rows.push(<KVPair key="precision" label="Precision" value={job.spec.training.precision} />);
+  }
+
+  if (isUnslothJob(job)) {
+    const { batch } = job.spec;
+    rows.push(
+      <KVPair key="pdbs" label="Per-device Batch Size" value={batch.per_device_train_batch_size} />
+    );
+    rows.push(
+      <KVPair key="gas" label="Gradient Accumulation" value={batch.gradient_accumulation_steps} />
+    );
+    rows.push(<KVPair key="warmup" label="Warmup Steps" value={job.spec.schedule.warmup_steps} />);
+    rows.push(
+      <KVPair key="scheduler" label="LR Scheduler" value={job.spec.schedule.lr_scheduler_type} />
+    );
+    rows.push(<KVPair key="optim" label="Optimizer" value={job.spec.optimizer.optim} />);
+    rows.push(<KVPair key="precision" label="Precision" value={job.spec.hardware.precision} />);
+  }
+
+  const lora = training.lora;
+  if (lora) {
+    rows.push(<KVPair key="lora-rank" label="LoRA / Rank" value={lora.rank} />);
+    rows.push(<KVPair key="lora-alpha" label="LoRA / Alpha" value={lora.alpha} />);
+    rows.push(
+      <KVPair
+        key="lora-targets"
+        label="LoRA / Target Modules"
+        value={lora.target_modules?.join(', ')}
+      />
+    );
+  }
+
+  return <>{rows}</>;
+};
 
 type Props = ComponentProps<typeof SidePanel> & {
   customizationJobName: string;
@@ -24,93 +81,40 @@ export const CustomizationConfigSidePanel: FC<Props> = ({
   ...attributes
 }) => {
   const {
-    data: job,
+    job,
     isLoading: isLoadingConfig,
     refetch,
-  } = useCustomizationGetJob(workspace, customizationJobName);
+  } = useCustomizationJob(workspace, customizationJobName);
 
   let content;
   if (isLoadingConfig) {
     content = <Loading />;
   } else if (job) {
-    const training = job.spec?.training;
-    const trainingType = training && 'type' in training ? training.type : undefined;
-    const finetuningType = training && 'peft' in training && training.peft ? 'lora' : 'all_weights';
+    const { training } = job.spec;
     content = (
       <Stack className="w-full overflow-y-auto" gap="density-xl">
-        <KVPair label="Name" value={getCustomizationConfigurationName(job.spec?.model)} />
+        <KVPair label="Name" value={job.spec.output?.name} />
         <Stack gap="density-sm">
           <Text kind="body/semibold/md">Configuration Snapshot</Text>
           <KVPair label="Base Model" value={getBaseModel(job)} />
-          <KVPair label="Training Type" value={getFormattedTrainingType(trainingType)} />
-          <KVPair label="Finetuning Type" value={getFormattedTrainingType(finetuningType)} />
+          <KVPair label="Training Type" value={getFormattedTrainingType(training.training_type)} />
+          <KVPair
+            label="Finetuning Type"
+            value={getFormattedTrainingType(training.finetuning_type)}
+          />
           <KVPair
             label="Training Options"
             value={
-              training && (
-                <Flex gap="density-sm" wrap="wrap" className="w-full">
-                  {getTrainingOptionBadges(training)}
-                </Flex>
-              )
+              <Flex gap="density-sm" wrap="wrap" className="w-full">
+                {getTrainingOptionBadges(job)}
+              </Flex>
             }
           />
         </Stack>
         <Divider />
         <Stack gap="density-sm">
           <Text kind="body/semibold/md">Hyperparameters</Text>
-          <KVPair
-            label="Warmup Steps"
-            value={training && 'warmup_steps' in training ? training.warmup_steps : undefined}
-          />
-          <KVPair label="Seed" value={training && 'seed' in training ? training.seed : undefined} />
-          <KVPair
-            label="Max Steps"
-            value={training && 'max_steps' in training ? training.max_steps : undefined}
-          />
-          <KVPair
-            label="Optimizer"
-            value={training && 'optimizer' in training ? training.optimizer : undefined}
-          />
-          <KVPair
-            label="Adam Beta 1"
-            value={training && 'adam_beta1' in training ? training.adam_beta1 : undefined}
-          />
-          <KVPair
-            label="Adam Beta 2"
-            value={training && 'adam_beta2' in training ? training.adam_beta2 : undefined}
-          />
-          <KVPair
-            label="Batch Size"
-            value={training && 'batch_size' in training ? training.batch_size : undefined}
-          />
-          <KVPair
-            label="Epochs"
-            value={training && 'epochs' in training ? training.epochs : undefined}
-          />
-          <KVPair
-            label="Learning Rate"
-            value={training && 'learning_rate' in training ? training.learning_rate : undefined}
-          />
-          <KVPair
-            label="Log Every N Steps"
-            value={
-              training && 'log_every_n_steps' in training ? training.log_every_n_steps : undefined
-            }
-          />
-          <KVPair
-            label="LoRA / Rank"
-            value={training && 'peft' in training ? training.peft?.rank : undefined}
-          />
-          <KVPair
-            label="LoRA / Alpha"
-            value={training && 'peft' in training ? training.peft?.alpha : undefined}
-          />
-          <KVPair
-            label="LoRA / Target Modules"
-            value={
-              training && 'peft' in training ? training.peft?.target_modules?.join(', ') : undefined
-            }
-          />
+          <HyperparameterRows job={job} />
         </Stack>
       </Stack>
     );

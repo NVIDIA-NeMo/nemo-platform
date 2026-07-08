@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useModelsGetModel } from '@nemo/sdk/generated/platform/api';
-import { useCustomizationGetJob } from '@nemo/sdk/vendored/customizer/api';
 import {
   PageHeader,
   Stack,
@@ -17,11 +16,13 @@ import { CustomizationFilesetDetailsPanel } from '@studio/components/Customizati
 import { Loading } from '@studio/components/Layouts/Loading';
 import { ModelChat } from '@studio/components/ModelChat';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
+import { useCustomizationJob } from '@studio/hooks/useCustomizationJob';
 import { useModelChatAvailability } from '@studio/hooks/useModelChatAvailability';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { DetailActions } from '@studio/routes/CustomizationJobDetailsRoute/DetailActions';
 import { getCustomizationJobListRoute } from '@studio/routes/utils';
+import { getDatasetUri } from '@studio/util/customizations';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { MessagesSquare } from 'lucide-react';
 import { FC } from 'react';
@@ -30,7 +31,7 @@ export const CustomizationJobDetailsRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const { customizationJobName } = useRequiredPathParams([ROUTE_PARAMS.customizationJobName]);
 
-  const { data: customization } = useCustomizationGetJob(workspace, customizationJobName);
+  const { job, backend } = useCustomizationJob(workspace, customizationJobName);
 
   useBreadcrumbs({
     items: [
@@ -39,13 +40,13 @@ export const CustomizationJobDetailsRoute: FC = () => {
         slotLabel: 'Customizations',
       },
       {
-        slotLabel: customization?.id || '',
+        slotLabel: job?.id || '',
       },
     ],
   });
 
-  const { status } = customization ?? {};
-  const output_model = customization?.spec?.output?.name;
+  const status = job?.status;
+  const output_model = job?.spec.output?.name;
   const showChat = Boolean(output_model) && status === 'completed';
 
   // Fetch the output model entity so we can check deployment status
@@ -61,7 +62,14 @@ export const CustomizationJobDetailsRoute: FC = () => {
       <Stack className="w-full p-density-2xl min-h-full" gap="density-xl">
         <PageHeader
           slotHeading="Customization Job"
-          slotActions={<DetailActions model={output_model} status={status} />}
+          slotActions={
+            <DetailActions
+              model={output_model}
+              status={status}
+              backend={backend}
+              name={customizationJobName}
+            />
+          }
         />
         <TabsRoot className="flex-1" defaultValue="overview">
           <TabsList>
@@ -80,19 +88,19 @@ export const CustomizationJobDetailsRoute: FC = () => {
                 customizationJobName={customizationJobName}
                 workspace={workspace}
               />
-              <CustomizationFilesetDetailsPanel filesetUri={customization?.spec?.dataset} />
+              <CustomizationFilesetDetailsPanel filesetUri={getDatasetUri(job) || undefined} />
             </Stack>
           </TabsContent>
 
           {showChat && output_model && (
-            <TabsContent value="chat" className="p-0 flex-1 ">
+            <TabsContent value="chat" className="flex flex-1 justify-center p-0">
               {isChatStatusLoading ? (
                 <Loading />
               ) : (
                 <ModelChat
                   model={output_model}
                   workspace={workspace}
-                  className="flex-1 max-w-[768px] mx-auto"
+                  className="max-w-[768px]"
                   modelChatStatus={modelChatStatus}
                 />
               )}

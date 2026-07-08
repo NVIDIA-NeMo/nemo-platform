@@ -100,6 +100,7 @@ interface ClaudeCodeCompletedMessageOptions {
 interface StudioSummaryBlock {
   readonly detailsLabel: string;
   readonly detailParts: readonly ThreadAssistantMessagePart[];
+  readonly finalParts: readonly ThreadAssistantMessagePart[];
   readonly summaryText: string;
 }
 
@@ -195,14 +196,15 @@ const getStudioSummaryFields = (
   readonly summaryText?: string;
   readonly workedFor?: string;
 } => {
-  const fields: Partial<Record<'details_label' | 'summary' | 'worked_for', string[]>> = {};
+  type StudioSummaryField = 'details_label' | 'summary' | 'title' | 'worked_for';
+  const fields: Partial<Record<StudioSummaryField, string[]>> = {};
 
   const fieldMatches = Array.from(
-    blockText.matchAll(/(?:^|\s)(worked_for|summary|details_label):\s*/gi)
+    blockText.matchAll(/(?:^|\s)(title|worked_for|summary|details_label):\s*/gi)
   );
 
   for (const [index, match] of fieldMatches.entries()) {
-    const field = match[1]!.toLowerCase() as 'details_label' | 'summary' | 'worked_for';
+    const field = match[1]!.toLowerCase() as StudioSummaryField;
     const valueStart = (match.index ?? 0) + match[0].length;
     const valueEnd = fieldMatches[index + 1]?.index ?? blockText.length;
     fields[field] = [blockText.slice(valueStart, valueEnd)];
@@ -386,6 +388,85 @@ const splitTrailingQuestion = (
   };
 };
 
+const MARKDOWN_TABLE_DELIMITER_ROW = /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/;
+
+const extractMarkdownTableParts = (
+  text: string
+): {
+  readonly remainingText: string;
+  readonly tableParts: readonly ThreadAssistantMessagePart[];
+} => {
+  const lines = text.split('\n');
+  const tableLines = new Set<number>();
+  const tableParts: ThreadAssistantMessagePart[] = [];
+
+  for (let index = 1; index < lines.length; index += 1) {
+    if (!MARKDOWN_TABLE_DELIMITER_ROW.test(lines[index]!) || !lines[index - 1]!.includes('|')) {
+      continue;
+    }
+
+    const tableStart = index - 1;
+    let tableEnd = index;
+    while (tableEnd + 1 < lines.length && lines[tableEnd + 1]!.trim().includes('|')) {
+      tableEnd += 1;
+    }
+
+    for (let tableLine = tableStart; tableLine <= tableEnd; tableLine += 1) {
+      tableLines.add(tableLine);
+    }
+    tableParts.push({
+      type: 'text',
+      text: lines
+        .slice(tableStart, tableEnd + 1)
+        .join('\n')
+        .trim(),
+    });
+    index = tableEnd;
+  }
+
+  const remainingText = lines
+    .filter((_, index) => !tableLines.has(index))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return { remainingText, tableParts };
+};
+
+const isFinalSummaryToolPart = (part: ThreadAssistantMessagePart): boolean =>
+  part.type === 'tool-call' &&
+  part.toolName !== CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME &&
+  part.toolName !== CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME &&
+  part.toolName !== CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME &&
+  !isClaudeCodeSubtleToolCallPart(part);
+
+const partitionStudioSummaryParts = (
+  parts: readonly ThreadAssistantMessagePart[]
+): {
+  readonly detailParts: readonly ThreadAssistantMessagePart[];
+  readonly finalParts: readonly ThreadAssistantMessagePart[];
+} => {
+  const detailParts: ThreadAssistantMessagePart[] = [];
+  const finalParts: ThreadAssistantMessagePart[] = [];
+
+  for (const part of parts) {
+    if (part.type === 'text') {
+      const { remainingText, tableParts } = extractMarkdownTableParts(part.text);
+      if (remainingText) detailParts.push({ ...part, text: remainingText });
+      finalParts.push(...tableParts);
+      continue;
+    }
+
+    if (isFinalSummaryToolPart(part)) {
+      finalParts.push(part);
+    } else {
+      detailParts.push(part);
+    }
+  }
+
+  return { detailParts, finalParts };
+};
+
 const getTruncatedStudioSummaryText = (
   detailParts: readonly ThreadAssistantMessagePart[],
   question: string | undefined
@@ -439,12 +520,14 @@ const getStudioSummaryBlock = (
     const summarySource = summarySourceParts.join('\n');
     const summaryEndIndex = summarySource.indexOf(STUDIO_MESSAGE_SUMMARY_END);
     if (summaryEndIndex < 0) {
+      const partitionedParts = partitionStudioSummaryParts(detailParts);
       return {
         detailsLabel: getStudioDetailsLabel({
           elapsedMs: options.elapsedMs,
           summaryFields: getStudioSummaryFields(''),
         }),
-        detailParts,
+        detailParts: partitionedParts.detailParts,
+        finalParts: partitionedParts.finalParts,
         summaryText: getTruncatedStudioSummaryText(detailParts, question),
       };
     }
@@ -464,13 +547,15 @@ const getStudioSummaryBlock = (
         ? `${baseSummaryText}\n\n${question}`
         : baseSummaryText;
     const summaryText = appendDetailLinksToSummary(summaryTextWithQuestion, detailParts);
+    const partitionedParts = partitionStudioSummaryParts(detailParts);
 
     return {
       detailsLabel: getStudioDetailsLabel({
         elapsedMs: options.elapsedMs,
         summaryFields,
       }),
-      detailParts,
+      detailParts: partitionedParts.detailParts,
+      finalParts: partitionedParts.finalParts,
       summaryText,
     };
   }
@@ -526,6 +611,7 @@ export const getClaudeCodeCompletedMessageParts = (
       parts: studioSummaryBlock.detailParts,
     });
     if (collapsedDetailsPart) completedParts.push(collapsedDetailsPart);
+    completedParts.push(...studioSummaryBlock.finalParts);
     completedParts.push({ type: 'text', text: studioSummaryBlock.summaryText });
     return completedParts;
   }

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,6 +15,35 @@ from nemo_agents_plugin.cli import AgentsCLI
 from typer.testing import CliRunner
 
 runner = CliRunner()
+
+
+class _FakeSDKUser:
+    def __init__(self, token: str | None) -> None:
+        self._token = token
+
+    def get_client_config(self) -> dict[str, object]:
+        if self._token is None:
+            return {}
+        return {"default_headers": {"Authorization": f"Bearer {self._token}"}}
+
+
+class _FakeSDKContext:
+    def __init__(self, base_url: str, token: str | None) -> None:
+        self.user = _FakeSDKUser(token)
+        self.cluster = type("_Cluster", (), {"base_url": base_url})()
+
+
+class _FakeCLIContext:
+    """Minimal stand-in for ``CLIContext`` (typer.Context.obj)."""
+
+    def __init__(self, base_url: str = "http://config-host:9999", token: str | None = "cfg-token") -> None:
+        self._sdk = _FakeSDKContext(base_url, token)
+
+    def get_sdk_context(self) -> _FakeSDKContext:
+        return self._sdk
+
+    def get_base_url(self, default: str | None = None) -> str | None:
+        return str(self._sdk.cluster.base_url)
 
 
 @pytest.fixture
@@ -92,7 +122,8 @@ def test_usage_show_with_fileset_ref_uses_sdk(app, tmp_natjobs_dir: Path, fake_s
         )
 
     assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
+    # The resolved-target banner goes to stderr; stdout stays clean JSON.
+    payload = json.loads(result.stdout)
     assert len(payload["runs"]) == 4
     assert len(fake.files.calls) == 1
     call = fake.files.calls[0]
@@ -262,7 +293,8 @@ def test_usage_show_fileset_rewrites_source_dirs(app, tmp_natjobs_dir: Path, fak
         )
 
     assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
+    # The resolved-target banner goes to stderr; stdout stays clean JSON.
+    payload = json.loads(result.stdout)
     # source_dir should be the synthetic <ref>/<rel> form, not the dead tempdir
     for run in payload["runs"]:
         assert run["source_dir"].startswith("my-fileset/")
@@ -282,7 +314,8 @@ def test_usage_show_fileset_single_run_rel_dot(app, tmp_path: Path, fake_sdk_fac
         result = runner.invoke(app, ["usage", "show", "single-fileset"])
 
     assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
+    # The resolved-target banner goes to stderr; stdout stays clean JSON.
+    payload = json.loads(result.stdout)
     # rel == "." branch: no slash + rel suffix; just the bare ref.
     assert payload["task"]["source_dir"] == "single-fileset"
 
@@ -307,6 +340,39 @@ def test_usage_show_rejects_empty_or_dot_relative_fileset_name(app, tmp_path: Pa
             result = runner.invoke(app, ["usage", "show", ref])
         assert result.exit_code == 1, (ref, result.output)
         assert "must be a real fileset name" in result.output, (ref, result.output)
+
+
+def test_usage_show_fileset_builds_sdk_with_context_base_url_and_auth(app, tmp_natjobs_dir: Path) -> None:
+    """A fileset ref builds the SDK client with the shared context's base URL + auth token.
+
+    Pins P0 parity for ``usage show``: it must honor ``nemo config`` /
+    ``NMP_BASE_URL`` and attach the ``Authorization`` bearer token, instead
+    of defaulting to localhost with no auth.
+    """
+    captured: dict[str, object] = {}
+
+    def fake_platform(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return object()
+
+    @contextmanager
+    def fake_fileset_path(_ref, *, sdk, workspace):
+        yield tmp_natjobs_dir
+
+    with (
+        patch("nemo_agents_plugin.usage.cli.NeMoPlatform", fake_platform),
+        patch("nemo_agents_plugin.usage.cli.fileset_path", fake_fileset_path),
+    ):
+        result = runner.invoke(
+            app,
+            ["usage", "show", "my-fileset"],
+            obj=_FakeCLIContext(base_url="http://config-host:9999", token="tkn"),
+        )
+
+    assert result.exit_code == 0, result.output
+    assert captured["base_url"] == "http://config-host:9999"
+    assert captured["default_headers"] == {"Authorization": "Bearer tkn"}
+    assert "Targeting http://config-host:9999" in (result.stderr or "")
 
 
 def test_usage_show_with_workspace_qualified_fileset_ref(app, tmp_natjobs_dir: Path, fake_sdk_factory) -> None:

@@ -116,6 +116,7 @@ def wait_for_model_entity(
     timeout: float = _E2E_IGW_WAIT_TIMEOUT_SEC,
     poll_interval: float = 0.5,
     ensure_virtual_model: bool = False,
+    should_autoprovision_virtual_model: bool = True,
 ) -> None:
     """Poll until a model entity is available in IGW's model cache.
 
@@ -136,6 +137,8 @@ def wait_for_model_entity(
         ensure_virtual_model: Recreate the passthrough VirtualModel before
             each poll. Useful for E2E tests where controller cleanup and IGW
             cache refresh can race helper-created VMs.
+        should_autoprovision_virtual_model: Whether VirtualModels created by
+            ``ensure_virtual_model`` should be marked controller-managed.
 
     Raises:
         TimeoutError: If the model entity is not available within the timeout.
@@ -146,7 +149,12 @@ def wait_for_model_entity(
     while time.time() - start < timeout:
         try:
             if ensure_virtual_model:
-                _create_passthrough_virtual_model_once(sdk, workspace, model_name)
+                _create_passthrough_virtual_model_once(
+                    sdk,
+                    workspace,
+                    model_name,
+                    autoprovisioned=should_autoprovision_virtual_model,
+                )
             sdk.inference.gateway.model.get(
                 "v1/models",
                 name=model_name,
@@ -208,13 +216,19 @@ def wait_for_virtual_model(
     raise TimeoutError(f"VirtualModel {workspace}/{name} not available after {timeout}s. Last error: {last_error}")
 
 
-def _create_passthrough_virtual_model_once(sdk: NeMoPlatform, workspace: str, name: str) -> None:
+def _create_passthrough_virtual_model_once(
+    sdk: NeMoPlatform,
+    workspace: str,
+    name: str,
+    *,
+    autoprovisioned: bool = True,
+) -> None:
     try:
         sdk.inference.virtual_models.create(
             workspace=workspace,
             name=name,
             default_model_entity=f"{workspace}/{name}",
-            autoprovisioned=True,
+            autoprovisioned=autoprovisioned,
         )
     except ConflictError:
         pass
@@ -226,8 +240,9 @@ def ensure_passthrough_virtual_model(
     name: str,
     timeout: float = 20,
     poll_interval: float = 0.5,
+    autoprovisioned: bool = True,
 ) -> None:
-    """Create or confirm an autoprovisioned passthrough VirtualModel.
+    """Create or confirm a passthrough VirtualModel.
 
     E2E tests can race the models controller: the controller may rediscover a
     mock provider and briefly delete a helper-created VM before the test starts
@@ -239,7 +254,12 @@ def ensure_passthrough_virtual_model(
 
     while time.time() - start < timeout:
         try:
-            _create_passthrough_virtual_model_once(sdk, workspace, name)
+            _create_passthrough_virtual_model_once(
+                sdk,
+                workspace,
+                name,
+                autoprovisioned=autoprovisioned,
+            )
         except Exception:
             raise
 
@@ -402,6 +422,7 @@ def add_mock_provider(
     host_url: str = "http://mock.local",
     served_models: dict[str, str] | None = None,
     enabled_models: list[str] | None = None,
+    should_autoprovision_virtual_model: bool = True,
 ) -> ModelProvider:
     """Add a mock provider via the SDK API.
 
@@ -441,6 +462,11 @@ def add_mock_provider(
             no consecutive hyphens). If None, a default mapping is created using the
             `name` parameter (unprefixed) as both entity and served model name.
         enabled_models: Optional list of enabled models. If None, all models are enabled.
+        should_autoprovision_virtual_model: Whether helper-created passthrough
+            VirtualModels should be marked controller-managed. Keep the default True
+            to match production provider reconciler behavior. Set False in tests
+            that need these mock routes to survive the controller's orphan cleanup
+            window.
 
     Returns:
         The created ModelProvider object (with prefixed name).
@@ -625,7 +651,12 @@ def add_mock_provider(
     # Going through the SDK ensures the VM exists in the entity store and survives refreshes.
     # 409 ConflictError is treated as idempotent (matches the production reconciler).
     for entity_name in served_models:
-        ensure_passthrough_virtual_model(sdk, workspace, entity_name)
+        ensure_passthrough_virtual_model(
+            sdk,
+            workspace,
+            entity_name,
+            autoprovisioned=should_autoprovision_virtual_model,
+        )
 
     try:
         # From integration tests, we can directly update the local model cache to speed up subsequent requests
@@ -654,7 +685,7 @@ def add_mock_provider(
                 name=entity_name,
                 parent=workspace,
                 default_model_entity=f"{workspace}/{entity_name}",
-                autoprovisioned=True,
+                autoprovisioned=should_autoprovision_virtual_model,
                 created_at=now_iso,
                 updated_at=now_iso,
             )
@@ -665,7 +696,20 @@ def add_mock_provider(
         # VirtualModels asynchronously after update_status; inference routes require both
         # the model entity and its VirtualModel to be visible before requests succeed.
         for entity_name in served_models.keys():
-            wait_for_model_entity(sdk, workspace, entity_name, timeout=60, ensure_virtual_model=True)
-            ensure_passthrough_virtual_model(sdk, workspace, entity_name, timeout=60)
+            wait_for_model_entity(
+                sdk,
+                workspace,
+                entity_name,
+                timeout=60,
+                ensure_virtual_model=True,
+                should_autoprovision_virtual_model=should_autoprovision_virtual_model,
+            )
+            ensure_passthrough_virtual_model(
+                sdk,
+                workspace,
+                entity_name,
+                timeout=60,
+                autoprovisioned=should_autoprovision_virtual_model,
+            )
 
     return provider

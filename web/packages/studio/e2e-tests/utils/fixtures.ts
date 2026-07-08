@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { CustomizationsAPI } from '@e2e-tests/api/customizations';
 import { DatasetsAPI } from '@e2e-tests/api/datasets';
 import { EvaluationsAPI } from '@e2e-tests/api/evaluations';
 import { ModelsAPI } from '@e2e-tests/api/models';
@@ -11,10 +10,6 @@ import {
   ModelEntity,
   Project,
 } from '@nemo/sdk/generated/platform/schema';
-import {
-  CustomizationJobRequest as CustomizationJobInput,
-  CustomizationJob as CustomizationJobOutput,
-} from '@nemo/sdk/vendored/customizer/schema';
 import { APIRequestContext } from '@playwright/test';
 
 /** Dataset shape for e2e fixtures. */
@@ -156,32 +151,6 @@ export const testDatasetFilesFixture = async (
   await runFixture({
     project,
     dataset,
-  });
-};
-
-export interface TestCustomizationJobFixture {
-  project: Project;
-  customizationJob: CustomizationJobOutput;
-}
-
-/**
- * Common fixture that launches a customization job.
- * The test will receive an argument of type `TestCustomizationJobFixture`.
- */
-export const testCustomizationJobFixture = async (
-  request: APIRequestContext,
-  runFixture: (returnValue: TestCustomizationJobFixture) => Promise<void>,
-  project: Project,
-  jobRequestBody: CustomizationJobInput
-) => {
-  // Create the customization job
-  const customizationsApi = new CustomizationsAPI(request);
-  const customizationJob = await customizationsApi.createCustomizationJob(jobRequestBody);
-
-  // Execute test
-  await runFixture({
-    project,
-    customizationJob,
   });
 };
 
