@@ -32,7 +32,7 @@ export const experimentRoutes: RouteObject[] = gateExperimentRoutes([
   {
     path: ROUTES.workspace.experiment,
     element: <ExperimentRoute />,
-    errorElement: <ErrorPanel title="Evaluation" />,
+    errorElement: <ErrorPanel title="Experiment Groups" />,
   },
   {
     path: ROUTES.workspace.experimentGroupDetail,

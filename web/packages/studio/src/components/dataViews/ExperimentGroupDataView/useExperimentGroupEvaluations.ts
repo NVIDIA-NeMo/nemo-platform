@@ -159,7 +159,7 @@ export function useExperimentGroupEvaluations({
   const { mutate: pinEvaluation } = usePinEvaluation({
     mutation: {
       onSuccess: invalidateList,
-      onError: () => toast.error('Failed to pin experiment.'),
+      onError: () => toast.error('Failed to pin evaluation.'),
       onSettled: (_data, _error, { name }) => {
         pendingRef.current.delete(name);
       },
@@ -168,7 +168,7 @@ export function useExperimentGroupEvaluations({
   const { mutate: unpinEvaluation } = useUnpinEvaluation({
     mutation: {
       onSuccess: invalidateList,
-      onError: () => toast.error('Failed to unpin experiment.'),
+      onError: () => toast.error('Failed to unpin evaluation.'),
       onSettled: (_data, _error, { name }) => {
         pendingRef.current.delete(name);
       },

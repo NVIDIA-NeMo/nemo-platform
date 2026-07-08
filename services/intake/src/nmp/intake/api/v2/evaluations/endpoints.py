@@ -638,6 +638,7 @@ async def unpin_evaluation(
     response_model=Page[EvaluationSessionResponse],
     tags=[EVALUATIONS_TAG],
     responses={
+        400: {"description": "Invalid filter value"},
         404: {"description": "Evaluation not found"},
         503: {"description": "ClickHouse unavailable"},
     },

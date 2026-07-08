@@ -3675,6 +3675,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EvaluationSessionResponsesPage'
+        '400':
+          description: Invalid filter value
         '404':
           description: Evaluation not found
         '503':
