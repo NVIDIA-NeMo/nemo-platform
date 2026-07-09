@@ -31,7 +31,7 @@ jobs:
 
       - name: Sync NGC metadata
         env:
-          NGC_API_KEY: ${{ secrets.AIRE_NVCR_GITHUB }}
+          NGC_API_KEY: ${{ secrets.AIRE_NGC_GITHUB_PLATFORM_RW }}
         run: >-
           uv run --no-cache .github/scripts/ngc_metadata.py
           --org 0921617854601259
