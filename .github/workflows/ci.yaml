@@ -360,6 +360,7 @@ jobs:
         uses: ./.github/actions/free-disk-space
         with:
           disable_swap: "true"
+          remove_go: "true"
           remove_haskell: "true"
           remove_java: "true"
           remove_ruby: "true"
