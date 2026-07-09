@@ -1,0 +1,210 @@
+{
+  "volumes/smoke-data": {
+    "name": "smoke-data",
+    "workspace": "default",
+    "project": null,
+    "size": "1Gi",
+    "access_modes": [
+      "ReadWriteOnce"
+    ],
+    "backendConfig": {
+      "docker": null,
+      "k8s": {
+        "storageClass": null,
+        "namespace": "tbray-dev"
+      }
+    },
+    "status": "PENDING",
+    "status_message": "PVC dep-vol-default-smoke-data-79140390 is pending",
+    "error_details": null,
+    "id": "deployments-volume-TCasmwajtmbiBxyjxjnHfA",
+    "created_at": "2026-07-09T17:31:18.440773",
+    "created_by": "service:platform",
+    "updated_at": "2026-07-09T17:31:19.947529",
+    "updated_by": "service:deployments",
+    "entity_id": "deployments-volume-TCasmwajtmbiBxyjxjnHfA",
+    "parent": null
+  },
+  "deployments/smoke-cm-job": {
+    "name": "smoke-cm-job",
+    "workspace": "default",
+    "project": null,
+    "deployment_config": "smoke-cm-cfg",
+    "desired_state": "READY",
+    "executor": "dev-blue-k8s",
+    "prerequisites": [],
+    "status": "FAILED",
+    "status_message": "Failed to create Job: (403)\nReason: Forbidden\nHTTP response headers: HTTPHeaderDict({'Audit-Id': '70170665-16bf-46a3-89c9-11fbda3b9653', 'Cache-Control': 'no-cache, private', 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff', 'X-Kubernetes-Pf-Flowschema-Uid': 'b5b54ee8-9b46-42d9-ad71-55695730a8e8', 'X-Kubernetes-Pf-Prioritylevel-Uid': 'aba811ed-1c9f-4ba1-ac00-780b37070cb0', 'Date': 'Thu, 09 Jul 2026 17:31:19 GMT', 'Content-Length': '341'})\nHTTP response body: {\"kind\":\"Status\",\"apiVersion\":\"v1\",\"metadata\":{},\"status\":\"Failure\",\"message\":\"configmaps is forbidden: User \\\"system:serviceaccount:tbray-dev:default\\\" cannot create resource \\\"configmaps\\\" in API group \\\"\\\" in the namespace \\\"tbray-dev\\\": . Opc-Request-Id: \\u003cnil\\u003e\",\"reason\":\"Forbidden\",\"details\":{\"kind\":\"configmaps\"},\"code\":403}\n\n",
+    "endpoints": [],
+    "exit_code": null,
+    "error_details": null,
+    "status_history": [
+      {
+        "status": "FAILED",
+        "message": "Failed to create Job: (403)\nReason: Forbidden\nHTTP response headers: HTTPHeaderDict({'Audit-Id': '70170665-16bf-46a3-89c9-11fbda3b9653', 'Cache-Control': 'no-cache, private', 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff', 'X-Kubernetes-Pf-Flowschema-Uid': 'b5b54ee8-9b46-42d9-ad71-55695730a8e8', 'X-Kubernetes-Pf-Prioritylevel-Uid': 'aba811ed-1c9f-4ba1-ac00-780b37070cb0', 'Date': 'Thu, 09 Jul 2026 17:31:19 GMT', 'Content-Length': '341'})\nHTTP response body: {\"kind\":\"Status\",\"apiVersion\":\"v1\",\"metadata\":{},\"status\":\"Failure\",\"message\":\"configmaps is forbidden: User \\\"system:serviceaccount:tbray-dev:default\\\" cannot create resource \\\"configmaps\\\" in API group \\\"\\\" in the namespace \\\"tbray-dev\\\": . Opc-Request-Id: \\u003cnil\\u003e\",\"reason\":\"Forbidden\",\"details\":{\"kind\":\"configmaps\"},\"code\":403}\n\n",
+        "timestamp": "2026-07-09T17:31:19.968765+00:00"
+      }
+    ],
+    "id": "deployments-deployment-76MjXsxh2U6ViA5CTadbhk",
+    "created_at": "2026-07-09T17:31:18.502706",
+    "created_by": "service:platform",
+    "updated_at": "2026-07-09T17:31:19.975311",
+    "updated_by": "service:deployments",
+    "entity_id": "deployments-deployment-76MjXsxh2U6ViA5CTadbhk",
+    "parent": null
+  },
+  "deployments/smoke-http-svc": {
+    "name": "smoke-http-svc",
+    "workspace": "default",
+    "project": null,
+    "deployment_config": "smoke-http-cfg",
+    "desired_state": "READY",
+    "executor": "dev-blue-k8s",
+    "prerequisites": [],
+    "status": "STARTING",
+    "status_message": "Deployment dep-default-smoke-http-svc-86cdfab7: Pod phase is Pending",
+    "endpoints": [],
+    "exit_code": null,
+    "error_details": null,
+    "status_history": [
+      {
+        "status": "STARTING",
+        "message": "Deployment dep-default-smoke-http-svc-86cdfab7 is starting",
+        "timestamp": "2026-07-09T17:31:22.074454+00:00"
+      },
+      {
+        "status": "STARTING",
+        "message": "Deployment dep-default-smoke-http-svc-86cdfab7: Pod phase is Pending",
+        "timestamp": "2026-07-09T17:31:23.971493+00:00"
+      }
+    ],
+    "id": "deployments-deployment-V7MgpPz28QdqQkdtyT1qrV",
+    "created_at": "2026-07-09T17:31:20.574172",
+    "created_by": "service:platform",
+    "updated_at": "2026-07-09T17:31:23.977897",
+    "updated_by": "service:deployments",
+    "entity_id": "deployments-deployment-V7MgpPz28QdqQkdtyT1qrV",
+    "parent": null
+  },
+  "deployment-configs/smoke-cm-cfg": {
+    "name": "smoke-cm-cfg",
+    "workspace": "default",
+    "project": null,
+    "containers": [
+      {
+        "name": "main",
+        "image": "alpine:3.20",
+        "command": [
+          "sh",
+          "-c"
+        ],
+        "args": [
+          "cat /etc/nemo-config/hello.txt"
+        ],
+        "env": [],
+        "ports": [],
+        "resources": {
+          "limits": {},
+          "requests": {}
+        },
+        "volumeMounts": [],
+        "livenessProbe": null,
+        "readinessProbe": null,
+        "restartPolicy": null
+      }
+    ],
+    "initContainers": [],
+    "volumeMounts": [],
+    "configFiles": [
+      {
+        "path": "/etc/nemo-config/hello.txt",
+        "content": "hello-from-configmap",
+        "mode": 420
+      }
+    ],
+    "restartPolicy": "Never",
+    "backoffLimit": 6,
+    "driftRecovery": {
+      "action": "recreate",
+      "max_attempts": null,
+      "initial_delay_seconds": null,
+      "max_delay_seconds": null
+    },
+    "labels": {},
+    "backendConfig": {
+      "docker": null,
+      "k8s": {
+        "namespace": "tbray-dev",
+        "serviceAccount": null,
+        "tolerations": [],
+        "affinity": null,
+        "securityContext": null
+      }
+    },
+    "id": "deployments-deployment-config-E6YatKMDrnqKCwwwFjmPeN",
+    "created_at": "2026-07-09T17:31:18.469900",
+    "created_by": "service:platform",
+    "updated_at": "2026-07-09T17:31:18.469906",
+    "updated_by": "service:platform",
+    "entity_id": "deployments-deployment-config-E6YatKMDrnqKCwwwFjmPeN",
+    "parent": null
+  },
+  "deployment-configs/smoke-http-cfg": {
+    "name": "smoke-http-cfg",
+    "workspace": "default",
+    "project": null,
+    "containers": [
+      {
+        "name": "main",
+        "image": "nginx:alpine",
+        "command": [],
+        "args": [],
+        "env": [],
+        "ports": [
+          {
+            "name": "http",
+            "containerPort": 80,
+            "protocol": "TCP"
+          }
+        ],
+        "resources": {
+          "limits": {},
+          "requests": {}
+        },
+        "volumeMounts": [],
+        "livenessProbe": null,
+        "readinessProbe": null,
+        "restartPolicy": null
+      }
+    ],
+    "initContainers": [],
+    "volumeMounts": [],
+    "configFiles": [],
+    "restartPolicy": "Always",
+    "backoffLimit": 6,
+    "driftRecovery": {
+      "action": "recreate",
+      "max_attempts": null,
+      "initial_delay_seconds": null,
+      "max_delay_seconds": null
+    },
+    "labels": {},
+    "backendConfig": {
+      "docker": null,
+      "k8s": {
+        "namespace": "tbray-dev",
+        "serviceAccount": null,
+        "tolerations": [],
+        "affinity": null,
+        "securityContext": null
+      }
+    },
+    "id": "deployments-deployment-config-WYNETZF5GYoHg4ra1LSjrG",
+    "created_at": "2026-07-09T17:31:20.541442",
+    "created_by": "service:platform",
+    "updated_at": "2026-07-09T17:31:20.541450",
+    "updated_by": "service:platform",
+    "entity_id": "deployments-deployment-config-WYNETZF5GYoHg4ra1LSjrG",
+    "parent": null
+  }
+}

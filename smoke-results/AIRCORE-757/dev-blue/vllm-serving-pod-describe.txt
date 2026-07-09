@@ -1,0 +1,108 @@
+Name:             md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm
+Namespace:        tbray-dev
+Priority:         0
+Service Account:  default
+Node:             10.54.20.172/10.54.20.172
+Start Time:       Thu, 09 Jul 2026 11:09:40 -0700
+Labels:           app=md-default-aircore757b-qwen3-vllm-deployment-0d00deef
+                  nmp.nvidia.com/deployment-name=aircore757b-qwen3-vllm-deployment
+                  nmp.nvidia.com/deployment-workspace=default
+                  nmp.nvidia.com/engine=vllm
+                  nmp.nvidia.com/managed-by=models-controller
+                  pod-template-hash=d9556ccbc
+Annotations:      k8s.v1.cni.cncf.io/network-status:
+                    [{
+                        "name": "cbr0",
+                        "interface": "eth0",
+                        "ips": [
+                            "10.244.0.242"
+                        ],
+                        "mac": "9e:cb:bf:c7:ea:7a",
+                        "default": true,
+                        "dns": {}
+                    }]
+                  k8s.v1.cni.cncf.io/networks-status:
+                    [{
+                        "name": "cbr0",
+                        "interface": "eth0",
+                        "ips": [
+                            "10.244.0.242"
+                        ],
+                        "mac": "9e:cb:bf:c7:ea:7a",
+                        "default": true,
+                        "dns": {}
+                    }]
+Status:           Running
+IP:               10.244.0.242
+IPs:
+  IP:           10.244.0.242
+Controlled By:  ReplicaSet/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d9556ccbc
+Containers:
+  md-default-aircore757b-qwen3-vllm-deployment-0d00deef-ctr:
+    Container ID:  cri-o://bc584694511b978bd8ae95f0fd36bb78cdeb25843cae6757294e02b37497cbf4
+    Image:         docker.io/vllm/vllm-openai:v0.22.1
+    Image ID:      docker.io/vllm/vllm-openai@sha256:55c9bcee9fc66644b139fddae8a7a03e4c0c8a25ab5c64b0ce614554a8abf5d5
+    Port:          8000/TCP (api)
+    Host Port:     0/TCP (api)
+    Args:
+      /model-store
+      --served-model-name
+      default/aircore757b-qwen3-1-7b
+    State:          Running
+      Started:      Thu, 09 Jul 2026 11:13:07 -0700
+    Ready:          False
+    Restart Count:  0
+    Limits:
+      nvidia.com/gpu:  1
+    Requests:
+      nvidia.com/gpu:  1
+    Readiness:         http-get http://:8000/health delay=0s timeout=5s period=10s #success=1 #failure=3
+    Startup:           http-get http://:8000/health delay=0s timeout=5s period=10s #success=1 #failure=60
+    Environment:       <none>
+    Mounts:
+      /dev/shm from dshm (rw)
+      /model-store from model-store (ro)
+      /scratch from scratch (rw)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-25bsz (ro)
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       False 
+  ContainersReady             False 
+  PodScheduled                True 
+Volumes:
+  model-store:
+    Type:       PersistentVolumeClaim (a reference to a PersistentVolumeClaim in the same namespace)
+    ClaimName:  md-default-aircore757b-qwen3-vllm-deployment-0d00deef-pvc
+    ReadOnly:   true
+  scratch:
+    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:     
+    SizeLimit:  <unset>
+  dshm:
+    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:     Memory
+    SizeLimit:  <unset>
+  kube-api-access-25bsz:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    Optional:                false
+    DownwardAPI:             true
+QoS Class:                   BestEffort
+Node-Selectors:              <none>
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+                             nvidia.com/gpu:NoSchedule op=Exists
+Events:
+  Type     Reason                  Age               From                     Message
+  ----     ------                  ----              ----                     -------
+  Normal   Scheduled               4m52s             default-scheduler        Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+  Warning  FailedAttachVolume      4m52s             attachdetach-controller  Multi-Attach error for volume "csi-7abab5e0-f704-49af-8e06-c90eae46872a" Volume is already exclusively attached to one node and can't be attached to another
+  Normal   SuccessfulAttachVolume  89s               attachdetach-controller  AttachVolume.Attach succeeded for volume "csi-7abab5e0-f704-49af-8e06-c90eae46872a"
+  Normal   AddedInterface          86s               multus                   Add eth0 [10.244.0.242/25] from cbr0
+  Normal   Pulled                  86s               kubelet                  Container image "docker.io/vllm/vllm-openai:v0.22.1" already present on machine
+  Normal   Created                 85s               kubelet                  Created container: md-default-aircore757b-qwen3-vllm-deployment-0d00deef-ctr
+  Normal   Started                 85s               kubelet                  Started container md-default-aircore757b-qwen3-vllm-deployment-0d00deef-ctr
+  Warning  Unhealthy               6s (x8 over 76s)  kubelet                  Startup probe failed: Get "http://10.244.0.242:8000/health": dial tcp 10.244.0.242:8000: connect: connection refused

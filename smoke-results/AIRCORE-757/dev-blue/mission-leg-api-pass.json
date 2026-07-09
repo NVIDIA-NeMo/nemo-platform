@@ -1,0 +1,231 @@
+{
+  "deployments/smoke4-http-svc": {
+    "name": "smoke4-http-svc",
+    "workspace": "default",
+    "project": null,
+    "deployment_config": "smoke4-http-cfg",
+    "desired_state": "READY",
+    "executor": null,
+    "prerequisites": [],
+    "status": "READY",
+    "status_message": "Deployment dep-default-smoke4-http-svc-0567e826 is ready",
+    "endpoints": [
+      {
+        "name": "http",
+        "url": "http://dep-default-smoke4-http-svc-0567e826.tbray-dev.svc.cluster.local:80",
+        "protocol": "http"
+      }
+    ],
+    "exit_code": null,
+    "error_details": null,
+    "status_history": [
+      {
+        "status": "STARTING",
+        "message": "Deployment dep-default-smoke4-http-svc-0567e826 is starting",
+        "timestamp": "2026-07-09T18:04:10.045380+00:00"
+      },
+      {
+        "status": "STARTING",
+        "message": "Deployment dep-default-smoke4-http-svc-0567e826: Pod phase is Running",
+        "timestamp": "2026-07-09T18:04:12.093360+00:00"
+      },
+      {
+        "status": "READY",
+        "message": "Deployment dep-default-smoke4-http-svc-0567e826 is ready",
+        "timestamp": "2026-07-09T18:04:14.022938+00:00"
+      }
+    ],
+    "id": "deployments-deployment-Q4B9ie63ockpHxDduNvBKb",
+    "created_at": "2026-07-09T18:04:09.153658",
+    "created_by": "service:platform",
+    "updated_at": "2026-07-09T18:04:14.031768",
+    "updated_by": "service:deployments",
+    "entity_id": "deployments-deployment-Q4B9ie63ockpHxDduNvBKb",
+    "parent": null
+  },
+  "deployments/smoke4-cm-job": {
+    "name": "smoke4-cm-job",
+    "workspace": "default",
+    "project": null,
+    "deployment_config": "smoke4-cm-cfg",
+    "desired_state": "READY",
+    "executor": null,
+    "prerequisites": [],
+    "status": "SUCCEEDED",
+    "status_message": "Job dep-default-smoke4-cm-job-260cecdb completed successfully",
+    "endpoints": [],
+    "exit_code": 0,
+    "error_details": null,
+    "status_history": [
+      {
+        "status": "STARTING",
+        "message": "Job dep-default-smoke4-cm-job-260cecdb is pending",
+        "timestamp": "2026-07-09T18:04:04.023463+00:00"
+      },
+      {
+        "status": "STARTING",
+        "message": "Job dep-default-smoke4-cm-job-260cecdb is running (1 active pod(s))",
+        "timestamp": "2026-07-09T18:04:06.004911+00:00"
+      },
+      {
+        "status": "SUCCEEDED",
+        "message": "Job dep-default-smoke4-cm-job-260cecdb completed successfully",
+        "timestamp": "2026-07-09T18:04:08.040462+00:00"
+      }
+    ],
+    "id": "deployments-deployment-BPefmEv2PgYauEVk8bu7zb",
+    "created_at": "2026-07-09T18:04:03.073089",
+    "created_by": "service:platform",
+    "updated_at": "2026-07-09T18:04:08.046517",
+    "updated_by": "service:deployments",
+    "entity_id": "deployments-deployment-BPefmEv2PgYauEVk8bu7zb",
+    "parent": null
+  },
+  "volumes/smoke4-data": {
+    "name": "smoke4-data",
+    "workspace": "default",
+    "project": null,
+    "size": "1Gi",
+    "access_modes": [
+      "ReadWriteOnce"
+    ],
+    "backendConfig": {
+      "docker": null,
+      "k8s": {
+        "storageClass": null,
+        "namespace": "tbray-dev"
+      }
+    },
+    "status": "PENDING",
+    "status_message": "PVC dep-vol-default-smoke4-data-936b399b is pending",
+    "error_details": null,
+    "id": "deployments-volume-QRxP2km8XE99FdzgeuLaeB",
+    "created_at": "2026-07-09T18:04:03.027674",
+    "created_by": "service:platform",
+    "updated_at": "2026-07-09T18:04:03.943623",
+    "updated_by": "service:deployments",
+    "entity_id": "deployments-volume-QRxP2km8XE99FdzgeuLaeB",
+    "parent": null
+  },
+  "deployment-configs/smoke4-http-cfg": {
+    "name": "smoke4-http-cfg",
+    "workspace": "default",
+    "project": null,
+    "containers": [
+      {
+        "name": "main",
+        "image": "docker.io/library/nginx:alpine",
+        "command": [],
+        "args": [],
+        "env": [],
+        "ports": [
+          {
+            "name": "http",
+            "containerPort": 80,
+            "protocol": "TCP"
+          }
+        ],
+        "resources": {
+          "limits": {},
+          "requests": {}
+        },
+        "volumeMounts": [],
+        "livenessProbe": null,
+        "readinessProbe": null,
+        "restartPolicy": null
+      }
+    ],
+    "initContainers": [],
+    "volumeMounts": [],
+    "configFiles": [],
+    "restartPolicy": "Always",
+    "backoffLimit": 6,
+    "driftRecovery": {
+      "action": "recreate",
+      "max_attempts": null,
+      "initial_delay_seconds": null,
+      "max_delay_seconds": null
+    },
+    "labels": {},
+    "backendConfig": {
+      "docker": null,
+      "k8s": {
+        "namespace": "tbray-dev",
+        "serviceAccount": null,
+        "tolerations": [],
+        "affinity": null,
+        "securityContext": null
+      }
+    },
+    "id": "deployments-deployment-config-Mds1S6uDNNff2R4eDpMdh4",
+    "created_at": "2026-07-09T18:04:09.122980",
+    "created_by": "service:platform",
+    "updated_at": "2026-07-09T18:04:09.122987",
+    "updated_by": "service:platform",
+    "entity_id": "deployments-deployment-config-Mds1S6uDNNff2R4eDpMdh4",
+    "parent": null
+  },
+  "deployment-configs/smoke4-cm-cfg": {
+    "name": "smoke4-cm-cfg",
+    "workspace": "default",
+    "project": null,
+    "containers": [
+      {
+        "name": "main",
+        "image": "docker.io/library/alpine:3.20",
+        "command": [
+          "sh",
+          "-c"
+        ],
+        "args": [
+          "cat /etc/nemo-config/hello.txt"
+        ],
+        "env": [],
+        "ports": [],
+        "resources": {
+          "limits": {},
+          "requests": {}
+        },
+        "volumeMounts": [],
+        "livenessProbe": null,
+        "readinessProbe": null,
+        "restartPolicy": null
+      }
+    ],
+    "initContainers": [],
+    "volumeMounts": [],
+    "configFiles": [
+      {
+        "path": "/etc/nemo-config/hello.txt",
+        "content": "hello-from-configmap",
+        "mode": 420
+      }
+    ],
+    "restartPolicy": "Never",
+    "backoffLimit": 6,
+    "driftRecovery": {
+      "action": "recreate",
+      "max_attempts": null,
+      "initial_delay_seconds": null,
+      "max_delay_seconds": null
+    },
+    "labels": {},
+    "backendConfig": {
+      "docker": null,
+      "k8s": {
+        "namespace": "tbray-dev",
+        "serviceAccount": null,
+        "tolerations": [],
+        "affinity": null,
+        "securityContext": null
+      }
+    },
+    "id": "deployments-deployment-config-3YwonUGpoeydx5smSacH8N",
+    "created_at": "2026-07-09T18:04:03.041917",
+    "created_by": "service:platform",
+    "updated_at": "2026-07-09T18:04:03.041924",
+    "updated_by": "service:platform",
+    "entity_id": "deployments-deployment-config-3YwonUGpoeydx5smSacH8N",
+    "parent": null
+  }
+}

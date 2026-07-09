@@ -1,0 +1,194 @@
+{
+  "fileset": {
+    "id": "fileset-WyXDYChXYz1cjtiKgvs1kz",
+    "name": "aircore757b-qwen3-1-7b",
+    "workspace": "default",
+    "description": "",
+    "purpose": "model",
+    "storage": {
+      "read_chunk_size": 1048576,
+      "type": "huggingface",
+      "repo_id": "Qwen/Qwen3-1.7B",
+      "repo_type": "model",
+      "revision": "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e",
+      "original_revision": "main",
+      "token_secret": null,
+      "endpoint": "https://huggingface.co"
+    },
+    "metadata": {
+      "dataset": null,
+      "model": null
+    },
+    "custom_fields": {},
+    "project": "",
+    "created_at": "2026-07-09T18:08:05.287344",
+    "updated_at": "2026-07-09T18:08:05.287352"
+  },
+  "model": {
+    "id": "model-7ARtvN69p5B9b1HkY5haAE",
+    "name": "aircore757b-qwen3-1-7b",
+    "workspace": "default",
+    "project": null,
+    "created_at": "2026-07-09T18:08:05.342842",
+    "updated_at": "2026-07-09T18:08:05.342849",
+    "description": null,
+    "spec": null,
+    "finetuning_type": null,
+    "fileset": "default/aircore757b-qwen3-1-7b",
+    "trust_remote_code": false,
+    "base_model": null,
+    "api_endpoint": null,
+    "backend_format": null,
+    "adapters": [],
+    "prompt": null,
+    "custom_fields": {},
+    "ownership": null,
+    "model_providers": []
+  },
+  "config": {
+    "id": "model-deployment-config-VhzwSkXbpBD1Q8t45Tmx1E",
+    "name": "aircore757b-qwen3-vllm-config",
+    "workspace": "default",
+    "project": null,
+    "created_at": "2026-07-09T18:08:05.395253",
+    "updated_at": "2026-07-09T18:08:05.395259",
+    "entity_version": 1,
+    "description": null,
+    "engine": "vllm",
+    "model_spec": {
+      "model_type": null,
+      "model_namespace": "default",
+      "model_name": "aircore757b-qwen3-1-7b",
+      "model_revision": null,
+      "chat_template": null,
+      "tool_call_config": null,
+      "lora_enabled": false
+    },
+    "executor_config": {
+      "gpu": 1,
+      "disk_size": "50Gi",
+      "image_name": null,
+      "image_tag": null,
+      "health_check_path": null,
+      "run_as_user": null,
+      "run_as_group": null,
+      "additional_envs": null,
+      "additional_args": [],
+      "k8s_nim_operator_config": null,
+      "override_config": null
+    },
+    "model_entity_id": "default/aircore757b-qwen3-1-7b"
+  },
+  "deployment": {
+    "id": "model-deployment-2nCtGHf3xbZUDriHmr2ndU",
+    "name": "aircore757b-qwen3-vllm-deployment",
+    "workspace": "default",
+    "project": null,
+    "created_at": "2026-07-09T18:08:05.434085",
+    "updated_at": "2026-07-09T18:17:09.827214",
+    "entity_version": 1,
+    "config": "aircore757b-qwen3-vllm-config",
+    "config_version": 1,
+    "status": "READY",
+    "status_message": "",
+    "status_history": [
+      {
+        "timestamp": "2026-07-09T18:08:09.833186Z",
+        "status": "CREATED",
+        "status_message": "Deployment created"
+      },
+      {
+        "timestamp": "2026-07-09T18:08:09.833186Z",
+        "status": "PENDING",
+        "status_message": "Provisioning model weights"
+      },
+      {
+        "timestamp": "2026-07-09T18:08:14.839099Z",
+        "status": "PENDING",
+        "status_message": "Downloading model weights"
+      },
+      {
+        "timestamp": "2026-07-09T18:09:35.213378Z",
+        "status": "PENDING",
+        "status_message": "Releasing model weights volume"
+      },
+      {
+        "timestamp": "2026-07-09T18:09:39.966802Z",
+        "status": "PENDING",
+        "status_message": "Starting server"
+      },
+      {
+        "timestamp": "2026-07-09T18:09:44.881181Z",
+        "status": "PENDING",
+        "status_message": "Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172"
+      },
+      {
+        "timestamp": "2026-07-09T18:13:04.809767Z",
+        "status": "PENDING",
+        "status_message": "SuccessfulAttachVolume: AttachVolume.Attach succeeded for volume \"csi-7abab5e0-f704-49af-8e06-c90eae46872a\" "
+      },
+      {
+        "timestamp": "2026-07-09T18:13:09.897619Z",
+        "status": "PENDING",
+        "status_message": "Created: Created container: md-default-aircore757b-qwen3-vllm-deployment-0d00deef-ctr"
+      },
+      {
+        "timestamp": "2026-07-09T18:13:19.853469Z",
+        "status": "PENDING",
+        "status_message": "Waiting for pod to finish startup"
+      },
+      {
+        "timestamp": "2026-07-09T18:17:09.821562Z",
+        "status": "READY",
+        "status_message": ""
+      }
+    ],
+    "model_provider_id": "default/aircore757b-qwen3-vllm-deployment",
+    "auth_context": {
+      "principal_id": "",
+      "principal_email": null,
+      "principal_groups": [],
+      "principal_on_behalf_of": null,
+      "principal_on_behalf_of_groups": null,
+      "principal_on_behalf_of_email": null
+    }
+  },
+  "chat": {
+    "id": "chatcmpl-8a7aa974cf677e10",
+    "object": "chat.completion",
+    "created": 1783621037,
+    "model": "default/aircore757b-qwen3-1-7b",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "<think>\nOkay, the user sent a message from AIRCORE-757 smoke. They want a reply in one short sentence. Let me think about what that means.\n\nFirst, \"AIRCORE-757\" might be a system or a code, maybe a server or a device. \"Smoke\" could be a warning or an issue. The user is probably asking for a response to",
+          "refusal": null,
+          "annotations": null,
+          "audio": null,
+          "function_call": null,
+          "tool_calls": [],
+          "reasoning": null
+        },
+        "logprobs": null,
+        "finish_reason": "length",
+        "stop_reason": null,
+        "token_ids": null,
+        "routed_experts": null
+      }
+    ],
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.22.1-d56dddd7",
+    "usage": {
+      "prompt_tokens": 24,
+      "total_tokens": 104,
+      "completion_tokens": 80,
+      "prompt_tokens_details": null
+    },
+    "prompt_logprobs": null,
+    "prompt_token_ids": null,
+    "prompt_text": null,
+    "kv_transfer_params": null
+  }
+}

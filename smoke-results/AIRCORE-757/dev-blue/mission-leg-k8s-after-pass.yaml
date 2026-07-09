@@ -1,0 +1,1300 @@
+apiVersion: v1
+items:
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    creationTimestamp: "2026-07-09T18:00:57Z"
+    finalizers:
+    - kubernetes.io/pvc-protection
+    labels:
+      managed-by: nemo-deployments
+      nemo.nvidia.com/volume-name: smoke-data
+      nemo.nvidia.com/volume-workspace: default
+    name: dep-vol-default-smoke-data-79140390
+    namespace: tbray-dev
+    resourceVersion: "286279881"
+    uid: 5b5eb141-c713-4df7-9ac9-8ed90443767e
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 1Gi
+    storageClassName: oci-bv
+    volumeMode: Filesystem
+  status:
+    phase: Pending
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    creationTimestamp: "2026-07-09T18:01:35Z"
+    finalizers:
+    - kubernetes.io/pvc-protection
+    labels:
+      managed-by: nemo-deployments
+      nemo.nvidia.com/volume-name: smoke2-data
+      nemo.nvidia.com/volume-workspace: default
+    name: dep-vol-default-smoke2-data-ede05194
+    namespace: tbray-dev
+    resourceVersion: "286280355"
+    uid: cbd98470-b29d-4998-8a30-d530616e9725
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 1Gi
+    storageClassName: oci-bv
+    volumeMode: Filesystem
+  status:
+    phase: Pending
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    creationTimestamp: "2026-07-09T18:02:57Z"
+    finalizers:
+    - kubernetes.io/pvc-protection
+    labels:
+      managed-by: nemo-deployments
+      nemo.nvidia.com/volume-name: smoke3-data
+      nemo.nvidia.com/volume-workspace: default
+    name: dep-vol-default-smoke3-data-dd649d31
+    namespace: tbray-dev
+    resourceVersion: "286281462"
+    uid: 6399cc9c-c665-4779-88cd-53f1f53eddfa
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 1Gi
+    storageClassName: oci-bv
+    volumeMode: Filesystem
+  status:
+    phase: Pending
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    creationTimestamp: "2026-07-09T18:04:03Z"
+    finalizers:
+    - kubernetes.io/pvc-protection
+    labels:
+      managed-by: nemo-deployments
+      nemo.nvidia.com/volume-name: smoke4-data
+      nemo.nvidia.com/volume-workspace: default
+    name: dep-vol-default-smoke4-data-936b399b
+    namespace: tbray-dev
+    resourceVersion: "286282292"
+    uid: 542b7d62-11fe-4cd6-b3a6-56763b82dcc8
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 1Gi
+    storageClassName: oci-bv
+    volumeMode: Filesystem
+  status:
+    phase: Pending
+- apiVersion: batch/v1
+  kind: Job
+  metadata:
+    creationTimestamp: "2026-07-09T18:02:58Z"
+    generation: 1
+    labels:
+      managed-by: nemo-deployments
+      nemo.nvidia.com/backoff-limit: "6"
+      nemo.nvidia.com/deployment-config: smoke3-cm-cfg
+      nemo.nvidia.com/deployment-name: smoke3-cm-job
+      nemo.nvidia.com/deployment-workspace: default
+      nemo.nvidia.com/restart-policy: Never
+    name: dep-default-smoke3-cm-job-6f749dff
+    namespace: tbray-dev
+    resourceVersion: "286281539"
+    uid: 0b983089-35d6-47d7-8fc1-926b895a745d
+  spec:
+    backoffLimit: 0
+    completionMode: NonIndexed
+    completions: 1
+    manualSelector: false
+    parallelism: 1
+    podReplacementPolicy: TerminatingOrFailed
+    selector:
+      matchLabels:
+        batch.kubernetes.io/controller-uid: 0b983089-35d6-47d7-8fc1-926b895a745d
+    suspend: false
+    template:
+      metadata:
+        labels:
+          batch.kubernetes.io/controller-uid: 0b983089-35d6-47d7-8fc1-926b895a745d
+          batch.kubernetes.io/job-name: dep-default-smoke3-cm-job-6f749dff
+          controller-uid: 0b983089-35d6-47d7-8fc1-926b895a745d
+          job-name: dep-default-smoke3-cm-job-6f749dff
+          managed-by: nemo-deployments
+          nemo.nvidia.com/backoff-limit: "6"
+          nemo.nvidia.com/deployment-config: smoke3-cm-cfg
+          nemo.nvidia.com/deployment-name: smoke3-cm-job
+          nemo.nvidia.com/deployment-workspace: default
+          nemo.nvidia.com/restart-policy: Never
+      spec:
+        containers:
+        - args:
+          - cat /etc/nemo-config/hello.txt
+          command:
+          - sh
+          - -c
+          image: docker.io/library/alpine:3.20
+          imagePullPolicy: IfNotPresent
+          name: main
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /etc/nemo-config/hello.txt
+            name: config-files
+            readOnly: true
+            subPath: etc/nemo-config/hello.txt
+        dnsPolicy: ClusterFirst
+        restartPolicy: Never
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - configMap:
+            defaultMode: 420
+            items:
+            - key: etc__nemo-config__hello.txt
+              path: etc/nemo-config/hello.txt
+            name: dep-cm-default-smoke3-cm-job-fe9e2af4
+          name: config-files
+  status:
+    completionTime: "2026-07-09T18:03:01Z"
+    conditions:
+    - lastProbeTime: "2026-07-09T18:03:01Z"
+      lastTransitionTime: "2026-07-09T18:03:01Z"
+      message: Reached expected number of succeeded pods
+      reason: CompletionsReached
+      status: "True"
+      type: SuccessCriteriaMet
+    - lastProbeTime: "2026-07-09T18:03:01Z"
+      lastTransitionTime: "2026-07-09T18:03:01Z"
+      message: Reached expected number of succeeded pods
+      reason: CompletionsReached
+      status: "True"
+      type: Complete
+    ready: 0
+    startTime: "2026-07-09T18:02:58Z"
+    succeeded: 1
+    terminating: 0
+    uncountedTerminatedPods: {}
+- apiVersion: batch/v1
+  kind: Job
+  metadata:
+    creationTimestamp: "2026-07-09T18:04:04Z"
+    generation: 1
+    labels:
+      managed-by: nemo-deployments
+      nemo.nvidia.com/backoff-limit: "6"
+      nemo.nvidia.com/deployment-config: smoke4-cm-cfg
+      nemo.nvidia.com/deployment-name: smoke4-cm-job
+      nemo.nvidia.com/deployment-workspace: default
+      nemo.nvidia.com/restart-policy: Never
+    name: dep-default-smoke4-cm-job-260cecdb
+    namespace: tbray-dev
+    resourceVersion: "286282345"
+    uid: fb564eb3-436b-4480-bfb6-42fef27ee45c
+  spec:
+    backoffLimit: 0
+    completionMode: NonIndexed
+    completions: 1
+    manualSelector: false
+    parallelism: 1
+    podReplacementPolicy: TerminatingOrFailed
+    selector:
+      matchLabels:
+        batch.kubernetes.io/controller-uid: fb564eb3-436b-4480-bfb6-42fef27ee45c
+    suspend: false
+    template:
+      metadata:
+        labels:
+          batch.kubernetes.io/controller-uid: fb564eb3-436b-4480-bfb6-42fef27ee45c
+          batch.kubernetes.io/job-name: dep-default-smoke4-cm-job-260cecdb
+          controller-uid: fb564eb3-436b-4480-bfb6-42fef27ee45c
+          job-name: dep-default-smoke4-cm-job-260cecdb
+          managed-by: nemo-deployments
+          nemo.nvidia.com/backoff-limit: "6"
+          nemo.nvidia.com/deployment-config: smoke4-cm-cfg
+          nemo.nvidia.com/deployment-name: smoke4-cm-job
+          nemo.nvidia.com/deployment-workspace: default
+          nemo.nvidia.com/restart-policy: Never
+      spec:
+        containers:
+        - args:
+          - cat /etc/nemo-config/hello.txt
+          command:
+          - sh
+          - -c
+          image: docker.io/library/alpine:3.20
+          imagePullPolicy: IfNotPresent
+          name: main
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /etc/nemo-config/hello.txt
+            name: config-files
+            readOnly: true
+            subPath: etc/nemo-config/hello.txt
+        dnsPolicy: ClusterFirst
+        restartPolicy: Never
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - configMap:
+            defaultMode: 420
+            items:
+            - key: etc__nemo-config__hello.txt
+              path: etc/nemo-config/hello.txt
+            name: dep-cm-default-smoke4-cm-job-b54b2dab
+          name: config-files
+  status:
+    completionTime: "2026-07-09T18:04:07Z"
+    conditions:
+    - lastProbeTime: "2026-07-09T18:04:07Z"
+      lastTransitionTime: "2026-07-09T18:04:07Z"
+      message: Reached expected number of succeeded pods
+      reason: CompletionsReached
+      status: "True"
+      type: SuccessCriteriaMet
+    - lastProbeTime: "2026-07-09T18:04:07Z"
+      lastTransitionTime: "2026-07-09T18:04:07Z"
+      message: Reached expected number of succeeded pods
+      reason: CompletionsReached
+      status: "True"
+      type: Complete
+    ready: 0
+    startTime: "2026-07-09T18:04:04Z"
+    succeeded: 1
+    terminating: 0
+    uncountedTerminatedPods: {}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+    creationTimestamp: "2026-07-09T18:01:36Z"
+    generation: 1
+    labels:
+      managed-by: nemo-deployments
+      nemo.nvidia.com/backoff-limit: "6"
+      nemo.nvidia.com/deployment-config: smoke2-cm-cfg
+      nemo.nvidia.com/deployment-name: smoke2-cm-job
+      nemo.nvidia.com/deployment-workspace: default
+      nemo.nvidia.com/restart-policy: Always
+    name: dep-default-smoke2-cm-job-b75ed4e4
+    namespace: tbray-dev
+    resourceVersion: "286280377"
+    uid: 97e02798-a5f3-42e9-a446-e1862c503170
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: dep-default-smoke2-cm-job-b75ed4e4
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        labels:
+          app: dep-default-smoke2-cm-job-b75ed4e4
+          managed-by: nemo-deployments
+          nemo.nvidia.com/backoff-limit: "6"
+          nemo.nvidia.com/deployment-config: smoke2-cm-cfg
+          nemo.nvidia.com/deployment-name: smoke2-cm-job
+          nemo.nvidia.com/deployment-workspace: default
+          nemo.nvidia.com/restart-policy: Always
+      spec:
+        containers:
+        - args:
+          - cat /etc/nemo-config/hello.txt
+          command:
+          - sh
+          - -c
+          image: docker.io/library/alpine:3.20
+          imagePullPolicy: IfNotPresent
+          name: main
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    conditions:
+    - lastTransitionTime: "2026-07-09T18:01:36Z"
+      lastUpdateTime: "2026-07-09T18:01:36Z"
+      message: Deployment does not have minimum availability.
+      reason: MinimumReplicasUnavailable
+      status: "False"
+      type: Available
+    - lastTransitionTime: "2026-07-09T18:01:36Z"
+      lastUpdateTime: "2026-07-09T18:01:36Z"
+      message: ReplicaSet "dep-default-smoke2-cm-job-b75ed4e4-56fbbd8c4c" is progressing.
+      reason: ReplicaSetUpdated
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    replicas: 1
+    unavailableReplicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+    creationTimestamp: "2026-07-09T18:04:10Z"
+    generation: 1
+    labels:
+      managed-by: nemo-deployments
+      nemo.nvidia.com/backoff-limit: "6"
+      nemo.nvidia.com/deployment-config: smoke4-http-cfg
+      nemo.nvidia.com/deployment-name: smoke4-http-svc
+      nemo.nvidia.com/deployment-workspace: default
+      nemo.nvidia.com/restart-policy: Always
+    name: dep-default-smoke4-http-svc-0567e826
+    namespace: tbray-dev
+    resourceVersion: "286282433"
+    uid: bde15fde-7c77-462f-b195-930b6eab3d46
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: dep-default-smoke4-http-svc-0567e826
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        labels:
+          app: dep-default-smoke4-http-svc-0567e826
+          managed-by: nemo-deployments
+          nemo.nvidia.com/backoff-limit: "6"
+          nemo.nvidia.com/deployment-config: smoke4-http-cfg
+          nemo.nvidia.com/deployment-name: smoke4-http-svc
+          nemo.nvidia.com/deployment-workspace: default
+          nemo.nvidia.com/restart-policy: Always
+      spec:
+        containers:
+        - image: docker.io/library/nginx:alpine
+          imagePullPolicy: IfNotPresent
+          name: main
+          ports:
+          - containerPort: 80
+            name: http
+            protocol: TCP
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-07-09T18:04:12Z"
+      lastUpdateTime: "2026-07-09T18:04:12Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-07-09T18:04:10Z"
+      lastUpdateTime: "2026-07-09T18:04:12Z"
+      message: ReplicaSet "dep-default-smoke4-http-svc-0567e826-6444f65fc4" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: v1
+  kind: Service
+  metadata:
+    creationTimestamp: "2026-07-09T18:01:36Z"
+    labels:
+      managed-by: nemo-deployments
+      nemo.nvidia.com/backoff-limit: "6"
+      nemo.nvidia.com/deployment-config: smoke2-cm-cfg
+      nemo.nvidia.com/deployment-name: smoke2-cm-job
+      nemo.nvidia.com/deployment-workspace: default
+      nemo.nvidia.com/restart-policy: Always
+    name: dep-default-smoke2-cm-job-b75ed4e4
+    namespace: tbray-dev
+    resourceVersion: "286280362"
+    uid: d1222904-96dd-4544-a4f7-9145d44613bf
+  spec:
+    clusterIP: 10.96.28.89
+    clusterIPs:
+    - 10.96.28.89
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: http
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      app: dep-default-smoke2-cm-job-b75ed4e4
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    creationTimestamp: "2026-07-09T18:04:10Z"
+    labels:
+      managed-by: nemo-deployments
+      nemo.nvidia.com/backoff-limit: "6"
+      nemo.nvidia.com/deployment-config: smoke4-http-cfg
+      nemo.nvidia.com/deployment-name: smoke4-http-svc
+      nemo.nvidia.com/deployment-workspace: default
+      nemo.nvidia.com/restart-policy: Always
+    name: dep-default-smoke4-http-svc-0567e826
+    namespace: tbray-dev
+    resourceVersion: "286282390"
+    uid: 056ada90-24b1-495a-a2c3-a9e060e9c680
+  spec:
+    clusterIP: 10.96.35.48
+    clusterIPs:
+    - 10.96.35.48
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: http
+    selector:
+      app: dep-default-smoke4-http-svc-0567e826
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  data:
+    etc__nemo-config__hello.txt: hello-from-configmap
+  kind: ConfigMap
+  metadata:
+    creationTimestamp: "2026-07-09T18:02:57Z"
+    labels:
+      managed-by: nemo-deployments
+      nemo.nvidia.com/backoff-limit: "6"
+      nemo.nvidia.com/deployment-config: smoke3-cm-cfg
+      nemo.nvidia.com/deployment-name: smoke3-cm-job
+      nemo.nvidia.com/deployment-workspace: default
+      nemo.nvidia.com/restart-policy: Never
+    name: dep-cm-default-smoke3-cm-job-fe9e2af4
+    namespace: tbray-dev
+    resourceVersion: "286281464"
+    uid: 3b0d69be-9d04-4a87-8114-494d21f9842f
+- apiVersion: v1
+  data:
+    etc__nemo-config__hello.txt: hello-from-configmap
+  kind: ConfigMap
+  metadata:
+    creationTimestamp: "2026-07-09T18:04:03Z"
+    labels:
+      managed-by: nemo-deployments
+      nemo.nvidia.com/backoff-limit: "6"
+      nemo.nvidia.com/deployment-config: smoke4-cm-cfg
+      nemo.nvidia.com/deployment-name: smoke4-cm-job
+      nemo.nvidia.com/deployment-workspace: default
+      nemo.nvidia.com/restart-policy: Never
+    name: dep-cm-default-smoke4-cm-job-b54b2dab
+    namespace: tbray-dev
+    resourceVersion: "286282294"
+    uid: 67ef0913-dad3-4ea2-ba77-cfd862c637ac
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    annotations:
+      k8s.v1.cni.cncf.io/network-status: |-
+        [{
+            "name": "cbr0",
+            "interface": "eth0",
+            "ips": [
+                "10.244.4.195"
+            ],
+            "mac": "92:db:2b:87:04:e3",
+            "default": true,
+            "dns": {}
+        }]
+      k8s.v1.cni.cncf.io/networks-status: |-
+        [{
+            "name": "cbr0",
+            "interface": "eth0",
+            "ips": [
+                "10.244.4.195"
+            ],
+            "mac": "92:db:2b:87:04:e3",
+            "default": true,
+            "dns": {}
+        }]
+    creationTimestamp: "2026-07-09T18:01:36Z"
+    generateName: dep-default-smoke2-cm-job-b75ed4e4-56fbbd8c4c-
+    generation: 1
+    labels:
+      app: dep-default-smoke2-cm-job-b75ed4e4
+      managed-by: nemo-deployments
+      nemo.nvidia.com/backoff-limit: "6"
+      nemo.nvidia.com/deployment-config: smoke2-cm-cfg
+      nemo.nvidia.com/deployment-name: smoke2-cm-job
+      nemo.nvidia.com/deployment-workspace: default
+      nemo.nvidia.com/restart-policy: Always
+      pod-template-hash: 56fbbd8c4c
+    name: dep-default-smoke2-cm-job-b75ed4e4-56fbbd8c4c-8sqgm
+    namespace: tbray-dev
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ReplicaSet
+      name: dep-default-smoke2-cm-job-b75ed4e4-56fbbd8c4c
+      uid: f40eca04-16b1-48cf-a947-aa3aa7442a2f
+    resourceVersion: "286281706"
+    uid: 2bb70d11-1ba6-40d7-aee0-048ce42e864f
+  spec:
+    containers:
+    - args:
+      - cat /etc/nemo-config/hello.txt
+      command:
+      - sh
+      - -c
+      image: docker.io/library/alpine:3.20
+      imagePullPolicy: IfNotPresent
+      name: main
+      resources: {}
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-2kqh4
+        readOnly: true
+    dnsPolicy: ClusterFirst
+    enableServiceLinks: true
+    nodeName: 10.54.20.134
+    preemptionPolicy: PreemptLowerPriority
+    priority: 0
+    restartPolicy: Always
+    schedulerName: default-scheduler
+    securityContext: {}
+    serviceAccount: default
+    serviceAccountName: default
+    terminationGracePeriodSeconds: 30
+    tolerations:
+    - effect: NoExecute
+      key: node.kubernetes.io/not-ready
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoExecute
+      key: node.kubernetes.io/unreachable
+      operator: Exists
+      tolerationSeconds: 300
+    volumes:
+    - name: kube-api-access-2kqh4
+      projected:
+        defaultMode: 420
+        sources:
+        - serviceAccountToken:
+            expirationSeconds: 3607
+            path: token
+        - configMap:
+            items:
+            - key: ca.crt
+              path: ca.crt
+            name: kube-root-ca.crt
+        - downwardAPI:
+            items:
+            - fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+              path: namespace
+  status:
+    conditions:
+    - lastProbeTime: null
+      lastTransitionTime: "2026-07-09T18:01:38Z"
+      observedGeneration: 1
+      status: "True"
+      type: PodReadyToStartContainers
+    - lastProbeTime: null
+      lastTransitionTime: "2026-07-09T18:01:36Z"
+      observedGeneration: 1
+      status: "True"
+      type: Initialized
+    - lastProbeTime: null
+      lastTransitionTime: "2026-07-09T18:01:36Z"
+      message: 'containers with unready status: [main]'
+      observedGeneration: 1
+      reason: ContainersNotReady
+      status: "False"
+      type: Ready
+    - lastProbeTime: null
+      lastTransitionTime: "2026-07-09T18:01:36Z"
+      message: 'containers with unready status: [main]'
+      observedGeneration: 1
+      reason: ContainersNotReady
+      status: "False"
+      type: ContainersReady
+    - lastProbeTime: null
+      lastTransitionTime: "2026-07-09T18:01:36Z"
+      observedGeneration: 1
+      status: "True"
+      type: PodScheduled
+    containerStatuses:
+    - containerID: cri-o://f01de7347872dd3c98e9ab187ca3700be91d2affacc93cddb71c2040509ba244
+      image: docker.io/library/alpine:3.20
+      imageID: docker.io/library/alpine@sha256:c64c687cbea9300178b30c95835354e34c4e4febc4badfe27102879de0483b5e
+      lastState:
+        terminated:
+          containerID: cri-o://f01de7347872dd3c98e9ab187ca3700be91d2affacc93cddb71c2040509ba244
+          exitCode: 1
+          finishedAt: "2026-07-09T18:02:59Z"
+          reason: Error
+          startedAt: "2026-07-09T18:02:59Z"
+      name: main
+      ready: false
+      resources: {}
+      restartCount: 4
+      started: false
+      state:
+        waiting:
+          message: back-off 1m20s restarting failed container=main pod=dep-default-smoke2-cm-job-b75ed4e4-56fbbd8c4c-8sqgm_tbray-dev(2bb70d11-1ba6-40d7-aee0-048ce42e864f)
+          reason: CrashLoopBackOff
+      user:
+        linux:
+          gid: 0
+          supplementalGroups:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          - 6
+          - 10
+          - 11
+          - 20
+          - 26
+          - 27
+          uid: 0
+      volumeMounts:
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-2kqh4
+        readOnly: true
+        recursiveReadOnly: Disabled
+    hostIP: 10.54.20.134
+    hostIPs:
+    - ip: 10.54.20.134
+    observedGeneration: 1
+    phase: Running
+    podIP: 10.244.4.195
+    podIPs:
+    - ip: 10.244.4.195
+    qosClass: BestEffort
+    startTime: "2026-07-09T18:01:36Z"
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    annotations:
+      k8s.v1.cni.cncf.io/network-status: |-
+        [{
+            "name": "cbr0",
+            "interface": "eth0",
+            "ips": [
+                "10.244.4.196"
+            ],
+            "mac": "fe:b4:cc:2c:55:7d",
+            "default": true,
+            "dns": {}
+        }]
+      k8s.v1.cni.cncf.io/networks-status: |-
+        [{
+            "name": "cbr0",
+            "interface": "eth0",
+            "ips": [
+                "10.244.4.196"
+            ],
+            "mac": "fe:b4:cc:2c:55:7d",
+            "default": true,
+            "dns": {}
+        }]
+    creationTimestamp: "2026-07-09T18:02:58Z"
+    generateName: dep-default-smoke3-cm-job-6f749dff-
+    generation: 1
+    labels:
+      batch.kubernetes.io/controller-uid: 0b983089-35d6-47d7-8fc1-926b895a745d
+      batch.kubernetes.io/job-name: dep-default-smoke3-cm-job-6f749dff
+      controller-uid: 0b983089-35d6-47d7-8fc1-926b895a745d
+      job-name: dep-default-smoke3-cm-job-6f749dff
+      managed-by: nemo-deployments
+      nemo.nvidia.com/backoff-limit: "6"
+      nemo.nvidia.com/deployment-config: smoke3-cm-cfg
+      nemo.nvidia.com/deployment-name: smoke3-cm-job
+      nemo.nvidia.com/deployment-workspace: default
+      nemo.nvidia.com/restart-policy: Never
+    name: dep-default-smoke3-cm-job-6f749dff-zt5p6
+    namespace: tbray-dev
+    ownerReferences:
+    - apiVersion: batch/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Job
+      name: dep-default-smoke3-cm-job-6f749dff
+      uid: 0b983089-35d6-47d7-8fc1-926b895a745d
+    resourceVersion: "286281538"
+    uid: 6986f586-7b3c-4cb1-aef7-6bb115e3222e
+  spec:
+    containers:
+    - args:
+      - cat /etc/nemo-config/hello.txt
+      command:
+      - sh
+      - -c
+      image: docker.io/library/alpine:3.20
+      imagePullPolicy: IfNotPresent
+      name: main
+      resources: {}
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /etc/nemo-config/hello.txt
+        name: config-files
+        readOnly: true
+        subPath: etc/nemo-config/hello.txt
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-9lc5f
+        readOnly: true
+    dnsPolicy: ClusterFirst
+    enableServiceLinks: true
+    nodeName: 10.54.20.134
+    preemptionPolicy: PreemptLowerPriority
+    priority: 0
+    restartPolicy: Never
+    schedulerName: default-scheduler
+    securityContext: {}
+    serviceAccount: default
+    serviceAccountName: default
+    terminationGracePeriodSeconds: 30
+    tolerations:
+    - effect: NoExecute
+      key: node.kubernetes.io/not-ready
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoExecute
+      key: node.kubernetes.io/unreachable
+      operator: Exists
+      tolerationSeconds: 300
+    volumes:
+    - configMap:
+        defaultMode: 420
+        items:
+        - key: etc__nemo-config__hello.txt
+          path: etc/nemo-config/hello.txt
+        name: dep-cm-default-smoke3-cm-job-fe9e2af4
+      name: config-files
+    - name: kube-api-access-9lc5f
+      projected:
+        defaultMode: 420
+        sources:
+        - serviceAccountToken:
+            expirationSeconds: 3607
+            path: token
+        - configMap:
+            items:
+            - key: ca.crt
+              path: ca.crt
+            name: kube-root-ca.crt
+        - downwardAPI:
+            items:
+            - fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+              path: namespace
+  status:
+    conditions:
+    - lastProbeTime: null
+      lastTransitionTime: "2026-07-09T18:03:00Z"
+      observedGeneration: 1
+      status: "False"
+      type: PodReadyToStartContainers
+    - lastProbeTime: null
+      lastTransitionTime: "2026-07-09T18:02:58Z"
+      observedGeneration: 1
+      reason: PodCompleted
+      status: "True"
+      type: Initialized
+    - lastProbeTime: null
+      lastTransitionTime: "2026-07-09T18:02:58Z"
+      observedGeneration: 1
+      reason: PodCompleted
+      status: "False"
+      type: Ready
+    - lastProbeTime: null
+      lastTransitionTime: "2026-07-09T18:02:58Z"
+      observedGeneration: 1
+      reason: PodCompleted
+      status: "False"
+      type: ContainersReady
+    - lastProbeTime: null
+      lastTransitionTime: "2026-07-09T18:02:58Z"
+      observedGeneration: 1
+      status: "True"
+      type: PodScheduled
+    containerStatuses:
+    - containerID: cri-o://b4c940603cf6099d9ffcdc4d66f2d9a26a101218912cc5817720d7d5201f041a
+      image: docker.io/library/alpine:3.20
+      imageID: docker.io/library/alpine@sha256:c64c687cbea9300178b30c95835354e34c4e4febc4badfe27102879de0483b5e
+      lastState: {}
+      name: main
+      ready: false
+      resources: {}
+      restartCount: 0
+      started: false
+      state:
+        terminated:
+          containerID: cri-o://b4c940603cf6099d9ffcdc4d66f2d9a26a101218912cc5817720d7d5201f041a
+          exitCode: 0
+          finishedAt: "2026-07-09T18:02:58Z"
+          reason: Completed
+          startedAt: "2026-07-09T18:02:58Z"
+      user:
+        linux:
+          gid: 0
+          supplementalGroups:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          - 6
+          - 10
+          - 11
+          - 20
+          - 26
+          - 27
+          uid: 0
+      volumeMounts:
+      - mountPath: /etc/nemo-config/hello.txt
+        name: config-files
+        readOnly: true
+        recursiveReadOnly: Disabled
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-9lc5f
+        readOnly: true
+        recursiveReadOnly: Disabled
+    hostIP: 10.54.20.134
+    hostIPs:
+    - ip: 10.54.20.134
+    observedGeneration: 1
+    phase: Succeeded
+    podIP: 10.244.4.196
+    podIPs:
+    - ip: 10.244.4.196
+    qosClass: BestEffort
+    startTime: "2026-07-09T18:02:58Z"
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    annotations:
+      k8s.v1.cni.cncf.io/network-status: |-
+        [{
+            "name": "cbr0",
+            "interface": "eth0",
+            "ips": [
+                "10.244.4.197"
+            ],
+            "mac": "a2:ed:45:5d:e4:88",
+            "default": true,
+            "dns": {}
+        }]
+      k8s.v1.cni.cncf.io/networks-status: |-
+        [{
+            "name": "cbr0",
+            "interface": "eth0",
+            "ips": [
+                "10.244.4.197"
+            ],
+            "mac": "a2:ed:45:5d:e4:88",
+            "default": true,
+            "dns": {}
+        }]
+    creationTimestamp: "2026-07-09T18:04:04Z"
+    generateName: dep-default-smoke4-cm-job-260cecdb-
+    generation: 1
+    labels:
+      batch.kubernetes.io/controller-uid: fb564eb3-436b-4480-bfb6-42fef27ee45c
+      batch.kubernetes.io/job-name: dep-default-smoke4-cm-job-260cecdb
+      controller-uid: fb564eb3-436b-4480-bfb6-42fef27ee45c
+      job-name: dep-default-smoke4-cm-job-260cecdb
+      managed-by: nemo-deployments
+      nemo.nvidia.com/backoff-limit: "6"
+      nemo.nvidia.com/deployment-config: smoke4-cm-cfg
+      nemo.nvidia.com/deployment-name: smoke4-cm-job
+      nemo.nvidia.com/deployment-workspace: default
+      nemo.nvidia.com/restart-policy: Never
+    name: dep-default-smoke4-cm-job-260cecdb-t455t
+    namespace: tbray-dev
+    ownerReferences:
+    - apiVersion: batch/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Job
+      name: dep-default-smoke4-cm-job-260cecdb
+      uid: fb564eb3-436b-4480-bfb6-42fef27ee45c
+    resourceVersion: "286282344"
+    uid: 40293f74-0dbd-49ef-8d08-b26f3abba125
+  spec:
+    containers:
+    - args:
+      - cat /etc/nemo-config/hello.txt
+      command:
+      - sh
+      - -c
+      image: docker.io/library/alpine:3.20
+      imagePullPolicy: IfNotPresent
+      name: main
+      resources: {}
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /etc/nemo-config/hello.txt
+        name: config-files
+        readOnly: true
+        subPath: etc/nemo-config/hello.txt
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-6jxfs
+        readOnly: true
+    dnsPolicy: ClusterFirst
+    enableServiceLinks: true
+    nodeName: 10.54.20.134
+    preemptionPolicy: PreemptLowerPriority
+    priority: 0
+    restartPolicy: Never
+    schedulerName: default-scheduler
+    securityContext: {}
+    serviceAccount: default
+    serviceAccountName: default
+    terminationGracePeriodSeconds: 30
+    tolerations:
+    - effect: NoExecute
+      key: node.kubernetes.io/not-ready
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoExecute
+      key: node.kubernetes.io/unreachable
+      operator: Exists
+      tolerationSeconds: 300
+    volumes:
+    - configMap:
+        defaultMode: 420
+        items:
+        - key: etc__nemo-config__hello.txt
+          path: etc/nemo-config/hello.txt
+        name: dep-cm-default-smoke4-cm-job-b54b2dab
+      name: config-files
+    - name: kube-api-access-6jxfs
+      projected:
+        defaultMode: 420
+        sources:
+        - serviceAccountToken:
+            expirationSeconds: 3607
+            path: token
+        - configMap:
+            items:
+            - key: ca.crt
+              path: ca.crt
+            name: kube-root-ca.crt
+        - downwardAPI:
+            items:
+            - fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+              path: namespace
+  status:
+    conditions:
+    - lastProbeTime: null
+      lastTransitionTime: "2026-07-09T18:04:06Z"
+      observedGeneration: 1
+      status: "False"
+      type: PodReadyToStartContainers
+    - lastProbeTime: null
+      lastTransitionTime: "2026-07-09T18:04:04Z"
+      observedGeneration: 1
+      reason: PodCompleted
+      status: "True"
+      type: Initialized
+    - lastProbeTime: null
+      lastTransitionTime: "2026-07-09T18:04:04Z"
+      observedGeneration: 1
+      reason: PodCompleted
+      status: "False"
+      type: Ready
+    - lastProbeTime: null
+      lastTransitionTime: "2026-07-09T18:04:04Z"
+      observedGeneration: 1
+      reason: PodCompleted
+      status: "False"
+      type: ContainersReady
+    - lastProbeTime: null
+      lastTransitionTime: "2026-07-09T18:04:04Z"
+      observedGeneration: 1
+      status: "True"
+      type: PodScheduled
+    containerStatuses:
+    - containerID: cri-o://8762fe7783142825e1eea415992d924e0eb32d5ad5e7907c5532841f95d3d113
+      image: docker.io/library/alpine:3.20
+      imageID: docker.io/library/alpine@sha256:c64c687cbea9300178b30c95835354e34c4e4febc4badfe27102879de0483b5e
+      lastState: {}
+      name: main
+      ready: false
+      resources: {}
+      restartCount: 0
+      started: false
+      state:
+        terminated:
+          containerID: cri-o://8762fe7783142825e1eea415992d924e0eb32d5ad5e7907c5532841f95d3d113
+          exitCode: 0
+          finishedAt: "2026-07-09T18:04:04Z"
+          reason: Completed
+          startedAt: "2026-07-09T18:04:04Z"
+      user:
+        linux:
+          gid: 0
+          supplementalGroups:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          - 6
+          - 10
+          - 11
+          - 20
+          - 26
+          - 27
+          uid: 0
+      volumeMounts:
+      - mountPath: /etc/nemo-config/hello.txt
+        name: config-files
+        readOnly: true
+        recursiveReadOnly: Disabled
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-6jxfs
+        readOnly: true
+        recursiveReadOnly: Disabled
+    hostIP: 10.54.20.134
+    hostIPs:
+    - ip: 10.54.20.134
+    observedGeneration: 1
+    phase: Succeeded
+    podIP: 10.244.4.197
+    podIPs:
+    - ip: 10.244.4.197
+    qosClass: BestEffort
+    startTime: "2026-07-09T18:04:04Z"
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    annotations:
+      k8s.v1.cni.cncf.io/network-status: |-
+        [{
+            "name": "cbr0",
+            "interface": "eth0",
+            "ips": [
+                "10.244.4.198"
+            ],
+            "mac": "1a:ff:7f:0c:e8:0d",
+            "default": true,
+            "dns": {}
+        }]
+      k8s.v1.cni.cncf.io/networks-status: |-
+        [{
+            "name": "cbr0",
+            "interface": "eth0",
+            "ips": [
+                "10.244.4.198"
+            ],
+            "mac": "1a:ff:7f:0c:e8:0d",
+            "default": true,
+            "dns": {}
+        }]
+    creationTimestamp: "2026-07-09T18:04:10Z"
+    generateName: dep-default-smoke4-http-svc-0567e826-6444f65fc4-
+    generation: 1
+    labels:
+      app: dep-default-smoke4-http-svc-0567e826
+      managed-by: nemo-deployments
+      nemo.nvidia.com/backoff-limit: "6"
+      nemo.nvidia.com/deployment-config: smoke4-http-cfg
+      nemo.nvidia.com/deployment-name: smoke4-http-svc
+      nemo.nvidia.com/deployment-workspace: default
+      nemo.nvidia.com/restart-policy: Always
+      pod-template-hash: 6444f65fc4
+    name: dep-default-smoke4-http-svc-0567e826-6444f65fc4-6xtt9
+    namespace: tbray-dev
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ReplicaSet
+      name: dep-default-smoke4-http-svc-0567e826-6444f65fc4
+      uid: 505ce0b9-799a-4c8e-93a7-8cc9e019c125
+    resourceVersion: "286282429"
+    uid: d6098e9c-cfe5-4ece-82bd-eb307149ca46
+  spec:
+    containers:
+    - image: docker.io/library/nginx:alpine
+      imagePullPolicy: IfNotPresent
+      name: main
+      ports:
+      - containerPort: 80
+        name: http
+        protocol: TCP
+      resources: {}
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-bqxmf
+        readOnly: true
+    dnsPolicy: ClusterFirst
+    enableServiceLinks: true
+    nodeName: 10.54.20.134
+    preemptionPolicy: PreemptLowerPriority
+    priority: 0
+    restartPolicy: Always
+    schedulerName: default-scheduler
+    securityContext: {}
+    serviceAccount: default
+    serviceAccountName: default
+    terminationGracePeriodSeconds: 30
+    tolerations:
+    - effect: NoExecute
+      key: node.kubernetes.io/not-ready
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoExecute
+      key: node.kubernetes.io/unreachable
+      operator: Exists
+      tolerationSeconds: 300
+    volumes:
+    - name: kube-api-access-bqxmf
+      projected:
+        defaultMode: 420
+        sources:
+        - serviceAccountToken:
+            expirationSeconds: 3607
+            path: token
+        - configMap:
+            items:
+            - key: ca.crt
+              path: ca.crt
+            name: kube-root-ca.crt
+        - downwardAPI:
+            items:
+            - fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+              path: namespace
+  status:
+    conditions:
+    - lastProbeTime: null
+      lastTransitionTime: "2026-07-09T18:04:12Z"
+      observedGeneration: 1
+      status: "True"
+      type: PodReadyToStartContainers
+    - lastProbeTime: null
+      lastTransitionTime: "2026-07-09T18:04:10Z"
+      observedGeneration: 1
+      status: "True"
+      type: Initialized
+    - lastProbeTime: null
+      lastTransitionTime: "2026-07-09T18:04:12Z"
+      observedGeneration: 1
+      status: "True"
+      type: Ready
+    - lastProbeTime: null
+      lastTransitionTime: "2026-07-09T18:04:12Z"
+      observedGeneration: 1
+      status: "True"
+      type: ContainersReady
+    - lastProbeTime: null
+      lastTransitionTime: "2026-07-09T18:04:10Z"
+      observedGeneration: 1
+      status: "True"
+      type: PodScheduled
+    containerStatuses:
+    - containerID: cri-o://7a65f987872d7858dcf802b61ae066a50c967249d8fe7a6e51480a2e1bf2df16
+      image: docker.io/library/nginx:alpine
+      imageID: docker.io/library/nginx@sha256:35cd77497979abe70dc8d26f5ae60811eea233a2eb5dc03c2ee30972caeb303e
+      lastState: {}
+      name: main
+      ready: true
+      resources: {}
+      restartCount: 0
+      started: true
+      state:
+        running:
+          startedAt: "2026-07-09T18:04:11Z"
+      user:
+        linux:
+          gid: 0
+          supplementalGroups:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          - 6
+          - 10
+          - 11
+          - 20
+          - 26
+          - 27
+          uid: 0
+      volumeMounts:
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-bqxmf
+        readOnly: true
+        recursiveReadOnly: Disabled
+    hostIP: 10.54.20.134
+    hostIPs:
+    - ip: 10.54.20.134
+    observedGeneration: 1
+    phase: Running
+    podIP: 10.244.4.198
+    podIPs:
+    - ip: 10.244.4.198
+    qosClass: BestEffort
+    startTime: "2026-07-09T18:04:10Z"
+kind: List
+metadata:
+  resourceVersion: ""

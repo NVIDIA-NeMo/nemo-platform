@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  creationTimestamp: "2026-07-09T17:31:19Z"
+  finalizers:
+  - kubernetes.io/pvc-protection
+  labels:
+    managed-by: nemo-deployments
+    nemo.nvidia.com/volume-name: smoke-data
+    nemo.nvidia.com/volume-workspace: default
+  name: dep-vol-default-smoke-data-79140390
+  namespace: tbray-dev
+  resourceVersion: "286258041"
+  uid: 77c4dc35-2785-447c-b274-0dda63c6e917
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: oci-bv
+  volumeMode: Filesystem
+status:
+  phase: Pending

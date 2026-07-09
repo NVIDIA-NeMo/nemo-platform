@@ -1,0 +1,36 @@
+# Supplemental RBAC for AIRCORE-757 deployments-plugin mission leg.
+# The existing nemo-models-vllm role covers apps/deployments, batch/jobs,
+# PVCs, services, and pods — but NOT configmaps. The cm-job smoke step
+# creates a ConfigMap for mounted config files.
+#
+# Apply (out-of-band):
+#   export KUBECONFIG="/Users/tbray/.kube/kubeconfig-nemollm.yaml:/Users/tbray/.kube/config"
+#   kubectl --context nemo-dev-blue -n tbray-dev apply -f rbac-nemo-deployments-smoke.yaml
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: nemo-deployments-smoke
+  namespace: tbray-dev
+  labels:
+    app.kubernetes.io/managed-by: aircore-757-smoke
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create", "get", "list", "watch", "delete", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nemo-deployments-smoke
+  namespace: tbray-dev
+  labels:
+    app.kubernetes.io/managed-by: aircore-757-smoke
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: nemo-deployments-smoke
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: tbray-dev

@@ -1,0 +1,61 @@
+POST /apis/files/v2/workspaces/default/filesets -> 200
+POST /apis/models/v2/workspaces/default/models -> 201
+POST /apis/models/v2/workspaces/default/deployment-configs -> 201
+POST /apis/models/v2/workspaces/default/deployments -> 201
+deployment status=CREATED message=Deployment created
+deployment status=PENDING message=Downloading model weights
+deployment status=PENDING message=Downloading model weights
+deployment status=PENDING message=Downloading model weights
+deployment status=PENDING message=Downloading model weights
+deployment status=PENDING message=Downloading model weights
+deployment status=PENDING message=Downloading model weights
+deployment status=PENDING message=Downloading model weights
+deployment status=PENDING message=Downloading model weights
+deployment status=PENDING message=Releasing model weights volume
+deployment status=PENDING message=Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+deployment status=PENDING message=Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+deployment status=PENDING message=Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+deployment status=PENDING message=Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+deployment status=PENDING message=Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+deployment status=PENDING message=Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+deployment status=PENDING message=Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+deployment status=PENDING message=Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+deployment status=PENDING message=Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+deployment status=PENDING message=Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+deployment status=PENDING message=Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+deployment status=PENDING message=Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+deployment status=PENDING message=Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+deployment status=PENDING message=Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+deployment status=PENDING message=Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+deployment status=PENDING message=Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+deployment status=PENDING message=Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+deployment status=PENDING message=Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+deployment status=PENDING message=Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+deployment status=PENDING message=Scheduled: Successfully assigned tbray-dev/md-default-aircore757b-qwen3-vllm-deployment-0d00deef-d955khsgm to 10.54.20.172
+deployment status=PENDING message=SuccessfulAttachVolume: AttachVolume.Attach succeeded for volume "csi-7abab5e0-f704-49af-8e06-c90eae46872a" 
+deployment status=PENDING message=Created: Created container: md-default-aircore757b-qwen3-vllm-deployment-0d00deef-ctr
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=PENDING message=Waiting for pod to finish startup
+deployment status=READY message=
+PASS — wrote /work/smoke-results/AIRCORE-757/vllm-leg-api.json
