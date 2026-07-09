@@ -420,14 +420,16 @@ def test_chat_completions_ingest_rejects_legacy_context_fields(client: TestClien
         assert response.status_code == 422, response.text
 
 
-def test_chat_completions_ingest_accepts_both_context_shapes_with_experiment_context_precedence(client: TestClient):
+def test_chat_completions_ingest_accepts_both_context_shapes_with_evaluation_context_precedence(client: TestClient):
     _create_experiment(client, "chat-eval")
+    # evaluation_context is canonical and wins; experiment_context points at a non-existent entity, so a
+    # 201 (rather than a 400 for the missing "legacy-exp") proves evaluation_context took precedence.
     body = {
         "request": _openai_request(),
         "response": _openai_response(id="chatcmpl-both-contexts"),
         "session_id": "session-both-contexts",
-        "experiment_context": {"experiment_id": "chat-eval", "test_case_id": "case-1"},
-        "evaluation_context": {"evaluation_id": "legacy-eval", "test_case_id": "legacy-case"},
+        "experiment_context": {"experiment_id": "legacy-exp", "test_case_id": "legacy-case"},
+        "evaluation_context": {"evaluation_id": "chat-eval", "test_case_id": "case-1"},
     }
     response = client.post(INGEST_URL, json=body)
     assert response.status_code == 201, response.text

@@ -6,18 +6,18 @@
 from fastapi import HTTPException, status
 from nmp.common.entities.client import EntityClient, EntityNotFoundError
 from nmp.intake.entities.experiments import Experiment
-from nmp.intake.spans.ingest.evaluation_context import EvaluationContext, ExperimentContext
+from nmp.intake.spans.ingest.evaluation_context import EvaluationContext
 
 
 async def validate_evaluation_context(
     *,
     workspace: str,
-    context: EvaluationContext | ExperimentContext | None,
+    context: EvaluationContext | None,
     entity_client: EntityClient,
 ) -> None:
     if context is None:
         return
-    experiment_id = _evaluation_id(context)
+    experiment_id = context.evaluation_id
     if not experiment_id:
         return
     try:
@@ -32,9 +32,3 @@ async def validate_evaluation_context(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Experiment '{experiment_id}' has been deleted and cannot accept new sessions.",
         )
-
-
-def _evaluation_id(context: EvaluationContext | ExperimentContext) -> str | None:
-    if isinstance(context, ExperimentContext):
-        return context.experiment_id
-    return context.evaluation_id
