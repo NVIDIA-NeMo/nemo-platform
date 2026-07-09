@@ -16,7 +16,9 @@ from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTas
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrialStatus
 
 
-def _write_trial(job_dir: Path, trial_name: str, task_name: str, *, reward, exception=None) -> None:
+def _write_trial(
+    job_dir: Path, trial_name: str, task_name: str, *, reward: float | None, exception: str | None = None
+) -> None:
     trial_dir = job_dir / trial_name
     (trial_dir / "agent").mkdir(parents=True)
     (trial_dir / "verifier").mkdir(parents=True)
@@ -39,10 +41,13 @@ async def test_harbor_runner_scores_through_agent_evaluator_and_adapts_legacy_pa
     (job_dir / "result.json").write_text(json.dumps({"stats": {}}))
     _write_trial(job_dir, "pass-task__aaa", "pass-task", reward=1.0)
     _write_trial(job_dir, "fail-task__bbb", "fail-task", reward=0.0, exception="NonZeroAgentExitCodeError")
+    # A trial whose verifier emitted no reward at all (verifier_result=None).
+    _write_trial(job_dir, "noreward-task__ccc", "noreward-task", reward=None)
 
     tasks = [
         AgentEvalTask(id="pass-task", intent="x", inputs={"prompt": "p"}, metrics=[HarborRewardMetric()]),
         AgentEvalTask(id="fail-task", intent="y", inputs={"prompt": "q"}, metrics=[HarborRewardMetric()]),
+        AgentEvalTask(id="noreward-task", intent="z", inputs={"prompt": "r"}, metrics=[HarborRewardMetric()]),
     ]
 
     # Direct adaptation: reward + tokens land on metadata, exception flips status to PARTIAL, evidence present.
@@ -53,6 +58,9 @@ async def test_harbor_runner_scores_through_agent_evaluator_and_adapts_legacy_pa
     assert trials["pass-task"].evidence is not None
     assert trials["fail-task"].status == AgentEvalTrialStatus.PARTIAL
     assert trials["fail-task"].metadata["exception_type"] == "NonZeroAgentExitCodeError"
+    # Missing reward: no explicit reward -> PARTIAL, metadata reward is None, scores as 0.0.
+    assert trials["noreward-task"].status == AgentEvalTrialStatus.PARTIAL
+    assert trials["noreward-task"].metadata["reward"] is None
 
     # run_job is awaited exactly once, then the job dir is adapted and scored end-to-end.
     calls = []
@@ -61,11 +69,11 @@ async def test_harbor_runner_scores_through_agent_evaluator_and_adapts_legacy_pa
     assert calls == ["ran"]
 
     rewards_by_task = {score.task_id: score.outputs[0].value for score in result.scores if score.outputs}
-    assert rewards_by_task == {"pass-task": 1.0, "fail-task": 0.0}
+    assert rewards_by_task == {"pass-task": 1.0, "fail-task": 0.0, "noreward-task": 0.0}
 
     # Phase-1 legacy adapter reproduces the {reward, reward_details, exceptions} contract.
     payload = reward_payload_from_result(result)
-    assert payload["reward"]["harbor_reward.reward"] == pytest.approx(0.5)
+    assert payload["reward"]["harbor_reward.reward"] == pytest.approx(1.0 / 3)
     assert payload["reward_details"]["reward"]["1.0"] == ["pass-task"]
     assert payload["exceptions"] == {"NonZeroAgentExitCodeError": ["fail-task"]}
 

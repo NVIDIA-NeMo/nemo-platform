@@ -49,9 +49,9 @@ class HarborRewardMetric:
     """Score the verifier reward Harbor stamped onto trial metadata.
 
     Reads ``reward`` from the candidate metadata (populated by
-    :func:`build_trials_from_job_dir`), falling back to ``passed`` when no
-    explicit reward is present. This is the Harbor analogue of the example
-    ``VerifierRewardMetric`` — a reward-off-metadata scorer.
+    :func:`build_trials_from_job_dir`); a trial with no verifier reward scores
+    ``0.0``. This is the Harbor analogue of the example ``VerifierRewardMetric``
+    — a reward-off-metadata scorer.
     """
 
     def __init__(self, *, output_name: str = "reward", metric_type: str = "harbor_reward") -> None:
@@ -66,11 +66,9 @@ class HarborRewardMetric:
         return [MetricOutputSpec.continuous_score(self._output_name)]
 
     async def compute_scores(self, input: MetricInput) -> MetricResult:
-        metadata = input.candidate.metadata
-        reward = metadata.get("reward")
-        if reward is None:
-            reward = 1.0 if metadata.get("passed") else 0.0
-        return MetricResult(outputs=[MetricOutput(name=self._output_name, value=float(reward))])
+        reward = input.candidate.metadata.get("reward")
+        value = float(reward) if reward is not None else 0.0
+        return MetricResult(outputs=[MetricOutput(name=self._output_name, value=value)])
 
 
 class HarborAgentTaskRunner:
@@ -134,6 +132,16 @@ def build_trials_from_job_dir(
             # Trial for a task we weren't asked to score (e.g. a wider dataset run).
             continue
         trials.append(_trial_from_harbor_result(result_path.parent, data, reward_key=reward_key))
+
+    # Surface tasks that produced no trial loudly: a mis-pointed job_dir or a
+    # crashed run would otherwise silently score fewer tasks than requested.
+    missing = known_task_ids - {trial.task_id for trial in trials}
+    if missing:
+        logger.warning("No Harbor trial result found for %d requested task(s): %s", len(missing), sorted(missing))
+    if not trials:
+        logger.warning(
+            "No Harbor trial results under %s matched the requested tasks; nothing will be scored.", job_path
+        )
     return trials
 
 
@@ -196,8 +204,24 @@ def _rewards_mapping(data: Mapping[str, Any]) -> dict[str, float]:
 
 
 def _primary_reward(rewards: Mapping[str, float], reward_key: str) -> float | None:
+    """Return the single reward a trial is scored on.
+
+    Precedence: the configured ``reward_key`` if the verifier emitted it;
+    otherwise the sole remaining reward. When several rewards are present and
+    none matches ``reward_key`` the choice is arbitrary, so the first is used and
+    a warning is logged (point ``reward_key`` at the intended one, or score the
+    others with additional metrics over ``reward_details``). ``None`` when the
+    verifier emitted no rewards.
+    """
     if reward_key in rewards:
         return rewards[reward_key]
+    if len(rewards) > 1:
+        logger.warning(
+            "Harbor trial emitted multiple rewards %s but none matches reward_key=%r; scoring on %r",
+            sorted(rewards),
+            reward_key,
+            next(iter(rewards)),
+        )
     return next(iter(rewards.values()), None)
 
 
@@ -249,9 +273,7 @@ def reward_payload_from_result(
     * ``exceptions`` — ``{exception_type: [task_id, ...]}`` from trial metadata
       (Harbor's ``exception_stats`` analogue).
     """
-    reward = {
-        score.name: score.mean for score in result.summary.scores.scores if getattr(score, "mean", None) is not None
-    }
+    reward = {score.name: score.mean for score in result.summary.scores.scores if score.mean is not None}
 
     reward_details: dict[str, dict[str, list[str]]] = {}
     for score in result.scores:
