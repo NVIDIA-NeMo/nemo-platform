@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@nvidia/foundations-react-core": "^1.0.0",
+    "@tanstack/react-query": "^5.90.21",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-router-dom": "^6.30.2"

@@ -18,6 +18,8 @@ const STUDIO_SHARED_DEPS = [
   // Studio's design system, shared via the import map so the plugin's KUI
   // components use Studio's single foundations instance and theme.
   '@nvidia/foundations-react-core',
+  // Shared so the plugin's useQuery uses Studio's QueryClient (one cache).
+  '@tanstack/react-query',
 ];
 
 export default defineConfig({

@@ -48,6 +48,9 @@ const VENDOR_EXTERNALS = [
   // same theme context Studio's KaizenThemeProvider populates (native look +
   // dark mode) instead of bundling their own foundations copy.
   '@nvidia/foundations-react-core',
+  // Shared so a plugin's useQuery reads Studio's QueryClientProvider — one
+  // query cache across Studio and every plugin.
+  '@tanstack/react-query',
 ] as const;
 
 // Each import specifier in the map resolves to a single vendor bundle.
@@ -61,6 +64,7 @@ const VENDOR_IMPORT_MAP: Record<string, string> = {
   'react-router': 'react-router.js',
   'react-router-dom': 'react-router-dom.js',
   '@nvidia/foundations-react-core': 'foundations.js',
+  '@tanstack/react-query': 'react-query.js',
 };
 
 // Virtual modules have no filesystem location. Rolldown's resolver falls
@@ -159,6 +163,7 @@ async function buildVendorBundles(
     // Foundations is ESM with static named exports, so a plain re-export works
     // (no CJS named-reexport introspection needed as with react/react-dom).
     'virtual:foundations': "export * from '@nvidia/foundations-react-core';",
+    'virtual:react-query': "export * from '@tanstack/react-query';",
   };
 
   const entries: Array<{
@@ -187,6 +192,12 @@ async function buildVendorBundles(
       // Bundled CJS deps inside foundations may `require('react')` /
       // `require('react-dom')`; the shim routes those to the shared copies.
       banner: buildRequireShim(['react', 'react-dom']),
+    },
+    {
+      entry: 'virtual:react-query',
+      outfile: 'react-query.js',
+      external: ['react'],
+      banner: buildRequireShim(['react']),
     },
   ];
 

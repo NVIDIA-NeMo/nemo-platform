@@ -27,7 +27,9 @@ Runtime contract: `../../../web/packages/studio/src/plugins/types.ts`.
 | Auth | `props.auth.getAccessToken()` **per request** → `Authorization: Bearer …` | `react-oidc-context` / `useAuth` (refresh token must not cross the boundary) |
 | Deps | externalize the shared set in `vite.config.ts`; bundle the rest | bundle react / react-dom / react-router / foundations |
 
-`@tanstack/react-query` is **not** shared yet — use `fetch` with the Bearer token.
+`@tanstack/react-query` **is** shared — call `useQuery`/`useMutation` and it reads
+Studio's `QueryClientProvider` (one cache across Studio and every plugin). Put the
+`auth.getAccessToken()` Bearer token in your `queryFn`.
 
 ## Contract
 

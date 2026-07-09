@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Flex, Stack, Text } from '@nvidia/foundations-react-core';
+import { useQuery } from '@tanstack/react-query';
 import { Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom';
 import type { PluginRootProps } from './types';
 
@@ -68,6 +69,18 @@ function CodeBlock({ children }: { children: string }) {
 }
 
 function OverviewPage() {
+  // Uses Studio's shared QueryClient — @tanstack/react-query is a shared
+  // singleton, so this reads Studio's QueryClientProvider, not a plugin copy.
+  // Calls a real platform endpoint (the same one Studio's PluginContext uses).
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['example-plugin', 'installed-plugins'],
+    queryFn: async () => {
+      const res = await fetch('/apis/plugins');
+      if (!res.ok) throw new Error(`/apis/plugins returned ${res.status}`);
+      return (await res.json()) as Array<{ name: string; bundleUrl: string | null }>;
+    },
+  });
+
   return (
     <Stack gap="2">
       <Text kind="label/bold/lg">Example Plugin</Text>
@@ -75,6 +88,23 @@ function OverviewPage() {
         This is an example Studio plugin. Use the tabs above or the Studio side
         nav to explore what information is available to a plugin at runtime.
       </Text>
+
+      <Stack gap="1">
+        <Text kind="label/bold/sm">Shared QueryClient</Text>
+        <Text kind="body/regular/xs" color="secondary">
+          Fetched from the platform&apos;s /apis/plugins endpoint via
+          @tanstack/react-query — running on Studio&apos;s QueryClient, not a copy.
+        </Text>
+        {isLoading ? (
+          <Text kind="body/regular/xs" color="secondary">Loading…</Text>
+        ) : isError ? (
+          <Text kind="body/regular/xs" color="danger">Request failed.</Text>
+        ) : (
+          <Text kind="body/regular/sm">
+            {data?.length} plugins installed: {data?.map((p) => p.name).join(', ')}
+          </Text>
+        )}
+      </Stack>
     </Stack>
   );
 }
