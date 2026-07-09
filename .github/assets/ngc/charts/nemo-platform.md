@@ -8,5 +8,5 @@ NVIDIA NeMo Platform Helm Chart for the deployment of NeMo Platform on Kubernete
 
 ### License
 
-This container is licensed under the [Apache License 2.0](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/LICENSE).
+This chart is licensed under the [Apache License 2.0](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/LICENSE).
 
