@@ -443,21 +443,38 @@ jobs:
               },
             });
 
-  build-wheels:
-    name: Build wheels
+  dispatch-wheel-stage:
+    name: Dispatch wheel builds
     needs: plan-release
     if: needs.plan-release.outputs.has_sdks == 'true'
     runs-on: ubuntu-latest
     steps:
-      - run: echo "::notice::Placeholder - build selected release wheels"
+      - name: Dispatch wheel builds
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
+          SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
+          RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
+          RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
+          NIGHTLY_TIMESTAMP: ${{ needs.plan-release.outputs.nightly_timestamp }}
+          WHEEL_IDS: ${{ needs.plan-release.outputs.wheel_ids }}
+        with:
+          github-token: ${{ secrets.CI_DISPATCH_TOKEN }}
+          script: |
+            const [owner, repo] = process.env.DISPATCH_REPO.split("/");
 
-  dispatch-wheel-stage:
-    name: Dispatch wheel staging
-    needs: [plan-release, build-wheels]
-    if: needs.plan-release.outputs.has_sdks == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "::notice::Placeholder - dispatch selected wheels for staging"
+            await github.rest.repos.createDispatchEvent({
+              owner,
+              repo,
+              event_type: "stage-wheels",
+              client_payload: {
+                ref: process.env.SOURCE_SHA,
+                cadence: process.env.RELEASE_TYPE === "stable" ? "release" : "nightly",
+                release_label: process.env.RELEASE_LABEL,
+                nightly_timestamp: process.env.NIGHTLY_TIMESTAMP,
+                wheels: JSON.parse(process.env.WHEEL_IDS),
+              },
+            });
 
   dispatch-container-stage:
     name: Dispatch container builds
@@ -501,7 +518,6 @@ jobs:
     needs:
       - plan-release
       - dispatch-release-registration
-      - build-wheels
       - dispatch-wheel-stage
       - dispatch-container-stage
       - stage-helm
