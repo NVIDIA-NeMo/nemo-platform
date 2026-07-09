@@ -29,3 +29,5 @@ class AtifToolCallParam(TypedDict, total=False):
     tool_call_id: Required[str]
 
     arguments: Dict[str, object]
+
+    extra: Dict[str, object]
