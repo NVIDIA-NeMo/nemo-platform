@@ -22,7 +22,7 @@ export interface StartOption {
   /** Leading Lucide icon. */
   icon: LucideIcon;
   /** Small badge rendered at the bottom of the tile. */
-  tag: StartOptionTag;
+  tag?: StartOptionTag;
   /**
    * Whether this option is wired up. Disabled options still render (so the full set
    * of future entry points is visible) but are no-ops — they cannot be selected and

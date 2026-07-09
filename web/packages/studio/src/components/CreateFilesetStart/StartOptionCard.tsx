@@ -56,9 +56,11 @@ export const StartOptionCard: FC<StartOptionCardProps> = ({ option, selected, on
 
       <div className="flex-1" />
 
-      <Badge color={option.tag.color} kind={option.tag.kind}>
-        {option.tag.label}
-      </Badge>
+      {option.tag ? (
+        <Badge color={option.tag.color} kind={option.tag.kind}>
+          {option.tag.label}
+        </Badge>
+      ) : null}
     </button>
   );
 };

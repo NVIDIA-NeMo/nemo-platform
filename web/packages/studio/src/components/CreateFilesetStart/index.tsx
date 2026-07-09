@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+  Block,
   Button,
   Flex,
   Grid,
@@ -32,8 +33,8 @@ export const CreateFilesetStart: FC<CreateFilesetStartProps> = ({ onContinue }) 
   const selectedOption = START_OPTIONS.find((option) => option.id === selectedId) ?? null;
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex-1 overflow-auto">
+    <Stack className="h-full">
+      <Block className="flex-1 overflow-auto">
         <Stack gap="density-2xl" padding="density-2xl">
           <PageHeader
             slotHeading="Create a fileset"
@@ -44,7 +45,7 @@ export const CreateFilesetStart: FC<CreateFilesetStartProps> = ({ onContinue }) 
             <Text kind="label/bold/sm" className="text-secondary">
               How do you want to start?
             </Text>
-            <Grid cols={4} gap="density-md">
+            <Grid cols={START_OPTIONS.length} gap="density-md">
               {START_OPTIONS.map((option) => (
                 <GridItem key={option.id}>
                   <StartOptionCard
@@ -59,7 +60,7 @@ export const CreateFilesetStart: FC<CreateFilesetStartProps> = ({ onContinue }) 
 
           {selectedOption ? <StartOptionDetail option={selectedOption} /> : null}
         </Stack>
-      </div>
+      </Block>
 
       {selectedOption ? (
         <Flex
@@ -73,6 +74,6 @@ export const CreateFilesetStart: FC<CreateFilesetStartProps> = ({ onContinue }) 
           </Button>
         </Flex>
       ) : null}
-    </div>
+    </Stack>
   );
 };

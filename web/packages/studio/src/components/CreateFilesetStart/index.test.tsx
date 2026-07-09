@@ -11,7 +11,6 @@ describe('CreateFilesetStart', () => {
 
     expect(screen.getByText('Describe with AI')).toBeInTheDocument();
     expect(screen.getByText('Start from a template')).toBeInTheDocument();
-    expect(screen.getByText('Clone a fileset')).toBeInTheDocument();
     expect(screen.getByText('Build from scratch')).toBeInTheDocument();
   });
 
