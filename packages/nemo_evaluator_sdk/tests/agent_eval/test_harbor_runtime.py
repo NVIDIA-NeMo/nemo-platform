@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -80,3 +81,19 @@ async def test_harbor_runner_scores_through_agent_evaluator_and_adapts_legacy_pa
 
 async def _record(calls: list[str]) -> None:
     calls.append("ran")
+
+
+def test_reward_with_no_matching_reward_key_scores_zero_and_warns(tmp_path: Path, caplog) -> None:
+    # Verifier emitted a reward, but under a key we didn't ask for: no guessing —
+    # the trial scores 0.0 (COMPLETED, not "missing") and a warning is logged.
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    _write_trial(job_dir, "t__aaa", "t", reward=1.0)  # emitted under "reward"
+    tasks = [AgentEvalTask(id="t", intent="x", inputs={"prompt": "p"}, metrics=[HarborRewardMetric()])]
+
+    with caplog.at_level(logging.WARNING):
+        trials = build_trials_from_job_dir(job_dir, tasks, reward_key="missing")
+
+    assert trials[0].metadata["reward"] == 0.0
+    assert trials[0].status == AgentEvalTrialStatus.COMPLETED
+    assert "none matches reward_key" in caplog.text
