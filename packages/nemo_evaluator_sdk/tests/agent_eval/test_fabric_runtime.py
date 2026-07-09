@@ -193,7 +193,7 @@ def _install_fake_fabric(monkeypatch: pytest.MonkeyPatch, handler: Any) -> type:
     return _FakeClient
 
 
-_TASK = AgentEvalTask(id="task/1", intent="Answer.", inputs={"prompt": "Ping?"})
+_TASK = AgentEvalTask(id="task/1", intent="Answer.", inputs={"instruction": "Ping?"})
 _CONFIG = {"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex.cli"}}
 
 
@@ -240,6 +240,33 @@ async def test_fabric_runtime_maps_succeeded_result_to_completed_trial(
     # Telemetry reference is preserved end-to-end (uri + trace_id), not just provider/kind.
     assert trial.evidence.metadata["telemetry"][0]["uri"] == "file:///relay"
     assert trial.evidence.metadata["telemetry"][0]["trace_id"] == "tid-1"
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_prompt_excludes_intent_and_frames_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The prompt is exactly the task instruction — no runtime framing. `task.intent` is eval-side
+    # "desired behavior" metadata and must never reach the agent (reward-hacking hole); other inputs
+    # keys are not templated into the prompt either.
+    task = AgentEvalTask(
+        id="task/2",
+        intent="SECRET_GRADER_INTENT",
+        inputs={"instruction": "Ping?", "files": {"data.csv": "s3://seed"}, "hint": "be terse"},
+    )
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output="ok")
+
+    client_cls = _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric")
+
+    await runtime.run_tasks([task])
+
+    prompt = client_cls.recorded[0]["request"].input
+    assert prompt == "Ping?"  # the instruction verbatim, nothing else
+    assert "SECRET_GRADER_INTENT" not in prompt  # intent stays eval-side
+    assert "be terse" not in prompt  # non-instruction inputs are not templated in
 
 
 @pytest.mark.asyncio
@@ -356,9 +383,8 @@ async def test_fabric_runtime_seeds_workspace_and_exposes_workspace_evidence(
     workspace_evidence = trial.evidence.descriptors["workspace"]
     assert workspace_evidence.kind == "filesystem"
     assert workspace_evidence.ref == str(workspace)
-    # Seed-file contents are listed by name in the input, not dumped inline (they are already on disk).
+    # Seed-file contents are not inlined into the prompt (they are already on disk in the workspace).
     harness_input = client_cls.recorded[0]["request"].input
-    assert "calc.py" in harness_input
     assert "value = 1" not in harness_input
 
 

@@ -181,7 +181,9 @@ class FabricAgentRuntime:
         workspace_dir = evidence_dir / _WORKSPACE_SUBDIR
         workspace_dir.mkdir(parents=True, exist_ok=True)
         try:
-            seeded_files = await asyncio.to_thread(seed_workspace, workspace_dir, task.inputs.get(SEED_FILES_INPUT_KEY))
+            # Stage seed files into the workspace for their on-disk side effect; the prompt is the task
+            # instruction only, so the returned paths are unused.
+            await asyncio.to_thread(seed_workspace, workspace_dir, task.inputs.get(SEED_FILES_INPUT_KEY))
             task_config = self._compose_config(agent_config, evidence_dir, workspace_dir)
             # Caller ``base_profiles`` are applied by Fabric over the config; the evaluator-owned
             # settings are re-asserted as trailing overlays so they win over any caller profile.
@@ -195,7 +197,7 @@ class FabricAgentRuntime:
                     task_config,
                     profiles=[*base_profiles, *lock_profiles],
                     base_dir=self._base_dir,
-                    request=RunRequest(input=_fabric_input(task, seeded_files), request_id=task.id),
+                    request=RunRequest(input=task.agent_prompt(), request_id=task.id),
                 ),
                 timeout=self._timeout_s,
             )
@@ -434,24 +436,6 @@ class FabricAgentRuntime:
         safe_task_id = _safe_path_name(task.id)
         task_dir = f"{index:06d}-{safe_task_id}" if safe_task_id else f"task-{index:06d}"
         return Path(root) / task_dir
-
-
-def _fabric_input(task: AgentEvalTask, seeded_files: Sequence[str] = ()) -> str:
-    """Frame the task as the harness's input text.
-
-    When files were staged into the workspace, list them by name and invite the agent to work in its
-    current directory rather than dumping their contents inline; the seed-files key is dropped from
-    the echoed inputs since those files are already on disk.
-    """
-    body_inputs = {key: value for key, value in task.inputs.items() if key != SEED_FILES_INPUT_KEY}
-    lines = [f"Task id: {task.id}", f"Intent: {task.intent}"]
-    if body_inputs:
-        lines += ["", f"Inputs: {body_inputs}"]
-    if seeded_files:
-        lines += ["", "These files are already in your working directory:"]
-        lines += [f"  - {path}" for path in seeded_files]
-        lines += ["", "Complete the task by reading, creating, and editing files in your current directory."]
-    return "\n".join(lines) + "\n"
 
 
 def _normalize_output(output: RunOutput | JsonValue) -> JsonValue:
