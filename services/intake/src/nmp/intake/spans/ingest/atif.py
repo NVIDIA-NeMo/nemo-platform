@@ -56,6 +56,7 @@ class AtifIngestRequest(ExperimentContextIngestModel):
 
     @model_validator(mode="after")
     def validate_steps(self) -> AtifIngestRequest:
+        """Validate step references and embedded subagent trajectory IDs."""
         validate_atif_step_ids(self.steps)
         validate_atif_tool_call_references(self.steps)
         if self.schema_version == "ATIF-v1.7":
@@ -64,6 +65,7 @@ class AtifIngestRequest(ExperimentContextIngestModel):
         return self
 
     def to_trajectory(self) -> AtifTrajectory:
+        """Convert this API request into the recursive ATIF domain model."""
         kwargs: dict[str, Any] = {} if self.session_id is None else {"session_id": self.session_id}
         return AtifTrajectory(
             schema_version=self.schema_version,

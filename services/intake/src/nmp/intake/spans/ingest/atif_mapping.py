@@ -47,6 +47,7 @@ def trajectory_to_spans(
     trajectory: AtifTrajectory,
     ingested_at: datetime,
 ) -> list[IntakeSpan]:
+    """Map an ATIF trajectory tree into one trace of intake spans."""
     return _trajectory_tree_to_spans(
         workspace=workspace,
         trajectory=trajectory,
@@ -66,6 +67,7 @@ def _trajectory_tree_to_spans(
     external_parent_span_id: str | None,
     ingested_at: datetime,
 ) -> list[IntakeSpan]:
+    """Recursively map a trajectory and its embedded subagents into spans."""
     trajectory_span = _trajectory_to_span(
         workspace=workspace,
         trajectory=trajectory,
@@ -187,6 +189,7 @@ def _trajectory_span_id(
     trace_session_id: str,
     trajectory_identity: TrajectoryIdentity,
 ) -> str:
+    """Return the stable span ID for a trajectory at a tree identity."""
     return stable_id(workspace, trace_session_id, *trajectory_identity, "trajectory", prefix="span")
 
 
@@ -200,6 +203,7 @@ def _trajectory_to_span(
     include_evaluation_context: bool,
     ingested_at: datetime,
 ) -> IntakeSpan:
+    """Map one trajectory node to its root agent span."""
     raw_attributes = _model_dict(trajectory)
     raw_attributes.pop("steps", None)
     raw_attributes.pop("evaluation_context", None)
@@ -284,6 +288,7 @@ def _step_to_span(
     step_ended_at: datetime | None,
     ingested_at: datetime,
 ) -> IntakeSpan:
+    """Map one ATIF step to a child span in the shared trace."""
     raw_step = _model_dict(step)
     metrics = _step_metrics(step)
     model_name = _step_model_name(step)
@@ -346,6 +351,7 @@ def _tool_call_to_span(
     step_ended_at: datetime | None,
     ingested_at: datetime,
 ) -> IntakeSpan:
+    """Map one ATIF tool call to a span under its owning step."""
     raw_tool_call = _model_dict(tool_call)
     result = _observation_result_for_tool_call(step, tool_call.tool_call_id)
     error_message = _tool_result_error_message(step, result)
@@ -413,6 +419,7 @@ def _subagent_ref_to_span(
     step_ended_at: datetime | None,
     ingested_at: datetime,
 ) -> IntakeSpan:
+    """Map an unexpanded subagent reference to a delegation span."""
     raw_result = _model_dict(result)
     raw_ref = _model_dict(subagent_ref)
     error_message = _tool_result_error_message(step, result)
@@ -470,6 +477,7 @@ def _evaluator_result_to_span(
     parent_span: IntakeSpan,
     ingested_at: datetime,
 ) -> list[IntakeSpan]:
+    """Map a trajectory verifier result to its evaluator span, when present."""
     extra = trajectory.extra or {}
     verifier_result = _dict_or_none(extra.get("verifier_result"))
     if verifier_result is None:
@@ -571,6 +579,7 @@ def _span_attributes(
     cost_total_usd: Decimal | None = None,
     raw_attributes: dict[str, Any] | None = None,
 ) -> SpanAttributeBags:
+    """Build normalized semantic and raw attribute bags for an ATIF span."""
     semantic_attributes = SpanSemanticAttributes(
         model=model,
         agent_name=agent_name,
@@ -656,6 +665,7 @@ def _trajectory_tree(
     trajectory: AtifTrajectory,
     trajectory_identity: TrajectoryIdentity = (),
 ) -> list[tuple[AtifTrajectory, TrajectoryIdentity]]:
+    """Return a depth-first list of trajectories and their tree identities."""
     trajectories = [(trajectory, trajectory_identity)]
     for subagent in trajectory.subagent_trajectories or []:
         assert subagent.trajectory_id is not None
@@ -770,6 +780,7 @@ def _trajectory_input(trajectory: AtifTrajectory) -> str | None:
 
 
 def _trajectory_output(trajectory: AtifTrajectory) -> str | None:
+    """Return the last agent response from a trajectory, when available."""
     for step in reversed(trajectory.steps):
         if isinstance(step, AtifStepAgent):
             if step.message != "":
@@ -779,6 +790,7 @@ def _trajectory_output(trajectory: AtifTrajectory) -> str | None:
 
 
 def _trajectory_has_error(trajectory: AtifTrajectory) -> bool:
+    """Return whether a trajectory or any embedded descendant has an error."""
     for step in trajectory.steps:
         if not isinstance(step, AtifStepAgent):
             continue
@@ -812,6 +824,7 @@ def _observation_result_for_tool_call(step: AtifStep, tool_call_id: str) -> Atif
 
 
 def _observation_results_with_subagents(step: AtifStep) -> list[tuple[int, AtifObservationResult]]:
+    """Return indexed observation results that reference subagent trajectories."""
     observation = _step_observation(step)
     if observation is None:
         return []
@@ -823,10 +836,12 @@ def _observation_results_with_subagents(step: AtifStep) -> list[tuple[int, AtifO
 
 
 def _trajectory_started_at(trajectory: AtifTrajectory, ingested_at: datetime) -> datetime:
+    """Return the earliest explicit tree timestamp or the ingestion fallback."""
     return _trajectory_explicit_started_at(trajectory) or ingested_at
 
 
 def _trajectory_explicit_started_at(trajectory: AtifTrajectory) -> datetime | None:
+    """Return the earliest explicit timestamp in a trajectory tree."""
     started_candidates = [_timestamp(step) for step in trajectory.steps]
     started_candidates.extend(_invocation_window(step.extra)[0] for step in trajectory.steps)
     started_candidates.extend(
@@ -840,6 +855,7 @@ def _trajectory_explicit_started_at(trajectory: AtifTrajectory) -> datetime | No
 
 
 def _trajectory_ended_at(trajectory: AtifTrajectory) -> datetime | None:
+    """Return the latest explicit timestamp in a trajectory tree."""
     ended_candidates = [_timestamp(step) for step in trajectory.steps]
     ended_candidates.extend(_invocation_window(step.extra)[1] for step in trajectory.steps)
     ended_candidates.extend(

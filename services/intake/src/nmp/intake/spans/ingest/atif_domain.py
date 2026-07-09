@@ -277,11 +277,13 @@ class AtifTrajectory(BaseModel):
 
     @model_validator(mode="after")
     def validate_subagent_trajectory_ids(self) -> AtifTrajectory:
+        """Validate IDs for embedded trajectories at this tree level."""
         validate_atif_subagent_trajectory_ids(self.subagent_trajectories)
         return self
 
 
 def validate_atif_subagent_trajectory_ids(subagent_trajectories: list[AtifTrajectory] | None) -> None:
+    """Require unique trajectory IDs for embedded sibling trajectories."""
     if not subagent_trajectories:
         return
     seen: set[str] = set()
