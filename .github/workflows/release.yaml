@@ -460,12 +460,33 @@ jobs:
       - run: echo "::notice::Placeholder - dispatch selected wheels for staging"
 
   dispatch-container-stage:
-    name: Dispatch container staging
+    name: Dispatch container builds
     needs: plan-release
     if: needs.plan-release.outputs.has_containers == 'true'
     runs-on: ubuntu-latest
     steps:
-      - run: echo "::notice::Placeholder - dispatch selected containers for staging"
+      - name: Dispatch container builds
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
+          SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
+          RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
+          CONTAINER_IDS: ${{ needs.plan-release.outputs.container_ids }}
+        with:
+          github-token: ${{ secrets.CI_DISPATCH_TOKEN }}
+          script: |
+            const [owner, repo] = process.env.DISPATCH_REPO.split("/");
+
+            await github.rest.repos.createDispatchEvent({
+              owner,
+              repo,
+              event_type: "release",
+              client_payload: {
+                ref: process.env.SOURCE_SHA,
+                version: process.env.RELEASE_LABEL,
+                containers: JSON.parse(process.env.CONTAINER_IDS),
+              },
+            });
 
   stage-helm:
     name: Stage Helm chart
