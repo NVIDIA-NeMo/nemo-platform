@@ -76,7 +76,8 @@ env:
   RELEASE_SDK_IDS: '["nemo-platform", "nemo-platform-plugin"]'
   RELEASE_CONTAINER_IDS: >-
     ["nmp-api", "nmp-automodel-tasks", "nmp-automodel-training",
-    "nmp-unsloth-training", "auditor-tasks", "safe-synthesizer-tasks"]
+    "nmp-core", "nmp-cpu-tasks", "nmp-unsloth-training",
+    "auditor-tasks", "safe-synthesizer-tasks"]
   RELEASE_HELM_ID: nemo-platform
   RELEASE_HELM_PATH: k8s/helm
 
