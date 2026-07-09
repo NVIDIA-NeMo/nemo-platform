@@ -843,6 +843,7 @@ resources:
               atif_step_user: AtifStepUser
               atif_subagent_trajectory_ref: AtifSubagentTrajectoryRef
               atif_tool_call: AtifToolCall
+              atif_trajectory: AtifTrajectory
             methods:
               create: post /apis/intake/v2/workspaces/{workspace}/ingest/atif
           chat_completions:

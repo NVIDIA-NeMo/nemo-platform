@@ -91,6 +91,51 @@ class TestAtif:
                     "timestamp": parse_datetime("2019-12-27T18:11:19.117Z"),
                 }
             ],
+            subagent_trajectories=[
+                {
+                    "agent": {
+                        "name": "name",
+                        "version": "version",
+                        "extra": {"foo": "bar"},
+                        "model_name": "model_name",
+                        "tool_definitions": [{"foo": "bar"}],
+                    },
+                    "continued_trajectory_ref": "continued_trajectory_ref",
+                    "evaluation_context": {
+                        "evaluation_id": "evaluation_id",
+                        "evaluation_run_id": "evaluation_run_id",
+                        "evaluation_sha": "evaluation_sha",
+                        "metadata": {"foo": "bar"},
+                        "test_case_id": "test_case_id",
+                    },
+                    "extra": {"foo": "bar"},
+                    "final_metrics": {
+                        "extra": {"foo": "bar"},
+                        "total_cached_tokens": 0,
+                        "total_completion_tokens": 0,
+                        "total_cost_usd": 0,
+                        "total_prompt_tokens": 0,
+                        "total_steps": 0,
+                    },
+                    "notes": "notes",
+                    "schema_version": "ATIF-v1.0",
+                    "session_id": "session_id",
+                    "steps": [
+                        {
+                            "source": "system",
+                            "step_id": 1,
+                            "extra": {"foo": "bar"},
+                            "is_copied_context": True,
+                            "llm_call_count": 0,
+                            "message": "string",
+                            "timestamp": parse_datetime("2019-12-27T18:11:19.117Z"),
+                        }
+                    ],
+                    "subagent_trajectories": [],
+                    "trajectory_id": "trajectory_id",
+                }
+            ],
+            trajectory_id="trajectory_id",
         )
         assert atif is None
 
@@ -209,6 +254,51 @@ class TestAsyncAtif:
                     "timestamp": parse_datetime("2019-12-27T18:11:19.117Z"),
                 }
             ],
+            subagent_trajectories=[
+                {
+                    "agent": {
+                        "name": "name",
+                        "version": "version",
+                        "extra": {"foo": "bar"},
+                        "model_name": "model_name",
+                        "tool_definitions": [{"foo": "bar"}],
+                    },
+                    "continued_trajectory_ref": "continued_trajectory_ref",
+                    "evaluation_context": {
+                        "evaluation_id": "evaluation_id",
+                        "evaluation_run_id": "evaluation_run_id",
+                        "evaluation_sha": "evaluation_sha",
+                        "metadata": {"foo": "bar"},
+                        "test_case_id": "test_case_id",
+                    },
+                    "extra": {"foo": "bar"},
+                    "final_metrics": {
+                        "extra": {"foo": "bar"},
+                        "total_cached_tokens": 0,
+                        "total_completion_tokens": 0,
+                        "total_cost_usd": 0,
+                        "total_prompt_tokens": 0,
+                        "total_steps": 0,
+                    },
+                    "notes": "notes",
+                    "schema_version": "ATIF-v1.0",
+                    "session_id": "session_id",
+                    "steps": [
+                        {
+                            "source": "system",
+                            "step_id": 1,
+                            "extra": {"foo": "bar"},
+                            "is_copied_context": True,
+                            "llm_call_count": 0,
+                            "message": "string",
+                            "timestamp": parse_datetime("2019-12-27T18:11:19.117Z"),
+                        }
+                    ],
+                    "subagent_trajectories": [],
+                    "trajectory_id": "trajectory_id",
+                }
+            ],
+            trajectory_id="trajectory_id",
         )
         assert atif is None
 
