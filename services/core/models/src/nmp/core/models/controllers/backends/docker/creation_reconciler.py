@@ -27,7 +27,9 @@ from docker.models.volumes import Volume
 from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
 from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.jobs.image import get_qualified_image
+from nemo_platform_plugin.secrets.client import AsyncSecretsClient
 from nmp.common.config import get_auth_config, get_platform_config
 from nmp.common.config.base import LOOPBACK_ADDRESSES
 from nmp.common.docker.gpu_pool import DockerGPUPool, GPUAllocationError
@@ -1234,7 +1236,12 @@ class DockerDeploymentCreationReconciler:
                             deployment.workspace,
                             deployment.name,
                         )
-                    response = await sdk.secrets.access(deployment.hf_token_secret_name, workspace=deployment.workspace)
+                    secrets = client_from_platform(sdk, AsyncSecretsClient)
+                    response = (
+                        await secrets.access_secret(
+                            name=deployment.hf_token_secret_name, workspace=deployment.workspace
+                        )
+                    ).data()
                     hf_token = response.value
                     logger.info("Retrieved HF token from secrets service")
                 except Exception as e:

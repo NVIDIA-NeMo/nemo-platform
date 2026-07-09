@@ -13,14 +13,14 @@ HuggingFace storage backends.
 import httpx
 from huggingface_hub import HfApi, hf_hub_download, hf_hub_url, snapshot_download
 from nemo_platform import NeMoPlatform
-from nemo_platform.types.files.fileset import Fileset
+from nemo_platform_plugin.files.types import FilesetOutput
 from nmp.core.files.testing.utils import create_fileset
 
 
 class TestHuggingFaceClientLibrary:
     """Test HuggingFace Hub client library compatibility with the files service."""
 
-    def test_hf_hub_download_nested_files(self, sdk: NeMoPlatform, fileset: Fileset, tmp_path, hf_asgi_client):
+    def test_hf_hub_download_nested_files(self, sdk: NeMoPlatform, fileset: FilesetOutput, tmp_path, hf_asgi_client):
         """Test downloading nested files using huggingface_hub client.
 
         This test:
@@ -68,7 +68,7 @@ class TestHuggingFaceClientLibrary:
             assert downloaded_file.exists(), f"File {path} was not downloaded"
             assert downloaded_file.read_bytes() == expected_content, f"Content mismatch for {path}"
 
-    def test_hf_hub_download_single_file(self, sdk: NeMoPlatform, fileset: Fileset, tmp_path, hf_asgi_client):
+    def test_hf_hub_download_single_file(self, sdk: NeMoPlatform, fileset: FilesetOutput, tmp_path, hf_asgi_client):
         """Test downloading a single file using hf_hub_download."""
         test_content = b"This is a test file for single download"
         test_path = "single_file.txt"
@@ -95,7 +95,7 @@ class TestHuggingFaceClientLibrary:
         with open(local_path, "rb") as f:
             assert f.read() == test_content
 
-    def test_hf_api_list_repo_files(self, sdk: NeMoPlatform, fileset: Fileset, hf_asgi_client):
+    def test_hf_api_list_repo_files(self, sdk: NeMoPlatform, fileset: FilesetOutput, hf_asgi_client):
         """Test listing repository files using HfApi."""
         test_files = {
             "file1.txt": b"content1",
@@ -122,7 +122,7 @@ class TestHuggingFaceClientLibrary:
         listed_files = {sibling.rfilename for sibling in repo_info.siblings}
         assert listed_files == set(test_files.keys())
 
-    def test_hf_hub_url_generates_valid_download_url(self, sdk: NeMoPlatform, fileset: Fileset):
+    def test_hf_hub_url_generates_valid_download_url(self, sdk: NeMoPlatform, fileset: FilesetOutput):
         """Test that hf_hub_url generates a valid URL for file download.
 
         This test verifies that:

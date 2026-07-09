@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 from seed_providers import (
     DEFAULT_HTTP_TIMEOUT_SEC,
     ProviderSeedResult,
@@ -90,19 +91,38 @@ class TestLoadManifest:
 
 
 class TestCreateSecret:
-    def test_creates_secret(self) -> None:
+    @patch("nemo_platform_plugin.client.adapter.client_from_platform")
+    def test_creates_secret(self, mock_client_from_platform: MagicMock) -> None:
         sdk = MagicMock()
-        _create_secret(sdk, "ws", "my-secret", "val")
-        sdk.secrets.create.assert_called_once_with(name="my-secret", value="val", workspace="ws")
+        mock_secrets = MagicMock()
+        mock_client_from_platform.return_value = mock_secrets
 
-    def test_ignores_conflict(self) -> None:
-        sdk = MagicMock()
-        sdk.secrets.create.side_effect = Exception("409 Conflict: already exists")
         _create_secret(sdk, "ws", "my-secret", "val")
 
-    def test_raises_on_other_error(self) -> None:
+        mock_secrets.create_secret.assert_called_once()
+        kwargs = mock_secrets.create_secret.call_args.kwargs
+        body = kwargs["body"]
+        assert isinstance(body, PlatformSecretCreateRequest)
+        assert body.name == "my-secret"
+        assert body.value.get_secret_value() == "val"
+        assert kwargs["workspace"] == "ws"
+
+    @patch("nemo_platform_plugin.client.adapter.client_from_platform")
+    def test_ignores_conflict(self, mock_client_from_platform: MagicMock) -> None:
         sdk = MagicMock()
-        sdk.secrets.create.side_effect = RuntimeError("network error")
+        mock_secrets = MagicMock()
+        mock_secrets.create_secret.side_effect = Exception("409 Conflict: already exists")
+        mock_client_from_platform.return_value = mock_secrets
+
+        _create_secret(sdk, "ws", "my-secret", "val")
+
+    @patch("nemo_platform_plugin.client.adapter.client_from_platform")
+    def test_raises_on_other_error(self, mock_client_from_platform: MagicMock) -> None:
+        sdk = MagicMock()
+        mock_secrets = MagicMock()
+        mock_secrets.create_secret.side_effect = RuntimeError("network error")
+        mock_client_from_platform.return_value = mock_secrets
+
         with pytest.raises(RuntimeError, match="network error"):
             _create_secret(sdk, "ws", "my-secret", "val")
 
@@ -228,9 +248,14 @@ class TestCreateVirtualModel:
 
 
 class TestSeedAll:
+    @patch("nemo_platform_plugin.client.adapter.client_from_platform")
     @patch("nemo_platform.NeMoPlatform")
     def test_skips_unset_env_vars(
-        self, mock_sdk_cls: MagicMock, manifest_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        mock_sdk_cls: MagicMock,
+        mock_client_from_platform: MagicMock,
+        manifest_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.delenv("BUILD_KEY", raising=False)
         monkeypatch.delenv("INF_KEY", raising=False)
@@ -238,16 +263,22 @@ class TestSeedAll:
         result = seed_all(manifest_path, base_url="http://localhost:8080")
         assert result.ok
         assert all(p.status == "skipped" for p in result.providers)
-        mock_sdk_cls.return_value.secrets.create.assert_not_called()
+        mock_client_from_platform.return_value.create_secret.assert_not_called()
 
+    @patch("nemo_platform_plugin.client.adapter.client_from_platform")
     @patch("nemo_platform.NeMoPlatform")
     def test_seeds_providers(
-        self, mock_sdk_cls: MagicMock, manifest_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        mock_sdk_cls: MagicMock,
+        mock_client_from_platform: MagicMock,
+        manifest_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setenv("BUILD_KEY", "nvapi-xxx")
         monkeypatch.setenv("INF_KEY", "sk-yyy")
 
         sdk = mock_sdk_cls.return_value
+        mock_secrets = mock_client_from_platform.return_value
         provider_obj = MagicMock()
         provider_obj.served_models = [MagicMock(model_entity_id="ns/m")]
         sdk.inference.providers.retrieve.return_value = provider_obj
@@ -257,12 +288,17 @@ class TestSeedAll:
         assert len(result.providers) == 2
         assert result.providers[0].status == "ok"
         assert result.providers[1].status == "ok"
-        assert sdk.secrets.create.call_count == 2
+        assert mock_secrets.create_secret.call_count == 2
         assert sdk.inference.providers.create.call_count == 2
 
+    @patch("nemo_platform_plugin.client.adapter.client_from_platform")
     @patch("nemo_platform.NeMoPlatform")
     def test_partial_env_skips_missing(
-        self, mock_sdk_cls: MagicMock, manifest_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        mock_sdk_cls: MagicMock,
+        mock_client_from_platform: MagicMock,
+        manifest_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setenv("BUILD_KEY", "nvapi-xxx")
         monkeypatch.delenv("INF_KEY", raising=False)
@@ -272,15 +308,19 @@ class TestSeedAll:
         assert result.providers[0].status == "ok"
         assert result.providers[1].status == "skipped"
 
+    @patch("nemo_platform_plugin.client.adapter.client_from_platform")
     @patch("nemo_platform.NeMoPlatform")
     def test_error_on_create_marks_status(
-        self, mock_sdk_cls: MagicMock, manifest_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        mock_sdk_cls: MagicMock,
+        mock_client_from_platform: MagicMock,
+        manifest_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setenv("BUILD_KEY", "nvapi-xxx")
         monkeypatch.delenv("INF_KEY", raising=False)
 
-        sdk = mock_sdk_cls.return_value
-        sdk.secrets.create.side_effect = RuntimeError("kaboom")
+        mock_client_from_platform.return_value.create_secret.side_effect = RuntimeError("kaboom")
 
         result = seed_all(manifest_path, base_url="http://localhost:8080")
         assert not result.ok

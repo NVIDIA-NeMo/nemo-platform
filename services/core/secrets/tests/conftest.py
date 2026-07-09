@@ -7,7 +7,7 @@ from typing import Generator
 
 import pytest
 from fastapi.testclient import TestClient
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.secrets.client import SecretsClient
 from nmp.common.secrets.encryption import get_base64_encoded_random_bytes
 from nmp.core.secrets.config import SecretsServiceConfig
 from nmp.core.secrets.service import SecretsService
@@ -60,9 +60,9 @@ def test_client(service_config) -> Generator[TestClient, None, None]:
 
 
 @pytest.fixture
-def sdk(test_client: TestClient) -> NeMoPlatform:
-    """SDK client backed by the test client."""
-    return NeMoPlatform(base_url="http://testserver", http_client=test_client)
+def sdk(test_client: TestClient) -> SecretsClient:
+    """Typed Secrets client backed by the test client."""
+    return SecretsClient(base_url="http://testserver", workspace="default", http_client=test_client)
 
 
 @pytest.fixture

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -58,19 +58,17 @@ class TestJobLogsAPI:
         """Create a real dispatcher with test entity store and mock SDK."""
         projects = ["default/test-project"]
         with create_test_client(client_type=EntityClient, projects=projects) as mock_store:
-            # Create mock SDK
             mock_nmp_client = MagicMock()
-            mock_nmp_client.files = MagicMock()
-            mock_nmp_client.files.filesets = MagicMock()
-            mock_nmp_client.files.filesets.create = AsyncMock()
-            mock_nmp_client.files.filesets.delete = AsyncMock()
-            mock_fileset = MagicMock()
-            mock_fileset.name = "test-fileset-id"
-            mock_nmp_client.files.filesets.create.return_value = mock_fileset
+            mock_files = AsyncMock()
+            mock_fileset_obj = MagicMock()
+            mock_fileset_obj.name = "test-fileset-id"
+            mock_resp = MagicMock()
+            mock_resp.data.return_value = mock_fileset_obj
+            mock_files.create_fileset.return_value = mock_resp
 
-            # Create dispatcher with the test store
-            dispatcher = JobDispatcher(store=mock_store, sdk=mock_nmp_client)
-            yield dispatcher
+            with patch("nmp.core.jobs.app.dispatcher.client_from_platform", return_value=mock_files):
+                dispatcher = JobDispatcher(store=mock_store, sdk=mock_nmp_client)
+                yield dispatcher
 
     @pytest.fixture
     def test_client(self, dispatcher, mock_logs_client):

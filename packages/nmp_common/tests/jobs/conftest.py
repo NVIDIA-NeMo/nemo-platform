@@ -64,8 +64,6 @@ def mock_fileset_fs():
     fs._put_file = AsyncMock()
     fs._get = AsyncMock()
     fs._get_file = AsyncMock()
-    fs._sdk = MagicMock()
-    fs._sdk.files.filesets.create = AsyncMock()
     # Provide the fsspec global event loop for sync-to-async bridging
     fs.loop = fsspec.asyn.get_loop()
     return fs
@@ -85,9 +83,6 @@ def mock_sdk():
     sdk._custom_headers = None
     sdk._client = MagicMock()
     sdk.files = MagicMock()
-    sdk.files.filesets = MagicMock()
-    sdk.files.filesets.create = MagicMock()
-    sdk.files.filesets.retrieve = MagicMock()
     sdk.files.upload_content = MagicMock()
 
     # Mock list to return ListFilesResponse with empty data by default
@@ -106,9 +101,12 @@ def fileset_manager(mock_sdk, mock_fileset_fs) -> FilesetFileManager:
     """Create FilesetFileManager with mocked FilesetFileSystem.
 
     The FilesetFileManager creates FilesetFileSystem in __post_init__, so we must
-    patch it to inject our mock.
+    patch both client_from_platform and FilesetFileSystem to inject our mock.
     """
-    with mock.patch("nemo_platform_plugin.jobs.file_manager.FilesetFileSystem") as mock_fs_class:
+    with (
+        mock.patch("nemo_platform_plugin.jobs.file_manager.client_from_platform"),
+        mock.patch("nemo_platform_plugin.jobs.file_manager.FilesetFileSystem") as mock_fs_class,
+    ):
         mock_fs_class.return_value = mock_fileset_fs
         return FilesetFileManager(
             workspace=DEFAULT_WORKSPACE,

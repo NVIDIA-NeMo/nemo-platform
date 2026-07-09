@@ -101,6 +101,34 @@ def test_send_get_with_path_params() -> None:
     )
 
 
+def test_send_url_encodes_path_params() -> None:
+    mock_http = MagicMock(spec=httpx.Client)
+    mock_http.request.return_value = httpx.Response(
+        200,
+        request=httpx.Request("GET", f"{BASE}/apis/test/v2/items/name%20with%20%3F%23%2F"),
+        json={"id": 1, "name": "encoded"},
+    )
+
+    client = NemoClient(base_url=BASE, http_client=mock_http)
+    client.send(GET_ITEM(name="name with ?#/"))
+
+    assert mock_http.request.call_args.args[1] == f"{BASE}/apis/test/v2/items/name%20with%20%3F%23%2F"
+
+
+def test_send_url_encodes_default_workspace() -> None:
+    mock_http = MagicMock(spec=httpx.Client)
+    mock_http.request.return_value = httpx.Response(
+        200,
+        request=httpx.Request("GET", f"{BASE}/apis/test/v2/workspaces/team%20one%2Fwest/items"),
+        json={"id": 1, "name": "encoded"},
+    )
+
+    client = NemoClient(base_url=BASE, workspace="team one/west", http_client=mock_http)
+    client.send(GET_WS_ITEM())
+
+    assert mock_http.request.call_args.args[1] == f"{BASE}/apis/test/v2/workspaces/team%20one%2Fwest/items"
+
+
 def test_send_delete() -> None:
     mock_http = MagicMock(spec=httpx.Client)
     mock_http.request.return_value = httpx.Response(

@@ -77,6 +77,8 @@ from nemo_platform_ext.config.models import (
     Context,
     ContextDefinition,
 )
+from nemo_platform_plugin.client.errors import NotFoundError
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest, PlatformSecretUpdateRequest
 
 SETUP_MOD = "nemo_platform_ext.cli.commands.setup"
 
@@ -241,19 +243,67 @@ class TestCheckOllamaRunning:
 # ---------------------------------------------------------------------------
 
 
+def _not_found_error() -> NotFoundError:
+    """Build a NotFoundError backed by a mock 404 response for `get_secret`."""
+    resp = MagicMock(spec=httpx.Response)
+    resp.status_code = 404
+    resp.json.side_effect = ValueError("no body")
+    resp.text = "not found"
+    resp.reason_phrase = "Not Found"
+    return NotFoundError(resp)
+
+
+def _make_mock_secrets_client(*, secret_exists: bool = False) -> MagicMock:
+    """Build a mock typed SecretsClient with get/create/update as MagicMocks."""
+    secrets = MagicMock()
+    secrets.get_secret = MagicMock()
+    secrets.create_secret = MagicMock()
+    secrets.update_secret = MagicMock()
+    if secret_exists:
+        secrets.get_secret.return_value = MagicMock()
+    else:
+        secrets.get_secret.side_effect = _not_found_error()
+    return secrets
+
+
 def _make_mock_client(*, provider_exists: bool = False, secret_exists: bool = False) -> MagicMock:
-    """Build a mock NeMoPlatform client with configurable provider/secret state."""
+    """Build a mock NeMoPlatform client with configurable provider/secret state.
+
+    The typed secrets client returned by ``client_from_platform`` (patched via
+    the ``_patch_secrets_client`` fixture) is stashed on ``client.mock_secrets``
+    so tests can assert on ``get_secret``/``create_secret``/``update_secret``.
+    """
     client = MagicMock()
     client.inference.providers = MagicMock(spec=ProvidersResource)
-    if secret_exists:
-        client.secrets.retrieve.return_value = MagicMock()
-    else:
-        client.secrets.retrieve.side_effect = Exception("not found")
+    client.mock_secrets = _make_mock_secrets_client(secret_exists=secret_exists)
     if provider_exists:
         client.inference.providers.retrieve.return_value = MagicMock()
     else:
         client.inference.providers.retrieve.side_effect = Exception("not found")
     return client
+
+
+@pytest.fixture(autouse=True)
+def _patch_secrets_client():
+    """Route ``client_from_platform(client, SecretsClient)`` to ``client.mock_secrets``.
+
+    The secrets helpers in setup.py obtain a typed ``SecretsClient`` via
+    ``client_from_platform``. Real adaptation would run against a MagicMock and
+    blow up in ``raise_for_status``, so tests patch it to return the mock secrets
+    client attached to the mock platform client (falling back to a fresh mock for
+    plain ``MagicMock()`` clients that lack ``mock_secrets``).
+    """
+
+    def _resolve(client, _client_cls):
+        secrets = getattr(client, "mock_secrets", None)
+        if isinstance(secrets, MagicMock):
+            return secrets
+        fallback = _make_mock_secrets_client()
+        client.mock_secrets = fallback
+        return fallback
+
+    with patch(f"{SETUP_MOD}.client_from_platform", side_effect=_resolve):
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -343,7 +393,7 @@ class TestAutoSetup:
         with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test123"}, clear=True):
             result = _auto_setup(client, "default")
         assert result is True
-        client.secrets.create.assert_called_once()
+        client.mock_secrets.create_secret.assert_called_once()
         client.inference.providers.create.assert_called_once()
         create_kwargs = client.inference.providers.create.call_args
         assert create_kwargs.kwargs["name"] == "openai"
@@ -1188,10 +1238,13 @@ class TestProviderIdempotency:
             api_key="new-key-value",
             workspace="default",
         )
-        client.secrets.update.assert_called_once_with(
-            "nvidia-build-api-key", value="new-key-value", workspace="default"
-        )
-        client.secrets.create.assert_not_called()
+        client.mock_secrets.update_secret.assert_called_once()
+        update_call = client.mock_secrets.update_secret.call_args
+        assert update_call.kwargs["name"] == "nvidia-build-api-key"
+        assert update_call.kwargs["workspace"] == "default"
+        assert isinstance(update_call.kwargs["body"], PlatformSecretUpdateRequest)
+        assert update_call.kwargs["body"].value.get_secret_value() == "new-key-value"
+        client.mock_secrets.create_secret.assert_not_called()
         client.inference.providers.create.assert_called_once()
         client.inference.providers.update.assert_not_called()
 
@@ -1205,8 +1258,13 @@ class TestProviderIdempotency:
             api_key="my-key",
             workspace="default",
         )
-        client.secrets.create.assert_called_once_with(name="nvidia-build-api-key", value="my-key", workspace="default")
-        client.secrets.update.assert_not_called()
+        client.mock_secrets.create_secret.assert_called_once()
+        create_call = client.mock_secrets.create_secret.call_args
+        assert create_call.kwargs["workspace"] == "default"
+        assert isinstance(create_call.kwargs["body"], PlatformSecretCreateRequest)
+        assert create_call.kwargs["body"].name == "nvidia-build-api-key"
+        assert create_call.kwargs["body"].value.get_secret_value() == "my-key"
+        client.mock_secrets.update_secret.assert_not_called()
         client.inference.providers.update.assert_called_once()
         call_kwargs = client.inference.providers.update.call_args.kwargs
         assert call_kwargs["api_key_secret_name"] == "nvidia-build-api-key"
@@ -1223,9 +1281,9 @@ class TestProviderIdempotency:
             api_key="sk-test",
             workspace="default",
         )
-        client.secrets.create.assert_called_once()
+        client.mock_secrets.create_secret.assert_called_once()
         client.inference.providers.create.assert_called_once()
-        client.secrets.update.assert_not_called()
+        client.mock_secrets.update_secret.assert_not_called()
         client.inference.providers.update.assert_not_called()
 
     def test_existing_provider_updated_with_extra_headers(self):
@@ -1252,7 +1310,7 @@ class TestProviderIdempotency:
         with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-new-key"}, clear=True):
             result = _auto_setup(client, "default")
         assert result is True
-        client.secrets.create.assert_called_once()
+        client.mock_secrets.create_secret.assert_called_once()
         client.inference.providers.update.assert_called_once()
         call_kwargs = client.inference.providers.update.call_args.kwargs
         assert call_kwargs["api_key_secret_name"] == "openai-api-key"
@@ -1263,8 +1321,13 @@ class TestProviderIdempotency:
         with patch.dict("os.environ", {"NVIDIA_API_KEY": "nvapi-new"}, clear=True):
             result = _auto_setup(client, "default")
         assert result is True
-        client.secrets.update.assert_called_once_with("nvidia-build-api-key", value="nvapi-new", workspace="default")
-        client.secrets.create.assert_not_called()
+        client.mock_secrets.update_secret.assert_called_once()
+        update_call = client.mock_secrets.update_secret.call_args
+        assert update_call.kwargs["name"] == "nvidia-build-api-key"
+        assert update_call.kwargs["workspace"] == "default"
+        assert isinstance(update_call.kwargs["body"], PlatformSecretUpdateRequest)
+        assert update_call.kwargs["body"].value.get_secret_value() == "nvapi-new"
+        client.mock_secrets.create_secret.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

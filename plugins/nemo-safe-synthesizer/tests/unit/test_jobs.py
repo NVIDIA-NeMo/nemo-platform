@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-from nemo_platform import NotFoundError, PermissionDeniedError
 from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
+from nemo_platform_plugin.client.errors import PermissionDeniedError as ClientPermissionDeniedError
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_safe_synthesizer.config.replace_pii import ClassifyConfig, Globals, PiiReplacerConfig, StepDefinition
 from nemo_safe_synthesizer_plugin.api.v2.jobs import endpoints
@@ -26,27 +26,55 @@ def _client_error(error_cls, status_code: int, detail: str):
     return error_cls(response)
 
 
-def _patch_jobs_client(jobs_client: MagicMock):
-    """Patch ``client_from_platform`` in the endpoints module to return *jobs_client*.
+def _patch_jobs_client(jobs_client: MagicMock, files_client: MagicMock):
+    """Patch ``client_from_platform`` in the endpoints module, dispatching by class.
 
-    The pretrained-model path routes adapter-result lookups through
-    ``client_from_platform(sdk, AsyncJobsClient).get_job_result(...)``.
+    The compiler validates the ``data_source`` fileset via
+    ``client_from_platform(sdk, AsyncFilesClient).get_fileset(...)`` and then resolves
+    the pretrained-model adapter via
+    ``client_from_platform(sdk, AsyncJobsClient).get_job_result(...)`` — return the
+    matching mock for each.
     """
+    from nemo_platform_plugin.files.client import AsyncFilesClient
+    from nemo_platform_plugin.jobs.client import AsyncJobsClient
+
+    def _dispatch(_sdk, client_cls):
+        if client_cls is AsyncJobsClient:
+            return jobs_client
+        if client_cls is AsyncFilesClient:
+            return files_client
+        raise AssertionError(f"unexpected client class: {client_cls!r}")
+
     return patch(
         "nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints.client_from_platform",
-        return_value=jobs_client,
+        side_effect=_dispatch,
     )
 
 
 @pytest.fixture
-def mock_sdk():
+def mock_files_client():
+    mock_client = MagicMock()
+    mock_client.get_fileset = AsyncMock()
+    return mock_client
+
+
+@pytest.fixture
+def mock_sdk(mock_files_client):
     sdk = MagicMock()
-    sdk.files.filesets.retrieve = AsyncMock()
     sdk.inference.providers.retrieve = AsyncMock()
     sdk.models.get_provider_route_openai_url = MagicMock(
         return_value="http://nmp-host/apis/inference-gateway/v2/workspaces/default/provider/my-nim/-/v1"
     )
     return sdk
+
+
+@pytest.fixture(autouse=True)
+def _patch_client_from_platform(mock_files_client):
+    with patch(
+        "nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints.client_from_platform",
+        return_value=mock_files_client,
+    ):
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -79,29 +107,33 @@ async def _compile(spec, mock_sdk):
 
 
 @pytest.mark.asyncio
-async def test_job_config_compiler_validates_data_source(mock_sdk):
+async def test_job_config_compiler_validates_data_source(mock_sdk, mock_files_client):
     spec = _make_spec(data_source="my-workspace/my-fileset#data.csv")
 
     await _compile(spec, mock_sdk)
 
-    mock_sdk.files.filesets.retrieve.assert_awaited_once_with(name="my-fileset", workspace="my-workspace")
+    mock_files_client.get_fileset.assert_awaited_once_with(name="my-fileset", workspace="my-workspace")
 
 
 @pytest.mark.asyncio
-async def test_job_config_compiler_data_source_not_found(mock_sdk):
-    mock_sdk.files.filesets.retrieve.side_effect = NotFoundError(
-        message="not found", response=MagicMock(status_code=404), body=None
-    )
+async def test_job_config_compiler_data_source_not_found(mock_sdk, mock_files_client):
+    mock_response = MagicMock()
+    mock_response.status_code = 404
+    mock_response.json.return_value = {"detail": "not found"}
+    mock_response.text = "not found"
+    mock_files_client.get_fileset.side_effect = ClientNotFoundError(mock_response)
 
     with pytest.raises(PlatformJobCompilationError, match="Could not find fileset"):
         await _compile(_make_spec(), mock_sdk)
 
 
 @pytest.mark.asyncio
-async def test_job_config_compiler_data_source_permission_denied(mock_sdk):
-    mock_sdk.files.filesets.retrieve.side_effect = PermissionDeniedError(
-        message="denied", response=MagicMock(status_code=403), body=None
-    )
+async def test_job_config_compiler_data_source_permission_denied(mock_sdk, mock_files_client):
+    mock_response = MagicMock()
+    mock_response.status_code = 403
+    mock_response.json.return_value = {"detail": "denied"}
+    mock_response.text = "denied"
+    mock_files_client.get_fileset.side_effect = ClientPermissionDeniedError(mock_response)
 
     with pytest.raises(PermissionError, match="Access denied to fileset"):
         await _compile(_make_spec(), mock_sdk)
@@ -120,7 +152,7 @@ async def test_job_config_compiler_with_classify_provider(mock_sdk):
 
 
 @pytest.mark.asyncio
-async def test_job_config_compiler_validates_pretrained_model_job(mock_sdk):
+async def test_job_config_compiler_validates_pretrained_model_job(mock_sdk, mock_files_client):
     jobs_client = MagicMock()
     jobs_client.get_job_result = AsyncMock(
         return_value=MagicMock(artifact_url="default/job-results-prior#results/attempt-1/adapter")
@@ -133,7 +165,7 @@ async def test_job_config_compiler_validates_pretrained_model_job(mock_sdk):
         }
     )
 
-    with _patch_jobs_client(jobs_client):
+    with _patch_jobs_client(jobs_client, mock_files_client):
         await _compile(spec, mock_sdk)
 
     jobs_client.get_job_result.assert_awaited_once_with(
@@ -144,7 +176,7 @@ async def test_job_config_compiler_validates_pretrained_model_job(mock_sdk):
 
 
 @pytest.mark.asyncio
-async def test_plugin_job_config_allows_pretrained_model_job_runtime_config(mock_sdk):
+async def test_plugin_job_config_allows_pretrained_model_job_runtime_config(mock_sdk, mock_files_client):
     jobs_client = MagicMock()
     jobs_client.get_job_result = AsyncMock(
         return_value=MagicMock(artifact_url="default/job-results-prior#results/attempt-1/adapter")
@@ -157,7 +189,7 @@ async def test_plugin_job_config_allows_pretrained_model_job_runtime_config(mock
         }
     )
 
-    with _patch_jobs_client(jobs_client):
+    with _patch_jobs_client(jobs_client, mock_files_client):
         compiled = await _compile(spec, mock_sdk)
     step = next(iter(compiled["steps"]))
     reparsed = PluginJobConfig.model_validate(step["config"])
@@ -208,7 +240,7 @@ def test_runtime_job_config_preserves_pretrained_model_without_pretrained_model_
 
 
 @pytest.mark.asyncio
-async def test_job_config_compiler_pretrained_model_job_not_found(mock_sdk):
+async def test_job_config_compiler_pretrained_model_job_not_found(mock_sdk, mock_files_client):
     jobs_client = MagicMock()
     jobs_client.get_job_result = AsyncMock(side_effect=_client_error(ClientNotFoundError, 404, "not found"))
     spec = PluginJobConfig.model_validate(
@@ -219,7 +251,7 @@ async def test_job_config_compiler_pretrained_model_job_not_found(mock_sdk):
         }
     )
 
-    with _patch_jobs_client(jobs_client):
+    with _patch_jobs_client(jobs_client, mock_files_client):
         with pytest.raises(PlatformJobCompilationError, match="Could not find adapter result"):
             await _compile(spec, mock_sdk)
 

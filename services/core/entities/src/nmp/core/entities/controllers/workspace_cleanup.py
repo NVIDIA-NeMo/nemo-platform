@@ -7,6 +7,7 @@ import threading
 
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.jobs.client import AsyncJobsClient
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from nmp.common.api.filter import ComparisonOperation, FilterOperator
@@ -21,7 +22,9 @@ tracer = trace.get_tracer(__name__)
 meter = metrics.get_meter(__name__)
 logger = logging.getLogger(__name__)
 
-_TERMINAL_JOB_STATUSES: frozenset[PlatformJobStatus] = frozenset({"completed", "error", "cancelled"})
+_TERMINAL_JOB_STATUSES: frozenset[PlatformJobStatus] = frozenset(
+    {PlatformJobStatus.COMPLETED, PlatformJobStatus.ERROR, PlatformJobStatus.CANCELLED}
+)
 
 
 class WorkspaceCleanup(Controller):
@@ -174,12 +177,13 @@ class WorkspaceCleanup(Controller):
     async def _cleanup_filesets(self, workspace: Workspace) -> None:
         logger.info(f"Cleaning up filesets for workspace: {workspace.name}")
         try:
-            filesets_response = await self._nmp_sdk.files.filesets.list(workspace=workspace.name)
+            files = client_from_platform(self._nmp_sdk, AsyncFilesClient)
+            filesets_response = await files.list_filesets(workspace=workspace.name)
 
             async for fileset in filesets_response.items():
                 try:
                     logger.info(f"Deleting fileset: {fileset.name}")
-                    await self._nmp_sdk.files.filesets.delete(
+                    await files.delete_fileset(
                         name=fileset.name,
                         workspace=workspace.name,
                     )

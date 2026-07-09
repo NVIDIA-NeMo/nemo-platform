@@ -22,6 +22,9 @@ import nemo_evaluator.shared.metric_bundles.cloudpickle  # noqa: F401
 import nemo_evaluator.shared.metric_bundles.inline  # noqa: F401
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import AsyncFilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest
 from pydantic import ValidationError
 
 #: Filename of the serialized bundle stored within each metric's fileset.
@@ -71,26 +74,30 @@ async def store_bundle(sdk: AsyncNeMoPlatform, workspace: str, name: str, bundle
     """
     fileset = _new_fileset_name()
     body = bundle.model_dump_json().encode("utf-8")
+    files = client_from_platform(sdk, AsyncFilesClient)
     try:
-        await sdk.files.filesets.create(
-            name=fileset,
+        description = f"Stored metric bundle for {workspace}/{name}."
+        await files.create_fileset(
+            body=CreateFilesetRequest(
+                name=fileset,
+                description=description[:255],
+            ),
             workspace=workspace,
-            description=f"Stored metric bundle for {workspace}/{name}.",
         )
     except Exception as exc:
         raise MetricBundleStorageError(f"failed to create fileset for metric bundle {workspace}/{name}") from exc
     try:
-        await sdk.files.upload_content(
+        await files.upload_file(
+            path=BUNDLE_FILENAME,
             content=body,
-            remote_path=BUNDLE_FILENAME,
-            fileset=fileset,
+            name=fileset,
             workspace=workspace,
         )
     except Exception as exc:
         # Roll back the just-created (now-empty) fileset so a failed upload
         # doesn't leak it, then surface a typed storage error.
         try:
-            await sdk.files.filesets.delete(name=fileset, workspace=workspace)
+            await files.delete_fileset(name=fileset, workspace=workspace)
         except Exception:
             logger.warning(
                 "Failed to clean up fileset after a failed metric bundle upload; storage may be leaked",
@@ -110,8 +117,10 @@ async def load_bundle(sdk: AsyncNeMoPlatform, bundle_ref: str, *, expected_diges
     verified against it to detect drift or corruption.
     """
     workspace, fileset, path = parse_bundle_ref(bundle_ref)
+    files = client_from_platform(sdk, AsyncFilesClient)
     try:
-        data = await sdk.files.download_content(remote_path=path, fileset=fileset, workspace=workspace)
+        response = await files.download_file(path=path, workspace=workspace, name=fileset)
+        data = await response.read()
     except Exception as exc:
         raise MetricBundleStorageError(f"failed to download metric bundle from {bundle_ref!r}") from exc
     try:
@@ -130,4 +139,5 @@ async def load_bundle(sdk: AsyncNeMoPlatform, bundle_ref: str, *, expected_diges
 async def delete_bundle_by_ref(sdk: AsyncNeMoPlatform, bundle_ref: str) -> None:
     """Delete the specific fileset a bundle reference points at."""
     workspace, fileset, _ = parse_bundle_ref(bundle_ref)
-    await sdk.files.filesets.delete(name=fileset, workspace=workspace)
+    files = client_from_platform(sdk, AsyncFilesClient)
+    await files.delete_fileset(name=fileset, workspace=workspace)

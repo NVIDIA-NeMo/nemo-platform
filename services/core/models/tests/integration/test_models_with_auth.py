@@ -23,6 +23,11 @@ from unittest.mock import patch
 
 import pytest
 from nemo_platform import NeMoPlatform, PermissionDeniedError
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest
+from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 from nmp.core.auth.app.bundle import build_authorization_data as _real_build_authorization_data
 from nmp.core.files.service import FilesService
 from nmp.core.models.config import config as models_config
@@ -36,6 +41,7 @@ from nmp.testing import (
     short_unique_name,
     unique_email,
 )
+from pydantic import SecretStr
 
 
 async def _build_authorization_data_without_secrets(entities_client=None):
@@ -611,7 +617,10 @@ class TestProviderSecretPermissions:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.secrets.create(workspace=workspace, name="my-api-key", value="test-value")
+        client_from_platform(admin_sdk, SecretsClient).create_secret(
+            body=PlatformSecretCreateRequest(name="my-api-key", value=SecretStr("test-value")),
+            workspace=workspace,
+        )
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -636,7 +645,10 @@ class TestProviderSecretPermissions:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.secrets.create(workspace=workspace, name="my-api-key", value="test-value")
+        client_from_platform(admin_sdk, SecretsClient).create_secret(
+            body=PlatformSecretCreateRequest(name="my-api-key", value=SecretStr("test-value")),
+            workspace=workspace,
+        )
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -661,7 +673,10 @@ class TestProviderSecretPermissions:
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
             admin_sdk.workspaces.create(name=workspace)
-            admin_sdk.secrets.create(workspace=workspace, name="should-be-denied", value="test")
+            client_from_platform(admin_sdk, SecretsClient).create_secret(
+                body=PlatformSecretCreateRequest(name="should-be-denied", value=SecretStr("test")),
+                workspace=workspace,
+            )
             grant_workspace_role(
                 admin_sdk,
                 workspace=workspace,
@@ -694,7 +709,10 @@ class TestProviderSecretPermissions:
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
             admin_sdk.workspaces.create(name=workspace)
-            admin_sdk.secrets.create(workspace=workspace, name="should-be-denied", value="test")
+            client_from_platform(admin_sdk, SecretsClient).create_secret(
+                body=PlatformSecretCreateRequest(name="should-be-denied", value=SecretStr("test")),
+                workspace=workspace,
+            )
             grant_workspace_role(
                 admin_sdk,
                 workspace=workspace,
@@ -1151,7 +1169,9 @@ class TestFilesetPermissions:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.files.filesets.create(workspace=workspace, name=fileset_name)
+        client_from_platform(admin_sdk, FilesClient).create_fileset(
+            workspace=workspace, body=CreateFilesetRequest(name=fileset_name)
+        )
         admin_sdk.files.upload_content(
             content=b"x", remote_path="placeholder.txt", fileset=fileset_name, workspace=workspace
         )
@@ -1179,7 +1199,9 @@ class TestFilesetPermissions:
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
         admin_sdk.models.create(workspace=workspace, name=model_name)
-        admin_sdk.files.filesets.create(workspace=workspace, name=fileset_name)
+        client_from_platform(admin_sdk, FilesClient).create_fileset(
+            workspace=workspace, body=CreateFilesetRequest(name=fileset_name)
+        )
         admin_sdk.files.upload_content(
             content=b"x", remote_path="placeholder.txt", fileset=fileset_name, workspace=workspace
         )
@@ -1207,7 +1229,9 @@ class TestFilesetPermissions:
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
         admin_sdk.models.create(workspace=workspace, name=model_name)
-        admin_sdk.files.filesets.create(workspace=workspace, name=fileset_name)
+        client_from_platform(admin_sdk, FilesClient).create_fileset(
+            workspace=workspace, body=CreateFilesetRequest(name=fileset_name)
+        )
         admin_sdk.files.upload_content(
             content=b"x", remote_path="placeholder.txt", fileset=fileset_name, workspace=workspace
         )
@@ -1345,10 +1369,9 @@ class TestTrustRemoteCodePermission:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.files.filesets.create(
+        client_from_platform(admin_sdk, FilesClient).create_fileset(
             workspace=workspace,
-            name=fileset_name,
-            storage={"type": "huggingface", "repo_id": "Qwen/Qwen3-0.6B"},
+            body=CreateFilesetRequest(name=fileset_name, storage={"type": "huggingface", "repo_id": "Qwen/Qwen3-0.6B"}),
         )
         grant_workspace_role(
             admin_sdk,
@@ -1376,10 +1399,11 @@ class TestTrustRemoteCodePermission:
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
             admin_sdk.workspaces.create(name=workspace)
-            admin_sdk.files.filesets.create(
+            client_from_platform(admin_sdk, FilesClient).create_fileset(
                 workspace=workspace,
-                name=fileset_name,
-                storage={"type": "huggingface", "repo_id": "Qwen/Qwen3-0.6B"},
+                body=CreateFilesetRequest(
+                    name=fileset_name, storage={"type": "huggingface", "repo_id": "Qwen/Qwen3-0.6B"}
+                ),
             )
             grant_workspace_role(
                 admin_sdk,
@@ -1409,10 +1433,9 @@ class TestTrustRemoteCodePermission:
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
         admin_sdk.models.create(workspace=workspace, name=model_name)
-        admin_sdk.files.filesets.create(
+        client_from_platform(admin_sdk, FilesClient).create_fileset(
             workspace=workspace,
-            name=fileset_name,
-            storage={"type": "huggingface", "repo_id": "Qwen/Qwen3-0.6B"},
+            body=CreateFilesetRequest(name=fileset_name, storage={"type": "huggingface", "repo_id": "Qwen/Qwen3-0.6B"}),
         )
         grant_workspace_role(
             admin_sdk,
@@ -1442,10 +1465,11 @@ class TestTrustRemoteCodePermission:
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
             admin_sdk.workspaces.create(name=workspace)
             admin_sdk.models.create(workspace=workspace, name=model_name)
-            admin_sdk.files.filesets.create(
+            client_from_platform(admin_sdk, FilesClient).create_fileset(
                 workspace=workspace,
-                name=fileset_name,
-                storage={"type": "huggingface", "repo_id": "Qwen/Qwen3-0.6B"},
+                body=CreateFilesetRequest(
+                    name=fileset_name, storage={"type": "huggingface", "repo_id": "Qwen/Qwen3-0.6B"}
+                ),
             )
             grant_workspace_role(
                 admin_sdk,
@@ -1479,10 +1503,12 @@ class TestTrustRemoteCodePermission:
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
             admin_sdk.workspaces.create(name=workspace)
             # Model created with a trusted fileset (on allow list) so it has trust_remote_code=True.
-            admin_sdk.files.filesets.create(
+            client_from_platform(admin_sdk, FilesClient).create_fileset(
                 workspace=workspace,
-                name=trusted_fs,
-                storage={"type": "huggingface", "repo_id": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"},
+                body=CreateFilesetRequest(
+                    name=trusted_fs,
+                    storage={"type": "huggingface", "repo_id": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"},
+                ),
             )
             admin_sdk.models.create(
                 workspace=workspace,
@@ -1491,10 +1517,9 @@ class TestTrustRemoteCodePermission:
                 trust_remote_code=True,
             )
             # New fileset resolves to a repo not on the allow list.
-            admin_sdk.files.filesets.create(
+            client_from_platform(admin_sdk, FilesClient).create_fileset(
                 workspace=workspace,
-                name=new_fs,
-                storage={"type": "huggingface", "repo_id": "Qwen/Qwen3-0.6B"},
+                body=CreateFilesetRequest(name=new_fs, storage={"type": "huggingface", "repo_id": "Qwen/Qwen3-0.6B"}),
             )
             grant_workspace_role(
                 admin_sdk,
@@ -1523,10 +1548,12 @@ class TestTrustRemoteCodePermission:
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
             admin_sdk.workspaces.create(name=workspace)
-            admin_sdk.files.filesets.create(
+            client_from_platform(admin_sdk, FilesClient).create_fileset(
                 workspace=workspace,
-                name=fileset_name,
-                storage={"type": "huggingface", "repo_id": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"},
+                body=CreateFilesetRequest(
+                    name=fileset_name,
+                    storage={"type": "huggingface", "repo_id": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"},
+                ),
             )
             grant_workspace_role(
                 admin_sdk,

@@ -35,8 +35,11 @@ from nemo_platform.types.inference import ModelProvider
 from nemo_platform.types.inference.middleware_call_param import MiddlewareCallParam
 from nemo_platform.types.inference.virtual_model import VirtualModel as SDKVirtualModel
 from nemo_platform.types.inference.virtual_model_inference_config_param import VirtualModelInferenceConfigParam
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.discovery import discover_inference_middleware
 from nemo_platform_plugin.inference_middleware import NemoInferenceMiddleware
+from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 from nmp.common.entities.client import EntityClient
 from nmp.core.inference_gateway.api.dependencies import (
     global_middleware_registry,
@@ -61,6 +64,7 @@ from nmp.testing.mock_chat_completions import (
     MockResponse,
     RecordedRequest,
 )
+from pydantic import SecretStr
 from pytest_httpserver import HTTPServer
 
 logger = logging.getLogger(__name__)
@@ -221,9 +225,10 @@ class IGWPluginHarness:
                     exc_info=True,
                 )
 
+        secrets = client_from_platform(self.sdk, SecretsClient)
         for workspace, name in reversed(self._secrets):
             try:
-                self.sdk.secrets.delete(name=name, workspace=workspace)
+                secrets.delete_secret(name=name, workspace=workspace)
             except Exception:  # noqa: BLE001  # see _cleanup docstring
                 logger.warning(
                     "Failed to delete Secret %r in workspace %r during harness cleanup",
@@ -428,7 +433,7 @@ class IGWPluginHarness:
     ) -> str:
         """Create a Secret and track it so the harness deletes it on teardown.
 
-        Prefer this over a direct ``self.sdk.secrets.create(...)`` — only
+        Prefer this over a direct ``SecretsClient.create_secret(...)`` — only
         harness-tracked entities get cleaned up, and an untracked secret
         will leak across tests under module scope (and keep a deleted
         provider's ``api_key_secret_name`` alive on the next refresh).
@@ -436,10 +441,11 @@ class IGWPluginHarness:
         Returns *name* so it chains cleanly into
         :meth:`add_provider` (``api_key_secret_name=harness.create_secret(...)``).
         """
-        kwargs: dict[str, Any] = {"workspace": workspace, "name": name, "value": value}
-        if description is not None:
-            kwargs["description"] = description
-        self.sdk.secrets.create(**kwargs)
+        secrets = client_from_platform(self.sdk, SecretsClient)
+        secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=name, value=SecretStr(value), description=description),
+            workspace=workspace,
+        )
         self._secrets.append((workspace, name))
         return name
 

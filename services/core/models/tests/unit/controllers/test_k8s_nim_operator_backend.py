@@ -122,8 +122,6 @@ def _mock_pod_backend(k8s_backend, pod=None, *, pod_logs=""):
 def mock_nmp_sdk():
     """Create a mock AsyncNeMoPlatform SDK."""
     mock = AsyncMock()
-    mock.secrets = AsyncMock()
-    mock.secrets.access = AsyncMock(return_value=MagicMock(value="test-hf-token-value"))
     return mock
 
 

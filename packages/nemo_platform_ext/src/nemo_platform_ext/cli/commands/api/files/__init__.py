@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
 
 from nemo_platform_ext.cli.core.context import CLIContext
 from nemo_platform_ext.cli.core.errors import handle_errors
@@ -63,6 +65,7 @@ def upload_files(
     raw_local_path: str = ctx.params.get("local_path")
 
     client = state.get_client()
+    files = client_from_platform(client, FilesClient)
     if workspace is None:
         workspace = client._get_workspace_path_param()
 
@@ -71,7 +74,7 @@ def upload_files(
     with RichProgressCallback(description="Uploading") as callback:
         if fileset is not None:
             # Validate fileset exists before uploading
-            client.files.filesets.retrieve(fileset, workspace=workspace)
+            files.get_fileset(name=fileset, workspace=workspace)
             client.files.upload(
                 local_path=raw_local_path,
                 remote_path=remote_path,

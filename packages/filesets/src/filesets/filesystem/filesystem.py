@@ -17,7 +17,6 @@ from anyio import to_thread
 from fsspec.asyn import AbstractAsyncStreamedFile, AsyncFileSystem, _get_batch_size
 from fsspec.callbacks import DEFAULT_CALLBACK, Callback
 from fsspec.spec import AbstractBufferedFile
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.files.types import FilesetFileOutput, ListFilesQueryParams
 
@@ -350,26 +349,11 @@ class FilesetFileSystem(AsyncFileSystem):
     def __init__(
         self,
         *,
-        client: FilesClient | AsyncFilesClient | None = None,
-        sdk: NeMoPlatform | AsyncNeMoPlatform | None = None,
+        client: FilesClient | AsyncFilesClient,
         batch_size: int | None = None,
         blocksize: int | None = None,
         **kwargs,
     ):
-        if client is None and sdk is None:
-            raise TypeError("Either 'client' or 'sdk' must be provided")
-
-        # Normalize: convert sdk to a FilesClient so there's one code path.
-        # AsyncNeMoPlatform → AsyncFilesClient (already async, _ensure_async is a no-op).
-        # NeMoPlatform → FilesClient (sync, _ensure_async converts to async).
-        if sdk is not None:
-            from nemo_platform_plugin.client.adapter import client_from_platform
-
-            if isinstance(sdk, AsyncNeMoPlatform):
-                client = client_from_platform(sdk, AsyncFilesClient)
-            else:
-                client = client_from_platform(sdk, FilesClient)
-
         async_client = self._ensure_async(client)
         is_async = isinstance(client, AsyncFilesClient)
 
@@ -384,22 +368,14 @@ class FilesetFileSystem(AsyncFileSystem):
 
     @staticmethod
     def _ensure_async(client: FilesClient | AsyncFilesClient) -> AsyncFilesClient:
-        """Ensure we have an AsyncFilesClient, converting from sync if needed.
-
-        Preserves subclass behavior: if the sync client has ``_async_cls``
-        (e.g. a remapping subclass), that class is used for the async client.
-        """
+        """Ensure we have an AsyncFilesClient, converting from sync if needed."""
         if isinstance(client, AsyncFilesClient):
             return client
 
         import httpx
 
-        # Use _async_cls if the sync client defines one (e.g. _RemappingFilesClient
-        # → _RemappingAsyncFilesClient), otherwise plain AsyncFilesClient.
-        async_cls = getattr(client, "_async_cls", None) or AsyncFilesClient
-
         transport = _detect_async_transport(client._http)
-        return async_cls(
+        return AsyncFilesClient(
             base_url=client.base_url,
             workspace=client.workspace,
             auth=client._auth,

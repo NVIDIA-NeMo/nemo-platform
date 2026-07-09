@@ -56,17 +56,28 @@ def _stub_async_sdk() -> SimpleNamespace:
     )
 
 
+def _mock_files_client() -> AsyncMock:
+    """Build a mock AsyncFilesClient for check_dataset_access."""
+    mock = AsyncMock()
+    mock.get_fileset.return_value = MagicMock()
+    return mock
+
+
 def _make_canonical(workspace: str = "default", **overrides: Any) -> UnslothJobOutput:
     spec = UnslothJobInput.model_validate(_input_dict(**overrides))
-    return asyncio.run(
-        UnslothJob.to_spec(
-            spec,
-            workspace=workspace,
-            entity_client=object(),
-            async_sdk=_stub_async_sdk(),
-            is_local=False,
-        ),
-    )
+    with patch(
+        "nmp.customization_common.service.platform_client.client_from_platform",
+        return_value=_mock_files_client(),
+    ):
+        return asyncio.run(
+            UnslothJob.to_spec(
+                spec,
+                workspace=workspace,
+                entity_client=object(),
+                async_sdk=_stub_async_sdk(),
+                is_local=False,
+            ),
+        )
 
 
 class TestToSpec:

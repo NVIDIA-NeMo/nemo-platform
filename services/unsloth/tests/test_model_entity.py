@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import types
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -105,11 +105,14 @@ class TestSanitizeName:
 
 
 class TestCreateFullEntity:
-    def test_creates_model_entity_for_full_sft(self) -> None:
+    @patch("nmp.unsloth.tasks.model_entity.run.client_from_platform")
+    def test_creates_model_entity_for_full_sft(self, mock_cfp) -> None:
         from nmp.customization_common.schemas.file_io import FileSetRef
         from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig
 
         sdk = _make_sdk()
+        mock_fc = MagicMock()
+        mock_cfp.return_value = mock_fc
         sdk.models.retrieve.return_value = _model_entity(name="base-model")
         new_me = _model_entity(name="trained-model")
         sdk.models.create.return_value = new_me
@@ -125,18 +128,18 @@ class TestCreateFullEntity:
 
         result, deploy_target = runner.create_model_entity(config)
 
-        sdk.files.filesets.retrieve.assert_called_once_with(workspace="default", name="trained-model")
+        mock_fc.get_fileset.assert_called_once_with(workspace="default", name="trained-model")
         sdk.models.create.assert_called_once()
         assert deploy_target is new_me
-        # ``result`` is the output of ``new_me.model_dump()`` — we just assert
-        # we got *something* back; the actual shape is controlled by the SDK.
         assert result is not None
 
-    def test_conflict_falls_back_to_update(self) -> None:
+    @patch("nmp.unsloth.tasks.model_entity.run.client_from_platform")
+    def test_conflict_falls_back_to_update(self, mock_cfp) -> None:
         from nmp.customization_common.schemas.file_io import FileSetRef
         from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig
 
         sdk = _make_sdk()
+        mock_cfp.return_value = MagicMock()
         sdk.models.retrieve.return_value = _model_entity(name="base-model")
         sdk.models.create.side_effect = lambda **_: _raise_runner_conflict()
         sdk.models.update.return_value = _model_entity(name="trained-model")
@@ -157,12 +160,15 @@ class TestCreateFullEntity:
         assert update_call.kwargs["name"] == "trained-model"
         assert update_call.kwargs["workspace"] == "default"
 
-    def test_missing_fileset_raises_creation_error(self) -> None:
+    @patch("nmp.unsloth.tasks.model_entity.run.client_from_platform")
+    def test_missing_fileset_raises_creation_error(self, mock_cfp) -> None:
         from nmp.customization_common.schemas.file_io import FileSetRef
         from nmp.customization_common.schemas.model_entity import ModelEntityCreationError, ModelEntityTaskConfig
 
         sdk = _make_sdk()
-        sdk.files.filesets.retrieve.side_effect = RuntimeError("fileset missing")
+        mock_fc = MagicMock()
+        mock_fc.get_fileset.side_effect = RuntimeError("fileset missing")
+        mock_cfp.return_value = mock_fc
         runner = _make_runner(sdk)
         config = ModelEntityTaskConfig(
             name="x",
@@ -181,12 +187,14 @@ class TestCreateFullEntity:
 
 
 class TestCreateAdapter:
-    def test_creates_adapter_for_lora(self) -> None:
+    @patch("nmp.unsloth.tasks.model_entity.run.client_from_platform")
+    def test_creates_adapter_for_lora(self, mock_cfp) -> None:
         from nmp.customization_common.schemas.file_io import FileSetRef
         from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig, PEFTConfig
         from nmp.unsloth.entities.values import FinetuningType
 
         sdk = _make_sdk()
+        mock_cfp.return_value = MagicMock()
         base_me = _model_entity(name="base-model")
         sdk.models.retrieve.return_value = base_me
         sdk.models.adapters.create.return_value = _model_entity(name="adapter-x")
@@ -203,15 +211,16 @@ class TestCreateAdapter:
         _result, deploy_target = runner.create_model_entity(config)
 
         sdk.models.adapters.create.assert_called_once()
-        # For LoRA, the deploy target is the BASE model, not the adapter.
         assert deploy_target is base_me
 
-    def test_adapter_conflict_falls_back_to_update(self) -> None:
+    @patch("nmp.unsloth.tasks.model_entity.run.client_from_platform")
+    def test_adapter_conflict_falls_back_to_update(self, mock_cfp) -> None:
         from nmp.customization_common.schemas.file_io import FileSetRef
         from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig, PEFTConfig
         from nmp.unsloth.entities.values import FinetuningType
 
         sdk = _make_sdk()
+        mock_cfp.return_value = MagicMock()
         sdk.models.retrieve.return_value = _model_entity(name="base-model")
         sdk.models.adapters.create.side_effect = lambda **_: _raise_runner_conflict()
         sdk.models.adapters.update.return_value = _model_entity(name="adapter-x")

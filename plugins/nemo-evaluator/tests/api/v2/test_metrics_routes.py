@@ -11,6 +11,7 @@ the get_metric_service dependency, and status-code mapping (201/204/404/409).
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -33,33 +34,30 @@ from nemo_platform_plugin.entities import (
 # ---- in-memory fakes -------------------------------------------------------
 
 
-class _FakeFilesets:
-    def __init__(self, store: dict[tuple[str, str], dict[str, bytes]]) -> None:
-        self._store = store
-
-    async def create(self, *, name, workspace, description=None, exist_ok=False):
-        self._store.setdefault((workspace, name), {})
-        return object()
-
-    async def delete(self, name, *, workspace=None):
-        self._store.pop((workspace, name), None)
-        return object()
-
-
-class _FakeFiles:
-    def __init__(self, store: dict[tuple[str, str], dict[str, bytes]]) -> None:
-        self._store = store
-        self.filesets = _FakeFilesets(store)
-
-    async def upload_content(self, *, content, remote_path, fileset, workspace, fileset_auto_create=False):
-        self._store.setdefault((workspace, fileset), {})[remote_path] = bytes(content)
-        return object()
-
-
-class _FakeSDK:
+class _FakeAsyncFilesClient:
     def __init__(self) -> None:
         self._store: dict[tuple[str, str], dict[str, bytes]] = {}
-        self.files = _FakeFiles(self._store)
+
+    async def create_fileset(self, *, body, workspace=None, exist_ok=False):
+        self._store.setdefault((workspace, body.name), {})
+        return AsyncMock(data=lambda: object())
+
+    async def delete_fileset(self, *, name, workspace=None):
+        self._store.pop((workspace, name), None)
+        return AsyncMock(data=lambda: object())
+
+    async def upload_file(self, *, path, content, workspace, name):
+        self._store.setdefault((workspace, name), {})[path] = bytes(content)
+        return AsyncMock(data=lambda: object())
+
+    async def download_file(self, *, path, workspace, name):
+        class _Resp:
+            async def read(self):
+                return self._data
+
+        resp = _Resp()
+        resp._data = self._store[(workspace, name)][path]
+        return resp
 
 
 class _FakeEntityClient:
@@ -103,12 +101,12 @@ class _FakeEntityClient:
 @pytest.fixture
 def client() -> TestClient:
     app = FastAPI()
-    # Mirror production mounting: the router's paths are relative; the
-    # workspace-scoped prefix is applied via RouterSpec in the plugin service.
     app.include_router(metrics_routes.router, prefix="/v2/workspaces/{workspace}")
-    service = MetricService(_FakeEntityClient(), _FakeSDK())
+    fake_files = _FakeAsyncFilesClient()
+    service = MetricService(_FakeEntityClient(), object())
     app.dependency_overrides[get_metric_service] = lambda: service
-    return TestClient(app)
+    with patch("nemo_evaluator.metric_storage.client_from_platform", return_value=fake_files):
+        yield TestClient(app)
 
 
 def _create_body() -> dict:

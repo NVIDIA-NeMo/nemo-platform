@@ -6,6 +6,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nmp.common.api.common import SecretRef
 from nmp.common.secrets.exceptions import SecretNotFoundError
 from nmp.core.files.api.endpoint_helpers import (
@@ -27,17 +28,38 @@ from nmp.core.files.exceptions import NotFoundError, StorageAccessError
 
 @pytest.fixture
 def mock_sdk():
-    """Mock the platform SDK."""
-    with patch("nmp.common.sdk_factory.get_async_platform_sdk") as mock:
+    """Mock the platform SDK and the SecretsClient it is adapted into.
+
+    ``resolve_storage_secrets`` now wraps the SDK with
+    ``client_from_platform(sdk, AsyncSecretsClient)`` and calls
+    ``access_secret(...).data()``, so we patch the adapter to return a mock
+    secrets client and drive that. ``mock_sdk.access_secret`` is the AsyncMock
+    whose ``.return_value`` / ``.side_effect`` the tests set; the returned
+    object's ``.data()`` yields the response model.
+    """
+    secrets_client = MagicMock()
+    secrets_client.access_secret = AsyncMock()
+    with (
+        patch("nmp.common.sdk_factory.get_async_platform_sdk") as mock,
+        patch("nmp.core.files.api.endpoint_helpers.client_from_platform", return_value=secrets_client),
+    ):
         sdk = MagicMock()
-        sdk.secrets.access = AsyncMock()
         mock.return_value = sdk
+        # Expose the secrets-client mock as the handle tests configure/assert on.
+        sdk.access_secret = secrets_client.access_secret
         yield sdk
+
+
+def _access_result(value: str) -> MagicMock:
+    """Build an object mimicking ``NemoResponse`` — ``.data().value``."""
+    resp = MagicMock()
+    resp.data.return_value = MagicMock(value=value)
+    return resp
 
 
 async def test_resolve_hf_storage_with_token(mock_sdk):
     """Test resolving secrets for HuggingFace storage with token_secret."""
-    mock_sdk.secrets.access.return_value = MagicMock(value="hf_token_value")
+    mock_sdk.access_secret.return_value = _access_result("hf_token_value")
 
     config = HuggingfaceStorageConfig(
         repo_id="org/repo",
@@ -47,7 +69,7 @@ async def test_resolve_hf_storage_with_token(mock_sdk):
     secrets = await resolve_storage_secrets(config, "my-workspace", mock_sdk)
 
     assert secrets == {"token": "hf_token_value"}
-    mock_sdk.secrets.access.assert_called_once_with("my-hf-token", workspace="my-workspace")
+    mock_sdk.access_secret.assert_called_once_with(name="my-hf-token", workspace="my-workspace")
 
 
 async def test_resolve_hf_storage_without_token(mock_sdk):
@@ -57,7 +79,7 @@ async def test_resolve_hf_storage_without_token(mock_sdk):
     secrets = await resolve_storage_secrets(config, "default", mock_sdk)
 
     assert secrets == {}
-    mock_sdk.secrets.access.assert_not_called()
+    mock_sdk.access_secret.assert_not_called()
 
 
 async def test_resolve_local_storage(mock_sdk):
@@ -67,12 +89,12 @@ async def test_resolve_local_storage(mock_sdk):
     secrets = await resolve_storage_secrets(config, "default", mock_sdk)
 
     assert secrets == {}
-    mock_sdk.secrets.access.assert_not_called()
+    mock_sdk.access_secret.assert_not_called()
 
 
 async def test_resolve_ngc_storage(mock_sdk):
     """Test resolving secrets for NGC storage with qualified secret ref (workspace/name)."""
-    mock_sdk.secrets.access.return_value = MagicMock(value="ngc_api_key_value")
+    mock_sdk.access_secret.return_value = _access_result("ngc_api_key_value")
 
     # Use qualified format: shared-workspace/shared-ngc-key
     config = NGCStorageConfig(
@@ -86,12 +108,12 @@ async def test_resolve_ngc_storage(mock_sdk):
 
     assert secrets == {"api_key": "ngc_api_key_value"}
     # Should use workspace from the qualified ref, not the default
-    mock_sdk.secrets.access.assert_called_once_with("shared-ngc-key", workspace="shared-workspace")
+    mock_sdk.access_secret.assert_called_once_with(name="shared-ngc-key", workspace="shared-workspace")
 
 
 async def test_resolve_storage_secrets_propagates_not_found(mock_sdk):
-    """Test that SecretNotFoundError from secrets service is propagated."""
-    mock_sdk.secrets.access.side_effect = SecretNotFoundError("Secret not found")
+    """A 404 from the secrets service is mapped to SecretNotFoundError."""
+    mock_sdk.access_secret.side_effect = ClientNotFoundError(MagicMock(status_code=404))
 
     config = HuggingfaceStorageConfig(
         repo_id="org/repo",

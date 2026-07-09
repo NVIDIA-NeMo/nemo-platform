@@ -37,14 +37,23 @@ class _AsyncIterator:
             raise StopAsyncIteration
 
 
-class _MockPaginatedResponse:
-    """Mock for paginated responses that expose .items() for async iteration."""
+class _MockAsyncPaginatedResponse:
+    """Mock for AsyncNemoPaginatedResponse that exposes .items() as an async generator."""
 
     def __init__(self, items):
         self._items = items
 
-    def items(self):
-        return _AsyncIterator(self._items)
+    async def items(self):
+        for item in self._items:
+            yield item
+
+
+def _make_mock_files_client(filesets: list | None = None) -> AsyncMock:
+    """Build a mock AsyncFilesClient with list_filesets/delete_fileset."""
+    mock_files = AsyncMock()
+    mock_files.list_filesets = AsyncMock(return_value=_MockAsyncPaginatedResponse(filesets or []))
+    mock_files.delete_fileset = AsyncMock()
+    return mock_files
 
 
 def _make_jobs_client(jobs: list | None = None) -> MagicMock:
@@ -56,7 +65,7 @@ def _make_jobs_client(jobs: list | None = None) -> MagicMock:
     iterator over the jobs.
     """
     jobs_client = MagicMock()
-    jobs_client.list_jobs = AsyncMock(return_value=_MockPaginatedResponse(jobs or []))
+    jobs_client.list_jobs = AsyncMock(return_value=_MockAsyncPaginatedResponse(jobs or []))
     jobs_client.cancel_job = AsyncMock()
     jobs_client.delete_job = AsyncMock()
     return jobs_client
@@ -66,26 +75,47 @@ def _make_sdk(
     jobs: list | None = None,
     deployments: list | None = None,
     filesets: list | None = None,
-) -> MagicMock:
+) -> tuple[MagicMock, AsyncMock]:
     """Build a MagicMock SDK with async mocks wired to the correct paths.
 
-    Only deployments/filesets stay on the ``sdk.*`` accessors; jobs are handled via
-    the typed jobs client patched onto ``client_from_platform`` (see ``_patch_jobs_client``).
+    Returns (sdk, mock_files_client) so tests can assert on files client calls.
+    Only deployments/filesets stay on the ``sdk.*`` / files-client accessors; jobs
+    are handled via the typed jobs client patched onto ``client_from_platform``
+    (see ``_patch_jobs_client``).
     """
     sdk = MagicMock()
     sdk.inference.deployments.list = AsyncMock(return_value=_AsyncIterator(deployments or []))
     sdk.inference.deployments.delete = AsyncMock()
-    sdk.files.filesets.list = AsyncMock(return_value=_MockPaginatedResponse(filesets or []))
-    sdk.files.filesets.delete = AsyncMock()
-    return sdk
+    mock_files = _make_mock_files_client(filesets)
+    return sdk, mock_files
+
+
+_CLIENT_FROM_PLATFORM_PATCH = "nmp.core.entities.controllers.workspace_cleanup.client_from_platform"
 
 
 def _patch_jobs_client(jobs_client: MagicMock):
     """Patch ``client_from_platform`` in the workspace_cleanup module to return *jobs_client*."""
-    return patch(
-        "nmp.core.entities.controllers.workspace_cleanup.client_from_platform",
-        return_value=jobs_client,
-    )
+    return patch(_CLIENT_FROM_PLATFORM_PATCH, return_value=jobs_client)
+
+
+def _patch_clients(jobs_client: MagicMock, files_client: MagicMock):
+    """Patch ``client_from_platform`` to dispatch by requested client class.
+
+    ``_async_step`` cleans up both jobs and filesets, so it calls
+    ``client_from_platform(sdk, AsyncJobsClient)`` and
+    ``client_from_platform(sdk, AsyncFilesClient)`` — return the matching mock.
+    """
+    from nemo_platform_plugin.files.client import AsyncFilesClient
+    from nemo_platform_plugin.jobs.client import AsyncJobsClient
+
+    def _dispatch(_sdk, client_cls):
+        if client_cls is AsyncFilesClient:
+            return files_client
+        if client_cls is AsyncJobsClient:
+            return jobs_client
+        raise AssertionError(f"unexpected client class: {client_cls!r}")
+
+    return patch(_CLIENT_FROM_PLATFORM_PATCH, side_effect=_dispatch)
 
 
 def _make_job(name: str, status: str = "completed") -> MagicMock:
@@ -108,6 +138,9 @@ def _make_controller(
         nmp_sdk=nmp_sdk,
         workspace_repository=workspace_repo,
     )
+
+
+_FILES_CLIENT_PATCH = "nmp.core.entities.controllers.workspace_cleanup.client_from_platform"
 
 
 class TestWorkspaceCleanupStep:
@@ -181,11 +214,11 @@ class TestWorkspaceCleanupAsyncStep:
 
         sdk = MagicMock()
         sdk.inference.deployments.list = AsyncMock(return_value=_AsyncIterator([]))
-        sdk.files.filesets.list = AsyncMock(return_value=_MockPaginatedResponse([]))
 
+        mock_files = _make_mock_files_client([])
         controller = _make_controller(workspace_repo=repo, nmp_sdk=sdk)
 
-        with _patch_jobs_client(_make_jobs_client([])):
+        with _patch_clients(_make_jobs_client([]), mock_files):
             await controller._async_step()
 
         repo.mark_workspace_for_deletion.assert_any_call(
@@ -360,14 +393,13 @@ class TestWorkspaceCleanupFilesets:
         fileset = MagicMock()
         fileset.name = "test-fileset"
 
-        sdk = MagicMock()
-        sdk.files.filesets.list = AsyncMock(return_value=_MockPaginatedResponse([fileset]))
-        sdk.files.filesets.delete = AsyncMock()
+        mock_files = _make_mock_files_client([fileset])
+        controller = _make_controller()
 
-        controller = _make_controller(nmp_sdk=sdk)
-        await controller._cleanup_filesets(workspace)
+        with patch(_FILES_CLIENT_PATCH, return_value=mock_files):
+            await controller._cleanup_filesets(workspace)
 
-        sdk.files.filesets.delete.assert_awaited_once_with(
+        mock_files.delete_fileset.assert_awaited_once_with(
             name="test-fileset",
             workspace="test-workspace",
         )
@@ -380,14 +412,14 @@ class TestWorkspaceCleanupFilesets:
         fs2 = MagicMock()
         fs2.name = "fs2"
 
-        sdk = MagicMock()
-        sdk.files.filesets.list = AsyncMock(return_value=_MockPaginatedResponse([fs1, fs2]))
-        sdk.files.filesets.delete = AsyncMock(side_effect=[Exception("fail"), None])
+        mock_files = _make_mock_files_client([fs1, fs2])
+        mock_files.delete_fileset = AsyncMock(side_effect=[Exception("fail"), None])
+        controller = _make_controller()
 
-        controller = _make_controller(nmp_sdk=sdk)
-        await controller._cleanup_filesets(workspace)
+        with patch(_FILES_CLIENT_PATCH, return_value=mock_files):
+            await controller._cleanup_filesets(workspace)
 
-        assert sdk.files.filesets.delete.await_count == 2
+        assert mock_files.delete_fileset.await_count == 2
 
 
 class TestJobCancellationBranches:

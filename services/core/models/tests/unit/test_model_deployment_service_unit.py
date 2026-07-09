@@ -64,8 +64,6 @@ def mock_entity_client() -> AsyncMock:
 def mock_nmp_sdk() -> AsyncMock:
     """Create a mock NeMo Platform SDK for testing secret validation."""
     mock = AsyncMock()
-    mock.secrets = AsyncMock()
-    mock.secrets.retrieve = AsyncMock()
     return mock
 
 

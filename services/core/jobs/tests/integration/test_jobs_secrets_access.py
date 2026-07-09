@@ -17,6 +17,9 @@ from typing import Generator
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 from nmp.core.files.service import FilesService
 from nmp.core.jobs.service import JobsService
 from nmp.core.secrets.service import SecretsService
@@ -28,6 +31,7 @@ from nmp.testing import (
     short_unique_name,
     unique_email,
 )
+from pydantic import SecretStr
 
 
 @pytest.fixture(scope="module")
@@ -77,10 +81,9 @@ class TestJobCreationWithSecretsAccess:
         user_email = unique_email("editor")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.secrets.create(
+        client_from_platform(admin_sdk, SecretsClient).create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("secret-value-for-job")),
             workspace=workspace,
-            name=secret_name,
-            value="secret-value-for-job",
         )
         grant_workspace_role(
             admin_sdk,
@@ -120,10 +123,9 @@ class TestJobCreationWithSecretsAccess:
             roles=["Editor"],
         )
         # Secret only in workspace_other; user is not a member of workspace_other
-        admin_sdk.secrets.create(
+        client_from_platform(admin_sdk, SecretsClient).create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("secret-in-other-ws")),
             workspace=workspace_other,
-            name=secret_name,
-            value="secret-in-other-ws",
         )
 
         user_sdk = as_user(sdk, user_email)

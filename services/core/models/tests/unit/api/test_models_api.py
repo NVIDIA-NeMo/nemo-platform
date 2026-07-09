@@ -4,7 +4,7 @@
 """Tests for Model (ModelEntity) API endpoints."""
 
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -53,7 +53,11 @@ def mock_auth_client():
 @pytest.fixture
 def mock_sdk():
     """Create a mock SDK for create/update endpoints that depend on get_sdk_client."""
-    return AsyncMock()
+    sdk = AsyncMock()
+    sdk._custom_headers = {"authorization": "Bearer test"}
+    sdk.base_url = "http://localhost:8080"
+    sdk.workspace = "default"
+    return sdk
 
 
 @pytest.fixture
@@ -455,14 +459,19 @@ def test_create_model_adapter_entity_validation_error_returns_422(client, mock_a
     """Test that entity store validation errors during adapter creation return 422."""
     mock_adapter_entity_service.create_adapter.side_effect = EntityValidationError("adapter name invalid")
 
-    response = client.post(
-        "/apis/models/v2/workspaces/nvidia/models/my-model/adapters",
-        json={
-            "name": "my-adapter",
-            "fileset": "nvidia/my-fileset",
-            "finetuning_type": "lora",
-        },
-    )
+    with patch("nmp.core.models.api.permissions.client_from_platform") as mock_cfp:
+        mock_files = AsyncMock()
+        mock_files.get_fileset.return_value = MagicMock()
+        mock_cfp.return_value = mock_files
+
+        response = client.post(
+            "/apis/models/v2/workspaces/nvidia/models/my-model/adapters",
+            json={
+                "name": "my-adapter",
+                "fileset": "nvidia/my-fileset",
+                "finetuning_type": "lora",
+            },
+        )
 
     assert response.status_code == 422
     assert "adapter name invalid" in response.json()["detail"]

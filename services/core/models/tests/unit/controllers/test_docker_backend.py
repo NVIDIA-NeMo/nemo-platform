@@ -243,8 +243,6 @@ def create_mock_docker_config(reserved_gpu_ids: str = "all") -> MagicMock:
 def mock_nmp_sdk():
     """Create a mock AsyncNeMoPlatform SDK."""
     mock = AsyncMock()
-    mock.secrets = AsyncMock()
-    mock.secrets.access = AsyncMock(return_value=MagicMock(value="test-hf-token-value"))
     return mock
 
 

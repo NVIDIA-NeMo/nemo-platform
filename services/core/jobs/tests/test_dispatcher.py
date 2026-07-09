@@ -8,7 +8,7 @@ These tests verify that the JobDispatcher correctly manages job lifecycle operat
 """
 
 import json
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation, parse_json_filter
@@ -192,15 +192,16 @@ async def test_delete_job_missing_fileset_succeeds(mock_dispatcher: JobDispatche
     """
     from unittest.mock import AsyncMock
 
-    from nemo_platform import NotFoundError
+    from nemo_platform_plugin.client.errors import NotFoundError
 
     job_id, job_name, _, _, _, _ = await create_test_job_data(mock_store, "delete-missing-fileset-job")
 
-    # Simulate the fileset already being gone
-    mock_dispatcher.sdk.files.filesets.delete = AsyncMock(side_effect=NotFoundError.__new__(NotFoundError))
+    # Simulate the fileset already being gone by making the mock files client raise NotFoundError
+    mock_files = AsyncMock()
+    mock_files.delete_fileset = AsyncMock(side_effect=NotFoundError.__new__(NotFoundError))
 
-    # delete_job should still succeed and return True
-    deleted = await mock_dispatcher.delete_job(job_name, DEFAULT_WORKSPACE)
+    with patch("nmp.core.jobs.app.dispatcher.client_from_platform", return_value=mock_files):
+        deleted = await mock_dispatcher.delete_job(job_name, DEFAULT_WORKSPACE)
     assert deleted is True
 
     # The job entity itself should be gone
@@ -643,58 +644,58 @@ async def test_list_steps_across_multiple_workspaces(
     # Create entity store with multiple workspaces and projects
     projects = ["default/test-project", "other-workspace/test-project"]
     with create_test_client(client_type=EntityClient, projects=projects) as mock_store:
-        # Create mock SDK
+        # Create mock SDK with patched files client
         mock_nmp_client = MagicMock()
-        mock_nmp_client.files = MagicMock()
-        mock_nmp_client.files.filesets = MagicMock()
-        mock_nmp_client.files.filesets.create = AsyncMock()
-        mock_nmp_client.files.filesets.delete = AsyncMock()
-        mock_fileset = MagicMock()
-        mock_fileset.name = "test-fileset-id"
-        mock_nmp_client.files.filesets.create.return_value = mock_fileset
+        mock_files = AsyncMock()
+        mock_fileset_obj = MagicMock()
+        mock_fileset_obj.name = "test-fileset-id"
+        mock_resp = MagicMock()
+        mock_resp.data.return_value = mock_fileset_obj
+        mock_files.create_fileset.return_value = mock_resp
 
-        # Create dispatcher with the multi-workspace store
-        mock_dispatcher = JobDispatcher(store=mock_store, sdk=mock_nmp_client)
+        with patch("nmp.core.jobs.app.dispatcher.client_from_platform", return_value=mock_files):
+            # Create dispatcher with the multi-workspace store
+            mock_dispatcher = JobDispatcher(store=mock_store, sdk=mock_nmp_client)
 
-        # Create jobs in workspace "default"
-        job1 = await mock_dispatcher.create_job(sample_platform_job_request, DEFAULT_WORKSPACE)
+            # Create jobs in workspace "default"
+            job1 = await mock_dispatcher.create_job(sample_platform_job_request, DEFAULT_WORKSPACE)
 
-        job2_request = CreatePlatformJobRequest(
-            name="test-job-2",
-            description="Second test job",
-            project="test-project",
-            source=TestConstants.SOURCE,
-            spec=TestConstants.SPEC_BASIC,
-            platform_spec=TestConstants.PLATFORM_SPEC,
-            ownership=TestConstants.OWNERSHIP_BASIC,
-            custom_fields=TestConstants.CUSTOM_FIELDS_BASIC,
-        )
-        job2 = await mock_dispatcher.create_job(job2_request, DEFAULT_WORKSPACE)
+            job2_request = CreatePlatformJobRequest(
+                name="test-job-2",
+                description="Second test job",
+                project="test-project",
+                source=TestConstants.SOURCE,
+                spec=TestConstants.SPEC_BASIC,
+                platform_spec=TestConstants.PLATFORM_SPEC,
+                ownership=TestConstants.OWNERSHIP_BASIC,
+                custom_fields=TestConstants.CUSTOM_FIELDS_BASIC,
+            )
+            job2 = await mock_dispatcher.create_job(job2_request, DEFAULT_WORKSPACE)
 
-        # Create jobs in workspace "other-workspace"
-        job3_request = CreatePlatformJobRequest(
-            name="test-job-3",
-            description="Third test job in other workspace",
-            project="test-project",
-            source=TestConstants.SOURCE,
-            spec=TestConstants.SPEC_BASIC,
-            platform_spec=TestConstants.PLATFORM_SPEC,
-            ownership=TestConstants.OWNERSHIP_BASIC,
-            custom_fields=TestConstants.CUSTOM_FIELDS_BASIC,
-        )
-        job3 = await mock_dispatcher.create_job(job3_request, "other-workspace")
+            # Create jobs in workspace "other-workspace"
+            job3_request = CreatePlatformJobRequest(
+                name="test-job-3",
+                description="Third test job in other workspace",
+                project="test-project",
+                source=TestConstants.SOURCE,
+                spec=TestConstants.SPEC_BASIC,
+                platform_spec=TestConstants.PLATFORM_SPEC,
+                ownership=TestConstants.OWNERSHIP_BASIC,
+                custom_fields=TestConstants.CUSTOM_FIELDS_BASIC,
+            )
+            job3 = await mock_dispatcher.create_job(job3_request, "other-workspace")
 
-        job4_request = CreatePlatformJobRequest(
-            name="test-job-4",
-            description="Fourth test job in other workspace",
-            project="test-project",
-            source=TestConstants.SOURCE,
-            spec=TestConstants.SPEC_BASIC,
-            platform_spec=TestConstants.PLATFORM_SPEC,
-            ownership=TestConstants.OWNERSHIP_BASIC,
-            custom_fields=TestConstants.CUSTOM_FIELDS_BASIC,
-        )
-        job4 = await mock_dispatcher.create_job(job4_request, "other-workspace")
+            job4_request = CreatePlatformJobRequest(
+                name="test-job-4",
+                description="Fourth test job in other workspace",
+                project="test-project",
+                source=TestConstants.SOURCE,
+                spec=TestConstants.SPEC_BASIC,
+                platform_spec=TestConstants.PLATFORM_SPEC,
+                ownership=TestConstants.OWNERSHIP_BASIC,
+                custom_fields=TestConstants.CUSTOM_FIELDS_BASIC,
+            )
+            job4 = await mock_dispatcher.create_job(job4_request, "other-workspace")
 
         # List steps in "default" workspace
         step_filter = PlatformJobStepsListFilter()
@@ -774,16 +775,16 @@ async def test_list_steps_with_status_filter(
 
     with create_test_client(client_type=EntityClient) as mock_store:
         mock_nmp_client = MagicMock()
-        mock_nmp_client.files = MagicMock()
-        mock_nmp_client.files.filesets = MagicMock()
-        mock_nmp_client.files.filesets.create = AsyncMock()
-        mock_nmp_client.files.filesets.delete = AsyncMock()
-        mock_fileset = MagicMock()
-        mock_fileset.name = "test-fileset-id"
-        mock_nmp_client.files.filesets.create.return_value = mock_fileset
+        mock_files = AsyncMock()
+        mock_fileset_obj = MagicMock()
+        mock_fileset_obj.name = "test-fileset-id"
+        mock_resp = MagicMock()
+        mock_resp.data.return_value = mock_fileset_obj
+        mock_files.create_fileset.return_value = mock_resp
 
-        mock_dispatcher = JobDispatcher(store=mock_store, sdk=mock_nmp_client)
-        await mock_dispatcher.create_job(sample_platform_job_request, DEFAULT_WORKSPACE)
+        with patch("nmp.core.jobs.app.dispatcher.client_from_platform", return_value=mock_files):
+            mock_dispatcher = JobDispatcher(store=mock_store, sdk=mock_nmp_client)
+            await mock_dispatcher.create_job(sample_platform_job_request, DEFAULT_WORKSPACE)
 
         # Filtering by a status that no step has should return nothing — the
         # important assertion is that the call doesn't raise.
@@ -804,7 +805,7 @@ async def test_list_jobs_across_multiple_workspaces(
     sample_platform_job_request: CreatePlatformJobRequest,
 ):
     """Test list_jobs respects workspace filtering."""
-    from unittest.mock import AsyncMock, MagicMock
+    from unittest.mock import MagicMock
 
     from nmp.common.entities.client import EntityClient
     from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobSortField
@@ -813,58 +814,58 @@ async def test_list_jobs_across_multiple_workspaces(
     # Create entity store with multiple workspaces and projects
     projects = ["default/test-project", "other-workspace/test-project"]
     with create_test_client(client_type=EntityClient, projects=projects) as mock_store:
-        # Create mock SDK
+        # Create mock SDK with patched files client
         mock_nmp_client = MagicMock()
-        mock_nmp_client.files = MagicMock()
-        mock_nmp_client.files.filesets = MagicMock()
-        mock_nmp_client.files.filesets.create = AsyncMock()
-        mock_nmp_client.files.filesets.delete = AsyncMock()
-        mock_fileset = MagicMock()
-        mock_fileset.name = "test-fileset-id"
-        mock_nmp_client.files.filesets.create.return_value = mock_fileset
+        mock_files = AsyncMock()
+        mock_fileset_obj = MagicMock()
+        mock_fileset_obj.name = "test-fileset-id"
+        mock_resp = MagicMock()
+        mock_resp.data.return_value = mock_fileset_obj
+        mock_files.create_fileset.return_value = mock_resp
 
-        # Create dispatcher with the multi-workspace store
-        mock_dispatcher = JobDispatcher(store=mock_store, sdk=mock_nmp_client)
+        with patch("nmp.core.jobs.app.dispatcher.client_from_platform", return_value=mock_files):
+            # Create dispatcher with the multi-workspace store
+            mock_dispatcher = JobDispatcher(store=mock_store, sdk=mock_nmp_client)
 
-        # Create jobs in workspace "default"
-        job1 = await mock_dispatcher.create_job(sample_platform_job_request, DEFAULT_WORKSPACE)
+            # Create jobs in workspace "default"
+            job1 = await mock_dispatcher.create_job(sample_platform_job_request, DEFAULT_WORKSPACE)
 
-        job2_request = CreatePlatformJobRequest(
-            name="test-job-2",
-            description="Second test job",
-            project="test-project",
-            source=TestConstants.SOURCE,
-            spec=TestConstants.SPEC_BASIC,
-            platform_spec=TestConstants.PLATFORM_SPEC,
-            ownership=TestConstants.OWNERSHIP_BASIC,
-            custom_fields=TestConstants.CUSTOM_FIELDS_BASIC,
-        )
-        job2 = await mock_dispatcher.create_job(job2_request, DEFAULT_WORKSPACE)
+            job2_request = CreatePlatformJobRequest(
+                name="test-job-2",
+                description="Second test job",
+                project="test-project",
+                source=TestConstants.SOURCE,
+                spec=TestConstants.SPEC_BASIC,
+                platform_spec=TestConstants.PLATFORM_SPEC,
+                ownership=TestConstants.OWNERSHIP_BASIC,
+                custom_fields=TestConstants.CUSTOM_FIELDS_BASIC,
+            )
+            job2 = await mock_dispatcher.create_job(job2_request, DEFAULT_WORKSPACE)
 
-        # Create jobs in workspace "other-workspace"
-        job3_request = CreatePlatformJobRequest(
-            name="test-job-3",
-            description="Third test job in other workspace",
-            project="test-project",
-            source=TestConstants.SOURCE,
-            spec=TestConstants.SPEC_BASIC,
-            platform_spec=TestConstants.PLATFORM_SPEC,
-            ownership=TestConstants.OWNERSHIP_BASIC,
-            custom_fields=TestConstants.CUSTOM_FIELDS_BASIC,
-        )
-        job3 = await mock_dispatcher.create_job(job3_request, "other-workspace")
+            # Create jobs in workspace "other-workspace"
+            job3_request = CreatePlatformJobRequest(
+                name="test-job-3",
+                description="Third test job in other workspace",
+                project="test-project",
+                source=TestConstants.SOURCE,
+                spec=TestConstants.SPEC_BASIC,
+                platform_spec=TestConstants.PLATFORM_SPEC,
+                ownership=TestConstants.OWNERSHIP_BASIC,
+                custom_fields=TestConstants.CUSTOM_FIELDS_BASIC,
+            )
+            job3 = await mock_dispatcher.create_job(job3_request, "other-workspace")
 
-        job4_request = CreatePlatformJobRequest(
-            name="test-job-4",
-            description="Fourth test job in other workspace",
-            project="test-project",
-            source=TestConstants.SOURCE,
-            spec=TestConstants.SPEC_BASIC,
-            platform_spec=TestConstants.PLATFORM_SPEC,
-            ownership=TestConstants.OWNERSHIP_BASIC,
-            custom_fields=TestConstants.CUSTOM_FIELDS_BASIC,
-        )
-        job4 = await mock_dispatcher.create_job(job4_request, "other-workspace")
+            job4_request = CreatePlatformJobRequest(
+                name="test-job-4",
+                description="Fourth test job in other workspace",
+                project="test-project",
+                source=TestConstants.SOURCE,
+                spec=TestConstants.SPEC_BASIC,
+                platform_spec=TestConstants.PLATFORM_SPEC,
+                ownership=TestConstants.OWNERSHIP_BASIC,
+                custom_fields=TestConstants.CUSTOM_FIELDS_BASIC,
+            )
+            job4 = await mock_dispatcher.create_job(job4_request, "other-workspace")
 
         # List jobs in "default" workspace
         jobs_default, count_default = await mock_dispatcher.list_jobs(

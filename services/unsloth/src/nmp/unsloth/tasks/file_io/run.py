@@ -23,12 +23,21 @@ import httpx
 from nemo_platform import (
     APIConnectionError,
     APITimeoutError,
-    ConflictError,
     InternalServerError,
     NeMoPlatform,
     NotFoundError,
 )
 from nemo_platform.types.files.fileset_file import FilesetFile
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import (
+    ConflictError,
+)
+from nemo_platform_plugin.client.errors import (
+    InternalServerError as ClientInternalServerError,
+)
+from nemo_platform_plugin.client.types import RetryPolicy
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest, UpdateFilesetRequest
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.common.sdk_factory import get_task_sdk
 from nmp.customization_common.schemas.file_io import (
@@ -67,8 +76,7 @@ logger = logging.getLogger(__name__)
 # filter filesets by training backend.
 SERVICE_SOURCE = "unsloth"
 
-# Timeout configurations for SDK operations (httpx.Timeout for API calls).
-CREATE_FILESET_TIMEOUT = httpx.Timeout(10.0, connect=10.0)
+CREATE_FILESET_TIMEOUT = 10.0
 LIST_FILES_TIMEOUT = httpx.Timeout(10.0, connect=10.0)
 
 # Timeout configurations for FilesetFileSystem operations. Passed via
@@ -291,34 +299,41 @@ class FileIORunner:
     @retry(
         stop=stop_after_attempt(MAX_RETRIES),
         wait=wait_exponential(multiplier=2, min=INITIAL_BACKOFF_SECONDS, max=MAX_BACKOFF_SECONDS),
-        retry=retry_if_exception_type((InternalServerError, APITimeoutError, APIConnectionError)),
+        retry=retry_if_exception_type(
+            (
+                InternalServerError,
+                APITimeoutError,
+                APIConnectionError,
+                ClientInternalServerError,
+                httpx.TimeoutException,
+                httpx.ConnectError,
+            )
+        ),
         reraise=True,
     )
     def _create_fileset_with_retry(self, fileset: FileSetRef, metadata: dict | None = None) -> None:
         """Internal method with retry logic for creating a FileSet."""
+        files = client_from_platform(self.sdk, FilesClient).with_options(
+            timeout=CREATE_FILESET_TIMEOUT, retry=RetryPolicy(max_retries=0)
+        )
         try:
-            create_kwargs: dict = {
-                "workspace": fileset.workspace,
+            body_kwargs: dict = {
                 "name": fileset.name,
-                "timeout": CREATE_FILESET_TIMEOUT,
                 "custom_fields": {"service_source": SERVICE_SOURCE},
             }
             if metadata is not None:
-                create_kwargs["metadata"] = metadata
-            result = self.sdk.with_options(max_retries=0).files.filesets.create(**create_kwargs)
+                body_kwargs["metadata"] = metadata
+            result = files.create_fileset(workspace=fileset.workspace, body=CreateFilesetRequest(**body_kwargs)).data()
             logger.info(f"Created FileSet: {result.workspace}/{result.name}")
         except ConflictError:
-            # Fileset already exists — patch metadata so tool_calling etc. aren't lost.
             workspace = fileset.workspace or self.job_ctx.workspace
             if metadata is not None:
-                update_kwargs: dict = {
-                    "name": fileset.name,
-                    "workspace": workspace,
-                    "metadata": metadata,
-                    "timeout": CREATE_FILESET_TIMEOUT,
-                }
                 try:
-                    self.sdk.with_options(max_retries=0).files.filesets.update(**update_kwargs)
+                    files.update_fileset(
+                        workspace=workspace,
+                        name=fileset.name,
+                        body=UpdateFilesetRequest(metadata=metadata),
+                    )
                     logger.info(f"Patched existing FileSet metadata: {workspace}/{fileset.name}")
                 except Exception as e:
                     logger.warning(
