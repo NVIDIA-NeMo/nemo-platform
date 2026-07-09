@@ -397,29 +397,13 @@ jobs:
     steps:
       - run: echo "::notice::Placeholder - send release start notification"
 
-  dispatch-ngc-metadata:
-    name: Dispatch NGC metadata synchronization
+  sync-ngc-metadata:
+    name: Synchronize NGC metadata
     needs: plan-release
     if: needs.plan-release.outputs.update_ngc_metadata == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-      contents: read
-    steps:
-      - name: Dispatch metadata workflow
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        with:
-          github-token: ${{ github.token }}
-          script: |
-            try {
-              await github.rest.actions.createWorkflowDispatch({
-                ...context.repo,
-                workflow_id: "ngc-metadata.yaml",
-                ref: context.payload.repository.default_branch,
-              });
-            } catch (error) {
-              core.warning(`Unable to dispatch NGC metadata synchronization: ${error.message}`);
-            }
+    uses: ./.github/workflows/ngc-metadata.yaml
+    secrets:
+      AIRE_NGC_GITHUB_PLATFORM_RW: ${{ secrets.AIRE_NGC_GITHUB_PLATFORM_RW }}
 
   dispatch-release-registration:
     name: Dispatch release registration
