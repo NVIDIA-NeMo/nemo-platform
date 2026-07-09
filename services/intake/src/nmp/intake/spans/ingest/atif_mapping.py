@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from nmp.intake.config import DEFAULT_ATIF_MAX_SUBAGENT_DEPTH, MAX_ATIF_MAX_SUBAGENT_DEPTH
 from nmp.intake.spans.domain import (
     EvaluatorResult,
     EvaluatorResultDataType,
@@ -41,13 +42,36 @@ from pydantic import BaseModel
 TrajectoryIdentity = tuple[str, ...]
 
 
+class AtifTrajectoryDepthError(ValueError):
+    """Raised when an embedded ATIF trajectory tree exceeds its configured depth."""
+
+
+def validate_atif_trajectory_depth(
+    trajectory: AtifTrajectory,
+    *,
+    max_subagent_depth: int = DEFAULT_ATIF_MAX_SUBAGENT_DEPTH,
+) -> None:
+    """Reject trajectory trees deeper than the configured safe maximum."""
+    if not 1 <= max_subagent_depth <= MAX_ATIF_MAX_SUBAGENT_DEPTH:
+        raise ValueError(
+            f"max_subagent_depth must be between 1 and {MAX_ATIF_MAX_SUBAGENT_DEPTH}, got {max_subagent_depth}"
+        )
+    for _trajectory, _identity, depth in _trajectory_tree(trajectory):
+        if depth > max_subagent_depth:
+            raise AtifTrajectoryDepthError(
+                f"ATIF trajectory depth {depth} exceeds configured maximum {max_subagent_depth}"
+            )
+
+
 def trajectory_to_spans(
     *,
     workspace: str,
     trajectory: AtifTrajectory,
     ingested_at: datetime,
+    max_subagent_depth: int = DEFAULT_ATIF_MAX_SUBAGENT_DEPTH,
 ) -> list[IntakeSpan]:
     """Map an ATIF trajectory tree into one trace of intake spans."""
+    validate_atif_trajectory_depth(trajectory, max_subagent_depth=max_subagent_depth)
     return _trajectory_tree_to_spans(
         workspace=workspace,
         trajectory=trajectory,
@@ -55,6 +79,8 @@ def trajectory_to_spans(
         trajectory_identity=(),
         external_parent_span_id=None,
         ingested_at=ingested_at,
+        depth=1,
+        max_subagent_depth=max_subagent_depth,
     )
 
 
@@ -66,8 +92,12 @@ def _trajectory_tree_to_spans(
     trajectory_identity: TrajectoryIdentity,
     external_parent_span_id: str | None,
     ingested_at: datetime,
+    depth: int,
+    max_subagent_depth: int,
 ) -> list[IntakeSpan]:
     """Recursively map a trajectory and its embedded subagents into spans."""
+    if depth > max_subagent_depth:
+        raise AtifTrajectoryDepthError(f"ATIF trajectory depth {depth} exceeds configured maximum {max_subagent_depth}")
     trajectory_span = _trajectory_to_span(
         workspace=workspace,
         trajectory=trajectory,
@@ -143,7 +173,9 @@ def _trajectory_tree_to_spans(
                             trace_session_id=trace_session_id,
                             trajectory_identity=(*trajectory_identity, "subagent", subagent.trajectory_id),
                             external_parent_span_id=step_span.external_span_id,
-                            ingested_at=ingested_at,
+                            ingested_at=step_span.start_time,
+                            depth=depth + 1,
+                            max_subagent_depth=max_subagent_depth,
                         )
                     )
                     continue
@@ -177,7 +209,9 @@ def _trajectory_tree_to_spans(
                 trace_session_id=trace_session_id,
                 trajectory_identity=(*trajectory_identity, "subagent", subagent.trajectory_id),
                 external_parent_span_id=trajectory_span.external_span_id,
-                ingested_at=ingested_at,
+                ingested_at=trajectory_span.start_time,
+                depth=depth + 1,
+                max_subagent_depth=max_subagent_depth,
             )
         )
     return spans
@@ -207,6 +241,7 @@ def _trajectory_to_span(
     raw_attributes = _model_dict(trajectory)
     raw_attributes.pop("steps", None)
     raw_attributes.pop("evaluation_context", None)
+    raw_attributes.pop("subagent_trajectories", None)
     # ATIF span IDs are trace-native by design: session_id is the trace identity,
     # while evaluation_context is queryable metadata on the root span.
     #
@@ -610,6 +645,7 @@ def trajectory_to_evaluator_results(
     trajectory: AtifTrajectory,
     spans: list[IntakeSpan],
     ingested_at: datetime,
+    max_subagent_depth: int = DEFAULT_ATIF_MAX_SUBAGENT_DEPTH,
 ) -> list[EvaluatorResult]:
     """Extract evaluator_results rows from an ATIF trajectory tree's verifier_result blocks.
 
@@ -618,8 +654,9 @@ def trajectory_to_evaluator_results(
     the verifier. The span preserves the original tree structure; these rows make each
     score queryable by name and value without parsing the span payload.
     """
+    validate_atif_trajectory_depth(trajectory, max_subagent_depth=max_subagent_depth)
     results: list[EvaluatorResult] = []
-    for current_trajectory, trajectory_identity in _trajectory_tree(trajectory):
+    for current_trajectory, trajectory_identity, _depth in _trajectory_tree(trajectory):
         verifier_result = _dict_or_none((current_trajectory.extra or {}).get("verifier_result"))
         if verifier_result is None:
             continue
@@ -664,17 +701,22 @@ def trajectory_to_evaluator_results(
 def _trajectory_tree(
     trajectory: AtifTrajectory,
     trajectory_identity: TrajectoryIdentity = (),
-) -> list[tuple[AtifTrajectory, TrajectoryIdentity]]:
-    """Return a depth-first list of trajectories and their tree identities."""
-    trajectories = [(trajectory, trajectory_identity)]
-    for subagent in trajectory.subagent_trajectories or []:
-        assert subagent.trajectory_id is not None
-        trajectories.extend(
-            _trajectory_tree(
-                subagent,
-                (*trajectory_identity, "subagent", subagent.trajectory_id),
+) -> list[tuple[AtifTrajectory, TrajectoryIdentity, int]]:
+    """Return trajectories, tree identities, and one-based depths in depth-first order."""
+    trajectories: list[tuple[AtifTrajectory, TrajectoryIdentity, int]] = []
+    stack = [(trajectory, trajectory_identity, 1)]
+    while stack:
+        current, current_identity, depth = stack.pop()
+        trajectories.append((current, current_identity, depth))
+        for subagent in reversed(current.subagent_trajectories or []):
+            assert subagent.trajectory_id is not None
+            stack.append(
+                (
+                    subagent,
+                    (*current_identity, "subagent", subagent.trajectory_id),
+                    depth + 1,
+                )
             )
-        )
     return trajectories
 
 
@@ -700,6 +742,7 @@ def _evaluator_rewards(verifier_result: dict[str, Any]) -> list[tuple[str, bool 
 def _coerce_evaluator_value(
     score: bool | int | float | str,
 ) -> tuple[EvaluatorResultDataType, float | None, str | None]:
+    """Coerce an ATIF reward into evaluator result storage columns."""
     if isinstance(score, bool):
         return EvaluatorResultDataType.BOOLEAN, 1.0 if score else 0.0, None
     if isinstance(score, (int, float)):
@@ -708,6 +751,7 @@ def _coerce_evaluator_value(
 
 
 def _subagent_ref_identity(subagent_ref: AtifSubagentTrajectoryRef) -> str:
+    """Return the most specific available subagent reference identity."""
     if subagent_ref.trajectory_id is not None:
         return subagent_ref.trajectory_id
     if subagent_ref.trajectory_path is not None:
@@ -717,16 +761,19 @@ def _subagent_ref_identity(subagent_ref: AtifSubagentTrajectoryRef) -> str:
 
 
 def _step_kind(step: AtifStep) -> SpanKind:
+    """Map an ATIF step source to its Intake span kind."""
     return SpanKind.LLM if isinstance(step, AtifStepAgent) else SpanKind.AGENT
 
 
 def _step_input(step: AtifStep) -> str | None:
+    """Extract span input from a non-agent step."""
     if isinstance(step, AtifStepAgent):
         return None
     return _string_or_json(step.message)
 
 
 def _step_output(step: AtifStep) -> str | None:
+    """Serialize the message, reasoning, and calls from an agent step."""
     if isinstance(step, AtifStepAgent):
         payload: dict[str, Any] = {}
         if step.message != "":
@@ -740,20 +787,24 @@ def _step_output(step: AtifStep) -> str | None:
 
 
 def _step_model_name(step: AtifStep) -> str | None:
+    """Return the model attached to an agent step, when present."""
     return step.model_name if isinstance(step, AtifStepAgent) else None
 
 
 def _step_metrics(step: AtifStep) -> AtifMetrics | None:
+    """Return metrics attached to an agent step, when present."""
     return step.metrics if isinstance(step, AtifStepAgent) else None
 
 
 def _trajectory_has_step_prompt_metrics(trajectory: AtifTrajectory) -> bool:
+    """Return whether any step reports prompt tokens."""
     return any(
         (metrics := _step_metrics(step)) is not None and metrics.prompt_tokens is not None for step in trajectory.steps
     )
 
 
 def _trajectory_has_step_completion_metrics(trajectory: AtifTrajectory) -> bool:
+    """Return whether any step reports completion tokens."""
     return any(
         (metrics := _step_metrics(step)) is not None and metrics.completion_tokens is not None
         for step in trajectory.steps
@@ -761,18 +812,21 @@ def _trajectory_has_step_completion_metrics(trajectory: AtifTrajectory) -> bool:
 
 
 def _trajectory_has_step_cached_metrics(trajectory: AtifTrajectory) -> bool:
+    """Return whether any step reports cached tokens."""
     return any(
         (metrics := _step_metrics(step)) is not None and metrics.cached_tokens is not None for step in trajectory.steps
     )
 
 
 def _trajectory_has_step_cost_metrics(trajectory: AtifTrajectory) -> bool:
+    """Return whether any step reports cost."""
     return any(
         (metrics := _step_metrics(step)) is not None and metrics.cost_usd is not None for step in trajectory.steps
     )
 
 
 def _trajectory_input(trajectory: AtifTrajectory) -> str | None:
+    """Return the first user message from a trajectory."""
     for step in trajectory.steps:
         if step.source == "user":
             return _string_or_json(step.message)
@@ -791,29 +845,33 @@ def _trajectory_output(trajectory: AtifTrajectory) -> str | None:
 
 def _trajectory_has_error(trajectory: AtifTrajectory) -> bool:
     """Return whether a trajectory or any embedded descendant has an error."""
-    for step in trajectory.steps:
-        if not isinstance(step, AtifStepAgent):
-            continue
-        observation = _step_observation(step)
-        if observation is None:
-            continue
-        for result in observation.results:
-            if _tool_result_is_error(step, result):
-                return True
-    return any(_trajectory_has_error(subagent) for subagent in trajectory.subagent_trajectories or [])
+    for current, _identity, _depth in _trajectory_tree(trajectory):
+        for step in current.steps:
+            if not isinstance(step, AtifStepAgent):
+                continue
+            observation = _step_observation(step)
+            if observation is None:
+                continue
+            for result in observation.results:
+                if _tool_result_is_error(step, result):
+                    return True
+    return False
 
 
 def _step_tool_calls(step: AtifStep) -> list[AtifToolCall]:
+    """Return tool calls from an agent step."""
     if not isinstance(step, AtifStepAgent):
         return []
     return step.tool_calls or []
 
 
 def _step_observation(step: AtifStep) -> AtifObservation | None:
+    """Return the observation attached to an agent step."""
     return step.observation if isinstance(step, AtifStepAgent) else None
 
 
 def _observation_result_for_tool_call(step: AtifStep, tool_call_id: str) -> AtifObservationResult | None:
+    """Find the observation result produced by a tool call."""
     observation = _step_observation(step)
     if observation is None:
         return None
@@ -842,41 +900,44 @@ def _trajectory_started_at(trajectory: AtifTrajectory, ingested_at: datetime) ->
 
 def _trajectory_explicit_started_at(trajectory: AtifTrajectory) -> datetime | None:
     """Return the earliest explicit timestamp in a trajectory tree."""
-    started_candidates = [_timestamp(step) for step in trajectory.steps]
-    started_candidates.extend(_invocation_window(step.extra)[0] for step in trajectory.steps)
-    started_candidates.extend(
-        _invocation_window(tool_call.extra)[0] for step in trajectory.steps for tool_call in _step_tool_calls(step)
-    )
-    started_candidates.append(_evaluator_started_at(trajectory))
-    started_candidates.extend(
-        _trajectory_explicit_started_at(subagent) for subagent in trajectory.subagent_trajectories or []
-    )
+    started_candidates: list[datetime | None] = []
+    for current, _identity, _depth in _trajectory_tree(trajectory):
+        started_candidates.extend(_timestamp(step) for step in current.steps)
+        started_candidates.extend(_invocation_window(step.extra)[0] for step in current.steps)
+        started_candidates.extend(
+            _invocation_window(tool_call.extra)[0] for step in current.steps for tool_call in _step_tool_calls(step)
+        )
+        started_candidates.append(_evaluator_started_at(current))
     return min((started_at for started_at in started_candidates if started_at is not None), default=None)
 
 
 def _trajectory_ended_at(trajectory: AtifTrajectory) -> datetime | None:
     """Return the latest explicit timestamp in a trajectory tree."""
-    ended_candidates = [_timestamp(step) for step in trajectory.steps]
-    ended_candidates.extend(_invocation_window(step.extra)[1] for step in trajectory.steps)
-    ended_candidates.extend(
-        _invocation_window(tool_call.extra)[1] for step in trajectory.steps for tool_call in _step_tool_calls(step)
-    )
-    ended_candidates.append(_evaluator_ended_at(trajectory))
-    ended_candidates.extend(_trajectory_ended_at(subagent) for subagent in trajectory.subagent_trajectories or [])
+    ended_candidates: list[datetime | None] = []
+    for current, _identity, _depth in _trajectory_tree(trajectory):
+        ended_candidates.extend(_timestamp(step) for step in current.steps)
+        ended_candidates.extend(_invocation_window(step.extra)[1] for step in current.steps)
+        ended_candidates.extend(
+            _invocation_window(tool_call.extra)[1] for step in current.steps for tool_call in _step_tool_calls(step)
+        )
+        ended_candidates.append(_evaluator_ended_at(current))
     return max((ended_at for ended_at in ended_candidates if ended_at is not None), default=None)
 
 
 def _evaluator_started_at(trajectory: AtifTrajectory) -> datetime | None:
+    """Return the verifier start timestamp, when valid."""
     verifier = _dict_or_none((trajectory.extra or {}).get("verifier"))
     return _datetime_from_value(verifier.get("started_at") if verifier is not None else None)
 
 
 def _evaluator_ended_at(trajectory: AtifTrajectory) -> datetime | None:
+    """Return the verifier finish timestamp, when valid."""
     verifier = _dict_or_none((trajectory.extra or {}).get("verifier"))
     return _datetime_from_value(verifier.get("finished_at") if verifier is not None else None)
 
 
 def _step_started_at(step: AtifStep, index: int, ingested_at: datetime) -> datetime:
+    """Derive a step start from invocation, timestamp, or fallback order."""
     invocation_started_at, _ = _invocation_window(step.extra)
     return invocation_started_at or _timestamp(step) or (ingested_at + timedelta(milliseconds=index))
 
@@ -916,6 +977,7 @@ def _invocation_window(extra: dict[str, Any] | None) -> tuple[datetime | None, d
 
 
 def _datetime_from_epoch(value: Any) -> datetime | None:
+    """Parse a numeric epoch timestamp as UTC without raising."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     try:
@@ -925,12 +987,14 @@ def _datetime_from_epoch(value: Any) -> datetime | None:
 
 
 def _timestamp(step: AtifStep) -> datetime | None:
+    """Parse an optional step timestamp."""
     if step.timestamp is None:
         return None
     return _datetime_from_value(step.timestamp)
 
 
 def _datetime_from_value(value: Any) -> datetime | None:
+    """Parse an ISO 8601 value as an aware datetime without raising."""
     if not isinstance(value, str):
         return None
     try:
@@ -941,6 +1005,7 @@ def _datetime_from_value(value: Any) -> datetime | None:
 
 
 def _tool_result_is_error(step: AtifStep, result: AtifObservationResult | None) -> bool:
+    """Recognize supported ATIF producer error markers."""
     # These markers are emitted by the Claude-Code Harbor trajectories we ingest today.
     # ATIF itself does not define a normalized tool-result error field.
     metadata = _matched_tool_result_metadata(step, result)
@@ -953,6 +1018,7 @@ def _tool_result_is_error(step: AtifStep, result: AtifObservationResult | None) 
 
 
 def _tool_result_error_message(step: AtifStep, result: AtifObservationResult | None) -> str | None:
+    """Extract an error message from a failed observation result."""
     if not _tool_result_is_error(step, result):
         return None
     content = _result_text(result)
@@ -965,6 +1031,7 @@ def _tool_result_error_message(step: AtifStep, result: AtifObservationResult | N
 
 
 def _matched_tool_result_metadata(step: AtifStep, result: AtifObservationResult | None) -> dict[str, Any]:
+    """Return tool-result metadata that corresponds to an observation."""
     metadata = _step_extra_dict(step, "tool_result_metadata")
     if not metadata or result is None:
         return {}
@@ -977,6 +1044,7 @@ def _matched_tool_result_metadata(step: AtifStep, result: AtifObservationResult 
 
 
 def _is_only_observation_result(step: AtifStep, result: AtifObservationResult | None) -> bool:
+    """Return whether a result is the step's sole observation result."""
     observation = _step_observation(step)
     return (
         result is not None
@@ -987,25 +1055,30 @@ def _is_only_observation_result(step: AtifStep, result: AtifObservationResult | 
 
 
 def _result_text(result: AtifObservationResult | None) -> str | None:
+    """Return scalar text from an observation result."""
     if result is None or not isinstance(result.content, str):
         return None
     return result.content
 
 
 def _step_extra_bool(step: AtifStep, key: str) -> bool:
+    """Read a strictly true boolean from step extras."""
     return step.extra is not None and step.extra.get(key) is True
 
 
 def _step_extra_dict(step: AtifStep, key: str) -> dict[str, Any]:
+    """Read a dictionary value from step extras."""
     value = step.extra.get(key) if step.extra is not None else None
     return value if isinstance(value, dict) else {}
 
 
 def _dict_or_none(value: Any) -> dict[str, Any] | None:
+    """Narrow a value to a dictionary or None."""
     return value if isinstance(value, dict) else None
 
 
 def _evaluator_score(verifier_result: dict[str, Any]) -> bool | int | float | str | None:
+    """Extract the primary scalar score from a verifier result."""
     score = verifier_result.get("score")
     if isinstance(score, (int, float, str)):
         return score
@@ -1023,6 +1096,7 @@ def _evaluator_score(verifier_result: dict[str, Any]) -> bool | int | float | st
 
 
 def _string_or_json(value: Any) -> str | None:
+    """Preserve strings and serialize other JSON-compatible values."""
     if value is None:
         return None
     if isinstance(value, str):
@@ -1031,6 +1105,7 @@ def _string_or_json(value: Any) -> str | None:
 
 
 def _json_value(value: Any) -> Any:
+    """Recursively convert Pydantic models into JSON-compatible values."""
     if isinstance(value, BaseModel):
         return _model_dict(value)
     if isinstance(value, list):
@@ -1041,10 +1116,12 @@ def _json_value(value: Any) -> Any:
 
 
 def _model_dict(model: BaseModel) -> dict[str, Any]:
+    """Serialize a Pydantic model while omitting null fields."""
     return model.model_dump(mode="json", exclude_none=True)
 
 
 def _decimal(value: Any) -> Decimal | None:
+    """Coerce a value to Decimal without raising for invalid input."""
     if value is None:
         return None
     try:
@@ -1054,6 +1131,7 @@ def _decimal(value: Any) -> Decimal | None:
 
 
 def _sum_ints(*values: int | None) -> int | None:
+    """Sum present integer values or return None when all are absent."""
     present = [value for value in values if value is not None]
     if not present:
         return None

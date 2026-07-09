@@ -101,6 +101,7 @@ class AtifSubagentTrajectoryRef(BaseModel):
 
     @model_validator(mode="after")
     def validate_identifier(self) -> AtifSubagentTrajectoryRef:
+        """Require at least one supported subagent identifier."""
         if self.trajectory_id is None and self.trajectory_path is None and self.session_id is None:
             raise ValueError(
                 "SubagentTrajectoryRef MUST set at least one of trajectory_id, trajectory_path, or session_id"
@@ -160,6 +161,7 @@ class AtifStepBase(BaseModel):
     @field_validator("timestamp")
     @classmethod
     def validate_timestamp(cls, value: str | None) -> str | None:
+        """Validate an optional ISO 8601 step timestamp."""
         if value is not None:
             try:
                 datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -193,6 +195,7 @@ AtifStep = TypeAliasType(
 
 
 def validate_atif_step_ids(steps: list[AtifStep]) -> None:
+    """Require one-based sequential step identifiers."""
     # Keep this aligned with NAT's current ATIF model until the format
     # explicitly allows compacted or branched trajectories with gaps.
     for index, step in enumerate(steps):
@@ -204,6 +207,7 @@ def validate_atif_step_ids(steps: list[AtifStep]) -> None:
 
 
 def validate_atif_tool_call_references(steps: list[AtifStep]) -> None:
+    """Require unique calls and resolvable observation call references."""
     for step in steps:
         if not isinstance(step, AtifStepAgent):
             continue
@@ -223,6 +227,7 @@ def validate_atif_tool_call_references(steps: list[AtifStep]) -> None:
 
 
 def validate_atif_v17_subagent_ref_resolution_keys(steps: list[AtifStep]) -> None:
+    """Require v1.7 subagent references to include a resolvable key."""
     for step in steps:
         if not isinstance(step, AtifStepAgent) or step.observation is None:
             continue
@@ -257,20 +262,24 @@ class AtifTrajectory(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     def to_json_dict(self, *, exclude_none: bool = True) -> dict[str, Any]:
+        """Serialize the trajectory to JSON-compatible values."""
         return self.model_dump(exclude_none=exclude_none, mode="json")
 
     @model_validator(mode="after")
     def validate_step_ids(self) -> AtifTrajectory:
+        """Validate this trajectory's sequential step identifiers."""
         validate_atif_step_ids(self.steps)
         return self
 
     @model_validator(mode="after")
     def validate_tool_call_references(self) -> AtifTrajectory:
+        """Validate this trajectory's tool-call references."""
         validate_atif_tool_call_references(self.steps)
         return self
 
     @model_validator(mode="after")
     def validate_subagent_ref_resolution_keys(self) -> AtifTrajectory:
+        """Validate v1.7 subagent reference resolution keys."""
         if self.schema_version == "ATIF-v1.7":
             validate_atif_v17_subagent_ref_resolution_keys(self.steps)
         return self

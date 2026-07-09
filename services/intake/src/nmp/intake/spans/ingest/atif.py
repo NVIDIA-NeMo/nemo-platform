@@ -7,9 +7,10 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from nmp.common.entities.client import EntityClient
 from nmp.common.service.dependencies import get_entity_client
+from nmp.intake.config import IntakeConfig
 from nmp.intake.spans.api.dependencies import SpansServiceDep, require_workspace_access
 from nmp.intake.spans.domain import TraceBatch
 from nmp.intake.spans.ingest.atif_domain import (
@@ -23,7 +24,11 @@ from nmp.intake.spans.ingest.atif_domain import (
     validate_atif_tool_call_references,
     validate_atif_v17_subagent_ref_resolution_keys,
 )
-from nmp.intake.spans.ingest.atif_mapping import trajectory_to_evaluator_results, trajectory_to_spans
+from nmp.intake.spans.ingest.atif_mapping import (
+    AtifTrajectoryDepthError,
+    trajectory_to_evaluator_results,
+    trajectory_to_spans,
+)
 from nmp.intake.spans.ingest.evaluation_context import ExperimentContextIngestModel
 from nmp.intake.spans.ingest.experiment_context_validation import validate_experiment_context
 from nmp.intake.spans.storage import utc_now
@@ -32,6 +37,15 @@ from pydantic import ConfigDict, Field, model_validator
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Ingest"
 EntityClientDep = Annotated[EntityClient, Depends(get_entity_client)]
+
+
+def _atif_max_subagent_depth(request: Request) -> int:
+    """Read the configured ATIF subagent depth cap from the Intake service."""
+    service = getattr(request.app.state, "intake_service", None) or getattr(request.app.state, "service", None)
+    cfg: IntakeConfig | None = getattr(service, "service_config", None) if service is not None else None
+    if cfg is None:
+        cfg = IntakeConfig()
+    return cfg.atif_max_subagent_depth
 
 
 class AtifIngestRequest(ExperimentContextIngestModel):
@@ -91,6 +105,7 @@ class AtifIngestRequest(ExperimentContextIngestModel):
 async def ingest_atif(
     workspace: str,
     body: AtifIngestRequest,
+    request: Request,
     service: SpansServiceDep,
     entity_client: EntityClientDep,
 ) -> Response:
@@ -101,16 +116,22 @@ async def ingest_atif(
     )
     ingested_at = utc_now()
     trajectory = body.to_trajectory()
-    spans = trajectory_to_spans(
-        workspace=workspace,
-        trajectory=trajectory,
-        ingested_at=ingested_at,
-    )
+    max_subagent_depth = _atif_max_subagent_depth(request)
+    try:
+        spans = trajectory_to_spans(
+            workspace=workspace,
+            trajectory=trajectory,
+            ingested_at=ingested_at,
+            max_subagent_depth=max_subagent_depth,
+        )
+    except AtifTrajectoryDepthError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
     evaluator_results = trajectory_to_evaluator_results(
         workspace=workspace,
         trajectory=trajectory,
         spans=spans,
         ingested_at=ingested_at,
+        max_subagent_depth=max_subagent_depth,
     )
     await service.ingest_batch(TraceBatch(spans=spans, evaluator_results=evaluator_results))
     return Response(status_code=status.HTTP_201_CREATED)

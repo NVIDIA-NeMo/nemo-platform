@@ -9,6 +9,10 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
+from nmp.intake.config import ClickHouseConfig, IntakeConfig
+from nmp.intake.service import IntakeService
+from nmp.intake.spans.clickhouse_client import ClickHouseSettings
+from nmp.testing import create_test_client
 
 _HISTORICAL_GTE = "2024-01-01T00:00:00Z"
 
@@ -20,6 +24,26 @@ _HISTORICAL_GTE = "2024-01-01T00:00:00Z"
 #     returns without a fractional part (e.g. "...:12" vs "...:12.000000") and would fail exact matches.
 # Everything derived from this base moves with it, so the reconstructed-timestamp assertions stay exact.
 _BASE_TIME = (datetime.now(timezone.utc) - timedelta(days=45)).replace(microsecond=500_000)
+
+
+@pytest.fixture
+def shallow_atif_client(clickhouse_settings: ClickHouseSettings):
+    """Create an Intake client with a deliberately shallow ATIF depth limit."""
+    intake_config = IntakeConfig(
+        clickhouse_config=ClickHouseConfig(
+            url=clickhouse_settings.url,
+            user=clickhouse_settings.user,
+            password=clickhouse_settings.password,
+            database=clickhouse_settings.database,
+        ),
+        atif_max_subagent_depth=2,
+    )
+    with create_test_client(
+        IntakeService,
+        client_type=TestClient,
+        service_configs={IntakeService: intake_config},
+    ) as test_client:
+        yield test_client
 
 
 def _atif_timestamp(dt: datetime) -> str:
@@ -251,6 +275,37 @@ def test_atif_ingest_expands_embedded_subagent_trajectory_into_the_parent_trace(
     assert spans_by_name["agent-2"]["parent_span_id"] == spans_by_name["worker-agent"]["span_id"]
     assert spans_by_name["orchestrator"]["started_at"] == _span_started_at(root_started_at)
     assert spans_by_name["orchestrator"]["ended_at"] == _span_ended_at(subagent_ended_at)
+
+
+def test_atif_ingest_rejects_subagent_tree_over_configured_depth(shallow_atif_client: TestClient):
+    body = {
+        "schema_version": "ATIF-v1.7",
+        "session_id": "atif-too-deep",
+        "trajectory_id": "root",
+        "agent": {"name": "root-agent", "version": "1.0"},
+        "steps": [],
+        "subagent_trajectories": [
+            {
+                "schema_version": "ATIF-v1.7",
+                "trajectory_id": "child",
+                "agent": {"name": "child-agent", "version": "1.0"},
+                "steps": [],
+                "subagent_trajectories": [
+                    {
+                        "schema_version": "ATIF-v1.7",
+                        "trajectory_id": "grandchild",
+                        "agent": {"name": "grandchild-agent", "version": "1.0"},
+                        "steps": [],
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = shallow_atif_client.post("/apis/intake/v2/workspaces/default/ingest/atif", json=body)
+
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"] == "ATIF trajectory depth 3 exceeds configured maximum 2"
 
 
 def test_atif_ingest_rejects_unknown_schema_version(client: TestClient):

@@ -18,7 +18,7 @@ from nmp.intake.spans.ingest.atif_domain import (
     AtifSubagentTrajectoryRef,
     AtifTrajectory,
 )
-from nmp.intake.spans.ingest.atif_mapping import trajectory_to_spans
+from nmp.intake.spans.ingest.atif_mapping import AtifTrajectoryDepthError, trajectory_to_spans
 from nmp.intake.spans.ingest.evaluation_context import EvaluationContext, ExperimentContext
 from pydantic import ValidationError
 
@@ -29,6 +29,26 @@ EVALUATION_CONTEXT: dict[str, Any] = {
     "test_case_id": "sample-test-case",
     "metadata": {"attempt": 1},
 }
+
+
+def _nested_trajectory(depth: int) -> AtifTrajectory:
+    """Build a timestamp-free ATIF trajectory tree with the requested depth."""
+    payload: dict[str, Any] = {
+        "schema_version": "ATIF-v1.7",
+        "trajectory_id": f"trajectory-{depth}",
+        "agent": {"name": f"agent-{depth}", "version": "1.0"},
+        "steps": [],
+    }
+    for level in reversed(range(1, depth)):
+        payload = {
+            "schema_version": "ATIF-v1.7",
+            "trajectory_id": f"trajectory-{level}",
+            "agent": {"name": f"agent-{level}", "version": "1.0"},
+            "steps": [],
+            "subagent_trajectories": [payload],
+        }
+    payload["session_id"] = "depth-run"
+    return AtifTrajectory.model_validate(payload)
 
 
 def test_atif_v17_models_accept_new_fields() -> None:
@@ -232,8 +252,85 @@ def test_atif_v17_embedded_subagents_expand_recursively_in_the_parent_trace() ->
     assert review.status == SpanStatus.ERROR
 
     root_raw = json.loads(root.attributes_string["atif.raw"])
-    assert root_raw["subagent_trajectories"][0]["trajectory_id"] == "research-trajectory"
-    assert root_raw["subagent_trajectories"][0]["steps"][0]["message"] == "Research the answer."
+    research_raw = json.loads(research.attributes_string["atif.raw"])
+    assert "subagent_trajectories" not in root_raw
+    assert research_raw["trajectory_id"] == "research-trajectory"
+    assert "subagent_trajectories" not in research_raw
+
+
+def test_atif_v17_subagent_depth_is_bounded_before_mapping() -> None:
+    trajectory = _nested_trajectory(depth=3)
+
+    with pytest.raises(
+        AtifTrajectoryDepthError,
+        match="ATIF trajectory depth 3 exceeds configured maximum 2",
+    ):
+        trajectory_to_spans(
+            workspace="default",
+            trajectory=trajectory,
+            ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+            max_subagent_depth=2,
+        )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+        max_subagent_depth=3,
+    )
+    assert [span.name for span in spans] == ["agent-1", "agent-2", "agent-3"]
+
+
+def test_atif_v17_timestamp_free_subagent_starts_at_delegating_step() -> None:
+    ingested_at = datetime(2026, 5, 18, tzinfo=timezone.utc)
+    trajectory = AtifTrajectory.model_validate(
+        {
+            "schema_version": "ATIF-v1.7",
+            "session_id": "fallback-run",
+            "trajectory_id": "root-trajectory",
+            "agent": {"name": "root-agent", "version": "1.0"},
+            "steps": [
+                {"step_id": 1, "source": "user", "message": "Plan first."},
+                {
+                    "step_id": 2,
+                    "source": "agent",
+                    "message": "Delegate second.",
+                    "observation": {
+                        "results": [
+                            {
+                                "subagent_trajectory_ref": [
+                                    {"trajectory_id": "worker-trajectory", "session_id": "fallback-run"}
+                                ]
+                            }
+                        ]
+                    },
+                },
+            ],
+            "subagent_trajectories": [
+                {
+                    "schema_version": "ATIF-v1.7",
+                    "trajectory_id": "worker-trajectory",
+                    "agent": {"name": "worker-agent", "version": "1.0"},
+                    "steps": [{"step_id": 1, "source": "user", "message": "Do the work."}],
+                }
+            ],
+        }
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=ingested_at,
+    )
+    delegation = next(span for span in spans if span.name == "agent-2")
+    worker = next(span for span in spans if span.name == "worker-agent")
+    worker_step = next(
+        span for span in spans if span.name == "user-1" and span.external_parent_span_id == worker.external_span_id
+    )
+
+    assert delegation.start_time == ingested_at + timedelta(milliseconds=1)
+    assert worker.start_time == delegation.start_time
+    assert worker_step.start_time == delegation.start_time
 
 
 def test_atif_v17_sibling_subagents_can_share_a_session_without_span_id_collisions() -> None:
