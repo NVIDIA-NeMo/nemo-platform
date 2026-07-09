@@ -3,7 +3,7 @@ description: API component of NeMo Platform
 ---
 ## NeMo Platform API Container
 
-This container image provides a deployable API interface to NeMo Platform.
+This container image provides a REST API for NeMo Platform.
 
 ### Resources
 
