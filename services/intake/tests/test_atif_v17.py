@@ -645,6 +645,4 @@ def test_atif_mapping_end_time_none_when_no_timing_exists_at_all() -> None:
         trajectory=trajectory,
         ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
     )
-    assert all(
-        span.end_time is None for span in spans if span.name in {"user-1", "agent-2", "bash"}
-    )
+    assert all(span.end_time is None for span in spans if span.name in {"user-1", "agent-2", "bash"})
