@@ -1,8 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import importlib
 import json
 import logging
+import sys
 from pathlib import Path
 
 import pytest
@@ -15,10 +17,12 @@ from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import (
     build_trials_from_job_dir,
     discover_harbor_tasks,
     reward_payload_from_result,
+    scoped_harbor_agent_import,
 )
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrialStatus
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
+from pydantic import ValidationError
 
 _HELLO_WORLD_DATASET = Path(__file__).resolve().parents[2] / "examples" / "harbor" / "hello_world_dataset"
 
@@ -135,3 +139,24 @@ def test_runtime_config_defaults_and_runner_requires_a_source() -> None:
         HarborAgentTaskRunner()
     with pytest.raises(ValueError):
         HarborAgentTaskRunner(config=config)  # dataset_path missing
+
+
+def test_scoped_agent_import_makes_wrapper_importable_then_cleans_up(tmp_path: Path) -> None:
+    # A custom import_path agent requires agent_dir; the config rejects the half-spec.
+    with pytest.raises(ValidationError):
+        HarborRuntimeConfig(jobs_dir=tmp_path, agent_import_path="harbor_wrapper:WrappedAgent")
+
+    # Inside the scope the user's harbor_wrapper.py resolves under a synthetic package,
+    # and the yielded path preserves the :attribute suffix Harbor imports.
+    (tmp_path / "harbor_wrapper.py").write_text("class WrappedAgent:\n    value = 42\n")
+    with scoped_harbor_agent_import(tmp_path, "harbor_wrapper:WrappedAgent") as scoped_import:
+        module_name, _, attribute = scoped_import.partition(":")
+        assert attribute == "WrappedAgent"
+        module = importlib.import_module(module_name)
+        assert module.WrappedAgent.value == 42
+        package = module_name.rsplit(".", 1)[0]
+        assert package in sys.modules
+
+    # On exit the injected module and its synthetic package are gone from sys.modules.
+    assert module_name not in sys.modules
+    assert package not in sys.modules

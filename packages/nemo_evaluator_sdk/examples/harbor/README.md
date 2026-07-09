@@ -87,12 +87,24 @@ Both modes call `run_harbor_eval`; the only difference is what they print.
 
 ## Custom (wrapped) agents
 
-To run a real agent instead of the oracle, set `agent_import_path` on the config
-(the NeMo Optimizer path):
+To run a real agent instead of the oracle, point the config at your own
+`harbor_wrapper.py`: set `agent_import_path` and the `agent_dir` that holds it.
 
 ```python
-config = HarborRuntimeConfig(jobs_dir=jobs_dir, agent_import_path="harbor_wrapper:WrappedAgent")
+config = HarborRuntimeConfig(
+    jobs_dir=jobs_dir,
+    agent_dir="path/to/agent",            # directory containing harbor_wrapper.py
+    agent_import_path="harbor_wrapper:WrappedAgent",
+)
+result = await run_harbor_eval(config, "hello_world_dataset")
 ```
+
+The SDK makes the wrapper importable by injecting `agent_dir` into `sys.modules`
+under a unique synthetic package for the duration of the run and removing it
+afterwards — so the caller never mutates global import state (the mutation is
+lock-guarded, and each run gets its own package name so concurrent runs don't
+collide). This is `scoped_harbor_agent_import`, wired in automatically when
+`agent_import_path` is set.
 
 ## End-to-end test
 

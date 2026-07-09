@@ -15,7 +15,11 @@ Two ways to drive it:
   runtime builds Harbor's ``JobConfig`` and runs it itself. The one-call
   :func:`run_harbor_eval` loads the tasks, runs, and scores, so caller code is a
   couple of lines. ``harbor`` is imported lazily inside ``run_tasks`` (it is an
-  optional extra), so importing this module never requires Harbor.
+  optional extra), so importing this module never requires Harbor. Custom
+  ``import_path`` agents (a user ``harbor_wrapper.py``) are supported too: set
+  ``agent_import_path`` + ``agent_dir`` and the runtime injects the agent package
+  into ``sys.modules`` for the duration of the run and tears it down after, so
+  callers never touch global import state (see :func:`scoped_harbor_agent_import`).
 * **Injected / offline** — pass a ``job_dir`` (and optionally a ``run_job``
   callback) to adapt an already-completed job dir or to run a caller-built job.
 
@@ -25,13 +29,21 @@ that half stays dependency-free regardless of how the job was produced.
 
 from __future__ import annotations
 
+import contextlib
+import importlib.machinery
 import json
 import logging
+import re
 import shutil
+import sys
+import threading
 import tomllib
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
+from datetime import datetime, timezone
 from pathlib import Path
+from types import ModuleType
 from typing import Any
+from uuid import uuid4
 
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus
@@ -44,7 +56,7 @@ from nemo_evaluator_sdk.agent_eval.trials import (
 )
 from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +65,10 @@ DEFAULT_REWARD_KEY = "reward"
 # Filename that marks a directory as a Harbor task, and the template dir to skip.
 _TASK_CONFIG_FILENAME = "task.toml"
 _TASK_TEMPLATE_DIRNAME = "task_template"
+# Synthetic sys.modules root a custom ``import_path`` agent package is injected under.
+_AGENT_IMPORT_ROOT = "_nemo_evaluator_harbor_agents"
+# Guards the sys.modules mutation while injecting/removing scoped agent packages.
+_IMPORT_LOCK = threading.Lock()
 
 RunJob = Callable[[], Awaitable[None]]
 
@@ -76,6 +92,10 @@ class HarborRuntimeConfig(BaseModel):
         default=None,
         description="Custom Harbor agent import path (e.g. 'harbor_wrapper:WrappedAgent'); overrides ``agent_name``.",
     )
+    agent_dir: Path | None = Field(
+        default=None,
+        description="Directory holding the module named by ``agent_import_path``; required when it is set.",
+    )
     agent_model_name: str | None = Field(default=None, description="Optional model slug passed to the Harbor agent.")
     n_attempts: int = Field(default=1, ge=1, description="Number of attempts Harbor runs per task.")
     n_concurrent_trials: int = Field(default=4, ge=1, description="Maximum concurrent Harbor trials.")
@@ -95,6 +115,12 @@ class HarborRuntimeConfig(BaseModel):
         default=None, description="Environment-build timeout multiplier."
     )
     reward_key: str = Field(default=DEFAULT_REWARD_KEY, description="Key read from Harbor's rewards mapping.")
+
+    @model_validator(mode="after")
+    def _require_agent_dir_for_import_path(self) -> HarborRuntimeConfig:
+        if self.agent_import_path is not None and self.agent_dir is None:
+            raise ValueError("agent_dir is required when agent_import_path is set")
+        return self
 
 
 class HarborRewardMetric:
@@ -179,55 +205,131 @@ def _build_native_job(
 ) -> tuple[Path, RunJob]:
     """Build a Harbor ``JobConfig`` from ``config`` and return ``(job_dir, run_job)``.
 
-    Harbor is imported here (not at module load) because it is an optional extra.
-    The returned ``run_job`` coroutine applies ``force_rerun`` and runs the job.
+    Harbor is imported inside ``run_job`` (not at module load) because it is an
+    optional extra. The job name is resolved up front so ``job_dir`` is known
+    without importing Harbor. When ``agent_import_path`` is set, ``run_job``
+    scopes the user's agent package into ``sys.modules`` for the run and removes
+    it afterwards (see :func:`scoped_harbor_agent_import`).
     """
-    from harbor.job import DatasetConfig, Job, JobConfig  # ty: ignore[unresolved-import]
-    from harbor.models.job.config import RetryConfig  # ty: ignore[unresolved-import]
-    from harbor.models.trial.config import AgentConfig, ArtifactConfig  # ty: ignore[unresolved-import]
-
-    if config.agent_import_path is not None:
-        agent = AgentConfig(import_path=config.agent_import_path, model_name=config.agent_model_name)
-    else:
-        agent = AgentConfig(name=config.agent_name or "oracle", model_name=config.agent_model_name)
-
-    artifacts: list[str | ArtifactConfig] = list(config.artifacts)
-    if config.trace_dir is not None:
-        artifacts = [ArtifactConfig(source=config.trace_dir, destination="traces"), *artifacts]
-
-    timeout_kwargs = {
-        key: value
-        for key, value in {
-            "timeout_multiplier": config.timeout_multiplier,
-            "agent_timeout_multiplier": config.agent_timeout_multiplier,
-            "verifier_timeout_multiplier": config.verifier_timeout_multiplier,
-            "agent_setup_timeout_multiplier": config.agent_setup_timeout_multiplier,
-            "environment_build_timeout_multiplier": config.environment_build_timeout_multiplier,
-        }.items()
-        if value is not None
-    }
-
-    job_config = JobConfig(
-        jobs_dir=config.jobs_dir,
-        n_attempts=config.n_attempts,
-        n_concurrent_trials=config.n_concurrent_trials,
-        quiet=config.quiet,
-        retry=RetryConfig(max_retries=config.max_retries),
-        artifacts=artifacts,
-        agents=[agent],
-        datasets=[DatasetConfig(path=dataset_path, task_names=list(task_names) if task_names else None)],
-        **({"job_name": config.job_name} if config.job_name else {}),
-        **timeout_kwargs,
-    )
-    job_dir = job_config.jobs_dir / job_config.job_name
+    job_name = config.job_name or datetime.now(timezone.utc).strftime("%Y-%m-%d__%H-%M-%S__%f")
+    job_dir = config.jobs_dir / job_name
 
     async def run_job() -> None:
+        from harbor.job import DatasetConfig, Job, JobConfig  # ty: ignore[unresolved-import]
+        from harbor.models.job.config import RetryConfig  # ty: ignore[unresolved-import]
+        from harbor.models.trial.config import AgentConfig, ArtifactConfig  # ty: ignore[unresolved-import]
+
         if config.force_rerun and job_dir.exists():
             shutil.rmtree(job_dir)
-        job = await Job.create(job_config)
-        await job.run()
+
+        artifacts: list[str | ArtifactConfig] = list(config.artifacts)
+        if config.trace_dir is not None:
+            artifacts = [ArtifactConfig(source=config.trace_dir, destination="traces"), *artifacts]
+
+        timeout_kwargs = {
+            key: value
+            for key, value in {
+                "timeout_multiplier": config.timeout_multiplier,
+                "agent_timeout_multiplier": config.agent_timeout_multiplier,
+                "verifier_timeout_multiplier": config.verifier_timeout_multiplier,
+                "agent_setup_timeout_multiplier": config.agent_setup_timeout_multiplier,
+                "environment_build_timeout_multiplier": config.environment_build_timeout_multiplier,
+            }.items()
+            if value is not None
+        }
+
+        async def _create_and_run(agent: Any) -> None:
+            job_config = JobConfig(
+                job_name=job_name,
+                jobs_dir=config.jobs_dir,
+                n_attempts=config.n_attempts,
+                n_concurrent_trials=config.n_concurrent_trials,
+                quiet=config.quiet,
+                retry=RetryConfig(max_retries=config.max_retries),
+                artifacts=artifacts,
+                agents=[agent],
+                datasets=[DatasetConfig(path=dataset_path, task_names=list(task_names) if task_names else None)],
+                **timeout_kwargs,
+            )
+            job = await Job.create(job_config)
+            await job.run()
+
+        if config.agent_import_path is not None:
+            agent_dir = Path(config.agent_dir).expanduser().resolve()  # ty: ignore[invalid-argument-type]
+            with scoped_harbor_agent_import(agent_dir, config.agent_import_path) as scoped_import:
+                await _create_and_run(AgentConfig(import_path=scoped_import, model_name=config.agent_model_name))
+        else:
+            await _create_and_run(AgentConfig(name=config.agent_name or "oracle", model_name=config.agent_model_name))
 
     return job_dir, run_job
+
+
+@contextlib.contextmanager
+def scoped_harbor_agent_import(agent_dir: Path, import_path: str) -> Iterator[str]:
+    """Make ``agent_dir`` importable under a unique synthetic package for the block.
+
+    Args:
+        agent_dir: directory containing the module referenced by ``import_path``.
+        import_path: Harbor agent path, ``"module"`` or ``"module:attribute"``.
+
+    Yields:
+        str: the rewritten import path Harbor should load (the module rooted under
+        the injected synthetic package, preserving any ``:attribute`` suffix).
+
+    Raises:
+        ValueError: if ``import_path`` has no module component.
+
+    On exit the injected ``sys.modules`` entries are removed. The mutation is
+    guarded by a process-wide lock so concurrent runs don't corrupt import state;
+    each run gets its own uniquely-named package so distinct agents never collide.
+    """
+    module_name, sep, attribute = import_path.partition(":")
+    module_name = module_name.strip().lstrip(".")
+    if not module_name:
+        raise ValueError("import_path must be 'module' or 'module:attribute'")
+    package = f"{_AGENT_IMPORT_ROOT}.{_safe_identifier(agent_dir.name)}_{uuid4().hex[:8]}"
+    with _IMPORT_LOCK:
+        _install_agent_package(package, agent_dir)
+    try:
+        scoped = f"{package}.{module_name}"
+        yield f"{scoped}:{attribute}" if sep else scoped
+    finally:
+        with _IMPORT_LOCK:
+            _uninstall_agent_package(package)
+
+
+def _safe_identifier(value: str) -> str:
+    """Turn an arbitrary directory name into a valid Python identifier."""
+    identifier = re.sub(r"\W+", "_", value).strip("_")
+    if not identifier:
+        return "agent"
+    return identifier if identifier[0].isalpha() or identifier[0] == "_" else f"_{identifier}"
+
+
+def _install_agent_package(package: str, agent_dir: Path) -> None:
+    """Register ``package`` (and its parents) in ``sys.modules`` rooted at ``agent_dir``."""
+    parts = package.split(".")
+    for idx in range(1, len(parts) + 1):
+        name = ".".join(parts[:idx])
+        if name not in sys.modules:
+            module = ModuleType(name)
+            module.__path__ = []  # namespace package; leaf __path__ is set below
+            module.__spec__ = importlib.machinery.ModuleSpec(name, loader=None, is_package=True)
+            sys.modules[name] = module
+            if idx > 1:
+                setattr(sys.modules[".".join(parts[: idx - 1])], parts[idx - 1], module)
+    sys.modules[package].__path__ = [str(agent_dir)]
+
+
+def _uninstall_agent_package(package: str) -> None:
+    """Remove ``package`` and any submodules imported through it from ``sys.modules``."""
+    for name in [n for n in sys.modules if n == package or n.startswith(f"{package}.")]:
+        sys.modules.pop(name, None)
+    parent, _, child = package.rpartition(".")
+    parent_module = sys.modules.get(parent)
+    if parent_module is not None:
+        with contextlib.suppress(AttributeError):
+            delattr(parent_module, child)
 
 
 def build_trials_from_job_dir(
@@ -534,4 +636,5 @@ __all__ = [
     "discover_harbor_tasks",
     "reward_payload_from_result",
     "run_harbor_eval",
+    "scoped_harbor_agent_import",
 ]
