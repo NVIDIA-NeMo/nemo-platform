@@ -16,6 +16,8 @@ import os
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.secrets.client import SecretsClient
 from trace_reader import get_session
 
 WORKSPACE = "default"
@@ -32,7 +34,8 @@ def client() -> NeMoPlatform:
 
 def test_api_key_secret_exists(client: NeMoPlatform) -> None:
     """Test that the API key secret was created for provider registration."""
-    response = client.secrets.retrieve(name="harbor-provider-api-key")
+    secrets = client_from_platform(client, SecretsClient)
+    response = secrets.get_secret(name="harbor-provider-api-key").data()
     assert response.name == "harbor-provider-api-key", (
         f"Expected secret name 'harbor-provider-api-key', got '{response.name}'"
     )

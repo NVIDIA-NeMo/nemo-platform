@@ -13,6 +13,8 @@ from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NemoHTTPError
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest
+from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 from nmp.core.auth.app.bundle import (
     build_authorization_data as _real_build_authorization_data,
 )
@@ -27,6 +29,7 @@ from nmp.testing import (
     short_unique_name,
     unique_email,
 )
+from pydantic import SecretStr
 
 
 async def _build_authorization_data_without_secrets_read(entities_client=None):
@@ -101,7 +104,10 @@ class TestFilesetCreateWithSecretAuth:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.secrets.create(workspace=workspace, name=secret_name, value="hf_dummy_token")
+        client_from_platform(admin_sdk, SecretsClient).create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("hf_dummy_token")),
+            workspace=workspace,
+        )
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -140,7 +146,10 @@ class TestFilesetCreateWithSecretAuth:
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
             admin_sdk.workspaces.create(name=workspace)
-            admin_sdk.secrets.create(workspace=workspace, name=secret_name, value="hf_dummy_token")
+            client_from_platform(admin_sdk, SecretsClient).create_secret(
+                body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("hf_dummy_token")),
+                workspace=workspace,
+            )
             grant_workspace_role(
                 admin_sdk,
                 workspace=workspace,
@@ -260,7 +269,10 @@ class TestFilesetCreateWithSecretAuth:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.secrets.create(workspace=workspace, name=secret_name, value="hf_dummy_token")
+        client_from_platform(admin_sdk, SecretsClient).create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("hf_dummy_token")),
+            workspace=workspace,
+        )
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,

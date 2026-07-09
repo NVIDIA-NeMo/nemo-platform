@@ -21,8 +21,10 @@ function serializeParquetRow(row: unknown): string {
   return JSON.stringify(row, jsonReplacer);
 }
 // Cap text-file preview at 512 KB. Enough to show meaningful JSONL content
-// while preventing OOM crashes on multi-GB external dataset shards.
-const FILE_PREVIEW_MAX_BYTES = 512 * 1024;
+// while preventing OOM crashes on multi-GB external dataset shards. Text files larger
+// than this are fetched with a Range request, so callers that write content back must not
+// overwrite the source (the loaded rows are only a prefix of the file).
+export const FILE_PREVIEW_MAX_BYTES = 512 * 1024;
 
 interface UseDatasetFileContentParams extends Required<EntityIdentifier> {
   path: string;

@@ -12,6 +12,8 @@ from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NemoHTTPError
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest
+from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 from nmp.common.auth import AuthClient, get_auth_client
 from nmp.common.auth.models import Principal
 from nmp.common.config import AuthConfig, Configuration
@@ -19,6 +21,7 @@ from nmp.core.files.config import FilesConfig
 from nmp.core.files.service import FilesService
 from nmp.core.secrets.service import SecretsService
 from nmp.testing import create_test_client
+from pydantic import SecretStr
 
 # Mock auth so fileset create endpoint works (same pattern as integration/conftest.py)
 _mock_auth_principal = Principal(id="test@example.com")
@@ -70,7 +73,11 @@ class TestAllowedExternalHostsRejection:
         """Creating an NGC fileset with host outside allowed_external_hosts returns 400."""
         sdk = sdk_with_restrictive_hosts
         secret_name = f"ngc-dummy-{uuid.uuid4().hex[:8]}"
-        sdk.secrets.create(workspace=DEFAULT_WORKSPACE, name=secret_name, value="nvapi-dummy")
+        secrets = client_from_platform(sdk, SecretsClient)
+        secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr("nvapi-dummy")),
+            workspace=DEFAULT_WORKSPACE,
+        )
         try:
             name = f"ngc-disallowed-{uuid.uuid4().hex[:8]}"
             with pytest.raises(NemoHTTPError) as exc_info:
@@ -95,7 +102,7 @@ class TestAllowedExternalHostsRejection:
             )
         finally:
             try:
-                sdk.secrets.delete(workspace=DEFAULT_WORKSPACE, name=secret_name)
+                secrets.delete_secret(name=secret_name, workspace=DEFAULT_WORKSPACE)
             except Exception:
                 pass
 

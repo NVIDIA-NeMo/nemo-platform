@@ -16,8 +16,10 @@ from typing import Any
 
 import httpx
 from docker.errors import APIError, NotFound
-from nemo_platform import NotFoundError
 from nemo_platform.types.inference.model_deployment import ModelDeployment
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError
+from nemo_platform_plugin.secrets.client import AsyncSecretsClient
 from nmp.common.config import get_platform_config
 from nmp.common.docker.gpu_pool import DockerGPUPool
 from nmp.common.resources import SharedResourceManager
@@ -150,7 +152,8 @@ class DockerServiceBackend(ServiceBackend):
             return os.environ.get(get_platform_config().ngc_api_key_env_var) or None
         workspace, name = parts[0], parts[1]
         try:
-            response = await self._nmp_sdk.secrets.access(name, workspace=workspace)
+            secrets = client_from_platform(self._nmp_sdk, AsyncSecretsClient)
+            response = (await secrets.access_secret(name=name, workspace=workspace)).data()
             if response.value:
                 logger.debug("Resolved NGC API key from secret %s/%s", workspace, name)
                 return response.value

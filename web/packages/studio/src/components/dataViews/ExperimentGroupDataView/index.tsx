@@ -30,8 +30,9 @@ import { deriveEvaluatorNames } from '@studio/components/dataViews/ExperimentGro
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
+import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { Columns3, Pin } from 'lucide-react';
-import { type ComponentProps, type FC, useCallback, useMemo } from 'react';
+import { type ComponentProps, type FC, useCallback, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export type { ExperimentRow };
@@ -118,6 +119,12 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
   const experimentGroupName = group.name;
   const experimentGroupId = group.id;
 
+  // Persist column order to localStorage, keyed by experiment group ID.
+  const [savedColumnOrder, saveColumnOrder] = useLocalStorage<string[]>(
+    `nemo-studio:experiment-group-columns:${experimentGroupId}`,
+    []
+  );
+
   // Seed the sort from default_sort so its column header reflects the order on load. Memoized so the
   // reference is stable across renders (until default_sort changes).
   const defaultSort = useMemo(() => seedSortFromDefault(group.default_sort), [group.default_sort]);
@@ -128,7 +135,14 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
     // Keep the pin toggle reachable while horizontally scrolling this wide table.
     columnPinning: { left: ['pin'] },
     filterFieldMap: getExperimentFilterField,
+    columnOrder: savedColumnOrder ?? [],
   });
+
+  // Write column order to localStorage whenever it changes after the first reorder.
+  const { columnOrder } = dataViewState;
+  useEffect(() => {
+    if (columnOrder.state.length > 0) saveColumnOrder(columnOrder.state);
+  }, [columnOrder.state, saveColumnOrder]);
 
   const page = dataViewState.pagination.state.pageIndex + 1;
   const pageSize = dataViewState.pagination.state.pageSize;
@@ -439,6 +453,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
           requestStatus: isLoading ? 'loading' : undefined,
         },
         DataViewTableContent: {
+          enableColumnReordering: true,
           renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
             hasFiltersApplied || hasSearchApplied ? null : (
               <Empty experimentGroupName={experimentGroupName} />

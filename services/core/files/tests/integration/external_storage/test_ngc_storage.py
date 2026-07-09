@@ -25,9 +25,12 @@ import pytest
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 from nmp.core.files.app.backends.base import StorageImpl
 from nmp.core.files.app.streaming import download_url_streaming
 from nmp.core.files.testing.utils import create_fileset
+from pydantic import SecretStr
 
 # Skip all tests in this module if NGC_API_KEY is not set
 pytestmark = pytest.mark.skipif(
@@ -48,15 +51,15 @@ def ngc_api_key_secret(sdk: NeMoPlatform) -> Iterator[str]:
     if not api_key:
         pytest.fail("NGC_API_KEY environment variable must be set")
     secret_name = f"ngc-api-key-{uuid.uuid4().hex[:8]}"
-    sdk.secrets.create(
+    secrets = client_from_platform(sdk, SecretsClient)
+    secrets.create_secret(
+        body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(api_key)),
         workspace=DEFAULT_WORKSPACE,
-        name=secret_name,
-        data=api_key,
     )
     try:
         yield secret_name
     finally:
-        sdk.secrets.delete(workspace=DEFAULT_WORKSPACE, name=secret_name)
+        secrets.delete_secret(name=secret_name, workspace=DEFAULT_WORKSPACE)
 
 
 class TestNGCVersionResolution:

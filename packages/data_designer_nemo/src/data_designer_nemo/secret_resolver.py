@@ -6,7 +6,10 @@ import logging
 import anyio.from_thread
 from data_designer.engine.errors import SecretResolutionError
 from data_designer_nemo.errors import NDDInternalError, NDDInvalidConfigError
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform, NotFoundError, PermissionDeniedError
+from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError, PermissionDeniedError
+from nemo_platform_plugin.secrets.client import AsyncSecretsClient, SecretsClient
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +23,9 @@ async def validate_secret(sdk: AsyncNeMoPlatform, secret: str, default_workspace
     NMPSecretResolver).
     """
     workspace, name = _parse_secret_reference(secret, default_workspace)
+    secrets = client_from_platform(sdk, AsyncSecretsClient)
     try:
-        await sdk.secrets.access(name=name, workspace=workspace)
+        await secrets.access_secret(name=name, workspace=workspace)
     except NotFoundError as e:
         raise NDDInvalidConfigError(f"Could not find secret {name!r} in workspace {workspace!r}") from e
     except PermissionDeniedError as e:
@@ -58,11 +62,14 @@ class NMPSecretResolver:
             workspace, name = _parse_secret_reference(secret, self._default_workspace)
             if isinstance(self._sdk, AsyncNeMoPlatform):
                 # ``anyio.from_thread.run`` only forwards positional args, so wrap the
-                # kwargs-only SDK call in a no-arg coroutine factory.
-                async_sdk = self._sdk
-                result = anyio.from_thread.run(lambda: async_sdk.secrets.access(name=name, workspace=workspace))
+                # kwargs-only client call in a no-arg coroutine factory.
+                async_secrets = client_from_platform(self._sdk, AsyncSecretsClient)
+                result = anyio.from_thread.run(
+                    lambda: async_secrets.access_secret(name=name, workspace=workspace)
+                ).data()
             else:
-                result = self._sdk.secrets.access(name=name, workspace=workspace)
+                secrets = client_from_platform(self._sdk, SecretsClient)
+                result = secrets.access_secret(name=name, workspace=workspace).data()
             return result.value
         except Exception as e:
             raise SecretResolutionError(f"Error resolving secret {secret!r}: {e}") from e

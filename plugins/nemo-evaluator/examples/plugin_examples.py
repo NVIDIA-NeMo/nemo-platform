@@ -39,12 +39,17 @@ from nemo_evaluator_sdk.values import (
     SecretRef,
 )
 from nemo_evaluator_sdk.values.results import EvaluationResult
-from nemo_platform import APIError, AsyncNeMoPlatform, ConflictError, NeMoPlatform, NotFoundError
+from nemo_platform import APIError, AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.client import errors as files_errors
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import ConflictError as ClientConflictError
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.files.storage_config import HuggingfaceStorageConfig
 from nemo_platform_plugin.files.types import CreateFilesetRequest
+from nemo_platform_plugin.secrets.client import AsyncSecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
+from pydantic import SecretStr
 
 if TYPE_CHECKING:
     import numpy as np
@@ -250,9 +255,10 @@ def ensure_example_fileset_sync(client: NeMoPlatform) -> FilesetRef:
 async def ensure_submit_evaluator_api_key_secret(workspace: str, client: AsyncNeMoPlatform) -> str:
     """Resolve an API key secret name and ensure it exists on the platform."""
     secret_name = DEFAULT_API_KEY_SECRET.lower().replace("_", "-")
+    secrets = client_from_platform(client, AsyncSecretsClient)
     try:
-        await client.secrets.retrieve(secret_name, workspace=workspace)
-    except NotFoundError:
+        await secrets.get_secret(name=secret_name, workspace=workspace)
+    except ClientNotFoundError:
         api_key = os.getenv(DEFAULT_API_KEY_SECRET) or os.getenv("NVIDIA_API_KEY") or os.getenv("NVIDIA_BUILD_API_KEY")
         if api_key is None:
             raise RuntimeError(
@@ -262,9 +268,12 @@ async def ensure_submit_evaluator_api_key_secret(workspace: str, client: AsyncNe
                 f"nemo secrets create {secret_name} --value '<api-key>' --workspace {workspace}"
             ) from None
         try:
-            await client.secrets.create(workspace=workspace, name=secret_name, value=api_key)
+            await secrets.create_secret(
+                body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(api_key)),
+                workspace=workspace,
+            )
             print("API key secret created for workspace")
-        except ConflictError:
+        except ClientConflictError:
             pass
     return secret_name
 

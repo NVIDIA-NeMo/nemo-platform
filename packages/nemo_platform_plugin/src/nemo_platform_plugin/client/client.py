@@ -24,6 +24,7 @@ import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Self, TypeVar, get_args, get_origin, overload
+from urllib.parse import quote
 
 import httpx
 from nemo_platform_plugin.client.auth import (
@@ -177,8 +178,9 @@ class BaseNemoClient:
         if self._workspace:
             params["workspace"] = self._workspace
         params.update(request.path_params)
+        encoded_params = {name: quote(str(value), safe="") for name, value in params.items()}
         try:
-            path = request.path_template.format_map(params)
+            path = request.path_template.format_map(encoded_params)
         except KeyError as exc:
             raise ValueError(f"Missing path parameter {exc} for {request.method} {request.path_template}") from exc
         return self._base_url + path

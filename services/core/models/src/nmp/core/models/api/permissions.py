@@ -13,12 +13,12 @@ to our own API.
 """
 
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform._exceptions import NotFoundError, PermissionDeniedError
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nemo_platform_plugin.client.errors import PermissionDeniedError as ClientPermissionDeniedError
 from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.files.types import FilesetOutput
+from nemo_platform_plugin.secrets.client import AsyncSecretsClient
 from nmp.common.auth import AuthClient
 from nmp.common.entities.utils import parse_entity_ref
 
@@ -30,11 +30,12 @@ async def check_secret_access(nmp_sdk: AsyncNeMoPlatform, secret_name: str, work
         PermissionError: If the user cannot access the secret.
         ValueError: If the secret doesn't exist.
     """
+    secrets = client_from_platform(nmp_sdk, AsyncSecretsClient)
     try:
-        await nmp_sdk.secrets.retrieve(secret_name, workspace=workspace)
-    except PermissionDeniedError:
+        await secrets.get_secret(name=secret_name, workspace=workspace)
+    except ClientPermissionDeniedError:
         raise PermissionError(f"Access denied to secret '{secret_name}' in workspace '{workspace}'") from None
-    except NotFoundError:
+    except ClientNotFoundError:
         raise ValueError(f"Secret '{secret_name}' not found in workspace '{workspace}'") from None
 
 

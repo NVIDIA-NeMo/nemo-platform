@@ -40,6 +40,8 @@ from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NemoHTTPError as ClientBadRequestError
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest, FilesetOutput
+from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 from nmp.common.auth import AuthClient, get_auth_client
 from nmp.common.auth.models import Principal
 from nmp.common.config import AuthConfig
@@ -49,6 +51,7 @@ from nmp.core.files.service import FilesService
 from nmp.core.files.testing.utils import create_fileset
 from nmp.core.secrets.service import SecretsService
 from nmp.testing import create_test_client
+from pydantic import SecretStr
 from types_aiobotocore_s3 import S3Client
 
 # Test configuration - uses RustFS by default
@@ -123,14 +126,21 @@ def s3_credentials(sdk: NeMoPlatform) -> Iterator[tuple[str, str]]:
     access_key_secret = f"s3-access-key-{uuid.uuid4().hex[:8]}"
     secret_key_secret = f"s3-secret-key-{uuid.uuid4().hex[:8]}"
 
-    sdk.secrets.create(workspace=DEFAULT_WORKSPACE, name=access_key_secret, value=S3_TEST_ACCESS_KEY)
-    sdk.secrets.create(workspace=DEFAULT_WORKSPACE, name=secret_key_secret, value=S3_TEST_SECRET_KEY)
+    secrets = client_from_platform(sdk, SecretsClient)
+    secrets.create_secret(
+        body=PlatformSecretCreateRequest(name=access_key_secret, value=SecretStr(S3_TEST_ACCESS_KEY)),
+        workspace=DEFAULT_WORKSPACE,
+    )
+    secrets.create_secret(
+        body=PlatformSecretCreateRequest(name=secret_key_secret, value=SecretStr(S3_TEST_SECRET_KEY)),
+        workspace=DEFAULT_WORKSPACE,
+    )
 
     try:
         yield (access_key_secret, secret_key_secret)
     finally:
-        sdk.secrets.delete(workspace=DEFAULT_WORKSPACE, name=access_key_secret)
-        sdk.secrets.delete(workspace=DEFAULT_WORKSPACE, name=secret_key_secret)
+        secrets.delete_secret(name=access_key_secret, workspace=DEFAULT_WORKSPACE)
+        secrets.delete_secret(name=secret_key_secret, workspace=DEFAULT_WORKSPACE)
 
 
 @pytest.fixture
@@ -195,8 +205,15 @@ class TestS3StorageBackend:
         bad_access_secret = f"bad-s3-access-{uuid.uuid4().hex[:8]}"
         bad_secret_secret = f"bad-s3-secret-{uuid.uuid4().hex[:8]}"
 
-        sdk.secrets.create(workspace=DEFAULT_WORKSPACE, name=bad_access_secret, value="invalid-key")
-        sdk.secrets.create(workspace=DEFAULT_WORKSPACE, name=bad_secret_secret, value="invalid-secret")
+        secrets = client_from_platform(sdk, SecretsClient)
+        secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=bad_access_secret, value=SecretStr("invalid-key")),
+            workspace=DEFAULT_WORKSPACE,
+        )
+        secrets.create_secret(
+            body=PlatformSecretCreateRequest(name=bad_secret_secret, value=SecretStr("invalid-secret")),
+            workspace=DEFAULT_WORKSPACE,
+        )
 
         try:
             files = client_from_platform(sdk, FilesClient)
@@ -212,8 +229,8 @@ class TestS3StorageBackend:
             assert exc_info.value.status_code == 400
             assert "Access denied" in str(exc_info.value) or "credentials" in str(exc_info.value).lower()
         finally:
-            sdk.secrets.delete(workspace=DEFAULT_WORKSPACE, name=bad_access_secret)
-            sdk.secrets.delete(workspace=DEFAULT_WORKSPACE, name=bad_secret_secret)
+            secrets.delete_secret(name=bad_access_secret, workspace=DEFAULT_WORKSPACE)
+            secrets.delete_secret(name=bad_secret_secret, workspace=DEFAULT_WORKSPACE)
 
     def test_upload_and_download_roundtrip(self, sdk: NeMoPlatform, s3_fileset: FilesetOutput, tmp_path):
         """Test upload file, download it back, verify content matches."""
