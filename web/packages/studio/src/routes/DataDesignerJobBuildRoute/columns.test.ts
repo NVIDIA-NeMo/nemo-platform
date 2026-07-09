@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { SamplerType } from '@nemo/sdk/generated/data-designer/schema';
 import { COLUMN_TYPE_GROUPS } from '@studio/components/AddColumnPalette/constants';
 import type { ColumnTypeOption } from '@studio/components/AddColumnPalette/types';
+import { FILESET_TEMPLATES } from '@studio/components/CreateFilesetStart/templates';
 import {
   type BuilderColumn,
   buildColumnsFromTemplate,
@@ -183,51 +185,163 @@ describe('sampler columns', () => {
     expect(validateColumns(columns)).toContainEqual(expect.stringContaining('Categories'));
   });
 
-  it('serializes binomial params as numbers', () => {
-    const columns = [column('a', 'returns', 'sampler', { n: '10', p: '0.1' }, 'binomial')];
-
-    expect(buildDataDesignerConfig(columns).columns[0]).toEqual({
-      name: 'returns',
-      column_type: 'sampler',
-      sampler_type: 'binomial',
-      params: { n: 10, p: 0.1 },
-    });
-  });
-
-  it('serializes boolean and JSON params for their SDK types', () => {
+  it('coerces numeric sampler params to numbers', () => {
     const columns = [
       column(
         'a',
-        'dist',
+        'score',
         'sampler',
-        { dist_name: 'norm', dist_params: '{ "loc": 0, "scale": 1 }', p: '0.5' },
-        'bernoulli_mixture'
+        { mean: '1.5', stddev: '0.25', decimal_places: '2' },
+        'gaussian'
       ),
-      column('b', 'ids', 'sampler', { short_form: 'true' }, 'uuid'),
     ];
 
-    const built = buildDataDesignerConfig(columns);
-    expect(built.columns[0]).toMatchObject({
-      params: { p: 0.5, dist_name: 'norm', dist_params: { loc: 0, scale: 1 } },
+    expect(buildDataDesignerConfig(columns).columns[0]).toEqual({
+      name: 'score',
+      column_type: 'sampler',
+      sampler_type: 'gaussian',
+      params: { mean: 1.5, stddev: 0.25, decimal_places: 2 },
     });
-    expect(built.columns[1]).toMatchObject({ params: { short_form: true } });
   });
 
-  it('flags non-numeric and malformed-JSON sampler params', () => {
+  it('serializes boolean switches and a numeric weight list', () => {
+    const uuid = column('a', 'id', 'sampler', { short_form: 'true', uppercase: 'false' }, 'uuid');
+    const category = column(
+      'b',
+      'domain',
+      'sampler',
+      { values: 'a, b, c', weights: '3, 1, 1' },
+      'category'
+    );
+
+    const built = buildDataDesignerConfig([uuid, category]).columns;
+    expect(built[0]).toMatchObject({ params: { short_form: 'true', uppercase: 'false' } });
+    expect(built[1]).toMatchObject({ params: { values: ['a', 'b', 'c'], weights: [3, 1, 1] } });
+  });
+
+  it('parses JSON sampler params (subcategory mapping)', () => {
     const columns = [
-      column('a', 'returns', 'sampler', { n: 'not-a-number', p: '0.1' }, 'binomial'),
       column(
-        'b',
-        'dist',
+        'a',
+        'sub',
         'sampler',
-        { dist_name: 'norm', dist_params: '{ bad', p: '0.5' },
-        'bernoulli_mixture'
+        { category: 'domain', values: '{ "sci": ["physics"], "art": ["music"] }' },
+        'subcategory'
       ),
     ];
 
-    const errors = validateColumns(columns);
-    expect(errors).toContainEqual(expect.stringContaining('Number of trials'));
-    expect(errors).toContainEqual(expect.stringContaining('Distribution params'));
+    expect(buildDataDesignerConfig(columns).columns[0]).toMatchObject({
+      params: { category: 'domain', values: { sci: ['physics'], art: ['music'] } },
+    });
+  });
+
+  it('draws edges from sampler column-name references (subcategory parent, timedelta reference)', () => {
+    const columns = [
+      column('a', 'domain', 'sampler', { values: 'x, y' }, 'category'),
+      column(
+        'b',
+        'sub',
+        'sampler',
+        { category: 'domain', values: '{ "x": ["x1"] }' },
+        'subcategory'
+      ),
+      column('c', 'created', 'sampler', { start: '2020-01-01', end: '2024-01-01' }, 'datetime'),
+      column(
+        'd',
+        'shipped',
+        'sampler',
+        { dt_min: '1', dt_max: '30', reference_column_name: 'created' },
+        'timedelta'
+      ),
+    ];
+
+    const { edges } = buildGraph(columns);
+    expect(edges).toContainEqual({ source: 'a', target: 'b' });
+    expect(edges).toContainEqual({ source: 'c', target: 'd' });
+  });
+
+  it('flags malformed numeric and JSON sampler params', () => {
+    const badNumber = column('a', 'x', 'sampler', { p: 'not-a-number' }, 'bernoulli');
+    const badJson = column(
+      'b',
+      'y',
+      'sampler',
+      { dist_name: 'beta', dist_params: '{ oops' },
+      'scipy'
+    );
+
+    expect(validateColumns([badNumber])).toContainEqual(
+      expect.stringContaining('must be a number')
+    );
+    expect(validateColumns([badJson])).toContainEqual(
+      expect.stringContaining('must be valid JSON')
+    );
+  });
+
+  it('accepts a fully-specified numeric sampler as submittable', () => {
+    const columns = [column('a', 'trials', 'sampler', { n: '10', p: '0.5' }, 'binomial')];
+
+    expect(validateColumns(columns)).toEqual([]);
+  });
+});
+
+describe('sampler-showcase template', () => {
+  const showcase = FILESET_TEMPLATES.find((t) => t.id === 'sampler-showcase');
+  if (!showcase) throw new Error('sampler-showcase template is missing');
+
+  it('covers every previewable sampler sub-type in the palette', () => {
+    // The managed `person` sampler is intentionally excluded — it needs downloaded
+    // Nemotron Personas datasets and can't preview without them.
+    const excluded = new Set<string | undefined>([SamplerType.person]);
+    const samplerTypesInPalette = COLUMN_TYPE_GROUPS.flatMap((g) => g.options)
+      .filter((o) => o.columnType === 'sampler')
+      .map((o) => o.samplerType)
+      .filter((t) => !excluded.has(t));
+    const covered = new Set(showcase.columns.map((c) => c.samplerType));
+    for (const samplerType of samplerTypesInPalette) {
+      expect(covered).toContain(samplerType);
+    }
+    expect(covered.has(SamplerType.person)).toBe(false);
+  });
+
+  it('validates clean and builds a config for every sampler', () => {
+    const columns = buildColumnsFromTemplate(showcase.columns);
+    expect(columns).toHaveLength(showcase.columns.length);
+    expect(validateColumns(columns)).toEqual([]);
+
+    const built = buildDataDesignerConfig(columns).columns;
+    // Every emitted config is a sampler with a params object.
+    for (const config of built) {
+      expect(config).toMatchObject({ column_type: 'sampler' });
+      expect((config as { params?: unknown }).params).toBeTypeOf('object');
+    }
+  });
+
+  it('wires the two intended sampler dependency edges', () => {
+    const columns = buildColumnsFromTemplate(showcase.columns);
+    const { edges } = buildGraph(columns);
+    const idOf = (name: string) => columns.find((c) => c.name === name)?.id;
+
+    expect(edges).toContainEqual({
+      source: idOf('category_topic'),
+      target: idOf('subcategory_topic'),
+    });
+    expect(edges).toContainEqual({ source: idOf('created_at'), target: idOf('shipped_after') });
+  });
+
+  it('coerces representative params to their SDK types', () => {
+    const columns = buildColumnsFromTemplate(showcase.columns);
+    const built = buildDataDesignerConfig(columns).columns as unknown as Array<{
+      sampler_type: string;
+      params: Record<string, unknown>;
+    }>;
+    const paramsFor = (t: SamplerType) => built.find((c) => c.sampler_type === t)?.params;
+
+    expect(paramsFor(SamplerType.uuid)).toMatchObject({ short_form: 'true', uppercase: 'false' });
+    expect(paramsFor(SamplerType.category)).toMatchObject({ weights: [3, 2, 1] });
+    expect(paramsFor(SamplerType.binomial)).toMatchObject({ n: 10, p: 0.5 });
+    expect(paramsFor(SamplerType.scipy)).toMatchObject({ dist_params: { a: 2, b: 5 } });
+    expect(paramsFor(SamplerType.timedelta)).toMatchObject({ dt_min: 1, dt_max: 30 });
   });
 });
 
