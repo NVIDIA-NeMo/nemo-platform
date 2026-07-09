@@ -46,6 +46,7 @@ jobs:
       cpu-smoke: ${{ steps.changes.outputs.cpu-smoke }}
       guardrails-benchmark: ${{ steps.changes.outputs.guardrails-benchmark }}
       ngc-metadata: ${{ steps.changes.outputs.ngc-metadata }}
+      auth-idp: ${{ steps.changes.outputs.auth-idp }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: ./.github/actions/changes
@@ -124,7 +125,8 @@ jobs:
     if: >
       !cancelled() && (
         github.event_name == 'workflow_dispatch' ||
-        needs.changes.outputs.cpu-smoke == 'true'
+        needs.changes.outputs.cpu-smoke == 'true' ||
+        needs.changes.outputs.auth-idp == 'true'
       )
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -891,6 +893,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - name: Free disk space
         uses: ./.github/actions/free-disk-space
       - name: Download policy WASM
@@ -934,6 +938,62 @@ jobs:
             report.xml
             coverage.xml
             coverage.json
+
+  python-auth-idp-test:
+    name: Python auth-idp tests
+    needs: [changes, policy-wasm, build-cpu-smoke-images]
+    if: >
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.cpu-smoke == 'true' ||
+        needs.changes.outputs.auth-idp == 'true'
+      ) &&
+      needs.policy-wasm.result == 'success' &&
+      needs.build-cpu-smoke-images.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Free disk space
+        uses: ./.github/actions/free-disk-space
+      - name: Download policy WASM
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: policy-wasm
+          path: services/core/auth/src/nmp/core/auth/assets
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          python-version: "3.11"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Log in to GHCR
+        if: needs.build-cpu-smoke-images.outputs.publish_images == 'true'
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Run auth-idp tests
+        run: make test-auth-idp
+        env:
+          _TYPER_FORCE_DISABLE_TERMINAL: "1"
+          E2E_SERVICES_LOG_DIR: ${{ runner.temp }}/e2e-services-logs
+          IMAGE_REGISTRY: ${{ needs.build-cpu-smoke-images.outputs.image_registry }}
+          BAKE_TAG: ${{ needs.build-cpu-smoke-images.outputs.image_tag }}
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: python-auth-idp-test-results
+          retention-days: 30
+          path: |
+            ${{ runner.temp }}/e2e-services-logs/
 
   # Build wheels for all packages × python versions. Downstream jobs
   # (wheel-test, python-e2e-test) download these artifacts instead

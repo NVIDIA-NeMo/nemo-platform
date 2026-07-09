@@ -60,9 +60,6 @@ class TestAtif:
             continued_trajectory_ref="continued_trajectory_ref",
             evaluation_context={
                 "evaluation_id": "evaluation_id",
-                "evaluation_run_id": "evaluation_run_id",
-                "evaluation_sha": "evaluation_sha",
-                "metadata": {"foo": "bar"},
                 "test_case_id": "test_case_id",
             },
             experiment_context={
@@ -223,9 +220,6 @@ class TestAsyncAtif:
             continued_trajectory_ref="continued_trajectory_ref",
             evaluation_context={
                 "evaluation_id": "evaluation_id",
-                "evaluation_run_id": "evaluation_run_id",
-                "evaluation_sha": "evaluation_sha",
-                "metadata": {"foo": "bar"},
                 "test_case_id": "test_case_id",
             },
             experiment_context={

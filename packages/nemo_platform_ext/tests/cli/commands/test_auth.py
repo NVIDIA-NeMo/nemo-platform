@@ -67,6 +67,9 @@ def _decode_jwt_noop(token: str) -> dict:
 
 @pytest.fixture
 def oauth_config_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    for env_key in ("NMP_ACCESS_TOKEN", "NEMO_WORKLOAD_TOKEN", "NEMO_WORKLOAD_TOKEN_FILE"):
+        monkeypatch.delenv(env_key, raising=False)
+
     config_data = {
         "current_context": "default",
         "clusters": [
@@ -133,6 +136,8 @@ def test_auth_logout_clears_selected_context_credentials(
 
     assert_exit_code(result, 0)
     assert "Logged out successfully" in result.output
+    assert "Context: foo" in result.output
+    assert "Config file:" in result.output
 
     with open(oauth_config_file) as f:
         data = yaml.safe_load(f)
@@ -146,6 +151,43 @@ def test_auth_logout_clears_selected_context_credentials(
     assert foo_user["type"] == "no-auth"
     assert "token" not in foo_user
     assert "refresh_token" not in foo_user
+
+
+def test_auth_logout_warns_when_runtime_token_override_remains(
+    oauth_config_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("nemo_platform_ext.cli.commands.auth.discover_nmp_config", _discover_auth_enabled)
+    monkeypatch.setenv(
+        "NEMO_WORKLOAD_TOKEN",
+        generate_unsigned_jwt(
+            principal_id="svc-nemo-ci",
+            email="svc-nemo-ci@example.com",
+            expires_in_seconds=900,
+        ),
+    )
+
+    result = runner.invoke(app, ["--context", "foo", "auth", "logout"])
+
+    assert_exit_code(result, 0)
+    assert "Logged out successfully" in result.output
+    assert "NEMO_WORKLOAD_TOKEN environment override is still active" in result.output
+
+
+def test_auth_logout_fails_if_credentials_remain(oauth_config_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_platform_ext.config.config import Config
+
+    def fake_write(*args, **kwargs):
+        return Config.load(config_path=oauth_config_file)
+
+    monkeypatch.setattr("nemo_platform_ext.cli.commands.auth.discover_nmp_config", _discover_auth_enabled)
+    monkeypatch.setattr("nemo_platform_ext.config.config.Config.write", fake_write)
+
+    result = runner.invoke(app, ["--context", "foo", "auth", "logout"])
+
+    assert_exit_code(result, 1)
+    assert "Logout did not clear credentials" in result.output
+    assert "context 'foo'" in result.output
+    assert oauth_config_file.name in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +308,33 @@ def test_auth_status_shows_warning_for_unsigned_token(oauth_config_file: Path, m
     assert "local/testing" in result.output
 
 
+def test_runtime_token_source_label_handles_unreadable_token_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from nemo_platform_ext.cli.commands.auth import _runtime_token_source_label
+
+    token_file = tmp_path / "missing-workload-token.jwt"
+    monkeypatch.delenv("NMP_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("NEMO_WORKLOAD_TOKEN", raising=False)
+    monkeypatch.setenv("NEMO_WORKLOAD_TOKEN_FILE", str(token_file))
+
+    assert _runtime_token_source_label() == "NEMO_WORKLOAD_TOKEN_FILE environment override could not be read"
+
+
+def test_auth_status_shows_config_file_credential_source(
+    oauth_config_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("nemo_platform_ext.cli.commands.auth.discover_nmp_config", _discover_auth_enabled)
+
+    result = runner.invoke(app, ["--context", "foo", "auth", "status"])
+
+    assert_exit_code(result, 0)
+    assert "Config File" in result.output
+    assert oauth_config_file.name in result.output
+    assert "Credential Source" in result.output
+    assert "config file" in result.output
+
+
 # ---------------------------------------------------------------------------
 # login
 # ---------------------------------------------------------------------------
@@ -347,6 +416,52 @@ def test_auth_login_context_flag_updates_selected_context(oauth_config_file: Pat
     assert data["current_context"] == "foo"
     assert default_cluster["base_url"].rstrip("/") == "https://default.example.com"
     assert foo_cluster["base_url"].rstrip("/") == "https://foo-updated.example.com"
+    assert foo_user["token"] == "foo-access-token"
+    assert foo_user["refresh_token"] == "foo-refresh-token"
+
+
+def test_auth_login_warns_when_env_access_token_will_override_saved_credentials(
+    oauth_config_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def password_grant(**kwargs) -> SimpleNamespace:
+        return SimpleNamespace(token_for_nmp="foo-access-token", refresh_token="foo-refresh-token")
+
+    monkeypatch.setenv(
+        "NMP_ACCESS_TOKEN",
+        generate_unsigned_jwt(
+            principal_id="svc-nemo-ci",
+            email="svc-nemo-ci@example.com",
+            expires_in_seconds=900,
+        ),
+    )
+    monkeypatch.setattr("nemo_platform_ext.cli.commands.auth.discover_nmp_config", _discover_oidc_config)
+    monkeypatch.setattr("nemo_platform_ext.auth.device_flow.authenticate_with_password_grant", password_grant)
+    monkeypatch.setattr("nemo_platform_ext.cli.commands.auth.decode_jwt_claims", _decode_jwt_noop)
+
+    result = runner.invoke(
+        app,
+        [
+            "auth",
+            "login",
+            "--context",
+            "foo",
+            "--base-url",
+            "https://foo-updated.example.com",
+            "--username",
+            "user",
+            "--password",
+            "secret",
+        ],
+    )
+
+    assert_exit_code(result, 0)
+    assert "NMP_ACCESS_TOKEN environment override is active" in result.output
+    assert "Unset the runtime token override" in result.output
+
+    with open(oauth_config_file) as f:
+        data = yaml.safe_load(f)
+
+    foo_user = next(user for user in data["users"] if user["name"] == "foo")
     assert foo_user["token"] == "foo-access-token"
     assert foo_user["refresh_token"] == "foo-refresh-token"
 

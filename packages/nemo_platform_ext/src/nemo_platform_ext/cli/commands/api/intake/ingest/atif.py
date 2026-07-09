@@ -33,11 +33,18 @@ def create_atif(
     ] = None,
     continued_trajectory_ref: Annotated[str | None, typer.Option("--continued-trajectory-ref")] = None,
     evaluation_context: Annotated[
-        str | None, typer.Option("--evaluation-context", help="Deprecated. (JSON string)")
+        str | None,
+        typer.Option(
+            "--evaluation-context",
+            help='Evaluation context accepted by ingest endpoints (the canonical shape).`extra="ignore"` so a producer still sending retired keys (evaluation_sha, evaluation_run_id, metadata) keeps ingesting without error rather than being rejected. (JSON string)',
+        ),
     ] = None,
     experiment_context: Annotated[
         str | None,
-        typer.Option("--experiment-context", help="Experiment context accepted by ingest endpoints. (JSON string)"),
+        typer.Option(
+            "--experiment-context",
+            help="Deprecated alias for :class:`EvaluationContext`. Producers should send `evaluation_context`. (JSON string)",
+        ),
     ] = None,
     extra: Annotated[str | None, typer.Option("--extra", help="JSON string")] = None,
     final_metrics: Annotated[str | None, typer.Option("--final-metrics", help="JSON string")] = None,

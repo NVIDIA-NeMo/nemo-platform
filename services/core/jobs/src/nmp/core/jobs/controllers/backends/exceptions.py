@@ -18,5 +18,13 @@ class ResourceAllocationError(Exception):
         self.message = message
 
 
+class SchedulingDeferred(Exception):
+    """Exception raised when a backend has no immediate capacity to accept a step."""
+
+    def __init__(self, message: str = "Scheduling deferred"):
+        super().__init__(message)
+        self.message = message
+
+
 class JobStorageError(Exception):
     """Exception raised when there's an issue with job storage."""

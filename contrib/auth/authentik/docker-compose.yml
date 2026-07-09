@@ -1,0 +1,128 @@
+x-authentik-env: &authentik-env
+  AUTHENTIK_REDIS__HOST: authentik-redis
+  AUTHENTIK_POSTGRESQL__HOST: authentik-postgres
+  AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+  AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
+  AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS:-authentik}
+  AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-change-me-dev-only}
+  AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:-akadmin-dev}
+  AUTHENTIK_BOOTSTRAP_TOKEN: ${AUTHENTIK_BOOTSTRAP_TOKEN:-bootstrap-token-dev}
+
+services:
+  nemo:
+    image: ${IMAGE_REGISTRY:-my-registry}/nmp-api:${BAKE_TAG:-local}
+    # The local Docker jobs backend controls sibling workload containers through
+    # the mounted host socket, which Docker Desktop exposes as root-owned.
+    user: "0:0"
+    environment:
+      MODE: development
+      NMP_CONFIG_FILE_PATH: /etc/nmp/config.yaml
+      NMP_CONFIG_WARNINGS_DISABLED: "1"
+      NMP_SEED_ON_STARTUP: "true"
+      NMP_PLATFORM_SEED_MODEL_PROVIDER_ENABLED: "false"
+      NMP_SECRETS_ALLOW_KEY_CREATION: "1"
+      NEMO_JOBS_DEFAULT_DOCKER_NETWORK: ${AUTHENTIK_WORKLOAD_NETWORK_NAME:-authentik_workload}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=5)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    ports:
+      - "${NEMO_DIRECT_PORT:-18081}:8080"
+    volumes:
+      - ${NEMO_COMPOSE_CONFIG_PATH:-./config/platform-compose-authentik.yaml}:/etc/nmp/config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - nemo-data:/data
+    networks:
+      - nemo-internal
+
+  gateway:
+    image: envoyproxy/envoy:v1.33-latest
+    command: ["envoy", "-c", "/etc/envoy/envoy.yaml"]
+    volumes:
+      - ./gateway/envoy.yaml:/etc/envoy/envoy.yaml:ro
+    ports:
+      - "${AUTHENTIK_GATEWAY_PORT:-18080}:8080"
+    depends_on:
+      nemo:
+        condition: service_healthy
+    networks:
+      nemo-internal: {}
+      workload:
+        aliases:
+          - nemo-gateway
+
+  authentik-postgres:
+    image: docker.io/library/postgres:16-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    environment:
+      POSTGRES_USER: ${PG_USER:-authentik}
+      POSTGRES_DB: ${PG_DB:-authentik}
+      POSTGRES_PASSWORD: ${PG_PASS:-authentik}
+    volumes:
+      - authentik-pgdata:/var/lib/postgresql/data
+    networks:
+      - nemo-internal
+
+  authentik-redis:
+    image: docker.io/library/redis:7-alpine
+    restart: unless-stopped
+    command: --save 60 1 --loglevel warning
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - authentik-redisdata:/data
+    networks:
+      - nemo-internal
+
+  authentik-server:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2024.12}
+    restart: unless-stopped
+    command: server
+    environment: *authentik-env
+    volumes:
+      - ./blueprints:/blueprints/custom:ro
+      - authentik-media:/media
+    depends_on:
+      authentik-postgres:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_healthy
+    networks:
+      - nemo-internal
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2024.12}
+    restart: unless-stopped
+    command: worker
+    environment: *authentik-env
+    volumes:
+      - ./blueprints:/blueprints/custom:ro
+      - authentik-media:/media
+    depends_on:
+      authentik-postgres:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_healthy
+    networks:
+      - nemo-internal
+
+volumes:
+  nemo-data:
+  authentik-pgdata:
+  authentik-redisdata:
+  authentik-media:
+
+networks:
+  nemo-internal: {}
+  workload:
+    name: ${AUTHENTIK_WORKLOAD_NETWORK_NAME:-authentik_workload}

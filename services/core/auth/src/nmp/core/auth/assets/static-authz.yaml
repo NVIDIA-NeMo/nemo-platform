@@ -166,6 +166,9 @@ authz:
         description: "Delete jobs"
       list:
         description: "List jobs"
+      logs:
+        create:
+          description: "Upload job logs"
       read:
         description: "Read jobs"
       update:
@@ -402,6 +405,10 @@ authz:
       - secrets.rotate
       - models.trust-remote-code.set
       - models.tool-call-plugin.set
+    JobRunner:
+      description: "Runtime permissions for job workload containers"
+      permissions:
+      - jobs.logs.create
     ServiceSystem:
       description: >-
         Internal platform service principal (principal IDs matching service:*). Used when no
@@ -648,7 +655,7 @@ authz:
     /apis/files/v2/workspaces/{workspace}/filesets/{name}/otlp/v1/logs:
       post:
         permissions:
-        - filesets.create
+        - jobs.logs.create
         scopes:
         - files:write
         - platform:write

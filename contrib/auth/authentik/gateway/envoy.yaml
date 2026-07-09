@@ -1,0 +1,109 @@
+static_resources:
+  listeners:
+    - name: listener_0
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 8080
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_http
+                route_config:
+                  name: local_route
+                  virtual_hosts:
+                    - name: nemo
+                      domains: ["*"]
+                      routes:
+                        - match:
+                            prefix: "/.well-known/nemo-platform/"
+                          route:
+                            cluster: nemo
+                        - match:
+                            prefix: "/apis/"
+                          route:
+                            cluster: nemo
+                        - match:
+                            prefix: "/health/"
+                          route:
+                            cluster: nemo
+                        - match:
+                            prefix: "/studio/"
+                          route:
+                            cluster: nemo
+                        - match:
+                            prefix: "/"
+                          route:
+                            cluster: authentik
+                http_filters:
+                  - name: envoy.filters.http.lua
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+                      inline_code: |
+                        function envoy_on_request(request_handle)
+                          local headers = request_handle:headers()
+                          headers:remove("x-nmp-principal-id")
+                          headers:remove("x-nmp-principal-email")
+                          headers:remove("x-nmp-principal-groups")
+                          headers:remove("x-nmp-principal-on-behalf-of")
+                          headers:remove("x-nmp-principal-on-behalf-of-email")
+                          headers:remove("x-nmp-principal-on-behalf-of-groups")
+                        end
+                  - name: envoy.filters.http.jwt_authn
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+                      providers:
+                        authentik_workload:
+                          audiences:
+                            - "nemo-platform"
+                            - "nemo-platform-cli"
+                          remote_jwks:
+                            http_uri:
+                              uri: "http://authentik-server:9000/application/o/nemo/jwks/"
+                              cluster: authentik
+                              timeout: 5s
+                            cache_duration: 600s
+                          claim_to_headers:
+                            - header_name: "X-NMP-Principal-Id"
+                              claim_name: "sub"
+                            - header_name: "X-NMP-Principal-Groups"
+                              claim_name: "groups"
+                      rules:
+                        - match:
+                            path: "/apis/auth/discovery"
+                        - match:
+                            prefix: "/health/"
+                        - match:
+                            prefix: "/apis/"
+                          requires:
+                            provider_name: "authentik_workload"
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  clusters:
+    - name: nemo
+      connect_timeout: 5s
+      type: LOGICAL_DNS
+      load_assignment:
+        cluster_name: nemo
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: nemo
+                      port_value: 8080
+    - name: authentik
+      connect_timeout: 5s
+      type: LOGICAL_DNS
+      load_assignment:
+        cluster_name: authentik
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: authentik-server
+                      port_value: 9000

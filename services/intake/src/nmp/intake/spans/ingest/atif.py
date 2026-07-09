@@ -29,8 +29,8 @@ from nmp.intake.spans.ingest.atif_mapping import (
     trajectory_to_evaluator_results,
     trajectory_to_spans,
 )
-from nmp.intake.spans.ingest.evaluation_context import ExperimentContextIngestModel
-from nmp.intake.spans.ingest.experiment_context_validation import validate_experiment_context
+from nmp.intake.spans.ingest.evaluation_context import EvaluationContextIngestModel
+from nmp.intake.spans.ingest.evaluation_context_validation import validate_evaluation_context
 from nmp.intake.spans.storage import utc_now
 from pydantic import ConfigDict, Field, model_validator
 
@@ -48,11 +48,11 @@ def _atif_max_subagent_depth(request: Request) -> int:
     return cfg.atif_max_subagent_depth
 
 
-class AtifIngestRequest(ExperimentContextIngestModel):
+class AtifIngestRequest(EvaluationContextIngestModel):
     """Span-based ATIF ingest request.
 
     ATIF project scoping is intentionally not accepted here; use the workspace
-    route and ``experiment_context`` for experiment identity.
+    route and ``evaluation_context`` for evaluation identity.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -109,7 +109,7 @@ async def ingest_atif(
     service: SpansServiceDep,
     entity_client: EntityClientDep,
 ) -> Response:
-    await validate_experiment_context(
+    await validate_evaluation_context(
         workspace=workspace,
         context=body.resolved_evaluation_context(),
         entity_client=entity_client,
