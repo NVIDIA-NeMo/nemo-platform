@@ -91,15 +91,15 @@ describe('DatasetSelect', () => {
     expect(screen.getByRole('combobox')).toBeInTheDocument();
   });
 
-  it('queries filesets with purpose filter set to dataset', () => {
+  it('queries all filesets without a purpose filter', () => {
     render(<DatasetSelect project="test-project" />, {
       wrapper: createWrapper(),
     });
 
     expect(useFilesListFilesets).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({
-        filter: { purpose: 'dataset' },
+      expect.not.objectContaining({
+        filter: expect.anything(),
       })
     );
   });

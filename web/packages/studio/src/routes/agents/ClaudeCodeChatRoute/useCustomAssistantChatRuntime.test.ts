@@ -5,7 +5,6 @@ import type { ThreadAssistantMessagePart, ThreadMessageLike } from '@assistant-u
 import { getMessageText } from '@nemo/common/src/components/AssistantChat/messageUtils';
 import {
   CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
-  CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME,
   CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
   STUDIO_MESSAGE_SUMMARY_END,
   STUDIO_MESSAGE_SUMMARY_START,
@@ -397,7 +396,7 @@ describe('useCustomAssistantChatRuntime', () => {
     });
   });
 
-  it('keeps completed tool activity before the final summary', async () => {
+  it('keeps completed tool activity between the response text', async () => {
     const bashPart: ThreadAssistantMessagePart = {
       type: 'tool-call',
       toolCallId: 'toolu_bash',
@@ -450,13 +449,7 @@ describe('useCustomAssistantChatRuntime', () => {
     await waitFor(() => {
       const content = getAssistantContent(getMockRuntime(result.current.runtime).messages);
       expect(content).toMatchObject([
-        {
-          type: 'tool-call',
-          toolName: CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME,
-          args: {
-            text: 'I will inspect the repo first.\n\nI found the relevant files.',
-          },
-        },
+        { type: 'text', text: 'I will inspect the repo first.' },
         {
           type: 'tool-call',
           toolName: CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
@@ -467,7 +460,10 @@ describe('useCustomAssistantChatRuntime', () => {
             ],
           },
         },
-        { type: 'text', text: 'I checked the repo.\n\nTests passed.' },
+        {
+          type: 'text',
+          text: 'I found the relevant files.\n\nI checked the repo.\n\nTests passed.',
+        },
       ]);
       expect(getMockRuntime(result.current.runtime).messages[1]?.status).toEqual({
         type: 'complete',

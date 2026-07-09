@@ -81,18 +81,6 @@ export const createClaudeCodeToolCallPart = ({
   };
 };
 
-const createClaudeCodeCollapsedThinkingPart = (text: string): ThreadAssistantMessagePart => {
-  const args = toClaudeCodeToolArgs({ text });
-
-  return {
-    type: 'tool-call',
-    toolCallId: 'claude-code-collapsed-thinking',
-    toolName: CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME,
-    args,
-    argsText: JSON.stringify(args),
-  };
-};
-
 interface ClaudeCodeCompletedMessageOptions {
   readonly elapsedMs?: number;
 }
@@ -563,42 +551,6 @@ const getStudioSummaryBlock = (
   return undefined;
 };
 
-const getCollapsedTextParts = (
-  parts: readonly ThreadAssistantMessagePart[],
-  lastToolIndex: number
-): {
-  readonly collapsedText: string | undefined;
-  readonly summaryText: string | undefined;
-} => {
-  const thinkingTextParts: string[] = [];
-  const trailingTextParts: string[] = [];
-
-  parts.forEach((part, index) => {
-    if (part.type !== 'text') return;
-
-    const text = part.text.trim();
-    if (!text) return;
-
-    if (index > lastToolIndex) {
-      trailingTextParts.push(text);
-    } else {
-      thinkingTextParts.push(text);
-    }
-  });
-
-  const trailingParagraphs = splitTextParagraphs(trailingTextParts.join('\n\n'));
-  const summaryParagraphs = trailingParagraphs.slice(-2);
-  const collapsedTrailingParagraphs = trailingParagraphs.slice(0, -2);
-  const collapsedParagraphs = splitTextParagraphs(
-    [...thinkingTextParts, collapsedTrailingParagraphs.join('\n\n')].filter(Boolean).join('\n\n')
-  );
-
-  return {
-    collapsedText: collapsedParagraphs.length ? collapsedParagraphs.join('\n\n') : undefined,
-    summaryText: summaryParagraphs.length ? summaryParagraphs.join('\n\n') : undefined,
-  };
-};
-
 export const getClaudeCodeCompletedMessageParts = (
   parts: readonly ThreadAssistantMessagePart[],
   options: ClaudeCodeCompletedMessageOptions = {}
@@ -616,27 +568,7 @@ export const getClaudeCodeCompletedMessageParts = (
     return completedParts;
   }
 
-  const completedParts: ThreadAssistantMessagePart[] = [];
-  let lastToolIndex = -1;
-
-  parts.forEach((part, index) => {
-    if (part.type === 'tool-call') {
-      completedParts.push(part);
-      lastToolIndex = index;
-    }
-  });
-
-  if (lastToolIndex < 0) return parts;
-
-  const { collapsedText, summaryText } = getCollapsedTextParts(parts, lastToolIndex);
-  if (collapsedText) completedParts.unshift(createClaudeCodeCollapsedThinkingPart(collapsedText));
-  for (const part of parts.slice(lastToolIndex + 1)) {
-    if (part.type === 'text') continue;
-    completedParts.push(part);
-  }
-  if (summaryText) completedParts.push({ type: 'text', text: summaryText });
-
-  return completedParts;
+  return parts;
 };
 
 export const groupConsecutiveClaudeCodeSubtleToolCalls = (

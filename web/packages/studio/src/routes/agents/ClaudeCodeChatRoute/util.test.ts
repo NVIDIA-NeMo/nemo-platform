@@ -4,7 +4,6 @@
 import { CLAUDE_CODE_JOB_PROGRESS_MCP_TOOL_NAME } from '@studio/routes/agents/ClaudeCodeChatRoute/jobProgressConsts';
 import {
   CLAUDE_CODE_COLLAPSED_STUDIO_DETAILS_TOOL_NAME,
-  CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME,
   CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
   STUDIO_MESSAGE_SUMMARY_END,
   STUDIO_MESSAGE_SUMMARY_START,
@@ -82,13 +81,7 @@ describe('Claude Code utilities', () => {
       id: '2dc6e5a6-acd7-43bf-b128-c9fd5cf6eb9a-1',
       role: 'assistant',
       content: [
-        {
-          type: 'tool-call',
-          toolName: CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME,
-          args: {
-            text: 'I found the route.',
-          },
-        },
+        { type: 'text', text: 'I found the route.' },
         {
           type: 'tool-call',
           toolName: CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
@@ -130,13 +123,7 @@ describe('Claude Code utilities', () => {
       id: '2dc6e5a6-acd7-43bf-b128-c9fd5cf6eb9a-3',
       role: 'assistant',
       content: [
-        {
-          type: 'tool-call',
-          toolName: CLAUDE_CODE_COLLAPSED_THINKING_TOOL_NAME,
-          args: {
-            text: 'I found another route.',
-          },
-        },
+        { type: 'text', text: 'I found another route.' },
         {
           type: 'tool-call',
           toolName: CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
