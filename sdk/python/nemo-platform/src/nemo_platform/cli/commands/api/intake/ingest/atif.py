@@ -44,6 +44,8 @@ def create_atif(
     notes: Annotated[str | None, typer.Option("--notes")] = None,
     session_id: Annotated[str | None, typer.Option("--session-id")] = None,
     steps: Annotated[str | None, typer.Option("--steps", help="JSON string")] = None,
+    subagent_trajectories: Annotated[str | None, typer.Option("--subagent-trajectories", help="JSON string")] = None,
+    trajectory_id: Annotated[str | None, typer.Option("--trajectory-id")] = None,
     input_file: Annotated[
         str | None,
         typer.Option("--input-file", help="Path to JSON file (use '-' for stdin)", rich_help_panel="Input Options"),
@@ -93,6 +95,10 @@ def create_atif(
         input_payload["session_id"] = session_id
     if steps is not None:
         input_payload["steps"] = read_payload("steps", steps)
+    if subagent_trajectories is not None:
+        input_payload["subagent_trajectories"] = read_payload("subagent_trajectories", subagent_trajectories)
+    if trajectory_id is not None:
+        input_payload["trajectory_id"] = trajectory_id
     # Validate required fields are present after merging
     validate_required_fields(
         input_payload,
