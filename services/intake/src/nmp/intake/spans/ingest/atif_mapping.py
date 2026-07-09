@@ -38,6 +38,8 @@ from nmp.intake.spans.span_semantic_attributes import SpanSemanticAttributes
 from nmp.intake.spans.storage import json_dumps, json_dumps_preserve, stable_id
 from pydantic import BaseModel
 
+TrajectoryIdentity = tuple[str, ...]
+
 
 def trajectory_to_spans(
     *,
@@ -45,9 +47,32 @@ def trajectory_to_spans(
     trajectory: AtifTrajectory,
     ingested_at: datetime,
 ) -> list[IntakeSpan]:
+    return _trajectory_tree_to_spans(
+        workspace=workspace,
+        trajectory=trajectory,
+        trace_session_id=trajectory.session_id,
+        trajectory_identity=(),
+        external_parent_span_id=None,
+        ingested_at=ingested_at,
+    )
+
+
+def _trajectory_tree_to_spans(
+    *,
+    workspace: str,
+    trajectory: AtifTrajectory,
+    trace_session_id: str,
+    trajectory_identity: TrajectoryIdentity,
+    external_parent_span_id: str | None,
+    ingested_at: datetime,
+) -> list[IntakeSpan]:
     trajectory_span = _trajectory_to_span(
         workspace=workspace,
         trajectory=trajectory,
+        trace_session_id=trace_session_id,
+        trajectory_identity=trajectory_identity,
+        external_parent_span_id=external_parent_span_id,
+        include_evaluation_context=not trajectory_identity,
         ingested_at=ingested_at,
     )
     spans = [trajectory_span]
@@ -55,20 +80,29 @@ def trajectory_to_spans(
         _evaluator_result_to_span(
             workspace=workspace,
             trajectory=trajectory,
+            trace_session_id=trace_session_id,
+            trajectory_identity=trajectory_identity,
             parent_span=trajectory_span,
             ingested_at=ingested_at,
         )
     )
+    embedded_subagents = {
+        subagent.trajectory_id: subagent
+        for subagent in trajectory.subagent_trajectories or []
+        if subagent.trajectory_id is not None
+    }
+    expanded_subagent_ids: set[str] = set()
     evaluator_ended_at = _evaluator_ended_at(trajectory)
     for index, step in enumerate(trajectory.steps):
         step_ended_at = _step_ended_at(trajectory.steps, index, evaluator_ended_at)
         step_span = _step_to_span(
             workspace=workspace,
-            default_session_id=trajectory.session_id,
+            default_session_id=trace_session_id,
             default_agent_name=trajectory.agent.name,
             default_agent_version=trajectory.agent.version,
             default_model_name=trajectory.agent.model_name,
             external_parent_span_id=trajectory_span.external_span_id,
+            trajectory_identity=trajectory_identity,
             step=step,
             index=index,
             step_ended_at=step_ended_at,
@@ -78,11 +112,12 @@ def trajectory_to_spans(
         spans.extend(
             _tool_call_to_span(
                 workspace=workspace,
-                default_session_id=trajectory.session_id,
+                default_session_id=trace_session_id,
                 default_agent_name=trajectory.agent.name,
                 default_agent_version=trajectory.agent.version,
                 default_model_name=trajectory.agent.model_name,
                 external_parent_span_id=step_span.external_span_id,
+                trajectory_identity=trajectory_identity,
                 step=step,
                 step_index=index,
                 tool_index=tool_index,
@@ -92,42 +127,82 @@ def trajectory_to_spans(
             )
             for tool_index, tool_call in enumerate(_step_tool_calls(step))
         )
+        for result_index, result in _observation_results_with_subagents(step):
+            for ref_index, subagent_ref in enumerate(result.subagent_trajectory_ref or []):
+                embedded = embedded_subagents.get(subagent_ref.trajectory_id)
+                if embedded is not None and subagent_ref.trajectory_id not in expanded_subagent_ids:
+                    subagent = embedded
+                    assert subagent.trajectory_id is not None
+                    expanded_subagent_ids.add(subagent.trajectory_id)
+                    spans.extend(
+                        _trajectory_tree_to_spans(
+                            workspace=workspace,
+                            trajectory=subagent,
+                            trace_session_id=trace_session_id,
+                            trajectory_identity=(*trajectory_identity, "subagent", subagent.trajectory_id),
+                            external_parent_span_id=step_span.external_span_id,
+                            ingested_at=ingested_at,
+                        )
+                    )
+                    continue
+                spans.append(
+                    _subagent_ref_to_span(
+                        workspace=workspace,
+                        default_session_id=trace_session_id,
+                        default_agent_name=trajectory.agent.name,
+                        default_agent_version=trajectory.agent.version,
+                        default_model_name=trajectory.agent.model_name,
+                        external_parent_span_id=step_span.external_span_id,
+                        trajectory_identity=trajectory_identity,
+                        step=step,
+                        step_index=index,
+                        result_index=result_index,
+                        ref_index=ref_index,
+                        result=result,
+                        subagent_ref=subagent_ref,
+                        step_ended_at=step_ended_at,
+                        ingested_at=ingested_at,
+                    )
+                )
+    for subagent in trajectory.subagent_trajectories or []:
+        assert subagent.trajectory_id is not None
+        if subagent.trajectory_id in expanded_subagent_ids:
+            continue
         spans.extend(
-            _subagent_ref_to_span(
+            _trajectory_tree_to_spans(
                 workspace=workspace,
-                default_session_id=trajectory.session_id,
-                default_agent_name=trajectory.agent.name,
-                default_agent_version=trajectory.agent.version,
-                default_model_name=trajectory.agent.model_name,
-                external_parent_span_id=step_span.external_span_id,
-                step=step,
-                step_index=index,
-                result_index=result_index,
-                ref_index=ref_index,
-                result=result,
-                subagent_ref=subagent_ref,
-                step_ended_at=step_ended_at,
+                trajectory=subagent,
+                trace_session_id=trace_session_id,
+                trajectory_identity=(*trajectory_identity, "subagent", subagent.trajectory_id),
+                external_parent_span_id=trajectory_span.external_span_id,
                 ingested_at=ingested_at,
             )
-            for result_index, result in _observation_results_with_subagents(step)
-            for ref_index, subagent_ref in enumerate(result.subagent_trajectory_ref or [])
         )
     return spans
+
+
+def _trajectory_span_id(
+    *,
+    workspace: str,
+    trace_session_id: str,
+    trajectory_identity: TrajectoryIdentity,
+) -> str:
+    return stable_id(workspace, trace_session_id, *trajectory_identity, "trajectory", prefix="span")
 
 
 def _trajectory_to_span(
     *,
     workspace: str,
     trajectory: AtifTrajectory,
+    trace_session_id: str,
+    trajectory_identity: TrajectoryIdentity,
+    external_parent_span_id: str | None,
+    include_evaluation_context: bool,
     ingested_at: datetime,
 ) -> IntakeSpan:
     raw_attributes = _model_dict(trajectory)
     raw_attributes.pop("steps", None)
     raw_attributes.pop("evaluation_context", None)
-    # Embedded ATIF-v1.7 subagent trajectories are accepted and preserved in
-    # atif.raw for now. Only subagent_trajectory_ref entries are materialized as
-    # lightweight delegation spans until embedded trajectory expansion has
-    # explicit trace identity and parentage semantics.
     # ATIF span IDs are trace-native by design: session_id is the trace identity,
     # while evaluation_context is queryable metadata on the root span.
     #
@@ -156,12 +231,16 @@ def _trajectory_to_span(
         if final_metrics is not None and not _trajectory_has_step_cost_metrics(trajectory)
         else None
     )
-    external_span_id = stable_id(workspace, trajectory.session_id, "trajectory", prefix="span")
+    external_span_id = _trajectory_span_id(
+        workspace=workspace,
+        trace_session_id=trace_session_id,
+        trajectory_identity=trajectory_identity,
+    )
     attribute_bags = _span_attributes(
         model=trajectory.agent.model_name,
         agent_name=trajectory.agent.name,
         agent_version=trajectory.agent.version,
-        evaluation_context=trajectory.evaluation_context,
+        evaluation_context=trajectory.evaluation_context if include_evaluation_context else None,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cached_tokens=cached_tokens,
@@ -172,10 +251,11 @@ def _trajectory_to_span(
     trajectory_started_at = _trajectory_started_at(trajectory, ingested_at)
     return IntakeSpan(
         workspace=workspace,
-        session_id=trajectory.session_id,
-        trace_id=trajectory.session_id,
+        session_id=trace_session_id,
+        trace_id=trace_session_id,
         source_format="atif",
         external_span_id=external_span_id,
+        external_parent_span_id=external_parent_span_id or "",
         kind=SpanKind.AGENT,
         name=trajectory.agent.name,
         status=SpanStatus.ERROR if _trajectory_has_error(trajectory) else SpanStatus.SUCCESS,
@@ -198,6 +278,7 @@ def _step_to_span(
     default_agent_version: str | None,
     default_model_name: str | None,
     external_parent_span_id: str,
+    trajectory_identity: TrajectoryIdentity,
     step: AtifStep,
     index: int,
     step_ended_at: datetime | None,
@@ -211,6 +292,7 @@ def _step_to_span(
     external_span_id = stable_id(
         workspace,
         default_session_id,
+        *trajectory_identity,
         str(index),
         json_dumps(raw_step),
         prefix="span",
@@ -256,6 +338,7 @@ def _tool_call_to_span(
     default_agent_version: str | None,
     default_model_name: str | None,
     external_parent_span_id: str,
+    trajectory_identity: TrajectoryIdentity,
     step: AtifStep,
     step_index: int,
     tool_index: int,
@@ -269,6 +352,7 @@ def _tool_call_to_span(
     external_span_id = stable_id(
         workspace,
         default_session_id,
+        *trajectory_identity,
         str(step_index),
         "tool",
         str(tool_index),
@@ -319,6 +403,7 @@ def _subagent_ref_to_span(
     default_agent_version: str | None,
     default_model_name: str | None,
     external_parent_span_id: str,
+    trajectory_identity: TrajectoryIdentity,
     step: AtifStep,
     step_index: int,
     result_index: int,
@@ -335,6 +420,7 @@ def _subagent_ref_to_span(
     external_span_id = stable_id(
         workspace,
         default_session_id,
+        *trajectory_identity,
         str(step_index),
         "subagent",
         str(result_index),
@@ -379,6 +465,8 @@ def _evaluator_result_to_span(
     *,
     workspace: str,
     trajectory: AtifTrajectory,
+    trace_session_id: str,
+    trajectory_identity: TrajectoryIdentity,
     parent_span: IntakeSpan,
     ingested_at: datetime,
 ) -> list[IntakeSpan]:
@@ -391,7 +479,7 @@ def _evaluator_result_to_span(
     input_value = {
         key: value
         for key, value in {
-            "session_id": trajectory.session_id,
+            "session_id": trace_session_id,
             "evaluated_span_id": parent_span.external_span_id,
             "task_id": extra.get("task_id"),
             "task_name": extra.get("task_name"),
@@ -433,7 +521,8 @@ def _evaluator_result_to_span(
     ended_at = _evaluator_ended_at(trajectory)
     external_span_id = stable_id(
         workspace,
-        trajectory.session_id,
+        trace_session_id,
+        *trajectory_identity,
         "evaluator",
         json_dumps(raw_attributes),
         prefix="span",
@@ -447,8 +536,8 @@ def _evaluator_result_to_span(
     return [
         IntakeSpan(
             workspace=workspace,
-            session_id=trajectory.session_id,
-            trace_id=trajectory.session_id,
+            session_id=trace_session_id,
+            trace_id=trace_session_id,
             source_format="atif",
             external_span_id=external_span_id,
             external_parent_span_id=parent_span.external_span_id,
@@ -513,43 +602,70 @@ def trajectory_to_evaluator_results(
     spans: list[IntakeSpan],
     ingested_at: datetime,
 ) -> list[EvaluatorResult]:
-    """Extract evaluator_results rows from an ATIF trajectory's verifier_result block.
+    """Extract evaluator_results rows from an ATIF trajectory tree's verifier_result blocks.
 
     Emits one row per Harbor reward key (``verifier_result.rewards``), named by that
     key, targeting the EVALUATOR-kind span that ``trajectory_to_spans`` produced for
     the verifier. The span preserves the original tree structure; these rows make each
     score queryable by name and value without parsing the span payload.
     """
-
-    extra = trajectory.extra or {}
-    verifier_result = _dict_or_none(extra.get("verifier_result"))
-    if verifier_result is None:
-        return []
-    evaluator_span = next((span for span in spans if span.kind == SpanKind.EVALUATOR), None)
-    if evaluator_span is None:
-        return []
     results: list[EvaluatorResult] = []
-    for name, raw_value in _evaluator_rewards(verifier_result):
-        data_type, value, string_value = _coerce_evaluator_value(raw_value)
-        results.append(
-            EvaluatorResult(
-                # Per-key id: the reward name keeps each criterion's row distinct on the
-                # same span, and an identical re-ingest hashes to the same id (dedupe).
-                evaluator_result_id=stable_id(evaluator_span.external_span_id, name, prefix="eval"),
-                span_id=evaluator_span.external_span_id,
-                session_id=trajectory.session_id,
-                workspace=workspace,
-                name=name,
-                value=value,
-                string_value=string_value,
-                data_type=data_type,
-                comment=None,
-                created_by="intake:atif_importer",
-                created_at=ingested_at,
-                ingested_at=ingested_at,
+    for current_trajectory, trajectory_identity in _trajectory_tree(trajectory):
+        verifier_result = _dict_or_none((current_trajectory.extra or {}).get("verifier_result"))
+        if verifier_result is None:
+            continue
+        trajectory_span_id = _trajectory_span_id(
+            workspace=workspace,
+            trace_session_id=trajectory.session_id,
+            trajectory_identity=trajectory_identity,
+        )
+        evaluator_span = next(
+            (
+                span
+                for span in spans
+                if span.kind == SpanKind.EVALUATOR and span.external_parent_span_id == trajectory_span_id
+            ),
+            None,
+        )
+        if evaluator_span is None:
+            continue
+        for name, raw_value in _evaluator_rewards(verifier_result):
+            data_type, value, string_value = _coerce_evaluator_value(raw_value)
+            results.append(
+                EvaluatorResult(
+                    # Per-key id: the reward name keeps each criterion's row distinct on the
+                    # same span, and an identical re-ingest hashes to the same id (dedupe).
+                    evaluator_result_id=stable_id(evaluator_span.external_span_id, name, prefix="eval"),
+                    span_id=evaluator_span.external_span_id,
+                    session_id=trajectory.session_id,
+                    workspace=workspace,
+                    name=name,
+                    value=value,
+                    string_value=string_value,
+                    data_type=data_type,
+                    comment=None,
+                    created_by="intake:atif_importer",
+                    created_at=ingested_at,
+                    ingested_at=ingested_at,
+                )
+            )
+    return results
+
+
+def _trajectory_tree(
+    trajectory: AtifTrajectory,
+    trajectory_identity: TrajectoryIdentity = (),
+) -> list[tuple[AtifTrajectory, TrajectoryIdentity]]:
+    trajectories = [(trajectory, trajectory_identity)]
+    for subagent in trajectory.subagent_trajectories or []:
+        assert subagent.trajectory_id is not None
+        trajectories.extend(
+            _trajectory_tree(
+                subagent,
+                (*trajectory_identity, "subagent", subagent.trajectory_id),
             )
         )
-    return results
+    return trajectories
 
 
 def _evaluator_rewards(verifier_result: dict[str, Any]) -> list[tuple[str, bool | int | float | str]]:
@@ -672,7 +788,7 @@ def _trajectory_has_error(trajectory: AtifTrajectory) -> bool:
         for result in observation.results:
             if _tool_result_is_error(step, result):
                 return True
-    return False
+    return any(_trajectory_has_error(subagent) for subagent in trajectory.subagent_trajectories or [])
 
 
 def _step_tool_calls(step: AtifStep) -> list[AtifToolCall]:
@@ -707,13 +823,20 @@ def _observation_results_with_subagents(step: AtifStep) -> list[tuple[int, AtifO
 
 
 def _trajectory_started_at(trajectory: AtifTrajectory, ingested_at: datetime) -> datetime:
+    return _trajectory_explicit_started_at(trajectory) or ingested_at
+
+
+def _trajectory_explicit_started_at(trajectory: AtifTrajectory) -> datetime | None:
     started_candidates = [_timestamp(step) for step in trajectory.steps]
     started_candidates.extend(_invocation_window(step.extra)[0] for step in trajectory.steps)
     started_candidates.extend(
         _invocation_window(tool_call.extra)[0] for step in trajectory.steps for tool_call in _step_tool_calls(step)
     )
     started_candidates.append(_evaluator_started_at(trajectory))
-    return min((started_at for started_at in started_candidates if started_at is not None), default=ingested_at)
+    started_candidates.extend(
+        _trajectory_explicit_started_at(subagent) for subagent in trajectory.subagent_trajectories or []
+    )
+    return min((started_at for started_at in started_candidates if started_at is not None), default=None)
 
 
 def _trajectory_ended_at(trajectory: AtifTrajectory) -> datetime | None:
@@ -723,6 +846,7 @@ def _trajectory_ended_at(trajectory: AtifTrajectory) -> datetime | None:
         _invocation_window(tool_call.extra)[1] for step in trajectory.steps for tool_call in _step_tool_calls(step)
     )
     ended_candidates.append(_evaluator_ended_at(trajectory))
+    ended_candidates.extend(_trajectory_ended_at(subagent) for subagent in trajectory.subagent_trajectories or [])
     return max((ended_at for ended_at in ended_candidates if ended_at is not None), default=None)
 
 

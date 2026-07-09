@@ -7937,6 +7937,9 @@ components:
         session_id:
           title: Session Id
           type: string
+        trajectory_id:
+          title: Trajectory Id
+          type: string
         agent:
           $ref: '#/components/schemas/AtifAgent'
         final_metrics:
@@ -7956,6 +7959,11 @@ components:
             $ref: '#/components/schemas/AtifStep'
           type: array
           title: Steps
+        subagent_trajectories:
+          title: Subagent Trajectories
+          items:
+            $ref: '#/components/schemas/AtifTrajectory'
+          type: array
       additionalProperties: false
       type: object
       required:
@@ -8234,6 +8242,61 @@ components:
       - tool_call_id
       - function_name
       title: AtifToolCall
+    AtifTrajectory:
+      properties:
+        schema_version:
+          type: string
+          enum:
+          - ATIF-v1.0
+          - ATIF-v1.1
+          - ATIF-v1.2
+          - ATIF-v1.3
+          - ATIF-v1.4
+          - ATIF-v1.5
+          - ATIF-v1.6
+          - ATIF-v1.7
+          title: Schema Version
+          default: ATIF-v1.7
+        session_id:
+          type: string
+          title: Session Id
+        trajectory_id:
+          title: Trajectory Id
+          type: string
+        agent:
+          $ref: '#/components/schemas/AtifAgent'
+        steps:
+          items:
+            $ref: '#/components/schemas/AtifStep'
+          type: array
+          title: Steps
+        notes:
+          title: Notes
+          type: string
+        final_metrics:
+          $ref: '#/components/schemas/AtifFinalMetrics'
+        continued_trajectory_ref:
+          title: Continued Trajectory Ref
+          type: string
+        extra:
+          title: Extra
+          additionalProperties: true
+          type: object
+        subagent_trajectories:
+          title: Subagent Trajectories
+          description: Embedded ATIF-v1.7 subagent trajectories. Intake expands these
+            into the parent trajectory's trace, resolving subagent_trajectory_ref
+            entries by trajectory_id.
+          items:
+            $ref: '#/components/schemas/AtifTrajectory'
+          type: array
+        evaluation_context:
+          $ref: '#/components/schemas/EvaluationContext'
+      additionalProperties: false
+      type: object
+      required:
+      - agent
+      title: AtifTrajectory
     AuthContext:
       properties:
         principal_id:

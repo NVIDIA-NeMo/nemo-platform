@@ -19,7 +19,9 @@ from nmp.intake.spans.ingest.atif_domain import (
     AtifStep,
     AtifTrajectory,
     validate_atif_step_ids,
+    validate_atif_subagent_trajectory_ids,
     validate_atif_tool_call_references,
+    validate_atif_v17_subagent_ref_resolution_keys,
 )
 from nmp.intake.spans.ingest.atif_mapping import trajectory_to_evaluator_results, trajectory_to_spans
 from nmp.intake.spans.ingest.evaluation_context import ExperimentContextIngestModel
@@ -43,29 +45,36 @@ class AtifIngestRequest(ExperimentContextIngestModel):
 
     schema_version: AtifSchemaVersion
     session_id: str | None = None
+    trajectory_id: str | None = None
     agent: AtifAgent
     final_metrics: AtifFinalMetrics | None = None
     continued_trajectory_ref: str | None = None
     notes: str | None = None
     extra: dict[str, Any] | None = None
     steps: list[AtifStep] = Field(default_factory=list)
+    subagent_trajectories: list[AtifTrajectory] | None = None
 
     @model_validator(mode="after")
     def validate_steps(self) -> AtifIngestRequest:
         validate_atif_step_ids(self.steps)
         validate_atif_tool_call_references(self.steps)
+        if self.schema_version == "ATIF-v1.7":
+            validate_atif_v17_subagent_ref_resolution_keys(self.steps)
+        validate_atif_subagent_trajectory_ids(self.subagent_trajectories)
         return self
 
     def to_trajectory(self) -> AtifTrajectory:
         kwargs: dict[str, Any] = {} if self.session_id is None else {"session_id": self.session_id}
         return AtifTrajectory(
             schema_version=self.schema_version,
+            trajectory_id=self.trajectory_id,
             agent=self.agent,
             steps=self.steps,
             final_metrics=self.final_metrics,
             continued_trajectory_ref=self.continued_trajectory_ref,
             notes=self.notes,
             extra=self.extra,
+            subagent_trajectories=self.subagent_trajectories,
             evaluation_context=self.resolved_evaluation_context(),
             **kwargs,
         )

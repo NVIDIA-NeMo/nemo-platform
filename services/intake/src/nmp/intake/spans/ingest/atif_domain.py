@@ -248,9 +248,8 @@ class AtifTrajectory(BaseModel):
     subagent_trajectories: list[AtifTrajectory] | None = Field(
         default=None,
         description=(
-            "Embedded ATIF-v1.7 subagent trajectories. Intake currently validates and preserves these in "
-            "root atif.raw, but does not expand them into additional spans; subagent_trajectory_ref entries "
-            "are materialized as lightweight delegation spans."
+            "Embedded ATIF-v1.7 subagent trajectories. Intake expands these into the parent trajectory's "
+            "trace, resolving subagent_trajectory_ref entries by trajectory_id."
         ),
     )
     evaluation_context: EvaluationContext | None = None
@@ -278,15 +277,19 @@ class AtifTrajectory(BaseModel):
 
     @model_validator(mode="after")
     def validate_subagent_trajectory_ids(self) -> AtifTrajectory:
-        if not self.subagent_trajectories:
-            return self
-        seen: set[str] = set()
-        for index, subagent in enumerate(self.subagent_trajectories):
-            if subagent.trajectory_id is None:
-                raise ValueError(
-                    f"subagent_trajectories[{index}].trajectory_id is required on embedded ATIF-v1.7 subagents"
-                )
-            if subagent.trajectory_id in seen:
-                raise ValueError(f"subagent_trajectories[{index}].trajectory_id duplicates {subagent.trajectory_id!r}")
-            seen.add(subagent.trajectory_id)
+        validate_atif_subagent_trajectory_ids(self.subagent_trajectories)
         return self
+
+
+def validate_atif_subagent_trajectory_ids(subagent_trajectories: list[AtifTrajectory] | None) -> None:
+    if not subagent_trajectories:
+        return
+    seen: set[str] = set()
+    for index, subagent in enumerate(subagent_trajectories):
+        if subagent.trajectory_id is None:
+            raise ValueError(
+                f"subagent_trajectories[{index}].trajectory_id is required on embedded ATIF-v1.7 subagents"
+            )
+        if subagent.trajectory_id in seen:
+            raise ValueError(f"subagent_trajectories[{index}].trajectory_id duplicates {subagent.trajectory_id!r}")
+        seen.add(subagent.trajectory_id)

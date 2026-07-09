@@ -75,21 +75,125 @@ def test_atif_v17_models_accept_new_fields() -> None:
     assert trajectory.subagent_trajectories is not None
     assert trajectory.subagent_trajectories[0].trajectory_id == "sub-trajectory"
 
+    request = AtifIngestRequest.model_validate(trajectory.to_json_dict())
+    request_trajectory = request.to_trajectory()
+    assert request_trajectory.trajectory_id == "root-trajectory"
+    assert request_trajectory.subagent_trajectories is not None
+    assert request_trajectory.subagent_trajectories[0].trajectory_id == "sub-trajectory"
 
-def test_atif_v17_embedded_subagent_trajectories_are_preserved_but_not_expanded() -> None:
+
+# ATIF v1.7 reference semantics:
+# https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md
+def test_atif_v17_embedded_subagents_expand_recursively_in_the_parent_trace() -> None:
     trajectory = AtifTrajectory.model_validate(
         {
             "schema_version": "ATIF-v1.7",
-            "session_id": "trace-session-id",
-            "agent": {"name": "root", "version": "1.0"},
-            "steps": [],
+            "session_id": "run-123",
+            "trajectory_id": "root-trajectory",
+            "agent": {"name": "root-agent", "version": "1.0"},
+            "steps": [
+                {
+                    "step_id": 1,
+                    "timestamp": "2026-05-18T10:00:00Z",
+                    "source": "user",
+                    "message": "Research and review this answer.",
+                },
+                {
+                    "step_id": 2,
+                    "timestamp": "2026-05-18T10:00:01Z",
+                    "source": "agent",
+                    "message": "Delegating research.",
+                    "observation": {
+                        "results": [
+                            {
+                                "content": "Research completed.",
+                                "subagent_trajectory_ref": [
+                                    {"trajectory_id": "research-trajectory", "session_id": "run-123"},
+                                    {
+                                        "trajectory_path": "subagents/external-trajectory.json",
+                                        "session_id": "run-123",
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                },
+                {
+                    "step_id": 3,
+                    "timestamp": "2026-05-18T10:00:06Z",
+                    "source": "agent",
+                    "message": "Here is the reviewed answer.",
+                },
+            ],
             "subagent_trajectories": [
                 {
                     "schema_version": "ATIF-v1.7",
-                    "session_id": "trace-session-id",
-                    "trajectory_id": "sub-trajectory",
-                    "agent": {"name": "subagent", "version": "1.0"},
-                    "steps": [{"step_id": 1, "source": "user", "message": "subagent work"}],
+                    "trajectory_id": "research-trajectory",
+                    "agent": {"name": "research-agent", "version": "1.0"},
+                    "steps": [
+                        {
+                            "step_id": 1,
+                            "timestamp": "2026-05-18T10:00:02Z",
+                            "source": "user",
+                            "message": "Research the answer.",
+                        },
+                        {
+                            "step_id": 2,
+                            "timestamp": "2026-05-18T10:00:03Z",
+                            "source": "agent",
+                            "message": "Delegating review.",
+                            "observation": {
+                                "results": [
+                                    {
+                                        "subagent_trajectory_ref": [
+                                            {
+                                                "trajectory_id": "review-trajectory",
+                                                "trajectory_path": "subagents/review-trajectory.json",
+                                                "session_id": "run-123",
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                        },
+                    ],
+                    "subagent_trajectories": [
+                        {
+                            "schema_version": "ATIF-v1.7",
+                            "session_id": "run-123",
+                            "trajectory_id": "review-trajectory",
+                            "agent": {"name": "review-agent", "version": "1.0"},
+                            "steps": [
+                                {
+                                    "step_id": 1,
+                                    "timestamp": "2026-05-18T10:00:04Z",
+                                    "source": "user",
+                                    "message": "Review the research.",
+                                },
+                                {
+                                    "step_id": 2,
+                                    "timestamp": "2026-05-18T10:00:08Z",
+                                    "source": "agent",
+                                    "message": "The research is invalid.",
+                                    "tool_calls": [
+                                        {
+                                            "tool_call_id": "validate-1",
+                                            "function_name": "validate_research",
+                                            "arguments": {},
+                                        }
+                                    ],
+                                    "observation": {
+                                        "results": [
+                                            {
+                                                "source_call_id": "validate-1",
+                                                "content": "[error] unsupported claim",
+                                            }
+                                        ]
+                                    },
+                                },
+                            ],
+                        }
+                    ],
                 }
             ],
         }
@@ -101,10 +205,95 @@ def test_atif_v17_embedded_subagent_trajectories_are_preserved_but_not_expanded(
         ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
     )
 
-    assert [span.name for span in spans] == ["root"]
-    root_raw = json.loads(spans[0].attributes_string["atif.raw"])
-    assert root_raw["subagent_trajectories"][0]["trajectory_id"] == "sub-trajectory"
-    assert root_raw["subagent_trajectories"][0]["steps"][0]["message"] == "subagent work"
+    root = next(span for span in spans if span.name == "root-agent")
+    root_delegation = next(
+        span for span in spans if span.name == "agent-2" and span.external_parent_span_id == root.external_span_id
+    )
+    research = next(span for span in spans if span.name == "research-agent")
+    research_delegation = next(
+        span for span in spans if span.name == "agent-2" and span.external_parent_span_id == research.external_span_id
+    )
+    review = next(span for span in spans if span.name == "review-agent")
+    external_ref = next(span for span in spans if span.name == "subagent-subagents/external-trajectory.json")
+
+    assert len(spans) == 12
+    assert len({span.external_span_id for span in spans}) == len(spans)
+    assert {span.trace_id for span in spans} == {"run-123"}
+    assert {span.session_id for span in spans} == {"run-123"}
+    assert root.external_parent_span_id == ""
+    assert research.external_parent_span_id == root_delegation.external_span_id
+    assert review.external_parent_span_id == research_delegation.external_span_id
+    assert external_ref.external_parent_span_id == root_delegation.external_span_id
+    assert not any(span.name == "subagent-subagents/review-trajectory.json" for span in spans)
+    assert root.start_time == datetime(2026, 5, 18, 10, tzinfo=timezone.utc)
+    assert root.end_time == datetime(2026, 5, 18, 10, 0, 8, tzinfo=timezone.utc)
+    assert root.status == SpanStatus.ERROR
+    assert research.status == SpanStatus.ERROR
+    assert review.status == SpanStatus.ERROR
+
+    root_raw = json.loads(root.attributes_string["atif.raw"])
+    assert root_raw["subagent_trajectories"][0]["trajectory_id"] == "research-trajectory"
+    assert root_raw["subagent_trajectories"][0]["steps"][0]["message"] == "Research the answer."
+
+
+def test_atif_v17_sibling_subagents_can_share_a_session_without_span_id_collisions() -> None:
+    trajectory = AtifTrajectory.model_validate(
+        {
+            "schema_version": "ATIF-v1.7",
+            "session_id": "shared-run",
+            "agent": {"name": "orchestrator", "version": "1.0"},
+            "steps": [
+                {
+                    "step_id": 1,
+                    "source": "agent",
+                    "message": "Dispatch both workers.",
+                    "observation": {
+                        "results": [
+                            {
+                                "subagent_trajectory_ref": [
+                                    {"trajectory_id": "worker-a", "session_id": "shared-run"},
+                                    {"trajectory_id": "worker-b", "session_id": "shared-run"},
+                                ]
+                            }
+                        ]
+                    },
+                }
+            ],
+            "subagent_trajectories": [
+                {
+                    "schema_version": "ATIF-v1.7",
+                    "session_id": "shared-run",
+                    "trajectory_id": "worker-a",
+                    "agent": {"name": "worker", "version": "1.0"},
+                    "steps": [{"step_id": 1, "source": "user", "message": "work"}],
+                },
+                {
+                    "schema_version": "ATIF-v1.7",
+                    "session_id": "shared-run",
+                    "trajectory_id": "worker-b",
+                    "agent": {"name": "worker", "version": "1.0"},
+                    "steps": [{"step_id": 1, "source": "user", "message": "work"}],
+                },
+            ],
+        }
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )
+
+    worker_roots = [span for span in spans if span.name == "worker"]
+    worker_steps = [
+        span
+        for span in spans
+        if span.name == "user-1" and span.external_parent_span_id in {s.external_span_id for s in worker_roots}
+    ]
+    assert len(worker_roots) == 2
+    assert len(worker_steps) == 2
+    assert len({span.external_span_id for span in [*worker_roots, *worker_steps]}) == 4
+    assert {span.trace_id for span in spans} == {"shared-run"}
 
 
 def test_atif_v17_subagent_ref_requires_resolution_key() -> None:
