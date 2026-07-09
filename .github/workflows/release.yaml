@@ -35,17 +35,23 @@ on:
         default: all
         options:
           - all
-          - sdks
+          - wheels
           - containers
           - helm
           - custom
-      sdk_ids:
-        description: "Comma-separated SDK IDs for custom releases."
+      wheel_ids:
+        description: >-
+          Custom only. Comma-separated wheel IDs.
+          Allowed: nemo-platform, nemo-platform-plugin.
         required: false
         type: string
         default: ""
       container_ids:
-        description: "Comma-separated container IDs for custom releases."
+        description: >-
+          Custom only. Comma-separated container IDs.
+          Allowed: nmp-api, nmp-core, nmp-cpu-tasks, nmp-automodel-tasks,
+          nmp-automodel-training, nmp-unsloth-training, auditor-tasks,
+          safe-synthesizer-tasks.
         required: false
         type: string
         default: ""
@@ -73,17 +79,45 @@ permissions:
   contents: read
 
 env:
-  RELEASE_SDK_IDS: '["nemo-platform", "nemo-platform-plugin"]'
-  RELEASE_CONTAINER_IDS: >-
-    ["nmp-api", "nmp-automodel-tasks", "nmp-automodel-training",
-    "nmp-core", "nmp-cpu-tasks", "nmp-unsloth-training",
-    "auditor-tasks", "safe-synthesizer-tasks"]
+  # Releasable artifact catalog.
+  #
+  # Keep this in the workflow so contributors can see release intent without
+  # chasing a second config file. When this changes, update the matching
+  # workflow_dispatch input descriptions above; GitHub does not support dynamic
+  # descriptions in the Run workflow form.
+  #
+  # Wheel fields:
+  #   id      - value users type in wheel_ids and the release artifact id
+  #   package - package passed to uv build --package
+  #   path    - package directory checked before any later release work starts
+  RELEASE_WHEELS_JSON: >-
+    [
+      {"id":"nemo-platform","package":"nemo-platform","path":"packages/nemo_platform"},
+      {"id":"nemo-platform-plugin","package":"nemo-platform-plugin","path":"packages/nemo_platform_plugin"}
+    ]
+  # Container fields:
+  #   id     - value users type in container_ids and the published image name
+  #   target - docker buildx bake target that must exist in docker-bake.hcl
+  #
+  # Every container id must also have .github/assets/ngc/containers/<id>.md so
+  # the published image has matching NGC catalog metadata.
+  RELEASE_CONTAINERS_JSON: >-
+    [
+      {"id":"nmp-api","target":"nmp-api-docker"},
+      {"id":"nmp-core","target":"nmp-core-docker"},
+      {"id":"nmp-cpu-tasks","target":"nmp-cpu-tasks-docker"},
+      {"id":"nmp-automodel-tasks","target":"nmp-automodel-tasks-docker"},
+      {"id":"nmp-automodel-training","target":"nmp-automodel-training-docker"},
+      {"id":"nmp-unsloth-training","target":"nmp-unsloth-training"},
+      {"id":"auditor-tasks","target":"auditor-tasks-docker"},
+      {"id":"safe-synthesizer-tasks","target":"safe-synthesizer-tasks-docker"}
+    ]
   RELEASE_HELM_ID: nemo-platform
   RELEASE_HELM_PATH: k8s/helm
 
 jobs:
   plan-release:
-    name: Plan release
+    name: Plan and validate release inputs
     runs-on: ubuntu-latest
     outputs:
       release_type: ${{ steps.plan.outputs.release_type }}
@@ -91,26 +125,34 @@ jobs:
       version: ${{ steps.plan.outputs.version }}
       release_label: ${{ steps.plan.outputs.release_label }}
       nightly_timestamp: ${{ steps.plan.outputs.nightly_timestamp }}
+      wheel_ids: ${{ steps.plan.outputs.wheel_ids }}
       sdk_ids: ${{ steps.plan.outputs.sdk_ids }}
       container_ids: ${{ steps.plan.outputs.container_ids }}
+      has_wheels: ${{ steps.plan.outputs.has_wheels }}
       has_sdks: ${{ steps.plan.outputs.has_sdks }}
       has_containers: ${{ steps.plan.outputs.has_containers }}
       include_helm: ${{ steps.plan.outputs.include_helm }}
       update_ngc_metadata: ${{ steps.plan.outputs.update_ngc_metadata }}
       send_notifications: ${{ steps.plan.outputs.send_notifications }}
     steps:
+      # This job is intentionally the first gate. It resolves the user's
+      # requested artifacts, checks custom ids against the inline catalog, then
+      # validates the selected source tree has the wheel package paths, bake
+      # targets, and NGC container overview files needed by later jobs.
       - name: Resolve release plan
         id: plan
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ github.token }}
           script: |
-            const allSdkIds = JSON.parse(process.env.RELEASE_SDK_IDS);
-            const allContainerIds = JSON.parse(process.env.RELEASE_CONTAINER_IDS);
+            const allWheels = JSON.parse(process.env.RELEASE_WHEELS_JSON);
+            const allContainers = JSON.parse(process.env.RELEASE_CONTAINERS_JSON);
+            const allWheelIds = allWheels.map((wheel) => wheel.id);
+            const allContainerIds = allContainers.map((container) => container.id);
             const inputs = context.payload.inputs ?? {};
             const isManual = context.eventName === "workflow_dispatch";
             const releaseType = isManual ? inputs.release_type : "nightly";
-            const releaseScope = isManual ? inputs.release_scope : "all";
+            const releaseScope = isManual ? (inputs.release_scope || "all") : "all";
             const updateNgcMetadata = isManual && inputs.update_ngc_metadata === "true";
             const sendNotifications = !isManual || inputs.send_notifications === "true";
 
@@ -141,43 +183,74 @@ jobs:
             sourceSha = sourceSha.toLowerCase();
 
             const presets = {
-              all: { sdkIds: allSdkIds, containerIds: allContainerIds, includeHelm: true },
-              sdks: { sdkIds: allSdkIds, containerIds: [], includeHelm: false },
-              containers: { sdkIds: [], containerIds: allContainerIds, includeHelm: false },
-              helm: { sdkIds: [], containerIds: [], includeHelm: true },
+              all: { wheels: allWheels, containers: allContainers, includeHelm: true },
+              wheels: { wheels: allWheels, containers: [], includeHelm: false },
+              sdks: { wheels: allWheels, containers: [], includeHelm: false },
+              containers: { wheels: [], containers: allContainers, includeHelm: false },
+              helm: { wheels: [], containers: [], includeHelm: true },
             };
             let selection = presets[releaseScope];
 
             if (releaseScope === "custom") {
-              const selectIds = (value, allowedIds, label) => {
-                const requestedIds = new Set(
-                  value.split(",").map((id) => id.trim()).filter(Boolean),
-                );
+              const selectArtifacts = (value, allowedArtifacts, allowedIds, label, inputName) => {
+                if (!value.trim()) {
+                  return [];
+                }
+                const requestedList = value.split(",").map((id) => id.trim());
+                const emptyEntry = requestedList.some((id) => id.length === 0);
+                if (emptyEntry) {
+                  throw new Error(`${inputName} contains an empty entry.`);
+                }
+                const requestedIds = new Set(requestedList);
+                if (requestedIds.size !== requestedList.length) {
+                  throw new Error(`${inputName} contains duplicate entries.`);
+                }
                 const unknownIds = [...requestedIds].filter(
                   (id) => !allowedIds.includes(id),
                 );
                 if (unknownIds.length > 0) {
-                  throw new Error(`Unknown ${label} IDs: ${unknownIds.join(", ")}`);
+                  throw new Error(
+                    `Unknown ${label} IDs: ${unknownIds.join(", ")}. `
+                    + `Allowed ${label} IDs: ${allowedIds.join(", ")}.`,
+                  );
                 }
-                return allowedIds.filter((id) => requestedIds.has(id));
+                return allowedArtifacts.filter((artifact) => requestedIds.has(artifact.id));
               };
 
               selection = {
-                sdkIds: selectIds(inputs.sdk_ids, allSdkIds, "SDK"),
-                containerIds: selectIds(inputs.container_ids, allContainerIds, "container"),
+                wheels: selectArtifacts(
+                  inputs.wheel_ids || "",
+                  allWheels,
+                  allWheelIds,
+                  "wheel",
+                  "wheel_ids",
+                ),
+                containers: selectArtifacts(
+                  inputs.container_ids || "",
+                  allContainers,
+                  allContainerIds,
+                  "container",
+                  "container_ids",
+                ),
                 includeHelm: inputs.include_helm === "true",
               };
 
               if (
-                selection.sdkIds.length === 0
-                && selection.containerIds.length === 0
+                selection.wheels.length === 0
+                && selection.containers.length === 0
                 && !selection.includeHelm
               ) {
                 throw new Error("A custom release must select at least one artifact.");
               }
             }
 
-            const { sdkIds, containerIds, includeHelm } = selection;
+            if (!selection) {
+              throw new Error(`Unknown release scope: ${releaseScope}.`);
+            }
+
+            const { wheels, containers, includeHelm } = selection;
+            const wheelIds = wheels.map((wheel) => wheel.id);
+            const containerIds = containers.map((container) => container.id);
 
             const nightlyTimestamp = releaseType === "nightly"
               ? new Date().toISOString().replace(/\D/g, "").slice(0, 14)
@@ -191,9 +264,13 @@ jobs:
             core.setOutput("version", version);
             core.setOutput("release_label", releaseLabel);
             core.setOutput("nightly_timestamp", nightlyTimestamp);
-            core.setOutput("sdk_ids", JSON.stringify(sdkIds));
+            core.setOutput("wheel_ids", JSON.stringify(wheelIds));
+            core.setOutput("sdk_ids", JSON.stringify(wheelIds));
             core.setOutput("container_ids", JSON.stringify(containerIds));
-            core.setOutput("has_sdks", String(sdkIds.length > 0));
+            core.setOutput("wheel_artifacts", JSON.stringify(wheels));
+            core.setOutput("container_artifacts", JSON.stringify(containers));
+            core.setOutput("has_wheels", String(wheelIds.length > 0));
+            core.setOutput("has_sdks", String(wheelIds.length > 0));
             core.setOutput("has_containers", String(containerIds.length > 0));
             core.setOutput("include_helm", String(includeHelm));
             core.setOutput("update_ngc_metadata", String(updateNgcMetadata));
@@ -202,6 +279,115 @@ jobs:
             core.info(
               `Planned ${releaseType} release ${releaseLabel} from ${sourceSha}`,
             );
+
+      - name: Checkout selected source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ steps.plan.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Validate selected release artifacts
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          WHEEL_ARTIFACTS: ${{ steps.plan.outputs.wheel_artifacts }}
+          CONTAINER_ARTIFACTS: ${{ steps.plan.outputs.container_artifacts }}
+        with:
+          script: |
+            const fs = require("fs");
+            const path = require("path");
+
+            const parseArtifacts = (envName) => JSON.parse(process.env[envName] || "[]");
+            const readText = (filePath) => fs.readFileSync(filePath, "utf8");
+            const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const requireFile = (filePath, message) => {
+              if (!fs.existsSync(filePath)) {
+                throw new Error(`${message}: ${filePath}`);
+              }
+            };
+
+            const artifactList = (artifacts) => {
+              if (artifacts.length === 0) {
+                return "(none)";
+              }
+              return artifacts.map((artifact) => artifact.id).join(", ");
+            };
+
+            const validateWheel = (wheel) => {
+              const pyprojectPath = path.join(wheel.path, "pyproject.toml");
+              requireFile(
+                pyprojectPath,
+                `Wheel ${wheel.id} cannot be built because its package config is missing`,
+              );
+              const pyproject = readText(pyprojectPath);
+              const namePattern = new RegExp(
+                `^\\s*name\\s*=\\s*["']${escapeRegExp(wheel.package)}["']\\s*$`,
+                "m",
+              );
+
+              if (!namePattern.test(pyproject)) {
+                throw new Error(
+                  `Wheel ${wheel.id} expects package ${wheel.package}, `
+                  + `but ${pyprojectPath} does not declare that project name.`,
+                );
+              }
+            };
+
+            const readBakeTargets = (bakePath) => {
+              requireFile(bakePath, "Container validation needs docker-bake.hcl");
+              return new Set(
+                [...readText(bakePath).matchAll(/^target\s+"([^"]+)"/gm)]
+                  .map((match) => match[1]),
+              );
+            };
+
+            const ngcMetadataPath = (container) => path.join(
+              ".github",
+              "assets",
+              "ngc",
+              "containers",
+              `${container.id}.md`,
+            );
+
+            const validateContainer = (container, bakeTargets) => {
+              const bakePath = "docker-bake.hcl";
+              if (!bakeTargets.has(container.target)) {
+                throw new Error(
+                  `Container ${container.id} cannot be built because bake target `
+                  + `${container.target} is missing from ${bakePath}.`,
+                );
+              }
+              requireFile(
+                ngcMetadataPath(container),
+                `Container ${container.id} is missing matching NGC metadata`,
+              );
+            };
+
+            const writeSummary = async (wheels, containers) => {
+              const rows = [
+                [
+                  {data: "Type", header: true},
+                  {data: "Selected", header: true},
+                ],
+                ["Wheels", artifactList(wheels)],
+                ["Containers", artifactList(containers)],
+              ];
+
+              await core.summary
+                .addHeading("Release input validation")
+                .addTable(rows)
+                .write();
+            };
+
+            const wheels = parseArtifacts("WHEEL_ARTIFACTS");
+            const containers = parseArtifacts("CONTAINER_ARTIFACTS");
+            const bakeTargets = readBakeTargets("docker-bake.hcl");
+
+            wheels.forEach(validateWheel);
+            containers.forEach((container) => validateContainer(container, bakeTargets));
+
+            await writeSummary(wheels, containers);
+
+            core.info("Selected release artifacts are valid for the checked-out source.");
 
   notify-start:
     name: Notify release start
