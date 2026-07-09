@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
-  PluginProvider,
   usePluginInstalled,
   usePlugins,
   usePluginsError,
   usePluginsLoaded,
 } from '@studio/plugins/PluginContext';
+import { PluginProvider } from '@studio/plugins/PluginProvider';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
