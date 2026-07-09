@@ -22,6 +22,13 @@ const STUDIO_SHARED_DEPS = [
   '@tanstack/react-query',
 ];
 
+// Prepended to the built bundle so the emitted artifact keeps an SPDX header —
+// minification strips source comments, and CI's copyright-header check
+// (script/copyright_fixer.py) requires the header literally in the file.
+const LICENSE_BANNER =
+  '// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.\n' +
+  '// SPDX-License-Identifier: Apache-2.0';
+
 export default defineConfig({
   plugins: [react()],
   build: {
@@ -35,6 +42,9 @@ export default defineConfig({
     emptyOutDir: true,
     rolldownOptions: {
       external: STUDIO_SHARED_DEPS,
+      output: {
+        banner: LICENSE_BANNER,
+      },
     },
   },
 });

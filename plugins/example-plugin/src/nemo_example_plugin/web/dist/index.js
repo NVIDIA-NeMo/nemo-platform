@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 import { Flex as e, Stack as t, Text as n } from "@nvidia/foundations-react-core";
 import { useQuery as r } from "@tanstack/react-query";
 import { NavLink as i, Navigate as a, Outlet as o, Route as s, Routes as c } from "react-router-dom";
