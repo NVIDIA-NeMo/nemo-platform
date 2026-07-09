@@ -1,0 +1,116 @@
+---
+title: "Machine Identity (Bring Your Own IdP)"
+description: ""
+---
+A non-human caller (CI pipeline, agent, or service) authenticates to NeMo Platform with its own IdP-issued credential, and NeMo's existing RBAC controls what it can reach. No NeMo core change is required. The machine is treated like any other principal: it presents a token, the platform validates it, builds a principal, and resolves roles.
+
+NeMo Platform is not a token authority. Your IdP issues and revokes the machine's credential; the platform only holds the role binding that grants access.
+
+**Prerequisites**: OIDC must be configured on the platform. See [OIDC Setup](/documentation/access-control/authentication/oidc-setup). Familiarity with [Managing Access](/documentation/access-control/authorization/managing-access) helps for the binding step.
+
+## Why This Works Without Code Changes
+
+NeMo Platform validates any OIDC access token the same way, whether it came from a human's device-flow login or a machine's OAuth2 client-credentials grant. The bearer path in the auth middleware validates the JWT (signature, issuer, audience, expiry) and builds a principal from the token claims: `sub` becomes the principal ID, `email` the email, `groups` the group list. The `sub` claim is required.
+
+Authorization then resolves roles over the union of the principal's ID, email, and groups. The auth client forwards the principal's groups to the policy decision point (PDP); the policy engine collects all applicable principals (ID, email, each group) and checks role bindings against every one of them. A role bound to a group therefore applies to any principal carrying that group, human or machine.
+
+A machine's client-credentials token rides the identical path. Put the machine in a group in your IdP, issue it tokens that carry the `groups` claim, bind a NeMo role to that group, and the platform authorizes the machine exactly as it would a person in the same group.
+
+<Note>
+
+Automatic group-to-role mapping is not yet implemented. The group arrives in the token and reaches the PDP, but you still create the role binding explicitly (bind to the group, or to the machine's stable `sub`). See [Managing Access](/documentation/access-control/authorization/managing-access).
+
+</Note>
+## The Pattern
+
+Five steps, all standard OIDC. None of them touch NeMo Platform source.
+
+1. **Create a service account in your IdP.** This is the machine's identity. It owns the credential and its lifecycle (create, rotate, revoke).
+2. **Put the service account in a group** (for example `nemo-editors`). The group is how you will grant access without re-binding every individual machine.
+3. **Issue client-credentials tokens** for the service account. Configure the IdP so these tokens carry a stable `sub` and the `groups` claim. The `sub` should be durable across rotations so a binding to it survives credential changes.
+4. **Bind a NeMo role to the group** (or to the `sub`) in the target workspace. This is the only state the platform holds about the machine.
+5. **Call NeMo Platform APIs with the token** in the `Authorization: Bearer <token>` header. The platform validates, builds the principal, resolves the group's role, and authorizes.
+
+Binding to the group is the common case: add or remove machines by changing IdP group membership, and the NeMo binding stays put. Bind to the `sub` when you want one specific machine to have access independent of any group.
+
+<Warning>
+
+Do not use the internal `X-NMP-Principal-Id: service:` header for customer machines. That header is an unconditional trust path reserved for internal platform services; a request carrying `service:<name>` is auto-authorized with access to all workspaces by the policy's unconditional service bypass. Customer machines must authenticate via OIDC, as described here.
+
+This is why the edge matters: the gateway must strip inbound `X-NMP-Principal-*` headers from external requests so a client cannot forge a `service:` (or any other) identity. See [Security Model](/documentation/access-control/security-model#service-principals) and [Gateway Integration](/documentation/access-control/deployment/gateway-integration).
+
+</Warning>
+## Worked Example: authentik
+
+[authentik](https://goauthentik.io/) is an open-source IdP, and the repo ships a runnable reference bundle at `contrib/authentik/`. It is an optional reference, not part of the core platform. The bundle contains:
+
+- `docker-compose.yml` to bring up authentik locally
+- `blueprints/nemo.yaml`, which provisions an RS256 OAuth2 provider, the `nemo` application, the groups `nemo-admins` and `nemo-editors`, and a service account `svc-nemo-ci` placed in `nemo-editors` with a token
+- `config/authentik.yaml`, the matching NeMo Platform OIDC config
+- `env.example` and a `README.md` with the full walkthrough
+
+The bundle's `README.md` is the source of truth for exact commands and current values. The steps below summarize the flow so you can see how the pattern maps onto a real IdP.
+
+### Bring up authentik and the provider
+
+Start authentik with the bundled compose file; the blueprint provisions the provider, application, groups, and the `svc-nemo-ci` service account on first start.
+
+```bash
+cp contrib/authentik/env.example contrib/authentik/.env   # set AUTHENTIK_SECRET_KEY
+docker compose -p nemo-authentik -f contrib/authentik/docker-compose.yml up -d
+```
+
+Confirm the discovery document is served at the provider's issuer URL before going further.
+
+### Get a machine token
+
+Request a token for the service account with the client-credentials grant, then inspect it. The check that matters: the decoded payload's `sub` is the service account, `iss` matches the configured issuer, and `groups` includes the group you intend to bind (`nemo-editors`).
+
+```bash
+echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | jq '{sub, iss, aud, groups}'
+```
+
+If those claims are wrong, fix the IdP before touching NeMo Platform. The platform authorizes on what the token says.
+
+### Point NeMo at authentik
+
+Run NeMo Platform with the bundle's OIDC config so it validates tokens against authentik:
+
+```bash
+NMP_CONFIG_FILE_PATH=contrib/authentik/config/authentik.yaml \
+  nemo services run --services auth,entities,models --host 127.0.0.1 --port 8080
+```
+
+## Validate: Denied, Bound, Allowed, Revoked
+
+This is the procedure to confirm the machine is authorized by NeMo's RBAC and nothing else. Run it against a protected endpoint. The expected behavior at each step is noted; treat these as what you should observe, not a recorded run.
+
+1. **Before any binding, the machine is denied.** Call a protected endpoint with the machine's token. Expect `403`: the principal is authenticated but has no role.
+
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' \
+     http://127.0.0.1:8080/apis/<a-protected-endpoint> -H "Authorization: Bearer $TOKEN"
+   ```
+
+2. **Bind the group to a role.** An admin grants the `nemo-editors` group the `Editor` role in the target workspace through the normal authenticated members API. Use a NeMo Admin user's credentials for this call. (The bundle's local README uses a bootstrap service header to do this on a single-node dev box; that path is for local bootstrap only and must never be exposed to external callers, per the warning above.)
+
+3. **After binding, the machine is allowed.** Repeat the same call. Expect `200`: the token's `groups` claim now resolves to the `Editor` role.
+
+4. **Revoke and confirm denial returns.** Remove the role binding in NeMo, or remove the service account from the group in authentik. Repeat the call. Expect `403` again.
+
+The access decision lives entirely in NeMo's group-to-role binding. The identity and credential lifecycle (issue, rotate, revoke) live in your IdP. That separation is the point: NeMo Platform federates identity instead of becoming a token authority.
+
+## What This Does and Does Not Do
+
+Does: federated machine authentication with scoped, revocable access, enforced by NeMo's existing token validation and RBAC, no core changes.
+
+Does not: add NeMo-native service accounts. The machine's identity, credential, and lifecycle stay in the IdP. NeMo holds only the role binding.
+
+## Related
+
+- [OIDC Setup](/documentation/access-control/authentication/oidc-setup): Configure your identity provider.
+- [Using Authentication](/documentation/access-control/authentication/using-authentication): Log in, make API calls, and manage tokens (human flows).
+- [Generic OIDC Provider](/documentation/access-control/authentication/providers/generic-oidc): Provider-agnostic IdP checklist.
+- [Managing Access](/documentation/access-control/authorization/managing-access): Create role bindings.
+- [API Scopes](/documentation/access-control/authorization/api-scopes): Token-level scope checks layered on top of RBAC.
+- [Security Model](/documentation/access-control/security-model): Trust boundaries, principals, and why the edge strips identity headers.

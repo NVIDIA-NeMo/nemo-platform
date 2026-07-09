@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from nmp.common.auth import AuthClient, get_auth_client
 from nmp.intake.config import IntakeConfig
 from nmp.intake.spans.api.dependencies import SpansServiceDep, require_workspace_access
 from nmp.intake.spans.domain import (
@@ -21,6 +22,10 @@ from pydantic import BaseModel, Field
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Ingest"
+
+# Attribute key on each ingested span recording the authenticated caller (the
+# agent or user whose token posted the spans). Queryable via span attribute filters.
+CALLER_PRINCIPAL_ATTRIBUTE = "nmp.caller_principal"
 
 # Ordered by precedence. Keep direct input.value/output.value first so existing
 # OpenInference/LangChain payloads continue to win over framework-specific fallbacks.
@@ -59,6 +64,7 @@ async def ingest_otlp_traces(
     workspace: str,
     request: Request,
     service: SpansServiceDep,
+    auth_client: AuthClient = Depends(get_auth_client),
     content_type: str = Header(default="application/octet-stream"),
     content_length: int | None = Header(default=None),
 ) -> IngestResponse:
@@ -78,6 +84,7 @@ async def ingest_otlp_traces(
     body = await _read_limited_body(request, max_bytes=max_bytes)
     export_request = _parse_export_request(body)
     ingested_at = utc_now()
+    caller_principal = _resolve_caller_principal(auth_client)
     spans: list[IntakeSpan] = []
     errors: list[str] = []
 
@@ -97,6 +104,7 @@ async def ingest_otlp_traces(
                         resource_attributes=resource_attributes,
                         scope_data=scope_data,
                         ingested_at=ingested_at,
+                        caller_principal=caller_principal,
                     )
                 except (OverflowError, OSError, TypeError, ValueError) as exc:
                     span_hex = bytes(getattr(span, "span_id", b"")).hex() or "<missing>"
@@ -143,6 +151,14 @@ def _otlp_max_body_bytes(request: Request) -> int:
     return cfg.otlp_max_body_bytes
 
 
+def _resolve_caller_principal(auth_client: AuthClient) -> str:
+    """Identity of the authenticated caller posting these spans, empty if auth is off."""
+    if not getattr(auth_client, "auth_enabled", False):
+        return ""
+    principal_id = getattr(getattr(auth_client, "principal", None), "id", None)
+    return principal_id or ""
+
+
 def _span_to_domain(
     *,
     workspace: str,
@@ -150,6 +166,7 @@ def _span_to_domain(
     resource_attributes: dict[str, Any],
     scope_data: dict[str, Any],
     ingested_at: datetime,
+    caller_principal: str = "",
 ) -> IntakeSpan:
     trace_id = _required_otlp_id(span.trace_id, field_name="trace_id")
     trace_id_hex = trace_id.hex()
@@ -185,6 +202,9 @@ def _span_to_domain(
         attribute_bags.put_json("otel.events", events)
     if any(value is not None for value in scope_data.values()):
         attribute_bags.put_json("otel.scope", scope_data)
+
+    if caller_principal:
+        attribute_bags.string[CALLER_PRINCIPAL_ATTRIBUTE] = caller_principal
 
     # TODO: After the POC lands, switch non-openinference/non-gen_ai spans from UNKNOWN rows to hard drops.
     span_domain = IntakeSpan(

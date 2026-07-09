@@ -1,0 +1,90 @@
+# NeMo Platform config that uses authentik as the OIDC identity provider.
+# Mirrors packages/nmp_platform/config/local.yaml; only the `auth` block differs
+# (auth enabled, unsigned JWT off, OIDC pointed at the authentik bundle).
+# Re-sync with local.yaml if that file changes.
+#
+#   set -a && source packages/nmp_platform/config/local.env && set +a
+#   export NMP_BASE_URL=http://127.0.0.1:8080
+#   NMP_CONFIG_FILE_PATH=contrib/authentik/config/authentik.yaml \
+#     uv run nemo-platform run --host 127.0.0.1 --port 8080
+
+platform:
+  runtime: "docker"
+  base_url: "http://0.0.0.0:8080"
+
+service: {}
+
+auth:
+  enabled: true
+  allow_unsigned_jwt: false
+  policy_decision_point_provider: embedded
+  policy_decision_point_base_url: "http://localhost:8080"
+  policy_data_refresh_interval: 2
+  bundle_cache_seconds: 15
+  admin_email: "admin@example.com"
+  oidc:
+    enabled: true
+    # Issuer MUST equal the `iss` claim authentik puts in tokens (trailing slash
+    # included). Discovery is fetched at <issuer>/.well-known/openid-configuration.
+    issuer: "http://localhost:9000/application/o/nemo/"
+    client_id: "nemo-platform"
+    # authentik client-credentials tokens may not set `aud`; leave audience unset so
+    # issuer + signature are enforced (still secure). Set once you confirm the aud.
+    # audience: "nemo-platform"
+    subject_claim: "sub"
+    email_claim: "email"
+    groups_claim: "groups"
+    # `groups` scope is required so authentik emits the groups claim (via the
+    # "NeMo groups" scope mapping in blueprints/nemo.yaml). Without it the token
+    # carries no groups, so group->role authorization grants nothing and even
+    # `nemo workspaces list` returns empty for a real user. groups_claim above
+    # only says WHERE to read groups; this is what makes them get requested.
+    default_scopes: "openid profile email offline_access groups"
+
+entities: {}
+
+jobs:
+  executors:
+    - provider: subprocess
+      profile: default
+      backend: subprocess
+      config:
+        working_directory: /tmp/nmp-subprocess-jobs
+        cleanup_completed_jobs_immediately: false
+        ttl_seconds_before_active: 60
+        ttl_seconds_active: 3600
+        ttl_seconds_after_finished: 300
+  executor_defaults:
+    subprocess:
+      working_directory: /tmp/nmp-subprocess-jobs
+      cleanup_completed_jobs_immediately: false
+      ttl_seconds_before_active: 60
+      ttl_seconds_active: 3600
+      ttl_seconds_after_finished: 300
+
+evaluator:
+  recreate_existing_system_entities: True
+
+safe_synthesizer: {}
+
+models:
+  controller:
+    interval_seconds: 5
+    model_deployment_garbage_collection_ttl_seconds: 30
+    backends:
+      docker:
+        enabled: true
+
+inference_gateway: {}
+
+secrets:
+  allow_key_creation: true
+
+files:
+  default_storage_config:
+    type: local
+    path: ~/.local/share/nemo/files
+
+studio:
+  static_files_path: web/packages/studio/dist
+  sandbox_enabled: true
