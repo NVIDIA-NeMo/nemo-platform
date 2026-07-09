@@ -369,6 +369,14 @@ jobs:
           remove_swift: "true"
           prune_docker: "true"
 
+      - name: inspect disks
+        shell: bash
+        run: |
+          mount
+          df -h
+          ls -l /opt/hostedtoolcache
+          du -sh /opt/hostedtoolcache/*
+
       - name: Set up Docker Buildx
         shell: bash
         run: |
