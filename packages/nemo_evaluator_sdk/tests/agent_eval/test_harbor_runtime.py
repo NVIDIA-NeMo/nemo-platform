@@ -83,9 +83,9 @@ async def _record(calls: list[str]) -> None:
     calls.append("ran")
 
 
-def test_reward_with_no_matching_reward_key_scores_zero_and_warns(tmp_path: Path, caplog) -> None:
+def test_reward_with_no_matching_reward_key_is_partial_and_warns(tmp_path: Path, caplog) -> None:
     # Verifier emitted a reward, but under a key we didn't ask for: no guessing —
-    # the trial scores 0.0 (COMPLETED, not "missing") and a warning is logged.
+    # the trial is treated as having no reward (None -> PARTIAL, scores 0.0) and warns.
     job_dir = tmp_path / "job"
     job_dir.mkdir()
     _write_trial(job_dir, "t__aaa", "t", reward=1.0)  # emitted under "reward"
@@ -94,6 +94,6 @@ def test_reward_with_no_matching_reward_key_scores_zero_and_warns(tmp_path: Path
     with caplog.at_level(logging.WARNING):
         trials = build_trials_from_job_dir(job_dir, tasks, reward_key="missing")
 
-    assert trials[0].metadata["reward"] == 0.0
-    assert trials[0].status == AgentEvalTrialStatus.COMPLETED
+    assert trials[0].metadata["reward"] is None
+    assert trials[0].status == AgentEvalTrialStatus.PARTIAL
     assert "none matches reward_key" in caplog.text

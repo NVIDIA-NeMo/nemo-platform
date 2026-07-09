@@ -206,22 +206,21 @@ def _rewards_mapping(data: Mapping[str, Any]) -> dict[str, float]:
 def _primary_reward(rewards: Mapping[str, float], reward_key: str) -> float | None:
     """Return the single reward a trial is scored on.
 
-    Returns the reward named by ``reward_key`` when the verifier emitted it. When
-    the verifier emitted rewards but none matches ``reward_key`` the trial scores
-    ``0.0`` and a warning is logged — we do not guess among the emitted rewards
-    (point ``reward_key`` at the intended one, or score the others with
-    additional metrics over ``reward_details``). Returns ``None`` only when the
-    verifier emitted no rewards at all (genuinely missing).
+    Returns the reward named by ``reward_key`` when the verifier emitted it.
+    Returns ``None`` otherwise (the trial is treated as having no reward, so it
+    stays PARTIAL rather than scoring a misleading 0.0): if the verifier emitted
+    rewards but none matches ``reward_key`` a warning is logged, since we do not
+    guess among the emitted rewards (point ``reward_key`` at the intended one, or
+    score the others with additional metrics over ``reward_details``).
     """
     if reward_key in rewards:
         return rewards[reward_key]
     if rewards:
         logger.warning(
-            "Harbor trial emitted rewards %s but none matches reward_key=%r; scoring this trial as 0.0",
+            "Harbor trial emitted rewards %s but none matches reward_key=%r; treating the trial as having no reward",
             sorted(rewards),
             reward_key,
         )
-        return 0.0
     return None
 
 
