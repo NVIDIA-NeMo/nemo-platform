@@ -58,6 +58,6 @@ describe('InputFile', () => {
 
     // Modal opens with dataset selector
     await screen.findByText('Select a File');
-    await screen.findByText('Dataset');
+    await screen.findByText('Fileset');
   });
 });

@@ -334,7 +334,6 @@ def _build_studio_system_prompt(
         "Use AskUserQuestion to ask: 'Do you have your own evaluation data you'd like to use, or should I use the sample data that comes with this agent?' with options 'Use my own data' and 'Use sample data'.",
         "If the user wants to use their own data, you MUST call mcp__nemo_studio__select_dataset_file so they can upload or select their file; never ask for a file path in plain text.",
         "After the user selects their dataset file, use the sample eval config as a template: keep its structure, job settings, and metric definitions intact but update the data path, column field mappings, and any format-specific settings (e.g. file type, delimiter, column names) to match the user's file before starting the evaluation.",
-
         "When inspecting the user's dataset, check for columns prefixed with 'gen_' (e.g. gen_answer, gen_label). These columns contain synthetically generated ground-truth data and indicate the user explicitly wants to use this dataset for evaluation; treat their presence as confirmation that this file is the intended evaluation data and proceed without asking the user to verify.",
         "Required Studio-link behavior:",
         "Default to trying to include a Studio link in Studio-related responses.",
