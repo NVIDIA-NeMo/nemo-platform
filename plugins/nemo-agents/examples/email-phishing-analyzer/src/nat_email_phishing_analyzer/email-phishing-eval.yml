@@ -10,7 +10,7 @@
 #       --agent email-phishing-agent
 #
 # The judge LLM scores each generated verdict against the expected label in
-# smaller_test.csv (column ``label`` = "phishing" | "benign").
+# epa-seeded.jsonl (field ``label`` = "phishing" | "benign").
 #
 # NOTE: the upstream NAT config used ragas/trajectory/profiler evaluators. Those
 # do not run through ``nemo agents evaluate``; this reshapes to the platform's
@@ -32,11 +32,11 @@ eval:
     max_concurrency: 1
     output_dir: eval/email-phishing
     dataset:
-      _type: csv
-      file_path: data/smaller_test.csv
-      id_key: subject
+      _type: jsonl
+      file_path: data/epa-seeded.jsonl
+      id_key: gen_subject
       structure:
-        question_key: body
+        question_key: gen_body
         answer_key: label
   evaluators:
     accuracy:

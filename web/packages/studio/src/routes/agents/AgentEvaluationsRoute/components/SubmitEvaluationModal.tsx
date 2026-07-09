@@ -40,6 +40,7 @@ const EVAL_CONFIG_MODE_ITEMS = [
 ];
 
 const contentTypeForFile = (name: string): string => {
+  if (name.endsWith('.jsonl')) return 'application/x-ndjson';
   if (name.endsWith('.json')) return 'application/json';
   if (name.endsWith('.csv')) return 'text/csv';
   return 'application/yaml';

@@ -48,7 +48,7 @@ export const SAMPLE_AGENTS: SampleAgent[] = [
     namePrefix: 'email-phishing-demo-agent',
     agentConfigPath: 'sample-agents/email-phishing-analyzer/agent.yml',
     evalConfigPath: 'sample-agents/email-phishing-analyzer/eval.yml',
-    evalDataPath: 'sample-agents/email-phishing-analyzer/smaller_test.csv',
+    evalDataPath: 'sample-agents/email-phishing-analyzer/epa-seeded.jsonl',
   },
 ];
 

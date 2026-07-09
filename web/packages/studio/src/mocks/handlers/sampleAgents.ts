@@ -48,8 +48,8 @@ const EVAL_YAML = `llms:
 eval:
   general:
     dataset:
-      _type: csv
-      file_path: smaller_test.csv
+      _type: jsonl
+      file_path: epa-seeded.jsonl
   evaluators:
     accuracy:
       _type: tunable_rag_evaluator
@@ -66,6 +66,11 @@ export const sampleAgentsHandlers = [
     }
     if (path.endsWith('.yml')) {
       return HttpResponse.text(EVAL_YAML, { headers: { 'Content-Type': 'application/yaml' } });
+    }
+    if (path.endsWith('.jsonl')) {
+      return HttpResponse.text('{"subject":"Hi","body":"benign body","label":"benign"}\n', {
+        headers: { 'Content-Type': 'application/x-ndjson' },
+      });
     }
     if (path.endsWith('.csv')) {
       return HttpResponse.text('subject,body,label\nHi,benign body,benign\n', {
