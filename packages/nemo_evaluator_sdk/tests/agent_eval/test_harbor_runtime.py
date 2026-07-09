@@ -10,11 +10,17 @@ from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
 from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import (
     HarborAgentTaskRunner,
     HarborRewardMetric,
+    HarborRuntimeConfig,
+    HarborTasksetLoader,
     build_trials_from_job_dir,
+    discover_harbor_tasks,
     reward_payload_from_result,
 )
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrialStatus
+from nemo_evaluator_sdk.metrics.utils import metric_type_name
+
+_HELLO_WORLD_DATASET = Path(__file__).resolve().parents[2] / "examples" / "harbor" / "hello_world_dataset"
 
 
 def _write_trial(
@@ -97,3 +103,35 @@ def test_reward_with_no_matching_reward_key_is_partial_and_warns(tmp_path: Path,
     assert trials[0].metadata["reward"] is None
     assert trials[0].status == AgentEvalTrialStatus.PARTIAL
     assert "none matches reward_key" in caplog.text
+
+
+def test_task_discovery_and_taskset_loader_over_bundled_dataset() -> None:
+    # Discovery reads the bundled hello-world dataset directory the same way Harbor
+    # does: id comes from [task] name, and each task is scored by a reward metric.
+    tasks = discover_harbor_tasks(_HELLO_WORLD_DATASET)
+    assert [task.id for task in tasks] == ["harbor/hello-world"]
+    task = tasks[0]
+    assert task.intent  # instruction.md content
+    assert [metric_type_name(metric) for metric in task.metrics] == ["harbor_reward"]
+
+    # The loader wraps discovery as an AgentEvalTaskset and honors `limit`.
+    loader = HarborTasksetLoader(_HELLO_WORLD_DATASET)
+    assert loader.name == "harbor"
+    taskset = loader.load()
+    assert [t.id for t in taskset.tasks] == ["harbor/hello-world"]
+    assert taskset.metadata["harbor_dataset_path"] == str(_HELLO_WORLD_DATASET)
+    # A limit at/above the task count is a no-op (an empty taskset is invalid).
+    assert [t.id for t in loader.load(limit=5).tasks] == ["harbor/hello-world"]
+
+
+def test_runtime_config_defaults_and_runner_requires_a_source() -> None:
+    # Config holds only plain fields (importing the module never needs harbor).
+    config = HarborRuntimeConfig(jobs_dir=Path("/tmp/jobs"))
+    assert config.agent_name == "oracle"
+    assert config.reward_key == "reward"
+
+    # The runner rejects an under-specified construction rather than silently no-op.
+    with pytest.raises(ValueError):
+        HarborAgentTaskRunner()
+    with pytest.raises(ValueError):
+        HarborAgentTaskRunner(config=config)  # dataset_path missing

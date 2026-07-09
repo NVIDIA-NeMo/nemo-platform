@@ -9,40 +9,92 @@ job directory. This runtime adapts that tree into SDK :class:`AgentEvalTrial`
 objects so an :class:`AgentEvaluator` can score and report Harbor runs through the
 same seam as any other runtime.
 
-The module is intentionally dependency-light: it does **not** import ``harbor``.
-Job *execution* is injected as the ``run_job`` callback (the caller owns Harbor's
-``JobConfig`` build, the import lock, and ``docker network prune`` cleanup), and
-trial *adaptation* only reads Harbor's on-disk ``result.json`` files. This mirrors
-how :class:`CallableAgentTaskRunner` stays free of any agent SDK, and matches the
-design note that Harbor-runtime concerns live with the caller, not the SDK.
+Two ways to drive it:
+
+* **Native** — pass a :class:`HarborRuntimeConfig` and a dataset directory; the
+  runtime builds Harbor's ``JobConfig`` and runs it itself. The one-call
+  :func:`run_harbor_eval` loads the tasks, runs, and scores, so caller code is a
+  couple of lines. ``harbor`` is imported lazily inside ``run_tasks`` (it is an
+  optional extra), so importing this module never requires Harbor.
+* **Injected / offline** — pass a ``job_dir`` (and optionally a ``run_job``
+  callback) to adapt an already-completed job dir or to run a caller-built job.
+
+Trial *adaptation* only ever reads Harbor's on-disk ``result.json`` files, so
+that half stays dependency-free regardless of how the job was produced.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import shutil
+import tomllib
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus
-from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
+from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask, AgentEvalTaskset
 from nemo_evaluator_sdk.agent_eval.trials import (
     AgentEvalTrial,
     AgentEvalTrialStatus,
     AgentOutput,
     standard_evidence_descriptors,
 )
-from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
+from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence
+from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
 
 # Default reward key inside Harbor's ``verifier_result.rewards`` mapping.
 DEFAULT_REWARD_KEY = "reward"
+# Filename that marks a directory as a Harbor task, and the template dir to skip.
+_TASK_CONFIG_FILENAME = "task.toml"
+_TASK_TEMPLATE_DIRNAME = "task_template"
 
 RunJob = Callable[[], Awaitable[None]]
+
+
+class HarborRuntimeConfig(BaseModel):
+    """Declarative config for running a Harbor job natively through the SDK.
+
+    Holds only plain/pydantic fields so importing this module never needs Harbor;
+    the fields are mapped onto Harbor's ``JobConfig`` lazily at run time.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    jobs_dir: Path = Field(description="Parent directory Harbor writes the ``<job_name>/`` results tree into.")
+    job_name: str | None = Field(default=None, description="Harbor job name; a timestamp is generated when omitted.")
+    agent_name: str | None = Field(
+        default="oracle",
+        description="Built-in Harbor agent to run (e.g. 'oracle'). Ignored when ``agent_import_path`` is set.",
+    )
+    agent_import_path: str | None = Field(
+        default=None,
+        description="Custom Harbor agent import path (e.g. 'harbor_wrapper:WrappedAgent'); overrides ``agent_name``.",
+    )
+    agent_model_name: str | None = Field(default=None, description="Optional model slug passed to the Harbor agent.")
+    n_attempts: int = Field(default=1, ge=1, description="Number of attempts Harbor runs per task.")
+    n_concurrent_trials: int = Field(default=4, ge=1, description="Maximum concurrent Harbor trials.")
+    quiet: bool = Field(default=True, description="Suppress Harbor's trial progress displays.")
+    force_rerun: bool = Field(default=False, description="Delete an existing job dir before running.")
+    artifacts: list[str] = Field(default_factory=list, description="Harbor artifact sources to collect per trial.")
+    trace_dir: str | None = Field(
+        default=None,
+        description="Container path of agent traces to collect as the 'traces' artifact (e.g. '/app/traces').",
+    )
+    max_retries: int = Field(default=0, ge=0, description="Harbor per-trial retry attempts on transient failures.")
+    timeout_multiplier: float | None = Field(default=None, description="Global Harbor timeout multiplier.")
+    agent_timeout_multiplier: float | None = Field(default=None, description="Agent-phase timeout multiplier.")
+    verifier_timeout_multiplier: float | None = Field(default=None, description="Verifier-phase timeout multiplier.")
+    agent_setup_timeout_multiplier: float | None = Field(default=None, description="Agent-setup timeout multiplier.")
+    environment_build_timeout_multiplier: float | None = Field(
+        default=None, description="Environment-build timeout multiplier."
+    )
+    reward_key: str = Field(default=DEFAULT_REWARD_KEY, description="Key read from Harbor's rewards mapping.")
 
 
 class HarborRewardMetric:
@@ -74,20 +126,37 @@ class HarborRewardMetric:
 class HarborAgentTaskRunner:
     """An :class:`AgentTaskRunner` that runs a Harbor job, then adapts its results.
 
-    ``run_job`` executes the Harbor job (the caller builds the ``JobConfig`` and
-    owns any locking/cleanup); it is awaited once before the job directory is
-    read. Pass ``run_job=None`` to adapt an already-completed job directory
-    (offline re-scoring). ``job_dir`` is the directory Harbor writes its
-    per-trial ``<task>__<hash>/result.json`` files into.
+    Two construction modes:
+
+    * **Native** — pass ``config`` (a :class:`HarborRuntimeConfig`) and
+      ``dataset_path``; the runtime builds and runs Harbor's ``JobConfig`` itself
+      (Harbor is imported lazily). ``task_names`` optionally restricts the run to
+      a subset of the dataset's tasks.
+    * **Injected / offline** — pass ``job_dir`` (and optionally a ``run_job``
+      callback); ``run_job`` is awaited before the job dir is read, and
+      ``run_job=None`` simply adapts an already-completed job dir.
+
+    ``job_dir`` is the directory Harbor writes its per-trial
+    ``<task>__<hash>/result.json`` files into.
     """
 
     def __init__(
         self,
         *,
-        job_dir: str | Path,
+        config: HarborRuntimeConfig | None = None,
+        dataset_path: str | Path | None = None,
+        task_names: Sequence[str] | None = None,
+        job_dir: str | Path | None = None,
         run_job: RunJob | None = None,
         reward_key: str = DEFAULT_REWARD_KEY,
     ) -> None:
+        if config is not None:
+            if dataset_path is None:
+                raise ValueError("dataset_path is required when a HarborRuntimeConfig is given")
+            job_dir, run_job = _build_native_job(config, Path(dataset_path), task_names)
+            reward_key = config.reward_key
+        if job_dir is None:
+            raise ValueError("provide either config (+dataset_path) or an explicit job_dir")
         self._job_dir = Path(job_dir)
         self._run_job = run_job
         self._reward_key = reward_key
@@ -101,6 +170,64 @@ class HarborAgentTaskRunner:
         if self._run_job is not None:
             await self._run_job()
         return build_trials_from_job_dir(self._job_dir, tasks, reward_key=self._reward_key)
+
+
+def _build_native_job(
+    config: HarborRuntimeConfig,
+    dataset_path: Path,
+    task_names: Sequence[str] | None,
+) -> tuple[Path, RunJob]:
+    """Build a Harbor ``JobConfig`` from ``config`` and return ``(job_dir, run_job)``.
+
+    Harbor is imported here (not at module load) because it is an optional extra.
+    The returned ``run_job`` coroutine applies ``force_rerun`` and runs the job.
+    """
+    from harbor.job import DatasetConfig, Job, JobConfig  # ty: ignore[unresolved-import]
+    from harbor.models.job.config import RetryConfig  # ty: ignore[unresolved-import]
+    from harbor.models.trial.config import AgentConfig, ArtifactConfig  # ty: ignore[unresolved-import]
+
+    if config.agent_import_path is not None:
+        agent = AgentConfig(import_path=config.agent_import_path, model_name=config.agent_model_name)
+    else:
+        agent = AgentConfig(name=config.agent_name or "oracle", model_name=config.agent_model_name)
+
+    artifacts: list[str | ArtifactConfig] = list(config.artifacts)
+    if config.trace_dir is not None:
+        artifacts = [ArtifactConfig(source=config.trace_dir, destination="traces"), *artifacts]
+
+    timeout_kwargs = {
+        key: value
+        for key, value in {
+            "timeout_multiplier": config.timeout_multiplier,
+            "agent_timeout_multiplier": config.agent_timeout_multiplier,
+            "verifier_timeout_multiplier": config.verifier_timeout_multiplier,
+            "agent_setup_timeout_multiplier": config.agent_setup_timeout_multiplier,
+            "environment_build_timeout_multiplier": config.environment_build_timeout_multiplier,
+        }.items()
+        if value is not None
+    }
+
+    job_config = JobConfig(
+        jobs_dir=config.jobs_dir,
+        n_attempts=config.n_attempts,
+        n_concurrent_trials=config.n_concurrent_trials,
+        quiet=config.quiet,
+        retry=RetryConfig(max_retries=config.max_retries),
+        artifacts=artifacts,
+        agents=[agent],
+        datasets=[DatasetConfig(path=dataset_path, task_names=list(task_names) if task_names else None)],
+        **({"job_name": config.job_name} if config.job_name else {}),
+        **timeout_kwargs,
+    )
+    job_dir = job_config.jobs_dir / job_config.job_name
+
+    async def run_job() -> None:
+        if config.force_rerun and job_dir.exists():
+            shutil.rmtree(job_dir)
+        job = await Job.create(job_config)
+        await job.run()
+
+    return job_dir, run_job
 
 
 def build_trials_from_job_dir(
@@ -256,6 +383,105 @@ def _token_measurements(agent_result: Any) -> dict[str, int | float]:
     return out
 
 
+def _harbor_task_dirs(dataset_path: Path) -> list[Path]:
+    """Return the Harbor task folders under ``dataset_path`` (or itself if it is one)."""
+    if (dataset_path / _TASK_CONFIG_FILENAME).is_file():
+        return [dataset_path]
+    return sorted(
+        path
+        for path in dataset_path.iterdir()
+        if path.is_dir() and path.name != _TASK_TEMPLATE_DIRNAME and (path / _TASK_CONFIG_FILENAME).is_file()
+    )
+
+
+def discover_harbor_tasks(dataset_path: str | Path) -> list[AgentEvalTask]:
+    """Build one :class:`AgentEvalTask` per Harbor task folder in ``dataset_path``.
+
+    Mirrors Harbor's own local-dataset discovery: every immediate subdirectory
+    with a ``task.toml`` is a task. The task id is read from ``[task] name`` so it
+    matches the ``task_name`` Harbor writes into each trial's ``result.json``, and
+    each task is scored by a :class:`HarborRewardMetric`.
+    """
+    dataset_path = Path(dataset_path)
+    tasks: list[AgentEvalTask] = []
+    for task_dir in _harbor_task_dirs(dataset_path):
+        config = tomllib.loads((task_dir / _TASK_CONFIG_FILENAME).read_text())
+        task_name = config.get("task", {}).get("name", task_dir.name)
+        instruction_path = task_dir / "instruction.md"
+        intent = instruction_path.read_text().strip() if instruction_path.is_file() else task_name
+        tasks.append(
+            AgentEvalTask(
+                id=task_name,
+                intent=intent,
+                inputs={"instruction": intent},
+                metrics=[HarborRewardMetric()],
+            )
+        )
+    return tasks
+
+
+class HarborTasksetLoader:
+    """Load a Harbor local-dataset directory as an :class:`AgentEvalTaskset`.
+
+    Implements the :class:`AgentEvalTasksetLoader` protocol so "dataset dir in →
+    tasks out" is a single call.
+    """
+
+    def __init__(self, dataset_path: str | Path, *, name: str = "harbor") -> None:
+        self._dataset_path = Path(dataset_path)
+        self._name = name
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def load(
+        self,
+        *,
+        source: str | Path | None = None,
+        limit: int | None = None,
+        evidence_dir: Path | None = None,
+    ) -> AgentEvalTaskset:
+        """Discover Harbor tasks under ``source`` (or the configured path) into a taskset."""
+        dataset_path = Path(source) if source is not None else self._dataset_path
+        tasks = discover_harbor_tasks(dataset_path)
+        if limit is not None:
+            tasks = tasks[:limit]
+        return AgentEvalTaskset(tasks=tasks, metadata={"harbor_dataset_path": str(dataset_path)})
+
+
+async def run_harbor_eval(
+    config: HarborRuntimeConfig,
+    dataset_path: str | Path,
+    *,
+    task_names: Sequence[str] | None = None,
+    metrics: Sequence[Metric] | None = None,
+    run_config: AgentEvalRunConfig | None = None,
+) -> AgentEvalResult:
+    """Run a Harbor dataset natively and score it — the minimal-plumbing entry point.
+
+    Loads the taskset from ``dataset_path``, runs Harbor via ``config``, and scores
+    through :class:`AgentEvaluator`. Tasks are scored by :class:`HarborRewardMetric`
+    unless ``metrics`` overrides them. Returns the scored :class:`AgentEvalResult`.
+    """
+    from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
+
+    dataset_path = Path(dataset_path)
+    tasks = HarborTasksetLoader(dataset_path).load().tasks
+    if task_names is not None:
+        wanted = set(task_names)
+        tasks = [task for task in tasks if task.id in wanted]
+    if metrics is not None:
+        tasks = [task.model_copy(update={"metrics": list(metrics)}) for task in tasks]
+
+    runner = HarborAgentTaskRunner(config=config, dataset_path=dataset_path, task_names=task_names)
+    return await AgentEvaluator().run(
+        tasks=tasks,
+        target=runner,
+        config=run_config or AgentEvalRunConfig(write_dashboard=False),
+    )
+
+
 def reward_payload_from_result(
     result: AgentEvalResult,
     *,
@@ -302,6 +528,10 @@ __all__ = [
     "DEFAULT_REWARD_KEY",
     "HarborAgentTaskRunner",
     "HarborRewardMetric",
+    "HarborRuntimeConfig",
+    "HarborTasksetLoader",
     "build_trials_from_job_dir",
+    "discover_harbor_tasks",
     "reward_payload_from_result",
+    "run_harbor_eval",
 ]
