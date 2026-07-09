@@ -1,0 +1,355 @@
+name: Release
+run-name: >-
+  Release ${{ github.event_name == 'schedule' && 'nightly' || inputs.release_type }}
+  by @${{ github.actor }}
+
+on:
+  schedule:
+    # Runs Monday through Friday at 8:00 PM America/Los_Angeles.
+    - cron: "0 20 * * 1-5"
+      timezone: "America/Los_Angeles"
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: "Release type."
+        required: false
+        type: choice
+        default: nightly
+        options:
+          - nightly
+          - stable
+      source_sha:
+        description: "Exact source commit SHA. Required for stable releases; optional for nightlies."
+        required: false
+        type: string
+        default: ""
+      version:
+        description: "Stable SemVer core release version, for example 1.0.0."
+        required: false
+        type: string
+        default: ""
+      release_scope:
+        description: "Release artifact scope."
+        required: false
+        type: choice
+        default: all
+        options:
+          - all
+          - sdks
+          - containers
+          - helm
+          - custom
+      sdk_ids:
+        description: "Comma-separated SDK IDs for custom releases."
+        required: false
+        type: string
+        default: ""
+      container_ids:
+        description: "Comma-separated container IDs for custom releases."
+        required: false
+        type: string
+        default: ""
+      include_helm:
+        description: "Include the Helm chart in a custom release."
+        required: false
+        type: boolean
+        default: false
+      update_ngc_metadata:
+        description: "Synchronize NGC metadata from the default branch."
+        required: false
+        type: boolean
+        default: false
+      send_notifications:
+        description: "Send release start and end notifications."
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_SDK_IDS: '["nemo-platform", "nemo-platform-plugin"]'
+  RELEASE_CONTAINER_IDS: >-
+    ["nmp-api", "nmp-automodel-tasks", "nmp-automodel-training",
+    "nmp-unsloth-training", "auditor-tasks", "safe-synthesizer-tasks"]
+  RELEASE_HELM_ID: nemo-platform
+  RELEASE_HELM_PATH: k8s/helm
+
+jobs:
+  plan-release:
+    name: Plan release
+    runs-on: ubuntu-latest
+    outputs:
+      release_type: ${{ steps.plan.outputs.release_type }}
+      source_sha: ${{ steps.plan.outputs.source_sha }}
+      version: ${{ steps.plan.outputs.version }}
+      release_label: ${{ steps.plan.outputs.release_label }}
+      nightly_timestamp: ${{ steps.plan.outputs.nightly_timestamp }}
+      sdk_ids: ${{ steps.plan.outputs.sdk_ids }}
+      container_ids: ${{ steps.plan.outputs.container_ids }}
+      has_sdks: ${{ steps.plan.outputs.has_sdks }}
+      has_containers: ${{ steps.plan.outputs.has_containers }}
+      include_helm: ${{ steps.plan.outputs.include_helm }}
+      update_ngc_metadata: ${{ steps.plan.outputs.update_ngc_metadata }}
+      send_notifications: ${{ steps.plan.outputs.send_notifications }}
+    steps:
+      - name: Resolve release plan
+        id: plan
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const allSdkIds = JSON.parse(process.env.RELEASE_SDK_IDS);
+            const allContainerIds = JSON.parse(process.env.RELEASE_CONTAINER_IDS);
+            const inputs = context.payload.inputs ?? {};
+            const isManual = context.eventName === "workflow_dispatch";
+            const releaseType = isManual ? inputs.release_type : "nightly";
+            const releaseScope = isManual ? inputs.release_scope : "all";
+            const updateNgcMetadata = isManual && inputs.update_ngc_metadata === "true";
+            const sendNotifications = !isManual || inputs.send_notifications === "true";
+
+            let sourceSha = isManual ? inputs.source_sha.trim() : context.sha;
+            const version = releaseType === "stable" ? inputs.version.trim() : "";
+
+            if (releaseType === "stable") {
+              if (!/^[0-9a-f]{40}$/i.test(sourceSha)) {
+                throw new Error("Stable releases require an exact 40-character source SHA.");
+              }
+              if (!/^\d+\.\d+\.\d+$/.test(version)) {
+                throw new Error("Stable releases require a MAJOR.MINOR.PATCH version.");
+              }
+            } else {
+              if (sourceSha && !/^[0-9a-f]{40}$/i.test(sourceSha)) {
+                throw new Error("A pinned nightly source must be an exact 40-character SHA.");
+              }
+              if (!sourceSha) {
+                const defaultBranch = context.payload.repository.default_branch;
+                const { data: commit } = await github.rest.repos.getCommit({
+                  ...context.repo,
+                  ref: defaultBranch,
+                });
+                sourceSha = commit.sha;
+              }
+            }
+
+            sourceSha = sourceSha.toLowerCase();
+
+            const presets = {
+              all: { sdkIds: allSdkIds, containerIds: allContainerIds, includeHelm: true },
+              sdks: { sdkIds: allSdkIds, containerIds: [], includeHelm: false },
+              containers: { sdkIds: [], containerIds: allContainerIds, includeHelm: false },
+              helm: { sdkIds: [], containerIds: [], includeHelm: true },
+            };
+            let selection = presets[releaseScope];
+
+            if (releaseScope === "custom") {
+              const selectIds = (value, allowedIds, label) => {
+                const requestedIds = new Set(
+                  value.split(",").map((id) => id.trim()).filter(Boolean),
+                );
+                const unknownIds = [...requestedIds].filter(
+                  (id) => !allowedIds.includes(id),
+                );
+                if (unknownIds.length > 0) {
+                  throw new Error(`Unknown ${label} IDs: ${unknownIds.join(", ")}`);
+                }
+                return allowedIds.filter((id) => requestedIds.has(id));
+              };
+
+              selection = {
+                sdkIds: selectIds(inputs.sdk_ids, allSdkIds, "SDK"),
+                containerIds: selectIds(inputs.container_ids, allContainerIds, "container"),
+                includeHelm: inputs.include_helm === "true",
+              };
+
+              if (
+                selection.sdkIds.length === 0
+                && selection.containerIds.length === 0
+                && !selection.includeHelm
+              ) {
+                throw new Error("A custom release must select at least one artifact.");
+              }
+            }
+
+            const { sdkIds, containerIds, includeHelm } = selection;
+
+            const nightlyTimestamp = releaseType === "nightly"
+              ? new Date().toISOString().replace(/\D/g, "").slice(0, 14)
+              : "";
+            const releaseLabel = releaseType === "nightly"
+              ? `nightly-${nightlyTimestamp}`
+              : version;
+
+            core.setOutput("release_type", releaseType);
+            core.setOutput("source_sha", sourceSha);
+            core.setOutput("version", version);
+            core.setOutput("release_label", releaseLabel);
+            core.setOutput("nightly_timestamp", nightlyTimestamp);
+            core.setOutput("sdk_ids", JSON.stringify(sdkIds));
+            core.setOutput("container_ids", JSON.stringify(containerIds));
+            core.setOutput("has_sdks", String(sdkIds.length > 0));
+            core.setOutput("has_containers", String(containerIds.length > 0));
+            core.setOutput("include_helm", String(includeHelm));
+            core.setOutput("update_ngc_metadata", String(updateNgcMetadata));
+            core.setOutput("send_notifications", String(sendNotifications));
+
+            core.info(
+              `Planned ${releaseType} release ${releaseLabel} from ${sourceSha}`,
+            );
+
+  notify-start:
+    name: Notify release start
+    needs: plan-release
+    if: needs.plan-release.outputs.send_notifications == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::Placeholder - send release start notification"
+
+  dispatch-ngc-metadata:
+    name: Dispatch NGC metadata synchronization
+    needs: plan-release
+    if: needs.plan-release.outputs.update_ngc_metadata == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch metadata workflow
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            try {
+              await github.rest.actions.createWorkflowDispatch({
+                ...context.repo,
+                workflow_id: "ngc-metadata.yaml",
+                ref: context.payload.repository.default_branch,
+              });
+            } catch (error) {
+              core.warning(`Unable to dispatch NGC metadata synchronization: ${error.message}`);
+            }
+
+  dispatch-release-registration:
+    name: Dispatch release registration
+    needs: plan-release
+    if: needs.plan-release.outputs.release_type == 'stable'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch registration workflow
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
+          RELEASE_VERSION: ${{ needs.plan-release.outputs.version }}
+          SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
+          SOURCE_RUN_URL: >-
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SDK_IDS: ${{ needs.plan-release.outputs.sdk_ids }}
+          CONTAINER_IDS: ${{ needs.plan-release.outputs.container_ids }}
+          INCLUDE_HELM: ${{ needs.plan-release.outputs.include_helm }}
+        with:
+          github-token: ${{ secrets.CI_DISPATCH_TOKEN }}
+          script: |
+            const [owner, repo] = process.env.DISPATCH_REPO.split("/");
+
+            await github.rest.repos.createDispatchEvent({
+              owner,
+              repo,
+              event_type: "register-release-artifacts",
+              client_payload: {
+                version: process.env.RELEASE_VERSION,
+                source_sha: process.env.SOURCE_SHA,
+                source_run_url: process.env.SOURCE_RUN_URL,
+                sdk_ids: JSON.parse(process.env.SDK_IDS),
+                container_ids: JSON.parse(process.env.CONTAINER_IDS),
+                helm_id: process.env.INCLUDE_HELM === "true"
+                  ? process.env.RELEASE_HELM_ID
+                  : null,
+              },
+            });
+
+  build-wheels:
+    name: Build wheels
+    needs: plan-release
+    if: needs.plan-release.outputs.has_sdks == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::Placeholder - build selected release wheels"
+
+  dispatch-wheel-stage:
+    name: Dispatch wheel staging
+    needs: [plan-release, build-wheels]
+    if: needs.plan-release.outputs.has_sdks == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::Placeholder - dispatch selected wheels for staging"
+
+  dispatch-container-stage:
+    name: Dispatch container staging
+    needs: plan-release
+    if: needs.plan-release.outputs.has_containers == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::Placeholder - dispatch selected containers for staging"
+
+  stage-helm:
+    name: Stage Helm chart
+    needs: plan-release
+    if: needs.plan-release.outputs.include_helm == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::Placeholder - stage the selected Helm chart"
+
+  poll-final-release:
+    name: Poll final release locations
+    needs:
+      - plan-release
+      - dispatch-release-registration
+      - build-wheels
+      - dispatch-wheel-stage
+      - dispatch-container-stage
+      - stage-helm
+    if: >-
+      always() &&
+      needs.plan-release.result == 'success' &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::Placeholder - poll selected artifacts in their final locations"
+
+  create-github-release:
+    name: Create GitHub Release
+    needs: [plan-release, poll-final-release]
+    if: >-
+      needs.plan-release.outputs.release_type == 'stable' &&
+      needs.poll-final-release.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::Placeholder - create the stable GitHub Release"
+
+  signal-deployment:
+    name: Signal deployment
+    needs: poll-final-release
+    if: needs.poll-final-release.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::Placeholder - signal the completed release"
+
+  notify-end:
+    name: Notify release end
+    needs:
+      - plan-release
+      - poll-final-release
+      - create-github-release
+      - signal-deployment
+    if: >-
+      always() &&
+      needs.plan-release.outputs.send_notifications == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::Placeholder - send release end notification"
