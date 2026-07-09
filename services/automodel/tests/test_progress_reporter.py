@@ -4,9 +4,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
-from nemo_platform import omit
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.customization_common.service.context import NMPJobContext
 from nmp.customization_common.tasks.file_io_progress_reporter import JobsServiceProgressReporter
@@ -14,6 +13,7 @@ from nmp.customization_common.tasks.file_io_progress_reporter import JobsService
 
 def test_progress_reporter_calls_sdk_create_or_update() -> None:
     sdk = MagicMock()
+    mock_jobs = MagicMock()
     ctx = NMPJobContext(
         workspace="ws-a",
         job_id="job-1",
@@ -26,15 +26,23 @@ def test_progress_reporter_calls_sdk_create_or_update() -> None:
         config_path=Path("/tmp/job/config.json"),
     )
     reporter = JobsServiceProgressReporter(sdk, ctx.workspace, ctx.job_id, ctx.step, ctx.normalized_task)
-    reporter.update_progress(PlatformJobStatus.ACTIVE, status_details={"phase": "training"})
 
-    sdk.jobs.tasks.create_or_update.assert_called_once_with(
-        ctx.normalized_task,
-        workspace=ctx.workspace,
-        job=ctx.job_id,
-        step=ctx.step,
-        status=PlatformJobStatus.ACTIVE.value,
-        status_details={"phase": "training"},
-        error_details=omit,
-        error_stack=omit,
-    )
+    with patch(
+        "nmp.customization_common.tasks.file_io_progress_reporter.client_from_platform",
+        return_value=mock_jobs,
+    ):
+        reporter.update_progress(PlatformJobStatus.ACTIVE, status_details={"phase": "training"})
+
+    mock_jobs.update_job_step_task.assert_called_once()
+    call_kwargs = mock_jobs.update_job_step_task.call_args.kwargs
+    assert call_kwargs["name"] == ctx.normalized_task
+    assert call_kwargs["workspace"] == ctx.workspace
+    assert call_kwargs["job"] == ctx.job_id
+    assert call_kwargs["step"] == ctx.step
+    # status + status_details now travel on the PlatformJobTaskUpdate body; unset
+    # fields (error_details/error_stack) are omitted, leaving their model defaults.
+    body = call_kwargs["body"]
+    assert body.status == PlatformJobStatus.ACTIVE
+    assert body.status_details == {"phase": "training"}
+    assert body.error_details is None
+    assert body.error_stack is None

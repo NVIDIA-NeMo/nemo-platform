@@ -10,6 +10,8 @@ from urllib.parse import quote
 
 import httpx
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import AsyncJobsClient, JobsClient
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
 from nemo_safe_synthesizer_plugin.sdk import http_utils
 
@@ -80,11 +82,12 @@ class SafeSynthesizerJobsResource:
 
     def get_status(self, name: str, *, workspace: str | None = None) -> Any:
         """Retrieve Safe Synthesizer job status."""
-        return self._platform.jobs.get_status(name, workspace=workspace)
+        return client_from_platform(self._platform, JobsClient).get_job_status(name=name, workspace=workspace).data()
 
     def get_logs(self, name: str, *, workspace: str | None = None, **kwargs: Any) -> Any:
         """Retrieve paginated Safe Synthesizer job logs from the Jobs service."""
-        return self._platform.jobs.get_logs(name, workspace=workspace, **kwargs)
+        jobs = client_from_platform(self._platform, JobsClient)
+        return jobs.page_job_logs(name=name, workspace=workspace, query_params=kwargs or None).data()
 
 
 class SafeSynthesizerResource:
@@ -161,11 +164,13 @@ class AsyncSafeSynthesizerJobsResource:
 
     async def get_status(self, name: str, *, workspace: str | None = None) -> Any:
         """Retrieve Safe Synthesizer job status."""
-        return await self._platform.jobs.get_status(name, workspace=workspace)
+        jobs = client_from_platform(self._platform, AsyncJobsClient)
+        return (await jobs.get_job_status(name=name, workspace=workspace)).data()
 
     async def get_logs(self, name: str, *, workspace: str | None = None, **kwargs: Any) -> Any:
         """Retrieve paginated Safe Synthesizer job logs from the Jobs service."""
-        return await self._platform.jobs.get_logs(name, workspace=workspace, **kwargs)
+        jobs = client_from_platform(self._platform, AsyncJobsClient)
+        return (await jobs.page_job_logs(name=name, workspace=workspace, query_params=kwargs or None)).data()
 
 
 class AsyncSafeSynthesizerResource:

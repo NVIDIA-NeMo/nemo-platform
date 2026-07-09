@@ -52,8 +52,10 @@ from nemo_platform.types.jobs.platform_job_step_spec_param import Executor
 from nemo_platform_plugin.api.filter import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
 from nemo_platform_plugin.api.parsed_filter import ParsedFilter, make_filter_dep
 from nemo_platform_plugin.authz import AuthzScope, CallerKind, path_rule
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.dependencies import get_entity_client, get_sdk_client
 from nemo_platform_plugin.entities import EntityClient
+from nemo_platform_plugin.jobs.client import AsyncJobsClient
 from nemo_platform_plugin.jobs.docker import validate_gpu_available_for_docker
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_platform_plugin.jobs.openapi_utils import generate_openapi_extra_params
@@ -65,6 +67,7 @@ from nemo_platform_plugin.jobs.schemas import (
     PlatformJobStatus,
     PlatformJobStatusResponse,
 )
+from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest, JobLogsQueryParams, ListJobsQueryParams
 from nemo_platform_plugin.schema import DatetimeFilter, Filter, Page, PaginationData, StringFilter
 from pydantic import BaseModel, Field, TypeAdapter
 
@@ -857,25 +860,35 @@ def job_route_factory(
             # Build SDK call kwargs, only including optional fields when they have values
             # (passing None explicitly causes different serialization than omitting)
             # Note: We store transformed_spec (not input), which includes auto-generated fields.
-            sdk_kwargs: dict = {
+            # ``job_spec`` may be a Pydantic model (the transformed job output);
+            # the request body's ``spec`` is a plain dict on the wire. The
+            # Stainless SDK serialized models implicitly — the typed client
+            # validates the body first, so coerce to a dict here.
+            spec_dict = job_spec.model_dump() if isinstance(job_spec, BaseModel) else job_spec
+
+            # Only include optional fields when they have values — passing None
+            # explicitly serializes differently than omitting (exclude_unset).
+            create_fields: dict = {
                 "source": service_name,
-                "spec": job_spec,
+                "spec": spec_dict,
                 "platform_spec": platform_spec,
-                "workspace": workspace,
             }
             # Use the resolved job_name (user-provided or generated)
             if job_name is not None:
-                sdk_kwargs["name"] = job_name
+                create_fields["name"] = job_name
             if request.description is not None:
-                sdk_kwargs["description"] = request.description
+                create_fields["description"] = request.description
             if request.ownership is not None:
-                sdk_kwargs["ownership"] = request.ownership
+                create_fields["ownership"] = request.ownership
             if request.custom_fields is not None:
-                sdk_kwargs["custom_fields"] = request.custom_fields
+                create_fields["custom_fields"] = request.custom_fields
             if request.project:
-                sdk_kwargs["extra_body"] = {"project": request.project}
+                create_fields["project"] = request.project
 
-            job_resp = await sdk.jobs.create(**sdk_kwargs)
+            jobs = client_from_platform(sdk, AsyncJobsClient)
+            job_resp = (
+                await jobs.create_job(workspace=workspace, body=CreatePlatformJobRequest(**create_fields))
+            ).data()
             return from_response(job_resp)
 
         @router.get(
@@ -930,17 +943,23 @@ def job_route_factory(
             # accepts raw JSON in ``filter=`` and routes it through
             # parse_json_filter, so a single JSON-string param survives the
             # round trip cleanly.
-            sdk_list_kwargs: dict = {
-                "workspace": workspace,
+            list_query: ListJobsQueryParams = {
                 "page": page,
                 "page_size": page_size,
                 "sort": str(sort),
-                "extra_query": {"filter": json.dumps(parsed.to_response())},
+                "filter": json.dumps(parsed.to_response()),
             }
-            list_jobs_resp = await sdk.jobs.list(**sdk_list_kwargs)
+            jobs = client_from_platform(sdk, AsyncJobsClient)
+            list_page = (await jobs.list_jobs(workspace=workspace, query_params=list_query)).page()
             return Page(
-                data=[from_response(job) for job in list_jobs_resp.data],
-                pagination=PaginationData(**list_jobs_resp.pagination.model_dump()),
+                data=[from_response(job) for job in list_page.items],
+                pagination=PaginationData(
+                    page=list_page.page,
+                    page_size=list_page.page_size,
+                    current_page_size=len(list_page.items),
+                    total_pages=list_page.total_pages,
+                    total_results=list_page.total_results,
+                ),
                 sort=sort,
                 filter=user_filter or None,
             )
@@ -955,7 +974,7 @@ def job_route_factory(
         ) -> TypedJobResponse:
             f"""Get a job by name for the {service_name} microservice."""
 
-            job_resp = await sdk.jobs.retrieve(name=name, workspace=workspace)
+            job_resp = (await client_from_platform(sdk, AsyncJobsClient).get_job(name=name, workspace=workspace)).data()
             return from_response(job_resp)
 
         # Status
@@ -968,7 +987,9 @@ def job_route_factory(
             sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
         ) -> PlatformJobStatusResponse:
             f"""Get the status of a job by name for the {service_name} microservice."""
-            job_resp = await sdk.jobs.get_status(name=name, workspace=workspace)
+            job_resp = (
+                await client_from_platform(sdk, AsyncJobsClient).get_job_status(name=name, workspace=workspace)
+            ).data()
             return PlatformJobStatusResponse(**job_resp.model_dump())
 
         @router.delete(
@@ -981,7 +1002,7 @@ def job_route_factory(
             sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
         ) -> None:
             f"""Delete a job by name for the {service_name} microservice."""
-            await sdk.jobs.delete(name=name, workspace=workspace)
+            await client_from_platform(sdk, AsyncJobsClient).delete_job(name=name, workspace=workspace)
             return None
 
         @router.post(
@@ -994,7 +1015,9 @@ def job_route_factory(
         ) -> TypedJobResponse:
             f"""Cancel a job by name for the {service_name} microservice."""
 
-            job_resp = await sdk.jobs.cancel(name=name, workspace=workspace)
+            job_resp = (
+                await client_from_platform(sdk, AsyncJobsClient).cancel_job(name=name, workspace=workspace)
+            ).data()
             return from_response(job_resp)
 
         # Logs
@@ -1010,7 +1033,16 @@ def job_route_factory(
         ) -> PlatformJobLogPage:
             f"""Get the logs of a job by name for the {service_name} microservice."""
 
-            logs = await sdk.jobs.get_logs(workspace=workspace, name=name, limit=limit, page_cursor=page_cursor)
+            logs_query: JobLogsQueryParams = {}
+            if limit is not None:
+                logs_query["limit"] = limit
+            if page_cursor is not None:
+                logs_query["page_cursor"] = page_cursor
+            logs = (
+                await client_from_platform(sdk, AsyncJobsClient).page_job_logs(
+                    workspace=workspace, name=name, query_params=logs_query
+                )
+            ).data()
             return PlatformJobLogPage(**logs.model_dump())
 
         # Results
@@ -1025,7 +1057,9 @@ def job_route_factory(
         ) -> PlatformJobListResultResponse:
             f"""Get the results of a job by name for the {service_name} microservice."""
 
-            results = await sdk.jobs.results.list(name=name, workspace=workspace)
+            results = (
+                await client_from_platform(sdk, AsyncJobsClient).list_job_results(name=name, workspace=workspace)
+            ).data()
             result_dicts = [result.model_dump() for result in results.data]
             list_results = []
             for result_dict in result_dicts:
@@ -1047,7 +1081,9 @@ def job_route_factory(
         ) -> PlatformJobResultResponse:
             f"""Get the result of a job by name for the {service_name} microservice."""
 
-            result_obj = await sdk.jobs.results.retrieve(name=name, job=job, workspace=workspace)
+            result_obj = (
+                await client_from_platform(sdk, AsyncJobsClient).get_job_result(name=name, job=job, workspace=workspace)
+            ).data()
 
             # Construct the URL for downloading this result
             result_dict = result_obj.model_dump()
@@ -1091,7 +1127,9 @@ def job_route_factory(
             - Use the `result_serializer` to know how to properly serialize the output
             """
 
-            result_info = await sdk.jobs.results.retrieve(name=name, job=job, workspace=workspace)
+            result_info = (
+                await client_from_platform(sdk, AsyncJobsClient).get_job_result(name=name, job=job, workspace=workspace)
+            ).data()
             _, tmp_dir_path = await download_from_result_info(
                 result_name=name,
                 job_name=job,
@@ -1203,7 +1241,9 @@ def job_route_factory(
         ) -> TypedJobResponse:
             f"""Pause a job by name for the {service_name} microservice."""
 
-            job_resp = await sdk.jobs.pause(name=name, workspace=workspace)
+            job_resp = (
+                await client_from_platform(sdk, AsyncJobsClient).pause_job(name=name, workspace=workspace)
+            ).data()
             return from_response(job_resp)
 
         @router.post(
@@ -1216,7 +1256,9 @@ def job_route_factory(
         ) -> TypedJobResponse:
             f"""Resume a job by name for the {service_name} microservice."""
 
-            job_resp = await sdk.jobs.resume(name=name, workspace=workspace)
+            job_resp = (
+                await client_from_platform(sdk, AsyncJobsClient).resume_job(name=name, workspace=workspace)
+            ).data()
             return from_response(job_resp)
 
         _stamp(pause_job, perm="pause", write=True)

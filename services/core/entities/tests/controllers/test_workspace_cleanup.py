@@ -47,21 +47,45 @@ class _MockPaginatedResponse:
         return _AsyncIterator(self._items)
 
 
+def _make_jobs_client(jobs: list | None = None) -> MagicMock:
+    """Build a mock typed AsyncJobsClient.
+
+    Production routes jobs calls through ``client_from_platform(sdk, AsyncJobsClient)``
+    and iterates ``(await jobs_client.list_jobs(...)).items()``. So ``list_jobs`` is an
+    ``AsyncMock`` returning a paginated response whose ``.items()`` yields an async
+    iterator over the jobs.
+    """
+    jobs_client = MagicMock()
+    jobs_client.list_jobs = AsyncMock(return_value=_MockPaginatedResponse(jobs or []))
+    jobs_client.cancel_job = AsyncMock()
+    jobs_client.delete_job = AsyncMock()
+    return jobs_client
+
+
 def _make_sdk(
     jobs: list | None = None,
     deployments: list | None = None,
     filesets: list | None = None,
 ) -> MagicMock:
-    """Build a MagicMock SDK with async mocks wired to the correct paths."""
+    """Build a MagicMock SDK with async mocks wired to the correct paths.
+
+    Only deployments/filesets stay on the ``sdk.*`` accessors; jobs are handled via
+    the typed jobs client patched onto ``client_from_platform`` (see ``_patch_jobs_client``).
+    """
     sdk = MagicMock()
-    sdk.jobs.list = AsyncMock(return_value=_AsyncIterator(jobs or []))
-    sdk.jobs.cancel = AsyncMock()
-    sdk.jobs.delete = AsyncMock()
     sdk.inference.deployments.list = AsyncMock(return_value=_AsyncIterator(deployments or []))
     sdk.inference.deployments.delete = AsyncMock()
     sdk.files.filesets.list = AsyncMock(return_value=_MockPaginatedResponse(filesets or []))
     sdk.files.filesets.delete = AsyncMock()
     return sdk
+
+
+def _patch_jobs_client(jobs_client: MagicMock):
+    """Patch ``client_from_platform`` in the workspace_cleanup module to return *jobs_client*."""
+    return patch(
+        "nmp.core.entities.controllers.workspace_cleanup.client_from_platform",
+        return_value=jobs_client,
+    )
 
 
 def _make_job(name: str, status: str = "completed") -> MagicMock:
@@ -156,13 +180,13 @@ class TestWorkspaceCleanupAsyncStep:
         repo.mark_workspace_for_deletion.return_value = True
 
         sdk = MagicMock()
-        sdk.jobs.list = AsyncMock(return_value=_AsyncIterator([]))
         sdk.inference.deployments.list = AsyncMock(return_value=_AsyncIterator([]))
         sdk.files.filesets.list = AsyncMock(return_value=_MockPaginatedResponse([]))
 
         controller = _make_controller(workspace_repo=repo, nmp_sdk=sdk)
 
-        await controller._async_step()
+        with _patch_jobs_client(_make_jobs_client([])):
+            await controller._async_step()
 
         repo.mark_workspace_for_deletion.assert_any_call(
             name="test-workspace",
@@ -190,12 +214,13 @@ class TestWorkspaceCleanupAsyncStep:
         repo.list_workspaces.return_value = ([workspace], None)
         repo.mark_workspace_for_deletion.return_value = True
 
-        sdk = MagicMock()
-        sdk.jobs.list = AsyncMock(side_effect=Exception("jobs service down"))
+        jobs_client = MagicMock()
+        jobs_client.list_jobs = AsyncMock(side_effect=Exception("jobs service down"))
 
-        controller = _make_controller(workspace_repo=repo, nmp_sdk=sdk)
+        controller = _make_controller(workspace_repo=repo)
 
-        await controller._async_step()
+        with _patch_jobs_client(jobs_client):
+            await controller._async_step()
 
         repo.mark_workspace_for_deletion.assert_any_call(
             name="test-workspace",
@@ -210,12 +235,12 @@ class TestWorkspaceCleanupAsyncStep:
         repo.list_workspaces.return_value = ([workspace], None)
         repo.mark_workspace_for_deletion.return_value = True
 
-        sdk = MagicMock()
-        sdk.jobs.list = AsyncMock(side_effect=Exception("boom"))
+        jobs_client = MagicMock()
+        jobs_client.list_jobs = AsyncMock(side_effect=Exception("boom"))
 
-        controller = _make_controller(workspace_repo=repo, nmp_sdk=sdk)
+        controller = _make_controller(workspace_repo=repo)
 
-        with patch.object(controller._cleanup_errors, "add") as mock_add:
+        with _patch_jobs_client(jobs_client), patch.object(controller._cleanup_errors, "add") as mock_add:
             await controller._async_step()
             mock_add.assert_called_once_with(1, attributes={"error_type": "cleanup_failed"})
 
@@ -228,19 +253,17 @@ class TestWorkspaceCleanupJobs:
         running_job.name = "running-job"
         running_job.status = "active"
 
-        sdk = MagicMock()
-        sdk.jobs.list = AsyncMock(return_value=_AsyncIterator([running_job]))
-        sdk.jobs.cancel = AsyncMock()
-        sdk.jobs.delete = AsyncMock()
+        jobs_client = _make_jobs_client([running_job])
 
-        controller = _make_controller(nmp_sdk=sdk)
-        await controller._cleanup_jobs(workspace)
+        controller = _make_controller()
+        with _patch_jobs_client(jobs_client):
+            await controller._cleanup_jobs(workspace)
 
-        sdk.jobs.cancel.assert_awaited_once_with(
+        jobs_client.cancel_job.assert_awaited_once_with(
             name="running-job",
             workspace="test-workspace",
         )
-        sdk.jobs.delete.assert_awaited_once_with(
+        jobs_client.delete_job.assert_awaited_once_with(
             name="running-job",
             workspace="test-workspace",
         )
@@ -252,16 +275,14 @@ class TestWorkspaceCleanupJobs:
         completed_job.name = "completed-job"
         completed_job.status = "completed"
 
-        sdk = MagicMock()
-        sdk.jobs.list = AsyncMock(return_value=_AsyncIterator([completed_job]))
-        sdk.jobs.cancel = AsyncMock()
-        sdk.jobs.delete = AsyncMock()
+        jobs_client = _make_jobs_client([completed_job])
 
-        controller = _make_controller(nmp_sdk=sdk)
-        await controller._cleanup_jobs(workspace)
+        controller = _make_controller()
+        with _patch_jobs_client(jobs_client):
+            await controller._cleanup_jobs(workspace)
 
-        sdk.jobs.cancel.assert_not_awaited()
-        sdk.jobs.delete.assert_awaited_once()
+        jobs_client.cancel_job.assert_not_awaited()
+        jobs_client.delete_job.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_continues_on_individual_job_failure(self):
@@ -273,25 +294,26 @@ class TestWorkspaceCleanupJobs:
         job2.name = "ok-job"
         job2.status = "completed"
 
-        sdk = MagicMock()
-        sdk.jobs.list = AsyncMock(return_value=_AsyncIterator([job1, job2]))
-        sdk.jobs.delete = AsyncMock(side_effect=[Exception("fail"), None])
+        jobs_client = _make_jobs_client([job1, job2])
+        jobs_client.delete_job = AsyncMock(side_effect=[Exception("fail"), None])
 
-        controller = _make_controller(nmp_sdk=sdk)
-        await controller._cleanup_jobs(workspace)
+        controller = _make_controller()
+        with _patch_jobs_client(jobs_client):
+            await controller._cleanup_jobs(workspace)
 
-        assert sdk.jobs.delete.await_count == 2
+        assert jobs_client.delete_job.await_count == 2
 
     @pytest.mark.asyncio
     async def test_raises_on_list_failure(self):
         workspace = _make_workspace()
-        sdk = MagicMock()
-        sdk.jobs.list = AsyncMock(side_effect=Exception("unavailable"))
+        jobs_client = MagicMock()
+        jobs_client.list_jobs = AsyncMock(side_effect=Exception("unavailable"))
 
-        controller = _make_controller(nmp_sdk=sdk)
+        controller = _make_controller()
 
         with pytest.raises(Exception, match="unavailable"):
-            await controller._cleanup_jobs(workspace)
+            with _patch_jobs_client(jobs_client):
+                await controller._cleanup_jobs(workspace)
 
 
 class TestWorkspaceCleanupDeployments:
@@ -374,24 +396,26 @@ class TestJobCancellationBranches:
     @pytest.mark.asyncio
     async def test_cancels_pending_jobs(self):
         workspace = _make_workspace()
-        sdk = _make_sdk(jobs=[_make_job("pending-job", status="pending")])
+        jobs_client = _make_jobs_client([_make_job("pending-job", status="pending")])
 
-        controller = _make_controller(nmp_sdk=sdk)
-        await controller._cleanup_jobs(workspace)
+        controller = _make_controller()
+        with _patch_jobs_client(jobs_client):
+            await controller._cleanup_jobs(workspace)
 
-        sdk.jobs.cancel.assert_awaited_once_with(name="pending-job", workspace="test-workspace")
-        sdk.jobs.delete.assert_awaited_once_with(name="pending-job", workspace="test-workspace")
+        jobs_client.cancel_job.assert_awaited_once_with(name="pending-job", workspace="test-workspace")
+        jobs_client.delete_job.assert_awaited_once_with(name="pending-job", workspace="test-workspace")
 
     @pytest.mark.asyncio
     async def test_cancels_created_jobs(self):
         workspace = _make_workspace()
-        sdk = _make_sdk(jobs=[_make_job("created-job", status="created")])
+        jobs_client = _make_jobs_client([_make_job("created-job", status="created")])
 
-        controller = _make_controller(nmp_sdk=sdk)
-        await controller._cleanup_jobs(workspace)
+        controller = _make_controller()
+        with _patch_jobs_client(jobs_client):
+            await controller._cleanup_jobs(workspace)
 
-        sdk.jobs.cancel.assert_awaited_once()
-        sdk.jobs.delete.assert_awaited_once()
+        jobs_client.cancel_job.assert_awaited_once()
+        jobs_client.delete_job.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_does_not_cancel_terminal_jobs(self):
@@ -401,26 +425,28 @@ class TestJobCancellationBranches:
             _make_job("failed", status="error"),
             _make_job("stopped", status="cancelled"),
         ]
-        sdk = _make_sdk(jobs=jobs)
+        jobs_client = _make_jobs_client(jobs)
 
-        controller = _make_controller(nmp_sdk=sdk)
-        await controller._cleanup_jobs(workspace)
+        controller = _make_controller()
+        with _patch_jobs_client(jobs_client):
+            await controller._cleanup_jobs(workspace)
 
-        sdk.jobs.cancel.assert_not_awaited()
-        assert sdk.jobs.delete.await_count == 3
+        jobs_client.cancel_job.assert_not_awaited()
+        assert jobs_client.delete_job.await_count == 3
 
     @pytest.mark.asyncio
     async def test_cancel_failure_still_deletes(self):
         """Regression: cancel() throwing must not prevent delete()."""
         workspace = _make_workspace()
-        sdk = _make_sdk(jobs=[_make_job("flaky-job", status="active")])
-        sdk.jobs.cancel = AsyncMock(side_effect=Exception("cancel failed"))
+        jobs_client = _make_jobs_client([_make_job("flaky-job", status="active")])
+        jobs_client.cancel_job = AsyncMock(side_effect=Exception("cancel failed"))
 
-        controller = _make_controller(nmp_sdk=sdk)
-        await controller._cleanup_jobs(workspace)
+        controller = _make_controller()
+        with _patch_jobs_client(jobs_client):
+            await controller._cleanup_jobs(workspace)
 
-        sdk.jobs.cancel.assert_awaited_once()
-        sdk.jobs.delete.assert_awaited_once_with(name="flaky-job", workspace="test-workspace")
+        jobs_client.cancel_job.assert_awaited_once()
+        jobs_client.delete_job.assert_awaited_once_with(name="flaky-job", workspace="test-workspace")
 
     @pytest.mark.asyncio
     async def test_mixed_statuses(self):
@@ -430,11 +456,12 @@ class TestJobCancellationBranches:
             _make_job("done-job", status="completed"),
             _make_job("pending-job", status="pending"),
         ]
-        sdk = _make_sdk(jobs=jobs)
+        jobs_client = _make_jobs_client(jobs)
 
-        controller = _make_controller(nmp_sdk=sdk)
-        await controller._cleanup_jobs(workspace)
+        controller = _make_controller()
+        with _patch_jobs_client(jobs_client):
+            await controller._cleanup_jobs(workspace)
 
-        cancel_calls = [c.kwargs["name"] for c in sdk.jobs.cancel.call_args_list]
+        cancel_calls = [c.kwargs["name"] for c in jobs_client.cancel_job.call_args_list]
         assert set(cancel_calls) == {"active-job", "pending-job"}
-        assert sdk.jobs.delete.await_count == 3
+        assert jobs_client.delete_job.await_count == 3

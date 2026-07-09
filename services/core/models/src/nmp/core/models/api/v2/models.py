@@ -4,7 +4,9 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from nemo_platform import APIError, AsyncNeMoPlatform
+from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NemoHTTPError
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
@@ -15,7 +17,9 @@ from nemo_platform_plugin.jobs.api_factory import (
     ResourcesRequestsSpec,
     ResourcesSpec,
 )
+from nemo_platform_plugin.jobs.client import AsyncJobsClient
 from nemo_platform_plugin.jobs.image import get_qualified_image
+from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest
 from nmp.common.api.common import Page
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
@@ -304,17 +308,22 @@ async def start_update_model_spec_job(model_entity: ModelEntity):
         ]
     )
     try:
-        job_resp = await sdk.jobs.create(
-            source="models-system",
-            workspace=model_entity.workspace,
-            platform_spec=task_spec,
-            spec={},
-            description=f"Model Spec Analyzer for model {model_entity.workspace}/{model_entity.name}",
-            ownership=model_entity.ownership,
-            project=model_entity.project,
-        )
+        jobs = client_from_platform(sdk, AsyncJobsClient)
+        job_resp = (
+            await jobs.create_job(
+                workspace=model_entity.workspace,
+                body=CreatePlatformJobRequest(
+                    source="models-system",
+                    platform_spec=task_spec,
+                    spec={},
+                    description=f"Model Spec Analyzer for model {model_entity.workspace}/{model_entity.name}",
+                    ownership=model_entity.ownership,
+                    project=model_entity.project,
+                ),
+            )
+        ).data()
         logger.info(f"Job Created - {job_resp}")
-    except APIError as err:
+    except NemoHTTPError as err:
         logger.warning(f"Failed to create model spec job. {err}")
 
 

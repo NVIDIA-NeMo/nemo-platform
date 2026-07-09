@@ -6,7 +6,9 @@ import logging
 import threading
 
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.types import PlatformJobStatus
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import AsyncJobsClient
+from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from nmp.common.api.filter import ComparisonOperation, FilterOperator
 from nmp.common.controller.controller import Controller
 from nmp.common.observability import start_span_with_ctx
@@ -120,14 +122,14 @@ class WorkspaceCleanup(Controller):
     async def _cleanup_jobs(self, workspace: Workspace) -> None:
         logger.info(f"Cleaning up jobs for workspace: {workspace.name}")
         try:
-            jobs_response = await self._nmp_sdk.jobs.list(workspace=workspace.name)
-            jobs = [job async for job in jobs_response]
+            jobs_client = client_from_platform(self._nmp_sdk, AsyncJobsClient)
+            jobs = [job async for job in (await jobs_client.list_jobs(workspace=workspace.name)).items()]
 
             for job in jobs:
                 if job.status not in _TERMINAL_JOB_STATUSES:
                     try:
                         logger.info(f"Cancelling job: {job.name}")
-                        await self._nmp_sdk.jobs.cancel(
+                        await jobs_client.cancel_job(
                             name=job.name,
                             workspace=workspace.name,
                         )
@@ -136,7 +138,7 @@ class WorkspaceCleanup(Controller):
 
                 try:
                     logger.info(f"Deleting job: {job.name}")
-                    await self._nmp_sdk.jobs.delete(
+                    await jobs_client.delete_job(
                         name=job.name,
                         workspace=workspace.name,
                     )

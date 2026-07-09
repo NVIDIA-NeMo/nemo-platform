@@ -1,10 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from nemo_platform import NotFoundError, PermissionDeniedError
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_safe_synthesizer.config.replace_pii import ClassifyConfig, Globals, PiiReplacerConfig, StepDefinition
 from nemo_safe_synthesizer_plugin.api.v2.jobs import endpoints
@@ -15,6 +17,25 @@ from nemo_safe_synthesizer_plugin.runtime import TASK_MODULE
 
 DEFAULT_WORKSPACE = "default"
 DEFAULT_DATA_SOURCE = "default/test-data#file.csv"
+
+
+def _client_error(error_cls, status_code: int, detail: str):
+    """Build a NemoHTTPError subclass from an httpx.Response, as the typed client raises."""
+    request = httpx.Request("GET", "http://test")
+    response = httpx.Response(status_code=status_code, json={"detail": detail}, request=request)
+    return error_cls(response)
+
+
+def _patch_jobs_client(jobs_client: MagicMock):
+    """Patch ``client_from_platform`` in the endpoints module to return *jobs_client*.
+
+    The pretrained-model path routes adapter-result lookups through
+    ``client_from_platform(sdk, AsyncJobsClient).get_job_result(...)``.
+    """
+    return patch(
+        "nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints.client_from_platform",
+        return_value=jobs_client,
+    )
 
 
 @pytest.fixture
@@ -100,7 +121,8 @@ async def test_job_config_compiler_with_classify_provider(mock_sdk):
 
 @pytest.mark.asyncio
 async def test_job_config_compiler_validates_pretrained_model_job(mock_sdk):
-    mock_sdk.jobs.results.retrieve = AsyncMock(
+    jobs_client = MagicMock()
+    jobs_client.get_job_result = AsyncMock(
         return_value=MagicMock(artifact_url="default/job-results-prior#results/attempt-1/adapter")
     )
     spec = PluginJobConfig.model_validate(
@@ -111,9 +133,10 @@ async def test_job_config_compiler_validates_pretrained_model_job(mock_sdk):
         }
     )
 
-    await _compile(spec, mock_sdk)
+    with _patch_jobs_client(jobs_client):
+        await _compile(spec, mock_sdk)
 
-    mock_sdk.jobs.results.retrieve.assert_awaited_once_with(
+    jobs_client.get_job_result.assert_awaited_once_with(
         name="adapter",
         job="prior-safe-synth-job",
         workspace=DEFAULT_WORKSPACE,
@@ -122,7 +145,8 @@ async def test_job_config_compiler_validates_pretrained_model_job(mock_sdk):
 
 @pytest.mark.asyncio
 async def test_plugin_job_config_allows_pretrained_model_job_runtime_config(mock_sdk):
-    mock_sdk.jobs.results.retrieve = AsyncMock(
+    jobs_client = MagicMock()
+    jobs_client.get_job_result = AsyncMock(
         return_value=MagicMock(artifact_url="default/job-results-prior#results/attempt-1/adapter")
     )
     spec = PluginJobConfig.model_validate(
@@ -133,7 +157,8 @@ async def test_plugin_job_config_allows_pretrained_model_job_runtime_config(mock
         }
     )
 
-    compiled = await _compile(spec, mock_sdk)
+    with _patch_jobs_client(jobs_client):
+        compiled = await _compile(spec, mock_sdk)
     step = next(iter(compiled["steps"]))
     reparsed = PluginJobConfig.model_validate(step["config"])
 
@@ -184,9 +209,8 @@ def test_runtime_job_config_preserves_pretrained_model_without_pretrained_model_
 
 @pytest.mark.asyncio
 async def test_job_config_compiler_pretrained_model_job_not_found(mock_sdk):
-    mock_sdk.jobs.results.retrieve = AsyncMock(
-        side_effect=NotFoundError(message="not found", response=MagicMock(status_code=404), body=None)
-    )
+    jobs_client = MagicMock()
+    jobs_client.get_job_result = AsyncMock(side_effect=_client_error(ClientNotFoundError, 404, "not found"))
     spec = PluginJobConfig.model_validate(
         {
             "data_source": DEFAULT_DATA_SOURCE,
@@ -195,8 +219,9 @@ async def test_job_config_compiler_pretrained_model_job_not_found(mock_sdk):
         }
     )
 
-    with pytest.raises(PlatformJobCompilationError, match="Could not find adapter result"):
-        await _compile(spec, mock_sdk)
+    with _patch_jobs_client(jobs_client):
+        with pytest.raises(PlatformJobCompilationError, match="Could not find adapter result"):
+            await _compile(spec, mock_sdk)
 
 
 def test_plugin_job_config_rejects_conflicting_pretrained_model_sources():

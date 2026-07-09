@@ -29,11 +29,14 @@ from nemo_data_designer_plugin.jobs.spec import DataDesignerJobConfig
 from nemo_data_designer_plugin.sdk.resources import DataDesignerResource
 from nemo_data_designer_plugin.service import DataDesignerService
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.commands import add_function_commands, add_job_commands
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import PlatformJobResults
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
+from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.result_manager import ResultManager
+from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest
 from nmp.core.files.service import FilesService
 from nmp.core.inference_gateway.service import InferenceGatewayService
 from nmp.core.jobs.service import JobsService
@@ -423,16 +426,19 @@ async def task_context(
                 workspace="default",
             ) as client_context,
         ):
-            job = client_context.sdk.jobs.create(
+            jobs_client = client_from_platform(client_context.sdk, JobsClient)
+            job = jobs_client.create_job(
                 workspace="default",
-                name=job_name,
-                source="data-designer",
-                # Store the canonical DataDesignerStepConfig as the job's spec so that
-                # downstream Data Designer routes (e.g. ``GET /jobs/create/{name}``,
-                # which deserializes the stored spec back through the schema) succeed.
-                spec=step_config,
-                platform_spec=job_config_dict,
-            )
+                body=CreatePlatformJobRequest(
+                    name=job_name,
+                    source="data-designer",
+                    # Store the canonical DataDesignerStepConfig as the job's spec so that
+                    # downstream Data Designer routes (e.g. ``GET /jobs/create/{name}``,
+                    # which deserializes the stored spec back through the schema) succeed.
+                    spec=step_config if isinstance(step_config, dict) else step_config.model_dump(),
+                    platform_spec=job_config_dict,
+                ),
+            ).data()
             job_ctx = JobContext(
                 workspace="default",
                 storage=StoragePaths(ephemeral=ephemeral, persistent=persistent),

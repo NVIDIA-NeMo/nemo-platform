@@ -16,8 +16,10 @@ from typing import Iterator
 import httpx
 import pandas as pd
 from nemo_platform import NeMoPlatform
-from nemo_platform._types import Omit, omit
-from nemo_platform.types import PlatformJobLog, PlatformJobStatusResponse
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.schemas import PlatformJobLog, PlatformJobStatusResponse
+from nemo_platform_plugin.jobs.types import JobLogsQueryParams
 from nemo_safe_synthesizer.config.external_results import SafeSynthesizerSummary
 from typing_extensions import Self
 
@@ -58,6 +60,7 @@ class SafeSynthesizerJob:
         self.job_name = job_name
         self._client = client
         self._workspace = workspace
+        self._jobs = client_from_platform(client, JobsClient)
 
     def fetch_status(self) -> str:
         """Fetch the current job status."""
@@ -65,7 +68,7 @@ class SafeSynthesizerJob:
 
     def fetch_status_info(self) -> PlatformJobStatusResponse:
         """Fetch the current job status response."""
-        return self._client.jobs.get_status(self.job_name, workspace=self._workspace)
+        return self._jobs.get_job_status(name=self.job_name, workspace=self._workspace).data()
 
     def wait_for_completion(
         self, poll_interval: int = 10, verbose: bool = True, log_timeout: float | None = None
@@ -115,13 +118,15 @@ class SafeSynthesizerJob:
 
     def fetch_summary(self) -> SafeSynthesizerSummary:
         """Fetch the machine-readable job summary."""
-        response = self._client.jobs.results.download("summary", job=self.job_name, workspace=self._workspace)
-        return SafeSynthesizerSummary.model_validate(json.loads(response.read().decode("utf-8")))
+        data = self._jobs.download_job_result(name="summary", job=self.job_name, workspace=self._workspace).read()
+        return SafeSynthesizerSummary.model_validate(json.loads(data.decode("utf-8")))
 
     def fetch_report(self) -> ReportHtml:
         """Fetch the evaluation report as HTML."""
-        response = self._client.jobs.results.download("evaluation-report", job=self.job_name, workspace=self._workspace)
-        return ReportHtml(html=response.read().decode("utf-8"))
+        data = self._jobs.download_job_result(
+            name="evaluation-report", job=self.job_name, workspace=self._workspace
+        ).read()
+        return ReportHtml(html=data.decode("utf-8"))
 
     def display_report_in_notebook(self, width: str = "100%", height: int = 1000) -> None:
         """Display the evaluation report in a Jupyter notebook."""
@@ -133,8 +138,10 @@ class SafeSynthesizerJob:
 
     def fetch_data(self) -> pd.DataFrame:
         """Fetch generated synthetic data as a pandas DataFrame."""
-        response = self._client.jobs.results.download("synthetic-data", job=self.job_name, workspace=self._workspace)
-        return pd.read_csv(BytesIO(response.read()))
+        data = self._jobs.download_job_result(
+            name="synthetic-data", job=self.job_name, workspace=self._workspace
+        ).read()
+        return pd.read_csv(BytesIO(data))
 
     def _fetch_logs_incremental(
         self, page_cursor: str | None = None, timeout: float | None = None
@@ -142,19 +149,22 @@ class SafeSynthesizerJob:
         """Fetch logs incrementally starting from a page cursor."""
         timeout = 300.0 if timeout is None else timeout
         all_logs: list[PlatformJobLog] = []
-        current_cursor: str | Omit = omit if page_cursor is None else page_cursor
+        current_cursor: str | None = page_cursor
         last_cursor_with_data: str | None = page_cursor
 
         while True:
-            response = self._client.with_options(timeout=timeout).jobs.get_logs(
-                self.job_name,
-                page_cursor=current_cursor,
-                workspace=self._workspace,
+            logs_query: JobLogsQueryParams = {}
+            if current_cursor is not None:
+                logs_query["page_cursor"] = current_cursor
+            response = (
+                self._jobs.with_options(timeout=timeout)
+                .page_job_logs(name=self.job_name, workspace=self._workspace, query_params=logs_query)
+                .data()
             )
 
             if response.data:
                 all_logs.extend(response.data)
-                if isinstance(current_cursor, str):
+                if current_cursor is not None:
                     last_cursor_with_data = current_cursor
 
             if response.next_page is None:
@@ -164,12 +174,15 @@ class SafeSynthesizerJob:
     def fetch_logs(self, timeout: float | None = None) -> Iterator[PlatformJobLog]:
         """Fetch job logs as an iterator over log objects."""
         timeout = 300.0 if timeout is None else timeout
-        page_cursor: str | Omit = omit
+        page_cursor: str | None = None
         while True:
-            response = self._client.with_options(timeout=timeout).jobs.get_logs(
-                self.job_name,
-                page_cursor=page_cursor,
-                workspace=self._workspace,
+            logs_query: JobLogsQueryParams = {}
+            if page_cursor is not None:
+                logs_query["page_cursor"] = page_cursor
+            response = (
+                self._jobs.with_options(timeout=timeout)
+                .page_job_logs(name=self.job_name, workspace=self._workspace, query_params=logs_query)
+                .data()
             )
             yield from response.data
             if response.next_page is None:
