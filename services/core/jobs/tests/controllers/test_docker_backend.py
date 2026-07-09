@@ -1526,6 +1526,7 @@ def test_cleanup_steps_by_ttl(docker_job, docker_client_mock, test_job_step, cle
                 f"{JOB_MANAGED_BY_LABEL}={JOB_MANAGED_BY_JOBS_CONTROLLER}",
                 f"{JOB_CONTROLLER_INSTANCE_ID_LABEL}={TEST_JOBS_CONTROLLER_INSTANCE_ID}",
                 f"{JOB_EXECUTION_BACKEND_LABEL}=docker",
+                f"{JOB_EXECUTION_PROFILE_LABEL}=default",
             ]
         },
         ignore_removed=True,

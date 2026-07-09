@@ -253,6 +253,7 @@ class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], G
                 f"{JOB_MANAGED_BY_LABEL}={JOB_MANAGED_BY_JOBS_CONTROLLER}",
                 f"{JOB_CONTROLLER_INSTANCE_ID_LABEL}={self._jobs_controller_instance_id}",
                 f"{JOB_EXECUTION_BACKEND_LABEL}={self.BACKEND_NAME}",
+                f"{JOB_EXECUTION_PROFILE_LABEL}={self._profile_name}",
             ]
         }
 
