@@ -52,6 +52,20 @@ export interface FileRowEditorProps {
    * swap in an unrelated local file. @defaultValue true
    */
   showOpenFile?: boolean;
+  /**
+   * Persists the current rows to the backing store. When provided, the header shows a
+   * "Save File" action (enabled only when there are unsaved changes) and edits become
+   * durable. When omitted, the editor stays in-memory only. The returned promise must
+   * reject on failure so the editor keeps its dirty state for a retry.
+   */
+  onSaveFile?: (rows: DataFileRow[]) => Promise<void> | void;
+  /** Whether a save is in flight — surfaced on the "Save File" action. */
+  isSaving?: boolean;
+  /**
+   * When set, the "Save File" action is disabled and shows this text as its tooltip — used
+   * by the host to block unsafe saves (e.g. a file too large to load in full).
+   */
+  saveDisabledReason?: string;
   className?: string;
 }
 
@@ -71,10 +85,18 @@ export const FileRowEditor: FC<FileRowEditorProps> = ({
   columns: columnsProp,
   initialRows = [],
   showOpenFile = true,
+  onSaveFile,
+  isSaving = false,
+  saveDisabledReason,
   className,
 }) => {
   const toast = useToast();
   const [rows, setRows] = useState<DataFileRow[]>(() => assignRowIds(initialRows));
+  // Snapshot of the rows as last persisted (or as first loaded), used to detect unsaved
+  // changes so the "Save File" action is enabled only when there is something to save.
+  const [savedSnapshot, setSavedSnapshot] = useState<string>(() =>
+    JSON.stringify(assignRowIds(initialRows))
+  );
   const [columns, setColumns] = useState<DataFileColumn[]>(
     () => columnsProp ?? inferColumns(initialRows)
   );
@@ -87,6 +109,9 @@ export const FileRowEditor: FC<FileRowEditorProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fileFormat: DataFileFormat = useMemo(() => formatFromFileName(fileName), [fileName]);
+
+  const currentSnapshot = useMemo(() => JSON.stringify(rows), [rows]);
+  const isFileDirty = currentSnapshot !== savedSnapshot;
 
   const dataViewState = useStudioDataViewState({
     defaultPageSize: 10,
@@ -170,7 +195,20 @@ export const FileRowEditor: FC<FileRowEditorProps> = ({
     }
     setRows((prev) => prev.map((row) => (rowId(row) === rowId(draft) ? cloneRow(draft) : row)));
     setEditingId(null);
-    toast.success('Row saved successfully');
+    toast.success(onSaveFile ? 'Change applied — click Save File to persist' : 'Row saved');
+  };
+
+  const handleSaveFile = async () => {
+    if (!onSaveFile || !isFileDirty || isSaving) {
+      return;
+    }
+    const persisted = currentSnapshot;
+    try {
+      await onSaveFile(rows);
+      setSavedSnapshot(persisted);
+    } catch {
+      // The host surfaces the failure; keep the dirty state so the user can retry.
+    }
   };
 
   const handleAddRow = () => {
@@ -229,6 +267,7 @@ export const FileRowEditor: FC<FileRowEditorProps> = ({
       const text = await file.text();
       const parsed = assignRowIds(parseDataFile(text, format));
       setRows(parsed);
+      setSavedSnapshot(JSON.stringify(parsed));
       setColumns(inferColumns(parsed));
       setFileName(file.name);
       setFileSizeLabel(formatBytes(file.size));
@@ -255,6 +294,11 @@ export const FileRowEditor: FC<FileRowEditorProps> = ({
         onDownload={handleDownload}
         onAddRow={handleAddRow}
         downloadDisabled={rows.length === 0}
+        onSaveFile={onSaveFile ? handleSaveFile : undefined}
+        isSaving={isSaving}
+        saveDisabled={!isFileDirty}
+        saveDisabledReason={saveDisabledReason}
+        hasUnsavedChanges={Boolean(onSaveFile) && isFileDirty}
       />
 
       {/* Table */}

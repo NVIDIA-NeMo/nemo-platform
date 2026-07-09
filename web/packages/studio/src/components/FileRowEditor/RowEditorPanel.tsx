@@ -329,7 +329,7 @@ export const RowEditorPanel: FC<RowEditorPanelProps> = ({
                 Cancel
               </Button>
               <Button type="submit" kind="primary" color="brand">
-                Save Changes
+                Stage Changes
               </Button>
             </Flex>
           </Flex>

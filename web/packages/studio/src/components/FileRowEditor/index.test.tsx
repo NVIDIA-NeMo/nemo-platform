@@ -37,9 +37,73 @@ describe('FileRowEditor', () => {
 
     expect(screen.getByText('Unsaved edits')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await user.click(screen.getByRole('button', { name: 'Stage Changes' }));
 
     expect(screen.queryByText('Unsaved edits')).not.toBeInTheDocument();
+  });
+
+  it('omits the Save File action when no onSaveFile handler is provided', () => {
+    render(<FileRowEditor initialRows={SAMPLE_ROWS} />);
+
+    expect(screen.queryByRole('button', { name: 'Save File' })).not.toBeInTheDocument();
+  });
+
+  it('enables Save File only after edits, persists rows, then disables it again', async () => {
+    const user = userEvent.setup();
+    const onSaveFile = vi.fn().mockResolvedValue(undefined);
+    render(<FileRowEditor initialRows={SAMPLE_ROWS} onSaveFile={onSaveFile} />);
+
+    // Clean on load → disabled.
+    const saveFileButton = screen.getByRole('button', { name: 'Save File' });
+    expect(saveFileButton).toBeDisabled();
+
+    // Edit a row and commit it to the table.
+    await user.click(screen.getByText('cuDNN'));
+    await user.type(screen.getByLabelText('topic'), ' updated');
+    await user.click(screen.getByRole('button', { name: 'Stage Changes' }));
+
+    // Now dirty → enabled, with an "Unsaved changes" chip in the toolbar.
+    expect(saveFileButton).toBeEnabled();
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+
+    await user.click(saveFileButton);
+
+    expect(onSaveFile).toHaveBeenCalledTimes(1);
+    const savedRows = onSaveFile.mock.calls[0][0] as DataFileRow[];
+    expect(savedRows.some((row) => row.topic === 'cuDNN updated')).toBe(true);
+
+    // Baseline resets after a successful save → disabled again, chip gone.
+    await waitFor(() => expect(saveFileButton).toBeDisabled());
+    expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
+  });
+
+  it('keeps the dirty state when a save fails so the user can retry', async () => {
+    const user = userEvent.setup();
+    const onSaveFile = vi.fn().mockRejectedValue(new Error('upload failed'));
+    render(<FileRowEditor initialRows={SAMPLE_ROWS} onSaveFile={onSaveFile} />);
+
+    await user.click(screen.getByText('cuDNN'));
+    await user.type(screen.getByLabelText('topic'), ' updated');
+    await user.click(screen.getByRole('button', { name: 'Stage Changes' }));
+
+    const saveFileButton = screen.getByRole('button', { name: 'Save File' });
+    await user.click(saveFileButton);
+
+    expect(onSaveFile).toHaveBeenCalledTimes(1);
+    // Still dirty → still enabled for a retry.
+    await waitFor(() => expect(saveFileButton).toBeEnabled());
+  });
+
+  it('disables Save File with a reason when the host blocks saving', () => {
+    render(
+      <FileRowEditor
+        initialRows={SAMPLE_ROWS}
+        onSaveFile={vi.fn()}
+        saveDisabledReason="File too large"
+      />
+    );
+
+    expect(screen.getByRole('button', { name: 'Save File' })).toBeDisabled();
   });
 
   it('filters rows by the search query', async () => {
