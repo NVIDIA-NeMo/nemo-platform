@@ -1,9 +1,7 @@
 name: NGC Metadata Sync
 
 on:
-  workflow_run:
-    workflows: ["Release"]
-    types: [completed]
+  workflow_call:
   workflow_dispatch:
 
 permissions:
