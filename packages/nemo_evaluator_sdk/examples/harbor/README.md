@@ -87,24 +87,33 @@ Both modes call `run_harbor_eval`; the only difference is what they print.
 
 ## Custom (wrapped) agents
 
-To run a real agent instead of the oracle, point the config at your own
-`harbor_wrapper.py`: set `agent_import_path` and the `agent_dir` that holds it.
+To run a real agent instead of the oracle, set `agent_import_path`. Two packaging
+shapes are supported, and the SDK imposes neither:
 
 ```python
+# Loose wrapper file: point agent_dir at the directory that holds harbor_wrapper.py.
 config = HarborRuntimeConfig(
     jobs_dir=jobs_dir,
     agent_dir="path/to/agent",            # directory containing harbor_wrapper.py
     agent_import_path="harbor_wrapper:WrappedAgent",
 )
+
+# Already-importable module (installed package): omit agent_dir entirely.
+config = HarborRuntimeConfig(
+    jobs_dir=jobs_dir,
+    agent_import_path="mypkg.agent:WrappedAgent",
+)
+
 result = await run_harbor_eval(config, "hello_world_dataset")
 ```
 
-The SDK makes the wrapper importable by injecting `agent_dir` into `sys.modules`
-under a unique synthetic package for the duration of the run and removing it
-afterwards — so the caller never mutates global import state (the mutation is
-lock-guarded, and each run gets its own package name so concurrent runs don't
-collide). This is `scoped_harbor_agent_import`, wired in automatically when
-`agent_import_path` is set.
+When `agent_dir` is set, the SDK makes the wrapper importable by injecting that
+directory into `sys.modules` under a unique synthetic package for the duration of
+the run and removing it afterwards — so the caller never mutates global import
+state (the mutation is lock-guarded, and each run gets its own package name so
+concurrent runs don't collide). This is `scoped_harbor_agent_import`. When
+`agent_dir` is omitted, the import path is handed to Harbor's own importer
+unchanged (Harbor resolves it with a plain `importlib.import_module`).
 
 ## End-to-end test
 

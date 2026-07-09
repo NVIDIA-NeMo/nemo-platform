@@ -142,9 +142,11 @@ def test_runtime_config_defaults_and_runner_requires_a_source() -> None:
 
 
 def test_scoped_agent_import_makes_wrapper_importable_then_cleans_up(tmp_path: Path) -> None:
-    # A custom import_path agent requires agent_dir; the config rejects the half-spec.
+    # import_path without agent_dir is allowed (Harbor imports an installed module directly);
+    # only a dangling agent_dir (no import_path) is rejected.
+    HarborRuntimeConfig(jobs_dir=tmp_path, agent_import_path="mypkg.agent:WrappedAgent")
     with pytest.raises(ValidationError):
-        HarborRuntimeConfig(jobs_dir=tmp_path, agent_import_path="harbor_wrapper:WrappedAgent")
+        HarborRuntimeConfig(jobs_dir=tmp_path, agent_dir=tmp_path)
 
     # Inside the scope the user's harbor_wrapper.py resolves under a synthetic package,
     # and the yielded path preserves the :attribute suffix Harbor imports.

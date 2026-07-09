@@ -16,10 +16,12 @@ Two ways to drive it:
   :func:`run_harbor_eval` loads the tasks, runs, and scores, so caller code is a
   couple of lines. ``harbor`` is imported lazily inside ``run_tasks`` (it is an
   optional extra), so importing this module never requires Harbor. Custom
-  ``import_path`` agents (a user ``harbor_wrapper.py``) are supported too: set
-  ``agent_import_path`` + ``agent_dir`` and the runtime injects the agent package
-  into ``sys.modules`` for the duration of the run and tears it down after, so
-  callers never touch global import state (see :func:`scoped_harbor_agent_import`).
+  ``import_path`` agents are supported too: set ``agent_import_path`` and, for a
+  loose ``harbor_wrapper.py``, also ``agent_dir`` — the runtime then injects that
+  directory into ``sys.modules`` for the duration of the run and tears it down
+  after (see :func:`scoped_harbor_agent_import`). When ``agent_dir`` is omitted
+  (the module is already importable) the path is handed to Harbor's importer
+  unchanged, so nothing is imposed on how the agent is packaged.
 * **Injected / offline** — pass a ``job_dir`` (and optionally a ``run_job``
   callback) to adapt an already-completed job dir or to run a caller-built job.
 
@@ -94,7 +96,11 @@ class HarborRuntimeConfig(BaseModel):
     )
     agent_dir: Path | None = Field(
         default=None,
-        description="Directory holding the module named by ``agent_import_path``; required when it is set.",
+        description=(
+            "Directory holding the module named by ``agent_import_path``. Set it for a loose "
+            "wrapper file (the SDK makes it importable); leave it unset when the module is "
+            "already importable (installed package), and Harbor imports it directly."
+        ),
     )
     agent_model_name: str | None = Field(default=None, description="Optional model slug passed to the Harbor agent.")
     n_attempts: int = Field(default=1, ge=1, description="Number of attempts Harbor runs per task.")
@@ -117,9 +123,9 @@ class HarborRuntimeConfig(BaseModel):
     reward_key: str = Field(default=DEFAULT_REWARD_KEY, description="Key read from Harbor's rewards mapping.")
 
     @model_validator(mode="after")
-    def _require_agent_dir_for_import_path(self) -> HarborRuntimeConfig:
-        if self.agent_import_path is not None and self.agent_dir is None:
-            raise ValueError("agent_dir is required when agent_import_path is set")
+    def _agent_dir_needs_import_path(self) -> HarborRuntimeConfig:
+        if self.agent_dir is not None and self.agent_import_path is None:
+            raise ValueError("agent_dir only applies to a custom agent_import_path")
         return self
 
 
@@ -254,12 +260,16 @@ def _build_native_job(
             job = await Job.create(job_config)
             await job.run()
 
-        if config.agent_import_path is not None:
-            agent_dir = Path(config.agent_dir).expanduser().resolve()  # ty: ignore[invalid-argument-type]
+        if config.agent_import_path is None:
+            await _create_and_run(AgentConfig(name=config.agent_name or "oracle", model_name=config.agent_model_name))
+        elif config.agent_dir is not None:
+            # Loose wrapper file: make its directory importable for the run.
+            agent_dir = config.agent_dir.expanduser().resolve()
             with scoped_harbor_agent_import(agent_dir, config.agent_import_path) as scoped_import:
                 await _create_and_run(AgentConfig(import_path=scoped_import, model_name=config.agent_model_name))
         else:
-            await _create_and_run(AgentConfig(name=config.agent_name or "oracle", model_name=config.agent_model_name))
+            # Already-importable module (installed package): let Harbor import it directly.
+            await _create_and_run(AgentConfig(import_path=config.agent_import_path, model_name=config.agent_model_name))
 
     return job_dir, run_job
 
