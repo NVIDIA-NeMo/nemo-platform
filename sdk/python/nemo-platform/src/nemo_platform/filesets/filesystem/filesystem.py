@@ -8,7 +8,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import AsyncIterator, Coroutine, Iterator, Sequence
 from datetime import datetime, timezone
-from typing import Any, Literal, TypedDict, TypeVar, overload
+from typing import Any, Literal, Protocol, TypedDict, TypeVar, overload, runtime_checkable
 
 import anyio
 import fsspec.asyn
@@ -93,21 +93,15 @@ async def run_coros_in_chunks(
     return results
 
 
-# Monkey-patch fsspec so inherited AsyncFileSystem bulk ops use the same
-# limiter-based AnyIO runner. This is intentionally semantics-different from
-# upstream chunking because we prefer continuous refill over wave-based batches.
-fsspec.asyn._run_coros_in_chunks = run_coros_in_chunks
+@runtime_checkable
+class _AsyncTransportProvider(Protocol):
+    def create_async_transport(self) -> httpx.AsyncBaseTransport: ...
 
 
-def _detect_async_transport(sync_client: Any) -> httpx.AsyncBaseTransport | None:
-    """Detect if a sync httpx client wraps a TestClient and return ASGITransport."""
-    try:
-        from starlette.testclient import TestClient
-
-        if isinstance(sync_client, TestClient):
-            return httpx.ASGITransport(app=sync_client.app)
-    except ImportError:
-        pass
+def _create_async_transport(sync_client: httpx.Client) -> httpx.AsyncBaseTransport | None:
+    """Return an async transport when the sync client explicitly provides one."""
+    if isinstance(sync_client, _AsyncTransportProvider):
+        return sync_client.create_async_transport()
     return None
 
 
@@ -374,7 +368,7 @@ class FilesetFileSystem(AsyncFileSystem):
 
         import httpx
 
-        transport = _detect_async_transport(client._http)
+        transport = _create_async_transport(client._http)
         return AsyncFilesClient(
             base_url=client.base_url,
             workspace=client.workspace,
@@ -607,7 +601,7 @@ class FilesetFileSystem(AsyncFileSystem):
         # Invalidate parent directory's cache since file info is stored there
         self.invalidate_cache(self._parent(build_fileset_ref(path)))
 
-    async def _pipe_file(self, path: str, value: bytes, **kwargs) -> None:
+    async def _pipe_file(self, path: str, value: bytes, mode: str = "overwrite", **kwargs) -> None:
         """Write bytes to a file."""
         workspace, fileset, file_path = parse_fileset_ref(path, workspace_fallback=self._workspace)
         if not file_path:
@@ -662,7 +656,14 @@ class FilesetFileSystem(AsyncFileSystem):
         """Sync wrapper for _pipe_stream. See _pipe_stream for details."""
         return fsspec.asyn.sync(self.loop, self._pipe_stream, path, stream, content_length)
 
-    async def _put_file(self, lpath: str, rpath: str, callback: Callback = DEFAULT_CALLBACK, **kwargs) -> None:
+    async def _put_file(
+        self,
+        lpath: str,
+        rpath: str,
+        mode: str = "overwrite",
+        callback: Callback = DEFAULT_CALLBACK,
+        **kwargs,
+    ) -> None:
         """Upload a local file to a fileset.
 
         Uses streaming upload to avoid buffering the entire file in memory.
@@ -723,7 +724,7 @@ class FilesetFileSystem(AsyncFileSystem):
         self._populate_dircache_from_response(response, workspace, fileset, prefix)
 
         # Build the flat output dict
-        out = {}
+        out: dict[str, FileInfo] = {}
         seen_dirs: set[str] = set()
 
         # Add root path if withdirs requested
@@ -808,11 +809,14 @@ class FilesetFileSystem(AsyncFileSystem):
             callback.set_size(len(rpath))
             get_file_with_callback = callback.branch_coro(self._get_file)
             await run_coros_in_chunks(
-                [get_file_with_callback(remote, local, **kwargs) for remote, local in zip(rpath, lpath)],
+                [get_file_with_callback(remote, local, **kwargs) for remote, local in zip(rpath, lpath, strict=True)],
                 batch_size=batch_size or self.batch_size,
                 callback=callback,
             )
             return
+
+        if not isinstance(rpath, str) or not isinstance(lpath, str):
+            raise TypeError("rpath and lpath must both be strings or both be lists")
 
         source_files = await self._find(rpath, maxdepth=maxdepth, withdirs=False)
         if not source_files:

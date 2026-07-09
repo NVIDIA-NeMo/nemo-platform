@@ -22,7 +22,7 @@ from nemo_platform.cli.core.context import CLIContext
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 from nmp.core.files.service import FilesService
-from nmp.testing import create_test_client
+from nmp.testing import SDKTestClientAdapter, create_test_client
 from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
@@ -39,7 +39,7 @@ def http_client() -> Generator[TestClient, None, None]:
 @pytest.fixture(scope="module")
 def sdk(http_client: TestClient) -> NeMoPlatform:
     """SDK client backed by the test client."""
-    return NeMoPlatform(base_url="http://testserver", http_client=http_client)
+    return NeMoPlatform(base_url="http://testserver", http_client=SDKTestClientAdapter(http_client))
 
 
 @pytest.fixture(scope="module")

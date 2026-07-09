@@ -25,6 +25,7 @@ from nmp.core.secrets.service import SecretsService
 from nmp.testing import (
     TEST_ADMIN_EMAIL,
     ClientContext,
+    SDKTestClientAdapter,
     as_user,
     create_test_client,
     grant_workspace_role,
@@ -99,7 +100,7 @@ class TestTaskRuntimeAuthPropagation:
                         }
                     ),
                 )
-                secret = _secret_access_task_module().run(http_client=ctx.test_client)
+                secret = _secret_access_task_module().run(http_client=SDKTestClientAdapter(ctx.test_client))
 
             assert secret == secret_value
 
@@ -145,7 +146,7 @@ class TestTaskRuntimeAuthPropagation:
                         }
                     ),
                 )
-                _secret_access_task_module().run(http_client=ctx.test_client)
+                _secret_access_task_module().run(http_client=SDKTestClientAdapter(ctx.test_client))
 
             request = ctx.access_log.assert_has_request(
                 method="GET",

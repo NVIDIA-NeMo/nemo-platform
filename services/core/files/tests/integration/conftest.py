@@ -30,7 +30,7 @@ from nmp.core.files.config import FilesConfig
 from nmp.core.files.service import FilesService
 from nmp.core.files.testing.utils import create_fileset
 from nmp.core.secrets.service import SecretsService
-from nmp.testing import create_test_client
+from nmp.testing import SDKTestClientAdapter, create_test_client
 from packaging import version
 
 # Mock auth client for fileset endpoints that depend on get_auth_client
@@ -69,7 +69,9 @@ def sdk_user_and_service() -> Iterator[tuple[NeMoPlatform, NeMoPlatform]]:
         SecretsService,
         dependency_overrides={get_auth_client: _get_auth_client_from_request},
     ) as sdk_base:
-        app = sdk_base._client.app
+        sdk_http_client = sdk_base._client
+        assert isinstance(sdk_http_client, SDKTestClientAdapter)
+        app = sdk_http_client.asgi_app
         base_url = "http://testserver"
         client_user = TestClient(
             app,
@@ -84,12 +86,12 @@ def sdk_user_and_service() -> Iterator[tuple[NeMoPlatform, NeMoPlatform]]:
         try:
             sdk_user = NeMoPlatform(
                 base_url=base_url,
-                http_client=client_user,
+                http_client=SDKTestClientAdapter(client_user),
                 max_retries=0,
             )
             sdk_service = NeMoPlatform(
                 base_url=base_url,
-                http_client=client_service,
+                http_client=SDKTestClientAdapter(client_service),
                 max_retries=0,
             )
             yield (sdk_user, sdk_service)
@@ -265,6 +267,39 @@ else:
             pass
 
 
+class SharedASGIHttpxClient(httpx.Client):
+    """httpx client for huggingface_hub that forwards through the test SDK client."""
+
+    def __init__(self, client: httpx.Client) -> None:
+        self._client = client
+        super().__init__(
+            base_url=str(client.base_url),
+            headers=dict(client.headers),
+        )
+
+    def send(
+        self,
+        request: httpx.Request,
+        *,
+        stream: bool = False,
+        auth: object = httpx.USE_CLIENT_DEFAULT,  # noqa: ARG002
+        follow_redirects: object = httpx.USE_CLIENT_DEFAULT,
+    ) -> httpx.Response:
+        if isinstance(follow_redirects, bool):
+            return self._client.send(request, stream=stream, follow_redirects=follow_redirects)
+        return self._client.send(request, stream=stream)
+
+    def close(self) -> None:
+        # huggingface_hub owns and closes its global client between tests. The
+        # wrapped SDK client is owned by create_test_client and must remain open
+        # for fixture cleanup.
+        return None
+
+
+def _default_hf_httpx_client_factory() -> httpx.Client:
+    return httpx.Client(follow_redirects=True, timeout=None)
+
+
 @pytest.fixture
 def hf_asgi_client(client: httpx.Client) -> Iterator[None]:
     """Configure huggingface_hub to use ASGI transport for in-memory testing.
@@ -274,7 +309,7 @@ def hf_asgi_client(client: httpx.Client) -> Iterator[None]:
     for a real HTTP server.
 
     For huggingface_hub v1.0+ (httpx-based): We inject a custom httpx client
-    that reuses the TestClient's transport.
+    that forwards through the SDK test client.
 
     For huggingface_hub v0.x (requests-based): We inject a custom requests
     Session with an adapter that forwards to the httpx test client.
@@ -283,15 +318,12 @@ def hf_asgi_client(client: httpx.Client) -> Iterator[None]:
         # v1.0+: Use httpx client factory
 
         def asgi_client_factory() -> httpx.Client:
-            # Reuse the TestClient's transport which handles sync-to-async conversion
-            return httpx.Client(
-                transport=client._transport,
-                base_url=str(client.base_url),
-            )
+            return SharedASGIHttpxClient(client)
 
         set_client_factory(asgi_client_factory)
         yield
-        close_session()  # Reset to default client factory
+        close_session()
+        set_client_factory(_default_hf_httpx_client_factory)
     else:
         # v0.x: Use requests adapter
         adapter = ASGIAdapter(client)

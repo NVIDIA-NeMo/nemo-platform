@@ -29,6 +29,7 @@ from nmp.core.inference_gateway.service import InferenceGatewayService
 from nmp.platform_runner.loader import order_services_by_dependencies
 from nmp.platform_runner.server import create_app
 from nmp.testing.access_log import AccessLog, AccessLogMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
 
@@ -59,13 +60,54 @@ class ClientContext:
 
 ClientT = TypeVar("ClientT", TestClient, AsyncNeMoPlatform, NeMoPlatform, EntityClient, ClientContext)
 
+
+class SDKTestClientAdapter(httpx.Client):
+    """Expose Starlette's TestClient through the httpx.Client interface expected by the SDK."""
+
+    def __init__(self, test_client: TestClient) -> None:
+        self._test_client = test_client
+        super().__init__(base_url=str(test_client.base_url), headers=dict(test_client.headers))
+
+    @property
+    def asgi_app(self) -> ASGIApp:
+        """Return the wrapped ASGI app for tests that need to create sibling clients."""
+        return self._test_client.app
+
+    def create_async_transport(self) -> httpx.AsyncBaseTransport:
+        """Create an async transport for code paths that need an async SDK client."""
+        return httpx.ASGITransport(app=self.asgi_app)
+
+    def send(
+        self,
+        request: httpx.Request,
+        *,
+        stream: bool = False,  # noqa: ARG002 - the in-process test response is materialized eagerly.
+        auth: object = httpx.USE_CLIENT_DEFAULT,  # noqa: ARG002
+        follow_redirects: object = httpx.USE_CLIENT_DEFAULT,
+    ) -> httpx.Response:
+        follow_redirects_enabled = follow_redirects if isinstance(follow_redirects, bool) else False
+        response = self._test_client.request(
+            request.method,
+            str(request.url),
+            content=request.read(),
+            headers=dict(request.headers),
+            follow_redirects=follow_redirects_enabled,
+        )
+        return httpx.Response(
+            status_code=response.status_code,
+            headers=dict(response.headers),
+            content=response.content,
+            request=request,
+        )
+
+
 # Default test user for auth-enabled tests
 TEST_USER_EMAIL = "user@example.com"
 # Admin user email for auth-enabled tests (has elevated permissions)
 TEST_ADMIN_EMAIL = "admin@example.com"
 
 
-def _default_service_configs(tmp_dir: Path) -> dict[type[Service], ServiceConfig]:
+def _default_service_configs(tmp_dir: Path) -> dict[type[object], ServiceConfig]:
     """Create default service configs for testing.
 
     Args:
@@ -115,7 +157,7 @@ class ServiceFactory(Protocol):
 
 def _create_svc(
     service_type: ServiceFactory,
-    service_configs: dict[type[Service], ServiceConfig],
+    service_configs: dict[type[object], ServiceConfig],
 ) -> Service:
     """Instantiate a service with optional config injection.
 
@@ -144,7 +186,7 @@ def create_test_client(
     *service_types: ServiceFactory,
     client_type: type[ClientT] | None = None,
     dependency_overrides: dict[Callable, Callable] | None = None,
-    service_configs: dict[type[Service], ServiceConfig] | None = None,
+    service_configs: dict[type[object], ServiceConfig] | None = None,
     tmp_dir: Path | None = None,
     workspaces: list[str] | None = None,
     workspace: str | None = None,
@@ -258,8 +300,7 @@ def create_test_client(
             for req in entity_requests:
                 assert req.principal_id == "test@example.com"
     """
-    if client_type is None:
-        client_type = NeMoPlatform
+    selected_client_type: type[object] = client_type or NeMoPlatform
     with ExitStack() as stack:
         # Create temp directory if not provided
         # Use ignore_cleanup_errors=True because fire-and-forget background tasks
@@ -362,7 +403,10 @@ def create_test_client(
         # Create transport and http_client BEFORE the app, so we can inject the client
         # into create_app() for middleware (AuthorizationMiddleware). We set transport.app
         # after app creation - this works because no requests are made until setup completes.
-        transport = httpx.ASGITransport(app=None)
+        async def _pending_asgi_app(scope: Scope, receive: Receive, send: Send) -> None:
+            raise RuntimeError("ASGI app was not initialized before test client request")
+
+        transport = httpx.ASGITransport(app=_pending_asgi_app)
         pdp_timeout = Configuration.get_service_config(AuthConfig).policy_decision_point_request_timeout_seconds
         async_http_client = httpx.AsyncClient(transport=transport, base_url="http://testserver", timeout=pdp_timeout)
 
@@ -443,7 +487,13 @@ def create_test_client(
 
         with TestClient(app) as client:
             # Use max_retries=0 to avoid retry delays on 409 Conflict errors
-            sdk = NeMoPlatform(workspace=workspace, base_url="http://testserver", http_client=client, max_retries=0)
+            sdk_http_client = SDKTestClientAdapter(client)
+            sdk = NeMoPlatform(
+                workspace=workspace,
+                base_url="http://testserver",
+                http_client=sdk_http_client,
+                max_retries=0,
+            )
 
             # Trigger middleware stack build with a health check (which skips auth).
             client.get("/health")
@@ -483,7 +533,11 @@ def create_test_client(
                     from nmp.core.auth.app.seeding import run_seeding
 
                     # Use service principal so entity store accepts role binding creation
-                    headers = dict(async_sdk.default_headers or {})
+                    headers: dict[str, str] = {
+                        key: value
+                        for key, value in dict(async_sdk.default_headers or {}).items()
+                        if isinstance(value, str)
+                    }
                     headers["X-NMP-Principal-Id"] = "service:auth"
                     seeding_sdk = async_sdk.with_options(set_default_headers=headers)
                     seeding_entity_client = EntityClient(AsyncEntitiesResource(seeding_sdk))
@@ -542,13 +596,13 @@ def create_test_client(
                     except ConflictError:
                         logger.warning(f"Project '{proj_name}' in workspace '{ws_id}' already exists")
 
-            if client_type is TestClient:
-                yield client
-            elif client_type is AsyncNeMoPlatform:
+            if selected_client_type is TestClient:
+                yield client  # ty: ignore[invalid-yield]
+            elif selected_client_type is AsyncNeMoPlatform:
                 yield async_sdk  # ty: ignore[invalid-yield]
-            elif client_type is EntityClient:
+            elif selected_client_type is EntityClient:
                 yield entity_client  # ty: ignore[invalid-yield]
-            elif client_type is ClientContext:
+            elif selected_client_type is ClientContext:
                 yield ClientContext(
                     sdk=sdk,
                     async_sdk=async_sdk,
