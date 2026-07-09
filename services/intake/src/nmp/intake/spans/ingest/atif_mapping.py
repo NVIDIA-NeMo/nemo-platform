@@ -169,6 +169,7 @@ def _trajectory_to_span(
         cost_total_usd=cost_total_usd,
         raw_attributes=raw_attributes,
     )
+    trajectory_started_at = _trajectory_started_at(trajectory, ingested_at)
     return IntakeSpan(
         workspace=workspace,
         session_id=trajectory.session_id,
@@ -178,8 +179,8 @@ def _trajectory_to_span(
         kind=SpanKind.AGENT,
         name=trajectory.agent.name,
         status=SpanStatus.ERROR if _trajectory_has_error(trajectory) else SpanStatus.SUCCESS,
-        start_time=_trajectory_started_at(trajectory, ingested_at),
-        end_time=_trajectory_ended_at(trajectory),
+        start_time=trajectory_started_at,
+        end_time=_clamped_end(trajectory_started_at, _trajectory_ended_at(trajectory)),
         attributes_string=attribute_bags.string,
         attributes_number=attribute_bags.number,
         attributes_bool=attribute_bags.boolean,
@@ -708,6 +709,9 @@ def _observation_results_with_subagents(step: AtifStep) -> list[tuple[int, AtifO
 def _trajectory_started_at(trajectory: AtifTrajectory, ingested_at: datetime) -> datetime:
     started_candidates = [_timestamp(step) for step in trajectory.steps]
     started_candidates.extend(_invocation_window(step.extra)[0] for step in trajectory.steps)
+    started_candidates.extend(
+        _invocation_window(tool_call.extra)[0] for step in trajectory.steps for tool_call in _step_tool_calls(step)
+    )
     started_candidates.append(_evaluator_started_at(trajectory))
     return min((started_at for started_at in started_candidates if started_at is not None), default=ingested_at)
 
@@ -715,6 +719,9 @@ def _trajectory_started_at(trajectory: AtifTrajectory, ingested_at: datetime) ->
 def _trajectory_ended_at(trajectory: AtifTrajectory) -> datetime | None:
     ended_candidates = [_timestamp(step) for step in trajectory.steps]
     ended_candidates.extend(_invocation_window(step.extra)[1] for step in trajectory.steps)
+    ended_candidates.extend(
+        _invocation_window(tool_call.extra)[1] for step in trajectory.steps for tool_call in _step_tool_calls(step)
+    )
     ended_candidates.append(_evaluator_ended_at(trajectory))
     return max((ended_at for ended_at in ended_candidates if ended_at is not None), default=None)
 

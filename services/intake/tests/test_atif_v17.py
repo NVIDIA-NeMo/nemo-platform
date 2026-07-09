@@ -547,6 +547,70 @@ def test_atif_mapping_uses_invocation_timing_for_step_and_tool_spans() -> None:
     assert root.end_time == base + timedelta(seconds=40)
 
 
+def test_atif_mapping_root_covers_tool_call_only_invocation_timing() -> None:
+    base = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    trajectory = _timed_trajectory(
+        [
+            {
+                "step_id": 1,
+                "source": "agent",
+                "message": "working",
+                "tool_calls": [
+                    {
+                        "tool_call_id": "call-1",
+                        "function_name": "bash",
+                        "extra": {
+                            "invocation": {
+                                "start_timestamp": base.timestamp() + 10,
+                                "end_timestamp": base.timestamp() + 20,
+                            }
+                        },
+                    }
+                ],
+            }
+        ]
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=base + timedelta(seconds=15),
+    )
+    root = next(span for span in spans if span.name == "sample-agent")
+
+    assert root.start_time == base + timedelta(seconds=10)
+    assert root.end_time == base + timedelta(seconds=20)
+
+
+def test_atif_mapping_drops_root_end_time_before_root_start_time() -> None:
+    base = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    trajectory = _timed_trajectory(
+        [
+            {
+                "step_id": 1,
+                "source": "agent",
+                "message": "out of order",
+                "extra": {
+                    "invocation": {
+                        "start_timestamp": base.timestamp() + 10,
+                        "end_timestamp": base.timestamp() + 5,
+                    }
+                },
+            }
+        ]
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=base,
+    )
+    root = next(span for span in spans if span.name == "sample-agent")
+
+    assert root.start_time == base + timedelta(seconds=10)
+    assert root.end_time is None
+
+
 def test_atif_mapping_infers_step_end_from_next_timed_step_and_verifier_finish() -> None:
     base = datetime(2026, 6, 1, tzinfo=timezone.utc)
     trajectory = _timed_trajectory(
