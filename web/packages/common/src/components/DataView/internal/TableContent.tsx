@@ -16,6 +16,7 @@ import {
   arrayMove,
   horizontalListSortingStrategy,
   SortableContext,
+  sortableKeyboardCoordinates,
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -120,7 +121,7 @@ export const TableContent = forwardRef<HTMLTableElement, TableContentProps>(
     const sensors = useSensors(
       useSensor(MouseSensor, {}),
       useSensor(TouchSensor, {}),
-      useSensor(KeyboardSensor, {})
+      useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
     );
     const handleDragEnd = useCallback(
       (event: DragEndEvent) => {
