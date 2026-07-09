@@ -187,6 +187,10 @@ def main(
         Path, typer.Option(help="Directory containing charts/ and containers/.")
     ] = DEFAULT_ASSETS_DIR,
     api_key: Annotated[str | None, typer.Option(help="NGC API key.", envvar="NGC_API_KEY")] = None,
+    auth_match_team: Annotated[
+        bool,
+        typer.Option(help="Configure SDK authentication for the target team."),
+    ] = False,
     dry_run: Annotated[bool, typer.Option(help="List assets without changing NGC.")] = False,
 ) -> None:
     """Synchronize Markdown metadata with NGC.
@@ -208,7 +212,7 @@ def main(
         raise typer.BadParameter("NGC API key is required")
 
     client = Client()
-    client.configure(api_key=api_key, org_name=org, team_name=team)
+    client.configure(api_key=api_key, org_name=org, team_name=team if auth_match_team else "no-team")
     for asset in assets:
         action = sync_asset(client, asset, org, team)
         typer.echo(f"{action.capitalize()} {asset.asset_type} {_target(org, team, asset.name)}")

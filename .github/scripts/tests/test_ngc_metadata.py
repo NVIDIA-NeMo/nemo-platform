@@ -17,7 +17,7 @@ import tomllib
 from importlib.metadata import version
 from inspect import signature
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from ngcbase.errors import ResourceNotFoundException
@@ -228,6 +228,56 @@ def test_cli_dry_run_lists_assets(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert result.stdout == "Would sync container org/team/nmp-api\n"
+
+
+def test_cli_configures_org_auth_for_team_target(tmp_path: Path) -> None:
+    (tmp_path / "containers").mkdir()
+    _write_overview(tmp_path / "containers" / "nmp-api.md")
+    client = MagicMock()
+
+    with patch("ngc_metadata.Client", return_value=client):
+        result = CliRunner().invoke(
+            app,
+            [
+                "--org",
+                "org",
+                "--team",
+                "team",
+                "--assets-dir",
+                str(tmp_path),
+                "--api-key",
+                "service-key",
+            ],
+        )
+
+    assert result.exit_code == 0
+    client.configure.assert_called_once_with(api_key="service-key", org_name="org", team_name="no-team")
+    client.registry.image.info.assert_called_once_with("org/team/nmp-api")
+
+
+def test_cli_can_match_authentication_team(tmp_path: Path) -> None:
+    (tmp_path / "containers").mkdir()
+    _write_overview(tmp_path / "containers" / "nmp-api.md")
+    client = MagicMock()
+
+    with patch("ngc_metadata.Client", return_value=client):
+        result = CliRunner().invoke(
+            app,
+            [
+                "--org",
+                "org",
+                "--team",
+                "team",
+                "--assets-dir",
+                str(tmp_path),
+                "--api-key",
+                "personal-key",
+                "--auth-match-team",
+            ],
+        )
+
+    assert result.exit_code == 0
+    client.configure.assert_called_once_with(api_key="personal-key", org_name="org", team_name="team")
 
 
 def _write_overview(path: Path) -> Path:
