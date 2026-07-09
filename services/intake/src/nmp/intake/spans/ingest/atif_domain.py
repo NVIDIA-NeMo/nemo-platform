@@ -74,6 +74,10 @@ class AtifToolCall(BaseModel):
     tool_call_id: str
     function_name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
+    # ATIF v1.7 makes per-tool-call metadata first-class: NAT publishers write
+    # ancestry / invocation timing here, and the spec requires consumers to
+    # tolerate absent and unknown keys (nvidia_nat_atif ``AtifToolCallExtra``).
+    extra: dict[str, Any] | None = None
 
     model_config = ConfigDict(extra="forbid")
 

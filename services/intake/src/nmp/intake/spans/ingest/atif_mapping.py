@@ -10,6 +10,7 @@ dedicated span column for them. That includes agent tool definitions,
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -58,7 +59,9 @@ def trajectory_to_spans(
             ingested_at=ingested_at,
         )
     )
+    evaluator_ended_at = _evaluator_ended_at(trajectory)
     for index, step in enumerate(trajectory.steps):
+        step_ended_at = _step_ended_at(trajectory.steps, index, evaluator_ended_at)
         step_span = _step_to_span(
             workspace=workspace,
             default_session_id=trajectory.session_id,
@@ -68,6 +71,7 @@ def trajectory_to_spans(
             external_parent_span_id=trajectory_span.external_span_id,
             step=step,
             index=index,
+            step_ended_at=step_ended_at,
             ingested_at=ingested_at,
         )
         spans.append(step_span)
@@ -83,6 +87,7 @@ def trajectory_to_spans(
                 step_index=index,
                 tool_index=tool_index,
                 tool_call=tool_call,
+                step_ended_at=step_ended_at,
                 ingested_at=ingested_at,
             )
             for tool_index, tool_call in enumerate(_step_tool_calls(step))
@@ -101,6 +106,7 @@ def trajectory_to_spans(
                 ref_index=ref_index,
                 result=result,
                 subagent_ref=subagent_ref,
+                step_ended_at=step_ended_at,
                 ingested_at=ingested_at,
             )
             for result_index, result in _observation_results_with_subagents(step)
@@ -193,6 +199,7 @@ def _step_to_span(
     external_parent_span_id: str,
     step: AtifStep,
     index: int,
+    step_ended_at: datetime | None,
     ingested_at: datetime,
 ) -> IntakeSpan:
     raw_step = _model_dict(step)
@@ -218,6 +225,7 @@ def _step_to_span(
         cost_total_usd=_decimal(metrics.cost_usd) if metrics is not None else None,
         raw_attributes=raw_step,
     )
+    step_started_at = _step_started_at(step, index, ingested_at)
     return IntakeSpan(
         workspace=workspace,
         session_id=default_session_id,
@@ -228,7 +236,8 @@ def _step_to_span(
         kind=_step_kind(step),
         name=f"{step.source}-{step.step_id}",
         status=SpanStatus.SUCCESS,
-        start_time=_step_started_at(step, index, ingested_at),
+        start_time=step_started_at,
+        end_time=_clamped_end(step_started_at, step_ended_at),
         attributes_string=attribute_bags.string,
         attributes_number=attribute_bags.number,
         attributes_bool=attribute_bags.boolean,
@@ -250,6 +259,7 @@ def _tool_call_to_span(
     step_index: int,
     tool_index: int,
     tool_call: AtifToolCall,
+    step_ended_at: datetime | None,
     ingested_at: datetime,
 ) -> IntakeSpan:
     raw_tool_call = _model_dict(tool_call)
@@ -276,6 +286,9 @@ def _tool_call_to_span(
             "observation_result": _model_dict(result) if result is not None else None,
         },
     )
+    invocation_started_at, invocation_ended_at = _invocation_window(tool_call.extra)
+    tool_started_at = invocation_started_at or _step_started_at(step, step_index, ingested_at)
+    tool_ended_at = invocation_ended_at or step_ended_at
     return IntakeSpan(
         workspace=workspace,
         session_id=default_session_id,
@@ -286,7 +299,8 @@ def _tool_call_to_span(
         kind=SpanKind.TOOL,
         name=tool_call.function_name,
         status=SpanStatus.ERROR if _tool_result_is_error(step, result) else SpanStatus.SUCCESS,
-        start_time=_step_started_at(step, step_index, ingested_at),
+        start_time=tool_started_at,
+        end_time=_clamped_end(tool_started_at, tool_ended_at),
         attributes_string=attribute_bags.string,
         attributes_number=attribute_bags.number,
         attributes_bool=attribute_bags.boolean,
@@ -310,6 +324,7 @@ def _subagent_ref_to_span(
     ref_index: int,
     result: AtifObservationResult,
     subagent_ref: AtifSubagentTrajectoryRef,
+    step_ended_at: datetime | None,
     ingested_at: datetime,
 ) -> IntakeSpan:
     raw_result = _model_dict(result)
@@ -337,6 +352,7 @@ def _subagent_ref_to_span(
             "subagent_trajectory_ref": raw_ref,
         },
     )
+    subagent_started_at = _step_started_at(step, step_index, ingested_at)
     return IntakeSpan(
         workspace=workspace,
         session_id=default_session_id,
@@ -347,7 +363,8 @@ def _subagent_ref_to_span(
         kind=SpanKind.AGENT,
         name=f"subagent-{subagent_identity}",
         status=SpanStatus.ERROR if _tool_result_is_error(step, result) else SpanStatus.SUCCESS,
-        start_time=_step_started_at(step, step_index, ingested_at),
+        start_time=subagent_started_at,
+        end_time=_clamped_end(subagent_started_at, step_ended_at),
         attributes_string=attribute_bags.string,
         attributes_number=attribute_bags.number,
         attributes_bool=attribute_bags.boolean,
@@ -690,12 +707,14 @@ def _observation_results_with_subagents(step: AtifStep) -> list[tuple[int, AtifO
 
 def _trajectory_started_at(trajectory: AtifTrajectory, ingested_at: datetime) -> datetime:
     started_candidates = [_timestamp(step) for step in trajectory.steps]
+    started_candidates.extend(_invocation_window(step.extra)[0] for step in trajectory.steps)
     started_candidates.append(_evaluator_started_at(trajectory))
     return min((started_at for started_at in started_candidates if started_at is not None), default=ingested_at)
 
 
 def _trajectory_ended_at(trajectory: AtifTrajectory) -> datetime | None:
     ended_candidates = [_timestamp(step) for step in trajectory.steps]
+    ended_candidates.extend(_invocation_window(step.extra)[1] for step in trajectory.steps)
     ended_candidates.append(_evaluator_ended_at(trajectory))
     return max((ended_at for ended_at in ended_candidates if ended_at is not None), default=None)
 
@@ -711,7 +730,51 @@ def _evaluator_ended_at(trajectory: AtifTrajectory) -> datetime | None:
 
 
 def _step_started_at(step: AtifStep, index: int, ingested_at: datetime) -> datetime:
-    return _timestamp(step) or (ingested_at + timedelta(milliseconds=index))
+    invocation_started_at, _ = _invocation_window(step.extra)
+    return invocation_started_at or _timestamp(step) or (ingested_at + timedelta(milliseconds=index))
+
+
+def _step_ended_at(steps: Sequence[AtifStep], index: int, evaluator_ended_at: datetime | None) -> datetime | None:
+    """Step end: explicit invocation end, else the next timed step's start,
+    else (for the trailing steps) the verifier's finish. A step's own timestamp
+    is never used as its end — unknown stays None rather than zero-duration."""
+    _, invocation_ended_at = _invocation_window(steps[index].extra)
+    if invocation_ended_at is not None:
+        return invocation_ended_at
+    for later_step in steps[index + 1 :]:
+        later_started_at = _invocation_window(later_step.extra)[0] or _timestamp(later_step)
+        if later_started_at is not None:
+            return later_started_at
+    return evaluator_ended_at
+
+
+def _clamped_end(start_time: datetime, end_time: datetime | None) -> datetime | None:
+    """Drop ends that precede the start (out-of-order producer timestamps)."""
+    if end_time is not None and end_time < start_time:
+        return None
+    return end_time
+
+
+def _invocation_window(extra: dict[str, Any] | None) -> tuple[datetime | None, datetime | None]:
+    """Timing from the NAT ``extra["invocation"]`` contract (AtifInvocationInfo:
+    epoch-second ``start_timestamp``/``end_timestamp``). Tolerant by spec —
+    absent or malformed blocks yield no timing, never an ingest error."""
+    invocation = _dict_or_none((extra or {}).get("invocation"))
+    if invocation is None:
+        return (None, None)
+    return (
+        _datetime_from_epoch(invocation.get("start_timestamp")),
+        _datetime_from_epoch(invocation.get("end_timestamp")),
+    )
+
+
+def _datetime_from_epoch(value: Any) -> datetime | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        return datetime.fromtimestamp(float(value), tz=timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return None
 
 
 def _timestamp(step: AtifStep) -> datetime | None:

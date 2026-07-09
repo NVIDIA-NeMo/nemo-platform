@@ -4,7 +4,7 @@
 """ATIF v1.7 domain and mapper tests."""
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -449,3 +449,202 @@ def test_atif_mapping_span_ids_are_trace_native_and_ignore_evaluation_run_id() -
     }
 
     assert first_ids == second_ids
+
+
+def _timed_trajectory(steps: list[dict[str, Any]], extra: dict[str, Any] | None = None) -> AtifTrajectory:
+    return AtifTrajectory.model_validate(
+        {
+            "schema_version": "ATIF-v1.7",
+            "session_id": "trace-session-id",
+            "agent": {"name": "sample-agent", "version": "1.0.0"},
+            "steps": steps,
+            **({"extra": extra} if extra is not None else {}),
+        }
+    )
+
+
+def test_atif_v17_tool_call_extra_is_accepted_and_preserved() -> None:
+    trajectory = _timed_trajectory(
+        [
+            {
+                "step_id": 1,
+                "source": "agent",
+                "message": "running a tool",
+                "tool_calls": [
+                    {
+                        "tool_call_id": "call-1",
+                        "function_name": "search",
+                        "arguments": {"query": "x"},
+                        "extra": {
+                            "ancestry": {"function_id": "fn-1", "function_name": "searcher"},
+                            "invocation": {"start_timestamp": 100.0, "end_timestamp": 101.5},
+                            "producer_specific": {"anything": True},
+                        },
+                    }
+                ],
+            }
+        ]
+    )
+    assert isinstance(trajectory.steps[0], AtifStepAgent)
+    assert trajectory.steps[0].tool_calls is not None
+    extra = trajectory.steps[0].tool_calls[0].extra
+    assert extra is not None
+    assert extra["ancestry"]["function_name"] == "searcher"
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )
+    tool = next(span for span in spans if span.name == "search")
+    assert json.loads(tool.input)["extra"]["invocation"]["end_timestamp"] == 101.5
+
+
+def test_atif_mapping_uses_invocation_timing_for_step_and_tool_spans() -> None:
+    base = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    trajectory = _timed_trajectory(
+        [
+            {
+                "step_id": 1,
+                "source": "agent",
+                "message": "working",
+                "extra": {
+                    "invocation": {
+                        "start_timestamp": base.timestamp() + 10,
+                        "end_timestamp": base.timestamp() + 40,
+                    }
+                },
+                "tool_calls": [
+                    {
+                        "tool_call_id": "call-1",
+                        "function_name": "bash",
+                        "extra": {
+                            "invocation": {
+                                "start_timestamp": base.timestamp() + 12,
+                                "end_timestamp": base.timestamp() + 30,
+                            }
+                        },
+                    }
+                ],
+            }
+        ]
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )
+    root = next(span for span in spans if span.name == "sample-agent")
+    step = next(span for span in spans if span.name == "agent-1")
+    tool = next(span for span in spans if span.name == "bash")
+
+    assert step.start_time == base + timedelta(seconds=10)
+    assert step.end_time == base + timedelta(seconds=40)
+    assert tool.start_time == base + timedelta(seconds=12)
+    assert tool.end_time == base + timedelta(seconds=30)
+    assert root.start_time == base + timedelta(seconds=10)
+    assert root.end_time == base + timedelta(seconds=40)
+
+
+def test_atif_mapping_infers_step_end_from_next_timed_step_and_verifier_finish() -> None:
+    base = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    trajectory = _timed_trajectory(
+        [
+            {"step_id": 1, "source": "user", "message": "solve", "timestamp": base.isoformat()},
+            {
+                "step_id": 2,
+                "source": "agent",
+                "message": "on it",
+                "timestamp": (base + timedelta(seconds=5)).isoformat(),
+                "tool_calls": [{"tool_call_id": "call-1", "function_name": "bash"}],
+            },
+        ],
+        extra={
+            "verifier": {
+                "started_at": (base + timedelta(seconds=50)).isoformat(),
+                "finished_at": (base + timedelta(seconds=60)).isoformat(),
+            }
+        },
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )
+    user = next(span for span in spans if span.name == "user-1")
+    step = next(span for span in spans if span.name == "agent-2")
+    tool = next(span for span in spans if span.name == "bash")
+
+    assert user.end_time == base + timedelta(seconds=5)
+    assert step.end_time == base + timedelta(seconds=60)
+    assert tool.start_time == step.start_time
+    assert tool.end_time == step.end_time
+
+
+def test_atif_mapping_leaves_end_time_none_when_underivable() -> None:
+    base = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    trajectory = _timed_trajectory(
+        [
+            {"step_id": 1, "source": "user", "message": "solve", "extra": {"invocation": "yesterday"}},
+            {
+                "step_id": 2,
+                "source": "agent",
+                "message": "on it",
+                "extra": {"invocation": {"start_timestamp": "noon", "end_timestamp": None}},
+                "tool_calls": [{"tool_call_id": "call-1", "function_name": "bash"}],
+            },
+            {
+                "step_id": 3,
+                "source": "agent",
+                "message": "out of order",
+                "extra": {
+                    "invocation": {
+                        "start_timestamp": base.timestamp() + 10,
+                        "end_timestamp": base.timestamp() + 5,
+                    }
+                },
+            },
+        ]
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )
+    user = next(span for span in spans if span.name == "user-1")
+    tool = next(span for span in spans if span.name == "bash")
+    last = next(span for span in spans if span.name == "agent-3")
+
+    # Malformed invocation blocks never fail ingest and never fabricate ends:
+    # earlier steps end at agent-3's invocation start (the next timed step),
+    # while agent-3's own out-of-order end (end < start) is dropped, not clamped.
+    assert user.end_time == base + timedelta(seconds=10)
+    assert tool.end_time == base + timedelta(seconds=10)
+    assert last.start_time == base + timedelta(seconds=10)
+    assert last.end_time is None
+
+
+def test_atif_mapping_end_time_none_when_no_timing_exists_at_all() -> None:
+    trajectory = _timed_trajectory(
+        [
+            {"step_id": 1, "source": "user", "message": "solve"},
+            {
+                "step_id": 2,
+                "source": "agent",
+                "message": "on it",
+                "tool_calls": [{"tool_call_id": "call-1", "function_name": "bash"}],
+            },
+        ]
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )
+    assert all(
+        span.end_time is None for span in spans if span.name in {"user-1", "agent-2", "bash"}
+    )
