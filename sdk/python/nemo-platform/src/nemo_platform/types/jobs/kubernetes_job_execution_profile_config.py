@@ -107,3 +107,16 @@ class KubernetesJobExecutionProfileConfig(BaseModel):
     ttl_seconds_after_finished: Optional[int] = None
 
     ttl_seconds_before_active: Optional[int] = None
+
+    workload_identity_token_audience: Optional[str] = None
+    """Audience for the projected service account token.
+
+    Defaults to auth.oidc.workload_client_id, auth.oidc.client_id, then
+    'nemo-platform'.
+    """
+
+    workload_identity_token_expiration_seconds: Optional[int] = None
+    """
+    Requested expirationSeconds for the projected service account token used as the
+    workload identity subject token.
+    """

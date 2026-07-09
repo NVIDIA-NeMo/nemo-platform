@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import typing
 from dataclasses import dataclass, field
 
@@ -73,6 +74,33 @@ class CLIContext:
     def reset_sdk_context(self) -> None:
         self._sdk_context = None
 
+    def _context_exists_in_config_file(self, context_name: str) -> bool:
+        from nemo_platform_ext.config.config import Config
+
+        try:
+            config = Config.load(overrides=self.overrides)
+        except FileNotFoundError:
+            return False
+
+        return any(ctx.name == context_name for ctx in config.get_config_file().contexts)
+
+    def _client_auth_config(self, ctx: Context) -> dict[str, object]:
+        from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+
+        from nemo_platform_ext.config.config import Config
+        from nemo_platform_ext.config.models import OAuthUser
+
+        if self.overrides.get("access_token") is not None or Config.runtime_access_token_source_label():
+            return ctx.user.get_client_config() if ctx.user else {}
+
+        if os.environ.get(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR):
+            return {}
+
+        if isinstance(ctx.user, OAuthUser) and self._context_exists_in_config_file(ctx.context_name):
+            return {"context_name": ctx.context_name}
+
+        return ctx.user.get_client_config() if ctx.user else {}
+
     def get_client(self, timeout: float = 60.0) -> NeMoPlatform:
         """
         Get or create the NeMo Platform client.
@@ -92,12 +120,12 @@ class CLIContext:
                 f"Creating NeMoPlatform client with base_url={base_url}, workspace={ctx.workspace}, timeout={timeout}"
             )
 
-            client_config = ctx.user.get_client_config()
+            auth_config = self._client_auth_config(ctx)
             self._client = NeMoPlatform(
                 base_url=base_url,
                 timeout=timeout,
                 workspace=ctx.workspace,
-                **client_config,
+                **auth_config,
             )
         return self._client
 
@@ -120,12 +148,12 @@ class CLIContext:
                 f"Creating AsyncNeMoPlatform client with base_url={base_url}, workspace={ctx.workspace}, timeout={timeout}"
             )
 
-            client_config = ctx.user.get_client_config()
+            auth_config = self._client_auth_config(ctx)
             self._async_client = AsyncNeMoPlatform(
                 base_url=base_url,
                 timeout=timeout,
                 workspace=ctx.workspace,
-                **client_config,
+                **auth_config,
             )
         return self._async_client
 

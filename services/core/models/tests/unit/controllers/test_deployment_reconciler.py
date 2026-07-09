@@ -1959,6 +1959,7 @@ async def test_gc_not_found_on_status_update_handled(gc_reconciler, mock_backend
 )
 async def test_gc_ttl_boundary_parametrized(mock_models_sdk, mock_backend_registry, ttl, age_seconds, should_gc):
     """Parametrized boundary tests for various TTL values and ages."""
+    now = datetime.now(timezone.utc)
     config = ControllerConfig(error_deployment_ttl_seconds=ttl)
     reconciler = ModelDeploymentReconciler(
         models_sdk=mock_models_sdk,
@@ -1975,10 +1976,12 @@ async def test_gc_ttl_boundary_parametrized(mock_models_sdk, mock_backend_regist
     reconciler._delete_model_provider = AsyncMock()
 
     dep = _make_error_deployment(
-        updated_at=datetime.now(timezone.utc) - timedelta(seconds=age_seconds),
+        updated_at=now - timedelta(seconds=age_seconds),
     )
 
-    await reconciler.gc_error_deployments([dep])
+    with patch("nmp.core.models.controllers.deployment_reconciler.datetime") as mock_datetime:
+        mock_datetime.now.return_value = now
+        await reconciler.gc_error_deployments([dep])
 
     if should_gc:
         mock_backend.delete_model_deployment.assert_called_once()

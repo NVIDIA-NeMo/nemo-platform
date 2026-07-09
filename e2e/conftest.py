@@ -113,8 +113,6 @@ _SERVICES_LOG = Path(os.environ.get("E2E_SERVICES_LOG", os.path.join(tempfile.ge
 _TAIL_LINES_ON_FAILURE = 100
 
 _services_log_key = pytest.StashKey[Path]()
-_active_services_log_key = pytest.StashKey[Path]()
-_active_services_metadata_key = pytest.StashKey[dict[str, str]]()
 
 NGC_API_KEY_ENV = "NGC_API_KEY"
 
@@ -161,14 +159,25 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):  # noqa
     if not report.failed:
         return
 
-    log_path = item.stash.get(_active_services_log_key, None) or item.session.stash.get(_services_log_key, None)
+    metadata: dict[str, str] | None = None
+    module = item.getparent(pytest.Module)
+    if module is not None:
+        manager = item.config.stash[_services_pool_manager_key]
+        active_metadata = manager.describe_active_module_binding(module.nodeid)
+        if active_metadata:
+            metadata = {key: str(value) for key, value in active_metadata.items() if value is not None}
+
+    log_path: Path | None = None
+    if metadata and metadata.get("service_log_path"):
+        log_path = Path(metadata["service_log_path"])
+    if log_path is None:
+        log_path = item.session.stash.get(_services_log_key, None)
     if log_path and log_path.exists():
         lines = log_path.read_text().splitlines(keepends=True)
         tail = lines[-_TAIL_LINES_ON_FAILURE:]
         if tail:
             header = f"--- services log (last {len(tail)} lines) [{log_path}] ---"
             report.sections.append(("Services Log", f"{header}\n{''.join(tail)}"))
-    metadata = item.stash.get(_active_services_metadata_key, None)
     if metadata:
         report.sections.append(
             (
@@ -215,30 +224,6 @@ def _services_instance(
         yield services
     finally:
         _services_pool_manager.release_for_module(module)
-
-
-@pytest.fixture(autouse=True)
-def _bind_services_log_to_test(request: pytest.FixtureRequest, _services_instance: RunningServices) -> None:
-    if _services_instance.log_path is not None:
-        request.node.stash[_active_services_log_key] = _services_instance.log_path
-    module = request.node.getparent(pytest.Module)
-    if module is None:
-        return
-    manager = request.config.stash[_services_pool_manager_key]
-    metadata = {
-        key: str(value)
-        for key, value in manager.describe_module_binding(module.nodeid, _services_instance).items()
-        if value is not None
-    }
-    request.node.stash[_active_services_metadata_key] = metadata
-    if _E2E_HARNESS_DEBUG:
-        logger.info(
-            "E2E test binding",
-            extra={
-                **metadata,
-                "test": request.node.nodeid,
-            },
-        )
 
 
 @pytest.fixture(scope="module")

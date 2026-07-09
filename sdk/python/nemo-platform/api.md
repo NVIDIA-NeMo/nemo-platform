@@ -16,6 +16,8 @@ from nemo_platform.types import (
     GenericSortField,
     HTTPValidationError,
     InferenceParams,
+    JsonWebKey,
+    JsonWebKeySetResponse,
     LinearLayerSpec,
     MambaConfig,
     MoEConfig,
@@ -37,6 +39,8 @@ from nemo_platform.types import (
     ToolCallConfig,
     ToolCallingMetadataContent,
     ValidationError,
+    WorkloadTokenExchangeErrorResponse,
+    WorkloadTokenExchangeResponse,
 )
 ```
 

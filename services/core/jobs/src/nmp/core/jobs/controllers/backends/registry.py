@@ -55,6 +55,7 @@ backend_registry: BackendRegistryT = {
     BackendKey("gpu", "docker"): GPUDockerJobBackend,
     BackendKey("cpu", "kubernetes_job"): CPUKubernetesJobBackend,
     BackendKey("gpu", "kubernetes_job"): GPUKubernetesJobBackend,
+    BackendKey("gpu_distributed", "kubernetes_job"): GPUKubernetesJobBackend,
     BackendKey("gpu_distributed", "volcano_job"): VolcanoJobBackend,
     BackendKey("subprocess", "subprocess"): SubprocessJobBackend,
     BackendKey("cpu", "e2e"): TestE2ECPUJobBackend,

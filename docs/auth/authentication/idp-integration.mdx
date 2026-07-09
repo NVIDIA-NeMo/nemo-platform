@@ -21,7 +21,10 @@ the first-pass workload mapping:
 - `sub` -> `X-NMP-Principal-Id`
 - `groups` -> `X-NMP-Principal-Groups`
 
-The demo workload token contract is:
+The demo workload identity contract is:
 
-- `NEMO_WORKLOAD_TOKEN`
-- `NEMO_WORKLOAD_TOKEN_FILE`
+- `NMP_WORKLOAD_IDENTITY_TOKEN_FILE`
+
+Managed job backends inject this variable and mount the token file. Job specs
+must not set `NEMO_WORKLOAD_TOKEN`, `NEMO_WORKLOAD_TOKEN_FILE`, or
+`NMP_WORKLOAD_IDENTITY_TOKEN_FILE` themselves.

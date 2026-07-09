@@ -7,6 +7,9 @@ metadata:
     {{- include "nmp-envoy.labels" . | nindent 4 }}
 data:
   envoy.yaml: |
+{{- if .Values.envoyProxy.configOverride }}
+{{ tpl .Values.envoyProxy.configOverride . | nindent 4 }}
+{{- else }}
     admin:
       address:
         socket_address:
@@ -65,4 +68,5 @@ data:
                         socket_address:
                           address: {{ include "nmp-api.api-servicename" . }}
                           port_value: {{ .Values.api.service.port }}
+{{- end }}
 {{- end }}

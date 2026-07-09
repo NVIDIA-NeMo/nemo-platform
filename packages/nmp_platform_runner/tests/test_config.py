@@ -132,10 +132,40 @@ class TestApplyRunEnvStandalone:
         apply_run_environment(_make_config(host="0.0.0.0", port=8080), env=env)
         assert env["NMP_BASE_URL"] == "http://127.0.0.1:8080"
 
+    def test_config_file_gateway_base_url_seeds_base_url(self, tmp_path: Path):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            """
+platform:
+  base_url: "https://nemo-gateway:8080"
+""",
+            encoding="utf-8",
+        )
+        env: dict[str, str] = {}
+        apply_run_environment(_make_config(host="0.0.0.0", port=8080, config_path=str(config_path)), env=env)
+        assert env["NMP_BASE_URL"] == "https://nemo-gateway:8080"
+        assert env["NMP_SERVICE_HOST"] == "127.0.0.1"
+
     def test_sets_embedded_pdp_base_url_from_base_url(self):
         env: dict[str, str] = {}
         apply_run_environment(_make_config(host="0.0.0.0", port=9090), env=env)
         assert env["NMP_AUTH_POLICY_DECISION_POINT_BASE_URL"] == "http://127.0.0.1:9090"
+
+    def test_embedded_pdp_base_url_uses_resolved_base_url_when_auth_config_is_static(self, tmp_path: Path):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            """
+platform:
+  base_url: "https://nemo-gateway:8080"
+auth:
+  policy_decision_point_base_url: "http://127.0.0.1:8080"
+""",
+            encoding="utf-8",
+        )
+        env: dict[str, str] = {}
+        apply_run_environment(_make_config(host="0.0.0.0", port=59007, config_path=str(config_path)), env=env)
+        assert env["NMP_BASE_URL"] == "https://nemo-gateway:59007"
+        assert env["NMP_AUTH_POLICY_DECISION_POINT_BASE_URL"] == "https://nemo-gateway:59007"
 
     def test_sets_service_host_when_not_present(self):
         env: dict[str, str] = {}
@@ -246,6 +276,21 @@ class TestApplyRunEnvConfigBaseUrl:
         apply_run_environment(_make_config(host="0.0.0.0", port=59007, config_path=config_path), env=env)
         assert env["NMP_BASE_URL"] == "http://172.17.0.1:59007"
         assert env["NMP_AUTH_POLICY_DECISION_POINT_BASE_URL"] == "http://172.17.0.1:59007"
+
+    def test_local_config_static_pdp_url_does_not_override_actual_bind_port(self, tmp_path: Path):
+        config_path = self._write_config(
+            tmp_path,
+            """
+platform:
+  base_url: http://0.0.0.0:8080
+auth:
+  policy_decision_point_base_url: http://localhost:8080
+""",
+        )
+        env: dict[str, str] = {}
+        apply_run_environment(_make_config(host="0.0.0.0", port=59007, config_path=config_path), env=env)
+        assert env["NMP_BASE_URL"] == "http://127.0.0.1:59007"
+        assert env["NMP_AUTH_POLICY_DECISION_POINT_BASE_URL"] == "http://127.0.0.1:59007"
 
     def test_config_base_url_without_port_gets_bind_port(self, tmp_path: Path):
         config_path = self._write_config(tmp_path, "platform:\n  base_url: http://172.17.0.1\n")

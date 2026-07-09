@@ -105,6 +105,34 @@ auth:
     subject_claim: sub
     # Space-separated OAuth scopes to request during authentication. For Azure AD with custom API, use: 'api://{app-id}/.default openid profile email' | default: 'openid profile email offline_access'
     default_scopes: openid profile email offline_access
+    # Enable SDK workload identity token exchange using NMP_WORKLOAD_IDENTITY_TOKEN_FILE subject tokens. | default: False
+    workload_token_exchange_enabled: false
+    # OAuth client ID to use for workload identity token exchange. Defaults to client_id when unset.
+    workload_client_id:
+    # OAuth token endpoint to use for workload identity token exchange. Defaults to token_endpoint.
+    workload_token_endpoint:
+    # RFC 8693 audience requested for workload identity token exchange.
+    workload_audience:
+    # Space-separated OAuth scopes requested for workload identity token exchange.
+    workload_scope:
+    # Issuer to stamp on workload identity access tokens minted by the NeMo auth service. Defaults to the platform auth endpoint origin serving the token exchange request.
+    workload_token_issuer:
+    # Lifetime in seconds for workload identity access tokens minted by the NeMo auth service. | default: 300
+    workload_token_ttl_seconds: 300
+    # JWT key id advertised by the NeMo auth service workload identity JWKS endpoint. | default: 'nemo-workload-exchange'
+    workload_token_key_id: nemo-workload-exchange
+    # Path to a PEM-encoded RSA private key used by the NeMo auth service to sign workload identity access tokens. Intended for mounted shared secrets.
+    workload_token_private_key_file:
+    # Additional RFC 8693 audience values accepted by the NeMo auth service workload token exchange endpoint. The configured workload_audience is always accepted.
+    workload_allowed_audiences: []
+    # JWKS URI used by the NeMo auth service to validate JWT subject tokens for workload token exchange. Leave unset when only Kubernetes TokenReview subject validation is enabled.
+    workload_subject_jwks_uri:
+    # Allowed JWT subject token issuers for workload token exchange. Required when workload_subject_jwks_uri is set.
+    workload_subject_issuers: []
+    # TTL in seconds for caching workload subject JWKS responses. Set to 0 to disable caching. | default: 3600
+    workload_subject_jwks_cache_ttl_seconds: 3600
+    # Allow the NeMo auth service workload token exchange endpoint to validate Kubernetes projected service account subject tokens using the TokenReview API. | default: False
+    workload_kubernetes_token_review_enabled: false
     # Prefix to strip from token scopes before authorization. For example, if IdP returns 'api://my-app/models:read', set prefix to 'api://my-app/' to normalize to 'models:read'. If not set, scopes are used as-is.
     scope_prefix:
     # TTL in seconds for caching IdP discovery document responses. Used by the discovery endpoint to avoid per-request IdP calls. Set to 0 to disable caching. | default: 300
@@ -250,6 +278,26 @@ jobs:
       networking:
         # Docker network for the job container | default: 'host'
         job_container_network: host
+      # Docker workload identity subject-token issuer configuration.
+      workload_identity:
+        # Enable Docker workload identity token-file injection. Defaults to auth.oidc.workload_token_exchange_enabled.
+        enabled:
+        # OAuth token endpoint used by the Docker demo issuer. Defaults to auth.oidc.token_endpoint.
+        token_endpoint:
+        # OAuth client ID used by the Docker demo issuer. Defaults to auth.oidc.workload_client_id or auth.oidc.client_id.
+        client_id:
+        # OAuth client secret for the Docker demo issuer.
+        client_secret:
+        # Username for the Docker demo issuer password grant.
+        username:
+        # Controller environment variable that contains the Docker demo issuer password grant shared secret. | default: 'AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD'
+        password_env_var: AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD
+        # OAuth scope for the Docker demo issuer.
+        scope:
+        # Fallback subject-token lifetime when the Docker demo issuer response omits expires_in.
+        subject_token_ttl_seconds: 600
+        # Seconds before subject-token expiry when the Docker refresher issues a replacement token. | default: 60
+        refresh_margin_seconds: 60
     # Default Kubernetes execution profile configuration
     kubernetes_job:
       # default: 1800
@@ -324,6 +372,10 @@ jobs:
       scheduler_name: ''
       # Container image that contains the jobs-launcher binary. | default: 'nvcr.io/nvidia/nemo-microservices/jobs-launcher:latest'
       launcher_image: nvcr.io/nvidia/nemo-microservices/jobs-launcher:latest
+      # Requested expirationSeconds for the projected service account token used as the workload identity subject token. | default: 600
+      workload_identity_token_expiration_seconds: 600
+      # Audience for the projected service account token. Defaults to auth.oidc.workload_client_id, auth.oidc.client_id, then 'nemo-platform'.
+      workload_identity_token_audience:
     # Default Volcano execution profile configuration
     volcano_job:
       # default: 1800
@@ -398,6 +450,10 @@ jobs:
       scheduler_name: volcano
       # Container image that contains the jobs-launcher binary. | default: 'nvcr.io/nvidia/nemo-microservices/jobs-launcher:latest'
       launcher_image: nvcr.io/nvidia/nemo-microservices/jobs-launcher:latest
+      # Requested expirationSeconds for the projected service account token used as the workload identity subject token. | default: 600
+      workload_identity_token_expiration_seconds: 600
+      # Audience for the projected service account token. Defaults to auth.oidc.workload_client_id, auth.oidc.client_id, then 'nemo-platform'.
+      workload_identity_token_audience:
       # The Volcano queue to submit the job to. | default: 'default'
       queue: default
       # maxRetry indicates the maximum number of retries allowed by the job | default: 0

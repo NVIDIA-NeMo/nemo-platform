@@ -6,6 +6,17 @@ Create a named Envoy service name which can be included from parent chart
 {{- end }}
 
 {{/*
+Create the Envoy image reference.
+*/}}
+{{- define "nmp-envoy.image" -}}
+{{- if .Values.envoyProxy.image.digest -}}
+{{ printf "%s@%s" .Values.envoyProxy.image.repository .Values.envoyProxy.image.digest }}
+{{- else -}}
+{{ printf "%s:%s" .Values.envoyProxy.image.repository .Values.envoyProxy.image.tag }}
+{{- end -}}
+{{- end }}
+
+{{/*
 Labels for Envoy proxy resources (component + platform labels).
 */}}
 {{- define "nmp-envoy.labels" -}}

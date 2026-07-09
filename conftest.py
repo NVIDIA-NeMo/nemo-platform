@@ -213,6 +213,8 @@ def pytest_collection_modifyitems(config, items):
         "unit",
         "e2e",
         "auth_idp",
+        "auth_idp_docker",
+        "auth_idp_k8s",
         "smoke_gpu_tasks",
         "smoke_nmp_customizer_tasks",
         "smoke_nmp_automodel_training",
@@ -308,7 +310,9 @@ def pytest_runtest_setup(item):
         if not item.config.getoption("--run-slow"):
             skip_test("Skipping slow test (use --run-slow to run)")
     if "e2e" in [marker.name for marker in item.iter_markers()]:
-        if not item.config.getoption("--run-e2e"):
+        auth_idp_runtime = item.config.getoption("--auth-idp-runtime", default=None)
+        auth_idp_runtime_selected = auth_idp_runtime and "auth_idp" in [marker.name for marker in item.iter_markers()]
+        if not item.config.getoption("--run-e2e") and not auth_idp_runtime_selected:
             skip_test("Skipping e2e test (use --run-e2e to run)")
     if "subprocess_only" in [marker.name for marker in item.iter_markers()]:
         if os.environ.get("NMP_BASE_URL"):

@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -133,11 +132,10 @@ func fetchSecrets(apiBaseURL string, principal *nmpclient.Principal, secretRefs 
 }
 
 // runExecWithStdin sets up OTEL and runs the specified command with stdin
-func runExecWithStdin(args []string) (int, error) {
+func runExecWithStdin(args []string) (exitCode int, err error) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	configureOTELHeadersFromWorkloadToken()
 	otelShutdown, _, err := setupOTELSDK(ctx)
 	if err != nil {
 		return 1, err
@@ -148,29 +146,6 @@ func runExecWithStdin(args []string) (int, error) {
 	}()
 
 	return runExec(args, os.Stdin)
-}
-
-func configureOTELHeadersFromWorkloadToken() {
-	token := os.Getenv("NEMO_WORKLOAD_TOKEN")
-	if token == "" {
-		return
-	}
-
-	const headersEnv = "OTEL_EXPORTER_OTLP_LOGS_HEADERS"
-	headers := os.Getenv(headersEnv)
-	for _, item := range strings.Split(headers, ",") {
-		key, _, _ := strings.Cut(strings.TrimSpace(item), "=")
-		if strings.EqualFold(key, "authorization") {
-			return
-		}
-	}
-
-	authHeader := "Authorization=" + url.PathEscape("Bearer "+token)
-	if headers == "" {
-		os.Setenv(headersEnv, authHeader)
-		return
-	}
-	os.Setenv(headersEnv, headers+","+authHeader)
 }
 
 // runExec runs the specified command with arguments, injecting secrets as environment variables if specified
