@@ -1,3 +1,8 @@
+---
+labels:
+  - Fine Tuning
+  - NeMo
+---
 ## NeMo Unsloth Training Container
 
 This container image provides an Unsloth-based model training runtime. It is designed to run as part of NeMo Platform.
