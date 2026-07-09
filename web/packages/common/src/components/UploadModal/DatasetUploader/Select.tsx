@@ -43,7 +43,6 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
      */
     page_size: 100, // v2 API max is 100
     sort: 'created_at',
-    filter: { purpose: 'dataset' },
   });
 
   const filesets = useMemo(() => filesetsResponse?.data ?? [], [filesetsResponse]);
@@ -100,7 +99,7 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
 
   return (
     <FormField
-      slotLabel="Dataset"
+      slotLabel="Fileset"
       slotError={
         <Flex gap="density-md" align="center">
           <CircleAlert className="text-feedback-danger" />
@@ -135,14 +134,14 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
                 ]
               : []),
             {
-              slotHeading: 'Existing Datasets',
+              slotHeading: 'Existing Filesets',
               attributes: { MenuHeading: { className: 'hidden', 'aria-hidden': true } },
               items: datasetOptions,
             },
           ]}
           value={selectedDatasetOption}
           onValueChange={handleDatasetSelect}
-          placeholder="Select a dataset"
+          placeholder="Select a fileset"
         />
       )}
     </FormField>

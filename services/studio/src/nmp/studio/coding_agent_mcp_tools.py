@@ -83,7 +83,7 @@ SELECT_DATASET_FILE_TOOL: dict[str, Any] = {
         "a workflow needs the user to pick a fileset or a file inside one, instead of asking for a fileset "
         "reference, path, or '<workspace>/<fileset>#<file>' string in plain text. "
         "Always prefer this over plain-text prompting and over AskUserQuestion for file/fileset choices. "
-        "Pass accepted_file_types (for example ['.csv', '.parquet']) to constrain the picker. "
+        "Pass accepted_file_types (for example ['.csv', '.parquet', '.jsonl']) to constrain the picker. "
         "Returns dataset_fileset and dataset_path, which you can combine as '<fileset>#<path>' when a tool "
         "needs a fileset reference. Returns status=skipped / status=error if the user dismisses the picker."
     ),
