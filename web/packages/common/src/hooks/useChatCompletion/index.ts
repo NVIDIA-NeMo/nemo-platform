@@ -16,6 +16,12 @@ export type UseChatCompletionParams = ChatCompletionCreateParams & {
   baseURL?: string;
   accessToken?: string;
   signal?: AbortSignal;
+  /**
+   * Extra top-level fields merged into the chat completions request body
+   * (e.g. a `guardrails` config object). Forwarded verbatim by the OpenAI
+   * client, which passes through unknown body keys.
+   */
+  bodyExtra?: Record<string, unknown>;
 };
 
 export type UseChatCompletionOptions = Omit<
@@ -50,6 +56,7 @@ const createChatCompletion = (props: UseChatCompletionParams) => {
     stream,
     accessToken,
     signal,
+    bodyExtra,
     ...moreOptions
   } = props;
   if (!model) {
@@ -77,7 +84,8 @@ const createChatCompletion = (props: UseChatCompletionParams) => {
       temperature: 1,
       stream,
       ...moreOptions,
-    },
+      ...bodyExtra,
+    } as ChatCompletionCreateParams,
     {
       headers: {
         ...CHAT_CORS_HEADERS,

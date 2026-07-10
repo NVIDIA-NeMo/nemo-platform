@@ -66,6 +66,12 @@ export interface AssistantChatProps {
    */
   baseURL?: string;
   /**
+   * Extra top-level fields merged into the chat completions request body
+   * (e.g. a `guardrails` config object for guardrailed inference). Forwarded
+   * verbatim to the OpenAI-compatible endpoint.
+   */
+  bodyExtra?: Record<string, unknown>;
+  /**
    * Optional prompt data used for system prompt and inference parameter defaults.
    */
   promptData?: PromptData;

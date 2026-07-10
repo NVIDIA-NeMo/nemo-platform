@@ -5,7 +5,7 @@ import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { ROUTES } from '@studio/constants/routes';
 import { gateGuardrailsRoutes } from '@studio/routes/utils';
 import { lazy } from 'react';
-import type { RouteObject } from 'react-router-dom';
+import { Navigate, type RouteObject } from 'react-router-dom';
 
 const GuardrailsRoute = lazy(() =>
   import('@studio/routes/guardrails/GuardrailsRoute').then((m) => ({
@@ -19,6 +19,18 @@ const GuardrailDetailRoute = lazy(() =>
   }))
 );
 
+const GuardrailDetailsTab = lazy(() =>
+  import('@studio/routes/guardrails/GuardrailDetailsTab').then((m) => ({
+    default: m.GuardrailDetailsTab,
+  }))
+);
+
+const GuardrailChatTab = lazy(() =>
+  import('@studio/routes/guardrails/GuardrailChatTab').then((m) => ({
+    default: m.GuardrailChatTab,
+  }))
+);
+
 export const guardrailsRoutes: RouteObject[] = gateGuardrailsRoutes([
   {
     path: ROUTES.workspace.guardrails,
@@ -29,5 +41,19 @@ export const guardrailsRoutes: RouteObject[] = gateGuardrailsRoutes([
     path: ROUTES.workspace.guardrailDetail,
     element: <GuardrailDetailRoute />,
     errorElement: <ErrorPanel title="Guardrails" />,
+    children: [
+      {
+        index: true,
+        element: <Navigate to="details" replace />,
+      },
+      {
+        path: ROUTES.workspace.guardrailDetailDetails,
+        element: <GuardrailDetailsTab />,
+      },
+      {
+        path: ROUTES.workspace.guardrailChat,
+        element: <GuardrailChatTab />,
+      },
+    ],
   },
 ]);

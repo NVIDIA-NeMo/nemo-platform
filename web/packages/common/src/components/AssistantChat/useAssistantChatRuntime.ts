@@ -27,6 +27,7 @@ const imageAttachmentAdapter = new SimpleImageAttachmentAdapter();
 type UseAssistantChatRuntimeOptions = Pick<
   AssistantChatProps,
   | 'baseURL'
+  | 'bodyExtra'
   | 'broadcast'
   | 'stopCount'
   | 'disabled'
@@ -46,6 +47,7 @@ export const useAssistantChatRuntime = ({
   model,
   workspace,
   baseURL,
+  bodyExtra,
   promptData,
   tools,
   disabled = false,
@@ -112,6 +114,7 @@ export const useAssistantChatRuntime = ({
           model,
           workspace,
           baseURL,
+          bodyExtra,
           messages: getOpenAIMessages(conversationMessages, promptData?.system_prompt),
           max_tokens: promptData?.inference_params?.max_tokens,
           temperature: promptData?.inference_params?.temperature,
@@ -204,6 +207,7 @@ export const useAssistantChatRuntime = ({
     },
     [
       baseURL,
+      bodyExtra,
       createChatCompletion,
       disabled,
       model,
