@@ -357,7 +357,7 @@ def _step_to_span(
         external_span_id=external_span_id,
         external_parent_span_id=external_parent_span_id,
         kind=_step_kind(step),
-        name=f"{step.source}-{step.step_id}",
+        name=(default_agent_name if isinstance(step, AtifStepAgent) else f"{step.source}-{step.step_id}"),
         status=SpanStatus.SUCCESS,
         start_time=step_started_at,
         end_time=_clamped_end(step_started_at, step_ended_at),
@@ -840,17 +840,21 @@ def _trajectory_output(trajectory: AtifTrajectory) -> str | None:
 
 
 def _trajectory_has_error(trajectory: AtifTrajectory) -> bool:
-    """Return whether a trajectory or any embedded descendant has an error."""
-    for current, _identity, _depth in _trajectory_tree(trajectory):
-        for step in current.steps:
-            if not isinstance(step, AtifStepAgent):
-                continue
-            observation = _step_observation(step)
-            if observation is None:
-                continue
-            for result in observation.results:
-                if _tool_result_is_error(step, result):
-                    return True
+    """Return whether this trajectory directly contains a tool error.
+
+    Embedded trajectories map to independent AGENT spans. Their errors remain
+    visible on those spans and in the trace error count, but must not change the
+    status of a parent trajectory that successfully delegated and recovered.
+    """
+    for step in trajectory.steps:
+        if not isinstance(step, AtifStepAgent):
+            continue
+        observation = _step_observation(step)
+        if observation is None:
+            continue
+        for result in observation.results:
+            if _tool_result_is_error(step, result):
+                return True
     return False
 
 
