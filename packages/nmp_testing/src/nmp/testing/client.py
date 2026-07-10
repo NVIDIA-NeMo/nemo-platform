@@ -73,10 +73,6 @@ class SDKTestClientAdapter(httpx.Client):
         """Return the wrapped ASGI app for tests that need to create sibling clients."""
         return self._test_client.app
 
-    def create_async_transport(self) -> httpx.AsyncBaseTransport:
-        """Create an async transport for code paths that need an async SDK client."""
-        return httpx.ASGITransport(app=self.asgi_app)
-
     def send(
         self,
         request: httpx.Request,

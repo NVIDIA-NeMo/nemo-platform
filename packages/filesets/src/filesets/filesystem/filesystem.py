@@ -6,17 +6,20 @@
 from __future__ import annotations
 
 import inspect
+import os
 from collections.abc import AsyncIterator, Coroutine, Iterator, Sequence
 from datetime import datetime, timezone
-from typing import Any, Literal, Protocol, TypedDict, TypeVar, overload, runtime_checkable
+from glob import has_magic
+from typing import Any, Literal, TypedDict, TypeVar, overload
 
 import anyio
 import fsspec.asyn
-import httpx
 from anyio import to_thread
 from fsspec.asyn import AbstractAsyncStreamedFile, AsyncFileSystem, _get_batch_size
 from fsspec.callbacks import DEFAULT_CALLBACK, Callback
+from fsspec.implementations.local import LocalFileSystem, make_path_posix, trailing_sep
 from fsspec.spec import AbstractBufferedFile
+from fsspec.utils import other_paths
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.files.types import FilesetFileOutput, ListFilesQueryParams
 
@@ -37,10 +40,8 @@ async def run_coros_in_chunks(
     We admit all work up front and use a CapacityLimiter so a new task can start
     as soon as any slot frees up, which keeps bulk downloads/uploads saturated.
 
-    We still monkey-patch fsspec's helper so inherited AsyncFileSystem bulk ops
-    benefit from AnyIO task-group cancellation. Running tasks are cancelled by
-    the task group; coroutine objects that were never entered are explicitly
-    closed in the outer finally block.
+    Running tasks are cancelled by the task group; coroutine objects that were
+    never entered are explicitly closed in the outer finally block.
     """
 
     if batch_size is None:
@@ -91,18 +92,6 @@ async def run_coros_in_chunks(
                 coro.close()
 
     return results
-
-
-@runtime_checkable
-class _AsyncTransportProvider(Protocol):
-    def create_async_transport(self) -> httpx.AsyncBaseTransport: ...
-
-
-def _create_async_transport(sync_client: httpx.Client) -> httpx.AsyncBaseTransport | None:
-    """Return an async transport when the sync client explicitly provides one."""
-    if isinstance(sync_client, _AsyncTransportProvider):
-        return sync_client.create_async_transport()
-    return None
 
 
 class FileInfo(TypedDict):
@@ -344,11 +333,12 @@ class FilesetFileSystem(AsyncFileSystem):
         self,
         *,
         client: FilesClient | AsyncFilesClient,
+        async_client: AsyncFilesClient | None = None,
         batch_size: int | None = None,
         blocksize: int | None = None,
         **kwargs,
     ):
-        async_client = self._ensure_async(client)
+        async_client = async_client or self._ensure_async(client)
         is_async = isinstance(client, AsyncFilesClient)
 
         if batch_size is None:
@@ -368,7 +358,6 @@ class FilesetFileSystem(AsyncFileSystem):
 
         import httpx
 
-        transport = _create_async_transport(client._http)
         return AsyncFilesClient(
             base_url=client.base_url,
             workspace=client.workspace,
@@ -376,7 +365,6 @@ class FilesetFileSystem(AsyncFileSystem):
             default_headers=client._default_headers or None,
             retry=client._retry,
             http_client=httpx.AsyncClient(
-                transport=transport,
                 base_url=client.base_url,
                 headers=dict(client._default_headers) if client._default_headers else None,
             ),
@@ -656,6 +644,62 @@ class FilesetFileSystem(AsyncFileSystem):
         """Sync wrapper for _pipe_stream. See _pipe_stream for details."""
         return fsspec.asyn.sync(self.loop, self._pipe_stream, path, stream, content_length)
 
+    async def _put(
+        self,
+        lpath,
+        rpath,
+        recursive=False,
+        callback=DEFAULT_CALLBACK,
+        batch_size=None,
+        maxdepth=None,
+        **kwargs,
+    ):
+        """Copy local file(s) into the fileset."""
+        if isinstance(lpath, list) and isinstance(rpath, list):
+            rpaths = rpath
+            lpaths = lpath
+        else:
+            source_is_str = isinstance(lpath, str)
+            if source_is_str:
+                lpath = make_path_posix(lpath)
+            fs = LocalFileSystem()
+            lpaths = fs.expand_path(lpath, recursive=recursive, maxdepth=maxdepth)
+            if source_is_str and (not recursive or maxdepth is not None):
+                lpaths = [path for path in lpaths if not (trailing_sep(path) or fs.isdir(path))]
+                if not lpaths:
+                    return
+
+            source_is_file = len(lpaths) == 1
+            dest_is_dir = isinstance(rpath, str) and (trailing_sep(rpath) or await self._isdir(rpath))
+
+            rpath = self._strip_protocol(rpath)
+            exists = source_is_str and (
+                (has_magic(lpath) and source_is_file)
+                or (not has_magic(lpath) and dest_is_dir and not trailing_sep(lpath))
+            )
+            rpaths = other_paths(
+                lpaths,
+                rpath,
+                exists=exists,
+                flatten=not source_is_str,
+            )
+
+        is_dir = {path: os.path.isdir(path) for path in lpaths}
+        rdirs = [remote for local, remote in zip(lpaths, rpaths) if is_dir[local]]
+        file_pairs = [(local, remote) for local, remote in zip(lpaths, rpaths) if not is_dir[local]]
+
+        async with anyio.create_task_group() as tg:
+            for directory in rdirs:
+                tg.start_soon(self._makedirs, directory, True)
+
+        callback.set_size(len(file_pairs))
+        put_file = callback.branch_coro(self._put_file)
+        await run_coros_in_chunks(
+            [put_file(local, remote, **kwargs) for local, remote in file_pairs],
+            batch_size=batch_size or self.batch_size,
+            callback=callback,
+        )
+
     async def _put_file(
         self,
         lpath: str,
@@ -796,7 +840,7 @@ class FilesetFileSystem(AsyncFileSystem):
         """Download files using a single _find call for efficiency.
 
         Uses run_coros_in_chunks which provides proper task cancellation
-        via our monkey-patched TaskGroup-based implementation.
+        for the direct list-download path.
 
         When rpath and lpath are both lists, downloads each (remote, local) pair
         directly without path expansion. This is useful for downloading a specific
