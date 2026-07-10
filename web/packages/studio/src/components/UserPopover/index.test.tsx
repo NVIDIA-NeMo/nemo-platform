@@ -175,6 +175,7 @@ describe('UserPopover', () => {
     renderWithRouter(<UserPopoverEmpty />);
 
     expect(screen.queryByTestId('nv-dropdown-trigger')).not.toBeInTheDocument();
+    expect(screen.getByText('N')).toBeInTheDocument();
   });
 
   it('should open trace modal when "Report a Trace" is clicked', async () => {
