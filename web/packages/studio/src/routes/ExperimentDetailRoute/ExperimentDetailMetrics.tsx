@@ -7,6 +7,7 @@ import { useGetExperiment } from '@nemo/sdk/generated/platform/api';
 import { Divider, Flex, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { tooltipClassName } from '@studio/styles/common';
+import { formatDuration } from '@studio/util/duration';
 import { type FC, type ReactNode } from 'react';
 
 interface ExperimentDetailMetricsProps {
@@ -21,9 +22,7 @@ export const ExperimentDetailMetrics: FC<ExperimentDetailMetricsProps> = ({ expe
     experiment?.cost_usd?.mean != null ? `$${experiment.cost_usd.mean.toFixed(3)}` : undefined;
 
   const avgLatency =
-    experiment?.latency_ms?.mean != null
-      ? `${Math.round(experiment.latency_ms.mean)} ms`
-      : undefined;
+    experiment?.latency_ms?.mean != null ? formatDuration(experiment.latency_ms.mean) : undefined;
 
   const modelNames = experiment?.model_names ?? [];
   const modelNamesJoined = modelNames.length > 0 ? modelNames.join(', ') : undefined;

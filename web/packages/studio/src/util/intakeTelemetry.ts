@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Span, SpanEvaluationContext, Trace } from '@nemo/sdk/generated/platform/schema';
+import { formatDuration } from '@studio/util/duration';
 
 export const EMPTY_VALUE = '—';
 
@@ -35,13 +36,12 @@ export const formatCost = (value: number | null | undefined): string => {
   return `$${value.toFixed(2)}`;
 };
 
-export const formatDurationMs = (value: number | null | undefined): string => {
-  if (value === null || value === undefined) return EMPTY_VALUE;
-  if (value < 1) return `${value.toFixed(2)} ms`;
-  if (value < 1000) return `${Math.round(value).toLocaleString()} ms`;
-  if (value < 60_000) return `${(value / 1000).toFixed(2)} s`;
-  return `${(value / 60_000).toFixed(2)} min`;
-};
+/**
+ * Format a millisecond duration for display (e.g. `10m 12s 13ms`).
+ * Kept as a named alias so existing Intake call sites stay stable; the canonical
+ * implementation lives in `@studio/util/duration`.
+ */
+export const formatDurationMs = formatDuration;
 
 export const getSpanDurationMs = (span: Span): number | undefined => {
   if (!span.ended_at) return undefined;

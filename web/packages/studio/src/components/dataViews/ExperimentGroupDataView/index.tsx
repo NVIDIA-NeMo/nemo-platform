@@ -30,6 +30,7 @@ import { deriveEvaluatorNames } from '@studio/components/dataViews/ExperimentGro
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
+import { formatDuration } from '@studio/util/duration';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { Columns3, Pin } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback, useEffect, useMemo } from 'react';
@@ -380,7 +381,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
               count={latency_ms?.count}
               runCount={run_count}
             >
-              {latency_ms?.mean != null ? `${Math.round(latency_ms.mean)} ms` : '-'}
+              {latency_ms?.mean != null ? formatDuration(latency_ms.mean) : '-'}
             </MeanValueTooltipCell>
           );
         },
