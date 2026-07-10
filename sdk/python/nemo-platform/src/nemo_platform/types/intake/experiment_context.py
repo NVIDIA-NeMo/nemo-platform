@@ -23,7 +23,10 @@ __all__ = ["ExperimentContext"]
 
 
 class ExperimentContext(BaseModel):
-    """Experiment context accepted by ingest endpoints."""
+    """Deprecated alias for :class:`EvaluationContext`.
+
+    Producers should send ``evaluation_context``.
+    """
 
     experiment_id: str
     """Name of an existing Experiment entity."""

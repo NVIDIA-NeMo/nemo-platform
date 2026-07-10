@@ -9,6 +9,10 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
+from nmp.intake.config import ClickHouseConfig, IntakeConfig
+from nmp.intake.service import IntakeService
+from nmp.intake.spans.clickhouse_client import ClickHouseSettings
+from nmp.testing import create_test_client
 
 _HISTORICAL_GTE = "2024-01-01T00:00:00Z"
 
@@ -20,6 +24,26 @@ _HISTORICAL_GTE = "2024-01-01T00:00:00Z"
 #     returns without a fractional part (e.g. "...:12" vs "...:12.000000") and would fail exact matches.
 # Everything derived from this base moves with it, so the reconstructed-timestamp assertions stay exact.
 _BASE_TIME = (datetime.now(timezone.utc) - timedelta(days=45)).replace(microsecond=500_000)
+
+
+@pytest.fixture
+def shallow_atif_client(clickhouse_settings: ClickHouseSettings):
+    """Create an Intake client with a deliberately shallow ATIF depth limit."""
+    intake_config = IntakeConfig(
+        clickhouse_config=ClickHouseConfig(
+            url=clickhouse_settings.url,
+            user=clickhouse_settings.user,
+            password=clickhouse_settings.password,
+            database=clickhouse_settings.database,
+        ),
+        atif_max_subagent_depth=2,
+    )
+    with create_test_client(
+        IntakeService,
+        client_type=TestClient,
+        service_configs={IntakeService: intake_config},
+    ) as test_client:
+        yield test_client
 
 
 def _atif_timestamp(dt: datetime) -> str:
@@ -172,6 +196,116 @@ def test_atif_ingest_accepts_supported_schema_versions_without_rewriting(
     assert spans[0]["session_id"] == session_id
     assert spans[0]["kind"] == "AGENT"
     assert spans[0]["source"] == "atif"
+
+
+def test_atif_ingest_expands_embedded_subagent_trajectory_into_the_parent_trace(client: TestClient):
+    session_id = "atif-v1-7-embedded-subagent"
+    root_started_at = _BASE_TIME + timedelta(minutes=10)
+    subagent_started_at = root_started_at + timedelta(seconds=1)
+    subagent_ended_at = root_started_at + timedelta(seconds=4)
+    body = {
+        "schema_version": "ATIF-v1.7",
+        "session_id": session_id,
+        "trajectory_id": "root-trajectory",
+        "agent": {"name": "orchestrator", "version": "1.0"},
+        "steps": [
+            {
+                "step_id": 1,
+                "timestamp": _atif_timestamp(root_started_at),
+                "source": "agent",
+                "message": "Delegate the task.",
+                "llm_call_count": 0,
+                "observation": {
+                    "results": [
+                        {
+                            "content": "The worker completed the task.",
+                            "subagent_trajectory_ref": [
+                                {"trajectory_id": "worker-trajectory", "session_id": session_id}
+                            ],
+                        }
+                    ]
+                },
+            }
+        ],
+        "subagent_trajectories": [
+            {
+                "schema_version": "ATIF-v1.7",
+                "trajectory_id": "worker-trajectory",
+                "agent": {"name": "worker-agent", "version": "1.0"},
+                "steps": [
+                    {
+                        "step_id": 1,
+                        "timestamp": _atif_timestamp(subagent_started_at),
+                        "source": "user",
+                        "message": "Complete the delegated task.",
+                    },
+                    {
+                        "step_id": 2,
+                        "timestamp": _atif_timestamp(subagent_ended_at),
+                        "source": "agent",
+                        "message": "Task complete.",
+                    },
+                ],
+            }
+        ],
+    }
+
+    ingest_response = client.post("/apis/intake/v2/workspaces/default/ingest/atif", json=body)
+    assert ingest_response.status_code == 201, ingest_response.text
+
+    spans_response = client.get(
+        "/apis/intake/v2/workspaces/default/spans",
+        params={
+            "filter[session_id]": session_id,
+            "filter[started_at][gte]": _HISTORICAL_GTE,
+            "page_size": 10,
+        },
+    )
+    assert spans_response.status_code == 200, spans_response.text
+    spans = spans_response.json()["data"]
+    spans_by_name = {span["name"]: span for span in spans}
+
+    assert len(spans) == 5
+    assert set(spans_by_name) == {"orchestrator", "agent-1", "worker-agent", "user-1", "agent-2"}
+    assert {span["trace_id"] for span in spans} == {session_id}
+    assert {span["session_id"] for span in spans} == {session_id}
+    assert spans_by_name["agent-1"]["parent_span_id"] == spans_by_name["orchestrator"]["span_id"]
+    assert spans_by_name["worker-agent"]["parent_span_id"] == spans_by_name["agent-1"]["span_id"]
+    assert spans_by_name["user-1"]["parent_span_id"] == spans_by_name["worker-agent"]["span_id"]
+    assert spans_by_name["agent-2"]["parent_span_id"] == spans_by_name["worker-agent"]["span_id"]
+    assert spans_by_name["orchestrator"]["started_at"] == _span_started_at(root_started_at)
+    assert spans_by_name["orchestrator"]["ended_at"] == _span_ended_at(subagent_ended_at)
+
+
+def test_atif_ingest_rejects_subagent_tree_over_configured_depth(shallow_atif_client: TestClient):
+    body = {
+        "schema_version": "ATIF-v1.7",
+        "session_id": "atif-too-deep",
+        "trajectory_id": "root",
+        "agent": {"name": "root-agent", "version": "1.0"},
+        "steps": [],
+        "subagent_trajectories": [
+            {
+                "schema_version": "ATIF-v1.7",
+                "trajectory_id": "child",
+                "agent": {"name": "child-agent", "version": "1.0"},
+                "steps": [],
+                "subagent_trajectories": [
+                    {
+                        "schema_version": "ATIF-v1.7",
+                        "trajectory_id": "grandchild",
+                        "agent": {"name": "grandchild-agent", "version": "1.0"},
+                        "steps": [],
+                    }
+                ],
+            }
+        ],
+    }
+
+    response = shallow_atif_client.post("/apis/intake/v2/workspaces/default/ingest/atif", json=body)
+
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"] == "ATIF trajectory depth 3 exceeds configured maximum 2"
 
 
 def test_atif_ingest_rejects_unknown_schema_version(client: TestClient):
@@ -379,12 +513,11 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     assert "cached_tokens" not in trajectory
     assert "total_tokens" not in trajectory
     assert "cost_total_usd" not in trajectory
+    # The retired keys (evaluation_sha, evaluation_run_id, metadata) are accepted but ignored, so only
+    # evaluation_id and test_case_id survive onto the root trajectory span.
     assert trajectory["evaluation_context"] == {
         "evaluation_id": evaluation_context["evaluation_id"],
-        "evaluation_sha": evaluation_context["evaluation_sha"],
-        "evaluation_run_id": evaluation_context["evaluation_run_id"],
         "test_case_id": evaluation_context["test_case_id"],
-        "metadata": evaluation_context["metadata"],
     }
     assert "attributes_string" not in trajectory
     trajectory_raw = json.loads(trajectory["raw_attributes"])
@@ -545,31 +678,17 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         "441e9149-e4e6-41c0-82b0-a36802f83d3a",
     }
 
-    other_evaluation_run_id = f"{evaluation_run_id}-other"
+    # Re-ingesting into the same session keeps span ids stable; evaluation_run_id is ignored on ingest.
     same_session_body = {
         "schema_version": "ATIF-v1.7",
         "session_id": body["session_id"],
-        "evaluation_context": {**evaluation_context, "evaluation_run_id": other_evaluation_run_id},
+        "evaluation_context": evaluation_context,
         "agent": body["agent"],
         "steps": [body["steps"][0]],
     }
     same_session_response = client.post("/apis/intake/v2/workspaces/default/ingest/atif", json=same_session_body)
     assert same_session_response.status_code == 201, same_session_response.text
     assert same_session_response.content == b""
-
-    other_evaluation_response = client.get(
-        "/apis/intake/v2/workspaces/default/spans",
-        params={
-            "filter[evaluation_run_id]": other_evaluation_run_id,
-            "filter[started_at][gte]": _HISTORICAL_GTE,
-            "page_size": 10,
-        },
-    )
-    assert other_evaluation_response.status_code == 200, other_evaluation_response.text
-    other_evaluation_spans = other_evaluation_response.json()["data"]
-    assert len(other_evaluation_spans) == 1
-    assert other_evaluation_spans[0]["name"] == "sample-agent"
-    assert other_evaluation_spans[0]["evaluation_context"]["evaluation_run_id"] == other_evaluation_run_id
 
     same_session_response = client.get(
         "/apis/intake/v2/workspaces/default/spans",

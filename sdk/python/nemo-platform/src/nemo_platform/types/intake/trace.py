@@ -51,7 +51,10 @@ class Trace(BaseModel):
     error_count: Optional[int] = None
 
     experiment_context: Optional[ExperimentContext] = None
-    """Experiment context accepted by ingest endpoints."""
+    """Deprecated alias for :class:`EvaluationContext`.
+
+    Producers should send `evaluation_context`.
+    """
 
     input_tokens: Optional[int] = None
 

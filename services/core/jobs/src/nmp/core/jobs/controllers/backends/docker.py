@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import datetime
+import hashlib
 import io
 import json
 import logging
@@ -21,7 +22,7 @@ from docker.models.containers import Container
 from docker.types import LogConfig, Mount
 from nemo_platform.types.jobs import PlatformJobStepWithContext
 from nmp.common.auth import AuthContext
-from nmp.common.config import get_platform_config
+from nmp.common.config import get_platform_config, nmp_user_data_dir
 from nmp.common.docker.gpu_pool import GPUAllocationError
 from nmp.common.jobs.constants import (
     CONFIG_TASK_STORAGE_PATH_ENVVAR,
@@ -46,6 +47,7 @@ from nmp.common.observability import start_span_with_ctx
 from nmp.common.resources import SharedResourceManager
 from nmp.core.jobs.app.constants import (
     JOB_ATTEMPT_ID_LABEL,
+    JOB_CONTROLLER_INSTANCE_ID_LABEL,
     JOB_EXECUTION_BACKEND_LABEL,
     JOB_EXECUTION_PROFILE_LABEL,
     JOB_ID_LABEL,
@@ -115,9 +117,19 @@ NEMO_JOBS_DEFAULT_DOCKER_NETWORK = os.getenv("NEMO_JOBS_DEFAULT_DOCKER_NETWORK",
 # Timeout for stopping Docker containers gracefully with SIGTERM before SIGKILL is sent.
 # Default is 30 seconds which matches the Kubernetes default grace period for pod termination.
 DOCKER_STOP_TIMEOUT = int(os.getenv("NEMO_JOBS_DEFAULT_DOCKER_STOP_TIMEOUT", "30"))
+NMP_JOBS_DOCKER_OWNER_ID_ENVVAR = "NMP_JOBS_DOCKER_OWNER_ID"
 
 
 ProviderT = TypeVar("ProviderT", bound=ExecutionProviderT)
+
+
+def _resolve_jobs_controller_instance_id() -> str:
+    configured = os.getenv(NMP_JOBS_DOCKER_OWNER_ID_ENVVAR)
+    if configured:
+        return configured
+
+    owner_source = f"nmp-data-dir:{nmp_user_data_dir().expanduser().resolve()}"
+    return hashlib.sha256(owner_source.encode("utf-8")).hexdigest()[:32]
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,6 +204,7 @@ class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], G
     BACKEND_NAME: str = "docker"
 
     def init(self) -> None:
+        self._jobs_controller_instance_id = _resolve_jobs_controller_instance_id()
         self._container_start_admission = threading.BoundedSemaphore(DOCKER_CONTAINER_START_WORKERS)
         self._container_run_threadpool = ThreadPoolExecutor(max_workers=DOCKER_CONTAINER_START_WORKERS)
         self._client = docker.from_env(timeout=180)
@@ -218,6 +231,31 @@ class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], G
         """Return True if the container has the jobs-controller managed-by label."""
         labels = getattr(container, "labels", None) or {}
         return labels.get(JOB_MANAGED_BY_LABEL) == JOB_MANAGED_BY_JOBS_CONTROLLER
+
+    def _base_controller_labels(self) -> dict[str, str]:
+        return {
+            JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+            JOB_CONTROLLER_INSTANCE_ID_LABEL: self._jobs_controller_instance_id,
+            JOB_EXECUTION_BACKEND_LABEL: self.BACKEND_NAME,
+            JOB_EXECUTION_PROFILE_LABEL: self._profile_name,
+        }
+
+    def _is_container_owned_by_this_controller(self, container: Container) -> bool:
+        labels = getattr(container, "labels", None) or {}
+        return (
+            labels.get(JOB_MANAGED_BY_LABEL) == JOB_MANAGED_BY_JOBS_CONTROLLER
+            and labels.get(JOB_CONTROLLER_INSTANCE_ID_LABEL) == self._jobs_controller_instance_id
+        )
+
+    def _cleanup_container_filters(self) -> dict[str, list[str]]:
+        return {
+            "label": [
+                f"{JOB_MANAGED_BY_LABEL}={JOB_MANAGED_BY_JOBS_CONTROLLER}",
+                f"{JOB_CONTROLLER_INSTANCE_ID_LABEL}={self._jobs_controller_instance_id}",
+                f"{JOB_EXECUTION_BACKEND_LABEL}={self.BACKEND_NAME}",
+                f"{JOB_EXECUTION_PROFILE_LABEL}={self._profile_name}",
+            ]
+        }
 
     def job_storage_subpath(self, workspace: str, job: str) -> str:
         return f"jobs/{workspace}/{job}"
@@ -282,12 +320,10 @@ fi
         volumes = {storage_config.volume_name: {"bind": "/vol", "mode": "rw"}}
 
         labels = {
+            **self._base_controller_labels(),
             JOB_WORKSPACE_ID_LABEL: workspace,
             JOB_ID_LABEL: job,
-            JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
             JOB_TYPE_LABEL: JOB_TYPE_STORAGE_CLEANUP,
-            JOB_EXECUTION_BACKEND_LABEL: self.BACKEND_NAME,
-            JOB_EXECUTION_PROFILE_LABEL: self._profile_name,
         }
         container_args = {
             "name": f"job-cleanup-{workspace}-{job}-{uuid.uuid4().hex[:8]}",
@@ -334,11 +370,14 @@ fi
             self.cleanup_container(container)
 
     def cleanup_container(self, container: Container) -> None:
-        """Remove a Docker container. Only removes containers managed by the jobs controller."""
-        if not self._is_container_managed_by_jobs_controller(container):
+        """Remove a Docker container. Only removes containers owned by this jobs controller."""
+        if not self._is_container_owned_by_this_controller(container):
             logger.warning(
-                "Skipping container remove (not managed by jobs-controller)",
-                extra={"container_id": container.id[:16] if container.id else "unknown"},
+                "Skipping container remove (not owned by this jobs-controller)",
+                extra={
+                    "container_id": container.id[:16] if container.id else "unknown",
+                    "owner_label": (getattr(container, "labels", None) or {}).get(JOB_CONTROLLER_INSTANCE_ID_LABEL),
+                },
             )
             return
         try:
@@ -722,6 +761,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
         )
 
         labels = {
+            **self._base_controller_labels(),
             JOB_WORKSPACE_ID_LABEL: step.workspace,
             JOB_ID_LABEL: step.job,
             JOB_ATTEMPT_ID_LABEL: step.attempt_id,
@@ -730,10 +770,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
             # because parallelism is not supported.
             JOB_TASK_ID_LABEL: task_id,
             JOB_STEP_ID_LABEL: step.id,
-            JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
             JOB_TYPE_LABEL: JOB_TYPE_JOB,
-            JOB_EXECUTION_BACKEND_LABEL: self.BACKEND_NAME,
-            JOB_EXECUTION_PROFILE_LABEL: self._profile_name,
         }
 
         # Mark container if it uses persistent storage so we can clean it up later
@@ -1201,10 +1238,13 @@ chmod -R 777 {job_vol}/{storage_subpath}
         status_details = {"message": message}
         error_details = {"message": message}
 
-        if not self._is_container_managed_by_jobs_controller(container):
+        if not self._is_container_owned_by_this_controller(container):
             logger.warning(
-                "Skipping container kill (not managed by jobs-controller)",
-                extra={"container_name": container.name},
+                "Skipping container kill (not owned by this jobs-controller)",
+                extra={
+                    "container_name": container.name,
+                    "owner_label": (getattr(container, "labels", None) or {}).get(JOB_CONTROLLER_INSTANCE_ID_LABEL),
+                },
             )
             return JobUpdate(
                 status=PlatformJobStatus.ERROR.value,
@@ -1276,14 +1316,17 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 error_details={"message": "Container not found while stopping container"},
             )
         else:
-            if not self._is_container_managed_by_jobs_controller(container):
+            if not self._is_container_owned_by_this_controller(container):
                 logger.warning(
-                    "Skipping container stop (not managed by jobs-controller)",
-                    extra={"container_name": container.name},
+                    "Skipping container stop (not owned by this jobs-controller)",
+                    extra={
+                        "container_name": container.name,
+                        "owner_label": (getattr(container, "labels", None) or {}).get(JOB_CONTROLLER_INSTANCE_ID_LABEL),
+                    },
                 )
                 return JobUpdate(
                     status=PlatformJobStatus.ERROR,
-                    error_details={"message": "Container not managed by jobs controller"},
+                    error_details={"message": "Container not owned by this jobs controller"},
                 )
             try:
                 logger.debug(
@@ -1503,12 +1546,21 @@ chmod -R 777 {job_vol}/{storage_subpath}
     def cleanup_steps(self):
         containers = self._client.containers.list(
             all=True,
-            filters={"label": JOB_MANAGED_BY_LABEL},
+            filters=self._cleanup_container_filters(),
             ignore_removed=True,
         )
         for container in containers:
             try:
-                if container.labels.get(JOB_MANAGED_BY_LABEL) != JOB_MANAGED_BY_JOBS_CONTROLLER:
+                if not self._is_container_owned_by_this_controller(container):
+                    logger.debug(
+                        "Skipping Docker cleanup for unowned job container",
+                        extra={
+                            "container_name": getattr(container, "name", None),
+                            "owner_label": (getattr(container, "labels", None) or {}).get(
+                                JOB_CONTROLLER_INSTANCE_ID_LABEL
+                            ),
+                        },
+                    )
                     continue
                 if container.labels.get(JOB_TYPE_LABEL) != JOB_TYPE_JOB:
                     continue

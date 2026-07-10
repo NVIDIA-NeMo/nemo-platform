@@ -24,35 +24,16 @@ from .atif_step_param import AtifStepParam
 from .atif_agent_param import AtifAgentParam
 from .atif_final_metrics_param import AtifFinalMetricsParam
 from ..evaluation_context_param import EvaluationContextParam
-from ..experiment_context_param import ExperimentContextParam
 
-__all__ = ["AtifCreateParams"]
+__all__ = ["AtifTrajectoryParam"]
 
 
-class AtifCreateParams(TypedDict, total=False):
-    workspace: str
-
+class AtifTrajectoryParam(TypedDict, total=False):
     agent: Required[AtifAgentParam]
-
-    schema_version: Required[
-        Literal["ATIF-v1.0", "ATIF-v1.1", "ATIF-v1.2", "ATIF-v1.3", "ATIF-v1.4", "ATIF-v1.5", "ATIF-v1.6", "ATIF-v1.7"]
-    ]
 
     continued_trajectory_ref: str
 
     evaluation_context: EvaluationContextParam
-    """Evaluation context accepted by ingest endpoints (the canonical shape).
-
-    `extra="ignore"` so a producer still sending retired keys (evaluation_sha,
-    evaluation_run_id, metadata) keeps ingesting without error rather than being
-    rejected.
-    """
-
-    experiment_context: ExperimentContextParam
-    """Deprecated alias for :class:`EvaluationContext`.
-
-    Producers should send `evaluation_context`.
-    """
 
     extra: Dict[str, object]
 
@@ -60,13 +41,19 @@ class AtifCreateParams(TypedDict, total=False):
 
     notes: str
 
+    schema_version: Literal[
+        "ATIF-v1.0", "ATIF-v1.1", "ATIF-v1.2", "ATIF-v1.3", "ATIF-v1.4", "ATIF-v1.5", "ATIF-v1.6", "ATIF-v1.7"
+    ]
+
     session_id: str
 
     steps: Iterable[AtifStepParam]
 
     subagent_trajectories: Iterable["AtifTrajectoryParam"]
+    """Embedded ATIF-v1.7 subagent trajectories.
+
+    Intake expands these into the parent trajectory's trace, resolving
+    subagent_trajectory_ref entries by trajectory_id.
+    """
 
     trajectory_id: str
-
-
-from .atif_trajectory_param import AtifTrajectoryParam

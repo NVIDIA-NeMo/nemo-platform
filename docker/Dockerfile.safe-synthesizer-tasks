@@ -43,6 +43,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
         bash \
+        build-essential \
         ca-certificates \
         libgomp1 \
         tini && \
@@ -53,6 +54,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     rm -rf /var/lib/apt/lists/*
 
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    NEMO_DEPLOYMENT_TYPE=nmp \
     PATH="/opt/venv/bin:${PATH}" \
     UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
@@ -80,6 +82,7 @@ LABEL org.opencontainers.image.title="Safe Synthesizer Tasks" \
 
 # Install the Safe Synthesizer engine/CUDA runtime before copying Platform
 # sources, so plugin-only edits do not invalidate the large dependency layers.
+COPY plugins/nemo-safe-synthesizer/constraints.txt /tmp/safe-synthesizer-constraints.txt
 RUN uv venv /opt/venv
 RUN printf '%s\n' \
         flashinfer-cubin \
@@ -121,6 +124,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --index-strategy unsafe-best-match \
         --torch-backend cu129 \
         --overrides /tmp/safe-synthesizer-overrides.txt \
+        --constraints /tmp/safe-synthesizer-constraints.txt \
         --excludes /tmp/exclude-flashinfer-torch-vllm.txt \
         --requirements /tmp/safe-synthesizer-runtime.txt
 
@@ -132,6 +136,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --index-strategy unsafe-best-match \
         --torch-backend cu129 \
         --overrides /tmp/safe-synthesizer-overrides.txt \
+        --constraints /tmp/safe-synthesizer-constraints.txt \
         --excludes /tmp/exclude-torch-vllm.txt \
         --requirements /tmp/safe-synthesizer-runtime.txt
 
@@ -143,6 +148,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --index-strategy unsafe-best-match \
         --torch-backend cu129 \
         --overrides /tmp/safe-synthesizer-overrides.txt \
+        --constraints /tmp/safe-synthesizer-constraints.txt \
         --excludes /tmp/exclude-vllm.txt \
         --requirements /tmp/safe-synthesizer-runtime.txt
 
@@ -154,6 +160,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --index-strategy unsafe-best-match \
         --torch-backend cu129 \
         --overrides /tmp/safe-synthesizer-overrides.txt \
+        --constraints /tmp/safe-synthesizer-constraints.txt \
         --requirements /tmp/safe-synthesizer-runtime.txt \
         --requirements /tmp/vllm-cu129.txt
 

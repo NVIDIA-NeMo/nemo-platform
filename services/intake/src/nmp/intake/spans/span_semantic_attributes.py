@@ -31,8 +31,6 @@ class SpanSemanticAttributes(BaseModel):
     tool_name: str | None = None
     project: str | None = None
     evaluation_id: str | None = None
-    evaluation_sha: str | None = None
-    evaluation_run_id: str | None = None
     test_case_id: str | None = None
     error_type: str | None = None
     error_message: str | None = None

@@ -38,6 +38,7 @@ from ....types.intake.ingest.atif_step_param import AtifStepParam
 from ....types.intake.ingest.atif_agent_param import AtifAgentParam
 from ....types.intake.evaluation_context_param import EvaluationContextParam
 from ....types.intake.experiment_context_param import ExperimentContextParam
+from ....types.intake.ingest.atif_trajectory_param import AtifTrajectoryParam
 from ....types.intake.ingest.atif_final_metrics_param import AtifFinalMetricsParam
 
 __all__ = ["AtifResource", "AsyncAtifResource"]
@@ -79,6 +80,8 @@ class AtifResource(SyncAPIResource):
         notes: str | Omit = omit,
         session_id: str | Omit = omit,
         steps: Iterable[AtifStepParam] | Omit = omit,
+        subagent_trajectories: Iterable[AtifTrajectoryParam] | Omit = omit,
+        trajectory_id: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -86,15 +89,18 @@ class AtifResource(SyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> None:
-        """Ingest Atif
+        """
+        Ingest Atif
 
         Args:
-          evaluation_context: Deprecated.
+          evaluation_context: Evaluation context accepted by ingest endpoints (the canonical shape).
 
-        Use experiment_context; when both are sent, experiment_context takes
-              precedence.
+              `extra="ignore"` so a producer still sending retired keys (evaluation_sha,
+              evaluation_run_id, metadata) keeps ingesting without error rather than being
+              rejected.
 
-          experiment_context: Experiment context accepted by ingest endpoints.
+          experiment_context: Deprecated alias for :class:`EvaluationContext`. Producers should send
+              `evaluation_context`.
 
           extra_headers: Send extra headers
 
@@ -123,6 +129,8 @@ class AtifResource(SyncAPIResource):
                     "notes": notes,
                     "session_id": session_id,
                     "steps": steps,
+                    "subagent_trajectories": subagent_trajectories,
+                    "trajectory_id": trajectory_id,
                 },
                 atif_create_params.AtifCreateParams,
             ),
@@ -169,6 +177,8 @@ class AsyncAtifResource(AsyncAPIResource):
         notes: str | Omit = omit,
         session_id: str | Omit = omit,
         steps: Iterable[AtifStepParam] | Omit = omit,
+        subagent_trajectories: Iterable[AtifTrajectoryParam] | Omit = omit,
+        trajectory_id: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -176,15 +186,18 @@ class AsyncAtifResource(AsyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> None:
-        """Ingest Atif
+        """
+        Ingest Atif
 
         Args:
-          evaluation_context: Deprecated.
+          evaluation_context: Evaluation context accepted by ingest endpoints (the canonical shape).
 
-        Use experiment_context; when both are sent, experiment_context takes
-              precedence.
+              `extra="ignore"` so a producer still sending retired keys (evaluation_sha,
+              evaluation_run_id, metadata) keeps ingesting without error rather than being
+              rejected.
 
-          experiment_context: Experiment context accepted by ingest endpoints.
+          experiment_context: Deprecated alias for :class:`EvaluationContext`. Producers should send
+              `evaluation_context`.
 
           extra_headers: Send extra headers
 
@@ -213,6 +226,8 @@ class AsyncAtifResource(AsyncAPIResource):
                     "notes": notes,
                     "session_id": session_id,
                     "steps": steps,
+                    "subagent_trajectories": subagent_trajectories,
+                    "trajectory_id": trajectory_id,
                 },
                 atif_create_params.AtifCreateParams,
             ),

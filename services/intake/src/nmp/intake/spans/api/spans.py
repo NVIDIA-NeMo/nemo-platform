@@ -38,8 +38,6 @@ ATTRIBUTE_EQ_FILTER_FIELDS = frozenset(
     {
         "project",
         "evaluation_id",
-        "evaluation_sha",
-        "evaluation_run_id",
         "dataset_id",
         "dataset_name",
         "dataset_version",
