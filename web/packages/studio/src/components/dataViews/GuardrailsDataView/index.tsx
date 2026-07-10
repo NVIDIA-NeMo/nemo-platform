@@ -8,7 +8,10 @@ import {
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
-import { useGuardrailsListGuardrailConfigs } from '@nemo/sdk/generated/platform/api';
+import {
+  useGuardrailsListGuardrailConfigs,
+  useListVirtualModels,
+} from '@nemo/sdk/generated/platform/api';
 import type {
   GuardrailConfig,
   GuardrailsListGuardrailConfigsParams,
@@ -17,9 +20,10 @@ import { Button, Flex, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { countRails } from '@studio/components/dataViews/GuardrailsDataView/guardrailUtils';
 import { ErrorPanel } from '@studio/components/ErrorPanel';
+import { getTestVmName } from '@studio/routes/guardrails/useGuardrailTestVm';
 import { keepPreviousData } from '@tanstack/react-query';
 import { ShieldCheck, Trash } from 'lucide-react';
-import { type ComponentProps, type FC, useCallback } from 'react';
+import { type ComponentProps, type FC, useCallback, useMemo } from 'react';
 
 export interface GuardrailsDataViewProps {
   workspace: string;
@@ -54,6 +58,11 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
       query: { placeholderData: keepPreviousData },
     }
   );
+
+  // One list of the workspace's VMs; a config is "testable" when its
+  // deterministic test VM exists (matched by name).
+  const { data: vmsData } = useListVirtualModels(workspace, { page_size: 200 });
+  const testVmNames = useMemo(() => new Set((vmsData?.data ?? []).map((vm) => vm.name)), [vmsData]);
 
   const pagination = data?.pagination;
   const hasSearchOrFilters = !!dataViewState.debouncedSearchBar;
@@ -98,6 +107,20 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
             return <Text>{countRails(row.original.data)}</Text>;
           },
         }),
+        accessor('name', {
+          id: 'testVm',
+          header: 'Test model',
+          enableSorting: false,
+          size: 110,
+          cell({ row }) {
+            const name = row.original.name;
+            return name && testVmNames.has(getTestVmName(name)) ? (
+              <Text className="text-feedback-success">Ready</Text>
+            ) : (
+              <Text className="text-fg-subdued">—</Text>
+            );
+          },
+        }),
         accessor('updated_at', {
           header: 'Updated',
           enableSorting: false,
@@ -123,7 +146,7 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
           ],
         }),
       ],
-      [onRequestDelete]
+      [onRequestDelete, testVmNames]
     );
 
   return (

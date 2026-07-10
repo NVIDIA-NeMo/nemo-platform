@@ -66,6 +66,13 @@ export interface AssistantChatProps {
    */
   baseURL?: string;
   /**
+   * Whether to request a streaming completion. Defaults to true. Set false for
+   * endpoints that may return a non-streamed response even when streaming is
+   * requested (e.g. guardrailed inference, where a blocked turn comes back as a
+   * single JSON completion), so the response renders via the non-stream path.
+   */
+  stream?: boolean;
+  /**
    * Optional prompt data used for system prompt and inference parameter defaults.
    */
   promptData?: PromptData;

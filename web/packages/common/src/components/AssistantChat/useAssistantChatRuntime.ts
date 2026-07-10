@@ -37,6 +37,7 @@ type UseAssistantChatRuntimeOptions = Pick<
   | 'onRunningChange'
   | 'onEmptyChange'
   | 'promptData'
+  | 'stream'
   | 'tools'
   | 'workspace'
   | 'enableImageAttachments'
@@ -47,6 +48,7 @@ export const useAssistantChatRuntime = ({
   workspace,
   baseURL,
   promptData,
+  stream = true,
   tools,
   disabled = false,
   initialMessages = [],
@@ -115,7 +117,7 @@ export const useAssistantChatRuntime = ({
           messages: getOpenAIMessages(conversationMessages, promptData?.system_prompt),
           max_tokens: promptData?.inference_params?.max_tokens,
           temperature: promptData?.inference_params?.temperature,
-          stream: true,
+          stream,
           tools: tools?.length ? tools : undefined,
           signal: runController.signal,
         });
@@ -165,7 +167,13 @@ export const useAssistantChatRuntime = ({
             });
           }
         } else {
-          const text = getCompletionText(result);
+          // A guardrail block can arrive as a non-streamed completion; if the
+          // content is empty but the turn was filtered, show a clear message.
+          const text =
+            getCompletionText(result) ||
+            (result.choices[0]?.finish_reason === 'content_filter'
+              ? 'This response was blocked by a guardrail.'
+              : '');
           updateAssistantMessage(assistantMessage.id!, text, COMPLETE_STATUS);
           if (onMessageComplete) {
             const totalMs = Math.round(performance.now() - startMs);
@@ -213,6 +221,7 @@ export const useAssistantChatRuntime = ({
       promptData?.inference_params?.temperature,
       promptData?.system_prompt,
       setThreadMessages,
+      stream,
       tools,
       updateAssistantMessage,
       workspace,

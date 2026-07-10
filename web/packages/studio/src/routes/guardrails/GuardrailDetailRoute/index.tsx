@@ -3,25 +3,28 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { KVPair } from '@nemo/common/src/components/KVPair';
-import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import {
+  useDeleteVirtualModel,
   useGuardrailsDeleteConfig,
   useGuardrailsGetGuardrailConfig,
 } from '@nemo/sdk/generated/platform/api';
-import { Button, Flex, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
+import { Button, Flex, PageHeader, Stack, Tabs, Text } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
-import { countRails } from '@studio/components/dataViews/GuardrailsDataView/guardrailUtils';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { Loading } from '@studio/components/Layouts/Loading';
-import { ROUTE_PARAMS } from '@studio/constants/routes';
+import { ROUTE_PARAMS, ROUTES } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { getGuardrailsRoute } from '@studio/routes/utils';
+import { getTestVmName } from '@studio/routes/guardrails/useGuardrailTestVm';
+import {
+  getGuardrailChatRoute,
+  getGuardrailDetailsRoute,
+  getGuardrailsRoute,
+} from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { useQueryClient } from '@tanstack/react-query';
-import { type FC, useCallback, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { type FC, Suspense, useCallback, useState } from 'react';
+import { Link, Outlet, matchPath, useLocation, useNavigate } from 'react-router-dom';
 
 export const GuardrailDetailRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
@@ -30,6 +33,18 @@ export const GuardrailDetailRoute: FC = () => {
   const { guardrailConfigName } = useRequiredPathParams([ROUTE_PARAMS.guardrailConfigName]);
 
   const [showDelete, setShowDelete] = useState(false);
+
+  const location = useLocation();
+  const match = matchPath(
+    { path: `${ROUTES.workspace.guardrailDetail}/:selectedTab`, end: false },
+    location.pathname
+  );
+  const {
+    params: { selectedTab },
+  } = match ?? { params: { selectedTab: 'details' } };
+
+  const detailsRoute = getGuardrailDetailsRoute(workspace, guardrailConfigName);
+  const chatRoute = getGuardrailChatRoute(workspace, guardrailConfigName);
 
   useBreadcrumbs({
     items: [
@@ -48,10 +63,17 @@ export const GuardrailDetailRoute: FC = () => {
   });
 
   const { mutateAsync: deleteConfig } = useGuardrailsDeleteConfig();
+  const { mutateAsync: deleteVm } = useDeleteVirtualModel();
 
   const handleDelete = useCallback(async (): Promise<boolean> => {
     try {
       await deleteConfig({ workspace, name: guardrailConfigName });
+      // Best-effort cleanup of the feature-owned test VM (may not exist).
+      try {
+        await deleteVm({ workspace, name: getTestVmName(guardrailConfigName) });
+      } catch {
+        // Ignore — no test VM to clean up.
+      }
       // Invalidate by URL prefix — matches all pages/sorts for this workspace.
       await queryClient.invalidateQueries({
         queryKey: [`/apis/guardrails/v2/workspaces/${workspace}/configs`],
@@ -61,7 +83,7 @@ export const GuardrailDetailRoute: FC = () => {
     } catch {
       return false;
     }
-  }, [deleteConfig, guardrailConfigName, navigate, queryClient, workspace]);
+  }, [deleteConfig, deleteVm, guardrailConfigName, navigate, queryClient, workspace]);
 
   if (isPending) {
     return <Loading description="Loading guardrail config..." />;
@@ -77,9 +99,6 @@ export const GuardrailDetailRoute: FC = () => {
       </AccessibleTitle>
     );
   }
-
-  const modelCount = config.data?.models?.length ?? 0;
-  const railCount = countRails(config.data);
 
   return (
     <AccessibleTitle title={`Guardrail config ${guardrailConfigName}`}>
@@ -102,64 +121,21 @@ export const GuardrailDetailRoute: FC = () => {
           }
         />
 
-        <Stack className="gap-density-lg">
-          <Stack className="gap-density-md">
-            {config.description ? (
-              <KVPair
-                label="Description"
-                orientation="horizontal"
-                size="medium"
-                truncate={false}
-                value={config.description}
-              />
-            ) : null}
-            <KVPair
-              label="Models"
-              orientation="horizontal"
-              size="medium"
-              value={String(modelCount)}
-            />
-            <KVPair
-              label="Rails"
-              orientation="horizontal"
-              size="medium"
-              value={String(railCount)}
-            />
-            <KVPair
-              label="Created"
-              orientation="horizontal"
-              size="medium"
-              value={
-                config.created_at ? (
-                  <RelativeTime datetime={config.created_at} focusableForTooltip={false} />
-                ) : (
-                  '—'
-                )
-              }
-            />
-            <KVPair
-              label="Updated"
-              orientation="horizontal"
-              size="medium"
-              value={
-                config.updated_at ? (
-                  <RelativeTime datetime={config.updated_at} focusableForTooltip={false} />
-                ) : (
-                  '—'
-                )
-              }
-            />
-          </Stack>
+        <Tabs
+          // Override KUI's default overflow:hidden since we're using Tabs purely for
+          // navigation (with renderLink), not for containing tab panel content.
+          className="overflow-visible"
+          value={selectedTab}
+          items={[
+            { value: 'details', children: 'Details', href: detailsRoute },
+            { value: 'chat', children: 'Chat', href: chatRoute },
+          ]}
+          renderLink={(item) => <Link to={item.href!}>{item.children}</Link>}
+        />
 
-          {config.data ? (
-            <Stack gap="density-sm">
-              <Text kind="label/bold/sm">Config</Text>
-              <pre className="overflow-auto rounded bg-surface-raised p-density-md text-xs leading-relaxed">
-                {JSON.stringify(config.data, null, 2)}
-              </pre>
-            </Stack>
-          ) : null}
-        </Stack>
+        <Suspense fallback={<Loading description="Loading..." />}>
+          <Outlet />
+        </Suspense>
       </Stack>
 
       {showDelete ? (

@@ -20,6 +20,7 @@ interface ModelChatProps extends Pick<
   | 'model'
   | 'workspace'
   | 'baseURL'
+  | 'stream'
   | 'promptData'
   | 'tools'
   | 'assistantName'
