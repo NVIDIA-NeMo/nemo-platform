@@ -130,6 +130,7 @@ env:
   RELEASE_NIGHTLY_HELM_OCI_REGISTRY: oci://ghcr.io/nvidia-nemo/nemo-platform
   # Stable charts must be promoted from RELEASE_HELM_REGISTRY before polling.
   RELEASE_STABLE_HELM_REPOSITORY: https://helm.ngc.nvidia.com/nvidia/nemo-platform
+  RELEASE_NGC_CATALOG_BASE: https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo-platform
 
 jobs:
   plan-release:
@@ -440,14 +441,55 @@ jobs:
           echo "wheel_version=${wheel_version}" >> "${GITHUB_OUTPUT}"
 
   notify-start:
+    # Start alerts intentionally run for dry runs so the webhook can be tested.
     name: Notify release start
     needs: plan-release
-    if: >-
-      needs.plan-release.outputs.send_notifications == 'true' &&
-      needs.plan-release.outputs.dry_run != 'true'
+    if: needs.plan-release.outputs.send_notifications == 'true'
     runs-on: ubuntu-latest
     steps:
-      - run: echo "::notice::Placeholder - send release start notification"
+      - name: Send Slack alert
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          SLACK_ALERTS_WEBHOOK: ${{ secrets.SLACK_ALERTS_WEBHOOK }}
+          RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
+          RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
+          SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
+          WHEEL_IDS: ${{ needs.plan-release.outputs.wheel_ids }}
+          CONTAINER_IDS: ${{ needs.plan-release.outputs.container_ids }}
+          INCLUDE_HELM: ${{ needs.plan-release.outputs.include_helm }}
+          DRY_RUN: ${{ needs.plan-release.outputs.dry_run }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+        with:
+          script: |
+            const wheels = JSON.parse(process.env.WHEEL_IDS);
+            const containers = JSON.parse(process.env.CONTAINER_IDS);
+            const releaseType = process.env.RELEASE_TYPE;
+            const title = releaseType === "stable"
+              ? ":ship: Release started"
+              : ":crescent_moon: Nightly release started";
+            const artifacts = [
+              wheels.length > 0 && `Wheels: ${wheels.join(", ")}`,
+              containers.length > 0 && `Containers: ${containers.join(", ")}`,
+              process.env.INCLUDE_HELM === "true" && "Helm: nemo-platform",
+            ].filter(Boolean).join("; ");
+            const lines = [
+              title,
+              `Channel: ${releaseType}`,
+              `Release: ${process.env.RELEASE_LABEL}`,
+              `Platform: ${process.env.SOURCE_SHA.slice(0, 7)}`,
+              `Artifacts: ${artifacts}`,
+              process.env.DRY_RUN === "true" && "Mode: dry run (no publishing)",
+              `:link: <${process.env.RUN_URL}|Release run #${process.env.RUN_NUMBER}>`,
+            ].filter(Boolean);
+            const response = await fetch(process.env.SLACK_ALERTS_WEBHOOK, {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({text: lines.join("\n")}),
+            });
+            if (!response.ok) {
+              core.setFailed(`Slack webhook returned ${response.status}.`);
+            }
 
   sync-ngc-metadata:
     name: Synchronize NGC metadata
@@ -737,9 +779,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          # TODO: Send a Slack alert if this release has waited two hours.
-          # Keep the 240-minute job timeout for delayed point releases.
-
           if [[ "${RELEASE_TYPE}" == "nightly" ]]; then
             wheel_index="${RELEASE_NIGHTLY_WHEEL_INDEX}"
           else
@@ -775,9 +814,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          # TODO: Send a Slack alert if this release has waited two hours.
-          # Keep the 240-minute job timeout for delayed point releases.
-
           while IFS= read -r container_id; do
             ref="${CONTAINER_REGISTRY}/${container_id}:${CONTAINER_TAG}"
             until docker manifest inspect "${ref}" >/dev/null 2>&1; do
@@ -803,9 +839,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          # TODO: Send a Slack alert if this release has waited two hours.
-          # Keep the 240-minute job timeout for delayed point releases.
-
           if [[ "${RELEASE_TYPE}" == "nightly" ]]; then
             chart_ref="${NIGHTLY_HELM_OCI_REGISTRY}/${CHART_ID}"
             chart_is_available() {
@@ -824,6 +857,87 @@ jobs:
             sleep "${POLL_INTERVAL_SECONDS}"
           done
           echo "Found ${CHART_ID}==${CHART_VERSION}"
+
+  alert-poll-delay:
+    name: Alert if release polling is delayed
+    needs:
+      - plan-release
+      - dispatch-release-registration
+      - dispatch-wheel-stage
+      - dispatch-container-stage
+      - stage-helm
+    if: >-
+      always() &&
+      needs.plan-release.result == 'success' &&
+      needs.plan-release.outputs.send_notifications == 'true' &&
+      needs.plan-release.outputs.dry_run != 'true' &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-latest
+    timeout-minutes: 125
+    permissions:
+      actions: read
+    steps:
+      - name: Alert if final artifact polling exceeds two hours
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          SLACK_ALERTS_WEBHOOK: ${{ secrets.SLACK_ALERTS_WEBHOOK }}
+          RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
+          RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
+          SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+        with:
+          script: |
+            // The poll job has a four-hour timeout; alert after two hours.
+            const pollJobName = "Wait for published release artifacts";
+            const deadline = Date.now() + (2 * 60 * 60 * 1000);
+            const sleep = (milliseconds) => new Promise((resolve) => {
+              setTimeout(resolve, milliseconds);
+            });
+            const findPollJob = async () => {
+              const {data} = await github.rest.actions.listJobsForWorkflowRun({
+                ...context.repo,
+                run_id: context.runId,
+                per_page: 100,
+              });
+              return data.jobs.find((job) => job.name === pollJobName);
+            };
+
+            while (Date.now() < deadline) {
+              const pollJob = await findPollJob();
+              if (pollJob?.status === "completed") {
+                core.info("Final artifact polling completed before the alert threshold.");
+                return;
+              }
+              await sleep(Math.min(60_000, deadline - Date.now()));
+            }
+
+            const pollJob = await findPollJob();
+            if (pollJob?.status === "completed") {
+              core.info("Final artifact polling completed at the alert threshold.");
+              return;
+            }
+
+            const title = process.env.RELEASE_TYPE === "stable"
+              ? ":warning: Release artifact polling delayed"
+              : ":warning: Nightly artifact polling delayed";
+            const lines = [
+              title,
+              `Channel: ${process.env.RELEASE_TYPE}`,
+              `Release: ${process.env.RELEASE_LABEL}`,
+              `Platform: ${process.env.SOURCE_SHA.slice(0, 7)}`,
+              "Final artifact polling has exceeded two hours.",
+              `:link: <${process.env.RUN_URL}|Release run #${process.env.RUN_NUMBER}>`,
+            ];
+            const response = await fetch(process.env.SLACK_ALERTS_WEBHOOK, {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({text: lines.join("\n")}),
+            });
+            if (!response.ok) {
+              core.setFailed(`Slack webhook returned ${response.status}.`);
+            }
 
   create-github-release:
     name: Create GitHub Release
@@ -847,17 +961,113 @@ jobs:
       - run: echo "::notice::Placeholder - signal the completed release"
 
   notify-end:
-    name: Notify release end
+    name: Notify release result
     needs:
       - plan-release
       - poll-final-release
       - create-github-release
       - signal-deployment
+      - stage-helm
     if: >-
       always() &&
       needs.plan-release.outputs.send_notifications == 'true' &&
-      needs.plan-release.outputs.dry_run != 'true' &&
-      needs.poll-final-release.result == 'success'
+      needs.plan-release.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
     steps:
-      - run: echo "::notice::Placeholder - send release end notification"
+      - name: Send Slack alert
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          # TODO: Use a dedicated final-release webhook once it is configured.
+          SLACK_ALERTS_WEBHOOK: ${{ secrets.SLACK_ALERTS_WEBHOOK }}
+          RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
+          RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
+          SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
+          WHEEL_IDS: ${{ needs.plan-release.outputs.wheel_ids }}
+          WHEEL_CATALOG: ${{ env.RELEASE_WHEELS_JSON }}
+          WHEEL_VERSION: ${{ needs.plan-release.outputs.wheel_version }}
+          CONTAINER_IDS: ${{ needs.plan-release.outputs.container_ids }}
+          INCLUDE_HELM: ${{ needs.plan-release.outputs.include_helm }}
+          CHART_VERSION: ${{ needs.stage-helm.outputs.chart_version }}
+          NIGHTLY_WHEEL_INDEX: ${{ env.RELEASE_NIGHTLY_WHEEL_INDEX }}
+          STABLE_WHEEL_INDEX: ${{ env.RELEASE_STABLE_WHEEL_INDEX }}
+          NGC_CATALOG_BASE: ${{ env.RELEASE_NGC_CATALOG_BASE }}
+          POLL_RESULT: ${{ needs.poll-final-release.result }}
+          GITHUB_RELEASE_RESULT: ${{ needs.create-github-release.result }}
+          DEPLOYMENT_RESULT: ${{ needs.signal-deployment.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+        with:
+          script: |
+            const releaseType = process.env.RELEASE_TYPE;
+            const results = [
+              process.env.POLL_RESULT,
+              process.env.GITHUB_RELEASE_RESULT,
+              process.env.DEPLOYMENT_RESULT,
+            ];
+            const failed = results.some((result) => ["failure", "cancelled"].includes(result));
+            const published = process.env.POLL_RESULT === "success" && !failed;
+            const title = published
+              ? (releaseType === "stable"
+                ? ":ship: Release publish complete"
+                : ":crescent_moon: Nightly release publish complete")
+              : (releaseType === "stable"
+                ? ":warning: Release publish failed"
+                : ":warning: Nightly release publish failed");
+            const lines = [
+              title,
+              `Channel: ${releaseType}`,
+              `Release: ${process.env.RELEASE_LABEL}`,
+              `Platform: ${process.env.SOURCE_SHA.slice(0, 7)}`,
+            ];
+
+            if (published) {
+              const wheelIds = JSON.parse(process.env.WHEEL_IDS);
+              const wheelCatalog = JSON.parse(process.env.WHEEL_CATALOG);
+              const containerIds = JSON.parse(process.env.CONTAINER_IDS);
+              if (wheelIds.length > 0) {
+                lines.push("", ":snake: Wheels published:");
+                for (const wheelId of wheelIds) {
+                  const wheel = wheelCatalog.find((candidate) => candidate.id === wheelId);
+                  const wheelIndex = releaseType === "nightly"
+                    ? process.env.NIGHTLY_WHEEL_INDEX
+                    : process.env.STABLE_WHEEL_INDEX;
+                  const wheelUrl = releaseType === "nightly"
+                    ? `${wheelIndex}/${wheel.package}/`
+                    : `${wheelIndex.replace(/\/simple$/, "/project")}/${wheel.package}/${process.env.WHEEL_VERSION}/`;
+                  lines.push(`- <${wheelUrl}|${wheel.package}: ${process.env.WHEEL_VERSION}>`);
+                }
+              }
+              if (containerIds.length > 0) {
+                lines.push("", ":package: Containers published:");
+                for (const containerId of containerIds) {
+                  const container = releaseType === "stable"
+                    ? `<${process.env.NGC_CATALOG_BASE}/containers/${containerId}|${containerId}>`
+                    : containerId;
+                  lines.push(`- ${container}: ${process.env.RELEASE_LABEL}`);
+                }
+              }
+              if (process.env.INCLUDE_HELM === "true") {
+                const chart = releaseType === "stable"
+                  ? `<${process.env.NGC_CATALOG_BASE}/helm-charts/nemo-platform|nemo-platform>`
+                  : "nemo-platform";
+                lines.push("", ":package: Helm chart published:");
+                lines.push(`- ${chart}: ${process.env.CHART_VERSION}`);
+              }
+            } else {
+              lines.push(
+                "",
+                `Final artifact poll: ${process.env.POLL_RESULT}`,
+                `GitHub release: ${process.env.GITHUB_RELEASE_RESULT}`,
+                `Deployment signal: ${process.env.DEPLOYMENT_RESULT}`,
+              );
+            }
+
+            lines.push("", `:link: <${process.env.RUN_URL}|Release run #${process.env.RUN_NUMBER}>`);
+            const response = await fetch(process.env.SLACK_ALERTS_WEBHOOK, {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({text: lines.join("\n")}),
+            });
+            if (!response.ok) {
+              core.setFailed(`Slack webhook returned ${response.status}.`);
+            }
