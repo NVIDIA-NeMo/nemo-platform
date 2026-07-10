@@ -4,7 +4,16 @@
 import { SamplerType } from '@nemo/sdk/generated/data-designer/schema';
 import type { FilesetTemplate } from '@studio/components/CreateFilesetStart/types';
 import { DEFAULT_BUILD_MODEL_NAME } from '@studio/constants/constants';
-import { FlaskConical, GraduationCap } from 'lucide-react';
+import {
+  Braces,
+  Code2,
+  FlaskConical,
+  GraduationCap,
+  ImageIcon,
+  Scale,
+  SearchCode,
+  SquareFunction,
+} from 'lucide-react';
 
 /**
  * The ready-made recipes shown as cards in the secondary area when "Start from a
@@ -139,6 +148,282 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
         values: { dt_min: '1', dt_max: '30', reference_column_name: 'created_at', unit: 'D' },
       },
     ],
+  },
+  {
+    id: 'code-generation',
+    title: 'Code generation + validation (Python)',
+    description:
+      'Python coding challenges with LLM-generated solutions and automatic code validation: exercises a sampled topic, an LLM task description, a code answer, and a pass/fail validation column.',
+    icon: Code2,
+    tag: { label: 'Fine-tuning', color: 'green', kind: 'outline' },
+    columns: [
+      {
+        columnType: 'sampler',
+        samplerType: SamplerType.category,
+        name: 'topic',
+        values: {
+          values:
+            'sorting algorithms, string manipulation, file I/O, data structures, recursion, decorators, generators, async I/O',
+        },
+      },
+      {
+        columnType: 'llm-text',
+        name: 'task',
+        values: {
+          prompt:
+            'Write a clear, self-contained Python coding challenge about {{ topic }}. State what the function should do and give one example input/output pair. Return only the problem statement.',
+          model_alias: 'default',
+        },
+      },
+      {
+        columnType: 'llm-code',
+        name: 'solution',
+        values: {
+          prompt:
+            'Solve the following Python coding challenge. Return only the code — no prose, no markdown fences.\n\n{{ task }}',
+          model_alias: 'default',
+          code_lang: 'python',
+        },
+      },
+      {
+        columnType: 'validation',
+        name: 'is_valid',
+        values: {
+          target_columns: 'solution',
+          validator_type: 'code',
+          validator_params: '{ "code_lang": "python" }',
+        },
+      },
+    ],
+    models: [{ alias: 'default', model: DEFAULT_BUILD_MODEL_NAME }],
+  },
+  {
+    id: 'structured-extraction',
+    title: 'Structured data extraction',
+    description:
+      'Free-form text paired with its structured JSON representation — for training extraction and information-retrieval models. An LLM writes a description; a second call extracts it into a typed schema.',
+    icon: Braces,
+    tag: { label: 'Fine-tuning', color: 'purple', kind: 'outline' },
+    columns: [
+      {
+        columnType: 'sampler',
+        samplerType: SamplerType.category,
+        name: 'entity_type',
+        values: {
+          values: 'product, company, research paper, recipe, event, film',
+        },
+      },
+      {
+        columnType: 'llm-text',
+        name: 'description',
+        values: {
+          prompt:
+            'Write a realistic, detailed description of a {{ entity_type }} — include concrete names, dates, and figures. Return only the description.',
+          model_alias: 'default',
+        },
+      },
+      {
+        columnType: 'llm-structured',
+        name: 'structured',
+        values: {
+          prompt:
+            'Extract the key attributes from the following {{ entity_type }} description:\n\n{{ description }}\n\nReturn the attributes as a JSON object.',
+          model_alias: 'default',
+          output_format:
+            '{ "type": "object", "properties": { "name": { "type": "string" }, "attributes": { "type": "object" } }, "required": ["name", "attributes"] }',
+        },
+      },
+    ],
+    models: [{ alias: 'default', model: DEFAULT_BUILD_MODEL_NAME }],
+  },
+  {
+    id: 'preference-pairs',
+    title: 'Preference pairs (reward modeling)',
+    description:
+      'An instruction with a high-quality chosen answer, a lower-quality rejected answer, and an LLM judge score — for DPO fine-tuning and reward model training.',
+    icon: Scale,
+    tag: { label: 'Alignment', color: 'yellow', kind: 'outline' },
+    columns: [
+      {
+        columnType: 'sampler',
+        samplerType: SamplerType.category,
+        name: 'topic',
+        values: {
+          values: 'science, history, philosophy, mathematics, literature, technology, ethics',
+        },
+      },
+      {
+        columnType: 'llm-text',
+        name: 'instruction',
+        values: {
+          prompt:
+            'Write a challenging, open-ended question about {{ topic }} that requires an explanatory answer. Return only the question.',
+          model_alias: 'default',
+        },
+      },
+      {
+        columnType: 'llm-text',
+        name: 'chosen',
+        values: {
+          prompt: 'Answer the following question accurately and thoroughly:\n\n{{ instruction }}',
+          model_alias: 'default',
+        },
+      },
+      {
+        columnType: 'llm-text',
+        name: 'rejected',
+        values: {
+          prompt:
+            'Give a brief, vague, or slightly inaccurate answer to the following question — do not correct yourself:\n\n{{ instruction }}',
+          model_alias: 'default',
+        },
+      },
+      {
+        columnType: 'llm-judge',
+        name: 'quality_score',
+        values: {
+          prompt:
+            'On a scale of 1–5 (1 = very poor, 5 = excellent), rate the quality of the following answer.\n\nQuestion: {{ instruction }}\nAnswer: {{ chosen }}\n\nReturn only the integer score.',
+          model_alias: 'default',
+        },
+      },
+    ],
+    models: [{ alias: 'default', model: DEFAULT_BUILD_MODEL_NAME }],
+  },
+  {
+    id: 'semantic-search',
+    title: 'Semantic search dataset',
+    description:
+      'Query–passage pairs with vector embeddings for retrieval, RAG evaluation, and semantic similarity benchmarks. Requires an embedding model configured under the "embedder" alias.',
+    icon: SearchCode,
+    tag: { label: 'Retrieval', color: 'blue', kind: 'outline' },
+    columns: [
+      {
+        columnType: 'sampler',
+        samplerType: SamplerType.category,
+        name: 'domain',
+        values: {
+          values: 'science, technology, health, finance, culture, sports',
+        },
+      },
+      {
+        columnType: 'llm-text',
+        name: 'passage',
+        values: {
+          prompt:
+            'Write a factual, self-contained paragraph about a specific topic within {{ domain }}. Return only the paragraph.',
+          model_alias: 'default',
+        },
+      },
+      {
+        columnType: 'llm-text',
+        name: 'query',
+        values: {
+          prompt:
+            'Write a short search query that a user might type to retrieve the following passage:\n\n{{ passage }}\n\nReturn only the query.',
+          model_alias: 'default',
+        },
+      },
+      {
+        columnType: 'embedding',
+        name: 'passage_embedding',
+        values: {
+          target_column: 'passage',
+          model_alias: 'embedder',
+        },
+      },
+    ],
+    models: [
+      { alias: 'default', model: DEFAULT_BUILD_MODEL_NAME },
+      { alias: 'embedder', model: 'nvidia/nv-embedqa-e5-v5' },
+    ],
+  },
+  {
+    id: 'expression-transforms',
+    title: 'Expression transforms (no LLM)',
+    description:
+      'Derived columns computed via Jinja2 expressions — full-name concatenation, score banding into letter grades. No LLM calls; previews instantly.',
+    icon: SquareFunction,
+    tag: { label: 'Transform', color: 'teal', kind: 'outline' },
+    columns: [
+      {
+        columnType: 'sampler',
+        samplerType: SamplerType.category,
+        name: 'first_name',
+        values: { values: 'Alice, Bob, Carol, Dave, Eve, Frank, Grace, Hank' },
+      },
+      {
+        columnType: 'sampler',
+        samplerType: SamplerType.category,
+        name: 'last_name',
+        values: { values: 'Smith, Jones, Williams, Brown, Davis, Miller' },
+      },
+      {
+        columnType: 'sampler',
+        samplerType: SamplerType.uniform,
+        name: 'score',
+        values: { low: '0', high: '100', decimal_places: '1' },
+      },
+      {
+        columnType: 'expression',
+        name: 'full_name',
+        values: {
+          expr: '{{ first_name }} {{ last_name }}',
+        },
+      },
+      {
+        columnType: 'expression',
+        name: 'grade',
+        values: {
+          expr: '{% if score|float >= 90 %}A{% elif score|float >= 80 %}B{% elif score|float >= 70 %}C{% elif score|float >= 60 %}D{% else %}F{% endif %}',
+          dtype: 'str',
+        },
+      },
+    ],
+  },
+  {
+    id: 'image-generation',
+    title: 'Image generation dataset',
+    description:
+      'Text-to-image pairs: sampled visual style and subject, an LLM-crafted descriptive prompt, and the generated image. Requires an image model configured under the "image_model" alias.',
+    icon: ImageIcon,
+    tag: { label: 'Multimodal', color: 'purple', kind: 'outline' },
+    columns: [
+      {
+        columnType: 'sampler',
+        samplerType: SamplerType.category,
+        name: 'style',
+        values: {
+          values: 'photorealistic, watercolor, oil painting, digital art, pencil sketch',
+        },
+      },
+      {
+        columnType: 'sampler',
+        samplerType: SamplerType.category,
+        name: 'subject',
+        values: {
+          values: 'mountain landscape, city skyline, forest path, ocean sunset, snowy village',
+        },
+      },
+      {
+        columnType: 'llm-text',
+        name: 'prompt_text',
+        values: {
+          prompt:
+            'Write a vivid, detailed image generation prompt for a {{ style }} depiction of: {{ subject }}. Include lighting, mood, and composition details. Return only the prompt.',
+          model_alias: 'default',
+        },
+      },
+      {
+        columnType: 'image',
+        name: 'generated_image',
+        values: {
+          prompt: '{{ prompt_text }}',
+          model_alias: 'image_model',
+        },
+      },
+    ],
+    models: [{ alias: 'default', model: DEFAULT_BUILD_MODEL_NAME }, { alias: 'image_model' }],
   },
 ];
 

@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
+import type { ModelProvider } from '@nemo/sdk/generated/platform/schema';
 import {
   type BuilderModel,
   buildModelConfigs,
   buildModelsFromTemplate,
+  buildServedModelNames,
   builderModelFromSelection,
   defaultModelAlias,
   firstAvailableModel,
+  modelIdForModel,
   providerForModel,
   resolveTemplateModel,
   validateModelAlias,
@@ -39,7 +42,7 @@ describe('providerForModel', () => {
         { workspace: 'steramae', name: 'gpt-oss', model_providers: ['steramae/build'] },
         {
           workspace: 'steramae',
-          name: 'nvidia-llama-3-3-nemotron-super-49b-v1',
+          name: 'nvidia-llama-3-3-nemotron-super-49b-v1-5',
           model_providers: ['steramae/build'],
         },
         { workspace: 'steramae', name: 'no-provider' },
@@ -65,8 +68,8 @@ describe('providerForModel', () => {
   });
 
   it('resolveTemplateModel prefers a model matching the name across workspaces', () => {
-    expect(resolveTemplateModel(groups, 'nvidia-llama-3-3-nemotron-super-49b-v1')).toEqual({
-      model: 'steramae/nvidia-llama-3-3-nemotron-super-49b-v1',
+    expect(resolveTemplateModel(groups, 'nvidia-llama-3-3-nemotron-super-49b-v1-5')).toEqual({
+      model: 'steramae/nvidia-llama-3-3-nemotron-super-49b-v1-5',
       provider: 'steramae/build',
     });
   });
@@ -84,6 +87,53 @@ describe('providerForModel', () => {
       provider: 'steramae/build',
     });
     expect(resolveTemplateModel([], 'anything')).toBeNull();
+  });
+});
+
+describe('buildServedModelNames / modelIdForModel', () => {
+  const providers = [
+    {
+      workspace: 'steramae',
+      name: 'build',
+      served_models: [
+        {
+          model_entity_id: 'steramae/nvidia-llama-3-3-nemotron-super-49b-v1-5',
+          served_model_name: 'nvidia/llama-3.3-nemotron-super-49b-v1.5',
+        },
+        { model_entity_id: 'steramae/gpt-oss', served_model_name: 'openai/gpt-oss-120b' },
+      ],
+    },
+    {
+      // A second provider re-serving the same entity: the first mapping wins.
+      workspace: 'steramae',
+      name: 'other',
+      served_models: [
+        {
+          model_entity_id: 'steramae/nvidia-llama-3-3-nemotron-super-49b-v1-5',
+          served_model_name: 'ignored/duplicate',
+        },
+      ],
+    },
+  ] as unknown as ModelProvider[];
+
+  it('maps each served model_entity_id (URN) to its served_model_name, first mapping winning', () => {
+    const names = buildServedModelNames(providers);
+    expect(names.get('steramae/nvidia-llama-3-3-nemotron-super-49b-v1-5')).toBe(
+      'nvidia/llama-3.3-nemotron-super-49b-v1.5'
+    );
+    expect(names.get('steramae/gpt-oss')).toBe('openai/gpt-oss-120b');
+  });
+
+  it('modelIdForModel resolves the URN to the served model name', () => {
+    const names = buildServedModelNames(providers);
+    expect(names.size).toBe(2);
+    expect(modelIdForModel(names, 'steramae/nvidia-llama-3-3-nemotron-super-49b-v1-5')).toBe(
+      'nvidia/llama-3.3-nemotron-super-49b-v1.5'
+    );
+  });
+
+  it('modelIdForModel falls back to the URN when no mapping is found', () => {
+    expect(modelIdForModel(new Map(), 'steramae/unknown')).toBe('steramae/unknown');
   });
 });
 
@@ -167,9 +217,38 @@ describe('buildModelConfigs', () => {
     expect(buildModelConfigs([])).toBeUndefined();
   });
 
-  it('omits empty optional fields and inference parameters', () => {
+  it('omits empty optional fields but always includes inference parameters with defaults', () => {
     expect(buildModelConfigs([model({ provider: '' })])).toEqual([
-      { alias: 'default', model: 'openai/gpt-4o-mini', provider: '' },
+      {
+        alias: 'default',
+        model: 'openai/gpt-4o-mini',
+        inference_parameters: {
+          generation_type: 'chat-completion',
+          provider: '',
+          max_tokens: 1024,
+        },
+      },
+    ]);
+  });
+
+  it('resolves the model URN to the provider-facing served model name when given', () => {
+    const servedModelNames = new Map([
+      [
+        'steramae/nvidia-llama-3-3-nemotron-super-49b-v1-5',
+        'nvidia/llama-3.3-nemotron-super-49b-v1.5',
+      ],
+    ]);
+    expect(
+      buildModelConfigs(
+        [model({ model: 'steramae/nvidia-llama-3-3-nemotron-super-49b-v1-5', provider: '' })],
+        servedModelNames
+      )
+    ).toEqual([
+      {
+        alias: 'default',
+        model: 'nvidia/llama-3.3-nemotron-super-49b-v1.5',
+        inference_parameters: { generation_type: 'chat-completion', max_tokens: 1024 },
+      },
     ]);
   });
 

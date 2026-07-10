@@ -3,12 +3,13 @@
 
 import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
 import type { ModelSelection } from '@nemo/common/src/components/ModelSelectV2/types';
+import { MAX_COMPLETION_TOKENS_DEFAULT } from '@nemo/common/src/constants/inferenceParameters';
 import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
 import type {
   ChatCompletionInferenceParams,
   ModelConfig,
 } from '@nemo/sdk/generated/data-designer/schema';
-import type { InferenceParams } from '@nemo/sdk/generated/platform/schema';
+import type { InferenceParams, ModelProvider } from '@nemo/sdk/generated/platform/schema';
 import type { TemplateModelSpec } from '@studio/components/CreateFilesetStart/types';
 
 /** Mirrors the SDK ModelConfig shape; `alias` is what LLM columns reference via `model_alias`. */
@@ -39,7 +40,26 @@ export const providerForModel = (modelGroups: ModelWorkspaceGroup[], model: stri
   return '';
 };
 
-/** First platform model (with resolved provider), used to auto-fill a template's model. */
+export const buildServedModelNames = (providers: ModelProvider[]): Map<string, string> => {
+  const servedModelNames = new Map<string, string>();
+  for (const provider of providers) {
+    for (const served of provider.served_models ?? []) {
+      if (served.model_entity_id && !servedModelNames.has(served.model_entity_id)) {
+        servedModelNames.set(served.model_entity_id, served.served_model_name);
+      }
+    }
+  }
+  return servedModelNames;
+};
+
+export const modelIdForModel = (servedModelNames: Map<string, string>, model: string): string =>
+  servedModelNames.get(model) || model;
+
+/**
+ * The first platform model (with its resolved provider) from the model list, used to
+ * auto-fill a template's model so the recipe can be previewed without picking one by
+ * hand. Returns null when no models are available.
+ */
 export const firstAvailableModel = (
   modelGroups: ModelWorkspaceGroup[]
 ): { model: string; provider: string } | null => {
@@ -135,25 +155,28 @@ export const validateModels = (models: BuilderModel[]): string[] => {
   return errors;
 };
 
-const toModelConfig = (model: BuilderModel): ModelConfig => {
+const toModelConfig = (model: BuilderModel, servedModelNames: Map<string, string>): ModelConfig => {
   const config: ModelConfig = {
     alias: model.alias.trim(),
-    model: model.model.trim(),
+    model: modelIdForModel(servedModelNames, model.model.trim()),
     provider: model.provider.trim(),
   };
   if (model.provider.trim()) config.provider = model.provider.trim();
 
   const { temperature, top_p, max_tokens } = model.inferenceParams;
-  const inference: ChatCompletionInferenceParams = {};
+  const inference: ChatCompletionInferenceParams = {
+    generation_type: 'chat-completion',
+    max_tokens: max_tokens ?? MAX_COMPLETION_TOKENS_DEFAULT,
+  };
   if (temperature !== undefined) inference.temperature = temperature;
   if (top_p !== undefined) inference.top_p = top_p;
-  if (max_tokens !== undefined) inference.max_tokens = max_tokens;
-  if (Object.keys(inference).length > 0) {
-    config.inference_parameters = { generation_type: 'chat-completion', ...inference };
-  }
+  config.inference_parameters = inference;
   return config;
 };
 
 /** Returns undefined when there are no models so the key is omitted from the config. */
-export const buildModelConfigs = (models: BuilderModel[]): ModelConfig[] | undefined =>
-  models.length > 0 ? models.map(toModelConfig) : undefined;
+export const buildModelConfigs = (
+  models: BuilderModel[],
+  servedModelNames: Map<string, string> = new Map()
+): ModelConfig[] | undefined =>
+  models.length > 0 ? models.map((model) => toModelConfig(model, servedModelNames)) : undefined;

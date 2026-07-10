@@ -208,6 +208,16 @@ const FIELDS_BY_COLUMN_TYPE: Record<NonNullable<DataDesignerColumnType>, ColumnF
       required: true,
       options: asOptions(['code', 'local_callable', 'remote']),
     },
+    {
+      key: 'validator_params',
+      label: 'Validator params (JSON)',
+      kind: 'textarea',
+      dataType: 'json',
+      required: true,
+      placeholder: '{ "code_lang": "python" }',
+      helperText:
+        'Parameters for the chosen validator. For "code": { "code_lang": "python" }. For "remote": { "url": "https://…" }.',
+    },
   ],
   'seed-dataset': [],
   custom: [
@@ -792,12 +802,13 @@ const toColumnConfig = (column: BuilderColumn): Record<string, unknown> => {
 
 export const buildDataDesignerConfig = (
   columns: BuilderColumn[],
-  models: BuilderModel[] = []
+  models: BuilderModel[] = [],
+  servedModelNames: Map<string, string> = new Map()
 ): DataDesignerConfig => {
   const config: DataDesignerConfig = {
     columns: columns.map(toColumnConfig) as unknown as DataDesignerConfig['columns'],
   };
-  const modelConfigs = buildModelConfigs(models);
+  const modelConfigs = buildModelConfigs(models, servedModelNames);
   if (modelConfigs) config.model_configs = modelConfigs;
   return config;
 };

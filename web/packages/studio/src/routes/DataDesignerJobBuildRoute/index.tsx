@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useAllModels } from '@nemo/common/src/api/models/useModels';
+import { DEFAULT_LARGE_PAGE_SIZE } from '@nemo/common/src/constants/api';
 import { groupModelsByWorkspace } from '@nemo/common/src/utils/models';
 import { useDataDesignerCreateJob } from '@nemo/sdk/generated/data-designer/api';
+import { useModelsListProviders } from '@nemo/sdk/generated/platform/api';
 import { Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
@@ -20,7 +22,10 @@ import {
   buildDataDesignerConfig,
   validateColumns,
 } from '@studio/routes/DataDesignerJobBuildRoute/columns';
-import { validateModels } from '@studio/routes/DataDesignerJobBuildRoute/models';
+import {
+  buildServedModelNames,
+  validateModels,
+} from '@studio/routes/DataDesignerJobBuildRoute/models';
 import { useJobBuilder } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
 import {
   getDataDesignerJobDetailsRoute,
@@ -73,6 +78,16 @@ export const DataDesignerJobBuildRoute: FC = () => {
   const modelsSettled = !isLoadingModels && !hasNextPage && !isFetchingNextPage;
 
   const builder = useJobBuilder(template, modelGroups, modelsSettled);
+  const { data: providersPage } = useModelsListProviders(
+    workspace,
+    { page_size: DEFAULT_LARGE_PAGE_SIZE },
+    { query: {} }
+  );
+  const servedModelNames = useMemo(
+    () => buildServedModelNames(providersPage?.data ?? []),
+    [providersPage?.data]
+  );
+
   const { columns, models } = builder;
 
   const [name, setName] = useState(() => template?.id ?? 'untitled-dataset');
@@ -99,9 +114,9 @@ export const DataDesignerJobBuildRoute: FC = () => {
   const getCurrentConfig = useCallback(
     () =>
       validateColumns(columns).length === 0 && validateModels(models).length === 0
-        ? buildDataDesignerConfig(columns, models)
+        ? buildDataDesignerConfig(columns, models, servedModelNames)
         : undefined,
-    [columns, models]
+    [columns, models, servedModelNames]
   );
   const { previewLogs, isPreviewing, runPreview } = usePreview({
     workspace,
@@ -126,7 +141,10 @@ export const DataDesignerJobBuildRoute: FC = () => {
         workspace,
         data: {
           name,
-          spec: { num_records: Number(rows), config: buildDataDesignerConfig(columns, models) },
+          spec: {
+            num_records: Number(rows),
+            config: buildDataDesignerConfig(columns, models, servedModelNames),
+          },
         },
       });
       if (created?.name) {
