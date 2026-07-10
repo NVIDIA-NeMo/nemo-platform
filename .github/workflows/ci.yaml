@@ -1176,7 +1176,8 @@ jobs:
     if: >
       !cancelled() && (
         github.event_name == 'workflow_dispatch' ||
-        needs.changes.outputs.web-studio == 'true'
+        needs.changes.outputs.web-studio == 'true' ||
+        needs.changes.outputs.openapi == 'true'
       )
     runs-on: ubuntu-latest
     defaults:
@@ -1192,9 +1193,9 @@ jobs:
         run: npm i -g corepack@0.31.0 && corepack enable pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Typecheck changed packages
+      - name: Typecheck web packages
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ needs.changes.outputs.openapi }}" != "true" ]; then
             git fetch origin "${{ github.base_ref }}" --depth=1
             pnpm --filter="...[origin/${{ github.base_ref }}]" run --parallel --if-present typecheck
           else
