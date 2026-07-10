@@ -483,6 +483,7 @@ jobs:
         env:
           DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
           SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
+          RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
           RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
           CONTAINER_IDS: ${{ needs.plan-release.outputs.container_ids }}
         with:
@@ -496,6 +497,7 @@ jobs:
               event_type: "release",
               client_payload: {
                 ref: process.env.SOURCE_SHA,
+                cadence: process.env.RELEASE_TYPE,
                 version: process.env.RELEASE_LABEL,
                 containers: JSON.parse(process.env.CONTAINER_IDS),
               },
