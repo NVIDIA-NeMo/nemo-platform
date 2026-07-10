@@ -10,7 +10,6 @@ dedicated span column for them. That includes agent tool definitions,
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -124,9 +123,8 @@ def _trajectory_tree_to_spans(
         if subagent.trajectory_id is not None
     }
     expanded_subagent_ids: set[str] = set()
-    evaluator_ended_at = _evaluator_ended_at(trajectory)
     for index, step in enumerate(trajectory.steps):
-        step_ended_at = _step_ended_at(trajectory.steps, index, evaluator_ended_at)
+        step_ended_at = _step_ended_at(step)
         step_span = _step_to_span(
             workspace=workspace,
             default_session_id=trace_session_id,
@@ -154,7 +152,6 @@ def _trajectory_tree_to_spans(
                 step_index=index,
                 tool_index=tool_index,
                 tool_call=tool_call,
-                step_ended_at=step_ended_at,
                 ingested_at=ingested_at,
             )
             for tool_index, tool_call in enumerate(_step_tool_calls(step))
@@ -383,7 +380,6 @@ def _tool_call_to_span(
     step_index: int,
     tool_index: int,
     tool_call: AtifToolCall,
-    step_ended_at: datetime | None,
     ingested_at: datetime,
 ) -> IntakeSpan:
     """Map one ATIF tool call to a span under its owning step."""
@@ -414,7 +410,6 @@ def _tool_call_to_span(
     )
     invocation_started_at, invocation_ended_at = _invocation_window(tool_call.extra)
     tool_started_at = invocation_started_at or _step_started_at(step, step_index, ingested_at)
-    tool_ended_at = invocation_ended_at or step_ended_at
     return IntakeSpan(
         workspace=workspace,
         session_id=default_session_id,
@@ -426,7 +421,7 @@ def _tool_call_to_span(
         name=tool_call.function_name,
         status=SpanStatus.ERROR if _tool_result_is_error(step, result) else SpanStatus.SUCCESS,
         start_time=tool_started_at,
-        end_time=_clamped_end(tool_started_at, tool_ended_at),
+        end_time=_clamped_end(tool_started_at, invocation_ended_at),
         attributes_string=attribute_bags.string,
         attributes_number=attribute_bags.number,
         attributes_bool=attribute_bags.boolean,
@@ -942,18 +937,14 @@ def _step_started_at(step: AtifStep, index: int, ingested_at: datetime) -> datet
     return invocation_started_at or _timestamp(step) or (ingested_at + timedelta(milliseconds=index))
 
 
-def _step_ended_at(steps: Sequence[AtifStep], index: int, evaluator_ended_at: datetime | None) -> datetime | None:
-    """Step end: explicit invocation end, else the next timed step's start,
-    else (for the trailing steps) the verifier's finish. A step's own timestamp
-    is never used as its end — unknown stays None rather than zero-duration."""
-    _, invocation_ended_at = _invocation_window(steps[index].extra)
-    if invocation_ended_at is not None:
-        return invocation_ended_at
-    for later_step in steps[index + 1 :]:
-        later_started_at = _invocation_window(later_step.extra)[0] or _timestamp(later_step)
-        if later_started_at is not None:
-            return later_started_at
-    return evaluator_ended_at
+def _step_ended_at(step: AtifStep) -> datetime | None:
+    """Return only a producer-supplied invocation end.
+
+    Step timestamps and adjacent steps establish ordering, not duration. An
+    absent invocation end therefore remains absent instead of being inferred
+    from a sibling step or evaluator timestamp.
+    """
+    return _invocation_window(step.extra)[1]
 
 
 def _clamped_end(start_time: datetime, end_time: datetime | None) -> datetime | None:
