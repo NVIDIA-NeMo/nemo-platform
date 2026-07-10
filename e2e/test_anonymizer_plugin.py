@@ -9,8 +9,6 @@ lifecycle coverage requires the K8s executor and cannot be fully validated by
 the local subprocess harness.
 """
 
-from __future__ import annotations
-
 import os
 import time
 from collections.abc import Iterator
@@ -53,6 +51,7 @@ REWRITTEN_TEXT_COLUMN = f"{TEXT_COLUMN}_rewritten"
 CSV_REMOTE_PATH = "inputs/records.csv"
 PARQUET_REMOTE_PATH = "inputs/records.parquet"
 NOT_CSV_REMOTE_PATH = "inputs/records.txt"
+LLM_PAYLOAD_PATH = Path(__file__).with_name("anonymizer_llm_payload.json")
 
 
 def _input_rows() -> list[dict[str, str]]:
@@ -95,88 +94,7 @@ def _detector_completion() -> dict[str, object]:
 
 
 def _llm_payload() -> str:
-    return """
-{
-  "decisions": [
-    {
-      "id": "full_name_0_11",
-      "decision": "keep",
-      "proposed_label": "",
-      "reason": "The span is a full name."
-    }
-  ],
-  "entities": [],
-  "latent_entities": [],
-  "replacements": [
-    {
-      "original": "Alice Smith",
-      "label": "full_name",
-      "synthetic": "Jordan Lee"
-    }
-  ],
-  "domain": "OTHER",
-  "domain_confidence": 1.0,
-  "sensitivity_disposition": [
-    {
-      "id": 1,
-      "source": "tagged",
-      "category": "direct_identifier",
-      "sensitivity": "medium",
-      "entity_label": "full_name",
-      "entity_value": "Alice Smith",
-      "protection_reason": "A full name directly identifies a person.",
-      "protection_method_suggestion": "replace",
-      "combined_risk_level": "medium"
-    }
-  ],
-  "units": [
-    {
-      "id": 1,
-      "aspect": "process",
-      "unit": "A person is associated with a support or release workflow.",
-      "importance": "important"
-    }
-  ],
-  "items": [
-    {
-      "id": 1,
-      "aspect": "process",
-      "importance": "important",
-      "question": "What workflow is described?",
-      "reference_answer": "A support or release workflow is described."
-    }
-  ],
-  "rewritten_text": "A customer described an operational workflow.",
-  "answers": [
-    {
-      "id": 1,
-      "answer": "no",
-      "confidence": 1.0,
-      "reason": "The rewritten text omits the original name.",
-      "evidence": []
-    }
-  ],
-  "per_item": [
-    {
-      "id": 1,
-      "score": 1.0,
-      "reason": "The core workflow meaning is preserved."
-    }
-  ],
-  "privacy": {
-    "score": 10,
-    "reasoning": "The original name is removed."
-  },
-  "quality": {
-    "score": 10,
-    "reasoning": "The operational meaning is preserved."
-  },
-  "naturalness": {
-    "score": 10,
-    "reasoning": "The rewritten text is fluent."
-  }
-}
-""".strip()
+    return LLM_PAYLOAD_PATH.read_text(encoding="utf-8").strip()
 
 
 def _string_headers(sdk: NeMoPlatform) -> dict[str, str]:
@@ -285,11 +203,18 @@ def _preview_request(
     text_column: str = TEXT_COLUMN,
     num_records: int = 2,
 ) -> PreviewRequest:
-    return PreviewRequest(
+    request = _request(
+        source=source,
         config=config,
-        data=_input_spec(source, text_column=text_column),
         model_configs=model_configs,
         selected_models=selected_models,
+        text_column=text_column,
+    )
+    return PreviewRequest(
+        config=request.config,
+        data=request.data,
+        model_configs=request.model_configs,
+        selected_models=request.selected_models,
         num_records=num_records,
     )
 
@@ -688,10 +613,11 @@ def test_preview_rejects_local_path_for_remote_execution(
     anonymizer_sdk: NeMoPlatform,
     anonymizer_model_configs: list[dd.ModelConfig],
 ) -> None:
+    missing_local_path = "./definitely-missing-local-input.csv"
     with pytest.raises(AnonymizerConfigValidationError, match="local path"):
         anonymizer_sdk.anonymizer.preview(
             _preview_request(
-                source="./local-input.csv",
+                source=missing_local_path,
                 config=_redact_config(),
                 model_configs=anonymizer_model_configs,
                 selected_models=_mock_selected_models(),
