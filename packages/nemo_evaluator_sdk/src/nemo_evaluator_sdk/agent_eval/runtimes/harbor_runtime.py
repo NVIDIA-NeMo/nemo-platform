@@ -160,10 +160,15 @@ class HarborAgentTaskRunner:
 
     Two construction modes:
 
-    * **Native** — pass ``config`` (a :class:`HarborRuntimeConfig`) and
-      ``dataset_path``; the runtime builds and runs Harbor's ``JobConfig`` itself
-      (Harbor is imported lazily). ``task_names`` optionally restricts the run to
-      a subset of the dataset's tasks.
+    * **Native** — pass ``config`` (a :class:`HarborRuntimeConfig`); the runtime
+      builds and runs Harbor's ``JobConfig`` itself (Harbor is imported lazily).
+      The dataset directory is taken from the tasks handed to :meth:`run_tasks`
+      (each carries ``metadata['harbor_dataset_path']`` from
+      :func:`discover_harbor_tasks`), or from an explicit ``dataset_path``
+      override, so it isn't repeated. ``task_names`` optionally restricts the run
+      to a subset of tasks, and the ``config``'s ``job_dir`` doubles as a cache:
+      an existing run whose results already cover every requested task is
+      re-adapted instead of re-run (unless ``force_rerun`` is set).
     * **Injected / offline** — pass ``job_dir`` (and optionally a ``run_job``
       callback); ``run_job`` is awaited before the job dir is read, and
       ``run_job=None`` simply adapts an already-completed job dir.
@@ -182,26 +187,72 @@ class HarborAgentTaskRunner:
         run_job: RunJob | None = None,
         reward_key: str = DEFAULT_REWARD_KEY,
     ) -> None:
-        if config is not None:
-            if dataset_path is None:
-                raise ValueError("dataset_path is required when a HarborRuntimeConfig is given")
-            job_dir, run_job = _build_native_job(config, Path(dataset_path), task_names)
-            reward_key = config.reward_key
-        if job_dir is None:
-            raise ValueError("provide either config (+dataset_path) or an explicit job_dir")
-        self._job_dir = Path(job_dir)
+        if config is None and job_dir is None:
+            raise ValueError("provide either a HarborRuntimeConfig or an explicit job_dir")
+        self._config = config
+        self._dataset_path = Path(dataset_path) if dataset_path is not None else None
+        self._task_names = task_names
+        self._job_dir = Path(job_dir) if job_dir is not None else None
         self._run_job = run_job
-        self._reward_key = reward_key
+        self._reward_key = config.reward_key if config is not None else reward_key
 
     async def run_tasks(
         self,
         tasks: Sequence[AgentEvalTask],
         config: AgentEvalRunConfig | None = None,
     ) -> list[AgentEvalTrial]:
-        """Execute the Harbor job (if supplied) and return one trial per Harbor trial."""
+        """Run the Harbor job when needed, then return one trial per Harbor trial.
+
+        In native mode the dataset directory is recovered from the tasks (each
+        carries ``metadata['harbor_dataset_path']`` from
+        :func:`discover_harbor_tasks`) unless a ``dataset_path`` override was given,
+        so callers don't repeat it. ``job_dir`` doubles as a cache: the Harbor run
+        is skipped and results are simply re-adapted when every requested task
+        already has a ``result.json`` there (unless ``force_rerun`` is set).
+        """
+        if self._config is not None:
+            dataset_path = self._dataset_path or _dataset_path_from_tasks(tasks)
+            job_dir, run_job = _build_native_job(self._config, dataset_path, self._task_names)
+            if self._config.force_rerun or not _all_tasks_cached(job_dir, tasks):
+                await run_job()
+            return build_trials_from_job_dir(job_dir, tasks, reward_key=self._reward_key)
+
+        if self._job_dir is None:  # unreachable: __init__ guarantees config or job_dir
+            raise ValueError("no job_dir configured")
         if self._run_job is not None:
             await self._run_job()
         return build_trials_from_job_dir(self._job_dir, tasks, reward_key=self._reward_key)
+
+
+def _dataset_path_from_tasks(tasks: Sequence[AgentEvalTask]) -> Path:
+    """Recover the Harbor dataset dir stamped on tasks by :func:`discover_harbor_tasks`."""
+    for task in tasks:
+        stamped = task.metadata.get("harbor_dataset_path")
+        if isinstance(stamped, str) and stamped:
+            return Path(stamped)
+    raise ValueError(
+        "native Harbor run needs a dataset path: pass dataset_path, or build tasks with "
+        "discover_harbor_tasks/HarborTasksetLoader (which stamp metadata['harbor_dataset_path'])"
+    )
+
+
+def _all_tasks_cached(job_dir: Path, tasks: Sequence[AgentEvalTask]) -> bool:
+    """Return True when every requested task already has a ``result.json`` under ``job_dir``.
+
+    Lets ``job_dir`` act as a cache so a native run whose results are all present
+    is re-adapted instead of re-run.
+    """
+    if not job_dir.is_dir():
+        return False
+    present: set[str] = set()
+    for result_path in job_dir.glob("*/result.json"):
+        try:
+            name = json.loads(result_path.read_text()).get("task_name")
+        except (json.JSONDecodeError, OSError):
+            continue
+        if isinstance(name, str):
+            present.add(name)
+    return {task.id for task in tasks}.issubset(present)
 
 
 def _build_native_job(
@@ -527,6 +578,7 @@ def discover_harbor_tasks(dataset_path: str | Path) -> list[AgentEvalTask]:
                 intent=intent,
                 inputs={"instruction": intent},
                 metrics=[HarborRewardMetric()],
+                metadata={"harbor_dataset_path": str(dataset_path), "harbor_task_dir": str(task_dir)},
             )
         )
     return tasks
@@ -586,7 +638,7 @@ async def run_harbor_eval(
     if metrics is not None:
         tasks = [task.model_copy(update={"metrics": list(metrics)}) for task in tasks]
 
-    runner = HarborAgentTaskRunner(config=config, dataset_path=dataset_path, task_names=task_names)
+    runner = HarborAgentTaskRunner(config=config, task_names=task_names)
     return await AgentEvaluator().run(
         tasks=tasks,
         target=runner,
