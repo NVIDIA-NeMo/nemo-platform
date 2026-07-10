@@ -12,6 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from nemoguardrails.exceptions import InvalidRailsConfigurationError
 from nemoguardrails.rails.llm.llmrails import ModelInitializationError
 from nmp.common.service import RouterConfig, Service
+from nmp.guardrails.api.v2.chat import endpoints as chat
 from nmp.guardrails.api.v2.checks import endpoints as checks
 from nmp.guardrails.api.v2.configs import endpoints as configs
 from nmp.guardrails.app.exceptions import CustomHTTPException, LLMCallException
@@ -57,6 +58,7 @@ class GuardrailsService(Service[GuardrailsServiceConfig]):
         return [
             RouterConfig(configs.router, tag="Guardrails", description="Guardrail configuration endpoints"),
             RouterConfig(checks.router, tag="Guardrails", description="Guardrail check endpoints"),
+            RouterConfig(chat.router, tag="Guardrails", description="Guardrail chat completion endpoints"),
         ]
 
     async def on_startup(self) -> None:
