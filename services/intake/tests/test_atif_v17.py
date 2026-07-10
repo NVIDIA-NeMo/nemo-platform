@@ -247,8 +247,10 @@ def test_atif_v17_embedded_subagents_expand_recursively_in_the_parent_trace() ->
     assert not any(span.name == "subagent-subagents/review-trajectory.json" for span in spans)
     assert root.start_time == datetime(2026, 5, 18, 10, tzinfo=timezone.utc)
     assert root.end_time == datetime(2026, 5, 18, 10, 0, 8, tzinfo=timezone.utc)
-    assert root.status == SpanStatus.ERROR
-    assert research.status == SpanStatus.ERROR
+    # A descendant tool error stays on the trajectory that emitted it. Parent
+    # trajectories successfully delegated, so their AGENT spans remain healthy.
+    assert root.status == SpanStatus.SUCCESS
+    assert research.status == SpanStatus.SUCCESS
     assert review.status == SpanStatus.ERROR
 
     root_raw = json.loads(root.attributes_string["atif.raw"])
@@ -679,7 +681,7 @@ def test_atif_mapping_uses_root_cost_when_step_metrics_have_tokens_only() -> Non
     assert child_response.cost_total_usd is None
 
 
-def test_atif_mapping_populates_root_content_and_rolls_child_errors() -> None:
+def test_atif_mapping_marks_trajectory_error_for_own_tool_error() -> None:
     trajectory = AtifTrajectory.model_validate(
         {
             "schema_version": "ATIF-v1.7",
