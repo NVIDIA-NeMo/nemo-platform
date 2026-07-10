@@ -2,16 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Badge, Flex, Stack, Text } from '@nvidia/foundations-react-core';
-import type { FilesetTemplate } from '@studio/components/CreateFilesetStart/types';
+import type { TemplateCardProps } from '@studio/components/CreateFilesetStart/types';
 import type { FC } from 'react';
-
-export interface TemplateCardProps {
-  template: FilesetTemplate;
-  /** Whether this card reads as selected (draws the brand-green border). */
-  selected: boolean;
-  /** Fired on click / keyboard activation. */
-  onSelect: () => void;
-}
 
 /**
  * A single ready-made recipe tile shown in the secondary area of the new-fileset view:

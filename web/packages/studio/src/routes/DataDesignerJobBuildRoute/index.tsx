@@ -65,7 +65,6 @@ export const DataDesignerJobBuildRoute: FC = () => {
 
   const selectedColumn = columns.find((column) => column.id === selectedId) ?? null;
 
-  // Names taken by columns other than the selected one (uniqueness check).
   const takenNames = useMemo(
     () =>
       new Set(columns.filter((column) => column.id !== selectedId).map((column) => column.name)),

@@ -2,16 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Badge, Flex, Text } from '@nvidia/foundations-react-core';
-import type { StartOption } from '@studio/components/CreateFilesetStart/types';
+import type { StartOptionCardProps } from '@studio/components/CreateFilesetStart/types';
 import type { FC } from 'react';
-
-export interface StartOptionCardProps {
-  option: StartOption;
-  /** Whether this tile reads as selected (draws the brand-green border). */
-  selected: boolean;
-  /** Fired on click / keyboard activation. Only invoked for enabled options. */
-  onSelect: () => void;
-}
 
 /**
  * A single "How do you want to start?" tile: a leading icon badge above a title,

@@ -11,7 +11,6 @@ import type {
 import type { TemplateColumnSpec } from '@studio/components/CreateFilesetStart/types';
 import type { DagEdge, DagNode } from '@studio/components/DagCanvas/types';
 
-/** How a column field references other columns, used to derive DAG edges. */
 export type FieldReference =
   /** Value is a Jinja2 template; `{{ column_name }}` tokens are dependencies. */
   | 'jinja'
@@ -20,24 +19,16 @@ export type FieldReference =
   /** Value is a comma-separated list of column names. */
   | 'list';
 
-/** Input control kind for a column config field. */
 export type FieldKind = 'text' | 'textarea' | 'select';
 
-/** A single user-editable field in the column config modal. */
 export interface ColumnField {
   /** Key into {@link BuilderColumn.values} and the eventual SDK config. */
   key: string;
-  /** Field label. */
   label: string;
-  /** Control kind. */
   kind: FieldKind;
-  /** Whether a value is required to save the column. */
   required?: boolean;
-  /** Placeholder / example text. */
   placeholder?: string;
-  /** Helper text shown beneath the control. */
   helperText?: string;
-  /** Options for `select` fields. */
   options?: readonly { label: string; value: string }[];
   /** If set, values in this field create dependency edges to other columns. */
   reference?: FieldReference;
@@ -51,7 +42,6 @@ export interface ColumnField {
 export interface BuilderColumn {
   /** Canvas-unique id (also the DAG node id). */
   id: string;
-  /** The palette option this column was created from. */
   option: ColumnTypeOption;
   /** The column name (Jinja2 identifier other columns can reference). */
   name: string;
@@ -215,7 +205,6 @@ const FIELDS_BY_COLUMN_TYPE: Record<NonNullable<DataDesignerColumnType>, ColumnF
   ],
 };
 
-/** Returns the config fields for a column type (excluding the always-present `name`). */
 export const getColumnFields = (columnType: DataDesignerColumnType): ColumnField[] =>
   columnType ? (FIELDS_BY_COLUMN_TYPE[columnType] ?? []) : [];
 
@@ -266,7 +255,6 @@ export const buildColumnsFromTemplate = (
 
 const JINJA_REF = /\{\{-?\s*([a-zA-Z_][a-zA-Z0-9_]*)/g;
 
-/** Pulls the leading `{{ identifier }}` tokens out of a Jinja2 template string. */
 export const extractJinjaReferences = (text: string): string[] => {
   const refs: string[] = [];
   for (const match of text.matchAll(JINJA_REF)) refs.push(match[1]);
@@ -350,7 +338,6 @@ export const defaultColumnName = (option: ColumnTypeOption, takenNames: Set<stri
   }
 };
 
-/** Validates a proposed column name; returns an error message, or null if valid. */
 export const validateColumnName = (name: string, takenNames: Set<string>): string | null => {
   const trimmed = name.trim();
   if (!trimmed) return 'Name is required.';

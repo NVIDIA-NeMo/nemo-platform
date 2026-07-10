@@ -5,7 +5,6 @@ import type { BadgeProps } from '@nvidia/foundations-react-core';
 import type { AddColumnSelection } from '@studio/components/AddColumnPalette/types';
 import type { LucideIcon } from 'lucide-react';
 
-/** The four ways to start a Data Designer fileset shown as tiles on the new-fileset view. */
 export type StartOptionId = 'ai' | 'template' | 'clone' | 'scratch';
 
 export interface StartOptionTag {
@@ -16,13 +15,9 @@ export interface StartOptionTag {
 
 export interface StartOption {
   id: StartOptionId;
-  /** Tile title. */
   title: string;
-  /** One-line tile description. */
   description: string;
-  /** Leading Lucide icon. */
   icon: LucideIcon;
-  /** Small badge rendered at the bottom of the tile. */
   tag?: StartOptionTag;
   /**
    * Whether this option is wired up. Disabled options still render (so the full set
@@ -32,11 +27,6 @@ export interface StartOption {
   enabled: boolean;
 }
 
-/**
- * One column a template preloads onto the build canvas: which catalog option to create
- * (via `columnType`/`samplerType`), the column name other columns reference, and the
- * field values to seed. Resolved to a `BuilderColumn` by the build route.
- */
 export interface TemplateColumnSpec extends AddColumnSelection {
   /** The column name (Jinja2 identifier); referenced by later columns via `{{ name }}`. */
   name: string;
@@ -44,21 +34,46 @@ export interface TemplateColumnSpec extends AddColumnSelection {
   values?: Record<string, string>;
 }
 
-/**
- * A ready-made recipe shown as a card in the secondary area when the "Start from a
- * template" option is selected. Picking one preloads the build canvas with its columns.
- */
 export interface FilesetTemplate {
   /** Stable id passed to {@link CreateFilesetStartProps.onContinue} when chosen. */
   id: string;
-  /** Card title. */
   title: string;
-  /** One- to two-line summary of what the recipe produces. */
   description: string;
-  /** Leading Lucide icon. */
   icon: LucideIcon;
-  /** Small badge (typically the use case) rendered at the bottom of the card. */
   tag: StartOptionTag;
-  /** The columns preloaded onto the canvas, in order, when this template is chosen. */
   columns: TemplateColumnSpec[];
+}
+
+export interface TemplateCardProps {
+  template: FilesetTemplate;
+  selected: boolean;
+  onSelect: () => void;
+}
+
+export interface StartOptionCardProps {
+  option: StartOption;
+  selected: boolean;
+  /** Fired on click / keyboard activation. Only invoked for enabled options. */
+  onSelect: () => void;
+}
+
+export interface DetailPoint {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+}
+
+export interface StartOptionDetailProps {
+  option: StartOption;
+  /** Id of the currently-chosen template, when {@link option} is "template". */
+  selectedTemplateId: string | null;
+  onSelectTemplate: (templateId: string) => void;
+}
+
+export interface CreateFilesetStartProps {
+  /**
+   * Fired when the user confirms a selected start option via the Continue footer. For
+   * the "template" option, the chosen template id is passed as the second argument.
+   */
+  onContinue: (optionId: StartOptionId, templateId?: string) => void;
 }

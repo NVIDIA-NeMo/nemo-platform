@@ -9,7 +9,6 @@ import { type FC } from 'react';
 
 /** Internal node data: the public {@link DagNodeData} plus the activation callback. */
 export interface CardNodeData extends DagNodeData {
-  /** Invoked when the card is clicked or activated via keyboard. */
   onActivate?: () => void;
   /** Whether an incoming edge terminates here; controls the target handle. Defaults to true. */
   hasIncoming?: boolean;

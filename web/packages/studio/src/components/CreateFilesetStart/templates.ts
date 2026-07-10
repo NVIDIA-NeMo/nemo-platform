@@ -46,6 +46,5 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
   },
 ];
 
-/** Look up a template by id, or `undefined` if none matches. */
 export const findTemplate = (id: string): FilesetTemplate | undefined =>
   FILESET_TEMPLATES.find((template) => template.id === id);

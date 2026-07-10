@@ -53,9 +53,7 @@ const FocusController: FC<{ focusNodeId?: string | null }> = ({ focusNodeId }) =
 export interface DagCanvasProps {
   /** Graph nodes; positions are computed automatically. */
   nodes: DagNode[];
-  /** Directed edges between nodes, drawn as arrows. */
   edges: DagEdge[];
-  /** Fired with the node id and its data when a card is clicked or keyboard-activated. */
   onNodeClick?: (id: string, data: DagNodeData) => void;
   /** When set (or changed), the viewport animates to center this node. */
   focusNodeId?: string | null;
@@ -71,15 +69,7 @@ export interface DagCanvasProps {
   className?: string;
 }
 
-/**
- * A pan-and-zoom canvas that renders a DAG of clickable card nodes connected by
- * arrows. Nodes are auto-laid-out top-down (or left-right) with dagre, so callers
- * supply only `nodes` and `edges` — no coordinates. The canvas pans on drag and
- * zooms on scroll/pinch; nodes are fixed in their computed layout (not draggable).
- *
- * The host element must have a defined size (e.g. `h-full w-full` inside a sized
- * parent); React Flow fills its container.
- */
+/** The host element must have a defined size (e.g. `h-full w-full` inside a sized parent); React Flow fills its container. */
 export const DagCanvas: FC<DagCanvasProps> = ({
   nodes,
   edges,
@@ -120,7 +110,7 @@ export const DagCanvas: FC<DagCanvasProps> = ({
       label: edge.label,
     }));
     return layoutGraph(rfNodes, rfEdges, direction);
-  }, [nodes, edges, direction]);
+  }, [edges, nodes, direction, onNodeClick]);
 
   const styledEdges = useMemo<Edge[]>(
     () =>

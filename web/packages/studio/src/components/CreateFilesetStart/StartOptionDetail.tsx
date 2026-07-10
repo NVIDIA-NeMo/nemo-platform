@@ -4,15 +4,13 @@
 import { Divider, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { TemplateCard } from '@studio/components/CreateFilesetStart/TemplateCard';
 import { FILESET_TEMPLATES } from '@studio/components/CreateFilesetStart/templates';
-import type { StartOption } from '@studio/components/CreateFilesetStart/types';
+import type {
+  DetailPoint,
+  StartOption,
+  StartOptionDetailProps,
+} from '@studio/components/CreateFilesetStart/types';
 import { Layers, Sparkles, Wand2 } from 'lucide-react';
 import type { FC, ReactNode } from 'react';
-
-interface DetailPoint {
-  icon: typeof Layers;
-  title: string;
-  description: string;
-}
 
 const SCRATCH_POINTS: DetailPoint[] = [
   {
@@ -33,7 +31,6 @@ const SCRATCH_POINTS: DetailPoint[] = [
   },
 ];
 
-/** Per-option content for the section that appears below the tiles once a tile is selected. */
 const DETAIL_CONTENT: Partial<Record<StartOption['id'], ReactNode>> = {
   scratch: (
     <Flex gap="density-md" className="w-full flex-wrap">
@@ -62,19 +59,6 @@ const DETAIL_CONTENT: Partial<Record<StartOption['id'], ReactNode>> = {
   ),
 };
 
-export interface StartOptionDetailProps {
-  option: StartOption;
-  /** Id of the currently-chosen template, when {@link option} is "template". */
-  selectedTemplateId: string | null;
-  /** Fired when a template card is chosen. */
-  onSelectTemplate: (templateId: string) => void;
-}
-
-/**
- * The secondary area of the new-fileset view, below the start tiles. Its content changes
- * based on the selected tile: "Start from a template" shows the recipe cards, "Build from
- * scratch" shows what the empty canvas offers.
- */
 export const StartOptionDetail: FC<StartOptionDetailProps> = ({
   option,
   selectedTemplateId,

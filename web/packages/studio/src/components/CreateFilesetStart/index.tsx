@@ -14,24 +14,13 @@ import {
 import { START_OPTIONS } from '@studio/components/CreateFilesetStart/constants';
 import { StartOptionCard } from '@studio/components/CreateFilesetStart/StartOptionCard';
 import { StartOptionDetail } from '@studio/components/CreateFilesetStart/StartOptionDetail';
-import type { StartOptionId } from '@studio/components/CreateFilesetStart/types';
+import type {
+  CreateFilesetStartProps,
+  StartOptionId,
+} from '@studio/components/CreateFilesetStart/types';
 import { ArrowRight } from 'lucide-react';
 import { useState, type FC } from 'react';
 
-export interface CreateFilesetStartProps {
-  /**
-   * Fired when the user confirms a selected start option via the Continue footer. For
-   * the "template" option, the chosen template id is passed as the second argument.
-   */
-  onContinue: (optionId: StartOptionId, templateId?: string) => void;
-}
-
-/**
- * The Data Designer "Create a fileset" landing view: a row of start-option tiles whose
- * secondary area changes with the selection, plus a bottom-anchored footer with a Continue
- * action that appears once the selection is complete (a tile, and — for "template" — a
- * template card).
- */
 export const CreateFilesetStart: FC<CreateFilesetStartProps> = ({ onContinue }) => {
   const [selectedId, setSelectedId] = useState<StartOptionId | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);

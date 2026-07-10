@@ -25,8 +25,6 @@ export const NewDataDesignerJobRoute: FC = () => {
     if (optionId === 'scratch') {
       navigate(getDataDesignerJobBuildRoute(workspace));
     } else if (optionId === 'template' && templateId) {
-      // The build route reuses the same canvas; the template id is carried as a search
-      // param so it can preload the recipe's columns once template preloading lands.
       navigate(`${getDataDesignerJobBuildRoute(workspace)}?template=${templateId}`);
     }
   };
