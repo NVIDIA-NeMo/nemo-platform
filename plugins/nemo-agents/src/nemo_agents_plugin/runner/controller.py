@@ -253,6 +253,8 @@ class AgentDeploymentController(NemoController):
             dep.status = "failed"
             dep.error = info.error or "Process exited unexpectedly during startup."
             self._starting_since.pop((dep.workspace, dep.name), None)
+            if is_container_deployment_mode(dep.deployment_mode):
+                await backend.delete_deployment(dep.workspace, dep.name)
             await self._save(dep)
             logger.warning(
                 "Deployment '%s' failed during startup: %s (log: %s)",
@@ -308,11 +310,17 @@ class AgentDeploymentController(NemoController):
             logger.debug("Deployment '%s' not healthy yet (%.1fs elapsed).", dep.name, elapsed)
 
     async def _verify_running(self, dep: AgentDeployment) -> None:
-        """Mark failed if the process has exited or pending if process is not found to attempt to restart."""
+        """Mark failed if the runtime disappeared; subprocess may restart via pending."""
         info = await self._backend_for(dep).get_deployment_status(dep.workspace, dep.name)
         if info is None:
-            dep.status = "pending"
-            dep.error = "Process not found in backend (attempting to restart)."
+            if is_container_deployment_mode(dep.deployment_mode):
+                # Do not bounce to pending — that would recreate plugin entities while a
+                # container may still be running / mid-teardown.
+                dep.status = "failed"
+                dep.error = "Container deployment not found in deployments plugin."
+            else:
+                dep.status = "pending"
+                dep.error = "Process not found in backend (attempting to restart)."
             await self._save(dep)
         elif info.status == "failed":
             dep.status = "failed"

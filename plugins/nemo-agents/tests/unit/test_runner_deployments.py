@@ -80,14 +80,31 @@ def test_build_deployment_config_always_single_container() -> None:
     assert len(cfg.containers) == 1
     container = cfg.containers[0]
     assert container.image == "nat-runtime:latest"
-    assert container.command == ["nat", "start", "fastapi"]
-    assert "--host" in container.args and "0.0.0.0" in container.args
+    # Docker materializes config from NAT_CONFIG_YAML because config_files are not mounted.
+    assert container.command == ["sh", "-c"]
+    assert any(e.name == "NAT_CONFIG_YAML" for e in container.env)
     assert container.readiness_probe is not None
     assert cfg.init_containers == []
     assert len(cfg.config_files) == 1
     assert cfg.config_files[0].path == "/config/agent.yaml"
     loaded = yaml.safe_load(cfg.config_files[0].content)
     assert loaded["llms"]["nim"]["_type"] == "nim"
+
+
+def test_build_deployment_config_k8s_uses_nat_entrypoint() -> None:
+    cfg = build_deployment_config(
+        name="hello-dep",
+        workspace="default",
+        image="nat-runtime:latest",
+        port=8000,
+        nat_config={},
+        config_mount_path="/config/agent.yaml",
+        mode="k8s",
+        gateway_base_url="http://nmp:8080",
+    )
+    assert cfg.containers[0].command == ["nat", "start", "fastapi"]
+    assert "--host" in cfg.containers[0].args and "0.0.0.0" in cfg.containers[0].args
+    assert not any(e.name == "NAT_CONFIG_YAML" for e in cfg.containers[0].env)
 
 
 def test_build_deployment_config_k8s_option_b_when_image_set() -> None:

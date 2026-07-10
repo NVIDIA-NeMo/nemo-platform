@@ -300,6 +300,33 @@ class TestReconcileOne:
         assert dep.status == "pending"
 
     @pytest.mark.asyncio
+    async def test_running_verify_container_gone_marks_failed(self) -> None:
+        ctrl = _make_controller()
+        dep = _make_deployment(status="running", deployment_mode="docker")
+        ctrl.backend.get_deployment_status.return_value = None
+
+        await ctrl._reconcile_one(dep)
+
+        assert dep.status == "failed"
+        assert "not found" in dep.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_container_failed_startup_deletes_plugin_entities(self) -> None:
+        ctrl = _make_controller()
+        dep = _make_deployment(status="starting", deployment_mode="k8s")
+        ctrl._starting_since[_key(dep)] = time.monotonic()
+        ctrl.backend.get_deployment_status.return_value = DeploymentInfo(
+            name="test-dep",
+            status="failed",
+            error="ImagePullBackOff",
+        )
+
+        await ctrl._check_health(dep)
+
+        assert dep.status == "failed"
+        ctrl.backend.delete_deployment.assert_awaited_once_with("default", "test-dep")
+
+    @pytest.mark.asyncio
     async def test_deleting_removes_deployment(self) -> None:
         ctrl = _make_controller()
         dep = _make_deployment(status="deleting")

@@ -141,10 +141,13 @@ def build_deployment_config(
 ) -> DeploymentConfig:
     """Compile an agent into a long-running ``DeploymentConfig`` (Always).
 
-    NAT workflow YAML is mounted via ``config_files`` (honoured by the k8s backend;
-    docker v1 ignores config_files — use a self-contained image there). The main
-    container binds ``0.0.0.0`` and exposes a readiness probe on ``/health``.
+    NAT workflow YAML is always embedded in ``config_files`` (k8s mounts them).
+    Docker v1 ignores ``config_files``, so docker mode also injects the YAML via
+    ``NAT_CONFIG_YAML`` and a shell preamble that writes the file before ``nat``
+    starts. The main container binds ``0.0.0.0`` and exposes a readiness probe on
+    ``/health``.
     """
+    nat_yaml = yaml.safe_dump(nat_config, sort_keys=False)
     env = [
         EnvVar(name="NMP_GATEWAY_BASE_URL", value=gateway_base_url),
         EnvVar(name="NMP_WORKSPACE", value=workspace),
@@ -178,18 +181,42 @@ def build_deployment_config(
         )
         env.append(EnvVar(name="PYTHONPATH", value=_PLUGIN_WHEELS_MOUNT))
 
-    container = Container(
-        name=_CONTAINER_NAME,
-        image=image,
-        command=["nat", "start", "fastapi"],
-        args=[
+    nat_args = [
+        "nat",
+        "start",
+        "fastapi",
+        "--config_file",
+        config_mount_path,
+        "--host",
+        "0.0.0.0",
+        "--port",
+        str(port),
+    ]
+    if mode == "docker":
+        # Docker backend does not mount config_files; materialize the YAML from env.
+        env.append(EnvVar(name="NAT_CONFIG_YAML", value=nat_yaml))
+        command = ["sh", "-c"]
+        args = [
+            f'mkdir -p "$(dirname "{config_mount_path}")" '
+            f'&& printf "%s" "$NAT_CONFIG_YAML" > "{config_mount_path}" '
+            f"&& exec {' '.join(nat_args)}"
+        ]
+    else:
+        command = ["nat", "start", "fastapi"]
+        args = [
             "--config_file",
             config_mount_path,
             "--host",
             "0.0.0.0",
             "--port",
             str(port),
-        ],
+        ]
+
+    container = Container(
+        name=_CONTAINER_NAME,
+        image=image,
+        command=command,
+        args=args,
         ports=[ContainerPort(name=_HTTP_PORT_NAME, containerPort=port)],
         env=env,
     ).model_copy(
@@ -213,7 +240,7 @@ def build_deployment_config(
         update={
             "init_containers": init_containers,
             "config_files": [
-                ConfigFile(path=config_mount_path, content=yaml.safe_dump(nat_config, sort_keys=False)),
+                ConfigFile(path=config_mount_path, content=nat_yaml),
             ],
             "restart_policy": "Always",
         }
@@ -335,7 +362,16 @@ class DeploymentsRunnerBackend(RunnerBackend):
             pass
 
         if found:
-            await self._wait_for_deployment_gone(workspace, name)
+            gone = await self._wait_for_deployment_gone(workspace, name)
+            if not gone:
+                logger.warning(
+                    "Deployment '%s/%s' still present after %.0fs; keeping DeploymentConfig "
+                    "so the deployments reconciler can finish teardown.",
+                    workspace,
+                    name,
+                    _DELETE_CONFIG_WAIT_S,
+                )
+                return found
 
         try:
             await entities.delete(DeploymentConfig, name=name, workspace=workspace)
@@ -344,22 +380,17 @@ class DeploymentsRunnerBackend(RunnerBackend):
             pass
         return found
 
-    async def _wait_for_deployment_gone(self, workspace: str, dep_name: str) -> None:
-        """Block until the Deployment entity is deleted or the wait budget elapses."""
+    async def _wait_for_deployment_gone(self, workspace: str, dep_name: str) -> bool:
+        """Return True if the Deployment entity disappears within the wait budget."""
         entities = self._entity_client()
         deadline = time.monotonic() + _DELETE_CONFIG_WAIT_S
         while time.monotonic() < deadline:
             try:
                 await entities.get(Deployment, name=dep_name, workspace=workspace)
             except NemoEntityNotFoundError:
-                return
+                return True
             await asyncio.sleep(_DELETE_CONFIG_POLL_S)
-        logger.warning(
-            "Deployment '%s/%s' still present after %.0fs; deleting its config anyway.",
-            workspace,
-            dep_name,
-            _DELETE_CONFIG_WAIT_S,
-        )
+        return False
 
     async def list_deployments(self, workspace: str | None = None) -> list[DeploymentInfo]:
         entities = self._entity_client()
