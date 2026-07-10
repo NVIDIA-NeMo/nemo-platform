@@ -16,11 +16,6 @@ dependencies = [
   # runtime. httpx is used by the (optional) real Guardrails-service client.
   "nemo-relay>=0.5.0",
   "httpx>=0.27",
-  # NOTE: the deterministic tool predicate (``is_tool_allowed``) is vendored
-  # dependency-free in ``_predicates.py`` rather than depending on
-  # ``nemo-guardrails-plugin``. That package is not on PyPI and pulls in
-  # nemo-platform + nemoguardrails + langchain. Follow-up: promote the pure
-  # predicate into a small shared package both plugins import.
 ]
 
 [project.optional-dependencies]

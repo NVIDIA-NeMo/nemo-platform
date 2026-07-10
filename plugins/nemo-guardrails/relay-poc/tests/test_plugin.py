@@ -36,10 +36,11 @@ class _FakeContext:
 
 _FULL_CONFIG = {
     "tool_policy": {
-        "allowed_tools": ["get_weather", "query_db"],
+        "allowed_tools": ["get_weather", "query_db", "run_bash"],
         "blocked_tools": ["transfer_funds"],
         "redact_args": {"web_search": ["query"]},
         "arguments": {"query_db": {"query": {"blocked_keywords": ["DROP"], "max_length": 200}}},
+        "denied_commands": {"run_bash": ["touch foo.txt"]},
     },
     "llm_input_rail": {"enabled": True, "model": "mock-content-safety"},
 }
@@ -63,6 +64,11 @@ def test_validate_flags_bad_tool_policy():
 def test_validate_flags_rail_enabled_without_model():
     diagnostics = GuardrailsPlugin().validate({"llm_input_rail": {"enabled": True}})
     assert any(d["code"] == f"{PLUGIN_KIND}.missing_model" for d in diagnostics)
+
+
+def test_validate_flags_bad_denied_commands():
+    diagnostics = GuardrailsPlugin().validate({"tool_policy": {"denied_commands": ["nope"]}})
+    assert any(d["code"] == f"{PLUGIN_KIND}.invalid_denied_commands" for d in diagnostics)
 
 
 def test_validate_accepts_valid_config():
@@ -109,6 +115,9 @@ def test_registered_tool_policy_guardrail_enforces_all_checks():
     assert guardrail("transfer_funds", {"amount": "1"}) is not None
     # argument rule violated -> blocked
     assert guardrail("query_db", {"query": "DROP TABLE users"}) is not None
+    # denied command -> blocked; benign control command -> allowed
+    assert guardrail("run_bash", {"command": "touch foo.txt"}) is not None
+    assert guardrail("run_bash", {"command": "echo hello"}) is None
 
 
 def test_registered_input_rail_blocks_unsafe_prompt():

@@ -103,3 +103,57 @@ def argument_violations(args: Any, tool_rules: dict[str, dict[str, Any]] | None)
         if max_length is not None and len(value) > max_length:
             violations.append(f"argument {arg_name!r} exceeds max_length {max_length}")
     return violations
+
+
+def normalize_command(command: str) -> str:
+    """Normalize a shell command string for exact-match comparison.
+
+    Deterministic, intentionally minimal normalization -- this is not a shell
+    parser. It only collapses insignificant whitespace and strips a leading
+    ``./`` from each token so that ``touch  ./foo.txt`` and ``touch foo.txt``
+    compare equal. It does *not* interpret quoting, env vars, globbing, or
+    command chaining; a production matcher would need a real parse.
+    """
+    tokens = []
+    for token in command.strip().split():
+        if token.startswith("./") and len(token) > 2:
+            token = token[2:]
+        tokens.append(token)
+    return " ".join(tokens)
+
+
+def is_command_denied(command: str, denied_commands: Iterable[str] | None) -> bool:
+    """Return whether a command matches any entry in the denylist.
+
+    Both the candidate command and each denylist entry are passed through
+    :func:`normalize_command`, so the match is on the *normalized equivalent*
+    rather than a raw substring. ``touch foo.txt`` matches ``touch  ./foo.txt``
+    but not ``touch foo.txt.bak`` (exactness, no over-matching). An absent or
+    empty denylist denies nothing.
+    """
+    denied = {normalize_command(entry) for entry in (denied_commands or [])}
+    return bool(denied) and normalize_command(command) in denied
+
+
+def denied_command_violation(
+    args: Any,
+    command_arg: str,
+    denied_commands: Iterable[str] | None,
+) -> str | None:
+    """Return a reason a tool call's command is denied, or ``None`` to allow.
+
+    Reads the command string from the ``command_arg`` argument and matches it
+    (normalized) against ``denied_commands``. Fails closed like
+    :func:`argument_violations`: when a denylist exists but the arguments are not
+    a JSON object, the call is blocked rather than silently allowed.
+    """
+    denied = list(denied_commands or [])
+    if not denied:
+        return None
+    parsed = _as_object(args)
+    if parsed is None:
+        return "arguments are not a JSON object"
+    command = str(parsed.get(command_arg, ""))
+    if is_command_denied(command, denied):
+        return f"command {command!r} is denied"
+    return None

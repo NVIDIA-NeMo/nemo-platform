@@ -10,6 +10,10 @@ check function.
 
 import asyncio
 
+from nemo_guardrails_relay_poc._predicates import (
+    is_command_denied,
+    normalize_command,
+)
 from nemo_guardrails_relay_poc.policy import (
     LlmInputRailConfig,
     ToolPolicy,
@@ -113,6 +117,75 @@ def test_argument_rule_parses_json_string_args():
     )
     assert guard("query_db", '{"query": "DROP TABLE users"}') is not None
     assert guard("query_db", '{"query": "SELECT 1"}') is None
+
+
+# --- Surface 1b: command denylist (the ticket's touch foo.txt deny-case) ---
+
+
+def test_normalize_command_collapses_whitespace_and_leading_dot_slash():
+    assert normalize_command("  touch   foo.txt ") == "touch foo.txt"
+    assert normalize_command("touch ./foo.txt") == "touch foo.txt"
+    assert normalize_command("touch  ./foo.txt") == "touch foo.txt"
+
+
+def test_is_command_denied_matches_normalized_equivalents():
+    denied = ["touch foo.txt"]
+    assert is_command_denied("touch foo.txt", denied) is True
+    assert is_command_denied("touch  ./foo.txt", denied) is True
+    assert is_command_denied("  touch   foo.txt  ", denied) is True
+
+
+def test_is_command_denied_does_not_over_match():
+    denied = ["touch foo.txt"]
+    # exactness: a near neighbor is NOT denied (unlike a substring rule)
+    assert is_command_denied("touch foo.txt.bak", denied) is False
+    assert is_command_denied("echo hello", denied) is False
+    assert is_command_denied("touch bar.txt", denied) is False
+
+
+def test_is_command_denied_empty_denylist_denies_nothing():
+    assert is_command_denied("touch foo.txt", []) is False
+    assert is_command_denied("touch foo.txt", None) is False
+
+
+def test_guardrail_blocks_denied_command():
+    guard = build_tool_policy_guardrail(
+        ToolPolicy(allowed_tools=["run_bash"], denied_commands={"run_bash": ["touch foo.txt"]})
+    )
+    reason = guard("run_bash", {"command": "touch foo.txt"})
+    assert reason is not None
+    assert "touch foo.txt" in reason
+    assert "denied" in reason
+
+
+def test_guardrail_allows_control_command():
+    guard = build_tool_policy_guardrail(
+        ToolPolicy(allowed_tools=["run_bash"], denied_commands={"run_bash": ["touch foo.txt"]})
+    )
+    assert guard("run_bash", {"command": "echo hello"}) is None
+
+
+def test_guardrail_command_denylist_honors_custom_command_arg():
+    guard = build_tool_policy_guardrail(ToolPolicy(denied_commands={"shell": ["touch foo.txt"]}, command_arg="cmd"))
+    assert guard("shell", {"cmd": "touch foo.txt"}) is not None
+    assert guard("shell", {"cmd": "echo hello"}) is None
+
+
+def test_guardrail_command_denylist_parses_json_string_args():
+    guard = build_tool_policy_guardrail(ToolPolicy(denied_commands={"run_bash": ["touch foo.txt"]}))
+    assert guard("run_bash", '{"command": "touch foo.txt"}') is not None
+    assert guard("run_bash", '{"command": "echo hello"}') is None
+
+
+def test_guardrail_command_denylist_fails_closed_on_non_object_args():
+    guard = build_tool_policy_guardrail(ToolPolicy(denied_commands={"run_bash": ["touch foo.txt"]}))
+    assert guard("run_bash", "not-an-object") is not None
+
+
+def test_guardrail_command_denylist_only_applies_to_named_tool():
+    guard = build_tool_policy_guardrail(ToolPolicy(denied_commands={"run_bash": ["touch foo.txt"]}))
+    # a different tool with the same command value is untouched
+    assert guard("other_tool", {"command": "touch foo.txt"}) is None
 
 
 # --- Surface 2: argument redaction ----------------------------------------
@@ -349,6 +422,8 @@ def test_parse_tool_policy():
                 "blocked_tools": ["c"],
                 "redact_args": {"web_search": ["query"]},
                 "arguments": {"query_db": {"query": {"blocked_keywords": ["DROP"], "max_length": 200}}},
+                "denied_commands": {"run_bash": ["touch foo.txt"]},
+                "command_arg": "cmd",
             }
         }
     )
@@ -356,6 +431,8 @@ def test_parse_tool_policy():
     assert policy.blocked_tools == ["c"]
     assert policy.redact_args == {"web_search": ["query"]}
     assert policy.argument_rules == {"query_db": {"query": {"blocked_keywords": ["DROP"], "max_length": 200}}}
+    assert policy.denied_commands == {"run_bash": ["touch foo.txt"]}
+    assert policy.command_arg == "cmd"
 
 
 def test_parse_tool_policy_defaults_empty():
@@ -364,6 +441,8 @@ def test_parse_tool_policy_defaults_empty():
     assert policy.blocked_tools == []
     assert policy.argument_rules == {}
     assert policy.redact_args == {}
+    assert policy.denied_commands == {}
+    assert policy.command_arg == "command"
 
 
 def test_parse_llm_input_rail_defaults():

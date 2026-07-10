@@ -92,6 +92,18 @@ class GuardrailsPlugin:
                     "message": "tool_policy must be a JSON object",
                 }
             )
+        elif isinstance(tool_policy, dict):
+            denied_commands = tool_policy.get("denied_commands")
+            if denied_commands is not None and not isinstance(denied_commands, dict):
+                diagnostics.append(
+                    {
+                        "level": "error",
+                        "code": f"{PLUGIN_KIND}.invalid_denied_commands",
+                        "component": PLUGIN_KIND,
+                        "field": "tool_policy.denied_commands",
+                        "message": "tool_policy.denied_commands must be a JSON object (tool_name -> [commands])",
+                    }
+                )
 
         rail = plugin_config.get("llm_input_rail")
         if rail is not None:

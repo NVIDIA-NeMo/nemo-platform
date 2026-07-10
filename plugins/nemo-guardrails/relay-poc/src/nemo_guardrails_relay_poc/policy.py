@@ -33,6 +33,7 @@ from typing import Any
 import httpx
 from nemo_guardrails_relay_poc._predicates import (
     argument_violations,
+    denied_command_violation,
     is_tool_allowed,
     is_tool_blocked,
 )
@@ -69,6 +70,10 @@ class ToolPolicy:
     argument_rules: dict[str, dict[str, dict[str, Any]]] = field(default_factory=dict)
     #: tool_name -> list of argument names whose string values should be PII-redacted
     redact_args: dict[str, list[str]] = field(default_factory=dict)
+    #: tool_name -> list of exact (normalized) command strings to block for that tool
+    denied_commands: dict[str, list[str]] = field(default_factory=dict)
+    #: argument name that carries the command string for command-denylist tools
+    command_arg: str = "command"
 
 
 @dataclass(slots=True)
@@ -92,6 +97,8 @@ def parse_tool_policy(config: dict[str, Any]) -> ToolPolicy:
     blocked = raw.get("blocked_tools") or []
     arguments = raw.get("arguments") or {}
     redact = raw.get("redact_args") or {}
+    denied = raw.get("denied_commands") or {}
+    defaults = ToolPolicy()
     return ToolPolicy(
         allowed_tools=[str(name) for name in allowed],
         blocked_tools=[str(name) for name in blocked],
@@ -100,6 +107,8 @@ def parse_tool_policy(config: dict[str, Any]) -> ToolPolicy:
             for tool, arg_rules in arguments.items()
         },
         redact_args={str(tool): [str(arg) for arg in args] for tool, args in redact.items()},
+        denied_commands={str(tool): [str(cmd) for cmd in (cmds or [])] for tool, cmds in denied.items()},
+        command_arg=str(raw.get("command_arg", defaults.command_arg)),
     )
 
 
@@ -134,7 +143,9 @@ def build_tool_policy_guardrail(policy: ToolPolicy) -> Callable[[str, Json], str
        allowlist,
     2. **allowlist** -- when ``allowed_tools`` is non-empty, only those names run,
     3. **argument rules** -- per-tool ``blocked_keywords`` / ``max_length`` checks
-       on the call's arguments.
+       on the call's arguments,
+    4. **command denylist** -- per-tool exact (normalized) command match against
+       the ``command_arg`` argument, for shell/bash-style tools.
 
     The decision needs only the tool name and arguments, which is all Relay's
     tool guardrail hook provides today.
@@ -148,6 +159,9 @@ def build_tool_policy_guardrail(policy: ToolPolicy) -> Callable[[str, Json], str
         violations = argument_violations(args, policy.argument_rules.get(tool_name))
         if violations:
             return f"blocked: tool {tool_name!r} argument policy violated ({'; '.join(violations)})"
+        command_violation = denied_command_violation(args, policy.command_arg, policy.denied_commands.get(tool_name))
+        if command_violation:
+            return f"blocked: tool {tool_name!r} {command_violation}"
         return None
 
     return guardrail

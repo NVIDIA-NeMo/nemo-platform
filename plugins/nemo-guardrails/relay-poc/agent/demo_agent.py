@@ -23,10 +23,16 @@ This lets us show every outcome without a live LLM:
   5. a blocklisted tool (``transfer_funds``) is blocked even though it is on the
      allowlist (blocklist takes precedence),
   6. ``query_db`` with a ``DROP`` in its query is blocked by the argument rule,
-  7. an unsafe prompt is blocked by the LLM input rail before the model runs.
+  7. ``run_bash("touch foo.txt")`` is blocked before execution by the command
+     denylist, and ``foo.txt`` is never created on disk,
+  8. ``run_bash("echo hello")`` -- a nearby control command -- still runs,
+     proving the block is selective,
+  9. an unsafe prompt is blocked by the LLM input rail before the model runs.
 
-Scenarios 1-6 exercise the tool rails; scenario 7 exercises the LLM input rail --
-all on the same ``agent.invoke`` path, through the same middleware.
+Scenarios 1-8 exercise the tool rails; scenario 9 exercises the LLM input rail --
+all on the same ``agent.invoke`` path, through the same middleware. Scenarios 7-8
+are the ticket's concrete bash deny-case: ``touch foo.txt`` blocked at the real
+tool boundary with no file on disk, ``echo hello`` still allowed.
 
 Run it (needs the embedded Relay runtime + LangChain; no Rust build required):
 
@@ -41,6 +47,9 @@ own passing integration test (python/tests/integrations/langchain_tests/test_mid
 from __future__ import annotations
 
 import asyncio
+import subprocess
+import tempfile
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -58,7 +67,13 @@ OBSERVED: dict[str, Any] = {
     "transfer_funds_ran": False,
     "web_search_query": None,
     "query_db_query": None,
+    "bash_commands_ran": [],
 }
+
+#: A real, isolated working directory the ``run_bash`` tool executes in, so the
+#: "foo.txt is not created on disk" acceptance check is a true filesystem
+#: assertion rather than a stubbed flag. Set in ``main``.
+WORKDIR: Path | None = None
 
 
 @tool
@@ -96,6 +111,27 @@ def transfer_funds(amount: str) -> str:
     return f"transferred {amount}"
 
 
+@tool
+def run_bash(command: str) -> str:
+    """Run a bash command and return its output.
+
+    This tool *really executes* the command (via ``subprocess`` in an isolated
+    working directory), so a guardrail block is only "safe" if it stops the call
+    before this function runs -- exactly what the ticket's ``touch foo.txt``
+    deny-case checks. Any command that reaches here has passed the guardrail.
+    """
+    OBSERVED["bash_commands_ran"].append(command)
+    completed = subprocess.run(
+        command,
+        shell=True,  # noqa: S602 - PoC demo tool; the guardrail is what gates this
+        cwd=str(WORKDIR),
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    return completed.stdout.strip() or f"(exit {completed.returncode})"
+
+
 def _make_stub_model(responses: list[AIMessage]) -> MagicMock:
     """A fake BaseChatModel that returns canned responses in order.
 
@@ -115,6 +151,31 @@ def _tool_call(name: str, args: dict[str, Any], call_id: str) -> AIMessage:
     return AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": call_id}])
 
 
+def _describe_planned(responses: list[AIMessage]) -> str:
+    """Summarize what the (stubbed) model is set up to do this turn."""
+    steps: list[str] = []
+    for message in responses:
+        tool_calls = getattr(message, "tool_calls", None) or []
+        if tool_calls:
+            steps.extend(f"call {call['name']}({call['args']!r})" for call in tool_calls)
+        elif message.content:
+            steps.append(f"reply {message.content!r}")
+    return " -> ".join(steps) if steps else "(nothing)"
+
+
+def _describe_message(message: Any) -> str:
+    """Render one conversation message as a readable one-liner."""
+    role = getattr(message, "type", None) or type(message).__name__
+    tool_calls = getattr(message, "tool_calls", None) or []
+    if tool_calls:
+        calls = ", ".join(f"{call['name']}({call['args']!r})" for call in tool_calls)
+        return f"[{role}] tool call -> {calls}"
+    name = getattr(message, "name", None)
+    content = getattr(message, "content", "")
+    prefix = f"[{role}:{name}]" if name else f"[{role}]"
+    return f"{prefix} {content!r}"
+
+
 def _run_scenario(
     title: str, tools: list[Any], responses: list[AIMessage], user_input: str
 ) -> tuple[MagicMock, Exception | None]:
@@ -125,6 +186,8 @@ def _run_scenario(
     model/tool actually ran.
     """
     print(f"\n=== {title} ===")
+    print(f"    user prompt : {user_input!r}")
+    print(f"    model plan  : {_describe_planned(responses)}")
     model = _make_stub_model(responses)
     agent = create_agent(model=model, tools=tools, middleware=[NemoRelayMiddleware()])
     payload = {"messages": [{"role": "user", "content": user_input}]}
@@ -132,10 +195,14 @@ def _run_scenario(
     with nemo_relay.scope.scope("relay-poc-agent", nemo_relay.ScopeType.Agent):
         try:
             result = agent.invoke(payload)
+            print("    conversation:")
+            for message in result["messages"]:
+                print(f"      {_describe_message(message)}")
             final = result["messages"][-1].content
             print(f"    agent finished; final message: {final!r}")
         except Exception as exc:  # noqa: BLE001 - a guardrail block may surface as an error here
             raised = exc
+            print("    agent response: blocked by guardrail (no model/tool output produced)")
             print(f"    agent raised (expected for a hard block): {type(exc).__name__}: {exc}")
     return model, raised
 
@@ -151,7 +218,7 @@ def main() -> int:
                 config={
                     "tool_policy": {
                         # delete_account is NOT listed -> blocked by the allowlist.
-                        "allowed_tools": ["get_weather", "web_search", "query_db", "transfer_funds"],
+                        "allowed_tools": ["get_weather", "web_search", "query_db", "transfer_funds", "run_bash"],
                         # transfer_funds IS allowlisted but explicitly denied here.
                         "blocked_tools": ["transfer_funds"],
                         # redact PII in web_search's query before the tool runs.
@@ -160,6 +227,8 @@ def main() -> int:
                         "arguments": {
                             "query_db": {"query": {"blocked_keywords": ["DROP", "DELETE"], "max_length": 200}},
                         },
+                        # block the exact (normalized) shell command touch foo.txt on run_bash.
+                        "denied_commands": {"run_bash": ["touch foo.txt"]},
                     },
                     # model-based input rail; PoC backs it with a mock check (no network)
                     "llm_input_rail": {"enabled": True, "model": "mock-content-safety"},
@@ -173,6 +242,10 @@ def main() -> int:
         print("plugin config invalid:", report["diagnostics"])
         return 1
     asyncio.run(nemo_relay.plugin.initialize(config))
+
+    global WORKDIR
+    workdir = tempfile.TemporaryDirectory(prefix="relay-poc-bash-")
+    WORKDIR = Path(workdir.name)
 
     failures: list[str] = []
     try:
@@ -252,7 +325,34 @@ def main() -> int:
         else:
             print("    [PASS] destructive query was blocked by the argument rule; the tool never ran")
 
-        # 7. Unsafe prompt is blocked by the model-based input rail, before the model runs.
+        # 7. Bash `touch foo.txt` is blocked before execution; the file is never created.
+        _run_scenario(
+            "Blocked command (run_bash, touch foo.txt)",
+            [run_bash],
+            [_tool_call("run_bash", {"command": "touch foo.txt"}, "c7"), AIMessage(content="Done.")],
+            "Create a file named foo.txt.",
+        )
+        foo = WORKDIR / "foo.txt"
+        if "touch foo.txt" in OBSERVED["bash_commands_ran"]:
+            failures.append("cmd-deny: run_bash executed 'touch foo.txt' despite the denylist")
+        elif foo.exists():
+            failures.append(f"cmd-deny: foo.txt was created on disk at {foo}")
+        else:
+            print(f"    [PASS] 'touch foo.txt' was blocked before execution; {foo} does not exist")
+
+        # 8. A nearby control command still runs, proving the block is selective.
+        _run_scenario(
+            "Allowed command (run_bash, echo hello)",
+            [run_bash],
+            [_tool_call("run_bash", {"command": "echo hello"}, "c8"), AIMessage(content="Said hello.")],
+            "Echo the word hello.",
+        )
+        if "echo hello" not in OBSERVED["bash_commands_ran"]:
+            failures.append("cmd-deny: benign 'echo hello' was blocked (should have run)")
+        else:
+            print("    [PASS] control command 'echo hello' ran through the same tool")
+
+        # 9. Unsafe prompt is blocked by the model-based input rail, before the model runs.
         model, raised = _run_scenario(
             "Blocked prompt (LLM input rail)",
             [get_weather],
@@ -268,6 +368,7 @@ def main() -> int:
     finally:
         nemo_relay.plugin.clear()
         nemo_relay.plugin.deregister(PLUGIN_KIND)
+        workdir.cleanup()
 
     if failures:
         print("\nFAILURES:")
