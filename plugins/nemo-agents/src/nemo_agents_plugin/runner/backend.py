@@ -106,7 +106,13 @@ class RunnerBackend(ABC):
 
     @abstractmethod
     async def delete_deployment(self, workspace: str, name: str) -> bool:
-        """Stop + clean up; True if found, False if already gone."""
+        """Stop + clean up.
+
+        Returns ``True`` when teardown is complete (or already gone) and the
+        ``AgentDeployment`` entity may be deleted. Returns ``False`` when
+        teardown is still in progress and the controller should keep the entity
+        in ``deleting`` for a later reconcile pass.
+        """
         ...
 
     @abstractmethod

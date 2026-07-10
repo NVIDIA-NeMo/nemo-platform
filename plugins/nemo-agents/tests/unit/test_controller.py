@@ -51,6 +51,7 @@ def _make_controller(
     ctrl = AgentDeploymentController()
     backend = AsyncMock()
     backend.allocate_port = MagicMock(return_value=0)
+    backend.delete_deployment = AsyncMock(return_value=True)
     registry = MagicMock()
     registry.backend = backend
     registry.backend_for = MagicMock(return_value=backend)
@@ -334,3 +335,29 @@ class TestReconcileOne:
         await ctrl._reconcile_one(dep)
 
         ctrl.backend.delete_deployment.assert_called_once_with("default", "test-dep")
+        ctrl.entities.delete.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_deleting_keeps_entity_when_teardown_incomplete(self) -> None:
+        ctrl = _make_controller()
+        dep = _make_deployment(status="deleting", deployment_mode="docker")
+        ctrl.backend.delete_deployment.return_value = False
+
+        await ctrl._reconcile_one(dep)
+
+        ctrl.entities.delete.assert_not_called()
+        assert dep.status == "deleting"
+        ctrl.entities.update.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_health_timeout_saves_failed_even_if_cleanup_raises(self) -> None:
+        ctrl = _make_controller(health_check_timeout_seconds=0, health_check_interval_seconds=0)
+        dep = _make_deployment(status="starting", deployment_mode="docker")
+        ctrl._starting_since[_key(dep)] = 0
+        ctrl.backend.delete_deployment.side_effect = RuntimeError("cleanup boom")
+
+        await ctrl._check_health(dep)
+
+        assert dep.status == "failed"
+        assert "timed out" in dep.error.lower()
+        ctrl.entities.update.assert_awaited()

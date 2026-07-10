@@ -241,9 +241,13 @@ class AgentDeploymentController(NemoController):
         if remaining <= 0:
             dep.status = "failed"
             dep.error = f"Health check timed out after {timeout}s."
-            await self._backend_for(dep).delete_deployment(dep.workspace, dep.name)
             self._starting_since.pop((dep.workspace, dep.name), None)
-            await self._save(dep)
+            try:
+                await self._backend_for(dep).delete_deployment(dep.workspace, dep.name)
+            except Exception:
+                logger.exception("Cleanup after health timeout failed for '%s'", dep.name)
+            finally:
+                await self._save(dep)
             logger.warning("Deployment '%s' health check timed out.", dep.name)
             return
 
@@ -253,9 +257,13 @@ class AgentDeploymentController(NemoController):
             dep.status = "failed"
             dep.error = info.error or "Process exited unexpectedly during startup."
             self._starting_since.pop((dep.workspace, dep.name), None)
-            if is_container_deployment_mode(dep.deployment_mode):
-                await backend.delete_deployment(dep.workspace, dep.name)
-            await self._save(dep)
+            try:
+                if is_container_deployment_mode(dep.deployment_mode):
+                    await backend.delete_deployment(dep.workspace, dep.name)
+            except Exception:
+                logger.exception("Cleanup after failed startup failed for '%s'", dep.name)
+            finally:
+                await self._save(dep)
             logger.warning(
                 "Deployment '%s' failed during startup: %s (log: %s)",
                 dep.name,
@@ -332,8 +340,26 @@ class AgentDeploymentController(NemoController):
             await self._save(dep)
 
     async def _delete_deployment(self, dep: AgentDeployment) -> None:
-        """deleting → (removed): terminate process and delete entity."""
-        await self._backend_for(dep).delete_deployment(dep.workspace, dep.name)
+        """deleting → (removed): terminate runtime and delete entity when teardown completes."""
+        try:
+            cleaned = await self._backend_for(dep).delete_deployment(dep.workspace, dep.name)
+        except Exception:
+            logger.exception("Backend delete failed for '%s'; will retry while status=deleting", dep.name)
+            dep.status = "deleting"
+            dep.error = "Backend teardown failed; will retry."
+            await self._save(dep)
+            return
+
+        if not cleaned:
+            # Container teardown still in progress — keep AgentDeployment so the
+            # next reconcile can finish DeploymentConfig cleanup.
+            dep.status = "deleting"
+            if not dep.error:
+                dep.error = "Waiting for deployments plugin teardown to finish."
+            await self._save(dep)
+            logger.info("Deployment '%s' teardown still in progress; will retry.", dep.name)
+            return
+
         self._starting_since.pop((dep.workspace, dep.name), None)
         try:
             await self.entities.delete(AgentDeployment, name=dep.name, workspace=dep.workspace)

@@ -54,8 +54,11 @@ _NAT_CONFIG_ENV = "NAT_CONFIG_PATH"
 
 # On delete, wait up to this long for the deployments controller to tear down the
 # container and remove the Deployment entity before we drop the DeploymentConfig.
-_DELETE_CONFIG_WAIT_S = 30.0
-_DELETE_CONFIG_POLL_S = 1.0
+# Short per-reconcile wait: if the Deployment is still present, return False so
+# the controller keeps AgentDeployment in ``deleting`` and retries next cycle
+# instead of blocking the reconcile loop for tens of seconds.
+_DELETE_CONFIG_WAIT_S = 2.0
+_DELETE_CONFIG_POLL_S = 0.5
 
 # agents lifecycle status  <-  deployments-plugin status
 _STATUS_MAP: dict[str, DeploymentStatus] = {
@@ -349,36 +352,42 @@ class DeploymentsRunnerBackend(RunnerBackend):
         return _info_from_deployment(deployment)
 
     async def delete_deployment(self, workspace: str, name: str) -> bool:
+        """Tear down plugin Deployment (+ Config).
+
+        Returns ``True`` when the Deployment is gone and DeploymentConfig has
+        been deleted (or was already absent) — the agents controller may then
+        remove ``AgentDeployment``. Returns ``False`` when the Deployment is
+        still present so a later reconcile can finish cleanup.
+        """
         entities = self._entity_client()
-        found = False
+        deployment_present = False
         try:
             deployment = await entities.get(Deployment, name=name, workspace=workspace)
             if deployment.status != "DELETING":
                 deployment.status = "DELETING"
                 deployment.desired_state = "STOPPED"
                 await entities.update(deployment)
-            found = True
+            deployment_present = True
         except NemoEntityNotFoundError:
             pass
 
-        if found:
+        if deployment_present:
             gone = await self._wait_for_deployment_gone(workspace, name)
             if not gone:
                 logger.warning(
-                    "Deployment '%s/%s' still present after %.0fs; keeping DeploymentConfig "
-                    "so the deployments reconciler can finish teardown.",
+                    "Deployment '%s/%s' still present after %.1fs; keeping AgentDeployment "
+                    "and DeploymentConfig so teardown can finish on a later reconcile.",
                     workspace,
                     name,
                     _DELETE_CONFIG_WAIT_S,
                 )
-                return found
+                return False
 
         try:
             await entities.delete(DeploymentConfig, name=name, workspace=workspace)
-            found = True
         except NemoEntityNotFoundError:
             pass
-        return found
+        return True
 
     async def _wait_for_deployment_gone(self, workspace: str, dep_name: str) -> bool:
         """Return True if the Deployment entity disappears within the wait budget."""

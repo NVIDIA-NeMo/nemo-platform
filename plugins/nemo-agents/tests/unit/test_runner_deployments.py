@@ -251,15 +251,38 @@ async def test_delete_waits_for_deployment_gone_before_config_delete() -> None:
     backend._entities = entities
 
     with patch("nemo_agents_plugin.runner.deployments_backend.asyncio.sleep", new_callable=AsyncMock):
-        found = await backend.delete_deployment("default", "hello-dep")
+        cleaned = await backend.delete_deployment("default", "hello-dep")
 
-    assert found is True
+    assert cleaned is True
     entities.update.assert_awaited_once()
     assert deployment.status == "DELETING"
     entities.delete.assert_awaited_once()
     delete_call = entities.delete.await_args
     assert delete_call is not None
     assert delete_call.args[0] is DeploymentConfig
+
+
+@pytest.mark.asyncio
+async def test_delete_returns_false_when_deployment_still_present() -> None:
+    backend = _backend()
+    entities = AsyncMock()
+    deployment = Deployment(
+        name="hello-dep",
+        workspace="default",
+        deployment_config="hello-dep",
+        status="READY",
+    )
+    entities.get = AsyncMock(return_value=deployment)
+    entities.update = AsyncMock()
+    entities.delete = AsyncMock()
+    backend._entities = entities
+
+    with patch("nemo_agents_plugin.runner.deployments_backend.asyncio.sleep", new_callable=AsyncMock):
+        with patch("nemo_agents_plugin.runner.deployments_backend.time.monotonic", side_effect=[0.0, 0.0, 3.0]):
+            cleaned = await backend.delete_deployment("default", "hello-dep")
+
+    assert cleaned is False
+    entities.delete.assert_not_called()
 
 
 def test_agent_deployment_defaults_are_subprocess() -> None:

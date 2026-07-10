@@ -252,7 +252,8 @@ class InMemoryRunnerBackend(RunnerBackend):
         config_path = self._temp_files.pop(key, None)
 
         if proc is None and info is None:
-            return False
+            # Already gone — safe for the controller to remove the entity.
+            return True
 
         if proc is not None:
             await asyncio.to_thread(self._terminate, name, proc)

@@ -765,12 +765,18 @@ def _register_platform_commands(app: typer.Typer) -> None:
         deployments wait``.
 
         Container modes (``--mode docker|k8s``) compile to the nemo-deployments
-        plugin. Gateway routing for container endpoints is AIRCORE-862; the
-        k8s runtime contract is AIRCORE-863.
+        plugin. Requires a configured deployments executor (``deployments.executors``
+        / ``agents.deployments.docker_executor`` or ``k8s_executor``). Container
+        endpoint gateway routing and the full k8s runtime contract (in-cluster
+        inference gateway, wheel staging) are still evolving — docker mode is the
+        supported local path today.
         """
         valid_modes: tuple[str, ...] = ("subprocess", *sorted(CONTAINER_DEPLOYMENT_MODES))
         if mode not in valid_modes:
             typer.echo(f"Invalid --mode {mode!r}; expected {', '.join(valid_modes)}.", err=True)
+            raise typer.Exit(code=2)
+        if image and mode == "subprocess":
+            typer.echo("--image requires --mode docker or k8s.", err=True)
             raise typer.Exit(code=2)
 
         base_url = _resolve_base_url(base_url)
