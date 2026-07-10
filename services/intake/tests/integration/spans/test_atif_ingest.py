@@ -263,18 +263,30 @@ def test_atif_ingest_expands_embedded_subagent_trajectory_into_the_parent_trace(
     )
     assert spans_response.status_code == 200, spans_response.text
     spans = spans_response.json()["data"]
-    spans_by_name = {span["name"]: span for span in spans}
+    root = next(span for span in spans if span["name"] == "orchestrator" and span["kind"] == "AGENT")
+    delegation = next(span for span in spans if span["name"] == "orchestrator" and span["kind"] == "LLM")
+    worker = next(span for span in spans if span["name"] == "worker-agent" and span["kind"] == "AGENT")
+    worker_step = next(span for span in spans if span["name"] == "worker-agent" and span["kind"] == "LLM")
+    user_step = next(span for span in spans if span["name"] == "user-1")
 
     assert len(spans) == 5
-    assert set(spans_by_name) == {"orchestrator", "agent-1", "worker-agent", "user-1", "agent-2"}
+    assert sorted(span["name"] for span in spans) == [
+        "orchestrator",
+        "orchestrator",
+        "user-1",
+        "worker-agent",
+        "worker-agent",
+    ]
     assert {span["trace_id"] for span in spans} == {session_id}
     assert {span["session_id"] for span in spans} == {session_id}
-    assert spans_by_name["agent-1"]["parent_span_id"] == spans_by_name["orchestrator"]["span_id"]
-    assert spans_by_name["worker-agent"]["parent_span_id"] == spans_by_name["agent-1"]["span_id"]
-    assert spans_by_name["user-1"]["parent_span_id"] == spans_by_name["worker-agent"]["span_id"]
-    assert spans_by_name["agent-2"]["parent_span_id"] == spans_by_name["worker-agent"]["span_id"]
-    assert spans_by_name["orchestrator"]["started_at"] == _span_started_at(root_started_at)
-    assert spans_by_name["orchestrator"]["ended_at"] == _span_ended_at(subagent_ended_at)
+    assert delegation["parent_span_id"] == root["span_id"]
+    assert delegation["agent_name"] == "orchestrator"
+    assert worker["parent_span_id"] == delegation["span_id"]
+    assert user_step["parent_span_id"] == worker["span_id"]
+    assert worker_step["parent_span_id"] == worker["span_id"]
+    assert worker_step["agent_name"] == "worker-agent"
+    assert root["started_at"] == _span_started_at(root_started_at)
+    assert root["ended_at"] == _span_ended_at(subagent_ended_at)
 
 
 def test_atif_ingest_rejects_subagent_tree_over_configured_depth(shallow_atif_client: TestClient):
@@ -486,18 +498,22 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     spans = spans_response.json()["data"]
     assert len(spans) == 7
     spans_by_name = {span["name"]: span for span in spans}
+    assert [span["name"] for span in spans].count("sample-agent") == 3
     assert set(spans_by_name) == {
         "sample-agent",
         "user-1",
-        "agent-2",
         "Bash",
-        "agent-3",
         "subagent-subagents/subagent-session-1.json",
         "harbor.verifier",
     }
     assert {span["session_id"] for span in spans} == {"d074dfb7-3691-443c-b137-720d75e40afa"}
 
-    trajectory = spans_by_name["sample-agent"]
+    trajectory = next(span for span in spans if span["name"] == "sample-agent" and span["kind"] == "AGENT")
+    agent_steps = sorted(
+        (span for span in spans if span["name"] == "sample-agent" and span["kind"] == "LLM"),
+        key=lambda span: span["started_at"],
+    )
+    llm_step, final_agent_step = agent_steps
     assert trajectory["kind"] == "AGENT"
     assert trajectory["source"] == "atif"
     assert trajectory["status"] == "error"
@@ -529,7 +545,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     assert trajectory["ended_at"] == _span_ended_at(verifier_finished_at)
 
     for span in spans:
-        if span["name"] == "sample-agent":
+        if span["span_id"] == trajectory["span_id"]:
             continue
         assert "evaluation_context" not in span
 
@@ -587,8 +603,9 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     assert user_step["parent_span_id"] == trajectory["span_id"]
     assert user_step["input"] == body["steps"][0]["message"]
 
-    llm_step = spans_by_name["agent-2"]
     assert llm_step["kind"] == "LLM"
+    assert llm_step["name"] == body["agent"]["name"]
+    assert llm_step["agent_name"] == body["agent"]["name"]
     assert llm_step["parent_span_id"] == trajectory["span_id"]
     assert llm_step["status"] == "success"
     assert "error_message" not in llm_step
@@ -615,12 +632,12 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
 
     subagent_step = spans_by_name["subagent-subagents/subagent-session-1.json"]
     assert subagent_step["kind"] == "AGENT"
-    assert subagent_step["parent_span_id"] == spans_by_name["agent-3"]["span_id"]
+    assert subagent_step["parent_span_id"] == final_agent_step["span_id"]
     assert subagent_step["trace_id"] == body["session_id"]
     assert json.loads(subagent_step["input"]) == subagent_ref
     assert json.loads(subagent_step["output"]) == subagent_observation
 
-    agent_step_response = client.get(f"/apis/intake/v2/workspaces/default/spans/{spans_by_name['agent-3']['span_id']}")
+    agent_step_response = client.get(f"/apis/intake/v2/workspaces/default/spans/{final_agent_step['span_id']}")
     assert agent_step_response.status_code == 200, agent_step_response.text
     agent_step = agent_step_response.json()
     assert agent_step["kind"] == "LLM"

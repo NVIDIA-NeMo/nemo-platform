@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 from nmp.intake.spans.api.spans_schemas import Span
-from nmp.intake.spans.domain import SpanStatus
+from nmp.intake.spans.domain import SpanKind, SpanStatus
 from nmp.intake.spans.ingest.atif import AtifIngestRequest
 from nmp.intake.spans.ingest.atif_domain import (
     AtifAgent,
@@ -227,11 +227,13 @@ def test_atif_v17_embedded_subagents_expand_recursively_in_the_parent_trace() ->
 
     root = next(span for span in spans if span.name == "root-agent")
     root_delegation = next(
-        span for span in spans if span.name == "agent-2" and span.external_parent_span_id == root.external_span_id
+        span for span in spans if span.name == "root-agent" and span.external_parent_span_id == root.external_span_id
     )
     research = next(span for span in spans if span.name == "research-agent")
     research_delegation = next(
-        span for span in spans if span.name == "agent-2" and span.external_parent_span_id == research.external_span_id
+        span
+        for span in spans
+        if span.name == "research-agent" and span.external_parent_span_id == research.external_span_id
     )
     review = next(span for span in spans if span.name == "review-agent")
     external_ref = next(span for span in spans if span.name == "subagent-subagents/external-trajectory.json")
@@ -324,7 +326,7 @@ def test_atif_v17_timestamp_free_subagent_starts_at_delegating_step() -> None:
         trajectory=trajectory,
         ingested_at=ingested_at,
     )
-    delegation = next(span for span in spans if span.name == "agent-2")
+    delegation = next(span for span in spans if span.name == "root-agent" and span.kind == SpanKind.LLM)
     worker = next(span for span in spans if span.name == "worker-agent")
     worker_step = next(
         span for span in spans if span.name == "user-1" and span.external_parent_span_id == worker.external_span_id
@@ -589,7 +591,9 @@ def test_atif_mapping_uses_root_final_metrics_when_steps_have_no_metrics() -> No
     )
 
     root_response = Span.from_domain(spans[0])
-    child_response = Span.from_domain(next(span for span in spans if span.name == "agent-2"))
+    child_response = Span.from_domain(
+        next(span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.LLM)
+    )
     assert root_response.input_tokens == 10
     assert root_response.output_tokens == 5
     assert root_response.cached_tokens == 2
@@ -629,7 +633,9 @@ def test_atif_mapping_does_not_duplicate_final_metrics_when_step_metrics_exist()
     )
 
     root_response = Span.from_domain(spans[0])
-    child_response = Span.from_domain(next(span for span in spans if span.name == "agent-2"))
+    child_response = Span.from_domain(
+        next(span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.LLM)
+    )
     assert root_response.input_tokens is None
     assert root_response.output_tokens is None
     assert root_response.cost_total_usd is None
@@ -670,7 +676,9 @@ def test_atif_mapping_uses_root_cost_when_step_metrics_have_tokens_only() -> Non
     )
 
     root_response = Span.from_domain(spans[0])
-    child_response = Span.from_domain(next(span for span in spans if span.name == "agent-2"))
+    child_response = Span.from_domain(
+        next(span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.LLM)
+    )
     assert root_response.input_tokens is None
     assert root_response.output_tokens is None
     assert root_response.cached_tokens is None
@@ -833,7 +841,7 @@ def test_atif_mapping_uses_invocation_timing_for_step_and_tool_spans() -> None:
         ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
     )
     root = next(span for span in spans if span.name == "sample-agent")
-    step = next(span for span in spans if span.name == "agent-1")
+    step = next(span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.LLM)
     tool = next(span for span in spans if span.name == "bash")
 
     assert step.start_time == base + timedelta(seconds=10)
@@ -935,7 +943,7 @@ def test_atif_mapping_infers_step_end_from_next_timed_step_and_verifier_finish()
         ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
     )
     user = next(span for span in spans if span.name == "user-1")
-    step = next(span for span in spans if span.name == "agent-2")
+    step = next(span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.LLM)
     tool = next(span for span in spans if span.name == "bash")
 
     assert user.end_time == base + timedelta(seconds=5)
@@ -977,7 +985,8 @@ def test_atif_mapping_leaves_end_time_none_when_underivable() -> None:
     )
     user = next(span for span in spans if span.name == "user-1")
     tool = next(span for span in spans if span.name == "bash")
-    last = next(span for span in spans if span.name == "agent-3")
+    llm_steps = [span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.LLM]
+    last = llm_steps[-1]
 
     # Malformed invocation blocks never fail ingest and never fabricate ends:
     # earlier steps end at agent-3's invocation start (the next timed step),
@@ -1006,4 +1015,8 @@ def test_atif_mapping_end_time_none_when_no_timing_exists_at_all() -> None:
         trajectory=trajectory,
         ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
     )
-    assert all(span.end_time is None for span in spans if span.name in {"user-1", "agent-2", "bash"})
+    assert all(
+        span.end_time is None
+        for span in spans
+        if span.name in {"user-1", "bash"} or (span.name == "sample-agent" and span.kind == SpanKind.LLM)
+    )

@@ -357,7 +357,7 @@ def _step_to_span(
         external_span_id=external_span_id,
         external_parent_span_id=external_parent_span_id,
         kind=_step_kind(step),
-        name=f"{step.source}-{step.step_id}",
+        name=(default_agent_name if isinstance(step, AtifStepAgent) else f"{step.source}-{step.step_id}"),
         status=SpanStatus.SUCCESS,
         start_time=step_started_at,
         end_time=_clamped_end(step_started_at, step_ended_at),
