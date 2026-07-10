@@ -127,10 +127,8 @@ jobs:
       release_label: ${{ steps.plan.outputs.release_label }}
       nightly_timestamp: ${{ steps.plan.outputs.nightly_timestamp }}
       wheel_ids: ${{ steps.plan.outputs.wheel_ids }}
-      sdk_ids: ${{ steps.plan.outputs.sdk_ids }}
       container_ids: ${{ steps.plan.outputs.container_ids }}
       has_wheels: ${{ steps.plan.outputs.has_wheels }}
-      has_sdks: ${{ steps.plan.outputs.has_sdks }}
       has_containers: ${{ steps.plan.outputs.has_containers }}
       include_helm: ${{ steps.plan.outputs.include_helm }}
       update_ngc_metadata: ${{ steps.plan.outputs.update_ngc_metadata }}
@@ -186,7 +184,6 @@ jobs:
             const presets = {
               all: { wheels: allWheels, containers: allContainers, includeHelm: true },
               wheels: { wheels: allWheels, containers: [], includeHelm: false },
-              sdks: { wheels: allWheels, containers: [], includeHelm: false },
               containers: { wheels: [], containers: allContainers, includeHelm: false },
               helm: { wheels: [], containers: [], includeHelm: true },
             };
@@ -266,12 +263,10 @@ jobs:
             core.setOutput("release_label", releaseLabel);
             core.setOutput("nightly_timestamp", nightlyTimestamp);
             core.setOutput("wheel_ids", JSON.stringify(wheelIds));
-            core.setOutput("sdk_ids", JSON.stringify(wheelIds));
             core.setOutput("container_ids", JSON.stringify(containerIds));
             core.setOutput("wheel_artifacts", JSON.stringify(wheels));
             core.setOutput("container_artifacts", JSON.stringify(containers));
             core.setOutput("has_wheels", String(wheelIds.length > 0));
-            core.setOutput("has_sdks", String(wheelIds.length > 0));
             core.setOutput("has_containers", String(containerIds.length > 0));
             core.setOutput("include_helm", String(includeHelm));
             core.setOutput("update_ngc_metadata", String(updateNgcMetadata));
@@ -420,7 +415,7 @@ jobs:
           SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
           SOURCE_RUN_URL: >-
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          SDK_IDS: ${{ needs.plan-release.outputs.sdk_ids }}
+          WHEEL_IDS: ${{ needs.plan-release.outputs.wheel_ids }}
           CONTAINER_IDS: ${{ needs.plan-release.outputs.container_ids }}
           INCLUDE_HELM: ${{ needs.plan-release.outputs.include_helm }}
         with:
@@ -436,7 +431,7 @@ jobs:
                 version: process.env.RELEASE_VERSION,
                 source_sha: process.env.SOURCE_SHA,
                 source_run_url: process.env.SOURCE_RUN_URL,
-                sdk_ids: JSON.parse(process.env.SDK_IDS),
+                wheel_ids: JSON.parse(process.env.WHEEL_IDS),
                 container_ids: JSON.parse(process.env.CONTAINER_IDS),
                 helm_id: process.env.INCLUDE_HELM === "true"
                   ? process.env.RELEASE_HELM_ID
@@ -447,7 +442,7 @@ jobs:
   dispatch-wheel-stage:
     name: Dispatch wheel builds
     needs: plan-release
-    if: needs.plan-release.outputs.has_sdks == 'true'
+    if: needs.plan-release.outputs.has_wheels == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch wheel builds
