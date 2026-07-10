@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nemo-guardrails-relay-poc"
+version = "0.1.0"
+description = "PoC: NeMo Guardrails enforcement as an in-process NeMo Relay language-binding plugin"
+requires-python = ">=3.11"
+dependencies = [
+  # The shippable form is the in-process language-binding plugin
+  # (``GuardrailsPlugin``), which registers against the embedded ``nemo-relay``
+  # runtime. httpx is used by the (optional) real Guardrails-service client.
+  "nemo-relay>=0.5.0",
+  "httpx>=0.27",
+  # NOTE: the deterministic tool predicate (``is_tool_allowed``) is vendored
+  # dependency-free in ``_predicates.py`` rather than depending on
+  # ``nemo-guardrails-plugin``. That package is not on PyPI and pulls in
+  # nemo-platform + nemoguardrails + langchain. Follow-up: promote the pure
+  # predicate into a small shared package both plugins import.
+]
+
+[project.optional-dependencies]
+# Out-of-process gRPC worker form (``worker.py`` + ``relay-plugin.toml``). This
+# covers the LLM boundary only; it is NOT needed for the language-binding plugin.
+worker = ["nemo-relay-plugin>=0.5.0"]
+# Needed to run the LangChain demo agent / use NemoRelayMiddleware.
+langchain = ["langchain>=1.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

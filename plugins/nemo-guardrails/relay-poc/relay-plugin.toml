@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+manifest_version = 1
+
+[plugin]
+id = "nemo_guardrails.relay_poc"
+kind = "worker"
+
+[compat]
+relay = ">=0.5,<1.0"
+worker_protocol = "grpc-v1"
+
+[defaults]
+enabled = false
+
+[capabilities]
+items = ["plugin_worker"]
+
+[source]
+manifest_root = "."
+artifact = "src/nemo_guardrails_relay_poc/worker.py"
+
+# Regenerate after editing worker.py:
+#   shasum -a 256 src/nemo_guardrails_relay_poc/worker.py
+[integrity]
+sha256 = "sha256:d1245212d602d2ad09d416be3b701cfdca1d89eac0444fd84c0be5ae0a3c4baa"
+
+[load]
+runtime = "python"
+entrypoint = "nemo_guardrails_relay_poc.worker:main"
