@@ -20,7 +20,12 @@ from typing import Any
 
 import yaml
 from nemo_agents_plugin.config import AgentsConfig, DeploymentsRunnerConfig
-from nemo_agents_plugin.entities import DeploymentMode, DeploymentStatus, Endpoint
+from nemo_agents_plugin.entities import (
+    CONTAINER_DEPLOYMENT_MODES,
+    DeploymentMode,
+    DeploymentStatus,
+    Endpoint,
+)
 from nemo_agents_plugin.runner.backend import DeploymentInfo, ExternalLog, LogLocation, RunnerBackend
 from nemo_agents_plugin.utils import get_base_url
 from nemo_deployments_plugin.entities import (
@@ -64,8 +69,6 @@ _STATUS_MAP: dict[str, DeploymentStatus] = {
     "DELETING": "deleting",
 }
 
-_CONTAINER_MODES: frozenset[str] = frozenset({"docker", "k8s"})
-
 
 def map_status(backend_status: str) -> DeploymentStatus:
     """Return the agents lifecycle status for a deployments-plugin status."""
@@ -98,11 +101,29 @@ def executor_for_mode(config: DeploymentsRunnerConfig, mode: DeploymentMode) -> 
     return config.default_executor
 
 
+_HTTP_PROTOCOLS = frozenset({"http", "https"})
+
+
 def _project_endpoints(deployment: Deployment) -> list[Endpoint]:
-    return [
-        Endpoint(name=ep.name, url=ep.url, protocol=ep.protocol)  # type: ignore[arg-type]
-        for ep in deployment.endpoints
-    ]
+    """Map deployments-plugin endpoints onto the agents entity Endpoint model."""
+    return [Endpoint.model_validate(ep.model_dump()) for ep in deployment.endpoints]
+
+
+def _primary_http_url(endpoints: list[Endpoint]) -> str:
+    return next((ep.url for ep in endpoints if ep.protocol in _HTTP_PROTOCOLS and ep.url), "")
+
+
+def _info_from_deployment(deployment: Deployment) -> DeploymentInfo:
+    endpoints = _project_endpoints(deployment)
+    info = DeploymentInfo(
+        name=deployment.name,
+        status=map_status(deployment.status),
+        endpoint=_primary_http_url(endpoints),
+        endpoints=endpoints,
+    )
+    if info.status == "failed":
+        info.error = deployment.status_message or "Deployment failed."
+    return info
 
 
 def build_deployment_config(
@@ -133,7 +154,7 @@ def build_deployment_config(
     volume_mounts: list[VolumeMount] = []
     init_containers: list[Container] = []
 
-    # Option B (k8s only): init container pulls workspace plugin wheels into a shared volume.
+    # K8s only: init container stages workspace plugin wheels into a shared volume.
     # Docker backend rejects init_containers in v1. Full wheel-source contract is AIRCORE-863.
     # Constructors use camelCase aliases (ty + pydantic alias validation).
     if mode == "k8s" and plugin_wheels_init_image:
@@ -144,7 +165,7 @@ def build_deployment_config(
                 image=plugin_wheels_init_image,
                 command=["sh", "-c"],
                 args=[
-                    f"echo 'Option B plugin-wheels stub; hardened in AIRCORE-863' "
+                    f"echo 'plugin-wheels init stub; hardened in AIRCORE-863' "
                     f"&& mkdir -p {_PLUGIN_WHEELS_MOUNT} && touch {_PLUGIN_WHEELS_MOUNT}/.ready"
                 ],
             ).model_copy(
@@ -224,7 +245,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
     ) -> DeploymentInfo:
         """Create DeploymentConfig + Deployment entities for the agent container."""
         del port  # Host port is allocated by the deployments executor, not agents.
-        if deployment_mode not in _CONTAINER_MODES:
+        if deployment_mode not in CONTAINER_DEPLOYMENT_MODES:
             return DeploymentInfo(
                 name=name,
                 status="failed",
@@ -298,17 +319,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
             deployment = await entities.get(Deployment, name=name, workspace=workspace)
         except NemoEntityNotFoundError:
             return None
-        endpoints = _project_endpoints(deployment)
-        endpoint = next((ep.url for ep in endpoints if ep.protocol in ("http", "https") and ep.url), "")
-        info = DeploymentInfo(
-            name=name,
-            status=map_status(deployment.status),
-            endpoint=endpoint,
-            endpoints=endpoints,
-        )
-        if info.status == "failed":
-            info.error = deployment.status_message or "Deployment failed."
-        return info
+        return _info_from_deployment(deployment)
 
     async def delete_deployment(self, workspace: str, name: str) -> bool:
         entities = self._entity_client()
@@ -353,19 +364,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
     async def list_deployments(self, workspace: str | None = None) -> list[DeploymentInfo]:
         entities = self._entity_client()
         result = await entities.list(Deployment, workspace=workspace or "-")
-        infos: list[DeploymentInfo] = []
-        for deployment in result.data:
-            endpoints = _project_endpoints(deployment)
-            endpoint = next((ep.url for ep in endpoints if ep.protocol in ("http", "https") and ep.url), "")
-            infos.append(
-                DeploymentInfo(
-                    name=deployment.name,
-                    status=map_status(deployment.status),
-                    endpoint=endpoint,
-                    endpoints=endpoints,
-                )
-            )
-        return infos
+        return [_info_from_deployment(deployment) for deployment in result.data]
 
     async def health_check(self, endpoint: str) -> bool:
         # Container modes trust the deployments-plugin readiness projection; the

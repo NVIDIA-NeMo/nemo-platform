@@ -57,6 +57,7 @@ from nemo_agents_plugin.cli_context import (
 from nemo_agents_plugin.cli_context import (
     resolve_context_headers as _resolve_context_headers,
 )
+from nemo_agents_plugin.entities import CONTAINER_DEPLOYMENT_MODES
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
 from nemo_agents_plugin.usage.cli import register_usage_commands
 from nemo_platform.cli.core.formatters import Column, format_output
@@ -767,8 +768,9 @@ def _register_platform_commands(app: typer.Typer) -> None:
         plugin. Gateway routing for container endpoints is AIRCORE-862; the
         k8s runtime contract is AIRCORE-863.
         """
-        if mode not in ("subprocess", "docker", "k8s"):
-            typer.echo(f"Invalid --mode {mode!r}; expected subprocess, docker, or k8s.", err=True)
+        valid_modes: tuple[str, ...] = ("subprocess", *sorted(CONTAINER_DEPLOYMENT_MODES))
+        if mode not in valid_modes:
+            typer.echo(f"Invalid --mode {mode!r}; expected {', '.join(valid_modes)}.", err=True)
             raise typer.Exit(code=2)
 
         base_url = _resolve_base_url(base_url)
@@ -1033,6 +1035,17 @@ def _register_platform_commands(app: typer.Typer) -> None:
 _TERMINAL_STATUSES = {"running", "failed"}
 
 
+def _deployment_address(dep: dict[str, Any]) -> str:
+    """Best-effort address for CLI output (loopback endpoint or first projected URL)."""
+    endpoint = dep.get("endpoint")
+    if isinstance(endpoint, str) and endpoint:
+        return endpoint
+    for ep in dep.get("endpoints") or []:
+        if isinstance(ep, dict) and ep.get("url"):
+            return str(ep["url"])
+    return ""
+
+
 def _wait_for_deployment(
     base_url: str,
     workspace: str,
@@ -1073,7 +1086,7 @@ def _wait_for_deployment(
             last_status = status
 
         if status == "running":
-            typer.echo(f"Deployment '{name}' is running at {dep.get('endpoint', '?')}")
+            typer.echo(f"Deployment '{name}' is running at {_deployment_address(dep) or '?'}")
             return True
 
         if status == "failed":

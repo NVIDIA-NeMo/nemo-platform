@@ -9,12 +9,10 @@ import logging
 import threading
 
 from nemo_agents_plugin.config import AgentsConfig
-from nemo_agents_plugin.entities import DeploymentMode
+from nemo_agents_plugin.entities import DeploymentMode, is_container_deployment_mode
 from nemo_agents_plugin.runner.backend import RunnerBackend
 
 logger = logging.getLogger(__name__)
-
-_CONTAINER_MODES: frozenset[str] = frozenset({"docker", "k8s"})
 
 
 class RunnerBackendRegistry:
@@ -25,6 +23,7 @@ class RunnerBackendRegistry:
     """
 
     def __init__(self, config: AgentsConfig) -> None:
+        # Deferred: keep registry import cheap for CLI plugin discovery via the controller.
         from nemo_agents_plugin.runner.in_memory import InMemoryRunnerBackend
 
         self._config = config
@@ -42,12 +41,13 @@ class RunnerBackendRegistry:
 
     def backend_for(self, mode: DeploymentMode) -> RunnerBackend:
         """Return the runner backend for *mode*."""
-        if mode in _CONTAINER_MODES:
+        if is_container_deployment_mode(mode):
             return self._deployments_backend()
         return self._in_memory
 
     def _deployments_backend(self) -> RunnerBackend:
         if self._deployments is None:
+            # Deferred: deployments_backend pulls nemo-deployments + SDK machinery.
             from nemo_agents_plugin.runner.deployments_backend import DeploymentsRunnerBackend
 
             self._deployments = DeploymentsRunnerBackend(self._config)

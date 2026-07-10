@@ -85,7 +85,7 @@ class DeploymentsRunnerConfig(BaseModel):
     plugin_wheels_init_image: str | None = Field(
         default=None,
         description=(
-            "Optional init-container image for Option B workspace plugin wheels (k8s only). "
+            "Optional init-container image that stages workspace plugin wheels (k8s only). "
             "When unset, init_containers are omitted; AIRCORE-863 hardens the full contract."
         ),
     )

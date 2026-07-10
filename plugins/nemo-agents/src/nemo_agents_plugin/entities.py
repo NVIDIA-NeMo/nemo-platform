@@ -25,6 +25,14 @@ DeploymentStatus = Literal["pending", "starting", "running", "failed", "deleting
 # deployments plugin; their routable address is projected onto ``endpoints``.
 DeploymentMode = Literal["subprocess", "docker", "k8s"]
 
+# Modes that compile to the nemo-deployments plugin (not local subprocess).
+CONTAINER_DEPLOYMENT_MODES: frozenset[str] = frozenset({"docker", "k8s"})
+
+
+def is_container_deployment_mode(mode: str) -> bool:
+    """Return True when *mode* uses the deployments-plugin runner backend."""
+    return mode in CONTAINER_DEPLOYMENT_MODES
+
 
 class Endpoint(BaseModel):
     """A routable network endpoint for a deployment.
@@ -143,9 +151,8 @@ class AgentDeployment(NemoEntity, entity_type="agent_deployment"):
             "'endpoint'; 'docker'/'k8s' read the projected 'endpoints'."
         ),
     )
-    # Compat shim (one release): 'endpoint' remains the subprocess loopback address so existing
-    # subprocess code and the SDK keep working. Container modes leave it empty and populate
-    # 'endpoints' instead. Prefer 'endpoints'; 'endpoint' is retained for the subprocess path.
+    # Dual addressing: subprocess uses loopback ``endpoint``; docker/k8s project
+    # routable addresses onto ``endpoints`` and leave ``endpoint`` empty.
     endpoint: str = Field(
         default="", description="Subprocess loopback endpoint of the agent process (e.g. http://localhost:9001)."
     )

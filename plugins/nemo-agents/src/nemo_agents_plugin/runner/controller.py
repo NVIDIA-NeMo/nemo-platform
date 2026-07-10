@@ -28,19 +28,13 @@ import time
 from typing import ClassVar, cast
 
 from nemo_agents_plugin.config import ControllerConfig
-from nemo_agents_plugin.entities import AgentDeployment, DeploymentMode
+from nemo_agents_plugin.entities import AgentDeployment, is_container_deployment_mode
 from nemo_agents_plugin.runner.backend import RunnerBackend
 from nemo_agents_plugin.runner.registry import RunnerBackendRegistry
 from nemo_platform_plugin.controller import NemoController
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError
 
 logger = logging.getLogger(__name__)
-
-_CONTAINER_MODES: frozenset[str] = frozenset({"docker", "k8s"})
-
-
-def _is_container_mode(mode: DeploymentMode) -> bool:
-    return mode in _CONTAINER_MODES
 
 
 class AgentDeploymentController(NemoController):
@@ -211,7 +205,7 @@ class AgentDeploymentController(NemoController):
         dep.status = "starting"
         dep.port = info.port
         dep.pid = info.pid
-        if _is_container_mode(dep.deployment_mode):
+        if is_container_deployment_mode(dep.deployment_mode):
             dep.endpoint = ""
             dep.endpoints = list(info.endpoints)
             dep.plugin_deployment = dep.plugin_deployment or dep.name
@@ -268,7 +262,7 @@ class AgentDeploymentController(NemoController):
             )
             return
 
-        if _is_container_mode(dep.deployment_mode):
+        if is_container_deployment_mode(dep.deployment_mode):
             if info is None:
                 logger.debug("Deployment '%s' not visible in deployments plugin yet.", dep.name)
                 return
@@ -325,7 +319,7 @@ class AgentDeploymentController(NemoController):
             dep.error = info.error or "Process exited unexpectedly."
             await self._save(dep)
             logger.warning("Deployment '%s' failed: %s", dep.name, dep.error)
-        elif _is_container_mode(dep.deployment_mode) and info.endpoints != dep.endpoints:
+        elif is_container_deployment_mode(dep.deployment_mode) and info.endpoints != dep.endpoints:
             dep.endpoints = list(info.endpoints)
             await self._save(dep)
 
