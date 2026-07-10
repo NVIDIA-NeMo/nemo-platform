@@ -12,20 +12,19 @@ a live server or external database.
 
 import os
 import uuid
-from typing import Generator
 from pathlib import Path
+from typing import Generator
 
 import pytest
-from nmp.testing import ClientContext, create_test_client
 from click.testing import Result
-from typer.testing import CliRunner
-from starlette.testclient import TestClient
-from nmp.core.files.service import FilesService
-from nemo_platform_plugin.files.client import FilesClient
-from nemo_platform_plugin.client.adapter import client_from_platform
-
 from nemo_platform import NeMoPlatform
 from nemo_platform.cli.core.context import CLIContext
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
+from nmp.core.files.service import FilesService
+from nmp.testing import ClientContext, create_test_client
+from starlette.testclient import TestClient
+from typer.testing import CliRunner
 
 DEFAULT_WORKSPACE = "default"
 
