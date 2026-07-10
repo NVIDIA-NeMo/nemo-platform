@@ -10,6 +10,7 @@ import httpx
 from fastapi import Request, Response
 from nmp.common.config import AuthConfig, get_auth_config
 from nmp.common.observability.context import get_app_ctx
+from nmp.common.platform_endpoint import parse_platform_endpoint
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
@@ -55,8 +56,8 @@ def _embedded_pdp_base_url_hint(config: AuthConfig) -> str:
         return ""
     base = (config.policy_decision_point_base_url or "").strip()
     return (
-        " For embedded PDP, auth.policy_decision_point_base_url must be the HTTP origin where "
-        "this process serves /apis/auth (same as platform base_url / NMP_BASE_URL). "
+        " For embedded PDP, auth.policy_decision_point_base_url must be the typed endpoint where "
+        "this process serves /apis/auth (same as platform base_url / NMP_BASE_URL; HTTP(S) or unix://). "
         f"Absolute PDP URLs ignore the injected ASGI client base_url. Current auth.policy_decision_point_base_url={base!r}."
     )
 
@@ -166,7 +167,8 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             An async HTTP client configured with auth.policy_decision_point_request_timeout_seconds
         """
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=self.config.policy_decision_point_request_timeout_seconds)
+            endpoint = parse_platform_endpoint(self.config.policy_decision_point_base_url)
+            self._client = endpoint.async_http_client(timeout=self.config.policy_decision_point_request_timeout_seconds)
         return self._client
 
     def _update_auth_context(self, principal: Principal) -> None:

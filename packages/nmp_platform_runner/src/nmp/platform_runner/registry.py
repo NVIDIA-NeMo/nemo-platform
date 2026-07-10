@@ -39,6 +39,10 @@ AVAILABLE_SIDECARS: dict[str, str] = {
     "adapters": "nmp.core.models.sidecars.adapters.main:run",
 }
 
+SERVICE_SIDECAR_DEPENDENCIES: dict[str, set[str]] = {
+    "models": {"adapters"},
+}
+
 CORE_SERVICES = [
     "auth",
     "models",

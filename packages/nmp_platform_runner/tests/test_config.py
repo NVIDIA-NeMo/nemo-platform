@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 from nmp.platform_runner import registry
 from nmp.platform_runner.config import (
+    DEFAULT_PLATFORM_BIND_HOST,
+    PlatformAppConfig,
     ResolvedRunConfiguration,
     apply_run_environment,
     default_config_path,
@@ -26,6 +28,7 @@ def _make_config(
     sidecars: set[str] | None = None,
     host: str = "0.0.0.0",
     port: int = 8080,
+    socket_path: str | None = None,
     config_path: str = "/nonexistent/nmp-test-config.yaml",
 ) -> ResolvedRunConfiguration:
     return ResolvedRunConfiguration(
@@ -34,14 +37,13 @@ def _make_config(
         sidecars=sidecars if sidecars is not None else set(),
         host=host,
         port=port,
+        socket_path=socket_path,
         config_path=config_path,
     )
 
 
 def resolve(**kwargs):
-    params = {}
-    params.update(kwargs)
-    return resolve_run_configuration(**params)
+    return resolve_run_configuration(PlatformAppConfig(**kwargs))
 
 
 def test_default_config_path_points_to_bundled_local_config():
@@ -50,9 +52,80 @@ def test_default_config_path_points_to_bundled_local_config():
     assert path.endswith(("nmp/platform_runner/config/local.yaml", "nemo_platform/services/runner/config/local.yaml"))
 
 
+def test_platform_app_config_keeps_sequence_fields_simple():
+    config = PlatformAppConfig(
+        services=["models"],
+        controllers=[],
+        sidecars=["adapters"],
+    )
+
+    assert config.services == ["models"]
+    assert config.controllers == []
+    assert config.sidecars == ["adapters"]
+
+
+def test_platform_app_config_derives_instance_paths_from_roots(tmp_path: Path):
+    config = PlatformAppConfig(scope="dev", state_root=tmp_path / "state", runtime_root=tmp_path / "run")
+
+    assert config.state_dir() == tmp_path / "state" / "instances" / "dev"
+    assert config.runtime_dir() == tmp_path / "run" / "dev"
+    assert config.socket_file_path() == tmp_path / "run" / "dev" / "nemo-platform.sock"
+    assert config.log_file_path() == tmp_path / "state" / "instances" / "dev" / "services.log"
+
+
+def test_platform_app_config_runtime_dir_defaults_to_explicit_socket_parent(tmp_path: Path):
+    config = PlatformAppConfig(socket_path=tmp_path / "custom.sock")
+
+    assert config.runtime_dir() == tmp_path
+    assert config.socket_file_path() == tmp_path / "custom.sock"
+
+
+def test_platform_app_config_uses_explicit_log_path(tmp_path: Path):
+    config = PlatformAppConfig(state_root=tmp_path / "state", log_path=tmp_path / "logs" / "nemo.log")
+
+    assert config.log_file_path() == tmp_path / "logs" / "nemo.log"
+
+
+def test_platform_app_config_rejects_relative_socket_path():
+    with pytest.raises(ValueError, match="UDS socket path must be absolute"):
+        PlatformAppConfig(socket_path="relative/path")
+
+
+def test_platform_app_config_rejects_relative_state_root():
+    with pytest.raises(ValueError, match="state root must be absolute"):
+        PlatformAppConfig(state_root="relative/path")
+
+
+def test_platform_app_config_rejects_relative_runtime_root():
+    with pytest.raises(ValueError, match="runtime root must be absolute"):
+        PlatformAppConfig(runtime_root="relative/path")
+
+
+def test_platform_app_config_rejects_relative_log_path():
+    with pytest.raises(ValueError, match="log path must be absolute"):
+        PlatformAppConfig(log_path="relative/path")
+
+
+def test_resolve_run_configuration_accepts_platform_app_config():
+    resolved = resolve_run_configuration(
+        PlatformAppConfig(
+            services=["auth"],
+            controllers=[],
+            host="127.0.0.1",
+            port=9090,
+        )
+    )
+
+    assert resolved.services == {"auth"}
+    assert resolved.controllers == set()
+    assert resolved.host == "127.0.0.1"
+    assert resolved.port == 9090
+
+
 def test_no_arguments_defaults_to_all_services_and_default_controllers():
     resolved = resolve()
 
+    assert resolved.host == DEFAULT_PLATFORM_BIND_HOST
     assert resolved.services.issuperset(
         {
             "auth",
@@ -112,6 +185,17 @@ def test_extra_services_are_available_for_resolution():
         resolve(services=["custom-service"])
 
 
+def test_resolve_rejects_relative_socket_path():
+    with pytest.raises(ValueError, match="UDS socket path must be absolute"):
+        resolve(socket_path="relative.sock")
+
+
+def test_resolve_preserves_absolute_socket_path():
+    resolved = resolve(socket_path="/tmp/nemo-platform.sock")
+
+    assert resolved.socket_path == "/tmp/nemo-platform.sock"
+
+
 # ---------------------------------------------------------------------------
 # Topology regression tests for apply_run_environment
 #
@@ -145,6 +229,11 @@ platform:
         apply_run_environment(_make_config(host="0.0.0.0", port=8080, config_path=str(config_path)), env=env)
         assert env["NMP_BASE_URL"] == "https://nemo-gateway:8080"
         assert env["NMP_SERVICE_HOST"] == "127.0.0.1"
+
+    def test_sets_uds_base_url_when_socket_path_is_present(self):
+        env: dict[str, str] = {}
+        apply_run_environment(_make_config(socket_path="/tmp/nemo-platform.sock"), env=env)
+        assert env["NMP_BASE_URL"] == "unix:///tmp/nemo-platform.sock"
 
     def test_sets_embedded_pdp_base_url_from_base_url(self):
         env: dict[str, str] = {}
