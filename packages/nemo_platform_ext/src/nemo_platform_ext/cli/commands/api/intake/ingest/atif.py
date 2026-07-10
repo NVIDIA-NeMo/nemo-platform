@@ -33,17 +33,26 @@ def create_atif(
     ] = None,
     continued_trajectory_ref: Annotated[str | None, typer.Option("--continued-trajectory-ref")] = None,
     evaluation_context: Annotated[
-        str | None, typer.Option("--evaluation-context", help="Deprecated. (JSON string)")
+        str | None,
+        typer.Option(
+            "--evaluation-context",
+            help='Evaluation context accepted by ingest endpoints (the canonical shape).`extra="ignore"` so a producer still sending retired keys (evaluation_sha, evaluation_run_id, metadata) keeps ingesting without error rather than being rejected. (JSON string)',
+        ),
     ] = None,
     experiment_context: Annotated[
         str | None,
-        typer.Option("--experiment-context", help="Experiment context accepted by ingest endpoints. (JSON string)"),
+        typer.Option(
+            "--experiment-context",
+            help="Deprecated alias for :class:`EvaluationContext`. Producers should send `evaluation_context`. (JSON string)",
+        ),
     ] = None,
     extra: Annotated[str | None, typer.Option("--extra", help="JSON string")] = None,
     final_metrics: Annotated[str | None, typer.Option("--final-metrics", help="JSON string")] = None,
     notes: Annotated[str | None, typer.Option("--notes")] = None,
     session_id: Annotated[str | None, typer.Option("--session-id")] = None,
     steps: Annotated[str | None, typer.Option("--steps", help="JSON string")] = None,
+    subagent_trajectories: Annotated[str | None, typer.Option("--subagent-trajectories", help="JSON string")] = None,
+    trajectory_id: Annotated[str | None, typer.Option("--trajectory-id")] = None,
     input_file: Annotated[
         str | None,
         typer.Option("--input-file", help="Path to JSON file (use '-' for stdin)", rich_help_panel="Input Options"),
@@ -93,6 +102,10 @@ def create_atif(
         input_payload["session_id"] = session_id
     if steps is not None:
         input_payload["steps"] = read_payload("steps", steps)
+    if subagent_trajectories is not None:
+        input_payload["subagent_trajectories"] = read_payload("subagent_trajectories", subagent_trajectories)
+    if trajectory_id is not None:
+        input_payload["trajectory_id"] = trajectory_id
     # Validate required fields are present after merging
     validate_required_fields(
         input_payload,

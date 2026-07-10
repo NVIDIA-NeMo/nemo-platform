@@ -57,6 +57,10 @@ def _runtime_job_config(job_config: SafeSynthesizerJobConfig) -> dict[str, Any]:
     return config
 
 
+def _container_image() -> str:
+    return config.container_image_ref or get_qualified_image(config.container_image)
+
+
 def _create_job_step(job_config: SafeSynthesizerJobConfig, environment: list[EnvironmentVariable]) -> PlatformJobStep:
     if config.job_mode == "subprocess-local":
         try:
@@ -94,7 +98,7 @@ def _create_job_step(job_config: SafeSynthesizerJobConfig, environment: list[Env
             provider="gpu",
             profile=config.job_executor_profile,
             container=ContainerSpec(
-                image=get_qualified_image(config.container_image),
+                image=_container_image(),
                 entrypoint=config.entrypoint,
             ),
             resources=resources,

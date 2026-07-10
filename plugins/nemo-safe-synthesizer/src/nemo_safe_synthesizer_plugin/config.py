@@ -22,7 +22,14 @@ class SafeSynthesizerConfig(NemoConfig):
     )
     job_mode: Literal["subprocess-local", "container"] = "subprocess-local"
     job_executor_profile: str = "default"
-    container_image: str = "nmp-gpu-tasks"
+    container_image: str = "safe-synthesizer-tasks"
+    container_image_ref: str | None = Field(
+        default=None,
+        description=(
+            "Optional fully qualified task image reference. When set, this bypasses platform "
+            "NMP_IMAGE_REGISTRY / NMP_IMAGE_TAG qualification for Safe Synthesizer jobs."
+        ),
+    )
     runtime_venv: str = ".nemo/safe-synthesizer-runtime"
     runtime_package: str = "nemo-safe-synthesizer[engine,cu129]==0.1.2"
     runtime_python_version: str = "3.11"

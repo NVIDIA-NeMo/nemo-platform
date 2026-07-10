@@ -5,6 +5,18 @@ description: >
   dependencies.
 
 inputs:
+  remove_python:
+    description: Remove /opt/hostedtoolcache/Python
+    required: false
+    default: "false"
+  remove_pypy:
+    description: Remove /opt/hostedtoolcache/PyPy
+    required: false
+    default: "false"
+  remove_node:
+    description: Remove /opt/hostedtoolcache/node
+    required: false
+    default: "false"
   remove_ruby:
     description: Remove /opt/hostedtoolcache/Ruby
     required: false
@@ -48,6 +60,15 @@ runs:
         sudo rm -rf /usr/local/lib/android || true
         sudo rm -rf /opt/ghc || true
         sudo rm -rf /opt/hostedtoolcache/CodeQL || true
+        if [ "${{ inputs.remove_python }}" = "true" ]; then
+          sudo rm -rf /opt/hostedtoolcache/Python || true
+        fi
+        if [ "${{ inputs.remove_pypy }}" = "true" ]; then
+          sudo rm -rf /opt/hostedtoolcache/PyPy || true
+        fi
+        if [ "${{ inputs.remove_node }}" = "true" ]; then
+          sudo rm -rf /opt/hostedtoolcache/node || true
+        fi
         if [ "${{ inputs.remove_ruby }}" = "true" ]; then
           sudo rm -rf /opt/hostedtoolcache/Ruby || true
         fi

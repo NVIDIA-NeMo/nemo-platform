@@ -132,27 +132,25 @@
 
 ## Submit the Spec
 
-=== "CLI (uv run)"
+Use the Jobs API or SDK for the primary platform-container path. Pass the JSON object above as the `spec` field in the create-job request. Confirm the service is configured for container execution before submission:
 
-    ```bash
-    uv run nemo safe-synthesizer runtime setup
-    uv run nemo safe-synthesizer run-local \
-      --workspace default \
-      --spec-file nss-job.json \
-      --data-source ./input.csv \
-      --output-dir ./nss-output
-    ```
+```bash
+export NEMO_SAFE_SYNTHESIZER_JOB_MODE=container
+export NMP_IMAGE_REGISTRY=nvcr.io/nvidia/nemo-platform
+export NMP_IMAGE_TAG=<tag>  # match your installed NeMo Platform release
+export NEMO_SAFE_SYNTHESIZER_CONTAINER_IMAGE=safe-synthesizer-tasks
+```
 
-=== "CLI"
+Use host-local execution only for local CUDA/GPU development or task debugging:
 
-    ```bash
-    nemo safe-synthesizer runtime setup
-    nemo safe-synthesizer run-local \
-      --workspace default \
-      --spec-file nss-job.json \
-      --data-source ./input.csv \
-      --output-dir ./nss-output
-    ```
+```bash
+uv run nemo safe-synthesizer runtime setup
+uv run nemo safe-synthesizer run-local \
+  --workspace default \
+  --spec-file nss-job.json \
+  --data-source ./input.csv \
+  --output-dir ./nss-output
+```
 
 ## Next Steps
 

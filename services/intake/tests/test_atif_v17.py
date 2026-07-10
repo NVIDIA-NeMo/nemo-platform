@@ -4,12 +4,12 @@
 """ATIF v1.7 domain and mapper tests."""
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
 from nmp.intake.spans.api.spans_schemas import Span
-from nmp.intake.spans.domain import SpanStatus
+from nmp.intake.spans.domain import SpanKind, SpanStatus
 from nmp.intake.spans.ingest.atif import AtifIngestRequest
 from nmp.intake.spans.ingest.atif_domain import (
     AtifAgent,
@@ -18,7 +18,7 @@ from nmp.intake.spans.ingest.atif_domain import (
     AtifSubagentTrajectoryRef,
     AtifTrajectory,
 )
-from nmp.intake.spans.ingest.atif_mapping import trajectory_to_spans
+from nmp.intake.spans.ingest.atif_mapping import AtifTrajectoryDepthError, trajectory_to_spans
 from nmp.intake.spans.ingest.evaluation_context import EvaluationContext, ExperimentContext
 from pydantic import ValidationError
 
@@ -29,6 +29,26 @@ EVALUATION_CONTEXT: dict[str, Any] = {
     "test_case_id": "sample-test-case",
     "metadata": {"attempt": 1},
 }
+
+
+def _nested_trajectory(depth: int) -> AtifTrajectory:
+    """Build a timestamp-free ATIF trajectory tree with the requested depth."""
+    payload: dict[str, Any] = {
+        "schema_version": "ATIF-v1.7",
+        "trajectory_id": f"trajectory-{depth}",
+        "agent": {"name": f"agent-{depth}", "version": "1.0"},
+        "steps": [],
+    }
+    for level in reversed(range(1, depth)):
+        payload = {
+            "schema_version": "ATIF-v1.7",
+            "trajectory_id": f"trajectory-{level}",
+            "agent": {"name": f"agent-{level}", "version": "1.0"},
+            "steps": [],
+            "subagent_trajectories": [payload],
+        }
+    payload["session_id"] = "depth-run"
+    return AtifTrajectory.model_validate(payload)
 
 
 def test_atif_v17_models_accept_new_fields() -> None:
@@ -75,21 +95,125 @@ def test_atif_v17_models_accept_new_fields() -> None:
     assert trajectory.subagent_trajectories is not None
     assert trajectory.subagent_trajectories[0].trajectory_id == "sub-trajectory"
 
+    request = AtifIngestRequest.model_validate(trajectory.to_json_dict())
+    request_trajectory = request.to_trajectory()
+    assert request_trajectory.trajectory_id == "root-trajectory"
+    assert request_trajectory.subagent_trajectories is not None
+    assert request_trajectory.subagent_trajectories[0].trajectory_id == "sub-trajectory"
 
-def test_atif_v17_embedded_subagent_trajectories_are_preserved_but_not_expanded() -> None:
+
+# ATIF v1.7 reference semantics:
+# https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md
+def test_atif_v17_embedded_subagents_expand_recursively_in_the_parent_trace() -> None:
     trajectory = AtifTrajectory.model_validate(
         {
             "schema_version": "ATIF-v1.7",
-            "session_id": "trace-session-id",
-            "agent": {"name": "root", "version": "1.0"},
-            "steps": [],
+            "session_id": "run-123",
+            "trajectory_id": "root-trajectory",
+            "agent": {"name": "root-agent", "version": "1.0"},
+            "steps": [
+                {
+                    "step_id": 1,
+                    "timestamp": "2026-05-18T10:00:00Z",
+                    "source": "user",
+                    "message": "Research and review this answer.",
+                },
+                {
+                    "step_id": 2,
+                    "timestamp": "2026-05-18T10:00:01Z",
+                    "source": "agent",
+                    "message": "Delegating research.",
+                    "observation": {
+                        "results": [
+                            {
+                                "content": "Research completed.",
+                                "subagent_trajectory_ref": [
+                                    {"trajectory_id": "research-trajectory", "session_id": "run-123"},
+                                    {
+                                        "trajectory_path": "subagents/external-trajectory.json",
+                                        "session_id": "run-123",
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                },
+                {
+                    "step_id": 3,
+                    "timestamp": "2026-05-18T10:00:06Z",
+                    "source": "agent",
+                    "message": "Here is the reviewed answer.",
+                },
+            ],
             "subagent_trajectories": [
                 {
                     "schema_version": "ATIF-v1.7",
-                    "session_id": "trace-session-id",
-                    "trajectory_id": "sub-trajectory",
-                    "agent": {"name": "subagent", "version": "1.0"},
-                    "steps": [{"step_id": 1, "source": "user", "message": "subagent work"}],
+                    "trajectory_id": "research-trajectory",
+                    "agent": {"name": "research-agent", "version": "1.0"},
+                    "steps": [
+                        {
+                            "step_id": 1,
+                            "timestamp": "2026-05-18T10:00:02Z",
+                            "source": "user",
+                            "message": "Research the answer.",
+                        },
+                        {
+                            "step_id": 2,
+                            "timestamp": "2026-05-18T10:00:03Z",
+                            "source": "agent",
+                            "message": "Delegating review.",
+                            "observation": {
+                                "results": [
+                                    {
+                                        "subagent_trajectory_ref": [
+                                            {
+                                                "trajectory_id": "review-trajectory",
+                                                "trajectory_path": "subagents/review-trajectory.json",
+                                                "session_id": "run-123",
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                        },
+                    ],
+                    "subagent_trajectories": [
+                        {
+                            "schema_version": "ATIF-v1.7",
+                            "session_id": "run-123",
+                            "trajectory_id": "review-trajectory",
+                            "agent": {"name": "review-agent", "version": "1.0"},
+                            "steps": [
+                                {
+                                    "step_id": 1,
+                                    "timestamp": "2026-05-18T10:00:04Z",
+                                    "source": "user",
+                                    "message": "Review the research.",
+                                },
+                                {
+                                    "step_id": 2,
+                                    "timestamp": "2026-05-18T10:00:08Z",
+                                    "source": "agent",
+                                    "message": "The research is invalid.",
+                                    "tool_calls": [
+                                        {
+                                            "tool_call_id": "validate-1",
+                                            "function_name": "validate_research",
+                                            "arguments": {},
+                                        }
+                                    ],
+                                    "observation": {
+                                        "results": [
+                                            {
+                                                "source_call_id": "validate-1",
+                                                "content": "[error] unsupported claim",
+                                            }
+                                        ]
+                                    },
+                                },
+                            ],
+                        }
+                    ],
                 }
             ],
         }
@@ -101,10 +225,176 @@ def test_atif_v17_embedded_subagent_trajectories_are_preserved_but_not_expanded(
         ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
     )
 
-    assert [span.name for span in spans] == ["root"]
-    root_raw = json.loads(spans[0].attributes_string["atif.raw"])
-    assert root_raw["subagent_trajectories"][0]["trajectory_id"] == "sub-trajectory"
-    assert root_raw["subagent_trajectories"][0]["steps"][0]["message"] == "subagent work"
+    root = next(span for span in spans if span.name == "root-agent")
+    root_delegation = next(
+        span for span in spans if span.name == "root-agent" and span.external_parent_span_id == root.external_span_id
+    )
+    research = next(span for span in spans if span.name == "research-agent")
+    research_delegation = next(
+        span
+        for span in spans
+        if span.name == "research-agent" and span.external_parent_span_id == research.external_span_id
+    )
+    review = next(span for span in spans if span.name == "review-agent")
+    external_ref = next(span for span in spans if span.name == "subagent-subagents/external-trajectory.json")
+
+    assert len(spans) == 12
+    assert len({span.external_span_id for span in spans}) == len(spans)
+    assert {span.trace_id for span in spans} == {"run-123"}
+    assert {span.session_id for span in spans} == {"run-123"}
+    assert root.external_parent_span_id == ""
+    assert research.external_parent_span_id == root_delegation.external_span_id
+    assert review.external_parent_span_id == research_delegation.external_span_id
+    assert external_ref.external_parent_span_id == root_delegation.external_span_id
+    assert not any(span.name == "subagent-subagents/review-trajectory.json" for span in spans)
+    assert root.start_time == datetime(2026, 5, 18, 10, tzinfo=timezone.utc)
+    assert root.end_time == datetime(2026, 5, 18, 10, 0, 8, tzinfo=timezone.utc)
+    # A descendant tool error stays on the trajectory that emitted it. Parent
+    # trajectories successfully delegated, so their AGENT spans remain healthy.
+    assert root.status == SpanStatus.SUCCESS
+    assert research.status == SpanStatus.SUCCESS
+    assert review.status == SpanStatus.ERROR
+
+    root_raw = json.loads(root.attributes_string["atif.raw"])
+    research_raw = json.loads(research.attributes_string["atif.raw"])
+    assert "subagent_trajectories" not in root_raw
+    assert research_raw["trajectory_id"] == "research-trajectory"
+    assert "subagent_trajectories" not in research_raw
+
+
+def test_atif_v17_subagent_depth_is_bounded_before_mapping() -> None:
+    trajectory = _nested_trajectory(depth=3)
+
+    with pytest.raises(
+        AtifTrajectoryDepthError,
+        match="ATIF trajectory depth 3 exceeds configured maximum 2",
+    ):
+        trajectory_to_spans(
+            workspace="default",
+            trajectory=trajectory,
+            ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+            max_subagent_depth=2,
+        )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+        max_subagent_depth=3,
+    )
+    assert [span.name for span in spans] == ["agent-1", "agent-2", "agent-3"]
+
+
+def test_atif_v17_timestamp_free_subagent_starts_at_delegating_step() -> None:
+    ingested_at = datetime(2026, 5, 18, tzinfo=timezone.utc)
+    trajectory = AtifTrajectory.model_validate(
+        {
+            "schema_version": "ATIF-v1.7",
+            "session_id": "fallback-run",
+            "trajectory_id": "root-trajectory",
+            "agent": {"name": "root-agent", "version": "1.0"},
+            "steps": [
+                {"step_id": 1, "source": "user", "message": "Plan first."},
+                {
+                    "step_id": 2,
+                    "source": "agent",
+                    "message": "Delegate second.",
+                    "observation": {
+                        "results": [
+                            {
+                                "subagent_trajectory_ref": [
+                                    {"trajectory_id": "worker-trajectory", "session_id": "fallback-run"}
+                                ]
+                            }
+                        ]
+                    },
+                },
+            ],
+            "subagent_trajectories": [
+                {
+                    "schema_version": "ATIF-v1.7",
+                    "trajectory_id": "worker-trajectory",
+                    "agent": {"name": "worker-agent", "version": "1.0"},
+                    "steps": [{"step_id": 1, "source": "user", "message": "Do the work."}],
+                }
+            ],
+        }
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=ingested_at,
+    )
+    delegation = next(span for span in spans if span.name == "root-agent" and span.kind == SpanKind.LLM)
+    worker = next(span for span in spans if span.name == "worker-agent")
+    worker_step = next(
+        span for span in spans if span.name == "user-1" and span.external_parent_span_id == worker.external_span_id
+    )
+
+    assert delegation.start_time == ingested_at + timedelta(milliseconds=1)
+    assert worker.start_time == delegation.start_time
+    assert worker_step.start_time == delegation.start_time
+
+
+def test_atif_v17_sibling_subagents_can_share_a_session_without_span_id_collisions() -> None:
+    trajectory = AtifTrajectory.model_validate(
+        {
+            "schema_version": "ATIF-v1.7",
+            "session_id": "shared-run",
+            "agent": {"name": "orchestrator", "version": "1.0"},
+            "steps": [
+                {
+                    "step_id": 1,
+                    "source": "agent",
+                    "message": "Dispatch both workers.",
+                    "observation": {
+                        "results": [
+                            {
+                                "subagent_trajectory_ref": [
+                                    {"trajectory_id": "worker-a", "session_id": "shared-run"},
+                                    {"trajectory_id": "worker-b", "session_id": "shared-run"},
+                                ]
+                            }
+                        ]
+                    },
+                }
+            ],
+            "subagent_trajectories": [
+                {
+                    "schema_version": "ATIF-v1.7",
+                    "session_id": "shared-run",
+                    "trajectory_id": "worker-a",
+                    "agent": {"name": "worker", "version": "1.0"},
+                    "steps": [{"step_id": 1, "source": "user", "message": "work"}],
+                },
+                {
+                    "schema_version": "ATIF-v1.7",
+                    "session_id": "shared-run",
+                    "trajectory_id": "worker-b",
+                    "agent": {"name": "worker", "version": "1.0"},
+                    "steps": [{"step_id": 1, "source": "user", "message": "work"}],
+                },
+            ],
+        }
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )
+
+    worker_roots = [span for span in spans if span.name == "worker"]
+    worker_steps = [
+        span
+        for span in spans
+        if span.name == "user-1" and span.external_parent_span_id in {s.external_span_id for s in worker_roots}
+    ]
+    assert len(worker_roots) == 2
+    assert len(worker_steps) == 2
+    assert len({span.external_span_id for span in [*worker_roots, *worker_steps]}) == 4
+    assert {span.trace_id for span in spans} == {"shared-run"}
 
 
 def test_atif_v17_subagent_ref_requires_resolution_key() -> None:
@@ -169,14 +459,24 @@ def test_experiment_context_maps_to_storage_context() -> None:
     storage_context = context.to_evaluation_context()
 
     assert storage_context.evaluation_id == "exp-1"
-    assert storage_context.evaluation_run_id is None
     assert storage_context.test_case_id == "case-1"
 
 
-def test_deprecated_evaluation_context_accepts_missing_run_id() -> None:
-    assert EvaluationContext() == EvaluationContext(metadata={})
-    assert EvaluationContext(evaluation_run_id="evalrun-1").evaluation_run_id == "evalrun-1"
-    assert EvaluationContext(evaluation_id="eval-1").evaluation_id == "eval-1"
+def test_evaluation_context_ignores_retired_fields() -> None:
+    # Retired keys (evaluation_sha, evaluation_run_id, metadata) are accepted and dropped rather
+    # than rejected, so stale producers keep ingesting without ingest erroring on unknown fields.
+    context = EvaluationContext.model_validate(
+        {
+            "evaluation_id": "eval-1",
+            "test_case_id": "case-1",
+            "evaluation_sha": "abc132901",
+            "evaluation_run_id": "evalrun-1",
+            "metadata": {"attempt": 1},
+        }
+    )
+    assert context.evaluation_id == "eval-1"
+    assert context.test_case_id == "case-1"
+    assert context.model_dump() == {"evaluation_id": "eval-1", "test_case_id": "case-1"}
 
 
 def test_atif_ingest_request_rejects_legacy_top_level_project() -> None:
@@ -217,19 +517,18 @@ def test_atif_mapping_writes_evaluation_context_only_on_root_span() -> None:
     root = next(span for span in spans if span.name == "sample-agent")
     child = next(span for span in spans if span.name == "user-1")
     assert root.attributes_string["nemo.experiment.id"] == EVALUATION_CONTEXT["evaluation_id"]
-    assert root.attributes_string["nemo.experiment.sha"] == EVALUATION_CONTEXT["evaluation_sha"]
-    assert root.attributes_string["nemo.experiment.run_id"] == EVALUATION_CONTEXT["evaluation_run_id"]
+    # sha/run_id/metadata are dropped by the trimmed ingest EvaluationContext, so they never
+    # reach the span from the JSON evaluation_context path.
+    assert "nemo.experiment.sha" not in root.attributes_string
+    assert "nemo.experiment.run_id" not in root.attributes_string
     assert "evaluation.id" not in root.attributes_string
     assert root.attributes_string["nemo.test_case.id"] == EVALUATION_CONTEXT["test_case_id"]
-    assert json.loads(root.attributes_string["nemo.experiment.metadata"]) == EVALUATION_CONTEXT["metadata"]
+    assert "nemo.experiment.metadata" not in root.attributes_string
 
     root_response = Span.from_domain(root)
     assert root_response.evaluation_context is not None
     assert root_response.evaluation_context.evaluation_id == EVALUATION_CONTEXT["evaluation_id"]
-    assert root_response.evaluation_context.evaluation_sha == EVALUATION_CONTEXT["evaluation_sha"]
-    assert root_response.evaluation_context.evaluation_run_id == EVALUATION_CONTEXT["evaluation_run_id"]
     assert root_response.evaluation_context.test_case_id == EVALUATION_CONTEXT["test_case_id"]
-    assert root_response.evaluation_context.metadata == EVALUATION_CONTEXT["metadata"]
     assert root_response.raw_attributes is not None
     root_raw = json.loads(root_response.raw_attributes)
     assert "evaluation_context" not in root_raw
@@ -292,7 +591,9 @@ def test_atif_mapping_uses_root_final_metrics_when_steps_have_no_metrics() -> No
     )
 
     root_response = Span.from_domain(spans[0])
-    child_response = Span.from_domain(next(span for span in spans if span.name == "agent-2"))
+    child_response = Span.from_domain(
+        next(span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.LLM)
+    )
     assert root_response.input_tokens == 10
     assert root_response.output_tokens == 5
     assert root_response.cached_tokens == 2
@@ -332,7 +633,9 @@ def test_atif_mapping_does_not_duplicate_final_metrics_when_step_metrics_exist()
     )
 
     root_response = Span.from_domain(spans[0])
-    child_response = Span.from_domain(next(span for span in spans if span.name == "agent-2"))
+    child_response = Span.from_domain(
+        next(span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.LLM)
+    )
     assert root_response.input_tokens is None
     assert root_response.output_tokens is None
     assert root_response.cost_total_usd is None
@@ -373,7 +676,9 @@ def test_atif_mapping_uses_root_cost_when_step_metrics_have_tokens_only() -> Non
     )
 
     root_response = Span.from_domain(spans[0])
-    child_response = Span.from_domain(next(span for span in spans if span.name == "agent-2"))
+    child_response = Span.from_domain(
+        next(span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.LLM)
+    )
     assert root_response.input_tokens is None
     assert root_response.output_tokens is None
     assert root_response.cached_tokens is None
@@ -384,7 +689,7 @@ def test_atif_mapping_uses_root_cost_when_step_metrics_have_tokens_only() -> Non
     assert child_response.cost_total_usd is None
 
 
-def test_atif_mapping_populates_root_content_and_rolls_child_errors() -> None:
+def test_atif_mapping_marks_trajectory_error_for_own_tool_error() -> None:
     trajectory = AtifTrajectory.model_validate(
         {
             "schema_version": "ATIF-v1.7",
@@ -449,3 +754,314 @@ def test_atif_mapping_span_ids_are_trace_native_and_ignore_evaluation_run_id() -
     }
 
     assert first_ids == second_ids
+
+
+def _timed_trajectory(steps: list[dict[str, Any]], extra: dict[str, Any] | None = None) -> AtifTrajectory:
+    return AtifTrajectory.model_validate(
+        {
+            "schema_version": "ATIF-v1.7",
+            "session_id": "trace-session-id",
+            "agent": {"name": "sample-agent", "version": "1.0.0"},
+            "steps": steps,
+            **({"extra": extra} if extra is not None else {}),
+        }
+    )
+
+
+def test_atif_v17_tool_call_extra_is_accepted_and_preserved() -> None:
+    trajectory = _timed_trajectory(
+        [
+            {
+                "step_id": 1,
+                "source": "agent",
+                "message": "running a tool",
+                "tool_calls": [
+                    {
+                        "tool_call_id": "call-1",
+                        "function_name": "search",
+                        "arguments": {"query": "x"},
+                        "extra": {
+                            "ancestry": {"function_id": "fn-1", "function_name": "searcher"},
+                            "invocation": {"start_timestamp": 100.0, "end_timestamp": 101.5},
+                            "producer_specific": {"anything": True},
+                        },
+                    }
+                ],
+            }
+        ]
+    )
+    assert isinstance(trajectory.steps[0], AtifStepAgent)
+    assert trajectory.steps[0].tool_calls is not None
+    extra = trajectory.steps[0].tool_calls[0].extra
+    assert extra is not None
+    assert extra["ancestry"]["function_name"] == "searcher"
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )
+    tool = next(span for span in spans if span.name == "search")
+    assert json.loads(tool.input)["extra"]["invocation"]["end_timestamp"] == 101.5
+
+
+def test_atif_mapping_uses_invocation_timing_for_step_and_tool_spans() -> None:
+    base = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    trajectory = _timed_trajectory(
+        [
+            {
+                "step_id": 1,
+                "source": "agent",
+                "message": "working",
+                "extra": {
+                    "invocation": {
+                        "start_timestamp": base.timestamp() + 10,
+                        "end_timestamp": base.timestamp() + 40,
+                    }
+                },
+                "tool_calls": [
+                    {
+                        "tool_call_id": "call-1",
+                        "function_name": "bash",
+                        "extra": {
+                            "invocation": {
+                                "start_timestamp": base.timestamp() + 12,
+                                "end_timestamp": base.timestamp() + 30,
+                            }
+                        },
+                    }
+                ],
+            }
+        ]
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )
+    root = next(span for span in spans if span.name == "sample-agent")
+    step = next(span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.LLM)
+    tool = next(span for span in spans if span.name == "bash")
+
+    assert step.start_time == base + timedelta(seconds=10)
+    assert step.end_time == base + timedelta(seconds=40)
+    assert tool.start_time == base + timedelta(seconds=12)
+    assert tool.end_time == base + timedelta(seconds=30)
+    assert root.start_time == base + timedelta(seconds=10)
+    assert root.end_time == base + timedelta(seconds=40)
+
+
+def test_atif_mapping_root_covers_tool_call_only_invocation_timing() -> None:
+    base = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    trajectory = _timed_trajectory(
+        [
+            {
+                "step_id": 1,
+                "source": "agent",
+                "message": "working",
+                "tool_calls": [
+                    {
+                        "tool_call_id": "call-1",
+                        "function_name": "bash",
+                        "extra": {
+                            "invocation": {
+                                "start_timestamp": base.timestamp() + 10,
+                                "end_timestamp": base.timestamp() + 20,
+                            }
+                        },
+                    }
+                ],
+            }
+        ]
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=base + timedelta(seconds=15),
+    )
+    root = next(span for span in spans if span.name == "sample-agent")
+
+    assert root.start_time == base + timedelta(seconds=10)
+    assert root.end_time == base + timedelta(seconds=20)
+
+
+def test_atif_mapping_drops_root_end_time_before_root_start_time() -> None:
+    base = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    trajectory = _timed_trajectory(
+        [
+            {
+                "step_id": 1,
+                "source": "agent",
+                "message": "out of order",
+                "extra": {
+                    "invocation": {
+                        "start_timestamp": base.timestamp() + 10,
+                        "end_timestamp": base.timestamp() + 5,
+                    }
+                },
+            }
+        ]
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=base,
+    )
+    root = next(span for span in spans if span.name == "sample-agent")
+
+    assert root.start_time == base + timedelta(seconds=10)
+    assert root.end_time is None
+
+
+def test_atif_mapping_does_not_infer_step_or_tool_ends() -> None:
+    base = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    trajectory = _timed_trajectory(
+        [
+            {"step_id": 1, "source": "user", "message": "solve", "timestamp": base.isoformat()},
+            {
+                "step_id": 2,
+                "source": "agent",
+                "message": "on it",
+                "timestamp": (base + timedelta(seconds=5)).isoformat(),
+                "tool_calls": [{"tool_call_id": "call-1", "function_name": "bash"}],
+            },
+        ],
+        extra={
+            "verifier": {
+                "started_at": (base + timedelta(seconds=50)).isoformat(),
+                "finished_at": (base + timedelta(seconds=60)).isoformat(),
+            }
+        },
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )
+    user = next(span for span in spans if span.name == "user-1")
+    step = next(span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.LLM)
+    tool = next(span for span in spans if span.name == "bash")
+    root = next(span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.AGENT)
+
+    assert user.start_time == base
+    assert user.end_time is None
+    assert step.start_time == base + timedelta(seconds=5)
+    assert step.end_time is None
+    assert tool.start_time == step.start_time
+    assert tool.end_time is None
+    assert root.end_time == base + timedelta(seconds=60)
+
+
+def test_atif_mapping_leaves_end_time_none_when_underivable() -> None:
+    base = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    trajectory = _timed_trajectory(
+        [
+            {"step_id": 1, "source": "user", "message": "solve", "extra": {"invocation": "yesterday"}},
+            {
+                "step_id": 2,
+                "source": "agent",
+                "message": "on it",
+                "extra": {"invocation": {"start_timestamp": "noon", "end_timestamp": None}},
+                "tool_calls": [{"tool_call_id": "call-1", "function_name": "bash"}],
+            },
+            {
+                "step_id": 3,
+                "source": "agent",
+                "message": "out of order",
+                "extra": {
+                    "invocation": {
+                        "start_timestamp": base.timestamp() + 10,
+                        "end_timestamp": base.timestamp() + 5,
+                    }
+                },
+            },
+        ]
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )
+    user = next(span for span in spans if span.name == "user-1")
+    tool = next(span for span in spans if span.name == "bash")
+    llm_steps = [span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.LLM]
+    last = llm_steps[-1]
+
+    # Malformed invocation blocks never fail ingest and never fabricate ends
+    # from later steps. The out-of-order explicit end is also dropped.
+    assert user.end_time is None
+    assert tool.end_time is None
+    assert last.start_time == base + timedelta(seconds=10)
+    assert last.end_time is None
+
+
+def test_atif_mapping_tool_end_requires_explicit_tool_invocation_end() -> None:
+    base = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    trajectory = _timed_trajectory(
+        [
+            {
+                "step_id": 1,
+                "source": "agent",
+                "message": "working",
+                "extra": {
+                    "invocation": {
+                        "start_timestamp": base.timestamp() + 10,
+                        "end_timestamp": base.timestamp() + 40,
+                    }
+                },
+                "tool_calls": [
+                    {
+                        "tool_call_id": "call-1",
+                        "function_name": "bash",
+                        "extra": {
+                            "invocation": {
+                                "start_timestamp": base.timestamp() + 12,
+                            }
+                        },
+                    }
+                ],
+            }
+        ]
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=base,
+    )
+    step = next(span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.LLM)
+    tool = next(span for span in spans if span.name == "bash")
+
+    assert step.end_time == base + timedelta(seconds=40)
+    assert tool.start_time == base + timedelta(seconds=12)
+    assert tool.end_time is None
+
+
+def test_atif_mapping_end_time_none_when_no_timing_exists_at_all() -> None:
+    trajectory = _timed_trajectory(
+        [
+            {"step_id": 1, "source": "user", "message": "solve"},
+            {
+                "step_id": 2,
+                "source": "agent",
+                "message": "on it",
+                "tool_calls": [{"tool_call_id": "call-1", "function_name": "bash"}],
+            },
+        ]
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )
+    assert all(
+        span.end_time is None
+        for span in spans
+        if span.name in {"user-1", "bash"} or (span.name == "sample-agent" and span.kind == SpanKind.LLM)
+    )

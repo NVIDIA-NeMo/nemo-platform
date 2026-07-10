@@ -45,16 +45,6 @@ class SpanFilterParam(TypedDict, total=False):
     evaluation_id: str
     """Filter by evaluation id."""
 
-    evaluation_run_id: str
-    """Filter by evaluation run id.
-
-    ATIF evaluation context is stored on root trajectory spans; use session_id from
-    a matched root to fetch the full trace tree.
-    """
-
-    evaluation_sha: str
-    """Filter by evaluation sha."""
-
     kind: SpanKind
     """Filter by normalized span kind."""
 

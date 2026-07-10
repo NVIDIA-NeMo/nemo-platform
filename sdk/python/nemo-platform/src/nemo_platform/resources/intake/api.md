@@ -83,6 +83,7 @@ from nemo_platform.types.intake.ingest import (
     AtifStepUser,
     AtifSubagentTrajectoryRef,
     AtifToolCall,
+    AtifTrajectory,
 )
 ```
 

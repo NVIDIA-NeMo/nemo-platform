@@ -54,13 +54,18 @@ class ChatCompletionCreateParams(TypedDict, total=False):
     """
 
     evaluation_context: EvaluationContextParam
-    """Deprecated.
+    """Evaluation context accepted by ingest endpoints (the canonical shape).
 
-    Use experiment_context; when both are sent, experiment_context takes precedence.
+    `extra="ignore"` so a producer still sending retired keys (evaluation_sha,
+    evaluation_run_id, metadata) keeps ingesting without error rather than being
+    rejected.
     """
 
     experiment_context: ExperimentContextParam
-    """Experiment context accepted by ingest endpoints."""
+    """Deprecated alias for :class:`EvaluationContext`.
+
+    Producers should send `evaluation_context`.
+    """
 
     provider: str
 

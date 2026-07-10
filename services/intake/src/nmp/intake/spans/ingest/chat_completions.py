@@ -22,9 +22,9 @@ from nmp.common.service.dependencies import get_entity_client
 from nmp.intake.spans.api.dependencies import SpansServiceDep, require_workspace_access
 from nmp.intake.spans.domain import IntakeSpan, SpanKind, SpanStatus, TraceBatch
 from nmp.intake.spans.ingest.evaluation_context import (
-    ExperimentContextIngestModel,
+    EvaluationContextIngestModel,
 )
-from nmp.intake.spans.ingest.experiment_context_validation import validate_experiment_context
+from nmp.intake.spans.ingest.evaluation_context_validation import validate_evaluation_context
 from nmp.intake.spans.span_attribute_bags import SpanAttributeBags
 from nmp.intake.spans.span_semantic_attributes import SpanSemanticAttributes
 from nmp.intake.spans.storage import json_dumps_preserve, stable_id, utc_now
@@ -97,7 +97,7 @@ class CapturedChatCompletionsResponse(BaseModel):
         return self
 
 
-class ChatCompletionsIngestRequest(ExperimentContextIngestModel):
+class ChatCompletionsIngestRequest(EvaluationContextIngestModel):
     model_config = ConfigDict(extra="forbid")
 
     request: CapturedChatCompletionsRequest
@@ -153,7 +153,7 @@ async def ingest_chat_completion(
     service: SpansServiceDep,
     entity_client: EntityClientDep,
 ) -> ChatCompletionsIngestResponse:
-    await validate_experiment_context(
+    await validate_evaluation_context(
         workspace=workspace,
         context=body.resolved_evaluation_context(),
         entity_client=entity_client,
@@ -233,8 +233,6 @@ def _build_attribute_bags(
         model=_as_str(response.get("model")) or _as_str(request.get("model")),
         provider=body.provider or _infer_provider(response),
         evaluation_id=evaluation_context.evaluation_id if evaluation_context is not None else None,
-        evaluation_sha=evaluation_context.evaluation_sha if evaluation_context is not None else None,
-        evaluation_run_id=evaluation_context.evaluation_run_id if evaluation_context is not None else None,
         test_case_id=evaluation_context.test_case_id if evaluation_context is not None else None,
         error_type=error_type,
         error_message=error_message,
@@ -250,8 +248,6 @@ def _build_attribute_bags(
         cost_output_usd=_decimal_or_none(body.cost_output_usd),
     )
     attribute_bags = semantic.to_bags()
-    if evaluation_context is not None and evaluation_context.metadata:
-        attribute_bags.put_json("nemo.experiment.metadata", evaluation_context.metadata)
     for key, value in body.cost_details.items():
         bag_key = f"cost.{key}"
         if bag_key in attribute_bags.number:

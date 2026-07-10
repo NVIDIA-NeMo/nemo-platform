@@ -23,7 +23,10 @@ __all__ = ["ExperimentContextParam"]
 
 
 class ExperimentContextParam(TypedDict, total=False):
-    """Experiment context accepted by ingest endpoints."""
+    """Deprecated alias for :class:`EvaluationContext`.
+
+    Producers should send ``evaluation_context``.
+    """
 
     experiment_id: Required[str]
     """Name of an existing Experiment entity."""

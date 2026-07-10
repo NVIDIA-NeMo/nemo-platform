@@ -74,6 +74,10 @@ class AtifToolCall(BaseModel):
     tool_call_id: str
     function_name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
+    # ATIF v1.7 makes per-tool-call metadata first-class: NAT publishers write
+    # ancestry / invocation timing here, and the spec requires consumers to
+    # tolerate absent and unknown keys (nvidia_nat_atif ``AtifToolCallExtra``).
+    extra: dict[str, Any] | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -97,6 +101,7 @@ class AtifSubagentTrajectoryRef(BaseModel):
 
     @model_validator(mode="after")
     def validate_identifier(self) -> AtifSubagentTrajectoryRef:
+        """Require at least one supported subagent identifier."""
         if self.trajectory_id is None and self.trajectory_path is None and self.session_id is None:
             raise ValueError(
                 "SubagentTrajectoryRef MUST set at least one of trajectory_id, trajectory_path, or session_id"
@@ -156,6 +161,7 @@ class AtifStepBase(BaseModel):
     @field_validator("timestamp")
     @classmethod
     def validate_timestamp(cls, value: str | None) -> str | None:
+        """Validate an optional ISO 8601 step timestamp."""
         if value is not None:
             try:
                 datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -189,6 +195,7 @@ AtifStep = TypeAliasType(
 
 
 def validate_atif_step_ids(steps: list[AtifStep]) -> None:
+    """Require one-based sequential step identifiers."""
     # Keep this aligned with NAT's current ATIF model until the format
     # explicitly allows compacted or branched trajectories with gaps.
     for index, step in enumerate(steps):
@@ -200,6 +207,7 @@ def validate_atif_step_ids(steps: list[AtifStep]) -> None:
 
 
 def validate_atif_tool_call_references(steps: list[AtifStep]) -> None:
+    """Require unique calls and resolvable observation call references."""
     for step in steps:
         if not isinstance(step, AtifStepAgent):
             continue
@@ -219,6 +227,7 @@ def validate_atif_tool_call_references(steps: list[AtifStep]) -> None:
 
 
 def validate_atif_v17_subagent_ref_resolution_keys(steps: list[AtifStep]) -> None:
+    """Require v1.7 subagent references to include a resolvable key."""
     for step in steps:
         if not isinstance(step, AtifStepAgent) or step.observation is None:
             continue
@@ -244,9 +253,8 @@ class AtifTrajectory(BaseModel):
     subagent_trajectories: list[AtifTrajectory] | None = Field(
         default=None,
         description=(
-            "Embedded ATIF-v1.7 subagent trajectories. Intake currently validates and preserves these in "
-            "root atif.raw, but does not expand them into additional spans; subagent_trajectory_ref entries "
-            "are materialized as lightweight delegation spans."
+            "Embedded ATIF-v1.7 subagent trajectories. Intake expands these into the parent trajectory's "
+            "trace, resolving subagent_trajectory_ref entries by trajectory_id."
         ),
     )
     evaluation_context: EvaluationContext | None = None
@@ -254,35 +262,45 @@ class AtifTrajectory(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     def to_json_dict(self, *, exclude_none: bool = True) -> dict[str, Any]:
+        """Serialize the trajectory to JSON-compatible values."""
         return self.model_dump(exclude_none=exclude_none, mode="json")
 
     @model_validator(mode="after")
     def validate_step_ids(self) -> AtifTrajectory:
+        """Validate this trajectory's sequential step identifiers."""
         validate_atif_step_ids(self.steps)
         return self
 
     @model_validator(mode="after")
     def validate_tool_call_references(self) -> AtifTrajectory:
+        """Validate this trajectory's tool-call references."""
         validate_atif_tool_call_references(self.steps)
         return self
 
     @model_validator(mode="after")
     def validate_subagent_ref_resolution_keys(self) -> AtifTrajectory:
+        """Validate v1.7 subagent reference resolution keys."""
         if self.schema_version == "ATIF-v1.7":
             validate_atif_v17_subagent_ref_resolution_keys(self.steps)
         return self
 
     @model_validator(mode="after")
     def validate_subagent_trajectory_ids(self) -> AtifTrajectory:
-        if not self.subagent_trajectories:
-            return self
-        seen: set[str] = set()
-        for index, subagent in enumerate(self.subagent_trajectories):
-            if subagent.trajectory_id is None:
-                raise ValueError(
-                    f"subagent_trajectories[{index}].trajectory_id is required on embedded ATIF-v1.7 subagents"
-                )
-            if subagent.trajectory_id in seen:
-                raise ValueError(f"subagent_trajectories[{index}].trajectory_id duplicates {subagent.trajectory_id!r}")
-            seen.add(subagent.trajectory_id)
+        """Validate IDs for embedded trajectories at this tree level."""
+        validate_atif_subagent_trajectory_ids(self.subagent_trajectories)
         return self
+
+
+def validate_atif_subagent_trajectory_ids(subagent_trajectories: list[AtifTrajectory] | None) -> None:
+    """Require unique trajectory IDs for embedded sibling trajectories."""
+    if not subagent_trajectories:
+        return
+    seen: set[str] = set()
+    for index, subagent in enumerate(subagent_trajectories):
+        if subagent.trajectory_id is None:
+            raise ValueError(
+                f"subagent_trajectories[{index}].trajectory_id is required on embedded ATIF-v1.7 subagents"
+            )
+        if subagent.trajectory_id in seen:
+            raise ValueError(f"subagent_trajectories[{index}].trajectory_id duplicates {subagent.trajectory_id!r}")
+        seen.add(subagent.trajectory_id)
