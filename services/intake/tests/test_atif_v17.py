@@ -916,7 +916,7 @@ def test_atif_mapping_drops_root_end_time_before_root_start_time() -> None:
     assert root.end_time is None
 
 
-def test_atif_mapping_infers_step_end_from_next_timed_step_and_verifier_finish() -> None:
+def test_atif_mapping_does_not_infer_step_or_tool_ends() -> None:
     base = datetime(2026, 6, 1, tzinfo=timezone.utc)
     trajectory = _timed_trajectory(
         [
@@ -945,11 +945,15 @@ def test_atif_mapping_infers_step_end_from_next_timed_step_and_verifier_finish()
     user = next(span for span in spans if span.name == "user-1")
     step = next(span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.LLM)
     tool = next(span for span in spans if span.name == "bash")
+    root = next(span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.AGENT)
 
-    assert user.end_time == base + timedelta(seconds=5)
-    assert step.end_time == base + timedelta(seconds=60)
+    assert user.start_time == base
+    assert user.end_time is None
+    assert step.start_time == base + timedelta(seconds=5)
+    assert step.end_time is None
     assert tool.start_time == step.start_time
-    assert tool.end_time == step.end_time
+    assert tool.end_time is None
+    assert root.end_time == base + timedelta(seconds=60)
 
 
 def test_atif_mapping_leaves_end_time_none_when_underivable() -> None:
@@ -988,13 +992,54 @@ def test_atif_mapping_leaves_end_time_none_when_underivable() -> None:
     llm_steps = [span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.LLM]
     last = llm_steps[-1]
 
-    # Malformed invocation blocks never fail ingest and never fabricate ends:
-    # earlier steps end at agent-3's invocation start (the next timed step),
-    # while agent-3's own out-of-order end (end < start) is dropped, not clamped.
-    assert user.end_time == base + timedelta(seconds=10)
-    assert tool.end_time == base + timedelta(seconds=10)
+    # Malformed invocation blocks never fail ingest and never fabricate ends
+    # from later steps. The out-of-order explicit end is also dropped.
+    assert user.end_time is None
+    assert tool.end_time is None
     assert last.start_time == base + timedelta(seconds=10)
     assert last.end_time is None
+
+
+def test_atif_mapping_tool_end_requires_explicit_tool_invocation_end() -> None:
+    base = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    trajectory = _timed_trajectory(
+        [
+            {
+                "step_id": 1,
+                "source": "agent",
+                "message": "working",
+                "extra": {
+                    "invocation": {
+                        "start_timestamp": base.timestamp() + 10,
+                        "end_timestamp": base.timestamp() + 40,
+                    }
+                },
+                "tool_calls": [
+                    {
+                        "tool_call_id": "call-1",
+                        "function_name": "bash",
+                        "extra": {
+                            "invocation": {
+                                "start_timestamp": base.timestamp() + 12,
+                            }
+                        },
+                    }
+                ],
+            }
+        ]
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=base,
+    )
+    step = next(span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.LLM)
+    tool = next(span for span in spans if span.name == "bash")
+
+    assert step.end_time == base + timedelta(seconds=40)
+    assert tool.start_time == base + timedelta(seconds=12)
+    assert tool.end_time is None
 
 
 def test_atif_mapping_end_time_none_when_no_timing_exists_at_all() -> None:
