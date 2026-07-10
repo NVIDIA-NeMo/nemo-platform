@@ -12,34 +12,41 @@ a live server or external database.
 
 import os
 import uuid
-from pathlib import Path
 from typing import Generator
+from pathlib import Path
 
 import pytest
+from nmp.testing import ClientContext, create_test_client
 from click.testing import Result
+from typer.testing import CliRunner
+from starlette.testclient import TestClient
+from nmp.core.files.service import FilesService
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.client.adapter import client_from_platform
+
 from nemo_platform import NeMoPlatform
 from nemo_platform.cli.core.context import CLIContext
-from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.files.client import FilesClient
-from nmp.core.files.service import FilesService
-from nmp.testing import SDKTestClientAdapter, create_test_client
-from starlette.testclient import TestClient
-from typer.testing import CliRunner
 
 DEFAULT_WORKSPACE = "default"
 
 
 @pytest.fixture(scope="module")
-def http_client() -> Generator[TestClient, None, None]:
-    """TestClient with FilesService (and EntitiesService, which are included by default)."""
-    with create_test_client(FilesService, client_type=TestClient) as client:
-        yield client
+def client_context() -> Generator[ClientContext, None, None]:
+    """ClientContext with FilesService and ASGI-backed SDK clients."""
+    with create_test_client(FilesService, client_type=ClientContext) as context:
+        yield context
 
 
 @pytest.fixture(scope="module")
-def sdk(http_client: TestClient) -> NeMoPlatform:
+def http_client(client_context: ClientContext) -> TestClient:
+    """TestClient with FilesService (and EntitiesService, which are included by default)."""
+    return client_context.test_client
+
+
+@pytest.fixture(scope="module")
+def sdk(client_context: ClientContext) -> NeMoPlatform:
     """SDK client backed by the test client."""
-    return NeMoPlatform(base_url="http://testserver", http_client=SDKTestClientAdapter(http_client))
+    return client_context.sdk
 
 
 @pytest.fixture(scope="module")

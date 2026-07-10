@@ -12,11 +12,11 @@ import uuid
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Generator, Protocol, TypeVar
+from typing import Callable, Generator, Mapping, Protocol, TypeVar
 
 import httpx
 from fastapi.testclient import TestClient
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform import AsyncNeMoPlatform, NeMoPlatform, NotGiven, not_given
 from nemo_platform.resources.entities import AsyncEntitiesResource
 from nmp.common.config.base import AuthConfig, Configuration, DatabaseConfig, PlatformConfig, ServiceConfig
 from nmp.common.entities.client import EntityClient
@@ -173,22 +173,56 @@ def _create_svc(
     return svc
 
 
-def _install_asgi_files_resource(sdk: NeMoPlatform, http_client: httpx.AsyncClient) -> None:
+def _install_asgi_files_resource(sdk: NeMoPlatform, async_http_client: httpx.AsyncClient) -> None:
     """Route sync SDK file uploads through the in-process test app."""
     from nemo_platform.filesets.resources import FilesResource
     from nemo_platform_plugin.client.adapter import client_from_platform
     from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 
     base_url = str(sdk.base_url).rstrip("/")
+    files_client = client_from_platform(sdk, FilesClient)
     sdk.__dict__["files"] = FilesResource(
         sdk,
-        files_client=client_from_platform(sdk, FilesClient),
+        files_client=files_client,
         async_files_client=AsyncFilesClient(
             base_url=base_url,
             workspace=sdk.workspace,
-            http_client=http_client,
+            default_headers=files_client._default_headers or None,
+            http_client=async_http_client,
         ),
     )
+    original_copy: Callable[..., NeMoPlatform] = sdk.copy
+
+    def copy_with_asgi_files(
+        *,
+        workspace: str | None = None,
+        base_url: str | httpx.URL | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+        http_client: httpx.Client | None = None,
+        max_retries: int | NotGiven = not_given,
+        default_headers: Mapping[str, str] | None = None,
+        set_default_headers: Mapping[str, str] | None = None,
+        default_query: Mapping[str, object] | None = None,
+        set_default_query: Mapping[str, object] | None = None,
+        _extra_kwargs: Mapping[str, object] | None = None,
+    ) -> NeMoPlatform:
+        clone = original_copy(
+            workspace=workspace,
+            base_url=base_url,
+            timeout=timeout,
+            http_client=http_client,
+            max_retries=max_retries,
+            default_headers=default_headers,
+            set_default_headers=set_default_headers,
+            default_query=default_query,
+            set_default_query=set_default_query,
+            _extra_kwargs={} if _extra_kwargs is None else _extra_kwargs,
+        )
+        _install_asgi_files_resource(clone, async_http_client)
+        return clone
+
+    sdk.__dict__["copy"] = copy_with_asgi_files
+    sdk.__dict__["with_options"] = copy_with_asgi_files
 
 
 _DEFAULT_WORKSPACES = ["default"]
