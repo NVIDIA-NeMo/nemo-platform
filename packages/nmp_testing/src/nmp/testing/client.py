@@ -173,6 +173,24 @@ def _create_svc(
     return svc
 
 
+def _install_asgi_files_resource(sdk: NeMoPlatform, http_client: httpx.AsyncClient) -> None:
+    """Route sync SDK file uploads through the in-process test app."""
+    from nemo_platform.filesets.resources import FilesResource
+    from nemo_platform_plugin.client.adapter import client_from_platform
+    from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
+
+    base_url = str(sdk.base_url).rstrip("/")
+    sdk.__dict__["files"] = FilesResource(
+        sdk,
+        files_client=client_from_platform(sdk, FilesClient),
+        async_files_client=AsyncFilesClient(
+            base_url=base_url,
+            workspace=sdk.workspace,
+            http_client=http_client,
+        ),
+    )
+
+
 _DEFAULT_WORKSPACES = ["default"]
 _DEFAULT_PROJECTS = ["default/test-project"]
 
@@ -490,6 +508,7 @@ def create_test_client(
                 http_client=sdk_http_client,
                 max_retries=0,
             )
+            _install_asgi_files_resource(sdk, async_http_client)
 
             # Trigger middleware stack build with a health check (which skips auth).
             client.get("/health")
