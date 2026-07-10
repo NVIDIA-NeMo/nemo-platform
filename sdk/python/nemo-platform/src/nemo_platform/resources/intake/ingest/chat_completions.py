@@ -103,10 +103,14 @@ class ChatCompletionsResource(SyncAPIResource):
           cost_usd: Total estimated cost of this model call in USD. This matches ATIF step metrics;
               Intake stores it as semantic cost_total_usd on spans.
 
-          evaluation_context: Deprecated. Use experiment_context; when both are sent, experiment_context takes
-              precedence.
+          evaluation_context: Evaluation context accepted by ingest endpoints (the canonical shape).
 
-          experiment_context: Experiment context accepted by ingest endpoints.
+              `extra="ignore"` so a producer still sending retired keys (evaluation_sha,
+              evaluation_run_id, metadata) keeps ingesting without error rather than being
+              rejected.
+
+          experiment_context: Deprecated alias for :class:`EvaluationContext`. Producers should send
+              `evaluation_context`.
 
           session_id: Groups related chat-completions calls without forcing them into the same trace.
 
@@ -210,10 +214,14 @@ class AsyncChatCompletionsResource(AsyncAPIResource):
           cost_usd: Total estimated cost of this model call in USD. This matches ATIF step metrics;
               Intake stores it as semantic cost_total_usd on spans.
 
-          evaluation_context: Deprecated. Use experiment_context; when both are sent, experiment_context takes
-              precedence.
+          evaluation_context: Evaluation context accepted by ingest endpoints (the canonical shape).
 
-          experiment_context: Experiment context accepted by ingest endpoints.
+              `extra="ignore"` so a producer still sending retired keys (evaluation_sha,
+              evaluation_run_id, metadata) keeps ingesting without error rather than being
+              rejected.
+
+          experiment_context: Deprecated alias for :class:`EvaluationContext`. Producers should send
+              `evaluation_context`.
 
           session_id: Groups related chat-completions calls without forcing them into the same trace.
 

@@ -54,12 +54,15 @@ def create_chat_completions(
         str | None,
         typer.Option(
             "--evaluation-context",
-            help="Deprecated. Use experiment_context; when both are sent, experiment_context takes precedence. (JSON string)",
+            help='Evaluation context accepted by ingest endpoints (the canonical shape).`extra="ignore"` so a producer still sending retired keys (evaluation_sha, evaluation_run_id, metadata) keeps ingesting without error rather than being rejected. (JSON string)',
         ),
     ] = None,
     experiment_context: Annotated[
         str | None,
-        typer.Option("--experiment-context", help="Experiment context accepted by ingest endpoints. (JSON string)"),
+        typer.Option(
+            "--experiment-context",
+            help="Deprecated alias for :class:`EvaluationContext`. Producers should send `evaluation_context`. (JSON string)",
+        ),
     ] = None,
     provider: Annotated[str | None, typer.Option("--provider")] = None,
     session_id: Annotated[

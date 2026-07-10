@@ -9,6 +9,9 @@ from nmp.common.config import EnvironmentFirstSettings, create_service_config_cl
 from pydantic import Field
 from pydantic_settings import SettingsConfigDict
 
+DEFAULT_ATIF_MAX_SUBAGENT_DEPTH = 64
+MAX_ATIF_MAX_SUBAGENT_DEPTH = 256
+
 
 class ClickHouseConfig(EnvironmentFirstSettings):
     """Configuration for Intake's ClickHouse-backed spans storage."""
@@ -51,4 +54,10 @@ class IntakeConfig(_BaseIntakeConfig):
         default=5 * 1024 * 1024,
         ge=1024,
         description="Maximum accepted body size for OTLP ingest requests, in bytes.",
+    )
+    atif_max_subagent_depth: int = Field(
+        default=DEFAULT_ATIF_MAX_SUBAGENT_DEPTH,
+        ge=1,
+        le=MAX_ATIF_MAX_SUBAGENT_DEPTH,
+        description="Maximum number of trajectory levels accepted for recursive ATIF subagents.",
     )

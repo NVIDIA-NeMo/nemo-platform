@@ -154,11 +154,11 @@ jobs:
           prune_docker: "true"
 
       - name: Set up Docker Buildx
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker buildx create --name nmp-builder --driver docker-container --use
-          docker buildx inspect --bootstrap
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          name: nmp-builder
+          driver: docker-container
+          cleanup: true
 
       - name: Configure bake variables
         id: bake-vars
@@ -306,11 +306,11 @@ jobs:
           prune_docker: "true"
 
       - name: Set up Docker Buildx
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker buildx create --name nmp-builder --driver docker-container --use
-          docker buildx inspect --bootstrap
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          name: nmp-builder
+          driver: docker-container
+          cleanup: true
 
       - name: Configure bake variables
         shell: bash
@@ -365,16 +365,19 @@ jobs:
           remove_go: "true"
           remove_haskell: "true"
           remove_java: "true"
+          remove_node: "true"
+          remove_pypy: "true"
+          remove_python: "true"
           remove_ruby: "true"
           remove_swift: "true"
           prune_docker: "true"
 
       - name: Set up Docker Buildx
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker buildx create --name nmp-builder --driver docker-container --use
-          docker buildx inspect --bootstrap
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          name: nmp-builder
+          driver: docker-container
+          cleanup: true
 
       - name: Configure bake variables
         shell: bash

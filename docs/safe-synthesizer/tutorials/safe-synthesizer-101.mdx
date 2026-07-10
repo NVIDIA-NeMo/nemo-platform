@@ -36,9 +36,9 @@ For a PyPI install, run the following command in a **terminal (shell)**:
 
 ```shell
 if command -v uv &> /dev/null; then
- uv pip install "nemo-platform[all]" kagglehub matplotlib
+ uv pip install "nemo-platform[all]" 'kagglehub==0.3.13' matplotlib
 else
- pip install "nemo-platform[all]" kagglehub matplotlib
+ pip install "nemo-platform[all]" 'kagglehub==0.3.13' matplotlib
 fi
 ```
 

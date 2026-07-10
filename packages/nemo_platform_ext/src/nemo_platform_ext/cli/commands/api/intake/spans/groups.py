@@ -52,12 +52,6 @@ def list_groups(
     filter_evaluation_id: Annotated[
         str | None, typer.Option("--filter.evaluation-id", rich_help_panel="Filter Options")
     ] = None,
-    filter_evaluation_run_id: Annotated[
-        str | None, typer.Option("--filter.evaluation-run-id", rich_help_panel="Filter Options")
-    ] = None,
-    filter_evaluation_sha: Annotated[
-        str | None, typer.Option("--filter.evaluation-sha", rich_help_panel="Filter Options")
-    ] = None,
     filter_kind: Annotated[str | None, typer.Option("--filter.kind", rich_help_panel="Filter Options")] = None,
     filter_model: Annotated[str | None, typer.Option("--filter.model", rich_help_panel="Filter Options")] = None,
     filter_parent_span_id: Annotated[
@@ -116,8 +110,6 @@ def list_groups(
             dataset_name=filter_dataset_name,
             dataset_version=filter_dataset_version,
             evaluation_id=filter_evaluation_id,
-            evaluation_run_id=filter_evaluation_run_id,
-            evaluation_sha=filter_evaluation_sha,
             kind=filter_kind,
             model=filter_model,
             parent_span_id=filter_parent_span_id,

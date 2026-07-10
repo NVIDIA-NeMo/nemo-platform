@@ -37,8 +37,6 @@ class SpanAttributeField(StrEnum):
     TOOL_NAME = "tool_name"
     PROJECT = "project"
     EVALUATION_ID = "evaluation_id"
-    EVALUATION_SHA = "evaluation_sha"
-    EVALUATION_RUN_ID = "evaluation_run_id"
     TEST_CASE_ID = "test_case_id"
     ERROR_TYPE = "error_type"
     ERROR_MESSAGE = "error_message"
@@ -154,18 +152,6 @@ ATTRIBUTE_SPECS = (
         bag=AttributeBag.STRING,
         bag_key="nemo.experiment.id",
         source_keys=("nemo.experiment.id",),
-    ),
-    AttributeSpec(
-        field=SpanAttributeField.EVALUATION_SHA,
-        bag=AttributeBag.STRING,
-        bag_key="nemo.experiment.sha",
-        source_keys=("nemo.experiment.sha",),
-    ),
-    AttributeSpec(
-        field=SpanAttributeField.EVALUATION_RUN_ID,
-        bag=AttributeBag.STRING,
-        bag_key="nemo.experiment.run_id",
-        source_keys=("nemo.experiment.run_id",),
     ),
     AttributeSpec(
         field=SpanAttributeField.TEST_CASE_ID,

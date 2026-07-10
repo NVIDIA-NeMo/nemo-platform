@@ -9,6 +9,7 @@ JOB_STEP_NAME_LABEL = "nmp.nvidia.com/job_step_name"
 JOB_STEP_ID_LABEL = "nmp.nvidia.com/job_step_id"
 JOB_TASK_ID_LABEL = "nmp.nvidia.com/job_task_id"
 JOB_USES_PERSISTENT_STORAGE_LABEL = "nmp.nvidia.com/uses_persistent_storage"
+JOB_CONTROLLER_INSTANCE_ID_LABEL = "nmp.nvidia.com/jobs_controller_instance_id"
 
 JOB_TYPE_LABEL = "nmp.nvidia.com/job_type"
 JOB_TYPE_JOB = "job"
