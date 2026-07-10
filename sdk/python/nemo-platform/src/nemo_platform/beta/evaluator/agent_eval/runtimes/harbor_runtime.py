@@ -167,8 +167,11 @@ class HarborAgentTaskRunner:
       :func:`discover_harbor_tasks`), or from an explicit ``dataset_path``
       override, so it isn't repeated. ``task_names`` optionally restricts the run
       to a subset of tasks, and the ``config``'s ``job_dir`` doubles as a cache:
-      an existing run whose results already cover every requested task is
-      re-adapted instead of re-run (unless ``force_rerun`` is set).
+      an existing run whose results already cover every requested task (with
+      ``n_attempts`` completed, non-errored trials each) is re-adapted instead of
+      re-run (unless ``force_rerun`` is set). Caching only takes effect when a
+      stable ``job_name`` is set on the config — the default timestamped
+      ``job_name`` writes a fresh dir per run and never hits the cache.
     * **Injected / offline** — pass ``job_dir`` (and optionally a ``run_job``
       callback); ``run_job`` is awaited before the job dir is read, and
       ``run_job=None`` simply adapts an already-completed job dir.
@@ -208,12 +211,14 @@ class HarborAgentTaskRunner:
         :func:`discover_harbor_tasks`) unless a ``dataset_path`` override was given,
         so callers don't repeat it. ``job_dir`` doubles as a cache: the Harbor run
         is skipped and results are simply re-adapted when every requested task
-        already has a ``result.json`` there (unless ``force_rerun`` is set).
+        already has ``n_attempts`` completed, non-errored results there (unless
+        ``force_rerun`` is set). The cache only engages when the config pins a
+        stable ``job_name``; the default timestamped name never hits it.
         """
         if self._config is not None:
             dataset_path = self._dataset_path or _dataset_path_from_tasks(tasks)
             job_dir, run_job = _build_native_job(self._config, dataset_path, self._task_names)
-            if self._config.force_rerun or not _all_tasks_cached(job_dir, tasks):
+            if self._config.force_rerun or not _all_tasks_cached(job_dir, tasks, n_attempts=self._config.n_attempts):
                 await run_job()
             return build_trials_from_job_dir(job_dir, tasks, reward_key=self._reward_key)
 
@@ -236,23 +241,31 @@ def _dataset_path_from_tasks(tasks: Sequence[AgentEvalTask]) -> Path:
     )
 
 
-def _all_tasks_cached(job_dir: Path, tasks: Sequence[AgentEvalTask]) -> bool:
-    """Return True when every requested task already has a ``result.json`` under ``job_dir``.
+def _all_tasks_cached(job_dir: Path, tasks: Sequence[AgentEvalTask], *, n_attempts: int) -> bool:
+    """Return True when every requested task already has ``n_attempts`` completed results.
 
     Lets ``job_dir`` act as a cache so a native run whose results are all present
-    is re-adapted instead of re-run.
+    is re-adapted instead of re-run. The cache is **success-aware**: only trials
+    that finished without an ``exception_info`` count, and a task must have at
+    least ``n_attempts`` of them, so an interrupted, errored, or under-sampled run
+    is re-run rather than silently served from a partial cache. Caching only takes
+    effect when a stable ``job_name`` is set on the config; with the default
+    timestamped ``job_name`` every run writes a fresh dir and never hits the cache.
     """
     if not job_dir.is_dir():
         return False
-    present: set[str] = set()
+    counts: dict[str, int] = {}
     for result_path in job_dir.glob("*/result.json"):
         try:
-            name = json.loads(result_path.read_text()).get("task_name")
+            data = json.loads(result_path.read_text())
         except (json.JSONDecodeError, OSError):
             continue
+        if data.get("exception_info") is not None:
+            continue
+        name = data.get("task_name")
         if isinstance(name, str):
-            present.add(name)
-    return {task.id for task in tasks}.issubset(present)
+            counts[name] = counts.get(name, 0) + 1
+    return all(counts.get(task.id, 0) >= n_attempts for task in tasks)
 
 
 def _build_native_job(
@@ -272,9 +285,15 @@ def _build_native_job(
     job_dir = config.jobs_dir / job_name
 
     async def run_job() -> None:
-        from harbor.job import DatasetConfig, Job, JobConfig  # ty: ignore[unresolved-import]
-        from harbor.models.job.config import RetryConfig  # ty: ignore[unresolved-import]
-        from harbor.models.trial.config import AgentConfig, ArtifactConfig  # ty: ignore[unresolved-import]
+        try:
+            from harbor.job import DatasetConfig, Job, JobConfig  # ty: ignore[unresolved-import]
+            from harbor.models.job.config import RetryConfig  # ty: ignore[unresolved-import]
+            from harbor.models.trial.config import AgentConfig, ArtifactConfig  # ty: ignore[unresolved-import]
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "the native Harbor runtime needs `harbor`, which is not an SDK dependency "
+                '(it requires Python >=3.12). Install it separately: uv pip install "harbor>=0.16.1"'
+            ) from exc
 
         if config.force_rerun and job_dir.exists():
             shutil.rmtree(job_dir)
@@ -343,6 +362,12 @@ def scoped_harbor_agent_import(agent_dir: Path, import_path: str) -> Iterator[st
     On exit the injected ``sys.modules`` entries are removed. The mutation is
     guarded by a process-wide lock so concurrent runs don't corrupt import state;
     each run gets its own uniquely-named package so distinct agents never collide.
+
+    Only ``agent_dir`` (not ``sys.path``) is made importable, so a loose wrapper
+    must be self-contained: a single module, or one that reaches siblings via
+    relative imports (``from .helper import ...``). A wrapper that does an absolute
+    ``import helper`` of a sibling file won't resolve — install it as a package and
+    use the ``agent_dir``-less path instead.
     """
     module_name, sep, attribute = import_path.partition(":")
     module_name = module_name.strip().lstrip(".")
@@ -564,14 +589,26 @@ def discover_harbor_tasks(dataset_path: str | Path) -> list[AgentEvalTask]:
     with a ``task.toml`` is a task. The task id is read from ``[task] name`` so it
     matches the ``task_name`` Harbor writes into each trial's ``result.json``, and
     each task is scored by a :class:`HarborRewardMetric`.
+
+    Raises:
+        ValueError: if a task's ``task.toml`` or ``instruction.md`` is malformed or
+            unreadable — the offending path is named. A discovered task is never
+            silently dropped, since that would quietly shrink eval coverage.
     """
     dataset_path = Path(dataset_path)
     tasks: list[AgentEvalTask] = []
     for task_dir in _harbor_task_dirs(dataset_path):
-        config = tomllib.loads((task_dir / _TASK_CONFIG_FILENAME).read_text())
+        config_path = task_dir / _TASK_CONFIG_FILENAME
+        try:
+            config = tomllib.loads(config_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+            raise ValueError(f"malformed Harbor task config at {config_path}: {exc}") from exc
         task_name = config.get("task", {}).get("name", task_dir.name)
         instruction_path = task_dir / "instruction.md"
-        intent = instruction_path.read_text().strip() if instruction_path.is_file() else task_name
+        try:
+            intent = instruction_path.read_text(encoding="utf-8").strip() if instruction_path.is_file() else task_name
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ValueError(f"unreadable Harbor instruction at {instruction_path}: {exc}") from exc
         tasks.append(
             AgentEvalTask(
                 id=task_name,

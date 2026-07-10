@@ -71,6 +71,21 @@ The runtime is [`harbor_runtime.py`](../../src/nemo_evaluator_sdk/agent_eval/run
   the legacy `{reward, reward_details, exceptions}` shape older NeMo Optimizer
   consumers expect.
 
+### Re-running and caching
+
+In native mode the `job_dir` doubles as a cache: if every requested task already
+has `n_attempts` completed (non-errored) results there, the Harbor run is skipped
+and the results are re-adapted instead. This only engages when you **pin a stable
+`job_name`** on the config — the default `job_name` is a timestamp, so each run
+writes a fresh dir and never hits the cache. Set `force_rerun=True` to delete the
+job dir and re-run unconditionally.
+
+```python
+config = HarborRuntimeConfig(jobs_dir=jobs_dir, job_name="hello-world", agent_name="oracle")
+await run_harbor_eval(config, "hello_world_dataset")  # first call runs Harbor
+await run_harbor_eval(config, "hello_world_dataset")  # second call re-adapts the cached job dir
+```
+
 ## Run it
 
 From the repository root:
@@ -114,6 +129,12 @@ state (the mutation is lock-guarded, and each run gets its own package name so
 concurrent runs don't collide). This is `scoped_harbor_agent_import`. When
 `agent_dir` is omitted, the import path is handed to Harbor's own importer
 unchanged (Harbor resolves it with a plain `importlib.import_module`).
+
+Only `agent_dir` itself is made importable (not `sys.path`), so a loose wrapper
+must be **self-contained**: a single module, or one that reaches sibling files
+via relative imports (`from .helper import ...`). A wrapper that does an absolute
+`import helper` of a sibling won't resolve — package and install it, then use the
+`agent_dir`-less form above.
 
 ## End-to-end test
 

@@ -133,6 +133,16 @@ def test_task_discovery_and_taskset_loader_over_bundled_dataset() -> None:
     assert [t.id for t in loader.load(limit=5).tasks] == ["harbor/hello-world"]
 
 
+def test_discovery_fails_loudly_on_malformed_task(tmp_path: Path) -> None:
+    # A malformed task.toml raises a clear, path-named error rather than crashing
+    # cryptically or silently dropping the task (which would shrink eval coverage).
+    task_dir = tmp_path / "bad-task"
+    task_dir.mkdir()
+    (task_dir / "task.toml").write_text('[task]\nname = "oops')  # unterminated string
+    with pytest.raises(ValueError, match=r"malformed Harbor task config at .*bad-task"):
+        discover_harbor_tasks(tmp_path)
+
+
 def test_runtime_config_defaults_and_runner_requires_a_source() -> None:
     # Config holds only plain fields (importing the module never needs harbor).
     config = HarborRuntimeConfig(jobs_dir=Path("/tmp/jobs"))
@@ -176,6 +186,41 @@ async def test_native_runner_uses_job_dir_as_cache(tmp_path: Path) -> None:
     trials = await runner.run_tasks(tasks)
     assert [trial.task_id for trial in trials] == ["t"]
     assert trials[0].metadata["reward"] == 1.0
+
+
+def test_multiple_attempts_map_to_one_trial_each(tmp_path: Path) -> None:
+    # n_attempts > 1: Harbor writes one result.json per attempt, and each becomes a
+    # distinct trial for the same task id (so the summary can aggregate over attempts).
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    _write_trial(job_dir, "t__aaa", "t", reward=1.0)
+    _write_trial(job_dir, "t__bbb", "t", reward=0.0)
+    tasks = [AgentEvalTask(id="t", intent="x", inputs={"prompt": "p"}, metrics=[HarborRewardMetric()])]
+
+    trials = build_trials_from_job_dir(job_dir, tasks)
+    assert [trial.task_id for trial in trials] == ["t", "t"]
+    assert sorted(trial.metadata["reward"] for trial in trials) == [0.0, 1.0]
+
+
+def test_cache_is_attempt_and_success_aware(tmp_path: Path) -> None:
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _all_tasks_cached
+
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    tasks = [AgentEvalTask(id="t", intent="x", inputs={"prompt": "p"}, metrics=[HarborRewardMetric()])]
+
+    # One completed attempt: enough for n_attempts=1, not for n_attempts=2.
+    _write_trial(job_dir, "t__aaa", "t", reward=1.0)
+    assert _all_tasks_cached(job_dir, tasks, n_attempts=1) is True
+    assert _all_tasks_cached(job_dir, tasks, n_attempts=2) is False
+
+    # An errored attempt does not count, so the run is not served from a partial cache.
+    _write_trial(job_dir, "t__bbb", "t", reward=0.0, exception="NonZeroAgentExitCodeError")
+    assert _all_tasks_cached(job_dir, tasks, n_attempts=2) is False
+
+    # A second clean attempt satisfies n_attempts=2.
+    _write_trial(job_dir, "t__ccc", "t", reward=1.0)
+    assert _all_tasks_cached(job_dir, tasks, n_attempts=2) is True
 
 
 def test_scoped_agent_import_makes_wrapper_importable_then_cleans_up(tmp_path: Path) -> None:
