@@ -9,7 +9,6 @@ import {
   Code2,
   FlaskConical,
   GraduationCap,
-  ImageIcon,
   Scale,
   SearchCode,
   SquareFunction,
@@ -380,50 +379,6 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
         },
       },
     ],
-  },
-  {
-    id: 'image-generation',
-    title: 'Image generation dataset',
-    description:
-      'Text-to-image pairs: sampled visual style and subject, an LLM-crafted descriptive prompt, and the generated image. Requires an image model configured under the "image_model" alias.',
-    icon: ImageIcon,
-    tag: { label: 'Multimodal', color: 'purple', kind: 'outline' },
-    columns: [
-      {
-        columnType: 'sampler',
-        samplerType: SamplerType.category,
-        name: 'style',
-        values: {
-          values: 'photorealistic, watercolor, oil painting, digital art, pencil sketch',
-        },
-      },
-      {
-        columnType: 'sampler',
-        samplerType: SamplerType.category,
-        name: 'subject',
-        values: {
-          values: 'mountain landscape, city skyline, forest path, ocean sunset, snowy village',
-        },
-      },
-      {
-        columnType: 'llm-text',
-        name: 'prompt_text',
-        values: {
-          prompt:
-            'Write a vivid, detailed image generation prompt for a {{ style }} depiction of: {{ subject }}. Include lighting, mood, and composition details. Return only the prompt.',
-          model_alias: 'default',
-        },
-      },
-      {
-        columnType: 'image',
-        name: 'generated_image',
-        values: {
-          prompt: '{{ prompt_text }}',
-          model_alias: 'image_model',
-        },
-      },
-    ],
-    models: [{ alias: 'default', model: DEFAULT_BUILD_MODEL_NAME }, { alias: 'image_model' }],
   },
 ];
 
