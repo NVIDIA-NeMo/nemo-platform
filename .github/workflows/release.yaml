@@ -70,9 +70,16 @@ on:
         required: false
         type: boolean
         default: true
+      dry_run:
+        description: >-
+          Validate and package selected artifacts without publishing, dispatching,
+          polling, deploying, or notifying.
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
-  group: release
+  group: release-${{ inputs.dry_run && github.run_id || 'live' }}
   cancel-in-progress: false
 
 permissions:
@@ -115,6 +122,14 @@ env:
   RELEASE_HELM_ID: nemo-platform
   RELEASE_HELM_PATH: k8s/helm
   RELEASE_HELM_REGISTRY: nvcr.io/0921617854601259/nemo-platform
+  RELEASE_NIGHTLY_WHEEL_INDEX: https://pypi.nvidia.com
+  RELEASE_STABLE_WHEEL_INDEX: https://pypi.org/simple
+  RELEASE_NIGHTLY_CONTAINER_REGISTRY: ghcr.io/nvidia-nemo/nemo-platform
+  RELEASE_STABLE_CONTAINER_REGISTRY: nvcr.io/nvidia/nemo-platform
+  # Make this package public in GitHub Packages after its first push.
+  RELEASE_NIGHTLY_HELM_OCI_REGISTRY: oci://ghcr.io/nvidia-nemo/nemo-platform
+  # Stable charts must be promoted from RELEASE_HELM_REGISTRY before polling.
+  RELEASE_STABLE_HELM_REPOSITORY: https://helm.ngc.nvidia.com/nvidia/nemo-platform
 
 jobs:
   plan-release:
@@ -126,6 +141,7 @@ jobs:
       version: ${{ steps.plan.outputs.version }}
       release_label: ${{ steps.plan.outputs.release_label }}
       nightly_timestamp: ${{ steps.plan.outputs.nightly_timestamp }}
+      wheel_version: ${{ steps.wheel-version.outputs.wheel_version }}
       wheel_ids: ${{ steps.plan.outputs.wheel_ids }}
       container_ids: ${{ steps.plan.outputs.container_ids }}
       has_wheels: ${{ steps.plan.outputs.has_wheels }}
@@ -133,6 +149,7 @@ jobs:
       include_helm: ${{ steps.plan.outputs.include_helm }}
       update_ngc_metadata: ${{ steps.plan.outputs.update_ngc_metadata }}
       send_notifications: ${{ steps.plan.outputs.send_notifications }}
+      dry_run: ${{ steps.plan.outputs.dry_run }}
     steps:
       # This job is intentionally the first gate. It resolves the user's
       # requested artifacts, checks custom ids against the inline catalog, then
@@ -154,6 +171,7 @@ jobs:
             const releaseScope = isManual ? (inputs.release_scope || "all") : "all";
             const updateNgcMetadata = isManual && inputs.update_ngc_metadata === "true";
             const sendNotifications = !isManual || inputs.send_notifications === "true";
+            const dryRun = isManual && inputs.dry_run === "true";
 
             let sourceSha = isManual ? inputs.source_sha.trim() : context.sha;
             const version = releaseType === "stable" ? inputs.version.trim() : "";
@@ -169,7 +187,9 @@ jobs:
               if (sourceSha && !/^[0-9a-f]{40}$/i.test(sourceSha)) {
                 throw new Error("A pinned nightly source must be an exact 40-character SHA.");
               }
-              if (!sourceSha) {
+              if (!sourceSha && dryRun) {
+                sourceSha = context.sha;
+              } else if (!sourceSha) {
                 const defaultBranch = context.payload.repository.default_branch;
                 const { data: commit } = await github.rest.repos.getCommit({
                   ...context.repo,
@@ -271,6 +291,7 @@ jobs:
             core.setOutput("include_helm", String(includeHelm));
             core.setOutput("update_ngc_metadata", String(updateNgcMetadata));
             core.setOutput("send_notifications", String(sendNotifications));
+            core.setOutput("dry_run", String(dryRun));
 
             core.info(
               `Planned ${releaseType} release ${releaseLabel} from ${sourceSha}`,
@@ -280,6 +301,8 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ steps.plan.outputs.source_sha }}
+          fetch-depth: 0
+          fetch-tags: true
           persist-credentials: false
 
       - name: Validate selected release artifacts
@@ -385,10 +408,43 @@ jobs:
 
             core.info("Selected release artifacts are valid for the checked-out source.");
 
+      - name: Resolve wheel version
+        id: wheel-version
+        if: steps.plan.outputs.has_wheels == 'true'
+        shell: bash
+        env:
+          WHEEL_IDS: ${{ steps.plan.outputs.wheel_ids }}
+          RELEASE_TYPE: ${{ steps.plan.outputs.release_type }}
+          RELEASE_VERSION: ${{ steps.plan.outputs.version }}
+          NIGHTLY_TIMESTAMP: ${{ steps.plan.outputs.nightly_timestamp }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${RELEASE_TYPE}" == "nightly" ]]; then
+            cadence="nightly"
+          else
+            cadence="release"
+          fi
+
+          args=(
+            --source-root .
+            --sdk-id "$(jq -r '.[0]' <<< "${WHEEL_IDS}")"
+            --cadence "${cadence}"
+            --nightly-timestamp "${NIGHTLY_TIMESTAMP}"
+            --print-version
+          )
+          if [[ "${RELEASE_TYPE}" == "stable" ]]; then
+            args+=(--release-label "${RELEASE_VERSION}")
+          fi
+          wheel_version="$(python3 .github/scripts/stamp_sdk_version.py "${args[@]}")"
+          echo "wheel_version=${wheel_version}" >> "${GITHUB_OUTPUT}"
+
   notify-start:
     name: Notify release start
     needs: plan-release
-    if: needs.plan-release.outputs.send_notifications == 'true'
+    if: >-
+      needs.plan-release.outputs.send_notifications == 'true' &&
+      needs.plan-release.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
     steps:
       - run: echo "::notice::Placeholder - send release start notification"
@@ -396,7 +452,9 @@ jobs:
   sync-ngc-metadata:
     name: Synchronize NGC metadata
     needs: plan-release
-    if: needs.plan-release.outputs.update_ngc_metadata == 'true'
+    if: >-
+      needs.plan-release.outputs.update_ngc_metadata == 'true' &&
+      needs.plan-release.outputs.dry_run != 'true'
     uses: ./.github/workflows/ngc-metadata.yaml
     secrets:
       AIRE_NGC_GITHUB_PLATFORM_RW: ${{ secrets.AIRE_NGC_GITHUB_PLATFORM_RW }}
@@ -404,7 +462,9 @@ jobs:
   dispatch-release-registration:
     name: Dispatch release registration
     needs: plan-release
-    if: needs.plan-release.outputs.release_type == 'stable'
+    if: >-
+      needs.plan-release.outputs.release_type == 'stable' &&
+      needs.plan-release.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch registration workflow
@@ -442,7 +502,9 @@ jobs:
   dispatch-wheel-stage:
     name: Dispatch wheel builds
     needs: plan-release
-    if: needs.plan-release.outputs.has_wheels == 'true'
+    if: >-
+      needs.plan-release.outputs.has_wheels == 'true' &&
+      needs.plan-release.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch wheel builds
@@ -453,6 +515,7 @@ jobs:
           RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
           RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
           NIGHTLY_TIMESTAMP: ${{ needs.plan-release.outputs.nightly_timestamp }}
+          WHEEL_VERSION: ${{ needs.plan-release.outputs.wheel_version }}
           WHEEL_IDS: ${{ needs.plan-release.outputs.wheel_ids }}
         with:
           github-token: ${{ secrets.CI_DISPATCH_TOKEN }}
@@ -468,6 +531,7 @@ jobs:
                 cadence: process.env.RELEASE_TYPE === "stable" ? "release" : "nightly",
                 release_label: process.env.RELEASE_LABEL,
                 nightly_timestamp: process.env.NIGHTLY_TIMESTAMP,
+                wheel_version: process.env.WHEEL_VERSION,
                 wheels: JSON.parse(process.env.WHEEL_IDS),
               },
             });
@@ -475,7 +539,9 @@ jobs:
   dispatch-container-stage:
     name: Dispatch container builds
     needs: plan-release
-    if: needs.plan-release.outputs.has_containers == 'true'
+    if: >-
+      needs.plan-release.outputs.has_containers == 'true' &&
+      needs.plan-release.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch container builds
@@ -509,8 +575,11 @@ jobs:
     if: needs.plan-release.outputs.include_helm == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      chart_version: ${{ steps.package.outputs.chart_version }}
     permissions:
       contents: read
+      packages: write
     steps:
       - name: Check out selected source
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -524,6 +593,9 @@ jobs:
           version: v4.2.1
 
       - name: Install Helm push plugin
+        if: >-
+          needs.plan-release.outputs.release_type == 'stable' &&
+          needs.plan-release.outputs.dry_run != 'true'
         run: >-
           helm plugin install https://github.com/chartmuseum/helm-push.git
           --version v0.11.1 --verify=false
@@ -533,7 +605,8 @@ jobs:
         shell: bash
         env:
           HELM_CHART: ${{ env.RELEASE_HELM_PATH }}
-          RELEASE_REGISTRY: ${{ env.RELEASE_HELM_REGISTRY }}
+          NIGHTLY_IMAGE_REGISTRY: ${{ env.RELEASE_NIGHTLY_CONTAINER_REGISTRY }}
+          STABLE_IMAGE_REGISTRY: ${{ env.RELEASE_HELM_REGISTRY }}
           RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
           RELEASE_VERSION: ${{ needs.plan-release.outputs.version }}
           RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
@@ -552,15 +625,17 @@ jobs:
           chart_version="$(yq -r '.version' "${chart_dir}/Chart.yaml")"
           if [[ "${RELEASE_TYPE}" == "nightly" ]]; then
             chart_version="${chart_version}-nightly-${NIGHTLY_TIMESTAMP}"
+            release_registry="${NIGHTLY_IMAGE_REGISTRY}"
           else
             # TODO: Decide whether stable chart versions should track the platform
             # release version or remain independently managed in Chart.yaml.
             chart_version="${RELEASE_VERSION}"
+            release_registry="${STABLE_IMAGE_REGISTRY}"
           fi
 
-          yq -i ".platformConfig.platform.image_registry = \"${RELEASE_REGISTRY}\"" "${chart_dir}/values.yaml"
-          yq -i ".api.image.repository = \"${RELEASE_REGISTRY}/nmp-api\"" "${chart_dir}/values.yaml"
-          yq -i ".core.image.repository = \"${RELEASE_REGISTRY}/nmp-api\"" "${chart_dir}/values.yaml"
+          yq -i ".platformConfig.platform.image_registry = \"${release_registry}\"" "${chart_dir}/values.yaml"
+          yq -i ".api.image.repository = \"${release_registry}/nmp-api\"" "${chart_dir}/values.yaml"
+          yq -i ".core.image.repository = \"${release_registry}/nmp-api\"" "${chart_dir}/values.yaml"
 
           mkdir -p "${package_dir}"
           helm package "${chart_dir}" \
@@ -571,7 +646,31 @@ jobs:
           echo "chart_version=${chart_version}" >> "${GITHUB_OUTPUT}"
           echo "chart_package=${package_dir}/nemo-platform-${chart_version}.tgz" >> "${GITHUB_OUTPUT}"
 
-      - name: Push Helm chart
+      - name: Report packaged Helm chart
+        if: needs.plan-release.outputs.dry_run == 'true'
+        run: |
+          echo "::notice::Dry run: packaged ${{ steps.package.outputs.chart_package }}"
+
+      - name: Push nightly Helm chart to GHCR
+        if: >-
+          needs.plan-release.outputs.release_type == 'nightly' &&
+          needs.plan-release.outputs.dry_run != 'true'
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          HELM_OCI_REGISTRY: ${{ env.RELEASE_NIGHTLY_HELM_OCI_REGISTRY }}
+          CHART_PACKAGE: ${{ steps.package.outputs.chart_package }}
+        run: |
+          set -euo pipefail
+
+          printf '%s' "${GHCR_TOKEN}" | helm registry login ghcr.io \
+            --username "${GITHUB_ACTOR}" --password-stdin
+          helm push "${CHART_PACKAGE}" "${HELM_OCI_REGISTRY}"
+
+      - name: Push stable Helm chart to NGC
+        if: >-
+          needs.plan-release.outputs.release_type == 'stable' &&
+          needs.plan-release.outputs.dry_run != 'true'
         shell: bash
         env:
           HELM_PASSWORD: ${{ secrets.AIRE_NVCR_GITHUB }}
@@ -593,7 +692,7 @@ jobs:
           fi
 
   poll-final-release:
-    name: Poll final release locations
+    name: Wait for published release artifacts
     needs:
       - plan-release
       - dispatch-release-registration
@@ -606,14 +705,132 @@ jobs:
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: read
+    env:
+      POLL_INTERVAL_SECONDS: "30"
     steps:
-      - run: echo "::notice::Placeholder - poll selected artifacts in their final locations"
+      - name: Skip final artifact polling
+        if: needs.plan-release.outputs.dry_run == 'true'
+        run: |
+          echo "::notice::Dry run: skipped final artifact polling"
+
+      - name: Set up Helm for chart polling
+        if: >-
+          needs.plan-release.outputs.include_helm == 'true' &&
+          needs.plan-release.outputs.dry_run != 'true'
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
+        with:
+          version: v4.2.1
+
+      - name: Wait for selected wheels in PyPI
+        if: >-
+          needs.plan-release.outputs.has_wheels == 'true' &&
+          needs.plan-release.outputs.dry_run != 'true'
+        shell: bash
+        env:
+          WHEEL_IDS: ${{ needs.plan-release.outputs.wheel_ids }}
+          WHEEL_CATALOG: ${{ env.RELEASE_WHEELS_JSON }}
+          RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
+          WHEEL_VERSION: ${{ needs.plan-release.outputs.wheel_version }}
+        run: |
+          set -euo pipefail
+
+          # TODO: Send a Slack alert if this release has waited two hours.
+          # Keep the 240-minute job timeout for delayed point releases.
+
+          if [[ "${RELEASE_TYPE}" == "nightly" ]]; then
+            wheel_index="${RELEASE_NIGHTLY_WHEEL_INDEX}"
+          else
+            wheel_index="${RELEASE_STABLE_WHEEL_INDEX}"
+          fi
+
+          while IFS= read -r wheel_id; do
+            package="$(jq -r --arg id "${wheel_id}" '.[] | select(.id == $id) | .package' <<< "${WHEEL_CATALOG}")"
+            filename_prefix="${package//-/_}-${WHEEL_VERSION}"
+            wheel_url="${wheel_index}/${package}/"
+
+            until curl --silent --location "${wheel_url}" | grep -Fq "${filename_prefix}"; do
+              echo "Waiting for ${package}==${WHEEL_VERSION} at ${wheel_url}"
+              sleep "${POLL_INTERVAL_SECONDS}"
+            done
+            echo "Found ${package}==${WHEEL_VERSION}"
+          done < <(jq -r '.[]' <<< "${WHEEL_IDS}")
+
+      # Both final container registries are public, so this check deliberately
+      # uses docker manifest inspect without credentials.
+      - name: Wait for selected containers in the final registry
+        if: >-
+          needs.plan-release.outputs.has_containers == 'true' &&
+          needs.plan-release.outputs.dry_run != 'true'
+        shell: bash
+        env:
+          CONTAINER_IDS: ${{ needs.plan-release.outputs.container_ids }}
+          CONTAINER_TAG: ${{ needs.plan-release.outputs.release_label }}
+          CONTAINER_REGISTRY: >-
+            ${{ needs.plan-release.outputs.release_type == 'nightly' &&
+            env.RELEASE_NIGHTLY_CONTAINER_REGISTRY ||
+            env.RELEASE_STABLE_CONTAINER_REGISTRY }}
+        run: |
+          set -euo pipefail
+
+          # TODO: Send a Slack alert if this release has waited two hours.
+          # Keep the 240-minute job timeout for delayed point releases.
+
+          while IFS= read -r container_id; do
+            ref="${CONTAINER_REGISTRY}/${container_id}:${CONTAINER_TAG}"
+            until docker manifest inspect "${ref}" >/dev/null 2>&1; do
+              echo "Waiting for ${ref}"
+              sleep "${POLL_INTERVAL_SECONDS}"
+            done
+            echo "Found ${ref}"
+          done < <(jq -r '.[]' <<< "${CONTAINER_IDS}")
+
+      # Both final Helm chart locations are public, so this check deliberately
+      # uses Helm without registry credentials.
+      - name: Wait for Helm chart in the final registry
+        if: >-
+          needs.plan-release.outputs.include_helm == 'true' &&
+          needs.plan-release.outputs.dry_run != 'true'
+        shell: bash
+        env:
+          RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
+          CHART_ID: ${{ env.RELEASE_HELM_ID }}
+          CHART_VERSION: ${{ needs.stage-helm.outputs.chart_version }}
+          NIGHTLY_HELM_OCI_REGISTRY: ${{ env.RELEASE_NIGHTLY_HELM_OCI_REGISTRY }}
+          STABLE_HELM_REPOSITORY: ${{ env.RELEASE_STABLE_HELM_REPOSITORY }}
+        run: |
+          set -euo pipefail
+
+          # TODO: Send a Slack alert if this release has waited two hours.
+          # Keep the 240-minute job timeout for delayed point releases.
+
+          if [[ "${RELEASE_TYPE}" == "nightly" ]]; then
+            chart_ref="${NIGHTLY_HELM_OCI_REGISTRY}/${CHART_ID}"
+            chart_is_available() {
+              helm show chart "${chart_ref}" --version "${CHART_VERSION}" >/dev/null 2>&1
+            }
+          else
+            chart_is_available() {
+              helm repo add nemo-platform "${STABLE_HELM_REPOSITORY}" --force-update >/dev/null 2>&1 \
+                && helm search repo nemo-platform/nemo-platform --devel --version "${CHART_VERSION}" \
+                | grep -qv 'No results found'
+            }
+          fi
+
+          until chart_is_available; do
+            echo "Waiting for ${CHART_ID}==${CHART_VERSION}"
+            sleep "${POLL_INTERVAL_SECONDS}"
+          done
+          echo "Found ${CHART_ID}==${CHART_VERSION}"
 
   create-github-release:
     name: Create GitHub Release
     needs: [plan-release, poll-final-release]
     if: >-
       needs.plan-release.outputs.release_type == 'stable' &&
+      needs.plan-release.outputs.dry_run != 'true' &&
       needs.poll-final-release.result == 'success'
     runs-on: ubuntu-latest
     steps:
@@ -621,8 +838,10 @@ jobs:
 
   signal-deployment:
     name: Signal deployment
-    needs: poll-final-release
-    if: needs.poll-final-release.result == 'success'
+    needs: [plan-release, poll-final-release]
+    if: >-
+      needs.poll-final-release.result == 'success' &&
+      needs.plan-release.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
     steps:
       - run: echo "::notice::Placeholder - signal the completed release"
@@ -636,7 +855,9 @@ jobs:
       - signal-deployment
     if: >-
       always() &&
-      needs.plan-release.outputs.send_notifications == 'true'
+      needs.plan-release.outputs.send_notifications == 'true' &&
+      needs.plan-release.outputs.dry_run != 'true' &&
+      needs.poll-final-release.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - run: echo "::notice::Placeholder - send release end notification"
