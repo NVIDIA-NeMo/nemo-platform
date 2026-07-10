@@ -29,3 +29,10 @@ workflow:
     After using the email_phishing_analyzer tool, your final answer MUST begin
     with a single-word verdict on its own line — exactly "phishing" or "benign" —
     followed by a brief one-sentence justification.
+general:
+  telemetry:
+    tracing:
+      nemo_trace:
+        _type: nemo_files
+        # workspace and agent_name are injected at deploy time
+        batch_size: 128
