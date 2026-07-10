@@ -12,6 +12,7 @@ import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { formatDurationMs } from '@nemo/common/src/utils/date';
 import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import type {
   ExperimentFilter,
@@ -30,7 +31,6 @@ import { deriveEvaluatorNames } from '@studio/components/dataViews/ExperimentGro
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
-import { formatDuration } from '@studio/util/duration';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { Columns3, Pin } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback, useEffect, useMemo } from 'react';
@@ -381,7 +381,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
               count={latency_ms?.count}
               runCount={run_count}
             >
-              {latency_ms?.mean != null ? formatDuration(latency_ms.mean) : '-'}
+              {latency_ms?.mean != null ? formatDurationMs(latency_ms.mean) : '-'}
             </MeanValueTooltipCell>
           );
         },

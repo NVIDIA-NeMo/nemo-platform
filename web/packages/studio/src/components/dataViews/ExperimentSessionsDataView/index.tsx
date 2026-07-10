@@ -10,6 +10,7 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
+import { formatDurationMs } from '@nemo/common/src/utils/date';
 import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import {
   listExperimentSessions,
@@ -27,7 +28,6 @@ import { Empty } from '@studio/components/dataViews/ExperimentSessionsDataView/E
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getExperimentTraceDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
-import { formatDuration } from '@studio/util/duration';
 import { keepPreviousData } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { Columns3 } from 'lucide-react';
@@ -196,7 +196,7 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
       meta: { alignment: 'right' },
       cell: ({ row }) => {
         const ms = row.original.latency_ms;
-        return <Text>{ms != null ? formatDuration(ms) : '-'}</Text>;
+        return <Text>{ms != null ? formatDurationMs(ms) : '-'}</Text>;
       },
     }),
     accessor('status', {

@@ -1,10 +1,16 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { formatDurationMs } from '@nemo/common/src/utils/date';
 import type { Span, SpanEvaluationContext, Trace } from '@nemo/sdk/generated/platform/schema';
-import { formatDuration } from '@studio/util/duration';
 
 export const EMPTY_VALUE = '—';
+
+/**
+ * Re-exported so existing Intake call sites keep importing from this module; the
+ * canonical implementation lives in `@nemo/common/src/utils/date`.
+ */
+export { formatDurationMs };
 
 export type SpanHierarchyStatus = 'parent_outside_page' | 'cycle_or_unreachable';
 
@@ -35,13 +41,6 @@ export const formatCost = (value: number | null | undefined): string => {
   }
   return `$${value.toFixed(2)}`;
 };
-
-/**
- * Format a millisecond duration for display (e.g. `10m 12s 13ms`).
- * Kept as a named alias so existing Intake call sites stay stable; the canonical
- * implementation lives in `@studio/util/duration`.
- */
-export const formatDurationMs = formatDuration;
 
 export const getSpanDurationMs = (span: Span): number | undefined => {
   if (!span.ended_at) return undefined;
