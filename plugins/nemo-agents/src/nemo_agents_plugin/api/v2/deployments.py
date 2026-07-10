@@ -85,6 +85,9 @@ async def create_deployment(
         agent=body.agent,
         config=resolved_config,
         status="pending",
+        deployment_mode=body.deployment_mode,
+        image=body.image,
+        plugin_deployment=deployment_name if body.deployment_mode in ("docker", "k8s") else "",
     )
     try:
         saved = await entity_client.create(deployment)

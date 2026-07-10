@@ -192,8 +192,18 @@ class InMemoryRunnerBackend(RunnerBackend):
             except OSError:
                 return False
 
-    async def create_deployment(self, workspace: str, name: str, config: dict[str, Any], port: int) -> DeploymentInfo:
+    async def create_deployment(
+        self,
+        workspace: str,
+        name: str,
+        config: dict[str, Any],
+        port: int,
+        *,
+        image: str | None = None,
+        deployment_mode: str = "subprocess",
+    ) -> DeploymentInfo:
         """Write config to a deterministic file and spawn ``nat serve``."""
+        del image, deployment_mode
         key = (workspace, name)
         config_path = await asyncio.to_thread(self._write_config, workspace, name, config)
         log_path = self.log_path_for(workspace, name)

@@ -723,6 +723,17 @@ def _register_platform_commands(app: typer.Typer) -> None:
     def deploy(
         agent: str = typer.Option(..., "--agent", "-a", help="Name of the agent to deploy."),
         name: Optional[str] = typer.Option(None, "--name", "-n", help="Deployment name (auto-generated if omitted)."),
+        mode: str = typer.Option(
+            "subprocess",
+            "--mode",
+            help="Runtime backend: subprocess (default), docker, or k8s.",
+        ),
+        image: Optional[str] = typer.Option(
+            None,
+            "--image",
+            "-i",
+            help="Container image for docker/k8s modes (falls back to deployments.default_image).",
+        ),
         wait: bool = typer.Option(
             True,
             "--wait/--no-wait",
@@ -751,11 +762,21 @@ def _register_platform_commands(app: typer.Typer) -> None:
         ``--no-wait`` to keep the previous fire-and-forget behaviour for
         scripted pipelines that prefer to poll separately via ``nemo agents
         deployments wait``.
+
+        Container modes (``--mode docker|k8s``) compile to the nemo-deployments
+        plugin. Gateway routing for container endpoints is AIRCORE-862; the
+        k8s runtime contract is AIRCORE-863.
         """
+        if mode not in ("subprocess", "docker", "k8s"):
+            typer.echo(f"Invalid --mode {mode!r}; expected subprocess, docker, or k8s.", err=True)
+            raise typer.Exit(code=2)
+
         base_url = _resolve_base_url(base_url)
-        payload: dict = {"agent": agent}
+        payload: dict = {"agent": agent, "deployment_mode": mode}
         if name:
             payload["name"] = name
+        if image:
+            payload["image"] = image
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/deployments", json_body=payload)
         if not wait:
             typer.echo(json.dumps(resp, indent=2))
