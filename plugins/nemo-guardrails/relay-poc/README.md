@@ -151,9 +151,12 @@ check, and asserts seven outcomes:
 
 ```bash
 PYTHONPATH=plugins/nemo-guardrails/relay-poc/src \
-  uv run --with nemo-relay --with 'langchain>=1.0' \
+  uv run --no-project --with nemo-relay --with 'langchain>=1.0' \
   python plugins/nemo-guardrails/relay-poc/agent/demo_agent.py
 ```
+
+(`--no-project` keeps `uv` from trying to build the surrounding `nemo-platform`
+workspace; the demo only needs `nemo-relay` + `langchain`.)
 
 Expected output ends with:
 

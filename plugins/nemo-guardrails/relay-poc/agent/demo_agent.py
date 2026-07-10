@@ -31,7 +31,7 @@ all on the same ``agent.invoke`` path, through the same middleware.
 Run it (needs the embedded Relay runtime + LangChain; no Rust build required):
 
     PYTHONPATH=plugins/nemo-guardrails/relay-poc/src \\
-      uv run --with nemo-relay --with 'langchain>=1.0' \\
+      uv run --no-project --with nemo-relay --with 'langchain>=1.0' \\
       python plugins/nemo-guardrails/relay-poc/agent/demo_agent.py
 
 The stub-model + create_agent + NemoRelayMiddleware pattern is copied from Relay's
