@@ -171,7 +171,7 @@ jobs:
             const releaseType = isManual ? inputs["release-type"] : "nightly";
             const releaseScope = isManual ? (inputs["release-scope"] || "all") : "all";
             const updateNgcMetadata = isManual && inputs["update-ngc-metadata"] === "true";
-            const sendNotifications = !isManual || inputs["send-notifications"] === "true";
+            const sendNotifications = inputs["send-notifications"] !== "false";
             const dryRun = isManual && inputs["dry-run"] === "true";
 
             let sourceSha = isManual ? inputs["source-sha"].trim() : context.sha;
