@@ -742,6 +742,39 @@ jobs:
             helm cm-push "${CHART_PACKAGE}" nemo-platform
           fi
 
+  dispatch-release-deployment:
+    name: Dispatch release deployment
+    needs: [plan-release, stage-helm, poll-final-release]
+    if: >-
+      needs.plan-release.outputs.include_helm == 'true' &&
+      needs.plan-release.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch deployment creation
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
+          SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
+          RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
+          RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
+          HELM_VERSION: ${{ needs.stage-helm.outputs.chart_version }}
+        with:
+          github-token: ${{ secrets.CI_DISPATCH_TOKEN }}
+          script: |
+            const [owner, repo] = process.env.DISPATCH_REPO.split("/");
+
+            await github.rest.repos.createDispatchEvent({
+              owner,
+              repo,
+              event_type: "create-release-deployment",
+              client_payload: {
+                ref: process.env.SOURCE_SHA,
+                cadence: process.env.RELEASE_TYPE === "stable" ? "release" : "nightly",
+                release_label: process.env.RELEASE_LABEL,
+                helm_version: process.env.HELM_VERSION,
+              },
+            });
+
   poll-final-release:
     name: Wait for published release artifacts
     needs:
