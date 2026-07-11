@@ -27,10 +27,6 @@ export interface BuilderConfigPaneProps {
   onModelClose: () => void;
 }
 
-/**
- * The right pane: the config panel for whichever of a column or model is selected (they
- * are mutually exclusive), or a hint to select/add something when nothing is selected.
- */
 export const BuilderConfigPane: FC<BuilderConfigPaneProps> = ({
   selectedColumn,
   selectedModel,

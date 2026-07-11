@@ -35,13 +35,8 @@ export interface TemplateColumnSpec extends AddColumnSelection {
   values?: Record<string, string>;
 }
 
-/**
- * One model a template preloads into the job config so its LLM columns have something to
- * generate with out of the box. `alias` must match the `model_alias` its columns
- * reference. `model` is an optional preferred URN; when omitted (or not present in the
- * workspace) the build route auto-fills the first available model so the recipe can be
- * previewed immediately. Resolved to a `BuilderModel` by the build route.
- */
+/** Picking one preloads the build canvas with its columns and any models they reference. */
+
 export interface TemplateModelSpec {
   /** Alias the template's columns reference via `model_alias`. */
   alias: string;

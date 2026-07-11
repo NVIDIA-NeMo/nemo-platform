@@ -23,10 +23,7 @@ export interface BuilderPaletteProps {
   onSelectModel: (id: string | null) => void;
 }
 
-/**
- * The left aside: a Columns/Models segmented control over the matching palette. The tabs
- * only swap what you're adding — column and model configs both open in the right pane.
- */
+// Tabs only swap what you're adding — column and model configs both open in the right pane.
 export const BuilderPalette: FC<BuilderPaletteProps> = ({
   tab,
   onTabChange,

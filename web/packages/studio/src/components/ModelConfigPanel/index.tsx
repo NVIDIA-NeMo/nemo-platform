@@ -17,30 +17,17 @@ import { Cpu, Trash2, X } from 'lucide-react';
 import type { FC } from 'react';
 
 export interface ModelConfigPanelProps {
-  /** The model currently being edited. */
   model: BuilderModel;
   /** Aliases used by other models, for the uniqueness check. */
   takenAliases: Set<string>;
-  /** Platform models to choose from, grouped by workspace. */
   modelGroups: ModelWorkspaceGroup[];
-  /** Whether the model list is still loading. */
   isLoadingModels?: boolean;
-  /** Fired live as the user edits any field. */
   onChange: (patch: BuilderModelPatch) => void;
-  /** Removes this model from the config. */
   onRemove: () => void;
-  /** Closes the panel (deselects the model). */
   onClose: () => void;
 }
 
-/**
- * Right-hand config panel for the selected model on the build canvas — the sibling of
- * {@link ColumnConfigPanel}, sharing its inline (non-overlay) layout and live-edit model.
- *
- * The model and its inference parameters are chosen through {@link ModelSelectV2} (the
- * shared platform model picker), so this stays consistent with the rest of Studio,
- * alongside the `alias` that LLM columns reference.
- */
+/** Right-hand config panel for a model — sibling of ColumnConfigPanel, same inline layout. */
 export const ModelConfigPanel: FC<ModelConfigPanelProps> = ({
   model,
   takenAliases,

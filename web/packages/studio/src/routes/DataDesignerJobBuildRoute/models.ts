@@ -11,26 +11,16 @@ import type {
 import type { InferenceParams } from '@nemo/sdk/generated/platform/schema';
 import type { TemplateModelSpec } from '@studio/components/CreateFilesetStart/types';
 
-/**
- * A model config the user has added in the builder. Mirrors the SDK {@link ModelConfig}
- * shape: `model` is the platform model URN picked in the `ModelSelectV2` dropdown and
- * `inferenceParams` holds the values edited in its params popover. `alias` is the
- * identifier a column's `model_alias` field references to generate with this model.
- */
+/** Mirrors the SDK ModelConfig shape; `alias` is what LLM columns reference via `model_alias`. */
 export interface BuilderModel {
-  /** Builder-unique id (stable across alias edits, used for selection). */
+  /** Canvas-unique id (stable across alias edits, used for selection). */
   id: string;
-  /** Alias columns reference via their `model_alias` field. */
   alias: string;
-  /** Model identifier / URN (e.g. `workspace/model-name`), from the model dropdown. */
   model: string;
-  /** Model provider name (e.g. `openai`, or `workspace/provider-name`). */
   provider: string;
-  /** Inference parameters (temperature, top_p, max_tokens, …), from the params popover. */
   inferenceParams: Partial<InferenceParams>;
 }
 
-/** The editable fields of a {@link BuilderModel} (everything but its id). */
 export type BuilderModelPatch = Partial<Omit<BuilderModel, 'id'>>;
 
 /**
@@ -49,11 +39,7 @@ export const providerForModel = (modelGroups: ModelWorkspaceGroup[], model: stri
   return '';
 };
 
-/**
- * The first platform model (with its resolved provider) from the model list, used to
- * auto-fill a template's model so the recipe can be previewed without picking one by
- * hand. Returns null when no models are available.
- */
+/** First platform model (with resolved provider), used to auto-fill a template's model. */
 export const firstAvailableModel = (
   modelGroups: ModelWorkspaceGroup[]
 ): { model: string; provider: string } | null => {
@@ -107,13 +93,6 @@ export const buildModelsFromTemplate = (
     inferenceParams: { ...spec.inferenceParams },
   }));
 
-/**
- * A {@link BuilderModel} seeded from a platform model picked in the `ModelSelectV2`
- * dropdown, with a unique default alias the user can rename in the config panel. The
- * `provider` is resolved from the platform model list (see {@link providerForModel}) so
- * the submitted config carries it; inference parameters start empty and are refined in
- * the config panel.
- */
 export const builderModelFromSelection = (
   id: string,
   selection: ModelSelection,
@@ -135,7 +114,6 @@ export const defaultModelAlias = (takenAliases: Set<string>): string => {
   }
 };
 
-/** Validates a proposed model alias; returns an error message, or null if valid. */
 export const validateModelAlias = (alias: string, takenAliases: Set<string>): string | null => {
   const trimmed = alias.trim();
   if (!trimmed) return 'Alias is required.';
@@ -143,12 +121,6 @@ export const validateModelAlias = (alias: string, takenAliases: Set<string>): st
   return null;
 };
 
-/**
- * Validates every model is ready to submit: unique, non-empty aliases and a chosen model.
- * Inference parameters are constrained by the `ModelSelectV2` params popover, so they are
- * not re-checked here. Returns one human-readable message per problem, or an empty array
- * if all models are valid.
- */
 export const validateModels = (models: BuilderModel[]): string[] => {
   const errors: string[] = [];
   for (const model of models) {
@@ -163,7 +135,6 @@ export const validateModels = (models: BuilderModel[]): string[] => {
   return errors;
 };
 
-/** Converts one builder model into the SDK's model config shape. */
 const toModelConfig = (model: BuilderModel): ModelConfig => {
   const config: ModelConfig = { alias: model.alias.trim(), model: model.model.trim() };
   if (model.provider.trim()) config.provider = model.provider.trim();
@@ -179,10 +150,6 @@ const toModelConfig = (model: BuilderModel): ModelConfig => {
   return config;
 };
 
-/**
- * Builds the `model_configs` for the Data Designer job config. Call {@link validateModels}
- * first — this assumes the models are valid and does not re-check them. Returns undefined
- * when there are no models so the key is omitted from the config entirely.
- */
+/** Returns undefined when there are no models so the key is omitted from the config. */
 export const buildModelConfigs = (models: BuilderModel[]): ModelConfig[] | undefined =>
   models.length > 0 ? models.map(toModelConfig) : undefined;

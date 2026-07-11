@@ -14,35 +14,14 @@ import { Cpu } from 'lucide-react';
 import type { FC } from 'react';
 
 export interface AddModelPaletteProps {
-  /** The models currently configured for this job. */
   models: BuilderModel[];
-  /** The model currently open for editing, if any. */
   selectedId?: string | null;
-  /** Platform models to choose from, grouped by workspace. */
   modelGroups: ModelWorkspaceGroup[];
-  /** Whether the platform model list is still loading. */
   isLoadingModels?: boolean;
-  /**
-   * Adds a model config seeded from the picked platform model (with its resolved provider)
-   * and opens it for editing.
-   */
   onAddModel: (selection: ModelSelection, provider: string) => void;
-  /** Opens an existing model config for editing. */
   onSelectModel: (id: string) => void;
   className?: string;
 }
-
-/**
- * "Models" palette for the Data Designer recipe builder — the sibling of the
- * {@link AddColumnPalette} behind the aside's segmented control.
- *
- * A {@link ModelSelectV2} at the top adds a model to the job config: picking a platform
- * model appends a config seeded from it and opens it in the right-hand config panel.
- * Existing models are listed below as keyboard-activatable {@link SelectableCard}s
- * (matching the column palette's look); activating one selects it for editing. The models
- * it lists are the same ones an LLM column's `model_alias` field references, so they live
- * in — and submit as part of — the one job config.
- */
 export const AddModelPalette: FC<AddModelPaletteProps> = ({
   models,
   selectedId,
@@ -60,7 +39,6 @@ export const AddModelPalette: FC<AddModelPaletteProps> = ({
       </Text>
     </Stack>
 
-    {/* Picking a model adds it to the job config; the selector resets to its placeholder. */}
     <div className="shrink-0">
       <ModelSelectV2
         value={null}

@@ -32,14 +32,8 @@ import { useAuth } from 'react-oidc-context';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 /**
- * The "Build from scratch" column builder. Composes the {@link BuilderPalette} (left),
- * the {@link DagCanvas} recipe graph (center), and a {@link BuilderConfigPane} that opens
- * on the right when a column/model is added or a node is clicked — so the canvas stays
- * visible while it is configured.
- *
- * Edges are derived from the entered values: a column that references another via a
- * Jinja2 `{{ column_name }}` token (or a column-name field) gets an edge from the
- * referenced column, so the graph reflects real data dependencies rather than add order.
+ * Edges are derived from entered values: Jinja2 `{{ column_name }}` references (and
+ * column-name fields) draw edges so the graph reflects data dependencies, not add order.
  */
 export const DataDesignerJobBuildRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
@@ -47,8 +41,7 @@ export const DataDesignerJobBuildRoute: FC = () => {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
 
-  // A `?template=<id>` param (set by the "Start from a template" flow) preloads the
-  // canvas with that recipe's columns; without it, the canvas starts empty ("scratch").
+  // `?template=<id>` seeds the canvas from a template recipe; absent = empty canvas.
   const template = useMemo(() => {
     const templateId = searchParams.get('template');
     return templateId ? (findTemplate(templateId) ?? null) : null;
@@ -64,8 +57,6 @@ export const DataDesignerJobBuildRoute: FC = () => {
     ],
   });
 
-  // Platform models to populate the model config panel's ModelSelectV2 dropdown and to
-  // auto-fill a template's seeded models.
   const { data: modelsData, isLoading: isLoadingModels } = useAllModels({ workspace });
   const modelGroups = useMemo(
     () =>

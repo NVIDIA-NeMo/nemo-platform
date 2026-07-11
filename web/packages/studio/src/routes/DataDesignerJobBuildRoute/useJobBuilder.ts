@@ -25,17 +25,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 export type PaletteTab = 'columns' | 'models';
 
 /**
- * State container for the recipe builder: the columns and models that make up the job
- * config, their selection/focus state, and the handlers that mutate them. Selecting a
- * column and selecting a model are mutually exclusive so only one config panel shows in
- * the right pane at a time.
+ * Column/model state for the recipe builder. Selecting a column and selecting a model are
+ * mutually exclusive — only one config panel shows at a time.
  *
  * Job-level concerns (name, row count, validation, preview, submit) live in the route so
  * this hook stays a pure graph-editing store.
  *
- * `modelGroups` is the platform model list; it's used to auto-fill a template's seeded
- * models (model + provider) once loaded, so a templated recipe can be previewed without
- * picking a model by hand.
+ * `modelGroups` auto-fills a template's seeded models once the platform model list loads.
  */
 export const useJobBuilder = (
   template: FilesetTemplate | null,
@@ -137,9 +133,6 @@ export const useJobBuilder = (
     setSelectedId((current) => (current === id ? null : current));
   };
 
-  // Adding a model is driven by the palette's ModelSelectV2: picking a platform model
-  // creates a config seeded from it (model + resolved provider) and opens it in the right
-  // pane for alias/param edits.
   const handleAddModel = (selection: ModelSelection, provider: string) => {
     const id = `model-${nextModelId.current++}`;
     setModels((prev) => [

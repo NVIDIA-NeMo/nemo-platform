@@ -7,21 +7,12 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { FC } from 'react';
 
 export interface BuilderDetailsPanelProps {
-  /** Validation issues collected on the last validate/preview/submit attempt. */
   validationErrors: string[];
-  /** Message from a failed job creation, if any. */
   submitError: string | null;
-  /** Raw preview run logs; empty until a preview has been run. */
   previewLogs: string;
-  /** Whether the panel body is expanded. */
   isOpen: boolean;
   onToggle: () => void;
 }
-
-/**
- * The collapsible strip below the toolbar that surfaces validation issues, job-creation
- * errors, and preview logs. Renders nothing when there is nothing to show.
- */
 export const BuilderDetailsPanel: FC<BuilderDetailsPanelProps> = ({
   validationErrors,
   submitError,

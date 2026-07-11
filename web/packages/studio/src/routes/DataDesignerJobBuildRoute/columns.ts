@@ -44,18 +44,12 @@ export interface ColumnField {
   list?: boolean;
 }
 
-/**
- * A column the user has added to the canvas: the picked catalog option plus the values
- * entered in the config modal. `name` is the column's identifier — other columns
- * reference it via `{{ name }}`. Not yet the SDK column config.
- */
+/** Not yet the SDK column config — that's produced by {@link buildDataDesignerConfig}. */
 export interface BuilderColumn {
   /** Canvas-unique id (also the DAG node id). */
   id: string;
   option: ColumnTypeOption;
-  /** The column name (Jinja2 identifier other columns can reference). */
   name: string;
-  /** Field values keyed by {@link ColumnField.key}. */
   values: Record<string, string>;
 }
 
@@ -111,10 +105,6 @@ const SYSTEM_PROMPT_FIELD: ColumnField = {
   helperText: 'Optional. Also supports {{ column_name }} references.',
 };
 
-/**
- * The user-editable fields for a column type, in display order. `name` is handled
- * separately by the modal (every column has one), so it is not included here.
- */
 const FIELDS_BY_COLUMN_TYPE: Record<NonNullable<DataDesignerColumnType>, ColumnField[]> = {
   'llm-text': [PROMPT_FIELD, MODEL_ALIAS_FIELD, SYSTEM_PROMPT_FIELD],
   'llm-code': [
@@ -217,11 +207,7 @@ const FIELDS_BY_COLUMN_TYPE: Record<NonNullable<DataDesignerColumnType>, ColumnF
   ],
 };
 
-/**
- * Sampler sub-type-specific fields, collected into the sampler config's required `params`
- * object (see `SamplerColumnConfig`). Only the sub-types with builder-editable params are
- * listed; others fall back to an empty `params` object.
- */
+// Sub-type params are nested under the SDK's required `params` key (see toSamplerConfig).
 const PARAM_FIELDS_BY_SAMPLER_TYPE: Partial<Record<SamplerType, ColumnField[]>> = {
   [SamplerType.category]: [
     {
@@ -240,10 +226,6 @@ const PARAM_FIELDS_BY_SAMPLER_TYPE: Partial<Record<SamplerType, ColumnField[]>> 
 const getSamplerParamFields = (samplerType: SamplerType | undefined): ColumnField[] =>
   samplerType ? (PARAM_FIELDS_BY_SAMPLER_TYPE[samplerType] ?? []) : [];
 
-/**
- * Returns the config fields for a column option (excluding the always-present `name`).
- * For sampler columns, the sub-type's `params` fields precede the shared sampler fields.
- */
 export const getColumnFields = (
   option: Pick<ColumnTypeOption, 'columnType' | 'samplerType'>
 ): ColumnField[] => {
@@ -265,10 +247,6 @@ const ACCENT_VAR_CLASS: Record<ColumnTypeColor, string> = {
   yellow: 'text-[color:var(--text-color-accent-yellow)]',
 };
 
-/**
- * Resolves an {@link AddColumnSelection} (fired by the palette) to its full catalog
- * option. Matches on `column_type`, and additionally on `sampler_type` for samplers.
- */
 export const findColumnOption = (selection: AddColumnSelection): ColumnTypeOption | undefined => {
   for (const group of COLUMN_TYPE_GROUPS) {
     const match = group.options.find(
@@ -280,11 +258,7 @@ export const findColumnOption = (selection: AddColumnSelection): ColumnTypeOptio
   return undefined;
 };
 
-/**
- * Resolves a template's column specs into placed {@link BuilderColumn}s, numbering ids
- * from `startId` (so subsequent user-added columns can continue from the returned count).
- * Specs whose column type can't be matched in the palette are skipped.
- */
+// Specs whose column type can't be matched in the palette are silently skipped.
 export const buildColumnsFromTemplate = (
   specs: readonly TemplateColumnSpec[],
   startId = 0
@@ -307,11 +281,6 @@ export const extractJinjaReferences = (text: string): string[] => {
   return refs;
 };
 
-/**
- * The names of columns this column depends on, resolved against the set of known column
- * names. Combines Jinja2 template references (prompt, expr, …) with explicit column-name
- * fields (embedding target, validation targets). Self-references are ignored.
- */
 const columnDependencies = (column: BuilderColumn, knownNames: Set<string>): Set<string> => {
   const deps = new Set<string>();
   const add = (candidate: string) => {
@@ -336,11 +305,6 @@ const columnDependencies = (column: BuilderColumn, knownNames: Set<string>): Set
   return deps;
 };
 
-/**
- * Builds the DAG from the current columns. Nodes carry the column name/type for display;
- * edges are drawn only where one column references another (via Jinja2 `{{ }}` or a
- * column-name field), so unconnected columns render as independent roots.
- */
 export const buildGraph = (columns: BuilderColumn[]): { nodes: DagNode[]; edges: DagEdge[] } => {
   const knownNames = new Set(columns.map((column) => column.name).filter(Boolean));
   const idByName = new Map(columns.filter((c) => c.name).map((c) => [c.name, c.id]));
@@ -371,11 +335,6 @@ export const buildGraph = (columns: BuilderColumn[]): { nodes: DagNode[]; edges:
   return { nodes, edges };
 };
 
-/**
- * A default, unique column name for a freshly added column, derived from its type
- * (e.g. `llm_text_1`). Ensures the new column is immediately referenceable and never
- * collides with an existing name.
- */
 export const defaultColumnName = (option: ColumnTypeOption, takenNames: Set<string>): string => {
   const base = (option.samplerType ?? option.columnType ?? 'column').replace(/[^a-zA-Z0-9]+/g, '_');
   for (let n = 1; ; n++) {
@@ -394,12 +353,6 @@ export const validateColumnName = (name: string, takenNames: Set<string>): strin
   return null;
 };
 
-/**
- * Validates every column is ready to submit: unique, well-formed names; every field
- * marked `required` in {@link getColumnFields} filled in; and JSON-shaped fields (e.g.
- * `output_format`) parse. Returns one human-readable message per problem found, or an
- * empty array if the recipe is submittable.
- */
 export const validateColumns = (columns: BuilderColumn[]): string[] => {
   if (columns.length === 0) return ['Add at least one column before creating the job.'];
 
@@ -460,7 +413,6 @@ const toSamplerConfig = (column: BuilderColumn): Record<string, unknown> => {
   return config;
 };
 
-/** Converts one builder column's string field values into the SDK's column config shape. */
 const toColumnConfig = (column: BuilderColumn): Record<string, unknown> => {
   if (column.option.columnType === 'sampler') return toSamplerConfig(column);
 
@@ -483,13 +435,6 @@ const toColumnConfig = (column: BuilderColumn): Record<string, unknown> => {
   return config;
 };
 
-/**
- * Builds the Data Designer job config from the canvas columns and the configured models,
- * ready to submit via `useDataDesignerCreateJob`. Columns reference models by their alias
- * (the `model_alias` field), so the two live in the same config. Call
- * {@link validateColumns} / {@link validateModels} first — this assumes both are valid and
- * does not re-check them.
- */
 export const buildDataDesignerConfig = (
   columns: BuilderColumn[],
   models: BuilderModel[] = []

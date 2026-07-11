@@ -24,11 +24,6 @@ export interface BuilderToolbarProps {
   isSubmitting: boolean;
 }
 
-/**
- * The dark toolbar strip above the canvas and side panels: fileset identity on the
- * left (name, template badge, column count), run controls on the right (rows,
- * validate, preview, create).
- */
 export const BuilderToolbar: FC<BuilderToolbarProps> = ({
   name,
   onNameChange,
