@@ -458,6 +458,7 @@ jobs:
           CONTAINER_IDS: ${{ needs.plan-release.outputs.container_ids }}
           INCLUDE_HELM: ${{ needs.plan-release.outputs.include_helm }}
           DRY_RUN: ${{ needs.plan-release.outputs.dry_run }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ needs.plan-release.outputs.source_sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
         with:
@@ -466,26 +467,34 @@ jobs:
             const containers = JSON.parse(process.env.CONTAINER_IDS);
             const releaseType = process.env.RELEASE_TYPE;
             const title = releaseType === "stable"
-              ? ":ship: Release started"
-              : ":crescent_moon: Nightly release started";
-            const artifacts = [
-              wheels.length > 0 && `Wheels: ${wheels.join(", ")}`,
-              containers.length > 0 && `Containers: ${containers.join(", ")}`,
-              process.env.INCLUDE_HELM === "true" && "Helm: nemo-platform",
-            ].filter(Boolean).join("; ");
+              ? "*:ship: Release started*"
+              : "*:crescent_moon: Nightly release started*";
             const lines = [
               title,
-              `Channel: ${releaseType}`,
               `Release: ${process.env.RELEASE_LABEL}`,
-              `Platform: ${process.env.SOURCE_SHA.slice(0, 7)}`,
-              `Artifacts: ${artifacts}`,
+              `Commit: <${process.env.COMMIT_URL}|${process.env.SOURCE_SHA.slice(0, 7)}>`,
+              "",
+              "*Artifacts:*",
+            ];
+            if (wheels.length > 0) {
+              lines.push("*:python: Wheels to publish:*");
+              wheels.forEach((wheel) => lines.push(`- ${wheel}`));
+            }
+            if (containers.length > 0) {
+              lines.push("*:docker_: Containers to publish:*");
+              containers.forEach((container) => lines.push(`- ${container}`));
+            }
+            if (process.env.INCLUDE_HELM === "true") {
+              lines.push("*:helm: Helm chart to publish:*", "- nemo-platform");
+            }
+            lines.push(
               process.env.DRY_RUN === "true" && "Mode: dry run (no publishing)",
               `:link: <${process.env.RUN_URL}|Release run #${process.env.RUN_NUMBER}>`,
-            ].filter(Boolean);
+            );
             const response = await fetch(process.env.SLACK_ALERTS_WEBHOOK, {
               method: "POST",
               headers: {"Content-Type": "application/json"},
-              body: JSON.stringify({text: lines.join("\n")}),
+              body: JSON.stringify({text: lines.filter((line) => line !== false).join("\n")}),
             });
             if (!response.ok) {
               core.setFailed(`Slack webhook returned ${response.status}.`);
@@ -885,6 +894,7 @@ jobs:
           RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
           RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
           SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ needs.plan-release.outputs.source_sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
         with:
@@ -920,14 +930,15 @@ jobs:
             }
 
             const title = process.env.RELEASE_TYPE === "stable"
-              ? ":warning: Release artifact polling delayed"
-              : ":warning: Nightly artifact polling delayed";
+              ? "*:warning: Release artifact polling delayed*"
+              : "*:warning: Nightly artifact polling delayed*";
             const lines = [
               title,
-              `Channel: ${process.env.RELEASE_TYPE}`,
               `Release: ${process.env.RELEASE_LABEL}`,
-              `Platform: ${process.env.SOURCE_SHA.slice(0, 7)}`,
+              `Commit: <${process.env.COMMIT_URL}|${process.env.SOURCE_SHA.slice(0, 7)}>`,
+              "",
               "Final artifact polling has exceeded two hours.",
+              "",
               `:link: <${process.env.RUN_URL}|Release run #${process.env.RUN_NUMBER}>`,
             ];
             const response = await fetch(process.env.SLACK_ALERTS_WEBHOOK, {
@@ -977,11 +988,12 @@ jobs:
       - name: Send Slack alert
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          # TODO: Use a dedicated final-release webhook once it is configured.
           SLACK_ALERTS_WEBHOOK: ${{ secrets.SLACK_ALERTS_WEBHOOK }}
+          SLACK_RELEASE_WEBHOOK: ${{ secrets.SLACK_RELEASE_WEBHOOK }}
           RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
           RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
           SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ needs.plan-release.outputs.source_sha }}
           WHEEL_IDS: ${{ needs.plan-release.outputs.wheel_ids }}
           WHEEL_CATALOG: ${{ env.RELEASE_WHEELS_JSON }}
           WHEEL_VERSION: ${{ needs.plan-release.outputs.wheel_version }}
@@ -1006,26 +1018,29 @@ jobs:
             ];
             const failed = results.some((result) => ["failure", "cancelled"].includes(result));
             const published = process.env.POLL_RESULT === "success" && !failed;
+            const webhook = published
+              ? process.env.SLACK_RELEASE_WEBHOOK
+              : process.env.SLACK_ALERTS_WEBHOOK;
             const title = published
               ? (releaseType === "stable"
-                ? ":ship: Release publish complete"
-                : ":crescent_moon: Nightly release publish complete")
+                ? "*:ship: Release publish complete*"
+                : "*:crescent_moon: Nightly release publish complete*")
               : (releaseType === "stable"
-                ? ":warning: Release publish failed"
-                : ":warning: Nightly release publish failed");
+                ? "*:alert: Release publish failed*"
+                : "*:alert: Nightly release publish failed*");
             const lines = [
               title,
-              `Channel: ${releaseType}`,
               `Release: ${process.env.RELEASE_LABEL}`,
-              `Platform: ${process.env.SOURCE_SHA.slice(0, 7)}`,
+              `Commit: <${process.env.COMMIT_URL}|${process.env.SOURCE_SHA.slice(0, 7)}>`,
             ];
 
             if (published) {
               const wheelIds = JSON.parse(process.env.WHEEL_IDS);
               const wheelCatalog = JSON.parse(process.env.WHEEL_CATALOG);
               const containerIds = JSON.parse(process.env.CONTAINER_IDS);
+              lines.push("", "*Artifacts published:*");
               if (wheelIds.length > 0) {
-                lines.push("", ":snake: Wheels published:");
+                lines.push("*:python: Wheels published:*");
                 for (const wheelId of wheelIds) {
                   const wheel = wheelCatalog.find((candidate) => candidate.id === wheelId);
                   const wheelIndex = releaseType === "nightly"
@@ -1038,7 +1053,7 @@ jobs:
                 }
               }
               if (containerIds.length > 0) {
-                lines.push("", ":package: Containers published:");
+                lines.push("*:docker_: Containers published:*");
                 for (const containerId of containerIds) {
                   const container = releaseType === "stable"
                     ? `<${process.env.NGC_CATALOG_BASE}/containers/${containerId}|${containerId}>`
@@ -1050,12 +1065,13 @@ jobs:
                 const chart = releaseType === "stable"
                   ? `<${process.env.NGC_CATALOG_BASE}/helm-charts/nemo-platform|nemo-platform>`
                   : "nemo-platform";
-                lines.push("", ":package: Helm chart published:");
+                lines.push("*:helm: Helm chart published:*");
                 lines.push(`- ${chart}: ${process.env.CHART_VERSION}`);
               }
             } else {
               lines.push(
                 "",
+                "*Final release status:*",
                 `Final artifact poll: ${process.env.POLL_RESULT}`,
                 `GitHub release: ${process.env.GITHUB_RELEASE_RESULT}`,
                 `Deployment signal: ${process.env.DEPLOYMENT_RESULT}`,
@@ -1063,7 +1079,7 @@ jobs:
             }
 
             lines.push("", `:link: <${process.env.RUN_URL}|Release run #${process.env.RUN_NUMBER}>`);
-            const response = await fetch(process.env.SLACK_ALERTS_WEBHOOK, {
+            const response = await fetch(webhook, {
               method: "POST",
               headers: {"Content-Type": "application/json"},
               body: JSON.stringify({text: lines.join("\n")}),
