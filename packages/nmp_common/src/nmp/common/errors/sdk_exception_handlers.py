@@ -35,6 +35,12 @@ from nmp.common.entities.client import (
 
 logger = logging.getLogger(__name__)
 
+
+def _scrub_crlf(value: str) -> str:
+    """Strip CR/LF so user-controlled request fields cannot forge log lines."""
+    return value.replace("\r", " ").replace("\n", " ")
+
+
 # Map entity store exceptions to HTTP status codes
 ENTITY_ERROR_STATUS_CODES: dict[type[EntityStoreError], int] = {
     EntityNotFoundError: 404,
@@ -66,8 +72,8 @@ async def sdk_status_error_handler(request: Request, exc: APIStatusError) -> JSO
 
     logger.debug(
         "Converting SDK exception to HTTP response: %s %s -> %d",
-        request.method,
-        request.url.path,
+        _scrub_crlf(request.method),
+        _scrub_crlf(request.url.path),
         exc.status_code,
     )
 
@@ -87,8 +93,8 @@ async def nemo_client_error_handler(request: Request, exc: NemoHTTPError) -> JSO
     """
     logger.debug(
         "Converting NemoClient exception to HTTP response: %s %s -> %d",
-        request.method,
-        request.url.path,
+        _scrub_crlf(request.method),
+        _scrub_crlf(request.url.path),
         exc.status_code,
     )
 
@@ -121,8 +127,8 @@ async def entity_store_error_handler(request: Request, exc: EntityStoreError) ->
         "Converting %s to %d: %s %s",
         type(exc).__name__,
         status_code,
-        request.method,
-        request.url.path,
+        _scrub_crlf(request.method),
+        _scrub_crlf(request.url.path),
     )
 
     return JSONResponse(

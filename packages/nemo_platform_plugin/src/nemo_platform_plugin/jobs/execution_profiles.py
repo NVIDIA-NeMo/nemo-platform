@@ -174,7 +174,7 @@ class DockerJobExecutionProfile(BaseExecutionProfile):
     @property
     def supports_persistent_storage(self) -> bool:
         """Indicates if the execution profile supports persistent storage."""
-        return self.config.storage is not None
+        return self.config.storage is not None and self.config.storage.volume_name != ""
 
 
 # ---------------------------------------------------------------------------
@@ -372,7 +372,7 @@ class VolcanoJobExecutionProfile(BaseExecutionProfile):
     @property
     def supports_persistent_storage(self) -> bool:
         """Indicates if the execution profile supports persistent storage."""
-        return self.config.storage is not None and self.config.storage.pvc_name is not None
+        return self.config.storage is not None and self.config.storage.pvc_name != ""
 
 
 # ---------------------------------------------------------------------------

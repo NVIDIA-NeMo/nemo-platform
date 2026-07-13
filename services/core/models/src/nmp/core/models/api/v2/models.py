@@ -322,7 +322,7 @@ async def start_update_model_spec_job(model_entity: ModelEntity):
                 ),
             )
         ).data()
-        logger.info(f"Job Created - {job_resp}")
+        logger.info("Job Created - %s", job_resp.name)
     except NemoHTTPError as err:
         logger.warning(f"Failed to create model spec job. {err}")
 

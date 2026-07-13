@@ -16,7 +16,7 @@ server and the typed HTTP client share one definition.
 from __future__ import annotations
 
 import re
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal, Self, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -178,7 +178,7 @@ class SubprocessExecutionProvider(BaseModel):
     """The host command to execute as a list of strings (e.g., ['python', '-m', 'my_task'])."""
 
     @model_validator(mode="after")
-    def validate_command(self) -> "SubprocessExecutionProvider":
+    def validate_command(self) -> Self:
         if not self.command:
             raise ValueError("subprocess execution requires command to be set")
         return self
