@@ -6,8 +6,8 @@
 ``profile(source)`` lists the files behind a :class:`FileSource`, groups them into partitions and
 splits, reads them, and assembles a ``DatasetProfile``. This stage produces the structural envelope
 — partitions, splits, FileRecords, content digest, sampling metadata — the derived row schema
-(``features``), and per-column ``stats``. Classification is added by a later stage; until then each
-partition carries an ``unknown`` classification.
+(``features``), per-column ``stats``, and a ``classification`` (roles, format, prompt form, and
+dataset type). Verifiability and content-probe corroboration are added by a later stage.
 
 Reads are exhaustive (every row of every file). Sampling large datasets with bounded probes is a
 later, drop-in optimization behind the same reader seam.
@@ -20,12 +20,12 @@ from datetime import datetime, timezone
 from nemo_platform_plugin.files.dataset_profile import (
     DatasetProfile,
     FileRecord,
-    PartitionClassification,
     PartitionProfile,
     SamplingInfo,
     SplitProfile,
 )
 
+from nemo_datasets_plugin.profiler.classify import classify
 from nemo_datasets_plugin.profiler.digest import content_digest
 from nemo_datasets_plugin.profiler.file_source import FileSource
 from nemo_datasets_plugin.profiler.partition import group_partitions
@@ -99,14 +99,15 @@ def profile(source: FileSource, *, created_at: datetime | None = None) -> Datase
                 )
             )
         features = derive_features(partition_rows, arrow_schema)
+        stats = derive_stats(features, partition_rows, exhaustive=partition_exact)
         partitions.append(
             PartitionProfile(
                 name=partition_name,
                 file_format=detect_format(partition_entries[0].path),
                 splits=split_profiles,
                 features=features,
-                stats=derive_stats(features, partition_rows, exhaustive=partition_exact),
-                classification=PartitionClassification(dataset_type="unknown"),
+                stats=stats,
+                classification=classify(features, stats),
             )
         )
 
