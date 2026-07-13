@@ -61,7 +61,7 @@ resolve the SDK's types, types `host.sdk` as Studio does.
     auth: { accessToken: string; getAccessToken: () => string };
     sdk: { platform: /* @nemo/sdk platform hooks */ };
     navigation: { navigate: (to: string) => void; back: () => void };
-    notifications: { success; error; info; warning: (message: string) => void };
+    notifications: { notify: (message: string, type?: 'success'|'error'|'info'|'warning') => void };
     telemetry: { info; warn; error: (m, cause?) => void; event: (name, attrs?) => void };
   };
 }

@@ -116,7 +116,7 @@ function OverviewPage({ host }: { host: PluginHost }) {
           <Button
             kind="secondary"
             onClick={() => {
-              host.notifications.success('Toast from the example plugin');
+              host.notifications.notify('Toast from the example plugin', 'success');
               host.telemetry.event('overview_notify_clicked');
             }}
           >

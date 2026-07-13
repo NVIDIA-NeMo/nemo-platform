@@ -135,7 +135,7 @@ function m({ host: i }) {
 						children: [/* @__PURE__ */ l(e, {
 							kind: "secondary",
 							onClick: () => {
-								i.notifications.success("Toast from the example plugin"), i.telemetry.event("overview_notify_clicked");
+								i.notifications.notify("Toast from the example plugin", "success"), i.telemetry.event("overview_notify_clicked");
 							},
 							children: "Notify"
 						}), /* @__PURE__ */ l(e, {

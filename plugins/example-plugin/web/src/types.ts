@@ -26,11 +26,10 @@ export interface PluginNavigation {
   back: () => void;
 }
 
+export type NotificationType = 'success' | 'error' | 'info' | 'warning';
+
 export interface PluginNotifications {
-  success: (message: string) => void;
-  error: (message: string) => void;
-  info: (message: string) => void;
-  warning: (message: string) => void;
+  notify: (message: string, type?: NotificationType) => void;
 }
 
 export interface PluginTelemetry {

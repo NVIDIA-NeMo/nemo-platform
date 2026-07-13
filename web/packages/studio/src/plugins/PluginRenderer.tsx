@@ -47,12 +47,7 @@ export const PluginRenderer = (): ReactElement => {
       auth: { accessToken, getAccessToken },
       sdk: STUDIO_SDK,
       navigation: { navigate: (to) => navigate(to), back: () => navigate(-1) },
-      notifications: {
-        success: (message) => toast.success(message),
-        error: (message) => toast.error(message),
-        info: (message) => toast.info(message),
-        warning: (message) => toast.warning(message),
-      },
+      notifications: { notify: (message, type = 'info') => toast[type](message) },
       telemetry: makeTelemetry(pluginName ?? 'unknown'),
     }),
     [workspace, accessToken, getAccessToken, navigate, toast, pluginName]

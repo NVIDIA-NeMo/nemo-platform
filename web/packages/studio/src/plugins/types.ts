@@ -18,12 +18,11 @@ export interface PluginNavigation {
   back: () => void;
 }
 
-/** Fire a toast into Studio's shared toaster. */
+export type NotificationType = 'success' | 'error' | 'info' | 'warning';
+
+/** Fire a toast into Studio's shared toaster; defaults to `info`. */
 export interface PluginNotifications {
-  success: (message: string) => void;
-  error: (message: string) => void;
-  info: (message: string) => void;
-  warning: (message: string) => void;
+  notify: (message: string, type?: NotificationType) => void;
 }
 
 /** Structured logging to Studio's OTEL pipeline, auto-scoped to the plugin. */
