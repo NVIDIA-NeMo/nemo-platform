@@ -28,8 +28,12 @@ Runtime contract: `../../../web/packages/studio/src/plugins/types.ts`.
 | Deps | externalize the shared set in `vite.config.ts`; bundle the rest | bundle react / react-dom / react-router / foundations |
 
 Studio injects everything a plugin needs through a **single `host` prop**
-(`host.workspaceId`, `host.auth`, `host.sdk`) — grouped so new capabilities extend
-the handle without changing `Root`'s signature. Destructure what you use.
+(`host.workspaceId`, `host.auth`, `host.sdk`, `host.navigation`,
+`host.notifications`, `host.telemetry`) — grouped so new capabilities extend the
+handle without changing `Root`'s signature. Destructure what you use. All are
+backed by Studio's own singletons: `notifications` fires into Studio's shared
+toaster, `telemetry` logs to Studio's OTEL pipeline (auto-scoped to the plugin),
+`navigation` drives Studio's shared router.
 
 `@tanstack/react-query` **is** shared — call `useQuery`/`useMutation` and it reads
 Studio's `QueryClientProvider` (one cache across Studio and every plugin). Put the
@@ -56,6 +60,9 @@ resolve the SDK's types, types `host.sdk` as Studio does.
     workspaceId: string;
     auth: { accessToken: string; getAccessToken: () => string };
     sdk: { platform: /* @nemo/sdk platform hooks */ };
+    navigation: { navigate: (to: string) => void; back: () => void };
+    notifications: { success; error; info; warning: (message: string) => void };
+    telemetry: { info; warn; error: (m, cause?) => void; event: (name, attrs?) => void };
   };
 }
 ```

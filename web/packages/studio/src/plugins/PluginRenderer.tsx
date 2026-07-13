@@ -1,17 +1,26 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import * as platformSdk from '@nemo/sdk/generated/platform/api';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { usePlugins, usePluginsLoaded } from '@studio/plugins/PluginContext';
 import { PluginErrorBoundary } from '@studio/plugins/PluginErrorBoundary';
-import type { PluginHost, PluginSdk } from '@studio/plugins/types';
+import type { PluginHost, PluginSdk, PluginTelemetry } from '@studio/plugins/types';
+import { logger } from '@studio/util/logger';
 import { useCallback, useMemo, useRef, type ReactElement } from 'react';
 import { useAuth } from 'react-oidc-context';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 
 // Module-scope for stable identity; plugins run these on Studio's axios + cache.
 const STUDIO_SDK: PluginSdk = { platform: platformSdk };
+
+const makeTelemetry = (name: string): PluginTelemetry => ({
+  info: (message, cause) => logger.info(`[plugin:${name}] ${message}`, cause),
+  warn: (message, cause) => logger.warn(`[plugin:${name}] ${message}`, cause),
+  error: (message, cause) => logger.error(`[plugin:${name}] ${message}`, cause),
+  event: (event, attributes) => logger.info(`[plugin:${name}] event:${event}`, attributes),
+});
 
 // Renders the active plugin's `Root` as a normal child (not a detached
 // `createRoot`) so it shares Studio's Router, QueryClient, and theme.
@@ -21,6 +30,8 @@ export const PluginRenderer = (): ReactElement => {
   const isLoaded = usePluginsLoaded();
   const workspace = useWorkspaceFromPath();
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const toast = useToast();
 
   const plugin = plugins.find((p) => p.name === pluginName);
   const accessToken = user?.access_token ?? '';
@@ -31,8 +42,20 @@ export const PluginRenderer = (): ReactElement => {
   const getAccessToken = useCallback(() => accessTokenRef.current, []);
 
   const host = useMemo<PluginHost>(
-    () => ({ workspaceId: workspace, auth: { accessToken, getAccessToken }, sdk: STUDIO_SDK }),
-    [workspace, accessToken, getAccessToken]
+    () => ({
+      workspaceId: workspace,
+      auth: { accessToken, getAccessToken },
+      sdk: STUDIO_SDK,
+      navigation: { navigate: (to) => navigate(to), back: () => navigate(-1) },
+      notifications: {
+        success: (message) => toast.success(message),
+        error: (message) => toast.error(message),
+        info: (message) => toast.info(message),
+        warning: (message) => toast.warning(message),
+      },
+      telemetry: makeTelemetry(pluginName ?? 'unknown'),
+    }),
+    [workspace, accessToken, getAccessToken, navigate, toast, pluginName]
   );
 
   if (!isLoaded) {

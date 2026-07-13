@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Flex, Stack, Text } from '@nvidia/foundations-react-core';
+import { Button, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom';
-import type { PluginRootProps, PluginSdk } from './types';
+import type { PluginHost, PluginRootProps } from './types';
 
 /**
  * Example plugin root.
@@ -17,9 +17,10 @@ import type { PluginRootProps, PluginSdk } from './types';
  * Both react-router and foundations are shared singletons via Studio's import
  * map; the plugin bundles neither.
  *
- * Studio injects the `host` prop — `host.workspaceId`, `host.auth`, and
- * `host.sdk` (typed hooks on Studio's authenticated axios + shared QueryClient;
- * call them directly, see `OverviewPage`).
+ * Studio injects the `host` prop — `host.workspaceId`, `host.auth`, `host.sdk`
+ * (typed hooks on Studio's authenticated axios + shared QueryClient), plus
+ * `host.navigation`, `host.notifications`, and `host.telemetry` (see
+ * `OverviewPage`).
  *
  * Call `host.auth.getAccessToken()` per request (not once at render) so calls keep
  * working after OIDC silent renew rotates the token, e.g.:
@@ -30,7 +31,7 @@ export function Root({ host }: PluginRootProps) {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<Navigate to="overview" replace />} />
-        <Route path="overview" element={<OverviewPage sdk={host.sdk} />} />
+        <Route path="overview" element={<OverviewPage host={host} />} />
         <Route path="auth" element={<AuthPage getAccessToken={host.auth.getAccessToken} />} />
         <Route path="workspace" element={<WorkspacePage workspaceId={host.workspaceId} />} />
         <Route path="*" element={<NotFound />} />
@@ -71,9 +72,9 @@ function CodeBlock({ children }: { children: string }) {
   );
 }
 
-function OverviewPage({ sdk }: { sdk: PluginSdk }) {
+function OverviewPage({ host }: { host: PluginHost }) {
   // Studio's typed hook — runs on Studio's authenticated axios + shared cache.
-  const { data, isPending, isError } = sdk.platform.useEntitiesListWorkspaces(
+  const { data, isPending, isError } = host.sdk.platform.useEntitiesListWorkspaces(
     { page: 1, page_size: 100 },
     { query: { staleTime: 5_000 } }
   );
@@ -103,6 +104,31 @@ function OverviewPage({ sdk }: { sdk: PluginSdk }) {
             {workspaces.length} workspaces: {workspaces.map((w) => w.name).join(', ')}
           </Text>
         )}
+      </Stack>
+
+      <Stack gap="1">
+        <Text kind="label/bold/sm">Host capabilities</Text>
+        <Text kind="body/regular/xs" color="secondary">
+          Studio&apos;s notifications, telemetry, and navigation, all off the host
+          handle — no plugin-side setup.
+        </Text>
+        <Flex gap="2">
+          <Button
+            kind="secondary"
+            onClick={() => {
+              host.notifications.success('Toast from the example plugin');
+              host.telemetry.event('overview_notify_clicked');
+            }}
+          >
+            Notify
+          </Button>
+          <Button
+            kind="secondary"
+            onClick={() => host.navigation.navigate(`/workspaces/${host.workspaceId}/base-models`)}
+          >
+            Go to Base Models
+          </Button>
+        </Flex>
       </Stack>
     </Stack>
   );

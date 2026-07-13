@@ -21,6 +21,25 @@ export interface PluginSdk {
   };
 }
 
+export interface PluginNavigation {
+  navigate: (to: string) => void;
+  back: () => void;
+}
+
+export interface PluginNotifications {
+  success: (message: string) => void;
+  error: (message: string) => void;
+  info: (message: string) => void;
+  warning: (message: string) => void;
+}
+
+export interface PluginTelemetry {
+  info: (message: string, cause?: unknown) => void;
+  warn: (message: string, cause?: unknown) => void;
+  error: (message: string, cause?: unknown) => void;
+  event: (name: string, attributes?: Record<string, unknown>) => void;
+}
+
 export interface PluginHost {
   workspaceId: string;
   auth: {
@@ -28,6 +47,9 @@ export interface PluginHost {
     getAccessToken: () => string;
   };
   sdk: PluginSdk;
+  navigation: PluginNavigation;
+  notifications: PluginNotifications;
+  telemetry: PluginTelemetry;
 }
 
 export interface PluginRootProps {

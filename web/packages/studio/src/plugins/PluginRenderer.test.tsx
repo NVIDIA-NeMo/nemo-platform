@@ -34,6 +34,14 @@ vi.mock('@studio/plugins/PluginContext', () => ({
   usePlugins: vi.fn(),
   usePluginsLoaded: vi.fn(),
 }));
+vi.mock('@nemo/common/src/providers/toast/useToast', () => ({
+  useToast: () => ({
+    success: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    warning: vi.fn(),
+  }),
+}));
 vi.mock('react-oidc-context', () => ({
   useAuth: vi.fn(() => ({ user: { access_token: authState.accessToken } })),
 }));
@@ -85,6 +93,9 @@ describe('PluginRenderer', () => {
     expect(capturedProps?.host.auth.accessToken).toBe('test-token');
     expect(capturedProps?.host.auth.getAccessToken()).toBe('test-token');
     expect(typeof capturedProps?.host.sdk.platform.useEntitiesListWorkspaces).toBe('function');
+    expect(typeof capturedProps?.host.navigation.navigate).toBe('function');
+    expect(typeof capturedProps?.host.notifications.success).toBe('function');
+    expect(typeof capturedProps?.host.telemetry.event).toBe('function');
   });
 
   it('does not remount on token renewal and getAccessToken returns the new token', () => {

@@ -12,6 +12,28 @@ export interface PluginSdk {
   platform: typeof import('@nemo/sdk/generated/platform/api');
 }
 
+/** Navigate Studio's shared router; paths are absolute Studio routes. */
+export interface PluginNavigation {
+  navigate: (to: string) => void;
+  back: () => void;
+}
+
+/** Fire a toast into Studio's shared toaster. */
+export interface PluginNotifications {
+  success: (message: string) => void;
+  error: (message: string) => void;
+  info: (message: string) => void;
+  warning: (message: string) => void;
+}
+
+/** Structured logging to Studio's OTEL pipeline, auto-scoped to the plugin. */
+export interface PluginTelemetry {
+  info: (message: string, cause?: unknown) => void;
+  warn: (message: string, cause?: unknown) => void;
+  error: (message: string, cause?: unknown) => void;
+  event: (name: string, attributes?: Record<string, unknown>) => void;
+}
+
 /** The host handle Studio injects into every plugin; extend it to add capabilities. */
 export interface PluginHost {
   workspaceId: string;
@@ -21,6 +43,9 @@ export interface PluginHost {
     getAccessToken: () => string;
   };
   sdk: PluginSdk;
+  navigation: PluginNavigation;
+  notifications: PluginNotifications;
+  telemetry: PluginTelemetry;
 }
 
 export interface PluginRootProps {
