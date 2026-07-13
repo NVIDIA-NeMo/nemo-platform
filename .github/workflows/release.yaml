@@ -793,7 +793,7 @@ jobs:
       - dispatch-container-stage
       - stage-helm
     if: >-
-      always() &&
+      !cancelled() &&
       needs.plan-release.result == 'success' &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled')
@@ -918,7 +918,7 @@ jobs:
       - dispatch-container-stage
       - stage-helm
     if: >-
-      always() &&
+      !cancelled() &&
       needs.plan-release.result == 'success' &&
       needs.plan-release.outputs.send_notifications == 'true' &&
       needs.plan-release.outputs.dry_run != 'true' &&
@@ -1057,7 +1057,7 @@ jobs:
       - signal-deployment
       - stage-helm
     if: >-
-      always() &&
+      !cancelled() &&
       needs.plan-release.outputs.send_notifications == 'true' &&
       needs.plan-release.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
