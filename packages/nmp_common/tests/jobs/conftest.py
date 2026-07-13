@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from types import SimpleNamespace
-from unittest import mock
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -72,7 +71,7 @@ def mock_fileset_fs():
 def mock_sdk():
     """Mock NeMoPlatform SDK for FilesetFileManager.
 
-    The sync FilesetFileManager uses SDK methods directly (not FilesetFileSystem).
+    FilesetFileManager uses the FilesetFileSystem exposed by the SDK files resource.
     """
 
     from nemo_platform import NeMoPlatform
@@ -82,6 +81,7 @@ def mock_sdk():
     sdk._custom_headers = None
     sdk._client = MagicMock()
     sdk.files = MagicMock()
+    sdk.files.fsspec = MagicMock()
     sdk.files.upload_content = MagicMock()
 
     # Mock list to return ListFilesResponse with empty data by default
@@ -99,19 +99,14 @@ def mock_sdk():
 def fileset_manager(mock_sdk, mock_fileset_fs) -> FilesetFileManager:
     """Create FilesetFileManager with mocked FilesetFileSystem.
 
-    The FilesetFileManager creates FilesetFileSystem in __post_init__, so we must
-    patch both client_from_platform and FilesetFileSystem to inject our mock.
+    The FilesetFileManager uses sdk.files.fsspec, so inject our filesystem mock there.
     """
-    with (
-        mock.patch("nemo_platform_plugin.jobs.file_manager.client_from_platform"),
-        mock.patch("nemo_platform_plugin.jobs.file_manager.FilesetFileSystem") as mock_fs_class,
-    ):
-        mock_fs_class.return_value = mock_fileset_fs
-        return FilesetFileManager(
-            workspace=DEFAULT_WORKSPACE,
-            fileset_name="job-results-jobid-123",
-            sdk=mock_sdk,
-        )
+    mock_sdk.files.fsspec = mock_fileset_fs
+    return FilesetFileManager(
+        workspace=DEFAULT_WORKSPACE,
+        fileset_name="job-results-jobid-123",
+        sdk=mock_sdk,
+    )
 
 
 @pytest.fixture

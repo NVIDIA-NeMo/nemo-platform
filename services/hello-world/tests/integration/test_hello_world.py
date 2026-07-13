@@ -20,7 +20,7 @@ import pytest
 from fastapi.testclient import TestClient
 from nemo_platform import NeMoPlatform
 from nmp.hello_world.service import HelloWorldService
-from nmp.testing.client import create_test_client
+from nmp.testing.client import SDKTestClientAdapter, create_test_client
 
 # Default workspace for tests
 DEFAULT_WORKSPACE = "default"
@@ -44,7 +44,7 @@ def http_client() -> Generator[TestClient, None, None]:
 @pytest.fixture(scope="module")
 def sdk(http_client: TestClient) -> NeMoPlatform:
     """SDK client backed by the test client."""
-    return NeMoPlatform(base_url="http://testserver", http_client=http_client)
+    return NeMoPlatform(base_url="http://testserver", http_client=SDKTestClientAdapter(http_client))
 
 
 class TestHelloWorld:

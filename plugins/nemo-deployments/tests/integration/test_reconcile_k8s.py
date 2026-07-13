@@ -35,6 +35,8 @@ pytestmark = [
 NAMESPACE = os.environ.get("NMP_K8S_ITEST_NAMESPACE", "default")
 POLL_ATTEMPTS = 60
 POLL_INTERVAL_SECONDS = 1
+ALPINE_IMAGE = "docker.io/library/alpine:3.20"
+NGINX_IMAGE = "docker.io/library/nginx:alpine"
 
 
 @pytest.fixture
@@ -73,15 +75,13 @@ async def test_puller_server_prerequisite_chain(k8s_registry: ExecutorRegistry) 
         name="puller-cfg",
         workspace="itest",
         restart_policy="Never",  # ty: ignore[unknown-argument]
-        containers=[Container(name="puller", image="alpine:3.20", command=["sh", "-c"], args=["echo pulled"])],
+        containers=[Container(name="puller", image=ALPINE_IMAGE, command=["sh", "-c"], args=["echo pulled"])],
     )
     server_cfg = DeploymentConfig(
         name="server-cfg",
         workspace="itest",
         restart_policy="Always",  # ty: ignore[unknown-argument]
-        containers=[
-            Container(name="server", image="nginx:alpine", ports=[ContainerPort(name="http", containerPort=80)])
-        ],
+        containers=[Container(name="server", image=NGINX_IMAGE, ports=[ContainerPort(name="http", containerPort=80)])],
     )
 
     config_cache = {

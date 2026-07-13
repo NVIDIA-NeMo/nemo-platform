@@ -35,6 +35,8 @@ NAMESPACE = os.environ.get("NMP_K8S_ITEST_NAMESPACE", "default")
 LABELS = {"managed-by": MANAGED_BY_LABEL}
 POLL_ATTEMPTS = 60
 POLL_INTERVAL_SECONDS = 1
+ALPINE_IMAGE = "docker.io/library/alpine:3.20"
+NGINX_IMAGE = "docker.io/library/nginx:alpine"
 
 
 @pytest.fixture
@@ -68,7 +70,7 @@ def _never_config(
         workspace="itest",
         restart_policy="Never",  # ty: ignore[unknown-argument]
         containers=[
-            Container(name="main", image="alpine:3.20", command=["sh", "-c"], args=args or ["echo hello-from-k8s"])
+            Container(name="main", image=ALPINE_IMAGE, command=["sh", "-c"], args=args or ["echo hello-from-k8s"])
         ],
         config_files=config_files or [],  # ty: ignore[unknown-argument]
     )
@@ -82,7 +84,7 @@ def _always_http_config() -> DeploymentConfig:
         containers=[
             Container(
                 name="main",
-                image="nginx:alpine",
+                image=NGINX_IMAGE,
                 ports=[ContainerPort(containerPort=80, protocol="TCP", name="http")],
             )
         ],
@@ -256,7 +258,7 @@ async def test_delete_rejects_foreign_resource(k8s_backend: K8sDeploymentBackend
             template=k8s.client.V1PodTemplateSpec(
                 spec=k8s.client.V1PodSpec(
                     restart_policy="Never",
-                    containers=[k8s.client.V1Container(name="main", image="alpine:3.20", command=["true"])],
+                    containers=[k8s.client.V1Container(name="main", image=ALPINE_IMAGE, command=["true"])],
                 )
             )
         ),

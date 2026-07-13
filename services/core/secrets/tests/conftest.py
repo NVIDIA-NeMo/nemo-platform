@@ -11,7 +11,7 @@ from nemo_platform_plugin.secrets.client import SecretsClient
 from nmp.common.secrets.encryption import get_base64_encoded_random_bytes
 from nmp.core.secrets.config import SecretsServiceConfig
 from nmp.core.secrets.service import SecretsService
-from nmp.testing import ClientContext, create_test_client
+from nmp.testing import ClientContext, SDKTestClientAdapter, create_test_client
 from nmp.testing.blockbuster import blockbuster_fixture
 
 # Enable BlockBuster to detect blocking calls in async code
@@ -62,7 +62,11 @@ def test_client(service_config) -> Generator[TestClient, None, None]:
 @pytest.fixture
 def sdk(test_client: TestClient) -> SecretsClient:
     """Typed Secrets client backed by the test client."""
-    return SecretsClient(base_url="http://testserver", workspace="default", http_client=test_client)
+    return SecretsClient(
+        base_url="http://testserver",
+        workspace="default",
+        http_client=SDKTestClientAdapter(test_client),
+    )
 
 
 @pytest.fixture
