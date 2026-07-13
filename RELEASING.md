@@ -1,138 +1,153 @@
 # Releasing NeMo Platform
 
-This document describes the end-to-end process for cutting and shipping a new version of NeMo Platform.
+[`release.yaml`](.github/workflows/release.yaml) is the single release workflow
+for NeMo Platform. It handles scheduled nightlies and manually dispatched
+nightly or stable releases. The release catalog is deliberately defined in that
+workflow so contributors can see and validate every releasable artifact in one
+place.
 
-> **Who can release?** Any team member can trigger the workflow. The `release-stable` GitHub Actions environment requires approval from a member of the `nmp_devops` team before the workflow proceeds.
+Anyone with permission to run repository workflows can start a release. A
+stable release requires a specific source commit and version; a nightly can use
+the default branch head.
 
----
+## Before starting a stable release
 
-## Overview
-
-> The examples in this document use `0.1.2` as the version being released.
-
-```
-trigger release-stable.yaml with source_sha + version → nmp_devops approval → workflow tags source_sha → Platform-Deploy publishes to PyPI
-```
-
-Artifacts published on a stable release:
-- `nemo-platform` on [pypi.org](https://pypi.org/project/nemo-platform/)
-- `nemo-platform-plugin` on [pypi.org](https://pypi.org/project/nemo-platform-plugin/)
-
-Nightly builds go to `pypi.nvidia.com` (NVIDIA's internal/public PyPI mirror), **not** public PyPI.
-
-## Versioning model
-
-Release and nightly wheel versions are resolved at build time. The release workflow runs `.github/scripts/stamp_sdk_version.py`, then passes the resolved version to Hatch through `UV_DYNAMIC_VERSIONING_BYPASS`.
-
-Dynamic versioning is intentionally limited to packages that need release/nightly wheel metadata:
-- `packages/nemo_platform` (`nemo-platform`)
-- `packages/nemo_platform_plugin` (`nemo-platform-plugin`)
-- `sdk/python/nemo-platform` (`nemo-platform-sdk`, consumed by the released wrappers and SDK tooling)
-
-All other first-party workspace packages use static stub versions, normally `0.0.0`, because they are implementation packages rather than independently released artifacts. Do not add `nmp-dynamic-versioning` to another package unless that package is added to the release catalog or otherwise needs published wheel metadata.
-
-`packages/nmp_build_tools` centralizes the Hatch version source and its defaults, but that package itself is also an internal stub-version package. The OpenAPI specs are schema inputs for SDK generation and intentionally keep a fixed `info.version: 0.0.0`; package release versions should not be copied into the specs.
-
----
-
-## Step 1 — Choose the source SHA and release version
-
-Pick the full 40-character commit SHA on `main` that should be released, plus the SemVer core version to publish, for example `0.1.2`. The stable workflow creates the release tag at `source_sha`, and the wheel build receives the package version from the workflow input.
-
-If the API surface changed since the last SDK update, regenerate the OpenAPI spec and SDKs before releasing:
+Choose the exact 40-character commit SHA and the `MAJOR.MINOR.PATCH` version
+to release. The source must contain the desired generated SDKs. If the API
+surface changed since the last SDK update, update the SDKs before releasing:
 
 ```bash
 make update-sdk
 ```
 
-This runs `make refresh-openapi` (regenerates `openapi/openapi.yaml` and plugin specs) and then syncs the Python and web SDKs via Stainless. Requires `STAINLESS_API_KEY` to be set — see `sdk/README.md` for setup instructions. The generated OpenAPI specs should keep `info.version: 0.0.0`.
+This regenerates the OpenAPI specifications and synchronizes the SDKs. The
+specifications intentionally retain `info.version: 0.0.0`; do not copy the
+release version into them.
 
-To find the right SHA:
+## Release catalog
 
-```bash
-git log --oneline main | head -5
-# Pick the commit to release and copy its full 40-character SHA.
-```
+The catalog in [`release.yaml`](.github/workflows/release.yaml) is the source
+of truth for selection. Do not add a separate release manifest or configuration
+file. When changing the catalog, also update the matching `workflow_dispatch`
+input description in that workflow.
 
----
+| Type | IDs |
+| --- | --- |
+| Wheels | `nemo-platform`, `nemo-platform-plugin` |
+| Containers | `nmp-api`, `nmp-cpu-tasks`, `nmp-automodel-tasks`, `nmp-automodel-training`, `nmp-unsloth-training`, `auditor-tasks`, `safe-synthesizer-tasks` |
+| Helm chart | `nemo-platform` |
 
-## Step 2 — Trigger the stable release workflow
+For every selected wheel, the workflow checks that its package configuration
+declares the expected project name. For every selected container, it checks the
+Docker Bake target and the corresponding
+`.github/assets/ngc/containers/<id>.md` overview file. These checks happen
+before any external release work is dispatched.
 
-Navigate to the [`release-stable.yaml` workflow](https://github.com/NVIDIA-NeMo/nemo-platform/actions/workflows/release-stable.yaml) and click **Run workflow**.
+## Starting a release
 
-| Input | Required | Description |
-|---|---|---|
-| `source_sha` | Yes | The full 40-character commit SHA to release from (must be on `main`). |
-| `version` | Yes | SemVer core version string to release, e.g. `0.1.2`. This becomes the stable git tag and wheel version. |
-| `release_date` | No | `YYYY-MM-DD`. Provide only on the first run for a given version; leave blank on reruns. |
-| `release_scope` | No | `all` (default) releases every catalog SDK and container. Use `sdks`, `containers`, or `custom` for narrower releases. |
-| `sdk_ids` | No | Comma-separated SDK IDs for `release_scope: custom`; must exist in `release/assets.yaml`. |
-| `container_ids` | No | Comma-separated container IDs for `release_scope: custom`; must exist in `release/assets.yaml`. |
+Open the [Release workflow](https://github.com/NVIDIA-NeMo/nemo-platform/actions/workflows/release.yaml)
+and select **Run workflow**. The form shows the allowed custom artifact IDs.
 
-The workflow runs from the **`main` branch** by default. The `source_sha` must be reachable from that branch.
+| Input | Use |
+| --- | --- |
+| `release-type` | `nightly` by default. Select `stable` for a full release. |
+| `source-sha` | Required for stable releases. Optional for nightlies; a normal nightly with no SHA uses the current default-branch head. A dry-run nightly with no SHA uses the workflow commit so a branch can be validated. |
+| `version` | Required for stable releases. Enter the `MAJOR.MINOR.PATCH` release version. |
+| `release-scope` | `all` by default. Select `wheels`, `containers`, `helm`, or `custom` for a subset. |
+| `wheel-ids`, `container-ids` | Comma-separated IDs used only with `release-scope: custom`. Each ID must be in the catalog above; duplicates and empty entries fail validation. |
+| `include-helm` | Includes the Helm chart in a custom release. |
+| `update-ngc-metadata` | Also runs the reusable NGC metadata workflow for `nemo-platform` and `nemo-platform-dev`. It checks out the workflow ref, normally `main`. |
+| `send-notifications` | Sends Slack start and final-status notifications. Defaults to `true`. |
+| `dry-run` | Validates the selected source and packages the selected Helm chart, but does not publish, dispatch external work, poll, create a GitHub release, or signal deployment. The start notification intentionally still runs when notifications are enabled. |
 
-**What the workflow does:**
-1. Validates inputs and previews the release.
-2. Pauses at the `approve-stable-release` gate — a member of the **`nmp_devops` team** must approve in the GitHub environment UI.
-3. Creates and pushes a git tag (e.g. `0.1.2`) at `source_sha`.
-4. Builds Python wheels for each SDK in `release/assets.yaml` using `.github/actions/build-nemo-platform-wheel`.
-5. Assembles a release bundle with checksums and metadata.
-6. Dispatches a `release-bundle-produced` event to the **Platform-Deploy** repository (`CI_DISPATCH_REPO` secret), which handles the actual PyPI publish.
+Examples:
 
-> If the PyPI publishing service is returning 5xx errors, the publish step in Platform-Deploy will fail. Wait for the service to recover and re-run the workflow with the same `source_sha` and `version` — the stable tag is already reserved so re-running is safe.
+| Goal | Inputs |
+| --- | --- |
+| Scheduled-style nightly | Leave `release-type` as `nightly` and use the default `all` scope. |
+| Stable full release | `release-type: stable`, `source-sha: <40-character SHA>`, `version: <MAJOR.MINOR.PATCH>`, `release-scope: all`. |
+| One container | `release-scope: custom`, `container-ids: nmp-automodel-tasks`. |
+| Helm-only validation | `release-scope: helm`, `dry-run: true`. |
 
----
+Nightlies also run automatically Monday through Friday at 8:00 PM
+America/Los_Angeles.
 
-## Step 3 — Verification
+## What the workflow does
 
-Once the workflow completes, verify the release landed correctly:
+1. Resolves the source, release label, selected artifacts, and wheel version.
+   Stable versions use the supplied release version. Nightly labels use
+   `nightly-<UTC timestamp>` and the wheel version is resolved by
+   `.github/scripts/stamp_sdk_version.py`.
+2. Checks out the selected source and validates the selected wheel paths,
+   Docker Bake targets, and NGC overview files.
+3. Optionally synchronizes NGC metadata, when requested on a non-dry-run.
+4. Dispatches wheel, container, and stable-release registration work to the
+   configured internal release repository. The selected source SHA, release
+   type, version, and selected IDs are passed with the dispatch.
+5. Packages the Helm chart. A nightly chart uses the `Chart.yaml` version with
+   `-nightly-<UTC timestamp>` appended. A stable chart currently uses the
+   stable release version. Whether stable chart versions should instead remain
+   independently managed in `Chart.yaml` is an open policy decision.
+6. Waits for every selected final artifact to become public before continuing.
+   The polling job times out after four hours and sends a Slack alert after two
+   hours if it is still waiting.
+7. For a non-dry-run stable release with `release-scope: all`, creates the
+   GitHub release and tag at the selected SHA. GitHub generates the release
+   notes from the previous numeric SemVer tag. Subset releases do not create a
+   GitHub release or tag.
+
+The deployment-signalling job is currently a placeholder. A successful poll
+means the selected artifacts are public; it does not yet mean a deployment was
+created by this workflow.
+
+## Publication destinations
+
+| Artifact | Nightly | Stable |
+| --- | --- | --- |
+| Wheels | [`pypi.nvidia.com`](https://pypi.nvidia.com) | [PyPI](https://pypi.org) |
+| Containers | `ghcr.io/nvidia-nemo/nemo-platform/<id>:nightly-...` | `nvcr.io/nvidia/nemo-platform/<id>:<version>` and the public NGC catalog |
+| Helm chart | OCI chart at `oci://ghcr.io/nvidia-nemo/nemo-platform` | Initially staged at `0921617854601259/nemo-platform`, then promoted to the public [NGC Helm repository](https://helm.ngc.nvidia.com/nvidia/nemo-platform) |
+
+The stable Helm promotion is external to this workflow. The workflow polls the
+public NGC Helm repository, not the internal staging endpoint, before it marks
+the release complete.
+
+## Notifications
+
+With `send-notifications: true`:
+
+- A start message is sent to `SLACK_ALERTS_WEBHOOK`, including the selected
+  artifacts and source commit. This is also sent for dry-runs so the webhook can
+  be tested.
+- If final artifact polling exceeds two hours, a delay alert is sent to
+  `SLACK_ALERTS_WEBHOOK`.
+- A successful non-dry-run release sends its completion message to
+  `SLACK_RELEASE_WEBHOOK`. A failed or cancelled release sends its final status
+  to `SLACK_ALERTS_WEBHOOK`.
+
+Dry-runs do not poll or send the delayed or final notification.
+
+## Required secrets
+
+| Secret | Used for |
+| --- | --- |
+| `CI_DISPATCH_REPO` | `owner/repo` of the internal release repository that receives release dispatches. |
+| `CI_DISPATCH_TOKEN` | Authenticating those cross-repository dispatches. |
+| `AIRE_NVCR_GITHUB` | Staging stable Helm charts in NGC. |
+| `AIRE_NGC_GITHUB_PLATFORM_RW` | Optional NGC metadata synchronization. |
+| `SLACK_ALERTS_WEBHOOK` | Release starts, delay alerts, and failed final statuses. |
+| `SLACK_RELEASE_WEBHOOK` | Successful final release status. |
+
+## Verifying a completed release
+
+The workflow summary records the selected wheels and containers. After a live
+release completes, check the selected artifacts at their destination above.
+For a full stable release, also verify that the GitHub tag and generated GitHub
+release point to the requested source SHA.
+
+For a wheel release, a quick client check is:
 
 ```bash
 uv tool upgrade nemo-platform
 nemo --version
-# Expected: nemo version <version>
 ```
-
-Also check:
-- [pypi.org/project/nemo-platform](https://pypi.org/project/nemo-platform/) — version and description updated.
-- [pypi.org/project/nemo-platform-plugin](https://pypi.org/project/nemo-platform-plugin/) — version updated.
-- GitHub: a tag (e.g. `0.1.2`) exists on the release commit.
-
----
-
-## Container image eligibility
-
-The `container:` list in `release/assets.yaml` declares which container
-images are eligible for release publishing. The bundle workflow records the
-selected containers as `container`-typed entries in `release-manifest.json`,
-and the release consumer stages those images after the SDK publish, reading
-this list from this repository at the release ref. Eligibility is therefore
-version-pinned: re-staging an old tag publishes the container set declared at
-that commit.
-
-`release_scope` controls what a release includes (default `all`):
-
-| Scope | Includes |
-| --- | --- |
-| `all` | every catalog SDK + every catalog container (default) |
-| `sdks` | every catalog SDK, no containers |
-| `containers` | every catalog container, no SDKs |
-| `custom` | exactly the comma-separated `sdk_ids` + `container_ids` (either may be empty) |
-
-`custom` enables single-artifact or arbitrary-subset releases (for example a
-patch release of one container via `release_scope: custom`,
-`container_ids: nmp-automodel-tasks`); `containers` releases the whole
-container set with no SDK wheels.
-
-Adding an image here also requires a catalog metadata entry on the consumer
-side. Images are built into the dev registry tagged with this repository's
-commit SHA on every merge to main; release SHAs that predate that build
-trigger need a manual image build first.
-
----
-
-## Nightly builds
-
-Nightly builds run automatically at 20:00 PT and publish to `pypi.nvidia.com`. They use the HEAD of `main` and version strings like `0.1.3.dev20260101120000`. No action required from the team.
-
-To trigger a nightly manually: [`release-nightly.yaml`](https://github.com/NVIDIA-NeMo/nemo-platform/actions/workflows/release-nightly.yaml) → **Run workflow** (no inputs required). Leave `send_notifications` enabled for real reruns; disable it only for quiet smoke/ad-hoc runs.

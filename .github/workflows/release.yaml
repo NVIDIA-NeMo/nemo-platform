@@ -1,0 +1,1160 @@
+name: Release
+run-name: >-
+  Release ${{ github.event_name == 'schedule' && 'nightly' || inputs['release-type'] }}
+  by @${{ github.actor }}
+
+on:
+  schedule:
+    # Runs Monday through Friday at 8:00 PM America/Los_Angeles.
+    - cron: "0 20 * * 1-5"
+      timezone: "America/Los_Angeles"
+  workflow_dispatch:
+    inputs:
+      release-type:
+        description: "Release type."
+        required: false
+        type: choice
+        default: nightly
+        options:
+          - nightly
+          - stable
+      source-sha:
+        description: "Exact source commit SHA. Required for stable releases; optional for nightlies."
+        required: false
+        type: string
+        default: ""
+      version:
+        description: "Stable SemVer core release version, for example 1.0.0."
+        required: false
+        type: string
+        default: ""
+      release-scope:
+        description: "Release artifact scope."
+        required: false
+        type: choice
+        default: all
+        options:
+          - all
+          - wheels
+          - containers
+          - helm
+          - custom
+      wheel-ids:
+        description: >-
+          Custom only. Comma-separated wheel IDs.
+          Allowed: nemo-platform, nemo-platform-plugin.
+        required: false
+        type: string
+        default: ""
+      container-ids:
+        description: >-
+          Custom only. Comma-separated container IDs.
+          Allowed: nmp-api, nmp-cpu-tasks, nmp-automodel-tasks,
+          nmp-automodel-training, nmp-unsloth-training, auditor-tasks,
+          safe-synthesizer-tasks.
+        required: false
+        type: string
+        default: ""
+      include-helm:
+        description: "Include the Helm chart in a custom release."
+        required: false
+        type: boolean
+        default: false
+      update-ngc-metadata:
+        description: "Synchronize NGC metadata from the default branch."
+        required: false
+        type: boolean
+        default: false
+      send-notifications:
+        description: "Send release start and end notifications."
+        required: false
+        type: boolean
+        default: true
+      dry-run:
+        description: >-
+          Validate and package selected artifacts without publishing, dispatching,
+          polling, deploying, or notifying.
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-${{ inputs['dry-run'] && github.run_id || 'live' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # Releasable artifact catalog.
+  #
+  # Keep this in the workflow so contributors can see release intent without
+  # chasing a second config file. When this changes, update the matching
+  # workflow_dispatch input descriptions above; GitHub does not support dynamic
+  # descriptions in the Run workflow form.
+  #
+  # Wheel fields:
+  #   id      - value users type in wheel-ids and the release artifact id
+  #   package - package passed to uv build --package
+  #   path    - package directory checked before any later release work starts
+  RELEASE_WHEELS_JSON: >-
+    [
+      {"id":"nemo-platform","package":"nemo-platform","path":"packages/nemo_platform"},
+      {"id":"nemo-platform-plugin","package":"nemo-platform-plugin","path":"packages/nemo_platform_plugin"}
+    ]
+  # Container fields:
+  #   id     - value users type in container-ids and the published image name
+  #   target - docker buildx bake target that must exist in docker-bake.hcl
+  #
+  # Every container id must also have .github/assets/ngc/containers/<id>.md so
+  # the published image has matching NGC catalog metadata.
+  RELEASE_CONTAINERS_JSON: >-
+    [
+      {"id":"nmp-api","target":"nmp-api-docker"},
+      {"id":"nmp-cpu-tasks","target":"nmp-cpu-tasks-docker"},
+      {"id":"nmp-automodel-tasks","target":"nmp-automodel-tasks-docker"},
+      {"id":"nmp-automodel-training","target":"nmp-automodel-training-docker"},
+      {"id":"nmp-unsloth-training","target":"nmp-unsloth-training"},
+      {"id":"auditor-tasks","target":"auditor-tasks-docker"},
+      {"id":"safe-synthesizer-tasks","target":"safe-synthesizer-tasks-docker"}
+    ]
+  RELEASE_HELM_ID: nemo-platform
+  RELEASE_HELM_PATH: k8s/helm
+  RELEASE_HELM_REGISTRY: nvcr.io/0921617854601259/nemo-platform
+  RELEASE_NIGHTLY_WHEEL_INDEX: https://pypi.nvidia.com
+  RELEASE_STABLE_WHEEL_INDEX: https://pypi.org/simple
+  RELEASE_NIGHTLY_CONTAINER_REGISTRY: ghcr.io/nvidia-nemo/nemo-platform
+  RELEASE_STABLE_CONTAINER_REGISTRY: nvcr.io/nvidia/nemo-platform
+  # Make this package public in GitHub Packages after its first push.
+  RELEASE_NIGHTLY_HELM_OCI_REGISTRY: oci://ghcr.io/nvidia-nemo/nemo-platform
+  # Stable charts must be promoted from RELEASE_HELM_REGISTRY before polling.
+  RELEASE_STABLE_HELM_REPOSITORY: https://helm.ngc.nvidia.com/nvidia/nemo-platform
+  RELEASE_NGC_CATALOG_BASE: https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo-platform
+
+jobs:
+  plan-release:
+    name: Plan and validate release inputs
+    runs-on: ubuntu-latest
+    outputs:
+      release_type: ${{ steps.plan.outputs.release_type }}
+      release_scope: ${{ steps.plan.outputs.release_scope }}
+      source_sha: ${{ steps.plan.outputs.source_sha }}
+      version: ${{ steps.plan.outputs.version }}
+      release_label: ${{ steps.plan.outputs.release_label }}
+      nightly_timestamp: ${{ steps.plan.outputs.nightly_timestamp }}
+      wheel_version: ${{ steps.wheel-version.outputs.wheel_version }}
+      wheel_ids: ${{ steps.plan.outputs.wheel_ids }}
+      container_ids: ${{ steps.plan.outputs.container_ids }}
+      has_wheels: ${{ steps.plan.outputs.has_wheels }}
+      has_containers: ${{ steps.plan.outputs.has_containers }}
+      include_helm: ${{ steps.plan.outputs.include_helm }}
+      update_ngc_metadata: ${{ steps.plan.outputs.update_ngc_metadata }}
+      send_notifications: ${{ steps.plan.outputs.send_notifications }}
+      dry_run: ${{ steps.plan.outputs.dry_run }}
+    steps:
+      # This job is intentionally the first gate. It resolves the user's
+      # requested artifacts, checks custom ids against the inline catalog, then
+      # validates the selected source tree has the wheel package paths, bake
+      # targets, and NGC container overview files needed by later jobs.
+      - name: Resolve release plan
+        id: plan
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const allWheels = JSON.parse(process.env.RELEASE_WHEELS_JSON);
+            const allContainers = JSON.parse(process.env.RELEASE_CONTAINERS_JSON);
+            const allWheelIds = allWheels.map((wheel) => wheel.id);
+            const allContainerIds = allContainers.map((container) => container.id);
+            const inputs = context.payload.inputs ?? {};
+            const isManual = context.eventName === "workflow_dispatch";
+            const releaseType = isManual ? inputs["release-type"] : "nightly";
+            const releaseScope = isManual ? (inputs["release-scope"] || "all") : "all";
+            const updateNgcMetadata = isManual && inputs["update-ngc-metadata"] === "true";
+            const sendNotifications = inputs["send-notifications"] !== "false";
+            const dryRun = isManual && inputs["dry-run"] === "true";
+
+            let sourceSha = isManual ? inputs["source-sha"].trim() : context.sha;
+            const version = releaseType === "stable" ? inputs.version.trim() : "";
+
+            if (releaseType === "stable") {
+              if (!/^[0-9a-f]{40}$/i.test(sourceSha)) {
+                throw new Error("Stable releases require an exact 40-character source SHA.");
+              }
+              if (!/^\d+\.\d+\.\d+$/.test(version)) {
+                throw new Error("Stable releases require a MAJOR.MINOR.PATCH version.");
+              }
+            } else {
+              if (sourceSha && !/^[0-9a-f]{40}$/i.test(sourceSha)) {
+                throw new Error("A pinned nightly source must be an exact 40-character SHA.");
+              }
+              if (!sourceSha && dryRun) {
+                sourceSha = context.sha;
+              } else if (!sourceSha) {
+                const defaultBranch = context.payload.repository.default_branch;
+                const { data: commit } = await github.rest.repos.getCommit({
+                  ...context.repo,
+                  ref: defaultBranch,
+                });
+                sourceSha = commit.sha;
+              }
+            }
+
+            sourceSha = sourceSha.toLowerCase();
+
+            const presets = {
+              all: { wheels: allWheels, containers: allContainers, includeHelm: true },
+              wheels: { wheels: allWheels, containers: [], includeHelm: false },
+              containers: { wheels: [], containers: allContainers, includeHelm: false },
+              helm: { wheels: [], containers: [], includeHelm: true },
+            };
+            let selection = presets[releaseScope];
+
+            if (releaseScope === "custom") {
+              const selectArtifacts = (value, allowedArtifacts, allowedIds, label, inputName) => {
+                if (!value.trim()) {
+                  return [];
+                }
+                const requestedList = value.split(",").map((id) => id.trim());
+                const emptyEntry = requestedList.some((id) => id.length === 0);
+                if (emptyEntry) {
+                  throw new Error(`${inputName} contains an empty entry.`);
+                }
+                const requestedIds = new Set(requestedList);
+                if (requestedIds.size !== requestedList.length) {
+                  throw new Error(`${inputName} contains duplicate entries.`);
+                }
+                const unknownIds = [...requestedIds].filter(
+                  (id) => !allowedIds.includes(id),
+                );
+                if (unknownIds.length > 0) {
+                  throw new Error(
+                    `Unknown ${label} IDs: ${unknownIds.join(", ")}. `
+                    + `Allowed ${label} IDs: ${allowedIds.join(", ")}.`,
+                  );
+                }
+                return allowedArtifacts.filter((artifact) => requestedIds.has(artifact.id));
+              };
+
+              selection = {
+                wheels: selectArtifacts(
+                  inputs["wheel-ids"] || "",
+                  allWheels,
+                  allWheelIds,
+                  "wheel",
+                  "wheel-ids",
+                ),
+                containers: selectArtifacts(
+                  inputs["container-ids"] || "",
+                  allContainers,
+                  allContainerIds,
+                  "container",
+                  "container-ids",
+                ),
+                includeHelm: inputs["include-helm"] === "true",
+              };
+
+              if (
+                selection.wheels.length === 0
+                && selection.containers.length === 0
+                && !selection.includeHelm
+              ) {
+                throw new Error("A custom release must select at least one artifact.");
+              }
+            }
+
+            if (!selection) {
+              throw new Error(`Unknown release scope: ${releaseScope}.`);
+            }
+
+            const { wheels, containers, includeHelm } = selection;
+            const wheelIds = wheels.map((wheel) => wheel.id);
+            const containerIds = containers.map((container) => container.id);
+
+            const nightlyTimestamp = releaseType === "nightly"
+              ? new Date().toISOString().replace(/\D/g, "").slice(0, 14)
+              : "";
+            const releaseLabel = releaseType === "nightly"
+              ? `nightly-${nightlyTimestamp}`
+              : version;
+
+            core.setOutput("release_type", releaseType);
+            core.setOutput("release_scope", releaseScope);
+            core.setOutput("source_sha", sourceSha);
+            core.setOutput("version", version);
+            core.setOutput("release_label", releaseLabel);
+            core.setOutput("nightly_timestamp", nightlyTimestamp);
+            core.setOutput("wheel_ids", JSON.stringify(wheelIds));
+            core.setOutput("container_ids", JSON.stringify(containerIds));
+            core.setOutput("wheel_artifacts", JSON.stringify(wheels));
+            core.setOutput("container_artifacts", JSON.stringify(containers));
+            core.setOutput("has_wheels", String(wheelIds.length > 0));
+            core.setOutput("has_containers", String(containerIds.length > 0));
+            core.setOutput("include_helm", String(includeHelm));
+            core.setOutput("update_ngc_metadata", String(updateNgcMetadata));
+            core.setOutput("send_notifications", String(sendNotifications));
+            core.setOutput("dry_run", String(dryRun));
+
+            core.info(
+              `Planned ${releaseType} release ${releaseLabel} from ${sourceSha}`,
+            );
+
+      - name: Checkout selected source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ steps.plan.outputs.source_sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Validate selected release artifacts
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          WHEEL_ARTIFACTS: ${{ steps.plan.outputs.wheel_artifacts }}
+          CONTAINER_ARTIFACTS: ${{ steps.plan.outputs.container_artifacts }}
+        with:
+          script: |
+            const fs = require("fs");
+            const path = require("path");
+
+            const parseArtifacts = (envName) => JSON.parse(process.env[envName] || "[]");
+            const readText = (filePath) => fs.readFileSync(filePath, "utf8");
+            const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const requireFile = (filePath, message) => {
+              if (!fs.existsSync(filePath)) {
+                throw new Error(`${message}: ${filePath}`);
+              }
+            };
+
+            const artifactList = (artifacts) => {
+              if (artifacts.length === 0) {
+                return "(none)";
+              }
+              return artifacts.map((artifact) => artifact.id).join(", ");
+            };
+
+            const validateWheel = (wheel) => {
+              const pyprojectPath = path.join(wheel.path, "pyproject.toml");
+              requireFile(
+                pyprojectPath,
+                `Wheel ${wheel.id} cannot be built because its package config is missing`,
+              );
+              const pyproject = readText(pyprojectPath);
+              const namePattern = new RegExp(
+                `^\\s*name\\s*=\\s*["']${escapeRegExp(wheel.package)}["']\\s*$`,
+                "m",
+              );
+
+              if (!namePattern.test(pyproject)) {
+                throw new Error(
+                  `Wheel ${wheel.id} expects package ${wheel.package}, `
+                  + `but ${pyprojectPath} does not declare that project name.`,
+                );
+              }
+            };
+
+            const readBakeTargets = (bakePath) => {
+              requireFile(bakePath, "Container validation needs docker-bake.hcl");
+              return new Set(
+                [...readText(bakePath).matchAll(/^target\s+"([^"]+)"/gm)]
+                  .map((match) => match[1]),
+              );
+            };
+
+            const ngcMetadataPath = (container) => path.join(
+              ".github",
+              "assets",
+              "ngc",
+              "containers",
+              `${container.id}.md`,
+            );
+
+            const validateContainer = (container, bakeTargets) => {
+              const bakePath = "docker-bake.hcl";
+              if (!bakeTargets.has(container.target)) {
+                throw new Error(
+                  `Container ${container.id} cannot be built because bake target `
+                  + `${container.target} is missing from ${bakePath}.`,
+                );
+              }
+              requireFile(
+                ngcMetadataPath(container),
+                `Container ${container.id} is missing matching NGC metadata`,
+              );
+            };
+
+            const writeSummary = async (wheels, containers) => {
+              const rows = [
+                [
+                  {data: "Type", header: true},
+                  {data: "Selected", header: true},
+                ],
+                ["Wheels", artifactList(wheels)],
+                ["Containers", artifactList(containers)],
+              ];
+
+              await core.summary
+                .addHeading("Release input validation")
+                .addTable(rows)
+                .write();
+            };
+
+            const wheels = parseArtifacts("WHEEL_ARTIFACTS");
+            const containers = parseArtifacts("CONTAINER_ARTIFACTS");
+            const bakeTargets = readBakeTargets("docker-bake.hcl");
+
+            wheels.forEach(validateWheel);
+            containers.forEach((container) => validateContainer(container, bakeTargets));
+
+            await writeSummary(wheels, containers);
+
+            core.info("Selected release artifacts are valid for the checked-out source.");
+
+      - name: Resolve wheel version
+        id: wheel-version
+        if: steps.plan.outputs.has_wheels == 'true'
+        shell: bash
+        env:
+          WHEEL_IDS: ${{ steps.plan.outputs.wheel_ids }}
+          RELEASE_TYPE: ${{ steps.plan.outputs.release_type }}
+          RELEASE_VERSION: ${{ steps.plan.outputs.version }}
+          NIGHTLY_TIMESTAMP: ${{ steps.plan.outputs.nightly_timestamp }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${RELEASE_TYPE}" == "nightly" ]]; then
+            cadence="nightly"
+          else
+            cadence="release"
+          fi
+
+          args=(
+            --source-root .
+            --sdk-id "$(jq -r '.[0]' <<< "${WHEEL_IDS}")"
+            --cadence "${cadence}"
+            --nightly-timestamp "${NIGHTLY_TIMESTAMP}"
+            --print-version
+          )
+          if [[ "${RELEASE_TYPE}" == "stable" ]]; then
+            args+=(--release-label "${RELEASE_VERSION}")
+          fi
+          wheel_version="$(python3 .github/scripts/stamp_sdk_version.py "${args[@]}")"
+          echo "wheel_version=${wheel_version}" >> "${GITHUB_OUTPUT}"
+
+  notify-start:
+    # Start alerts intentionally run for dry runs so the webhook can be tested.
+    name: Notify release start
+    needs: plan-release
+    if: needs.plan-release.outputs.send_notifications == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack alert
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          SLACK_ALERTS_WEBHOOK: ${{ secrets.SLACK_ALERTS_WEBHOOK }}
+          RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
+          RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
+          SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
+          WHEEL_IDS: ${{ needs.plan-release.outputs.wheel_ids }}
+          CONTAINER_IDS: ${{ needs.plan-release.outputs.container_ids }}
+          INCLUDE_HELM: ${{ needs.plan-release.outputs.include_helm }}
+          DRY_RUN: ${{ needs.plan-release.outputs.dry_run }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ needs.plan-release.outputs.source_sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+        with:
+          script: |
+            const wheels = JSON.parse(process.env.WHEEL_IDS);
+            const containers = JSON.parse(process.env.CONTAINER_IDS);
+            const releaseType = process.env.RELEASE_TYPE;
+            const title = releaseType === "stable"
+              ? "*:ship: Release started*"
+              : "*:crescent_moon: Nightly release started*";
+            const lines = [
+              title,
+              `Release: ${process.env.RELEASE_LABEL}`,
+              `Commit: <${process.env.COMMIT_URL}|${process.env.SOURCE_SHA.slice(0, 7)}>`,
+              "",
+              "*Artifacts:*",
+            ];
+            if (wheels.length > 0) {
+              lines.push("*:python: Wheels to publish:*");
+              wheels.forEach((wheel) => lines.push(`- ${wheel}`));
+            }
+            if (containers.length > 0) {
+              lines.push("*:docker_: Containers to publish:*");
+              containers.forEach((container) => lines.push(`- ${container}`));
+            }
+            if (process.env.INCLUDE_HELM === "true") {
+              lines.push("*:helm: Helm chart to publish:*", "- nemo-platform");
+            }
+            lines.push(
+              process.env.DRY_RUN === "true" && "Mode: dry run (no publishing)",
+              `:link: <${process.env.RUN_URL}|Release run #${process.env.RUN_NUMBER}>`,
+            );
+            const response = await fetch(process.env.SLACK_ALERTS_WEBHOOK, {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({text: lines.filter((line) => line !== false).join("\n")}),
+            });
+            if (!response.ok) {
+              core.setFailed(`Slack webhook returned ${response.status}.`);
+            }
+
+  sync-ngc-metadata:
+    name: Synchronize NGC metadata
+    needs: plan-release
+    if: >-
+      needs.plan-release.outputs.update_ngc_metadata == 'true' &&
+      needs.plan-release.outputs.dry_run != 'true'
+    uses: ./.github/workflows/ngc-metadata.yaml
+    secrets:
+      AIRE_NGC_GITHUB_PLATFORM_RW: ${{ secrets.AIRE_NGC_GITHUB_PLATFORM_RW }}
+
+  dispatch-release-registration:
+    name: Dispatch release registration
+    needs: plan-release
+    if: >-
+      needs.plan-release.outputs.release_type == 'stable' &&
+      needs.plan-release.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch registration workflow
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
+          RELEASE_VERSION: ${{ needs.plan-release.outputs.version }}
+          SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
+          SOURCE_RUN_URL: >-
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          WHEEL_IDS: ${{ needs.plan-release.outputs.wheel_ids }}
+          CONTAINER_IDS: ${{ needs.plan-release.outputs.container_ids }}
+          INCLUDE_HELM: ${{ needs.plan-release.outputs.include_helm }}
+        with:
+          github-token: ${{ secrets.CI_DISPATCH_TOKEN }}
+          script: |
+            const [owner, repo] = process.env.DISPATCH_REPO.split("/");
+
+            await github.rest.repos.createDispatchEvent({
+              owner,
+              repo,
+              event_type: "register-release-artifacts",
+              client_payload: {
+                version: process.env.RELEASE_VERSION,
+                source_sha: process.env.SOURCE_SHA,
+                source_run_url: process.env.SOURCE_RUN_URL,
+                wheel_ids: JSON.parse(process.env.WHEEL_IDS),
+                container_ids: JSON.parse(process.env.CONTAINER_IDS),
+                helm_id: process.env.INCLUDE_HELM === "true"
+                  ? process.env.RELEASE_HELM_ID
+                  : null,
+              },
+            });
+
+  dispatch-wheel-stage:
+    name: Dispatch wheel builds
+    needs: plan-release
+    if: >-
+      needs.plan-release.outputs.has_wheels == 'true' &&
+      needs.plan-release.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch wheel builds
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
+          SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
+          RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
+          RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
+          NIGHTLY_TIMESTAMP: ${{ needs.plan-release.outputs.nightly_timestamp }}
+          WHEEL_VERSION: ${{ needs.plan-release.outputs.wheel_version }}
+          WHEEL_IDS: ${{ needs.plan-release.outputs.wheel_ids }}
+        with:
+          github-token: ${{ secrets.CI_DISPATCH_TOKEN }}
+          script: |
+            const [owner, repo] = process.env.DISPATCH_REPO.split("/");
+
+            await github.rest.repos.createDispatchEvent({
+              owner,
+              repo,
+              event_type: "stage-wheels",
+              client_payload: {
+                ref: process.env.SOURCE_SHA,
+                cadence: process.env.RELEASE_TYPE === "stable" ? "release" : "nightly",
+                release_label: process.env.RELEASE_LABEL,
+                nightly_timestamp: process.env.NIGHTLY_TIMESTAMP,
+                wheel_version: process.env.WHEEL_VERSION,
+                wheels: JSON.parse(process.env.WHEEL_IDS),
+              },
+            });
+
+  dispatch-container-stage:
+    name: Dispatch container builds
+    needs: plan-release
+    if: >-
+      needs.plan-release.outputs.has_containers == 'true' &&
+      needs.plan-release.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch container builds
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
+          SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
+          RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
+          RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
+          CONTAINER_IDS: ${{ needs.plan-release.outputs.container_ids }}
+        with:
+          github-token: ${{ secrets.CI_DISPATCH_TOKEN }}
+          script: |
+            const [owner, repo] = process.env.DISPATCH_REPO.split("/");
+
+            await github.rest.repos.createDispatchEvent({
+              owner,
+              repo,
+              event_type: "release",
+              client_payload: {
+                ref: process.env.SOURCE_SHA,
+                cadence: process.env.RELEASE_TYPE,
+                version: process.env.RELEASE_LABEL,
+                containers: JSON.parse(process.env.CONTAINER_IDS),
+              },
+            });
+
+  stage-helm:
+    name: Stage Helm chart
+    needs: plan-release
+    if: needs.plan-release.outputs.include_helm == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      chart_version: ${{ steps.package.outputs.chart_version }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out selected source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ needs.plan-release.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Set up Helm
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
+        with:
+          version: v4.2.1
+
+      - name: Install Helm push plugin
+        if: >-
+          needs.plan-release.outputs.release_type == 'stable' &&
+          needs.plan-release.outputs.dry_run != 'true'
+        run: >-
+          helm plugin install https://github.com/chartmuseum/helm-push.git
+          --version v0.11.1 --verify=false
+
+      - name: Package Helm chart
+        id: package
+        shell: bash
+        env:
+          HELM_CHART: ${{ env.RELEASE_HELM_PATH }}
+          NIGHTLY_IMAGE_REGISTRY: ${{ env.RELEASE_NIGHTLY_CONTAINER_REGISTRY }}
+          STABLE_IMAGE_REGISTRY: ${{ env.RELEASE_HELM_REGISTRY }}
+          RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
+          RELEASE_VERSION: ${{ needs.plan-release.outputs.version }}
+          RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
+          NIGHTLY_TIMESTAMP: ${{ needs.plan-release.outputs.nightly_timestamp }}
+        run: |
+          set -euo pipefail
+
+          chart_dir="$(mktemp -d)"
+          package_dir="${RUNNER_TEMP}/helm-package"
+          trap 'rm -rf "${chart_dir}"' EXIT
+          cp -R "${HELM_CHART}/." "${chart_dir}/"
+
+          helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
+          helm dependency build "${chart_dir}"
+
+          chart_version="$(yq -r '.version' "${chart_dir}/Chart.yaml")"
+          if [[ "${RELEASE_TYPE}" == "nightly" ]]; then
+            chart_version="${chart_version}-nightly-${NIGHTLY_TIMESTAMP}"
+            release_registry="${NIGHTLY_IMAGE_REGISTRY}"
+          else
+            # TODO: Decide whether stable chart versions should track the platform
+            # release version or remain independently managed in Chart.yaml.
+            chart_version="${RELEASE_VERSION}"
+            release_registry="${STABLE_IMAGE_REGISTRY}"
+          fi
+
+          yq -i ".platformConfig.platform.image_registry = \"${release_registry}\"" "${chart_dir}/values.yaml"
+          yq -i ".api.image.repository = \"${release_registry}/nmp-api\"" "${chart_dir}/values.yaml"
+          yq -i ".core.image.repository = \"${release_registry}/nmp-api\"" "${chart_dir}/values.yaml"
+
+          mkdir -p "${package_dir}"
+          helm package "${chart_dir}" \
+            --version "${chart_version}" \
+            --app-version "${RELEASE_LABEL}" \
+            --destination "${package_dir}"
+
+          echo "chart_version=${chart_version}" >> "${GITHUB_OUTPUT}"
+          echo "chart_package=${package_dir}/nemo-platform-${chart_version}.tgz" >> "${GITHUB_OUTPUT}"
+
+      - name: Report packaged Helm chart
+        if: needs.plan-release.outputs.dry_run == 'true'
+        env:
+          CHART_PACKAGE: ${{ steps.package.outputs.chart_package }}
+        run: |
+          echo "::notice::Dry run: packaged ${CHART_PACKAGE}"
+
+      - name: Push nightly Helm chart to GHCR
+        if: >-
+          needs.plan-release.outputs.release_type == 'nightly' &&
+          needs.plan-release.outputs.dry_run != 'true'
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          HELM_OCI_REGISTRY: ${{ env.RELEASE_NIGHTLY_HELM_OCI_REGISTRY }}
+          CHART_PACKAGE: ${{ steps.package.outputs.chart_package }}
+        run: |
+          set -euo pipefail
+
+          printf '%s' "${GHCR_TOKEN}" | helm registry login ghcr.io \
+            --username "${GITHUB_ACTOR}" --password-stdin
+          helm push "${CHART_PACKAGE}" "${HELM_OCI_REGISTRY}"
+
+      - name: Push stable Helm chart to NGC
+        if: >-
+          needs.plan-release.outputs.release_type == 'stable' &&
+          needs.plan-release.outputs.dry_run != 'true'
+        shell: bash
+        env:
+          HELM_PASSWORD: ${{ secrets.AIRE_NVCR_GITHUB }}
+          RELEASE_REGISTRY: ${{ env.RELEASE_HELM_REGISTRY }}
+          CHART_VERSION: ${{ steps.package.outputs.chart_version }}
+          CHART_PACKAGE: ${{ steps.package.outputs.chart_package }}
+        run: |
+          set -euo pipefail
+
+          helm_repository="https://helm.ngc.nvidia.com/${RELEASE_REGISTRY#nvcr.io/}"
+          printf '%s' "${HELM_PASSWORD}" | helm repo add nemo-platform "${helm_repository}" \
+            --username "\$oauthtoken" --password-stdin
+
+          if helm search repo nemo-platform/nemo-platform --devel --version "${CHART_VERSION}" \
+            | grep -qv 'No results found'; then
+            echo "Helm chart version ${CHART_VERSION} already exists. Skipping."
+          else
+            helm cm-push "${CHART_PACKAGE}" nemo-platform
+          fi
+
+  dispatch-release-deployment:
+    name: Dispatch release deployment
+    needs: [plan-release, stage-helm, poll-final-release]
+    if: >-
+      needs.plan-release.outputs.include_helm == 'true' &&
+      needs.plan-release.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch deployment creation
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
+          SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
+          RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
+          RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
+          HELM_VERSION: ${{ needs.stage-helm.outputs.chart_version }}
+        with:
+          github-token: ${{ secrets.CI_DISPATCH_TOKEN }}
+          script: |
+            const [owner, repo] = process.env.DISPATCH_REPO.split("/");
+
+            await github.rest.repos.createDispatchEvent({
+              owner,
+              repo,
+              event_type: "create-release-deployment",
+              client_payload: {
+                ref: process.env.SOURCE_SHA,
+                cadence: process.env.RELEASE_TYPE === "stable" ? "release" : "nightly",
+                release_label: process.env.RELEASE_LABEL,
+                helm_version: process.env.HELM_VERSION,
+              },
+            });
+
+  poll-final-release:
+    name: Wait for published release artifacts
+    needs:
+      - plan-release
+      - dispatch-release-registration
+      - dispatch-wheel-stage
+      - dispatch-container-stage
+      - stage-helm
+    if: >-
+      always() &&
+      needs.plan-release.result == 'success' &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: read
+    env:
+      POLL_INTERVAL_SECONDS: "30"
+    steps:
+      - name: Skip final artifact polling
+        if: needs.plan-release.outputs.dry_run == 'true'
+        run: |
+          echo "::notice::Dry run: skipped final artifact polling"
+
+      - name: Set up Helm for chart polling
+        if: >-
+          needs.plan-release.outputs.include_helm == 'true' &&
+          needs.plan-release.outputs.dry_run != 'true'
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
+        with:
+          version: v4.2.1
+
+      - name: Wait for selected wheels in PyPI
+        if: >-
+          needs.plan-release.outputs.has_wheels == 'true' &&
+          needs.plan-release.outputs.dry_run != 'true'
+        shell: bash
+        env:
+          WHEEL_IDS: ${{ needs.plan-release.outputs.wheel_ids }}
+          WHEEL_CATALOG: ${{ env.RELEASE_WHEELS_JSON }}
+          RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
+          WHEEL_VERSION: ${{ needs.plan-release.outputs.wheel_version }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${RELEASE_TYPE}" == "nightly" ]]; then
+            wheel_index="${RELEASE_NIGHTLY_WHEEL_INDEX}"
+          else
+            wheel_index="${RELEASE_STABLE_WHEEL_INDEX}"
+          fi
+
+          while IFS= read -r wheel_id; do
+            package="$(jq -r --arg id "${wheel_id}" '.[] | select(.id == $id) | .package' <<< "${WHEEL_CATALOG}")"
+            filename_prefix="${package//-/_}-${WHEEL_VERSION}"
+            wheel_url="${wheel_index}/${package}/"
+
+            until curl --silent --location "${wheel_url}" | grep -Fq "${filename_prefix}"; do
+              echo "Waiting for ${package}==${WHEEL_VERSION} at ${wheel_url}"
+              sleep "${POLL_INTERVAL_SECONDS}"
+            done
+            echo "Found ${package}==${WHEEL_VERSION}"
+          done < <(jq -r '.[]' <<< "${WHEEL_IDS}")
+
+      # Both final container registries are public, so this check deliberately
+      # uses docker manifest inspect without credentials.
+      - name: Wait for selected containers in the final registry
+        if: >-
+          needs.plan-release.outputs.has_containers == 'true' &&
+          needs.plan-release.outputs.dry_run != 'true'
+        shell: bash
+        env:
+          CONTAINER_IDS: ${{ needs.plan-release.outputs.container_ids }}
+          CONTAINER_TAG: ${{ needs.plan-release.outputs.release_label }}
+          CONTAINER_REGISTRY: >-
+            ${{ needs.plan-release.outputs.release_type == 'nightly' &&
+            env.RELEASE_NIGHTLY_CONTAINER_REGISTRY ||
+            env.RELEASE_STABLE_CONTAINER_REGISTRY }}
+        run: |
+          set -euo pipefail
+
+          while IFS= read -r container_id; do
+            ref="${CONTAINER_REGISTRY}/${container_id}:${CONTAINER_TAG}"
+            until docker manifest inspect "${ref}" >/dev/null 2>&1; do
+              echo "Waiting for ${ref}"
+              sleep "${POLL_INTERVAL_SECONDS}"
+            done
+            echo "Found ${ref}"
+          done < <(jq -r '.[]' <<< "${CONTAINER_IDS}")
+
+      # Both final Helm chart locations are public, so this check deliberately
+      # uses Helm without registry credentials.
+      - name: Wait for Helm chart in the final registry
+        if: >-
+          needs.plan-release.outputs.include_helm == 'true' &&
+          needs.plan-release.outputs.dry_run != 'true'
+        shell: bash
+        env:
+          RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
+          CHART_ID: ${{ env.RELEASE_HELM_ID }}
+          CHART_VERSION: ${{ needs.stage-helm.outputs.chart_version }}
+          NIGHTLY_HELM_OCI_REGISTRY: ${{ env.RELEASE_NIGHTLY_HELM_OCI_REGISTRY }}
+          STABLE_HELM_REPOSITORY: ${{ env.RELEASE_STABLE_HELM_REPOSITORY }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${RELEASE_TYPE}" == "nightly" ]]; then
+            chart_ref="${NIGHTLY_HELM_OCI_REGISTRY}/${CHART_ID}"
+            chart_is_available() {
+              helm show chart "${chart_ref}" --version "${CHART_VERSION}" >/dev/null 2>&1
+            }
+          else
+            chart_is_available() {
+              helm repo add nemo-platform "${STABLE_HELM_REPOSITORY}" --force-update >/dev/null 2>&1 \
+                && helm search repo nemo-platform/nemo-platform --devel --version "${CHART_VERSION}" \
+                | grep -qv 'No results found'
+            }
+          fi
+
+          until chart_is_available; do
+            echo "Waiting for ${CHART_ID}==${CHART_VERSION}"
+            sleep "${POLL_INTERVAL_SECONDS}"
+          done
+          echo "Found ${CHART_ID}==${CHART_VERSION}"
+
+  alert-poll-delay:
+    name: Alert if release polling is delayed
+    needs:
+      - plan-release
+      - dispatch-release-registration
+      - dispatch-wheel-stage
+      - dispatch-container-stage
+      - stage-helm
+    if: >-
+      always() &&
+      needs.plan-release.result == 'success' &&
+      needs.plan-release.outputs.send_notifications == 'true' &&
+      needs.plan-release.outputs.dry_run != 'true' &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-latest
+    timeout-minutes: 125
+    permissions:
+      actions: read
+    steps:
+      - name: Alert if final artifact polling exceeds two hours
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          SLACK_ALERTS_WEBHOOK: ${{ secrets.SLACK_ALERTS_WEBHOOK }}
+          RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
+          RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
+          SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ needs.plan-release.outputs.source_sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+        with:
+          script: |
+            // The poll job has a four-hour timeout; alert after two hours.
+            const pollJobName = "Wait for published release artifacts";
+            const deadline = Date.now() + (2 * 60 * 60 * 1000);
+            const sleep = (milliseconds) => new Promise((resolve) => {
+              setTimeout(resolve, milliseconds);
+            });
+            const findPollJob = async () => {
+              const {data} = await github.rest.actions.listJobsForWorkflowRun({
+                ...context.repo,
+                run_id: context.runId,
+                per_page: 100,
+              });
+              return data.jobs.find((job) => job.name === pollJobName);
+            };
+
+            while (Date.now() < deadline) {
+              const pollJob = await findPollJob();
+              if (pollJob?.status === "completed") {
+                core.info("Final artifact polling completed before the alert threshold.");
+                return;
+              }
+              await sleep(Math.min(60_000, deadline - Date.now()));
+            }
+
+            const pollJob = await findPollJob();
+            if (pollJob?.status === "completed") {
+              core.info("Final artifact polling completed at the alert threshold.");
+              return;
+            }
+
+            const title = process.env.RELEASE_TYPE === "stable"
+              ? "*:warning: Release artifact polling delayed*"
+              : "*:warning: Nightly artifact polling delayed*";
+            const lines = [
+              title,
+              `Release: ${process.env.RELEASE_LABEL}`,
+              `Commit: <${process.env.COMMIT_URL}|${process.env.SOURCE_SHA.slice(0, 7)}>`,
+              "",
+              "Final artifact polling has exceeded two hours.",
+              "",
+              `:link: <${process.env.RUN_URL}|Release run #${process.env.RUN_NUMBER}>`,
+            ];
+            const response = await fetch(process.env.SLACK_ALERTS_WEBHOOK, {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({text: lines.join("\n")}),
+            });
+            if (!response.ok) {
+              core.setFailed(`Slack webhook returned ${response.status}.`);
+            }
+
+  create-github-release:
+    name: Create GitHub Release
+    needs: [plan-release, poll-final-release]
+    if: >-
+      needs.plan-release.outputs.release_type == 'stable' &&
+      needs.plan-release.outputs.release_scope == 'all' &&
+      needs.plan-release.outputs.dry_run != 'true' &&
+      needs.poll-final-release.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out release history
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ needs.plan-release.outputs.source_sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Create GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.plan-release.outputs.version }}
+          SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+
+          notes_start_tag="$(
+            {
+              git tag -l | grep -E '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' || true
+              printf '%s\n' "${RELEASE_TAG}"
+            } | sort -V -u | awk -v version="${RELEASE_TAG}" '$0 == version {print previous} {previous = $0}'
+          )"
+          notes_range=()
+          if [[ -n "${notes_start_tag}" && "${notes_start_tag}" != "${RELEASE_TAG}" ]]; then
+            notes_range=(--notes-start-tag "${notes_start_tag}")
+          fi
+
+          gh release create "${RELEASE_TAG}" \
+            --target "${SOURCE_SHA}" \
+            --title "${RELEASE_TAG}" \
+            --generate-notes \
+            "${notes_range[@]}"
+
+  signal-deployment:
+    name: Signal deployment
+    needs: [plan-release, poll-final-release]
+    if: >-
+      needs.poll-final-release.result == 'success' &&
+      needs.plan-release.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::Placeholder - signal the completed release"
+
+  notify-end:
+    name: Notify release result
+    needs:
+      - plan-release
+      - poll-final-release
+      - create-github-release
+      - signal-deployment
+      - stage-helm
+    if: >-
+      always() &&
+      needs.plan-release.outputs.send_notifications == 'true' &&
+      needs.plan-release.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack alert
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          SLACK_ALERTS_WEBHOOK: ${{ secrets.SLACK_ALERTS_WEBHOOK }}
+          SLACK_RELEASE_WEBHOOK: ${{ secrets.SLACK_RELEASE_WEBHOOK }}
+          RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
+          RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
+          SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ needs.plan-release.outputs.source_sha }}
+          WHEEL_IDS: ${{ needs.plan-release.outputs.wheel_ids }}
+          WHEEL_CATALOG: ${{ env.RELEASE_WHEELS_JSON }}
+          WHEEL_VERSION: ${{ needs.plan-release.outputs.wheel_version }}
+          CONTAINER_IDS: ${{ needs.plan-release.outputs.container_ids }}
+          INCLUDE_HELM: ${{ needs.plan-release.outputs.include_helm }}
+          CHART_VERSION: ${{ needs.stage-helm.outputs.chart_version }}
+          NIGHTLY_WHEEL_INDEX: ${{ env.RELEASE_NIGHTLY_WHEEL_INDEX }}
+          STABLE_WHEEL_INDEX: ${{ env.RELEASE_STABLE_WHEEL_INDEX }}
+          NGC_CATALOG_BASE: ${{ env.RELEASE_NGC_CATALOG_BASE }}
+          POLL_RESULT: ${{ needs.poll-final-release.result }}
+          GITHUB_RELEASE_RESULT: ${{ needs.create-github-release.result }}
+          DEPLOYMENT_RESULT: ${{ needs.signal-deployment.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+        with:
+          script: |
+            const releaseType = process.env.RELEASE_TYPE;
+            const results = [
+              process.env.POLL_RESULT,
+              process.env.GITHUB_RELEASE_RESULT,
+              process.env.DEPLOYMENT_RESULT,
+            ];
+            const failed = results.some((result) => ["failure", "cancelled"].includes(result));
+            const published = process.env.POLL_RESULT === "success" && !failed;
+            const webhook = published
+              ? process.env.SLACK_RELEASE_WEBHOOK
+              : process.env.SLACK_ALERTS_WEBHOOK;
+            const title = published
+              ? (releaseType === "stable"
+                ? "*:ship: Release publish complete*"
+                : "*:crescent_moon: Nightly release publish complete*")
+              : (releaseType === "stable"
+                ? "*:alert: Release publish failed*"
+                : "*:alert: Nightly release publish failed*");
+            const lines = [
+              title,
+              `Release: ${process.env.RELEASE_LABEL}`,
+              `Commit: <${process.env.COMMIT_URL}|${process.env.SOURCE_SHA.slice(0, 7)}>`,
+            ];
+
+            if (published) {
+              const wheelIds = JSON.parse(process.env.WHEEL_IDS);
+              const wheelCatalog = JSON.parse(process.env.WHEEL_CATALOG);
+              const containerIds = JSON.parse(process.env.CONTAINER_IDS);
+              lines.push("", "*Artifacts published:*");
+              if (wheelIds.length > 0) {
+                lines.push("*:python: Wheels published:*");
+                for (const wheelId of wheelIds) {
+                  const wheel = wheelCatalog.find((candidate) => candidate.id === wheelId);
+                  const wheelIndex = releaseType === "nightly"
+                    ? process.env.NIGHTLY_WHEEL_INDEX
+                    : process.env.STABLE_WHEEL_INDEX;
+                  const wheelUrl = releaseType === "nightly"
+                    ? `${wheelIndex}/${wheel.package}/`
+                    : `${wheelIndex.replace(/\/simple$/, "/project")}/${wheel.package}/${process.env.WHEEL_VERSION}/`;
+                  lines.push(`- <${wheelUrl}|${wheel.package}: ${process.env.WHEEL_VERSION}>`);
+                }
+              }
+              if (containerIds.length > 0) {
+                lines.push("*:docker_: Containers published:*");
+                for (const containerId of containerIds) {
+                  const container = releaseType === "stable"
+                    ? `<${process.env.NGC_CATALOG_BASE}/containers/${containerId}|${containerId}>`
+                    : containerId;
+                  lines.push(`- ${container}: ${process.env.RELEASE_LABEL}`);
+                }
+              }
+              if (process.env.INCLUDE_HELM === "true") {
+                const chart = releaseType === "stable"
+                  ? `<${process.env.NGC_CATALOG_BASE}/helm-charts/nemo-platform|nemo-platform>`
+                  : "nemo-platform";
+                lines.push("*:helm: Helm chart published:*");
+                lines.push(`- ${chart}: ${process.env.CHART_VERSION}`);
+              }
+            } else {
+              lines.push(
+                "",
+                "*Final release status:*",
+                `Final artifact poll: ${process.env.POLL_RESULT}`,
+                `GitHub release: ${process.env.GITHUB_RELEASE_RESULT}`,
+                `Deployment signal: ${process.env.DEPLOYMENT_RESULT}`,
+              );
+            }
+
+            lines.push("", `:link: <${process.env.RUN_URL}|Release run #${process.env.RUN_NUMBER}>`);
+            const response = await fetch(webhook, {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({text: lines.join("\n")}),
+            });
+            if (!response.ok) {
+              core.setFailed(`Slack webhook returned ${response.status}.`);
+            }

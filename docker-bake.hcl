@@ -291,7 +291,6 @@ group "docker" {
 group "docker-cpu" {
   targets = [
     "nmp-api-docker",
-    "nmp-core-docker",
     "nmp-cpu-tasks-docker",
   ]
 }

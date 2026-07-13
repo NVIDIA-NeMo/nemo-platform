@@ -141,7 +141,6 @@ runs:
       run: |
         e2e/k8s/scripts/prepull_kind_images.sh \
           "${NMP_E2E_REGISTRY}/nmp-api:${NMP_E2E_TAG}" \
-          "${NMP_E2E_REGISTRY}/nmp-core:${NMP_E2E_TAG}" \
           "${NMP_E2E_REGISTRY}/nmp-cpu-tasks:${NMP_E2E_TAG}"
 
     - name: Install NeMo Platform
