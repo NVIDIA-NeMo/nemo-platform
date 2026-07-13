@@ -8,6 +8,10 @@ from typing import Dict, Self, Union
 
 from nemo_platform import AsyncNeMoPlatform
 from nmp.core.models.controllers.backends.backends import ServiceBackend
+from nmp.core.models.controllers.backends.deployments_plugin import (
+    DeploymentsPluginBackendConfigModel,
+    DeploymentsPluginServiceBackend,
+)
 from nmp.core.models.controllers.backends.docker import DockerBackendConfig as DockerConfig
 from nmp.core.models.controllers.backends.docker import DockerServiceBackend
 from nmp.core.models.controllers.backends.k8s_nim_operator import K8sNimOperatorConfig, K8sNimOperatorServiceBackend
@@ -36,7 +40,12 @@ class NoneBackendConfigModel(BaseModel):
 
 
 # Union of all backend configurations (no discriminator needed since dict key is the backend name)
-BackendConfig = Union[DockerBackendConfigModel, K8sNimOperatorBackendConfigModel, NoneBackendConfigModel]
+BackendConfig = Union[
+    DockerBackendConfigModel,
+    K8sNimOperatorBackendConfigModel,
+    DeploymentsPluginBackendConfigModel,
+    NoneBackendConfigModel,
+]
 
 
 # Type alias for the backend name
@@ -46,6 +55,7 @@ BackendName = str
 backend_classes: Dict[BackendName, type[ServiceBackend]] = {
     "docker": DockerServiceBackend,
     "nim_operator": K8sNimOperatorServiceBackend,
+    "deployments_plugin": DeploymentsPluginServiceBackend,
     "none": NoneServiceBackend,
 }
 
@@ -123,7 +133,7 @@ class BackendRegistry:
 
             logger.info(f"Initializing backend: {backend_name}")
             config_dict = backend_config.model_dump(exclude={"enabled"})
-            if backend_name == "nim_operator":
+            if backend_name in {"nim_operator", "deployments_plugin"}:
                 registry[backend_name] = backend_class(nmp_sdk, config_dict, huggingface_model_puller)
             else:
                 registry[backend_name] = backend_class(nmp_sdk, config_dict)
