@@ -17,6 +17,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from nemo_datasets_plugin.profiler.classify import classify
+from nemo_datasets_plugin.profiler.digest import content_digest
+from nemo_datasets_plugin.profiler.file_source import FileSource
+from nemo_datasets_plugin.profiler.partition import group_partitions
+from nemo_datasets_plugin.profiler.readers.base import detect_format, get_reader
+from nemo_datasets_plugin.profiler.schema import derive_features
+from nemo_datasets_plugin.profiler.splits import resolve_splits
+from nemo_datasets_plugin.profiler.stats import derive_stats
 from nemo_platform_plugin.files.dataset_profile import (
     DatasetProfile,
     FileRecord,
@@ -25,17 +33,17 @@ from nemo_platform_plugin.files.dataset_profile import (
     SplitProfile,
 )
 
-from nemo_datasets_plugin.profiler.classify import classify
-from nemo_datasets_plugin.profiler.digest import content_digest
-from nemo_datasets_plugin.profiler.file_source import FileSource
-from nemo_datasets_plugin.profiler.partition import group_partitions
-from nemo_datasets_plugin.profiler.readers import detect_format, get_reader
-from nemo_datasets_plugin.profiler.schema import derive_features
-from nemo_datasets_plugin.profiler.splits import resolve_splits
-from nemo_datasets_plugin.profiler.stats import derive_stats
-
 PROFILER_NAME = "nemo-dataset-profiler"
 PROFILER_VERSION = "0.1.0"
+
+
+def _format_of(path: str) -> str:
+    """The registered format of a data file. Callers pass only pre-filtered ``data_entries``, so the
+    format is always known; a None here would mean that invariant was broken."""
+    file_format = detect_format(path)
+    if file_format is None:
+        raise ValueError(f"no registered format for {path!r}")
+    return file_format
 
 
 def profile(source: FileSource, *, created_at: datetime | None = None) -> DatasetProfile:
@@ -50,32 +58,36 @@ def profile(source: FileSource, *, created_at: datetime | None = None) -> Datase
 
     partitions: list[PartitionProfile] = []
     rows_scanned = 0
-    all_exact = True
+    all_scanned = True
 
     for partition_name, partition_entries in group_partitions(data_entries):
         partition_rows: list[dict] = []
         arrow_schema = None
-        partition_exact = True
+        partition_scanned = True
         split_profiles: list[SplitProfile] = []
         for split in resolve_splits(partition_entries):
             file_records: list[FileRecord] = []
             split_examples = 0
-            split_exact = True
+            split_counts_known = True  # every file's exact total row count is known (footer or full scan)
+            split_scanned = True  # every row of every file was actually parsed
             for entry in split.entries:
-                reader = get_reader(detect_format(entry.path))
                 try:
-                    result = reader.read(source, entry)
+                    result = get_reader(_format_of(entry.path)).read(source, entry)
                 except Exception:
-                    # Failure isolation: keep the file's identity, skip its rows, keep going.
+                    # Failure isolation: an unreadable file (or missing reader) keeps its identity,
+                    # skips its rows, and does not abort the profile.
                     result = None
                 if result is None:
                     num_rows = None
+                    scanned_all = False
                 else:
                     num_rows = result.num_rows
                     rows_scanned += result.rows_scanned
                     partition_rows.extend(result.rows)
                     if arrow_schema is None:
                         arrow_schema = result.arrow_schema
+                    # Exhaustive requires parsing every row; a known footer count alone is not enough.
+                    scanned_all = num_rows is not None and result.rows_scanned >= num_rows
                 file_records.append(
                     FileRecord(
                         path=entry.path,
@@ -85,25 +97,27 @@ def profile(source: FileSource, *, created_at: datetime | None = None) -> Datase
                     )
                 )
                 if num_rows is None:
-                    split_exact = False
+                    split_counts_known = False
                 else:
                     split_examples += num_rows
-            all_exact = all_exact and split_exact
-            partition_exact = partition_exact and split_exact
+                if not scanned_all:
+                    split_scanned = False
+            all_scanned = all_scanned and split_scanned
+            partition_scanned = partition_scanned and split_scanned
             split_profiles.append(
                 SplitProfile(
                     name=split.name,
                     canonical=split.canonical,
                     files=file_records,
-                    num_examples=split_examples if split_exact else None,
+                    num_examples=split_examples if split_counts_known else None,
                 )
             )
         features = derive_features(partition_rows, arrow_schema)
-        stats = derive_stats(features, partition_rows, exhaustive=partition_exact)
+        stats = derive_stats(features, partition_rows, exhaustive=partition_scanned)
         partitions.append(
             PartitionProfile(
                 name=partition_name,
-                file_format=detect_format(partition_entries[0].path),
+                file_format=_format_of(partition_entries[0].path),
                 splits=split_profiles,
                 features=features,
                 stats=stats,
@@ -112,16 +126,17 @@ def profile(source: FileSource, *, created_at: datetime | None = None) -> Datase
         )
 
     sampling = SamplingInfo(
-        exhaustive=all_exact,
+        exhaustive=all_scanned,
         strategy="full",
         rows_scanned=rows_scanned,
-        rows_total=rows_scanned if all_exact else None,
+        rows_total=rows_scanned if all_scanned else None,
         files_scanned=len(data_entries),
         per_file_row_cap=None,
         seed=None,
     )
     return DatasetProfile(
-        content_digest=content_digest(all_entries),
+        # Digest only the files stored as FileRecords, so the profile can recompute its own digest.
+        content_digest=content_digest(data_entries),
         created_at=created_at,
         profiler_info={"name": PROFILER_NAME, "version": PROFILER_VERSION},
         sampling=sampling,

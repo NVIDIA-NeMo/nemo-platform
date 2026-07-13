@@ -153,3 +153,27 @@ def test_implicit_prompt_evidence_from_embedded_transcript():
     result = classify(features, {}, rows)
     assert result.prompt_form == "implicit"
     assert any(e.kind == "content_probe" for e in result.evidence)
+
+
+def test_ground_truth_may_be_a_container_dtype():
+    # test_cases (list) and verification_info (struct) are verification targets, not free text,
+    # so the text-only dtype gate must not drop them.
+    features = [_f("prompt", "string"), _f("test_cases", "list"), _f("verification_info", "struct")]
+    classify(features, {})
+    assert features[1].semantic_role == "ground_truth"
+    assert features[2].semantic_role == "ground_truth"
+
+
+def test_container_ground_truth_drives_verifiability():
+    features = [_f("prompt", "string"), _f("test_cases", "list")]
+    rows = [{"prompt": "q", "test_cases": [{"in": "1", "out": "2"}]}, {"prompt": "q2", "test_cases": []}]
+    result = classify(features, {}, rows)
+    assert result.verifiability.method == "ground_truth_column"
+    assert result.verifiability.coverage == 0.5  # the empty test_cases list is not a usable target
+
+
+def test_bare_scalar_ground_truth_alias_is_still_rejected():
+    # A numeric column named "ground_truth" is far more likely a label/score than a target.
+    features = [_f("ground_truth", "int64")]
+    classify(features, {})
+    assert features[0].semantic_role is None

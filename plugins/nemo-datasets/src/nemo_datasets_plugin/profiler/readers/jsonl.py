@@ -21,7 +21,10 @@ class JsonlReader:
                 stripped = raw_line.strip()
                 if not stripped:  # tolerate blank lines between records
                     continue
-                rows.append(json.loads(stripped))
+                record = json.loads(stripped)
+                if not isinstance(record, dict):
+                    continue  # a record is a column map; skip stray scalars/arrays rather than crash downstream
+                rows.append(record)
                 if row_cap is not None and len(rows) >= row_cap:
                     break
 

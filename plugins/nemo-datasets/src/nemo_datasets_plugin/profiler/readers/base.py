@@ -5,7 +5,9 @@
 
 Each reader is a stateless handler for one on-disk format, safe to reuse across files. Readers are
 looked up by ``file_format`` (from :func:`detect_format`) so the pipeline never branches on format
-itself.
+itself. Built-in readers self-register (a ``register_reader`` call at the bottom of each module) and
+are loaded lazily on the first :func:`get_reader` call, so importing this module does not pull in
+pyarrow until a reader is actually needed.
 """
 
 from __future__ import annotations
@@ -15,7 +17,6 @@ from pathlib import Path
 from typing import Any, ClassVar, Protocol
 
 import pyarrow as pa
-
 from nemo_datasets_plugin.profiler.file_source import FileEntry, FileSource
 
 
@@ -40,6 +41,20 @@ class FormatReader(Protocol):
 
 
 _READERS: dict[str, FormatReader] = {}
+_builtins_loaded = False
+
+
+def _load_builtin_readers() -> None:
+    """Import the built-in reader modules so their self-registration runs (once).
+
+    Deferred to call time — not import time — so there is no cycle with the reader modules that import
+    from this one, and pyarrow stays out of the import graph until a reader is actually resolved.
+    """
+    global _builtins_loaded
+    if _builtins_loaded:
+        return
+    _builtins_loaded = True
+    from nemo_datasets_plugin.profiler.readers import jsonl, parquet  # noqa: F401  self-registering
 
 
 def register_reader(reader: FormatReader) -> None:
@@ -47,6 +62,7 @@ def register_reader(reader: FormatReader) -> None:
 
 
 def get_reader(file_format: str) -> FormatReader:
+    _load_builtin_readers()
     try:
         return _READERS[file_format]
     except KeyError:
