@@ -71,7 +71,10 @@ def _require_services_extra() -> None:
         "Running local platform services needs extra components that aren't installed yet.\n"
         "\n"
         "Install them with:\n"
-        "  pip install 'nemo-platform[all]'\n",
+        "  pip install 'nemo-platform[all]'\n"
+        "\n"
+        "On Python 3.14, use:\n"
+        "  PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 pip install 'nemo-platform[all]'\n",
         err=True,
     )
     raise typer.Exit(1)
