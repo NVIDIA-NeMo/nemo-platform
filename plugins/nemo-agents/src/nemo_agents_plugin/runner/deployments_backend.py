@@ -56,8 +56,9 @@ _NAT_CONFIG_ENV = "NAT_CONFIG_PATH"
 # container and remove the Deployment entity before we drop the DeploymentConfig.
 # Short per-reconcile wait: if the Deployment is still present, return False so
 # the controller keeps AgentDeployment in ``deleting`` and retries next cycle
-# instead of blocking the reconcile loop for tens of seconds.
-_DELETE_CONFIG_WAIT_S = 2.0
+# instead of blocking the reconcile loop for tens of seconds. 5s gives docker
+# SDK round-trips a bit more headroom than a 2s budget.
+_DELETE_CONFIG_WAIT_S = 5.0
 _DELETE_CONFIG_POLL_S = 0.5
 
 # agents lifecycle status  <-  deployments-plugin status
