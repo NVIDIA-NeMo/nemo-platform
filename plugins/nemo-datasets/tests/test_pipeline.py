@@ -112,8 +112,9 @@ def test_profile_parquet_dataset_builds_envelope(tmp_path):
     assert splits["validation"].num_examples == 1
     assert splits["train"].files[0].num_rows == 2
 
-    # Structure envelope only: measurement and classification are stubbed for now.
-    assert partition.features == []
+    # Row schema is derived; stats and classification remain stubbed for now.
+    assert [f.name for f in partition.features] == ["prompt"]
+    assert partition.features[0].dtype == "string"
     assert partition.stats == {}
     assert partition.classification.dataset_type == "unknown"
 

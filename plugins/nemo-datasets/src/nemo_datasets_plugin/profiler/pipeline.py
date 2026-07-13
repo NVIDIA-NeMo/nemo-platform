@@ -5,9 +5,9 @@
 
 ``profile(source)`` lists the files behind a :class:`FileSource`, groups them into partitions and
 splits, reads them, and assembles a ``DatasetProfile``. This stage produces the structural envelope
-— partitions, splits, FileRecords, content digest, and sampling metadata. The row schema, column
-stats, and classification are added by later stages; until then each partition carries empty
-``features`` / ``stats`` and an ``unknown`` classification.
+— partitions, splits, FileRecords, content digest, sampling metadata — and the derived row schema
+(``features``). Column stats and classification are added by later stages; until then each partition
+carries empty ``stats`` and an ``unknown`` classification.
 
 Reads are exhaustive (every row of every file). Sampling large datasets with bounded probes is a
 later, drop-in optimization behind the same reader seam.
@@ -30,6 +30,7 @@ from nemo_datasets_plugin.profiler.digest import content_digest
 from nemo_datasets_plugin.profiler.file_source import FileSource
 from nemo_datasets_plugin.profiler.partition import group_partitions
 from nemo_datasets_plugin.profiler.readers import detect_format, get_reader
+from nemo_datasets_plugin.profiler.schema import derive_features
 from nemo_datasets_plugin.profiler.splits import resolve_splits
 
 PROFILER_NAME = "nemo-dataset-profiler"
@@ -51,6 +52,8 @@ def profile(source: FileSource, *, created_at: datetime | None = None) -> Datase
     all_exact = True
 
     for partition_name, partition_entries in group_partitions(data_entries):
+        partition_rows: list[dict] = []
+        arrow_schema = None
         split_profiles: list[SplitProfile] = []
         for split in resolve_splits(partition_entries):
             file_records: list[FileRecord] = []
@@ -60,11 +63,17 @@ def profile(source: FileSource, *, created_at: datetime | None = None) -> Datase
                 reader = get_reader(detect_format(entry.path))
                 try:
                     result = reader.read(source, entry)
-                    num_rows = result.num_rows
-                    rows_scanned += result.rows_scanned
                 except Exception:
                     # Failure isolation: keep the file's identity, skip its rows, keep going.
+                    result = None
+                if result is None:
                     num_rows = None
+                else:
+                    num_rows = result.num_rows
+                    rows_scanned += result.rows_scanned
+                    partition_rows.extend(result.rows)
+                    if arrow_schema is None:
+                        arrow_schema = result.arrow_schema
                 file_records.append(
                     FileRecord(
                         path=entry.path,
@@ -91,7 +100,7 @@ def profile(source: FileSource, *, created_at: datetime | None = None) -> Datase
                 name=partition_name,
                 file_format=detect_format(partition_entries[0].path),
                 splits=split_profiles,
-                features=[],
+                features=derive_features(partition_rows, arrow_schema),
                 stats={},
                 classification=PartitionClassification(dataset_type="unknown"),
             )
