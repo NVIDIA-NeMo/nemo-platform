@@ -16,14 +16,6 @@ API_TOP_LEVEL_ENTRIES = (
         hidden=True,
     ),
     TopLevelEntry(
-        import_path=f"{__package__}.evaluations:app",
-        name="evaluations",
-        help="Manage evaluations",
-        panel="Core plugins",
-        kind="group",
-        hidden=False,
-    ),
-    TopLevelEntry(
         import_path=f"{__package__}.files:app",
         name="files",
         help="Manage files.",

@@ -283,7 +283,7 @@ config:
 
 # Experiments are in the OpenAPI spec and SDK (for the frontend) but not yet exposed
 # as CLI commands; drop the skip once the feature is production-ready.
-- resource: [experiments]
+- resource: [evaluations]
   skip: true
 
 - resource: [experiment_groups]
