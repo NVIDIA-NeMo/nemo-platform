@@ -9,5 +9,6 @@ later commits — measures and classifies them into a ``DatasetProfile``.
 """
 
 from nemo_datasets_plugin.profiler.file_source import FileEntry, FileSource, LocalFileSource
+from nemo_datasets_plugin.profiler.pipeline import profile
 
-__all__ = ["FileEntry", "FileSource", "LocalFileSource"]
+__all__ = ["FileEntry", "FileSource", "LocalFileSource", "profile"]
