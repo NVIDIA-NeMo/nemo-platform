@@ -5,9 +5,9 @@
 
 ``profile(source)`` lists the files behind a :class:`FileSource`, groups them into partitions and
 splits, reads them, and assembles a ``DatasetProfile``. This stage produces the structural envelope
-— partitions, splits, FileRecords, content digest, sampling metadata — and the derived row schema
-(``features``). Column stats and classification are added by later stages; until then each partition
-carries empty ``stats`` and an ``unknown`` classification.
+— partitions, splits, FileRecords, content digest, sampling metadata — the derived row schema
+(``features``), and per-column ``stats``. Classification is added by a later stage; until then each
+partition carries an ``unknown`` classification.
 
 Reads are exhaustive (every row of every file). Sampling large datasets with bounded probes is a
 later, drop-in optimization behind the same reader seam.
@@ -32,6 +32,7 @@ from nemo_datasets_plugin.profiler.partition import group_partitions
 from nemo_datasets_plugin.profiler.readers import detect_format, get_reader
 from nemo_datasets_plugin.profiler.schema import derive_features
 from nemo_datasets_plugin.profiler.splits import resolve_splits
+from nemo_datasets_plugin.profiler.stats import derive_stats
 
 PROFILER_NAME = "nemo-dataset-profiler"
 PROFILER_VERSION = "0.1.0"
@@ -54,6 +55,7 @@ def profile(source: FileSource, *, created_at: datetime | None = None) -> Datase
     for partition_name, partition_entries in group_partitions(data_entries):
         partition_rows: list[dict] = []
         arrow_schema = None
+        partition_exact = True
         split_profiles: list[SplitProfile] = []
         for split in resolve_splits(partition_entries):
             file_records: list[FileRecord] = []
@@ -87,6 +89,7 @@ def profile(source: FileSource, *, created_at: datetime | None = None) -> Datase
                 else:
                     split_examples += num_rows
             all_exact = all_exact and split_exact
+            partition_exact = partition_exact and split_exact
             split_profiles.append(
                 SplitProfile(
                     name=split.name,
@@ -95,13 +98,14 @@ def profile(source: FileSource, *, created_at: datetime | None = None) -> Datase
                     num_examples=split_examples if split_exact else None,
                 )
             )
+        features = derive_features(partition_rows, arrow_schema)
         partitions.append(
             PartitionProfile(
                 name=partition_name,
                 file_format=detect_format(partition_entries[0].path),
                 splits=split_profiles,
-                features=derive_features(partition_rows, arrow_schema),
-                stats={},
+                features=features,
+                stats=derive_stats(features, partition_rows, exhaustive=partition_exact),
                 classification=PartitionClassification(dataset_type="unknown"),
             )
         )
