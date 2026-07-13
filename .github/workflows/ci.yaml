@@ -1087,9 +1087,18 @@ jobs:
             exit 1
           fi
           WHEEL="${wheels[0]}"
-          uv tool install --force --python "${PYTHON_VERSION}" "${WHEEL}[services]"
+          # Supply-chain: partial-pin the wheel's direct external deps to a committed constraints
+          # file (deep transitives resolve normally, so they stay py3.14-compatible and can't
+          # self-conflict), and cap the litellm transitive whose 1.92.0 native build has no py3.14
+          # wheel. Regenerate with script/compile-wheel-constraints.sh.
+          VENV="${RUNNER_TEMP}/wheelcheck/.venv"
+          uv venv "${VENV}" --python "${PYTHON_VERSION}"
+          uv pip install --python "${VENV}/bin/python" \
+            --constraint "${GITHUB_WORKSPACE}/.github/wheel-constraints/nemo-platform-services.txt" \
+            "${WHEEL}[services]"
           cd "${RUNNER_TEMP}/wheelcheck"
           unset PYTHONPATH VIRTUAL_ENV
+          export PATH="${VENV}/bin:${PATH}"
           bash "${GITHUB_WORKSPACE}/script/test-nemo-cli.sh"
 
       - name: Install + test nemo-platform-plugin
@@ -1106,9 +1115,13 @@ jobs:
             exit 1
           fi
           WHEEL="${wheels[0]}"
+          # Supply-chain: partial-pin direct external deps via a committed constraints file
+          # (see the nemo-platform CLI step above).
           cd "${RUNNER_TEMP}/wheelcheck"
           uv venv .venv --python "${PYTHON_VERSION}"
-          uv pip install --python .venv/bin/python "${WHEEL}"
+          uv pip install --python .venv/bin/python \
+            --constraint "${GITHUB_WORKSPACE}/.github/wheel-constraints/nemo-platform-plugin.txt" \
+            "${WHEEL}"
           unset PYTHONPATH VIRTUAL_ENV
           # Import the package + a couple of representative submodules
           # (cli, commands). These are the surfaces a plugin author would
