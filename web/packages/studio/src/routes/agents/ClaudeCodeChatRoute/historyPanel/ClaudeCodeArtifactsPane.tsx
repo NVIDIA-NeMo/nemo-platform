@@ -30,7 +30,10 @@ export const ClaudeCodeArtifactsPane = ({
   const selectedModel = artifacts ? getSelectedArtifactModel(artifacts) : undefined;
 
   return (
-    <section className="flex min-h-0 basis-1/2 flex-col border-b border-base">
+    <section
+      aria-label="Chat artifacts"
+      className="flex min-h-0 basis-1/2 shrink-0 flex-col overflow-hidden rounded border border-base bg-surface-base dark:bg-surface-raised"
+    >
       <Flex
         align="center"
         justify="between"

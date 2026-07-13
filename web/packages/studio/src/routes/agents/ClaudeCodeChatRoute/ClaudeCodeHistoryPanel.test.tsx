@@ -35,7 +35,8 @@ describe('ClaudeCodeHistoryPanel', () => {
     ]);
   });
 
-  it('renders history and skills segmented controls', () => {
+  it('starts history and skills collapsed and expands them independently', async () => {
+    const user = userEvent.setup();
     render(
       <ClaudeCodeHistoryPanel
         activeSessionId="session-1"
@@ -44,9 +45,32 @@ describe('ClaudeCodeHistoryPanel', () => {
       />
     );
 
-    expect(screen.getByRole('radio', { name: 'History' })).toBeChecked();
-    expect(screen.getByRole('radio', { name: 'Skills' })).not.toBeChecked();
+    const historyButton = screen.getByRole('button', { name: 'Expand Chat history' });
+    const skillsButton = screen.getByRole('button', { name: 'Expand Skills' });
+    expect(historyButton).toHaveAttribute('aria-expanded', 'false');
+    expect(skillsButton).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('button', { name: 'New chat' })).not.toBeInTheDocument();
+
+    await user.click(historyButton);
+
+    expect(screen.getByRole('button', { name: 'Collapse Chat history' })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+    expect(skillsButton).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByRole('button', { name: 'New chat' })).toBeInTheDocument();
+
+    await user.click(skillsButton);
+
+    expect(screen.getByRole('button', { name: 'Expand Chat history' })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+    expect(screen.getByRole('button', { name: 'Collapse Skills' })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+    expect(screen.queryByRole('button', { name: 'New chat' })).not.toBeInTheDocument();
   });
 
   it('renders history sessions and keeps selection working', async () => {
@@ -80,6 +104,8 @@ describe('ClaudeCodeHistoryPanel', () => {
       />
     );
 
+    await user.click(screen.getByRole('button', { name: 'Expand Chat history' }));
+
     expect(await screen.findByText('Review the latest agent work')).toBeInTheDocument();
     expect(screen.getByText('Bash')).toBeInTheDocument();
 
@@ -91,6 +117,7 @@ describe('ClaudeCodeHistoryPanel', () => {
   });
 
   it('shows the summarized title while preserving the full first prompt in the tooltip', async () => {
+    const user = userEvent.setup();
     const firstPrompt = 'I want to create an agent that does spam detection for incoming email.';
     mocks.listClaudeCodeHistorySessions.mockResolvedValue([
       {
@@ -119,6 +146,8 @@ describe('ClaudeCodeHistoryPanel', () => {
         onSelectSession={vi.fn()}
       />
     );
+
+    await user.click(screen.getByRole('button', { name: 'Expand Chat history' }));
 
     const sessionButton = await screen.findByRole('button', {
       name: 'Create Spam Detector Agent now',
@@ -152,6 +181,14 @@ describe('ClaudeCodeHistoryPanel', () => {
     );
 
     expect(screen.getByText('Jobs')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Chat artifacts' })).toHaveClass(
+      'overflow-hidden',
+      'rounded',
+      'border',
+      'shrink-0',
+      'bg-surface-base',
+      'dark:bg-surface-raised'
+    );
     expect(screen.queryByText('Workspace')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /agent-eval-1/ })).toHaveAttribute(
       'href',
@@ -180,7 +217,7 @@ describe('ClaudeCodeHistoryPanel', () => {
     expect(screen.getByText('No artifacts yet')).toBeInTheDocument();
   });
 
-  it('lists Claude Code skills in the skills tab', async () => {
+  it('lists Claude Code skills in the expanded skills block', async () => {
     const user = userEvent.setup();
     render(
       <ClaudeCodeHistoryPanel
@@ -190,7 +227,7 @@ describe('ClaudeCodeHistoryPanel', () => {
       />
     );
 
-    await user.click(screen.getByRole('radio', { name: 'Skills' }));
+    await user.click(screen.getByRole('button', { name: 'Expand Skills' }));
 
     expect(await screen.findByText('Inference')).toBeInTheDocument();
     expect(screen.getByText('Use NeMo Platform inference.')).toBeInTheDocument();
