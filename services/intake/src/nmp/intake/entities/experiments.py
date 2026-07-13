@@ -10,11 +10,21 @@ views. Rollups are derived from ClickHouse at read time.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Any, ClassVar
 
 from nmp.common.entities.client import EntityBase
 from pydantic import AnyUrl, Field, field_validator
+
+
+def _stringify_metadata(value: Any) -> Any:
+    """Schema-on-read coercion for ``metadata``, which tightened from ``dict[str, Any]`` to
+    ``dict[str, str]``. Legacy rows may hold non-string values; stringify them (JSON-encoding
+    structured values) so old rows still read. Non-dict values pass through for pydantic to handle."""
+    if not isinstance(value, dict):
+        return value
+    return {key: val if isinstance(val, str) else json.dumps(val) for key, val in value.items()}
 
 
 class ExperimentGroup(EntityBase):
@@ -31,7 +41,13 @@ class ExperimentGroup(EntityBase):
         description="Reference to an external insight that seeded this group, if any.",
     )
     summary: str | None = Field(default=None, description="Human- or agent-authored summary of the group's findings.")
-    metadata: dict[str, Any] | None = Field(default=None, description="Free-form producer metadata for the group.")
+    metadata: dict[str, str] | None = Field(default=None, description="Free-form producer metadata for the group.")
+
+    @field_validator("metadata", mode="before")
+    @classmethod
+    def _coerce_metadata(cls, value: Any) -> Any:
+        return _stringify_metadata(value)
+
     default_sort: str = Field(
         default="-created_at",
         description=(
@@ -78,10 +94,15 @@ class Experiment(EntityBase):
     dataset_version: str | None = Field(default=None, description="Producer-supplied dataset version.")
     source_link: AnyUrl | None = Field(default=None, description="Optional URL for the source experiment.")
 
-    metadata: dict[str, Any] = Field(
+    metadata: dict[str, str] = Field(
         default_factory=dict,
         description="Free-form producer metadata (config snapshot, domain-specific attributes, etc.).",
     )
+
+    @field_validator("metadata", mode="before")
+    @classmethod
+    def _coerce_metadata(cls, value: Any) -> Any:
+        return _stringify_metadata(value)
 
     description: str | None = Field(default=None, description="Human-readable description of the experiment.")
 

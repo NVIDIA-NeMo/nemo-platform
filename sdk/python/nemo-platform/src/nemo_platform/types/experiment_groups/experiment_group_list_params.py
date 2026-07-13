@@ -28,7 +28,10 @@ class ExperimentGroupListParams(TypedDict, total=False):
     workspace: str
 
     filter: ExperimentGroupFilterParam
-    """Filter experiment groups by name."""
+    """
+    Filter experiment groups by name, or by a metadata key/value:
+    filter[metadata.<key>]=<value>.
+    """
 
     page: int
     """Page number."""

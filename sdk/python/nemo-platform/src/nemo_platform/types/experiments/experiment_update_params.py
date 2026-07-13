@@ -46,7 +46,7 @@ class ExperimentUpdateParams(TypedDict, total=False):
     description: str
     """Human-readable description."""
 
-    metadata: Dict[str, object]
+    metadata: Dict[str, str]
     """Free-form producer metadata."""
 
     parent_experiment_id: str
