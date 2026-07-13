@@ -214,6 +214,7 @@ models-service = [
   "kubernetes>=31.0.0",
   "urllib3>=2.7.0",
   "nmp-common",
+  "nemo-platform-plugin",
   "docker>=7.1.0",
   "tenacity>=8.5.0",
 ]

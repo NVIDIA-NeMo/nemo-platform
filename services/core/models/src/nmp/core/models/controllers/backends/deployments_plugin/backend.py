@@ -4,6 +4,7 @@
 """Models ServiceBackend backed by nemo-deployments plugin entities."""
 
 import asyncio
+import logging
 import time
 from typing import Any
 
@@ -21,7 +22,10 @@ from nmp.core.models.controllers.backends.deployments_plugin.executor import exe
 from nmp.core.models.controllers.backends.deployments_plugin.naming import entity_names
 from nmp.core.models.controllers.backends.deployments_plugin.resolve import resolve_plugin_deployment
 from nmp.core.models.controllers.backends.deployments_plugin.status import aggregate_status
+from nmp.core.models.controllers.backends.engine import ENGINE_GENERIC, config_engine
 from nmp.core.models.controllers.context import ModelContext
+
+logger = logging.getLogger(__name__)
 
 _DEPLOYMENT_WORKSPACE_LABEL = "nmp.nvidia.com/deployment-workspace"
 _DEPLOYMENT_NAME_LABEL = "nmp.nvidia.com/deployment-name"
@@ -64,6 +68,18 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
         if resolved.runtime == Runtime.NONE:
             return DeploymentStatusUpdate(
                 status="UNKNOWN", status_message="Deployments plugin is unavailable for runtime none."
+            )
+        lora_enabled = resolved.view.lora_enabled and config_engine(resolved.config) != ENGINE_GENERIC
+        if resolved.runtime == Runtime.DOCKER and lora_enabled:
+            # Fail fast: the plugin docker runtime is single-container today, so a
+            # LoRA deployment (server + adapters sidecar) cannot run there yet.
+            return DeploymentStatusUpdate(
+                status="ERROR",
+                status_message=(
+                    "LoRA serving is not supported on the docker runtime yet "
+                    "(deployments-plugin docker is single-container). Deploy LoRA "
+                    "models on the kubernetes runtime instead."
+                ),
             )
         teardown = await self.delete_model_deployment(resolved.deployment.workspace, resolved.deployment.name)
         if teardown.status == "DELETING":
@@ -123,7 +139,13 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
         try:
             await self.delete_model_deployment(ctx.model_deployment.workspace, ctx.model_deployment.name)
         except Exception:
-            pass
+            logger.warning(
+                "Failed to roll back deployments-plugin substrate for %s/%s after a create failure; "
+                "orphaned entities may remain",
+                ctx.model_deployment.workspace,
+                ctx.model_deployment.name,
+                exc_info=True,
+            )
 
     async def get_model_deployment_status(self, ctx: ModelContext) -> DeploymentStatusUpdate:
         if ctx.model_deployment is None:

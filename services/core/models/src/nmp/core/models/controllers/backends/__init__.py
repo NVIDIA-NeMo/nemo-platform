@@ -4,7 +4,6 @@
 """Backends package for Models Controller service."""
 
 from .backends import ServiceBackend as ServiceBackend
-from .deployments_plugin import DeploymentsPluginServiceBackend as DeploymentsPluginServiceBackend
 from .docker import DockerServiceBackend as DockerServiceBackend
 from .k8s_nim_operator import K8sNimOperatorServiceBackend as K8sNimOperatorServiceBackend
 from .registry import BackendRegistry as BackendRegistry

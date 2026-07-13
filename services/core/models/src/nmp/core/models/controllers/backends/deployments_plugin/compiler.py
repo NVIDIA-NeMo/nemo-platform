@@ -222,8 +222,10 @@ def compile_model_deployment(
         )
         if resolved.runtime == Runtime.DOCKER:
             # Docker v1 is single-container today; emit a second container so the
-            # shape matches the locked design. Create will ERROR until the plugin
-            # docker backend accepts multi-container DeploymentConfigs.
+            # shape matches the locked design for when the plugin docker backend
+            # accepts multi-container DeploymentConfigs. In practice the backend
+            # fails fast on docker + LoRA before reaching create (see
+            # DeploymentsPluginServiceBackend.create_model_deployment).
             server_config_containers = [server, lora]
         else:
             server_config_containers = [server]

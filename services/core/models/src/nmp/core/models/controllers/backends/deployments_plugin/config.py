@@ -28,8 +28,8 @@ class DeploymentsPluginConfig(BaseModel):
         default_factory=lambda: ["nemo", "services", "run", "--sidecars", "adapters"]
     )
     lora_sidecar_args: list[str] = Field(default_factory=list)
-    delete_wait_seconds: float = 5.0
-    delete_poll_seconds: float = 0.5
+    delete_wait_seconds: float = Field(default=5.0, gt=0)
+    delete_poll_seconds: float = Field(default=0.5, gt=0)
 
 
 class DeploymentsPluginBackendConfigModel(DeploymentsPluginConfig):

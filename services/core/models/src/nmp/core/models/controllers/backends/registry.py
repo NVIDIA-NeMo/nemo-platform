@@ -8,10 +8,12 @@ from typing import Dict, Self, Union
 
 from nemo_platform import AsyncNeMoPlatform
 from nmp.core.models.controllers.backends.backends import ServiceBackend
-from nmp.core.models.controllers.backends.deployments_plugin import (
-    DeploymentsPluginBackendConfigModel,
-    DeploymentsPluginServiceBackend,
-)
+
+# NOTE: import the config model from the plugin-free `config` module (not the
+# package __init__) so the registry does not eagerly import the optional
+# `nemo_deployments_plugin` dependency. The backend class itself is resolved
+# lazily in `from_config` only when the deployments_plugin backend is selected.
+from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginBackendConfigModel
 from nmp.core.models.controllers.backends.docker import DockerBackendConfig as DockerConfig
 from nmp.core.models.controllers.backends.docker import DockerServiceBackend
 from nmp.core.models.controllers.backends.k8s_nim_operator import K8sNimOperatorConfig, K8sNimOperatorServiceBackend
@@ -51,13 +53,33 @@ BackendConfig = Union[
 # Type alias for the backend name
 BackendName = str
 
-# Global registry of available backend implementations
+# Global registry of always-importable backend implementations. The
+# `deployments_plugin` backend is intentionally excluded here because it imports
+# the optional `nemo_deployments_plugin` package; it is resolved lazily by
+# `_resolve_backend_class` when selected.
 backend_classes: Dict[BackendName, type[ServiceBackend]] = {
     "docker": DockerServiceBackend,
     "nim_operator": K8sNimOperatorServiceBackend,
-    "deployments_plugin": DeploymentsPluginServiceBackend,
     "none": NoneServiceBackend,
 }
+
+# Backends whose implementation lives behind an optional dependency and must be
+# imported lazily.
+_LAZY_BACKEND_NAMES = frozenset({"deployments_plugin"})
+
+
+def _resolve_backend_class(
+    name: BackendName, available_backends: Dict[BackendName, type[ServiceBackend]]
+) -> type[ServiceBackend]:
+    """Return the backend class for ``name``, importing optional backends lazily."""
+    if name in available_backends:
+        return available_backends[name]
+    if name == "deployments_plugin":
+        from nmp.core.models.controllers.backends.deployments_plugin import DeploymentsPluginServiceBackend
+
+        return DeploymentsPluginServiceBackend
+    available = ", ".join(sorted({*available_backends, *_LAZY_BACKEND_NAMES}))
+    raise KeyError(f"Unknown backend '{name}'. Available backends: {available}")
 
 
 class BackendRegistry:
@@ -125,11 +147,7 @@ class BackendRegistry:
         registry: Dict[BackendName, ServiceBackend] = {}
 
         for backend_name, backend_config in enabled_backends.items():
-            if backend_name not in available_backends:
-                available = ", ".join(available_backends.keys())
-                raise KeyError(f"Unknown backend '{backend_name}'. Available backends: {available}")
-
-            backend_class = available_backends[backend_name]
+            backend_class = _resolve_backend_class(backend_name, available_backends)
 
             logger.info(f"Initializing backend: {backend_name}")
             config_dict = backend_config.model_dump(exclude={"enabled"})

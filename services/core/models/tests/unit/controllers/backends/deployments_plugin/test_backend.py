@@ -112,6 +112,42 @@ async def test_create_order_volume_puller_server_with_prerequisite() -> None:
     assert server_dep.prerequisites[0].condition == "succeeded"
 
 
+def _resolved_docker_lora() -> ResolvedPluginDeployment:
+    return ResolvedPluginDeployment(
+        deployment=SimpleNamespace(name="my-dep", workspace="default"),
+        config=SimpleNamespace(engine="vllm"),
+        model_entity=None,
+        view=DeploymentConfigView(model_namespace="org", model_name="model", lora_enabled=True),
+        weights_type=ModelWeightsType.FILES_SERVICE,
+        model_namespace="org",
+        model_name="model",
+        model_revision=None,
+        files_hf_url="http://files/hf",
+        huggingface_model_puller="puller:latest",
+        runtime=Runtime.DOCKER,
+    )
+
+
+@pytest.mark.asyncio
+async def test_docker_lora_fails_fast_before_touching_substrate() -> None:
+    backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
+    backend.init()
+    backend._entities = AsyncMock()
+    with (
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.backend.resolve_plugin_deployment",
+            return_value=_resolved_docker_lora(),
+        ),
+        patch.object(backend, "delete_model_deployment", AsyncMock()) as delete_mock,
+    ):
+        result = await backend.create_model_deployment(_ctx())
+    assert result.status == "ERROR"
+    assert "docker" in result.status_message.lower()
+    assert "lora" in result.status_message.lower()
+    delete_mock.assert_not_called()
+    backend._entities.create.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_create_waits_when_prior_teardown_incomplete() -> None:
     backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")

@@ -44,6 +44,26 @@ def _substrate(entity: Deployment | Volume | None) -> dict[str, Any] | None:
     }
 
 
+# Substrate statuses that must not silently fall through to PENDING: FAILED/LOST
+# are terminal (the dependent server Deployment can never satisfy its
+# prerequisite), and UNKNOWN is indeterminate. Surfacing them avoids reporting a
+# healthy-looking PENDING over a dead prerequisite.
+_ATTENTION_SUBSTRATE_STATUSES = frozenset({"FAILED", "LOST", "UNKNOWN"})
+
+
+def _substrate_issue(
+    entity: Deployment | Volume | None, label: str, substrate: dict[str, Any]
+) -> DeploymentStatusUpdate | None:
+    if entity is None or entity.status not in _ATTENTION_SUBSTRATE_STATUSES:
+        return None
+    status: ModelDeploymentStatus = "UNKNOWN" if entity.status == "UNKNOWN" else "ERROR"
+    return DeploymentStatusUpdate(
+        status=status,
+        status_message=entity.status_message or f"{label} is {entity.status}.",
+        error_details={"substrate": substrate},
+    )
+
+
 def aggregate_status(
     volume: Volume | None,
     puller: Deployment | None,
@@ -67,18 +87,11 @@ def aggregate_status(
             status_message="Serving deployment is missing after reporting READY.",
             error_details={"substrate": substrate},
         )
-    if puller is not None and puller.status == "FAILED":
-        return DeploymentStatusUpdate(
-            status="ERROR",
-            status_message=puller.status_message or "Weight puller failed.",
-            error_details={"substrate": substrate},
-        )
-    if volume is not None and volume.status == "FAILED":
-        return DeploymentStatusUpdate(
-            status="ERROR",
-            status_message=volume.status_message or "Weights volume failed.",
-            error_details={"substrate": substrate},
-        )
+    issue = _substrate_issue(puller, "Weight puller", substrate) or _substrate_issue(
+        volume, "Weights volume", substrate
+    )
+    if issue is not None:
+        return issue
     return DeploymentStatusUpdate(
         status="PENDING",
         status_message="Waiting for deployments-plugin substrate resources.",
