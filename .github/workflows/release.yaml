@@ -701,8 +701,10 @@ jobs:
 
       - name: Report packaged Helm chart
         if: needs.plan-release.outputs.dry_run == 'true'
+        env:
+          CHART_PACKAGE: ${{ steps.package.outputs.chart_package }}
         run: |
-          echo "::notice::Dry run: packaged ${{ steps.package.outputs.chart_package }}"
+          echo "::notice::Dry run: packaged ${CHART_PACKAGE}"
 
       - name: Push nightly Helm chart to GHCR
         if: >-
