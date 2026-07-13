@@ -75,8 +75,7 @@ def nss_model_filesets(sdk: NeMoPlatform, _services: str) -> None:
     )
     if result.returncode != 0:
         pytest.fail(
-            "Failed to register Safe Synthesizer model filesets\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+            f"Failed to register Safe Synthesizer model filesets\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
 
 
