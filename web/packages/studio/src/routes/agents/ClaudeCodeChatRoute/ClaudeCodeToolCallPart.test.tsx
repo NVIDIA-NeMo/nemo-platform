@@ -68,7 +68,9 @@ const expectSubtleToolBlock = (subtleBlock: HTMLElement) => {
   expect(subtleBlock).toHaveClass(
     'my-density-xs',
     'flex',
+    'w-full',
     'max-w-full',
+    'overflow-hidden',
     'flex-wrap',
     'items-center',
     'gap-x-density-sm',
@@ -313,6 +315,13 @@ describe('ClaudeCodeToolCallPart', () => {
     expect(screen.getByTestId('claude-code-tool-call-invocation')).toHaveTextContent(
       'pnpm --filter nemo-studio-ui test'
     );
+    expect(screen.getByTestId('claude-code-tool-call-invocation-surface')).toHaveClass(
+      'w-full',
+      'min-w-0',
+      'max-w-full',
+      'overflow-auto',
+      'break-words'
+    );
 
     await user.click(screen.getByRole('button', { name: 'Copy invocation' }));
 
@@ -429,12 +438,27 @@ describe('ClaudeCodeToolCallPart', () => {
     expect(
       within(nestedInvocations[0]!).getByTestId('claude-code-tool-call-invocation')
     ).not.toBeVisible();
+    const readDetails = screen.getAllByTestId('claude-code-tool-call-subtle-details')[1]!;
+    expect(readDetails).not.toHaveAttribute('open');
+
+    await user.click(screen.getByText('Read 2 files'));
+
+    expect(readDetails).toHaveAttribute('open');
+    expect(
+      within(readDetails)
+        .getAllByTestId('claude-code-tool-call-subtle-detail-item')
+        .map((item) => item.textContent)
+    ).toEqual(['README.md', 'package.json']);
+    expect(
+      within(readDetails).queryByTestId('claude-code-tool-call-nested-invocation')
+    ).not.toBeInTheDocument();
+    expect(
+      within(readDetails).queryByTestId('claude-code-tool-call-invocation')
+    ).not.toBeInTheDocument();
     expect(screen.getAllByTestId('claude-code-tool-call-subtle-detail-item')).toHaveLength(7);
   });
 
-  it('renders Read as subtle text with the full invocation behind a disclosure', async () => {
-    const user = userEvent.setup();
-
+  it('renders Read as summary-only subtle text', () => {
     render(
       <ClaudeCodeToolCallPart
         addResult={vi.fn()}
@@ -452,15 +476,8 @@ describe('ClaudeCodeToolCallPart', () => {
     expect(readBlock).toHaveTextContent('Read App.tsx');
     expect(readBlock.tagName).toBe('DIV');
     expectSubtleToolBlock(readBlock);
-    const disclosure = screen.getByTestId('claude-code-tool-call-subtle-details');
-    expect(disclosure).not.toHaveAttribute('open');
-
-    await user.click(screen.getByText('Read App.tsx'));
-
-    expect(disclosure).toHaveAttribute('open');
-    expect(screen.getByTestId('claude-code-tool-call-invocation')).toHaveTextContent(
-      '"file_path": "web/packages/studio/src/App.tsx"'
-    );
+    expect(screen.queryByTestId('claude-code-tool-call-subtle-details')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('claude-code-tool-call-invocation')).not.toBeInTheDocument();
   });
 
   it('renders running subtle tool text without special color or animation', () => {

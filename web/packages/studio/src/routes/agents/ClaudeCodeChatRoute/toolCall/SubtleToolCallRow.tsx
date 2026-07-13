@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Text } from '@nvidia/foundations-react-core';
+import { Flex, Text } from '@nvidia/foundations-react-core';
 import { CODE_BLOCK_SURFACE_CLASS } from '@studio/routes/agents/ClaudeCodeChatRoute/toolCall/constants';
 import { summarizeRepeatedSubtleToolActions } from '@studio/routes/agents/ClaudeCodeChatRoute/toolCall/helpers';
 import type { SubtleToolAction } from '@studio/routes/agents/ClaudeCodeChatRoute/toolCall/types';
@@ -29,12 +29,13 @@ const InvocationPanel = ({
   invocationIndex,
   toolCallId,
 }: InvocationPanelProps) => (
-  <div
-    className="min-w-0"
+  <Flex
+    direction="col"
+    className="w-full min-w-0 max-w-full overflow-hidden"
     data-testid="claude-code-tool-call-invocation"
     id={`${toolCallId}-invocation-${invocationIndex}`}
   >
-    <div className="relative">
+    <Flex direction="col" className="relative w-full min-w-0 max-w-full">
       <button
         aria-label={`Copy invocation${invocationCount === 1 ? '' : ` ${invocationIndex + 1}`}`}
         className="absolute right-density-xs top-density-xs z-10 rounded p-0.5 hover:bg-surface-sunken"
@@ -45,18 +46,19 @@ const InvocationPanel = ({
         <Copy aria-hidden className="size-3.5" />
       </button>
       <pre
-        className={`max-h-72 overflow-auto whitespace-pre-wrap break-words rounded ${CODE_BLOCK_SURFACE_CLASS} p-density-sm pr-density-xl text-xs leading-relaxed text-secondary`}
+        className={`max-h-72 w-full min-w-0 max-w-full overflow-auto whitespace-pre-wrap break-words rounded ${CODE_BLOCK_SURFACE_CLASS} p-density-sm pr-density-xl text-xs leading-relaxed text-secondary`}
+        data-testid="claude-code-tool-call-invocation-surface"
       >
         <code data-testid="claude-code-tool-call-invocation-content">{invocation}</code>
       </pre>
-    </div>
-  </div>
+    </Flex>
+  </Flex>
 );
 
 export const SubtleToolCallRow = ({ actions }: SubtleToolCallRowProps) => (
   <Text asChild kind="body/regular/sm">
     <div
-      className="my-density-xs flex max-w-full flex-wrap items-center gap-x-density-sm gap-y-density-xs rounded border border-base border-l-2 border-l-[var(--border-color-accent-blue)] bg-[color-mix(in_srgb,var(--background-color-accent-blue-subtle)_38%,var(--background-color-surface-base))] px-density-sm py-density-xs text-secondary"
+      className="my-density-xs flex w-full max-w-full flex-wrap items-center gap-x-density-sm gap-y-density-xs overflow-hidden rounded border border-base border-l-2 border-l-[var(--border-color-accent-blue)] bg-[color-mix(in_srgb,var(--background-color-accent-blue-subtle)_38%,var(--background-color-surface-base))] px-density-sm py-density-xs text-secondary"
       data-testid="claude-code-tool-call-subtle"
       title={actions.map((action) => action.title ?? action.message).join(' | ')}
     >
@@ -65,16 +67,18 @@ export const SubtleToolCallRow = ({ actions }: SubtleToolCallRowProps) => (
         const key = `${action.toolCallId}-${index}`;
 
         const invocations = action.invocations ?? [action.invocation];
+        const isExpandable =
+          Boolean(action.details?.length) || (action.toolName !== 'Read' && invocations.length > 0);
 
-        if (action.details?.length || invocations.length) {
+        if (isExpandable) {
           return (
             <details
               key={key}
-              className="group/subtle max-w-full basis-full"
+              className="group/subtle w-full min-w-0 max-w-full basis-full overflow-hidden"
               data-testid="claude-code-tool-call-subtle-details"
             >
               <summary
-                className="inline-flex basis-full cursor-pointer list-none items-center gap-density-xs marker:hidden"
+                className="inline-flex w-full min-w-0 max-w-full basis-full cursor-pointer list-none items-center gap-density-xs overflow-hidden marker:hidden"
                 data-testid="claude-code-tool-call-subtle-action"
               >
                 <ChevronRight
@@ -89,52 +93,67 @@ export const SubtleToolCallRow = ({ actions }: SubtleToolCallRowProps) => (
                 <span className="min-w-0 truncate">{action.message}</span>
               </summary>
               {action.details?.length ? (
-                <div
-                  className="mt-0.5 max-w-full space-y-0.5 pl-7"
+                <Flex
+                  direction="col"
+                  className="mt-0.5 w-full min-w-0 max-w-full space-y-0.5 overflow-hidden pl-7"
                   data-testid="claude-code-tool-call-subtle-detail-list"
                 >
-                  {action.details.map((detail, detailIndex) => {
-                    const invocation = invocations[detailIndex];
-                    if (!invocation) return null;
-
-                    return (
-                      <details
-                        key={`${action.toolCallId}-${detailIndex}`}
-                        className="group/invocation min-w-0"
-                        data-testid="claude-code-tool-call-nested-invocation"
-                      >
-                        <summary
-                          className="flex cursor-pointer list-none items-center gap-density-xs py-0.5 marker:hidden"
+                  {action.toolName === 'Read'
+                    ? action.details.map((detail, detailIndex) => (
+                        <span
+                          key={`${action.toolCallId}-${detailIndex}`}
+                          className="block min-w-0 max-w-full truncate py-0.5"
                           data-testid="claude-code-tool-call-subtle-detail-item"
                           title={detail}
                         >
-                          <span className="min-w-0 truncate">{detail}</span>
-                          <ChevronRight
-                            aria-hidden
-                            className="size-3 shrink-0 transition-transform group-open/invocation:rotate-90"
-                          />
-                        </summary>
-                        <div className="mt-density-xs pl-density-sm">
-                          <InvocationPanel
-                            invocation={invocation}
-                            invocationCount={invocations.length}
-                            invocationIndex={detailIndex}
-                            toolCallId={action.toolCallId}
-                          />
-                        </div>
-                      </details>
-                    );
-                  })}
-                </div>
+                          {detail}
+                        </span>
+                      ))
+                    : action.details.map((detail, detailIndex) => {
+                        const invocation = invocations[detailIndex];
+                        if (!invocation) return null;
+
+                        return (
+                          <details
+                            key={`${action.toolCallId}-${detailIndex}`}
+                            className="group/invocation w-full min-w-0 max-w-full overflow-hidden"
+                            data-testid="claude-code-tool-call-nested-invocation"
+                          >
+                            <summary
+                              className="flex w-full min-w-0 max-w-full cursor-pointer list-none items-center gap-density-xs overflow-hidden py-0.5 marker:hidden"
+                              data-testid="claude-code-tool-call-subtle-detail-item"
+                              title={detail}
+                            >
+                              <span className="min-w-0 truncate">{detail}</span>
+                              <ChevronRight
+                                aria-hidden
+                                className="size-3 shrink-0 transition-transform group-open/invocation:rotate-90"
+                              />
+                            </summary>
+                            <Flex
+                              direction="col"
+                              className="mt-density-xs w-full min-w-0 max-w-full pl-density-sm"
+                            >
+                              <InvocationPanel
+                                invocation={invocation}
+                                invocationCount={invocations.length}
+                                invocationIndex={detailIndex}
+                                toolCallId={action.toolCallId}
+                              />
+                            </Flex>
+                          </details>
+                        );
+                      })}
+                </Flex>
               ) : (
-                <div className="mt-density-xs pl-7">
+                <Flex direction="col" className="mt-density-xs w-full min-w-0 max-w-full pl-7">
                   <InvocationPanel
                     invocation={invocations[0]!}
                     invocationCount={1}
                     invocationIndex={0}
                     toolCallId={action.toolCallId}
                   />
-                </div>
+                </Flex>
               )}
             </details>
           );
@@ -143,7 +162,7 @@ export const SubtleToolCallRow = ({ actions }: SubtleToolCallRowProps) => (
         return (
           <span
             key={key}
-            className="inline-flex min-w-0 max-w-full basis-full items-center gap-density-xs"
+            className="inline-flex w-full min-w-0 max-w-full basis-full items-center gap-density-xs overflow-hidden"
             data-testid="claude-code-tool-call-subtle-action"
           >
             <Icon
