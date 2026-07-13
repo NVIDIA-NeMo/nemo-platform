@@ -71,7 +71,9 @@ def async_resource(async_platform: AsyncNeMoPlatform) -> AsyncDataDesignerResour
 
 @pytest.fixture
 def config_builder() -> dd.DataDesignerConfigBuilder:
-    builder = dd.DataDesignerConfigBuilder(model_configs=[dd.ModelConfig(alias="text", model="model")])
+    builder = dd.DataDesignerConfigBuilder(
+        model_configs=[dd.ModelConfig(alias="text", model="model", provider="default/nvidia")]
+    )
     builder.add_column(
         column_config=dd.SamplerColumnConfig(
             name="foo",

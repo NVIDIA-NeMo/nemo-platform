@@ -52,16 +52,6 @@ def test_unknown_provider_in_request() -> None:
         _assert_error(dd_client, builder, ["Cannot access provider", unknown_provider])
 
 
-def test_model_config_without_explicit_provider_is_rejected() -> None:
-    alias = "no-provider-specified"
-    bad_model_config = dd.ModelConfig(alias=alias, model="some-model")
-    builder = _builder_with_llm_column(bad_model_config)
-
-    with u.make_mock_client_context() as client_context:
-        dd_client = u.make_dd_client(client_context)
-        _assert_error(dd_client, builder, ["does not have an explicit provider defined", alias])
-
-
 def test_malformed_provider_reference_is_rejected() -> None:
     alias = "too-many-slashes"
     malformed_provider_name = "foo/bar/baz"
