@@ -6,7 +6,6 @@ from unittest.mock import Mock, patch
 import pytest
 from data_designer_nemo.fileset_file_seed_reader import FilesetFileSeedReader, workspace_cvar
 from data_designer_nemo.fileset_file_seed_source import FilesetFileSeedSource
-from nemo_platform_plugin.files.client import FilesClient
 
 
 def test_dataset_uri_with_workspace() -> None:
@@ -40,18 +39,8 @@ def test_create_duckdb_connection_requires_injected_sdk() -> None:
 def test_create_duckdb_connection_uses_injected_sdk() -> None:
     sdk = Mock()
     conn = Mock()
-    mock_files_client = Mock()
 
-    with (
-        patch("data_designer_nemo.fileset_file_seed_reader.duckdb.connect", return_value=conn),
-        patch("data_designer_nemo.fileset_file_seed_reader.FilesetFileSystem") as fileset_file_system,
-        patch(
-            "data_designer_nemo.fileset_file_seed_reader.client_from_platform",
-            return_value=mock_files_client,
-        ) as mock_adapter,
-    ):
+    with patch("data_designer_nemo.fileset_file_seed_reader.duckdb.connect", return_value=conn):
         assert FilesetFileSeedReader(sdk).create_duckdb_connection() is conn
 
-    mock_adapter.assert_called_once_with(sdk, FilesClient)
-    fileset_file_system.assert_called_once_with(client=mock_files_client)
-    conn.register_filesystem.assert_called_once_with(fileset_file_system.return_value)
+    conn.register_filesystem.assert_called_once_with(sdk.files.fsspec)
