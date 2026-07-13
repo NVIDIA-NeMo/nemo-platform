@@ -57,6 +57,7 @@ from nemo_agents_plugin.cli_context import (
 from nemo_agents_plugin.cli_context import (
     resolve_context_headers as _resolve_context_headers,
 )
+from nemo_agents_plugin.entities import CONTAINER_DEPLOYMENT_MODES
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
 from nemo_agents_plugin.usage.cli import register_usage_commands
 from nemo_platform.cli.core.formatters import Column, format_output
@@ -723,6 +724,17 @@ def _register_platform_commands(app: typer.Typer) -> None:
     def deploy(
         agent: str = typer.Option(..., "--agent", "-a", help="Name of the agent to deploy."),
         name: Optional[str] = typer.Option(None, "--name", "-n", help="Deployment name (auto-generated if omitted)."),
+        mode: str = typer.Option(
+            "subprocess",
+            "--mode",
+            help="Runtime backend: subprocess (default), docker, or k8s.",
+        ),
+        image: Optional[str] = typer.Option(
+            None,
+            "--image",
+            "-i",
+            help="Container image for docker/k8s modes (falls back to deployments.default_image).",
+        ),
         wait: bool = typer.Option(
             True,
             "--wait/--no-wait",
@@ -751,11 +763,28 @@ def _register_platform_commands(app: typer.Typer) -> None:
         ``--no-wait`` to keep the previous fire-and-forget behaviour for
         scripted pipelines that prefer to poll separately via ``nemo agents
         deployments wait``.
+
+        Container modes (``--mode docker|k8s``) compile to the nemo-deployments
+        plugin. Requires a configured deployments executor (``deployments.executors``
+        / ``agents.deployments.docker_executor`` or ``k8s_executor``). Container
+        endpoint gateway routing and the full k8s runtime contract (in-cluster
+        inference gateway, wheel staging) are still evolving — docker mode is the
+        supported local path today.
         """
+        valid_modes: tuple[str, ...] = ("subprocess", *sorted(CONTAINER_DEPLOYMENT_MODES))
+        if mode not in valid_modes:
+            typer.echo(f"Invalid --mode {mode!r}; expected {', '.join(valid_modes)}.", err=True)
+            raise typer.Exit(code=2)
+        if image and mode == "subprocess":
+            typer.echo("--image requires --mode docker or k8s.", err=True)
+            raise typer.Exit(code=2)
+
         base_url = _resolve_base_url(base_url)
-        payload: dict = {"agent": agent}
+        payload: dict = {"agent": agent, "deployment_mode": mode}
         if name:
             payload["name"] = name
+        if image:
+            payload["image"] = image
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/deployments", json_body=payload)
         if not wait:
             typer.echo(json.dumps(resp, indent=2))
@@ -1012,6 +1041,17 @@ def _register_platform_commands(app: typer.Typer) -> None:
 _TERMINAL_STATUSES = {"running", "failed"}
 
 
+def _deployment_address(dep: dict[str, Any]) -> str:
+    """Best-effort address for CLI output (loopback endpoint or first projected URL)."""
+    endpoint = dep.get("endpoint")
+    if isinstance(endpoint, str) and endpoint:
+        return endpoint
+    for ep in dep.get("endpoints") or []:
+        if isinstance(ep, dict) and ep.get("url"):
+            return str(ep["url"])
+    return ""
+
+
 def _wait_for_deployment(
     base_url: str,
     workspace: str,
@@ -1052,7 +1092,7 @@ def _wait_for_deployment(
             last_status = status
 
         if status == "running":
-            typer.echo(f"Deployment '{name}' is running at {dep.get('endpoint', '?')}")
+            typer.echo(f"Deployment '{name}' is running at {_deployment_address(dep) or '?'}")
             return True
 
         if status == "failed":
