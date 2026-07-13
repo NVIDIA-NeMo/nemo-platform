@@ -21,7 +21,7 @@ function MockRoot(props: PluginRootProps) {
   }, []);
   return (
     <div data-testid="plugin-root">
-      ws:{props.workspaceId} token:{props.auth.accessToken}
+      ws:{props.host.workspaceId} token:{props.host.auth.accessToken}
     </div>
   );
 }
@@ -81,9 +81,10 @@ describe('PluginRenderer', () => {
     renderPlugin();
 
     expect(screen.getByTestId('plugin-root')).toBeInTheDocument();
-    expect(capturedProps?.workspaceId).toBe('my-workspace');
-    expect(capturedProps?.auth.accessToken).toBe('test-token');
-    expect(capturedProps?.auth.getAccessToken()).toBe('test-token');
+    expect(capturedProps?.host.workspaceId).toBe('my-workspace');
+    expect(capturedProps?.host.auth.accessToken).toBe('test-token');
+    expect(capturedProps?.host.auth.getAccessToken()).toBe('test-token');
+    expect(typeof capturedProps?.host.sdk.platform.useEntitiesListWorkspaces).toBe('function');
   });
 
   it('does not remount on token renewal and getAccessToken returns the new token', () => {
@@ -102,7 +103,7 @@ describe('PluginRenderer', () => {
     );
 
     expect(mountSpy).toHaveBeenCalledTimes(1);
-    expect(capturedProps?.auth.getAccessToken()).toBe('renewed-token');
+    expect(capturedProps?.host.auth.getAccessToken()).toBe('renewed-token');
   });
 
   it('shows not found when plugin name does not match any loaded plugin', () => {
@@ -111,5 +112,23 @@ describe('PluginRenderer', () => {
     renderPlugin('missing-plugin');
 
     expect(screen.getByText(/not found/i)).toBeInTheDocument();
+  });
+
+  it('contains a plugin render error in the plugin panel instead of unwinding', () => {
+    function ThrowingRoot(): never {
+      throw new Error('boom from plugin');
+    }
+    vi.mocked(usePlugins).mockReturnValue([
+      { name: 'test-plugin', Root: ThrowingRoot, navItems: mockNavItems },
+    ]);
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    renderPlugin();
+
+    expect(screen.getByText(/this plugin ran into a problem/i)).toBeInTheDocument();
+    expect(screen.getByText(/boom from plugin/)).toBeInTheDocument();
+    expect(screen.queryByTestId('plugin-root')).not.toBeInTheDocument();
+
+    consoleError.mockRestore();
   });
 });

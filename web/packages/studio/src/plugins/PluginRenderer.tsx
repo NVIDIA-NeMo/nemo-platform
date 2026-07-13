@@ -1,22 +1,20 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import * as platformSdk from '@nemo/sdk/generated/platform/api';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { usePlugins, usePluginsLoaded } from '@studio/plugins/PluginContext';
-import type { PluginRootProps } from '@studio/plugins/types';
+import { PluginErrorBoundary } from '@studio/plugins/PluginErrorBoundary';
+import type { PluginHost, PluginSdk } from '@studio/plugins/types';
 import { useCallback, useMemo, useRef, type ReactElement } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { useParams } from 'react-router-dom';
 
-/**
- * Renders the active plugin's `Root` component inside Studio's React tree.
- *
- * The plugin is rendered as a normal child component — not mounted into a
- * detached `createRoot` — so it shares Studio's Router, QueryClient, and theme
- * contexts. A render error in the plugin is contained by the plugin route's
- * `errorElement` (see the route definition in `routes/index.tsx`), which keeps a
- * misbehaving plugin from taking down the rest of Studio.
- */
+// Module-scope for stable identity; plugins run these on Studio's axios + cache.
+const STUDIO_SDK: PluginSdk = { platform: platformSdk };
+
+// Renders the active plugin's `Root` as a normal child (not a detached
+// `createRoot`) so it shares Studio's Router, QueryClient, and theme.
 export const PluginRenderer = (): ReactElement => {
   const { pluginName } = useParams<{ pluginName: string }>();
   const plugins = usePlugins();
@@ -32,9 +30,9 @@ export const PluginRenderer = (): ReactElement => {
   accessTokenRef.current = accessToken;
   const getAccessToken = useCallback(() => accessTokenRef.current, []);
 
-  const auth = useMemo<PluginRootProps['auth']>(
-    () => ({ accessToken, getAccessToken }),
-    [accessToken, getAccessToken]
+  const host = useMemo<PluginHost>(
+    () => ({ workspaceId: workspace, auth: { accessToken, getAccessToken }, sdk: STUDIO_SDK }),
+    [workspace, accessToken, getAccessToken]
   );
 
   if (!isLoaded) {
@@ -54,7 +52,9 @@ export const PluginRenderer = (): ReactElement => {
   const { Root } = plugin;
   return (
     <div className="size-full">
-      <Root workspaceId={workspace} auth={auth} />
+      <PluginErrorBoundary pluginName={plugin.name}>
+        <Root host={host} />
+      </PluginErrorBoundary>
     </div>
   );
 };

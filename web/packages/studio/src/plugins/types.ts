@@ -3,19 +3,28 @@
 
 import type { ComponentType, ReactNode } from 'react';
 
-/** Props passed to a plugin's root component. */
-export interface PluginRootProps {
-  /** The workspace the plugin is running within. */
+/**
+ * Studio's SDK, by service. Plugins call these hooks directly; they dispatch into
+ * Studio's React (a shared singleton), running on Studio's axios + QueryClient.
+ * Passed by prop so plugins need no build dependency on the private `@nemo/sdk`.
+ */
+export interface PluginSdk {
+  platform: typeof import('@nemo/sdk/generated/platform/api');
+}
+
+/** The host handle Studio injects into every plugin; extend it to add capabilities. */
+export interface PluginHost {
   workspaceId: string;
-  /**
-   * Auth credentials for the plugin to call backend APIs.
-   * Only access tokens are exposed — plugins must not receive refresh tokens,
-   * which is why auth is passed as a prop rather than via Studio's OIDC context.
-   */
+  // Access tokens only — refresh tokens must not cross the boundary.
   auth: {
     accessToken: string;
     getAccessToken: () => string;
   };
+  sdk: PluginSdk;
+}
+
+export interface PluginRootProps {
+  host: PluginHost;
 }
 
 /** API manifest returned by `GET /apis/plugins`. */

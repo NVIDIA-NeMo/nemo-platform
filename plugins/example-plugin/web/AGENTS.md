@@ -24,18 +24,40 @@ Runtime contract: `../../../web/packages/studio/src/plugins/types.ts`.
 | Routing | Studio's shared router — `Routes`/`Route`/`NavLink`/`Navigate`/`Outlet`/`useNavigate`, paths relative to the plugin mount | `BrowserRouter`, `history.pushState` patching, hardcoded `basename` |
 | Components | KUI from `@nvidia/foundations-react-core` — `Text`, `Stack`, `Flex`, `Button` | hand-rolled styled `<div>`s or native `<button>` |
 | Styling | Studio's theme-aware tokens: `bg-surface-base/raised/sunken/hover`, `text-subtle/muted/primary`, `border-subtle` | hardcoded Tailwind palette (`bg-gray-100`, `text-blue-700`) — not compiled for the plugin, not theme-aware |
-| Auth | `props.auth.getAccessToken()` **per request** → `Authorization: Bearer …` | `react-oidc-context` / `useAuth` (refresh token must not cross the boundary) |
+| Auth | `host.auth.getAccessToken()` **per request** → `Authorization: Bearer …` | `react-oidc-context` / `useAuth` (refresh token must not cross the boundary) |
 | Deps | externalize the shared set in `vite.config.ts`; bundle the rest | bundle react / react-dom / react-router / foundations |
+
+Studio injects everything a plugin needs through a **single `host` prop**
+(`host.workspaceId`, `host.auth`, `host.sdk`) — grouped so new capabilities extend
+the handle without changing `Root`'s signature. Destructure what you use.
 
 `@tanstack/react-query` **is** shared — call `useQuery`/`useMutation` and it reads
 Studio's `QueryClientProvider` (one cache across Studio and every plugin). Put the
-`auth.getAccessToken()` Bearer token in your `queryFn`.
+`host.auth.getAccessToken()` Bearer token in your `queryFn`.
+
+Studio's **SDK** arrives on `host.sdk`, not via an import. `host.sdk.platform` is
+the platform service's generated hooks; call them at the top level like any hook
+(e.g. `host.sdk.platform.useEntitiesListWorkspaces({ page: 1, page_size: 100 })`,
+see `src/Root.tsx`). They run on Studio's one configured axios instance (base URL +
+OIDC interceptor) and the shared QueryClient — a plugin never bundles or
+configures the SDK itself. This works because React is a shared singleton, so a
+hook from Studio's module graph dispatches into the plugin's tree. `@nemo/sdk` is
+a private, unpublished package, so it is **not** a dependency here: `src/types.ts`
+declares a minimal structural `PluginSdk` covering only the hooks this example
+calls. A real plugin either mirrors the calls it needs the same way or, if it can
+resolve the SDK's types, types `host.sdk` as Studio does.
 
 ## Contract
 
 ```ts
 // PluginRootProps (from Studio's types.ts)
-{ workspaceId: string; auth: { accessToken: string; getAccessToken: () => string } }
+{
+  host: {
+    workspaceId: string;
+    auth: { accessToken: string; getAccessToken: () => string };
+    sdk: { platform: /* @nemo/sdk platform hooks */ };
+  };
+}
 ```
 
 `src/index.ts` must export `Root` (a `ComponentType<PluginRootProps>`) and
@@ -46,7 +68,8 @@ Studio's `QueryClientProvider` (one cache across Studio and every plugin). Put t
 The `external` list in `vite.config.ts` **must match** Studio's `VENDOR_EXTERNALS`
 in `../../../web/packages/studio/vite.config.ts`. If Studio adds a shared
 singleton, add it here too or the plugin bundles its own copy and loses the
-shared instance/theme.
+shared instance/theme. The SDK is **not** in this list — it comes in on the `sdk`
+prop (see above), so there is nothing to externalize for it.
 
 ## Build & verify
 

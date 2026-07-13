@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Flex, Stack, Text } from '@nvidia/foundations-react-core';
-import { useQuery } from '@tanstack/react-query';
 import { Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom';
-import type { PluginRootProps } from './types';
+import type { PluginRootProps, PluginSdk } from './types';
 
 /**
  * Example plugin root.
@@ -18,18 +17,22 @@ import type { PluginRootProps } from './types';
  * Both react-router and foundations are shared singletons via Studio's import
  * map; the plugin bundles neither.
  *
- * Call `getAccessToken()` per request (not once at render) so calls keep working
- * after OIDC silent renew rotates the token, e.g.:
+ * Studio injects the `host` prop — `host.workspaceId`, `host.auth`, and
+ * `host.sdk` (typed hooks on Studio's authenticated axios + shared QueryClient;
+ * call them directly, see `OverviewPage`).
+ *
+ * Call `host.auth.getAccessToken()` per request (not once at render) so calls keep
+ * working after OIDC silent renew rotates the token, e.g.:
  *   fetch('/apis/my-resource', { headers: { Authorization: `Bearer ${getAccessToken()}` } })
  */
-export function Root({ workspaceId, auth }: PluginRootProps) {
+export function Root({ host }: PluginRootProps) {
   return (
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<Navigate to="overview" replace />} />
-        <Route path="overview" element={<OverviewPage />} />
-        <Route path="auth" element={<AuthPage getAccessToken={auth.getAccessToken} />} />
-        <Route path="workspace" element={<WorkspacePage workspaceId={workspaceId} />} />
+        <Route path="overview" element={<OverviewPage sdk={host.sdk} />} />
+        <Route path="auth" element={<AuthPage getAccessToken={host.auth.getAccessToken} />} />
+        <Route path="workspace" element={<WorkspacePage workspaceId={host.workspaceId} />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
@@ -68,18 +71,13 @@ function CodeBlock({ children }: { children: string }) {
   );
 }
 
-function OverviewPage() {
-  // Uses Studio's shared QueryClient — @tanstack/react-query is a shared
-  // singleton, so this reads Studio's QueryClientProvider, not a plugin copy.
-  // Calls a real platform endpoint (the same one Studio's PluginContext uses).
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['example-plugin', 'installed-plugins'],
-    queryFn: async () => {
-      const res = await fetch('/apis/plugins');
-      if (!res.ok) throw new Error(`/apis/plugins returned ${res.status}`);
-      return (await res.json()) as Array<{ name: string; bundleUrl: string | null }>;
-    },
-  });
+function OverviewPage({ sdk }: { sdk: PluginSdk }) {
+  // Studio's typed hook — runs on Studio's authenticated axios + shared cache.
+  const { data, isPending, isError } = sdk.platform.useEntitiesListWorkspaces(
+    { page: 1, page_size: 100 },
+    { query: { staleTime: 5_000 } }
+  );
+  const workspaces = data?.data ?? [];
 
   return (
     <Stack gap="2">
@@ -90,18 +88,19 @@ function OverviewPage() {
       </Text>
 
       <Stack gap="1">
-        <Text kind="label/bold/sm">Shared QueryClient</Text>
+        <Text kind="label/bold/sm">Shared SDK</Text>
         <Text kind="body/regular/xs" color="secondary">
-          Fetched from the platform&apos;s /apis/plugins endpoint via
-          @tanstack/react-query — running on Studio&apos;s QueryClient, not a copy.
+          Listed via Studio&apos;s sdk.platform.useEntitiesListWorkspaces() — the
+          platform&apos;s typed hook, running on Studio&apos;s authenticated axios
+          and shared QueryClient rather than a plugin copy.
         </Text>
-        {isLoading ? (
+        {isPending ? (
           <Text kind="body/regular/xs" color="secondary">Loading…</Text>
         ) : isError ? (
           <Text kind="body/regular/xs" color="danger">Request failed.</Text>
         ) : (
           <Text kind="body/regular/sm">
-            {data?.length} plugins installed: {data?.map((p) => p.name).join(', ')}
+            {workspaces.length} workspaces: {workspaces.map((w) => w.name).join(', ')}
           </Text>
         )}
       </Stack>
