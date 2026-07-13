@@ -77,6 +77,9 @@ _SCORE_ALIASES = {
 }
 
 _TEXT_DTYPES = {"string", "messages"}
+# A verification target is naturally a container: test_cases (list), verification_info (struct), or a
+# plain string answer — but never a bare scalar/number, which is far more likely a label or score.
+_GROUND_TRUTH_DTYPES = {"string", "messages", "list", "struct", "json"}
 # Roles whose string-vs-messages dtype decides the format axis.
 _SHAPE_ROLES = {"prompt", "completion", "chosen", "rejected", "messages"}
 
@@ -99,9 +102,11 @@ def _role_for(feature: FeatureSchema) -> str | None:
     # dtype gates: reject an alias whose dtype contradicts the role.
     if role == "messages" and dtype != "messages":
         return None
-    if role in {"prompt", "completion", "chosen", "rejected", "context", "system", "ground_truth"}:
+    if role in {"prompt", "completion", "chosen", "rejected", "context", "system"}:
         if dtype not in _TEXT_DTYPES:
             return None
+    if role == "ground_truth" and dtype not in _GROUND_TRUTH_DTYPES:
+        return None
     if role == "rank" and not _is_numeric(dtype):
         return None
     if role in {"stepwise_completions", "stepwise_labels"} and dtype != "list":
@@ -251,7 +256,7 @@ def _implicit_prompt_evidence(features: list[FeatureSchema], rows: list[dict]) -
         return None
 
     targets = [f for f in features if f.semantic_role in {"chosen", "rejected", "completion"} and f.dtype == "string"]
-    texts = [row.get(f.name) for f in targets for row in rows if isinstance(row.get(f.name), str)]
+    texts = [value for f in targets for row in rows if isinstance((value := row.get(f.name)), str)]
     if texts:
         marked = sum(1 for text in texts if _TRANSCRIPT_MARKER.search(text))
         if marked:

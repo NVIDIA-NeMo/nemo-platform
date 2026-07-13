@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import pyarrow.parquet as pq
-
 from nemo_datasets_plugin.profiler.file_source import FileEntry, FileSource
 from nemo_datasets_plugin.profiler.readers.base import ReadResult, register_reader
 

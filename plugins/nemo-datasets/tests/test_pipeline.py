@@ -7,10 +7,10 @@ from datetime import datetime, timezone
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-from nemo_datasets_plugin.profiler import profile
 from nemo_datasets_plugin.profiler.digest import content_digest
 from nemo_datasets_plugin.profiler.file_source import FileEntry, LocalFileSource
 from nemo_datasets_plugin.profiler.partition import group_partitions
+from nemo_datasets_plugin.profiler.pipeline import profile
 from nemo_datasets_plugin.profiler.splits import resolve_splits
 
 FIXED_TIME = datetime(2026, 7, 13, 12, 0, 0, tzinfo=timezone.utc)
@@ -180,3 +180,48 @@ def test_profile_is_deterministic(tmp_path):
     first = profile(source, created_at=FIXED_TIME)
     second = profile(source, created_at=FIXED_TIME)
     assert first.model_dump_json() == second.model_dump_json()
+
+
+def test_profile_tolerates_non_object_jsonl_lines(tmp_path):
+    # A valid-JSON-but-non-object line parses cleanly, so the reader (not the read) must handle it;
+    # otherwise it would poison the unprotected schema/stats stage and abort the whole profile.
+    (tmp_path / "train.jsonl").write_text('{"a": 1}\n[1, 2, 3]\n{"a": 2}\n')
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+
+    assert result.partitions[0].splits[0].num_examples == 2  # objects counted, stray array dropped
+    assert result.sampling.exhaustive is True
+
+
+def test_profile_digest_covers_only_stored_files(tmp_path):
+    _write_parquet(tmp_path / "train-00000-of-00001.parquet", [{"a": 1}])
+    without_card = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+
+    (tmp_path / "README.md").write_text("a dataset card")  # a non-data file, never stored as a FileRecord
+    with_card = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+
+    # A file the profile does not store must not move the digest...
+    assert without_card.content_digest == with_card.content_digest
+    # ...and the digest is recomputable from exactly the FileRecords the profile stores.
+    stored = [
+        FileEntry(path=f.path, size_bytes=f.size_bytes, checksum=f.checksum)
+        for partition in with_card.partitions
+        for split in partition.splits
+        for f in split.files
+    ]
+    assert content_digest(stored) == with_card.content_digest
+
+
+def test_profile_isolates_detected_format_with_no_reader(tmp_path, monkeypatch):
+    # If detect_format recognizes an extension the registry has no reader for, that file must be
+    # isolated like a corrupt one, not crash the whole profile.
+    from nemo_datasets_plugin.profiler.readers import base
+
+    monkeypatch.setitem(base._EXTENSION_FORMATS, ".xyz", "xyz-no-reader")
+    _write_parquet(tmp_path / "train-00000-of-00001.parquet", [{"a": 1}])
+    (tmp_path / "extra.xyz").write_text("whatever")
+
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)  # must not raise
+
+    records = {f.path: f for p in result.partitions for s in p.splits for f in s.files}
+    assert records["extra.xyz"].num_rows is None  # kept, but unreadable
+    assert result.sampling.exhaustive is False

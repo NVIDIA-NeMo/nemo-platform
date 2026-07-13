@@ -189,7 +189,9 @@ def _content_len(content: Any) -> int:
     if isinstance(content, str):
         return len(content)
     if isinstance(content, list):  # VLM content as a list of typed parts
-        return sum(len(part.get("text", "")) for part in content if isinstance(part, dict))
+        return sum(
+            len(part["text"]) for part in content if isinstance(part, dict) and isinstance(part.get("text"), str)
+        )
     return 0
 
 

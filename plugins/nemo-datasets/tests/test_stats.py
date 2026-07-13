@@ -87,6 +87,13 @@ def test_message_ends_with_user_turn_is_prompt_only_signal():
     assert stats.messages.ends_with_assistant_rate == 0.0
 
 
+def test_message_content_parts_tolerate_non_string_text():
+    # A VLM-style content part whose "text" key is present but not a string must not crash measurement.
+    rows = [{"m": [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": None}]}]}]
+    stats = derive_stats([_feature("m", "messages")], rows, exhaustive=False)["m"]
+    assert stats.messages.content_chars.max == 0  # no measurable text, and no crash
+
+
 # --- sparsity and null rate ----------------------------------------------------------------------
 
 

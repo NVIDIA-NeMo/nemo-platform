@@ -7,7 +7,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from nemo_datasets_plugin.profiler.file_source import FileEntry, LocalFileSource
-from nemo_datasets_plugin.profiler.readers import detect_format, get_reader
+from nemo_datasets_plugin.profiler.readers.base import detect_format, get_reader
 
 PARQUET_ROWS = [
     {"prompt": "a", "score": 1},
@@ -115,3 +115,12 @@ def test_jsonl_reader_row_cap_leaves_count_unknown(tmp_path):
     assert result.rows == [{"a": 1}, {"a": 2}]
     assert result.rows_scanned == 2
     assert result.num_rows is None  # a partial read can't assert the total
+
+
+def test_jsonl_reader_skips_non_object_lines(tmp_path):
+    # A record is a column map; valid JSON that is a scalar or array is not a row.
+    (tmp_path / "d.jsonl").write_text('{"a": 1}\n[1, 2, 3]\n42\n"loose"\n{"a": 2}\n')
+    result = get_reader("jsonl").read(LocalFileSource(tmp_path), FileEntry("d.jsonl", 0))
+
+    assert result.rows == [{"a": 1}, {"a": 2}]  # stray non-object lines dropped, objects kept
+    assert result.num_rows == 2

@@ -24,7 +24,22 @@ class DatasetsCLI(NemoCLI):
             output: str = typer.Option("json", "--output", "-o", help="Output format: json | yaml."),
         ) -> None:
             """Profile a local dataset directory and print its DatasetProfile."""
-            # The profiling core lands in a follow-up commit; this wires up the command surface.
-            raise typer.BadParameter("dataset profiling is not implemented yet")
+            from nemo_datasets_plugin.profiler.file_source import LocalFileSource
+            from nemo_datasets_plugin.profiler.pipeline import profile as run_profile
+
+            if output not in {"json", "yaml"}:
+                raise typer.BadParameter("output must be 'json' or 'yaml'")
+            try:
+                source = LocalFileSource(path)
+            except NotADirectoryError as exc:
+                raise typer.BadParameter(str(exc)) from exc
+
+            result = run_profile(source)
+            if output == "yaml":
+                import yaml
+
+                typer.echo(yaml.safe_dump(result.model_dump(mode="json"), sort_keys=False))
+            else:
+                typer.echo(result.model_dump_json(indent=2))
 
         return app
