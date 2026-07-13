@@ -17,6 +17,7 @@ from nemo_deployments_plugin.entities import (
     VolumeBackendConfig,
     VolumeMount,
 )
+from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.common.config import Runtime
 from nmp.core.models.app import ModelWeightsType
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
@@ -36,13 +37,16 @@ from nmp.core.models.controllers.backends.generic_compiler import (
     resolve_generic_image,
 )
 from nmp.core.models.controllers.backends.vllm_compiler import (
+    MODEL_STORE_PATH,
     compile_vllm_args,
     compile_vllm_env_vars,
     resolve_vllm_image,
 )
 
 _WEIGHTS_MOUNT = "/model-store"
+_SCRATCH_MOUNT = "/scratch"
 _LORA_MOUNT = "/scratch/loras"
+_SCRATCH_VOLUME_SIZE = "1Gi"
 
 
 @dataclass(frozen=True)
@@ -51,6 +55,7 @@ class CompiledModelDeployment:
 
     names: EntityNames
     volume: Volume | None
+    scratch_volume: Volume | None
     puller_config: DeploymentConfig | None
     server_config: DeploymentConfig
     puller_prerequisite: bool
@@ -83,6 +88,39 @@ def _env(values: dict[str, str]) -> list[EnvVar]:
     return [EnvVar(name=name, value=value) for name, value in values.items()]
 
 
+def _lora_sidecar(
+    resolved: ResolvedPluginDeployment,
+    *,
+    engine: str,
+    config: DeploymentsPluginConfig,
+    names: EntityNames,
+    weighted: bool,
+) -> Container:
+    """Build the adapters sidecar with the same env contract as existing backends."""
+    entity_workspace = resolved.model_entity.workspace if resolved.model_entity else resolved.deployment.workspace
+    entity_name = resolved.model_entity.name if resolved.model_entity else resolved.deployment.name
+    sidecar_env = {
+        "NIM_PEFT_SOURCE": _LORA_MOUNT,
+        "NIM_PEFT_REFRESH_INTERVAL": str(config.peft_refresh_interval),
+        "NMP_MODEL_ENTITY_WORKSPACE": entity_workspace,
+        "NMP_MODEL_ENTITY_NAME": entity_name,
+    }
+    if engine == ENGINE_VLLM:
+        sidecar_env["VLLM_LORA_BASE_MODEL_OVERRIDE"] = MODEL_STORE_PATH
+    mounts = [VolumeMount(name=names.scratch, mountPath=_SCRATCH_MOUNT)]
+    if weighted:
+        mounts.append(VolumeMount(name=names.volume, mountPath=_WEIGHTS_MOUNT, readOnly=True))
+    return Container(
+        name="lora-adapters",
+        image=get_qualified_image(config.lora_sidecar_image_name),
+        command=config.lora_sidecar_command,
+        args=config.lora_sidecar_args,
+        env=_env(sidecar_env),
+        volumeMounts=mounts,
+        restartPolicy="Always",
+    )
+
+
 def compile_model_deployment(
     resolved: ResolvedPluginDeployment, config: DeploymentsPluginConfig
 ) -> CompiledModelDeployment:
@@ -92,7 +130,9 @@ def compile_model_deployment(
         raise ValueError(f"Unsupported engine {engine!r}.")
     names = entity_names(resolved.deployment.name)
     weighted = _weighted(resolved, engine)
+    lora_enabled = resolved.view.lora_enabled and engine != ENGINE_GENERIC
     volume = None
+    scratch_volume = None
     puller_config = None
     if weighted:
         volume = Volume(
@@ -140,31 +180,45 @@ def compile_model_deployment(
             env["NIM_SERVED_MODEL_NAME"] = (
                 f"{resolved.model_namespace}/{resolved.model_name}" if resolved.model_namespace else resolved.model_name
             )
-        if resolved.view.lora_enabled:
+        if lora_enabled:
             env["NIM_PEFT_SOURCE"] = _LORA_MOUNT
+            env["NIM_PEFT_REFRESH_INTERVAL"] = str(config.peft_refresh_interval)
     else:
         image_name, image_tag = resolve_generic_image(resolved.view)
         args = compile_generic_args(resolved.view)
         env = compile_generic_env_vars(resolved.view)
 
-    mounts = [VolumeMount(name=names.volume, mountPath=_WEIGHTS_MOUNT, readOnly=True)] if weighted else []
-    server = Container(
-        name="server",
-        image=_image(image_name, image_tag),
-        args=args,
-        env=_env(env),
-        ports=[ContainerPort(name="http", containerPort=8000)],
-        volumeMounts=mounts,
-        readinessProbe=Probe(httpGet=HTTPGetAction(path=resolve_health_path(engine, resolved.view), port=8000)),
-    )
+    mounts: list[VolumeMount] = []
+    if weighted:
+        mounts.append(VolumeMount(name=names.volume, mountPath=_WEIGHTS_MOUNT, readOnly=True))
     init_containers: list[Container] = []
-    if resolved.view.lora_enabled:
-        lora = Container(
-            name="lora-adapters",
-            image=config.lora_sidecar_image_name,
-            command=config.lora_sidecar_command,
-            args=config.lora_sidecar_args,
-            restartPolicy="Always",
+    server_config_containers: list[Container]
+    if lora_enabled:
+        scratch_volume = Volume(
+            name=names.scratch,
+            workspace=resolved.deployment.workspace,
+            size=_SCRATCH_VOLUME_SIZE,
+            backendConfig=VolumeBackendConfig(k8s=K8sVolumeConfig(storageClass=config.default_storage_class)),
+        )
+        mounts.append(VolumeMount(name=names.scratch, mountPath=_SCRATCH_MOUNT))
+        # Ensure the LoRA cache dir exists before the server/sidecar start.
+        init_containers.append(
+            Container(
+                name="lora-cache-init",
+                image="busybox:1.36",
+                command=["sh", "-c", f"mkdir -p {_LORA_MOUNT} && chmod -R 777 {_LORA_MOUNT}"],
+                volumeMounts=[VolumeMount(name=names.scratch, mountPath=_SCRATCH_MOUNT)],
+            )
+        )
+        lora = _lora_sidecar(resolved, engine=engine, config=config, names=names, weighted=weighted)
+        server = Container(
+            name="server",
+            image=_image(image_name, image_tag),
+            args=args,
+            env=_env(env),
+            ports=[ContainerPort(name="http", containerPort=8000)],
+            volumeMounts=mounts,
+            readinessProbe=Probe(httpGet=HTTPGetAction(path=resolve_health_path(engine, resolved.view), port=8000)),
         )
         if resolved.runtime == Runtime.DOCKER:
             # Docker v1 is single-container today; emit a second container so the
@@ -173,9 +227,20 @@ def compile_model_deployment(
             server_config_containers = [server, lora]
         else:
             server_config_containers = [server]
-            init_containers = [lora]
+            init_containers.append(lora)
     else:
-        server_config_containers = [server]
+        server_config_containers = [
+            Container(
+                name="server",
+                image=_image(image_name, image_tag),
+                args=args,
+                env=_env(env),
+                ports=[ContainerPort(name="http", containerPort=8000)],
+                volumeMounts=mounts,
+                readinessProbe=Probe(httpGet=HTTPGetAction(path=resolve_health_path(engine, resolved.view), port=8000)),
+            )
+        ]
+
     server_config = DeploymentConfig(
         name=names.server,
         workspace=resolved.deployment.workspace,
@@ -187,6 +252,7 @@ def compile_model_deployment(
     return CompiledModelDeployment(
         names=names,
         volume=volume,
+        scratch_volume=scratch_volume,
         puller_config=puller_config,
         server_config=server_config,
         puller_prerequisite=puller_config is not None,

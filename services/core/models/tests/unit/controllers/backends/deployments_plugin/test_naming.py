@@ -5,8 +5,8 @@ from nmp.core.models.controllers.backends.deployments_plugin.naming import entit
 
 
 def test_entity_names_have_expected_suffixes() -> None:
-    assert entity_names("my-dep").__dict__ == {
-        "volume": "my-dep-weights",
-        "puller": "my-dep-puller",
-        "server": "my-dep-server",
-    }
+    names = entity_names("my-dep")
+    assert names.volume == "my-dep-weights"
+    assert names.scratch == "my-dep-scratch"
+    assert names.puller == "my-dep-puller"
+    assert names.server == "my-dep-server"

@@ -10,6 +10,7 @@ from nemo_deployments_plugin.types import Endpoint
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 from nmp.common.config import Runtime
 from nmp.core.models.app import ModelWeightsType
+from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
 from nmp.core.models.controllers.backends.common import DeploymentConfigView
 from nmp.core.models.controllers.backends.deployments_plugin.backend import DeploymentsPluginServiceBackend
 from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
@@ -87,6 +88,8 @@ async def test_create_order_volume_puller_server_with_prerequisite() -> None:
         return entity
 
     backend._entities.create = AsyncMock(side_effect=_create)
+    backend._entities.get = AsyncMock(side_effect=NemoEntityNotFoundError("missing"))
+    backend._entities.delete = AsyncMock(side_effect=NemoEntityNotFoundError("missing"))
     with (
         patch(
             "nmp.core.models.controllers.backends.deployments_plugin.backend.resolve_plugin_deployment",
@@ -107,6 +110,26 @@ async def test_create_order_volume_puller_server_with_prerequisite() -> None:
     assert isinstance(server_dep, Deployment) and server_dep.name == "my-dep-server"
     assert server_dep.prerequisites[0].deployment_name == "my-dep-puller"
     assert server_dep.prerequisites[0].condition == "succeeded"
+
+
+@pytest.mark.asyncio
+async def test_create_waits_when_prior_teardown_incomplete() -> None:
+    backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
+    backend.init()
+    with (
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.backend.resolve_plugin_deployment",
+            return_value=_resolved(),
+        ),
+        patch.object(
+            backend,
+            "delete_model_deployment",
+            AsyncMock(return_value=DeploymentStatusUpdate(status="DELETING", status_message="waiting")),
+        ),
+    ):
+        result = await backend.create_model_deployment(_ctx())
+    assert result.status == "PENDING"
+    assert "teardown" in result.status_message.lower()
 
 
 @pytest.mark.asyncio

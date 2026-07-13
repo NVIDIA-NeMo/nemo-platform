@@ -11,10 +11,16 @@ class EntityNames:
     """Names of the substrate entities managed for one model deployment."""
 
     volume: str
+    scratch: str
     puller: str
     server: str
 
 
 def entity_names(name: str) -> EntityNames:
     """Return names relative to the ModelDeployment name."""
-    return EntityNames(volume=f"{name}-weights", puller=f"{name}-puller", server=f"{name}-server")
+    return EntityNames(
+        volume=f"{name}-weights",
+        scratch=f"{name}-scratch",
+        puller=f"{name}-puller",
+        server=f"{name}-server",
+    )

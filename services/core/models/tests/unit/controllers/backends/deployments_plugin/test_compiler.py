@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from nmp.common.config import Runtime
 from nmp.core.models.app import ModelWeightsType
@@ -70,15 +71,18 @@ def test_generic_weightless_is_server_only() -> None:
 
 def test_lora_uses_native_sidecar_on_k8s_and_container_on_docker() -> None:
     config = DeploymentsPluginConfig()
-    assert (
-        compile_model_deployment(_resolved("vllm", lora=True), config).server_config.init_containers[0].restart_policy
-        == "Always"
-    )
-    assert (
-        len(
-            compile_model_deployment(
-                _resolved("vllm", lora=True, runtime=Runtime.DOCKER), config
-            ).server_config.containers
-        )
-        == 2
-    )
+    with patch(
+        "nmp.core.models.controllers.backends.deployments_plugin.compiler.get_qualified_image",
+        return_value="registry/nmp-api:tag",
+    ):
+        k8s = compile_model_deployment(_resolved("vllm", lora=True), config)
+        docker = compile_model_deployment(_resolved("vllm", lora=True, runtime=Runtime.DOCKER), config)
+
+    assert k8s.scratch_volume is not None
+    sidecar = k8s.server_config.init_containers[-1]
+    assert sidecar.restart_policy == "Always"
+    assert sidecar.image == "registry/nmp-api:tag"
+    env = {item.name: item.value for item in sidecar.env}
+    assert env["NIM_PEFT_SOURCE"] == "/scratch/loras"
+    assert env["VLLM_LORA_BASE_MODEL_OVERRIDE"] == "/model-store"
+    assert len(docker.server_config.containers) == 2

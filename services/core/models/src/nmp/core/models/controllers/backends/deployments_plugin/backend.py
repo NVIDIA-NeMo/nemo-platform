@@ -55,17 +55,29 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
         return self._backend_config
 
     async def create_model_deployment(self, ctx: ModelContext) -> DeploymentStatusUpdate:
-        """Create plugin substrate entities in volume, puller, server order."""
+        """Create plugin substrate entities in volume, puller, server order.
+
+        Tears down any leftover substrate first so drift recovery (LOST → recreate)
+        does not collide with orphaned Volume / DeploymentConfig / Deployment entities.
+        """
         resolved = resolve_plugin_deployment(ctx, self._huggingface_model_puller)
         if resolved.runtime == Runtime.NONE:
             return DeploymentStatusUpdate(
                 status="UNKNOWN", status_message="Deployments plugin is unavailable for runtime none."
+            )
+        teardown = await self.delete_model_deployment(resolved.deployment.workspace, resolved.deployment.name)
+        if teardown.status == "DELETING":
+            return DeploymentStatusUpdate(
+                status="PENDING",
+                status_message="Waiting for prior deployments-plugin substrate teardown before recreate.",
             )
         try:
             compiled = compile_model_deployment(resolved, self._cfg)
             entities = self._entity_client()
             if compiled.volume is not None:
                 await entities.create(compiled.volume)
+            if compiled.scratch_volume is not None:
+                await entities.create(compiled.scratch_volume)
             executor = executor_for_runtime(self._cfg, resolved.runtime)
             if compiled.puller_config is not None:
                 await entities.create(compiled.puller_config)
@@ -105,21 +117,13 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
         return DeploymentStatusUpdate(status="PENDING", status_message="Created deployments-plugin entities.")
 
     async def _rollback_create(self, ctx: ModelContext) -> None:
+        """Best-effort controlled teardown after a partial create failure."""
         if ctx.model_deployment is None:
             return
-        names = entity_names(ctx.model_deployment.name)
-        entities = self._entity_client()
-        for entity_type, name in (
-            (Deployment, names.server),
-            (DeploymentConfig, names.server),
-            (Deployment, names.puller),
-            (DeploymentConfig, names.puller),
-            (Volume, names.volume),
-        ):
-            try:
-                await entities.delete(entity_type, name=name, workspace=ctx.model_deployment.workspace)
-            except Exception:
-                pass
+        try:
+            await self.delete_model_deployment(ctx.model_deployment.workspace, ctx.model_deployment.name)
+        except Exception:
+            pass
 
     async def get_model_deployment_status(self, ctx: ModelContext) -> DeploymentStatusUpdate:
         if ctx.model_deployment is None:
@@ -142,10 +146,11 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
                 return DeploymentStatusUpdate(
                     status="DELETING", status_message="Waiting for plugin deployment teardown."
                 )
-        try:
-            await self._entity_client().delete(Volume, name=names.volume, workspace=workspace)
-        except NemoEntityNotFoundError:
-            pass
+        for volume_name in (names.scratch, names.volume):
+            try:
+                await self._entity_client().delete(Volume, name=volume_name, workspace=workspace)
+            except NemoEntityNotFoundError:
+                pass
         return DeploymentStatusUpdate(status="DELETED", status_message="Deleted deployments-plugin entities.")
 
     async def _delete_deployment_and_config(self, workspace: str, deployment_name: str, config_name: str) -> bool:
