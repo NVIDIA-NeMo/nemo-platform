@@ -6,8 +6,8 @@
 ``profile(source)`` lists the files behind a :class:`FileSource`, groups them into partitions and
 splits, reads them, and assembles a ``DatasetProfile``. This stage produces the structural envelope
 — partitions, splits, FileRecords, content digest, sampling metadata — the derived row schema
-(``features``), per-column ``stats``, and a ``classification`` (roles, format, prompt form, and
-dataset type). Verifiability and content-probe corroboration are added by a later stage.
+(``features``), per-column ``stats``, and the full ``classification`` (roles, format, prompt form,
+dataset type, and verifiability).
 
 Reads are exhaustive (every row of every file). Sampling large datasets with bounded probes is a
 later, drop-in optimization behind the same reader seam.
@@ -107,7 +107,7 @@ def profile(source: FileSource, *, created_at: datetime | None = None) -> Datase
                 splits=split_profiles,
                 features=features,
                 stats=stats,
-                classification=classify(features, stats),
+                classification=classify(features, stats, partition_rows),
             )
         )
 
