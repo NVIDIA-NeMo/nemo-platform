@@ -56,18 +56,9 @@ export const useJobBuilder = (
     buildModelsFromTemplate(template?.models)
   );
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
-  // Continue numbering after any preloaded template models so ids stay unique.
   const nextModelId = useRef(models.length);
-  // Column and model configs both open in the right pane, so the tabs only swap what
-  // you're adding, not what you're editing.
   const [paletteTab, setPaletteTab] = useState<PaletteTab>('columns');
 
-  // Auto-fill template-seeded models once, when the full platform model list has loaded:
-  // each seeded model's `model` holds its preferred name (or is empty), which we resolve to
-  // a real workspace model + provider — preferring the named one, else the first available.
-  // Gated on `modelsSettled` so a partial (still-paginating) list can't lock in the fallback
-  // before a preferred model on a later page arrives. Runs a single time so it never clobbers
-  // a model the user later picks themselves (those already carry a provider and are skipped).
   const autoFilled = useRef(false);
   useEffect(() => {
     if (autoFilled.current || !modelsSettled || modelGroups.length === 0) return;
