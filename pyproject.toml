@@ -606,6 +606,11 @@ exclude = [
   # root `ty` until that cleanup lands in a focused follow-up.
   "plugins/nemo-switchyard/",
 
+  # Standalone Relay guardrails PoC: it is its own project (own pyproject,
+  # run with `uv run --no-project`) and imports nemo-relay, which is not part
+  # of the root workspace graph, so root `ty` cannot resolve its imports.
+  "plugins/nemo-guardrails/relay-poc/",
+
   "docs/",
 
   "./sdk/",
