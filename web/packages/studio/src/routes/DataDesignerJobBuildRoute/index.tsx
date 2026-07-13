@@ -57,7 +57,12 @@ export const DataDesignerJobBuildRoute: FC = () => {
     ],
   });
 
-  const { data: modelsData, isLoading: isLoadingModels } = useAllModels({ workspace });
+  const {
+    data: modelsData,
+    isLoading: isLoadingModels,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useAllModels({ workspace });
   const modelGroups = useMemo(
     () =>
       groupModelsByWorkspace(modelsData?.pages.flatMap((page) => page.data ?? []) ?? [], {
@@ -65,8 +70,9 @@ export const DataDesignerJobBuildRoute: FC = () => {
       }),
     [modelsData?.pages]
   );
+  const modelsSettled = !isLoadingModels && !hasNextPage && !isFetchingNextPage;
 
-  const builder = useJobBuilder(template, modelGroups);
+  const builder = useJobBuilder(template, modelGroups, modelsSettled);
   const { columns, models } = builder;
 
   const [name, setName] = useState(() => template?.id ?? 'untitled-dataset');
@@ -79,13 +85,16 @@ export const DataDesignerJobBuildRoute: FC = () => {
   const validateAndCollectErrors = useCallback(() => {
     const numRecords = Number(rows);
     const errors = [...validateColumns(columns), ...validateModels(models)];
+    if (!name.trim()) {
+      errors.push('Fileset name is required.');
+    }
     if (!Number.isInteger(numRecords) || numRecords < 1) {
       errors.push('Records to generate must be a whole number of at least 1.');
     }
     setValidationErrors(errors);
     setIsDetailsOpen(true);
     return errors;
-  }, [columns, models, rows]);
+  }, [columns, models, rows, name]);
 
   const getCurrentConfig = useCallback(
     () =>

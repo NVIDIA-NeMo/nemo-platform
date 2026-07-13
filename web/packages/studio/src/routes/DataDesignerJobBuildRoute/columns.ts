@@ -42,6 +42,12 @@ export interface ColumnField {
    * `reference: 'list'`, this does not treat the entries as column names / dependencies.
    */
   list?: boolean;
+  /**
+   * How to coerce the string form value when serializing to the SDK config. Defaults to a
+   * plain string; `number`/`boolean` parse the value, `json` parses an object/array literal.
+   * Used by sampler params whose SDK types are non-string (see PARAM_FIELDS_BY_SAMPLER_TYPE).
+   */
+  valueType?: 'number' | 'boolean' | 'json';
 }
 
 /** Not yet the SDK column config — that's produced by {@link buildDataDesignerConfig}. */
@@ -207,8 +213,41 @@ const FIELDS_BY_COLUMN_TYPE: Record<NonNullable<DataDesignerColumnType>, ColumnF
   ],
 };
 
+const BOOL_OPTIONS = [
+  { label: 'Yes', value: 'true' },
+  { label: 'No', value: 'false' },
+] as const;
+
 // Sub-type params are nested under the SDK's required `params` key (see toSamplerConfig).
+// Every sampler sub-type exposed by COLUMN_TYPE_GROUPS has an entry here so its required
+// params serialize with the right shape; sub-types with only optional params (e.g. uuid,
+// person) still list their fields so users can configure them.
 const PARAM_FIELDS_BY_SAMPLER_TYPE: Partial<Record<SamplerType, ColumnField[]>> = {
+  [SamplerType.uuid]: [
+    {
+      key: 'prefix',
+      label: 'Prefix (optional)',
+      kind: 'text',
+      placeholder: 'e.g. user-',
+      helperText: 'Prepended to each generated UUID.',
+    },
+    {
+      key: 'short_form',
+      label: 'Short form (optional)',
+      kind: 'select',
+      valueType: 'boolean',
+      options: BOOL_OPTIONS,
+      helperText: 'Truncate UUIDs to 8 characters.',
+    },
+    {
+      key: 'uppercase',
+      label: 'Uppercase (optional)',
+      kind: 'select',
+      valueType: 'boolean',
+      options: BOOL_OPTIONS,
+      helperText: 'Capitalize all letters in the UUID.',
+    },
+  ],
   [SamplerType.category]: [
     {
       key: 'values',
@@ -218,6 +257,245 @@ const PARAM_FIELDS_BY_SAMPLER_TYPE: Partial<Record<SamplerType, ColumnField[]>> 
       list: true,
       placeholder: 'science, technology, history, arts, business',
       helperText: 'Comma-separated values to sample from.',
+    },
+  ],
+  [SamplerType.subcategory]: [
+    {
+      key: 'category',
+      label: 'Parent category column',
+      kind: 'text',
+      required: true,
+      reference: 'single',
+      placeholder: 'Name of the parent category column',
+      helperText: 'The category column each subcategory value depends on.',
+    },
+    {
+      key: 'values',
+      label: 'Subcategory values (JSON)',
+      kind: 'textarea',
+      required: true,
+      valueType: 'json',
+      placeholder: '{ "science": ["physics", "chemistry"], "arts": ["music", "film"] }',
+      helperText: 'JSON mapping each parent value to a list of subcategory values.',
+    },
+  ],
+  [SamplerType.uniform]: [
+    {
+      key: 'low',
+      label: 'Low',
+      kind: 'text',
+      required: true,
+      valueType: 'number',
+      helperText: 'Lower bound of the range (inclusive).',
+    },
+    {
+      key: 'high',
+      label: 'High',
+      kind: 'text',
+      required: true,
+      valueType: 'number',
+      helperText: 'Upper bound of the range (must be greater than low).',
+    },
+    {
+      key: 'decimal_places',
+      label: 'Decimal places (optional)',
+      kind: 'text',
+      valueType: 'number',
+      helperText: 'Round sampled values to this many decimals.',
+    },
+  ],
+  [SamplerType.gaussian]: [
+    { key: 'mean', label: 'Mean', kind: 'text', required: true, valueType: 'number' },
+    {
+      key: 'stddev',
+      label: 'Standard deviation',
+      kind: 'text',
+      required: true,
+      valueType: 'number',
+      helperText: 'Must be positive.',
+    },
+    {
+      key: 'decimal_places',
+      label: 'Decimal places (optional)',
+      kind: 'text',
+      valueType: 'number',
+      helperText: 'Round sampled values to this many decimals.',
+    },
+  ],
+  [SamplerType.bernoulli]: [
+    {
+      key: 'p',
+      label: 'Probability of success (p)',
+      kind: 'text',
+      required: true,
+      valueType: 'number',
+      helperText: 'Between 0 and 1.',
+    },
+  ],
+  [SamplerType.bernoulli_mixture]: [
+    {
+      key: 'p',
+      label: 'Mixture probability (p)',
+      kind: 'text',
+      required: true,
+      valueType: 'number',
+      helperText: 'Between 0 and 1; otherwise the sample is 0.',
+    },
+    {
+      key: 'dist_name',
+      label: 'Distribution name',
+      kind: 'text',
+      required: true,
+      placeholder: 'e.g. norm, gamma, expon',
+      helperText: 'A scipy.stats distribution name.',
+    },
+    {
+      key: 'dist_params',
+      label: 'Distribution params (JSON)',
+      kind: 'textarea',
+      required: true,
+      valueType: 'json',
+      placeholder: '{ "loc": 0, "scale": 1 }',
+      helperText: 'JSON parameters for the distribution.',
+    },
+  ],
+  [SamplerType.binomial]: [
+    {
+      key: 'n',
+      label: 'Number of trials (n)',
+      kind: 'text',
+      required: true,
+      valueType: 'number',
+      helperText: 'Positive integer.',
+    },
+    {
+      key: 'p',
+      label: 'Probability of success (p)',
+      kind: 'text',
+      required: true,
+      valueType: 'number',
+      helperText: 'Between 0 and 1.',
+    },
+  ],
+  [SamplerType.poisson]: [
+    {
+      key: 'mean',
+      label: 'Mean (rate λ)',
+      kind: 'text',
+      required: true,
+      valueType: 'number',
+      helperText: 'Must be positive.',
+    },
+  ],
+  [SamplerType.scipy]: [
+    {
+      key: 'dist_name',
+      label: 'Distribution name',
+      kind: 'text',
+      required: true,
+      placeholder: 'e.g. beta, gamma, lognorm',
+      helperText: 'A scipy.stats distribution name.',
+    },
+    {
+      key: 'dist_params',
+      label: 'Distribution params (JSON)',
+      kind: 'textarea',
+      required: true,
+      valueType: 'json',
+      placeholder: '{ "a": 2, "b": 5 }',
+      helperText: 'JSON parameters for the distribution.',
+    },
+    {
+      key: 'decimal_places',
+      label: 'Decimal places (optional)',
+      kind: 'text',
+      valueType: 'number',
+      helperText: 'Round sampled values to this many decimals.',
+    },
+  ],
+  [SamplerType.person]: [
+    {
+      key: 'locale',
+      label: 'Locale (optional)',
+      kind: 'text',
+      placeholder: 'e.g. en_US',
+      helperText: 'Managed persona locale (e.g. en_US, ja_JP).',
+    },
+    { key: 'sex', label: 'Sex (optional)', kind: 'select', options: asOptions(['Male', 'Female']) },
+    {
+      key: 'city',
+      label: 'Cities (optional)',
+      kind: 'text',
+      list: true,
+      placeholder: 'comma,separated,cities',
+      helperText: 'Comma-separated city filter.',
+    },
+    {
+      key: 'with_synthetic_personas',
+      label: 'Synthetic personas (optional)',
+      kind: 'select',
+      valueType: 'boolean',
+      options: BOOL_OPTIONS,
+      helperText: 'Append persona trait columns to each person.',
+    },
+  ],
+  [SamplerType.datetime]: [
+    {
+      key: 'start',
+      label: 'Start',
+      kind: 'text',
+      required: true,
+      placeholder: 'e.g. 2020-01-01',
+      helperText: 'Earliest datetime (inclusive).',
+    },
+    {
+      key: 'end',
+      label: 'End',
+      kind: 'text',
+      required: true,
+      placeholder: 'e.g. 2025-01-01',
+      helperText: 'Exclusive upper bound.',
+    },
+    {
+      key: 'unit',
+      label: 'Unit (optional)',
+      kind: 'select',
+      options: asOptions(['Y', 'M', 'D', 'h', 'm', 's']),
+      helperText: 'Sampling granularity (defaults to days).',
+    },
+  ],
+  [SamplerType.timedelta]: [
+    {
+      key: 'dt_min',
+      label: 'Minimum delta',
+      kind: 'text',
+      required: true,
+      valueType: 'number',
+      helperText: 'Non-negative and less than the maximum.',
+    },
+    {
+      key: 'dt_max',
+      label: 'Maximum delta',
+      kind: 'text',
+      required: true,
+      valueType: 'number',
+      helperText: 'Greater than the minimum.',
+    },
+    {
+      key: 'reference_column_name',
+      label: 'Reference datetime column',
+      kind: 'text',
+      required: true,
+      reference: 'single',
+      placeholder: 'Name of an existing datetime column',
+      helperText: 'The datetime column each delta is added to.',
+    },
+    {
+      key: 'unit',
+      label: 'Unit (optional)',
+      kind: 'select',
+      options: asOptions(['D', 'h', 'm', 's']),
+      helperText: 'Time unit for the deltas (defaults to days).',
     },
   ],
 };
@@ -353,6 +631,15 @@ export const validateColumnName = (name: string, takenNames: Set<string>): strin
   return null;
 };
 
+const isValidJson = (value: string): boolean => {
+  try {
+    JSON.parse(value);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export const validateColumns = (columns: BuilderColumn[]): string[] => {
   if (columns.length === 0) return ['Add at least one column before creating the job.'];
 
@@ -371,12 +658,15 @@ export const validateColumns = (columns: BuilderColumn[]): string[] => {
         errors.push(`${label}: ${field.label} is required.`);
         continue;
       }
-      if (field.key === 'output_format' && value) {
-        try {
-          JSON.parse(value);
-        } catch {
-          errors.push(`${label}: ${field.label} must be valid JSON.`);
-        }
+      if (!value) continue;
+      if (field.key === 'output_format' && !isValidJson(value)) {
+        errors.push(`${label}: ${field.label} must be valid JSON.`);
+      }
+      if (field.valueType === 'number' && !Number.isFinite(Number(value))) {
+        errors.push(`${label}: ${field.label} must be a number.`);
+      }
+      if (field.valueType === 'json' && !isValidJson(value)) {
+        errors.push(`${label}: ${field.label} must be valid JSON.`);
       }
     }
   }
@@ -390,6 +680,21 @@ const splitList = (value: string): string[] =>
     .map((entry) => entry.trim())
     .filter(Boolean);
 
+/** Coerces a (non-empty) string field value into its SDK config form per {@link ColumnField}. */
+const serializeFieldValue = (field: ColumnField, value: string): unknown => {
+  if (field.list) return splitList(value);
+  switch (field.valueType) {
+    case 'number':
+      return Number(value);
+    case 'boolean':
+      return value === 'true';
+    case 'json':
+      return JSON.parse(value);
+    default:
+      return value;
+  }
+};
+
 /**
  * Converts a sampler column into the SDK's `SamplerColumnConfig` shape. Sub-type params
  * are nested under the required `params` object; `convert_to` stays at the top level.
@@ -399,7 +704,7 @@ const toSamplerConfig = (column: BuilderColumn): Record<string, unknown> => {
   for (const field of getSamplerParamFields(column.option.samplerType)) {
     const value = column.values[field.key]?.trim();
     if (!value) continue;
-    params[field.key] = field.list ? splitList(value) : value;
+    params[field.key] = serializeFieldValue(field, value);
   }
 
   const config: Record<string, unknown> = {

@@ -75,7 +75,9 @@ export const BuilderToolbar: FC<BuilderToolbarProps> = ({
             {templateTag.label}
           </Tag>
         )}
-        <Text className="text-secondary">·</Text>
+        <Text className="text-secondary" aria-hidden>
+          ·
+        </Text>
         <Text kind="body/regular/sm" className="text-secondary whitespace-nowrap">
           {columnCount} {columnCount === 1 ? 'column' : 'columns'}
         </Text>

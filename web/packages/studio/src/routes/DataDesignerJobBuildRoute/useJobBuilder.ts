@@ -32,10 +32,12 @@ export type PaletteTab = 'columns' | 'models';
  * this hook stays a pure graph-editing store.
  *
  * `modelGroups` auto-fills a template's seeded models once the platform model list loads.
+ * `modelsSettled` gates that auto-fill on the full (all-pages) model list being available.
  */
 export const useJobBuilder = (
   template: FilesetTemplate | null,
-  modelGroups: ModelWorkspaceGroup[]
+  modelGroups: ModelWorkspaceGroup[],
+  modelsSettled: boolean
 ) => {
   // Seed once from the template (if any). `useState` initializer runs a single time, so
   // navigating with a template preloads its columns without re-seeding on every render.
@@ -60,14 +62,15 @@ export const useJobBuilder = (
   // you're adding, not what you're editing.
   const [paletteTab, setPaletteTab] = useState<PaletteTab>('columns');
 
-  // Auto-fill template-seeded models once, when the platform model list first loads: each
-  // seeded model's `model` holds its preferred name (or is empty), which we resolve to a
-  // real workspace model + provider — preferring the named one, else the first available.
-  // Runs a single time so it never clobbers a model the user later picks themselves (those
-  // already carry a provider from the picker and would be skipped regardless).
+  // Auto-fill template-seeded models once, when the full platform model list has loaded:
+  // each seeded model's `model` holds its preferred name (or is empty), which we resolve to
+  // a real workspace model + provider — preferring the named one, else the first available.
+  // Gated on `modelsSettled` so a partial (still-paginating) list can't lock in the fallback
+  // before a preferred model on a later page arrives. Runs a single time so it never clobbers
+  // a model the user later picks themselves (those already carry a provider and are skipped).
   const autoFilled = useRef(false);
   useEffect(() => {
-    if (autoFilled.current || modelGroups.length === 0) return;
+    if (autoFilled.current || !modelsSettled || modelGroups.length === 0) return;
     autoFilled.current = true;
     setModels((prev) => {
       let changed = false;
@@ -79,7 +82,7 @@ export const useJobBuilder = (
       });
       return changed ? next : prev;
     });
-  }, [modelGroups]);
+  }, [modelGroups, modelsSettled]);
 
   const selectedColumn = columns.find((column) => column.id === selectedId) ?? null;
   const selectedModel = models.find((model) => model.id === selectedModelId) ?? null;

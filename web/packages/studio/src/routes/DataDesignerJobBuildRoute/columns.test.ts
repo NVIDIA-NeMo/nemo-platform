@@ -182,6 +182,53 @@ describe('sampler columns', () => {
 
     expect(validateColumns(columns)).toContainEqual(expect.stringContaining('Categories'));
   });
+
+  it('serializes binomial params as numbers', () => {
+    const columns = [column('a', 'returns', 'sampler', { n: '10', p: '0.1' }, 'binomial')];
+
+    expect(buildDataDesignerConfig(columns).columns[0]).toEqual({
+      name: 'returns',
+      column_type: 'sampler',
+      sampler_type: 'binomial',
+      params: { n: 10, p: 0.1 },
+    });
+  });
+
+  it('serializes boolean and JSON params for their SDK types', () => {
+    const columns = [
+      column(
+        'a',
+        'dist',
+        'sampler',
+        { dist_name: 'norm', dist_params: '{ "loc": 0, "scale": 1 }', p: '0.5' },
+        'bernoulli_mixture'
+      ),
+      column('b', 'ids', 'sampler', { short_form: 'true' }, 'uuid'),
+    ];
+
+    const built = buildDataDesignerConfig(columns);
+    expect(built.columns[0]).toMatchObject({
+      params: { p: 0.5, dist_name: 'norm', dist_params: { loc: 0, scale: 1 } },
+    });
+    expect(built.columns[1]).toMatchObject({ params: { short_form: true } });
+  });
+
+  it('flags non-numeric and malformed-JSON sampler params', () => {
+    const columns = [
+      column('a', 'returns', 'sampler', { n: 'not-a-number', p: '0.1' }, 'binomial'),
+      column(
+        'b',
+        'dist',
+        'sampler',
+        { dist_name: 'norm', dist_params: '{ bad', p: '0.5' },
+        'bernoulli_mixture'
+      ),
+    ];
+
+    const errors = validateColumns(columns);
+    expect(errors).toContainEqual(expect.stringContaining('Number of trials'));
+    expect(errors).toContainEqual(expect.stringContaining('Distribution params'));
+  });
 });
 
 describe('palette catalog', () => {
