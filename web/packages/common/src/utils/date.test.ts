@@ -20,6 +20,11 @@ describe('formatTimeInSeconds', () => {
   it('Never renders a sub-second component', () => {
     expect(formatTimeInSeconds(30.9)).toBe('30s');
   });
+
+  it('Returns empty string for sub-second and negative values', () => {
+    expect(formatTimeInSeconds(0.9)).toBe('');
+    expect(formatTimeInSeconds(-5)).toBe('');
+  });
 });
 
 describe('formatDurationMs', () => {

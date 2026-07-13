@@ -21,8 +21,8 @@ export const ExperimentDetailMetrics: FC<ExperimentDetailMetricsProps> = ({ expe
   const avgCost =
     experiment?.cost_usd?.mean != null ? `$${experiment.cost_usd.mean.toFixed(3)}` : undefined;
 
-  const avgLatency =
-    experiment?.latency_ms?.mean != null ? formatDurationMs(experiment.latency_ms.mean) : undefined;
+  // formatDurationMs returns '—' for null/undefined, which is also KVPair's default empty value.
+  const avgLatency = formatDurationMs(experiment?.latency_ms?.mean);
 
   const modelNames = experiment?.model_names ?? [];
   const modelNamesJoined = modelNames.length > 0 ? modelNames.join(', ') : undefined;

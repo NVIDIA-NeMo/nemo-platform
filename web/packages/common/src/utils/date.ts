@@ -75,7 +75,7 @@ export const formatDurationMs = (ms?: number | null): string => {
  * Only showing the minimum units needed to represent the time
  */
 export const formatTimeInSeconds = (seconds?: number) => {
-  if (!seconds) return '';
-  // Whole seconds only — this variant never renders a sub-second (ms) component.
+  // Whole seconds only: sub-second (and empty/negative) inputs render nothing here.
+  if (!seconds || seconds < 1) return '';
   return formatDurationMs(Math.floor(seconds) * 1000);
 };
