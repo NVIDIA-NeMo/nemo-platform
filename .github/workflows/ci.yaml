@@ -1013,13 +1013,6 @@ jobs:
       matrix:
         package: [nemo-platform, nemo-platform-plugin]
         python-version: ["3.11", "3.12", "3.13", "3.14"]
-        # nemo-platform[services] currently pulls nvidia-nat-langchain ->
-        # langchain-litellm -> litellm. The CVE-fixed litellm range is not
-        # installable on Python 3.14 yet: pre-1.92 releases declare <3.14, and
-        # 1.92.0 falls back to a PyO3 source build that only supports <=3.13.
-        exclude:
-          - package: nemo-platform
-            python-version: "3.14"
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -1062,11 +1055,6 @@ jobs:
       matrix:
         package: [nemo-platform, nemo-platform-plugin]
         python-version: ["3.11", "3.12", "3.13", "3.14"]
-        # Keep the full-services wheel smoke aligned with the build matrix
-        # above until the litellm/NAT dependency chain supports Python 3.14.
-        exclude:
-          - package: nemo-platform
-            python-version: "3.14"
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -1108,6 +1096,13 @@ jobs:
           uv pip install --python "${VENV}/bin/python" \
             --constraint "${GITHUB_WORKSPACE}/.github/wheel-constraints/nemo-platform-services.txt" \
             "${WHEEL}[services]"
+          if [[ "${PYTHON_VERSION}" == "3.14" ]]; then
+            # litellm 1.92.0 builds its Rust bridge from source on Python 3.14.
+            # Its pinned PyO3 supports the stable ABI, but rejects 3.14 unless
+            # this forward-compatibility opt-in is present.
+            export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
+          fi
+          uv tool install --force --python "${PYTHON_VERSION}" "${WHEEL}[services]"
           cd "${RUNNER_TEMP}/wheelcheck"
           unset PYTHONPATH VIRTUAL_ENV
           export PATH="${VENV}/bin:${PATH}"
