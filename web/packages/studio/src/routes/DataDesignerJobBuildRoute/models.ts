@@ -7,6 +7,8 @@ import { MAX_COMPLETION_TOKENS_DEFAULT } from '@nemo/common/src/constants/infere
 import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
 import type {
   ChatCompletionInferenceParams,
+  EmbeddingInferenceParams,
+  EmbeddingInferenceParamsExtraBody,
   ModelConfig,
 } from '@nemo/sdk/generated/data-designer/schema';
 import type { InferenceParams, ModelProvider } from '@nemo/sdk/generated/platform/schema';
@@ -155,6 +157,39 @@ export const validateModels = (models: BuilderModel[]): string[] => {
   return errors;
 };
 
+/**
+ * Maps a builder model's params to the SDK's discriminated inference-parameter union. A
+ * `generation_type: 'embedding'` marker (set by embedding-model templates) routes to
+ * {@link EmbeddingInferenceParams} so embedding-only fields — notably `extra_body`, which
+ * carries the `input_type` that NVIDIA retrieval-QA embedders require — reach the request.
+ * Everything else defaults to chat-completion.
+ */
+const toInferenceParameters = (
+  params: Partial<InferenceParams>
+): ChatCompletionInferenceParams | EmbeddingInferenceParams => {
+  if (params.generation_type === 'embedding') {
+    const inference: EmbeddingInferenceParams = { generation_type: 'embedding' };
+    const { encoding_format, extra_body, dimensions } = params;
+    if (encoding_format === 'float' || encoding_format === 'base64') {
+      inference.encoding_format = encoding_format;
+    }
+    if (extra_body && typeof extra_body === 'object') {
+      inference.extra_body = extra_body as EmbeddingInferenceParamsExtraBody;
+    }
+    if (typeof dimensions === 'number') inference.dimensions = dimensions;
+    return inference;
+  }
+
+  const { temperature, top_p, max_tokens } = params;
+  const inference: ChatCompletionInferenceParams = {
+    generation_type: 'chat-completion',
+    max_tokens: max_tokens ?? MAX_COMPLETION_TOKENS_DEFAULT,
+  };
+  if (temperature !== undefined) inference.temperature = temperature;
+  if (top_p !== undefined) inference.top_p = top_p;
+  return inference;
+};
+
 const toModelConfig = (model: BuilderModel, servedModelNames: Map<string, string>): ModelConfig => {
   const config: ModelConfig = {
     alias: model.alias.trim(),
@@ -162,15 +197,7 @@ const toModelConfig = (model: BuilderModel, servedModelNames: Map<string, string
     provider: model.provider.trim(),
   };
   if (model.provider.trim()) config.provider = model.provider.trim();
-
-  const { temperature, top_p, max_tokens } = model.inferenceParams;
-  const inference: ChatCompletionInferenceParams = {
-    generation_type: 'chat-completion',
-    max_tokens: max_tokens ?? MAX_COMPLETION_TOKENS_DEFAULT,
-  };
-  if (temperature !== undefined) inference.temperature = temperature;
-  if (top_p !== undefined) inference.top_p = top_p;
-  config.inference_parameters = inference;
+  config.inference_parameters = toInferenceParameters(model.inferenceParams);
   return config;
 };
 

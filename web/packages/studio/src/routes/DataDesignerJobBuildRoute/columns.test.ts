@@ -345,6 +345,79 @@ describe('sampler-showcase template', () => {
   });
 });
 
+describe('llm-judge columns', () => {
+  const scores =
+    '[{ "name": "Quality", "description": "Overall answer quality.", "options": { "1": "Very poor", "5": "Excellent" } }]';
+
+  it('serializes required judge score definitions', () => {
+    const columns = [
+      column('a', 'quality_score', 'llm-judge', {
+        prompt: 'Rate {{ answer }}',
+        model_alias: 'default',
+        scores,
+      }),
+    ];
+
+    expect(buildDataDesignerConfig(columns).columns[0]).toMatchObject({
+      name: 'quality_score',
+      column_type: 'llm-judge',
+      prompt: 'Rate {{ answer }}',
+      model_alias: 'default',
+      scores: [
+        {
+          name: 'Quality',
+          description: 'Overall answer quality.',
+          options: { '1': 'Very poor', '5': 'Excellent' },
+        },
+      ],
+    });
+  });
+
+  it('requires valid score JSON before submit', () => {
+    expect(
+      validateColumns([
+        column('a', 'quality_score', 'llm-judge', {
+          prompt: 'Rate {{ answer }}',
+          model_alias: 'default',
+        }),
+      ])
+    ).toContainEqual(expect.stringContaining('Scores (JSON) is required'));
+
+    expect(
+      validateColumns([
+        column('a', 'quality_score', 'llm-judge', {
+          prompt: 'Rate {{ answer }}',
+          model_alias: 'default',
+          scores: '{ bad',
+        }),
+      ])
+    ).toContainEqual(expect.stringContaining('Scores (JSON) must be valid JSON'));
+  });
+});
+
+describe('preference-pairs template', () => {
+  const template = FILESET_TEMPLATES.find((t) => t.id === 'preference-pairs');
+  if (!template) throw new Error('preference-pairs template is missing');
+
+  it('builds a valid llm-judge column with scores', () => {
+    const columns = buildColumnsFromTemplate(template.columns);
+
+    expect(validateColumns(columns)).toEqual([]);
+    expect(buildDataDesignerConfig(columns).columns).toContainEqual(
+      expect.objectContaining({
+        name: 'quality_score',
+        column_type: 'llm-judge',
+        scores: [
+          expect.objectContaining({
+            name: 'Quality',
+            options: expect.objectContaining({ '1': 'Very poor', '5': 'Excellent' }),
+          }),
+        ],
+      })
+    );
+  });
+});
+
 describe('palette catalog', () => {
   it('has a field descriptor path for every catalog column type', () => {
     // Sanity: findColumnOption resolves every option the palette can emit.

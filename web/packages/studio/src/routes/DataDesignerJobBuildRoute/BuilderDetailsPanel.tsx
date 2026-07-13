@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useStickToBottom } from '@nemo/common/src/hooks/useStickToBottom';
 import { Banner, Button, CodeSnippet, Flex, Stack } from '@nvidia/foundations-react-core';
 import { formatPreviewLogsForDisplay } from '@studio/components/NewDataDesignerJobForm/previewApi';
 import { ChevronDown, ChevronRight } from 'lucide-react';
@@ -20,6 +21,10 @@ export const BuilderDetailsPanel: FC<BuilderDetailsPanelProps> = ({
   isOpen,
   onToggle,
 }) => {
+  const { ref: logsScrollRef } = useStickToBottom<HTMLDivElement>({
+    enabled: isOpen && !!previewLogs,
+  });
+
   const hasDetails = validationErrors.length > 0 || !!submitError || !!previewLogs;
   if (!hasDetails) return null;
 
@@ -68,7 +73,7 @@ export const BuilderDetailsPanel: FC<BuilderDetailsPanelProps> = ({
               value={formatPreviewLogsForDisplay(previewLogs)}
               language="json"
               kind="block"
-              attributes={{ CodeSnippetCode: { className: 'max-h-[240px]' } }}
+              attributes={{ CodeSnippetCode: { ref: logsScrollRef, className: 'max-h-[240px]' } }}
             />
           )}
         </Stack>

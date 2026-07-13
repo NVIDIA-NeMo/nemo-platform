@@ -275,4 +275,32 @@ describe('buildModelConfigs', () => {
       },
     ]);
   });
+
+  it('emits embedding inference parameters and forwards extra_body for embedding models', () => {
+    expect(
+      buildModelConfigs([
+        model({
+          alias: 'embedder',
+          model: 'nvidia/nv-embedqa-e5-v5',
+          provider: 'steramae/build',
+          inferenceParams: {
+            generation_type: 'embedding',
+            encoding_format: 'float',
+            extra_body: { input_type: 'query', truncate: 'NONE' },
+          },
+        }),
+      ])
+    ).toEqual([
+      {
+        alias: 'embedder',
+        model: 'nvidia/nv-embedqa-e5-v5',
+        provider: 'steramae/build',
+        inference_parameters: {
+          generation_type: 'embedding',
+          encoding_format: 'float',
+          extra_body: { input_type: 'query', truncate: 'NONE' },
+        },
+      },
+    ]);
+  });
 });

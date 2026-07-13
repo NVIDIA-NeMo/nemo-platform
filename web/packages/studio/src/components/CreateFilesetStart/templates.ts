@@ -3,7 +3,7 @@
 
 import { SamplerType } from '@nemo/sdk/generated/data-designer/schema';
 import type { FilesetTemplate } from '@studio/components/CreateFilesetStart/types';
-import { DEFAULT_BUILD_MODEL_NAME } from '@studio/constants/constants';
+import { DEFAULT_BUILD_MODEL_NAME, DEFAULT_EMBEDDER_MODEL_NAME } from '@studio/constants/constants';
 import {
   Braces,
   Code2,
@@ -334,7 +334,15 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
     ],
     models: [
       { alias: 'default', model: DEFAULT_BUILD_MODEL_NAME },
-      { alias: 'embedder', model: 'nvidia/nv-embedqa-e5-v5' },
+      {
+        alias: 'embedder',
+        model: DEFAULT_EMBEDDER_MODEL_NAME,
+        inferenceParams: {
+          generation_type: 'embedding',
+          encoding_format: 'float',
+          extra_body: { input_type: 'query', truncate: 'NONE' },
+        },
+      },
     ],
   },
   {

@@ -15,8 +15,8 @@ import type {
   ColumnTypeOption,
   DataDesignerColumnType,
 } from '@studio/components/AddColumnPalette/types';
-import type { TemplateColumnSpec } from '@studio/components/CreateFilesetStart/types';
 import type { DagEdge, DagNode } from '@studio/components/DagCanvas/types';
+import type { TemplateColumnSpec } from '@studio/components/DataDesignerCreateStart/types';
 import {
   type BuilderModel,
   buildModelConfigs,
@@ -156,7 +156,21 @@ const FIELDS_BY_COLUMN_TYPE: Record<NonNullable<DataDesignerColumnType>, ColumnF
     },
     SYSTEM_PROMPT_FIELD,
   ],
-  'llm-judge': [PROMPT_FIELD, MODEL_ALIAS_FIELD, SYSTEM_PROMPT_FIELD],
+  'llm-judge': [
+    PROMPT_FIELD,
+    MODEL_ALIAS_FIELD,
+    {
+      key: 'scores',
+      label: 'Scores (JSON)',
+      kind: 'textarea',
+      dataType: 'json',
+      required: true,
+      placeholder:
+        '[{ "name": "Quality", "description": "Overall answer quality.", "options": { "1": "Very poor", "5": "Excellent" } }]',
+      helperText: 'JSON array of judge score definitions.',
+    },
+    SYSTEM_PROMPT_FIELD,
+  ],
   image: [
     { ...PROMPT_FIELD, placeholder: 'Generate an image of {{ subject }}.' },
     MODEL_ALIAS_FIELD,
