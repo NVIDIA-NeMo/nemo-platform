@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getFileExtension } from '@nemo/common/src/components/DatasetFileSelect/utils';
 import { useUploadModalContext } from '@nemo/common/src/components/UploadModal/Context/useUploadModalContext';
 import { getExistingFileId } from '@nemo/common/src/components/UploadModal/utils';
 import { getEntityReference } from '@nemo/common/src/namedEntity';
@@ -26,7 +27,9 @@ const filesetToOption = (fileset: FilesetOutput) => ({
 
 export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
   const [state, dispatch] = useUploadModalContext();
-  const { dataset, allowNewDataset } = state;
+  const { dataset, allowNewDataset, acceptableFileTypes, autoSelectFirstAcceptable } = state;
+  const purpose = state.filesetPurpose ?? 'dataset';
+  const label = state.datasetLabel ?? 'Dataset';
 
   // Extract workspace from project (project format is "workspace/name" or just "workspace")
   const workspace = project.includes('/') ? project.split('/')[0] : project;
@@ -43,7 +46,7 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
      */
     page_size: 100, // v2 API max is 100
     sort: 'created_at',
-    filter: { purpose: 'dataset' },
+    filter: { purpose },
   });
 
   const filesets = useMemo(() => filesetsResponse?.data ?? [], [filesetsResponse]);
@@ -67,14 +70,23 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
       try {
         const filesResponse = await filesListFilesetFiles(fileset.workspace, fileset.name);
         const filesetFiles = filesResponse.data ?? [];
-        dispatch({
-          type: 'SET_FILES',
-          payload: filesetFiles.map((file) => ({
-            id: getExistingFileId(file),
-            type: 'existing',
-            file,
-          })),
-        });
+        const uploadFiles = filesetFiles.map(
+          (file) => ({ id: getExistingFileId(file), type: 'existing', file }) as const
+        );
+        dispatch({ type: 'SET_FILES', payload: uploadFiles });
+        // Optionally skip the manual file pick: auto-select the first root-level
+        // file whose extension is accepted. The reducer already auto-selects a
+        // lone file, so only act when there's more than one (otherwise we'd
+        // toggle the reducer's selection back off).
+        if (autoSelectFirstAcceptable && uploadFiles.length > 1) {
+          const target = uploadFiles.find((f) => {
+            const path = f.file.path;
+            if (path.includes('/')) return false; // root-level only
+            const ext = getFileExtension(path)?.toLowerCase();
+            return !!ext && acceptableFileTypes.includes(ext);
+          });
+          if (target) dispatch({ type: 'TOGGLE_FILE_SELECTION', payload: target });
+        }
         dispatch({ type: 'SET_FETCHING', payload: false });
       } catch (error) {
         console.error('Error fetching dataset files', error);
@@ -100,7 +112,7 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
 
   return (
     <FormField
-      slotLabel="Dataset"
+      slotLabel={label}
       slotError={
         <Flex gap="density-md" align="center">
           <CircleAlert className="text-feedback-danger" />
@@ -135,14 +147,14 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
                 ]
               : []),
             {
-              slotHeading: 'Existing Datasets',
+              slotHeading: `Existing ${label}s`,
               attributes: { MenuHeading: { className: 'hidden', 'aria-hidden': true } },
               items: datasetOptions,
             },
           ]}
           value={selectedDatasetOption}
           onValueChange={handleDatasetSelect}
-          placeholder="Select a dataset"
+          placeholder={`Select a ${label.toLowerCase()}`}
         />
       )}
     </FormField>

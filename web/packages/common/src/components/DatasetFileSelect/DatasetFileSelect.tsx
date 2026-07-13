@@ -10,6 +10,7 @@ import { FileList, FileListItem } from '@nemo/common/src/components/FileList';
 import { UploadModal } from '@nemo/common/src/components/UploadModal/index';
 import { InlineUploadPicker } from '@nemo/common/src/components/UploadModal/InlineUploadPicker';
 import type { SubmitUploadType } from '@nemo/common/src/components/UploadModal/types';
+import type { FilesetPurpose } from '@nemo/sdk/generated/platform/schema';
 import { SidePanel, Stack, Text } from '@nvidia/foundations-react-core';
 import { FolderOpen } from 'lucide-react';
 import { FC, useEffect, useMemo, useRef, useState } from 'react';
@@ -49,6 +50,15 @@ interface DatasetFileSelectProps {
    *  selects a file. Also hides the post-commit file list since the parent
    *  form already reflects the selection. */
   autoCommit?: boolean;
+  /** Fileset ``purpose`` the picker lists. Defaults to ``'dataset'``; pass
+   *  ``'generic'`` to browse non-dataset filesets. */
+  filesetPurpose?: FilesetPurpose;
+  /** Label for the fileset picker. Defaults to ``'Dataset'``. */
+  datasetLabel?: string;
+  /** When true, selecting a fileset auto-selects the first root-level file
+   *  matching ``acceptedFileTypes`` (pairs with ``autoCommit``). No-op when no
+   *  such file exists. */
+  autoSelectFirstAcceptable?: boolean;
 }
 
 /**
@@ -77,6 +87,9 @@ export const DatasetFileSelect: FC<DatasetFileSelectProps> = ({
   listLabel,
   inline = false,
   autoCommit = false,
+  filesetPurpose,
+  datasetLabel,
+  autoSelectFirstAcceptable,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -198,6 +211,9 @@ export const DatasetFileSelect: FC<DatasetFileSelectProps> = ({
             invalidFileMode={invalidFileMode}
             onSubmit={handleModalSubmit}
             autoCommit={autoCommit}
+            filesetPurpose={filesetPurpose}
+            datasetLabel={datasetLabel}
+            autoSelectFirstAcceptable={autoSelectFirstAcceptable}
           />
         ) : (
           <DatasetFileSelectButton

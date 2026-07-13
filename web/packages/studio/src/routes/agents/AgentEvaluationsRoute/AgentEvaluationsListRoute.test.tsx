@@ -21,7 +21,7 @@ describe('AgentEvaluationsListRoute', () => {
   it('renders the page header and submit button', async () => {
     renderList();
     expect(await screen.findByText('Agent Evaluations')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'New evaluation' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Run Evaluation' })).toBeInTheDocument();
   });
 
   it('shows the empty state when no eval jobs are returned (default mock)', async () => {

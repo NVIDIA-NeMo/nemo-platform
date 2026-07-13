@@ -67,6 +67,11 @@ export function makeDatasetsTableColumns({
         header: 'Name',
         enableSorting: enableFilters,
         size: 175,
+        cell({ row }) {
+          const name = row.original?.name;
+          // Wrap long fileset names to multiple lines instead of truncating.
+          return name ? <Text className="whitespace-normal break-all">{name}</Text> : null;
+        },
       }),
       accessor((row) => getStorageBackend(row.storage), {
         id: 'storage_type',
@@ -129,8 +134,9 @@ export function makeDatasetsTableColumns({
         size: 200,
         cell({ row }) {
           const path = getStoragePath(row.original?.storage);
+          // Wrap long paths to multiple lines instead of truncating.
           return path ? (
-            <Text className="truncate" title={path}>
+            <Text className="whitespace-normal break-all" title={path}>
               {path}
             </Text>
           ) : null;
