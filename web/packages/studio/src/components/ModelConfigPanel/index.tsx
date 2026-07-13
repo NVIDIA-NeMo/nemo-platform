@@ -18,7 +18,6 @@ import type { FC } from 'react';
 
 export interface ModelConfigPanelProps {
   model: BuilderModel;
-  /** Aliases used by other models, for the uniqueness check. */
   takenAliases: Set<string>;
   modelGroups: ModelWorkspaceGroup[];
   isLoadingModels?: boolean;
@@ -40,8 +39,6 @@ export const ModelConfigPanel: FC<ModelConfigPanelProps> = ({
   const aliasError = validateModelAlias(model.alias, takenAliases);
   const modelValue: ModelSelection | null = model.model ? { model: model.model } : null;
 
-  // Switching the model also re-resolves its provider so the submitted config keeps them
-  // in sync (Data Designer requires an explicit provider per model).
   const handleModelChange = (selection: ModelSelection) =>
     onChange({ model: selection.model, provider: providerForModel(modelGroups, selection.model) });
   const handleParamsChange = (params: Partial<InferenceParams>) =>

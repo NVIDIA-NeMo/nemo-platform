@@ -218,10 +218,6 @@ const BOOL_OPTIONS = [
   { label: 'No', value: 'false' },
 ] as const;
 
-// Sub-type params are nested under the SDK's required `params` key (see toSamplerConfig).
-// Every sampler sub-type exposed by COLUMN_TYPE_GROUPS has an entry here so its required
-// params serialize with the right shape; sub-types with only optional params (e.g. uuid,
-// person) still list their fields so users can configure them.
 const PARAM_FIELDS_BY_SAMPLER_TYPE: Partial<Record<SamplerType, ColumnField[]>> = {
   [SamplerType.uuid]: [
     {
