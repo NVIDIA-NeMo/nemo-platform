@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import os
 import stat
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
@@ -27,6 +28,15 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+_WORKLOAD_TOKEN_ENVVAR = "NEMO_WORKLOAD_TOKEN"
+_WORKLOAD_TOKEN_FILE_ENVVAR = "NEMO_WORKLOAD_TOKEN_FILE"
+
+
+@dataclass(frozen=True)
+class _RuntimeAccessTokenSource:
+    token: str
+    label: str
 
 
 class Config(BaseModel):
@@ -128,6 +138,30 @@ class Config(BaseModel):
             logger.warning("Migrated %s legacy api-key user(s) to oauth users", migrated_count)
 
     @classmethod
+    def _runtime_access_token_source_from_env(cls) -> _RuntimeAccessTokenSource | None:
+        if token := os.environ.get("NMP_ACCESS_TOKEN"):
+            return _RuntimeAccessTokenSource(token, "NMP_ACCESS_TOKEN environment override")
+        if token := os.environ.get(_WORKLOAD_TOKEN_ENVVAR):
+            return _RuntimeAccessTokenSource(token, f"{_WORKLOAD_TOKEN_ENVVAR} environment override")
+        if token_path := os.environ.get(_WORKLOAD_TOKEN_FILE_ENVVAR):
+            try:
+                token = Path(token_path).read_text(encoding="utf-8").strip()
+            except OSError as exc:
+                raise ValueError(f"Unable to read {_WORKLOAD_TOKEN_FILE_ENVVAR} at {token_path}: {exc}") from exc
+            if token:
+                return _RuntimeAccessTokenSource(
+                    token,
+                    f"{_WORKLOAD_TOKEN_FILE_ENVVAR} environment override ({token_path})",
+                )
+        return None
+
+    @classmethod
+    def runtime_access_token_source_label(cls) -> str | None:
+        """Return the effective runtime access token override source label."""
+        source = cls._runtime_access_token_source_from_env()
+        return source.label if source else None
+
+    @classmethod
     def _load_from_env(cls) -> dict[str, object]:
         """Load configuration from environment variables with NMP_ prefix."""
         env_values: dict[str, object] = {}
@@ -135,6 +169,9 @@ class Config(BaseModel):
             env_key = f"NMP_{field_name.upper()}"
             if val := os.environ.get(env_key):
                 env_values[field_name] = val
+        if "access_token" not in env_values:
+            if source := cls._runtime_access_token_source_from_env():
+                env_values["access_token"] = source.token
         return env_values
 
     @classmethod

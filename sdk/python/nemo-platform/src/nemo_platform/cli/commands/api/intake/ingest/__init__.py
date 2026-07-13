@@ -4,11 +4,18 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
-from nemo_platform.cli.commands.api.intake.ingest import atif, chat_completions, otlp
+from importlib import import_module as _importlib_import_module
+
 from nemo_platform.cli.core.help_formatter import create_typer_app
+
+_cli_child_atif = _importlib_import_module("nemo_platform.cli.commands.api.intake.ingest.atif")
+_cli_child_chat_completions = _importlib_import_module(
+    "nemo_platform.cli.commands.api.intake.ingest.chat_completions"
+)
+_cli_child_otlp = _importlib_import_module("nemo_platform.cli.commands.api.intake.ingest.otlp")
 
 app = create_typer_app(name="ingest", help="Ingest operations")
 
-app.add_typer(atif.app, name="atif")
-app.add_typer(chat_completions.app, name="chat-completions")
-app.add_typer(otlp.app, name="otlp")
+app.add_typer(_cli_child_atif.app, name="atif")
+app.add_typer(_cli_child_chat_completions.app, name="chat-completions")
+app.add_typer(_cli_child_otlp.app, name="otlp")

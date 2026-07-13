@@ -24,11 +24,19 @@ Config selection::
     # Single repo-root-relative config file
     pytestmark = [pytest.mark.e2e_config("e2e/configs/local-subprocess.yaml")]
 
-    # Ordered config layers: files first, then inline overlays
+    # Ordered platform config layers: files first, then inline overlays
     pytestmark = [
         pytest.mark.e2e_config(
             "e2e/configs/local-subprocess.yaml",
             {"auth": {"enabled": True}},
+        )
+    ]
+
+    # Platform layers plus separate harness metadata
+    pytestmark = [
+        pytest.mark.e2e_config(
+            "contrib/auth/authentik/config/platform-compose-authentik.yaml",
+            harness={"backend": "docker_compose", ...},
         )
     ]
 
@@ -43,9 +51,10 @@ Why this exists:
 
 How pooling works:
 
-- The harness resolves the ordered ``e2e_config(...)`` layers into one
-  effective config dict.
-- That config is normalized into a canonical form and hashed.
+- The harness resolves the ordered platform ``e2e_config(...)`` layers into one
+  effective config dict, and keeps any ``harness=...`` metadata separate.
+- The platform config plus harness config are normalized into one canonical
+  pool identity and hashed.
 - Modules that resolve to the same hash share one running services instance for
   the session.
 - The pooled instance is shut down as soon as the last module using that hash
@@ -65,6 +74,8 @@ from pathlib import Path
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
 
 from e2e.services_pool import E2EServicesPool, RunningServices, admin_headers
 
@@ -257,6 +268,12 @@ def sdk(_services: str, _services_instance: RunningServices) -> NeMoPlatform:
         max_retries=2,
         default_headers=headers,
     )
+
+
+@pytest.fixture(scope="module")
+def files_client(sdk: NeMoPlatform) -> FilesClient:
+    """Provide a FilesClient derived from the SDK."""
+    return client_from_platform(sdk, FilesClient)
 
 
 @pytest.fixture(scope="function")

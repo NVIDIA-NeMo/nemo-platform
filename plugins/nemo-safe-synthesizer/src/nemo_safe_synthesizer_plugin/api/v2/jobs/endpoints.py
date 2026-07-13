@@ -14,7 +14,11 @@ from urllib.parse import urlparse
 from nemo_platform import AsyncNeMoPlatform, NotFoundError, PermissionDeniedError
 from nemo_platform.filesets import FilesetPathError, parse_fileset_ref
 from nemo_platform_plugin.authz import AuthzScope
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
+from nemo_platform_plugin.client.errors import PermissionDeniedError as ClientPermissionDeniedError
 from nemo_platform_plugin.entities import EntityClient
+from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     EnvironmentVariable,
@@ -51,6 +55,10 @@ def _runtime_job_config(job_config: SafeSynthesizerJobConfig) -> dict[str, Any]:
         if isinstance(training, dict):
             training.pop("pretrained_model", None)
     return config
+
+
+def _container_image() -> str:
+    return config.container_image_ref or get_qualified_image(config.container_image)
 
 
 def _create_job_step(job_config: SafeSynthesizerJobConfig, environment: list[EnvironmentVariable]) -> PlatformJobStep:
@@ -90,7 +98,7 @@ def _create_job_step(job_config: SafeSynthesizerJobConfig, environment: list[Env
             provider="gpu",
             profile=config.job_executor_profile,
             container=ContainerSpec(
-                image=get_qualified_image(config.container_image),
+                image=_container_image(),
                 entrypoint=config.entrypoint,
             ),
             resources=resources,
@@ -116,13 +124,14 @@ async def job_config_compiler(
         ds_workspace, fileset_name, _ = parse_fileset_ref(transformed_spec.data_source, workspace_fallback=workspace)
     except FilesetPathError as e:
         raise PlatformJobCompilationError(f"Invalid data_source format: {transformed_spec.data_source!r}") from e
+    files = client_from_platform(sdk, AsyncFilesClient)
     try:
-        await sdk.files.filesets.retrieve(name=fileset_name, workspace=ds_workspace)
-    except NotFoundError as e:
+        await files.get_fileset(name=fileset_name, workspace=ds_workspace)
+    except ClientNotFoundError as e:
         raise PlatformJobCompilationError(
             f"Could not find fileset {fileset_name!r} in workspace {ds_workspace!r}"
         ) from e
-    except PermissionDeniedError as e:
+    except ClientPermissionDeniedError as e:
         raise PermissionError(f"Access denied to fileset {fileset_name!r} in workspace {ds_workspace!r}") from e
 
     environment = [

@@ -25,6 +25,7 @@ from .atif_metrics_param import AtifMetricsParam as AtifMetricsParam
 from .atif_step_user_param import AtifStepUserParam as AtifStepUserParam
 from .atif_tool_call_param import AtifToolCallParam as AtifToolCallParam
 from .atif_step_agent_param import AtifStepAgentParam as AtifStepAgentParam
+from .atif_trajectory_param import AtifTrajectoryParam as AtifTrajectoryParam
 from .atif_observation_param import AtifObservationParam as AtifObservationParam
 from .atif_step_system_param import AtifStepSystemParam as AtifStepSystemParam
 from .atif_content_part_param import AtifContentPartParam as AtifContentPartParam

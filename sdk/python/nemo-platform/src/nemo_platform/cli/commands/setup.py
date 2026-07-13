@@ -26,7 +26,11 @@ import httpx
 import typer
 import yaml as _yaml
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest, PlatformSecretUpdateRequest
 from nmp.common.config import nmp_user_data_dir
+from pydantic import SecretStr
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
@@ -385,19 +389,22 @@ def _provider_exists(client: NeMoPlatform, name: str, workspace: str) -> bool:
 
 def _secret_exists(client: NeMoPlatform, name: str, workspace: str) -> bool:
     """Return True if a secret with *name* already exists."""
+    secrets = client_from_platform(client, SecretsClient)
     try:
-        client.secrets.retrieve(name, workspace=workspace)
+        secrets.get_secret(name=name, workspace=workspace)
         return True
     except Exception:
         return False
 
 
 def _create_secret(client: NeMoPlatform, name: str, value: str, workspace: str) -> None:
-    client.secrets.create(name=name, value=value, workspace=workspace)
+    secrets = client_from_platform(client, SecretsClient)
+    secrets.create_secret(body=PlatformSecretCreateRequest(name=name, value=SecretStr(value)), workspace=workspace)
 
 
 def _update_secret(client: NeMoPlatform, name: str, value: str, workspace: str) -> None:
-    client.secrets.update(name, value=value, workspace=workspace)
+    secrets = client_from_platform(client, SecretsClient)
+    secrets.update_secret(name=name, body=PlatformSecretUpdateRequest(value=SecretStr(value)), workspace=workspace)
 
 
 def _create_provider(

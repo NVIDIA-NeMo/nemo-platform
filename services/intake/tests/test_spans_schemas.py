@@ -41,6 +41,8 @@ def test_span_response_raw_attributes_merges_atif_raw_with_unknown_attributes():
         start_time=now,
         event_ts=now,
         attributes_string={
+            # nemo.experiment.metadata is a retired legacy key; it must stay out of raw_attributes whether
+            # it arrives nested inside atif.raw or as a top-level string attribute on a historical row.
             "atif.raw": json_dumps_preserve(
                 {"source_session_id": "session-a", "nemo.experiment.metadata": {"source": "atif.raw"}}
             ),

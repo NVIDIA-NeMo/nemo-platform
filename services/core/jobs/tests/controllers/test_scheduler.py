@@ -7,7 +7,7 @@ import httpx
 from nemo_platform import ConflictError
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobStepWithContext
-from nmp.core.jobs.controllers.backends.exceptions import ResourceAllocationError
+from nmp.core.jobs.controllers.backends.exceptions import ResourceAllocationError, SchedulingDeferred
 from nmp.core.jobs.controllers.backends.registry import BackendRegistry
 from nmp.core.jobs.controllers.backends.test import MockDockerCPUJobBackend
 from nmp.core.jobs.controllers.scheduler import JobScheduler
@@ -42,13 +42,26 @@ def test_does_schedule_job(
         workspace="-",
         name="-",
         filter={"status": ["created", "resuming"]},
-        sort="-created_at",
+        sort="created_at",
     )
 
     # Test backend should have received one schedule call for our test job
     assert len(test_backend.mock.schedule_calls) == 1
     assert test_backend.mock.schedule_calls[0]["step"].id == test_step_pending.id
     assert test_backend.mock.sync_calls == []
+
+
+def test_scheduling_deferred_leaves_step_created(
+    job_scheduler: JobScheduler,
+    mock_nmp_client,
+    test_step_pending: PlatformJobStepWithContext,
+):
+    mock_nmp_client.jobs.steps.list.return_value = [test_step_pending]
+
+    with patch.object(job_scheduler, "schedule_step", side_effect=SchedulingDeferred("capacity full")):
+        job_scheduler.step()
+
+    mock_nmp_client.jobs.steps.update_status.assert_not_called()
 
 
 def test_resource_allocation_error_marks_step_as_error(
@@ -132,8 +145,6 @@ def test_scheduler_does_not_mark_step_error_when_pending_update_conflicts_with_c
         workspace=test_step_pending.workspace,
         job=test_step_pending.job,
         status=PlatformJobStatus.PENDING,
-        status_details=None,
-        error_details=None,
     )
     mock_nmp_client.jobs.steps.retrieve.assert_called_once_with(
         test_step_pending.name,

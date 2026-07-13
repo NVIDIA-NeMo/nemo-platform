@@ -11,6 +11,8 @@ from pathlib import Path
 import fsspec.asyn
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform.filesets import FilesetFileSystem
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from pydantic import Field, RootModel
 
 _GLOB_CHARS = {"*", "?", "["}
@@ -123,12 +125,16 @@ def _match_path_parts(path_parts: tuple[str, ...], pattern_parts: tuple[str, ...
 
 
 async def _download_fileset_ref(
-    sdk: AsyncNeMoPlatform,
+    sdk: AsyncNeMoPlatform | NeMoPlatform,
     dataset: FilesetRef,
     destination: str,
     recursive: bool = True,
+    *,
+    fs: FilesetFileSystem | None = None,
 ) -> Path:
-    fs = FilesetFileSystem(sdk=sdk)
+    if fs is None:
+        files_client = client_from_platform(sdk, AsyncFilesClient)
+        fs = FilesetFileSystem(client=files_client)
     ref = dataset.root
 
     if "#" in ref:
@@ -141,6 +147,7 @@ async def _download_fileset_ref(
                 FilesetRef(root=base_path),
                 destination,
                 recursive=recursive,
+                fs=fs,
             )
 
         base_dest = _safe_child_path(Path(destination), base_path)
@@ -177,8 +184,9 @@ def _download_fileset_ref_sync(
     destination: str,
     recursive: bool = True,
 ) -> Path:
-    fs = FilesetFileSystem(sdk=sdk)
-    result = fsspec.asyn.sync(fs.loop, _download_fileset_ref, fs._sdk, dataset, destination, recursive)
+    files_client = client_from_platform(sdk, FilesClient)
+    fs = FilesetFileSystem(client=files_client)
+    result = fsspec.asyn.sync(fs.loop, _download_fileset_ref, sdk, dataset, destination, recursive, fs=fs)
     if result is None:
         raise RuntimeError(f"FilesetRef download returned no path for dataset {dataset.root!r}")
     return result

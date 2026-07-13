@@ -70,7 +70,6 @@ def mock_storage():
 def mock_sdk():
     """Create a mock SDK for testing."""
     mock_sdk = AsyncMock()
-    mock_sdk.secrets.access = AsyncMock()
     return mock_sdk
 
 

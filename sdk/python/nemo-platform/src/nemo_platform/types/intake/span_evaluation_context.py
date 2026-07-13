@@ -15,7 +15,7 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Dict, Optional
+from typing import Optional
 
 from ..._models import BaseModel
 
@@ -24,11 +24,5 @@ __all__ = ["SpanEvaluationContext"]
 
 class SpanEvaluationContext(BaseModel):
     evaluation_id: Optional[str] = None
-
-    evaluation_run_id: Optional[str] = None
-
-    evaluation_sha: Optional[str] = None
-
-    metadata: Optional[Dict[str, object]] = None
 
     test_case_id: Optional[str] = None

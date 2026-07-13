@@ -1,0 +1,149 @@
+# authentik blueprint: provision everything NeMo needs to use authentik as its
+# OIDC IdP, including a demo workload identity for gateway-verified auth.
+
+version: 1
+metadata:
+  name: nemo-platform-oidc
+  labels:
+    blueprints.goauthentik.io/description: "NeMo Platform OIDC provider + demo workload identity"
+
+entries:
+  - model: authentik_providers_oauth2.scopemapping
+    id: nemo-groups-scope
+    identifiers:
+      name: "NeMo groups"
+    attrs:
+      name: "NeMo groups"
+      scope_name: groups
+      description: "Comma-separated group membership used by the gateway workload header contract"
+      expression: |
+        return {"groups": ",".join(group.name for group in user.ak_groups.all())}
+
+  - model: authentik_providers_oauth2.oauth2provider
+    id: nemo-provider
+    identifiers:
+      name: nemo-platform
+    attrs:
+      name: nemo-platform
+      client_type: confidential
+      client_id: nemo-platform
+      client_secret: nemo-platform-secret-dev
+      sub_mode: user_username
+      include_claims_in_id_token: true
+      redirect_uris: []
+      authorization_flow:
+        !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow:
+        !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      signing_key:
+        !Find [authentik_crypto.certificatekeypair, [name, "authentik Self-signed Certificate"]]
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, email]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, offline_access]]
+        - !KeyOf nemo-groups-scope
+
+  - model: authentik_providers_oauth2.oauth2provider
+    id: nemo-cli-provider
+    identifiers:
+      name: nemo-platform-cli
+    attrs:
+      name: nemo-platform-cli
+      client_type: public
+      client_id: nemo-platform-cli
+      sub_mode: user_username
+      include_claims_in_id_token: true
+      redirect_uris: []
+      authorization_flow:
+        !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow:
+        !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      signing_key:
+        !Find [authentik_crypto.certificatekeypair, [name, "authentik Self-signed Certificate"]]
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, email]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, offline_access]]
+        - !KeyOf nemo-groups-scope
+
+  - model: authentik_core.application
+    identifiers:
+      slug: nemo
+    attrs:
+      name: NeMo Platform
+      slug: nemo
+      provider: !KeyOf nemo-provider
+
+  - model: authentik_core.application
+    identifiers:
+      slug: nemo-cli
+    attrs:
+      name: NeMo Platform CLI
+      slug: nemo-cli
+      provider: !KeyOf nemo-cli-provider
+
+  - model: authentik_core.group
+    id: group-nemo-admins
+    identifiers:
+      name: nemo-admins
+    attrs:
+      name: nemo-admins
+
+  - model: authentik_core.group
+    id: group-nemo-editors
+    identifiers:
+      name: nemo-editors
+    attrs:
+      name: nemo-editors
+
+  - model: authentik_core.user
+    id: nemo-user
+    identifiers:
+      username: nemo-user
+    attrs:
+      username: nemo-user
+      email: nemo-user@example.com
+      name: "NeMo CLI demo user"
+      password: nemo-user-password-dev
+      groups:
+        - !KeyOf group-nemo-editors
+
+  - model: authentik_core.token
+    identifiers:
+      identifier: nemo-user-token
+    attrs:
+      identifier: nemo-user-token
+      intent: app_password
+      user: !KeyOf nemo-user
+      key: nemo-user-token-secret-dev
+      expiring: false
+
+  - model: authentik_core.user
+    id: svc-nemo
+    identifiers:
+      username: svc-nemo
+    attrs:
+      username: svc-nemo
+      name: "NeMo demo workload identity"
+      type: service_account
+      path: service-accounts
+      groups:
+        - !KeyOf group-nemo-editors
+
+  - model: authentik_core.token
+    identifiers:
+      identifier: svc-nemo-token
+    attrs:
+      identifier: svc-nemo-token
+      intent: app_password
+      user: !KeyOf svc-nemo
+      key: svc-nemo-token-secret-dev
+      expiring: false
+
+  - model: authentik_brands.brand
+    identifiers:
+      domain: authentik-default
+    attrs:
+      default: true
+      flow_device_code:
+        !Find [authentik_flows.flow, [slug, default-authentication-flow]]

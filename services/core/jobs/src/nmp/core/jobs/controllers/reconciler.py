@@ -3,6 +3,7 @@
 
 import logging
 import threading
+import time
 
 from nemo_platform import APIError, APIStatusError, NeMoPlatform
 from nemo_platform.types.jobs import PlatformJobStepWithContext
@@ -54,6 +55,7 @@ class JobReconciler(Controller):
             logger.debug("Stop signal received, skipping reconciliation step")
             return
 
+        fetch_started_at = time.monotonic()
         with tracer.start_as_current_span("jobs_reconciler/fetch_steps_for_reconciliation"):
             try:
                 statuses: list[SDKPlatformJobStatus] = [
@@ -73,6 +75,10 @@ class JobReconciler(Controller):
             logger.info(f"Got {len(steps_to_reconcile)} job steps to reconcile")
         else:
             logger.debug("No job steps to reconcile")
+        logger.debug(
+            "Reconciler fetched job steps",
+            extra={"count": len(steps_to_reconcile), "duration_seconds": time.monotonic() - fetch_started_at},
+        )
         for step in steps_to_reconcile:
             with start_span_with_ctx(
                 tracer,
@@ -86,7 +92,21 @@ class JobReconciler(Controller):
                     with scoped_app_ctx(
                         JobBackendContext(provider=provider, profile=profile, name=str(backend)),
                     ):
+                        sync_started_at = time.monotonic()
                         job_update = backend.sync(step)
+                        logger.debug(
+                            "Reconciler backend sync completed",
+                            extra={
+                                "job": step.job,
+                                "step": step.name,
+                                "workspace": step.workspace,
+                                "provider": provider,
+                                "profile": profile,
+                                "from_status": step.status,
+                                "to_status": job_update.status,
+                                "duration_seconds": time.monotonic() - sync_started_at,
+                            },
+                        )
                         logger.info(f"Updating job step status from '{step.status}' to '{job_update.status}'")
                         if (
                             job_update.status == PlatformJobStatus.ERROR.value
@@ -98,13 +118,13 @@ class JobReconciler(Controller):
                                 logger=self._logger,
                                 context="step transitioned to error during reconciliation",
                             )
-                        self._nmp_sdk.jobs.steps.update_status(
-                            step.name,
-                            workspace=step.workspace,
-                            job=step.job,
+                        self._update_step_status_with_timing(
+                            step=step,
+                            provider=provider,
+                            profile=profile,
                             status=job_update.status,
-                            status_details=job_update.status_details,  # type: ignore
-                            error_details=job_update.error_details,  # type: ignore
+                            status_details=job_update.status_details,
+                            error_details=job_update.error_details,
                         )
                 except APIStatusError as e:
                     # In cases when attempting to update job step status results in a conflict (409),
@@ -148,6 +168,56 @@ class JobReconciler(Controller):
                     backend.cleanup_steps()
                 except Exception:
                     logger.exception("Could not complete cleanup steps for backend", exc_info=True)
+
+    def _update_step_status_with_timing(
+        self,
+        *,
+        step: PlatformJobStepWithContext,
+        provider: str,
+        profile: str,
+        status: str,
+        status_details: dict | None = None,
+        error_details: dict | None = None,
+    ):
+        started_at = time.monotonic()
+        try:
+            response = self._nmp_sdk.jobs.steps.update_status(
+                step.name,
+                workspace=step.workspace,
+                job=step.job,
+                status=status,
+                status_details=status_details,  # type: ignore
+                error_details=error_details,  # type: ignore
+            )
+        except Exception:
+            logger.warning(
+                "Reconciler step status update failed",
+                extra={
+                    "job": step.job,
+                    "step": step.name,
+                    "workspace": step.workspace,
+                    "provider": provider,
+                    "profile": profile,
+                    "from_status": step.status,
+                    "to_status": status,
+                    "duration_seconds": time.monotonic() - started_at,
+                },
+            )
+            raise
+        logger.debug(
+            "Reconciler step status update succeeded",
+            extra={
+                "job": step.job,
+                "step": step.name,
+                "workspace": step.workspace,
+                "provider": provider,
+                "profile": profile,
+                "from_status": step.status,
+                "to_status": status,
+                "duration_seconds": time.monotonic() - started_at,
+            },
+        )
+        return response
 
     def get_steps_for_reconciliation(self, statuses: list[SDKPlatformJobStatus]) -> list[PlatformJobStepWithContext]:
         """

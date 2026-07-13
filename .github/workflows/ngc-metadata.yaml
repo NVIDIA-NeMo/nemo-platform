@@ -1,0 +1,35 @@
+name: NGC Metadata Sync
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        team:
+          - nemo-platform
+          - nemo-platform-dev
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          enable-cache: false
+
+      - name: Sync NGC metadata
+        env:
+          NGC_API_KEY: ${{ secrets.AIRE_NGC_GITHUB_PLATFORM_RW }}
+        run: >-
+          uv run --no-cache .github/scripts/ngc_metadata.py
+          --org 0921617854601259
+          --team ${{ matrix.team }}

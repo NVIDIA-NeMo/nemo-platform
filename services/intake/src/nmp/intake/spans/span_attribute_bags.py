@@ -106,6 +106,8 @@ class SpanAttributeBags:
             parsed_atif_raw = json.loads(atif_raw)
             if not isinstance(parsed_atif_raw, dict):
                 raise TypeError("Expected atif.raw to contain a JSON object")
+            # nemo.experiment.metadata is a retired key no longer in KNOWN_BAG_KEYS; keep excluding it so
+            # legacy rows that still carry it don't leak it into raw_attributes.
             parsed_atif_raw.pop("nemo.experiment.metadata", None)
             raw.update(parsed_atif_raw)
 
@@ -121,15 +123,6 @@ class SpanAttributeBags:
         if not raw:
             return None
         return json.dumps(raw, separators=(",", ":"), ensure_ascii=False)
-
-    def evaluation_metadata(self) -> dict[str, Any] | None:
-        value = self.string.get("nemo.experiment.metadata")
-        if value is None:
-            return None
-        parsed = json.loads(value)
-        if not isinstance(parsed, dict):
-            raise TypeError("Expected experiment metadata to contain a JSON object")
-        return parsed
 
     def _bag_for_spec(self, spec: AttributeSpec) -> dict[str, str] | dict[str, float] | dict[str, bool]:
         if spec.bag == AttributeBag.STRING:

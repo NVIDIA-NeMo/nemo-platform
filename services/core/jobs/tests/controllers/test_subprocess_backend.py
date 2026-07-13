@@ -4,7 +4,7 @@
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -71,6 +71,26 @@ def test_schedule_starts_process_and_stages_environment(
     assert metadata.work_dir.is_relative_to(tmp_path)
     assert metadata.persistent_dir.is_relative_to(tmp_path)
     mock_nmp_client.jobs.tasks.create_or_update.assert_called()
+
+
+def test_created_step_does_not_ttl_before_backend_acceptance(
+    mock_nmp_client, tmp_path, mock_platform_config, test_step_pending
+):
+    backend = _subprocess_backend(mock_nmp_client, tmp_path, mock_platform_config)
+    step = _step_with_command(test_step_pending, ["/bin/sh", "-c", "true"])
+    ttl_seconds = backend._execution_profile_config.ttl_seconds_before_active
+    old_timestamp = datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds + 300)
+    step.created_at = old_timestamp
+    step.updated_at = old_timestamp
+    step.status = PlatformJobStatus.CREATED
+
+    update = _schedule_without_otel_export(backend, step)
+
+    assert update.status == PlatformJobStatus.PENDING
+    key = SubprocessProcessKey(step.workspace, step.job, str(step.attempt_id), step.name)
+    metadata = backend._process_registry.get(key)
+    assert metadata is not None
+    assert metadata.process.wait(timeout=5) == 0
 
 
 def test_subprocess_persistent_storage_is_shared_across_job_attempt(

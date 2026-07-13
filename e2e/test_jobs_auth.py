@@ -12,6 +12,9 @@ from contextlib import ExitStack, contextmanager
 import pytest
 from nemo_platform import NeMoPlatform
 from nemo_platform_ext.auth.helpers import generate_unsigned_jwt
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
@@ -121,7 +124,8 @@ def test_job_principal_propagation(sdk: NeMoPlatform):
         assert completed_job.status == "completed"
 
         fileset_name = f"hello-world-{job.name}"
-        fileset = user_sdk.files.filesets.retrieve(workspace=workspace_name, name=fileset_name)
+        files = client_from_platform(user_sdk, FilesClient)
+        fileset = files.get_fileset(workspace=workspace_name, name=fileset_name).data()
         assert fileset is not None
 
         file_content = user_sdk.files.download_content(
@@ -150,7 +154,8 @@ def test_job_cannot_access_unauthorized_workspace(sdk: NeMoPlatform):
         other_sdk = _as_bearer_user(sdk, other_email)
 
         fileset_name = "private-data"
-        owner_sdk.files.filesets.create(workspace=restricted_workspace, name=fileset_name)
+        files = client_from_platform(owner_sdk, FilesClient)
+        files.create_fileset(workspace=restricted_workspace, body=CreateFilesetRequest(name=fileset_name))
 
         job = other_sdk.jobs.create(
             workspace=runner_workspace,

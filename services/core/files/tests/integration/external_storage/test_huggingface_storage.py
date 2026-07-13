@@ -19,8 +19,12 @@ import uuid
 
 import pytest
 from huggingface_hub import snapshot_download
-from nemo_platform import APIStatusError, NeMoPlatform
+from nemo_platform import NeMoPlatform
 from nemo_platform.filesets import FilesetFileSystem
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NemoHTTPError as ClientBadRequestError
+from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest
 from nmp.core.files.app.backends.base import StorageImpl
 from nmp.core.files.app.streaming import download_url_streaming
 from nmp.core.files.testing.utils import create_fileset
@@ -49,10 +53,11 @@ class TestHuggingfaceRevisionResolution:
             },
         ) as fileset:
             # Get the persisted fileset to check resolved values
-            persisted = sdk.files.filesets.retrieve(
+            files = client_from_platform(sdk, FilesClient)
+            persisted = files.get_fileset(
                 name=fileset.name,
                 workspace=fileset.workspace,
-            )
+            ).data()
 
             storage = persisted.storage
             assert storage.type == "huggingface"
@@ -87,10 +92,11 @@ class TestHuggingfaceRevisionResolution:
                 "revision": "main",
             },
         ) as temp_fileset:
-            temp_persisted = sdk.files.filesets.retrieve(
+            files = client_from_platform(sdk, FilesClient)
+            temp_persisted = files.get_fileset(
                 name=temp_fileset.name,
                 workspace=temp_fileset.workspace,
-            )
+            ).data()
             commit_sha = temp_persisted.storage.revision
 
         # Now create a fileset with the explicit SHA
@@ -104,10 +110,10 @@ class TestHuggingfaceRevisionResolution:
                 "revision": commit_sha,  # Explicit SHA
             },
         ) as fileset:
-            persisted = sdk.files.filesets.retrieve(
+            persisted = files.get_fileset(
                 name=fileset.name,
                 workspace=fileset.workspace,
-            )
+            ).data()
 
             storage = persisted.storage
 
@@ -158,20 +164,23 @@ class TestHuggingfaceStorageBackend:
         """
         name = f"hf-test-{uuid.uuid4().hex[:8]}"
 
-        with pytest.raises(APIStatusError) as exc_info:
-            sdk.files.filesets.create(
-                name=name,
+        files = client_from_platform(sdk, FilesClient)
+        with pytest.raises(ClientBadRequestError) as exc_info:
+            files.create_fileset(
                 workspace="default",
-                storage={
-                    "type": "huggingface",
-                    "repo_id": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
-                    "repo_type": "model",
-                },
+                body=CreateFilesetRequest(
+                    name=name,
+                    storage={
+                        "type": "huggingface",
+                        "repo_id": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+                        "repo_type": "model",
+                    },
+                ),
             )
 
         # Should get a 400 error with access denied message
         assert exc_info.value.status_code == 400
-        assert "Access denied" in str(exc_info.value.body) or "gated" in str(exc_info.value.body).lower()
+        assert "Access denied" in str(exc_info.value) or "gated" in str(exc_info.value).lower()
 
     def test_download_file_from_public_dataset(self, sdk: NeMoPlatform):
         """Test downloading a file from a public Huggingface dataset."""
@@ -231,7 +240,7 @@ class TestHuggingfaceStorageBackend:
             assert len(range_content) == 50
             assert range_content == full_content[:50]
 
-    def test_file_exists_with_file_path(self, sdk: NeMoPlatform):
+    def test_file_exists_with_file_path(self, sdk: NeMoPlatform, async_files_client: AsyncFilesClient):
         """Test _exists with a file path returns True for existing files.
 
         This tests the fix for HuggingFace's list_repo_tree which expects directory
@@ -251,7 +260,10 @@ class TestHuggingfaceStorageBackend:
                 "repo_type": "model",
             },
         ) as fileset:
-            fs = FilesetFileSystem(sdk=sdk)
+            fs = FilesetFileSystem(
+                client=client_from_platform(sdk, FilesClient),
+                async_client=async_files_client,
+            )
             file_path = f"{fileset.workspace}/{fileset.name}#config.json"
 
             # This would fail with EntryNotFoundError before the fix
@@ -259,7 +271,11 @@ class TestHuggingfaceStorageBackend:
 
             assert exists is True
 
-    def test_file_exists_with_nonexistent_path_returns_false(self, sdk: NeMoPlatform):
+    def test_file_exists_with_nonexistent_path_returns_false(
+        self,
+        sdk: NeMoPlatform,
+        async_files_client: AsyncFilesClient,
+    ):
         """Test _exists with a non-existent path returns False."""
         name = f"hf-test-{uuid.uuid4().hex[:8]}"
 
@@ -272,7 +288,10 @@ class TestHuggingfaceStorageBackend:
                 "repo_type": "model",
             },
         ) as fileset:
-            fs = FilesetFileSystem(sdk=sdk)
+            fs = FilesetFileSystem(
+                client=client_from_platform(sdk, FilesClient),
+                async_client=async_files_client,
+            )
             file_path = f"{fileset.workspace}/{fileset.name}#nonexistent/file/path.txt"
 
             # Should return False, not raise an error
@@ -280,7 +299,12 @@ class TestHuggingfaceStorageBackend:
 
             assert exists is False
 
-    def test_get_downloads_single_file(self, sdk: NeMoPlatform, tmp_path):
+    def test_get_downloads_single_file(
+        self,
+        sdk: NeMoPlatform,
+        async_files_client: AsyncFilesClient,
+        tmp_path,
+    ):
         """Test _get downloads a single file correctly.
 
         When source is a single file path, the file should be downloaded
@@ -298,7 +322,10 @@ class TestHuggingfaceStorageBackend:
                 "repo_type": "model",
             },
         ) as fileset:
-            fs = FilesetFileSystem(sdk=sdk)
+            fs = FilesetFileSystem(
+                client=client_from_platform(sdk, FilesClient),
+                async_client=async_files_client,
+            )
             file_path = f"{fileset.workspace}/{fileset.name}#config.json"
 
             # Download single file
@@ -312,7 +339,12 @@ class TestHuggingfaceStorageBackend:
             content = json.loads(downloaded_file.read_text())
             assert isinstance(content, dict)
 
-    def test_get_downloads_directory_with_trailing_slash(self, sdk: NeMoPlatform, tmp_path):
+    def test_get_downloads_directory_with_trailing_slash(
+        self,
+        sdk: NeMoPlatform,
+        async_files_client: AsyncFilesClient,
+        tmp_path,
+    ):
         """Test _get with trailing slash copies contents directly into dest.
 
         When source has trailing /, the directory contents should be copied
@@ -330,7 +362,10 @@ class TestHuggingfaceStorageBackend:
                 "repo_type": "model",
             },
         ) as fileset:
-            fs = FilesetFileSystem(sdk=sdk)
+            fs = FilesetFileSystem(
+                client=client_from_platform(sdk, FilesClient),
+                async_client=async_files_client,
+            )
             # Trailing slash on source - copy contents directly
             dir_path = f"{fileset.workspace}/{fileset.name}#/"
 
@@ -339,7 +374,12 @@ class TestHuggingfaceStorageBackend:
             # config.json should be directly in tmp_path (not tmp_path/<fileset_name>/)
             assert (tmp_path / "config.json").exists()
 
-    def test_get_downloads_directory_without_trailing_slash(self, sdk: NeMoPlatform, tmp_path):
+    def test_get_downloads_directory_without_trailing_slash(
+        self,
+        sdk: NeMoPlatform,
+        async_files_client: AsyncFilesClient,
+        tmp_path,
+    ):
         """Test _get for fileset root copies contents directly.
 
         For fileset root (no file path), contents are always copied directly
@@ -358,7 +398,10 @@ class TestHuggingfaceStorageBackend:
                 "repo_type": "model",
             },
         ) as fileset:
-            fs = FilesetFileSystem(sdk=sdk)
+            fs = FilesetFileSystem(
+                client=client_from_platform(sdk, FilesClient),
+                async_client=async_files_client,
+            )
             # No trailing slash on source - for fileset root, copies contents directly
             dir_path = f"{fileset.workspace}/{fileset.name}#"
 
@@ -393,10 +436,11 @@ class TestHuggingfaceCaching:
             },
         ) as fileset:
             # Get the resolved commit SHA
-            persisted = sdk.files.filesets.retrieve(
+            files = client_from_platform(sdk, FilesClient)
+            persisted = files.get_fileset(
                 name=fileset.name,
                 workspace=fileset.workspace,
-            )
+            ).data()
             commit_sha = persisted.storage.revision
             assert commit_sha != "main", "revision should be resolved to SHA"
 

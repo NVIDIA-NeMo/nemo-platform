@@ -36,6 +36,8 @@ from nemo_platform.types.inference import (
 )
 from nemo_platform.types.models import LoraParam, ModelEntity
 from nemo_platform.types.shared_params.tool_call_config import ToolCallConfig as ToolCallConfigParam
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
 from nmp.automodel.app.constants import SERVICE_NAME
 from nmp.automodel.entities.values import FinetuningType
 from nmp.common.sdk_factory import get_task_sdk
@@ -165,7 +167,9 @@ class ModelEntityRunner:
 
         logger.info(f"Validating fileset exists: {fileset_workspace}/{config.fileset.name}")
         try:
-            self.sdk.files.filesets.retrieve(workspace=fileset_workspace, name=config.fileset.name)
+            client_from_platform(self.sdk, FilesClient).get_fileset(
+                workspace=fileset_workspace, name=config.fileset.name
+            )
             logger.info(f"Fileset validation successful: {fileset_workspace}/{config.fileset.name}")
         except Exception as e:
             logger.error(f"Fileset validation failed: {fileset_workspace}/{config.fileset.name}")

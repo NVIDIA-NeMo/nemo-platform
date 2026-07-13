@@ -6,7 +6,7 @@ The authoritative reference for NeMo Platform roles and their permissions. For b
 
 ## Role Descriptions
 
-NeMo Platform provides four predefined roles, each designed for a specific user persona:
+NeMo Platform provides human-facing roles for interactive users and a separate workload role for job runtime identities:
 
 **Viewer** — For stakeholders who need visibility into resources but should not modify them.
 
@@ -37,9 +37,15 @@ NeMo Platform provides four predefined roles, each designed for a specific user 
 - Manage platform-level configuration
 - Create and delete any workspace
 
+**JobRunner** — For workload identities used by running jobs, not interactive users.
+
+- Upload job logs produced by workload containers
+- Does not include Viewer, Editor, or Admin permissions
+- Should be granted alongside the minimum human-facing role the workload needs, such as Viewer when the workload only reads workspace resources
+
 ## Role Hierarchy
 
-Each role includes all permissions of the roles below it:
+The human-facing roles include all permissions of the roles below them. JobRunner is intentionally outside this hierarchy.
 
 ```mermaid
 flowchart BT
@@ -66,7 +72,7 @@ all operations"]
 
 ## Permission Matrix
 
-Rows are operations; columns are roles. Read the hierarchy above first: each role inherits everything below it, and the tables call out the points where additional privileges appear.
+Rows are operations; columns are human-facing roles. Read the hierarchy above first: each role inherits everything below it, and the tables call out the points where additional privileges appear. See [Permissions Reference](/documentation/access-control/authorization/permissions-reference) for workload-role permissions such as JobRunner.
 
 ### Workspace Operations
 
@@ -102,6 +108,12 @@ Workspace creation is controlled by the `WorkspaceCreator` permission in the `sy
 | Create / run job | | ✓ | ✓ | ✓ |
 | Cancel job | | ✓ | ✓ | ✓ |
 | Delete job | | ✓ | ✓ | ✓ |
+
+<Note>
+
+JobRunner can upload logs from workload containers but does not grant job creation, job management, or workspace read access by itself.
+
+</Note>
 
 ### Inference
 

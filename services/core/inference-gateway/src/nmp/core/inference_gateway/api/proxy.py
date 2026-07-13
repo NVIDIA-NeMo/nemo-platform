@@ -17,8 +17,9 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from jinja2 import Environment as JinjaEnvironment
 from multidict import CIMultiDict, CIMultiDictProxy
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform import NotFoundError as SDKNotFoundError
 from nemo_platform.types.inference.virtual_model import VirtualModel as SDKVirtualModel
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nemo_platform_plugin.inference_middleware import (
     BackendFormat,
     ImmediateResponse,
@@ -26,6 +27,7 @@ from nemo_platform_plugin.inference_middleware import (
     InferenceMiddlewareError,
     InferenceResponse,
 )
+from nemo_platform_plugin.secrets.client import AsyncSecretsClient
 from nmp.common.entities.utils import parse_model_entity_ref
 from nmp.core.inference_gateway.api.backend_format import resolve_backend_format
 from nmp.core.inference_gateway.api.errors import (
@@ -1041,7 +1043,8 @@ async def retrieve_secret_value(workspace: str, secret_name: str, secrets_sdk: A
     """
     try:
         logger.debug(f"Retrieving API key from secrets service: {workspace}/{secret_name}")
-        response = await secrets_sdk.secrets.access(secret_name, workspace=workspace)
+        secrets = client_from_platform(secrets_sdk, AsyncSecretsClient)
+        response = (await secrets.access_secret(name=secret_name, workspace=workspace)).data()
         api_key = response.value
 
         if not api_key:
@@ -1050,7 +1053,7 @@ async def retrieve_secret_value(workspace: str, secret_name: str, secrets_sdk: A
 
         logger.debug(f"Successfully retrieved API key from secret {workspace}/{secret_name}")
         return api_key
-    except SDKNotFoundError as e:
+    except ClientNotFoundError as e:
         logger.error(f"API key secret not found: {workspace}/{secret_name}")
         raise HTTPException(status_code=500, detail=f"API key secret not found: {workspace}/{secret_name}") from e
     except HTTPException:

@@ -1,0 +1,53 @@
+provider: authentik
+mode: compose-ci
+compose_file: docker-compose.yml
+gateway_base_url: http://127.0.0.1:18080
+issuer_url: http://authentik-server:9000/application/o/nemo/
+discovery_url: http://127.0.0.1:18080/application/o/nemo/.well-known/openid-configuration
+nemo_config: config/platform-compose-authentik.yaml
+principal_contract:
+  subject_claim: sub
+  groups_claim: groups
+  external_machine_principals_use_service_prefix: false
+  internal_service_prefix_reserved: "service:"
+human_identity:
+  username: nemo-user
+  expected_email: nemo-user@example.com
+workload_identity:
+  principal_id: svc-nemo
+  expected_groups:
+    - nemo-editors
+workload_contract:
+  audience: nemo-platform
+  principal_claim: sub
+  groups_claim: groups
+  groups_format: comma_string
+  token_env_vars:
+    - NEMO_WORKLOAD_TOKEN
+    - NEMO_WORKLOAD_TOKEN_FILE
+  forwarded_headers:
+    principal_id: X-NMP-Principal-Id
+    principal_groups: X-NMP-Principal-Groups
+token_acquisition:
+  token_endpoint: http://127.0.0.1:18080/application/o/token/
+  human_grant:
+    grant_type: password
+    client_id: nemo-platform
+    client_secret: nemo-platform-secret-dev
+    username: nemo-user
+    password: nemo-user-token-secret-dev
+    scope: "openid profile email offline_access groups"
+  machine_grant:
+    grant_type: password
+    client_id: nemo-platform
+    client_secret: nemo-platform-secret-dev
+    username: svc-nemo
+    password: svc-nemo-token-secret-dev
+    scope: "openid email groups"
+healthchecks:
+  - kind: http
+    url: http://127.0.0.1:18080/application/o/nemo/.well-known/openid-configuration
+startup_timeouts:
+  healthchecks_seconds: 600
+  gateway_seconds: 30
+  token_endpoint_seconds: 180

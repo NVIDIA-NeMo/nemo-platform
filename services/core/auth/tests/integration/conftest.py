@@ -15,7 +15,7 @@ from typing import Generator, Iterator
 import pytest
 from fastapi.testclient import TestClient
 from nemo_platform import NeMoPlatform
-from nmp.testing.client import create_test_client
+from nmp.testing.client import SDKTestClientAdapter, create_test_client
 
 # Test principal for authenticated requests (service-level access)
 SERVICE_PRINCIPAL = "service:integration-test"
@@ -45,7 +45,7 @@ def sdk(test_client: TestClient) -> Iterator[NeMoPlatform]:
 
     Module-scoped because it shares the TestClient.
     """
-    yield NeMoPlatform(base_url="http://testserver", http_client=test_client)
+    yield NeMoPlatform(base_url="http://testserver", http_client=SDKTestClientAdapter(test_client))
 
 
 @pytest.fixture

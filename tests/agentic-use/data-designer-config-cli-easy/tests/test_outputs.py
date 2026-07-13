@@ -12,6 +12,8 @@ This test checks:
 import os
 
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.secrets.client import SecretsClient
 
 
 def test_secret_created() -> None:
@@ -20,8 +22,8 @@ def test_secret_created() -> None:
     client = NeMoPlatform(base_url=nmp_base_url, workspace="default")
 
     # List secrets and check for our test secret
-    response = client.secrets.list()
-    secret_names = [s.name for s in response.data]
+    secrets = client_from_platform(client, SecretsClient)
+    secret_names = [s.name for s in secrets.list_secrets().items()]
 
     assert "dd-test-api-key" in secret_names, f"Secret 'dd-test-api-key' was not created! Found secrets: {secret_names}"
     print("Test passed: dd-test-api-key secret was successfully created")

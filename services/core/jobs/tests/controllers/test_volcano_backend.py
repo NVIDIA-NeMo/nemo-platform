@@ -277,6 +277,25 @@ def test_schedule_job_success(
         assert env_vars["NMP_CONFIG_WARNINGS_DISABLED"] == "1"
 
 
+def test_created_step_does_not_ttl_before_backend_acceptance(
+    volcano_job: VolcanoJobBackend,
+    distributed_gpu_execution_provider,
+    test_step_pending: PlatformJobStepWithContext,
+):
+    """CREATED age should not fail a step before the Volcano backend accepts it."""
+    volcano_job._custom_v1.create_namespaced_custom_object.return_value = MagicMock()  # ty: ignore[invalid-assignment]
+    ttl_seconds = volcano_job._execution_profile_config.ttl_seconds_before_active
+    old_timestamp = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=ttl_seconds + 300)
+    test_step_pending.created_at = old_timestamp
+    test_step_pending.updated_at = old_timestamp
+    test_step_pending.status = PlatformJobStatus.CREATED
+
+    update = volcano_job.schedule(distributed_gpu_execution_provider, test_step_pending)
+
+    assert update.status == PlatformJobStatus.PENDING
+    volcano_job._custom_v1.create_namespaced_custom_object.assert_called_once()  # ty: ignore[possibly-unbound-attribute]
+
+
 def test_volcano_job_profile_environment_applied(
     kubernetes_client_mock,
     mock_nmp_client,

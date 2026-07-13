@@ -1,10 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from nemo_platform import NotFoundError, PermissionDeniedError
+from nemo_platform import NotFoundError
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
+from nemo_platform_plugin.client.errors import PermissionDeniedError as ClientPermissionDeniedError
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_safe_synthesizer.config.replace_pii import ClassifyConfig, Globals, PiiReplacerConfig, StepDefinition
 from nemo_safe_synthesizer_plugin.api.v2.jobs import endpoints
@@ -18,14 +20,29 @@ DEFAULT_DATA_SOURCE = "default/test-data#file.csv"
 
 
 @pytest.fixture
-def mock_sdk():
+def mock_files_client():
+    mock_client = MagicMock()
+    mock_client.get_fileset = AsyncMock()
+    return mock_client
+
+
+@pytest.fixture
+def mock_sdk(mock_files_client):
     sdk = MagicMock()
-    sdk.files.filesets.retrieve = AsyncMock()
     sdk.inference.providers.retrieve = AsyncMock()
     sdk.models.get_provider_route_openai_url = MagicMock(
         return_value="http://nmp-host/apis/inference-gateway/v2/workspaces/default/provider/my-nim/-/v1"
     )
     return sdk
+
+
+@pytest.fixture(autouse=True)
+def _patch_client_from_platform(mock_files_client):
+    with patch(
+        "nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints.client_from_platform",
+        return_value=mock_files_client,
+    ):
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -58,29 +75,33 @@ async def _compile(spec, mock_sdk):
 
 
 @pytest.mark.asyncio
-async def test_job_config_compiler_validates_data_source(mock_sdk):
+async def test_job_config_compiler_validates_data_source(mock_sdk, mock_files_client):
     spec = _make_spec(data_source="my-workspace/my-fileset#data.csv")
 
     await _compile(spec, mock_sdk)
 
-    mock_sdk.files.filesets.retrieve.assert_awaited_once_with(name="my-fileset", workspace="my-workspace")
+    mock_files_client.get_fileset.assert_awaited_once_with(name="my-fileset", workspace="my-workspace")
 
 
 @pytest.mark.asyncio
-async def test_job_config_compiler_data_source_not_found(mock_sdk):
-    mock_sdk.files.filesets.retrieve.side_effect = NotFoundError(
-        message="not found", response=MagicMock(status_code=404), body=None
-    )
+async def test_job_config_compiler_data_source_not_found(mock_sdk, mock_files_client):
+    mock_response = MagicMock()
+    mock_response.status_code = 404
+    mock_response.json.return_value = {"detail": "not found"}
+    mock_response.text = "not found"
+    mock_files_client.get_fileset.side_effect = ClientNotFoundError(mock_response)
 
     with pytest.raises(PlatformJobCompilationError, match="Could not find fileset"):
         await _compile(_make_spec(), mock_sdk)
 
 
 @pytest.mark.asyncio
-async def test_job_config_compiler_data_source_permission_denied(mock_sdk):
-    mock_sdk.files.filesets.retrieve.side_effect = PermissionDeniedError(
-        message="denied", response=MagicMock(status_code=403), body=None
-    )
+async def test_job_config_compiler_data_source_permission_denied(mock_sdk, mock_files_client):
+    mock_response = MagicMock()
+    mock_response.status_code = 403
+    mock_response.json.return_value = {"detail": "denied"}
+    mock_response.text = "denied"
+    mock_files_client.get_fileset.side_effect = ClientPermissionDeniedError(mock_response)
 
     with pytest.raises(PermissionError, match="Access denied to fileset"):
         await _compile(_make_spec(), mock_sdk)
@@ -96,6 +117,40 @@ async def test_job_config_compiler_with_classify_provider(mock_sdk):
     assert step["executor"]["command"] == ["/runtime/bin/python", "-m", TASK_MODULE]
     env = {e["name"]: e.get("value") for e in step.get("environment", [])}
     assert env["CLASSIFY_LLM_ENDPOINT_PATH"] == "/apis/inference-gateway/v2/workspaces/default/provider/my-nim/-/v1"
+
+
+@pytest.mark.asyncio
+async def test_job_config_compiler_container_mode_uses_safe_synthesizer_tasks_image(mock_sdk, monkeypatch):
+    monkeypatch.setattr(endpoints.config, "job_mode", "container")
+    monkeypatch.setattr(endpoints.config, "container_image", "safe-synthesizer-tasks")
+    monkeypatch.setattr(endpoints.config, "container_image_ref", None)
+    monkeypatch.setattr(endpoints, "get_qualified_image", lambda name: f"registry.example.com/nemo/{name}:test-tag")
+
+    result = await _compile(_make_spec(), mock_sdk)
+
+    step = next(iter(result["steps"]))
+    assert step["executor"]["provider"] == "gpu"
+    assert step["executor"]["container"]["image"] == "registry.example.com/nemo/safe-synthesizer-tasks:test-tag"
+    assert step["executor"]["container"]["entrypoint"] == [
+        "python",
+        "-m",
+        "nemo_safe_synthesizer_plugin.tasks.safe_synthesizer",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_job_config_compiler_container_mode_uses_image_ref_override(mock_sdk, monkeypatch):
+    monkeypatch.setattr(endpoints.config, "job_mode", "container")
+    monkeypatch.setattr(endpoints.config, "container_image_ref", "safe-synthesizer-tasks:local")
+    get_qualified_image = MagicMock(side_effect=AssertionError("image ref overrides should not be qualified"))
+    monkeypatch.setattr(endpoints, "get_qualified_image", get_qualified_image)
+
+    result = await _compile(_make_spec(), mock_sdk)
+
+    step = next(iter(result["steps"]))
+    assert step["executor"]["provider"] == "gpu"
+    assert step["executor"]["container"]["image"] == "safe-synthesizer-tasks:local"
+    get_qualified_image.assert_not_called()
 
 
 @pytest.mark.asyncio

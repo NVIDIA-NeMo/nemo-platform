@@ -175,10 +175,10 @@ FILESET_NAME = "my-llama-fileset"
 def _update_fileset_and_run_task(test_clients, model_name, metadata, tmp_path):
     """Simulate: user patches fileset → model-spec task runs.
 
-    1. **Update fileset** — mock ``sdk.files.filesets.update()`` to simulate the
-       user adding ``metadata`` to their fileset.
-    2. **Run analyze_checkpoint** — the task calls ``sdk.files.filesets.retrieve()``
-       (also mocked to return the now-updated fileset), merges ``metadata.model.tool_calling``
+    1. **Update fileset** — mock the files client to simulate the user adding
+       ``metadata`` to their fileset.
+    2. **Run analyze_checkpoint** — the task calls ``client_from_platform(sdk, FilesClient).get_fileset()``
+       (mocked to return the now-updated fileset), merges ``metadata.model.tool_calling``
        into a ``ModelSpec``, and calls the *real* ``sdk.models.update(spec=...)``.
 
     ``nmp.core.models.parallelism.api`` depends on torch/accelerate (GPU deps
@@ -188,24 +188,18 @@ def _update_fileset_and_run_task(test_clients, model_name, metadata, tmp_path):
     """
     sdk = test_clients.sdk
 
-    # -- Step 1: User updates fileset with metadata ---------------------------
+    # -- Step 1: Build the updated fileset representation ---------------------
     updated_fileset = SimpleNamespace(
         name=FILESET_NAME,
         workspace=DEFAULT_WORKSPACE,
         metadata=metadata,
+        storage=None,
     )
 
-    with patch.object(sdk.files.filesets, "update", return_value=updated_fileset) as mock_update:
-        sdk.files.filesets.update(
-            FILESET_NAME,
-            workspace=DEFAULT_WORKSPACE,
-            metadata=metadata,
-        )
-        mock_update.assert_called_once_with(
-            FILESET_NAME,
-            workspace=DEFAULT_WORKSPACE,
-            metadata=metadata,
-        )
+    mock_files_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.data.return_value = updated_fileset
+    mock_files_client.get_fileset.return_value = mock_response
 
     # -- Step 2: Model-spec background task runs ------------------------------
     model_dir = tmp_path / "model"
@@ -239,11 +233,11 @@ def _update_fileset_and_run_task(test_clients, model_name, metadata, tmp_path):
         parent.__path__ = []
         modules_patch["nmp.core.models.parallelism"] = parent
 
-    # Task calls sdk.files.filesets.retrieve() → gets the updated fileset
+    # Task calls client_from_platform(sdk, FilesClient).get_fileset() → gets the updated fileset
     with (
         patch.dict(sys.modules, modules_patch),
-        patch.object(sdk.files.filesets, "retrieve", return_value=updated_fileset),
-        patch.object(sdk.files, "_list_files", return_value=SimpleNamespace(data=[])),
+        patch("nmp.core.models.tasks.model_spec.run.client_from_platform", return_value=mock_files_client),
+        patch.object(sdk.files, "list", return_value=SimpleNamespace(data=[])),
         patch.object(runner.filesystem_sdk, "get"),
         patch("nmp.core.models.tasks.model_spec.run.os.listdir", return_value=["config.json"]),
     ):

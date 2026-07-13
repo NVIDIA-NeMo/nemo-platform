@@ -15,8 +15,11 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from nemo_platform import BadRequestError, NeMoPlatform
-from nemo_platform.types.files import HuggingfaceStorageConfigParam, NGCStorageConfigParam
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.errors import BadRequestError
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.storage_config import HuggingfaceStorageConfig, NGCStorageConfig
+from nemo_platform_plugin.files.types import CreateFilesetRequest
 
 # ---------------------------------------------------------------------------
 # NGC configuration
@@ -40,26 +43,28 @@ HF_REPO_TYPE = "model"
 
 
 @pytest.fixture
-def ngc_fileset(sdk: NeMoPlatform, workspace: str, ngc_secret: str) -> Iterator[str]:
+def ngc_fileset(files_client: FilesClient, workspace: str, ngc_secret: str) -> Iterator[str]:
     """Create an NGC-backed fileset, cleaned up after test."""
     fileset_name = f"e2e-ngc-fs-{uuid.uuid4().hex[:8]}"
-    sdk.files.filesets.create(
+    files_client.create_fileset(
         workspace=workspace,
-        name=fileset_name,
-        description="E2E test NGC-backed fileset",
-        storage=NGCStorageConfigParam(
-            api_key_secret=ngc_secret,
-            org=NGC_ORG,
-            team=NGC_TEAM,
-            target=NGC_TARGET,
-            target_type=NGC_TARGET_TYPE,
+        body=CreateFilesetRequest(
+            name=fileset_name,
+            description="E2E test NGC-backed fileset",
+            storage=NGCStorageConfig(
+                api_key_secret=ngc_secret,
+                org=NGC_ORG,
+                team=NGC_TEAM,
+                target=NGC_TARGET,
+                target_type=NGC_TARGET_TYPE,
+            ),
         ),
     )
     yield fileset_name
     try:
-        sdk.files.filesets.delete(fileset_name, workspace=workspace)
+        files_client.delete_fileset(name=fileset_name, workspace=workspace)
     except Exception:
-        pass  # Best-effort cleanup; the workspace is deleted anyway
+        pass
 
 
 @pytest.fixture
@@ -83,27 +88,29 @@ def hf_secret(sdk: NeMoPlatform, workspace: str, hf_token: str) -> Iterator[str]
 
 
 @pytest.fixture
-def hf_fileset(sdk: NeMoPlatform, workspace: str, hf_secret: str) -> Iterator[str]:
+def hf_fileset(files_client: FilesClient, workspace: str, hf_secret: str) -> Iterator[str]:
     """Create a Hugging Face-backed fileset, cleaned up after test."""
     fileset_name = f"e2e-hf-fs-{uuid.uuid4().hex[:8]}"
 
-    storage = HuggingfaceStorageConfigParam(
+    storage = HuggingfaceStorageConfig(
         repo_id=HF_REPO_ID,
         repo_type=HF_REPO_TYPE,
         token_secret=hf_secret,
     )
 
-    sdk.files.filesets.create(
+    files_client.create_fileset(
         workspace=workspace,
-        name=fileset_name,
-        description="E2E test HF-backed fileset",
-        storage=storage,
+        body=CreateFilesetRequest(
+            name=fileset_name,
+            description="E2E test HF-backed fileset",
+            storage=storage,
+        ),
     )
     yield fileset_name
     try:
-        sdk.files.filesets.delete(fileset_name, workspace=workspace)
+        files_client.delete_fileset(name=fileset_name, workspace=workspace)
     except Exception:
-        pass  # Best-effort cleanup; the workspace is deleted anyway
+        pass
 
 
 # ===================================================================
@@ -182,6 +189,7 @@ class TestNGCFileset:
     def test_create_error(
         self,
         sdk: NeMoPlatform,
+        files_client: FilesClient,
         workspace: str,
         ngc_api_key: str,
         secret_value: str | None,
@@ -193,7 +201,7 @@ class TestNGCFileset:
         secret_name = f"e2e-ngc-err-{uuid.uuid4().hex[:8]}"
         sdk.secrets.create(workspace=workspace, name=secret_name, value=value)
         try:
-            storage = NGCStorageConfigParam(
+            storage = NGCStorageConfig(
                 api_key_secret=secret_name,
                 org=storage_overrides.get("org", NGC_ORG),
                 team=storage_overrides.get("team", NGC_TEAM),
@@ -201,26 +209,30 @@ class TestNGCFileset:
                 target_type=NGC_TARGET_TYPE,
             )
             with pytest.raises(BadRequestError, match=match):
-                sdk.files.filesets.create(
+                files_client.create_fileset(
                     workspace=workspace,
-                    name=f"e2e-ngc-err-{uuid.uuid4().hex[:8]}",
-                    storage=storage,
+                    body=CreateFilesetRequest(
+                        name=f"e2e-ngc-err-{uuid.uuid4().hex[:8]}",
+                        storage=storage,
+                    ),
                 )
         finally:
             sdk.secrets.delete(workspace=workspace, name=secret_name)
 
-    def test_create_error_nonexistent_secret(self, sdk: NeMoPlatform, workspace: str):
+    def test_create_error_nonexistent_secret(self, files_client: FilesClient, workspace: str):
         """Referencing a secret that doesn't exist is rejected with 400."""
         with pytest.raises(BadRequestError, match="Secret not found:"):
-            sdk.files.filesets.create(
+            files_client.create_fileset(
                 workspace=workspace,
-                name=f"e2e-ngc-err-{uuid.uuid4().hex[:8]}",
-                storage=NGCStorageConfigParam(
-                    api_key_secret="no-such-secret-99999",
-                    org=NGC_ORG,
-                    team=NGC_TEAM,
-                    target=NGC_TARGET,
-                    target_type=NGC_TARGET_TYPE,
+                body=CreateFilesetRequest(
+                    name=f"e2e-ngc-err-{uuid.uuid4().hex[:8]}",
+                    storage=NGCStorageConfig(
+                        api_key_secret="no-such-secret-99999",
+                        org=NGC_ORG,
+                        team=NGC_TEAM,
+                        target=NGC_TARGET,
+                        target_type=NGC_TARGET_TYPE,
+                    ),
                 ),
             )
 
@@ -276,14 +288,16 @@ class TestHuggingFaceFileset:
 
     # -- error cases --
 
-    def test_error_nonexistent_repo(self, sdk: NeMoPlatform, workspace: str):
+    def test_error_nonexistent_repo(self, files_client: FilesClient, workspace: str):
         """Pointing at a repo that doesn't exist is rejected with 400."""
         with pytest.raises(BadRequestError):
-            sdk.files.filesets.create(
+            files_client.create_fileset(
                 workspace=workspace,
-                name=f"e2e-hf-err-{uuid.uuid4().hex[:8]}",
-                storage=HuggingfaceStorageConfigParam(
-                    repo_id="this-org-does-not-exist/this-repo-does-not-exist-12345",
-                    repo_type="model",
+                body=CreateFilesetRequest(
+                    name=f"e2e-hf-err-{uuid.uuid4().hex[:8]}",
+                    storage=HuggingfaceStorageConfig(
+                        repo_id="this-org-does-not-exist/this-repo-does-not-exist-12345",
+                        repo_type="model",
+                    ),
                 ),
             )

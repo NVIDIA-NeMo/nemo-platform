@@ -4,14 +4,14 @@
 
 - NeMo CLI access through `nemo` or repo development invocation `uv run nemo`.
 - Python dependencies synced into the active virtual environment.
-- A compatible CUDA-capable GPU and driver for host-local generation.
+- A GPU-capable Jobs backend for platform container jobs, or a compatible CUDA-capable GPU and driver for host-local generation.
 - Files API URL access when the run uses filesets or model fileset setup.
 - Workspace access to the input fileset, output job, `hf_token_secret`, and any PII classification provider.
 
 ## First Checks
 
 1. Resolve the CLI with `command -v nemo 2>/dev/null || (test -x .venv/bin/nemo && realpath .venv/bin/nemo) || echo CLI_NOT_FOUND`.
-2. Confirm whether the user is running host-local (`nemo safe-synthesizer run-local`) or a platform job through the Jobs API or SDK.
+2. Confirm whether the user is running a platform container job through the Jobs API or SDK, or host-local (`nemo safe-synthesizer run-local`).
 3. Inspect the spec file before changing commands.
 
 ## Common Failures
@@ -22,10 +22,19 @@ Tell the user that the NeMo CLI or the Safe Synthesizer plugin is not installed 
 
 ### CUDA or GPU initialization fails
 
+- For platform jobs, confirm the job executor profile targets GPU-capable workers.
 - Confirm the host has a compatible NVIDIA GPU and driver with `nvidia-smi`.
 - For repo development, verify the plugin runtime with `uv run nemo safe-synthesizer runtime info`.
 - Recreate the runtime with `uv run nemo safe-synthesizer runtime setup --force` if the engine/CUDA packages are missing or stale.
 - Host-local Safe Synthesizer training runs directly on the host GPU; a GPU inside another service container is not enough.
+
+### Container image cannot be pulled or is the wrong tag
+
+- Confirm platform jobs are using container mode: `NEMO_SAFE_SYNTHESIZER_JOB_MODE=container`.
+- For released images, verify `NMP_IMAGE_REGISTRY=nvcr.io/nvidia/nemo-platform`, `NMP_IMAGE_TAG=<tag>`, and `NEMO_SAFE_SYNTHESIZER_CONTAINER_IMAGE=safe-synthesizer-tasks`.
+- For local Docker executor testing, verify `NEMO_SAFE_SYNTHESIZER_CONTAINER_IMAGE_REF=safe-synthesizer-tasks:local` and that `docker image inspect safe-synthesizer-tasks:local` succeeds.
+- For Kubernetes, push the image to a registry the cluster can pull and set `NEMO_SAFE_SYNTHESIZER_CONTAINER_IMAGE_REF` to that full pushed image reference.
+- If the pull fails from `nvcr.io`, confirm NGC credentials or image pull secrets are configured for the Jobs backend.
 
 ### Data source cannot be loaded
 

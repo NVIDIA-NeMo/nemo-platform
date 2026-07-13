@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Button, Flex, Stack, Tag, Text } from '@nvidia/foundations-react-core';
+import { Button, Flex, Spinner, Stack, Tag, Text } from '@nvidia/foundations-react-core';
 import { FILE_FORMAT_TAG_COLOR } from '@studio/components/FileRowEditor/constants';
 import type { DataFileFormat } from '@studio/components/FileRowEditor/parse';
-import { Download, FileSpreadsheet, FolderOpen, Plus } from 'lucide-react';
+import { Download, FileSpreadsheet, FolderOpen, Plus, Save } from 'lucide-react';
 import { type ChangeEvent, type FC, type RefObject } from 'react';
 
 export interface FileHeaderProps {
@@ -24,6 +24,19 @@ export interface FileHeaderProps {
   onAddRow: () => void;
   /** Disables the Download action (e.g. when there are no rows to export). */
   downloadDisabled: boolean;
+  /**
+   * Persists the current rows to the backing store. When provided, a "Save File" action
+   * is shown; when omitted, the editor stays in-memory only (e.g. the standalone demo).
+   */
+  onSaveFile?: () => void;
+  /** Whether a save is in flight — shows a spinner and disables the Save action. */
+  isSaving?: boolean;
+  /** Disables the Save action (e.g. when there are no unsaved changes). */
+  saveDisabled?: boolean;
+  /** When set, disables the Save action and shows this text as its tooltip. */
+  saveDisabledReason?: string;
+  /** Whether there are staged edits not yet persisted — shows an "Unsaved changes" chip. */
+  hasUnsavedChanges?: boolean;
 }
 
 /** Header summary + toolbar for the {@link FileRowEditor}: file identity, stats, actions. */
@@ -41,6 +54,11 @@ export const FileHeader: FC<FileHeaderProps> = ({
   onDownload,
   onAddRow,
   downloadDisabled,
+  onSaveFile,
+  isSaving = false,
+  saveDisabled = false,
+  saveDisabledReason,
+  hasUnsavedChanges = false,
 }) => (
   <Flex align="center" gap="density-md" className="w-full shrink-0">
     <Flex align="center" justify="center" className="size-10 shrink-0 rounded-md bg-surface-sunken">
@@ -95,10 +113,36 @@ export const FileHeader: FC<FileHeaderProps> = ({
         <Download size={16} />
         Download
       </Button>
-      <Button kind="primary" color="brand" onClick={onAddRow}>
+      <Button
+        kind={onSaveFile ? 'secondary' : 'primary'}
+        color={onSaveFile ? 'neutral' : 'brand'}
+        onClick={onAddRow}
+      >
         <Plus size={16} />
         Add Row
       </Button>
+      {onSaveFile && (
+        <span className="relative inline-flex">
+          <Button
+            kind="primary"
+            color="brand"
+            onClick={onSaveFile}
+            disabled={saveDisabled || isSaving || Boolean(saveDisabledReason)}
+            title={saveDisabledReason}
+          >
+            {isSaving ? <Spinner size="small" aria-label="Saving" /> : <Save size={16} />}
+            Save File
+          </Button>
+          {hasUnsavedChanges && (
+            <span
+              title="Unsaved changes"
+              className="pointer-events-none absolute -left-0.5 -top-0.5 size-2.5 rounded-full bg-feedback-danger ring-1 ring-surface-sunken dark:ring-surface-raised"
+            >
+              <span className="sr-only">Unsaved changes</span>
+            </span>
+          )}
+        </span>
+      )}
     </Flex>
   </Flex>
 );

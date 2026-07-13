@@ -7,6 +7,8 @@ import threading
 
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform.types import PlatformJobStatus
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import AsyncFilesClient
 from nmp.common.api.filter import ComparisonOperation, FilterOperator
 from nmp.common.controller.controller import Controller
 from nmp.common.observability import start_span_with_ctx
@@ -172,12 +174,13 @@ class WorkspaceCleanup(Controller):
     async def _cleanup_filesets(self, workspace: Workspace) -> None:
         logger.info(f"Cleaning up filesets for workspace: {workspace.name}")
         try:
-            filesets_response = await self._nmp_sdk.files.filesets.list(workspace=workspace.name)
+            files = client_from_platform(self._nmp_sdk, AsyncFilesClient)
+            filesets_response = await files.list_filesets(workspace=workspace.name)
 
             async for fileset in filesets_response.items():
                 try:
                     logger.info(f"Deleting fileset: {fileset.name}")
-                    await self._nmp_sdk.files.filesets.delete(
+                    await files.delete_fileset(
                         name=fileset.name,
                         workspace=workspace.name,
                     )

@@ -1,0 +1,80 @@
+{
+  "decisions": [
+    {
+      "id": "full_name_0_11",
+      "decision": "keep",
+      "proposed_label": "",
+      "reason": "The span is a full name."
+    }
+  ],
+  "entities": [],
+  "latent_entities": [],
+  "replacements": [
+    {
+      "original": "Alice Smith",
+      "label": "full_name",
+      "synthetic": "Jordan Lee"
+    }
+  ],
+  "domain": "OTHER",
+  "domain_confidence": 1.0,
+  "sensitivity_disposition": [
+    {
+      "id": 1,
+      "source": "tagged",
+      "category": "direct_identifier",
+      "sensitivity": "medium",
+      "entity_label": "full_name",
+      "entity_value": "Alice Smith",
+      "protection_reason": "A full name directly identifies a person.",
+      "protection_method_suggestion": "replace",
+      "combined_risk_level": "medium"
+    }
+  ],
+  "units": [
+    {
+      "id": 1,
+      "aspect": "process",
+      "unit": "A person is associated with a support or release workflow.",
+      "importance": "important"
+    }
+  ],
+  "items": [
+    {
+      "id": 1,
+      "aspect": "process",
+      "importance": "important",
+      "question": "What workflow is described?",
+      "reference_answer": "A support or release workflow is described."
+    }
+  ],
+  "rewritten_text": "A customer described an operational workflow.",
+  "answers": [
+    {
+      "id": 1,
+      "answer": "no",
+      "confidence": 1.0,
+      "reason": "The rewritten text omits the original name.",
+      "evidence": []
+    }
+  ],
+  "per_item": [
+    {
+      "id": 1,
+      "score": 1.0,
+      "reason": "The core workflow meaning is preserved."
+    }
+  ],
+  "privacy": {
+    "score": 10,
+    "reasoning": "The original name is removed."
+  },
+  "quality": {
+    "score": 10,
+    "reasoning": "The operational meaning is preserved."
+  },
+  "naturalness": {
+    "score": 10,
+    "reasoning": "The rewritten text is fluent."
+  }
+}

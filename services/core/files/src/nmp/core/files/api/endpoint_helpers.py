@@ -11,11 +11,11 @@ from fastapi import BackgroundTasks, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from nemo_platform import (
     AsyncNeMoPlatform,
-    PermissionDeniedError,
 )
-from nemo_platform import (
-    NotFoundError as APINotFoundError,
-)
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
+from nemo_platform_plugin.client.errors import PermissionDeniedError as ClientPermissionDeniedError
+from nemo_platform_plugin.secrets.client import AsyncSecretsClient
 from nmp.common.auth import AuthClient
 from nmp.common.entities.client import EntityClient, EntityNotFoundError
 from nmp.common.entities.utils import parse_entity_ref
@@ -278,16 +278,17 @@ async def download_with_cache(
 async def resolve_storage_secrets(storage: StorageConfig, workspace: str, sdk: AsyncNeMoPlatform) -> dict[str, str]:
     """Resolve all secret references in a storage config."""
     secrets: dict[str, str] = {}
+    secrets_client = client_from_platform(sdk, AsyncSecretsClient)
     for key, secret_ref in storage.get_secret_references().items():
         parsed = parse_entity_ref(secret_ref.root, workspace)
         try:
-            response = await sdk.secrets.access(parsed.name, workspace=parsed.workspace)
+            response = (await secrets_client.access_secret(name=parsed.name, workspace=parsed.workspace)).data()
             secrets[key] = response.value
-        except APINotFoundError:
+        except ClientNotFoundError:
             raise SecretNotFoundError(
                 f"Secret '{parsed.workspace}/{parsed.name}' not found",
             )
-        except PermissionDeniedError:
+        except ClientPermissionDeniedError:
             raise SecretAccessDeniedError(
                 f"Access denied to secret '{parsed.workspace}/{parsed.name}'",
             )

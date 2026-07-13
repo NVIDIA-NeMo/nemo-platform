@@ -45,7 +45,7 @@ Notebook testing:
 - cleanup_temp_venv_and_kernel: Remove a temporary venv and kernel spec
 """
 
-from .client import TEST_ADMIN_EMAIL, TEST_USER_EMAIL, ClientContext, create_test_client
+from .client import TEST_ADMIN_EMAIL, TEST_USER_EMAIL, ClientContext, SDKTestClientAdapter, create_test_client
 from .docker import (
     DEFAULT_RETRY_CONFIG,
     MOCK_NIM_NGINX_CONF,
@@ -93,6 +93,7 @@ __all__ = [
     # API testing
     "create_test_client",
     "ClientContext",
+    "SDKTestClientAdapter",
     "TEST_USER_EMAIL",
     "TEST_ADMIN_EMAIL",
     "subprocess_job_executor_patch",

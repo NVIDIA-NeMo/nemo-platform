@@ -6,7 +6,13 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-from nemo_platform import AsyncNeMoPlatform, NotFoundError, PermissionDeniedError
+from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
+from nemo_platform_plugin.client.errors import PermissionDeniedError as ClientPermissionDeniedError
+from nemo_platform_plugin.files.client import AsyncFilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest
+from nemo_platform_plugin.secrets.client import AsyncSecretsClient
 from nmp.common.api.filter import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
 from nmp.common.api.in_memory_filter import InMemoryFilterRepository
 from nmp.common.api.parsed_filter import ParsedFilter
@@ -213,11 +219,12 @@ class JobDispatcher:
             for env_var in step.environment:
                 if env_var.from_secret:
                     workspace, secret_name = get_entity_parts(env_var.from_secret.name, default_workspace=job_workspace)
+                    secrets = client_from_platform(sdk_to_use, AsyncSecretsClient)
                     try:
-                        await sdk_to_use.secrets.retrieve(secret_name, workspace=workspace)
-                    except NotFoundError:
+                        await secrets.get_secret(name=secret_name, workspace=workspace)
+                    except ClientNotFoundError:
                         raise ValueError(f"Secret '{workspace}/{secret_name}' not found.")
-                    except PermissionDeniedError:
+                    except ClientPermissionDeniedError:
                         raise ValueError(f"User does not have access to secret '{workspace}/{secret_name}'.")
                     except Exception:
                         logger.exception(
@@ -258,10 +265,12 @@ class JobDispatcher:
                 job_name = f"{source_prefix}-{short_id}"
 
             # Create a fileset to store job artifacts
-            fileset = await self.sdk.files.filesets.create(
+            files = client_from_platform(self.sdk, AsyncFilesClient)
+            fileset_resp = await files.create_fileset(
+                body=CreateFilesetRequest(name=f"job-fileset-{job_name}"),
                 workspace=workspace,
-                name=f"job-fileset-{job_name}",
             )
+            fileset = fileset_resp.data()
 
             # Create job (ID is assigned by entity store)
             job = await self.store.create(
@@ -451,8 +460,9 @@ class JobDispatcher:
             # Delete job fileset via sdk to properly clean up storage.
             # Tolerate fileset already being gone (e.g. cleaned up by workspace cleanup).
             try:
-                await self.sdk.files.filesets.delete(job_entity.fileset, workspace=workspace)
-            except NotFoundError:
+                files = client_from_platform(self.sdk, AsyncFilesClient)
+                await files.delete_fileset(name=job_entity.fileset, workspace=workspace)
+            except ClientNotFoundError:
                 logger.warning("Job fileset not found during deletion, may have been cleaned up already", extra=extras)
 
             logger.info(

@@ -22,6 +22,7 @@ from nmp.common.jobs.constants import (
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobStepWithContext
 from nmp.core.jobs.app.constants import (
+    JOB_CONTROLLER_INSTANCE_ID_LABEL,
     JOB_EXECUTION_BACKEND_LABEL,
     JOB_EXECUTION_PROFILE_LABEL,
     JOB_ID_LABEL,
@@ -32,6 +33,7 @@ from nmp.core.jobs.app.constants import (
     JOB_TASK_ID_LABEL,
     JOB_TYPE_JOB,
     JOB_TYPE_LABEL,
+    JOB_TYPE_STORAGE_CLEANUP,
     JOB_USES_PERSISTENT_STORAGE_LABEL,
     JOB_WORKSPACE_ID_LABEL,
 )
@@ -49,14 +51,30 @@ from nmp.core.jobs.app.schemas import (
 )
 from nmp.core.jobs.controllers.backends.docker import (
     DEFAULT_VOLUME_PERMISSIONS_IMAGE,
+    DOCKER_CONTAINER_START_WORKERS,
     CPUDockerJobBackend,
     DockerJobExecutionProfileConfig,
     DockerJobStorageConfig,
     DockerVolumeMount,
     GPUDockerJobBackend,
 )
-from nmp.core.jobs.controllers.backends.exceptions import ResourceAllocationError
+from nmp.core.jobs.controllers.backends.exceptions import ResourceAllocationError, SchedulingDeferred
 from pydantic import ValidationError
+
+TEST_JOBS_CONTROLLER_INSTANCE_ID = "test-owner"
+
+
+@pytest.fixture(autouse=True)
+def docker_owner_id(monkeypatch):
+    monkeypatch.setenv("NMP_JOBS_DOCKER_OWNER_ID", TEST_JOBS_CONTROLLER_INSTANCE_ID)
+
+
+def owned_container_labels(labels: dict) -> dict:
+    return {
+        **labels,
+        JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
+    }
 
 
 @pytest.fixture
@@ -91,6 +109,8 @@ def docker_client_mock(monkeypatch):
         # Patch containers.create to return a mock with .wait() returning success by default
         def create_container_mock(*args, **kwargs):
             container = MagicMock()
+            container.id = kwargs.get("name", "mock-container-id")
+            container.labels = kwargs.get("labels", {})
             # By default, .wait() returns success
             container.wait.return_value = {"StatusCode": 0}
             container.put_archive.return_value = None
@@ -222,6 +242,7 @@ def test_docker_job_schedule(docker_job, docker_client_mock, test_job_step):
 
     # Verify execution profile labels on job container
     assert "labels" in kwargs
+    assert kwargs["labels"][JOB_CONTROLLER_INSTANCE_ID_LABEL] == TEST_JOBS_CONTROLLER_INSTANCE_ID
     assert kwargs["labels"][JOB_EXECUTION_BACKEND_LABEL] == "docker"
     assert kwargs["labels"][JOB_EXECUTION_PROFILE_LABEL] == "default"
 
@@ -291,6 +312,7 @@ def test_docker_job_with_persistence_schedule(docker_job, docker_client_mock, te
 
     # Verify execution profile labels on job container
     assert "labels" in kwargs
+    assert kwargs["labels"][JOB_CONTROLLER_INSTANCE_ID_LABEL] == TEST_JOBS_CONTROLLER_INSTANCE_ID
     assert kwargs["labels"][JOB_EXECUTION_BACKEND_LABEL] == "docker"
     assert kwargs["labels"][JOB_EXECUTION_PROFILE_LABEL] == "default"
 
@@ -390,13 +412,14 @@ def test_docker_job_sync_pausing_sigterm(docker_job, docker_client_mock, test_jo
     container_mock.status = "exited"
     container_mock.attrs = {"State": {"ExitCode": 0}}  # SIGTERM will set exit code 0 if exited gracefully
     task_id = uuid.uuid4().hex
-    container_mock.labels = {
-        JOB_WORKSPACE_ID_LABEL: test_job_step.workspace,
-        JOB_ID_LABEL: test_job_step.job,
-        JOB_STEP_NAME_LABEL: test_job_step.name,
-        JOB_TASK_ID_LABEL: task_id,
-        JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
-    }
+    container_mock.labels = owned_container_labels(
+        {
+            JOB_WORKSPACE_ID_LABEL: test_job_step.workspace,
+            JOB_ID_LABEL: test_job_step.job,
+            JOB_STEP_NAME_LABEL: test_job_step.name,
+            JOB_TASK_ID_LABEL: task_id,
+        }
+    )
     # Clear side_effect so return_value takes precedence
     docker_client_mock.containers.get.side_effect = None
     docker_client_mock.containers.get.return_value = container_mock
@@ -417,13 +440,14 @@ def test_docker_job_sync_cancelling_sigterm(docker_job, docker_client_mock, test
     container_mock.status = "exited"
     container_mock.attrs = {"State": {"ExitCode": 0}}  # SIGTERM will set exit code 0 if exited gracefully
     task_id = uuid.uuid4().hex
-    container_mock.labels = {
-        JOB_WORKSPACE_ID_LABEL: test_job_step.workspace,
-        JOB_ID_LABEL: test_job_step.job,
-        JOB_STEP_NAME_LABEL: test_job_step.name,
-        JOB_TASK_ID_LABEL: task_id,
-        JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
-    }
+    container_mock.labels = owned_container_labels(
+        {
+            JOB_WORKSPACE_ID_LABEL: test_job_step.workspace,
+            JOB_ID_LABEL: test_job_step.job,
+            JOB_STEP_NAME_LABEL: test_job_step.name,
+            JOB_TASK_ID_LABEL: task_id,
+        }
+    )
     # Clear side_effect so return_value takes precedence
     docker_client_mock.containers.get.side_effect = None
     docker_client_mock.containers.get.return_value = container_mock
@@ -445,13 +469,14 @@ def test_docker_job_sync_cancelling_sigkill(docker_job, docker_client_mock, test
     container_mock.status = "exited"
     container_mock.attrs = {"State": {"ExitCode": 137}}  # SIGKILL will set exit code 137
     task_id = uuid.uuid4().hex
-    container_mock.labels = {
-        JOB_WORKSPACE_ID_LABEL: test_job_step.workspace,
-        JOB_ID_LABEL: test_job_step.job,
-        JOB_STEP_NAME_LABEL: test_job_step.name,
-        JOB_TASK_ID_LABEL: task_id,
-        JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
-    }
+    container_mock.labels = owned_container_labels(
+        {
+            JOB_WORKSPACE_ID_LABEL: test_job_step.workspace,
+            JOB_ID_LABEL: test_job_step.job,
+            JOB_STEP_NAME_LABEL: test_job_step.name,
+            JOB_TASK_ID_LABEL: task_id,
+        }
+    )
     # Clear side_effect so return_value takes precedence
     docker_client_mock.containers.get.side_effect = None
     docker_client_mock.containers.get.return_value = container_mock
@@ -897,6 +922,7 @@ def test_gpu_cleanup_on_job_completion(mock_nmp_client, docker_client_mock):
         JOB_STEP_ID_LABEL: step.id,
         JOB_TASK_ID_LABEL: task_id,
         JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
         JOB_TYPE_LABEL: JOB_TYPE_JOB,
     }
 
@@ -998,6 +1024,7 @@ def test_gpu_cleanup_on_job_error(mock_nmp_client, docker_client_mock):
         JOB_STEP_ID_LABEL: step.id,
         JOB_TASK_ID_LABEL: task_id,
         JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
         JOB_TYPE_LABEL: JOB_TYPE_JOB,
     }
 
@@ -1394,6 +1421,7 @@ def test_cleanup_steps_by_ttl(docker_job, docker_client_mock, test_job_step, cle
         JOB_STEP_NAME_LABEL: "test-step",
         JOB_TASK_ID_LABEL: "task-success",
         JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
         JOB_TYPE_LABEL: JOB_TYPE_JOB,
     }
 
@@ -1412,6 +1440,7 @@ def test_cleanup_steps_by_ttl(docker_job, docker_client_mock, test_job_step, cle
         JOB_STEP_NAME_LABEL: "test-step",
         JOB_TASK_ID_LABEL: "task-killed",
         JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
         JOB_TYPE_LABEL: JOB_TYPE_JOB,
     }
 
@@ -1430,6 +1459,7 @@ def test_cleanup_steps_by_ttl(docker_job, docker_client_mock, test_job_step, cle
         JOB_STEP_NAME_LABEL: "test-step",
         JOB_TASK_ID_LABEL: "task-error",
         JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
         JOB_TYPE_LABEL: JOB_TYPE_JOB,
     }
 
@@ -1448,6 +1478,7 @@ def test_cleanup_steps_by_ttl(docker_job, docker_client_mock, test_job_step, cle
         JOB_STEP_NAME_LABEL: "test-step",
         JOB_TASK_ID_LABEL: "task-old-error",
         JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
         JOB_TYPE_LABEL: JOB_TYPE_JOB,
     }
 
@@ -1463,6 +1494,7 @@ def test_cleanup_steps_by_ttl(docker_job, docker_client_mock, test_job_step, cle
         JOB_STEP_NAME_LABEL: "test-step",
         JOB_TASK_ID_LABEL: "task-running",
         JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
         JOB_TYPE_LABEL: JOB_TYPE_JOB,
     }
 
@@ -1486,9 +1518,18 @@ def test_cleanup_steps_by_ttl(docker_job, docker_client_mock, test_job_step, cle
     # Run cleanup
     docker_job.cleanup_steps()
 
-    # Verify containers.list was called with the correct filter (managed_by to find job controller containers)
+    # Verify containers.list was called with owner-scoped filters.
     docker_client_mock.containers.list.assert_called_once_with(
-        all=True, filters={"label": JOB_MANAGED_BY_LABEL}, ignore_removed=True
+        all=True,
+        filters={
+            "label": [
+                f"{JOB_MANAGED_BY_LABEL}={JOB_MANAGED_BY_JOBS_CONTROLLER}",
+                f"{JOB_CONTROLLER_INSTANCE_ID_LABEL}={TEST_JOBS_CONTROLLER_INSTANCE_ID}",
+                f"{JOB_EXECUTION_BACKEND_LABEL}=docker",
+                f"{JOB_EXECUTION_PROFILE_LABEL}=default",
+            ]
+        },
+        ignore_removed=True,
     )
 
     if cleanup_completed_jobs_immediately:
@@ -1538,32 +1579,103 @@ def test_cleanup_steps_by_ttl(docker_job, docker_client_mock, test_job_step, cle
     mock_network.disconnect.assert_any_call(mock_container_old_error)
 
 
-def test_cleanup_created_by_ttl(docker_job, docker_client_mock, test_job_step):
-    """Test that schedule_single_container transitions to an ERROR state when step's created_at exceeds TTL."""
-    # Get the TTL configuration (default is 30 minutes)
-    ttl_seconds = docker_job._execution_profile_config.ttl_seconds_before_active
+def test_cleanup_steps_skips_different_owner_container_before_jobs_api_check(docker_job, docker_client_mock):
+    other_owner = MagicMock()
+    other_owner.name = "other-owner-container"
+    other_owner.id = "other-owner-container-id"
+    other_owner.status = "exited"
+    other_owner.attrs = {
+        "State": {"ExitCode": 0, "FinishedAt": datetime.datetime.now(datetime.UTC).isoformat()},
+        "NetworkSettings": {"Networks": {"host": {}}},
+    }
+    other_owner.labels = {
+        JOB_WORKSPACE_ID_LABEL: "default",
+        JOB_ID_LABEL: "other-job",
+        JOB_STEP_NAME_LABEL: "other-step",
+        JOB_TASK_ID_LABEL: "other-task",
+        JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: "other-owner",
+        JOB_TYPE_LABEL: JOB_TYPE_JOB,
+    }
+    docker_client_mock.containers.list.return_value = [other_owner]
+    docker_job.check_step_is_terminal = MagicMock(return_value=True)
 
-    # Create a step with an created_at timestamp that exceeds the TTL (35 minutes ago)
+    docker_job.cleanup_steps()
+
+    docker_job.check_step_is_terminal.assert_not_called()
+    other_owner.remove.assert_not_called()
+
+
+def test_cleanup_steps_skips_legacy_container_without_owner_label(docker_job, docker_client_mock):
+    legacy = MagicMock()
+    legacy.name = "legacy-container"
+    legacy.id = "legacy-container-id"
+    legacy.status = "exited"
+    legacy.attrs = {
+        "State": {"ExitCode": 0, "FinishedAt": datetime.datetime.now(datetime.UTC).isoformat()},
+        "NetworkSettings": {"Networks": {"host": {}}},
+    }
+    legacy.labels = {
+        JOB_WORKSPACE_ID_LABEL: "default",
+        JOB_ID_LABEL: "legacy-job",
+        JOB_STEP_NAME_LABEL: "legacy-step",
+        JOB_TASK_ID_LABEL: "legacy-task",
+        JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_TYPE_LABEL: JOB_TYPE_JOB,
+    }
+    docker_client_mock.containers.list.return_value = [legacy]
+    docker_job.check_step_is_terminal = MagicMock(return_value=True)
+
+    docker_job.cleanup_steps()
+
+    docker_job.check_step_is_terminal.assert_not_called()
+    legacy.remove.assert_not_called()
+
+
+def test_cleanup_job_persistent_storage_labels_cleanup_container_owner(docker_job, docker_client_mock):
+    docker_job.cleanup_job_persistent_storage("default", "job-owner-test")
+
+    cleanup_args = docker_client_mock.containers.create.call_args[1]
+    assert cleanup_args["labels"][JOB_CONTROLLER_INSTANCE_ID_LABEL] == TEST_JOBS_CONTROLLER_INSTANCE_ID
+    assert cleanup_args["labels"][JOB_TYPE_LABEL] == JOB_TYPE_STORAGE_CLEANUP
+
+
+def test_created_step_does_not_ttl_before_backend_acceptance(docker_job, docker_client_mock, test_job_step):
+    """CREATED age should not fail a step before the backend accepts it."""
+    ttl_seconds = docker_job._execution_profile_config.ttl_seconds_before_active
     old_timestamp = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=ttl_seconds + 300)
     test_job_step.created_at = old_timestamp
     test_job_step.updated_at = old_timestamp
-
     test_job_step.status = PlatformJobStatus.CREATED
-
-    # Get the executor config from the step
     executor_config = test_job_step.step_spec.executor
+    docker_job._container_run_threadpool = MagicMock()
 
-    # Call schedule_single_container which should detect the timeout
-    result = docker_job.schedule_single_container(executor_config, test_job_step)
+    try:
+        result = docker_job.schedule_single_container(executor_config, test_job_step)
+    finally:
+        if docker_job._container_run_threadpool.submit.called:
+            docker_job._container_start_admission.release()
 
-    # Verify that it returns an ERROR status with timeout message
-    assert result.status == PlatformJobStatus.ERROR.value
-    assert result.status_details == {"message": "Job timed out after reaching max TTL of 1800 seconds"}
-    assert result.error_details == {"message": "Job timed out after reaching max TTL of 1800 seconds"}
+    assert result.status == PlatformJobStatus.PENDING
+    docker_job._container_run_threadpool.submit.assert_called_once()
 
-    # Verify that no container was created
-    docker_client_mock.containers.create.assert_not_called()
-    docker_client_mock.containers.run.assert_not_called()
+
+def test_docker_schedule_defers_when_start_admission_full(docker_job, docker_client_mock, test_job_step):
+    """A full Docker start gate leaves the step CREATED and avoids per-attempt Docker setup."""
+    acquired = 0
+    try:
+        for _ in range(DOCKER_CONTAINER_START_WORKERS):
+            assert docker_job._container_start_admission.acquire(blocking=False)
+            acquired += 1
+
+        with pytest.raises(SchedulingDeferred, match="Docker start worker capacity is full"):
+            docker_job.schedule_single_container(test_job_step.step_spec.executor, test_job_step)
+
+        docker_client_mock.containers.create.assert_not_called()
+        docker_client_mock.containers.run.assert_not_called()
+    finally:
+        for _ in range(acquired):
+            docker_job._container_start_admission.release()
 
 
 def test_resuming_step_skips_before_active_ttl_enforcement(docker_job, test_job_step):
@@ -1586,8 +1698,8 @@ def test_before_active_ttl_uses_latest_of_created_and_updated(docker_job, test_j
     assert docker_job.check_step_ttl_before_active(test_job_step, ttl_seconds) is False
 
 
-def test_cleanup_pending_by_ttl(docker_job, docker_client_mock, test_job_step):
-    """Test that sync of a PENDING step transitions to an ERROR state when step's created_at exceeds TTL."""
+def test_cleanup_pending_created_container_by_ttl(docker_job, docker_client_mock, test_job_step):
+    """A stale PENDING step with a Docker-created container transitions to ERROR."""
     # Get the TTL configuration (default is 30 minutes)
     ttl_seconds = docker_job._execution_profile_config.ttl_seconds_before_active
 
@@ -1599,16 +1711,17 @@ def test_cleanup_pending_by_ttl(docker_job, docker_client_mock, test_job_step):
     test_job_step.created_at = old_timestamp
     test_job_step.updated_at = old_timestamp
 
-    # Create a mock container that the sync method will find (with managed-by label so we kill it)
+    # Create a mock container that the sync method will find (with owner labels so we kill it)
     container_mock = MagicMock()
     container_mock.id = "16-character-uid"
-    container_mock.status = "running"
+    container_mock.status = "created"
     task_id = uuid.uuid4().hex
     container_mock.labels = {
         JOB_ID_LABEL: test_job_step.job,
         JOB_STEP_NAME_LABEL: test_job_step.name,
         JOB_TASK_ID_LABEL: task_id,
         JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
     }
 
     # Mock containers.get to return our container
@@ -1638,6 +1751,68 @@ def test_cleanup_pending_by_ttl(docker_job, docker_client_mock, test_job_step):
     )
 
 
+def test_pending_running_container_preempts_before_active_ttl(docker_job, docker_client_mock, test_job_step):
+    """If Docker is running, reconcile PENDING to ACTIVE instead of timing out first."""
+    ttl_seconds = docker_job._execution_profile_config.ttl_seconds_before_active
+    old_timestamp = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=ttl_seconds + 300)
+    test_job_step.status = PlatformJobStatus.PENDING
+    test_job_step.created_at = old_timestamp
+    test_job_step.updated_at = old_timestamp
+
+    task_id = uuid.uuid4().hex
+    container_mock = MagicMock()
+    container_mock.id = "16-character-uid"
+    container_mock.name = "job-test-job-id-test-step"
+    container_mock.status = "running"
+    container_mock.labels = {
+        JOB_ID_LABEL: test_job_step.job,
+        JOB_STEP_NAME_LABEL: test_job_step.name,
+        JOB_TASK_ID_LABEL: task_id,
+        JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
+    }
+    container_mock.attrs = {"State": {"Status": "running", "Running": True}, "HostConfig": {}}
+    docker_client_mock.containers.get.side_effect = None
+    docker_client_mock.containers.get.return_value = container_mock
+
+    result = docker_job.sync(test_job_step)
+
+    assert result.status == PlatformJobStatus.ACTIVE.value
+    assert result.status_details == {"message": "Job is running"}
+    container_mock.kill.assert_not_called()
+
+
+def test_pending_exited_container_preempts_before_active_ttl(docker_job, docker_client_mock, test_job_step):
+    """If Docker already exited successfully, reconcile PENDING to COMPLETED instead of timing out first."""
+    ttl_seconds = docker_job._execution_profile_config.ttl_seconds_before_active
+    old_timestamp = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=ttl_seconds + 300)
+    test_job_step.status = PlatformJobStatus.PENDING
+    test_job_step.created_at = old_timestamp
+    test_job_step.updated_at = old_timestamp
+
+    task_id = uuid.uuid4().hex
+    container_mock = MagicMock()
+    container_mock.id = "16-character-uid"
+    container_mock.name = "job-test-job-id-test-step"
+    container_mock.status = "exited"
+    container_mock.labels = {
+        JOB_ID_LABEL: test_job_step.job,
+        JOB_STEP_NAME_LABEL: test_job_step.name,
+        JOB_TASK_ID_LABEL: task_id,
+        JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
+    }
+    container_mock.attrs = {"State": {"Status": "exited", "ExitCode": 0}, "HostConfig": {}}
+    docker_client_mock.containers.get.side_effect = None
+    docker_client_mock.containers.get.return_value = container_mock
+
+    result = docker_job.sync(test_job_step)
+
+    assert result.status == PlatformJobStatus.COMPLETED.value
+    assert result.status_details == {"message": "Job completed successfully with exit code 0"}
+    container_mock.kill.assert_not_called()
+
+
 def test_cleanup_active_by_ttl(docker_job, docker_client_mock, test_job_step):
     """Test that sync of an ACTIVE step transitions to an ERROR state when step's created_at exceeds TTL."""
     # Get the TTL configuration for active jobs (default is 24 hours)
@@ -1650,7 +1825,7 @@ def test_cleanup_active_by_ttl(docker_job, docker_client_mock, test_job_step):
     old_timestamp = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=ttl_seconds + 3600)
     test_job_step.created_at = old_timestamp
 
-    # Create a mock container that the sync method will find (with managed-by label so we kill it)
+    # Create a mock container that the sync method will find (with owner labels so we kill it)
     container_mock = MagicMock()
     container_mock.id = "16-character-uid"
     container_mock.status = "running"
@@ -1660,6 +1835,7 @@ def test_cleanup_active_by_ttl(docker_job, docker_client_mock, test_job_step):
         JOB_STEP_NAME_LABEL: test_job_step.name,
         JOB_TASK_ID_LABEL: task_id,
         JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
     }
 
     # Mock containers.get to return our container
@@ -1689,8 +1865,10 @@ def test_cleanup_active_by_ttl(docker_job, docker_client_mock, test_job_step):
     )
 
 
-def test_ttl_enforcement_container_already_stopped_on_kill(docker_job, docker_client_mock, test_job_step):
-    """Test TTL enforcement handles gracefully when container.kill() is called on already stopped container."""
+def test_ttl_enforcement_handles_409_when_kill_races_with_stopped_container(
+    docker_job, docker_client_mock, test_job_step
+):
+    """Test TTL enforcement handles gracefully when container.kill() races with a stopped container."""
     # Get the TTL configuration for pending/created jobs
     ttl_seconds = docker_job._execution_profile_config.ttl_seconds_before_active
 
@@ -1706,7 +1884,7 @@ def test_ttl_enforcement_container_already_stopped_on_kill(docker_job, docker_cl
     container_mock = MagicMock()
     container_mock.id = "16-character-uid"
     container_mock.name = "job-test-job-id-test-step"
-    container_mock.status = "exited"  # Container is already stopped
+    container_mock.status = "created"
     task_id = uuid.uuid4().hex
     container_mock.labels = {
         JOB_WORKSPACE_ID_LABEL: test_job_step.workspace,
@@ -1714,6 +1892,7 @@ def test_ttl_enforcement_container_already_stopped_on_kill(docker_job, docker_cl
         JOB_STEP_NAME_LABEL: test_job_step.name,
         JOB_TASK_ID_LABEL: task_id,
         JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
     }
 
     # Mock container.kill() to raise APIError with 409 status (container already stopped)
@@ -1752,7 +1931,7 @@ def test_sync_stop_container_already_stopped(docker_job, docker_client_mock, tes
     # Set the step to CANCELLING status (which triggers sync_stop_container)
     test_job_step.status = PlatformJobStatus.CANCELLING
 
-    # Create a mock container that's already stopped (with managed-by label so we attempt stop)
+    # Create a mock container that's already stopped (with owner labels so we attempt stop)
     container_mock = MagicMock()
     container_mock.id = "16-character-uid"
     container_mock.name = "job-test-job-id-test-step"
@@ -1764,6 +1943,7 @@ def test_sync_stop_container_already_stopped(docker_job, docker_client_mock, tes
         JOB_STEP_NAME_LABEL: test_job_step.name,
         JOB_TASK_ID_LABEL: task_id,
         JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
     }
 
     # Mock container.stop() to raise APIError with 409 status (container already stopped)
@@ -1799,8 +1979,8 @@ def test_sync_stop_container_already_stopped(docker_job, docker_client_mock, tes
     )
 
 
-def test_sync_stop_container_skips_when_not_managed_by_jobs_controller(docker_job, docker_client_mock, test_job_step):
-    """sync_stop_container must not call container.stop() if the container is not managed by jobs-controller."""
+def test_sync_stop_container_skips_when_not_owned_by_jobs_controller(docker_job, docker_client_mock, test_job_step):
+    """sync_stop_container must not call container.stop() if the container is not owned by this controller."""
     test_job_step.status = PlatformJobStatus.CANCELLING
 
     container_mock = MagicMock()
@@ -1816,7 +1996,7 @@ def test_sync_stop_container_skips_when_not_managed_by_jobs_controller(docker_jo
 
     container_mock.stop.assert_not_called()
     assert result.status == PlatformJobStatus.ERROR.value
-    assert "not managed" in result.error_details.get("message", "")
+    assert "not owned" in result.error_details.get("message", "")
 
 
 # ============================================================================
@@ -2008,6 +2188,7 @@ def test_cleanup_single_container_checks_job_terminal_before_persistent_storage_
         JOB_TASK_ID_LABEL: "task-success",
         JOB_USES_PERSISTENT_STORAGE_LABEL: "true",
         JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
     }
 
     # Mock volume operations
@@ -2066,6 +2247,7 @@ def test_cleanup_single_container_without_persistent_storage_label(docker_job, d
         JOB_ID_LABEL: "test-job-id",
         JOB_TASK_ID_LABEL: "task-no-storage",
         JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
         # No JOB_USES_PERSISTENT_STORAGE_LABEL
     }
 
@@ -2109,6 +2291,7 @@ def test_cleanup_single_container_step_terminal_but_job_has_more_steps(docker_jo
         JOB_TASK_ID_LABEL: "task-step1",
         JOB_USES_PERSISTENT_STORAGE_LABEL: "true",
         JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
     }
 
     # Mock volume operations
@@ -2180,6 +2363,7 @@ def test_cleanup_steps_with_multi_step_job_only_first_step_complete(docker_job, 
         JOB_TASK_ID_LABEL: "task-step1",
         JOB_USES_PERSISTENT_STORAGE_LABEL: "true",
         JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
         JOB_TYPE_LABEL: JOB_TYPE_JOB,
     }
 
@@ -2196,6 +2380,7 @@ def test_cleanup_steps_with_multi_step_job_only_first_step_complete(docker_job, 
         JOB_TASK_ID_LABEL: "task-step2",
         JOB_USES_PERSISTENT_STORAGE_LABEL: "true",
         JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
         JOB_TYPE_LABEL: JOB_TYPE_JOB,
     }
 

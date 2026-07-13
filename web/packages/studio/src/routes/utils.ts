@@ -355,6 +355,13 @@ export const getGuardrailsRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.guardrails, { workspace });
 };
 
+export const getGuardrailDetailRoute = (workspace: string, guardrailConfigName: string) => {
+  return generatePath(ROUTES.workspace.guardrailDetail, {
+    workspace,
+    guardrailConfigName,
+  });
+};
+
 export const getWorkspaceSettingsRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.settings, { workspace });
 };
@@ -471,6 +478,15 @@ export const getDataDesignerJobDetailsRoute = (workspace: string, dataDesignerJo
 
 export const getNewDataDesignerJobRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.dataDesignerJobNew, { workspace });
+};
+
+export const getDataDesignerJobBuildRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.dataDesignerJobBuild, { workspace });
+};
+
+/** Not linked from any UI — reachable only by typing the URL. */
+export const getLegacyNewDataDesignerJobRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.dataDesignerJobNewLegacy, { workspace });
 };
 
 export const getModelChatRoute = (model: NamedEntityRef) => {

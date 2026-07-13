@@ -39,6 +39,7 @@ export const ROUTE_PARAMS = {
   benchmarkName: 'benchmarkName',
   experimentGroupName: 'experimentGroupName',
   evaluationName: 'evaluationName',
+  guardrailConfigName: 'guardrailConfigName',
 } as const;
 
 // Just an alias to make the routes more readable
@@ -102,8 +103,12 @@ export const ROUTES = {
     dataDesignerJobList: `/workspaces/:${P.workspace}/data-designer`,
     dataDesignerJobDetails: `/workspaces/:${P.workspace}/data-designer/:${P.dataDesignerJobName}`,
     dataDesignerJobNew: `/workspaces/:${P.workspace}/data-designer/new`,
+    dataDesignerJobBuild: `/workspaces/:${P.workspace}/data-designer/new/build`,
+    /** Legacy job-creation form, not linked from any UI — reachable only by typing the URL. */
+    dataDesignerJobNewLegacy: `/workspaces/:${P.workspace}/data-designer/new/legacy`,
     secrets: `/workspaces/:${P.workspace}/secrets`,
     guardrails: `/workspaces/:${P.workspace}/guardrails`,
+    guardrailDetail: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}`,
     settings: `/workspaces/:${P.workspace}/settings`,
     /** Workspace members and role-based access (Entities role bindings) */
     members: `/workspaces/:${P.workspace}/members`,

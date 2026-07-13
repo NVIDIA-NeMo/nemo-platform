@@ -8,7 +8,6 @@ from data_designer.engine.resources.seed_reader import SeedReader
 from data_designer_nemo.fileset_file_seed_source import FilesetFileSeedSource
 from data_designer_nemo.sdk_translation import async_to_sync_sdk
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.filesets import FilesetFileSystem
 
 workspace_cvar = ContextVar[str | None]("workspace_cvar", default=None)
 
@@ -26,10 +25,8 @@ class FilesetFileSeedReader(SeedReader[FilesetFileSeedSource]):
         if self._sdk is None:
             raise RuntimeError("FilesetFileSeedReader requires an injected NeMo Platform SDK")
 
-        filesystem = FilesetFileSystem(sdk=self._sdk)
-
         conn = duckdb.connect()
-        conn.register_filesystem(filesystem)
+        conn.register_filesystem(self._sdk.files.fsspec)
         return conn
 
     def get_dataset_uri(self) -> str:

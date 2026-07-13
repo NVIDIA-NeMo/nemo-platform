@@ -4,11 +4,11 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
+from importlib import import_module as _importlib_import_module
 from typing import Annotated, Literal
 
 import typer
 
-from nemo_platform.cli.commands.api.intake.spans import evaluator_results, groups
 from nemo_platform.cli.core.api import build_kwargs, merge_filter_dict
 from nemo_platform.cli.core.code_generator import handle_code_generation
 from nemo_platform.cli.core.context import CLIContext
@@ -23,10 +23,15 @@ from nemo_platform.cli.core.types import (
     OutputColumnsOption,
 )
 
+_cli_child_evaluator_results = _importlib_import_module(
+    "nemo_platform.cli.commands.api.intake.spans.evaluator_results"
+)
+_cli_child_groups = _importlib_import_module("nemo_platform.cli.commands.api.intake.spans.groups")
+
 app = create_typer_app(name="spans", help="Manage spans")
 
-app.add_typer(evaluator_results.app, name="evaluator-results")
-app.add_typer(groups.app, name="groups")
+app.add_typer(_cli_child_evaluator_results.app, name="evaluator-results")
+app.add_typer(_cli_child_groups.app, name="groups")
 
 
 @app.command("list")
@@ -59,12 +64,6 @@ def list_spans(
     ] = None,
     filter_evaluation_id: Annotated[
         str | None, typer.Option("--filter.evaluation-id", rich_help_panel="Filter Options")
-    ] = None,
-    filter_evaluation_run_id: Annotated[
-        str | None, typer.Option("--filter.evaluation-run-id", rich_help_panel="Filter Options")
-    ] = None,
-    filter_evaluation_sha: Annotated[
-        str | None, typer.Option("--filter.evaluation-sha", rich_help_panel="Filter Options")
     ] = None,
     filter_kind: Annotated[str | None, typer.Option("--filter.kind", rich_help_panel="Filter Options")] = None,
     filter_model: Annotated[str | None, typer.Option("--filter.model", rich_help_panel="Filter Options")] = None,
@@ -124,8 +123,6 @@ def list_spans(
             dataset_name=filter_dataset_name,
             dataset_version=filter_dataset_version,
             evaluation_id=filter_evaluation_id,
-            evaluation_run_id=filter_evaluation_run_id,
-            evaluation_sha=filter_evaluation_sha,
             kind=filter_kind,
             model=filter_model,
             parent_span_id=filter_parent_span_id,

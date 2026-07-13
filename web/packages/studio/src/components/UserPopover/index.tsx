@@ -26,6 +26,10 @@ export const UserPopover = () => {
   const profile = useAuthProfile();
   const auth = useAuth();
 
+  if (!profile && !TELEMETRY_ENABLED) {
+    return <Avatar fallback="N" />;
+  }
+
   return (
     <>
       <DropdownRoot defaultOpen={false}>
@@ -40,7 +44,7 @@ export const UserPopover = () => {
           </Button>
         </DropdownTrigger>
         <DropdownContent align="end" className="w-[300px] mt-[8px]" density="spacious">
-          {typeof profile?.workspace === 'string' && (
+          {profile && (
             <DropdownHeading>
               <Text fontSize="14" kind="label/bold/sm" className="text-center w-full">
                 {profile.email}
