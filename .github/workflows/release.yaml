@@ -56,12 +56,12 @@ on:
         type: string
         default: ""
       include-helm:
-        description: "Include the Helm chart in a custom release."
+        description: "Include the Helm chart if defining a strict list of release artifacts instead of the default (release everything)."
         required: false
         type: boolean
         default: false
       update-ngc-metadata:
-        description: "Synchronize NGC metadata from the default branch."
+        description: "Synchronize NGC metadata from the this branch."
         required: false
         type: boolean
         default: false
@@ -174,8 +174,8 @@ jobs:
             const sendNotifications = inputs["send-notifications"] !== "false";
             const dryRun = isManual && inputs["dry-run"] === "true";
 
-            let sourceSha = isManual ? inputs["source-sha"].trim() : context.sha;
-            const version = releaseType === "stable" ? inputs.version.trim() : "";
+            let sourceSha = isManual ? (inputs["source-sha"] ?? "").trim() : context.sha;
+            const version = releaseType === "stable" ? (inputs.version ?? "").trim() : "";
 
             if (releaseType === "stable") {
               if (!/^[0-9a-f]{40}$/i.test(sourceSha)) {
@@ -306,6 +306,12 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
           persist-credentials: false
+
+      - name: Ensure selected source is an ancestor of this workflow revision
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.plan.outputs.source_sha }}
+        run: git merge-base --is-ancestor "${SOURCE_SHA}" "${GITHUB_SHA}"
 
       - name: Validate selected release artifacts
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
