@@ -10,11 +10,14 @@ satisfy. Verifiability and content-probe corroboration are added by a later stag
 
 from __future__ import annotations
 
+import re
+
 from nemo_platform_plugin.files.dataset_profile import (
     ColumnStats,
     Evidence,
     FeatureSchema,
     PartitionClassification,
+    Verifiability,
 )
 
 # Column-name aliases -> role. Score is handled separately (name alias + numeric dtype gate).
@@ -181,12 +184,111 @@ def _detect_type(features: list[FeatureSchema], stats: dict[str, ColumnStats]) -
     return "unknown"
 
 
-def classify(features: list[FeatureSchema], stats: dict[str, ColumnStats]) -> PartitionClassification:
-    """Assign roles onto ``features`` in place and return the partition's classification."""
+# --- content probes ------------------------------------------------------------------------------
+
+_TRANSCRIPT_MARKER = re.compile(r"\n\n(?:Human|Assistant|User):")
+_GSM8K_ANSWER = re.compile(r"####\s*-?[\d.,/]+\s*$")
+_BOXED_ANSWER = re.compile(r"\\boxed\{")
+
+
+def _pct(fraction: float) -> str:
+    return f"{round(fraction * 100)}%"
+
+
+def _completion_texts(features: list[FeatureSchema], rows: list[dict]) -> list[str]:
+    completion = next((feature for feature in features if feature.semantic_role == "completion"), None)
+    if completion is None:
+        return []
+    texts: list[str] = []
+    for row in rows:
+        value = row.get(completion.name)
+        if isinstance(value, str):
+            texts.append(value)
+        elif isinstance(value, list) and value and isinstance(value[-1], dict):
+            content = value[-1].get("content")  # the final assistant turn for a conversational completion
+            if isinstance(content, str):
+                texts.append(content)
+    return texts
+
+
+def _detect_verifiability(features: list[FeatureSchema], rows: list[dict]) -> Verifiability | None:
+    if not rows:
+        return None
+
+    ground_truth = next((feature for feature in features if feature.semantic_role == "ground_truth"), None)
+    if ground_truth is not None:
+        present = sum(1 for row in rows if row.get(ground_truth.name) not in (None, "", []))
+        coverage = present / len(rows)
+        detail = f"'{ground_truth.name}' present in {_pct(coverage)} of {len(rows)} sampled rows"
+        return Verifiability(
+            method="ground_truth_column", coverage=coverage, evidence=[Evidence(kind="content_probe", detail=detail)]
+        )
+
+    texts = _completion_texts(features, rows)
+    if texts:
+        hits = sum(1 for text in texts if _GSM8K_ANSWER.search(text) or _BOXED_ANSWER.search(text))
+        if hits:
+            coverage = hits / len(texts)
+            detail = f"completion ends with an extractable answer (#### or \\boxed) in {_pct(coverage)} of {len(texts)} sampled rows"
+            return Verifiability(
+                method="extractable_final_answer",
+                coverage=coverage,
+                evidence=[Evidence(kind="content_probe", detail=detail)],
+            )
+    return None
+
+
+def _common_prefix_len(left: str, right: str) -> int:
+    limit = min(len(left), len(right))
+    index = 0
+    while index < limit and left[index] == right[index]:
+        index += 1
+    return index
+
+
+def _implicit_prompt_evidence(features: list[FeatureSchema], rows: list[dict]) -> Evidence | None:
+    if not rows:
+        return None
+
+    targets = [f for f in features if f.semantic_role in {"chosen", "rejected", "completion"} and f.dtype == "string"]
+    texts = [row.get(f.name) for f in targets for row in rows if isinstance(row.get(f.name), str)]
+    if texts:
+        marked = sum(1 for text in texts if _TRANSCRIPT_MARKER.search(text))
+        if marked:
+            detail = f"embedded transcript markers in {_pct(marked / len(texts))} of sampled completions - prompt is embedded"
+            return Evidence(kind="content_probe", detail=detail)
+
+    chosen = next((f for f in features if f.semantic_role == "chosen" and f.dtype == "string"), None)
+    rejected = next((f for f in features if f.semantic_role == "rejected" and f.dtype == "string"), None)
+    if chosen is not None and rejected is not None:
+        pairs = 0
+        shared = 0
+        for row in rows:
+            left, right = row.get(chosen.name), row.get(rejected.name)
+            if isinstance(left, str) and isinstance(right, str):
+                pairs += 1
+                if _common_prefix_len(left, right) >= 16:
+                    shared += 1
+        if pairs and shared / pairs >= 0.5:
+            detail = f"chosen/rejected share a common prefix in {_pct(shared / pairs)} of pairs - prompt is embedded"
+            return Evidence(kind="content_probe", detail=detail)
+    return None
+
+
+def classify(
+    features: list[FeatureSchema], stats: dict[str, ColumnStats], rows: list[dict] | None = None
+) -> PartitionClassification:
+    """Assign roles onto ``features`` in place and return the partition's classification.
+
+    ``rows`` (the sampled rows) drive the content probes — verifiability and implicit-prompt
+    detection; role/axis/type inference needs only the schema and stats.
+    """
+    rows = rows or []
     _assign_roles(features)
     roles = {feature.semantic_role for feature in features if feature.semantic_role}
     dataset_type = _detect_type(features, stats)
     fmt = _detect_format(features)
+    prompt_form = _detect_prompt_form(roles) if dataset_type != "unknown" else None
 
     evidence: list[Evidence] = []
     role_columns = [f"{feature.name} -> {feature.semantic_role}" for feature in features if feature.semantic_role]
@@ -194,11 +296,16 @@ def classify(features: list[FeatureSchema], stats: dict[str, ColumnStats]) -> Pa
         evidence.append(Evidence(kind="column_name", detail=f"columns matched roles: {', '.join(role_columns)}"))
     if fmt is not None:
         evidence.append(Evidence(kind="column_dtype", detail=f"{fmt} format from role column dtypes"))
+    if prompt_form == "implicit":
+        embedded = _implicit_prompt_evidence(features, rows)
+        if embedded is not None:
+            evidence.append(embedded)
 
     return PartitionClassification(
         modality=_detect_modality(features),
         dataset_type=dataset_type,
         format=fmt,
-        prompt_form=_detect_prompt_form(roles) if dataset_type != "unknown" else None,
+        prompt_form=prompt_form,
+        verifiability=_detect_verifiability(features, rows),
         evidence=evidence,
     )

@@ -113,3 +113,43 @@ def test_unrecognized_columns_are_unknown():
 def test_classification_records_evidence():
     result = classify([_f("prompt", "string"), _f("completion", "string")], {})
     assert {e.kind for e in result.evidence} >= {"column_name", "column_dtype"}
+
+
+# --- verifiability + content probes --------------------------------------------------------------
+
+
+def test_verifiability_extractable_gsm8k_answer():
+    features = [_f("problem", "string"), _f("solution", "string")]
+    rows = [{"problem": "q", "solution": "steps #### 18"}, {"problem": "q", "solution": "no final answer"}]
+    result = classify(features, {}, rows)
+    assert result.verifiability.method == "extractable_final_answer"
+    assert result.verifiability.coverage == 0.5
+
+
+def test_verifiability_boxed_answer():
+    features = [_f("prompt", "string"), _f("completion", "string")]
+    result = classify(features, {}, [{"prompt": "q", "completion": r"reasoning \boxed{42}"}])
+    assert result.verifiability.method == "extractable_final_answer"
+    assert result.verifiability.coverage == 1.0
+
+
+def test_verifiability_ground_truth_column_coverage():
+    features = [_f("prompt", "string"), _f("ground_truth", "string")]
+    rows = [{"prompt": "q", "ground_truth": "42"}, {"prompt": "q", "ground_truth": None}]
+    result = classify(features, {}, rows)
+    assert result.verifiability.method == "ground_truth_column"
+    assert result.verifiability.coverage == 0.5
+
+
+def test_no_verifiability_without_a_target():
+    features = [_f("prompt", "string"), _f("completion", "string")]
+    result = classify(features, {}, [{"prompt": "q", "completion": "just prose, no answer"}])
+    assert result.verifiability is None
+
+
+def test_implicit_prompt_evidence_from_embedded_transcript():
+    features = [_f("chosen", "string"), _f("rejected", "string")]
+    rows = [{"chosen": "\n\nHuman: hi\n\nAssistant: hello", "rejected": "\n\nHuman: hi\n\nAssistant: hey"}]
+    result = classify(features, {}, rows)
+    assert result.prompt_form == "implicit"
+    assert any(e.kind == "content_probe" for e in result.evidence)

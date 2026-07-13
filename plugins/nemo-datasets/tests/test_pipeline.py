@@ -161,6 +161,19 @@ def test_profile_isolates_unreadable_files(tmp_path):
     assert result.sampling.rows_total is None
 
 
+def test_profile_classifies_roles_type_and_verifiability(tmp_path):
+    _write_parquet(
+        tmp_path / "train-00000-of-00001.parquet",
+        [{"problem": "q1", "solution": "steps #### 5"}, {"problem": "q2", "solution": "steps #### 6"}],
+    )
+    partition = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0]
+
+    assert {f.semantic_role for f in partition.features} == {"prompt", "completion"}
+    assert partition.classification.dataset_type == "prompt_completion"
+    assert partition.classification.verifiability.method == "extractable_final_answer"
+    assert partition.classification.verifiability.coverage == 1.0
+
+
 def test_profile_is_deterministic(tmp_path):
     _write_parquet(tmp_path / "train-00000-of-00001.parquet", [{"a": 1}, {"a": 2}])
     source = LocalFileSource(tmp_path)
