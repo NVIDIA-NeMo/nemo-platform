@@ -112,11 +112,12 @@ def test_profile_parquet_dataset_builds_envelope(tmp_path):
     assert splits["validation"].num_examples == 1
     assert splits["train"].files[0].num_rows == 2
 
-    # Row schema and stats are derived; classification remains stubbed for now.
+    # Row schema, stats, and classification are all derived now.
     assert [f.name for f in partition.features] == ["prompt"]
     assert partition.features[0].dtype == "string"
+    assert partition.features[0].semantic_role == "prompt"
     assert partition.stats["prompt"].text is not None
-    assert partition.classification.dataset_type == "unknown"
+    assert partition.classification.dataset_type == "prompt_only"  # a lone prompt column, no target
 
     assert result.sampling.exhaustive is True
     assert result.sampling.strategy == "full"
