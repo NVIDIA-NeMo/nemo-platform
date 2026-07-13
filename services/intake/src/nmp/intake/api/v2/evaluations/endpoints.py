@@ -37,7 +37,12 @@ from nmp.intake.api.v2.evaluations.schemas import (
     ExperimentGroupRequest,
     ExperimentGroupResponse,
 )
-from nmp.intake.entities.experiments import Evaluation, ExperimentGroup
+
+# The API/Studio expose this as an "Evaluation", but it is still stored as the Experiment entity
+# (entity rename + data migration deferred — see entities/experiments.py). Alias it to the name this
+# layer uses; only the entity's own field names (e.g. parent_experiment_id) reference Experiment directly.
+from nmp.intake.entities.experiments import Experiment as Evaluation
+from nmp.intake.entities.experiments import ExperimentGroup
 from nmp.intake.spans.api.dependencies import require_workspace_access, validate_list_query_params
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import SpanStatus
@@ -336,7 +341,7 @@ async def create_evaluation(
         source_link=body.source_link,
         metadata=body.metadata,
         description=body.description,
-        parent_evaluation_id=body.parent_evaluation_id,
+        parent_experiment_id=body.parent_evaluation_id,
         status=body.status,
         root_cause=body.root_cause,
     )
@@ -542,7 +547,7 @@ async def update_evaluation(
     existing.source_link = body.source_link
     existing.metadata = body.metadata
     existing.description = body.description
-    existing.parent_evaluation_id = body.parent_evaluation_id
+    existing.parent_experiment_id = body.parent_evaluation_id
     existing.status = body.status
     existing.root_cause = body.root_cause
     updated = await entity_client.update(existing)

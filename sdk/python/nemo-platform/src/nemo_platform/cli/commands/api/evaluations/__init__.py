@@ -4,11 +4,11 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
+from importlib import import_module as _importlib_import_module
 from typing import Annotated
 
 import typer
 
-from nemo_platform.cli.commands.api.evaluations import sessions
 from nemo_platform.cli.core.api import build_kwargs, merge_filter_dict
 from nemo_platform.cli.core.code_generator import handle_code_generation
 from nemo_platform.cli.core.context import CLIContext
@@ -24,9 +24,11 @@ from nemo_platform.cli.core.types import (
     OutputColumnsOption,
 )
 
+_cli_child_sessions = _importlib_import_module("nemo_platform.cli.commands.api.evaluations.sessions")
+
 app = create_typer_app(name="evaluations", help="Manage evaluations")
 
-app.add_typer(sessions.app, name="sessions")
+app.add_typer(_cli_child_sessions.app, name="sessions")
 
 
 @app.command("create")

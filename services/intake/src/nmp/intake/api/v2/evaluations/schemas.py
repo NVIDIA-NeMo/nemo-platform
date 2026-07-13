@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from nmp.common.entities.values import DatetimeFilter, Filter, NumberFilter, map_entity_field
-from nmp.intake.entities.experiments import Evaluation, ExperimentGroup
+from nmp.intake.entities.experiments import Experiment, ExperimentGroup
 from nmp.intake.spans.domain import SpanStatus
 from nmp.intake.spans.evaluation_session_repository import EvaluationSessionRow
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
@@ -168,7 +168,7 @@ class EvaluationResponse(BaseModel):
     latency_ms: EvaluatorAggregate | None = None
 
     @classmethod
-    def from_entity(cls, entity: Evaluation) -> EvaluationResponse:
+    def from_entity(cls, entity: Experiment) -> EvaluationResponse:
         return cls(
             id=entity.id,
             name=entity.name,
@@ -179,7 +179,7 @@ class EvaluationResponse(BaseModel):
             source_link=entity.source_link,
             metadata=entity.metadata,
             description=entity.description,
-            parent_evaluation_id=entity.parent_evaluation_id,
+            parent_evaluation_id=entity.parent_experiment_id,
             status=entity.status,
             root_cause=entity.root_cause,
             created_at=entity.created_at,
