@@ -7,7 +7,11 @@
 NeMo Fabric Python SDK and adapts each normalized Fabric ``RunResult`` into an
 :class:`AgentEvalTrial`. The harness is chosen by the supplied Fabric config's
 ``harness.adapter_id`` (never inferred from a model); an optional ``model`` slug
-is applied as a final profile overlay, mirroring Fabric's own Harbor integration.
+is applied as the config's default model, mirroring Fabric's own Harbor integration.
+
+Per-task settings (workspace, model, trajectory capture) are composed directly onto
+a copy of the supplied config via the SDK's config helpers (``model_copy`` +
+``enable_relay`` + ``environment``), rather than layered as profile overlays.
 
 Every task runs in its own fresh workspace: the runtime seeds it from
 ``inputs['files']`` (a no-op when there are none), runs the harness in it (via
@@ -38,6 +42,7 @@ from nemo_platform.beta.evaluator.values.evidence import (
     CandidateEvidence,
     EvidenceDescriptor,
 )
+from pydantic import JsonValue
 
 if TYPE_CHECKING:
     # Annotations use nemo_fabric's real types (single source of truth). nemo_fabric is an optional
@@ -45,9 +50,10 @@ if TYPE_CHECKING:
     # loaded lazily at runtime (see ``run_tasks``). Drop the ty:ignore once nemo-fabric is a
     # resolvable dependency and the checker can see it.
     from nemo_fabric import (  # ty: ignore[unresolved-import]
-        FabricClient,
+        Fabric,
         FabricConfig,
         FabricProfileConfig,
+        RunOutput,
         RunResult,
     )
 
@@ -66,18 +72,18 @@ _ARTIFACTS_SUBDIR = "artifacts"
 # Per-task workspace: where seed files are staged and where the harness reads/writes. We
 # create it, point Fabric's ``environment.workspace`` at it, and expose it as ``workspace`` evidence.
 _WORKSPACE_SUBDIR = "workspace"
-_WORKSPACE_PROFILE_NAME = "eval_workspace"
 # Evidence key + descriptor kind for the staged workspace, consumed by the
 # workspace-reading metrics.
 _WORKSPACE_EVIDENCE_KEY = "workspace"
 _WORKSPACE_EVIDENCE_KIND = "filesystem"
-# Trajectory profile identity + the file-exporter output names we choose (Relay accepts these as inputs).
-_TRAJECTORY_PROFILE_NAME = "eval_trajectory"
+# File-exporter output names we choose for the Relay ATIF/ATOF trajectory (Relay accepts these as inputs).
 _ATIF_FILENAME_TEMPLATE = "trajectory-{session_id}.atif.json"
 _ATOF_FILENAME = "events.atof.jsonl"
-# Fabric telemetry-profile selectors (file exporter, no OTLP endpoint).
-_TELEMETRY_PROVIDER = "relay"
-_TELEMETRY_MODE = "sdk"
+# Names for the trailing overlays that re-assert the evaluator-owned per-task settings (see
+# ``_eval_lock_profiles``): Fabric applies caller profiles over the config, so these must trail them.
+_WORKSPACE_PROFILE_NAME = "eval_workspace"
+_MODEL_PROFILE_NAME = "eval_model"
+_ARTIFACTS_PROFILE_NAME = "eval_artifacts"
 # ``kind`` Fabric stamps on the promoted Relay ATIF artifact; used to surface it as trace evidence.
 _ATIF_ARTIFACT_KIND = "atif"
 
@@ -121,69 +127,75 @@ class FabricAgentRuntime:
         try:
             # nemo_fabric ships a native (pyo3) core and is an optional dependency, so it is imported
             # lazily here rather than at module load.
-            from nemo_fabric import FabricClient, FabricConfig, FabricProfileConfig  # ty: ignore[unresolved-import]
+            from nemo_fabric import Fabric, FabricConfig, FabricProfileConfig  # ty: ignore[unresolved-import]
         except ImportError as exc:
             raise RuntimeError(_MISSING_FABRIC_MSG) from exc
 
         resolved_config = config or AgentEvalRunConfig()
         agent_config = FabricConfig.from_mapping(self._config)
-        base_profiles = self._build_profiles(FabricProfileConfig)
+        # Fail fast (once) if trajectory capture is requested but the nemo-relay gateway isn't
+        # importable, rather than failing every task the same way inside the per-task guard.
+        if self._capture_trajectory:
+            try:
+                import nemo_relay.observability  # noqa: F401  # ty: ignore[unresolved-import]
+            except ImportError as exc:
+                raise RuntimeError(_MISSING_RELAY_MSG) from exc
+        # Caller-supplied profile overlays pass through as-is; this runtime's per-task workspace, model,
+        # and trajectory settings are composed directly onto a copy of the config (config-first), not
+        # layered as profiles.
+        base_profiles = [FabricProfileConfig.from_mapping(profile) for profile in self._profiles]
         semaphore = asyncio.Semaphore(resolved_config.parallelism)
 
-        async with FabricClient() as client:
+        # ``Fabric`` (formerly ``FabricClient``) is a lightweight, reusable facade — not a lifecycle
+        # context manager — so it is created once and reused across tasks with no cleanup.
+        client = Fabric()
 
-            async def run_one(index: int, task: AgentEvalTask) -> AgentEvalTrial:
-                async with semaphore:
-                    return await self._run_task(
-                        client, agent_config, base_profiles, FabricProfileConfig, index, task, resolved_config
-                    )
+        async def run_one(index: int, task: AgentEvalTask) -> AgentEvalTrial:
+            async with semaphore:
+                return await self._run_task(client, agent_config, base_profiles, index, task, resolved_config)
 
-            return await asyncio.gather(*(run_one(index, task) for index, task in enumerate(tasks)))
+        return await asyncio.gather(*(run_one(index, task) for index, task in enumerate(tasks)))
 
     async def _run_task(
         self,
-        client: FabricClient,
+        client: Fabric,
         agent_config: FabricConfig,
         base_profiles: list[FabricProfileConfig],
-        profile_cls: type[FabricProfileConfig],
         index: int,
         task: AgentEvalTask,
         config: AgentEvalRunConfig,
     ) -> AgentEvalTrial:
+        # nemo_fabric is already imported+validated in ``run_tasks``; this is a cached sys.modules
+        # lookup, not a re-load, so the type is used where it's constructed instead of threaded down.
+        from nemo_fabric import FabricProfileConfig, RunRequest  # ty: ignore[unresolved-import]
+
         evidence_dir = self._evidence_dir(index, task, config)
         evidence_dir.mkdir(parents=True, exist_ok=True)
 
-        profiles = list(base_profiles)
-        if self._capture_trajectory:
-            # Enable Relay's ATIF file exporter, writing the trajectory under this task's durable
-            # evidence dir; Fabric promotes the resulting file into RunResult.artifacts. Both the
-            # Fabric artifact root and the relay output dir must exist and be durable.
-            relay_dir = evidence_dir / _RELAY_SUBDIR
-            artifacts_dir = evidence_dir / _ARTIFACTS_SUBDIR
-            relay_dir.mkdir(parents=True, exist_ok=True)
-            artifacts_dir.mkdir(parents=True, exist_ok=True)
-            profiles.append(self._trajectory_profile(profile_cls, relay_dir=relay_dir, artifacts_dir=artifacts_dir))
-
         # Every task runs in its own fresh workspace: seed any ``inputs['files']`` into it (a no-op when
-        # there are none), point the harness at it via ``environment.workspace``, and expose it as
-        # ``workspace`` filesystem evidence — a uniform per-task dir that maps cleanly onto a per-task
-        # container volume later. Seeding runs inside the guarded block so a bad seed (a path escaping
-        # the workspace, an unresolvable fileset) fails just this task, not the whole run; it is
-        # synchronous and may block (a fileset handler downloads), so it is offloaded off the shared
-        # event loop.
+        # there are none), point the harness at it, and expose it as ``workspace`` filesystem evidence —
+        # a uniform per-task dir that maps cleanly onto a per-task container volume later. Seeding runs
+        # inside the guarded block so a bad seed (a path escaping the workspace, an unresolvable fileset)
+        # fails just this task, not the whole run; it is synchronous and may block (a fileset handler
+        # downloads), so it is offloaded off the shared event loop.
         workspace_dir = evidence_dir / _WORKSPACE_SUBDIR
         workspace_dir.mkdir(parents=True, exist_ok=True)
         try:
             seeded_files = await asyncio.to_thread(seed_workspace, workspace_dir, task.inputs.get(SEED_FILES_INPUT_KEY))
-            profiles.append(self._workspace_profile(profile_cls, workspace_dir=workspace_dir))
+            task_config = self._compose_config(agent_config, evidence_dir, workspace_dir)
+            # Caller ``base_profiles`` are applied by Fabric over the config; the evaluator-owned
+            # settings are re-asserted as trailing overlays so they win over any caller profile.
+            lock_profiles = self._eval_lock_profiles(
+                FabricProfileConfig, workspace_dir=workspace_dir, evidence_dir=evidence_dir
+            )
 
             result = await asyncio.wait_for(
+                # ``Fabric.run`` folds the per-invocation input + request id into a ``RunRequest``.
                 client.run(
-                    agent_config,
-                    profiles=profiles,
-                    input=_fabric_input(task, seeded_files),
-                    request_id=task.id,
+                    task_config,
+                    profiles=[*base_profiles, *lock_profiles],
                     base_dir=self._base_dir,
+                    request=RunRequest(input=_fabric_input(task, seeded_files), request_id=task.id),
                 ),
                 timeout=self._timeout_s,
             )
@@ -214,13 +226,17 @@ class FabricAgentRuntime:
         if result.status != "succeeded":
             return self._failed_trial(task, evidence_dir, _result_error(result), extra_metadata=base_metadata)
 
+        # Fabric wraps the output in a ``RunOutput`` mapping (RunOutput response contract, #52),
+        # which is not itself a JSON value; normalize it to a plain mapping so it round-trips through the
+        # trial's ``JsonValue``-typed response.
+        output = _normalize_output(result.output)
         return AgentEvalTrial(
             id=f"{task.id}:fabric",
             task_id=task.id,
             status=AgentEvalTrialStatus.COMPLETED,
             output=AgentOutput(
-                output_text=_extract_output_text(result.output),
-                response=result.output,
+                output_text=_extract_output_text(output),
+                response=output,
                 metadata={**base_metadata, "evidence_dir": str(evidence_dir)},
             ),
             evidence=self._evidence(result, result_path, workspace_dir),
@@ -297,31 +313,90 @@ class FabricAgentRuntime:
             },
         )
 
-    def _build_profiles(self, profile_cls: type[FabricProfileConfig]) -> list[FabricProfileConfig]:
-        profiles = [profile_cls.from_mapping(profile) for profile in self._profiles]
+    def _compose_config(
+        self,
+        agent_config: FabricConfig,
+        evidence_dir: Path,
+        workspace_dir: Path,
+    ) -> FabricConfig:
+        # nemo_fabric is already imported+validated in ``run_tasks``; this is a cached sys.modules
+        # lookup, not a re-load, so the type is used where it's constructed instead of threaded down.
+        from nemo_fabric import EnvironmentConfig  # ty: ignore[unresolved-import]
+
+        # Config-first composition (the SDK's recommended in-memory pattern): copy the base config and
+        # apply this task's workspace, model, and trajectory settings directly onto it, rather than
+        # layering FabricProfileConfig overlays.
+        cfg = agent_config.model_copy(deep=True)
+
+        # Point the harness at this task's staged workspace (the codex-cli adapter resolves its cwd from
+        # it). ``provider="local"`` is required by the native planner. Any config-supplied
+        # environment.workspace is overridden per task.
+        environment = cfg.environment or EnvironmentConfig(provider="local")
+        environment.provider = environment.provider or "local"
+        environment.workspace = str(workspace_dir)
+        cfg.environment = environment
+
+        # Apply the model as the config's default (mirrors nemo_fabric.integrations.harbor).
         if self._model:
-            # Apply the model as a final profile overlay (mirrors nemo_fabric.integrations.harbor).
             provider = self._model.split("/", maxsplit=1)[0] if "/" in self._model else "openai"
-            profiles.append(
-                profile_cls(
-                    name="eval_model",
-                    models={"default": {"provider": provider, "model": self._model}},
+            cfg.models["default"] = {"provider": provider, "model": self._model}
+
+        if self._capture_trajectory:
+            # Enable Relay's ATIF/ATOF file exporter under this task's durable evidence dir, and pin the
+            # Fabric artifact root so the promoted ``trajectory-*.atif.json`` persists. Requires the
+            # ``nemo-relay`` gateway on PATH in the runtime.
+            relay_dir = evidence_dir / _RELAY_SUBDIR
+            artifacts_dir = evidence_dir / _ARTIFACTS_SUBDIR
+            relay_dir.mkdir(parents=True, exist_ok=True)
+            artifacts_dir.mkdir(parents=True, exist_ok=True)
+            cfg.enable_relay(output_dir=str(relay_dir), config=self._relay_config(relay_dir))
+            cfg.runtime.artifacts = str(artifacts_dir)
+            cfg.environment.artifacts = str(artifacts_dir)
+
+        return cfg
+
+    def _eval_lock_profiles(
+        self,
+        profile_cls: type[FabricProfileConfig],
+        *,
+        workspace_dir: Path,
+        evidence_dir: Path,
+    ) -> list[FabricProfileConfig]:
+        # ``_compose_config`` composes the evaluator's per-task settings onto the config, but Fabric
+        # applies caller-supplied profiles OVER the config (last-wins), so a caller profile could
+        # otherwise override them. Re-assert the evaluator-owned settings here as trailing overlays —
+        # applied after the caller profiles — so the per-task workspace (isolation + ``workspace``
+        # evidence integrity), the model under evaluation, and the trajectory artifact location stay
+        # authoritative and non-overridable.
+        overlays = [
+            profile_cls.from_mapping(
+                {"name": _WORKSPACE_PROFILE_NAME, "environment": {"workspace": str(workspace_dir)}}
+            )
+        ]
+        if self._model:
+            provider = self._model.split("/", maxsplit=1)[0] if "/" in self._model else "openai"
+            overlays.append(
+                profile_cls.from_mapping(
+                    {"name": _MODEL_PROFILE_NAME, "models": {"default": {"provider": provider, "model": self._model}}}
                 )
             )
-        return profiles
+        if self._capture_trajectory:
+            artifacts_dir = str(evidence_dir / _ARTIFACTS_SUBDIR)
+            overlays.append(
+                profile_cls.from_mapping(
+                    {
+                        "name": _ARTIFACTS_PROFILE_NAME,
+                        "runtime": {"artifacts": artifacts_dir},
+                        "environment": {"artifacts": artifacts_dir},
+                    }
+                )
+            )
+        return overlays
 
-    def _trajectory_profile(
-        self, profile_cls: type[FabricProfileConfig], *, relay_dir: Path, artifacts_dir: Path
-    ) -> FabricProfileConfig:
-        # Relay ATIF/ATOF file exporter (mode=sdk): the harness emits its trajectory to a local
-        # nemo-relay gateway, which writes ``trajectory-*.atif.json`` under ``relay_dir``. No OTLP
-        # collector endpoint is involved. Requires the ``nemo-relay`` gateway on PATH in the runtime.
-        # The Fabric artifact root is pinned to a durable dir so the promoted trajectory persists.
-        #
+    def _relay_config(self, relay_dir: Path) -> dict[str, Any]:
         # The observability component is built from nemo_relay's own typed config objects so Relay owns
         # its schema (no hand-maintained dict that silently drifts when Relay changes it); imported
-        # lazily since nemo-relay, like nemo-fabric, is an optional native dependency. ``schema_version``
-        # is omitted — ``FabricProfileConfig`` defaults it.
+        # lazily since nemo-relay, like nemo-fabric, is an optional native dependency.
         try:
             from nemo_relay.observability import (  # ty: ignore[unresolved-import]
                 AtifConfig,
@@ -333,7 +408,6 @@ class FabricAgentRuntime:
             raise RuntimeError(_MISSING_RELAY_MSG) from exc
 
         relay_dir_str = str(relay_dir)
-        artifacts_dir_str = str(artifacts_dir)
         observability = ComponentSpec(
             config=ObservabilityConfig(
                 atif=AtifConfig(
@@ -351,33 +425,7 @@ class FabricAgentRuntime:
                 ),
             )
         )
-        return profile_cls.from_mapping(
-            {
-                "name": _TRAJECTORY_PROFILE_NAME,
-                "description": "Capture the agent trajectory as ATIF via the NeMo Relay file exporter.",
-                "runtime": {"artifacts": artifacts_dir_str},
-                "environment": {"artifacts": artifacts_dir_str},
-                "telemetry": {
-                    "enabled": True,
-                    "provider": _TELEMETRY_PROVIDER,
-                    "mode": _TELEMETRY_MODE,
-                    "output_dir": relay_dir_str,
-                    "config": {"version": 1, "components": [observability.to_dict()]},
-                },
-            }
-        )
-
-    def _workspace_profile(self, profile_cls: type[FabricProfileConfig], *, workspace_dir: Path) -> FabricProfileConfig:
-        # Point the harness at this task's staged workspace via ``environment.workspace`` (the codex-cli
-        # adapter resolves its cwd from it). Set as a final profile overlay, the same mechanism the
-        # trajectory profile uses for ``environment.artifacts``.
-        return profile_cls.from_mapping(
-            {
-                "name": _WORKSPACE_PROFILE_NAME,
-                "description": "Run the harness in the per-task evaluation workspace seeded with the task inputs.",
-                "environment": {"workspace": str(workspace_dir)},
-            }
-        )
+        return {"version": 1, "components": [observability.to_dict()]}
 
     def _evidence_dir(self, index: int, task: AgentEvalTask, config: AgentEvalRunConfig) -> Path:
         root = self._work_root
@@ -404,6 +452,18 @@ def _fabric_input(task: AgentEvalTask, seeded_files: Sequence[str] = ()) -> str:
         lines += [f"  - {path}" for path in seeded_files]
         lines += ["", "Complete the task by reading, creating, and editing files in your current directory."]
     return "\n".join(lines) + "\n"
+
+
+def _normalize_output(output: RunOutput | JsonValue) -> JsonValue:
+    """Unwrap a Fabric ``RunResult.output`` into the plain JSON value the trial response stores.
+
+    Newer Fabric wraps output in a ``RunOutput`` (the RunOutput response contract), which is a
+    ``Mapping``; copy it into a plain dict (equivalent to its ``to_mapping()``). Raw/older JSON outputs
+    are already JSON values and pass through unchanged.
+    """
+    if isinstance(output, Mapping):
+        return dict(output)
+    return output
 
 
 def _extract_output_text(output: object) -> str | None:

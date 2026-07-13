@@ -5,9 +5,11 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import sys
 import types
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -17,13 +19,47 @@ from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask
 from nemo_evaluator_sdk.values.evidence import EVIDENCE_FORMAT_ATIF, EVIDENCE_TRACE
 
 
+class _FakeEnvironment:
+    """Stand-in for nemo_fabric.EnvironmentConfig (the runtime sets workspace/provider/artifacts)."""
+
+    def __init__(self, *, provider: str = "local", workspace: str | None = None, artifacts: str | None = None) -> None:
+        self.provider = provider
+        self.workspace = workspace
+        self.artifacts = artifacts
+
+
+class _FakeRuntimeCfg:
+    def __init__(self, artifacts: str | None = None) -> None:
+        self.artifacts = artifacts
+
+
 class _FakeConfig:
+    """Stand-in for nemo_fabric.FabricConfig with the config-first helpers the runtime composes onto."""
+
     def __init__(self, mapping: dict[str, Any]) -> None:
         self.mapping = mapping
+        self.environment: _FakeEnvironment | None = None
+        self.runtime = _FakeRuntimeCfg()
+        self.models: dict[str, Any] = dict(mapping.get("models", {}))
+        self.relay: dict[str, Any] | None = None  # records enable_relay(...)
 
     @classmethod
     def from_mapping(cls, mapping: dict[str, Any]) -> _FakeConfig:
         return cls(mapping)
+
+    def model_copy(self, *, deep: bool = False) -> _FakeConfig:
+        clone = _FakeConfig(self.mapping)
+        clone.environment = copy.deepcopy(self.environment)
+        clone.runtime = _FakeRuntimeCfg(self.runtime.artifacts)
+        clone.models = copy.deepcopy(self.models)
+        clone.relay = copy.deepcopy(self.relay)
+        return clone
+
+    def enable_relay(
+        self, *, project: str | None = None, output_dir: str | None = None, config: Any = None
+    ) -> _FakeConfig:
+        self.relay = {"project": project, "output_dir": output_dir, "config": config}
+        return self
 
 
 class _FakeProfile:
@@ -35,6 +71,14 @@ class _FakeProfile:
     @classmethod
     def from_mapping(cls, mapping: dict[str, Any]) -> _FakeProfile:
         return cls(name=mapping.get("name"), mapping=mapping)
+
+
+class _FakeRunRequest:
+    """Stand-in for nemo_fabric.RunRequest (Fabric.run folds input + request id into it)."""
+
+    def __init__(self, *, input: Any = None, request_id: str | None = None) -> None:
+        self.input = input
+        self.request_id = request_id
 
 
 class _FakeRelayConfig:
@@ -119,13 +163,8 @@ def _install_fake_fabric(monkeypatch: pytest.MonkeyPatch, handler: Any) -> type:
     """Inject a fake ``nemo_fabric`` module (the runtime imports it lazily); return the client class."""
 
     class _FakeClient:
+        # Fabric is a plain reusable facade (not an async context manager).
         recorded: list[dict[str, Any]] = []
-
-        async def __aenter__(self) -> _FakeClient:
-            return self
-
-        async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
-            return False
 
         async def run(self, agent: Any, **kwargs: Any) -> Any:
             _FakeClient.recorded.append({"agent": agent, **kwargs})
@@ -133,9 +172,11 @@ def _install_fake_fabric(monkeypatch: pytest.MonkeyPatch, handler: Any) -> type:
 
     _FakeClient.recorded = []
     module = types.ModuleType("nemo_fabric")
-    module.FabricClient = _FakeClient  # type: ignore[attr-defined]
+    module.Fabric = _FakeClient  # type: ignore[attr-defined]
     module.FabricConfig = _FakeConfig  # type: ignore[attr-defined]
     module.FabricProfileConfig = _FakeProfile  # type: ignore[attr-defined]
+    module.EnvironmentConfig = _FakeEnvironment  # type: ignore[attr-defined]
+    module.RunRequest = _FakeRunRequest  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "nemo_fabric", module)
 
     # The runtime builds the trajectory profile from nemo_relay's typed config objects (lazy import);
@@ -190,14 +231,12 @@ async def test_fabric_runtime_maps_succeeded_result_to_completed_trial(
     assert trial.evidence.descriptors["stdout"].ref == str(tmp_path / "stdout.txt")
     result_file = tmp_path / "fabric" / "000000-task-1" / "fabric_result.json"
     assert json.loads(result_file.read_text(encoding="utf-8"))["status"] == "succeeded"
-    # Model applied as a profile overlay (Harbor pattern) + the Relay ATIF trajectory overlay.
-    profiles = client_cls.recorded[0]["profiles"]
-    names = [p.name for p in profiles]
-    assert "eval_model" in names
-    assert "eval_trajectory" in names  # capture_trajectory defaults on
-    model_profile = next(p for p in profiles if p.name == "eval_model")
-    assert model_profile.models == {"default": {"provider": "openai", "model": "openai/gpt-5.4"}}
-    assert client_cls.recorded[0]["request_id"] == "task/1"
+    # Config-first: the model is set on the config's default model and relay (ATIF trajectory) is
+    # enabled on the config, rather than layered as profile overlays.
+    composed = client_cls.recorded[0]["agent"]
+    assert composed.models["default"] == {"provider": "openai", "model": "openai/gpt-5.4"}
+    assert composed.relay is not None  # capture_trajectory defaults on -> enable_relay(...) called
+    assert client_cls.recorded[0]["request"].request_id == "task/1"
     # Telemetry reference is preserved end-to-end (uri + trace_id), not just provider/kind.
     assert trial.evidence.metadata["telemetry"][0]["uri"] == "file:///relay"
     assert trial.evidence.metadata["telemetry"][0]["trace_id"] == "tid-1"
@@ -226,10 +265,60 @@ async def test_fabric_runtime_maps_atif_artifact_to_trace_evidence(
     assert trace.ref == str(tmp_path / "trajectory.atif.json")
 
 
-def _workspace_from_profiles(profiles: list[Any]) -> Path:
-    """Pull the staged workspace path out of the ``eval_workspace`` profile overlay."""
-    profile = next(p for p in profiles if p.name == fabric_runtime._WORKSPACE_PROFILE_NAME)
-    return Path(profile.mapping["environment"]["workspace"])
+def _workspace_from_config(config: Any) -> Path:
+    """Pull the staged workspace path out of the composed per-task config."""
+    return Path(config.environment.workspace)
+
+
+def _resolve_like_fabric(config: Any, profiles: list[Any], section: str, key: str) -> Any:
+    """Mirror Fabric's resolver: start from the config, then apply each profile as a winning overlay in
+    order (last wins). Used to assert what value actually reaches the harness for a config/profile key.
+    """
+    if section == "environment":
+        value = getattr(config.environment, key, None) if config.environment is not None else None
+    elif section == "models":
+        value = config.models.get(key)
+    else:  # pragma: no cover - only the two sections above are exercised
+        raise ValueError(section)
+    for profile in profiles:
+        overlay = getattr(profile, "mapping", None)
+        if isinstance(overlay, Mapping) and isinstance(overlay.get(section), Mapping):
+            if overlay[section].get(key) is not None:
+                value = overlay[section][key]
+    return value
+
+
+@pytest.mark.asyncio
+async def test_caller_profiles_cannot_override_evaluator_owned_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Fabric applies caller-supplied profiles over the config (last-wins), so the evaluator's per-task
+    # workspace (isolation + `workspace` evidence integrity) and model-under-eval must remain the final,
+    # authoritative layer. A caller profile that sets these must NOT win.
+    caller_profile = {
+        "name": "caller",
+        "environment": {"workspace": "/caller/hijacked-workspace"},
+        "models": {"default": {"provider": "openai", "model": "caller/rogue-model"}},
+    }
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output="ok")
+
+    client_cls = _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(
+        config=_CONFIG, model="openai/gpt-5.4", work_root=tmp_path / "fabric", profiles=[caller_profile]
+    )
+
+    await runtime.run_tasks([_TASK])
+
+    config = client_cls.recorded[0]["agent"]
+    profiles = client_cls.recorded[0]["profiles"]
+    eval_workspace = config.environment.workspace  # the per-task dir the evaluator composed
+    eval_model = config.models["default"]
+
+    # After Fabric applies the caller profile, the evaluator's workspace + model must still win.
+    assert _resolve_like_fabric(config, profiles, "environment", "workspace") == eval_workspace
+    assert _resolve_like_fabric(config, profiles, "models", "default") == eval_model
 
 
 @pytest.mark.asyncio
@@ -244,7 +333,7 @@ async def test_fabric_runtime_seeds_workspace_and_exposes_workspace_evidence(
 
     def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
         # The harness runs in the staged workspace; simulate an edit it leaves behind.
-        workspace = _workspace_from_profiles(kwargs["profiles"])
+        workspace = _workspace_from_config(agent)
         (workspace / "result.txt").write_text("done", encoding="utf-8")
         return _FakeResult(status="succeeded", output={"response": "ok"})
 
@@ -255,10 +344,10 @@ async def test_fabric_runtime_seeds_workspace_and_exposes_workspace_evidence(
 
     trial = trials[0]
     assert trial.status == "completed"
-    # A dedicated workspace profile overlay carries environment.workspace (the harness's cwd).
-    profiles = client_cls.recorded[0]["profiles"]
-    assert fabric_runtime._WORKSPACE_PROFILE_NAME in [p.name for p in profiles]
-    workspace = _workspace_from_profiles(profiles)
+    # The composed config carries environment.workspace (the harness's cwd) with provider=local.
+    composed = client_cls.recorded[0]["agent"]
+    assert composed.environment.provider == "local"
+    workspace = _workspace_from_config(composed)
     # The seed file is staged and the agent's edit is present in the same dir.
     assert (workspace / "calc.py").read_text(encoding="utf-8") == "value = 1\n"
     assert (workspace / "result.txt").read_text(encoding="utf-8") == "done"
@@ -268,7 +357,7 @@ async def test_fabric_runtime_seeds_workspace_and_exposes_workspace_evidence(
     assert workspace_evidence.kind == "filesystem"
     assert workspace_evidence.ref == str(workspace)
     # Seed-file contents are listed by name in the input, not dumped inline (they are already on disk).
-    harness_input = client_cls.recorded[0]["input"]
+    harness_input = client_cls.recorded[0]["request"].input
     assert "calc.py" in harness_input
     assert "value = 1" not in harness_input
 
@@ -287,9 +376,7 @@ async def test_fabric_runtime_stages_workspace_even_without_seed_files(
 
     trials = await runtime.run_tasks([_TASK])  # _TASK has no 'files' input
 
-    profiles = client_cls.recorded[0]["profiles"]
-    assert fabric_runtime._WORKSPACE_PROFILE_NAME in [p.name for p in profiles]
-    workspace = _workspace_from_profiles(profiles)
+    workspace = _workspace_from_config(client_cls.recorded[0]["agent"])
     assert workspace.is_dir()
     assert trials[0].evidence is not None
     assert trials[0].evidence.descriptors["workspace"].ref == str(workspace)
@@ -317,7 +404,7 @@ async def test_fabric_runtime_bad_seed_fails_only_that_task(tmp_path: Path, monk
 
 
 @pytest.mark.asyncio
-async def test_fabric_runtime_capture_trajectory_false_skips_relay_overlay(
+async def test_fabric_runtime_capture_trajectory_false_skips_relay(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
@@ -328,8 +415,7 @@ async def test_fabric_runtime_capture_trajectory_false_skips_relay_overlay(
 
     await runtime.run_tasks([_TASK])
 
-    names = [p.name for p in client_cls.recorded[0]["profiles"]]
-    assert "eval_trajectory" not in names
+    assert client_cls.recorded[0]["agent"].relay is None
 
 
 @pytest.mark.asyncio
@@ -440,3 +526,34 @@ async def test_fabric_success_trial_scores_agent_phase_success_true(
 
     assert result.outputs[0].name == "agent_phase_success"
     assert result.outputs[0].value is True
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_normalizes_runoutput_response(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Newer Fabric wraps RunResult.output in a RunOutput Mapping (not a plain JSON value); the runtime
+    # must copy it into a plain dict so it round-trips through the trial's JsonValue response field.
+    class _FakeRunOutput(Mapping):
+        def __init__(self, data: dict[str, Any]) -> None:
+            self._data = dict(data)
+
+        def __getitem__(self, key: str) -> Any:
+            return self._data[key]
+
+        def __iter__(self) -> Iterator[str]:
+            return iter(self._data)
+
+        def __len__(self) -> int:
+            return len(self._data)
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output=_FakeRunOutput({"response": "PONG", "returncode": 0}))
+
+    _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric")
+
+    trial = (await runtime.run_tasks([_TASK]))[0]
+
+    assert trial.status == "completed"
+    assert trial.output is not None
+    assert trial.output.output_text == "PONG"  # extracted from the normalized mapping
+    assert trial.output.response == {"response": "PONG", "returncode": 0}  # plain dict, not RunOutput
