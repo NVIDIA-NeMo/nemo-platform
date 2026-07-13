@@ -65,6 +65,7 @@ const LandingComposer = ({
       data-testid="dashboard-landing-composer"
       onSubmit={handleSubmit}
       className="w-full rounded-lg border border-base bg-surface-base p-2 shadow-xl"
+      data-tour="dashboard-get-started"
     >
       <TextArea
         aria-label="Message Claude"
