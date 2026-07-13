@@ -1,28 +1,42 @@
 # Running Safe Synthesizer
 
-## Local Run Prerequisites
+## Platform Job Prerequisites
 
-- A Linux host with a CUDA-capable NVIDIA GPU.
-- The Safe Synthesizer plugin installed as an editable local plugin, for repo development: `BOOTSTRAP_LOCAL_PLUGIN_DIRS=plugins/nemo-safe-synthesizer make bootstrap-python`.
-- The separate Safe Synthesizer runtime venv created with `uv run nemo safe-synthesizer runtime setup`.
-- A job spec JSON file with `data_source` and `config`.
-- A local input file or directory when using `--data-source`.
+- The Safe Synthesizer service, Jobs service, and GPU execution backend are available.
+- `data_source` points to a platform fileset path such as `default/my-fileset#input.csv`.
+- If `hf_token_secret` is set, the named platform secret exists in the target workspace.
+- If PII classification is enabled, the model provider exists and is referenced as `<workspace>/<provider_name>`.
+- The Jobs backend can pull the configured Safe Synthesizer task image.
 
-If you submit **platform jobs** (not bare `run-local` with `--data-source`), start services first (`nemo setup --start-services` or `nemo services run`), then optionally register model filesets:
+For platform jobs, start services first (`nemo setup --start-services` or `nemo services run`), then optionally register model filesets:
 
 ```bash
 curl -s http://localhost:8080/health/ready
 uv run python plugins/nemo-safe-synthesizer/scripts/setup_model_filesets.py --files-api-url http://localhost:8080
 ```
 
-See `docs/safe-synthesizer/about/host-local-development.md` for when the platform is required.
+## Container Image Configuration
 
-## Platform Job Prerequisites
+Prefer the released task image from NGC:
 
-- The Safe Synthesizer service and Jobs service are available.
-- `data_source` points to a platform fileset path such as `default/my-fileset#input.csv`.
-- If `hf_token_secret` is set, the named platform secret exists in the target workspace.
-- If PII classification is enabled, the model provider exists and is referenced as `<workspace>/<provider_name>`.
+```bash
+export NMP_IMAGE_REGISTRY=nvcr.io/nvidia/nemo-platform
+export NMP_IMAGE_TAG=<tag>  # match your installed NeMo Platform release
+export NEMO_SAFE_SYNTHESIZER_JOB_MODE=container
+export NEMO_SAFE_SYNTHESIZER_CONTAINER_IMAGE=safe-synthesizer-tasks
+```
+
+This resolves platform job steps to `nvcr.io/nvidia/nemo-platform/safe-synthesizer-tasks:<tag>`.
+
+For a local Docker-built image on a Docker executor, set a full image reference override:
+
+```bash
+docker buildx bake safe-synthesizer-tasks-docker
+export NEMO_SAFE_SYNTHESIZER_JOB_MODE=container
+export NEMO_SAFE_SYNTHESIZER_CONTAINER_IMAGE_REF=safe-synthesizer-tasks:local
+```
+
+For Kubernetes, push the local build to a registry the cluster can pull, then set `NEMO_SAFE_SYNTHESIZER_CONTAINER_IMAGE_REF` to that pushed image reference.
 
 ## Resolve the CLI
 
@@ -33,7 +47,11 @@ Run `command -v nemo 2>/dev/null || (test -x .venv/bin/nemo && realpath .venv/bi
 
 ## Choose the Execution Mode
 
-Use host-local execution when the user is iterating on a local machine with CUDA/GPU access:
+Use platform jobs for normal Safe Synthesizer usage. The platform compiles the spec into a GPU container step that runs the configured Safe Synthesizer task image.
+
+Use the Jobs API or SDK to create the job. The plugin CLI does not expose `nemo safe-synthesizer jobs` commands. For CLI users, point them to the generated Jobs/API surface available in their installed NeMo CLI, or to the Python SDK builder documented in `docs/safe-synthesizer/tutorials/safe-synthesizer-101.md`.
+
+Use host-local execution only when the user is iterating on a local machine with CUDA/GPU access or debugging the task process outside the Jobs backend:
 
 ```bash
 uv run nemo safe-synthesizer runtime setup
@@ -43,10 +61,6 @@ uv run nemo safe-synthesizer run-local \
   --data-source ./input.csv \
   --output-dir ./nss-output
 ```
-
-Use the Jobs API or SDK when the user wants the NMP Jobs service to run Safe Synthesizer. The plugin CLI does not expose `nemo safe-synthesizer jobs` commands.
-
-For CLI users, point them to the generated Jobs/API surface available in their installed NeMo CLI, or to the Python SDK builder documented in `docs/safe-synthesizer/tutorials/safe-synthesizer-101.md`.
 
 ## Minimal Spec Shape
 

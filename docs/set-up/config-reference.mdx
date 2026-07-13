@@ -890,8 +890,10 @@ safe_synthesizer:
   job_mode: subprocess-local
   # default: 'default'
   job_executor_profile: default
-  # default: 'nmp-gpu-tasks'
-  container_image: nmp-gpu-tasks
+  # default: 'safe-synthesizer-tasks'
+  container_image: safe-synthesizer-tasks
+  # Optional fully qualified task image reference. When set, this bypasses platform NMP_IMAGE_REGISTRY / NMP_IMAGE_TAG qualification for Safe Synthesizer jobs.
+  container_image_ref:
   # default: '.nemo/safe-synthesizer-runtime'
   runtime_venv: .nemo/safe-synthesizer-runtime
   # default: 'nemo-safe-synthesizer[engine,cu129]==0.1.2'

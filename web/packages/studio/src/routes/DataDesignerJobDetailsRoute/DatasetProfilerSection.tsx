@@ -2,15 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { PlatformJobTerminalStatuses } from '@nemo/common/src/constants/query';
-import {
-  Banner,
-  Flex,
-  Grid,
-  ProgressBar,
-  Skeleton,
-  Stack,
-  Text,
-} from '@nvidia/foundations-react-core';
+import { Flex, Grid, ProgressBar, Skeleton, Stack, Text } from '@nvidia/foundations-react-core';
+import { Empty } from '@studio/components/Empty';
 import { ColumnProfileCard } from '@studio/routes/DataDesignerJobDetailsRoute/ColumnProfileCard';
 import {
   formatPercent,
@@ -39,18 +32,15 @@ export const DatasetProfilerSection: FC = () => {
 
   // Job still running: the profiler hasn't produced an analysis result yet.
   if (!isTerminal) {
-    return (
-      <Text kind="body/regular/md" className="text-muted">
-        The dataset profile will appear here once the job completes.
-      </Text>
-    );
+    return <Empty title="The dataset profile will appear here once the job completes." />;
   }
 
   if (isError) {
     return (
-      <Banner kind="inline" status="error" title="Failed to load dataset profile">
-        The profiler analysis could not be loaded for this job.
-      </Banner>
+      <Empty
+        title="Failed to load dataset profile"
+        description="The profiler analysis could not be loaded for this job."
+      />
     );
   }
 
@@ -65,11 +55,7 @@ export const DatasetProfilerSection: FC = () => {
   }
 
   if (!hasAnalysis) {
-    return (
-      <Text kind="body/regular/md" className="text-muted">
-        No dataset profile was generated for this job.
-      </Text>
-    );
+    return <Empty title="No dataset profile was generated for this job." />;
   }
 
   const columns = analysis?.column_statistics ?? [];
@@ -103,9 +89,7 @@ export const DatasetProfilerSection: FC = () => {
           ))}
         </ColumnGrid>
       ) : (
-        <Text kind="body/regular/md" className="text-muted">
-          The profile did not include any column statistics.
-        </Text>
+        <Empty title="The profile did not include any column statistics." />
       )}
     </Stack>
   );

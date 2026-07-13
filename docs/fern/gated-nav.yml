@@ -19,6 +19,8 @@
     path: ../../auth/authentication/providers/azure-ad.mdx
   - page: Generic OIDC
     path: ../../auth/authentication/providers/generic.mdx
+  - page: IdP Integration References
+    path: ../../auth/authentication/idp-integration.mdx
   - page: Overview
     path: ../../auth/authentication/providers/index.mdx
   - page: Using Authentication

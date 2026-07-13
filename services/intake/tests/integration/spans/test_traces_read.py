@@ -24,8 +24,6 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
                     "project": "project-a",
                     "nemo.experiment.id": "experiment-a",
                     "nemo.test_case.id": "case-a",
-                    "nemo.experiment.run_id": "run-a",
-                    "nemo.experiment.metadata": {"split": "dev"},
                     "deployment.environment.name": "prod",
                     "tag.tags": ["trace-read"],
                     "metadata": {"owner": "trace-test"},

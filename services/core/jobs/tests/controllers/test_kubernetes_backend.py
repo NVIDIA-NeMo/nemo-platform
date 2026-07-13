@@ -700,6 +700,21 @@ def test_schedule_job_success(kubernetes_job, cpu_execution_provider, test_step_
     assert env_vars["NMP_CONFIG_WARNINGS_DISABLED"] == "1"
 
 
+def test_created_step_does_not_ttl_before_backend_acceptance(kubernetes_job, cpu_execution_provider, test_step_pending):
+    """CREATED age should not fail a step before the Kubernetes backend accepts it."""
+    kubernetes_job._batch_v1.create_namespaced_job.return_value = MagicMock()
+    ttl_seconds = kubernetes_job._execution_profile_config.ttl_seconds_before_active
+    old_timestamp = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=ttl_seconds + 300)
+    test_step_pending.created_at = old_timestamp
+    test_step_pending.updated_at = old_timestamp
+    test_step_pending.status = PlatformJobStatus.CREATED
+
+    update = kubernetes_job.schedule(cpu_execution_provider, test_step_pending)
+
+    assert update.status == PlatformJobStatus.PENDING
+    kubernetes_job._batch_v1.create_namespaced_job.assert_called_once()
+
+
 def test_kubernetes_job_profile_environment_applied(
     mock_nmp_client,
     kubernetes_client_mock,

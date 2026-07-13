@@ -10,14 +10,23 @@ import {
   useFilesRetrieveFileset,
 } from '@nemo/sdk/generated/platform/api';
 import type { FilesetFileOutput } from '@nemo/sdk/generated/platform/schema';
-import { Anchor, Banner, Card, Stack, Text } from '@nvidia/foundations-react-core';
+import { Anchor, Banner, Card, Spinner, Stack, Text } from '@nvidia/foundations-react-core';
+import { Empty } from '@studio/components/Empty';
 import { FilesetFilePreviewPanel } from '@studio/components/FilesetFilePreviewPanel';
 import type { FileSystemFile } from '@studio/components/FilesTable/utils';
 import { useDataDesignerArtifactsFileset } from '@studio/routes/DataDesignerJobDetailsRoute/useDataDesignerArtifactsFileset';
 import { getFilesetDetailsRoute } from '@studio/routes/utils';
 import { getHumanReadableFileSize } from '@studio/util/files';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState, type ComponentProps, type FC } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentProps,
+  type FC,
+  type ReactNode,
+} from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 type FileRow = FilesetFileOutput & { id: string };
@@ -30,6 +39,15 @@ function fileRowToSystemFile(row: FileRow): FileSystemFile {
     oid: row.file_ref,
   };
 }
+
+const centeredCard = (children: ReactNode) => (
+  <Card
+    className="min-w-0 w-full"
+    attributes={{ CardContent: { className: 'flex justify-center items-center' } }}
+  >
+    {children}
+  </Card>
+);
 
 export const JobOutputFilesetSection: FC = () => {
   const navigate = useNavigate();
@@ -141,43 +159,27 @@ export const JobOutputFilesetSection: FC = () => {
   }, [filesetWorkspace, filesetName]);
 
   if (isResultsLoading && !artifactsResult) {
-    return (
-      <Card>
-        <Stack gap="4">
-          <Text kind="body/regular/md" className="text-muted">
-            Loading job results…
-          </Text>
-        </Stack>
-      </Card>
-    );
+    return centeredCard(<Spinner description="Loading job results..." />);
   }
 
   if (isResultsError) {
-    return (
-      <Card>
-        <Stack gap="4">
-          <Banner kind="inline" status="error" title="Could not load job results">
-            {resultsError instanceof Error
-              ? resultsError.message
-              : 'The job results list could not be loaded.'}
-          </Banner>
-        </Stack>
-      </Card>
-    );
+    const errorTitle =
+      resultsError instanceof Error ? 'Error loading job results' : 'Could not load job results';
+    const errorMessage =
+      resultsError instanceof Error
+        ? resultsError.message
+        : 'The job results list could not be loaded.';
+    return centeredCard(<Empty title={errorTitle} description={errorMessage} />);
   }
 
   if (!artifactsResult) {
-    return (
-      <Card>
-        <Stack gap="4">
-          <Text kind="body/regular/md" className="text-muted">
-            {isTerminal
-              ? 'No artifacts result was returned for this job.'
-              : 'Output files will appear here once the job registers its artifacts result.'}
-          </Text>
-        </Stack>
-      </Card>
-    );
+    const emptyTitle = isTerminal
+      ? 'No artifacts result was returned for this job.'
+      : 'Output files will appear here once the job registers its artifacts result.';
+    const emptyDescription = isTerminal
+      ? 'This job completed but did not produce an artifacts result.'
+      : 'Check back after the job registers its artifacts result.';
+    return centeredCard(<Empty title={emptyTitle} description={emptyDescription} />);
   }
 
   if (!filesetLoc) {

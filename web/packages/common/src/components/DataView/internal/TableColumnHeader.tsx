@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
 import { useInnerDataViewContext } from '@nemo/common/src/components/DataView/internal/context';
 import { useHandleResize } from '@nemo/common/src/components/DataView/internal/hooks/useResizableColumns';
 import type { IntentionalAny } from '@nemo/common/src/components/DataView/internal/types';
@@ -9,17 +10,27 @@ import { Button, TableHeaderCell } from '@nvidia/foundations-react-core';
 import { childrenToText } from '@nvidia/foundations-react-core/lib';
 import { flexRender, type Header, type SortDirection } from '@tanstack/react-table';
 import classnames from 'classnames';
-import { ArrowUp, ArrowUpDown } from 'lucide-react';
-import type { ComponentProps, JSX, ReactNode } from 'react';
+import { ArrowUp, ArrowUpDown, GripVertical } from 'lucide-react';
+import type { ComponentProps, JSX, ReactNode, Ref } from 'react';
+
+interface DragProps {
+  setNodeRef?: (node: HTMLElement | null) => void;
+  setActivatorNodeRef?: (node: HTMLElement | null) => void;
+  attributes: DraggableAttributes;
+  listeners: DraggableSyntheticListeners;
+  isDragging: boolean;
+}
 
 interface TableColumnHeaderProps extends ComponentProps<typeof TableHeaderCell> {
   automaticTitles?: boolean;
   header: Header<IntentionalAny, unknown>;
+  dragProps?: DragProps;
 }
 
 export function TableColumnHeader({
   automaticTitles,
   className,
+  dragProps,
   header,
   ...props
 }: TableColumnHeaderProps): JSX.Element {
@@ -30,13 +41,15 @@ export function TableColumnHeader({
   const headerMeta = header.column.columnDef.meta;
   return (
     <TableHeaderCell
+      ref={dragProps?.setNodeRef as Ref<HTMLTableCellElement> | undefined}
       align={headerMeta?.headerAlignment ?? headerMeta?.alignment}
       className={classnames(
         className,
         'group',
         'data-[pinned]:sticky data-[pinned]:z-10',
         '[&>.data-view-header-control]:-mx-[var(--table-cell-inline-padding)] [&>.data-view-header-control]:-my-[var(--table-cell-block-padding)]',
-        '[&>.data-view-header-control]:max-w-[calc(100%+var(--table-cell-inline-padding)*2-4px)]'
+        '[&>.data-view-header-control]:max-w-[calc(100%+var(--table-cell-inline-padding)*2-4px)]',
+        dragProps?.isDragging && 'opacity-50'
       )}
       colSpan={header.column.columns.length > 1 ? header.column.columns.length : undefined}
       data-pinned={header.column.getIsPinned() || undefined}
@@ -46,6 +59,7 @@ export function TableColumnHeader({
     >
       <TableHeaderControlCell
         disabled={isDataViewLoadingState || isDataViewErrorState}
+        dragProps={dragProps}
         header={header}
       >
         {children as ReactNode}
@@ -63,25 +77,65 @@ export function TableColumnHeader({
 interface TableHeaderControlCellProps {
   children: ReactNode;
   disabled: boolean;
+  dragProps?: DragProps;
   header: Header<IntentionalAny, unknown>;
 }
 
 function TableHeaderControlCell({
   children,
   disabled,
+  dragProps,
   header,
-  ...props
 }: TableHeaderControlCellProps): JSX.Element {
-  if (!header.column.getCanSort() || disabled) {
-    return <>{children}</>;
-  }
+  if (disabled) return <>{children}</>;
+
+  const canSort = header.column.getCanSort();
   const sort = header.column.getIsSorted();
+  const grip = dragProps?.listeners ? (
+    <button
+      ref={dragProps.setActivatorNodeRef}
+      className="cursor-grab active:cursor-grabbing p-0.5 text-secondary hover:text-primary focus:outline-none shrink-0"
+      aria-label="Drag to reorder column"
+      type="button"
+      {...dragProps.attributes}
+      {...dragProps.listeners}
+    >
+      <GripVertical size={14} />
+    </button>
+  ) : null;
+
+  // Neither interactive — plain label
+  if (!canSort && !grip) return <>{children}</>;
+
+  // Drag only — grip alongside plain label, no sort button
+  if (!canSort) {
+    return (
+      <>
+        {grip}
+        {children}
+      </>
+    );
+  }
+
+  // Sort + drag — flex wrapper keeps them together without ButtonGroup chrome
+  if (grip) {
+    return (
+      <div className="data-view-header-control flex items-center">
+        {grip}
+        <Button kind="tertiary" onClick={header.column.getToggleSortingHandler()}>
+          <span className="truncate leading-[normal]">{children}</span>
+          <SortIcon sort={sort} />
+        </Button>
+      </div>
+    );
+  }
+
+  // Sort only — current behavior
   return (
     <Button
       className="data-view-header-control"
       kind="tertiary"
       onClick={header.column.getToggleSortingHandler()}
-      {...props}
     >
       <span className="truncate leading-[normal]">{children}</span>
       <SortIcon sort={sort} />

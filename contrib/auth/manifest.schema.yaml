@@ -1,0 +1,66 @@
+type: object
+required:
+  - provider
+  - mode
+  - compose_file
+  - gateway_base_url
+  - issuer_url
+  - discovery_url
+  - nemo_config
+  - principal_contract
+  - human_identity
+  - workload_identity
+  - workload_contract
+  - healthchecks
+  - startup_timeouts
+properties:
+  provider:
+    type: string
+  mode:
+    type: string
+    enum:
+      - compose-ci
+      - reference-only
+  compose_file:
+    type:
+      - string
+      - "null"
+  gateway_base_url:
+    type: string
+  issuer_url:
+    type: string
+  discovery_url:
+    type: string
+  nemo_config:
+    type: string
+  principal_contract:
+    type: object
+    required:
+      - subject_claim
+      - groups_claim
+      - external_machine_principals_use_service_prefix
+      - internal_service_prefix_reserved
+  human_identity:
+    type: object
+  workload_identity:
+    type: object
+    required:
+      - principal_id
+      - expected_groups
+  workload_contract:
+    type: object
+    required:
+      - audience
+      - principal_claim
+      - groups_claim
+      - groups_format
+      - token_env_vars
+      - forwarded_headers
+  healthchecks:
+    type: array
+  startup_timeouts:
+    type: object
+    required:
+      - healthchecks_seconds
+      - gateway_seconds
+      - token_endpoint_seconds

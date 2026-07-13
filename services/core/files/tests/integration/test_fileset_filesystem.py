@@ -31,7 +31,7 @@ from nemo_platform.filesets import (
     parse_fileset_ref,
 )
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.files.types import FilesetOutput
 
 
@@ -296,9 +296,12 @@ class TestFilesetFileSystem:
     """Test fsspec operations via FilesetFileSystem."""
 
     @pytest.fixture
-    def fs(self, sdk: NeMoPlatform) -> FilesetFileSystem:
+    def fs(self, sdk: NeMoPlatform, async_files_client: AsyncFilesClient) -> FilesetFileSystem:
         """Create a FilesetFileSystem backed by the test SDK."""
-        return sdk.files.fsspec
+        return FilesetFileSystem(
+            client=client_from_platform(sdk, FilesClient),
+            async_client=async_files_client,
+        )
 
     def test_ls_empty_fileset(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test listing an empty fileset."""
@@ -527,12 +530,18 @@ class TestFilesetFileSystem:
         assert fs.cat(path_no_proto) == content
         assert fs.cat(path_with_proto) == content
 
-    def test_fsspec_filesystem_registration(self, sdk: NeMoPlatform, fileset: FilesetOutput):
+    def test_fsspec_filesystem_registration(
+        self,
+        sdk: NeMoPlatform,
+        async_files_client: AsyncFilesClient,
+        fileset: FilesetOutput,
+    ):
         """Test that FilesetFileSystem can be instantiated via fsspec.filesystem()."""
         # Protocol is registered by the autouse fixture
         fs = fsspec.filesystem(
             "fileset",
             client=client_from_platform(sdk, FilesClient),
+            async_client=async_files_client,
             skip_instance_cache=True,
         )
 
@@ -1093,9 +1102,9 @@ class TestFilesetFileSystemAsync:
     """Test async fsspec operations via FilesetFileSystem."""
 
     @pytest.fixture
-    def fs(self, sdk: NeMoPlatform) -> FilesetFileSystem:
+    def fs(self, async_files_client: AsyncFilesClient) -> FilesetFileSystem:
         """Create a FilesetFileSystem backed by the test SDK."""
-        return FilesetFileSystem(client=client_from_platform(sdk, FilesClient), skip_instance_cache=True)
+        return FilesetFileSystem(client=async_files_client, skip_instance_cache=True)
 
     async def test_ls_empty_fileset(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """Test listing an empty fileset."""
@@ -1498,7 +1507,12 @@ class TestFilesetFileSystemAsync:
 
         # If we get here without hanging, the test passes
 
-    async def test_batch_size_limits_concurrency(self, sdk: NeMoPlatform, fileset: FilesetOutput, tmp_path: Path):
+    async def test_batch_size_limits_concurrency(
+        self,
+        async_files_client: AsyncFilesClient,
+        fileset: FilesetOutput,
+        tmp_path: Path,
+    ):
         """Test that batch_size properly limits concurrent operations.
 
         Creates a filesystem with batch_size=4, then downloads 8 files and verifies
@@ -1509,7 +1523,7 @@ class TestFilesetFileSystemAsync:
         total_files = 8
 
         # Create filesystem with limited concurrency
-        fs = FilesetFileSystem(client=client_from_platform(sdk, FilesClient), batch_size=batch_size)
+        fs = FilesetFileSystem(client=async_files_client, batch_size=batch_size)
 
         # Upload files
         base = f"{fileset.workspace}/{fileset.name}"
@@ -1816,7 +1830,12 @@ class TestDuckDBIntegration:
     protocol registry and creates it automatically.
     """
 
-    def test_duckdb_parquet_query(self, sdk: NeMoPlatform, fileset: FilesetOutput):
+    def test_duckdb_parquet_query(
+        self,
+        sdk: NeMoPlatform,
+        async_files_client: AsyncFilesClient,
+        fileset: FilesetOutput,
+    ):
         """Test querying a parquet file with DuckDB via fileset:// protocol."""
         # Create test data
         df = pd.DataFrame(
@@ -1829,17 +1848,15 @@ class TestDuckDBIntegration:
         )
         parquet_bytes = df.to_parquet(index=False)
 
-        # Upload to fileset using SDK directly
         file_path = "data.parquet"
-        sdk.files.upload_content(
-            content=parquet_bytes,
-            remote_path=file_path,
-            fileset=fileset.name,
-            workspace=fileset.workspace,
-        )
 
         # Create filesystem via fsspec (how users would configure it)
-        fs = fsspec.filesystem("fileset", client=client_from_platform(sdk, FilesClient))
+        fs = fsspec.filesystem(
+            "fileset",
+            client=client_from_platform(sdk, FilesClient),
+            async_client=async_files_client,
+        )
+        fs.pipe(f"{fileset.workspace}/{fileset.name}#{file_path}", parquet_bytes)
 
         # Query with DuckDB using fileset:// URL with new # format
         fileset_url = f"fileset://{fileset.workspace}/{fileset.name}#{file_path}"
@@ -1863,7 +1880,12 @@ class TestDuckDBIntegration:
         assert len(result) == 2
         assert set(result["category"]) == {"A", "B"}
 
-    def test_duckdb_parquet_range_read(self, sdk: NeMoPlatform, fileset: FilesetOutput):
+    def test_duckdb_parquet_range_read(
+        self,
+        sdk: NeMoPlatform,
+        async_files_client: AsyncFilesClient,
+        fileset: FilesetOutput,
+    ):
         """Test that DuckDB performs efficient range reads on parquet files.
 
         Parquet files store metadata at the end (footer), so DuckDB reads:
@@ -1883,17 +1905,15 @@ class TestDuckDBIntegration:
         )
         parquet_bytes = df.to_parquet(index=False)
 
-        # Upload to fileset using SDK directly
         file_path = "large_data.parquet"
-        sdk.files.upload_content(
-            content=parquet_bytes,
-            remote_path=file_path,
-            fileset=fileset.name,
-            workspace=fileset.workspace,
-        )
 
         # Create filesystem via fsspec
-        fs = fsspec.filesystem("fileset", client=client_from_platform(sdk, FilesClient))
+        fs = fsspec.filesystem(
+            "fileset",
+            client=client_from_platform(sdk, FilesClient),
+            async_client=async_files_client,
+        )
+        fs.pipe(f"{fileset.workspace}/{fileset.name}#{file_path}", parquet_bytes)
         fileset_url = f"fileset://{fileset.workspace}/{fileset.name}#{file_path}"
         conn = duckdb.connect()
         conn.register_filesystem(fs)
@@ -1905,7 +1925,12 @@ class TestDuckDBIntegration:
         assert list(result["id"]) == list(range(100, 111))
         assert list(result["value"]) == [float(i) for i in range(100, 111)]
 
-    def test_duckdb_legacy_path_format(self, sdk: NeMoPlatform, fileset: FilesetOutput):
+    def test_duckdb_legacy_path_format(
+        self,
+        sdk: NeMoPlatform,
+        async_files_client: AsyncFilesClient,
+        fileset: FilesetOutput,
+    ):
         """Test DuckDB queries using legacy workspace/fileset/path format.
 
         This validates backwards compatibility with the legacy path format
@@ -1920,17 +1945,15 @@ class TestDuckDBIntegration:
         )
         parquet_bytes = df.to_parquet(index=False)
 
-        # Upload to fileset
         file_path = "test_legacy_format.parquet"
-        sdk.files.upload_content(
-            content=parquet_bytes,
-            remote_path=file_path,
-            fileset=fileset.name,
-            workspace=fileset.workspace,
-        )
 
         # Create filesystem via fsspec
-        fs = fsspec.filesystem("fileset", client=client_from_platform(sdk, FilesClient))
+        fs = fsspec.filesystem(
+            "fileset",
+            client=client_from_platform(sdk, FilesClient),
+            async_client=async_files_client,
+        )
+        fs.pipe(f"{fileset.workspace}/{fileset.name}#{file_path}", parquet_bytes)
 
         # Query with DuckDB using LEGACY path format: workspace/fileset/path
         fileset_url = f"fileset://{fileset.workspace}/{fileset.name}/{file_path}"
@@ -1950,9 +1973,12 @@ class TestDirCache:
     """
 
     @pytest.fixture
-    def fs(self, sdk: NeMoPlatform) -> FilesetFileSystem:
+    def fs(self, sdk: NeMoPlatform, async_files_client: AsyncFilesClient) -> FilesetFileSystem:
         """Create a FilesetFileSystem backed by the test SDK."""
-        return sdk.files.fsspec
+        return FilesetFileSystem(
+            client=client_from_platform(sdk, FilesClient),
+            async_client=async_files_client,
+        )
 
     def test_ls_populates_cache_for_nested_dirs(self, fs: FilesetFileSystem, fileset: FilesetOutput):
         """_ls should populate cache for all directory levels in the response."""
@@ -2158,10 +2184,18 @@ class TestDirCache:
         else:
             assert all(isinstance(item, str) for item in result)
 
-    def test_cache_disabled(self, sdk: NeMoPlatform, fileset: FilesetOutput):
+    def test_cache_disabled(
+        self,
+        sdk: NeMoPlatform,
+        async_files_client: AsyncFilesClient,
+        fileset: FilesetOutput,
+    ):
         """When use_listings_cache=False, cache should not be used."""
         # Create filesystem with cache disabled
-        fs = FilesetFileSystem(client=client_from_platform(sdk, FilesClient))
+        fs = FilesetFileSystem(
+            client=client_from_platform(sdk, FilesClient),
+            async_client=async_files_client,
+        )
         fs.dircache.use_listings_cache = False
 
         base = f"{fileset.workspace}/{fileset.name}"

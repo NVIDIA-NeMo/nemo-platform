@@ -9,6 +9,7 @@ external services (like Huggingface Hub).
 
 from collections.abc import Callable, Iterator
 
+import anyio
 import httpx
 import huggingface_hub
 import pytest
@@ -17,7 +18,7 @@ from fastapi.testclient import TestClient
 from nemo_platform import NeMoPlatform
 from nemo_platform.filesets.resources import FilesResource
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.files.types import FilesetOutput
 from nmp.common.auth import AuthClient, get_auth_client
 from nmp.common.auth.models import Principal
@@ -30,7 +31,7 @@ from nmp.core.files.config import FilesConfig
 from nmp.core.files.service import FilesService
 from nmp.core.files.testing.utils import create_fileset
 from nmp.core.secrets.service import SecretsService
-from nmp.testing import create_test_client
+from nmp.testing import SDKTestClientAdapter, create_test_client
 from packaging import version
 
 # Mock auth client for fileset endpoints that depend on get_auth_client
@@ -57,6 +58,32 @@ def _get_auth_client_from_request(request: Request) -> AuthClient:
     )
 
 
+def _create_asgi_async_files_client(sdk: NeMoPlatform) -> tuple[httpx.AsyncClient, AsyncFilesClient]:
+    sdk_http_client = sdk._client
+    assert isinstance(sdk_http_client, SDKTestClientAdapter)
+    base_url = str(sdk.base_url).rstrip("/")
+    http_client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=sdk_http_client.asgi_app),
+        base_url=base_url,
+        headers=dict(sdk_http_client.headers),
+    )
+    return http_client, AsyncFilesClient(
+        base_url=base_url,
+        workspace=sdk.workspace,
+        http_client=http_client,
+    )
+
+
+def _install_asgi_files_resource(sdk: NeMoPlatform) -> httpx.AsyncClient:
+    http_client, async_files_client = _create_asgi_async_files_client(sdk)
+    sdk.__dict__["files"] = FilesResource(
+        sdk,
+        files_client=client_from_platform(sdk, FilesClient),
+        async_files_client=async_files_client,
+    )
+    return http_client
+
+
 @pytest.fixture
 def sdk_user_and_service() -> Iterator[tuple[NeMoPlatform, NeMoPlatform]]:
     """Two SDKs sharing the same app: default user principal and service:customizer.
@@ -69,7 +96,9 @@ def sdk_user_and_service() -> Iterator[tuple[NeMoPlatform, NeMoPlatform]]:
         SecretsService,
         dependency_overrides={get_auth_client: _get_auth_client_from_request},
     ) as sdk_base:
-        app = sdk_base._client.app
+        sdk_http_client = sdk_base._client
+        assert isinstance(sdk_http_client, SDKTestClientAdapter)
+        app = sdk_http_client.asgi_app
         base_url = "http://testserver"
         client_user = TestClient(
             app,
@@ -81,19 +110,27 @@ def sdk_user_and_service() -> Iterator[tuple[NeMoPlatform, NeMoPlatform]]:
             base_url=base_url,
             headers={"x-nmp-principal-id": "service:customizer"},
         )
+        user_async_http_client: httpx.AsyncClient | None = None
+        service_async_http_client: httpx.AsyncClient | None = None
         try:
             sdk_user = NeMoPlatform(
                 base_url=base_url,
-                http_client=client_user,
+                http_client=SDKTestClientAdapter(client_user),
                 max_retries=0,
             )
             sdk_service = NeMoPlatform(
                 base_url=base_url,
-                http_client=client_service,
+                http_client=SDKTestClientAdapter(client_service),
                 max_retries=0,
             )
+            user_async_http_client = _install_asgi_files_resource(sdk_user)
+            service_async_http_client = _install_asgi_files_resource(sdk_service)
             yield (sdk_user, sdk_service)
         finally:
+            if user_async_http_client is not None:
+                anyio.run(user_async_http_client.aclose)
+            if service_async_http_client is not None:
+                anyio.run(service_async_http_client.aclose)
             client_user.close()
             client_service.close()
 
@@ -106,7 +143,11 @@ def sdk() -> Iterator[NeMoPlatform]:
         SecretsService,
         dependency_overrides=FILESET_AUTH_DEPENDENCY_OVERRIDES,
     ) as sdk:
-        yield sdk
+        async_http_client = _install_asgi_files_resource(sdk)
+        try:
+            yield sdk
+        finally:
+            anyio.run(async_http_client.aclose)
 
 
 @pytest.fixture
@@ -116,9 +157,17 @@ def files_client(sdk: NeMoPlatform) -> FilesClient:
 
 
 @pytest.fixture
-def files_resource(files_client: FilesClient) -> FilesResource:
+def async_files_client(sdk: NeMoPlatform) -> AsyncFilesClient:
+    """Provide the SDK fixture's in-memory AsyncFilesClient."""
+    client = sdk.files.fsspec._client
+    assert isinstance(client, AsyncFilesClient)
+    return client
+
+
+@pytest.fixture
+def files_resource(sdk: NeMoPlatform) -> FilesResource:
     """Provide a FilesResource backed by the test FilesClient."""
-    return FilesResource(None, files_client=files_client)
+    return sdk.files
 
 
 @pytest.fixture
@@ -135,7 +184,11 @@ def sdk_allow_user_local_storage(tmp_path) -> Iterator[NeMoPlatform]:
         tmp_dir=tmp_path,
         dependency_overrides=FILESET_AUTH_DEPENDENCY_OVERRIDES,
     ) as sdk:
-        yield sdk
+        async_http_client = _install_asgi_files_resource(sdk)
+        try:
+            yield sdk
+        finally:
+            anyio.run(async_http_client.aclose)
 
 
 @pytest.fixture
@@ -265,6 +318,39 @@ else:
             pass
 
 
+class SharedASGIHttpxClient(httpx.Client):
+    """httpx client for huggingface_hub that forwards through the test SDK client."""
+
+    def __init__(self, client: httpx.Client) -> None:
+        self._client = client
+        super().__init__(
+            base_url=str(client.base_url),
+            headers=dict(client.headers),
+        )
+
+    def send(
+        self,
+        request: httpx.Request,
+        *,
+        stream: bool = False,
+        auth: object = httpx.USE_CLIENT_DEFAULT,  # noqa: ARG002
+        follow_redirects: object = httpx.USE_CLIENT_DEFAULT,
+    ) -> httpx.Response:
+        if isinstance(follow_redirects, bool):
+            return self._client.send(request, stream=stream, follow_redirects=follow_redirects)
+        return self._client.send(request, stream=stream)
+
+    def close(self) -> None:
+        # huggingface_hub owns and closes its global client between tests. The
+        # wrapped SDK client is owned by create_test_client and must remain open
+        # for fixture cleanup.
+        return None
+
+
+def _default_hf_httpx_client_factory() -> httpx.Client:
+    return httpx.Client(follow_redirects=True, timeout=None)
+
+
 @pytest.fixture
 def hf_asgi_client(client: httpx.Client) -> Iterator[None]:
     """Configure huggingface_hub to use ASGI transport for in-memory testing.
@@ -274,7 +360,7 @@ def hf_asgi_client(client: httpx.Client) -> Iterator[None]:
     for a real HTTP server.
 
     For huggingface_hub v1.0+ (httpx-based): We inject a custom httpx client
-    that reuses the TestClient's transport.
+    that forwards through the SDK test client.
 
     For huggingface_hub v0.x (requests-based): We inject a custom requests
     Session with an adapter that forwards to the httpx test client.
@@ -283,15 +369,12 @@ def hf_asgi_client(client: httpx.Client) -> Iterator[None]:
         # v1.0+: Use httpx client factory
 
         def asgi_client_factory() -> httpx.Client:
-            # Reuse the TestClient's transport which handles sync-to-async conversion
-            return httpx.Client(
-                transport=client._transport,
-                base_url=str(client.base_url),
-            )
+            return SharedASGIHttpxClient(client)
 
         set_client_factory(asgi_client_factory)
         yield
-        close_session()  # Reset to default client factory
+        close_session()
+        set_client_factory(_default_hf_httpx_client_factory)
     else:
         # v0.x: Use requests adapter
         adapter = ASGIAdapter(client)

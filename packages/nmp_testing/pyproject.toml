@@ -12,6 +12,7 @@ dependencies = [
     "nemo-nb",
     "docker>=7.0.0",
     "httpx",
+    "httpx2>=2.0.0",
     "fastapi",
     "pytest>=8.3.3",
     "pytest-httpserver>=1.0.0",

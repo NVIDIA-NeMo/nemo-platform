@@ -2,16 +2,19 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import datetime
+import hashlib
 import io
 import json
 import logging
 import os
 import tarfile
+import threading
 import time
 import uuid
 from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor
-from typing import Generic, TypeVar
+from dataclasses import dataclass
+from typing import Any, Generic, TypeVar
 
 import docker.types
 from docker.errors import APIError, ImageNotFound, NotFound
@@ -34,7 +37,7 @@ from nemo_platform_plugin.jobs.execution_profiles import (
     DockerVolumeMount as DockerVolumeMount,
 )
 from nmp.common.auth import AuthContext
-from nmp.common.config import get_platform_config
+from nmp.common.config import get_platform_config, nmp_user_data_dir
 from nmp.common.docker.gpu_pool import GPUAllocationError
 from nmp.common.jobs.constants import (
     CONFIG_TASK_STORAGE_PATH_ENVVAR,
@@ -59,6 +62,7 @@ from nmp.common.observability import start_span_with_ctx
 from nmp.common.resources import SharedResourceManager
 from nmp.core.jobs.app.constants import (
     JOB_ATTEMPT_ID_LABEL,
+    JOB_CONTROLLER_INSTANCE_ID_LABEL,
     JOB_EXECUTION_BACKEND_LABEL,
     JOB_EXECUTION_PROFILE_LABEL,
     JOB_ID_LABEL,
@@ -92,6 +96,7 @@ from nmp.core.jobs.controllers.backends.exceptions import (
     FailedToScheduleError,
     JobStorageError,
     ResourceAllocationError,
+    SchedulingDeferred,
 )
 from opentelemetry import trace
 from pydantic import Field
@@ -100,6 +105,7 @@ import docker
 
 tracer = trace.get_tracer(__name__)
 logger = logging.getLogger(__name__)
+DOCKER_CONTAINER_START_WORKERS = 10
 
 
 def k8s_shm_quantity_to_docker(quantity: str) -> str:
@@ -124,6 +130,7 @@ NEMO_JOBS_DEFAULT_DOCKER_NETWORK = os.getenv("NEMO_JOBS_DEFAULT_DOCKER_NETWORK",
 # Timeout for stopping Docker containers gracefully with SIGTERM before SIGKILL is sent.
 # Default is 30 seconds which matches the Kubernetes default grace period for pod termination.
 DOCKER_STOP_TIMEOUT = int(os.getenv("NEMO_JOBS_DEFAULT_DOCKER_STOP_TIMEOUT", "30"))
+NMP_JOBS_DOCKER_OWNER_ID_ENVVAR = "NMP_JOBS_DOCKER_OWNER_ID"
 
 
 ProviderT = TypeVar("ProviderT", bound=ExecutionProviderT)
@@ -131,6 +138,22 @@ ProviderT = TypeVar("ProviderT", bound=ExecutionProviderT)
 
 # DockerVolumeMount and DockerJobStorageConfig are pure data shapes shared with
 # the typed HTTP client — imported from the plugin leaf node (see imports).
+
+
+def _resolve_jobs_controller_instance_id() -> str:
+    configured = os.getenv(NMP_JOBS_DOCKER_OWNER_ID_ENVVAR)
+    if configured:
+        return configured
+
+    owner_source = f"nmp-data-dir:{nmp_user_data_dir().expanduser().resolve()}"
+    return hashlib.sha256(owner_source.encode("utf-8")).hexdigest()[:32]
+
+
+@dataclass(frozen=True, slots=True)
+class DockerTimestampParseResult:
+    parsed: datetime.datetime | None
+    parse_error: str | None
+    is_zero: bool
 
 
 class DockerJobNetworkConfig(PluginDockerJobNetworkConfig):
@@ -172,7 +195,9 @@ class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], G
     BACKEND_NAME: str = "docker"
 
     def init(self) -> None:
-        self._container_run_threadpool = ThreadPoolExecutor(max_workers=10)
+        self._jobs_controller_instance_id = _resolve_jobs_controller_instance_id()
+        self._container_start_admission = threading.BoundedSemaphore(DOCKER_CONTAINER_START_WORKERS)
+        self._container_run_threadpool = ThreadPoolExecutor(max_workers=DOCKER_CONTAINER_START_WORKERS)
         self._client = docker.from_env(timeout=180)
         if NEMO_JOBS_IMAGE_REGISTRY:
             logger.info(
@@ -197,6 +222,31 @@ class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], G
         """Return True if the container has the jobs-controller managed-by label."""
         labels = getattr(container, "labels", None) or {}
         return labels.get(JOB_MANAGED_BY_LABEL) == JOB_MANAGED_BY_JOBS_CONTROLLER
+
+    def _base_controller_labels(self) -> dict[str, str]:
+        return {
+            JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+            JOB_CONTROLLER_INSTANCE_ID_LABEL: self._jobs_controller_instance_id,
+            JOB_EXECUTION_BACKEND_LABEL: self.BACKEND_NAME,
+            JOB_EXECUTION_PROFILE_LABEL: self._profile_name,
+        }
+
+    def _is_container_owned_by_this_controller(self, container: Container) -> bool:
+        labels = getattr(container, "labels", None) or {}
+        return (
+            labels.get(JOB_MANAGED_BY_LABEL) == JOB_MANAGED_BY_JOBS_CONTROLLER
+            and labels.get(JOB_CONTROLLER_INSTANCE_ID_LABEL) == self._jobs_controller_instance_id
+        )
+
+    def _cleanup_container_filters(self) -> dict[str, list[str]]:
+        return {
+            "label": [
+                f"{JOB_MANAGED_BY_LABEL}={JOB_MANAGED_BY_JOBS_CONTROLLER}",
+                f"{JOB_CONTROLLER_INSTANCE_ID_LABEL}={self._jobs_controller_instance_id}",
+                f"{JOB_EXECUTION_BACKEND_LABEL}={self.BACKEND_NAME}",
+                f"{JOB_EXECUTION_PROFILE_LABEL}={self._profile_name}",
+            ]
+        }
 
     def job_storage_subpath(self, workspace: str, job: str) -> str:
         return f"jobs/{workspace}/{job}"
@@ -261,12 +311,10 @@ fi
         volumes = {storage_config.volume_name: {"bind": "/vol", "mode": "rw"}}
 
         labels = {
+            **self._base_controller_labels(),
             JOB_WORKSPACE_ID_LABEL: workspace,
             JOB_ID_LABEL: job,
-            JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
             JOB_TYPE_LABEL: JOB_TYPE_STORAGE_CLEANUP,
-            JOB_EXECUTION_BACKEND_LABEL: self.BACKEND_NAME,
-            JOB_EXECUTION_PROFILE_LABEL: self._profile_name,
         }
         container_args = {
             "name": f"job-cleanup-{workspace}-{job}-{uuid.uuid4().hex[:8]}",
@@ -313,11 +361,14 @@ fi
             self.cleanup_container(container)
 
     def cleanup_container(self, container: Container) -> None:
-        """Remove a Docker container. Only removes containers managed by the jobs controller."""
-        if not self._is_container_managed_by_jobs_controller(container):
+        """Remove a Docker container. Only removes containers owned by this jobs controller."""
+        if not self._is_container_owned_by_this_controller(container):
             logger.warning(
-                "Skipping container remove (not managed by jobs-controller)",
-                extra={"container_id": container.id[:16] if container.id else "unknown"},
+                "Skipping container remove (not owned by this jobs-controller)",
+                extra={
+                    "container_id": container.id[:16] if container.id else "unknown",
+                    "owner_label": (getattr(container, "labels", None) or {}).get(JOB_CONTROLLER_INSTANCE_ID_LABEL),
+                },
             )
             return
         try:
@@ -546,17 +597,6 @@ chmod -R 777 {job_vol}/{storage_subpath}
         executor_config: ProviderT,
         step: PlatformJobStepWithContext,
     ) -> JobUpdate:
-        ttl_seconds = self._execution_profile_config.ttl_seconds_before_active
-        if self.should_enforce_before_active_ttl(step) and self.check_step_ttl_before_active(step, ttl_seconds):
-            # If we are here it is because the scheduler kept retrying the job,
-            # which means there was a resource issue (GPU contention).  Nothing really
-            # imperative to clean up, just mark as ERROR.
-            return JobUpdate(
-                status=PlatformJobStatus.ERROR.value,
-                status_details={"message": f"Job timed out after reaching max TTL of {ttl_seconds} seconds"},
-                error_details={"message": f"Job timed out after reaching max TTL of {ttl_seconds} seconds"},
-            )
-
         platform_config = get_platform_config()
 
         # Profile-level env vars first (e.g. HOME=/tmp); system, step, and shared env override these
@@ -633,11 +673,62 @@ chmod -R 777 {job_vol}/{storage_subpath}
             },
         )
 
+        if not self._container_start_admission.acquire(blocking=False):
+            logger.debug(
+                "Docker start admission full, deferring scheduling",
+                extra={"job": step.job, "step": step.name},
+            )
+            raise SchedulingDeferred("Docker start worker capacity is full")
+
+        # The admission slot is owned by this method until submit succeeds.
+        # After that, run_container releases it when the start worker exits.
+        try:
+            container_args = self._prepare_container_args_for_start(
+                executor_config=executor_config,
+                step=step,
+                task_id=task_id,
+                env=env,
+                log_config=log_config,
+                job_storage_mount=job_storage_mount,
+                task_storage_mount=task_storage_mount,
+                step_config_json=step_config_json,
+            )
+            submitted_to_threadpool_at = time.monotonic()
+            self._container_run_threadpool.submit(self.run_container, step, container_args, submitted_to_threadpool_at)
+        except Exception:
+            self._container_start_admission.release()
+            raise
+        logger.debug(
+            "Docker run_container submitted",
+            extra={
+                "job": step.job,
+                "step": step.name,
+                "task": task_id,
+            },
+        )
+        return JobUpdate(
+            status=PlatformJobStatus.PENDING,
+            status_details={"message": "Container schedule pending, checking for existing image and container"},
+        )
+
+    def _prepare_container_args_for_start(
+        self,
+        *,
+        executor_config: ProviderT,
+        step: PlatformJobStepWithContext,
+        task_id: str,
+        env: dict,
+        log_config: LogConfig,
+        job_storage_mount: str,
+        task_storage_mount: str,
+        step_config_json: str,
+    ) -> dict:
         storage_config = self._execution_profile_config.storage
         job_volume_name = storage_config.volume_name if storage_config is not None else ""
         task_volume_name = self.task_storage_volume_name(workspace=step.workspace, job=step.job, task=task_id)
         config_volume_name = self.task_config_volume_name(workspace=step.workspace, job=step.job, task=task_id)
         additional_volume_mounts = storage_config.additional_volume_mounts if storage_config else None
+        ensure_storage_started_at = time.monotonic()
         self.ensure_job_storage(
             # if the job storage mount is not used, pass empty string to avoid creating unnecessary job storage volume
             job_storage_volume_name=job_volume_name if job_storage_mount != "" else "",
@@ -650,8 +741,18 @@ chmod -R 777 {job_vol}/{storage_subpath}
             additional_volumes_mounts=additional_volume_mounts,
             step_config_json=step_config_json,
         )
+        logger.debug(
+            "Docker job storage ensured",
+            extra={
+                "job": step.job,
+                "step": step.name,
+                "task": task_id,
+                "duration_seconds": time.monotonic() - ensure_storage_started_at,
+            },
+        )
 
         labels = {
+            **self._base_controller_labels(),
             JOB_WORKSPACE_ID_LABEL: step.workspace,
             JOB_ID_LABEL: step.job,
             JOB_ATTEMPT_ID_LABEL: step.attempt_id,
@@ -660,10 +761,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
             # because parallelism is not supported.
             JOB_TASK_ID_LABEL: task_id,
             JOB_STEP_ID_LABEL: step.id,
-            JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
             JOB_TYPE_LABEL: JOB_TYPE_JOB,
-            JOB_EXECUTION_BACKEND_LABEL: self.BACKEND_NAME,
-            JOB_EXECUTION_PROFILE_LABEL: self._profile_name,
         }
 
         # Mark container if it uses persistent storage so we can clean it up later
@@ -699,12 +797,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
         }
 
         container_args["network"] = self._execution_profile_config.networking.job_container_network
-        container_args = self.configure_container(container_args, executor_config)
-        self._container_run_threadpool.submit(self.run_container, step, container_args)
-        return JobUpdate(
-            status=PlatformJobStatus.PENDING,
-            status_details={"message": "Container schedule pending, checking for existing image and container"},
-        )
+        return self.configure_container(container_args, executor_config)
 
     def cancel_scheduling(self, step: PlatformJobStepWithContext) -> bool:
         """Check if the job step is cancelling or pausing, and update status accordingly."""
@@ -761,10 +854,19 @@ chmod -R 777 {job_vol}/{storage_subpath}
             return jobs_launcher_stream
         return None
 
-    def run_container(self, step: PlatformJobStepWithContext, container_args: dict):
+    def run_container(
+        self,
+        step: PlatformJobStepWithContext,
+        container_args: dict,
+        submitted_to_threadpool_at: float | None = None,
+    ):
         with start_span_with_ctx(
             tracer, "jobs_controller/docker_backend/run_container", JobContext(id=step.job, step_name=step.name)
         ):
+            log_extra = {"job": step.job, "step": step.name}
+            if submitted_to_threadpool_at is not None:
+                log_extra["queue_delay_seconds"] = time.monotonic() - submitted_to_threadpool_at
+            logger.debug("Docker run_container worker started", extra=log_extra)
             try:
                 self._run_container_in_thread(step, container_args)
             except FailedToScheduleError as e:
@@ -779,6 +881,8 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 logger.exception("Failed to schedule container for job step")
             except Exception:
                 logger.exception("Unexpected error while scheduling container for job step")
+            finally:
+                self._container_start_admission.release()
 
     def _run_container_in_thread(self, step: PlatformJobStepWithContext, container_args: dict):
         status_details = {}
@@ -787,12 +891,39 @@ chmod -R 777 {job_vol}/{storage_subpath}
         # If a request to pause or cancel came in while we were waiting for scheduling loop,
         # cancel scheduling the container
         logger.debug("Checking for cancellation or pausing before creating container")
+        cancel_check_started_at = time.monotonic()
         if self.cancel_scheduling(step):
+            logger.debug(
+                "Docker pre-create cancellation check stopped scheduling",
+                extra={
+                    "job": step.job,
+                    "step": step.name,
+                    "duration_seconds": time.monotonic() - cancel_check_started_at,
+                },
+            )
             return
+        logger.debug(
+            "Docker pre-create cancellation check completed",
+            extra={
+                "job": step.job,
+                "step": step.name,
+                "duration_seconds": time.monotonic() - cancel_check_started_at,
+            },
+        )
 
         # For resuming containers, check if it already exists
         logger.debug("Checking for existing container for job step")
+        get_container_started_at = time.monotonic()
         container = self.get_container(step)
+        logger.debug(
+            "Docker existing container lookup completed",
+            extra={
+                "job": step.job,
+                "step": step.name,
+                "found": container is not None,
+                "duration_seconds": time.monotonic() - get_container_started_at,
+            },
+        )
         if container is not None:
             logger.info("Container already exists, not creating a new one", extra={"container_name": container.name})
         else:
@@ -800,7 +931,17 @@ chmod -R 777 {job_vol}/{storage_subpath}
             logger.debug("Creating container for job step")
 
             # Find the jobs launcher binary inside this running python container and also include it in the job container
+            launcher_lookup_started_at = time.monotonic()
             jobs_launcher_stream = self.get_jobs_launcher_binary()
+            logger.debug(
+                "Docker jobs launcher lookup completed",
+                extra={
+                    "job": step.job,
+                    "step": step.name,
+                    "found": jobs_launcher_stream is not None,
+                    "duration_seconds": time.monotonic() - launcher_lookup_started_at,
+                },
+            )
             if jobs_launcher_stream is not None:
                 # Modify the container entrypoint and command to use the jobs-launcher
                 original_entrypoint = container_args.get("entrypoint", [])
@@ -813,9 +954,24 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 )
 
             try:
+                create_started_at = time.monotonic()
                 container = self._client.containers.create(**container_args)
+                create_duration_seconds = time.monotonic() - create_started_at
                 # Container will create successfully only if image is found locally
                 logger.info("Image found locally", extra={"image": container_args["image"]})
+                logger.debug(
+                    "Docker container create succeeded",
+                    extra={
+                        "job": step.job,
+                        "step": step.name,
+                        "container_name": container.name,
+                        "image": container_args["image"],
+                        "duration_seconds": create_duration_seconds,
+                        "image_source": "local",
+                        "requested_auto_remove": container_args.get("auto_remove"),
+                        "host_config_auto_remove": container.attrs.get("HostConfig", {}).get("AutoRemove"),
+                    },
+                )
             except (ImageNotFound, NotFound):
                 # Image not found locally, pull it
                 logger.info("Image not found locally, pulling from registry", extra={"image": container_args["image"]})
@@ -862,7 +1018,21 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 # Now create it with the pulled container image
                 logger.debug("Creating container for job step after pulling image")
                 try:
+                    create_started_at = time.monotonic()
                     container = self._client.containers.create(**container_args)
+                    logger.debug(
+                        "Docker container create succeeded",
+                        extra={
+                            "job": step.job,
+                            "step": step.name,
+                            "container_name": container.name,
+                            "image": container_args["image"],
+                            "duration_seconds": time.monotonic() - create_started_at,
+                            "image_source": "pulled",
+                            "requested_auto_remove": container_args.get("auto_remove"),
+                            "host_config_auto_remove": container.attrs.get("HostConfig", {}).get("AutoRemove"),
+                        },
+                    )
                 except APIError as e:
                     raise FailedToScheduleError(
                         "Failed to create container for job step",
@@ -877,8 +1047,17 @@ chmod -R 777 {job_vol}/{storage_subpath}
             # Insert the jobs-launcher into the container if the launcher exists
             if jobs_launcher_stream is not None:
                 try:
+                    put_archive_started_at = time.monotonic()
                     container.put_archive(path="/", data=jobs_launcher_stream)
-                    logger.debug("Jobs launcher inserted into container successfully")
+                    logger.debug(
+                        "Jobs launcher inserted into container successfully",
+                        extra={
+                            "job": step.job,
+                            "step": step.name,
+                            "container_name": container.name,
+                            "duration_seconds": time.monotonic() - put_archive_started_at,
+                        },
+                    )
                 except APIError as e:
                     raise FailedToScheduleError(
                         "Failed to insert jobs-launcher into container",
@@ -891,12 +1070,32 @@ chmod -R 777 {job_vol}/{storage_subpath}
         # If a request to pause or cancel came in while we were waiting for scheduling loop,
         # cancel scheduling the container
         logger.debug("Checking for cancellation or pausing before starting container")
+        pre_start_cancel_check_started_at = time.monotonic()
         if self.cancel_scheduling(step):
+            logger.debug(
+                "Docker pre-start cancellation check stopped scheduling",
+                extra={
+                    "job": step.job,
+                    "step": step.name,
+                    "container_name": container.name,
+                    "duration_seconds": time.monotonic() - pre_start_cancel_check_started_at,
+                },
+            )
             return
+        logger.debug(
+            "Docker pre-start cancellation check completed",
+            extra={
+                "job": step.job,
+                "step": step.name,
+                "container_name": container.name,
+                "duration_seconds": time.monotonic() - pre_start_cancel_check_started_at,
+            },
+        )
 
         try:
             # If no errors to this point, start the container
             status_details["message"] = "Starting container"
+            pre_start_status_write_started_at = time.monotonic()
             self._nmp_sdk.jobs.steps.update_status(
                 step.name,
                 workspace=step.workspace,
@@ -904,9 +1103,19 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 status=status,
                 status_details=status_details,
             )
+            logger.debug(
+                "Docker pre-start status update succeeded",
+                extra={
+                    "job": step.job,
+                    "step": step.name,
+                    "container_name": container.name,
+                    "duration_seconds": time.monotonic() - pre_start_status_write_started_at,
+                },
+            )
             started = False
             max_attempts = 3
             attempts = 0
+            start_started_at = time.monotonic()
             while not started and attempts < max_attempts:
                 attempts += 1
                 try:
@@ -923,8 +1132,15 @@ chmod -R 777 {job_vol}/{storage_subpath}
                         raise e
 
                     time.sleep(5)  # brief pause before retrying
-            logger.info(
-                "Started container for job step", extra={"container_name": container.name, "attempts": attempts}
+            logger.debug(
+                "Started container for job step",
+                extra={
+                    "job": step.job,
+                    "step": step.name,
+                    "container_name": container.name,
+                    "attempts": attempts,
+                    "duration_seconds": time.monotonic() - start_started_at,
+                },
             )
         except Exception as e:
             raise FailedToScheduleError(
@@ -944,6 +1160,8 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 return self._kill_container_with_error(step, container, message)
             return self.sync_active(step, container)
         elif step.status == PlatformJobStatus.PENDING:
+            if container is not None and container.status in ("running", "exited", "dead"):
+                return self.sync_pending(step, container)
             if result := self.enforce_sync_ttl(
                 step,
                 self._execution_profile_config.ttl_seconds_before_active,
@@ -1011,10 +1229,13 @@ chmod -R 777 {job_vol}/{storage_subpath}
         status_details = {"message": message}
         error_details = {"message": message}
 
-        if not self._is_container_managed_by_jobs_controller(container):
+        if not self._is_container_owned_by_this_controller(container):
             logger.warning(
-                "Skipping container kill (not managed by jobs-controller)",
-                extra={"container_name": container.name},
+                "Skipping container kill (not owned by this jobs-controller)",
+                extra={
+                    "container_name": container.name,
+                    "owner_label": (getattr(container, "labels", None) or {}).get(JOB_CONTROLLER_INSTANCE_ID_LABEL),
+                },
             )
             return JobUpdate(
                 status=PlatformJobStatus.ERROR.value,
@@ -1086,14 +1307,17 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 error_details={"message": "Container not found while stopping container"},
             )
         else:
-            if not self._is_container_managed_by_jobs_controller(container):
+            if not self._is_container_owned_by_this_controller(container):
                 logger.warning(
-                    "Skipping container stop (not managed by jobs-controller)",
-                    extra={"container_name": container.name},
+                    "Skipping container stop (not owned by this jobs-controller)",
+                    extra={
+                        "container_name": container.name,
+                        "owner_label": (getattr(container, "labels", None) or {}).get(JOB_CONTROLLER_INSTANCE_ID_LABEL),
+                    },
                 )
                 return JobUpdate(
                     status=PlatformJobStatus.ERROR,
-                    error_details={"message": "Container not managed by jobs controller"},
+                    error_details={"message": "Container not owned by this jobs controller"},
                 )
             try:
                 logger.debug(
@@ -1112,12 +1336,86 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 else:
                     raise e
 
+    @staticmethod
+    def parse_docker_timestamp(timestamp: str | None) -> DockerTimestampParseResult:
+        """Parse a timestamp from Docker container state.
+
+        Docker stores lifecycle timestamps as Go time.Time values and exposes them
+        through inspect as formatted strings. An unset Go time.Time formats as
+        0001-01-01T00:00:00Z, so treat that value as absent while keeping a
+        structured flag for debugging.
+        """
+        if not timestamp:
+            return DockerTimestampParseResult(parsed=None, parse_error=None, is_zero=False)
+        is_zero_time = timestamp.startswith("0001-01-01")
+        if is_zero_time:
+            return DockerTimestampParseResult(parsed=None, parse_error=None, is_zero=True)
+        try:
+            parsed = datetime.datetime.fromisoformat(timestamp)
+        except ValueError as exc:
+            return DockerTimestampParseResult(parsed=None, parse_error=str(exc), is_zero=False)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=datetime.UTC)
+        return DockerTimestampParseResult(parsed=parsed, parse_error=None, is_zero=False)
+
+    def docker_state_debug_fields(self, container: Container) -> dict[str, Any]:
+        attrs = container.attrs or {}
+        state = attrs.get("State", {})
+        now = datetime.datetime.now(datetime.UTC)
+        finished_at_raw = state.get("FinishedAt")
+        finished_at_result = self.parse_docker_timestamp(finished_at_raw)
+        finished_at = finished_at_result.parsed
+        cleanup_after_finished_at = (
+            finished_at + datetime.timedelta(seconds=self._execution_profile_config.ttl_seconds_after_finished)
+            if finished_at
+            else None
+        )
+
+        return {
+            "container_status": container.status,
+            "docker_state_status": state.get("Status"),
+            "docker_state_started_at": state.get("StartedAt"),
+            "docker_state_finished_at": finished_at_raw,
+            "docker_state_finished_at_parsed": finished_at.isoformat() if finished_at else None,
+            "docker_state_finished_at_parse_error": finished_at_result.parse_error,
+            "docker_state_finished_at_is_zero": finished_at_result.is_zero,
+            "docker_state_finished_age_seconds": (now - finished_at).total_seconds() if finished_at else None,
+            "docker_state_exit_code": state.get("ExitCode"),
+            "docker_state_error": state.get("Error"),
+            "docker_state_oom_killed": state.get("OOMKilled"),
+            "docker_state_dead": state.get("Dead"),
+            "docker_state_running": state.get("Running"),
+            "docker_state_paused": state.get("Paused"),
+            "host_config_auto_remove": attrs.get("HostConfig", {}).get("AutoRemove"),
+            "cleanup_completed_jobs_immediately": self._execution_profile_config.cleanup_completed_jobs_immediately,
+            "ttl_seconds_after_finished": self._execution_profile_config.ttl_seconds_after_finished,
+            "cleanup_after_finished_at": cleanup_after_finished_at.isoformat() if cleanup_after_finished_at else None,
+            "cleanup_ttl_remaining_seconds": (cleanup_after_finished_at - now).total_seconds()
+            if cleanup_after_finished_at
+            else None,
+            "cleanup_ttl_due": cleanup_after_finished_at <= now if cleanup_after_finished_at else None,
+            "now_utc": now.isoformat(),
+        }
+
     def create_step_update(self, step: PlatformJobStepWithContext, container: Container) -> JobUpdate:
         status, status_details, error_stack = self.map_docker_container_status_to_platform_status(step, container)
         task_id = self.get_label_from_container(container, JOB_TASK_ID_LABEL)
         error_details = {}
         if status == PlatformJobStatus.ERROR:
             error_details["message"] = status_details.get("message", "Job encountered an error")
+
+        logger.debug(
+            "Docker container status mapped to platform status",
+            extra={
+                "workspace": step.workspace,
+                "job": step.job,
+                "step": step.name,
+                "task": task_id,
+                "container_name": container.name,
+                "platform_status": status.value,
+                **self.docker_state_debug_fields(container),
+            },
+        )
 
         # Upsert the task against the Jobs API.
         self._nmp_sdk.jobs.tasks.create_or_update(
@@ -1239,17 +1537,28 @@ chmod -R 777 {job_vol}/{storage_subpath}
     def cleanup_steps(self):
         containers = self._client.containers.list(
             all=True,
-            filters={"label": JOB_MANAGED_BY_LABEL},
+            filters=self._cleanup_container_filters(),
             ignore_removed=True,
         )
         for container in containers:
             try:
-                if container.labels.get(JOB_MANAGED_BY_LABEL) != JOB_MANAGED_BY_JOBS_CONTROLLER:
+                if not self._is_container_owned_by_this_controller(container):
+                    logger.debug(
+                        "Skipping Docker cleanup for unowned job container",
+                        extra={
+                            "container_name": getattr(container, "name", None),
+                            "owner_label": (getattr(container, "labels", None) or {}).get(
+                                JOB_CONTROLLER_INSTANCE_ID_LABEL
+                            ),
+                        },
+                    )
                     continue
                 if container.labels.get(JOB_TYPE_LABEL) != JOB_TYPE_JOB:
                     continue
                 if container.status in ("exited", "dead"):
-                    exit_code = container.attrs.get("State", {}).get("ExitCode", 0)
+                    state_debug = self.docker_state_debug_fields(container)
+                    exit_code = state_debug.get("docker_state_exit_code") or 0
+                    auto_remove = state_debug.get("host_config_auto_remove")
                     job = self.get_label_from_container(container, JOB_ID_LABEL)
                     step_name = self.get_label_from_container(container, JOB_STEP_NAME_LABEL)
                     workspace = self.get_label_from_container(container, JOB_WORKSPACE_ID_LABEL)
@@ -1257,8 +1566,29 @@ chmod -R 777 {job_vol}/{storage_subpath}
                     # Verify the step is terminal before cleaning up.
                     # This prevents cleaning up resources that we last marked in active state,
                     # were prematurely cleaned up, and then sync active to error because the resource is gone.
-                    if not self.check_step_is_terminal(job=job, step_name=step_name, workspace=workspace):
-                        logger.debug("Skipping cleanup for for job container because step is not in terminal state")
+                    step_is_terminal = self.check_step_is_terminal(job=job, step_name=step_name, workspace=workspace)
+                    cleanup_log_extra = {
+                        "workspace": workspace,
+                        "job": job,
+                        "step": step_name,
+                        "container_name": container.name,
+                        "container_id": container.id[:16],
+                        "exit_code": exit_code,
+                        "host_config_auto_remove": auto_remove,
+                    }
+                    logger.debug(
+                        "Docker cleanup inspected exited job container",
+                        extra={
+                            **cleanup_log_extra,
+                            "step_is_terminal": step_is_terminal,
+                            **state_debug,
+                        },
+                    )
+                    if not step_is_terminal:
+                        logger.debug(
+                            "Skipping cleanup for job container because step is not in terminal state",
+                            extra=cleanup_log_extra,
+                        )
                         continue
 
                     # Always disconnect the container from its network first if not already done.
@@ -1270,16 +1600,45 @@ chmod -R 777 {job_vol}/{storage_subpath}
                         self._execution_profile_config.cleanup_completed_jobs_immediately
                         and exit_code in TERMINAL_EXIT_CODES
                     ):
+                        logger.debug(
+                            "Docker cleanup removing terminal job container immediately",
+                            extra=cleanup_log_extra,
+                        )
                         self.cleanup_single_container(container)
                         continue
 
                     # Otherwise, check if the TTL has expired for errored jobs or completed jobs if not cleaned up immediately
                     last_transition_time_str = container.attrs.get("State", {}).get("FinishedAt")
-                    if last_transition_time_str and (
-                        datetime.datetime.fromisoformat(last_transition_time_str)
+                    finished_at_result = self.parse_docker_timestamp(last_transition_time_str)
+                    cleanup_after_finished_at = (
+                        finished_at_result.parsed
                         + datetime.timedelta(seconds=self._execution_profile_config.ttl_seconds_after_finished)
-                    ) < datetime.datetime.now(datetime.UTC):
+                        if finished_at_result.parsed
+                        else None
+                    )
+                    if cleanup_after_finished_at and cleanup_after_finished_at < datetime.datetime.now(datetime.UTC):
+                        logger.debug(
+                            "Docker cleanup removing expired job container",
+                            extra={
+                                **cleanup_log_extra,
+                                "finished_at": last_transition_time_str,
+                                "finished_at_parse_error": finished_at_result.parse_error,
+                                "finished_at_is_zero": finished_at_result.is_zero,
+                                **state_debug,
+                            },
+                        )
                         self.cleanup_single_container(container)
+                    else:
+                        logger.debug(
+                            "Docker cleanup retaining terminal job container until TTL",
+                            extra={
+                                **cleanup_log_extra,
+                                "finished_at": last_transition_time_str,
+                                "finished_at_parse_error": finished_at_result.parse_error,
+                                "finished_at_is_zero": finished_at_result.is_zero,
+                                **state_debug,
+                            },
+                        )
             except NotFound:
                 # Container may disappear between list and inspect/attribute access.
                 # Ignore and continue cleanup for remaining containers.

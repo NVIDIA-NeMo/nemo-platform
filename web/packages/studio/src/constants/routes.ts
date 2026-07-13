@@ -103,6 +103,9 @@ export const ROUTES = {
     dataDesignerJobList: `/workspaces/:${P.workspace}/data-designer`,
     dataDesignerJobDetails: `/workspaces/:${P.workspace}/data-designer/:${P.dataDesignerJobName}`,
     dataDesignerJobNew: `/workspaces/:${P.workspace}/data-designer/new`,
+    dataDesignerJobBuild: `/workspaces/:${P.workspace}/data-designer/new/build`,
+    /** Legacy job-creation form, not linked from any UI — reachable only by typing the URL. */
+    dataDesignerJobNewLegacy: `/workspaces/:${P.workspace}/data-designer/new/legacy`,
     secrets: `/workspaces/:${P.workspace}/secrets`,
     guardrails: `/workspaces/:${P.workspace}/guardrails`,
     guardrailDetail: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}`,

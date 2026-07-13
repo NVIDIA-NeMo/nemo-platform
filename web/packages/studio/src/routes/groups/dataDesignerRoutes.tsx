@@ -29,6 +29,20 @@ const NewDataDesignerJobRoute =
       default: m.NewDataDesignerJobRoute,
     }))
   );
+const DataDesignerJobBuildRoute =
+  DATA_DESIGNER_ENABLED &&
+  lazy(() =>
+    import('@studio/routes/DataDesignerJobBuildRoute').then((m) => ({
+      default: m.DataDesignerJobBuildRoute,
+    }))
+  );
+const LegacyNewDataDesignerJobRoute =
+  DATA_DESIGNER_ENABLED &&
+  lazy(() =>
+    import('@studio/routes/LegacyNewDataDesignerJobRoute').then((m) => ({
+      default: m.LegacyNewDataDesignerJobRoute,
+    }))
+  );
 
 export const dataDesignerRoutes: RouteObject[] = gateDataDesignerRoutes([
   {
@@ -44,6 +58,16 @@ export const dataDesignerRoutes: RouteObject[] = gateDataDesignerRoutes([
   {
     path: ROUTES.workspace.dataDesignerJobNew,
     element: NewDataDesignerJobRoute ? <NewDataDesignerJobRoute /> : null,
+    errorElement: <ErrorPanel title="Data Designer" />,
+  },
+  {
+    path: ROUTES.workspace.dataDesignerJobBuild,
+    element: DataDesignerJobBuildRoute ? <DataDesignerJobBuildRoute /> : null,
+    errorElement: <ErrorPanel title="Data Designer" />,
+  },
+  {
+    path: ROUTES.workspace.dataDesignerJobNewLegacy,
+    element: LegacyNewDataDesignerJobRoute ? <LegacyNewDataDesignerJobRoute /> : null,
     errorElement: <ErrorPanel title="Data Designer" />,
   },
 ]);

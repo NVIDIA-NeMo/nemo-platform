@@ -480,6 +480,15 @@ export const getNewDataDesignerJobRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.dataDesignerJobNew, { workspace });
 };
 
+export const getDataDesignerJobBuildRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.dataDesignerJobBuild, { workspace });
+};
+
+/** Not linked from any UI — reachable only by typing the URL. */
+export const getLegacyNewDataDesignerJobRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.dataDesignerJobNewLegacy, { workspace });
+};
+
 export const getModelChatRoute = (model: NamedEntityRef) => {
   const { modelNamespace, modelName } = getModelRouteParamsFromEntityRef(model);
   return generatePath(ROUTES.models.modelChat, { modelNamespace, modelName });

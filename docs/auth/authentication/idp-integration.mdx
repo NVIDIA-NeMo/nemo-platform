@@ -1,0 +1,27 @@
+---
+title: "Integrate NeMo Platform With An Identity Provider"
+description: ""
+---
+NeMo Platform integrates with external OIDC identity providers. Some reference
+providers live under `contrib/auth/*`.  These are examples that can be adapted
+to work in production.
+
+## Provider References
+
+- `contrib/auth/authentik`
+
+Each provider bundle includes a gateway layer that strips inbound
+`X-NMP-Principal-*` headers before traffic reaches NeMo.
+
+For workload authentication, the gateway should validate the bearer token and
+derive NeMo's trusted header contract from verified claims rather than passing
+through caller-supplied identity headers. The Authentik reference demonstrates
+the first-pass workload mapping:
+
+- `sub` -> `X-NMP-Principal-Id`
+- `groups` -> `X-NMP-Principal-Groups`
+
+The demo workload token contract is:
+
+- `NEMO_WORKLOAD_TOKEN`
+- `NEMO_WORKLOAD_TOKEN_FILE`

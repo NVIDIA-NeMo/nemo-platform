@@ -161,15 +161,6 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
             self._finish_logs(metadata)
 
     def schedule(self, executor_config: SubprocessExecutionProvider, step: PlatformJobStepWithContext) -> JobUpdate:
-        ttl_seconds = self._execution_profile_config.ttl_seconds_before_active
-        if self.should_enforce_before_active_ttl(step) and self.check_step_ttl_before_active(step, ttl_seconds):
-            message = f"Job timed out after reaching max TTL of {ttl_seconds} seconds"
-            return JobUpdate(
-                status=PlatformJobStatus.ERROR.value,
-                status_details={"message": message},
-                error_details={"message": message},
-            )
-
         if not executor_config.command:
             return JobUpdate(
                 status=PlatformJobStatus.ERROR.value,

@@ -33,7 +33,7 @@ from nmp.guardrails.config import GuardrailsServiceConfig
 from nmp.guardrails.service import GuardrailsService
 from nmp.platform_seed.config import PlatformSeedConfig
 from nmp.platform_seed.tasks.seed import run_platform_seed
-from nmp.testing.client import create_test_client
+from nmp.testing.client import SDKTestClientAdapter, create_test_client
 
 # Default workspace for tests
 DEFAULT_WORKSPACE = "default"
@@ -165,7 +165,7 @@ def http_client() -> Generator[TestClient, None, None]:
 @pytest.fixture(scope="module")
 def sdk(http_client: TestClient) -> NeMoPlatform:
     """SDK client backed by the test client."""
-    return NeMoPlatform(base_url="http://testserver", http_client=http_client)
+    return NeMoPlatform(base_url="http://testserver", http_client=SDKTestClientAdapter(http_client))
 
 
 def _generate_guardrail_config(name: str | None = None):

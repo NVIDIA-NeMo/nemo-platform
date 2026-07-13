@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
-from typing import Any, Literal, Self
+from typing import Literal, Self
 
 from nmp.common.api.common import Page
 from nmp.common.entities.values import DatetimeFilter
@@ -43,14 +43,6 @@ class SpanFilter(BaseModel):
     trace_id: str | None = Field(default=None, description="Filter by canonical trace id.")
     project: str | None = Field(default=None, description="Filter by project name.")
     evaluation_id: str | None = Field(default=None, description="Filter by evaluation id.")
-    evaluation_sha: str | None = Field(default=None, description="Filter by evaluation sha.")
-    evaluation_run_id: str | None = Field(
-        default=None,
-        description=(
-            "Filter by evaluation run id. ATIF evaluation context is stored on root trajectory spans; "
-            "use session_id from a matched root to fetch the full trace tree."
-        ),
-    )
     dataset_id: str | None = Field(default=None, description="Filter by dataset id.")
     dataset_name: str | None = Field(default=None, description="Filter by dataset name.")
     dataset_version: str | None = Field(default=None, description="Filter by dataset version.")
@@ -76,31 +68,19 @@ class SpanFilter(BaseModel):
 
 
 class SpanEvaluationContext(BaseModel):
-    # Keep fields aligned with the ingest EvaluationContext. This read model does not
-    # enforce ingest-side cross-field validation so historical rows can be read.
+    # Read model for span evaluation context, aligned with the ingest EvaluationContext.
     model_config = ConfigDict(extra="forbid")
 
     evaluation_id: str | None = None
-    evaluation_sha: str | None = None
-    evaluation_run_id: str | None = None
     test_case_id: str | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
-    def from_semantic_attributes(
-        cls,
-        attributes: SpanSemanticAttributes,
-        *,
-        metadata: dict[str, Any] | None,
-    ) -> Self | None:
+    def from_semantic_attributes(cls, attributes: SpanSemanticAttributes) -> Self | None:
         context = cls(
             evaluation_id=attributes.evaluation_id,
-            evaluation_sha=attributes.evaluation_sha,
-            evaluation_run_id=attributes.evaluation_run_id,
             test_case_id=attributes.test_case_id,
-            metadata=metadata or {},
         )
-        if metadata is None and not context.has_scalar_values():
+        if not context.has_scalar_values():
             return None
         return context
 
@@ -109,8 +89,6 @@ class SpanEvaluationContext(BaseModel):
             value is not None
             for value in (
                 self.evaluation_id,
-                self.evaluation_sha,
-                self.evaluation_run_id,
                 self.test_case_id,
             )
         )
@@ -173,7 +151,7 @@ class Span(BaseModel):
             session_id=span.session_id,
             workspace=span.workspace,
             project=semantic_attributes.project,
-            evaluation_context=_evaluation_context(semantic_attributes, attribute_bags),
+            evaluation_context=_evaluation_context(semantic_attributes),
             parent_span_id=span.external_parent_span_id or None,
             kind=span.kind,
             name=span.name or None,
@@ -221,12 +199,8 @@ class SpanGroupsPage(Page[SpanGroup]):
 
 def _evaluation_context(
     attributes: SpanSemanticAttributes,
-    attribute_bags: SpanAttributeBags,
 ) -> SpanEvaluationContext | None:
-    return SpanEvaluationContext.from_semantic_attributes(
-        attributes,
-        metadata=attribute_bags.evaluation_metadata(),
-    )
+    return SpanEvaluationContext.from_semantic_attributes(attributes)
 
 
 def _usage_details(attributes: SpanSemanticAttributes) -> dict[str, int]:

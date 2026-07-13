@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccordionPanel } from '@nemo/common/src/components/AccordionPanel';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { KVPair } from '@nemo/common/src/components/KVPair';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import {
   Badge,
   Block,
@@ -19,6 +21,7 @@ import {
   Text,
 } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
+import { StatusLogsContent } from '@studio/components/evaluation/Jobs/StatusLogsContent';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -38,7 +41,7 @@ import { fetchEvalAverageScores } from '@studio/routes/agents/AgentSuggestionsRo
 import { getAgentEvaluationsListRoute, getAgentsListRoute } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ClipboardList, FlaskConical, FolderOpen } from 'lucide-react';
+import { ClipboardList, FlaskConical, FolderOpen, ScrollText } from 'lucide-react';
 import { type FC } from 'react';
 
 const TERMINAL_STATUSES = new Set([
@@ -288,6 +291,14 @@ export const AgentEvaluationDetailRoute: FC = () => {
         {isJobTerminal && !isLoadingWorkflow && workflowOutput && workflowOutput.length > 0 && (
           <WorkflowOutputPanel items={workflowOutput} evaluatorOutputs={evaluatorOutputs ?? []} />
         )}
+
+        <AccordionPanel slotHeading="Logs" slotIcon={<ScrollText />}>
+          <StatusLogsContent
+            workspace={workspace}
+            jobName={jobName}
+            jobStatus={job.status as PlatformJobStatus}
+          />
+        </AccordionPanel>
 
         {isJobTerminal && !isLoadingConfigFiles && (configFiles ?? []).length > 0 && (
           <EvalConfigFilesPanel files={configFiles!} />
