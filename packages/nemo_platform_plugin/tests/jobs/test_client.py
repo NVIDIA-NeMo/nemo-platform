@@ -108,9 +108,7 @@ def test_download_job_result_reads_bytes() -> None:
     stream_ctx = MagicMock()
     raw = httpx.Response(
         200,
-        request=httpx.Request(
-            "GET", f"{BASE}/apis/jobs/v2/workspaces/default/jobs/j/results/out/download"
-        ),
+        request=httpx.Request("GET", f"{BASE}/apis/jobs/v2/workspaces/default/jobs/j/results/out/download"),
         content=b"artifact-bytes",
     )
     stream_ctx.__enter__.return_value = raw

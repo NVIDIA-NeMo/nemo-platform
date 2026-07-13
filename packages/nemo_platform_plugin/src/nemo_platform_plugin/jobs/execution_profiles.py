@@ -35,7 +35,7 @@ from nemo_platform_plugin.jobs.constants import (
 )
 from nemo_platform_plugin.jobs.providers import ComputeResources
 from nemo_platform_plugin.jobs.spec import BaseExecutionProfile, ProviderRef
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Default image used to set filesystem permissions on job storage volumes.
 DEFAULT_VOLUME_PERMISSIONS_IMAGE = "busybox"
@@ -79,6 +79,9 @@ RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES: frozenset[str] = frozenset(
 
 class ImagePullSecret(BaseModel):
     """Kubernetes image pull secret reference."""
+
+    # extra=forbid keeps additionalProperties: false on the generated schema.
+    model_config = ConfigDict(extra="forbid")
 
     name: str = Field(description="Kubernetes Secret name for pulling images")
 

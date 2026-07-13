@@ -156,26 +156,20 @@ class DockerTimestampParseResult:
     is_zero: bool
 
 
+# Server-side override: the default network name comes from the
+# ``NEMO_JOBS_DEFAULT_DOCKER_NETWORK`` env var (used by quickstart and e2e).
+# No docstring on purpose — a docstring would surface as the schema
+# ``description``, and this type carries none on the wire.
 class DockerJobNetworkConfig(PluginDockerJobNetworkConfig):
-    """Server-side Docker network config.
-
-    Overrides the plugin data model's default so the network name can be set at
-    runtime via the ``NEMO_JOBS_DEFAULT_DOCKER_NETWORK`` env var (used by
-    quickstart and e2e).
-    """
-
     job_container_network: str = Field(
         default=NEMO_JOBS_DEFAULT_DOCKER_NETWORK, description="Docker network for the job container"
     )
 
 
 class DockerJobExecutionProfileConfig(PluginDockerJobExecutionProfileConfig):
-    """Configuration for Docker Job execution profile.
+    """Configuration for Docker Job execution profile."""
 
-    Uses the server-side ``DockerJobNetworkConfig`` (env-var default) for
-    ``networking``.
-    """
-
+    # ``networking`` re-typed to the server ``DockerJobNetworkConfig`` (env-var default).
     networking: DockerJobNetworkConfig = Field(
         default_factory=DockerJobNetworkConfig, description="Docker networking configuration"
     )

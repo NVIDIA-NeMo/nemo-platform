@@ -92,13 +92,11 @@ class PlatformJobListTaskResponse(Value):
 
 
 class PlatformJobStepWithContext(_PluginPlatformJobStepWithContext):
-    """Server-side step-with-context.
+    """Step with additional context from parent job/attempt."""
 
-    Overrides ``auth_context`` with the behaviour-carrying
-    ``nmp.common.auth.AuthContext`` (with ``to_principal`` / ``from_principal``);
-    the plugin base uses the data-only mirror for the wire shape.
-    """
-
+    # Overrides ``auth_context`` with the behaviour-carrying
+    # ``nmp.common.auth.AuthContext`` (``to_principal`` / ``from_principal``);
+    # the plugin base uses the data-only mirror for the wire shape.
     auth_context: Optional[AuthContext] = Field(default=None, description="Auth context for task execution")
 
 

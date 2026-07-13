@@ -605,7 +605,7 @@ def load_from_dict(data: dict, klass: str):
 
 
 class KubernetesVolume(PluginKubernetesVolume):
-    """Kubernetes Volume definition with ``to_k8s()`` conversion (server-side)."""
+    """Kubernetes Volume definition."""
 
     def to_k8s(self) -> client.V1Volume:
         """Convert to Kubernetes V1Volume object."""
@@ -624,7 +624,7 @@ class KubernetesVolume(PluginKubernetesVolume):
 
 
 class KubernetesVolumeMount(PluginKubernetesVolumeMount):
-    """Kubernetes Volume Mount definition with ``to_k8s()`` conversion (server-side)."""
+    """Kubernetes Volume Mount definition."""
 
     def to_k8s(self) -> client.V1VolumeMount:
         """Convert to Kubernetes V1VolumeMount object."""
@@ -637,8 +637,9 @@ class KubernetesVolumeMount(PluginKubernetesVolumeMount):
 
 
 class KubernetesJobStorageConfig(PluginKubernetesJobStorageConfig):
-    """Storage config whose nested volumes carry ``to_k8s()`` (server-side)."""
+    """Configuration for persistent storage in Kubernetes jobs."""
 
+    # Volume fields re-typed to the server subclasses so nested volumes carry ``to_k8s()``.
     additional_volumes: list[KubernetesVolume] = Field(default_factory=list, description="Additional volumes to mount")
     additional_volume_mounts: list[KubernetesVolumeMount] = Field(
         default_factory=list, description="Additional volume mounts"
