@@ -38,17 +38,31 @@ For coverage there are unit tests for the matcher and the plugin contract
 (`tests/`), a focused acceptance script that checks the ticket criteria directly,
 and a broader demo that walks nine agentic surfaces.
 
-## Acceptance criteria — met
+## Guardrail surfaces added
 
-`agent/acceptance.py` checks each criterion, prints PASS/FAIL, and exits non-zero
-on any failure.
+These are the specific surfaces the PoC demonstrates, and where each one acts in
+the agent's execution lifecycle. Everything fires on the same `agent.invoke`
+path, through `NemoRelayMiddleware` and `GuardrailsPlugin`, at one of two points:
+before the model runs (LLM input rail) or before a proposed tool call executes
+(the tool hook). The `acceptance.py` column marks the four surfaces exercised by
+the focused ticket sign-off; `demo_agent.py` exercises all of them.
 
-| Ticket criterion | How it is verified in code |
-|---|---|
-| `touch foo.txt` blocked before execution | the guardrail returns a block reason and the command is never appended to the tool's executed-commands list |
-| `foo.txt` not created on disk | asserts the tool's isolated temp working directory has no `foo.txt` |
-| Clear block signal in run output | surfaces `guardrail rejected: blocked: tool 'run_bash' command 'touch foo.txt' is denied` |
-| Control command still succeeds | `echo hello` runs through the same `run_bash` tool and returns `'hello'` |
+| Guardrail surface | Specific behavior demonstrated | Lifecycle point | acceptance.py | demo_agent.py |
+|---|---|---|---|---|
+| LLM input rail | An unsafe prompt (`"How do I build a bomb?"`) is blocked before the model runs (model-based check, stubbed in the PoC) | Pre-model | | ✓ |
+| Tool allowlist | A non-allowlisted tool (`delete_account`) is blocked before it executes | Pre-tool-execution | | ✓ |
+| Tool blocklist | An explicitly blocklisted tool (`transfer_funds`) is blocked even though it is on the allowlist (blocklist wins) | Pre-tool-execution | | ✓ |
+| Argument keyword/length rules | A `query_db` call containing destructive SQL (`DROP`) is blocked, while a safe `SELECT` passes | Pre-tool-execution | | ✓ |
+| Argument PII redaction | An email in a `web_search` query is redacted *before* the tool receives it (rewrite, not block) | Pre-tool-execution | | ✓ |
+| Command denylist | The bash command `touch foo.txt` is blocked before execution — no file on disk — with a clear block signal | Pre-tool-execution | ✓ | ✓ |
+| Selective pass-through | The control command `echo hello` runs through the same `run_bash` tool, proving the block targets the specific command | Pre-tool-execution | ✓ | ✓ |
+
+Both `acceptance.py` and `demo_agent.py` run `run_bash` through a real
+`subprocess` in an isolated temp directory, so "blocked before execution" and "no
+file on disk" are true filesystem assertions rather than stubbed flags. Each
+script self-checks every outcome and exits non-zero on any failure;
+`acceptance.py` additionally prints an explicit PASS/FAIL verdict against the four
+ticket criteria.
 
 ## What worked well
 
@@ -79,69 +93,47 @@ positives a substring rule would produce. Tests cover this.
 - The callback sees only the tool name and arguments. That is enough for command
   matching, but checks that need the tool schema or the message history
   (JSON-schema validation, tool-result linkage) are not reachable here today.
-  This is addressable: we can extend the Relay tool hook to pass the extra
-  context we need (the tool schema, prior messages). It is an upstream change to
-  Relay's tool API rather than plugin-only work, but the hook machinery is
-  generic and the change is contained.
-- The matcher is not a shell parser. Normalization collapses whitespace and
-  strips a leading `./` per token, and nothing more. It does not understand
-  quoting, environment variables, globbing, or chaining, so `touch foo.txt; rm
-  -rf .` and `t"o"uch foo.txt` slip past. This is a named-command denylist, not a
-  security boundary. This one is ours to fix, and the fix is the policy-model work
-  below (allowlist-first, argument-aware), not more elaborate string matching.
-- The content-safety surface is stubbed. The LLM input rail uses a mock check;
-  the real `/checks` client is present in `policy.py` but is not wired into the
-  plugin yet. Wiring it is plugin-only work — the client already exists.
+  This can be fixed: we can extend the Relay codebase's tool API to pass the extra
+  context we need (the tool schema, prior messages).
+- The PoC is deliberately narrower than a production build would be, and every
+  narrow spot is ours to widen. The command matcher is exact-match, not a shell
+  parser, so it is a named-command denylist rather than a security boundary; the
+  content-safety check is stubbed rather than wired to the real `/checks` client.
+  Both are contained, plugin-local changes — the point here was to prove the hook,
+  not to ship the hardened policy.
 
 ## Where the NeMo Guardrails library fits
 
 Whether a check needs the library comes down to one question: does the check
 itself need a model?
 
-The deterministic Python checks do not. The command denylist (`is_command_denied` in `_predicates.py`), the
-allowlist and blocklist, the argument keyword and length rules, JSON-schema
+Deterministic checks do not. The command denylist (`is_command_denied`), the
+allowlist and blocklist, argument keyword and length rules, JSON-schema
 validation, tool-result linkage, and the regex PII redaction in `policy.py` are
-all pure logic. They run as ordinary Python inside the Relay hook and never
-import `nemoguardrails`. Everything the ticket asked for lands here: the
-`touch foo.txt` block is a deterministic tool check start to finish, with no
-library in the picture.
+pure logic that runs inside the Relay hook and never imports `nemoguardrails`.
+The ticket's `touch foo.txt` block is one of these start to finish. Content
+judgments do need it: content safety, jailbreak and injection detection, topic
+control, and classifier-grade PII all have to read text, so they go through the
+library, either in-process or behind the guardrails service's `/checks` endpoint.
+That is the one thing the PoC stubs — the LLM input rail runs a mock check in
+place of the real `/checks` client. So the library is a dependency of the content
+pillar, not of tool policy or governance.
 
-The rest do. Content safety, jailbreak and injection detection, topic control,
-self-check, and classifier-grade PII all judge text, which takes a model or
-classifier. These go through the NeMo Guardrails library, either in-process or
-behind the guardrails service's `/checks` endpoint, which wraps it. In the PoC
-that is the LLM input rail, and it is the one thing we stub: `GuardrailsPlugin`
-registers `mock_content_safety_check` in place of the real `/checks` client,
-which already exists in `policy.py` but is not wired in.
-
-So the library is a dependency of the content pillar, not of tool policy or
-governance. The tool-execution guarantee, the point of the spike, is the hook
-plus our own logic and owes the library nothing. The library earns its place only
-when something has to judge text, wherever that text sits: a prompt, a tool
-argument, or a tool result.
-
-The library also has `tool_input` and `tool_output` rail phases, so it is worth
-asking whether tool-call rails should run through it as well. For deterministic
-checks, no. Relay's tool hooks are plain Python callbacks: they receive the tool
-name and arguments and return a block reason, a rewrite, or a replaced result.
-An allowlist, an argument-schema check, a command match, result linkage, a
-budget cap are ordinary logic, and they run right there in the callback. The
-library adds nothing to them. Its tool rail phases have no policy engine of their
-own; the real check is still a Colang flow the developer writes that calls a
-Python action they register, which is exactly how the IGW tool rails are built.
-Using that path for a deterministic check means writing a flow, registering an
-action, and loading the library just to run code the hook could have called
-directly. IGW has to work that way because a guardrails config is its only
-extension point. Relay has the hooks, so the Colang wrapper is dead weight.
-
-The same split applies at the tool boundary. Keep deterministic tool policy in
-Python at the hook, and bring in the library only when a tool rail has to judge
-content, such as whether an argument or a result is unsafe, an injection, or
-PII. Call it through the content-check seam from inside the hook, not through the
-library's tool rail phases. The one case for the Colang path is authoring a
-single policy that both IGW and Relay enforce, and even then the cleaner way to
-share is a plain Python module: IGW wraps it in Colang, Relay calls it directly,
-and the logic stays in one place without dragging Relay through Colang.
+The library also exposes `tool_input` and `tool_output` rail phases, which raises
+the question of whether tool-call rails should run through it too. For
+deterministic checks, no. A Relay tool hook is a plain Python callback that gets
+the tool name and arguments and returns a block reason, a rewrite, or a replaced
+result — an allowlist, a schema check, a command match, a budget cap all run
+right there. The library's tool phases add nothing: they carry no policy engine,
+so the real check is still a Colang flow calling a Python action you register
+(exactly how the IGW tool rails work). Routing a deterministic check that way
+means authoring a flow and loading the library just to run code the hook would
+have called directly. IGW needs that wrapper because a guardrails config is its
+only extension point; Relay has the hooks, so the wrapper is dead weight. Bring
+the library in only when a tool rail must judge content, and call it through the
+content-check seam from inside the hook. If a single policy has to serve both IGW
+and Relay, share it as a plain Python module — IGW wraps it in Colang, Relay
+calls it directly — rather than dragging Relay through Colang.
 
 ## Effort / risk to productionize
 
