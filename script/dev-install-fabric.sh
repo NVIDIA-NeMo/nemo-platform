@@ -53,7 +53,7 @@ if [ ! -d "$FABRIC_REPO" ]; then
 fi
 echo "Building + installing nemo-fabric[codex,relay] from $FABRIC_REPO into $VENV_PY ..."
 uv pip install --python "$VENV_PY" "${FABRIC_REPO}[codex,relay]"
-"$VENV_PY" -c "import nemo_fabric; from nemo_fabric import FabricClient, RunResult; print('nemo_fabric OK:', nemo_fabric.__file__)"
+"$VENV_PY" -c "import nemo_fabric; from nemo_fabric import Fabric, RunResult; print('nemo_fabric OK:', nemo_fabric.__file__)"
 
 # 2. nemo-relay gateway binary (codex -> OTLP -> gateway -> trajectory-*.atif.json). Required for
 #    trajectory capture; the pip `nemo-relay` package does NOT ship this executable.

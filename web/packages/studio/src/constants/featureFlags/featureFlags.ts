@@ -59,7 +59,7 @@ export const flagDefinitions = {
   codingAgentStudioEnabled: previewFlag('VITE_FF_CODING_AGENT_STUDIO_ENABLED', false),
   customizerEnabled: previewFlag('VITE_FF_CUSTOMIZER_ENABLED', false),
   dashboardEnabled: previewFlag('VITE_FF_DASHBOARD_ENABLED', false),
-  dataDesignerEnabled: previewFlag('VITE_FF_DATA_DESIGNER_ENABLED'),
+  dataDesignerEnabled: previewFlag('VITE_FF_DATA_DESIGNER_ENABLED', true),
   datasetsEnabled: previewFlag('VITE_FF_DATASETS_ENABLED', true),
   deploymentsEnabled: previewFlag('VITE_FF_DEPLOYMENTS_ENABLED'),
   evaluatorBenchmarksEnabled: previewFlag('VITE_FF_EVALUATOR_BENCHMARKS_ENABLED', false),

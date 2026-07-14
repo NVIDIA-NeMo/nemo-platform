@@ -5412,10 +5412,10 @@ requires-dist = [
     { name = "nemo-platform-sdk", marker = "extra == 'nmp-common'", editable = "sdk/python/nemo-platform" },
     { name = "nemo-platform-sdk", marker = "extra == 'plugins'", editable = "sdk/python/nemo-platform" },
     { name = "nemo-platform-sdk", marker = "extra == 'services'", editable = "sdk/python/nemo-platform" },
-    { name = "nemo-safe-synthesizer", marker = "extra == 'all'", specifier = "==0.1.2" },
-    { name = "nemo-safe-synthesizer", marker = "extra == 'nemo-safe-synthesizer-plugin'", specifier = "==0.1.2" },
-    { name = "nemo-safe-synthesizer", marker = "extra == 'plugins'", specifier = "==0.1.2" },
-    { name = "nemo-safe-synthesizer", marker = "extra == 'services'", specifier = "==0.1.2" },
+    { name = "nemo-safe-synthesizer", marker = "extra == 'all'", specifier = "==0.1.7" },
+    { name = "nemo-safe-synthesizer", marker = "extra == 'nemo-safe-synthesizer-plugin'", specifier = "==0.1.7" },
+    { name = "nemo-safe-synthesizer", marker = "extra == 'plugins'", specifier = "==0.1.7" },
+    { name = "nemo-safe-synthesizer", marker = "extra == 'services'", specifier = "==0.1.7" },
     { name = "nemoguardrails", extras = ["tracing"], marker = "extra == 'all'", specifier = "==0.23.0" },
     { name = "nemoguardrails", extras = ["tracing"], marker = "extra == 'guardrails-service'", specifier = "==0.23.0" },
     { name = "nemoguardrails", extras = ["tracing"], marker = "extra == 'nemo-guardrails-plugin'", specifier = "==0.23.0" },
@@ -6050,7 +6050,7 @@ dev = [
 
 [[package]]
 name = "nemo-safe-synthesizer"
-version = "0.1.2"
+version = "0.1.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -6066,9 +6066,10 @@ dependencies = [
     { name = "setuptools", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "structlog", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "tqdm", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "typing-extensions", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e7/f8/2ec77a08595640b331c420c6978cb626be6f28c770481c0e5a3e900a27ee/nemo_safe_synthesizer-0.1.2-py3-none-any.whl", hash = "sha256:fbf6f9179052d0ac27ad4493238009a5e1c7ae7775354f062d5e90725890b0ce", size = 561741, upload-time = "2026-06-04T20:03:40.12Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/31/573f66c9b87e663d23f061fb1f65ef5b8dc72a0597bff7d4b044e88c2a23/nemo_safe_synthesizer-0.1.7-py3-none-any.whl", hash = "sha256:07ad037e6ded8f7020039fa88efdab4aaaf805ea52fb8238380086e0811eaaf0", size = 586219, upload-time = "2026-07-10T18:34:02.825Z" },
 ]
 
 [[package]]
@@ -6126,7 +6127,7 @@ requires-dist = [
     { name = "lark", marker = "extra == 'nemo-platform-plugin'", specifier = ">=1.1.0" },
     { name = "nemo-platform", editable = "packages/nemo_platform" },
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
-    { name = "nemo-safe-synthesizer", specifier = "==0.1.2" },
+    { name = "nemo-safe-synthesizer", specifier = "==0.1.7" },
     { name = "openai", marker = "extra == 'nemo-platform-plugin'", specifier = ">=1.109.1" },
     { name = "pydantic", marker = "extra == 'nemo-platform-plugin'", specifier = ">=2.10.3" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.9.2" },
