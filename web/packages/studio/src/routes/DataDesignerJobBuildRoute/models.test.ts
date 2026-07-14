@@ -222,9 +222,9 @@ describe('buildModelConfigs', () => {
       {
         alias: 'default',
         model: 'openai/gpt-4o-mini',
+        provider: '',
         inference_parameters: {
           generation_type: 'chat-completion',
-          provider: '',
           max_tokens: 1024,
         },
       },
@@ -248,6 +248,7 @@ describe('buildModelConfigs', () => {
         alias: 'default',
         model: 'nvidia/llama-3.3-nemotron-super-49b-v1.5',
         inference_parameters: { generation_type: 'chat-completion', max_tokens: 1024 },
+        provider: '',
       },
     ]);
   });
