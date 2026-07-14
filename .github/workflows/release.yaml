@@ -755,6 +755,8 @@ jobs:
     name: Signal deployment
     needs: [plan-release, stage-helm, poll-final-release]
     if: >-
+      !cancelled() &&
+      needs.poll-final-release.result == 'success' &&
       needs.plan-release.outputs.include_helm == 'true' &&
       needs.plan-release.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
