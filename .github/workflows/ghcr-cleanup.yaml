@@ -1,16 +1,16 @@
-name: Cleanup GHCR CI Images
+name: Cleanup GHCR Packages
 
 on:
   schedule:
     - cron: "43 4 * * *"
   workflow_dispatch:
     inputs:
-      dry_run:
+      dry-run:
         description: Log stale GHCR package versions without deleting them.
         required: false
         type: boolean
         default: false
-      stale_hours:
+      stale-hours:
         description: Delete versions last updated more than this many hours ago.
         required: false
         type: number
@@ -23,15 +23,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  cleanup:
+  cleanup-ci:
     name: Delete stale GHCR CI image versions
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     env:
-      DRY_RUN: ${{ inputs.dry_run || 'false' }}
-      STALE_HOURS: ${{ inputs.stale_hours || '24' }}
+      DRY_RUN: ${{ inputs['dry-run'] || 'false' }}
+      STALE_HOURS: ${{ inputs['stale-hours'] || '24' }}
+      CLEANUP_SCOPE: ci
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -39,6 +40,28 @@ jobs:
           persist-credentials: false
 
       - name: Delete stale package versions
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/cleanup-ghcr-ci-images.sh
+
+  cleanup-nightly-releases:
+    name: Delete GHCR nightly release versions older than 90 days
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      DRY_RUN: ${{ inputs['dry-run'] || 'false' }}
+      STALE_HOURS: "2160"
+      CLEANUP_SCOPE: nightly-release
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Delete stale nightly release versions
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
