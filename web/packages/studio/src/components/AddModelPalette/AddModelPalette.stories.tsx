@@ -50,7 +50,6 @@ export const WithModels: Story = {
   args: { models, selectedId: 'model-1' },
 };
 
-/** The empty state, before any model is added. */
 export const Empty: Story = {
   args: { models: [], selectedId: null },
 };
