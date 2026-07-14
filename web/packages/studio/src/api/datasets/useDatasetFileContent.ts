@@ -96,15 +96,26 @@ export const datasetFileContentQueryOptions = ({
       } else {
         const start = range ? range[0] : 0;
         const end = range ? range[1] : FILE_PREVIEW_MAX_BYTES - 1;
-        const needsRange =
-          range !== undefined || (fileSize !== null && fileSize > FILE_PREVIEW_MAX_BYTES);
+        // A size-capped preview (no explicit range, file larger than the cap) is
+        // sliced at a raw byte boundary and almost always ends mid-line. Trim
+        // back to the last newline so callers only ever see complete lines —
+        // otherwise a truncated trailing fragment reads as invalid JSON/JSONL
+        // (e.g., the customizer dataset format check) or renders a partial row.
+        const isSizeCappedPreview =
+          range === undefined && fileSize !== null && fileSize > FILE_PREVIEW_MAX_BYTES;
+        const needsRange = range !== undefined || isSizeCappedPreview;
         const blob = await customFetch<Blob>({
           url: fileUrl,
           method: 'GET',
           responseType: 'blob',
           ...(needsRange ? { headers: { Range: `bytes=${start}-${end}` } } : {}),
         });
-        return blob.text();
+        const text = await blob.text();
+        if (isSizeCappedPreview) {
+          const lastNewline = text.lastIndexOf('\n');
+          return lastNewline >= 0 ? text.slice(0, lastNewline + 1) : text;
+        }
+        return text;
       }
     },
   });

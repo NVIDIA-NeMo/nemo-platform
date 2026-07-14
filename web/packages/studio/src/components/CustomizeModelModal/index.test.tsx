@@ -5,7 +5,7 @@ import { CustomizeModelModal } from '@studio/components/CustomizeModelModal';
 import { CUSTOMIZATION_METHODS } from '@studio/components/CustomizeModelModal/constants';
 import { ROUTES } from '@studio/constants/routes';
 import { workspace1 } from '@studio/mocks/entity-store/projects';
-import { getClaudeCodeChatRoute, getPromptTuningFormRoute } from '@studio/routes/utils';
+import { getNewCustomizationJobRoute, getPromptTuningFormRoute } from '@studio/routes/utils';
 import { LOCATION_DISPLAY_TEST_ID } from '@studio/tests/util/constants';
 import { LocationDisplay } from '@studio/tests/util/LocationDisplay';
 import { TestProviders } from '@studio/tests/util/TestProviders';
@@ -43,7 +43,7 @@ const renderModal = ({
           />
         ),
       },
-      { path: getClaudeCodeChatRoute(workspace1.workspace), element: <LocationDisplay /> },
+      { path: getNewCustomizationJobRoute(workspace1.workspace), element: <LocationDisplay /> },
       { path: getPromptTuningFormRoute(workspace1.workspace), element: <LocationDisplay /> },
     ],
     {
@@ -98,12 +98,12 @@ describe('CustomizeModelModal', () => {
     expect(mockOnClose).toHaveBeenCalledTimes(1);
   });
 
-  it('navigates to the Code Agent when fine-tuned is selected and Continue is clicked', async () => {
+  it('navigates to the new customization form when fine-tuned is selected and Continue is clicked', async () => {
     const user = userEvent.setup();
     renderModal();
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     const location = (await screen.findByTestId(LOCATION_DISPLAY_TEST_ID)).textContent;
-    expect(location).toEqual(getClaudeCodeChatRoute(workspace1.workspace));
+    expect(location).toEqual(getNewCustomizationJobRoute(workspace1.workspace));
     expect(mockOnClose).toHaveBeenCalledTimes(1);
   });
 

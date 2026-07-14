@@ -18,7 +18,12 @@ import { customFetch } from '../../generated/fetchers/platform';
 import type { ErrorType } from '../../generated/fetchers/platform';
 import type { HTTPValidationError } from '../../generated/platform/schema';
 
-import type { CustomizationBackend, CustomizationJob } from './schema';
+import type {
+  AutomodelJobInput,
+  CustomizationBackend,
+  CustomizationJob,
+  UnslothJobInput,
+} from './schema';
 
 interface CustomizationCancelJobVariables {
   workspace: string;
@@ -76,6 +81,82 @@ export type CustomizationCancelJobMutationResult = NonNullable<
 >;
 
 export type CustomizationCancelJobMutationError = ErrorType<HTTPValidationError>;
+
+// ----- Create: automodel -----
+
+interface CustomizationCreateAutomodelJobVariables {
+  workspace: string;
+  data: AutomodelJobInput;
+}
+
+export const customizationCreateAutomodelJob = (
+  { workspace, data }: CustomizationCreateAutomodelJobVariables,
+  signal?: AbortSignal
+) => {
+  return customFetch<CustomizationJob>({
+    url: `/apis/customization/v2/workspaces/${encodeURIComponent(String(workspace))}/automodel/jobs`,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    data,
+    signal,
+  });
+};
+
+export const useCustomizationCreateAutomodelJob = <
+  TError = ErrorType<HTTPValidationError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof customizationCreateAutomodelJob>>,
+    TError,
+    CustomizationCreateAutomodelJobVariables,
+    TContext
+  >;
+}) => {
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof customizationCreateAutomodelJob>>,
+    CustomizationCreateAutomodelJobVariables
+  > = (props) => customizationCreateAutomodelJob(props);
+  return useMutation({ mutationFn, ...options?.mutation });
+};
+
+// ----- Create: unsloth -----
+
+interface CustomizationCreateUnslothJobVariables {
+  workspace: string;
+  data: UnslothJobInput;
+}
+
+export const customizationCreateUnslothJob = (
+  { workspace, data }: CustomizationCreateUnslothJobVariables,
+  signal?: AbortSignal
+) => {
+  return customFetch<CustomizationJob>({
+    url: `/apis/customization/v2/workspaces/${encodeURIComponent(String(workspace))}/unsloth/jobs`,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    data,
+    signal,
+  });
+};
+
+export const useCustomizationCreateUnslothJob = <
+  TError = ErrorType<HTTPValidationError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof customizationCreateUnslothJob>>,
+    TError,
+    CustomizationCreateUnslothJobVariables,
+    TContext
+  >;
+}) => {
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof customizationCreateUnslothJob>>,
+    CustomizationCreateUnslothJobVariables
+  > = (props) => customizationCreateUnslothJob(props);
+  return useMutation({ mutationFn, ...options?.mutation });
+};
 
 /**
  * @summary Cancel Job
