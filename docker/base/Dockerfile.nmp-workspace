@@ -13,3 +13,4 @@ COPY packages/nmp_platform/ entrypoint/
 COPY sdk/ sdk/
 COPY script/ script/
 COPY tools/ tools/
+COPY release/ release/

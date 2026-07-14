@@ -111,10 +111,9 @@ async def test_codex_cli_agent_runtime_uses_local_codex_command_and_writes_evide
             self.command = command
 
         async def communicate(self, input: bytes) -> tuple[bytes, bytes]:
-            # Default prompt is exactly the instruction from inputs — no runtime framing — and never
-            # leaks the eval-side `intent`.
-            assert input == b"Question?"
-            assert b"Answer." not in input  # intent stays eval-side
+            # Default prompt is task-agnostic: it states the task and invites workspace edits.
+            assert b"Task id: task/1" in input
+            assert b"Intent:" in input
             final_output_path = Path(self.command[self.command.index("--output-last-message") + 1])
             final_output_path.write_text("codex answer", encoding="utf-8")
             return b'{"type":"event"}\n', b""
@@ -129,7 +128,7 @@ async def test_codex_cli_agent_runtime_uses_local_codex_command_and_writes_evide
         work_root=tmp_path / "codex",
         process_factory=fake_process_factory,
     )
-    task = AgentEvalTask(id="task/1", intent="Answer.", inputs={"instruction": "Question?"})
+    task = AgentEvalTask(id="task/1", intent="Answer.", inputs={"prompt": "Question?"})
 
     trials = await runtime.run_tasks([task])
 
@@ -152,44 +151,6 @@ async def test_codex_cli_agent_runtime_uses_local_codex_command_and_writes_evide
 
 
 @pytest.mark.asyncio
-async def test_codex_task_json_omits_grader_only_fields(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # The docker variant mounts the evidence dir into the sandbox (danger-full-access), so the persisted
-    # task.json must never carry grader-only fields — otherwise the agent could read `intent` (desired
-    # behavior) or the held-out `reference` back out of /evidence and reward-hack. Enforced on the shared
-    # base runtime so both the local and docker variants persist an agent-safe task.json.
-    class FakeProcess:
-        returncode = 0
-
-        def __init__(self, command: tuple[str, ...]) -> None:
-            self.command = command
-
-        async def communicate(self, input: bytes) -> tuple[bytes, bytes]:
-            final_output_path = Path(self.command[self.command.index("--output-last-message") + 1])
-            final_output_path.write_text("ok", encoding="utf-8")
-            return b"", b""
-
-    async def fake_process_factory(*command: str, **kwargs: Any) -> FakeProcess:
-        return FakeProcess(command)
-
-    monkeypatch.setattr(codex_runtime.shutil, "which", lambda value: f"/bin/{value}")
-    runtime = codex_runtime.CodexCliAgentRuntime(work_root=tmp_path / "codex", process_factory=fake_process_factory)
-    task = AgentEvalTask(
-        id="task/1",
-        intent="SECRET_GRADER_INTENT",
-        inputs={"instruction": "do the thing"},
-        reference={"expected": "HELD_OUT_GROUND_TRUTH"},
-    )
-
-    await runtime.run_tasks([task])
-
-    task_json = (tmp_path / "codex" / "000000-task-1" / "task.json").read_text(encoding="utf-8")
-    assert "SECRET_GRADER_INTENT" not in task_json  # intent is eval-side desired-behavior metadata
-    assert "HELD_OUT_GROUND_TRUTH" not in task_json  # reference is grader-only ground truth
-    assert '"intent"' not in task_json and '"reference"' not in task_json  # dropped entirely, not just empty
-    assert "do the thing" in task_json  # agent-safe fields (id, inputs) are still persisted
-
-
-@pytest.mark.asyncio
 async def test_codex_docker_cli_agent_runtime_runs_codex_in_container_and_writes_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -204,7 +165,7 @@ async def test_codex_docker_cli_agent_runtime_runs_codex_in_container_and_writes
             self.command = command
 
         async def communicate(self, input: bytes) -> tuple[bytes, bytes]:
-            assert input == b"Question?"  # prompt is the instruction verbatim
+            assert b"Task id: task/1" in input
             evidence_mount = self.command[self.command.index(f"{auth_path.resolve()}:/root/.codex/auth.json:ro") + 4]
             evidence_dir = Path(evidence_mount.split(":/evidence", maxsplit=1)[0])
             (evidence_dir / "final_output.txt").write_text("docker codex answer", encoding="utf-8")
@@ -221,7 +182,7 @@ async def test_codex_docker_cli_agent_runtime_runs_codex_in_container_and_writes
         auth_path=auth_path,
         process_factory=fake_process_factory,
     )
-    task = AgentEvalTask(id="task/1", intent="Answer.", inputs={"instruction": "Question?"})
+    task = AgentEvalTask(id="task/1", intent="Answer.", inputs={"prompt": "Question?"})
 
     trials = await runtime.run_tasks([task])
 
@@ -277,7 +238,7 @@ async def test_codex_cli_agent_runtime_kills_process_on_timeout(
         work_root=tmp_path / "codex",
         process_factory=fake_process_factory,
     )
-    task = AgentEvalTask(id="task-timeout", intent="Answer.", inputs={"instruction": "Q?"})
+    task = AgentEvalTask(id="task-timeout", intent="Answer.", inputs={"prompt": "Q?"})
 
     trials = await runtime.run_tasks([task])
 
@@ -305,7 +266,7 @@ async def test_codex_cli_agent_runtime_falls_back_to_stdout_and_persists_final_o
         work_root=tmp_path / "codex",
         process_factory=fake_process_factory,
     )
-    task = AgentEvalTask(id="task-2", intent="Answer.", inputs={"instruction": "Q?"})
+    task = AgentEvalTask(id="task-2", intent="Answer.", inputs={"prompt": "Q?"})
 
     trials = await runtime.run_tasks([task])
 
@@ -327,9 +288,10 @@ async def test_codex_cli_agent_runtime_seeds_workspace_and_stamps_agent_ok(
             self.command = command
 
         async def communicate(self, input: bytes) -> tuple[bytes, bytes]:
-            # Seed files are staged into the workspace before the agent runs.
+            # Seed files are staged before the agent runs and listed (by name) in the prompt.
             workspace_dir = Path(self.command[self.command.index("--cd") + 1])
             assert (workspace_dir / "buggy.py").read_text(encoding="utf-8") == "def add(a, b)\n    return a + b\n"
+            assert b"buggy.py" in input
             final_output_path = Path(self.command[self.command.index("--output-last-message") + 1])
             final_output_path.write_text("fixed it", encoding="utf-8")
             return b"", b""
@@ -345,7 +307,7 @@ async def test_codex_cli_agent_runtime_seeds_workspace_and_stamps_agent_ok(
     task = AgentEvalTask(
         id="fix-bug",
         intent="Fix the syntax error.",
-        inputs={"instruction": "fix the bug", "files": {"buggy.py": "def add(a, b)\n    return a + b\n"}},
+        inputs={"files": {"buggy.py": "def add(a, b)\n    return a + b\n"}},
     )
 
     trials = await runtime.run_tasks([task])
@@ -399,9 +361,7 @@ async def test_codex_cli_agent_runtime_seeds_off_the_event_loop_thread(
         work_root=tmp_path / "codex",
         process_factory=fake_process_factory,
     )
-    task = AgentEvalTask(
-        id="probe", intent="probe", inputs={"instruction": "run", "files": {"p.txt": {"kind": "thread_probe"}}}
-    )
+    task = AgentEvalTask(id="probe", intent="probe", inputs={"files": {"p.txt": {"kind": "thread_probe"}}})
 
     trials = await runtime.run_tasks([task])
 

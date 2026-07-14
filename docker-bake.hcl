@@ -291,6 +291,7 @@ group "docker" {
 group "docker-cpu" {
   targets = [
     "nmp-api-docker",
+    "nmp-core-docker",
     "nmp-cpu-tasks-docker",
   ]
 }
@@ -931,6 +932,9 @@ target "auditor-tasks-docker" {
   contexts = {
     root-lib-source-artifacts = "target:root-lib-source-artifacts"
     root-busybox              = "target:root-busybox"
+    nmp-python-base           = "target:nmp-python-base"
+    nmp-python-dev-base       = "target:nmp-python-dev-base"
+    root-distroless-base-3-11 = "target:root-distroless-base-3-11"
   }
   dockerfile = "docker/Dockerfile.auditor-tasks"
   cache-to   = maybe_registry_cache_to("auditor-tasks")

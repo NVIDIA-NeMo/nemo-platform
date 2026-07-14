@@ -10,6 +10,4 @@ runs:
   steps:
     - name: Build policy WASM
       shell: bash
-      env:
-        REPO_ROOT: ${{ github.action_path }}/../../..
-      run: "${REPO_ROOT}/script/build_policy_wasm.sh"
+      run: ./script/build_policy_wasm.sh

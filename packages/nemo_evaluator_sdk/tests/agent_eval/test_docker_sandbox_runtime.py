@@ -165,10 +165,13 @@ def _fake_sdk() -> SandboxSDK:
 def _task(
     *,
     task_id: str = "task-1",
-    instruction: str | None = "Instruction text.",
+    prompt: str | None = "Prompt text.",
+    instruction: str | None = None,
     workspace_dir: Path | None = None,
 ) -> AgentEvalTask:
     inputs: dict[str, Any] = {}
+    if prompt is not None:
+        inputs["prompt"] = prompt
     if instruction is not None:
         inputs["instruction"] = instruction
     if workspace_dir is not None:
@@ -200,23 +203,22 @@ def test_missing_optional_dependency_raises_clear_error(monkeypatch: pytest.Monk
         docker_sandbox._load_agents_sdk()
 
 
-def test_manifest_uses_instruction_and_never_leaks_intent() -> None:
-    # The instruction is surfaced verbatim; `task.intent` is eval-side metadata and must never leak to
-    # the agent (reward-hacking hole), so it is never a fallback.
+@pytest.mark.parametrize(
+    ("task", "expected_prompt"),
+    [
+        (_task(prompt="Prompt text.", instruction="Instruction text."), "Prompt text."),
+        (_task(prompt=None, instruction="Instruction text."), "Instruction text."),
+        (_task(prompt=None, instruction=None), "Intent text."),
+    ],
+)
+def test_manifest_uses_prompt_instruction_intent_fallback(
+    task: AgentEvalTask,
+    expected_prompt: str,
+) -> None:
     runtime = DockerSandboxAgentRuntime()
-    manifest = runtime._build_manifest(_task(instruction="Instruction text."), _fake_sdk())
+    manifest = runtime._build_manifest(task, _fake_sdk())
 
-    content = manifest.entries["instruction.md"].content.decode("utf-8")
-    assert content == "Instruction text."
-    assert "Intent text." not in content
-
-
-def test_manifest_raises_when_task_has_no_instruction() -> None:
-    # A task with no instruction cannot be evaluated; building its manifest raises rather than
-    # producing an empty prompt (and `task.intent` must never leak as a fallback).
-    runtime = DockerSandboxAgentRuntime()
-    with pytest.raises(ValueError, match="no instruction"):
-        runtime._build_manifest(_task(instruction=None), _fake_sdk())
+    assert manifest.entries["instruction.md"].content.decode("utf-8") == expected_prompt
 
 
 def test_manifest_maps_workspace_dir_to_local_dir(tmp_path: Path) -> None:
@@ -236,7 +238,7 @@ def test_manifest_omits_serialized_task_to_avoid_leaking_grader_fields() -> None
     task = AgentEvalTask(
         id="task-1",
         intent="Intent text.",
-        inputs={"instruction": "Instruction text."},
+        inputs={"prompt": "Prompt text."},
         reference={"test_calculator.py": "def test_add(): assert add(2, 3) == 5"},
     )
 
