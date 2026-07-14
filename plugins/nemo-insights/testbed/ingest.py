@@ -5,7 +5,7 @@
 import os
 import time
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Protocol
 from urllib.parse import urlparse
 
@@ -59,7 +59,7 @@ def _make_platform_client(base_url: str) -> NeMoPlatform:
 
 def mint_agent_id(base: str) -> str:
     """A fresh per-run Intake agent id: ``<base>-<YYYYMMDD-HHMMSS>-<4 hex>``."""
-    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     return f"{base}-{ts}-{os.urandom(2).hex()}"
 
 

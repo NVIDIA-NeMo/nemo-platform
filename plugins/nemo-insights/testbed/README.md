@@ -202,11 +202,11 @@ mirror the CLI flags 1:1 (`mode`, `subjects`, `state`, `num_tasks`,
 `num_trials`, `publish_state`, `reason`). Three modes, all validated **green
 on real GitHub Actions** (branch `testbed-ci-insights`; API-export pipeline:
 stack-check
-[run 28880210091](https://github.com/NVIDIA-dev/nemo-insights plugin/actions/runs/28880210091),
+[run 28880210091](https://github.com/NVIDIA-dev/NeMo-Optimizer/actions/runs/28880210091),
 analyze vs `state-v6`
-[run 28880474684](https://github.com/NVIDIA-dev/nemo-insights plugin/actions/runs/28880474684)
+[run 28880474684](https://github.com/NVIDIA-dev/NeMo-Optimizer/actions/runs/28880474684)
 (966 spans re-ingested into `<ws>-state-v6` fixtures), produce smoke ×2 tasks
-[run 28881101719](https://github.com/NVIDIA-dev/nemo-insights plugin/actions/runs/28881101719)
+[run 28881101719](https://github.com/NVIDIA-dev/NeMo-Optimizer/actions/runs/28881101719)
 — round-trip guard green in CI, candidate uploaded, publish skipped on the
 validation trigger):
 

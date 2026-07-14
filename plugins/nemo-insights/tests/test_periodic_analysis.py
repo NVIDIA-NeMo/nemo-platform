@@ -8,12 +8,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
+import httpx
 import pytest
 from nemo_insights_plugin.analyst.analyst_backend import (
     RemoteAnalystBackend,
     _merge_eval_filter,
     _merge_since_filter,
 )
+from nemo_insights_plugin.analyst.result import AnalystResult, InsightUpdate
 from nemo_insights_plugin.config import (
     AnalystSchedulerConfig,
     Frequency,
@@ -58,6 +60,38 @@ def test_merge_since_filter_keeps_later_existing_lower_bound() -> None:
     )
 
     assert result == {"started_at": {"gte": "2026-06-04T13:00:00+00:00"}}
+
+
+def test_merge_since_filter_compares_equivalent_iso_representations() -> None:
+    since = datetime(2026, 6, 4, 12, tzinfo=timezone.utc)
+    current = "2026-06-04T07:00:00-05:00"
+
+    result = _merge_since_filter({"started_at": {"gte": current}}, since=since)
+
+    assert result == {"started_at": {"gte": current}}
+
+
+class _MissingInsights:
+    async def get(self, **kwargs: object) -> None:
+        del kwargs
+        request = httpx.Request("GET", "https://example.com/insights/missing")
+        response = httpx.Response(404, request=request)
+        raise httpx.HTTPStatusError("not found", request=request, response=response)
+
+
+@pytest.mark.asyncio
+async def test_remote_persist_validates_updates_without_trace_refs() -> None:
+    client = SimpleNamespace(insights=SimpleNamespace(insights=_MissingInsights()))
+    backend = RemoteAnalystBackend(client)  # type: ignore[arg-type]
+    result = AnalystResult(
+        summary="Nothing new.",
+        updated_insights=[InsightUpdate(id="missing-insight")],
+    )
+
+    report = await backend.persist_result(workspace="default", agent="research-agent", result=result)
+
+    assert "- skipped (insight not found): missing-insight" in report
+    assert "- updated: missing-insight" not in report
 
 
 def test_merge_eval_filter_pins_evaluation_id() -> None:
@@ -450,7 +484,7 @@ async def test_analyze_job_compile_requests_persistent_storage(
         {
             "name": PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
             "value": DEFAULT_JOB_STORAGE_PATH,
-        }
+        },
     ]
 
 

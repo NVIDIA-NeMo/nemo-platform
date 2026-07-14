@@ -52,7 +52,7 @@ jobs:
     permissions: { contents: read }
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with: { path: nemo-platform }
+        with: { path: nemo-platform, persist-credentials: false }
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           working-directory: nemo-platform
@@ -67,7 +67,7 @@ jobs:
       subjects: ${{ steps.resolve.outputs.subjects }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with: { path: nemo-platform }
+        with: { path: nemo-platform, persist-credentials: false }
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           working-directory: nemo-platform
@@ -84,12 +84,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with: { path: nemo-platform }
+        with: { path: nemo-platform, persist-credentials: false }
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: sierra-research/tau2-bench
           ref: ${{ env.TAU2_BENCH_REF }}
           path: tau2-bench
+          persist-credentials: false
       - uses: ./nemo-platform/.github/actions/insights-testbed-prep
         with: { install-tau2: "false", sync-insights: "false" }
       - uses: ./nemo-platform/.github/actions/insights-intake-stack
@@ -119,12 +120,13 @@ jobs:
         run: |
           [ -n "$INFERENCE_API_KEY" ] || { echo "secret INFERENCE_API_KEY is not set"; exit 1; }
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with: { path: nemo-platform }
+        with: { path: nemo-platform, persist-credentials: false }
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: sierra-research/tau2-bench
           ref: ${{ env.TAU2_BENCH_REF }}
           path: tau2-bench
+          persist-credentials: false
       - uses: ./nemo-platform/.github/actions/insights-testbed-prep
       - uses: ./nemo-platform/.github/actions/insights-intake-stack
       - name: Run subjects (tau2 -> ingest -> insights)
@@ -194,12 +196,13 @@ jobs:
       - name: Require secrets
         run: '[ -n "$INFERENCE_API_KEY" ] || { echo "secret INFERENCE_API_KEY is not set"; exit 1; }'
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with: { path: nemo-platform }
+        with: { path: nemo-platform, persist-credentials: false }
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: sierra-research/tau2-bench
           ref: ${{ env.TAU2_BENCH_REF }}
           path: tau2-bench
+          persist-credentials: false
       - uses: ./nemo-platform/.github/actions/insights-testbed-prep
         with: { install-tau2: "false" }
       - uses: ./nemo-platform/.github/actions/insights-intake-stack

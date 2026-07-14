@@ -21,6 +21,12 @@ def test_repoint_judge_counts_misses():
     assert count == 0
 
 
+def test_repoint_judge_preserves_backslashes():
+    text, count = prep.repoint_judge(TAU2_CONFIG, r"openai\1\judge")
+    assert count == 3
+    assert text.count(r'"openai\1\judge"') == 3
+
+
 def test_mode_pr_event_forces_analyze():
     assert plan.resolve_mode("pull_request", "produce") == "analyze"
 

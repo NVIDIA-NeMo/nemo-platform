@@ -101,12 +101,30 @@ def _merge_datetime_lower_bound(filter_obj: dict | None, *, key: str, since: dat
     if isinstance(existing, dict):
         existing = dict(existing)
         current = existing.get("gte")
-        if current is None or str(current) < lower_bound:
+        current_datetime = _parse_datetime(current)
+        since_datetime = _parse_datetime(since)
+        if current_datetime is None or since_datetime is None or current_datetime < since_datetime:
             existing["gte"] = lower_bound
         merged[key] = existing
     else:
         merged[key] = {"gte": lower_bound}
     return merged
+
+
+def _parse_datetime(value: object) -> datetime | None:
+    """Parse a datetime-like lower bound and normalize it to UTC."""
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    else:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _merge_eval_filter(filter_obj: dict | None, *, evaluation_id: str | None) -> dict | None:
@@ -356,6 +374,8 @@ class RemoteAnalystBackend(AnalystBackend):
                         insight_id=upd.id,
                         trace_refs=upd.trace_refs,
                     )
+                else:
+                    await self._get(workspace=workspace, insight_id=upd.id)
             except InsightNotFoundError:
                 lines.append(f"- skipped (insight not found): {upd.id}")
                 continue
@@ -386,13 +406,21 @@ class RemoteAnalystBackend(AnalystBackend):
         )
 
     async def _add_trace_refs(self, *, workspace: str, insight_id: str, trace_refs: list[str]) -> Insight:
+        current = await self._get(workspace=workspace, insight_id=insight_id)
         try:
-            current = await self._insights.get(workspace=workspace, insight_id=insight_id)
             return await self._insights.update(
                 workspace=workspace,
                 insight_id=insight_id,
                 trace_refs=_union_refs(current.trace_refs, trace_refs),
             )
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise InsightNotFoundError(insight_id) from exc
+            raise
+
+    async def _get(self, *, workspace: str, insight_id: str) -> Insight:
+        try:
+            return await self._insights.get(workspace=workspace, insight_id=insight_id)
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 404:
                 raise InsightNotFoundError(insight_id) from exc

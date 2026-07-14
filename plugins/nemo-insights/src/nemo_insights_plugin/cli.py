@@ -18,8 +18,6 @@ from nemo_platform_plugin.cli import NemoCLI
 DEFAULT_BASE_URL = "http://localhost:8080"
 DEFAULT_WORKSPACE = "default"
 
-# TODO: Add remote train/validation dataset support when remote experiment mode is implemented.
-
 
 class InsightsCLI(NemoCLI):
     """``nemo insights ...`` subcommands."""

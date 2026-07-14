@@ -1,11 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 import re
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from testbed.ingest import mint_agent_id
+from testbed import ingest
+
+mint_agent_id = ingest.mint_agent_id
 
 
 def test_mint_agent_id_format():
@@ -14,6 +17,19 @@ def test_mint_agent_id_format():
 
 def test_mint_agent_id_unique():
     assert mint_agent_id("x") != mint_agent_id("x")
+
+
+def test_mint_agent_id_uses_utc(monkeypatch):
+    class _Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            assert tz is timezone.utc
+            return cls(2026, 7, 14, 20, 42, 1, tzinfo=tz)
+
+    monkeypatch.setattr(ingest, "datetime", _Clock)
+    monkeypatch.setattr(ingest.os, "urandom", lambda _size: b"\xab\xcd")
+
+    assert mint_agent_id("agent") == "agent-20260714-204201-abcd"
 
 
 class _StubResponse:

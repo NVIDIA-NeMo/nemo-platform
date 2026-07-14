@@ -22,7 +22,12 @@ TAU2_ROOT = PLATFORM_ROOT.parent / "tau2-bench"
 def repoint_judge(config_text: str, judge_model: str) -> tuple[str, int]:
     total = 0
     for var in JUDGE_VARS:
-        config_text, n = re.subn(rf"^{var} = .*$", f'{var} = "{judge_model}"', config_text, flags=re.M)
+        config_text, n = re.subn(
+            rf"^{var} = .*$",
+            lambda _match, var=var: f'{var} = "{judge_model}"',
+            config_text,
+            flags=re.M,
+        )
         total += n
     return config_text, total
 
