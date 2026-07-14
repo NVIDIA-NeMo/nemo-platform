@@ -195,6 +195,11 @@ _TRANSCRIPT_MARKER = re.compile(r"\n\n(?:Human|Assistant|User):")
 _GSM8K_ANSWER = re.compile(r"####\s*-?[\d.,/]+\s*$")
 _BOXED_ANSWER = re.compile(r"\\boxed\{")
 
+# A verification target must cover at least this fraction of sampled rows to be asserted. Below it,
+# a "hit" is noise -- e.g. one completion in thousands coincidentally ending in `#### <number>` does
+# not make a dataset verifiable. Tune here; the coverage itself is still reported on the Verifiability.
+_MIN_VERIFIABILITY_COVERAGE = 0.05
+
 
 def _pct(fraction: float) -> str:
     return f"{round(fraction * 100)}%"
@@ -220,20 +225,25 @@ def _detect_verifiability(features: list[FeatureSchema], rows: list[dict]) -> Ve
     if not rows:
         return None
 
+    # Each method wins only if it clears the coverage floor; otherwise fall through to the next, so a
+    # sparse ground_truth column can still yield to an extractable-answer signal instead of masking it.
     ground_truth = next((feature for feature in features if feature.semantic_role == "ground_truth"), None)
     if ground_truth is not None:
         present = sum(1 for row in rows if row.get(ground_truth.name) not in (None, "", []))
         coverage = present / len(rows)
-        detail = f"'{ground_truth.name}' present in {_pct(coverage)} of {len(rows)} sampled rows"
-        return Verifiability(
-            method="ground_truth_column", coverage=coverage, evidence=[Evidence(kind="content_probe", detail=detail)]
-        )
+        if coverage >= _MIN_VERIFIABILITY_COVERAGE:
+            detail = f"'{ground_truth.name}' present in {_pct(coverage)} of {len(rows)} sampled rows"
+            return Verifiability(
+                method="ground_truth_column",
+                coverage=coverage,
+                evidence=[Evidence(kind="content_probe", detail=detail)],
+            )
 
     texts = _completion_texts(features, rows)
     if texts:
         hits = sum(1 for text in texts if _GSM8K_ANSWER.search(text) or _BOXED_ANSWER.search(text))
-        if hits:
-            coverage = hits / len(texts)
+        coverage = hits / len(texts)
+        if coverage >= _MIN_VERIFIABILITY_COVERAGE:
             detail = f"completion ends with an extractable answer (#### or \\boxed) in {_pct(coverage)} of {len(texts)} sampled rows"
             return Verifiability(
                 method="extractable_final_answer",
