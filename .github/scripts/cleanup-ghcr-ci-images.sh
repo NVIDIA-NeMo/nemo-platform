@@ -11,9 +11,9 @@ if [ "${STALE_HOURS}" -lt 1 ]; then
   exit 1
 fi
 
-owner="${GITHUB_REPOSITORY_OWNER,,}"
 repo="${GITHUB_REPOSITORY#*/}"
 repo="${repo,,}"
+repo_root="$(git rev-parse --show-toplevel)"
 
 date_utc() {
   if command -v gdate >/dev/null 2>&1; then
@@ -30,6 +30,24 @@ cutoff="$(date_utc "${STALE_HOURS} hours ago")"
 # Containers use nightly-<timestamp>. Existing Helm charts use
 # <semver>-night-<timestamp>; the release workflow currently emits -nightly-.
 nightly_tag_pattern='^(nightly-[0-9]{14}|[0-9]+[.][0-9]+[.][0-9]+-(night|nightly)-[0-9]{14})$'
+
+# NGC metadata is required for each released container and chart. Its filename
+# is also the corresponding GHCR package name.
+if ! package_id_lines="$(
+  find "${repo_root}/.github/assets/ngc/containers" \
+    "${repo_root}/.github/assets/ngc/charts" \
+    -maxdepth 1 -type f -name '*.md' -exec basename {} .md \; | sort -u
+)"; then
+  echo "Failed to discover NGC metadata files." >&2
+  exit 1
+fi
+
+package_ids=()
+if [ -n "${package_id_lines}" ]; then
+  while IFS= read -r package_id; do
+    package_ids+=("${package_id}")
+  done <<< "${package_id_lines}"
+fi
 
 case "${CLEANUP_SCOPE:-ci}" in
   ci)
@@ -50,11 +68,6 @@ echo "dry_run=${DRY_RUN}"
 total_deleted=0
 total_candidates=0
 
-find_packages() {
-  gh api --paginate "/orgs/${owner}/packages?package_type=container&per_page=100" \
-    | jq -r --arg prefix "${repo}/" '.[] | select(.name | startswith($prefix)) | .name'
-}
-
 url_encode() {
   jq -nr --arg value "$1" '$value|@uri'
 }
@@ -74,20 +87,10 @@ find_stale_versions() {
   gh api --paginate "${endpoint}/versions?per_page=100" --jq "${jq_filter}"
 }
 
-api_error="$(mktemp)"
-if ! package_names="$(find_packages 2>"${api_error}")"; then
-  cat "${api_error}" >&2
-  exit 1
-fi
-
-if [ -z "${package_names}" ]; then
-  echo "No GHCR packages found under ${owner}/${repo}/."
-  exit 0
-fi
-
-while IFS= read -r package_name; do
+for package_id in "${package_ids[@]}"; do
+  package_name="${repo}/${package_id}"
   encoded_package_name="$(url_encode "${package_name}")"
-  endpoint="/orgs/${owner}/packages/container/${encoded_package_name}"
+  endpoint="/orgs/${GITHUB_REPOSITORY_OWNER}/packages/container/${encoded_package_name}"
 
   echo "::group::${package_name}"
 
@@ -128,7 +131,7 @@ while IFS= read -r package_name; do
   done <<< "${stale_versions}"
 
   echo "::endgroup::"
-done <<< "${package_names}"
+done
 
 echo "Stale candidates: ${total_candidates}"
 echo "Deleted versions: ${total_deleted}"

@@ -122,6 +122,7 @@ overrides:
 
   # Text Processing
   chardet: LGPL-2.1-or-later # Character encoding detection
+  defusedxml: PSF-2.0 # PyPI metadata reports PSFL / Python Software Foundation License
   flashtext: MIT # Fast keyword extraction
   json-repair: MIT # Repair invalid JSON
   python-stdnum: LGPL-2.1-or-later # Validate/format standard numbers

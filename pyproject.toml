@@ -267,28 +267,28 @@ constraint-dependencies = [
   "diffusers>=0.38.0",
   "filelock>=3.20.3",
   "jupyter-server>=2.20.0",
-  "jupyterlab>=4.5.7",
+  "jupyterlab>=4.6.1",
   "joserfc>=1.7.2",
   "langchain-community>=0.3.31,<0.4",     # 0.4.x removes the vertexai import path used by ragas 0.4.3
-  "langchain-core>=1.4.8",
-  "langchain-nvidia-ai-endpoints>=1.4.1",
-  "langchain-openai>=1.3.3",
+  "langchain-core>=1.4.9",
+  "langchain-nvidia-ai-endpoints>=1.4.3",
+  "langchain-openai>=1.3.5",
   "langgraph>=1.2.6",
   "langsmith>=0.9.7",
-  "json-repair==0.58.7",                  # osv-scanner UNKNOWN for 0.60.1+; PyPI metadata is MIT
+  "json-repair>=0.60.1",
   "litellm>=1.83.10",
   "lxml>=6.1.0",
   "mistune>=3.3.2",
   "msgpack>=1.2.1",
   "nbconvert>=7.17.1",
-  "nltk>=3.9.4",
-  "pillow>=12.2.0",
+  "nltk>=3.10.0",
+  "pillow>=12.3.0",
   "postcss>=8.5.10",
   "pyasn1>=0.6.3",
   "python-multipart>=0.0.27",
   "regex>=2025.10.22",
   "safetensors>=0.8.0rc0",                # explicit prerelease so uv allows the rc
-  "sqlfluff==4.1.0",
+  "sqlfluff>=4.2.2",
   "starlette>=1.3.1",
   "urllib3>=2.7.0",
   "uv>=0.9.14,<0.10.0",
@@ -305,16 +305,11 @@ override-dependencies = [
   "fschat; sys_platform == 'never'",    # fschat is unmaintained with unfixed High/Medium CVEs; transitive via garak but never imported
   "diskcache; sys_platform == 'never'", # unfixed CVE-2025-69872; transitive via ragas but not imported
   "botocore>=1.40.46,<1.40.62",         # ngcsdk requires botocore>=1.37; upper bound required by aiobotocore 2.25.1 (aioboto3 15.5.0)
-  "langchain>=1.3.11",                  # LangChain CVEs through CVE-2026-45134 and CVE-2025-68664
-  "langchain-core>=1.4.8",              # LangChain Core CVEs through GHSA-qh6h-p6c9-ff54 and CVE-2026-44843
-  "nltk>=3.9.4",                        # NLTK CVEs with available patches; remaining NLTK alerts have no upstream fix
-  "Pillow>=12.2.0",                     # Pillow CVEs through CVE-2026-48624; override: fastembed (via nemoguardrails) pins Pillow<12
   # todo(dn-v2): unpin these. this was originally causing tests to fail.
   "aiodns==3.5.0",
   "pycares==4.11.0",
   "authlib>=1.6.9",          # Critical – nmp-api/core/cpu-tasks/gpu-tasks
   "aiohttp>=3.14.1",         # High/Medium/Low OOS – auditor-tasks + customizer
-  "bleach>=6.4.0",
   "jaraco-context>=6.1.0",   # High OOS – auditor-tasks + customizer
   "joserfc>=1.7.2",
   "pyasn1>=0.6.3",           # High OOS – auditor-tasks + customizer
@@ -328,11 +323,9 @@ override-dependencies = [
   "fastmcp>=3.2.0",          # GHSA-vv7q-7jx5-f767 (Critical) + GHSA-rww4-4w9c-7733 (High); overrides vendored sdk/python/nemo-platform <3 constraint
   "wandb>=0.28.0",           # wandb-core Go CVEs (nspect); unsloth + training images
   "click>=8.2.0",            # Below CVEs are based on constraints that garak has
-  "langchain-openai>=1.3.3",
   "litellm>=1.83.10",        # CVE-2026-42208 (Critical SQL injection), CVE-2026-40217, and 5 other High CVEs
   "python-dotenv>=1.2.2",
   "openai>=2.26.0",
-  "sqlfluff>=4.1.0",         # CVE-2026-46373
 
 ]
 

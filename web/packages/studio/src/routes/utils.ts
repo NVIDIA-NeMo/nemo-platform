@@ -343,6 +343,14 @@ export const getPromptTuningFormRoute = (workspace: string, options?: { model?: 
   return basePath;
 };
 
+export const getNewCustomizationJobRoute = (workspace: string, options?: { model?: string }) => {
+  const basePath = generatePath(ROUTES.workspace.newCustomizationJob, { workspace });
+  if (options?.model) {
+    return `${basePath}?model=${encodeURIComponent(options.model)}`;
+  }
+  return basePath;
+};
+
 export const getNewFilesetRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.filesetNew, { workspace });
 };

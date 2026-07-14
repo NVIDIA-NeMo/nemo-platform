@@ -96,15 +96,21 @@ export const datasetFileContentQueryOptions = ({
       } else {
         const start = range ? range[0] : 0;
         const end = range ? range[1] : FILE_PREVIEW_MAX_BYTES - 1;
-        const needsRange =
-          range !== undefined || (fileSize !== null && fileSize > FILE_PREVIEW_MAX_BYTES);
+        const isSizeCappedPreview =
+          range === undefined && fileSize !== null && fileSize > FILE_PREVIEW_MAX_BYTES;
+        const needsRange = range !== undefined || isSizeCappedPreview;
         const blob = await customFetch<Blob>({
           url: fileUrl,
           method: 'GET',
           responseType: 'blob',
           ...(needsRange ? { headers: { Range: `bytes=${start}-${end}` } } : {}),
         });
-        return blob.text();
+        const text = await blob.text();
+        if (isSizeCappedPreview) {
+          const lastNewline = text.lastIndexOf('\n');
+          return lastNewline >= 0 ? text.slice(0, lastNewline + 1) : text;
+        }
+        return text;
       }
     },
   });

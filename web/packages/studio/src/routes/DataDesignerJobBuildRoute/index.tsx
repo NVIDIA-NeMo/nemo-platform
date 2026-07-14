@@ -1,42 +1,47 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Flex, PageHeader, Text } from '@nvidia/foundations-react-core';
+import { useAllModels } from '@nemo/common/src/api/models/useModels';
+import { groupModelsByWorkspace } from '@nemo/common/src/utils/models';
+import { useDataDesignerCreateJob } from '@nemo/sdk/generated/data-designer/api';
+import { Flex, Stack, Text } from '@nvidia/foundations-react-core';
+import { getErrorMessage } from '@studio/api/common/utils';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
-import { AddColumnPalette } from '@studio/components/AddColumnPalette';
-import type { AddColumnSelection } from '@studio/components/AddColumnPalette/types';
-import { ColumnConfigPanel } from '@studio/components/ColumnConfigPanel';
 import { findTemplate } from '@studio/components/CreateFilesetStart/templates';
 import { DagCanvas } from '@studio/components/DagCanvas';
+import { usePreview } from '@studio/components/NewDataDesignerJobForm/usePreview';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import { BuilderConfigPane } from '@studio/routes/DataDesignerJobBuildRoute/BuilderConfigPane';
+import { BuilderDetailsPanel } from '@studio/routes/DataDesignerJobBuildRoute/BuilderDetailsPanel';
+import { BuilderPalette } from '@studio/routes/DataDesignerJobBuildRoute/BuilderPalette';
+import { BuilderToolbar } from '@studio/routes/DataDesignerJobBuildRoute/BuilderToolbar';
 import {
-  type BuilderColumn,
-  buildColumnsFromTemplate,
-  buildGraph,
-  defaultColumnName,
-  findColumnOption,
+  buildDataDesignerConfig,
+  validateColumns,
 } from '@studio/routes/DataDesignerJobBuildRoute/columns';
-import { getDataDesignerJobListRoute, getNewDataDesignerJobRoute } from '@studio/routes/utils';
-import { type FC, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { validateModels } from '@studio/routes/DataDesignerJobBuildRoute/models';
+import { useJobBuilder } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
+import {
+  getDataDesignerJobDetailsRoute,
+  getDataDesignerJobListRoute,
+  getNewDataDesignerJobRoute,
+} from '@studio/routes/utils';
+import { type FC, useCallback, useMemo, useState } from 'react';
+import { useAuth } from 'react-oidc-context';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 /**
- * The "Build from scratch" column builder. Composes the {@link AddColumnPalette} (left),
- * the {@link DagCanvas} recipe graph (center), and a {@link ColumnConfigPanel} that opens
- * on the right when a column is added or a node is clicked — so the canvas stays visible
- * while the column is configured.
- *
- * Edges are derived from the entered values: a column that references another via a
- * Jinja2 `{{ column_name }}` token (or a column-name field) gets an edge from the
- * referenced column, so the graph reflects real data dependencies rather than add order.
+ * Edges are derived from entered values: Jinja2 `{{ column_name }}` references (and
+ * column-name fields) draw edges so the graph reflects data dependencies, not add order.
  */
 export const DataDesignerJobBuildRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
 
-  // A `?template=<id>` param (set by the "Start from a template" flow) preloads the
-  // canvas with that recipe's columns; without it, the canvas starts empty ("scratch").
+  // `?template=<id>` seeds the canvas from a template recipe; absent = empty canvas.
   const template = useMemo(() => {
     const templateId = searchParams.get('template');
     return templateId ? (findTemplate(templateId) ?? null) : null;
@@ -52,67 +57,125 @@ export const DataDesignerJobBuildRoute: FC = () => {
     ],
   });
 
-  // Seed once from the template (if any). `useState` initializer runs a single time, so
-  // navigating with a template preloads its columns without re-seeding on every render.
-  const [columns, setColumns] = useState<BuilderColumn[]>(() =>
-    template ? buildColumnsFromTemplate(template.columns) : []
-  );
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  // Set only when a column is added, so the canvas centers new nodes but not clicked ones.
-  const [focusId, setFocusId] = useState<string | null>(null);
-  // Continue numbering after any preloaded template columns so ids stay unique.
-  const nextId = useRef(columns.length);
-
-  const selectedColumn = columns.find((column) => column.id === selectedId) ?? null;
-
-  const takenNames = useMemo(
+  const {
+    data: modelsData,
+    isLoading: isLoadingModels,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useAllModels({ workspace });
+  const modelGroups = useMemo(
     () =>
-      new Set(columns.filter((column) => column.id !== selectedId).map((column) => column.name)),
-    [columns, selectedId]
+      groupModelsByWorkspace(modelsData?.pages.flatMap((page) => page.data ?? []) ?? [], {
+        sort: true,
+      }),
+    [modelsData?.pages]
   );
+  const modelsSettled = !isLoadingModels && !hasNextPage && !isFetchingNextPage;
 
-  const { nodes, edges } = useMemo(() => buildGraph(columns), [columns]);
+  const builder = useJobBuilder(template, modelGroups, modelsSettled);
+  const { columns, models } = builder;
 
-  const handleAddColumn = (selection: AddColumnSelection) => {
-    const option = findColumnOption(selection);
-    if (!option) return;
-    const id = `col-${nextId.current++}`;
-    setColumns((prev) => {
-      const name = defaultColumnName(option, new Set(prev.map((column) => column.name)));
-      return [...prev, { id, option, name, values: {} }];
-    });
-    setSelectedId(id);
-    setFocusId(id);
+  const [name, setName] = useState(() => template?.id ?? 'untitled-dataset');
+  const [rows, setRows] = useState('100');
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  // Whether the errors/preview panel below the toolbar is expanded. Runs that produce
+  // output re-open it; the user can collapse it again to focus on the canvas.
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+
+  const validateAndCollectErrors = useCallback(() => {
+    const numRecords = Number(rows);
+    const errors = [...validateColumns(columns), ...validateModels(models)];
+    if (!name.trim()) {
+      errors.push('Fileset name is required.');
+    }
+    if (!Number.isInteger(numRecords) || numRecords < 1) {
+      errors.push('Records to generate must be a whole number of at least 1.');
+    }
+    setValidationErrors(errors);
+    setIsDetailsOpen(true);
+    return errors;
+  }, [columns, models, rows, name]);
+
+  const getCurrentConfig = useCallback(
+    () =>
+      validateColumns(columns).length === 0 && validateModels(models).length === 0
+        ? buildDataDesignerConfig(columns, models)
+        : undefined,
+    [columns, models]
+  );
+  const { previewLogs, isPreviewing, runPreview } = usePreview({
+    workspace,
+    accessToken: user?.access_token ?? undefined,
+    getCurrentConfig,
+  });
+
+  const handlePreview = () => {
+    if (validateAndCollectErrors().length > 0) return;
+    setIsDetailsOpen(true);
+    void runPreview();
   };
 
-  const patchColumn = (id: string, patch: { name?: string; values?: Record<string, string> }) =>
-    setColumns((prev) =>
-      prev.map((column) => (column.id === id ? { ...column, ...patch } : column))
-    );
+  const createJob = useDataDesignerCreateJob();
+  const submitError = createJob.error ? getErrorMessage(createJob.error) : null;
 
-  const removeColumn = (id: string) => {
-    setColumns((prev) => prev.filter((column) => column.id !== id));
-    setSelectedId((current) => (current === id ? null : current));
+  const handleSubmit = async () => {
+    if (validateAndCollectErrors().length > 0) return;
+
+    try {
+      const created = await createJob.mutateAsync({
+        workspace,
+        data: {
+          name,
+          spec: { num_records: Number(rows), config: buildDataDesignerConfig(columns, models) },
+        },
+      });
+      if (created?.name) {
+        navigate(getDataDesignerJobDetailsRoute(workspace, created.name));
+      } else {
+        navigate(getDataDesignerJobListRoute(workspace));
+      }
+    } catch {
+      setIsDetailsOpen(true);
+      // Error surfaced via createJob.error / submitError below.
+    }
   };
 
   return (
     <AccessibleTitle title={heading}>
-      <div className="flex h-full flex-col">
-        <div className="shrink-0 px-density-2xl pt-density-2xl pb-density-xl">
-          <PageHeader
-            slotHeading={heading}
-            slotDescription={
-              template
-                ? `${template.description} Adjust any column, wire in more, then run.`
-                : 'Open an empty canvas and add columns block by block, your way.'
-            }
-          />
-        </div>
+      <Stack className=" h-full">
+        <BuilderToolbar
+          name={name}
+          onNameChange={setName}
+          columnCount={columns.length}
+          templateTag={template?.tag}
+          rows={rows}
+          onRowsChange={setRows}
+          onPreview={handlePreview}
+          isPreviewing={isPreviewing}
+          onSubmit={handleSubmit}
+          isSubmitting={createJob.isPending}
+        />
 
-        <div className="flex min-h-0 flex-1 border-t border-base">
-          <aside className="w-[240px] shrink-0 border-r border-base p-density-lg">
-            <AddColumnPalette onAddColumn={handleAddColumn} />
-          </aside>
+        <BuilderDetailsPanel
+          validationErrors={validationErrors}
+          submitError={submitError}
+          previewLogs={previewLogs}
+          isOpen={isDetailsOpen}
+          onToggle={() => setIsDetailsOpen((open) => !open)}
+        />
+
+        <Flex className="min-h-0 border-t border-base h-full">
+          <BuilderPalette
+            tab={builder.paletteTab}
+            onTabChange={builder.setPaletteTab}
+            models={models}
+            selectedModelId={builder.selectedModelId}
+            modelGroups={modelGroups}
+            isLoadingModels={isLoadingModels}
+            onAddColumn={builder.handleAddColumn}
+            onAddModel={builder.handleAddModel}
+            onSelectModel={builder.selectModel}
+          />
 
           <div className="relative min-w-0 flex-1">
             {columns.length === 0 ? (
@@ -123,34 +186,39 @@ export const DataDesignerJobBuildRoute: FC = () => {
               </Flex>
             ) : (
               <DagCanvas
-                nodes={nodes}
-                edges={edges}
-                onNodeClick={setSelectedId}
-                onNodeDelete={removeColumn}
-                focusNodeId={focusId}
+                nodes={builder.nodes}
+                edges={builder.edges}
+                onNodeClick={builder.selectColumn}
+                onNodeDelete={builder.removeColumn}
+                focusNodeId={builder.focusId}
               />
             )}
           </div>
 
-          <div className="w-[240px] shrink-0 border-l border-base bg-surface-base">
-            {selectedColumn ? (
-              <ColumnConfigPanel
-                column={selectedColumn}
-                takenNames={takenNames}
-                onChange={(patch) => patchColumn(selectedColumn.id, patch)}
-                onRemove={() => removeColumn(selectedColumn.id)}
-                onClose={() => setSelectedId(null)}
-              />
-            ) : (
-              <Flex align="center" justify="center" className="h-full p-density-lg">
-                <Text kind="body/regular/sm" className="text-secondary text-center">
-                  Select a column to configure it, or add one from the left.
-                </Text>
-              </Flex>
-            )}
-          </div>
-        </div>
-      </div>
+          <BuilderConfigPane
+            selectedColumn={builder.selectedColumn}
+            selectedModel={builder.selectedModel}
+            takenNames={builder.takenNames}
+            takenAliases={builder.takenAliases}
+            modelGroups={modelGroups}
+            isLoadingModels={isLoadingModels}
+            onColumnChange={(patch) =>
+              builder.selectedColumn && builder.patchColumn(builder.selectedColumn.id, patch)
+            }
+            onColumnRemove={() =>
+              builder.selectedColumn && builder.removeColumn(builder.selectedColumn.id)
+            }
+            onColumnClose={() => builder.selectColumn(null)}
+            onModelChange={(patch) =>
+              builder.selectedModel && builder.patchModel(builder.selectedModel.id, patch)
+            }
+            onModelRemove={() =>
+              builder.selectedModel && builder.removeModel(builder.selectedModel.id)
+            }
+            onModelClose={() => builder.selectModel(null)}
+          />
+        </Flex>
+      </Stack>
     </AccessibleTitle>
   );
 };

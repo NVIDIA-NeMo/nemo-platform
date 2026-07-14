@@ -1,8 +1,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { FILESET_TEMPLATES } from '@studio/components/CreateFilesetStart/templates';
 import type { StartOption } from '@studio/components/CreateFilesetStart/types';
 import { LayoutGrid, Plus, Sparkles } from 'lucide-react';
+
+/** "N recipe(s)" badge label, kept in sync with the number of authored templates. */
+const RECIPE_COUNT_LABEL = `${FILESET_TEMPLATES.length} ${
+  FILESET_TEMPLATES.length === 1 ? 'recipe' : 'recipes'
+}`;
 
 /**
  * The "How do you want to start?" tiles, in display order. Only "Build from scratch"
@@ -22,7 +28,7 @@ export const START_OPTIONS: StartOption[] = [
     title: 'Start from a template',
     description: 'Pick a ready-made recipe for SFT, classification, RAG eval, tool-use and more.',
     icon: LayoutGrid,
-    tag: { label: '8 recipes', color: 'blue', kind: 'outline' },
+    tag: { label: RECIPE_COUNT_LABEL, color: 'blue', kind: 'outline' },
     enabled: true,
   },
   {

@@ -116,7 +116,15 @@ export interface AutomodelLoRAParams {
   dropout: number;
   merge: boolean;
   target_modules?: string[];
+  /** Module name patterns to exclude from LoRA (e.g. ['*.out_proj']). */
+  exclude_modules?: string[];
+  /** Use the optimized Triton LoRA kernel. Backend defaults to true. */
+  use_triton?: boolean;
 }
+
+export type AutomodelAttnImplementation = 'sdpa' | 'flash_attention_2' | 'eager';
+export type AutomodelOptimizerAlgo = 'Adam' | 'AdamW';
+export type AutomodelLrDecayStyle = 'cosine' | 'linear' | 'constant';
 
 export interface AutomodelDatasetSpec {
   /** Training fileset as 'name' or 'workspace/name'. */
@@ -130,6 +138,8 @@ export interface AutomodelTrainingSpec {
   finetuning_type: AutomodelFinetuningType;
   lora?: AutomodelLoRAParams;
   max_seq_length: number;
+  /** Attention kernel implementation. Backend defaults to 'sdpa'. */
+  attn_implementation?: AutomodelAttnImplementation;
   /** Model precision for training. Auto-detected from the checkpoint when unset. */
   precision?: Precision;
   execution_profile?: string;
@@ -152,6 +162,8 @@ export interface AutomodelBatchSpec {
   global_batch_size: number;
   micro_batch_size: number;
   sequence_packing: boolean;
+  /** Max samples sampled to estimate packing. Backend defaults to 1000. */
+  sequence_packing_max_samples?: number;
 }
 
 export interface AutomodelOptimizerSpec {
@@ -161,6 +173,12 @@ export interface AutomodelOptimizerSpec {
   adam_beta1: number;
   adam_beta2: number;
   warmup_steps: number;
+  /** Adam/AdamW epsilon. Backend defaults to 1e-8. */
+  adam_eps?: number;
+  /** Optimizer algorithm. Backend defaults to 'Adam'. */
+  optimizer?: AutomodelOptimizerAlgo;
+  /** Learning-rate decay schedule. Backend defaults to 'cosine'. */
+  lr_decay_style?: AutomodelLrDecayStyle;
 }
 
 /** Distributed training parallelism configuration (automodel). */
@@ -222,7 +240,12 @@ export interface ModelLoadSpec {
   dtype: UnslothModelDtype;
   trust_remote_code: boolean;
   device_map?: ModelLoadSpecDeviceMap;
+  /** RoPE scaling config passed through to the HF model loader. */
+  rope_scaling?: { [key: string]: unknown } | null;
 }
+
+/** LoRA weight-initialization scheme (unsloth/PEFT). `true` = PEFT default. */
+export type UnslothInitLoraWeights = boolean | 'gaussian' | 'pissa' | 'olora' | 'loftq';
 
 /** LoRA adapter configuration (unsloth). */
 export interface UnslothLoRAParams {
@@ -233,6 +256,18 @@ export interface UnslothLoRAParams {
   bias: UnslothLoRABias;
   use_rslora: boolean;
   random_state: number;
+  /** Use DoRA (weight-decomposed LoRA). Backend defaults to false. */
+  use_dora?: boolean;
+  /** LoftQ quantization config for LoRA init. */
+  loftq_config?: { [key: string]: unknown } | null;
+  /** Extra modules to train and save fully (beyond the adapter). */
+  modules_to_save?: string[] | null;
+  /** Restrict LoRA to specific transformer layer indices. */
+  layers_to_transform?: number | number[] | null;
+  /** Layer-replication ranges for depth up-scaling. */
+  layer_replication?: number[][] | null;
+  /** LoRA weight init scheme. Backend defaults to true (PEFT default). */
+  init_lora_weights?: UnslothInitLoraWeights;
 }
 
 export interface UnslothDatasetSpec {
@@ -261,6 +296,8 @@ export interface UnslothScheduleSpec {
   save_steps?: number;
   eval_steps?: number;
   seed: number;
+  /** Extra kwargs forwarded to the LR scheduler. */
+  lr_scheduler_kwargs?: { [key: string]: unknown } | null;
 }
 
 export interface UnslothBatchSpec {
@@ -272,6 +309,18 @@ export interface UnslothOptimizerSpec {
   learning_rate: number;
   weight_decay: number;
   optim: UnslothOptim;
+  /** Adam/AdamW beta1. Backend defaults to 0.9. */
+  adam_beta1?: number;
+  /** Adam/AdamW beta2. Backend defaults to 0.999. */
+  adam_beta2?: number;
+  /** Adam/AdamW epsilon. Backend defaults to 1e-8. */
+  adam_epsilon?: number;
+  /** Gradient-clipping max norm. Backend defaults to 1.0. */
+  max_grad_norm?: number;
+  /** Label smoothing for cross-entropy. Backend defaults to 0.0 (disabled). */
+  label_smoothing_factor?: number;
+  /** NEFTune embedding-noise alpha. null disables. */
+  neftune_noise_alpha?: number | null;
 }
 
 /** Single-node hardware configuration (unsloth). */
@@ -299,6 +348,52 @@ export interface UnslothJobSpec {
   integrations?: IntegrationsSpec;
   output: UnslothOutputResponse;
   deployment_config?: string | DeploymentParams;
+}
+
+// ===================================================================================
+// Create-request input types (not yet generated; inlined alongside the response types)
+// ===================================================================================
+
+/** Output artifact request used in create-job bodies. */
+export interface OutputRequest {
+  name?: string;
+  description?: string;
+}
+
+/** Automodel create-job request body (wrapped in the platform job envelope). */
+export interface AutomodelJobInput {
+  name?: string;
+  description?: string;
+  spec: {
+    model: string;
+    dataset: AutomodelDatasetSpec;
+    training: Omit<AutomodelTrainingSpec, 'execution_profile'> & { execution_profile?: string };
+    schedule?: Partial<AutomodelScheduleSpec>;
+    batch?: Partial<AutomodelBatchSpec>;
+    optimizer?: Partial<AutomodelOptimizerSpec>;
+    parallelism?: Partial<ParallelismSpec>;
+    // Automodel requires `name` whenever an output object is present.
+    output?: OutputRequest & { name: string };
+    integrations?: IntegrationsSpec;
+  };
+}
+
+/** Unsloth create-job request body (wrapped in the platform job envelope). */
+export interface UnslothJobInput {
+  name?: string;
+  description?: string;
+  spec: {
+    model: Omit<ModelLoadSpec, 'device_map'> & { device_map?: ModelLoadSpecDeviceMap };
+    dataset: UnslothDatasetSpec;
+    training?: Omit<UnslothTrainingSpec, 'training_type'> & { training_type?: 'sft' };
+    schedule?: Partial<UnslothScheduleSpec>;
+    batch?: Partial<UnslothBatchSpec>;
+    optimizer?: Partial<UnslothOptimizerSpec>;
+    hardware?: Partial<HardwareSpec>;
+    output?: OutputRequest & { save_method?: UnslothSaveMethod };
+    integrations?: IntegrationsSpec;
+    deployment_config?: string | DeploymentParams;
+  };
 }
 
 // ===================================================================================
