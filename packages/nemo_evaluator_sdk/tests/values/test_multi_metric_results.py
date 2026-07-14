@@ -7,11 +7,11 @@ from nemo_evaluator_sdk.values.multi_metric_results import (
     collapse_results,
     namespace_result,
 )
+from nemo_evaluator_sdk.values.protocol import MetricDiagnostic, MetricOutput
 from nemo_evaluator_sdk.values.results import (
     AggregatedMetricResult,
     AggregateRangeScore,
     EvaluationResult,
-    MetricOutput,
     Percentiles,
     RowScore,
 )
@@ -153,6 +153,54 @@ class TestNamespaceResult:
             )
         ]
 
+    def test_preserves_diagnostics_when_keyed_by_metric(self):
+        diagnostics = [
+            MetricDiagnostic(
+                message="mismatch",
+                details={"expected": "yes", "actual": "no"},
+            )
+        ]
+        result = _make_evaluation_result(
+            rows=[
+                RowScore(
+                    row_index=1,
+                    item={"id": "row-1"},
+                    sample={},
+                    metrics={"metric-a": [MetricOutput(name="score", value=0.0)]},
+                    requests=[],
+                    metric_diagnostics={"metric-a": diagnostics},
+                )
+            ],
+            aggregate_name="score",
+            mean=0.0,
+        )
+
+        namespaced = namespace_result("metric-a", result, None)
+
+        assert namespaced.row_scores[0].metric_diagnostics == {"metric-a": diagnostics}
+
+    def test_drops_diagnostics_when_not_keyed_by_metric(self):
+        # Unlike outputs/errors, diagnostics do not remap a single differently keyed entry.
+        result = _make_evaluation_result(
+            rows=[
+                RowScore(
+                    row_index=1,
+                    item={"id": "row-1"},
+                    sample={},
+                    metrics={"raw": [MetricOutput(name="score", value=0.0)]},
+                    requests=[],
+                    metric_diagnostics={"raw": [MetricDiagnostic(message="mismatch")]},
+                )
+            ],
+            aggregate_name="score",
+            mean=0.0,
+        )
+
+        namespaced = namespace_result("metric-a", result, None)
+
+        assert namespaced.row_scores[0].metrics == {"metric-a": [MetricOutput(name="score", value=0.0)]}
+        assert namespaced.row_scores[0].metric_diagnostics is None
+
     def test_returns_empty_metric_scores_for_failed_row_without_metrics(self):
         result = _make_evaluation_result(
             rows=[
@@ -262,6 +310,47 @@ class TestCollapseResults:
             ),
             per_metric={"metric-a": metric_a, "metric-b": metric_b},
         )
+
+    def test_merges_metric_diagnostics(self):
+        metric_a = _make_evaluation_result(
+            rows=[
+                RowScore(
+                    row_index=0,
+                    item={"id": "row-1"},
+                    sample={},
+                    metrics={"metric-a": [MetricOutput(name="score", value=0.0)]},
+                    requests=[],
+                    metric_diagnostics={
+                        "metric-a": [
+                            MetricDiagnostic(message="mismatch", details={"expected": "yes"}),
+                        ]
+                    },
+                )
+            ],
+            aggregate_name="metric-a.score",
+            mean=0.0,
+        )
+        metric_b = _make_evaluation_result(
+            rows=[
+                RowScore(
+                    row_index=0,
+                    item={"id": "row-1"},
+                    sample={},
+                    metrics={"metric-b": [MetricOutput(name="score", value=1.0)]},
+                    requests=[],
+                    metric_diagnostics={"metric-b": [MetricDiagnostic(message="ok")]},
+                )
+            ],
+            aggregate_name="metric-b.score",
+            mean=1.0,
+        )
+
+        combined = collapse_results({"metric-a": metric_a, "metric-b": metric_b}, None)
+
+        assert combined.row_scores[0].metric_diagnostics == {
+            "metric-a": [MetricDiagnostic(message="mismatch", details={"expected": "yes"})],
+            "metric-b": [MetricDiagnostic(message="ok")],
+        }
 
     def test_to_records_marks_rows_with_metric_errors_as_error(self):
         metric_a = _make_evaluation_result(

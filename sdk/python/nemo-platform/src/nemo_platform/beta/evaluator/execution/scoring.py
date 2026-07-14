@@ -174,6 +174,7 @@ async def score_row(
                 sample=sample,
                 metrics={metric_key: result.outputs},
                 requests=[*generation_requests, *metric_requests],
+                metric_diagnostics={metric_key: result.diagnostics} if result.diagnostics else None,
             ),
         )
     except Exception as e:

@@ -205,10 +205,11 @@ Task-local verification should prefer Evaluator SDK `Metric` implementations.
 Keep reusable mechanics in `shared/evaluator_agent_eval/` helpers and keep
 task-specific files focused on task semantics.
 
-Until the SDK supports enriched row-level metric outputs, task-local diagnostics
-can be emitted as additional numeric metric scores. Once the broader
-`MetricResult` output contract lands, move richer structured diagnostics into
-SDK metric outputs.
+Task-local diagnostics can be emitted as additional numeric metric scores, but
+richer structured context should be attached via `MetricResult.diagnostics`
+(`list[MetricDiagnostic]`: required `message`, optional `details`). See
+`DiffDiagnosticExactMatchMetric` in `packages/nemo_evaluator_sdk/examples/examples.py`
+for the recommended pattern.
 
 ## Planned follow-ups
 
