@@ -10,7 +10,7 @@ The OSS 0.2.0 documentation is scoped to local setup with the Python package and
 
 | Component | Requirement | Notes |
 |-----------|-------------|-------|
-| Python | 3.11, 3.12, 3.13, or 3.14 (`>=3.11,<3.15`) | Use an isolated virtual environment. Python 3.15 and later are not part of the OSS local-install support range. |
+| Python | 3.11, 3.12, 3.13, or 3.14 (`>=3.11,<3.15`) | Use an isolated virtual environment. On Python 3.14, prefix `pip install "nemo-platform[all]"` with `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` while the transitive `litellm` Rust extension catches up to Python 3.14. Python 3.15 and later are not part of the OSS local-install support range. |
 | Package installer | `uv` recommended; `pip` supported | The one-line installer sets up `uv` automatically when needed. |
 | Operating system | Recent Linux or macOS release | See the [Support Matrix](/documentation/reference/support-matrix) for the supported OS list. |
 | Memory | 8 GB RAM minimum | 16 GB or more is recommended for larger local workflows. |

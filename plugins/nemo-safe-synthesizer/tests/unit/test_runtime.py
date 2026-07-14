@@ -51,8 +51,10 @@ def test_cuda_runtime_package_adds_cu129_sources():
         runtime.FLASHINFER_CU129_INDEX_URL,
         "--extra-index-url",
         runtime.PYTORCH_CU129_INDEX_URL,
+        "--extra-index-url",
+        runtime.VLLM_CU129_INDEX_URL,
     ]
-    assert runtime.runtime_package_extra_requirements(runtime_package) == [runtime.vllm_cu129_wheel()]
+    assert runtime.runtime_package_extra_requirements(runtime_package) == []
 
 
 def test_non_cu129_runtime_package_does_not_add_cu129_sources():
@@ -90,7 +92,7 @@ def test_setup_runtime_uses_separate_uv_install_commands(tmp_path, monkeypatch):
     assert "--extra-index-url" in calls[2][0]
     assert runtime.FLASHINFER_CU129_INDEX_URL in calls[2][0]
     assert runtime.PYTORCH_CU129_INDEX_URL in calls[2][0]
-    assert runtime.vllm_cu129_wheel() in calls[2][0]
+    assert runtime.VLLM_CU129_INDEX_URL in calls[2][0]
     assert str(tmp_path / "plugins/nemo-safe-synthesizer") not in calls[2][0]
     assert "nemo-safe-synthesizer[engine,cu129]" in calls[2][0]
     assert calls[3][0] == [

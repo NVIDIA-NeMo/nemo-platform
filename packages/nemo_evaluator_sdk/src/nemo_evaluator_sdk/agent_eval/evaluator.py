@@ -628,10 +628,12 @@ def _default_prompt_template(target: Model | Agent) -> dict[str, Any]:
 
 
 def _task_row(task: AgentEvalTask) -> dict[str, Any]:
+    # `prompt` is what the target under evaluation is prompted with (via the `{{item.prompt}}`
+    # template): a dataset `prompt` column or the agent `instruction`.
     return {
         **task.inputs,
         "task_id": task.id,
-        "prompt": task.inputs.get("prompt") or task.inputs.get("instruction") or task.intent,
+        "prompt": task.inputs.get("prompt") or task.inputs.get("instruction"),
     }
 
 

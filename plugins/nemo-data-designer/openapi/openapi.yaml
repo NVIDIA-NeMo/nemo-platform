@@ -910,10 +910,6 @@ components:
           type: boolean
           title: Drop
           default: false
-        allow_resize:
-          type: boolean
-          title: Allow Resize
-          default: false
         column_type:
           type: string
           const: custom
@@ -1225,10 +1221,6 @@ components:
           type: boolean
           title: Drop
           default: false
-        allow_resize:
-          type: boolean
-          title: Allow Resize
-          default: false
         column_type:
           type: string
           const: embedding
@@ -1313,10 +1305,6 @@ components:
         drop:
           type: boolean
           title: Drop
-          default: false
-        allow_resize:
-          type: boolean
-          title: Allow Resize
           default: false
         column_type:
           type: string
@@ -1506,10 +1494,6 @@ components:
           type: boolean
           title: Drop
           default: false
-        allow_resize:
-          type: boolean
-          title: Allow Resize
-          default: false
         column_type:
           type: string
           const: image
@@ -1697,10 +1681,6 @@ components:
           type: boolean
           title: Drop
           default: false
-        allow_resize:
-          type: boolean
-          title: Allow Resize
-          default: false
         column_type:
           type: string
           const: llm-code
@@ -1803,10 +1783,6 @@ components:
         drop:
           type: boolean
           title: Drop
-          default: false
-        allow_resize:
-          type: boolean
-          title: Allow Resize
           default: false
         column_type:
           type: string
@@ -1913,10 +1889,6 @@ components:
           type: boolean
           title: Drop
           default: false
-        allow_resize:
-          type: boolean
-          title: Allow Resize
-          default: false
         column_type:
           type: string
           const: llm-structured
@@ -2020,10 +1992,6 @@ components:
         drop:
           type: boolean
           title: Drop
-          default: false
-        allow_resize:
-          type: boolean
-          title: Allow Resize
           default: false
         column_type:
           type: string
@@ -2236,8 +2204,8 @@ components:
               embedding: '#/components/schemas/EmbeddingInferenceParams'
               image: '#/components/schemas/ImageInferenceParams'
         provider:
-          title: Provider
           type: string
+          title: Provider
         skip_health_check:
           type: boolean
           title: Skip Health Check
@@ -2247,6 +2215,7 @@ components:
       required:
       - alias
       - model
+      - provider
       title: ModelConfig
       description: "Configuration for a model used for generation.\n\nAttributes:\n\
         \    alias: User-defined alias to reference in column configurations.\n  \
@@ -2254,11 +2223,9 @@ components:
         \    inference_parameters: Inference parameters for the model (temperature,\
         \ top_p, max_tokens, etc.).\n        The generation_type is determined by\
         \ the type of inference_parameters.\n    provider: Name of the model provider.\
-        \ Required in a future release. Leaving\n        ``provider`` unset (or ``None``)\
-        \ currently routes through the registry's\n        implicit default and is\
-        \ **deprecated**; specify ``provider=`` explicitly.\n        See issue #589.\n\
-        \    skip_health_check: Whether to skip the health check for this model. Defaults\
-        \ to False."
+        \ Must match the ``name`` field of a\n        ``ModelProvider`` registered\
+        \ with the surrounding ``DataDesigner`` instance.\n    skip_health_check:\
+        \ Whether to skip the health check for this model. Defaults to False."
     ModelProvider:
       properties:
         name:
@@ -2847,10 +2814,6 @@ components:
           type: boolean
           title: Drop
           default: false
-        allow_resize:
-          type: boolean
-          title: Allow Resize
-          default: false
         column_type:
           type: string
           const: sampler
@@ -3237,10 +3200,6 @@ components:
           type: boolean
           title: Drop
           default: false
-        allow_resize:
-          type: boolean
-          title: Allow Resize
-          default: false
         column_type:
           type: string
           const: seed-dataset
@@ -3590,10 +3549,6 @@ components:
         drop:
           type: boolean
           title: Drop
-          default: false
-        allow_resize:
-          type: boolean
-          title: Allow Resize
           default: false
         column_type:
           type: string

@@ -762,6 +762,8 @@ def _maybe_start_services(
         console.print(f"{CROSS} Local services require extra dependencies that aren't installed.")
         console.print("  Install them with:")
         console.print("    [cyan]pip install 'nemo-platform\\[all]'[/cyan]")
+        console.print("  On Python 3.14, use:")
+        console.print("    [cyan]PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 pip install 'nemo-platform\\[all]'[/cyan]")
         raise typer.Exit(1)
 
     if already_running:

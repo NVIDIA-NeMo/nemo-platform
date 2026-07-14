@@ -355,6 +355,15 @@ export const getSubtleToolDetail = (
   return compactSubtleDetail(getToolSummary(toolName, args)) ?? message;
 };
 
+export const getToolInvocation = (toolName: string, args: ClaudeCodeToolArgs): string => {
+  if (toolName === 'Bash') {
+    const command = args.command;
+    if (typeof command === 'string' && command) return command;
+  }
+
+  return JSON.stringify(args, null, 2);
+};
+
 export const getSubtleToolGroupActions = (
   args: ClaudeCodeToolArgs
 ): readonly SubtleToolAction[] => {
@@ -374,6 +383,7 @@ export const getSubtleToolGroupActions = (
       return {
         detail: getSubtleToolDetail(toolName, actionArgs, message),
         Icon: getSubtleToolIcon(toolName),
+        invocation: getToolInvocation(toolName, actionArgs),
         message,
         toolCallId: getRawStringArg(action, ['toolCallId'])?.trim() ?? `${toolName}-${index}`,
         toolName,
@@ -403,6 +413,7 @@ export const summarizeRepeatedSubtleToolActions = (
     return {
       ...firstAction,
       details: group.map((action) => action.detail),
+      invocations: group.map((action) => action.invocation),
       message: getRepeatedSubtleToolMessage(firstAction.toolName, group.length),
       title: group.map((action) => action.message).join(' | '),
       toolCallId: `${firstAction.toolCallId}-${group.length}`,

@@ -821,45 +821,11 @@ components:
           description: The fraction of invalid records that will stop generation after
             the ``patience`` limit is reached. Must be in [0, 1].
           default: 0.8
-        use_structured_generation:
-          type: boolean
-          title: use_structured_generation
-          description: Whether to use structured generation for better format control.
-          default: false
-        structured_generation_backend:
-          type: string
-          enum:
-          - auto
-          - xgrammar
-          - guidance
-          - outlines
-          - lm-format-enforcer
-          title: structured_generation_backend
-          description: 'The backend used by vLLM when ``use_structured_generation``
-            is ``True``. Supported backends: ''outlines'', ''guidance'', ''xgrammar'',
-            ''lm-format-enforcer''. ''auto'' will allow vLLM to choose the backend.'
-          default: auto
-        structured_generation_schema_method:
-          type: string
-          enum:
-          - auto
-          - regex
-          - json_schema
-          - structural_tag
-          title: structured_generation_schema_method
-          description: The method used to generate the schema from your dataset and
-            pass it to the generation backend. 'auto' picks 'structural_tag' on xgrammar-capable
-            backends and 'regex' otherwise. 'regex' uses a custom regex construction
-            method that tends to be more comprehensive than 'json_schema' at the cost
-            of speed. 'structural_tag' uses XGrammar Structural Tag to compose schema-constrained
-            JSONL output.
-          default: auto
-        structured_generation_use_single_sequence:
-          type: boolean
-          title: structured_generation_use_single_sequence
-          description: Whether to use a regex that matches exactly one sequence or
-            record if ``max_sequences_per_example`` is 1.
-          default: false
+        structured_generation:
+          allOf:
+          - $ref: '#/components/schemas/StructuredGenerationParameters'
+          description: Structured generation parameters controlling schema-constrained
+            output.
         enforce_timeseries_fidelity:
           type: boolean
           title: enforce_timeseries_fidelity
@@ -1822,6 +1788,57 @@ components:
           type: array
       title: StringFilter
       type: object
+    StructuredGenerationParameters:
+      properties:
+        enabled:
+          type: boolean
+          title: enabled
+          description: Whether to use structured generation for better format control.
+          default: false
+        backend:
+          type: string
+          enum:
+          - auto
+          - xgrammar
+          - guidance
+          - outlines
+          - lm-format-enforcer
+          title: backend
+          description: 'The backend used by vLLM when structured generation is enabled.
+            Supported backends: ''outlines'', ''guidance'', ''xgrammar'', ''lm-format-enforcer''.
+            ''auto'' will allow vLLM to choose the backend.'
+          default: auto
+        schema_method:
+          type: string
+          enum:
+          - auto
+          - regex
+          - json_schema
+          - structural_tag
+          title: schema_method
+          description: The method used to generate the schema from your dataset and
+            pass it to the generation backend. 'auto' picks 'structural_tag' on xgrammar-capable
+            backends and 'regex' otherwise. 'regex' uses a custom regex construction
+            method that tends to be more comprehensive than 'json_schema' at the cost
+            of speed. 'structural_tag' uses XGrammar Structural Tag to compose schema-constrained
+            JSONL output.
+          default: auto
+        use_single_sequence:
+          type: boolean
+          title: use_single_sequence
+          description: Whether to use a regex that matches exactly one sequence or
+            record if ``max_sequences_per_example`` is 1.
+          default: false
+      type: object
+      title: StructuredGenerationParameters
+      description: 'Configuration for vLLM structured generation.
+
+
+        These parameters control whether generation is constrained to schema-shaped
+
+        output, which backend enforces the constraint, and how the constraint schema
+
+        is built.'
     TimeSeriesParameters:
       properties:
         is_timeseries:
@@ -1839,8 +1856,8 @@ components:
           type: string
         timestamp_interval_seconds:
           title: Timestamp Interval Seconds
-          description: Interval in seconds between timestamps. If not provided, the
-            timestamp column will be used to infer the interval.
+          description: Positive whole-number interval in seconds between timestamps.
+            If not provided, the timestamp column will be used to infer the interval.
           type: integer
         timestamp_format:
           title: Timestamp Format

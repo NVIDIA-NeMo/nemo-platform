@@ -3,13 +3,14 @@
 
 """InMemoryRunnerBackend — spawns ``nat serve`` subprocesses for agent deployments.
 
-This is the initial backend implementation.  Agent processes run as local
-subprocesses on the same machine as the platform server.  Process state is
-tracked in memory; it is lost if the platform restarts (orphaned processes
-must be cleaned up manually or via OS process management).
+Agent processes run as local subprocesses on the same machine as the platform
+server (``deployment_mode=subprocess``).  Process state is tracked in memory;
+it is lost if the platform restarts (orphaned processes must be cleaned up
+manually or via OS process management).
 
-Future backends (DockerRunnerBackend, K8sRunnerBackend) will replace this for
-production deployments.
+Container modes (docker/k8s) use
+:class:`~nemo_agents_plugin.runner.deployments_backend.DeploymentsRunnerBackend`
+instead.
 
 Module-level helpers ``system_dir_for_workspace`` and ``log_path_for_deployment``
 encode the on-disk layout convention so out-of-process callers (e.g. the
@@ -35,7 +36,8 @@ from typing import Any
 import httpx
 import yaml
 from nemo_agents_plugin.config import AgentsConfig, ControllerConfig
-from nemo_agents_plugin.runner.backend import DeploymentInfo, LogLocation, RunnerBackend
+from nemo_agents_plugin.entities import DeploymentMode
+from nemo_agents_plugin.runner.backend import DeploymentInfo, LocalLog, LogLocation, NotYetAvailable, RunnerBackend
 
 # Match characters not safe for filesystem paths.  Deployment names are
 # normally URL-safe identifiers, but we sanitise defensively to ensure we
@@ -146,9 +148,7 @@ class InMemoryRunnerBackend(RunnerBackend):
         """Instance-level convenience wrapper around :func:`log_path_for_deployment`."""
         return log_path_for_deployment(workspace, name, self._workspace_root)
 
-    def get_log_location(self, workspace: str, name: str) -> "LogLocation":
-        from nemo_agents_plugin.runner.backend import LocalLog, NotYetAvailable
-
+    def get_log_location(self, workspace: str, name: str) -> LogLocation:
         path = log_path_for_deployment(workspace, name, self._workspace_root)
         return LocalLog(path=path) if path.exists() else NotYetAvailable()
 
@@ -192,8 +192,18 @@ class InMemoryRunnerBackend(RunnerBackend):
             except OSError:
                 return False
 
-    async def create_deployment(self, workspace: str, name: str, config: dict[str, Any], port: int) -> DeploymentInfo:
+    async def create_deployment(
+        self,
+        workspace: str,
+        name: str,
+        config: dict[str, Any],
+        port: int,
+        *,
+        image: str | None = None,
+        deployment_mode: DeploymentMode = "subprocess",
+    ) -> DeploymentInfo:
         """Write config to a deterministic file and spawn ``nat serve``."""
+        del image, deployment_mode
         key = (workspace, name)
         config_path = await asyncio.to_thread(self._write_config, workspace, name, config)
         log_path = self.log_path_for(workspace, name)
@@ -242,7 +252,8 @@ class InMemoryRunnerBackend(RunnerBackend):
         config_path = self._temp_files.pop(key, None)
 
         if proc is None and info is None:
-            return False
+            # Already gone — safe for the controller to remove the entity.
+            return True
 
         if proc is not None:
             await asyncio.to_thread(self._terminate, name, proc)

@@ -5,11 +5,9 @@
 
 Implementations:
 - :class:`~nemo_agents_plugin.runner.in_memory.InMemoryRunnerBackend` — spawns
-  ``nat serve`` subprocesses (initial implementation).
-
-Future backends (interface designed to support these):
-- ``DockerRunnerBackend`` — runs agent containers via the Docker API.
-- ``K8sRunnerBackend`` — creates K8s Pods/Deployments for agents.
+  ``nat serve`` subprocesses (subprocess mode).
+- :class:`~nemo_agents_plugin.runner.deployments_backend.DeploymentsRunnerBackend`
+  — durable docker/k8s containers via the nemo-deployments plugin.
 """
 
 from __future__ import annotations
@@ -19,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from nemo_agents_plugin.entities import DeploymentStatus
+from nemo_agents_plugin.entities import DeploymentMode, DeploymentStatus, Endpoint
 
 
 @dataclass(frozen=True)
@@ -59,7 +57,9 @@ class DeploymentInfo:
     name: str
     status: DeploymentStatus = "pending"
     endpoint: str = ""
-    """HTTP endpoint of the process, e.g. ``http://localhost:9001``."""
+    """HTTP endpoint of the process, e.g. ``http://localhost:9001`` (subprocess)."""
+    endpoints: list[Endpoint] = field(default_factory=list)
+    """Projected routable endpoints for container modes."""
     port: int = 0
     pid: int = 0
     error: str = ""
@@ -86,7 +86,16 @@ class RunnerBackend(ABC):
         return 0
 
     @abstractmethod
-    async def create_deployment(self, workspace: str, name: str, config: dict[str, Any], port: int) -> DeploymentInfo:
+    async def create_deployment(
+        self,
+        workspace: str,
+        name: str,
+        config: dict[str, Any],
+        port: int,
+        *,
+        image: str | None = None,
+        deployment_mode: DeploymentMode = "subprocess",
+    ) -> DeploymentInfo:
         """Start the agent process; returns status="starting"."""
         ...
 
@@ -97,7 +106,13 @@ class RunnerBackend(ABC):
 
     @abstractmethod
     async def delete_deployment(self, workspace: str, name: str) -> bool:
-        """Stop + clean up; True if found, False if already gone."""
+        """Stop + clean up.
+
+        Returns ``True`` when teardown is complete (or already gone) and the
+        ``AgentDeployment`` entity may be deleted. Returns ``False`` when
+        teardown is still in progress and the controller should keep the entity
+        in ``deleting`` for a later reconcile pass.
+        """
         ...
 
     @abstractmethod
