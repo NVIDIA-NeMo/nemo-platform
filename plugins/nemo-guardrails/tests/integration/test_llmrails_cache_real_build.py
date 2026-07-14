@@ -245,7 +245,7 @@ def test_supports_colang_version(colang_version: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Phase 3: import_paths injection and tool_output rail behaviour
+# Phase 3: built-in flow injection and tool_output rail behaviour
 # ---------------------------------------------------------------------------
 
 
@@ -259,7 +259,7 @@ def _tool_output_platform_rails(allowed_tools: list[str]) -> PlatformRailsConfig
     )
 
 
-class TestToolRailsImportPathsInjection:
+class TestToolRailsInjection:
     """Phase 3: DefaultLLMRailsBuilder injects tool rail Colang flows so the
     runtime's flow_configs contains our built-in guard flows."""
 

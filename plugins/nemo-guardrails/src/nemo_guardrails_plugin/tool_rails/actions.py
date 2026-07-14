@@ -3,10 +3,9 @@
 
 """Built-in tool rail actions for the NeMo Guardrails plugin.
 
-Each action is registered via import_paths so the nemoguardrails library
-discovers them at LLMRails build time. Policy is read from
-config.custom_data so users can configure it per GuardrailConfig without
-writing custom Colang.
+Each action is registered explicitly when the plugin builds an ``LLMRails``
+instance. Policy is read from ``config.custom_data`` so users can configure it
+per GuardrailConfig without writing custom Colang.
 """
 
 import json
@@ -327,7 +326,6 @@ async def check_tool_result_linkage(
 
         current_calls_by_id: dict[str, dict] = {}
         current_results: list[dict] = []
-        saw_tool_result = False
 
         for message in messages:
             role = message.get("role")
@@ -338,7 +336,6 @@ async def check_tool_result_linkage(
                 current_calls_by_id = {tc["id"]: tc for tc in tool_calls if "id" in tc}
                 current_results = []
             elif role == "tool":
-                saw_tool_result = True
                 current_results.append(message)
             elif role != "tool" and current_results:
                 if not _validate_tool_result_exchange(current_calls_by_id, current_results):
@@ -348,9 +345,6 @@ async def check_tool_result_linkage(
 
         if not _validate_tool_result_exchange(current_calls_by_id, current_results):
             return False
-
-        if not saw_tool_result:
-            return True
 
         return True
     except Exception:
