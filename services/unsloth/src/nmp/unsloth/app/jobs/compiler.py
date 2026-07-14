@@ -51,7 +51,12 @@ from nmp.unsloth.app.constants import (
 from nmp.unsloth.app.jobs.training.compiler import compile_training_step
 from nmp.unsloth.config import config
 from nmp.unsloth.entities.values import FinetuningType
-from nmp.unsloth.images import FILE_IO_TASK_COMMAND, MODEL_ENTITY_TASK_COMMAND, UNSLOTH_PYTHON_ENTRYPOINT, get_tasks_image
+from nmp.unsloth.images import (
+    FILE_IO_TASK_COMMAND,
+    MODEL_ENTITY_TASK_COMMAND,
+    UNSLOTH_PYTHON_ENTRYPOINT,
+    get_tasks_image,
+)
 from nmp.unsloth.schemas import UnslothJobOutput
 
 logger = logging.getLogger(__name__)

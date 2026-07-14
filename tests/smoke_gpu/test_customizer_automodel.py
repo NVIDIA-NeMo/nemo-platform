@@ -44,7 +44,6 @@ def test_bitsandbytes_importable():
     import bitsandbytes  # noqa: F401
 
 
-
 @pytest.mark.smoke_nmp_automodel_training
 def test_nmp_automodel_training_importable():
     import nemo_automodel  # noqa: F401

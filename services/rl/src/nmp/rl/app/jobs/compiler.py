@@ -67,7 +67,13 @@ from nmp.rl.app.jobs.training.schemas import (
 )
 from nmp.rl.config import config
 from nmp.rl.entities.values import FinetuningType, TrainingType
-from nmp.rl.images import FILE_IO_TASK_COMMAND, MODEL_ENTITY_TASK_COMMAND, RL_PYTHON_ENTRYPOINT, get_tasks_image, get_training_image
+from nmp.rl.images import (
+    FILE_IO_TASK_COMMAND,
+    MODEL_ENTITY_TASK_COMMAND,
+    RL_PYTHON_ENTRYPOINT,
+    get_tasks_image,
+    get_training_image,
+)
 from nmp.rl.schemas import DPOTraining, RlJobOutput
 
 logger = logging.getLogger(__name__)

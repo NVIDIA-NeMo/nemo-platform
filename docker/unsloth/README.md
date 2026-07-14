@@ -6,7 +6,7 @@ steps and a dedicated GPU image for training.
 | Image | Dockerfile | Role |
 |-------|------------|------|
 | `nmp-customizer-tasks` | `docker/Dockerfile.nmp-customizer-tasks` | Shared CPU steps (`file_io`, `model_entity`) |
-| `nmp-unsloth-training` | `Dockerfile.nmp-unsloth-training` | NGC PyTorch base + Unsloth ML stack + platform glue. ENTRYPOINT is `/opt/venv/bin/python`. |
+| `nmp-unsloth-training` | `docker/Dockerfile.nmp-unsloth-training` | NGC PyTorch base + Unsloth ML stack + platform glue. ENTRYPOINT is `/opt/venv/bin/python`. |
 
 Bake file: **`docker-bake.hcl`** at the Platform repo root (`context = "."`). Run all commands from the Platform repo root.
 
@@ -316,7 +316,7 @@ nemo files filesets delete qwen-unsloth-smoke-out -w default
   `nmp-{backend}-training` image via env-var overrides.
 - **transformers + huggingface-hub pins** — the training image pins `transformers==4.57.6`
   and `huggingface-hub==0.36.2` in
-  `Dockerfile.nmp-unsloth-training` (compatible with unsloth's upstream
+  `docker/Dockerfile.nmp-unsloth-training` (compatible with unsloth's upstream
   blocklists). Other HF deps (trl, peft, bitsandbytes, etc.) still come from
   unsloth's resolver. **PyTorch + CUDA** stay on the NGC base stack via
   `--system-site-packages` and `preserve_base_torch.txt` / `no_override_requirements.txt`

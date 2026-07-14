@@ -71,3 +71,12 @@ The `sample_config.json` defines what files to upload/download:
 - `upload[].dest`: Target FileSet in format `workspace/fileset-name`
 - `download[].src`: Source FileSet in format `workspace/fileset-name`
 - `download[].dest`: Path relative to job storage defined by NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH
+
+## Next Steps
+
+- **[`nmp-customizer-tasks` image build & runtime](../../../../../../../docker/automodel/README.md)** — bake targets, workspace slice, and smoke commands for the shared CPU image.
+- **[Automodel job compiler](../../app/jobs/compiler.py)** — how download / upload / model-entity steps are compiled onto `nmp-customizer-tasks` with `--service-source automodel --service-name customizer`.
+- **[Shared customization task runners](../../../../../../../packages/nmp_customization_common/README.md)** — `nmp.customization_common.tasks.file_io` and `model_entity` (used by automodel, unsloth, and rl).
+- **[`nmp-automodel` service overview](../../../../../README.md)** — package layout, training image, and plugin integration.
+- **[Customizer docs](../../../../../../../docs/customizer/index.mdx)** — published container images and the end-to-end fine-tuning workflow on the platform.
+
