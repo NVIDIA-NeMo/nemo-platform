@@ -66,6 +66,8 @@ async def validate_fabric_config(
 
 
 def _fabric_validation_types() -> tuple[type, type[Exception]]:
+    # TODO(AIRCORE-896): Keep this import lazy until Fabric SDK/runtime wheels
+    # are available to the repo resolver and can be added as plugin dependencies.
     try:
         from nemo_fabric import Fabric, FabricConfigError
     except ImportError as error:

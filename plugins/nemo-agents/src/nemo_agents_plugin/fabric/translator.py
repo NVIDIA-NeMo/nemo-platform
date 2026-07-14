@@ -66,6 +66,8 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
 
 
 def _fabric_model_types() -> tuple[type, type, type, type, type]:
+    # TODO(AIRCORE-896): Keep this import lazy until Fabric SDK/runtime wheels
+    # are available to the repo resolver and can be added as plugin dependencies.
     try:
         from nemo_fabric import EnvironmentConfig, FabricConfig, HarnessConfig, MetadataConfig, ModelConfig
     except ImportError as error:
