@@ -207,7 +207,7 @@ def _cancel_nss_job(sdk: NeMoPlatform, workspace: str, name: str) -> dict[str, A
         headers=_string_headers(sdk),
         timeout=60.0,
     )
-    if response.status_code == 404:
+    if response.status_code in {404, 409}:
         return None
     assert response.status_code == 200, f"Failed to cancel Safe Synthesizer job {name}: {response.text}"
     return response.json()
