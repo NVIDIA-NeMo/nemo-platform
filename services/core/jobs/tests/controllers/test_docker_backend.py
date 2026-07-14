@@ -58,7 +58,11 @@ from nmp.core.jobs.controllers.backends.docker import (
     DockerVolumeMount,
     GPUDockerJobBackend,
 )
-from nmp.core.jobs.controllers.backends.exceptions import ResourceAllocationError, SchedulingDeferred
+from nmp.core.jobs.controllers.backends.exceptions import (
+    FailedToScheduleError,
+    ResourceAllocationError,
+    SchedulingDeferred,
+)
 from pydantic import ValidationError
 
 from services.core.jobs.tests.controllers.client_mocks import data_response
@@ -1684,6 +1688,23 @@ def test_docker_schedule_defers_when_start_admission_full(docker_job, docker_cli
     finally:
         for _ in range(acquired):
             docker_job._container_start_admission.release()
+
+
+def test_failed_schedule_logs_status_update_failure_and_releases_admission(docker_job, test_job_step):
+    assert docker_job._container_start_admission.acquire(blocking=False)
+    docker_job._run_container_in_thread = MagicMock(
+        side_effect=FailedToScheduleError("container failed", error_details={"message": "container failed"})
+    )
+    docker_job._jobs.update_job_step_status.side_effect = RuntimeError("jobs service unavailable")
+
+    with patch("nmp.core.jobs.controllers.backends.docker.logger.exception") as log_exception:
+        docker_job.run_container(test_job_step, {})
+
+    log_exception.assert_any_call("Failed to schedule container for job step")
+    log_exception.assert_any_call("Failed to persist scheduling error for job step")
+    docker_job._jobs.update_job_step_status.assert_called_once()
+    assert docker_job._container_start_admission.acquire(blocking=False)
+    docker_job._container_start_admission.release()
 
 
 def test_resuming_step_skips_before_active_ttl_enforcement(docker_job, test_job_step):

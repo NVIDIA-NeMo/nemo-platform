@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
-from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient, _type_adapter
 from nemo_platform_plugin.client.endpoint import delete, get, post
 from nemo_platform_plugin.client.errors import NemoHTTPError, NemoResponseValidationError, NotFoundError
 from nemo_platform_plugin.client.response import NemoResponse
@@ -23,6 +23,16 @@ class ItemRequest(BaseModel):
 class ItemResponse(BaseModel):
     id: int
     name: str
+
+
+def test_response_type_adapters_are_cached() -> None:
+    _type_adapter.cache_clear()
+
+    first = _type_adapter(ItemResponse)
+    second = _type_adapter(ItemResponse)
+
+    assert first is second
+    assert _type_adapter.cache_info().misses == 1
 
 
 @post("/apis/test/v2/items")

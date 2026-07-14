@@ -41,7 +41,7 @@ def _patch_client_from_platform():
         yield
 
 
-def _forwarded_filter(sdk: "_CapturingSdk") -> dict:
+def _forwarded_filter(sdk: _CapturingSdk) -> dict:
     """Decode the JSON ``filter`` param the factory pushed through ``query_params``.
 
     The factory bypasses the client's typed ``filter`` handling because the
@@ -357,7 +357,7 @@ class TestForwardedFilterSurvivesSdkSerialization:
     """
 
     @staticmethod
-    def _round_trip(sdk: "_CapturingSdk") -> dict:
+    def _round_trip(sdk: _CapturingSdk) -> dict:
         # The migrated factory forwards a single JSON-encoded ``filter`` string
         # via ``query_params`` — no deep-object array serialization involved.
         filter_value = (sdk.list_kwargs.get("query_params") or {}).get("filter")

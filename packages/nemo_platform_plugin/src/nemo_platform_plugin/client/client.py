@@ -23,6 +23,7 @@ import json
 import time
 from collections.abc import AsyncIterator, Iterator, Mapping
 from contextlib import asynccontextmanager, contextmanager
+from functools import cache
 from pathlib import Path
 from typing import Any, Self, TypeVar, cast, get_args, get_origin, overload
 from urllib.parse import quote
@@ -66,13 +67,19 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 DEFAULT_TIMEOUT = 60.0
 
 
+@cache
+def _type_adapter(response_type: type[ResponseT]) -> TypeAdapter[ResponseT]:
+    """Build each response annotation's validation schema once."""
+    return TypeAdapter(response_type)
+
+
 def _parse_json_body(response_type: type[ResponseT], data: object) -> ResponseT:
     """Parse a decoded JSON body against an endpoint's return annotation.
 
     ``TypeAdapter`` handles both model classes and arbitrary annotations such as
     ``list[Profile]`` while preserving the annotation's type for callers.
     """
-    return TypeAdapter(response_type).validate_python(data)
+    return _type_adapter(response_type).validate_python(data)
 
 
 def _parse_response_body(response_type: type[ResponseT], response: httpx.Response) -> ResponseT:

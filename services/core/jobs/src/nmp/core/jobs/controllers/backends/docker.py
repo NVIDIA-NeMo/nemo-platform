@@ -867,14 +867,17 @@ chmod -R 777 {job_vol}/{storage_subpath}
             try:
                 self._run_container_in_thread(step, container_args)
             except FailedToScheduleError as e:
-                status = PlatformJobStatus.ERROR
-                self._jobs.update_job_step_status(
-                    name=step.name,
-                    workspace=step.workspace,
-                    job=step.job,
-                    body=PlatformJobStatusUpdateRequest(status=status, error_details=e.error_details),
-                )
                 logger.exception("Failed to schedule container for job step")
+                status = PlatformJobStatus.ERROR
+                try:
+                    self._jobs.update_job_step_status(
+                        name=step.name,
+                        workspace=step.workspace,
+                        job=step.job,
+                        body=PlatformJobStatusUpdateRequest(status=status, error_details=e.error_details),
+                    )
+                except Exception:
+                    logger.exception("Failed to persist scheduling error for job step")
             except Exception:
                 logger.exception("Unexpected error while scheduling container for job step")
             finally:

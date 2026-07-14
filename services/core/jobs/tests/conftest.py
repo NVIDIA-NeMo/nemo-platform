@@ -3,6 +3,7 @@
 
 import datetime
 import tempfile
+from contextlib import ExitStack
 from pathlib import Path
 from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -307,13 +308,10 @@ def mock_nmp_client(_mock_files_client, mock_jobs_client):
     patchers += [
         patch(f"{module}.client_from_platform", side_effect=_dispatch) for module in _JOBS_CLIENT_CONTROLLER_MODULES
     ]
-    for p in patchers:
-        p.start()
-    try:
+    with ExitStack() as stack:
+        for patcher in patchers:
+            stack.enter_context(patcher)
         yield mock_client
-    finally:
-        for p in patchers:
-            p.stop()
 
 
 @fixture
