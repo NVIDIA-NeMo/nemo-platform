@@ -3,7 +3,9 @@
 
 from unittest.mock import patch
 
+import httpx
 from client_mocks import paginated_response
+from nemo_platform_plugin.client.errors import NemoTransportError
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobStepWithContext
 from nmp.core.jobs.controllers.backends import JobUpdate
@@ -67,7 +69,7 @@ def test_job_reconciler_logs_diagnostics_for_error_transition_in_debug_mode(
     assert isinstance(test_backend, MockDockerCPUJobBackend)
 
     with (
-        patch.object(test_backend, "sync", return_value=JobUpdate(status=PlatformJobStatus.ERROR.value)),
+        patch.object(test_backend, "sync", return_value=JobUpdate(status=PlatformJobStatus.ERROR)),
         patch("nmp.core.jobs.controllers.reconciler.log_job_diagnostics_if_debug") as log_diagnostics,
     ):
         job_reconciler.step()
@@ -78,3 +80,22 @@ def test_job_reconciler_logs_diagnostics_for_error_transition_in_debug_mode(
         logger=job_reconciler._logger,
         context="step transitioned to error during reconciliation",
     )
+
+
+def test_job_reconciler_marks_itself_unhealthy_after_transport_failure(
+    backend_registry: BackendRegistry,
+    mock_nmp_client,
+    mock_jobs_client,
+):
+    job_reconciler = JobReconciler(backend_registry, mock_nmp_client)
+    mock_jobs_client.list_steps.return_value = paginated_response([])
+    job_reconciler.step()
+    assert job_reconciler.is_healthy
+
+    request = httpx.Request("GET", "http://localhost/apis/jobs/v2/workspaces/-/jobs/-/steps")
+    mock_jobs_client.list_steps.side_effect = NemoTransportError(
+        httpx.ConnectError("Connection refused", request=request)
+    )
+    job_reconciler.step()
+
+    assert not job_reconciler.is_healthy

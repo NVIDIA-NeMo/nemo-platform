@@ -12,13 +12,8 @@ from typing import Generic, Optional, TypeVar
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
+from nemo_platform_plugin.jobs import execution_profiles as _execution_profiles
 from nemo_platform_plugin.jobs.client import JobsClient
-from nemo_platform_plugin.jobs.execution_profiles import (
-    RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES as RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES,
-)
-from nemo_platform_plugin.jobs.execution_profiles import (
-    JobExecutionProfileConfig as JobExecutionProfileConfig,
-)
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from nemo_platform_plugin.jobs.types import PlatformJobStepResponse, PlatformJobStepWithContext
 from nmp.common.config.base import (
@@ -37,6 +32,8 @@ ExecutionProfileConfigT = TypeVar("ExecutionProfileConfigT")
 
 DEFAULT_PROFILE = "default"
 DEFAULT_PROVIDER = "cpu"
+JobExecutionProfileConfig = _execution_profiles.JobExecutionProfileConfig
+RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES = _execution_profiles.RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES
 
 # The env-var-name reserved set and the base ``JobExecutionProfileConfig`` now
 # live in the shared plugin leaf node (imported above) so that both the server
@@ -44,10 +41,7 @@ DEFAULT_PROVIDER = "cpu"
 
 
 class JobUpdate(BaseModel):
-    # Accept the enum or its raw string value: backends historically construct
-    # this with ``PlatformJobStatus.<X>.value`` (a str). The plugin enum is a
-    # ``str``-Enum, so pydantic coerces the string back to the enum.
-    status: PlatformJobStatus | str
+    status: PlatformJobStatus
     status_details: dict | None = None
     error_details: dict | None = None
 

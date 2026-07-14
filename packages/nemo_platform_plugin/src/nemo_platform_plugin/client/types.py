@@ -246,12 +246,12 @@ class PreparedRequest(Generic[ResponseT]):
     response_type: type[ResponseT] | None
     query_params: dict[str, str | int | bool | None] | None = None
     extra_headers: dict[str, str] | None = None
-    client_options: dict[str, Any] | None = None
+    client_options: dict[str, object] | None = None
     # Prebuilt GET to replay on a 409 when ``exist_ok`` is set. Produced by a
     # ``get_on_conflict`` resolver at request-build time (the resolver needs the
     # live ``body`` model, which is serialised away by the time this request is
     # sent). ``send()`` replays it instead of raising ``ConflictError``.
-    on_conflict_get: PreparedRequest | None = None
+    on_conflict_get: PreparedRequest[ResponseT] | None = None
 
     def with_headers(self, headers: dict[str, str]) -> PreparedRequest[ResponseT]:
         """Return a new PreparedRequest with additional headers merged in."""

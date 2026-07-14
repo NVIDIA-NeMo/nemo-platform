@@ -7,9 +7,8 @@ from typing import Any, Generic, Literal, TypeVar
 from kubernetes import client
 from kubernetes.client.models import V1Job, V1JobStatus
 from kubernetes.client.rest import ApiException
-from nemo_platform_plugin.jobs.types import PlatformJobTaskUpdate
+from nemo_platform_plugin.jobs.types import PlatformJobStepWithContext, PlatformJobTaskUpdate
 from nmp.common.jobs.schemas import PlatformJobStatus
-from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobStepWithContext
 from nmp.core.jobs.app.constants import (
     JOB_EXECUTION_BACKEND_LABEL,
     JOB_EXECUTION_PROFILE_LABEL,
@@ -360,7 +359,7 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
         error_details = {"message": f"Job timed out after reaching max TTL of {ttl_seconds} seconds"}
         status_details["events"] = self.get_kube_job_events(k8s_job)
         update_all_tasks(self._nmp_sdk, self._core_v1, self.namespace, step)
-        return JobUpdate(status=status.value, status_details=status_details, error_details=error_details)
+        return JobUpdate(status=status, status_details=status_details, error_details=error_details)
 
     def sync_active(self, step: PlatformJobStepWithContext, job: V1Job | None) -> JobUpdate:
         job_name = name_for_step(step)

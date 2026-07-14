@@ -7,8 +7,8 @@ from typing import Any, Literal
 
 from kubernetes import client
 from kubernetes.client.rest import ApiException
+from nemo_platform_plugin.jobs.types import PlatformJobStepWithContext
 from nmp.common.jobs.schemas import PlatformJobStatus
-from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobStepWithContext
 from nmp.core.jobs.app.constants import (
     JOB_EXECUTION_BACKEND_LABEL,
     JOB_EXECUTION_PROFILE_LABEL,
@@ -627,14 +627,14 @@ class VolcanoJobBackend(
             status_details["events"] = events
             self.terminate_job(job)
             if error_details is not None:
-                status = PlatformJobStatus.ERROR.value
+                status = PlatformJobStatus.ERROR
             else:
-                status = step.status.value
+                status = step.status
             return JobUpdate(status=status, status_details=status_details, error_details=error_details)
         else:
             # If the job was not found, then it has been successfully stopped and removed
             # Transition into terminal state
-            return JobUpdate(status=stop_status.value)
+            return JobUpdate(status=stop_status)
 
     def terminate_job(self, job: dict):
         labels = job.get("metadata", {}).get("labels", {}) or {}

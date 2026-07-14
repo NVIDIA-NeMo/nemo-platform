@@ -151,6 +151,25 @@ class TestPaginatedSync:
         second_call_params = mock_http.request.call_args_list[1][1]["params"]
         assert second_call_params["page"] == 2
 
+    @pytest.mark.parametrize("iteration", ["items", "pages"])
+    def test_iteration_continues_after_response_page(self, iteration: str) -> None:
+        """A request beginning after page one must not fetch that page again."""
+        mock_http = MagicMock(spec=httpx.Client)
+        mock_http.request.side_effect = [
+            _page_response([{"id": 3, "name": "c"}], page=2, total_pages=3),
+            _page_response([{"id": 4, "name": "d"}], page=3, total_pages=3),
+        ]
+        response = NemoClient(base_url=BASE, workspace="default", http_client=mock_http).send(LIST_ITEMS())
+
+        if iteration == "items":
+            names = [item.name for item in response.items()]
+        else:
+            names = [item.name for page in response.pages() for item in page.items]
+
+        assert names == ["c", "d"]
+        assert mock_http.request.call_count == 2
+        assert mock_http.request.call_args_list[1].kwargs["params"]["page"] == 3
+
 
 # ---------------------------------------------------------------------------
 # Via method() descriptor
@@ -216,6 +235,25 @@ class TestPaginatedAsync:
         assert page.page == 1
         assert page.total_pages == 3
         assert mock_http.request.call_count == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("iteration", ["items", "pages"])
+    async def test_async_iteration_continues_after_response_page(self, iteration: str) -> None:
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.request.side_effect = [
+            _page_response([{"id": 3, "name": "c"}], page=2, total_pages=3),
+            _page_response([{"id": 4, "name": "d"}], page=3, total_pages=3),
+        ]
+        response = await AsyncNemoClient(base_url=BASE, workspace="default", http_client=mock_http).send(LIST_ITEMS())
+
+        if iteration == "items":
+            names = [item.name async for item in response.items()]
+        else:
+            names = [item.name async for page in response.pages() for item in page.items]
+
+        assert names == ["c", "d"]
+        assert mock_http.request.call_count == 2
+        assert mock_http.request.call_args_list[1].kwargs["params"]["page"] == 3
 
 
 # ---------------------------------------------------------------------------

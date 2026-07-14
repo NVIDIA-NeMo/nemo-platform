@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""HTTP error hierarchy for the NemoClient.
+"""Error hierarchy for the NemoClient.
 
-Provides :class:`NemoHTTPError` and status-code-specific subclasses
-(e.g. :class:`NotFoundError`, :class:`ConflictError`) raised by
-:func:`raise_for_status` on non-2xx responses.
+All request/response failures derive from :class:`NemoClientError`.
+Non-2xx responses additionally derive from :class:`NemoHTTPError` so callers
+can distinguish an HTTP status from transport and response-validation errors.
 """
 
 from __future__ import annotations
@@ -13,7 +13,41 @@ from __future__ import annotations
 import httpx
 
 
-class NemoHTTPError(Exception):
+class NemoClientError(Exception):
+    """Base class for failures while executing or parsing a client request."""
+
+
+class NemoTransportError(NemoClientError):
+    """Raised when the HTTP transport fails after retries are exhausted."""
+
+    def __init__(self, error: httpx.TransportError) -> None:
+        self.error = error
+        try:
+            self.request = error.request
+        except RuntimeError:
+            self.request = None
+        super().__init__(str(error))
+
+
+class NemoResponseValidationError(NemoClientError):
+    """Raised when a successful response does not match the endpoint contract."""
+
+    def __init__(self, http_response: httpx.Response, error: Exception) -> None:
+        self.http_response = http_response
+        self.status_code = http_response.status_code
+        self.body = self._extract_body(http_response)
+        self.error = error
+        super().__init__("Data returned by API is invalid for the expected schema")
+
+    @staticmethod
+    def _extract_body(resp: httpx.Response) -> object | None:
+        try:
+            return resp.json()
+        except Exception:
+            return None
+
+
+class NemoHTTPError(NemoClientError):
     """Raised on non-2xx HTTP responses.
 
     Attributes:

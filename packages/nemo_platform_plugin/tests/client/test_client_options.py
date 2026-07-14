@@ -11,9 +11,15 @@ import httpx
 import pytest
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.endpoint import delete, get, post
-from nemo_platform_plugin.client.errors import ConflictError, NemoHTTPError, NotFoundError
+from nemo_platform_plugin.client.errors import (
+    ConflictError,
+    NemoHTTPError,
+    NemoResponseValidationError,
+    NemoTransportError,
+    NotFoundError,
+)
 from nemo_platform_plugin.client.method import method
-from nemo_platform_plugin.client.types import PreparedRequest, RetryPolicy
+from nemo_platform_plugin.client.types import BinaryContent, PreparedRequest, RetryPolicy, Stream
 from pydantic import BaseModel
 
 BASE = "http://test:8000"
@@ -40,6 +46,16 @@ def GET_ITEM(*, name: str) -> ItemResponse:
 
 @delete("/apis/test/v2/items/{name}")
 def DELETE_ITEM(*, name: str) -> None:
+    raise NotImplementedError
+
+
+@get("/apis/test/v2/download")
+def DOWNLOAD() -> BinaryContent:
+    raise NotImplementedError
+
+
+@get("/apis/test/v2/events")
+def EVENTS() -> Stream[ItemResponse]:
     raise NotImplementedError
 
 
@@ -392,6 +408,22 @@ class TestRetryPolicy:
         assert resp.body.name == "alice"
         assert mock_http.request.call_count == 2
 
+    def test_exhausted_transport_error_is_wrapped(self) -> None:
+        mock_http = MagicMock(spec=httpx.Client)
+        mock_http.request.side_effect = httpx.ConnectError("Connection refused")
+        client = NemoClient(
+            base_url=BASE,
+            http_client=mock_http,
+            retry=RetryPolicy(max_retries=2, backoff_base=0.0),
+        )
+
+        with pytest.raises(NemoTransportError) as exc_info:
+            client.send(GET_ITEM(name="alice"))
+
+        assert isinstance(exc_info.value.error, httpx.ConnectError)
+        assert exc_info.value.request is None
+        assert mock_http.request.call_count == 3
+
     def test_per_request_retry_overrides_client_default(self) -> None:
         mock_http = MagicMock(spec=httpx.Client)
         mock_http.request.return_value = httpx.Response(
@@ -427,6 +459,53 @@ class TestRetryPolicy:
         assert exc_info.value.status_code == 503
         assert mock_http.request.call_count == 1
 
+    def test_binary_stream_retries_before_returning_content(self) -> None:
+        attempts = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                return httpx.Response(503, request=request, json={"detail": "unavailable"})
+            return httpx.Response(200, request=request, content=b"artifact")
+
+        client = NemoClient(
+            base_url=BASE,
+            http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+            retry=RetryPolicy(max_retries=1, backoff_base=0.0),
+        )
+
+        assert client.send(DOWNLOAD()).read() == b"artifact"
+        assert attempts == 2
+
+    def test_binary_stream_transport_failure_is_wrapped(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("Connection refused", request=request)
+
+        client = NemoClient(
+            base_url=BASE,
+            http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+            retry=RetryPolicy(max_retries=1, backoff_base=0.0),
+        )
+
+        with pytest.raises(NemoTransportError):
+            client.send(DOWNLOAD()).read()
+
+    def test_stream_item_validation_failure_is_wrapped(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                request=request,
+                headers={"content-type": "application/x-ndjson"},
+                content=b'{"id":"bad","name":"alice"}\n',
+            )
+
+        client = NemoClient(base_url=BASE, http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+        with pytest.raises(NemoResponseValidationError):
+            with client.send(EVENTS()).stream() as events:
+                list(events)
+
 
 # ---------------------------------------------------------------------------
 # Async: RetryPolicy
@@ -460,3 +539,42 @@ class TestAsyncRetryPolicy:
         assert resp.http_response.status_code == 200
         assert resp.body.name == "alice"
         assert mock_http.request.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_exhausted_transport_error_is_wrapped_async(self) -> None:
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        request = httpx.Request("GET", f"{BASE}/apis/test/v2/items/alice")
+        mock_http.request.side_effect = httpx.ConnectError("Connection refused", request=request)
+        client = AsyncNemoClient(
+            base_url=BASE,
+            http_client=mock_http,
+            retry=RetryPolicy(max_retries=1, backoff_base=0.0),
+        )
+
+        with pytest.raises(NemoTransportError) as exc_info:
+            await client.send(GET_ITEM(name="alice"))
+
+        assert exc_info.value.request is request
+        assert mock_http.request.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_binary_stream_retries_async(self) -> None:
+        attempts = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise httpx.ConnectError("Connection refused", request=request)
+            return httpx.Response(200, request=request, content=b"artifact")
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+            client = AsyncNemoClient(
+                base_url=BASE,
+                http_client=http_client,
+                retry=RetryPolicy(max_retries=1, backoff_base=0.0),
+            )
+            response = await client.send(DOWNLOAD())
+            assert await response.read() == b"artifact"
+
+        assert attempts == 2

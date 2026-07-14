@@ -6,7 +6,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.client.errors import NemoHTTPError
+from nemo_platform_plugin.client.errors import NemoClientError
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
@@ -327,7 +327,7 @@ async def start_update_model_spec_job(model_entity: ModelEntity):
             )
         ).data()
         logger.info("Job Created - %s", job_resp.name)
-    except NemoHTTPError as err:
+    except NemoClientError as err:
         logger.warning(f"Failed to create model spec job. {err}")
 
 

@@ -6,15 +6,17 @@
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from nemo_platform_plugin.client.errors import NemoTransportError
 from nmp.common.api.common import Page, PaginationData
 from nmp.common.auth import AuthClient, Principal, get_auth_client
 from nmp.common.entities.client import EntityValidationError
 from nmp.core.models.api.service.adapter_entity_service import AdapterEntityService
 from nmp.core.models.api.service.model_entity_service import ModelEntityService
-from nmp.core.models.api.v2.models import router
+from nmp.core.models.api.v2.models import router, start_update_model_spec_job
 from nmp.core.models.schemas import ModelEntity
 
 
@@ -406,6 +408,23 @@ def test_create_model_entity_validation_error_returns_422(client, mock_model_ent
 
     assert response.status_code == 422
     assert "name must match pattern" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_model_spec_job_transport_failure_does_not_fail_persisted_model(sample_model_entity):
+    request = httpx.Request("POST", "http://test/apis/jobs/v2/workspaces/nvidia/jobs")
+    jobs = MagicMock()
+    jobs.create_job = AsyncMock(
+        side_effect=NemoTransportError(httpx.ConnectError("Connection refused", request=request))
+    )
+
+    with (
+        patch("nmp.core.models.api.v2.models.get_async_platform_sdk"),
+        patch("nmp.core.models.api.v2.models.client_from_platform", return_value=jobs),
+    ):
+        await start_update_model_spec_job(sample_model_entity)
+
+    jobs.create_job.assert_awaited_once()
 
 
 def test_update_model_entity_validation_error_returns_422(client, mock_model_entity_service, sample_model_entity):

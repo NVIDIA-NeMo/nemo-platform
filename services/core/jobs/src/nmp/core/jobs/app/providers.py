@@ -8,33 +8,15 @@ both the server and the typed HTTP client (``JobsClient``) share one source of
 truth.  This module re-exports them for backward compatibility.
 """
 
-from nemo_platform_plugin.jobs.providers import (
-    ComputeResources as ComputeResources,
-)
-from nemo_platform_plugin.jobs.providers import (
-    ComputeResourceSpec as ComputeResourceSpec,
-)
-from nemo_platform_plugin.jobs.providers import (
-    ContainerSpec as ContainerSpec,
-)
-from nemo_platform_plugin.jobs.providers import (
-    CPUExecutionProvider as CPUExecutionProvider,
-)
-from nemo_platform_plugin.jobs.providers import (
-    DistributedGPUExecutionProvider as DistributedGPUExecutionProvider,
-)
-from nemo_platform_plugin.jobs.providers import (
-    ExecutionProviderT as ExecutionProviderT,
-)
-from nemo_platform_plugin.jobs.providers import (
-    GPUExecutionProvider as GPUExecutionProvider,
-)
-from nemo_platform_plugin.jobs.providers import (
-    Provider as Provider,
-)
-from nemo_platform_plugin.jobs.providers import (
-    SubprocessExecutionProvider as SubprocessExecutionProvider,
-)
-from nemo_platform_plugin.jobs.providers import (
-    TaskSpec as TaskSpec,
-)
+from nemo_platform_plugin.jobs import providers as _providers
+
+ComputeResources = _providers.ComputeResources
+ComputeResourceSpec = _providers.ComputeResourceSpec
+ContainerSpec = _providers.ContainerSpec
+CPUExecutionProvider = _providers.CPUExecutionProvider
+DistributedGPUExecutionProvider = _providers.DistributedGPUExecutionProvider
+ExecutionProviderT = _providers.ExecutionProviderT
+GPUExecutionProvider = _providers.GPUExecutionProvider
+Provider = _providers.Provider
+SubprocessExecutionProvider = _providers.SubprocessExecutionProvider
+TaskSpec = _providers.TaskSpec

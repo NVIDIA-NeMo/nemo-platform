@@ -8,7 +8,7 @@ from typing import cast
 
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.client.errors import NemoHTTPError
+from nemo_platform_plugin.client.errors import NemoClientError, NemoHTTPError
 from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.types import (
     ListStepsQueryParams,
@@ -76,7 +76,7 @@ class JobReconciler(Controller):
                 ]
                 steps_to_reconcile = self.get_steps_for_reconciliation(statuses)
                 self._is_healthy = True
-            except NemoHTTPError:
+            except NemoClientError:
                 self._is_healthy = False
                 logger.exception("Could not fetch job steps for reconciliation", exc_info=True)
                 return
@@ -118,10 +118,7 @@ class JobReconciler(Controller):
                             },
                         )
                         logger.info(f"Updating job step status from '{step.status}' to '{job_update.status}'")
-                        if (
-                            job_update.status == PlatformJobStatus.ERROR.value
-                            and step.status != PlatformJobStatus.ERROR
-                        ):
+                        if job_update.status == PlatformJobStatus.ERROR and step.status != PlatformJobStatus.ERROR:
                             log_job_diagnostics_if_debug(
                                 self._nmp_sdk,
                                 step,
@@ -185,7 +182,7 @@ class JobReconciler(Controller):
         step: PlatformJobStepWithContext,
         provider: str,
         profile: str,
-        status: str,
+        status: PlatformJobStatus,
         status_details: dict | None = None,
         error_details: dict | None = None,
     ):

@@ -163,7 +163,7 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
     def schedule(self, executor_config: SubprocessExecutionProvider, step: PlatformJobStepWithContext) -> JobUpdate:
         if not executor_config.command:
             return JobUpdate(
-                status=PlatformJobStatus.ERROR.value,
+                status=PlatformJobStatus.ERROR,
                 status_details={"message": _ERR_COMMAND_REQUIRED},
                 error_details={"message": _ERR_COMMAND_REQUIRED},
             )
@@ -172,7 +172,7 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
         existing = self._process_registry.get(key)
         if existing is not None and existing.process.poll() is None:
             return JobUpdate(
-                status=PlatformJobStatus.PENDING.value,
+                status=PlatformJobStatus.PENDING,
                 status_details={
                     "message": "Subprocess already running",
                     **self._task_status_details(existing),
@@ -203,7 +203,7 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
             message = f"Failed to start subprocess: executable not found: {command[0]}"
             logger.exception(message, extra=log_extra)
             return JobUpdate(
-                status=PlatformJobStatus.ERROR.value,
+                status=PlatformJobStatus.ERROR,
                 status_details={"message": message},
                 error_details={"message": message, "error": str(exc)},
             )
@@ -212,7 +212,7 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
             message = f"Failed to start subprocess: {exc}"
             logger.exception(message)
             return JobUpdate(
-                status=PlatformJobStatus.ERROR.value,
+                status=PlatformJobStatus.ERROR,
                 status_details={"message": message},
                 error_details={"message": message},
             )
@@ -232,7 +232,7 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
             message = f"Failed to initialize subprocess runtime: {exc}"
             logger.exception(message)
             return JobUpdate(
-                status=PlatformJobStatus.ERROR.value,
+                status=PlatformJobStatus.ERROR,
                 status_details={"message": message},
                 error_details={"message": message},
             )
@@ -263,7 +263,7 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
             ),
         )
 
-        return JobUpdate(status=PlatformJobStatus.PENDING.value, status_details=status_details)
+        return JobUpdate(status=PlatformJobStatus.PENDING, status_details=status_details)
 
     def sync(self, step: PlatformJobStepWithContext) -> JobUpdate:
         key = SubprocessProcessKey(step.workspace, step.job, str(step.attempt_id), step.name)
@@ -272,12 +272,12 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
         if metadata is None:
             if step.status == PlatformJobStatus.CANCELLING:
                 return JobUpdate(
-                    status=PlatformJobStatus.CANCELLED.value,
+                    status=PlatformJobStatus.CANCELLED,
                     status_details={"message": "Subprocess not found, job cancelled"},
                 )
             if step.status == PlatformJobStatus.PAUSING:
                 return JobUpdate(
-                    status=PlatformJobStatus.PAUSED.value,
+                    status=PlatformJobStatus.PAUSED,
                     status_details={"message": "Subprocess not found, job paused"},
                 )
             task_fallback = self._get_task_fallback_update(step)
@@ -294,12 +294,12 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
                 # serialized, jobs-backed state so reconciliation does not depend on process-local
                 # memory.
                 return JobUpdate(
-                    status=PlatformJobStatus.PENDING.value,
+                    status=PlatformJobStatus.PENDING,
                     status_details=step.status_details or {"message": "Awaiting subprocess metadata"},
                     error_details=step.error_details or {},
                 )
             return JobUpdate(
-                status=PlatformJobStatus.ERROR.value,
+                status=PlatformJobStatus.ERROR,
                 error_details={"message": "Local subprocess metadata not found"},
             )
 
@@ -326,7 +326,7 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
                 self._tail_log_file(metadata.log_path),
             )
             return JobUpdate(
-                status=PlatformJobStatus.ERROR.value,
+                status=PlatformJobStatus.ERROR,
                 status_details={"message": message},
                 error_details={"message": message},
             )
@@ -516,7 +516,7 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
     def _create_step_update(self, step: PlatformJobStepWithContext, metadata: SubprocessProcessMetadata) -> JobUpdate:
         status, status_details, error_details, error_stack = self._map_process_status(step, metadata)
         self._update_task(step, metadata, status, status_details, error_details, error_stack)
-        return JobUpdate(status=status.value, status_details=status_details, error_details=error_details)
+        return JobUpdate(status=status, status_details=status_details, error_details=error_details)
 
     def _map_process_status(
         self, step: PlatformJobStepWithContext, metadata: SubprocessProcessMetadata

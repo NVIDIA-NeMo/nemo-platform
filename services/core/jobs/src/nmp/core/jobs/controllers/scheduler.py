@@ -9,7 +9,7 @@ from typing import cast
 
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.client.errors import NemoHTTPError
+from nemo_platform_plugin.client.errors import NemoClientError, NemoHTTPError
 from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.types import (
     ListStepsQueryParams,
@@ -76,7 +76,7 @@ class JobScheduler(Controller):
             try:
                 steps = self.get_steps_for_scheduling()
                 self._is_healthy = True
-            except NemoHTTPError:
+            except NemoClientError:
                 self._is_healthy = False
                 logger.exception("Could not fetch job steps for scheduling", exc_info=True)
                 return
@@ -147,7 +147,7 @@ class JobScheduler(Controller):
                     self._update_step_status_with_timing(
                         step=step,
                         phase="resource_allocation_error",
-                        status=PlatformJobStatus.ERROR.value,
+                        status=PlatformJobStatus.ERROR,
                         status_details={"message": e.message},
                         error_details={"message": e.message},
                     )
@@ -173,7 +173,7 @@ class JobScheduler(Controller):
                     self._update_step_status_with_timing(
                         step=step,
                         phase="unexpected_error",
-                        status=PlatformJobStatus.ERROR.value,
+                        status=PlatformJobStatus.ERROR,
                         status_details={"message": str(e)},
                         error_details={"message": str(e), "error": traceback.format_exc()},
                     )
@@ -183,7 +183,7 @@ class JobScheduler(Controller):
         *,
         step: PlatformJobStepWithContext,
         phase: str,
-        status: str,
+        status: PlatformJobStatus,
         status_details: dict[str, object] | None = None,
         error_details: dict[str, object] | None = None,
     ):
@@ -233,14 +233,10 @@ class JobScheduler(Controller):
         Return the oldest set of steps to schedule. We using the
         set of pending steps as our queue for what to schedule next.
         """
-        # Iterate through all pages to get all steps.
         # The steps-list route parses ``filter`` as a deepObject query param, so
         # the status list is sent as ``filter[status]=created,resuming`` (comma
         # form), which the server splits back into a list.
         steps = []
-        # deepObject query param: sent as ``filter[status]=created,resuming`` (comma
-        # form), which the steps-list route splits back into a status list. The
-        # bracketed key isn't expressible as a TypedDict field, so cast the dict.
         query = cast(
             ListStepsQueryParams,
             {
@@ -274,7 +270,7 @@ class JobScheduler(Controller):
         update: JobUpdate,
         error: NemoHTTPError,
     ) -> bool:
-        if error.status_code != 409 or update.status != PlatformJobStatus.PENDING.value:
+        if error.status_code != 409 or update.status != PlatformJobStatus.PENDING:
             return False
 
         current_step = self._jobs.get_job_step(

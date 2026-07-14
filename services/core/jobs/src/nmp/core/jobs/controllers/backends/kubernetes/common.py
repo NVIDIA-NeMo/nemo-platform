@@ -38,7 +38,7 @@ from nemo_platform_plugin.jobs.execution_profiles import (
 from nemo_platform_plugin.jobs.execution_profiles import (
     KubernetesVolumeMount as PluginKubernetesVolumeMount,
 )
-from nemo_platform_plugin.jobs.types import PlatformJobTaskUpdate
+from nemo_platform_plugin.jobs.types import PlatformJobStepWithContext, PlatformJobTaskUpdate
 from nmp.common.auth import AuthContext
 from nmp.common.config import get_platform_config
 from nmp.common.jobs.constants import (
@@ -59,7 +59,6 @@ from nmp.common.jobs.constants import (
     TERMINAL_EXIT_CODES,
 )
 from nmp.common.jobs.schemas import PlatformJobStatus
-from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobStepWithContext
 from nmp.core.jobs.app.constants import (
     JOB_ATTEMPT_ID_LABEL,
     JOB_EXECUTION_BACKEND_LABEL,

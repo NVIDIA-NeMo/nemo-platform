@@ -19,33 +19,7 @@ from typing import List, Optional
 # NB: ``AuthContext`` is intentionally NOT re-exported from the plugin here —
 # this module exposes the behaviour-carrying ``nmp.common.auth.AuthContext``
 # (imported above), which the ``PlatformJobStepWithContext`` subclass uses.
-from nemo_platform_plugin.jobs.types import (
-    CreatePlatformJobRequest as CreatePlatformJobRequest,
-)
-from nemo_platform_plugin.jobs.types import (
-    PlatformJobAttemptSortField as PlatformJobAttemptSortField,
-)
-from nemo_platform_plugin.jobs.types import (
-    PlatformJobLogSortField as PlatformJobLogSortField,
-)
-from nemo_platform_plugin.jobs.types import (
-    PlatformJobResponse as PlatformJobResponse,
-)
-from nemo_platform_plugin.jobs.types import (
-    PlatformJobSortField as PlatformJobSortField,
-)
-from nemo_platform_plugin.jobs.types import (
-    PlatformJobStatusDetailsUpdateRequest as PlatformJobStatusDetailsUpdateRequest,
-)
-from nemo_platform_plugin.jobs.types import (
-    PlatformJobStatusUpdateRequest as PlatformJobStatusUpdateRequest,
-)
-from nemo_platform_plugin.jobs.types import (
-    PlatformJobStepWithContext as _PluginPlatformJobStepWithContext,
-)
-from nemo_platform_plugin.jobs.types import (
-    PlatformJobTaskUpdate as PlatformJobTaskUpdate,
-)
+from nemo_platform_plugin.jobs import types as _types
 from nmp.common.auth import AuthContext
 from nmp.common.entities import (
     DatetimeFilter,
@@ -58,6 +32,15 @@ from nmp.common.jobs.schemas import PlatformJobResultResponse
 from nmp.common.jobs.schemas import PlatformJobStatus as PlatformJobStatus
 from nmp.core.jobs.entities import PlatformJobTask
 from pydantic import Field
+
+CreatePlatformJobRequest = _types.CreatePlatformJobRequest
+PlatformJobAttemptSortField = _types.PlatformJobAttemptSortField
+PlatformJobLogSortField = _types.PlatformJobLogSortField
+PlatformJobResponse = _types.PlatformJobResponse
+PlatformJobSortField = _types.PlatformJobSortField
+PlatformJobStatusDetailsUpdateRequest = _types.PlatformJobStatusDetailsUpdateRequest
+PlatformJobStatusUpdateRequest = _types.PlatformJobStatusUpdateRequest
+PlatformJobTaskUpdate = _types.PlatformJobTaskUpdate
 
 # =============================================================================
 # Utilities
@@ -91,7 +74,7 @@ class PlatformJobListTaskResponse(Value):
     data: List[PlatformJobTask]
 
 
-class PlatformJobStepWithContext(_PluginPlatformJobStepWithContext):
+class PlatformJobStepWithContext(_types.PlatformJobStepWithContext):
     """Step with additional context from parent job/attempt."""
 
     # Overrides ``auth_context`` with the behaviour-carrying

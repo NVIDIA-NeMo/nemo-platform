@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import httpx
 from client_mocks import data_response, paginated_response
-from nemo_platform_plugin.client.errors import ConflictError
+from nemo_platform_plugin.client.errors import ConflictError, NemoTransportError
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobStepWithContext
 from nmp.core.jobs.controllers.backends.exceptions import ResourceAllocationError, SchedulingDeferred
@@ -186,3 +186,20 @@ def test_scheduler_does_not_ignore_pending_update_conflict_when_step_remains_res
         workspace=resuming_step.workspace,
         job=resuming_step.job,
     )
+
+
+def test_scheduler_marks_itself_unhealthy_after_transport_failure(
+    job_scheduler: JobScheduler,
+    mock_jobs_client,
+):
+    mock_jobs_client.list_steps.return_value = paginated_response([])
+    job_scheduler.step()
+    assert job_scheduler.is_healthy
+
+    request = httpx.Request("GET", "http://localhost/apis/jobs/v2/workspaces/-/jobs/-/steps")
+    mock_jobs_client.list_steps.side_effect = NemoTransportError(
+        httpx.ConnectError("Connection refused", request=request)
+    )
+    job_scheduler.step()
+
+    assert not job_scheduler.is_healthy

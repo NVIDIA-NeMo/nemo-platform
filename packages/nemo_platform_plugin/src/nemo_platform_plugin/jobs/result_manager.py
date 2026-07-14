@@ -13,7 +13,7 @@ from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform.filesets import parse_fileset_ref
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import ConflictError as ClientConflictError
-from nemo_platform_plugin.client.errors import NemoHTTPError
+from nemo_platform_plugin.client.errors import NemoClientError
 from nemo_platform_plugin.jobs.client import AsyncJobsClient, JobsClient
 from nemo_platform_plugin.jobs.constants import NEMO_JOB_WORKSPACE_ENVVAR
 from nemo_platform_plugin.jobs.file_manager import (
@@ -114,7 +114,7 @@ class ResultManager(BaseResultManager[Type[FilesetFileManager], NeMoPlatform]):
                 job=self.job_name,
                 workspace=self.workspace,
             ).data()
-        except NemoHTTPError as e:
+        except NemoClientError as e:
             msg = f"Error creating job result: {str(e)}"
             logger.exception(msg)
             raise CreateJobResultError(msg) from e
@@ -183,7 +183,7 @@ class AsyncResultManager(BaseResultManager[Type[AsyncFilesetFileManager], AsyncN
                     workspace=self.workspace,
                 )
             ).data()
-        except NemoHTTPError as e:
+        except NemoClientError as e:
             msg = f"Error creating job result: {str(e)}"
             logger.exception(msg)
             raise CreateJobResultError(msg) from e

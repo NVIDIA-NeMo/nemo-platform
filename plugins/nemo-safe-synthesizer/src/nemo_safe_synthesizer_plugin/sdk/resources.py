@@ -5,13 +5,19 @@
 
 from __future__ import annotations
 
-from typing import Any
+import json
+from collections.abc import Mapping
+from dataclasses import replace
+from typing import Any, cast
 from urllib.parse import quote
 
 import httpx
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.types import PreparedRequest
+from nemo_platform_plugin.jobs import endpoints as job_endpoints
 from nemo_platform_plugin.jobs.client import AsyncJobsClient, JobsClient
+from nemo_platform_plugin.jobs.types import JobLogsQueryParams
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
 from nemo_safe_synthesizer_plugin.sdk import http_utils
 
@@ -84,10 +90,37 @@ class SafeSynthesizerJobsResource:
         """Retrieve Safe Synthesizer job status."""
         return client_from_platform(self._platform, JobsClient).get_job_status(name=name, workspace=workspace).data()
 
-    def get_logs(self, name: str, *, workspace: str | None = None, **kwargs: Any) -> Any:
+    def get_logs(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        attempt_id: int | None = None,
+        limit: int | None = None,
+        page_cursor: str | None = None,
+        step_id: str | None = None,
+        task_id: str | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+        extra_query: Mapping[str, Any] | None = None,
+        extra_body: Mapping[str, Any] | None = None,
+        timeout: float | httpx.Timeout | None = None,
+    ) -> Any:
         """Retrieve paginated Safe Synthesizer job logs from the Jobs service."""
         jobs = client_from_platform(self._platform, JobsClient)
-        return jobs.page_job_logs(name=name, workspace=workspace, query_params=kwargs or None).data()
+        if timeout is not None:
+            jobs = jobs.with_options(timeout=timeout)
+        request = _job_logs_request(
+            name=name,
+            workspace=workspace,
+            attempt_id=attempt_id,
+            limit=limit,
+            page_cursor=page_cursor,
+            step_id=step_id,
+            task_id=task_id,
+            extra_query=extra_query,
+            extra_body=extra_body,
+        )
+        return jobs.send(request, headers=dict(extra_headers) if extra_headers else None).data()
 
 
 class SafeSynthesizerResource:
@@ -167,10 +200,37 @@ class AsyncSafeSynthesizerJobsResource:
         jobs = client_from_platform(self._platform, AsyncJobsClient)
         return (await jobs.get_job_status(name=name, workspace=workspace)).data()
 
-    async def get_logs(self, name: str, *, workspace: str | None = None, **kwargs: Any) -> Any:
+    async def get_logs(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        attempt_id: int | None = None,
+        limit: int | None = None,
+        page_cursor: str | None = None,
+        step_id: str | None = None,
+        task_id: str | None = None,
+        extra_headers: Mapping[str, str] | None = None,
+        extra_query: Mapping[str, Any] | None = None,
+        extra_body: Mapping[str, Any] | None = None,
+        timeout: float | httpx.Timeout | None = None,
+    ) -> Any:
         """Retrieve paginated Safe Synthesizer job logs from the Jobs service."""
         jobs = client_from_platform(self._platform, AsyncJobsClient)
-        return (await jobs.page_job_logs(name=name, workspace=workspace, query_params=kwargs or None)).data()
+        if timeout is not None:
+            jobs = jobs.with_options(timeout=timeout)
+        request = _job_logs_request(
+            name=name,
+            workspace=workspace,
+            attempt_id=attempt_id,
+            limit=limit,
+            page_cursor=page_cursor,
+            step_id=step_id,
+            task_id=task_id,
+            extra_query=extra_query,
+            extra_body=extra_body,
+        )
+        return (await jobs.send(request, headers=dict(extra_headers) if extra_headers else None)).data()
 
 
 class AsyncSafeSynthesizerResource:
@@ -179,6 +239,47 @@ class AsyncSafeSynthesizerResource:
     def __init__(self, platform: AsyncNeMoPlatform) -> None:
         self._platform = platform
         self.jobs = AsyncSafeSynthesizerJobsResource(platform)
+
+
+def _job_logs_request(
+    *,
+    name: str,
+    workspace: str | None,
+    attempt_id: int | None,
+    limit: int | None,
+    page_cursor: str | None,
+    step_id: str | None,
+    task_id: str | None,
+    extra_query: Mapping[str, Any] | None,
+    extra_body: Mapping[str, Any] | None,
+) -> PreparedRequest:
+    """Build a typed logs request while preserving Stainless request overrides."""
+    query = {
+        key: value
+        for key, value in {
+            "attempt_id": attempt_id,
+            "limit": limit,
+            "page_cursor": page_cursor,
+            "step_id": step_id,
+            "task_id": task_id,
+        }.items()
+        if value is not None
+    }
+    if extra_query:
+        query.update(extra_query)
+
+    request = job_endpoints.page_job_logs(
+        name=name,
+        workspace=workspace,
+        query_params=cast(JobLogsQueryParams, query) or None,
+    )
+    if extra_body:
+        request = replace(
+            request,
+            content=json.dumps(dict(extra_body)).encode(),
+            content_type="application/json",
+        )
+    return request
 
 
 def _object_from_mapping(value: Any) -> Any:

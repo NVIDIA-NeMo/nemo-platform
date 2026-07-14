@@ -12,10 +12,15 @@ import httpx
 import pandas as pd
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.errors import NemoTransportError
 from nemo_platform_plugin.discovery import discover, discover_entry_points
 from nemo_safe_synthesizer_plugin.sdk.job import SafeSynthesizerJob
 from nemo_safe_synthesizer_plugin.sdk.job_builder import SafeSynthesizerJobBuilder
-from nemo_safe_synthesizer_plugin.sdk.resources import AsyncSafeSynthesizerJobsResource, SafeSynthesizerResource
+from nemo_safe_synthesizer_plugin.sdk.resources import (
+    AsyncSafeSynthesizerJobsResource,
+    SafeSynthesizerJobsResource,
+    SafeSynthesizerResource,
+)
 
 
 def _resp(data):
@@ -101,21 +106,55 @@ def test_safe_synthesizer_resource_includes_response_detail_in_errors() -> None:
 
 
 @pytest.mark.asyncio
-async def test_async_safe_synthesizer_resource_get_logs_awaits_platform_jobs() -> None:
+async def test_async_safe_synthesizer_resource_get_logs_preserves_request_options() -> None:
     platform = MagicMock()
     resource = AsyncSafeSynthesizerJobsResource(platform)
 
-    # Production routes get_logs through client_from_platform(platform, AsyncJobsClient),
-    # then awaits page_job_logs(name=, workspace=, query_params=kwargs or None).data().
     mock_jobs = MagicMock()
-    mock_jobs.page_job_logs = AsyncMock(return_value=_resp(SimpleNamespace(data=[])))
+    options_client = MagicMock()
+    mock_jobs.with_options.return_value = options_client
+    options_client.send = AsyncMock(return_value=_resp(SimpleNamespace(data=[])))
     with patch("nemo_safe_synthesizer_plugin.sdk.resources.client_from_platform", return_value=mock_jobs):
-        response = await resource.get_logs("safe-synth-job", workspace="default", limit=10)
+        response = await resource.get_logs(
+            "safe-synth-job",
+            workspace="default",
+            limit=10,
+            extra_headers={"X-Trace": "trace-id"},
+            extra_query={"include_internal": True},
+            extra_body={"audit": True},
+            timeout=5.0,
+        )
 
     assert response.data == []
-    mock_jobs.page_job_logs.assert_awaited_once_with(
-        name="safe-synth-job", workspace="default", query_params={"limit": 10}
-    )
+    mock_jobs.with_options.assert_called_once_with(timeout=5.0)
+    request = options_client.send.await_args.args[0]
+    assert request.query_params == {"limit": 10, "include_internal": True}
+    assert json.loads(request.content) == {"audit": True}
+    assert options_client.send.await_args.kwargs["headers"] == {"X-Trace": "trace-id"}
+
+
+def test_safe_synthesizer_resource_get_logs_keeps_client_options_out_of_query() -> None:
+    platform = MagicMock()
+    resource = SafeSynthesizerJobsResource(platform)
+    mock_jobs = MagicMock()
+    options_client = MagicMock()
+    mock_jobs.with_options.return_value = options_client
+    options_client.send.return_value = _resp(SimpleNamespace(data=[]))
+
+    with patch("nemo_safe_synthesizer_plugin.sdk.resources.client_from_platform", return_value=mock_jobs):
+        response = resource.get_logs(
+            "safe-synth-job",
+            workspace="default",
+            attempt_id=2,
+            step_id="step-1",
+            timeout=10.0,
+        )
+
+    assert response.data == []
+    mock_jobs.with_options.assert_called_once_with(timeout=10.0)
+    request = options_client.send.call_args.args[0]
+    assert request.query_params == {"attempt_id": 2, "step_id": "step-1"}
+    assert "timeout" not in request.query_params
 
 
 def test_job_builder_uploads_dataframe_and_submits_spec() -> None:
@@ -196,6 +235,25 @@ def test_safe_synthesizer_job_wait_for_completion_raises_on_terminal_failure(sta
         job.wait_for_completion(poll_interval=0, verbose=False)
 
     mock_jobs.get_job_status.assert_called_once_with(name="safe-synth-job", workspace="default")
+
+
+def test_safe_synthesizer_job_wait_ignores_typed_client_log_failures() -> None:
+    mock_jobs = MagicMock()
+    mock_jobs.get_job_status.side_effect = [
+        _resp(SimpleNamespace(status="active", status_details={}, error_details={})),
+        _resp(SimpleNamespace(status="completed", status_details={}, error_details={})),
+    ]
+    job = _make_job(mock_jobs)
+    request = httpx.Request("GET", "http://test/apis/jobs/v2/workspaces/default/jobs/safe-synth-job/logs")
+
+    with patch.object(
+        job,
+        "_fetch_logs_incremental",
+        side_effect=NemoTransportError(httpx.ConnectError("Connection refused", request=request)),
+    ):
+        job.wait_for_completion(poll_interval=0, verbose=True)
+
+    assert mock_jobs.get_job_status.call_count == 2
 
 
 def test_safe_synthesizer_job_fetch_data_reads_synthetic_csv() -> None:

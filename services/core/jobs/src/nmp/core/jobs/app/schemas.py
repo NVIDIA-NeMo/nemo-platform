@@ -9,30 +9,14 @@ server and the typed HTTP client (``JobsClient``) share one source of truth.
 This module re-exports them for backward compatibility.
 """
 
-from nemo_platform_plugin.jobs.spec import (
-    BackendRef as BackendRef,
-)
-from nemo_platform_plugin.jobs.spec import (
-    BaseExecutionProfile as BaseExecutionProfile,
-)
-from nemo_platform_plugin.jobs.spec import (
-    PlatformJobEnvironmentVariable as PlatformJobEnvironmentVariable,
-)
-from nemo_platform_plugin.jobs.spec import (
-    PlatformJobSecretEnvironmentVariableRef as PlatformJobSecretEnvironmentVariableRef,
-)
-from nemo_platform_plugin.jobs.spec import (
-    PlatformJobSpec as PlatformJobSpec,
-)
-from nemo_platform_plugin.jobs.spec import (
-    PlatformJobStepSpec as PlatformJobStepSpec,
-)
-from nemo_platform_plugin.jobs.spec import (
-    ProfileRef as ProfileRef,
-)
-from nemo_platform_plugin.jobs.spec import (
-    ProviderRef as ProviderRef,
-)
-from nemo_platform_plugin.jobs.spec import (
-    StepLifecycle as StepLifecycle,
-)
+from nemo_platform_plugin.jobs import spec as _spec
+
+BackendRef = _spec.BackendRef
+BaseExecutionProfile = _spec.BaseExecutionProfile
+PlatformJobEnvironmentVariable = _spec.PlatformJobEnvironmentVariable
+PlatformJobSecretEnvironmentVariableRef = _spec.PlatformJobSecretEnvironmentVariableRef
+PlatformJobSpec = _spec.PlatformJobSpec
+PlatformJobStepSpec = _spec.PlatformJobStepSpec
+ProfileRef = _spec.ProfileRef
+ProviderRef = _spec.ProviderRef
+StepLifecycle = _spec.StepLifecycle

@@ -5,15 +5,45 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable, Coroutine, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import AbstractAsyncContextManager, AbstractContextManager, asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
 import httpx
-from nemo_platform_plugin.client.errors import raise_for_status
+from nemo_platform_plugin.client.errors import NemoResponseValidationError, NemoTransportError, raise_for_status
 from nemo_platform_plugin.client.types import OffsetPagination, PaginationStrategy, PreparedRequest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
+
+ModelT = TypeVar("ModelT", bound=BaseModel)
+
+
+def _validated_page(
+    response: httpx.Response,
+    model_type: type[ModelT],
+    strategy: type[PaginationStrategy],
+) -> tuple[list[ModelT], dict]:
+    """Decode one page and normalize response-contract failures."""
+    try:
+        body = response.json()
+    except ValueError as exc:
+        raise NemoResponseValidationError(response, exc) from exc
+
+    if not isinstance(body, dict):
+        exc = ValueError("Paginated responses must be JSON objects")
+        raise NemoResponseValidationError(response, exc) from exc
+
+    raw_items = strategy.extract_items(body)
+    try:
+        items = [model_type.model_validate(item) for item in raw_items]
+    except ValidationError as exc:
+        raise NemoResponseValidationError(response, exc) from exc
+    return items, body
+
+
+def _current_page(strategy: type[PaginationStrategy], body: dict) -> Any:
+    """Return the page represented by *body*, defaulting to the first page."""
+    return strategy.extract_metadata(body).get("page") or 1
 
 
 def _parse_stream_line(line: str, headers: httpx.Headers) -> str | None:
@@ -33,7 +63,6 @@ def _parse_stream_line(line: str, headers: httpx.Headers) -> str | None:
 
 
 ResponseT = TypeVar("ResponseT")
-ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,7 +80,7 @@ class NemoResponse(Generic[ResponseT]):
 
     http_response: httpx.Response
     body: ResponseT
-    request: PreparedRequest
+    request: PreparedRequest[ResponseT]
 
     def data(self) -> ResponseT:
         """Return the parsed response body.
@@ -96,10 +125,13 @@ class NemoBinaryResponse:
 
     def read(self) -> bytes:
         """Read and return the entire response body as bytes."""
-        with self._stream_ctx as raw:
-            data = raw.read()
-            raise_for_status(raw)
-            return data
+        try:
+            with self._stream_ctx as raw:
+                data = raw.read()
+                raise_for_status(raw)
+                return data
+        except httpx.TransportError as exc:
+            raise NemoTransportError(exc) from exc
 
     @contextmanager
     def stream(self, chunk_size: int | None = None) -> Iterator[Iterator[bytes]]:
@@ -117,10 +149,13 @@ class NemoBinaryResponse:
                 for chunk in chunks:
                     ...
         """
-        with self._stream_ctx as raw:
-            self._http_response = raw
-            raise_for_status(raw)
-            yield raw.iter_raw(chunk_size) if chunk_size else raw.iter_raw()
+        try:
+            with self._stream_ctx as raw:
+                self._http_response = raw
+                raise_for_status(raw)
+                yield raw.iter_raw(chunk_size) if chunk_size else raw.iter_raw()
+        except httpx.TransportError as exc:
+            raise NemoTransportError(exc) from exc
 
 
 class NemoStreamResponse(Generic[ModelT]):
@@ -151,16 +186,22 @@ class NemoStreamResponse(Generic[ModelT]):
     @contextmanager
     def stream(self) -> Iterator[Iterator[ModelT]]:
         """Yield an iterator of parsed model objects."""
-        with self._stream_ctx as raw:
-            raise_for_status(raw)
+        try:
+            with self._stream_ctx as raw:
+                raise_for_status(raw)
 
-            def _iter() -> Iterator[ModelT]:
-                for line in raw.iter_lines():
-                    payload = _parse_stream_line(line, raw.headers)
-                    if payload is not None:
-                        yield self._model_type.model_validate_json(payload)
+                def _iter() -> Iterator[ModelT]:
+                    for line in raw.iter_lines():
+                        payload = _parse_stream_line(line, raw.headers)
+                        if payload is not None:
+                            try:
+                                yield self._model_type.model_validate_json(payload)
+                            except (ValueError, ValidationError) as exc:
+                                raise NemoResponseValidationError(raw, exc) from exc
 
-            yield _iter()
+                yield _iter()
+        except httpx.TransportError as exc:
+            raise NemoTransportError(exc) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -197,10 +238,13 @@ class AsyncNemoBinaryResponse:
 
     async def read(self) -> bytes:
         """Read and return the entire response body as bytes."""
-        async with self._stream_ctx as raw:
-            data = await raw.aread()
-            raise_for_status(raw)
-            return data
+        try:
+            async with self._stream_ctx as raw:
+                data = await raw.aread()
+                raise_for_status(raw)
+                return data
+        except httpx.TransportError as exc:
+            raise NemoTransportError(exc) from exc
 
     @asynccontextmanager
     async def stream(self, chunk_size: int | None = None) -> AsyncIterator[AsyncIterator[bytes]]:
@@ -218,10 +262,13 @@ class AsyncNemoBinaryResponse:
                 async for chunk in chunks:
                     ...
         """
-        async with self._stream_ctx as raw:
-            self._http_response = raw
-            raise_for_status(raw)
-            yield raw.aiter_raw(chunk_size) if chunk_size else raw.aiter_raw()
+        try:
+            async with self._stream_ctx as raw:
+                self._http_response = raw
+                raise_for_status(raw)
+                yield raw.aiter_raw(chunk_size) if chunk_size else raw.aiter_raw()
+        except httpx.TransportError as exc:
+            raise NemoTransportError(exc) from exc
 
 
 class AsyncNemoStreamResponse(Generic[ModelT]):
@@ -250,16 +297,22 @@ class AsyncNemoStreamResponse(Generic[ModelT]):
     @asynccontextmanager
     async def stream(self) -> AsyncIterator[AsyncIterator[ModelT]]:
         """Yield an async iterator of parsed model objects."""
-        async with self._stream_ctx as raw:
-            raise_for_status(raw)
+        try:
+            async with self._stream_ctx as raw:
+                raise_for_status(raw)
 
-            async def _iter() -> AsyncIterator[ModelT]:
-                async for line in raw.aiter_lines():
-                    payload = _parse_stream_line(line, raw.headers)
-                    if payload is not None:
-                        yield self._model_type.model_validate_json(payload)
+                async def _iter() -> AsyncIterator[ModelT]:
+                    async for line in raw.aiter_lines():
+                        payload = _parse_stream_line(line, raw.headers)
+                        if payload is not None:
+                            try:
+                                yield self._model_type.model_validate_json(payload)
+                            except (ValueError, ValidationError) as exc:
+                                raise NemoResponseValidationError(raw, exc) from exc
 
-            yield _iter()
+                yield _iter()
+        except httpx.TransportError as exc:
+            raise NemoTransportError(exc) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -270,7 +323,7 @@ class AsyncNemoStreamResponse(Generic[ModelT]):
 # Type aliases for the page-fetching callbacks used by paginated responses.
 # The page value is int for offset-based or str for cursor-based pagination.
 SyncPageFetcher = Callable[[PreparedRequest, Any], httpx.Response]
-AsyncPageFetcher = Callable[[PreparedRequest, Any], Coroutine[Any, Any, httpx.Response]]
+AsyncPageFetcher = Callable[[PreparedRequest, Any], Awaitable[httpx.Response]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -336,8 +389,7 @@ class NemoPaginatedResponse(Generic[ModelT]):
     def _parse_page(self, raw: httpx.Response) -> tuple[list[ModelT], dict]:
         """Parse a page response into (items, raw_body)."""
         raise_for_status(raw)
-        body = raw.json()
-        items = [self._model_type.model_validate(item) for item in self._strategy.extract_items(body)]
+        items, body = _validated_page(raw, self._model_type, self._strategy)
         return items, body
 
     def page(self) -> PageResult[ModelT]:
@@ -351,7 +403,7 @@ class NemoPaginatedResponse(Generic[ModelT]):
         items, body = self._parse_page(self._first_response)
         yield from items
 
-        next_page = self._strategy.next_page(body, 1)
+        next_page = self._strategy.next_page(body, _current_page(self._strategy, body))
         while next_page is not None:
             items, body = self._parse_page(self._fetch_page(self.request, next_page))
             yield from items
@@ -364,7 +416,7 @@ class NemoPaginatedResponse(Generic[ModelT]):
         metadata = self._strategy.extract_metadata(body)
         yield PageResult(items=items, **metadata)
 
-        next_page = self._strategy.next_page(body, 1)
+        next_page = self._strategy.next_page(body, _current_page(self._strategy, body))
         while next_page is not None:
             items, body = self._parse_page(self._fetch_page(self.request, next_page))
             metadata = self._strategy.extract_metadata(body)
@@ -406,8 +458,7 @@ class AsyncNemoPaginatedResponse(Generic[ModelT]):
     def _parse_page(self, raw: httpx.Response) -> tuple[list[ModelT], dict]:
         """Parse a page response into (items, raw_body)."""
         raise_for_status(raw)
-        body = raw.json()
-        items = [self._model_type.model_validate(item) for item in self._strategy.extract_items(body)]
+        items, body = _validated_page(raw, self._model_type, self._strategy)
         return items, body
 
     def page(self) -> PageResult[ModelT]:
@@ -422,7 +473,7 @@ class AsyncNemoPaginatedResponse(Generic[ModelT]):
         for item in items:
             yield item
 
-        next_page = self._strategy.next_page(body, 1)
+        next_page = self._strategy.next_page(body, _current_page(self._strategy, body))
         while next_page is not None:
             raw = await self._fetch_page(self.request, next_page)
             items, body = self._parse_page(raw)
@@ -437,7 +488,7 @@ class AsyncNemoPaginatedResponse(Generic[ModelT]):
         metadata = self._strategy.extract_metadata(body)
         yield PageResult(items=items, **metadata)
 
-        next_page = self._strategy.next_page(body, 1)
+        next_page = self._strategy.next_page(body, _current_page(self._strategy, body))
         while next_page is not None:
             raw = await self._fetch_page(self.request, next_page)
             items, body = self._parse_page(raw)

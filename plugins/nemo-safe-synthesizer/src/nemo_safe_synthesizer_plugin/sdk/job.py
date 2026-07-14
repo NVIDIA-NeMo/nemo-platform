@@ -17,6 +17,7 @@ import httpx
 import pandas as pd
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NemoClientError
 from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.schemas import PlatformJobLog, PlatformJobStatusResponse
 from nemo_platform_plugin.jobs.types import JobLogsQueryParams
@@ -93,7 +94,7 @@ class SafeSynthesizerJob:
                         if log_key not in seen_log_keys:
                             print(new_log.message.strip())
                             seen_log_keys.add(log_key)
-                except httpx.HTTPError as e:
+                except (NemoClientError, httpx.HTTPError) as e:
                     logger.warning("Error fetching logs while waiting for job completion: %s", e)
                 finally:
                     if logging_level is not None:

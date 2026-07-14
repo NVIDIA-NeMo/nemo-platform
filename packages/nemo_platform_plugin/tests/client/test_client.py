@@ -9,7 +9,7 @@ import httpx
 import pytest
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.endpoint import delete, get, post
-from nemo_platform_plugin.client.errors import NemoHTTPError, NotFoundError
+from nemo_platform_plugin.client.errors import NemoHTTPError, NemoResponseValidationError, NotFoundError
 from nemo_platform_plugin.client.response import NemoResponse
 from pydantic import BaseModel
 
@@ -384,6 +384,23 @@ def test_error_response_raises_specific_subclass() -> None:
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Not found"
+
+
+def test_success_response_validation_error_uses_client_error_contract() -> None:
+    mock_http = MagicMock(spec=httpx.Client)
+    response = httpx.Response(
+        200,
+        request=httpx.Request("GET", f"{BASE}/apis/test/v2/items/alice"),
+        json={"id": "not-an-integer", "name": "alice"},
+    )
+    mock_http.request.return_value = response
+
+    with pytest.raises(NemoResponseValidationError) as exc_info:
+        NemoClient(base_url=BASE, http_client=mock_http).send(GET_ITEM(name="alice"))
+
+    assert exc_info.value.http_response is response
+    assert exc_info.value.status_code == 200
+    assert exc_info.value.body == {"id": "not-an-integer", "name": "alice"}
 
 
 # ---------------------------------------------------------------------------

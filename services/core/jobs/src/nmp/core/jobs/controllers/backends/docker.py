@@ -882,7 +882,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
 
     def _run_container_in_thread(self, step: PlatformJobStepWithContext, container_args: dict):
         status_details = {}
-        status = PlatformJobStatus.PENDING.value
+        status = PlatformJobStatus.PENDING
 
         # If a request to pause or cancel came in while we were waiting for scheduling loop,
         # cancel scheduling the container
@@ -1208,7 +1208,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
 
         if container is None:
             return JobUpdate(
-                status=PlatformJobStatus.ERROR.value,
+                status=PlatformJobStatus.ERROR,
                 status_details={"message": message},
                 error_details={"message": message},
             )
@@ -1231,7 +1231,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 },
             )
             return JobUpdate(
-                status=PlatformJobStatus.ERROR.value,
+                status=PlatformJobStatus.ERROR,
                 status_details=status_details,
                 error_details=error_details,
             )
@@ -1266,9 +1266,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 "error_details": error_details,
             },
         )
-        return JobUpdate(
-            status=PlatformJobStatus.ERROR.value, status_details=status_details, error_details=error_details
-        )
+        return JobUpdate(status=PlatformJobStatus.ERROR, status_details=status_details, error_details=error_details)
 
     def sync_pending(self, step: PlatformJobStepWithContext, container: Container | None) -> JobUpdate:
         if container is None:
@@ -1426,7 +1424,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
             ),
         )
         logger.info("Updated task", extra={"task_id": task_id, "status": status})
-        return JobUpdate(status=status.value, status_details=status_details, error_details=error_details)
+        return JobUpdate(status=status, status_details=status_details, error_details=error_details)
 
     def map_docker_container_status_to_platform_status(
         self, step: PlatformJobStepWithContext, container: Container
