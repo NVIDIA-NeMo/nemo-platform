@@ -47,10 +47,10 @@ class Stream(Generic[ModelT]):
 
 
 PageTokenT = TypeVar("PageTokenT")
-MetadataT_co = TypeVar("MetadataT_co", covariant=True)
+MetadataT = TypeVar("MetadataT")
 
 
-class PaginationStrategy(Generic[PageTokenT, MetadataT_co]):
+class PaginationStrategy(Generic[PageTokenT, MetadataT]):
     """Base class associating a pagination strategy with its cursor and metadata types.
 
     Pagination strategies control how the client extracts items from a page
@@ -71,7 +71,7 @@ class PaginationStrategy(Generic[PageTokenT, MetadataT_co]):
         raise NotImplementedError
 
     @classmethod
-    def extract_metadata(cls, response_body: dict) -> MetadataT_co:
+    def extract_metadata(cls, response_body: dict) -> MetadataT:
         raise NotImplementedError
 
 
@@ -191,7 +191,6 @@ StrategyT = TypeVarExt(
     "StrategyT",
     bound=PaginationStrategy[Any, Any],
     default=OffsetPagination,
-    covariant=True,
 )
 
 

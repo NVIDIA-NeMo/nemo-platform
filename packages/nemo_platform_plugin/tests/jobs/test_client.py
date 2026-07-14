@@ -81,7 +81,13 @@ def test_list_jobs_paginated_items() -> None:
             request=httpx.Request("GET", f"{BASE}/apis/jobs/v2/workspaces/default/jobs"),
             json={
                 "data": [_JOB_JSON],
-                "pagination": {"page": 1, "page_size": 10, "total_pages": 1, "total_results": 1},
+                "pagination": {
+                    "page": 1,
+                    "page_size": 10,
+                    "current_page_size": 1,
+                    "total_pages": 1,
+                    "total_results": 1,
+                },
             },
         )
     )

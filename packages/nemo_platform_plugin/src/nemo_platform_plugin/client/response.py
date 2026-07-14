@@ -318,17 +318,17 @@ class AsyncNemoStreamResponse(Generic[ModelT]):
 
 
 # Type aliases for the page-fetching callbacks used by paginated responses.
-# The page value is int for offset-based or str for cursor-based pagination.
+# Fetchers receive the strategy-specific page token returned by ``next_page()``.
 SyncPageFetcher = Callable[[PreparedRequest, Any], httpx.Response]
 AsyncPageFetcher = Callable[[PreparedRequest, Any], Awaitable[httpx.Response]]
 
 
-PageModelT_co = TypeVar("PageModelT_co", bound=BaseModel, covariant=True)
-PageMetadataT_co = TypeVar("PageMetadataT_co", covariant=True)
+PageModelT = TypeVar("PageModelT", bound=BaseModel)
+PageMetadataT = TypeVar("PageMetadataT")
 
 
 @dataclass(frozen=True, slots=True)
-class PageResult(Generic[PageModelT_co, PageMetadataT_co]):
+class PageResult(Generic[PageModelT, PageMetadataT]):
     """A single page of results with pagination metadata.
 
     Returned by :meth:`NemoPaginatedResponse.page` for callers who want
@@ -344,11 +344,11 @@ class PageResult(Generic[PageModelT_co, PageMetadataT_co]):
             print(item.name)
     """
 
-    items: list[PageModelT_co]
-    metadata: PageMetadataT_co
+    items: list[PageModelT]
+    metadata: PageMetadataT
 
 
-PaginatedModelT_co = TypeVar("PaginatedModelT_co", bound=BaseModel, covariant=True)
+PaginatedModelT = TypeVar("PaginatedModelT", bound=BaseModel)
 PaginatedStrategyT_co = TypeVarExt(
     "PaginatedStrategyT_co",
     bound=PaginationStrategy[Any, Any],
@@ -356,10 +356,10 @@ PaginatedStrategyT_co = TypeVarExt(
     covariant=True,
 )
 PageTokenT = TypeVar("PageTokenT")
-MetadataT_co = TypeVar("MetadataT_co", covariant=True)
+MetadataT = TypeVar("MetadataT")
 
 
-class NemoPaginatedResponse(Generic[PaginatedModelT_co, PaginatedStrategyT_co]):
+class NemoPaginatedResponse(Generic[PaginatedModelT, PaginatedStrategyT_co]):
     """Sync paginated API response.
 
     Provides two iteration modes::
@@ -386,7 +386,7 @@ class NemoPaginatedResponse(Generic[PaginatedModelT_co, PaginatedStrategyT_co]):
     def __init__(
         self,
         first_http_response: httpx.Response,
-        model_type: type[PaginatedModelT_co],
+        model_type: type[PaginatedModelT],
         request: PreparedRequest,
         fetch_page: SyncPageFetcher,
         strategy: type[PaginationStrategy[Any, Any]] | None = None,
@@ -401,25 +401,25 @@ class NemoPaginatedResponse(Generic[PaginatedModelT_co, PaginatedStrategyT_co]):
     def http_response(self) -> httpx.Response:
         return self._first_response
 
-    def _parse_page(self, raw: httpx.Response) -> tuple[list[PaginatedModelT_co], dict, Any]:
+    def _parse_page(self, raw: httpx.Response) -> tuple[list[PaginatedModelT], dict, Any]:
         """Parse a page response into items, its raw body, and typed metadata."""
         raise_for_status(raw)
         return _validated_page(raw, self._model_type, self._strategy)
 
     @overload
     def page(
-        self: NemoPaginatedResponse[PaginatedModelT_co, PaginationStrategy[PageTokenT, MetadataT_co]],
-    ) -> PageResult[PaginatedModelT_co, MetadataT_co]: ...
+        self: NemoPaginatedResponse[PaginatedModelT, PaginationStrategy[PageTokenT, MetadataT]],
+    ) -> PageResult[PaginatedModelT, MetadataT]: ...
 
     @overload
-    def page(self) -> PageResult[PaginatedModelT_co, Any]: ...
+    def page(self) -> PageResult[PaginatedModelT, Any]: ...
 
-    def page(self) -> PageResult[PaginatedModelT_co, Any]:
+    def page(self) -> PageResult[PaginatedModelT, Any]:
         """Return the first page as a :class:`PageResult` with metadata."""
         items, _, metadata = self._parse_page(self._first_response)
         return PageResult(items=items, metadata=metadata)
 
-    def items(self) -> Iterator[PaginatedModelT_co]:
+    def items(self) -> Iterator[PaginatedModelT]:
         """Iterate all items across all pages, fetching subsequent pages lazily."""
         items, body, _ = self._parse_page(self._first_response)
         yield from items
@@ -432,13 +432,13 @@ class NemoPaginatedResponse(Generic[PaginatedModelT_co, PaginatedStrategyT_co]):
 
     @overload
     def pages(
-        self: NemoPaginatedResponse[PaginatedModelT_co, PaginationStrategy[PageTokenT, MetadataT_co]],
-    ) -> Iterator[PageResult[PaginatedModelT_co, MetadataT_co]]: ...
+        self: NemoPaginatedResponse[PaginatedModelT, PaginationStrategy[PageTokenT, MetadataT]],
+    ) -> Iterator[PageResult[PaginatedModelT, MetadataT]]: ...
 
     @overload
-    def pages(self) -> Iterator[PageResult[PaginatedModelT_co, Any]]: ...
+    def pages(self) -> Iterator[PageResult[PaginatedModelT, Any]]: ...
 
-    def pages(self) -> Iterator[PageResult[PaginatedModelT_co, Any]]:
+    def pages(self) -> Iterator[PageResult[PaginatedModelT, Any]]:
         """Iterate page by page, yielding :class:`PageResult` objects with metadata."""
         items, body, metadata = self._parse_page(self._first_response)
         yield PageResult(items=items, metadata=metadata)
@@ -450,7 +450,7 @@ class NemoPaginatedResponse(Generic[PaginatedModelT_co, PaginatedStrategyT_co]):
             next_page = self._strategy.next_page(body)
 
 
-class AsyncNemoPaginatedResponse(Generic[PaginatedModelT_co, PaginatedStrategyT_co]):
+class AsyncNemoPaginatedResponse(Generic[PaginatedModelT, PaginatedStrategyT_co]):
     """Async paginated API response.
 
     Async twin of :class:`NemoPaginatedResponse`::
@@ -465,7 +465,7 @@ class AsyncNemoPaginatedResponse(Generic[PaginatedModelT_co, PaginatedStrategyT_
     def __init__(
         self,
         first_http_response: httpx.Response,
-        model_type: type[PaginatedModelT_co],
+        model_type: type[PaginatedModelT],
         request: PreparedRequest,
         fetch_page: AsyncPageFetcher,
         strategy: type[PaginationStrategy[Any, Any]] | None = None,
@@ -480,25 +480,25 @@ class AsyncNemoPaginatedResponse(Generic[PaginatedModelT_co, PaginatedStrategyT_
     def http_response(self) -> httpx.Response:
         return self._first_response
 
-    def _parse_page(self, raw: httpx.Response) -> tuple[list[PaginatedModelT_co], dict, Any]:
+    def _parse_page(self, raw: httpx.Response) -> tuple[list[PaginatedModelT], dict, Any]:
         """Parse a page response into items, its raw body, and typed metadata."""
         raise_for_status(raw)
         return _validated_page(raw, self._model_type, self._strategy)
 
     @overload
     def page(
-        self: AsyncNemoPaginatedResponse[PaginatedModelT_co, PaginationStrategy[PageTokenT, MetadataT_co]],
-    ) -> PageResult[PaginatedModelT_co, MetadataT_co]: ...
+        self: AsyncNemoPaginatedResponse[PaginatedModelT, PaginationStrategy[PageTokenT, MetadataT]],
+    ) -> PageResult[PaginatedModelT, MetadataT]: ...
 
     @overload
-    def page(self) -> PageResult[PaginatedModelT_co, Any]: ...
+    def page(self) -> PageResult[PaginatedModelT, Any]: ...
 
-    def page(self) -> PageResult[PaginatedModelT_co, Any]:
+    def page(self) -> PageResult[PaginatedModelT, Any]:
         """Return the first page as a :class:`PageResult` with metadata."""
         items, _, metadata = self._parse_page(self._first_response)
         return PageResult(items=items, metadata=metadata)
 
-    async def items(self) -> AsyncIterator[PaginatedModelT_co]:
+    async def items(self) -> AsyncIterator[PaginatedModelT]:
         """Iterate all items across all pages, fetching subsequent pages lazily."""
         items, body, _ = self._parse_page(self._first_response)
         for item in items:
@@ -514,13 +514,13 @@ class AsyncNemoPaginatedResponse(Generic[PaginatedModelT_co, PaginatedStrategyT_
 
     @overload
     def pages(
-        self: AsyncNemoPaginatedResponse[PaginatedModelT_co, PaginationStrategy[PageTokenT, MetadataT_co]],
-    ) -> AsyncIterator[PageResult[PaginatedModelT_co, MetadataT_co]]: ...
+        self: AsyncNemoPaginatedResponse[PaginatedModelT, PaginationStrategy[PageTokenT, MetadataT]],
+    ) -> AsyncIterator[PageResult[PaginatedModelT, MetadataT]]: ...
 
     @overload
-    def pages(self) -> AsyncIterator[PageResult[PaginatedModelT_co, Any]]: ...
+    def pages(self) -> AsyncIterator[PageResult[PaginatedModelT, Any]]: ...
 
-    async def pages(self) -> AsyncIterator[PageResult[PaginatedModelT_co, Any]]:
+    async def pages(self) -> AsyncIterator[PageResult[PaginatedModelT, Any]]:
         """Iterate page by page, yielding :class:`PageResult` objects with metadata."""
         items, body, metadata = self._parse_page(self._first_response)
         yield PageResult(items=items, metadata=metadata)
