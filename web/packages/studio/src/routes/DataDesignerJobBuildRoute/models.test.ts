@@ -21,8 +21,8 @@ import {
 const model = (overrides: Partial<BuilderModel> = {}): BuilderModel => ({
   id: 'model-0',
   alias: 'default',
-  model: 'openai/gpt-4o-mini',
-  provider: 'openai',
+  model: 'nvidia/llama-3.3-nemotron-super-49b-v1',
+  provider: 'nvidia',
   inferenceParams: {},
   ...overrides,
 });
@@ -39,7 +39,7 @@ describe('providerForModel', () => {
     {
       workspace: 'steramae',
       models: [
-        { workspace: 'steramae', name: 'gpt-oss', model_providers: ['steramae/build'] },
+        { workspace: 'steramae', name: 'nemotron-oss', model_providers: ['steramae/build'] },
         {
           workspace: 'steramae',
           name: 'nvidia-llama-3-3-nemotron-super-49b-v1-5',
@@ -51,7 +51,7 @@ describe('providerForModel', () => {
   ] as unknown as ModelWorkspaceGroup[];
 
   it('returns the model’s first provider ref', () => {
-    expect(providerForModel(groups, 'steramae/gpt-oss')).toBe('steramae/build');
+    expect(providerForModel(groups, 'steramae/nemotron-oss')).toBe('steramae/build');
   });
 
   it('returns empty string when the model or its provider is missing', () => {
@@ -61,7 +61,7 @@ describe('providerForModel', () => {
 
   it('firstAvailableModel picks the first model and its provider', () => {
     expect(firstAvailableModel(groups)).toEqual({
-      model: 'steramae/gpt-oss',
+      model: 'steramae/nemotron-oss',
       provider: 'steramae/build',
     });
     expect(firstAvailableModel([])).toBeNull();
@@ -75,15 +75,15 @@ describe('providerForModel', () => {
   });
 
   it('resolveTemplateModel matches a full URN too', () => {
-    expect(resolveTemplateModel(groups, 'steramae/gpt-oss')).toEqual({
-      model: 'steramae/gpt-oss',
+    expect(resolveTemplateModel(groups, 'steramae/nemotron-oss')).toEqual({
+      model: 'steramae/nemotron-oss',
       provider: 'steramae/build',
     });
   });
 
   it('resolveTemplateModel falls back to the first model when the preferred is absent', () => {
     expect(resolveTemplateModel(groups, 'not-in-workspace')).toEqual({
-      model: 'steramae/gpt-oss',
+      model: 'steramae/nemotron-oss',
       provider: 'steramae/build',
     });
     expect(resolveTemplateModel([], 'anything')).toBeNull();
@@ -100,7 +100,7 @@ describe('buildServedModelNames / modelIdForModel', () => {
           model_entity_id: 'steramae/nvidia-llama-3-3-nemotron-super-49b-v1-5',
           served_model_name: 'nvidia/llama-3.3-nemotron-super-49b-v1.5',
         },
-        { model_entity_id: 'steramae/gpt-oss', served_model_name: 'openai/gpt-oss-120b' },
+        { model_entity_id: 'steramae/nemotron-oss', served_model_name: 'nvidia/nemotron-oss-120b' },
       ],
     },
     {
@@ -121,7 +121,7 @@ describe('buildServedModelNames / modelIdForModel', () => {
     expect(names.get('steramae/nvidia-llama-3-3-nemotron-super-49b-v1-5')).toBe(
       'nvidia/llama-3.3-nemotron-super-49b-v1.5'
     );
-    expect(names.get('steramae/gpt-oss')).toBe('openai/gpt-oss-120b');
+    expect(names.get('steramae/nemotron-oss')).toBe('nvidia/nemotron-oss-120b');
   });
 
   it('modelIdForModel resolves the URN to the served model name', () => {
@@ -166,14 +166,14 @@ describe('builderModelFromSelection', () => {
     expect(
       builderModelFromSelection(
         'model-5',
-        { model: 'openai/gpt-4o-mini' },
+        { model: 'nvidia/llama-3.3-nemotron-super-49b-v1' },
         'default/nvidia-build',
         new Set(['model_1'])
       )
     ).toEqual({
       id: 'model-5',
       alias: 'model_2',
-      model: 'openai/gpt-4o-mini',
+      model: 'nvidia/llama-3.3-nemotron-super-49b-v1',
       provider: 'default/nvidia-build',
       inferenceParams: {},
     });
@@ -221,8 +221,7 @@ describe('buildModelConfigs', () => {
     expect(buildModelConfigs([model({ provider: '' })])).toEqual([
       {
         alias: 'default',
-        model: 'openai/gpt-4o-mini',
-        provider: '',
+        model: 'nvidia/llama-3.3-nemotron-super-49b-v1',
         inference_parameters: {
           generation_type: 'chat-completion',
           max_tokens: 1024,
@@ -264,8 +263,8 @@ describe('buildModelConfigs', () => {
     ).toEqual([
       {
         alias: 'spaced',
-        model: 'openai/gpt-4o-mini',
-        provider: 'openai',
+        model: 'nvidia/llama-3.3-nemotron-super-49b-v1',
+        provider: 'nvidia',
         inference_parameters: {
           generation_type: 'chat-completion',
           temperature: 0.7,

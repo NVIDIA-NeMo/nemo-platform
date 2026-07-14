@@ -28,18 +28,20 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+const NEMOTRON_MODEL = 'nvidia/llama-3.3-nemotron-super-49b-v1';
+
 const models: BuilderModel[] = [
   {
     id: 'model-0',
     alias: 'default',
-    model: 'openai/gpt-4o-mini',
-    provider: 'openai',
+    model: NEMOTRON_MODEL,
+    provider: 'nvidia',
     inferenceParams: { temperature: 0.7 },
   },
   {
     id: 'model-1',
     alias: 'judge',
-    model: 'meta/llama-3.1-70b-instruct',
+    model: 'nvidia/llama-3.1-nemotron-70b-instruct',
     provider: 'nvidia',
     inferenceParams: { temperature: 0, max_tokens: 1024 },
   },
