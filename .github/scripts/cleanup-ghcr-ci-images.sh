@@ -13,6 +13,7 @@ fi
 
 repo="${GITHUB_REPOSITORY#*/}"
 repo="${repo,,}"
+repo_root="$(git rev-parse --show-toplevel)"
 
 date_utc() {
   if command -v gdate >/dev/null 2>&1; then
@@ -32,13 +33,21 @@ nightly_tag_pattern='^(nightly-[0-9]{14}|[0-9]+[.][0-9]+[.][0-9]+-(night|nightly
 
 # NGC metadata is required for each released container and chart. Its filename
 # is also the corresponding GHCR package name.
-package_ids=()
-while IFS= read -r package_id; do
-  package_ids+=("${package_id}")
-done < <(
-  find .github/assets/ngc/containers .github/assets/ngc/charts \
+if ! package_id_lines="$(
+  find "${repo_root}/.github/assets/ngc/containers" \
+    "${repo_root}/.github/assets/ngc/charts" \
     -maxdepth 1 -type f -name '*.md' -exec basename {} .md \; | sort -u
-)
+)"; then
+  echo "Failed to discover NGC metadata files." >&2
+  exit 1
+fi
+
+package_ids=()
+if [ -n "${package_id_lines}" ]; then
+  while IFS= read -r package_id; do
+    package_ids+=("${package_id}")
+  done <<< "${package_id_lines}"
+fi
 
 case "${CLEANUP_SCOPE:-ci}" in
   ci)
