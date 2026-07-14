@@ -173,7 +173,7 @@ enabled-plugins = [
   "nemo-safe-synthesizer-plugin",
   "nemo-switchyard",
   "nemo-agents-plugin",
-  "nemo-deployments-plugin",
+  "nemo-deployments-plugin[docker,k8s]",
   "nemo-customizer-plugin",
   "nemo-automodel-plugin",
   "nemo-unsloth-plugin",
