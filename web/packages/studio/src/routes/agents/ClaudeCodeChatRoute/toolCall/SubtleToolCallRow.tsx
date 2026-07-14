@@ -98,46 +98,46 @@ export const SubtleToolCallRow = ({ actions }: SubtleToolCallRowProps) => (
                 >
                   {action.toolName === 'Read'
                     ? action.details.map((detail, detailIndex) => (
-                      <span
-                        key={`${action.toolCallId}-${detailIndex}`}
-                        className="block min-w-0 max-w-full truncate py-0.5"
-                        data-testid="claude-code-tool-call-subtle-detail-item"
-                        title={detail}
-                      >
-                        {detail}
-                      </span>
-                    ))
-                    : action.details.map((detail, detailIndex) => {
-                      const invocation = invocations[detailIndex];
-                      if (!invocation) return null;
-
-                      return (
-                        <details
+                        <span
                           key={`${action.toolCallId}-${detailIndex}`}
-                          className="group/invocation w-full min-w-0 max-w-full overflow-hidden"
-                          data-testid="claude-code-tool-call-nested-invocation"
+                          className="block min-w-0 max-w-full truncate py-0.5"
+                          data-testid="claude-code-tool-call-subtle-detail-item"
+                          title={detail}
                         >
-                          <summary
-                            className="flex w-full min-w-0 max-w-full cursor-pointer list-none items-center gap-density-xs overflow-hidden py-0.5 marker:hidden"
-                            data-testid="claude-code-tool-call-subtle-detail-item"
-                            title={detail}
-                          >
-                            <span className="min-w-0 truncate">{detail}</span>
-                            <ChevronRight
-                              aria-hidden
-                              className="size-3 shrink-0 transition-transform group-open/invocation:rotate-90"
-                            />
-                          </summary>
+                          {detail}
+                        </span>
+                      ))
+                    : action.details.map((detail, detailIndex) => {
+                        const invocation = invocations[detailIndex];
+                        if (!invocation) return null;
 
-                          <InvocationPanel
-                            invocation={invocation}
-                            invocationCount={invocations.length}
-                            invocationIndex={detailIndex}
-                            toolCallId={action.toolCallId}
-                          />
-                        </details>
-                      );
-                    })}
+                        return (
+                          <details
+                            key={`${action.toolCallId}-${detailIndex}`}
+                            className="group/invocation w-full min-w-0 max-w-full overflow-hidden"
+                            data-testid="claude-code-tool-call-nested-invocation"
+                          >
+                            <summary
+                              className="flex w-full min-w-0 max-w-full cursor-pointer list-none items-center gap-density-xs overflow-hidden py-0.5 marker:hidden"
+                              data-testid="claude-code-tool-call-subtle-detail-item"
+                              title={detail}
+                            >
+                              <span className="min-w-0 truncate">{detail}</span>
+                              <ChevronRight
+                                aria-hidden
+                                className="size-3 shrink-0 transition-transform group-open/invocation:rotate-90"
+                              />
+                            </summary>
+
+                            <InvocationPanel
+                              invocation={invocation}
+                              invocationCount={invocations.length}
+                              invocationIndex={detailIndex}
+                              toolCallId={action.toolCallId}
+                            />
+                          </details>
+                        );
+                      })}
                 </Stack>
               ) : (
                 <InvocationPanel
