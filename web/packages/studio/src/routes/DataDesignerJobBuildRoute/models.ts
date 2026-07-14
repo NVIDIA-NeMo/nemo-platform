@@ -136,7 +136,11 @@ export const validateModels = (models: BuilderModel[]): string[] => {
 };
 
 const toModelConfig = (model: BuilderModel): ModelConfig => {
-  const config: ModelConfig = { alias: model.alias.trim(), model: model.model.trim() };
+  const config: ModelConfig = {
+    alias: model.alias.trim(),
+    model: model.model.trim(),
+    provider: model.provider.trim(),
+  };
   if (model.provider.trim()) config.provider = model.provider.trim();
 
   const { temperature, top_p, max_tokens } = model.inferenceParams;
