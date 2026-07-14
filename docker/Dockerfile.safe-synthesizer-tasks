@@ -115,7 +115,7 @@ RUN printf '%s\n' \
         "${SAFE_SYNTHESIZER_RUNTIME_PACKAGE}" \
         > /tmp/safe-synthesizer-runtime.txt && \
     printf '%s\n' \
-        wandb==0.27.2 \
+        wandb==0.28.0 \
         'cryptography>=48.0.1,<49' \
         'pyarrow>=23.0.1,<24' \
         > /tmp/safe-synthesizer-overrides.txt
