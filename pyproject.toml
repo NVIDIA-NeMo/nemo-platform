@@ -370,7 +370,7 @@ nmp-dev-mcp = { workspace = true }
 nmp-testing = { workspace = true }
 nmp-build-tools = { workspace = true }
 nemo-platform-plugin = { workspace = true }
-nemo-insights-plugin = { path = "plugins/nemo-insights", editable = true }
+nemo-insights-plugin = { workspace = true }
 
 nemo-evaluator-plugin = { workspace = true }
 nemo-guardrails-plugin = { workspace = true }
@@ -436,6 +436,7 @@ members = [
   "plugins/nemo-switchyard",
   "plugins/nemo-agents",
   "plugins/nemo-deployments",
+  "plugins/nemo-insights",
   "plugins/nemo-agents/examples/calculator-agent",
   "plugins/nemo-agents/examples/email-phishing-analyzer",
   "plugins/nemo-customizer",
@@ -445,12 +446,6 @@ members = [
   "services/automodel",
   "services/unsloth",
   "services/rl",
-]
-exclude = [
-  # Keep the analyst out of `uv sync --all-packages`; install it explicitly
-  # through the `insights` dependency group.
-  "plugins/nemo-insights",
-  "plugins/nemo-insights/examples/*",
 ]
 
 

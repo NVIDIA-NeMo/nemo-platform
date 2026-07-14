@@ -36,6 +36,7 @@ members = [
     "nemo-evaluator-plugin",
     "nemo-evaluator-sdk",
     "nemo-guardrails-plugin",
+    "nemo-insights-plugin",
     "nemo-nb",
     "nemo-platform",
     "nemo-platform-ext",

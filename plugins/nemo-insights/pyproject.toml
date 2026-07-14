@@ -47,5 +47,5 @@ pythonpath = ["src", "."]
 testpaths = ["tests"]
 
 [tool.uv.sources]
-nemo-platform = { path = "../../packages/nemo_platform", editable = true }
-nemo-platform-plugin = { path = "../../packages/nemo_platform_plugin", editable = true }
+nemo-platform = { workspace = true }
+nemo-platform-plugin = { workspace = true }
