@@ -8,6 +8,7 @@ collected by pytest. They ensure endpoint annotations flow through prepared
 requests and both client implementations without being erased to ``Any``.
 """
 
+from collections.abc import AsyncIterator, Iterator
 from typing import assert_type
 
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient, _parse_json_body
@@ -18,8 +19,24 @@ from nemo_platform_plugin.client.response import (
     NemoPaginatedResponse,
     NemoResponse,
     NemoStreamResponse,
+    PageResult,
 )
-from nemo_platform_plugin.client.types import Paginated, PreparedRequest, Stream
+from nemo_platform_plugin.client.types import (
+    CursorPagination,
+    CursorPaginationMetadata,
+    OffsetPagination,
+    OffsetPaginationMetadata,
+    Paginated,
+    PreparedRequest,
+    Stream,
+)
+from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
+from nemo_platform_plugin.files.types import FilesetOutput
+from nemo_platform_plugin.jobs.client import AsyncJobsClient, JobsClient
+from nemo_platform_plugin.jobs.schemas import PlatformJobLog
+from nemo_platform_plugin.jobs.types import PlatformJobResponse, PlatformJobStepWithContext
+from nemo_platform_plugin.secrets.client import AsyncSecretsClient, SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretResponse
 from pydantic import BaseModel
 
 
@@ -42,6 +59,11 @@ def get_item_pages() -> Paginated[Item]:
     raise NotImplementedError
 
 
+@get("/items/cursor-pages")
+def get_cursor_item_pages() -> Paginated[Item, CursorPagination]:
+    raise NotImplementedError
+
+
 @get("/items/stream")
 def get_item_stream() -> Stream[Item]:
     raise NotImplementedError
@@ -55,7 +77,16 @@ def _check_sync_return_types(client: NemoClient) -> None:
     list_request = get_item_list()
     assert_type(list_request, PreparedRequest[list[Item]])
     assert_type(client.send(list_request), NemoResponse[list[Item]])
-    assert_type(client.send(get_item_pages()), NemoPaginatedResponse[Item])
+    pages = client.send(get_item_pages())
+    assert_type(pages, NemoPaginatedResponse[Item, OffsetPagination])
+    assert_type(pages.page(), PageResult[Item, OffsetPaginationMetadata])
+    assert_type(pages.items(), Iterator[Item])
+    assert_type(pages.pages(), Iterator[PageResult[Item, OffsetPaginationMetadata]])
+    cursor_pages = client.send(get_cursor_item_pages())
+    assert_type(cursor_pages, NemoPaginatedResponse[Item, CursorPagination])
+    assert_type(cursor_pages.page(), PageResult[Item, CursorPaginationMetadata])
+    assert_type(cursor_pages.items(), Iterator[Item])
+    assert_type(cursor_pages.pages(), Iterator[PageResult[Item, CursorPaginationMetadata]])
     assert_type(client.send(get_item_stream()), NemoStreamResponse[Item])
 
     assert_type(_parse_json_body(Item, {"name": "one"}), Item)
@@ -65,5 +96,70 @@ def _check_sync_return_types(client: NemoClient) -> None:
 async def _check_async_return_types(client: AsyncNemoClient) -> None:
     assert_type(await client.send(get_item(name="one")), NemoResponse[Item])
     assert_type(await client.send(get_item_list()), NemoResponse[list[Item]])
-    assert_type(await client.send(get_item_pages()), AsyncNemoPaginatedResponse[Item])
+    pages = await client.send(get_item_pages())
+    assert_type(pages, AsyncNemoPaginatedResponse[Item, OffsetPagination])
+    assert_type(pages.page(), PageResult[Item, OffsetPaginationMetadata])
+    assert_type(pages.items(), AsyncIterator[Item])
+    assert_type(pages.pages(), AsyncIterator[PageResult[Item, OffsetPaginationMetadata]])
+    cursor_pages = await client.send(get_cursor_item_pages())
+    assert_type(cursor_pages, AsyncNemoPaginatedResponse[Item, CursorPagination])
+    assert_type(cursor_pages.page(), PageResult[Item, CursorPaginationMetadata])
+    assert_type(cursor_pages.items(), AsyncIterator[Item])
+    assert_type(cursor_pages.pages(), AsyncIterator[PageResult[Item, CursorPaginationMetadata]])
     assert_type(await client.send(get_item_stream()), AsyncNemoStreamResponse[Item])
+
+
+def _check_jobs_return_types(client: JobsClient) -> None:
+    logs = client.list_job_logs(name="job")
+    assert_type(logs, NemoPaginatedResponse[PlatformJobLog, CursorPagination])
+    assert_type(logs.page(), PageResult[PlatformJobLog, CursorPaginationMetadata])
+
+
+async def _check_async_jobs_return_types(client: AsyncJobsClient) -> None:
+    logs = await client.list_job_logs(name="job")
+    assert_type(logs, AsyncNemoPaginatedResponse[PlatformJobLog, CursorPagination])
+    assert_type(logs.page(), PageResult[PlatformJobLog, CursorPaginationMetadata])
+
+
+def _check_offset_client_return_types(
+    files: FilesClient,
+    secrets: SecretsClient,
+    jobs: JobsClient,
+) -> None:
+    filesets = files.list_filesets()
+    assert_type(filesets, NemoPaginatedResponse[FilesetOutput, OffsetPagination])
+    assert_type(filesets.page(), PageResult[FilesetOutput, OffsetPaginationMetadata])
+
+    secret_pages = secrets.list_secrets()
+    assert_type(secret_pages, NemoPaginatedResponse[PlatformSecretResponse, OffsetPagination])
+    assert_type(secret_pages.page(), PageResult[PlatformSecretResponse, OffsetPaginationMetadata])
+
+    job_pages = jobs.list_jobs()
+    assert_type(job_pages, NemoPaginatedResponse[PlatformJobResponse, OffsetPagination])
+    assert_type(job_pages.page(), PageResult[PlatformJobResponse, OffsetPaginationMetadata])
+
+    step_pages = jobs.list_steps(name="job")
+    assert_type(step_pages, NemoPaginatedResponse[PlatformJobStepWithContext, OffsetPagination])
+    assert_type(step_pages.page(), PageResult[PlatformJobStepWithContext, OffsetPaginationMetadata])
+
+
+async def _check_async_offset_client_return_types(
+    files: AsyncFilesClient,
+    secrets: AsyncSecretsClient,
+    jobs: AsyncJobsClient,
+) -> None:
+    filesets = await files.list_filesets()
+    assert_type(filesets, AsyncNemoPaginatedResponse[FilesetOutput, OffsetPagination])
+    assert_type(filesets.page(), PageResult[FilesetOutput, OffsetPaginationMetadata])
+
+    secret_pages = await secrets.list_secrets()
+    assert_type(secret_pages, AsyncNemoPaginatedResponse[PlatformSecretResponse, OffsetPagination])
+    assert_type(secret_pages.page(), PageResult[PlatformSecretResponse, OffsetPaginationMetadata])
+
+    job_pages = await jobs.list_jobs()
+    assert_type(job_pages, AsyncNemoPaginatedResponse[PlatformJobResponse, OffsetPagination])
+    assert_type(job_pages.page(), PageResult[PlatformJobResponse, OffsetPaginationMetadata])
+
+    step_pages = await jobs.list_steps(name="job")
+    assert_type(step_pages, AsyncNemoPaginatedResponse[PlatformJobStepWithContext, OffsetPagination])
+    assert_type(step_pages.page(), PageResult[PlatformJobStepWithContext, OffsetPaginationMetadata])

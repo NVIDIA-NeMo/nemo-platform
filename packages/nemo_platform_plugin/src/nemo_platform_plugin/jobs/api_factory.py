@@ -966,11 +966,13 @@ def job_route_factory(
                 pagination=PaginationData(
                     # The list envelope always carries pagination metadata; coalesce
                     # to the request values / zero to satisfy the non-optional PaginationData.
-                    page=list_page.page if list_page.page is not None else page,
-                    page_size=list_page.page_size if list_page.page_size is not None else page_size,
+                    page=list_page.metadata["page"] if list_page.metadata["page"] is not None else page,
+                    page_size=(
+                        list_page.metadata["page_size"] if list_page.metadata["page_size"] is not None else page_size
+                    ),
                     current_page_size=len(list_page.items),
-                    total_pages=list_page.total_pages or 0,
-                    total_results=list_page.total_results or 0,
+                    total_pages=list_page.metadata["total_pages"] or 0,
+                    total_results=list_page.metadata["total_results"] or 0,
                 ),
                 sort=sort,
                 filter=user_filter or None,
@@ -1050,12 +1052,12 @@ def job_route_factory(
                 logs_query["limit"] = limit
             if page_cursor is not None:
                 logs_query["page_cursor"] = page_cursor
-            logs = (
-                await client_from_platform(sdk, AsyncJobsClient).page_job_logs(
+            logs_page = (
+                await client_from_platform(sdk, AsyncJobsClient).list_job_logs(
                     workspace=workspace, name=name, query_params=logs_query
                 )
-            ).data()
-            return PlatformJobLogPage(**logs.model_dump())
+            ).page()
+            return PlatformJobLogPage(data=logs_page.items, **logs_page.metadata)
 
         # Results
         @router.get(

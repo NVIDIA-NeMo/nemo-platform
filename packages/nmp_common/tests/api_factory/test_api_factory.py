@@ -304,18 +304,33 @@ def _resp(data):
 def _page_resp(items, *, page=1, page_size=10, total_pages=1, total_results=None):
     """Wrap a list of jobs in a response whose ``.page()`` returns a PageResult-like object.
 
-    The list handler calls ``.page()`` (not ``.data()``) and reads
-    ``.items/.page/.page_size/.total_pages/.total_results`` off the result.
+    The list handler calls ``.page()`` and reads its items and offset metadata.
     """
     page_result = MagicMock()
     page_result.items = items
-    page_result.page = page
-    page_result.page_size = page_size
-    page_result.total_pages = total_pages
-    page_result.total_results = total_results if total_results is not None else len(items)
+    page_result.metadata = {
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "total_results": total_results if total_results is not None else len(items),
+    }
     m = MagicMock()
     m.page.return_value = page_result
     return m
+
+
+def _cursor_page_resp(page: PlatformJobLogPage):
+    """Wrap a Jobs log envelope as a cursor-paginated typed-client response."""
+    page_result = MagicMock()
+    page_result.items = page.data
+    page_result.metadata = {
+        "total": page.total,
+        "next_page": page.next_page,
+        "prev_page": page.prev_page,
+    }
+    response = MagicMock()
+    response.page.return_value = page_result
+    return response
 
 
 def _client_error(error_cls, status_code: int, detail: str):
@@ -427,7 +442,7 @@ def test_get_job_logs_default_parameters(mock_service_with_job_routes):
 
     # Mock the jobs-client response
     mock_log_page = create_mock_log_page(num_logs=5, total=10)
-    mock_jobs.page_job_logs = AsyncMock(return_value=_resp(mock_log_page))
+    mock_jobs.list_job_logs = AsyncMock(return_value=_cursor_page_resp(mock_log_page))
 
     # Make the request
     response = client.get("/v2/workspaces/default/test/jobs/test-job-123/logs")
@@ -439,7 +454,7 @@ def test_get_job_logs_default_parameters(mock_service_with_job_routes):
     assert response_data["total"] == 10
 
     # None-valued limit/page_cursor are omitted from query_params.
-    mock_jobs.page_job_logs.assert_called_once_with(
+    mock_jobs.list_job_logs.assert_called_once_with(
         workspace="default",
         name="test-job-123",
         query_params={},
@@ -453,7 +468,7 @@ def test_get_job_logs_with_limit(mock_service_with_job_routes):
 
     # Mock the jobs-client response
     mock_log_page = create_mock_log_page(num_logs=2, total=10, next_page="next_cursor_123")
-    mock_jobs.page_job_logs = AsyncMock(return_value=_resp(mock_log_page))
+    mock_jobs.list_job_logs = AsyncMock(return_value=_cursor_page_resp(mock_log_page))
 
     # Make the request with limit
     response = client.get("/v2/workspaces/default/test/jobs/test-job-123/logs?limit=2")
@@ -465,7 +480,7 @@ def test_get_job_logs_with_limit(mock_service_with_job_routes):
     assert response_data["total"] == 10
     assert response_data["next_page"] == "next_cursor_123"
 
-    mock_jobs.page_job_logs.assert_called_once_with(
+    mock_jobs.list_job_logs.assert_called_once_with(
         workspace="default",
         name="test-job-123",
         query_params={"limit": 2},
@@ -479,7 +494,7 @@ def test_get_job_logs_with_page_cursor(mock_service_with_job_routes):
 
     # Mock the jobs-client response
     mock_log_page = create_mock_log_page(num_logs=3, total=10, next_page="next_cursor_456", prev_page="prev_cursor_789")
-    mock_jobs.page_job_logs = AsyncMock(return_value=_resp(mock_log_page))
+    mock_jobs.list_job_logs = AsyncMock(return_value=_cursor_page_resp(mock_log_page))
 
     # Make the request with page_cursor
     response = client.get("/v2/workspaces/default/test/jobs/test-job-123/logs?page_cursor=cursor_abc_123")
@@ -492,7 +507,7 @@ def test_get_job_logs_with_page_cursor(mock_service_with_job_routes):
     assert response_data["next_page"] == "next_cursor_456"
     assert response_data["prev_page"] == "prev_cursor_789"
 
-    mock_jobs.page_job_logs.assert_called_once_with(
+    mock_jobs.list_job_logs.assert_called_once_with(
         workspace="default",
         name="test-job-123",
         query_params={"page_cursor": "cursor_abc_123"},
@@ -508,7 +523,7 @@ def test_get_job_logs_with_both_parameters(mock_service_with_job_routes):
     mock_log_page = create_mock_log_page(
         num_logs=5, total=100, next_page="next_cursor_combined", prev_page="prev_cursor_combined"
     )
-    mock_jobs.page_job_logs = AsyncMock(return_value=_resp(mock_log_page))
+    mock_jobs.list_job_logs = AsyncMock(return_value=_cursor_page_resp(mock_log_page))
 
     # Make the request with both parameters
     response = client.get("/v2/workspaces/default/test/jobs/test-job-123/logs?limit=5&page_cursor=combined_cursor_xyz")
@@ -521,7 +536,7 @@ def test_get_job_logs_with_both_parameters(mock_service_with_job_routes):
     assert response_data["next_page"] == "next_cursor_combined"
     assert response_data["prev_page"] == "prev_cursor_combined"
 
-    mock_jobs.page_job_logs.assert_called_once_with(
+    mock_jobs.list_job_logs.assert_called_once_with(
         workspace="default",
         name="test-job-123",
         query_params={"limit": 5, "page_cursor": "combined_cursor_xyz"},
@@ -535,7 +550,7 @@ def test_get_job_logs_with_zero_limit(mock_service_with_job_routes):
 
     # Mock the jobs-client response
     mock_log_page = create_mock_log_page(num_logs=0, total=10, next_page="next_cursor_zero")
-    mock_jobs.page_job_logs = AsyncMock(return_value=_resp(mock_log_page))
+    mock_jobs.list_job_logs = AsyncMock(return_value=_cursor_page_resp(mock_log_page))
 
     # Make the request with limit=0
     response = client.get("/v2/workspaces/default/test/jobs/test-job-123/logs?limit=0")
@@ -548,7 +563,7 @@ def test_get_job_logs_with_zero_limit(mock_service_with_job_routes):
     assert response_data["next_page"] == "next_cursor_zero"
 
     # limit=0 is not None, so it is included in query_params.
-    mock_jobs.page_job_logs.assert_called_once_with(
+    mock_jobs.list_job_logs.assert_called_once_with(
         workspace="default",
         name="test-job-123",
         query_params={"limit": 0},
@@ -562,7 +577,7 @@ def test_get_job_logs_empty_page_cursor(mock_service_with_job_routes):
 
     # Mock the jobs-client response
     mock_log_page = create_mock_log_page(num_logs=3, total=10)
-    mock_jobs.page_job_logs = AsyncMock(return_value=_resp(mock_log_page))
+    mock_jobs.list_job_logs = AsyncMock(return_value=_cursor_page_resp(mock_log_page))
 
     # Make the request with empty page_cursor
     response = client.get("/v2/workspaces/default/test/jobs/test-job-123/logs?page_cursor=")
@@ -573,7 +588,7 @@ def test_get_job_logs_empty_page_cursor(mock_service_with_job_routes):
     assert len(response_data["data"]) == 3
 
     # Empty string is not None, so it is included in query_params.
-    mock_jobs.page_job_logs.assert_called_once_with(
+    mock_jobs.list_job_logs.assert_called_once_with(
         workspace="default",
         name="test-job-123",
         query_params={"page_cursor": ""},
@@ -586,7 +601,7 @@ def test_get_job_logs_job_not_found(mock_service_with_job_routes):
     client = TestClient(app)
 
     # The typed client raises a NemoHTTPError subclass on non-2xx responses.
-    mock_jobs.page_job_logs = AsyncMock(side_effect=_client_error(ClientNotFoundError, 404, "Job not found"))
+    mock_jobs.list_job_logs = AsyncMock(side_effect=_client_error(ClientNotFoundError, 404, "Job not found"))
 
     # Make the request
     response = client.get("/v2/workspaces/default/test/jobs/nonexistent-job/logs")
@@ -597,7 +612,7 @@ def test_get_job_logs_job_not_found(mock_service_with_job_routes):
     assert "Job not found" in response_data["detail"]
 
     # Verify the jobs client was called
-    mock_jobs.page_job_logs.assert_called_once_with(
+    mock_jobs.list_job_logs.assert_called_once_with(
         workspace="default",
         name="nonexistent-job",
         query_params={},
@@ -611,7 +626,7 @@ def test_get_job_logs_large_limit(mock_service_with_job_routes):
 
     # Mock the jobs-client response
     mock_log_page = create_mock_log_page(num_logs=1000, total=1000)
-    mock_jobs.page_job_logs = AsyncMock(return_value=_resp(mock_log_page))
+    mock_jobs.list_job_logs = AsyncMock(return_value=_cursor_page_resp(mock_log_page))
 
     # Make the request with large limit
     response = client.get("/v2/workspaces/default/test/jobs/test-job-123/logs?limit=1000")
@@ -622,7 +637,7 @@ def test_get_job_logs_large_limit(mock_service_with_job_routes):
     assert len(response_data["data"]) == 1000
     assert response_data["total"] == 1000
 
-    mock_jobs.page_job_logs.assert_called_once_with(
+    mock_jobs.list_job_logs.assert_called_once_with(
         workspace="default",
         name="test-job-123",
         query_params={"limit": 1000},
@@ -638,7 +653,7 @@ def test_get_job_logs_special_characters_in_cursor(mock_service_with_job_routes)
 
     # Mock the jobs-client response
     mock_log_page = create_mock_log_page(num_logs=2, total=10)
-    mock_jobs.page_job_logs = AsyncMock(return_value=_resp(mock_log_page))
+    mock_jobs.list_job_logs = AsyncMock(return_value=_cursor_page_resp(mock_log_page))
 
     # Make the request with special characters in cursor (URL encoded)
     special_cursor = "cursor_with_special_chars_!@#$%^&*()_+-="
@@ -651,7 +666,7 @@ def test_get_job_logs_special_characters_in_cursor(mock_service_with_job_routes)
     assert len(response_data["data"]) == 2
 
     # Verify the jobs client was called with correct parameters (decoded)
-    mock_jobs.page_job_logs.assert_called_once_with(
+    mock_jobs.list_job_logs.assert_called_once_with(
         workspace="default",
         name="test-job-123",
         query_params={"page_cursor": special_cursor},
@@ -688,7 +703,7 @@ def test_get_job_logs_response_structure(mock_service_with_job_routes):
         prev_page="cursor_prev_page_123",
     )
 
-    mock_jobs.page_job_logs = AsyncMock(return_value=_resp(mock_log_page))
+    mock_jobs.list_job_logs = AsyncMock(return_value=_cursor_page_resp(mock_log_page))
 
     # Make the request
     response = client.get("/v2/workspaces/default/test/jobs/test-job-456/logs?limit=2&page_cursor=middle_cursor")
@@ -712,7 +727,7 @@ def test_get_job_logs_response_structure(mock_service_with_job_routes):
     assert log_entry["message"] == "Starting data validation process"
 
     # Verify the jobs client was called with correct parameters
-    mock_jobs.page_job_logs.assert_called_once_with(
+    mock_jobs.list_job_logs.assert_called_once_with(
         workspace="default",
         name="test-job-456",
         query_params={"limit": 2, "page_cursor": "middle_cursor"},
@@ -1845,7 +1860,7 @@ class TestSDKExceptionHandling:
         client = TestClient(app, raise_server_exceptions=False)
 
         error_detail = "Job 'nonexistent' not found."
-        mock_jobs.page_job_logs = AsyncMock(side_effect=_client_error(ClientNotFoundError, 404, error_detail))
+        mock_jobs.list_job_logs = AsyncMock(side_effect=_client_error(ClientNotFoundError, 404, error_detail))
 
         response = client.get("/v2/workspaces/default/test/jobs/nonexistent/logs")
 

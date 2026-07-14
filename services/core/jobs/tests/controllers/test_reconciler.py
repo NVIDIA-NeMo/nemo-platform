@@ -4,7 +4,6 @@
 from unittest.mock import patch
 
 import httpx
-from client_mocks import paginated_response
 from nemo_platform_plugin.client.errors import NemoTransportError
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobStepWithContext
@@ -12,6 +11,8 @@ from nmp.core.jobs.controllers.backends import JobUpdate
 from nmp.core.jobs.controllers.backends.registry import BackendRegistry
 from nmp.core.jobs.controllers.backends.test import MockDockerCPUJobBackend
 from nmp.core.jobs.controllers.reconciler import JobReconciler
+
+from services.core.jobs.tests.controllers.client_mocks import paginated_response
 
 
 def test_job_reconciler_syncs_active_job(

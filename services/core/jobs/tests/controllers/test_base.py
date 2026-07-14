@@ -8,7 +8,6 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from client_mocks import data_response
 from nmp.common.config import PlatformConfig
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobStepWithContext
@@ -16,6 +15,8 @@ from nmp.core.jobs.app.providers import ContainerSpec, CPUExecutionProvider
 from nmp.core.jobs.app.schemas import PlatformJobStepSpec, StepLifecycle
 from nmp.core.jobs.controllers.backends.base import get_logs_endpoint_from_fileset, resolve_task_image
 from nmp.core.jobs.controllers.backends.test import MockKubernetesCPUJobBackend
+
+from services.core.jobs.tests.controllers.client_mocks import data_response
 
 
 class TestGetLogsEndpointFromFileset:

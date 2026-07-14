@@ -8,7 +8,6 @@ from typing import Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
-from client_mocks import data_response
 from docker.errors import APIError, NotFound
 from nemo_platform.types.shared import AuthContext as SdkAuthContext
 from nmp.common.auth import NMP_PRINCIPAL_ENVVAR, AuthContext, Principal
@@ -61,6 +60,8 @@ from nmp.core.jobs.controllers.backends.docker import (
 )
 from nmp.core.jobs.controllers.backends.exceptions import ResourceAllocationError, SchedulingDeferred
 from pydantic import ValidationError
+
+from services.core.jobs.tests.controllers.client_mocks import data_response
 
 TEST_JOBS_CONTROLLER_INSTANCE_ID = "test-owner"
 

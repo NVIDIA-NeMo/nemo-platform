@@ -157,38 +157,29 @@ class SafeSynthesizerJob:
             logs_query: JobLogsQueryParams = {}
             if current_cursor is not None:
                 logs_query["page_cursor"] = current_cursor
-            response = (
+            page = (
                 self._jobs.with_options(timeout=timeout)
-                .page_job_logs(name=self.job_name, workspace=self._workspace, query_params=logs_query)
-                .data()
+                .list_job_logs(name=self.job_name, workspace=self._workspace, query_params=logs_query)
+                .page()
             )
 
-            if response.data:
-                all_logs.extend(response.data)
+            if page.items:
+                all_logs.extend(page.items)
                 if current_cursor is not None:
                     last_cursor_with_data = current_cursor
 
-            if response.next_page is None:
+            if page.metadata["next_page"] is None:
                 return all_logs, last_cursor_with_data
-            current_cursor = response.next_page
+            current_cursor = page.metadata["next_page"]
 
     def fetch_logs(self, timeout: float | None = None) -> Iterator[PlatformJobLog]:
         """Fetch job logs as an iterator over log objects."""
         timeout = 300.0 if timeout is None else timeout
-        page_cursor: str | None = None
-        while True:
-            logs_query: JobLogsQueryParams = {}
-            if page_cursor is not None:
-                logs_query["page_cursor"] = page_cursor
-            response = (
-                self._jobs.with_options(timeout=timeout)
-                .page_job_logs(name=self.job_name, workspace=self._workspace, query_params=logs_query)
-                .data()
-            )
-            yield from response.data
-            if response.next_page is None:
-                break
-            page_cursor = response.next_page
+        yield from (
+            self._jobs.with_options(timeout=timeout)
+            .list_job_logs(name=self.job_name, workspace=self._workspace)
+            .items()
+        )
 
     def print_logs(self, timeout: float | None = None) -> None:
         """Print job logs to stdout."""

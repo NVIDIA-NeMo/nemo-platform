@@ -136,8 +136,8 @@ def collect_job_diagnostics(
 
     try:
         if config.include_job_logs_in_diagnostics:
-            logs = jobs.page_job_logs(workspace=step_ref.workspace, name=step_ref.job).data()
-            diagnostics["job_logs"] = [entry.message for entry in logs.data[-_MAX_LOG_ENTRIES:]]
+            logs = jobs.list_job_logs(workspace=step_ref.workspace, name=step_ref.job).page()
+            diagnostics["job_logs"] = [entry.message for entry in logs.items[-_MAX_LOG_ENTRIES:]]
     except Exception as exc:
         diagnostics["job_logs_error"] = str(exc)
 

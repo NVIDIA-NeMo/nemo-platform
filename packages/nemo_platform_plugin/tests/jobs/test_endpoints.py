@@ -6,12 +6,12 @@
 from __future__ import annotations
 
 import json
-from typing import get_origin
+from typing import get_args, get_origin
 
-from nemo_platform_plugin.client.types import BinaryContent, Paginated, PreparedRequest
+from nemo_platform_plugin.client.types import BinaryContent, CursorPagination, Paginated, PreparedRequest
 from nemo_platform_plugin.jobs import endpoints
 from nemo_platform_plugin.jobs.schemas import (
-    PlatformJobLogPage,
+    PlatformJobLog,
     PlatformJobResultCreateRequest,
     PlatformJobStatusResponse,
 )
@@ -150,14 +150,15 @@ def test_update_job_status_details() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_page_job_logs() -> None:
-    prepared = endpoints.page_job_logs(
+def test_list_job_logs() -> None:
+    prepared = endpoints.list_job_logs(
         workspace="default", name="j-1", query_params={"limit": 50, "page_cursor": "abc"}
     )
     assert prepared.method == "GET"
     assert prepared.path_template.endswith("/jobs/{name}/logs")
     assert prepared.query_params == {"limit": 50, "page_cursor": "abc"}
-    assert prepared.response_type is PlatformJobLogPage
+    assert get_origin(prepared.response_type) is Paginated
+    assert get_args(prepared.response_type) == (PlatformJobLog, CursorPagination)
 
 
 # ---------------------------------------------------------------------------

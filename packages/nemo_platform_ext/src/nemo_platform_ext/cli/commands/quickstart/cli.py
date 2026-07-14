@@ -1064,9 +1064,9 @@ def _run_job_diagnostic(port: int, registry: str, tag: str, *, admin_email: str 
         # Fetch and display logs
         console.print("\n  [bold]Job output:[/bold]")
         try:
-            logs = jobs_client.page_job_logs(name=job.name).data()
+            logs = jobs_client.list_job_logs(name=job.name)
             log_lines = []
-            for log_entry in logs.data:
+            for log_entry in logs.items():
                 if hasattr(log_entry, "message"):
                     log_lines.append(log_entry.message)
 

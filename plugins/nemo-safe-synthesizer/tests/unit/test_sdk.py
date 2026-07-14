@@ -41,6 +41,16 @@ def _binary_resp(data: bytes):
     return m
 
 
+def _paginated_resp(items, *, total: int, next_page: str | None, prev_page: str | None = None):
+    response = MagicMock()
+    response.page.return_value = SimpleNamespace(
+        items=items,
+        metadata={"total": total, "next_page": next_page, "prev_page": prev_page},
+    )
+    response.items.return_value = iter(items)
+    return response
+
+
 def _mock_platform(requests: list[httpx.Request]) -> NeMoPlatform:
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
@@ -113,7 +123,7 @@ async def test_async_safe_synthesizer_resource_get_logs_preserves_request_option
     mock_jobs = MagicMock()
     options_client = MagicMock()
     mock_jobs.with_options.return_value = options_client
-    options_client.send = AsyncMock(return_value=_resp(SimpleNamespace(data=[])))
+    options_client.send = AsyncMock(return_value=_paginated_resp([], total=0, next_page=None))
     with patch("nemo_safe_synthesizer_plugin.sdk.resources.client_from_platform", return_value=mock_jobs):
         response = await resource.get_logs(
             "safe-synth-job",
@@ -139,7 +149,7 @@ def test_safe_synthesizer_resource_get_logs_keeps_client_options_out_of_query() 
     mock_jobs = MagicMock()
     options_client = MagicMock()
     mock_jobs.with_options.return_value = options_client
-    options_client.send.return_value = _resp(SimpleNamespace(data=[]))
+    options_client.send.return_value = _paginated_resp([], total=0, next_page=None)
 
     with patch("nemo_safe_synthesizer_plugin.sdk.resources.client_from_platform", return_value=mock_jobs):
         response = resource.get_logs(
@@ -295,7 +305,6 @@ def test_safe_synthesizer_job_fetch_summary_parses_json() -> None:
 
 def test_safe_synthesizer_job_fetch_logs_follows_pagination() -> None:
     mock_jobs = MagicMock()
-    # Production calls self._jobs.with_options(timeout=...).page_job_logs(...).data() per page.
     options_client = MagicMock()
     mock_jobs.with_options.return_value = options_client
     first_log = SimpleNamespace(
@@ -312,14 +321,13 @@ def test_safe_synthesizer_job_fetch_logs_follows_pagination() -> None:
         message="second",
         timestamp=datetime(2026, 1, 1, 0, 0, 1, tzinfo=timezone.utc),
     )
-    options_client.page_job_logs.side_effect = [
-        _resp(SimpleNamespace(data=[first_log], next_page="cursor-2")),
-        _resp(SimpleNamespace(data=[second_log], next_page=None)),
-    ]
+    paginated_response = _paginated_resp([first_log, second_log], total=2, next_page=None)
+    options_client.list_job_logs.return_value = paginated_response
     job = _make_job(mock_jobs)
 
     logs = list(job.fetch_logs(timeout=5.0))
 
     assert [log.message for log in logs] == ["first", "second"]
-    assert mock_jobs.with_options.call_count == 2
-    assert options_client.page_job_logs.call_args_list[1].kwargs["query_params"]["page_cursor"] == "cursor-2"
+    mock_jobs.with_options.assert_called_once_with(timeout=5.0)
+    options_client.list_job_logs.assert_called_once_with(name="safe-synth-job", workspace="default")
+    paginated_response.items.assert_called_once_with()

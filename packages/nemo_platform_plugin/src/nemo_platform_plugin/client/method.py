@@ -116,7 +116,11 @@ def method(
 @overload
 def method(
     endpoint_fn: Callable[P, PreparedRequest[Paginated[ModelT, StrategyT]]],
-) -> EndpointMethod[P, NemoPaginatedResponse[ModelT], AsyncNemoPaginatedResponse[ModelT]]: ...
+) -> EndpointMethod[
+    P,
+    NemoPaginatedResponse[ModelT, StrategyT],
+    AsyncNemoPaginatedResponse[ModelT, StrategyT],
+]: ...
 
 
 @overload

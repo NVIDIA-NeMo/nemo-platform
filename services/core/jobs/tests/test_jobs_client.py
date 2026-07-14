@@ -12,7 +12,7 @@ and response parsing — the layer where response-type bugs actually surface.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, call, patch
 
 import pytest
 from httpx import AsyncClient
@@ -87,7 +87,7 @@ async def test_list_jobs_round_trips_through_client(jobs_client: AsyncJobsClient
     await _create_hello_world_job(test_client, name="list-me")
 
     page = (await jobs_client.list_jobs(workspace="default")).page()
-    assert page.total_results is not None and page.total_results >= 1
+    assert page.metadata["total_results"] is not None and page.metadata["total_results"] >= 1
     names = [j.name for j in page.items]
     assert "list-me" in names
     # items are the plugin DTO, fully parsed
@@ -200,46 +200,62 @@ async def test_logs_round_trip(
     job = await _create_job(jobs_client, sample_platform_job_request, "typed-logs")
     timestamp = datetime(2026, 1, 1, tzinfo=timezone.utc)
     logs_client = AsyncMock()
-    logs_client.query_logs.return_value = PlatformJobLogPage(
-        data=[
-            PlatformJobLog(
-                timestamp=timestamp,
-                job=job.name,
-                job_step="basic",
-                job_task="task-1",
-                message="hello",
-            )
-        ],
-        total=1,
-        next_page=None,
-        prev_page=None,
-    )
+    logs_client.query_logs.side_effect = [
+        PlatformJobLogPage(
+            data=[
+                PlatformJobLog(
+                    timestamp=timestamp,
+                    job=job.name,
+                    job_step="basic",
+                    job_task="task-1",
+                    message="hello",
+                )
+            ],
+            total=2,
+            next_page="cursor-2",
+            prev_page=None,
+        ),
+        PlatformJobLogPage(
+            data=[
+                PlatformJobLog(
+                    timestamp=timestamp,
+                    job=job.name,
+                    job_step="basic",
+                    job_task="task-1",
+                    message="world",
+                )
+            ],
+            total=2,
+            next_page=None,
+            prev_page="cursor-1",
+        ),
+    ]
     app = test_client._transport.app  # type: ignore[attr-defined]
     app.dependency_overrides[dep_job_logs_client] = lambda: logs_client
     try:
-        page = (
-            await jobs_client.page_job_logs(
-                workspace="default",
-                name=job.name,
-                query_params={"limit": 5, "step_id": "basic", "task_id": "task-1"},
-            )
-        ).data()
+        response = await jobs_client.list_job_logs(
+            workspace="default",
+            name=job.name,
+            query_params={"limit": 5, "step_id": "basic", "task_id": "task-1"},
+        )
+        page = response.page()
+        logs = [log async for log in response.items()]
     finally:
         app.dependency_overrides.pop(dep_job_logs_client)
 
-    assert [log.message for log in page.data] == ["hello"]
-    logs_client.query_logs.assert_awaited_once_with(
-        job.fileset,
-        workspace="default",
-        filters={
-            "job": job.name,
-            "job_attempt": job.attempt_id,
-            "job_step": "basic",
-            "job_task": "task-1",
-        },
-        page_size=5,
-        page_cursor=None,
-    )
+    assert [log.message for log in page.items] == ["hello"]
+    assert page.metadata == {"total": 2, "next_page": "cursor-2", "prev_page": None}
+    assert [log.message for log in logs] == ["hello", "world"]
+    filters = {
+        "job": job.name,
+        "job_attempt": job.attempt_id,
+        "job_step": "basic",
+        "job_task": "task-1",
+    }
+    assert logs_client.query_logs.await_args_list == [
+        call(job.fileset, workspace="default", filters=filters, page_size=5, page_cursor=None),
+        call(job.fileset, workspace="default", filters=filters, page_size=5, page_cursor="cursor-2"),
+    ]
 
 
 @pytest.mark.asyncio

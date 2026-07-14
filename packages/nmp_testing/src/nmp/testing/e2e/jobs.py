@@ -14,6 +14,7 @@ from collections.abc import Callable
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.schemas import PlatformJobLogPage
 from nemo_platform_plugin.jobs.types import PlatformJobResponse
 
 logger = logging.getLogger(__name__)
@@ -259,7 +260,8 @@ def wait_for_job_logs(
     logs = None
 
     while time.time() - start_time < timeout:
-        logs = client_from_platform(sdk, JobsClient).page_job_logs(workspace=workspace, name=job_name).data()
+        page = client_from_platform(sdk, JobsClient).list_job_logs(workspace=workspace, name=job_name).page()
+        logs = PlatformJobLogPage(data=page.items, **page.metadata)
         if len(logs.data) >= min_log_count:
             return logs
         time.sleep(poll_interval)

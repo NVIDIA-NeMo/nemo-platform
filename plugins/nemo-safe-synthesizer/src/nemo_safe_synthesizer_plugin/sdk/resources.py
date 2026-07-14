@@ -17,6 +17,7 @@ from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.types import PreparedRequest
 from nemo_platform_plugin.jobs import endpoints as job_endpoints
 from nemo_platform_plugin.jobs.client import AsyncJobsClient, JobsClient
+from nemo_platform_plugin.jobs.schemas import PlatformJobLogPage
 from nemo_platform_plugin.jobs.types import JobLogsQueryParams
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
 from nemo_safe_synthesizer_plugin.sdk import http_utils
@@ -120,7 +121,8 @@ class SafeSynthesizerJobsResource:
             extra_query=extra_query,
             extra_body=extra_body,
         )
-        return jobs.send(request, headers=dict(extra_headers) if extra_headers else None).data()
+        page = jobs.send(request, headers=dict(extra_headers) if extra_headers else None).page()
+        return PlatformJobLogPage(data=page.items, **page.metadata)
 
 
 class SafeSynthesizerResource:
@@ -230,7 +232,8 @@ class AsyncSafeSynthesizerJobsResource:
             extra_query=extra_query,
             extra_body=extra_body,
         )
-        return (await jobs.send(request, headers=dict(extra_headers) if extra_headers else None)).data()
+        page = (await jobs.send(request, headers=dict(extra_headers) if extra_headers else None)).page()
+        return PlatformJobLogPage(data=page.items, **page.metadata)
 
 
 class AsyncSafeSynthesizerResource:
@@ -268,7 +271,7 @@ def _job_logs_request(
     if extra_query:
         query.update(extra_query)
 
-    request = job_endpoints.page_job_logs(
+    request = job_endpoints.list_job_logs(
         name=name,
         workspace=workspace,
         query_params=cast(JobLogsQueryParams, query) or None,

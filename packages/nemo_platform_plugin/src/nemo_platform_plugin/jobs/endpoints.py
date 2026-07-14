@@ -13,7 +13,7 @@ from __future__ import annotations
 from abc import abstractmethod
 
 from nemo_platform_plugin.client.endpoint import delete, get, patch, post, put
-from nemo_platform_plugin.client.types import BinaryContent, Paginated
+from nemo_platform_plugin.client.types import BinaryContent, CursorPagination, Paginated
 from nemo_platform_plugin.jobs.execution_profiles import (
     DockerJobExecutionProfile,
     E2EJobExecutionProfile,
@@ -22,7 +22,7 @@ from nemo_platform_plugin.jobs.execution_profiles import (
     VolcanoJobExecutionProfile,
 )
 from nemo_platform_plugin.jobs.schemas import (
-    PlatformJobLogPage,
+    PlatformJobLog,
     PlatformJobResultCreateRequest,
     PlatformJobResultResponse,
     PlatformJobStatusResponse,
@@ -133,9 +133,9 @@ def update_job_status_details(*, workspace: str | None = None, name: str, body: 
 
 @get("/apis/jobs/v2/workspaces/{workspace}/jobs/{name}/logs")
 @abstractmethod
-def page_job_logs(
+def list_job_logs(
     *, workspace: str | None = None, name: str, query_params: JobLogsQueryParams | None = None
-) -> PlatformJobLogPage: ...
+) -> Paginated[PlatformJobLog, CursorPagination]: ...
 
 
 # ---------------------------------------------------------------------------

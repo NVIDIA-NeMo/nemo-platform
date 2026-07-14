@@ -8,7 +8,6 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from client_mocks import data_response
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.app.providers import SubprocessExecutionProvider
 from nmp.core.jobs.controllers.backends.subprocess import (
@@ -16,6 +15,8 @@ from nmp.core.jobs.controllers.backends.subprocess import (
     SubprocessJobExecutionProfileConfig,
     SubprocessProcessKey,
 )
+
+from services.core.jobs.tests.controllers.client_mocks import data_response
 
 
 def _subprocess_backend(mock_nmp_client, tmp_path, mock_platform_config) -> SubprocessJobBackend:

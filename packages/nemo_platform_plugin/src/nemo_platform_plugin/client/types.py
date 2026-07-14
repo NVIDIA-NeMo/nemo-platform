@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterable, Iterable
 from dataclasses import dataclass, replace
-from typing import Any, ClassVar, Generic, ParamSpec, Protocol, TypeVar
+from typing import Any, ClassVar, Generic, ParamSpec, Protocol, TypedDict, TypeVar
 
 from pydantic import BaseModel
 from typing_extensions import TypeVar as TypeVarExt
@@ -46,8 +46,12 @@ class Stream(Generic[ModelT]):
 # ---------------------------------------------------------------------------
 
 
-class PaginationStrategy(Protocol):
-    """Protocol for pagination strategies.
+PageTokenT = TypeVar("PageTokenT")
+MetadataT_co = TypeVar("MetadataT_co", covariant=True)
+
+
+class PaginationStrategy(Generic[PageTokenT, MetadataT_co]):
+    """Base class associating a pagination strategy with its cursor and metadata types.
 
     Pagination strategies control how the client extracts items from a page
     response, determines the next page identifier, builds query params
@@ -55,19 +59,30 @@ class PaginationStrategy(Protocol):
     """
 
     @classmethod
-    def extract_items(cls, response_body: dict) -> list[dict]: ...
+    def extract_items(cls, response_body: dict) -> list[dict]:
+        raise NotImplementedError
 
     @classmethod
-    def next_page(cls, response_body: dict, current_page: Any) -> Any | None: ...
+    def next_page(cls, response_body: dict) -> PageTokenT | None:
+        raise NotImplementedError
 
     @classmethod
-    def page_query_params(cls, page: Any) -> dict[str, Any]: ...
+    def page_query_params(cls, page: PageTokenT) -> dict[str, Any]:
+        raise NotImplementedError
 
     @classmethod
-    def extract_metadata(cls, response_body: dict) -> dict[str, Any]: ...
+    def extract_metadata(cls, response_body: dict) -> MetadataT_co:
+        raise NotImplementedError
 
 
-class OffsetPagination:
+class OffsetPaginationMetadata(TypedDict):
+    page: int | None
+    page_size: int | None
+    total_pages: int | None
+    total_results: int | None
+
+
+class OffsetPagination(PaginationStrategy[int, OffsetPaginationMetadata]):
     """Offset-based pagination using ``page`` query parameter.
 
     This is the default strategy, matching the standard ``NemoListResponse``
@@ -95,10 +110,11 @@ class OffsetPagination:
         return response_body.get(cls.items_field, [])
 
     @classmethod
-    def next_page(cls, response_body: dict, current_page: int) -> int | None:
+    def next_page(cls, response_body: dict) -> int | None:
         pagination = response_body.get(cls.pagination_field)
         if pagination is None:
             return None
+        current_page = pagination.get(cls.page_field, 1)
         total = pagination.get(cls.total_pages_field, 1)
         if current_page < total:
             return current_page + 1
@@ -109,7 +125,7 @@ class OffsetPagination:
         return {cls.page_param: page}
 
     @classmethod
-    def extract_metadata(cls, response_body: dict) -> dict[str, Any]:
+    def extract_metadata(cls, response_body: dict) -> OffsetPaginationMetadata:
         pagination = response_body.get(cls.pagination_field) or {}
         return {
             "page": pagination.get(cls.page_field),
@@ -119,10 +135,57 @@ class OffsetPagination:
         }
 
 
-StrategyT = TypeVarExt("StrategyT", default=OffsetPagination)
+class CursorPaginationMetadata(TypedDict):
+    total: int
+    next_page: str | None
+    prev_page: str | None
 
 
-class Paginated(Generic[ModelT, StrategyT]):
+class CursorPagination(PaginationStrategy[str, CursorPaginationMetadata]):
+    """Cursor pagination matching the Jobs log response envelope.
+
+    The response contains items and cursor metadata at the top level::
+
+        {"data": [...], "total": 42, "next_page": "...", "prev_page": null}
+    """
+
+    items_field: ClassVar[str] = "data"
+    cursor_param: ClassVar[str] = "page_cursor"
+    total_field: ClassVar[str] = "total"
+    next_page_field: ClassVar[str] = "next_page"
+    prev_page_field: ClassVar[str] = "prev_page"
+
+    @classmethod
+    def extract_items(cls, response_body: dict) -> list[dict]:
+        return response_body.get(cls.items_field, [])
+
+    @classmethod
+    def next_page(cls, response_body: dict) -> str | None:
+        return response_body.get(cls.next_page_field)
+
+    @classmethod
+    def page_query_params(cls, page: str) -> dict[str, str]:
+        return {cls.cursor_param: page}
+
+    @classmethod
+    def extract_metadata(cls, response_body: dict) -> CursorPaginationMetadata:
+        return {
+            "total": response_body.get(cls.total_field, 0),
+            "next_page": response_body.get(cls.next_page_field),
+            "prev_page": response_body.get(cls.prev_page_field),
+        }
+
+
+PaginatedModelT = TypeVar("PaginatedModelT", bound=BaseModel)
+StrategyT = TypeVarExt(
+    "StrategyT",
+    bound=PaginationStrategy[Any, Any],
+    default=OffsetPagination,
+    covariant=True,
+)
+
+
+class Paginated(Generic[PaginatedModelT, StrategyT]):
     """Marker type: endpoint returns paginated results of ``ModelT``.
 
     The second type parameter selects the pagination strategy.  It defaults

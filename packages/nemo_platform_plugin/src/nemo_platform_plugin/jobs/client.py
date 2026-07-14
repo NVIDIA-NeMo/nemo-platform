@@ -46,7 +46,7 @@ class _JobsMethods:
     update_job_status_details = method(endpoints.update_job_status_details)
 
     # Job logs
-    page_job_logs = method(endpoints.page_job_logs)
+    list_job_logs = method(endpoints.list_job_logs)
 
     # Job results
     create_job_result = method(endpoints.create_job_result)

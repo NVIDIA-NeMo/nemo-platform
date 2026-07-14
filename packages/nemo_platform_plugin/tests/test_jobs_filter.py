@@ -62,7 +62,10 @@ def _fake_compiler(workspace, original_spec, transformed_spec, entity_client, jo
 
 def _fake_page():
     """A ``PageResult``-like object for the typed client's ``list_jobs().page()``."""
-    return SimpleNamespace(items=[], page=1, page_size=10, total_pages=1, total_results=0)
+    return SimpleNamespace(
+        items=[],
+        metadata={"page": 1, "page_size": 10, "total_pages": 1, "total_results": 0},
+    )
 
 
 def _fake_list_response():

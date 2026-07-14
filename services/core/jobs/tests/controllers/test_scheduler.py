@@ -4,7 +4,6 @@
 from unittest.mock import patch
 
 import httpx
-from client_mocks import data_response, paginated_response
 from nemo_platform_plugin.client.errors import ConflictError, NemoTransportError
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobStepWithContext
@@ -13,6 +12,8 @@ from nmp.core.jobs.controllers.backends.registry import BackendRegistry
 from nmp.core.jobs.controllers.backends.test import MockDockerCPUJobBackend
 from nmp.core.jobs.controllers.scheduler import JobScheduler
 from pytest import fixture
+
+from services.core.jobs.tests.controllers.client_mocks import data_response, paginated_response
 
 
 def _conflict_error(detail: str) -> ConflictError:

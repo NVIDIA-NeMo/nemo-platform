@@ -334,7 +334,7 @@ class NemoClient(BaseNemoClient):
         *,
         headers: dict[str, str] | None = None,
         retry: RetryPolicy | None = None,
-    ) -> NemoPaginatedResponse[ModelT]: ...
+    ) -> NemoPaginatedResponse[ModelT, StrategyT]: ...
     @overload
     def send(
         self,
@@ -500,7 +500,7 @@ class NemoClient(BaseNemoClient):
                 raise NemoTransportError(exc) from exc
 
     def _make_page_fetcher(
-        self, strategy: type[PaginationStrategy], retry: RetryPolicy | None = None
+        self, strategy: type[PaginationStrategy[Any, Any]], retry: RetryPolicy | None = None
     ) -> SyncPageFetcher:
         """Create a page-fetching callback bound to this client and strategy."""
 
@@ -575,7 +575,7 @@ class AsyncNemoClient(BaseNemoClient):
         *,
         headers: dict[str, str] | None = None,
         retry: RetryPolicy | None = None,
-    ) -> AsyncNemoPaginatedResponse[ModelT]: ...
+    ) -> AsyncNemoPaginatedResponse[ModelT, StrategyT]: ...
     @overload
     async def send(
         self,
@@ -733,7 +733,7 @@ class AsyncNemoClient(BaseNemoClient):
                 raise NemoTransportError(exc) from exc
 
     def _make_page_fetcher(
-        self, strategy: type[PaginationStrategy], retry: RetryPolicy | None = None
+        self, strategy: type[PaginationStrategy[Any, Any]], retry: RetryPolicy | None = None
     ) -> AsyncPageFetcher:
         """Create an async page-fetching callback bound to this client and strategy."""
 
