@@ -51,7 +51,9 @@ total_deleted=0
 total_candidates=0
 
 find_packages() {
-  gh api --paginate "/orgs/${owner}/packages?package_type=container&per_page=100" \
+  gh api --method GET --paginate "/orgs/${owner}/packages" \
+    -f package_type=container \
+    -F per_page=100 \
     | jq -r --arg prefix "${repo}/" '.[] | select(.name | startswith($prefix)) | .name'
 }
 
