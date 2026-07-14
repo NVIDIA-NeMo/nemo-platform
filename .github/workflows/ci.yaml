@@ -1086,6 +1086,12 @@ jobs:
             echo "::error::Expected exactly one wheel, found ${#wheels[@]}"
             exit 1
           fi
+          if [[ "${PYTHON_VERSION}" == "3.14" ]]; then
+            # litellm 1.92.0 builds its Rust bridge from source on Python 3.14.
+            # Its pinned PyO3 supports the stable ABI, but rejects 3.14 unless
+            # this forward-compatibility opt-in is present.
+            export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
+          fi
           WHEEL="${wheels[0]}"
           # Supply-chain: partial-pin the wheel's direct external deps to a committed constraints
           # file (deep transitives resolve normally, so they stay py3.14-compatible and can't

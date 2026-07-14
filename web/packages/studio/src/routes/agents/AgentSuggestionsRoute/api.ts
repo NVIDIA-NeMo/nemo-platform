@@ -243,7 +243,8 @@ export const ensureEvalConfigFileset = async (
   workspace: string,
   fileset: string,
   signal: AbortSignal,
-  files: EvalSeedFile[] = defaultEvalSeedFiles()
+  files: EvalSeedFile[] = defaultEvalSeedFiles(),
+  description?: string
 ): Promise<void> => {
   let existingPaths = new Set<string>();
   try {
@@ -253,7 +254,7 @@ export const ensureEvalConfigFileset = async (
     if (isCanceledError(err)) throw err;
     if (!isNotFoundError(err)) throw err;
     try {
-      await filesCreateFileset(workspace, { name: fileset }, signal);
+      await filesCreateFileset(workspace, { name: fileset, description }, signal);
     } catch (createErr) {
       if (isCanceledError(createErr)) throw createErr;
       // 409 is fine — a parallel apply already created it.

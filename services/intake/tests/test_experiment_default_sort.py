@@ -107,6 +107,26 @@ def test_entity_coerces_legacy_default_sort_to_created_at() -> None:
         assert group.default_sort == "-created_at"
 
 
+def test_entity_coerces_legacy_non_string_metadata_values() -> None:
+    # Schema-on-read: metadata tightened from dict[str, Any] to dict[str, str]. Rows persisted with
+    # non-string values (the old type) must deserialize — stringified, JSON-encoding structured values.
+    from nmp.intake.entities.experiments import Experiment, ExperimentGroup
+
+    exp = Experiment.model_validate(
+        {
+            "name": "e",
+            "workspace": "default",
+            "experiment_group_id": "grp",
+            "dataset_name": "ds",
+            "metadata": {"attempt": 1, "config": {"lr": 0.1}, "ok": "yes"},
+        }
+    )
+    assert exp.metadata == {"attempt": "1", "config": '{"lr": 0.1}', "ok": "yes"}
+
+    group = ExperimentGroup.model_validate({"name": "g", "workspace": "default", "metadata": {"n": 3}})
+    assert group.metadata == {"n": "3"}
+
+
 # ----------------------------- endpoint wiring -----------------------------
 
 

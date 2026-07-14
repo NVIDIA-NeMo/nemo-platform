@@ -17,6 +17,7 @@ import {
   getSubtleToolGroupActions,
   getSubtleToolIcon,
   getSubtleToolMessage,
+  getToolInvocation,
   getToolSummary,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/toolCall/helpers';
 import { SubtleToolCallRow } from '@studio/routes/agents/ClaudeCodeChatRoute/toolCall/SubtleToolCallRow';
@@ -179,6 +180,7 @@ const ClaudeCodeToolCallPartContent = ({
           {
             detail: getSubtleToolDetail(toolName, args, subtleMessage),
             Icon: getSubtleToolIcon(toolName),
+            invocation: getToolInvocation(toolName, args),
             message: subtleMessage,
             toolCallId: toolName,
             toolName,
@@ -207,6 +209,7 @@ const ClaudeCodeToolCallPartContent = ({
         {
           detail: getSubtleToolDetail(toolName, args, fallbackMessage),
           Icon: getSubtleToolIcon(toolName),
+          invocation: getToolInvocation(toolName, args),
           message: fallbackMessage,
           toolCallId: toolName,
           toolName,

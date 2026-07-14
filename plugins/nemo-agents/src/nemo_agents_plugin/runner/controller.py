@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""AgentDeploymentController — reconciles AgentDeployment entities against the RunnerBackend.
+"""AgentDeploymentController — reconciles AgentDeployment entities against RunnerBackends.
 
 Registered under the ``nemo.controllers`` entry-point group so the platform
 runner manages its lifecycle (startup, reconcile loop, graceful shutdown)
@@ -14,9 +14,9 @@ state transitions:
 State machine::
 
     pending   → starting  (backend.create_deployment succeeds)
-    starting  → running   (health check passes within timeout)
-    starting  → failed    (health check times out or process exits)
-    running   → failed    (process exits unexpectedly)
+    starting  → running   (subprocess: health check; container: plugin READY projected)
+    starting  → failed    (health check times out / process exits / plugin FAILED)
+    running   → failed    (process exits unexpectedly / plugin FAILED)
     running   → pending   (process not found in backend, attempting to restart)
     deleting  → (removed) (backend.delete_deployment + entity deleted)
 """
@@ -28,8 +28,9 @@ import time
 from typing import ClassVar, cast
 
 from nemo_agents_plugin.config import ControllerConfig
-from nemo_agents_plugin.entities import AgentDeployment
+from nemo_agents_plugin.entities import AgentDeployment, is_container_deployment_mode
 from nemo_agents_plugin.runner.backend import RunnerBackend
+from nemo_agents_plugin.runner.registry import RunnerBackendRegistry
 from nemo_platform_plugin.controller import NemoController
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError
 
@@ -53,7 +54,7 @@ class AgentDeploymentController(NemoController):
     dependencies: ClassVar[list[str]] = ["entities"]
 
     def __init__(self) -> None:
-        self._backend: RunnerBackend | None = None
+        self._registry: RunnerBackendRegistry | None = None
         self._entities: NemoEntitiesClient | None = None
         self._controller_config: ControllerConfig | None = None
         self._starting_since: dict[tuple[str, str], float] = {}
@@ -64,10 +65,18 @@ class AgentDeploymentController(NemoController):
     # ------------------------------------------------------------------
 
     @property
+    def registry(self) -> RunnerBackendRegistry:
+        if self._registry is None:
+            raise RuntimeError("AgentDeploymentController.registry accessed before on_startup()")
+        return self._registry
+
+    @property
     def backend(self) -> RunnerBackend:
-        if self._backend is None:
-            raise RuntimeError("AgentDeploymentController.backend accessed before on_startup()")
-        return self._backend
+        """Default (subprocess) backend — retained for callers/tests expecting ``.backend``."""
+        return self.registry.backend
+
+    def _backend_for(self, dep: AgentDeployment) -> RunnerBackend:
+        return self.registry.backend_for(dep.deployment_mode)
 
     @property
     def entities(self) -> NemoEntitiesClient:
@@ -90,13 +99,13 @@ class AgentDeploymentController(NemoController):
         return self._interval_seconds
 
     async def on_startup(self) -> None:
-        """Initialise the entity client and runner backend from config."""
+        """Initialise the entity client and runner backends from config."""
         # Imports deferred intentionally: these modules pull in the SDK,
         # entity-store client, and HTTP machinery.  Importing at module level
         # would add ~1s to every `nemo` CLI invocation during plugin discovery,
         # even when the agents controller is never started.  Do not hoist.
         from nemo_agents_plugin.config import AgentsConfig
-        from nemo_agents_plugin.runner.registry import RunnerBackendRegistry
+        from nemo_agents_plugin.runner.registry import set_runner_registry
         from nemo_platform.resources.entities import AsyncEntitiesResource
         from nemo_platform_plugin.entities import EntityClient as _EntityClient
         from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
@@ -117,19 +126,16 @@ class AgentDeploymentController(NemoController):
         entities_api = AsyncEntitiesResource(sdk)
         self._entities = _EntityClient(entities_api)
 
-        from nemo_agents_plugin.runner.registry import set_runner_backend
-
         registry = RunnerBackendRegistry(config)
-        self._backend = registry.backend
-        # Share the controller's instance with HTTP routes so they don't lazy-init a sibling.
-        set_runner_backend(registry.backend)
+        self._registry = registry
+        set_runner_registry(registry)
 
         logger.info("AgentDeploymentController started.")
 
     async def on_shutdown(self) -> None:
-        """Shut down the runner backend."""
-        if self._backend is not None:
-            await self._backend.shutdown()
+        """Shut down the runner backends."""
+        if self._registry is not None:
+            await self._registry.shutdown()
         logger.info("AgentDeploymentController shut down.")
 
     async def list_objects(self) -> list:
@@ -169,20 +175,29 @@ class AgentDeploymentController(NemoController):
             await self._delete_deployment(dep)
 
     async def _start_deployment(self, dep: AgentDeployment) -> None:
-        """pending -> starting: allocate port and spawn the agent process."""
+        """pending -> starting: allocate port (subprocess) and spawn via the mode backend."""
         t0 = time.perf_counter()
-        port = self.backend.allocate_port()
+        backend = self._backend_for(dep)
+        port = backend.allocate_port()
         try:
-            info = await self.backend.create_deployment(
+            info = await backend.create_deployment(
                 workspace=dep.workspace,
                 name=dep.name,
                 config=dep.config,
                 port=port,
+                image=dep.image or None,
+                deployment_mode=dep.deployment_mode,
             )
         except Exception as exc:
-            logger.exception("Failed to start agent process for deployment '%s'", dep.name)
+            logger.exception("Failed to start agent for deployment '%s'", dep.name)
             dep.status = "failed"
             dep.error = str(exc)
+            await self._save(dep)
+            return
+
+        if info.status == "failed":
+            dep.status = "failed"
+            dep.error = info.error or "Backend failed to create deployment."
             await self._save(dep)
             return
 
@@ -190,13 +205,20 @@ class AgentDeploymentController(NemoController):
         dep.status = "starting"
         dep.port = info.port
         dep.pid = info.pid
-        dep.endpoint = info.endpoint
+        if is_container_deployment_mode(dep.deployment_mode):
+            dep.endpoint = ""
+            dep.endpoints = list(info.endpoints)
+            dep.plugin_deployment = dep.plugin_deployment or dep.name
+        else:
+            dep.endpoint = info.endpoint
+            dep.endpoints = []
         dep.error = ""
         self._starting_since[(dep.workspace, dep.name)] = time.monotonic()
         await self._save(dep)
         logger.info(
-            "Deployment '%s' spawned (pid=%d, port=%d, spawn=%.0fms, log=%s).",
+            "Deployment '%s' starting (mode=%s, pid=%d, port=%d, spawn=%.0fms, log=%s).",
             dep.name,
+            dep.deployment_mode,
             dep.pid,
             dep.port,
             spawn_ms,
@@ -204,12 +226,11 @@ class AgentDeploymentController(NemoController):
         )
 
     async def _check_health(self, dep: AgentDeployment) -> None:
-        """starting -> running | failed: single-shot health check per reconcile cycle.
+        """starting -> running | failed: single-shot check per reconcile cycle.
 
-        Checks once and returns so the reconcile loop can service other
-        deployments promptly.  The ``_starting_since`` timestamp persists
-        across cycles so the overall ``health_check_timeout_seconds`` budget
-        is enforced across many cycles.
+        Subprocess mode: loopback ``GET /health``.
+        Container modes: trust the deployments-plugin projected status (READY → running);
+        no agents-side loopback health check.
         """
         # setdefault — without it, missing key returns now() forever, never times out.
         since = self._starting_since.setdefault((dep.workspace, dep.name), time.monotonic())
@@ -220,18 +241,29 @@ class AgentDeploymentController(NemoController):
         if remaining <= 0:
             dep.status = "failed"
             dep.error = f"Health check timed out after {timeout}s."
-            await self.backend.delete_deployment(dep.workspace, dep.name)
             self._starting_since.pop((dep.workspace, dep.name), None)
-            await self._save(dep)
+            try:
+                await self._backend_for(dep).delete_deployment(dep.workspace, dep.name)
+            except Exception:
+                logger.exception("Cleanup after health timeout failed for '%s'", dep.name)
+            finally:
+                await self._save(dep)
             logger.warning("Deployment '%s' health check timed out.", dep.name)
             return
 
-        info = await self.backend.get_deployment_status(dep.workspace, dep.name)
+        backend = self._backend_for(dep)
+        info = await backend.get_deployment_status(dep.workspace, dep.name)
         if info is not None and info.status == "failed":
             dep.status = "failed"
             dep.error = info.error or "Process exited unexpectedly during startup."
             self._starting_since.pop((dep.workspace, dep.name), None)
-            await self._save(dep)
+            try:
+                if is_container_deployment_mode(dep.deployment_mode):
+                    await backend.delete_deployment(dep.workspace, dep.name)
+            except Exception:
+                logger.exception("Cleanup after failed startup failed for '%s'", dep.name)
+            finally:
+                await self._save(dep)
             logger.warning(
                 "Deployment '%s' failed during startup: %s (log: %s)",
                 dep.name,
@@ -240,7 +272,37 @@ class AgentDeploymentController(NemoController):
             )
             return
 
-        healthy = bool(dep.endpoint) and await self.backend.health_check(dep.endpoint)
+        if is_container_deployment_mode(dep.deployment_mode):
+            if info is None:
+                logger.debug("Deployment '%s' not visible in deployments plugin yet.", dep.name)
+                return
+            # Project endpoints every cycle so the gateway can route once READY.
+            dep.endpoints = list(info.endpoints)
+            if info.status == "running":
+                dep.status = "running"
+                dep.endpoint = ""
+                self._starting_since.pop((dep.workspace, dep.name), None)
+                await self._save(dep)
+                logger.info(
+                    "Deployment '%s' is running (container mode, endpoints=%s, took %.1fs).",
+                    dep.name,
+                    [ep.url for ep in dep.endpoints],
+                    time.monotonic() - since,
+                )
+            else:
+                await self._save(dep)
+                logger.debug(
+                    "Deployment '%s' container not ready yet (status=%s, %.1fs elapsed).",
+                    dep.name,
+                    info.status,
+                    elapsed,
+                )
+            return
+
+        # Subprocess: loopback health check.
+        if info is not None and info.endpoint:
+            dep.endpoint = info.endpoint
+        healthy = bool(dep.endpoint) and await backend.health_check(dep.endpoint)
 
         if healthy:
             dep.status = "running"
@@ -256,21 +318,48 @@ class AgentDeploymentController(NemoController):
             logger.debug("Deployment '%s' not healthy yet (%.1fs elapsed).", dep.name, elapsed)
 
     async def _verify_running(self, dep: AgentDeployment) -> None:
-        """mark failed if the process has exited or pending if process is not found to attempt to restart."""
-        info = await self.backend.get_deployment_status(dep.workspace, dep.name)
+        """Mark failed if the runtime disappeared; subprocess may restart via pending."""
+        info = await self._backend_for(dep).get_deployment_status(dep.workspace, dep.name)
         if info is None:
-            dep.status = "pending"
-            dep.error = "Process not found in backend (attempting to restart)."
+            if is_container_deployment_mode(dep.deployment_mode):
+                # Do not bounce to pending — that would recreate plugin entities while a
+                # container may still be running / mid-teardown.
+                dep.status = "failed"
+                dep.error = "Container deployment not found in deployments plugin."
+            else:
+                dep.status = "pending"
+                dep.error = "Process not found in backend (attempting to restart)."
             await self._save(dep)
         elif info.status == "failed":
             dep.status = "failed"
             dep.error = info.error or "Process exited unexpectedly."
             await self._save(dep)
             logger.warning("Deployment '%s' failed: %s", dep.name, dep.error)
+        elif is_container_deployment_mode(dep.deployment_mode) and info.endpoints != dep.endpoints:
+            dep.endpoints = list(info.endpoints)
+            await self._save(dep)
 
     async def _delete_deployment(self, dep: AgentDeployment) -> None:
-        """deleting → (removed): terminate process and delete entity."""
-        await self.backend.delete_deployment(dep.workspace, dep.name)
+        """deleting → (removed): terminate runtime and delete entity when teardown completes."""
+        try:
+            cleaned = await self._backend_for(dep).delete_deployment(dep.workspace, dep.name)
+        except Exception:
+            logger.exception("Backend delete failed for '%s'; will retry while status=deleting", dep.name)
+            dep.status = "deleting"
+            dep.error = "Backend teardown failed; will retry."
+            await self._save(dep)
+            return
+
+        if not cleaned:
+            # Container teardown still in progress — keep AgentDeployment so the
+            # next reconcile can finish DeploymentConfig cleanup.
+            dep.status = "deleting"
+            if not dep.error:
+                dep.error = "Waiting for deployments plugin teardown to finish."
+            await self._save(dep)
+            logger.info("Deployment '%s' teardown still in progress; will retry.", dep.name)
+            return
+
         self._starting_since.pop((dep.workspace, dep.name), None)
         try:
             await self.entities.delete(AgentDeployment, name=dep.name, workspace=dep.workspace)

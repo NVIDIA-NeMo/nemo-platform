@@ -20,7 +20,7 @@ llms:
 eval:
   general:
     max_concurrency: 4
-    output_dir: eval/agent
+    output_dir: .
     dataset:
       _type: csv
       file_path: smaller_test.csv

@@ -8,8 +8,13 @@
 #   MINIKUBE_PROFILE  - minikube profile name (default: minikube)
 #   NMP_REGISTRY      - image registry (default: docker.io/my-registry)
 #   IMAGE_TAG         - image tag (default: local-<epoch>)
-#   BUILD_ARCH        - target platform (default: auto-detected from host)
-#   HELM_VALUES       - values file (default: e2e/k8s/values/minikube.yaml)
+#   BUILD_ARCH            - target platform (default: auto-detected from host)
+#   MINIKUBE_GPU          - when 1, start minikube with GPU passthrough
+#   BUILD_SAFE_SYNTHESIZER - when 1, also build safe-synthesizer-tasks (amd64;
+#                            set BUILD_ARCH=linux/amd64)
+#   BUILD_GPU             - deprecated convenience alias: sets MINIKUBE_GPU=1 and
+#                            BUILD_SAFE_SYNTHESIZER=1
+#   HELM_VALUES           - values file (default: e2e/k8s/values/minikube.yaml)
 
 set -e
 
@@ -18,10 +23,21 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 MINIKUBE_PROFILE="${MINIKUBE_PROFILE:-minikube}"
 
+if [ "${BUILD_GPU:-0}" = "1" ]; then
+  MINIKUBE_GPU="${MINIKUBE_GPU:-1}"
+  BUILD_SAFE_SYNTHESIZER="${BUILD_SAFE_SYNTHESIZER:-1}"
+fi
+MINIKUBE_GPU="${MINIKUBE_GPU:-0}"
+BUILD_SAFE_SYNTHESIZER="${BUILD_SAFE_SYNTHESIZER:-0}"
+
 # Check if minikube is running
 if ! minikube status -p "${MINIKUBE_PROFILE}" &>/dev/null; then
   echo "Minikube profile ${MINIKUBE_PROFILE} is not running. Starting..."
-  MINIKUBE_PROFILE="${MINIKUBE_PROFILE}" "$SCRIPT_DIR/setup_local_minikube_cpu.sh"
+  if [ "${MINIKUBE_GPU}" = "1" ]; then
+    MINIKUBE_PROFILE="${MINIKUBE_PROFILE}" "$SCRIPT_DIR/setup_local_minikube_gpu.sh"
+  else
+    MINIKUBE_PROFILE="${MINIKUBE_PROFILE}" "$SCRIPT_DIR/setup_local_minikube_cpu.sh"
+  fi
 fi
 
 # Wait for minikube to be ready
@@ -48,10 +64,22 @@ eval "$(minikube -p "${MINIKUBE_PROFILE}" docker-env)"
     IMAGE_REGISTRY="${NMP_REGISTRY}" \
     BUILD_ARCH="$BUILD_ARCH" \
     docker buildx bake docker-cpu --set "*.platform=$BUILD_ARCH"
+
+  if [ "${BUILD_SAFE_SYNTHESIZER}" = "1" ]; then
+    echo "Building safe-synthesizer-tasks (BUILD_SAFE_SYNTHESIZER=1)..."
+    CI_COMMIT_SHA="$GIT_SHA" \
+      BAKE_TAG="$IMAGE_TAG" \
+      IMAGE_REGISTRY="${NMP_REGISTRY}" \
+      BUILD_ARCH="$BUILD_ARCH" \
+      docker buildx bake safe-synthesizer-tasks-docker --set "safe-synthesizer-tasks-docker.platform=$BUILD_ARCH"
+  fi
 )
 
 echo "----------------------------------------"
 echo "Images built with tag: $IMAGE_TAG"
+if [ "${BUILD_SAFE_SYNTHESIZER}" = "1" ]; then
+  echo "Also built: safe-synthesizer-tasks"
+fi
 echo "----------------------------------------"
 
 # Delegate helm install to install_helm_e2e.sh

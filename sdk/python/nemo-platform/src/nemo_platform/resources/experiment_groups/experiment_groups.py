@@ -74,7 +74,7 @@ class ExperimentGroupsResource(SyncAPIResource):
         default_sort: str | Omit = omit,
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
-        metadata: Dict[str, object] | Omit = omit,
+        metadata: Dict[str, str] | Omit = omit,
         summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -191,7 +191,7 @@ class ExperimentGroupsResource(SyncAPIResource):
         default_sort: str | Omit = omit,
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
-        metadata: Dict[str, object] | Omit = omit,
+        metadata: Dict[str, str] | Omit = omit,
         summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -274,7 +274,9 @@ class ExperimentGroupsResource(SyncAPIResource):
         List Experiment Groups
 
         Args:
-          filter: Filter experiment groups by name.
+          filter:
+              Filter experiment groups by name, or by a metadata key/value:
+              filter[metadata.<key>]=<value>.
 
           page: Page number.
 
@@ -385,7 +387,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         default_sort: str | Omit = omit,
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
-        metadata: Dict[str, object] | Omit = omit,
+        metadata: Dict[str, str] | Omit = omit,
         summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -502,7 +504,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         default_sort: str | Omit = omit,
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
-        metadata: Dict[str, object] | Omit = omit,
+        metadata: Dict[str, str] | Omit = omit,
         summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -585,7 +587,9 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         List Experiment Groups
 
         Args:
-          filter: Filter experiment groups by name.
+          filter:
+              Filter experiment groups by name, or by a metadata key/value:
+              filter[metadata.<key>]=<value>.
 
           page: Page number.
 

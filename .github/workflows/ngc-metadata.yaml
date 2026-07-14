@@ -2,6 +2,9 @@ name: NGC Metadata Sync
 
 on:
   workflow_call:
+    secrets:
+      AIRE_NGC_GITHUB_PLATFORM_RW:
+        required: true
   workflow_dispatch:
 
 permissions:

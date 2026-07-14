@@ -44,7 +44,7 @@ class ExperimentGroupUpdateParams(TypedDict, total=False):
     insight_id: str
     """Reference to an external insight that seeded this group, if any."""
 
-    metadata: Dict[str, object]
+    metadata: Dict[str, str]
     """Free-form producer metadata for the group."""
 
     summary: str

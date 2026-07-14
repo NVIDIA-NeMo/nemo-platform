@@ -51,10 +51,7 @@ export const SpanTriggerMeta: FC<{ span: SpanTableRow }> = ({ span }) => {
             {headerBadge.text}
           </Badge>
         )}
-        <SpanTriggerMetaValue
-          label="Duration"
-          value={formatDurationMs(getSpanDurationMs(span)).replace(/\s+/g, '')}
-        />
+        <SpanTriggerMetaValue label="Duration" value={formatDurationMs(getSpanDurationMs(span))} />
       </Flex>
     </>
   );

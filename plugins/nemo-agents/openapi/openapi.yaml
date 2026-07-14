@@ -2378,10 +2378,39 @@ components:
           description: 'Lifecycle status: pending | starting | running | failed |
             deleting.'
           default: pending
+        deployment_mode:
+          type: string
+          enum:
+          - subprocess
+          - docker
+          - k8s
+          title: Deployment Mode
+          description: Runtime backend for this deployment. 'subprocess' (default)
+            reads the loopback 'endpoint'; 'docker'/'k8s' read the projected 'endpoints'.
+          default: subprocess
         endpoint:
           type: string
           title: Endpoint
-          description: HTTP endpoint of the running agent process (e.g. http://localhost:9001).
+          description: Subprocess loopback endpoint of the agent process (e.g. http://localhost:9001).
+          default: ''
+        endpoints:
+          items:
+            $ref: '#/components/schemas/Endpoint'
+          type: array
+          title: Endpoints
+          description: Routable endpoints for container modes, projected from the
+            deployments-plugin Deployment. Empty for subprocess mode (which uses 'endpoint').
+        image:
+          type: string
+          title: Image
+          description: Container image for docker/k8s modes. Empty for subprocess;
+            falls back to AgentsConfig.deployments.default_image.
+          default: ''
+        plugin_deployment:
+          type: string
+          title: Plugin Deployment
+          description: Name of the linked nemo-deployments Deployment entity. Defaults
+            to this deployment's name when empty (set by the controller on create).
           default: ''
         port:
           type: integer
@@ -2654,6 +2683,20 @@ components:
           description: Optional deployment name.  Auto-generated from agent name +
             random suffix if omitted.
           type: string
+        deployment_mode:
+          type: string
+          enum:
+          - subprocess
+          - docker
+          - k8s
+          title: Deployment Mode
+          description: 'Runtime backend: subprocess (default), docker, or k8s.'
+          default: subprocess
+        image:
+          type: string
+          title: Image
+          description: Container image for docker/k8s modes. Ignored for subprocess.
+          default: ''
       type: object
       required:
       - agent
@@ -2697,6 +2740,38 @@ components:
       - next_offset
       title: DeploymentLogsResponse
       description: Response body for ``GET /deployments/{name}/logs``.
+    Endpoint:
+      properties:
+        name:
+          type: string
+          title: Name
+        url:
+          type: string
+          title: Url
+        protocol:
+          type: string
+          enum:
+          - http
+          - https
+          - grpc
+          - tcp
+          title: Protocol
+          default: http
+      type: object
+      required:
+      - name
+      - url
+      title: Endpoint
+      description: 'A routable network endpoint for a deployment.
+
+
+        Mirrors ``nemo_deployments_plugin.types.Endpoint`` so container-mode
+
+        deployments can carry the address the deployments-plugin ``Deployment``
+
+        projected without the agents plugin depending on that plugin at the
+
+        entity-schema layer.'
     EvaluateAgentSpec:
       properties:
         agent:

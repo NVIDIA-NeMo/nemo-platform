@@ -136,13 +136,15 @@ class DockerSandboxAgentRuntime:
     ) -> AgentEvalTrial:
         evidence_dir = self._evidence_dir(index, task, config)
         evidence_dir.mkdir(parents=True, exist_ok=True)
-        prompt = _task_prompt(task)
-        manifest = self._build_manifest(task, sdk)
-        agent = self._build_agent(manifest, sdk)
         client = self._build_client(sdk)
         sandbox = None
 
         try:
+            # Build the prompt inside the guarded block: an instruction-less task raises here and fails
+            # just this task rather than aborting the whole run.
+            prompt = task.agent_prompt()
+            manifest = self._build_manifest(task, sdk)
+            agent = self._build_agent(manifest, sdk)
             sandbox = await client.create(
                 manifest=manifest,
                 options=sdk.DockerSandboxClientOptions(image=self._image or sdk.DEFAULT_PYTHON_SANDBOX_IMAGE),
@@ -163,7 +165,7 @@ class DockerSandboxAgentRuntime:
         # workspace — nothing in the runtime consumes it, and dumping the whole DTO would expose
         # grader-only fields (e.g. ``reference`` held-out ground truth) to the agent.
         entries: dict[str, Any] = {
-            "instruction.md": sdk.File(content=_task_prompt(task).encode("utf-8")),
+            "instruction.md": sdk.File(content=task.agent_prompt().encode("utf-8")),
             "output": sdk.Dir(),
         }
         workspace_dir = task.inputs.get("workspace_dir")
@@ -293,10 +295,6 @@ def _validated_workspace_dir(workspace_dir: Any) -> Path:
     if not resolved.is_dir():
         raise ValueError(f"workspace_dir does not exist or is not a directory: {resolved}")
     return resolved
-
-
-def _task_prompt(task: AgentEvalTask) -> str:
-    return str(task.inputs.get("prompt") or task.inputs.get("instruction") or task.intent)
 
 
 async def _maybe_await(value: Awaitable[Any] | Any) -> Any:

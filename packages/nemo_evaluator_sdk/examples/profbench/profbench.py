@@ -334,7 +334,7 @@ class ProfBenchRubricMetric:
                 task = input.row.data.get("task", {})
                 judge_request = ProfBenchJudgeRequest(
                     task_id=str(task.get("id", "")) if isinstance(task, dict) else "",
-                    prompt=str(inputs.get("prompt", "")) if isinstance(inputs, dict) else "",
+                    prompt=str(inputs.get("instruction", "")) if isinstance(inputs, dict) else "",
                     response=output_text,
                     criterion_id=criterion.id,
                     criterion_description=criterion.description,
@@ -447,7 +447,7 @@ def load_profbench(
         task = AgentEvalTask(
             id=task_id,
             intent=str(row["prompt"]),
-            inputs={"prompt": row["prompt"], "domain": row.get("domain")},
+            inputs={"instruction": row["prompt"], "domain": row.get("domain")},
             metrics=[ProfBenchRubricMetric(criteria=criteria, judge=judge, evidence_dir=evidence_dir)],
             metadata={
                 "benchmark": "ProfBench",

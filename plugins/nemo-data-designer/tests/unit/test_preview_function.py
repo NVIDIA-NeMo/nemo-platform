@@ -24,7 +24,9 @@ from pydantic import BaseModel
 
 
 def _config() -> dd.DataDesignerConfig:
-    builder = dd.DataDesignerConfigBuilder(model_configs=[dd.ModelConfig(alias="text", model="model")])
+    builder = dd.DataDesignerConfigBuilder(
+        model_configs=[dd.ModelConfig(alias="text", model="model", provider="default/nvidia")]
+    )
     builder.add_column(
         column_config=dd.SamplerColumnConfig(
             name="foo",

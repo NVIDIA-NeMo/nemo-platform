@@ -43,7 +43,7 @@ describe('traceKeyValues', () => {
     expect(metrics).toEqual([
       { id: 'span_count', label: 'Spans', value: '4' },
       { id: 'error_count', label: 'Errors', value: '0' },
-      { id: 'duration_ms', label: 'Duration', value: '12.23 s' },
+      { id: 'duration_ms', label: 'Duration', value: '12s 230ms' },
       {
         id: 'total_tokens',
         label: 'Total Tokens',

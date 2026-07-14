@@ -57,6 +57,7 @@ def test_from_pyproject_empty_table_uses_defaults(tmp_path):
         service_name=None,
         env_vars=None,
         factory_override=None,
+        data_designer_plugin_allowlist=None,
     )
 
 
@@ -71,6 +72,7 @@ def test_from_pyproject_reads_overrides(tmp_path):
         [tool.nemo.openapi]
         service_name = "svc-a"
         factory_override = "pkg.factories:make_app"
+        data_designer_plugin_allowlist = ["fileset-seed-datasets"]
 
         [tool.nemo.openapi.env_vars]
         FOO = "bar"
@@ -83,6 +85,7 @@ def test_from_pyproject_reads_overrides(tmp_path):
         service_name="svc-a",
         env_vars={"FOO": "bar", "BAZ": "qux"},
         factory_override="pkg.factories:make_app",
+        data_designer_plugin_allowlist=["fileset-seed-datasets"],
     )
 
 
@@ -98,6 +101,21 @@ def test_from_pyproject_rejects_non_table_env_vars(tmp_path):
         """,
     )
     with pytest.raises(ValueError, match="env_vars must be a table"):
+        PluginConfig.from_pyproject(pyproject)
+
+
+def test_from_pyproject_rejects_non_string_data_designer_plugin_allowlist(tmp_path):
+    pyproject = _write_pyproject(
+        tmp_path / "bad-dd-plugin-allowlist",
+        """
+        [project.entry-points."nemo.services"]
+        svc = "pkg:S"
+
+        [tool.nemo.openapi]
+        data_designer_plugin_allowlist = ["ok", 1]
+        """,
+    )
+    with pytest.raises(ValueError, match="data_designer_plugin_allowlist must be a list of strings"):
         PluginConfig.from_pyproject(pyproject)
 
 
