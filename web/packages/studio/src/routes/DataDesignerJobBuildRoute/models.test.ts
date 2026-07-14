@@ -222,6 +222,7 @@ describe('buildModelConfigs', () => {
       {
         alias: 'default',
         model: 'nvidia/llama-3.3-nemotron-super-49b-v1',
+        provider: '',
         inference_parameters: {
           generation_type: 'chat-completion',
           max_tokens: 1024,
