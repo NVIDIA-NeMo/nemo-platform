@@ -96,7 +96,7 @@ const GlobalNavContent: FC<GlobalNavContentProps> = ({
       />
       {sideNav && (
         <div
-          className={`h-full max-h-[calc(100vh-var(--nv-app-bar-height))] overflow-y-auto [grid-area:sidebar] ${isClaudeCodeChatRoute ? `${sidebarBackground} [&_.nv-vertical-nav-root]:!bg-transparent` : ''}`}
+          className={`h-full max-h-[calc(100vh-var(--nv-app-bar-height))] overflow-y-auto [grid-area:sidebar] ${isClaudeCodeChatRoute ? `${sidebarBackground} [&_.nv-vertical-nav-root]:bg-transparent!` : ''}`}
           data-tour="sidebar"
         >
           {sideNav(!expanded)}
