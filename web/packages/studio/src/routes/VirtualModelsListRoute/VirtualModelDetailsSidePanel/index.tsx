@@ -3,9 +3,9 @@
 
 import { KVPair } from '@nemo/common/src/components/KVPair';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { MiddlewareCall, VirtualModel } from '@nemo/sdk/generated/platform/schema';
+import type { MiddlewareCall, VirtualModel } from '@nemo/sdk/generated/platform/schema';
 import { Block, SidePanel, Stack, Text } from '@nvidia/foundations-react-core';
-import { FC } from 'react';
+import type { FC } from 'react';
 
 const MiddlewareCallView: FC<{ call: MiddlewareCall }> = ({ call }) => (
   <Block className="rounded-lg border border-base bg-surface-raised p-density-md">

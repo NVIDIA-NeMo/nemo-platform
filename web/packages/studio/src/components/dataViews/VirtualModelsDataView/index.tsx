@@ -17,7 +17,7 @@ import {
   useDeleteVirtualModel,
   useListVirtualModels,
 } from '@nemo/sdk/generated/platform/api';
-import {
+import type {
   DatetimeFilter,
   VirtualModel,
   VirtualModelFilter,
@@ -29,7 +29,7 @@ import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { VirtualModelDetailsSidePanel } from '@studio/routes/VirtualModelsListRoute/VirtualModelDetailsSidePanel';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
 import { Waypoints } from 'lucide-react';
-import { ComponentProps, FC, useCallback, useMemo, useState } from 'react';
+import { type ComponentProps, type FC, useCallback, useMemo, useState } from 'react';
 
 export interface VirtualModelsDataViewProps {
   workspace: string;

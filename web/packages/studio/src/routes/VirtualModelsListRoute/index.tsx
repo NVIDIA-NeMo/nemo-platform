@@ -7,7 +7,7 @@ import { VirtualModelsDataView } from '@studio/components/dataViews/VirtualModel
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getWorkspaceVirtualModelsRoute } from '@studio/routes/utils';
-import { FC } from 'react';
+import type { FC } from 'react';
 
 export const VirtualModelsListRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
