@@ -11,7 +11,7 @@ if [ "${STALE_HOURS}" -lt 1 ]; then
   exit 1
 fi
 
-owner="${GITHUB_REPOSITORY_OWNER,,}"
+owner="NVIDIA-NeMo"
 repo="${GITHUB_REPOSITORY#*/}"
 repo="${repo,,}"
 
