@@ -81,7 +81,7 @@ describe('VirtualModelsDataView', () => {
 
     await waitFor(() => expect(urls.length).toBeGreaterThan(0));
     const params = new URL(urls.at(-1)!).searchParams;
-    expect(params.get('include_autoprovisioned')).toBe('false');
+    expect(params.get('exclude_autoprovisioned')).toBe('true');
   });
 
   it('sends filter[name][$like] when a name search is active', async () => {

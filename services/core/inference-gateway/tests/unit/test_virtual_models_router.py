@@ -395,12 +395,12 @@ class TestListVirtualModels:
         assert resp.status_code == 200
         assert resp.json()["sort"] == "created_at"
 
-    def test_list_filters_out_autoprovisioned(self, client: TestClient):
-        """filter[autoprovisioned][$ne]=true excludes controller-managed VirtualModels."""
+    def test_list_excludes_autoprovisioned(self, client: TestClient):
+        """exclude_autoprovisioned=true excludes controller-managed VirtualModels."""
         _create(client, "vm-manual", default_model_entity="default/model-a")
         _create(client, "vm-auto", autoprovisioned=True, default_model_entity="default/model-b")
 
-        resp = client.get(f"{BASE}?include_autoprovisioned=false")
+        resp = client.get(f"{BASE}?exclude_autoprovisioned=true")
         assert resp.status_code == 200, resp.text
         names = {item["name"] for item in resp.json()["data"]}
         assert "vm-manual" in names

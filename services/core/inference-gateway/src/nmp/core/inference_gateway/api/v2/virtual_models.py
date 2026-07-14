@@ -60,7 +60,6 @@ class VirtualModelFilter(Filter):
     project: str | None = Field(None, description="Filter by project URN.")
     name: StringFilter | str | None = Field(None, description="Filter by name.")
     default_model_entity: StringFilter | str | None = Field(None, description="Filter by default model entity.")
-    autoprovisioned: bool | None = Field(None, description="Filter by whether the VirtualModel is controller-managed.")
     created_at: DatetimeFilter | None = Field(None, description="Filter by creation date.")
     updated_at: DatetimeFilter | None = Field(None, description="Filter by update date.")
 
@@ -345,8 +344,7 @@ async def create_virtual_model(
     openapi_extra=generate_openapi_extra_params(
         filter_schema=VirtualModelFilter,
         filter_description=(
-            "Filter virtual models by workspace, project, name, default_model_entity, "
-            "autoprovisioned, created_at, and updated_at."
+            "Filter virtual models by workspace, project, name, default_model_entity, created_at, and updated_at."
         ),
     ),
 )
@@ -359,10 +357,10 @@ async def list_virtual_models(
         default="-created_at",
         description="Sort field.  Prefix with ``-`` for descending order.",
     ),
-    include_autoprovisioned: bool = Query(
-        default=True,
+    exclude_autoprovisioned: bool = Query(
+        default=False,
         description=(
-            "When false, controller-managed (autoprovisioned) passthrough VirtualModels are excluded from the results."
+            "When true, controller-managed (autoprovisioned) passthrough VirtualModels are excluded from the results."
         ),
     ),
     parsed_filter: ParsedFilter = Depends(make_filter_dep(VirtualModelFilter)),
@@ -372,11 +370,11 @@ async def list_virtual_models(
     Use ``workspace=-`` to list across all workspaces accessible to the caller.
     """
     filter_workspace = parsed_filter.remove("workspace") or workspace
-    if not include_autoprovisioned:
+    if exclude_autoprovisioned:
+        # ``autoprovisioned`` lives under the entity ``data`` blob; reference it
+        # directly so this does not depend on VirtualModelFilter exposing the field.
         parsed_filter.and_with(
-            VirtualModelFilter.translate_operation(
-                ComparisonOperation(operator=FilterOperator.EQ, field="autoprovisioned", value=False)
-            )
+            ComparisonOperation(operator=FilterOperator.EQ, field="data.autoprovisioned", value=False)
         )
     try:
         result = await entity_client.list(

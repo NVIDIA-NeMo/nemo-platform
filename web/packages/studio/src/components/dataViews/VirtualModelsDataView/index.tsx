@@ -92,7 +92,7 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
       sort: sortParam,
       filter,
       // Autoprovisioned VMs are controller-managed passthroughs; hide them from the UI.
-      include_autoprovisioned: false,
+      exclude_autoprovisioned: true,
     },
     {
       query: {

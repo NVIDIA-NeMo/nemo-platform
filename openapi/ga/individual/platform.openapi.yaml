@@ -3024,17 +3024,17 @@ paths:
           default: -created_at
           title: Sort
         description: Sort field.  Prefix with ``-`` for descending order.
-      - name: include_autoprovisioned
+      - name: exclude_autoprovisioned
         in: query
         required: false
         schema:
           type: boolean
-          description: When false, controller-managed (autoprovisioned) passthrough
+          description: When true, controller-managed (autoprovisioned) passthrough
             VirtualModels are excluded from the results.
-          default: true
-          title: Include Autoprovisioned
-        description: When false, controller-managed (autoprovisioned) passthrough
-          VirtualModels are excluded from the results.
+          default: false
+          title: Exclude Autoprovisioned
+        description: When true, controller-managed (autoprovisioned) passthrough VirtualModels
+          are excluded from the results.
       - in: query
         name: filter
         style: deepObject
@@ -3043,7 +3043,7 @@ paths:
         schema:
           $ref: '#/components/schemas/VirtualModelFilter'
         description: Filter virtual models by workspace, project, name, default_model_entity,
-          autoprovisioned, created_at, and updated_at.
+          created_at, and updated_at.
       responses:
         '200':
           description: Paginated list of virtual models
@@ -18684,10 +18684,6 @@ components:
           - type: string
           description: Filter by default model entity.
           title: Default Model Entity
-        autoprovisioned:
-          description: Filter by whether the VirtualModel is controller-managed.
-          title: Autoprovisioned
-          type: boolean
         created_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'

@@ -33,9 +33,6 @@ Name: TypeAlias = Union[StringFilter, str]
 class VirtualModelFilterParam(TypedDict, total=False):
     """Filter for VirtualModel list queries."""
 
-    autoprovisioned: bool
-    """Filter by whether the VirtualModel is controller-managed."""
-
     created_at: DatetimeFilter
     """Filter by creation date."""
 

@@ -213,8 +213,8 @@ class VirtualModelsResource(SyncAPIResource):
         self,
         *,
         workspace: str | None = None,
+        exclude_autoprovisioned: bool | Omit = omit,
         filter: VirtualModelFilterParam | Omit = omit,
-        include_autoprovisioned: bool | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
         sort: str | Omit = omit,
@@ -231,11 +231,11 @@ class VirtualModelsResource(SyncAPIResource):
         Use `workspace=-` to list across all workspaces accessible to the caller.
 
         Args:
-          filter: Filter virtual models by workspace, project, name, default_model_entity,
-              autoprovisioned, created_at, and updated_at.
-
-          include_autoprovisioned: When false, controller-managed (autoprovisioned) passthrough VirtualModels are
+          exclude_autoprovisioned: When true, controller-managed (autoprovisioned) passthrough VirtualModels are
               excluded from the results.
+
+          filter: Filter virtual models by workspace, project, name, default_model_entity,
+              created_at, and updated_at.
 
           page: Page number (1-indexed).
 
@@ -265,8 +265,8 @@ class VirtualModelsResource(SyncAPIResource):
                 timeout=timeout,
                 query=maybe_transform(
                     {
+                        "exclude_autoprovisioned": exclude_autoprovisioned,
                         "filter": filter,
-                        "include_autoprovisioned": include_autoprovisioned,
                         "page": page,
                         "page_size": page_size,
                         "sort": sort,
@@ -583,8 +583,8 @@ class AsyncVirtualModelsResource(AsyncAPIResource):
         self,
         *,
         workspace: str | None = None,
+        exclude_autoprovisioned: bool | Omit = omit,
         filter: VirtualModelFilterParam | Omit = omit,
-        include_autoprovisioned: bool | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
         sort: str | Omit = omit,
@@ -601,11 +601,11 @@ class AsyncVirtualModelsResource(AsyncAPIResource):
         Use `workspace=-` to list across all workspaces accessible to the caller.
 
         Args:
-          filter: Filter virtual models by workspace, project, name, default_model_entity,
-              autoprovisioned, created_at, and updated_at.
-
-          include_autoprovisioned: When false, controller-managed (autoprovisioned) passthrough VirtualModels are
+          exclude_autoprovisioned: When true, controller-managed (autoprovisioned) passthrough VirtualModels are
               excluded from the results.
+
+          filter: Filter virtual models by workspace, project, name, default_model_entity,
+              created_at, and updated_at.
 
           page: Page number (1-indexed).
 
@@ -635,8 +635,8 @@ class AsyncVirtualModelsResource(AsyncAPIResource):
                 timeout=timeout,
                 query=maybe_transform(
                     {
+                        "exclude_autoprovisioned": exclude_autoprovisioned,
                         "filter": filter,
-                        "include_autoprovisioned": include_autoprovisioned,
                         "page": page,
                         "page_size": page_size,
                         "sort": sort,

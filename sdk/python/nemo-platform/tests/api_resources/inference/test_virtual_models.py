@@ -189,8 +189,8 @@ class TestVirtualModels:
     def test_method_list_with_all_params(self, client: NeMoPlatform) -> None:
         virtual_model = client.inference.virtual_models.list(
             workspace="workspace",
+            exclude_autoprovisioned=True,
             filter={
-                "autoprovisioned": True,
                 "created_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -214,7 +214,6 @@ class TestVirtualModels:
                 },
                 "workspace": "workspace",
             },
-            include_autoprovisioned=True,
             page=1,
             page_size=1,
             sort="sort",
@@ -560,8 +559,8 @@ class TestAsyncVirtualModels:
     async def test_method_list_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
         virtual_model = await async_client.inference.virtual_models.list(
             workspace="workspace",
+            exclude_autoprovisioned=True,
             filter={
-                "autoprovisioned": True,
                 "created_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -585,7 +584,6 @@ class TestAsyncVirtualModels:
                 },
                 "workspace": "workspace",
             },
-            include_autoprovisioned=True,
             page=1,
             page_size=1,
             sort="sort",

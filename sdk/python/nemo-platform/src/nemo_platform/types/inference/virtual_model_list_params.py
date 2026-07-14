@@ -27,16 +27,16 @@ __all__ = ["VirtualModelListParams"]
 class VirtualModelListParams(TypedDict, total=False):
     workspace: str
 
+    exclude_autoprovisioned: bool
+    """
+    When true, controller-managed (autoprovisioned) passthrough VirtualModels are
+    excluded from the results.
+    """
+
     filter: VirtualModelFilterParam
     """
     Filter virtual models by workspace, project, name, default_model_entity,
-    autoprovisioned, created_at, and updated_at.
-    """
-
-    include_autoprovisioned: bool
-    """
-    When false, controller-managed (autoprovisioned) passthrough VirtualModels are
-    excluded from the results.
+    created_at, and updated_at.
     """
 
     page: int

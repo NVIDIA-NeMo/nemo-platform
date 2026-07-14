@@ -199,17 +199,21 @@ def delete_virtual_models(
 def list_virtual_models(
     ctx: typer.Context,
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
+    exclude_autoprovisioned: Annotated[
+        bool | None,
+        typer.Option(
+            "--exclude-autoprovisioned",
+            help="When true, controller-managed (autoprovisioned) passthrough VirtualModels are excluded from the results.",
+        ),
+    ] = None,
     filter: Annotated[
         str | None,
         typer.Option(
             "--filter",
             metavar="FILTER_JSON",
-            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  created_at: {gte: str, lte: str}\n  updated_at: {gte: str, lte: str}\n\nFilter virtual models by workspace, project, name, default_model_entity, autoprovisioned, created_at, and updated_at.",
+            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  created_at: {gte: str, lte: str}\n  updated_at: {gte: str, lte: str}\n\nFilter virtual models by workspace, project, name, default_model_entity, created_at, and updated_at.",
             rich_help_panel="Filter Options",
         ),
-    ] = None,
-    filter_autoprovisioned: Annotated[
-        bool | None, typer.Option("--filter.autoprovisioned", rich_help_panel="Filter Options")
     ] = None,
     filter_default_model_entity: Annotated[
         str | None, typer.Option("--filter.default-model-entity", rich_help_panel="Filter Options")
@@ -218,13 +222,6 @@ def list_virtual_models(
     filter_project: Annotated[str | None, typer.Option("--filter.project", rich_help_panel="Filter Options")] = None,
     filter_workspace: Annotated[
         str | None, typer.Option("--filter.workspace", rich_help_panel="Filter Options")
-    ] = None,
-    include_autoprovisioned: Annotated[
-        bool | None,
-        typer.Option(
-            "--include-autoprovisioned",
-            help="When false, controller-managed (autoprovisioned) passthrough VirtualModels are excluded from the results.",
-        ),
     ] = None,
     page: Annotated[int | None, typer.Option("--page", help="Page number (1-indexed).")] = None,
     page_size: Annotated[int | None, typer.Option("--page-size", help="Number of results per page.")] = None,
@@ -254,15 +251,14 @@ def list_virtual_models(
 
     kwargs = build_kwargs(
         workspace=workspace,
+        exclude_autoprovisioned=exclude_autoprovisioned,
         filter=merge_filter_dict(
             filter,
-            autoprovisioned=filter_autoprovisioned,
             default_model_entity=filter_default_model_entity,
             name=filter_name,
             project=filter_project,
             workspace=filter_workspace,
         ),
-        include_autoprovisioned=include_autoprovisioned,
         page=page,
         page_size=page_size,
         sort=sort,
