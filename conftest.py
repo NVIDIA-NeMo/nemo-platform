@@ -284,6 +284,20 @@ def pytest_addoption(parser):
         default=True,
         help="Run integration tests (enabled by default)",
     )
+    parser.addoption(
+        "--feature",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="Enable optional e2e feature sets (repeatable), e.g. --feature gpu",
+    )
+
+
+def _e2e_features_enabled(config: pytest.Config) -> set[str]:
+    features = {feature.lower() for feature in config.getoption("--feature") or []}
+    if os.environ.get("RUN_NSS_K8S_E2E") == "1":
+        features.add("gpu")
+    return features
 
 
 def pytest_runtest_setup(item):
@@ -302,6 +316,9 @@ def pytest_runtest_setup(item):
     if "container_only" in [marker.name for marker in item.iter_markers()]:
         if not os.environ.get("NMP_BASE_URL"):
             skip_test("Skipping container-only test (requires NMP_BASE_URL)")
+    if "requires_gpu" in [marker.name for marker in item.iter_markers()]:
+        if "gpu" not in _e2e_features_enabled(item.config):
+            skip_test("Skipping GPU container e2e (pass --feature gpu)")
 
 
 from xdist.scheduler.loadgroup import LoadGroupScheduling  # noqa: E402

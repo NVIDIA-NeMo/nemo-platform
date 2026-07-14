@@ -97,6 +97,23 @@ class AgentEvalTask(BaseModel):
             raise ValueError("task id must not be empty")
         return value
 
+    def agent_prompt(self) -> str:
+        """The intent-free prompt handed to the agent under evaluation.
+
+        Exactly the task's natural-language instruction (``inputs["instruction"]``), with no
+        runtime-added framing. ``intent`` is deliberately never used: it is the eval-side description
+        of the desired behavior (what the grader checks for), so exposing it to the agent is a
+        reward-hacking hole.
+
+        Raises ``ValueError`` when ``inputs["instruction"]`` is missing or empty; a task with no
+        instruction cannot be evaluated, so the runner fails that task rather than running an agent on
+        an empty prompt.
+        """
+        instruction = self.inputs.get("instruction")
+        if instruction:
+            return str(instruction)
+        raise ValueError(f"task {self.id!r} has no instruction: set inputs['instruction']")
+
     @field_serializer("metrics", when_used="json")
     def _serialize_metrics(self, metrics: list[Metric]) -> list[dict[str, Any]]:
         """Serialize local metric instances as descriptors for run bundles."""

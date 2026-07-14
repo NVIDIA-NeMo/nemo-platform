@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from nemo_agents_plugin.entities import Agent, AgentDeployment, DeploymentStatus
+from nemo_agents_plugin.entities import Agent, AgentDeployment, DeploymentMode, DeploymentStatus
 from nemo_platform_plugin.schema import NemoFilter, NemoListResponse
 from pydantic import BaseModel, Field
 
@@ -47,6 +47,14 @@ class CreateDeploymentRequest(BaseModel):
     name: str | None = Field(
         default=None,
         description="Optional deployment name.  Auto-generated from agent name + random suffix if omitted.",
+    )
+    deployment_mode: DeploymentMode = Field(
+        default="subprocess",
+        description="Runtime backend: subprocess (default), docker, or k8s.",
+    )
+    image: str = Field(
+        default="",
+        description="Container image for docker/k8s modes. Ignored for subprocess.",
     )
 
 

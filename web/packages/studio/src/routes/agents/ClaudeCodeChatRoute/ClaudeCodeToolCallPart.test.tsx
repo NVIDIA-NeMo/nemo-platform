@@ -68,7 +68,9 @@ const expectSubtleToolBlock = (subtleBlock: HTMLElement) => {
   expect(subtleBlock).toHaveClass(
     'my-density-xs',
     'flex',
+    'w-full',
     'max-w-full',
+    'overflow-hidden',
     'flex-wrap',
     'items-center',
     'gap-x-density-sm',
@@ -286,6 +288,46 @@ describe('ClaudeCodeToolCallPart', () => {
     expect(screen.queryByTestId('claude-code-tool-call')).not.toBeInTheDocument();
   });
 
+  it('reveals and copies the exact Bash command instead of its description', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ClaudeCodeToolCallPart
+        addResult={vi.fn()}
+        args={{ command: 'pnpm --filter nemo-studio-ui test', description: 'run Studio tests' }}
+        argsText='{"command":"pnpm --filter nemo-studio-ui test","description":"run Studio tests"}'
+        resume={vi.fn()}
+        status={{ type: 'complete' }}
+        toolCallId="toolu_bash"
+        toolName="Bash"
+        type="tool-call"
+      />
+    );
+
+    const disclosure = screen.getByTestId('claude-code-tool-call-subtle-details');
+    const summary = screen.getByTestId('claude-code-tool-call-subtle-action');
+    expect(summary).toHaveTextContent('Ran run Studio tests');
+    expect(disclosure).not.toHaveAttribute('open');
+
+    await user.click(summary);
+
+    expect(disclosure).toHaveAttribute('open');
+    expect(screen.getByTestId('claude-code-tool-call-invocation')).toHaveTextContent(
+      'pnpm --filter nemo-studio-ui test'
+    );
+    expect(screen.getByTestId('claude-code-tool-call-invocation-surface')).toHaveClass(
+      'w-full',
+      'min-w-0',
+      'max-w-full',
+      'overflow-auto',
+      'break-words'
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Copy invocation' }));
+
+    expect(await navigator.clipboard.readText()).toBe('pnpm --filter nemo-studio-ui test');
+  });
+
   it('summarizes repeated grouped tool actions with expandable details', async () => {
     const user = userEvent.setup();
 
@@ -365,10 +407,58 @@ describe('ClaudeCodeToolCallPart', () => {
       'run tests',
       'pnpm typecheck',
     ]);
+    expect(
+      within(commandDetails)
+        .getAllByTestId('claude-code-tool-call-invocation-content')
+        .map((item) => item.textContent)
+    ).toEqual(['pwd', 'ls', 'git status', 'pnpm test', 'pnpm typecheck']);
+    const nestedInvocations = within(commandDetails).getAllByTestId(
+      'claude-code-tool-call-nested-invocation'
+    );
+    expect(nestedInvocations).toHaveLength(5);
+    for (const nestedInvocation of nestedInvocations) {
+      expect(nestedInvocation).not.toHaveAttribute('open');
+      expect(
+        within(nestedInvocation).getByTestId('claude-code-tool-call-invocation')
+      ).not.toBeVisible();
+    }
+
+    await user.click(
+      within(nestedInvocations[1]!).getByTestId('claude-code-tool-call-subtle-detail-item')
+    );
+
+    expect(nestedInvocations[1]).toHaveAttribute('open');
+    expect(within(nestedInvocations[1]!).queryByText('Invocation 2')).not.toBeInTheDocument();
+    expect(
+      within(nestedInvocations[1]!).getByRole('button', { name: 'Copy invocation 2' })
+    ).toBeVisible();
+    expect(
+      within(nestedInvocations[1]!).getByTestId('claude-code-tool-call-invocation-content')
+    ).toHaveTextContent('ls');
+    expect(
+      within(nestedInvocations[0]!).getByTestId('claude-code-tool-call-invocation')
+    ).not.toBeVisible();
+    const readDetails = screen.getAllByTestId('claude-code-tool-call-subtle-details')[1]!;
+    expect(readDetails).not.toHaveAttribute('open');
+
+    await user.click(screen.getByText('Read 2 files'));
+
+    expect(readDetails).toHaveAttribute('open');
+    expect(
+      within(readDetails)
+        .getAllByTestId('claude-code-tool-call-subtle-detail-item')
+        .map((item) => item.textContent)
+    ).toEqual(['README.md', 'package.json']);
+    expect(
+      within(readDetails).queryByTestId('claude-code-tool-call-nested-invocation')
+    ).not.toBeInTheDocument();
+    expect(
+      within(readDetails).queryByTestId('claude-code-tool-call-invocation')
+    ).not.toBeInTheDocument();
     expect(screen.getAllByTestId('claude-code-tool-call-subtle-detail-item')).toHaveLength(7);
   });
 
-  it('renders Read as subtle text with only the file name', () => {
+  it('renders Read as summary-only subtle text', () => {
     render(
       <ClaudeCodeToolCallPart
         addResult={vi.fn()}
@@ -386,7 +476,8 @@ describe('ClaudeCodeToolCallPart', () => {
     expect(readBlock).toHaveTextContent('Read App.tsx');
     expect(readBlock.tagName).toBe('DIV');
     expectSubtleToolBlock(readBlock);
-    expect(screen.queryByText('web/packages/studio/src/App.tsx')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('claude-code-tool-call-subtle-details')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('claude-code-tool-call-invocation')).not.toBeInTheDocument();
   });
 
   it('renders running subtle tool text without special color or animation', () => {

@@ -7,6 +7,9 @@ Agents are NAT workflow YAML files. The plugin provides:
 
 - **CRUD** — store and version agent configs in the platform entity store
 - **Deployment** — start/stop `nat start fastapi` servers via an in-memory controller
+  (subprocess mode, default), or as durable containers via the `nemo-deployments`
+  plugin (`--mode docker`, or `--mode k8s` when a k8s executor is configured;
+  k8s runtime reachability is still evolving)
 - **Gateway** — reverse-proxy agent traffic through `/apis/agents/…/-/…`
 - **CLI** — `nemo agents` subcommand for platform-managed workflows
 - **Evaluation** — delegate to `nat eval` against live agent endpoints
@@ -114,6 +117,15 @@ nemo agents create \
 # when the agent is actually serving — so the exit code reflects the
 # real outcome instead of just "the API call succeeded".
 nemo agents deploy --agent react-agent
+
+# Container mode (docker): requires the nemo-deployments controller plus a
+# configured docker executor (see agents.deployments / deployments.executors).
+# Build an image first, then deploy with that tag:
+#   nemo agents package --agent-config examples/react-agent/react-agent.yml --tag react-agent:local
+#   nemo agents deploy --agent react-agent --mode docker --image react-agent:local
+#
+# --mode k8s needs a k8s executor and a registry-reachable image; in-cluster
+# inference-gateway wiring is still evolving — prefer docker for local smoke.
 ```
 
 The deploy command prints a status line each time the deployment changes

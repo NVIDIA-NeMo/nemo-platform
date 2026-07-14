@@ -14,6 +14,7 @@ captured trajectory evidence.
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import os
@@ -68,10 +69,44 @@ def _task() -> AgentEvalTask:
 # --- hermetic: fake nemo_fabric so CI exercises the runner+evaluator+metric+evidence chain ----------
 
 
+class _FakeEnvironment:
+    def __init__(self, *, provider: str = "local", workspace: str | None = None, artifacts: str | None = None) -> None:
+        self.provider = provider
+        self.workspace = workspace
+        self.artifacts = artifacts
+
+
+class _FakeRuntimeCfg:
+    def __init__(self, artifacts: str | None = None) -> None:
+        self.artifacts = artifacts
+
+
 class _FakeConfig:
+    """Stand-in for nemo_fabric.FabricConfig supporting the config-first helpers the runtime uses."""
+
+    def __init__(self) -> None:
+        self.environment: _FakeEnvironment | None = None
+        self.runtime = _FakeRuntimeCfg()
+        self.models: dict[str, Any] = {}
+        self.relay: dict[str, Any] | None = None
+
     @classmethod
     def from_mapping(cls, mapping: dict[str, Any]) -> _FakeConfig:
         return cls()
+
+    def model_copy(self, *, deep: bool = False) -> _FakeConfig:
+        clone = _FakeConfig()
+        clone.environment = copy.deepcopy(self.environment)
+        clone.runtime = _FakeRuntimeCfg(self.runtime.artifacts)
+        clone.models = copy.deepcopy(self.models)
+        clone.relay = copy.deepcopy(self.relay)
+        return clone
+
+    def enable_relay(
+        self, *, project: str | None = None, output_dir: str | None = None, config: Any = None
+    ) -> _FakeConfig:
+        self.relay = {"project": project, "output_dir": output_dir, "config": config}
+        return self
 
 
 class _FakeProfile:
@@ -124,19 +159,20 @@ async def test_fabric_runner_eval_exposes_trajectory_to_metric(tmp_path: Path, m
     (tmp_path / "out.txt").write_text("DONE\n", encoding="utf-8")
 
     class _FakeClient:
-        async def __aenter__(self) -> _FakeClient:
-            return self
-
-        async def __aexit__(self, *exc: Any) -> bool:
-            return False
-
+        # Fabric is a plain reusable facade (not an async context manager).
         async def run(self, agent: Any, **kwargs: Any) -> _FakeResult:
             return _FakeResult(artifacts)
 
+    class _FakeRunRequest:
+        def __init__(self, **kwargs: Any) -> None:
+            self.__dict__.update(kwargs)
+
     module = types.ModuleType("nemo_fabric")
-    module.FabricClient = _FakeClient  # type: ignore[attr-defined]
+    module.Fabric = _FakeClient  # type: ignore[attr-defined]
     module.FabricConfig = _FakeConfig  # type: ignore[attr-defined]
     module.FabricProfileConfig = _FakeProfile  # type: ignore[attr-defined]
+    module.EnvironmentConfig = _FakeEnvironment  # type: ignore[attr-defined]
+    module.RunRequest = _FakeRunRequest  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "nemo_fabric", module)
 
     # Trajectory capture builds the profile from nemo_relay's typed config objects (lazy import); stub

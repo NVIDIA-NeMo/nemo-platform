@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import platform
 import shutil
 import subprocess
 from pathlib import Path
@@ -23,21 +22,7 @@ RUNTIME_BUILD_REQUIREMENTS = [
 RUNTIME_CONSTRAINTS_FILE = Path("plugins/nemo-safe-synthesizer/constraints.txt")
 FLASHINFER_CU129_INDEX_URL = "https://flashinfer.ai/whl/cu129"
 PYTORCH_CU129_INDEX_URL = "https://download.pytorch.org/whl/cu129"
-VLLM_CU129_VERSION = "0.20.0"
-
-
-def vllm_cu129_wheel() -> str:
-    """Return the direct vLLM CUDA 12.9 wheel URL for the current host."""
-    machine = platform.machine().lower()
-    if machine in {"amd64", "x86_64"}:
-        arch = "x86_64"
-    elif machine in {"aarch64", "arm64"}:
-        arch = "aarch64"
-    else:
-        raise RuntimeError(f"Unsupported architecture for vLLM CUDA 12.9 wheel: {platform.machine()}")
-
-    wheel = f"vllm-{VLLM_CU129_VERSION}%2Bcu129-cp38-abi3-manylinux_2_31_{arch}.whl"
-    return f"vllm @ https://github.com/vllm-project/vllm/releases/download/v{VLLM_CU129_VERSION}/{wheel}"
+VLLM_CU129_INDEX_URL = "https://wheels.vllm.ai/ee0da84ab9e04ac7610e28580af62c365e898389/cu129"
 
 
 def runtime_package_index_options(runtime_package: str) -> list[str]:
@@ -49,6 +34,8 @@ def runtime_package_index_options(runtime_package: str) -> list[str]:
         FLASHINFER_CU129_INDEX_URL,
         "--extra-index-url",
         PYTORCH_CU129_INDEX_URL,
+        "--extra-index-url",
+        VLLM_CU129_INDEX_URL,
     ]
 
 
@@ -56,7 +43,9 @@ def runtime_package_extra_requirements(runtime_package: str) -> list[str]:
     """Return direct requirements needed by the selected runtime package."""
     if "cu129" not in runtime_package:
         return []
-    return [vllm_cu129_wheel()]
+    # Safe Synthesizer 0.1.7 declares its cu129 vLLM dependency directly; the
+    # runtime only needs to add the vLLM wheel index above.
+    return []
 
 
 def repo_root() -> Path:

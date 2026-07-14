@@ -5,8 +5,9 @@
 #
 # Install steps:
 #   1. `uv pip install unsloth --torch-backend=auto` plus explicit
-#      `transformers==4.57.6` and `huggingface-hub==0.36.2` pins (transformers
-#      4.57.x requires hub <1.0; platform glue would otherwise pull hub 1.x).
+#      `transformers==5.3.0` and `huggingface-hub==1.3.0` pins. Unsloth's
+#      resolver allows transformers 5.3.0, and the explicit pins keep later
+#      platform glue installs from re-solving the HF stack.
 #      Unsloth's resolver still pulls unsloth_zoo
 #      and the rest of the HF stack (trl, peft, accelerate, datasets,
 #      bitsandbytes, xformers, etc.). `--overrides preserve_base_torch.txt`
@@ -70,8 +71,8 @@ ARG USERNAME=ubuntu
 ARG USER_UID=1000
 ARG USER_GID=1000
 ARG UNSLOTH_VERSION=2026.6.1
-ARG TRANSFORMERS_VERSION=4.57.6
-ARG HF_HUB_VERSION=0.36.2
+ARG TRANSFORMERS_VERSION=5.3.0
+ARG HF_HUB_VERSION=1.3.0
 ARG BITSANDBYTES_VERSION=0.49.2
 ARG BNB_MAX_JOBS=10
 
