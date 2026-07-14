@@ -7,6 +7,11 @@ import { gateCustomizationRoutes } from '@studio/routes/utils';
 import { lazy } from 'react';
 import type { RouteObject } from 'react-router-dom';
 
+const NewCustomizationRoute = lazy(() =>
+  import('@studio/routes/NewCustomizationRoute/index').then((module) => ({
+    default: module.NewCustomizationRoute,
+  }))
+);
 const PromptTuningFormRoute = lazy(() =>
   import('@studio/routes/PromptTuningFormRoute/index').then((module) => ({
     default: module.PromptTuningFormRoute,
@@ -24,6 +29,11 @@ const CustomizationJobDetailsRoute = lazy(() =>
 );
 
 export const customizationRoutes: RouteObject[] = gateCustomizationRoutes([
+  {
+    path: ROUTES.workspace.newCustomizationJob,
+    element: <NewCustomizationRoute />,
+    errorElement: <ErrorPanel title="Customizer" />,
+  },
   {
     path: ROUTES.workspace.promptTuningForm,
     element: <PromptTuningFormRoute />,

@@ -7,7 +7,7 @@ authors = [{ name = "NVIDIA", email = "nemo@nvidia.com" }]
 dependencies = [
     "nemo-platform-plugin",
     "nemo-platform",
-    "data-designer==0.6.1",
+    "data-designer==0.7.0",
     "data-designer-nemo",
     "httpx>=0.27",
     "fastapi",
@@ -47,7 +47,7 @@ test = [
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 data-designer-nemo = [
-  "data-designer==0.6.1",
+  "data-designer==0.7.0",
   "anyio>=4.0",
   "duckdb",
   "pydantic>=2",
@@ -97,4 +97,4 @@ nemo-platform-plugin = { source = "../../packages/nemo_platform_plugin/src/nemo_
 
 # Opt this plugin into OpenAPI spec generation
 [tool.nemo.openapi]
-
+data_designer_plugin_allowlist = ["fileset-seed-datasets"]

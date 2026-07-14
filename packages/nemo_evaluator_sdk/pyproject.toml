@@ -28,8 +28,9 @@ dependencies = [
   "sacrebleu>=2.5.1",
   "rouge_score==0.1.2",
   "ragas==0.4.3",
-  "langchain-openai>=1.3.3",
-  "langchain-nvidia-ai-endpoints>=1.4.1,<2.0.0",
+  "langchain-openai>=1.3.5",
+  "langchain-nvidia-ai-endpoints>=1.4.3,<2.0.0",
+  "nemo-relay>=0.4.0,<0.5.0",
 ]
 version = "0.0.0"
 
@@ -41,6 +42,11 @@ agent-runtimes = [
   "openai-agents[docker]>=0.17.3,<0.18",
 ]
 engine = []
+# NOTE: The native Harbor runtime (HarborAgentTaskRunner / run_harbor_eval) needs
+# `harbor`, which is intentionally NOT declared here. Harbor requires Python
+# >=3.12 while this workspace supports >=3.11, so pinning it would make the lock
+# unsatisfiable. It is imported lazily (like nemo_fabric) and installed
+# separately: `uv pip install "harbor>=0.16.1"`.
 nemo-platform = [
   "nemo-platform-sdk",
 ]
@@ -59,5 +65,4 @@ package_root = "packages/nemo_evaluator_sdk"
 source_module = "nemo_evaluator_sdk"
 target_sdk_module = "beta.evaluator"
 sdk_optional_dependencies_name = "nemo-evaluator-sdk"
-included_paths = ["**/*.py"]
-
+included_paths = ["**/*.py", "**/*.Dockerfile"]

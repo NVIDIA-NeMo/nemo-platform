@@ -68,7 +68,7 @@ class CodexCliAgentRuntime:
         self._work_root = Path(work_root).expanduser() if work_root is not None else None
         self._codex_bin = codex_bin
         self._timeout_s = timeout_s
-        self._prompt_builder = prompt_builder or default_codex_prompt
+        self._prompt_builder = prompt_builder or AgentEvalTask.agent_prompt
         self._process_factory = process_factory or asyncio.create_subprocess_exec
         self._runtime_name = runtime_name
 
@@ -95,15 +95,17 @@ class CodexCliAgentRuntime:
         evidence_dir.mkdir(parents=True, exist_ok=True)
         workspace_dir.mkdir(parents=True, exist_ok=True)
 
-        prompt = self._prompt_builder(task)
         prompt_path = evidence_dir / "prompt.txt"
         task_path = evidence_dir / "task.json"
         stdout_path = evidence_dir / "stdout.jsonl"
         stderr_path = evidence_dir / "stderr.txt"
         final_output_path = evidence_dir / "final_output.txt"
 
-        prompt_path.write_text(prompt, encoding="utf-8")
-        task_path.write_text(task.model_dump_json(indent=2), encoding="utf-8")
+        # Persist the task for debugging, but never the grader-only fields: the docker variant mounts
+        # this evidence dir into the sandbox (danger-full-access), so serializing `intent` (desired
+        # behavior) or `reference` (held-out ground truth) here would let the agent read them back out
+        # of `/evidence/task.json` — the same reward-hacking leak the intent-free prompt closes.
+        task_path.write_text(task.model_dump_json(indent=2, exclude={"intent", "reference"}), encoding="utf-8")
 
         command = self._command(workspace_dir=workspace_dir, final_output_path=final_output_path)
         process: Any | None = None
@@ -113,6 +115,10 @@ class CodexCliAgentRuntime:
             # synchronous (a handler may do blocking I/O, e.g. the plugin's fileset download), and this
             # runs on the event loop shared by every concurrent task, so a blocking seed would stall them all.
             seeded_files = await asyncio.to_thread(seed_workspace, workspace_dir, task.inputs.get(SEED_FILES_INPUT_KEY))
+            # Build the prompt after seeding and inside the guarded block: an instruction-less task
+            # raises here, failing just this task instead of aborting the run (and seeding wins if both).
+            prompt = self._prompt_builder(task)
+            prompt_path.write_text(prompt, encoding="utf-8")
             process = await self._process_factory(
                 *command,
                 stdin=subprocess.PIPE,
@@ -384,30 +390,6 @@ def print_codex_agent_models(*, codex_bin: str = "codex") -> None:
             print(f"{slug}\t{display_name}")
         else:
             print(slug)
-
-
-def default_codex_prompt(task: AgentEvalTask) -> str:
-    """Frame a task for Codex as an agent that works in its current directory.
-
-    Task-agnostic: it states the intent and inputs and invites the agent to read/create/edit files,
-    rather than constraining the answer to a single text reply. Seed files (``inputs[SEED_FILES_INPUT_KEY]``)
-    are listed by name instead of dumped inline — the agent finds them already in its workspace. Pass a
-    custom :data:`CodexPromptBuilder` to the runtime to override this framing for a specific benchmark.
-    """
-    body_inputs = {key: value for key, value in task.inputs.items() if key != SEED_FILES_INPUT_KEY}
-    lines = [f"Task id: {task.id}", f"Intent: {task.intent}"]
-    if body_inputs:
-        lines += ["", "Inputs:", json.dumps(body_inputs, indent=2, default=str)]
-    seeded = task.inputs.get(SEED_FILES_INPUT_KEY)
-    if isinstance(seeded, Mapping) and seeded:
-        lines += ["", "These files are already in your working directory:"]
-        lines += [f"  - {path}" for path in seeded]
-    lines += [
-        "",
-        "Complete the task by working in your current directory. You may read, create, and edit files "
-        "as needed. When you are done, briefly summarize what you changed.",
-    ]
-    return "\n".join(lines) + "\n"
 
 
 def _failed_codex_trial(

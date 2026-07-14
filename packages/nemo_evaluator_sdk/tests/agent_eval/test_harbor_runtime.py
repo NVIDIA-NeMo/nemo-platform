@@ -1,8 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import asyncio
+import importlib
 import json
 import logging
+import sys
 from pathlib import Path
 
 import pytest
@@ -10,11 +13,19 @@ from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
 from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import (
     HarborAgentTaskRunner,
     HarborRewardMetric,
+    HarborRuntimeConfig,
+    HarborTasksetLoader,
     build_trials_from_job_dir,
+    discover_harbor_tasks,
     reward_payload_from_result,
+    scoped_harbor_agent_import,
 )
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrialStatus
+from nemo_evaluator_sdk.metrics.utils import metric_type_name
+from pydantic import ValidationError
+
+_HELLO_WORLD_DATASET = Path(__file__).resolve().parents[2] / "examples" / "harbor" / "hello_world_dataset"
 
 
 def _write_trial(
@@ -97,3 +108,139 @@ def test_reward_with_no_matching_reward_key_is_partial_and_warns(tmp_path: Path,
     assert trials[0].metadata["reward"] is None
     assert trials[0].status == AgentEvalTrialStatus.PARTIAL
     assert "none matches reward_key" in caplog.text
+
+
+def test_task_discovery_and_taskset_loader_over_bundled_dataset() -> None:
+    # Discovery reads the bundled hello-world dataset directory the same way Harbor
+    # does: id comes from [task] name, and each task is scored by a reward metric.
+    tasks = discover_harbor_tasks(_HELLO_WORLD_DATASET)
+    assert [task.id for task in tasks] == ["harbor/hello-world"]
+    task = tasks[0]
+    assert task.intent  # instruction.md content
+    assert [metric_type_name(metric) for metric in task.metrics] == ["harbor_reward"]
+    # The dataset dir and task dir are stamped on the task so a native runner can
+    # recover them without a separate dataset_path argument.
+    assert task.metadata["harbor_dataset_path"] == str(_HELLO_WORLD_DATASET)
+    assert task.metadata["harbor_task_dir"] == str(_HELLO_WORLD_DATASET / "hello-world")
+
+    # The loader wraps discovery as an AgentEvalTaskset and honors `limit`.
+    loader = HarborTasksetLoader(_HELLO_WORLD_DATASET)
+    assert loader.name == "harbor"
+    taskset = loader.load()
+    assert [t.id for t in taskset.tasks] == ["harbor/hello-world"]
+    assert taskset.metadata["harbor_dataset_path"] == str(_HELLO_WORLD_DATASET)
+    # A limit at/above the task count is a no-op (an empty taskset is invalid).
+    assert [t.id for t in loader.load(limit=5).tasks] == ["harbor/hello-world"]
+
+
+def test_discovery_fails_loudly_on_malformed_task(tmp_path: Path) -> None:
+    # A malformed task.toml raises a clear, path-named error rather than crashing
+    # cryptically or silently dropping the task (which would shrink eval coverage).
+    task_dir = tmp_path / "bad-task"
+    task_dir.mkdir()
+    (task_dir / "task.toml").write_text('[task]\nname = "oops')  # unterminated string
+    with pytest.raises(ValueError, match=r"malformed Harbor task config at .*bad-task"):
+        discover_harbor_tasks(tmp_path)
+
+
+def test_runtime_config_defaults_and_runner_requires_a_source() -> None:
+    # Config holds only plain fields (importing the module never needs harbor).
+    config = HarborRuntimeConfig(jobs_dir=Path("/tmp/jobs"))
+    assert config.agent_name == "oracle"
+    assert config.reward_key == "reward"
+
+    # A fully under-specified construction is rejected up front.
+    with pytest.raises(ValueError):
+        HarborAgentTaskRunner()
+
+    # Native mode no longer needs dataset_path at construction; it is recovered from
+    # the tasks at run time. Tasks without that metadata (and no override) fail loudly
+    # when run (before Harbor is imported, so this needs no harbor install).
+    runner = HarborAgentTaskRunner(config=config)
+    with pytest.raises(ValueError):
+        asyncio.run(runner.run_tasks([AgentEvalTask(id="t", intent="x", inputs={})]))
+
+
+@pytest.mark.asyncio
+async def test_native_runner_uses_job_dir_as_cache(tmp_path: Path) -> None:
+    # A native run whose job_dir already covers every requested task is re-adapted,
+    # not re-run: run_job is never awaited, so Harbor is never imported here. This
+    # also exercises recovering the dataset dir from task metadata (no dataset_path).
+    jobs_dir = tmp_path / "jobs"
+    job_dir = jobs_dir / "cached-job"
+    job_dir.mkdir(parents=True)
+    _write_trial(job_dir, "t__aaa", "t", reward=1.0)
+
+    config = HarborRuntimeConfig(jobs_dir=jobs_dir, job_name="cached-job")
+    runner = HarborAgentTaskRunner(config=config)
+    tasks = [
+        AgentEvalTask(
+            id="t",
+            intent="x",
+            inputs={"instruction": "x"},
+            metrics=[HarborRewardMetric()],
+            metadata={"harbor_dataset_path": str(tmp_path)},
+        )
+    ]
+
+    trials = await runner.run_tasks(tasks)
+    assert [trial.task_id for trial in trials] == ["t"]
+    assert trials[0].metadata["reward"] == 1.0
+
+
+def test_multiple_attempts_map_to_one_trial_each(tmp_path: Path) -> None:
+    # n_attempts > 1: Harbor writes one result.json per attempt, and each becomes a
+    # distinct trial for the same task id (so the summary can aggregate over attempts).
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    _write_trial(job_dir, "t__aaa", "t", reward=1.0)
+    _write_trial(job_dir, "t__bbb", "t", reward=0.0)
+    tasks = [AgentEvalTask(id="t", intent="x", inputs={"prompt": "p"}, metrics=[HarborRewardMetric()])]
+
+    trials = build_trials_from_job_dir(job_dir, tasks)
+    assert [trial.task_id for trial in trials] == ["t", "t"]
+    assert sorted(trial.metadata["reward"] for trial in trials) == [0.0, 1.0]
+
+
+def test_cache_is_attempt_and_success_aware(tmp_path: Path) -> None:
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _all_tasks_cached
+
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    tasks = [AgentEvalTask(id="t", intent="x", inputs={"prompt": "p"}, metrics=[HarborRewardMetric()])]
+
+    # One completed attempt: enough for n_attempts=1, not for n_attempts=2.
+    _write_trial(job_dir, "t__aaa", "t", reward=1.0)
+    assert _all_tasks_cached(job_dir, tasks, n_attempts=1) is True
+    assert _all_tasks_cached(job_dir, tasks, n_attempts=2) is False
+
+    # An errored attempt does not count, so the run is not served from a partial cache.
+    _write_trial(job_dir, "t__bbb", "t", reward=0.0, exception="NonZeroAgentExitCodeError")
+    assert _all_tasks_cached(job_dir, tasks, n_attempts=2) is False
+
+    # A second clean attempt satisfies n_attempts=2.
+    _write_trial(job_dir, "t__ccc", "t", reward=1.0)
+    assert _all_tasks_cached(job_dir, tasks, n_attempts=2) is True
+
+
+def test_scoped_agent_import_makes_wrapper_importable_then_cleans_up(tmp_path: Path) -> None:
+    # import_path without agent_dir is allowed (Harbor imports an installed module directly);
+    # only a dangling agent_dir (no import_path) is rejected.
+    HarborRuntimeConfig(jobs_dir=tmp_path, agent_import_path="mypkg.agent:WrappedAgent")
+    with pytest.raises(ValidationError):
+        HarborRuntimeConfig(jobs_dir=tmp_path, agent_dir=tmp_path)
+
+    # Inside the scope the user's harbor_wrapper.py resolves under a synthetic package,
+    # and the yielded path preserves the :attribute suffix Harbor imports.
+    (tmp_path / "harbor_wrapper.py").write_text("class WrappedAgent:\n    value = 42\n")
+    with scoped_harbor_agent_import(tmp_path, "harbor_wrapper:WrappedAgent") as scoped_import:
+        module_name, _, attribute = scoped_import.partition(":")
+        assert attribute == "WrappedAgent"
+        module = importlib.import_module(module_name)
+        assert module.WrappedAgent.value == 42
+        package = module_name.rsplit(".", 1)[0]
+        assert package in sys.modules
+
+    # On exit the injected module and its synthetic package are gone from sys.modules.
+    assert module_name not in sys.modules
+    assert package not in sys.modules

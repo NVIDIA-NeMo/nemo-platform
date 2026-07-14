@@ -97,13 +97,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     "GitPython>=3.1.50,<4" \
     "jaraco-context>=6.1.0,<7" \
     "jupyter-server>=2.20.0,<3" \
-    "jupyterlab>=4.5.7,<5" \
-    "mistune>=3.2.1,<4" \
+    "jupyterlab>=4.6.1,<5" \
+    "mistune>=3.3.3,<4" \
     "notebook>=7.5.6,<8" \
     "onnx>=1.21.0,<2" \
-    "pillow>=12.2.0,<13" \
+    "pillow>=12.3.0,<13" \
     "pyasn1>=0.6.3,<1" \
     "pyarrow>=23.0.1,<24" \
+    "soupsieve>=2.8.4,<3" \
     "msgpack>=1.2.1,<2" \
     "cryptography>=48.0.1,<49" \
     "tornado>=6.5.5,<7" \
@@ -167,6 +168,10 @@ RUN rm -rf \
     /usr/local/lib/python3.12/dist-packages/mlflow \
     /usr/local/lib/python3.12/dist-packages/mlflow-*.dist-info \
     /usr/local/lib/python3.12/dist-packages/mlflow_skinny-*.dist-info \
+    /usr/local/lib/python3.12/dist-packages/mistune \
+    /usr/local/lib/python3.12/dist-packages/mistune-*.dist-info \
+    /usr/local/lib/python3.12/dist-packages/soupsieve \
+    /usr/local/lib/python3.12/dist-packages/soupsieve-*.dist-info \
     /usr/local/lib/python3.12/dist-packages/jupyter_server \
     /usr/local/lib/python3.12/dist-packages/jupyter_server-*.dist-info \
     /usr/local/cuda/NsightSystems-cli-* \

@@ -9,8 +9,11 @@ import { type FC } from 'react';
 
 /** Internal node data: the public {@link DagNodeData} plus the activation callback. */
 export interface CardNodeData extends DagNodeData {
-  /** Invoked when the card is clicked or activated via keyboard. */
   onActivate?: () => void;
+  /** Whether an incoming edge terminates here; controls the target handle. Defaults to true. */
+  hasIncoming?: boolean;
+  /** Whether an outgoing edge starts here; controls the source handle. Defaults to true. */
+  hasOutgoing?: boolean;
   [key: string]: unknown;
 }
 
@@ -44,12 +47,16 @@ export const CardNode: FC<NodeProps<CardNodeType>> = ({
     status = 'idle',
     colorClassName,
     onActivate,
+    hasIncoming = true,
+    hasOutgoing = true,
   } = data;
   const iconClassName =
     status === 'idle' && colorClassName ? colorClassName : STATUS_ICON_CLASS[status];
   return (
     <>
-      <Handle type="target" position={targetPosition} className="bg-strong border-none" />
+      {hasIncoming && (
+        <Handle type="target" position={targetPosition} className="bg-strong border-none" />
+      )}
       <SelectableCard
         title={title}
         subtitle={type}
@@ -64,7 +71,9 @@ export const CardNode: FC<NodeProps<CardNodeType>> = ({
           </CardIconBadge>
         }
       />
-      <Handle type="source" position={sourcePosition} className="bg-strong border-none" />
+      {hasOutgoing && (
+        <Handle type="source" position={sourcePosition} className="bg-strong border-none" />
+      )}
     </>
   );
 };

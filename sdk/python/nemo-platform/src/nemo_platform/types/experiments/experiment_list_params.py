@@ -32,8 +32,9 @@ class ExperimentListParams(TypedDict, total=False):
     Filter experiments by name, experiment_group_id, dataset_name, dataset_version,
     created_by, created_at, or updated_at. Pass is_deleted=true to return only
     soft-deleted experiments; omit to see only live ones. Pass is_pinned=true (or
-    false) to filter by pinned state; omit to return both. Filter by a rollup metric
-    with numeric range operators ($gte/$lte/$gt/$lt/$eq): filter[run_count][$gte]=5,
+    false) to filter by pinned state; omit to return both. Filter by a metadata
+    key/value: filter[metadata.<key>]=<value>. Filter by a rollup metric with
+    numeric range operators ($gte/$lte/$gt/$lt/$eq): filter[run_count][$gte]=5,
     filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000, or
     filter[evaluators.<name>.mean][$gte]=0.8.
     """

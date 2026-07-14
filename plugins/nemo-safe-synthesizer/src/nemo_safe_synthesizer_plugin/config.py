@@ -31,7 +31,7 @@ class SafeSynthesizerConfig(NemoConfig):
         ),
     )
     runtime_venv: str = ".nemo/safe-synthesizer-runtime"
-    runtime_package: str = "nemo-safe-synthesizer[engine,cu129]==0.1.2"
+    runtime_package: str = "nemo-safe-synthesizer[engine,cu129]==0.1.7"
     runtime_python_version: str = "3.11"
     runtime_python: str | None = None
     default_job_resource_memory_request: str = "16G"

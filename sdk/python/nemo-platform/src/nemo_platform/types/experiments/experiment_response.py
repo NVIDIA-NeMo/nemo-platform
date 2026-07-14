@@ -61,7 +61,7 @@ class ExperimentResponse(BaseModel):
     latency_ms: Optional[EvaluatorAggregate] = None
     """Aggregate statistics over evaluator scores or session-level metric values."""
 
-    metadata: Optional[Dict[str, object]] = None
+    metadata: Optional[Dict[str, str]] = None
 
     model_names: Optional[List[str]] = None
     """Distinct model names observed across ingested sessions for this experiment."""

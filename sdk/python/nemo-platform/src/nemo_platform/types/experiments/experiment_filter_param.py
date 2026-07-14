@@ -85,6 +85,12 @@ class ExperimentFilterParam(TypedDict, total=False):
     unit test guards the parity.
     """
 
+    metadata: Dict[str, str]
+    """Filter by a metadata key/value pair, e.g.
+
+    filter[metadata.model]=claude-opus-4-8.
+    """
+
     name: str
     """Filter experiments by name."""
 

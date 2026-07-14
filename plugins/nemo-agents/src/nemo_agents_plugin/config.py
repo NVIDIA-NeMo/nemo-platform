@@ -51,6 +51,50 @@ class ControllerConfig(BaseModel):
     )
 
 
+class DeploymentsRunnerConfig(BaseModel):
+    """Settings for container-mode agent deployments via the nemo-deployments plugin."""
+
+    default_executor: str | None = Field(
+        default=None,
+        description="Named deployments-plugin executor used when mode-specific executors are unset.",
+    )
+    docker_executor: str | None = Field(
+        default=None,
+        description="Named executor for deployment_mode=docker. Falls back to default_executor.",
+    )
+    k8s_executor: str | None = Field(
+        default=None,
+        description="Named executor for deployment_mode=k8s. Falls back to default_executor.",
+    )
+    default_image: str = Field(
+        default="",
+        description="Default container image when CreateDeploymentRequest.image is omitted.",
+    )
+    container_port: int = Field(
+        default=8000,
+        description="Container port the NAT server listens on (and readiness probe target).",
+    )
+    gateway_url_override: str | None = Field(
+        default=None,
+        description=(
+            "Optional container-reachable platform base URL. When unset, docker mode rewrites "
+            "loopback hosts to host.docker.internal; k8s mode leaves the host base URL as-is "
+            "(in-cluster IGW DNS is AIRCORE-863)."
+        ),
+    )
+    plugin_wheels_init_image: str | None = Field(
+        default=None,
+        description=(
+            "Optional init-container image that stages workspace plugin wheels (k8s only). "
+            "When unset, init_containers are omitted; AIRCORE-863 hardens the full contract."
+        ),
+    )
+    config_mount_path: str = Field(
+        default="/config/agent.yaml",
+        description="Path inside the container where the NAT workflow config is mounted.",
+    )
+
+
 class AgentsConfig(NemoConfig):
     """Configuration for the Agents plugin."""
 
@@ -63,5 +107,12 @@ class AgentsConfig(NemoConfig):
     )
     runner_backend: str = Field(
         default="in_memory",
-        description="Runner backend type. Currently only 'in_memory' is supported.",
+        description=(
+            "Default runner for subprocess-mode deployments. Container modes always use the "
+            "deployments-plugin backend regardless of this setting."
+        ),
+    )
+    deployments: DeploymentsRunnerConfig = Field(
+        default_factory=DeploymentsRunnerConfig,
+        description="Container-mode (docker/k8s) settings for the deployments-plugin runner.",
     )

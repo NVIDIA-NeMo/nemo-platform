@@ -67,6 +67,10 @@ export function makeDatasetsTableColumns({
         header: 'Name',
         enableSorting: enableFilters,
         size: 175,
+        cell({ row }) {
+          const name = row.original?.name;
+          return name ? <Text className="whitespace-normal break-all">{name}</Text> : null;
+        },
       }),
       accessor((row) => getStorageBackend(row.storage), {
         id: 'storage_type',
@@ -130,7 +134,7 @@ export function makeDatasetsTableColumns({
         cell({ row }) {
           const path = getStoragePath(row.original?.storage);
           return path ? (
-            <Text className="truncate" title={path}>
+            <Text className="whitespace-normal break-all" title={path}>
               {path}
             </Text>
           ) : null;

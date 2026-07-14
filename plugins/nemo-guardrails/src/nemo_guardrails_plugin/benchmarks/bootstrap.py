@@ -4,8 +4,10 @@
 """Bootstrap an isolated venv for the upstream AIPerf load generator.
 
 ``aiperf`` pins older transitive dependencies, so we install it into a dedicated
-venv instead of the shared workspace one. The venv is reused across local runs;
-CI gets a fresh one each invocation.
+venv instead of the shared workspace one. The install must also ignore the repo's
+uv constraints; those constraints intentionally keep production dependencies
+patched, while AIPerf's current 0.x releases still cap some transitives lower.
+The venv is reused across local runs; CI gets a fresh one each invocation.
 """
 
 from __future__ import annotations
@@ -39,14 +41,14 @@ def ensure_aiperf_venv(venv_dir: Path) -> Path:
     log.info("Creating aiperf venv at %s", venv_dir)
     venv_dir.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(  # noqa: S603 - command is constructed internally
-        ["uv", "venv", "--python", "3.11", str(venv_dir)],
+        ["uv", "venv", "--no-project", "--no-config", "--python", "3.11", str(venv_dir)],
         check=True,
         capture_output=True,
     )
 
     log.info("Installing %s into %s", ", ".join(_AIPERF_PACKAGES), venv_dir)
     subprocess.run(  # noqa: S603 - command is constructed internally
-        ["uv", "pip", "install", "--python", str(python_bin), *_AIPERF_PACKAGES],
+        ["uv", "pip", "install", "--no-config", "--python", str(python_bin), *_AIPERF_PACKAGES],
         check=True,
     )
 

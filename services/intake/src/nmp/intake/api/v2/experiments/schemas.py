@@ -10,7 +10,7 @@ Response models are standalone: they translate from the stored entity via
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 from nmp.common.entities.values import DatetimeFilter, Filter, NumberFilter, map_entity_field
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup
@@ -33,7 +33,7 @@ class ExperimentGroupRequest(BaseModel):
         default=None, description="Reference to an external insight that seeded this group, if any."
     )
     summary: str | None = Field(default=None, description="Human- or agent-authored summary of the group's findings.")
-    metadata: dict[str, Any] | None = Field(default=None, description="Free-form producer metadata for the group.")
+    metadata: dict[str, str] | None = Field(default=None, description="Free-form producer metadata for the group.")
     default_sort: str = Field(
         default="-created_at",
         description=(
@@ -56,7 +56,7 @@ class ExperimentRequest(BaseModel):
     dataset_name: str = Field(description="Producer-supplied dataset name.")
     dataset_version: str | None = Field(default=None, description="Producer-supplied dataset version.")
     source_link: AnyUrl | None = Field(default=None, description="Optional URL for the source experiment.")
-    metadata: dict[str, Any] = Field(default_factory=dict, description="Free-form producer metadata.")
+    metadata: dict[str, str] = Field(default_factory=dict, description="Free-form producer metadata.")
     description: str | None = Field(default=None, description="Human-readable description.")
     parent_experiment_id: str | None = Field(
         default=None,
@@ -78,7 +78,7 @@ class ExperimentGroupResponse(BaseModel):
     description: str | None = None
     insight_id: str | None = None
     summary: str | None = None
-    metadata: dict[str, Any] | None = None
+    metadata: dict[str, str] | None = None
     default_sort: str
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -127,7 +127,7 @@ class ExperimentResponse(BaseModel):
     dataset_name: str
     dataset_version: str | None = None
     source_link: AnyUrl | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, str] = Field(default_factory=dict)
     description: str | None = None
     parent_experiment_id: str | None = None
     status: str | None = None
@@ -216,6 +216,10 @@ class ExperimentGroupFilter(Filter):
         default=None,
         description="When true, returns only soft-deleted groups. Omit (or false) to see only live groups.",
     )
+    metadata: Annotated[dict[str, str] | None, map_entity_field("data.metadata", namespace=True)] = Field(
+        default=None,
+        description="Filter by a metadata key/value pair, e.g. filter[metadata.model]=claude-opus-4-8.",
+    )
 
 
 class ExperimentFilter(Filter):
@@ -244,6 +248,10 @@ class ExperimentFilter(Filter):
             "When true, returns only pinned experiments. When false, returns only unpinned experiments. "
             "Omit to return both."
         ),
+    )
+    metadata: Annotated[dict[str, str] | None, map_entity_field("data.metadata", namespace=True)] = Field(
+        default=None,
+        description="Filter by a metadata key/value pair, e.g. filter[metadata.model]=claude-opus-4-8.",
     )
     # Rollup-metric filters. These live in ClickHouse, not the entity store, so they're declared as
     # self-mapping namespaces (the path is left untranslated) and applied in the application layer

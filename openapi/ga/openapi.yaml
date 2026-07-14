@@ -3523,7 +3523,8 @@ paths:
         explode: true
         schema:
           $ref: '#/components/schemas/ExperimentGroupFilter'
-        description: Filter experiment groups by name.
+        description: 'Filter experiment groups by name, or by a metadata key/value:
+          filter[metadata.<key>]=<value>.'
       responses:
         '200':
           description: Successful Response
@@ -3736,9 +3737,9 @@ paths:
           dataset_version, created_by, created_at, or updated_at. Pass is_deleted=true
           to return only soft-deleted experiments; omit to see only live ones. Pass
           is_pinned=true (or false) to filter by pinned state; omit to return both.
-          Filter by a rollup metric with numeric range operators ($gte/$lte/$gt/$lt/$eq):
-          filter[run_count][$gte]=5, filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000,
-          or filter[evaluators.<name>.mean][$gte]=0.8.'
+          Filter by a metadata key/value: filter[metadata.<key>]=<value>. Filter by
+          a rollup metric with numeric range operators ($gte/$lte/$gt/$lt/$eq): filter[run_count][$gte]=5,
+          filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000, or filter[evaluators.<name>.mean][$gte]=0.8.'
       responses:
         '200':
           description: Successful Response
@@ -10478,6 +10479,12 @@ components:
             only unpinned experiments. Omit to return both.
           title: Is Pinned
           type: boolean
+        metadata:
+          description: Filter by a metadata key/value pair, e.g. filter[metadata.model]=claude-opus-4-8.
+          title: Metadata
+          additionalProperties:
+            type: string
+          type: object
         run_count:
           allOf:
           - $ref: '#/components/schemas/NumberFilter'
@@ -10511,6 +10518,12 @@ components:
             to see only live groups.
           title: Is Deleted
           type: boolean
+        metadata:
+          description: Filter by a metadata key/value pair, e.g. filter[metadata.model]=claude-opus-4-8.
+          title: Metadata
+          additionalProperties:
+            type: string
+          type: object
       title: ExperimentGroupFilter
       type: object
     ExperimentGroupRequest:
@@ -10535,7 +10548,8 @@ components:
         metadata:
           title: Metadata
           description: Free-form producer metadata for the group.
-          additionalProperties: true
+          additionalProperties:
+            type: string
           type: object
         default_sort:
           type: string
@@ -10573,7 +10587,8 @@ components:
           type: string
         metadata:
           title: Metadata
-          additionalProperties: true
+          additionalProperties:
+            type: string
           type: object
         default_sort:
           type: string
@@ -10649,7 +10664,8 @@ components:
           minLength: 1
           format: uri
         metadata:
-          additionalProperties: true
+          additionalProperties:
+            type: string
           type: object
           title: Metadata
           description: Free-form producer metadata.
@@ -10707,7 +10723,8 @@ components:
           minLength: 1
           format: uri
         metadata:
-          additionalProperties: true
+          additionalProperties:
+            type: string
           type: object
           title: Metadata
         description:

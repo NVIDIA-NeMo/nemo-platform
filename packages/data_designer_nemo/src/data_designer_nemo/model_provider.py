@@ -54,7 +54,6 @@ def make_null_registry() -> ModelProviderRegistry:
     # is semantically valid. The library requires a non-empty ModelProviderRegistry, so in this scenario
     # we can provide this dummy null registry.
     return ModelProviderRegistry(
-        default=_NO_OP,
         providers=[make_noop_provider()],
     )
 
@@ -73,12 +72,6 @@ async def make_local_first_model_provider_registry(
 ) -> ModelProviderRegistry | None:
     if len(model_configs) == 0:
         return None
-
-    missing_providers = [model_config for model_config in model_configs if model_config.provider is None]
-    if len(missing_providers) > 0:
-        raise NDDInvalidConfigError(
-            f"Error: following model configs do not have an explicit provider defined: {missing_providers}"
-        )
 
     logger.info("Building model provider registry. First checking locally-defined providers.")
 
@@ -118,10 +111,7 @@ async def make_local_first_model_provider_registry(
 
     all_providers = local_providers + igw_registry.providers
 
-    return ModelProviderRegistry(
-        default=all_providers[0].name,
-        providers=all_providers,
-    )
+    return ModelProviderRegistry(providers=all_providers)
 
 
 async def _get_igw_model_provider_registry(
@@ -249,11 +239,7 @@ class ModelProviderCollection:
 
         if len(self.providers.values()) > 0:
             registry_providers = [providers_tuple[0] for providers_tuple in self.providers.values()]
-            default = registry_providers[0].name
-            return ModelProviderRegistry(
-                default=default,
-                providers=registry_providers,
-            )
+            return ModelProviderRegistry(providers=registry_providers)
 
 
 async def make_model_provider_registry(

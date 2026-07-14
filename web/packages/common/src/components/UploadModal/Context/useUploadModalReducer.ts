@@ -12,6 +12,7 @@
 
 import { UploadFile, UploadDataset } from '@nemo/common/src/components/UploadModal/types';
 import { sanitizeFilenameForDatasetName } from '@nemo/common/src/components/UploadModal/utils';
+import type { FilesetPurpose } from '@nemo/sdk/generated/platform/schema';
 import { useReducer } from 'react';
 
 /**
@@ -45,6 +46,12 @@ export type UploadModalState = {
    *  picker in ``autoCommit`` mode where uploading new files would race with
    *  the user editing the dataset name. Defaults to ``true``. */
   allowNewDataset: boolean;
+  /** Fileset ``purpose`` the picker lists. Defaults to ``'dataset'``. */
+  filesetPurpose?: FilesetPurpose;
+  /** Label for the fileset picker. Defaults to ``'Dataset'``. */
+  datasetLabel?: string;
+  /** Auto-select the first root-level accepted file on fileset selection. */
+  autoSelectFirstAcceptable?: boolean;
   errors: Record<string, string>;
 };
 

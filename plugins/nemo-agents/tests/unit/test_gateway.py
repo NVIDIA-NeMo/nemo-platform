@@ -31,7 +31,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nemo_agents_plugin.api.v2 import gateway as gateway_module
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
-from nemo_agents_plugin.entities import Agent, AgentDeployment, DeploymentStatus
+from nemo_agents_plugin.entities import (
+    Agent,
+    AgentDeployment,
+    DeploymentMode,
+    DeploymentStatus,
+    Endpoint,
+)
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 
 # ---------------------------------------------------------------------------
@@ -51,6 +57,33 @@ def _make_deployment(
     endpoint: str = "http://localhost:9001",
 ) -> AgentDeployment:
     return AgentDeployment(name=name, workspace=workspace, agent=agent, status=status, endpoint=endpoint)
+
+
+def _make_container_deployment(
+    name: str = "calc-dep",
+    agent: str = "calc",
+    workspace: str = "default",
+    mode: DeploymentMode = "k8s",
+    status: DeploymentStatus = "running",
+    endpoints: list[Endpoint] | None = None,
+) -> AgentDeployment:
+    """Build a container-mode (docker/k8s) AgentDeployment as the controller would project it.
+
+    Container deployments carry no loopback ``endpoint``; the routable address lives
+    on ``endpoints`` (projected from the deployments-plugin Deployment). The controller
+    projects the deployments-plugin READY status onto the agents-local ``running``.
+    """
+    if endpoints is None:
+        endpoints = [Endpoint(name="http", url="http://calc-dep.default.svc.cluster.local:8080", protocol="http")]
+    return AgentDeployment(
+        name=name,
+        workspace=workspace,
+        agent=agent,
+        status=status,
+        endpoint="",
+        deployment_mode=mode,
+        endpoints=endpoints,
+    )
 
 
 def _list_response(items: list) -> MagicMock:
@@ -257,7 +290,7 @@ class TestProxyByDeploymentName:
         )
 
         assert resp.status_code == 503
-        assert "not running" in resp.json()["detail"].lower()
+        assert "not routable" in resp.json()["detail"].lower()
 
     @pytest.mark.parametrize(
         "malicious_path",
@@ -438,3 +471,147 @@ class TestModelNamePatching:
 
         assert resp.status_code == 200
         assert resp.json()["model"] == "calc-v2"
+
+
+# ---------------------------------------------------------------------------
+# Container-mode (docker/k8s) endpoint resolution — gateway stop-gap
+# ---------------------------------------------------------------------------
+#
+# The gateway must resolve a container-mode agent's address from the projected
+# ``endpoints`` (deployments-plugin Deployment) instead of the loopback
+# ``endpoint``, treat a running container deployment as routable, and 503 an
+# unready one — matching the subprocess contract. (The controller projects the
+# deployments-plugin READY status onto the agents-local "running".) Subprocess
+# resolution is covered by the classes above and must remain unchanged (regression guard).
+
+
+class TestContainerModeByDeploymentName:
+    def test_ready_container_resolves_from_endpoints(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """A running k8s deployment proxies to its projected Service-DNS endpoint, not loopback."""
+        dep = _make_container_deployment(
+            mode="k8s",
+            status="running",
+            endpoints=[Endpoint(name="http", url="http://calc-dep.default.svc.cluster.local:8080")],
+        )
+        mock_entity_client.get = AsyncMock(return_value=dep)
+
+        httpx_mock = _make_httpx_mock(200, b'{"answer": 42}')
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock) as mock_cls:
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+                json={"messages": []},
+            )
+
+        assert resp.status_code == 200
+        # The stream target must be built from the projected Service-DNS endpoint.
+        stream_call = mock_cls.return_value.__aenter__.return_value.stream
+        assert stream_call.call_args.kwargs["url"] == (
+            "http://calc-dep.default.svc.cluster.local:8080/v1/chat/completions"
+        )
+
+    def test_docker_container_resolves_from_endpoints(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """Docker mode is mode-agnostic to the gateway: resolve from endpoints just like k8s."""
+        dep = _make_container_deployment(
+            mode="docker",
+            status="running",
+            endpoints=[Endpoint(name="http", url="http://127.0.0.1:32770")],
+        )
+        mock_entity_client.get = AsyncMock(return_value=dep)
+
+        httpx_mock = _make_httpx_mock(200, b'{"ok": true}')
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+                json={"messages": []},
+            )
+
+        assert resp.status_code == 200
+
+    def test_unready_container_returns_503(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """A container deployment whose projected status isn't ready is 503, not routed."""
+        dep = _make_container_deployment(mode="k8s", status="pending")
+        mock_entity_client.get = AsyncMock(return_value=dep)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+            json={},
+        )
+
+        assert resp.status_code == 503
+        assert "not routable" in resp.json()["detail"].lower()
+
+    def test_ready_container_without_endpoints_returns_503(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        """Running but no projected endpoint yet → 503 (nothing to dial)."""
+        dep = _make_container_deployment(mode="k8s", status="running", endpoints=[])
+        mock_entity_client.get = AsyncMock(return_value=dep)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+            json={},
+        )
+
+        assert resp.status_code == 503
+
+    def test_missing_container_deployment_returns_404(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.get = AsyncMock(side_effect=NemoEntityNotFoundError("not found"))
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments/nonexistent/-/v1/chat/completions",
+            json={},
+        )
+
+        assert resp.status_code == 404
+
+    def test_service_dns_cross_origin_trailing_uri_rejected(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        """The SSRF origin guard still fires when the resolved origin is a Service DNS name."""
+        dep = _make_container_deployment(
+            mode="k8s",
+            status="running",
+            endpoints=[Endpoint(name="http", url="http://calc-dep.default.svc.cluster.local:8080")],
+        )
+        mock_entity_client.get = AsyncMock(return_value=dep)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/http:%2F%2Fevil.example.com/x",
+            json={},
+        )
+
+        assert resp.status_code == 400
+        assert "invalid proxy target" in resp.json()["detail"].lower()
+
+
+class TestContainerModeByAgentName:
+    def test_ready_container_resolved_by_agent_name(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """Call-by-agent-name picks a running container deployment and dials its endpoint."""
+        mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
+        dep = _make_container_deployment(agent="calc", mode="k8s", status="running")
+        mock_entity_client.list = AsyncMock(return_value=_list_response([dep]))
+
+        httpx_mock = _make_httpx_mock(200, b'{"ok": true}')
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/agents/calc/-/v1/chat/completions",
+                json={"messages": []},
+            )
+
+        assert resp.status_code == 200
+
+    def test_no_ready_container_returns_503(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """Only an unready container deployment exists → 503."""
+        mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
+        dep = _make_container_deployment(agent="calc", mode="k8s", status="pending")
+        mock_entity_client.list = AsyncMock(return_value=_list_response([dep]))
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents/calc/-/v1/chat/completions",
+            json={},
+        )
+
+        assert resp.status_code == 503

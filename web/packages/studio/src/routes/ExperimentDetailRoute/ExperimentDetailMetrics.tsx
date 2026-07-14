@@ -3,6 +3,7 @@
 
 import { KVPair } from '@nemo/common/src/components/KVPair';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
+import { formatDurationMs } from '@nemo/common/src/utils/date';
 import { useGetExperiment } from '@nemo/sdk/generated/platform/api';
 import { Divider, Flex, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
@@ -20,10 +21,8 @@ export const ExperimentDetailMetrics: FC<ExperimentDetailMetricsProps> = ({ expe
   const avgCost =
     experiment?.cost_usd?.mean != null ? `$${experiment.cost_usd.mean.toFixed(3)}` : undefined;
 
-  const avgLatency =
-    experiment?.latency_ms?.mean != null
-      ? `${Math.round(experiment.latency_ms.mean)} ms`
-      : undefined;
+  // formatDurationMs returns '—' for null/undefined, which is also KVPair's default empty value.
+  const avgLatency = formatDurationMs(experiment?.latency_ms?.mean);
 
   const modelNames = experiment?.model_names ?? [];
   const modelNamesJoined = modelNames.length > 0 ? modelNames.join(', ') : undefined;

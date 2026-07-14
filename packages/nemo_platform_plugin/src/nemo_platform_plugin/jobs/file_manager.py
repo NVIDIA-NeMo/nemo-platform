@@ -13,8 +13,6 @@ import anyio
 import fsspec.asyn
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform.filesets import FilesetFileSystem, build_fileset_ref, parse_fileset_ref
-from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest
 from nemo_platform_plugin.jobs.schemas import FileStorageType
 
@@ -142,11 +140,7 @@ class BaseFilesetFileManager:
     _fs: FilesetFileSystem = field(init=False)
 
     def __post_init__(self):
-        if isinstance(self.sdk, AsyncNeMoPlatform):
-            files_client = client_from_platform(self.sdk, AsyncFilesClient)
-        else:
-            files_client = client_from_platform(self.sdk, FilesClient)
-        self._fs = FilesetFileSystem(client=files_client)
+        self._fs = self.sdk.files.fsspec
 
     def url(self, remote_path: str | None = None) -> str:
         """Return fileset reference for the given path."""

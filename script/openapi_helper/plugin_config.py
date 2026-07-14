@@ -21,6 +21,7 @@ class PluginConfig:
     service_name: Optional[str] = None
     env_vars: Optional[Dict[str, str]] = None
     factory_override: Optional[str] = None  # "module:callable" escape hatch
+    data_designer_plugin_allowlist: Optional[List[str]] = None
 
     @classmethod
     def from_pyproject(cls, pyproject_path: Path) -> Optional["PluginConfig"]:
@@ -40,12 +41,21 @@ class PluginConfig:
         env_vars = opts.get("env_vars")
         if env_vars is not None and not isinstance(env_vars, dict):
             raise ValueError(f"plugin '{plugin_dir}': [tool.nemo.openapi].env_vars must be a table")
+        data_designer_plugin_allowlist = opts.get("data_designer_plugin_allowlist")
+        if data_designer_plugin_allowlist is not None and (
+            not isinstance(data_designer_plugin_allowlist, list)
+            or not all(isinstance(item, str) for item in data_designer_plugin_allowlist)
+        ):
+            raise ValueError(
+                f"plugin '{plugin_dir}': [tool.nemo.openapi].data_designer_plugin_allowlist must be a list of strings"
+            )
 
         return cls(
             dir=plugin_dir,
             service_name=opts.get("service_name"),
             env_vars=env_vars,
             factory_override=opts.get("factory_override"),
+            data_designer_plugin_allowlist=data_designer_plugin_allowlist,
         )
 
     def resolve_service_name(self) -> str:

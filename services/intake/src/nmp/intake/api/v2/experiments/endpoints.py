@@ -146,7 +146,9 @@ async def create_experiment_group(
     tags=[GROUPS_TAG],
     openapi_extra=generate_openapi_extra_params(
         filter_schema=ExperimentGroupFilter,
-        filter_description="Filter experiment groups by name.",
+        filter_description=(
+            "Filter experiment groups by name, or by a metadata key/value: filter[metadata.<key>]=<value>."
+        ),
     ),
 )
 async def list_experiment_groups(
@@ -366,6 +368,7 @@ async def create_experiment(
             "dataset_name, dataset_version, created_by, created_at, or updated_at. "
             "Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones. "
             "Pass is_pinned=true (or false) to filter by pinned state; omit to return both. "
+            "Filter by a metadata key/value: filter[metadata.<key>]=<value>. "
             "Filter by a rollup metric with numeric range operators ($gte/$lte/$gt/$lt/$eq): "
             "filter[run_count][$gte]=5, filter[cost_usd.mean][$lte]=0.5, "
             "filter[latency_ms.p95][$lte]=1000, or filter[evaluators.<name>.mean][$gte]=0.8."

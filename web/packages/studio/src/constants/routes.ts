@@ -56,6 +56,7 @@ export const ROUTES = {
     jobs: `/workspaces/:${P.workspace}/jobs`,
     jobDetail: `/workspaces/:${P.workspace}/jobs/:${P.jobName}`,
     promptTuningForm: `/workspaces/:${P.workspace}/customizations/prompt-tuned/new`,
+    newCustomizationJob: `/workspaces/:${P.workspace}/customizations/fine-tuned/new`,
     baseModels: `/workspaces/:${P.workspace}/base-models`,
     /** Base models list with a specific model panel open (model name in path) */
     baseModelsModel: `/workspaces/:${P.workspace}/base-models/:${P.modelName}`,
@@ -103,6 +104,9 @@ export const ROUTES = {
     dataDesignerJobList: `/workspaces/:${P.workspace}/data-designer`,
     dataDesignerJobDetails: `/workspaces/:${P.workspace}/data-designer/:${P.dataDesignerJobName}`,
     dataDesignerJobNew: `/workspaces/:${P.workspace}/data-designer/new`,
+    dataDesignerJobBuild: `/workspaces/:${P.workspace}/data-designer/new/build`,
+    /** Legacy job-creation form, not linked from any UI — reachable only by typing the URL. */
+    dataDesignerJobNewLegacy: `/workspaces/:${P.workspace}/data-designer/new/legacy`,
     secrets: `/workspaces/:${P.workspace}/secrets`,
     guardrails: `/workspaces/:${P.workspace}/guardrails`,
     guardrailDetail: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}`,

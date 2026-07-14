@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+from typing import Dict
 from typing_extensions import TypedDict
 
 __all__ = ["ExperimentGroupFilterParam"]
@@ -29,6 +30,12 @@ class ExperimentGroupFilterParam(TypedDict, total=False):
     """When true, returns only soft-deleted groups.
 
     Omit (or false) to see only live groups.
+    """
+
+    metadata: Dict[str, str]
+    """Filter by a metadata key/value pair, e.g.
+
+    filter[metadata.model]=claude-opus-4-8.
     """
 
     name: str

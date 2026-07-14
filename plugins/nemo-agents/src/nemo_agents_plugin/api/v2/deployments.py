@@ -23,7 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from nemo_agents_plugin.api.v2._perms import DeploymentPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.authz import scope
-from nemo_agents_plugin.entities import Agent, AgentDeployment
+from nemo_agents_plugin.entities import Agent, AgentDeployment, is_container_deployment_mode
 from nemo_agents_plugin.schema import (
     CreateDeploymentRequest,
     DeploymentFilter,
@@ -85,6 +85,9 @@ async def create_deployment(
         agent=body.agent,
         config=resolved_config,
         status="pending",
+        deployment_mode=body.deployment_mode,
+        image=body.image,
+        plugin_deployment=deployment_name if is_container_deployment_mode(body.deployment_mode) else "",
     )
     try:
         saved = await entity_client.create(deployment)

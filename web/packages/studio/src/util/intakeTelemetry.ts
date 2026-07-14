@@ -1,9 +1,16 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { formatDurationMs } from '@nemo/common/src/utils/date';
 import type { Span, SpanEvaluationContext, Trace } from '@nemo/sdk/generated/platform/schema';
 
 export const EMPTY_VALUE = '—';
+
+/**
+ * Re-exported so existing Intake call sites keep importing from this module; the
+ * canonical implementation lives in `@nemo/common/src/utils/date`.
+ */
+export { formatDurationMs };
 
 export type SpanHierarchyStatus = 'parent_outside_page' | 'cycle_or_unreachable';
 
@@ -33,14 +40,6 @@ export const formatCost = (value: number | null | undefined): string => {
     return `$${value.toFixed(6).replace(/0+$/, '').replace(/\.$/, '')}`;
   }
   return `$${value.toFixed(2)}`;
-};
-
-export const formatDurationMs = (value: number | null | undefined): string => {
-  if (value === null || value === undefined) return EMPTY_VALUE;
-  if (value < 1) return `${value.toFixed(2)} ms`;
-  if (value < 1000) return `${Math.round(value).toLocaleString()} ms`;
-  if (value < 60_000) return `${(value / 1000).toFixed(2)} s`;
-  return `${(value / 60_000).toFixed(2)} min`;
 };
 
 export const getSpanDurationMs = (span: Span): number | undefined => {

@@ -11,6 +11,7 @@ def _make_model_config(alias: str) -> dd.ModelConfig:
     return dd.ModelConfig(
         alias=alias,
         model="nvidia/nemotron-3",
+        provider="default/nvidia",
     )
 
 

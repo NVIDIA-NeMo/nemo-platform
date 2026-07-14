@@ -12,6 +12,7 @@ import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { formatDurationMs } from '@nemo/common/src/utils/date';
 import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import type {
   ExperimentFilter,
@@ -213,19 +214,29 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
           const { pinned_at } = row.original;
           const isPinned = pinned_at != null;
           return (
-            <Button
-              kind="tertiary"
-              color="neutral"
-              size="small"
-              aria-label={isPinned ? 'Unpin experiment' : 'Pin experiment'}
-              aria-pressed={isPinned}
-              onClick={() => togglePin(row.original)}
+            <Tooltip
+              slotContent={
+                <Text kind="body/regular/sm">
+                  {isPinned ? 'Unpin for all users' : 'Pin for all users'}
+                </Text>
+              }
+              className={tooltipClassName}
+              side="right"
             >
-              <Pin
-                className={isPinned ? 'text-brand' : 'text-secondary'}
-                {...(isPinned ? { fill: 'currentColor' } : {})}
-              />
-            </Button>
+              <Button
+                kind="tertiary"
+                color="neutral"
+                size="small"
+                aria-label={isPinned ? 'Unpin experiment' : 'Pin experiment'}
+                aria-pressed={isPinned}
+                onClick={() => togglePin(row.original)}
+              >
+                <Pin
+                  className={isPinned ? 'text-brand' : 'text-secondary'}
+                  {...(isPinned ? { fill: 'currentColor' } : {})}
+                />
+              </Button>
+            </Tooltip>
           );
         },
       }),
@@ -380,7 +391,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
               count={latency_ms?.count}
               runCount={run_count}
             >
-              {latency_ms?.mean != null ? `${Math.round(latency_ms.mean)} ms` : '-'}
+              {latency_ms?.mean != null ? formatDurationMs(latency_ms.mean) : '-'}
             </MeanValueTooltipCell>
           );
         },

@@ -40,17 +40,42 @@ export const utcToLocalDate = (utcIsoString?: string): Date | undefined => {
   return date;
 };
 
+/** Rendered when a duration is null/undefined. Matches the EM DASH used elsewhere for empty values. */
+const EMPTY_DURATION = '—';
+
+/**
+ * Formats a duration given in milliseconds into a compact human-friendly string,
+ * e.g. `10m 12s 13ms`, `12s 34ms`, or `34ms`.
+ *
+ * Shows only the units needed: leading and zero-valued units are dropped (so
+ * `1h 0m 5s` renders as `1h 5s`), matching {@link formatTimeInSeconds}. Values
+ * under one millisecond keep two decimals (`0.34ms`) so span timings are not
+ * rounded to zero. Returns an em dash for null/undefined.
+ */
+export const formatDurationMs = (ms?: number | null): string => {
+  if (ms == null) return EMPTY_DURATION;
+  if (ms <= 0) return '0ms';
+  if (ms < 1) return `${Number(ms.toFixed(2))}ms`;
+
+  const total = Math.round(ms);
+  const units: [number, string][] = [
+    [Math.floor(total / 3_600_000), 'h'],
+    [Math.floor((total % 3_600_000) / 60_000), 'm'],
+    [Math.floor((total % 60_000) / 1_000), 's'],
+    [total % 1_000, 'ms'],
+  ];
+  return units
+    .filter(([value]) => value > 0)
+    .map(([value, unit]) => `${value}${unit}`)
+    .join(' ');
+};
+
 /**
  * Formats the time in seconds into a human-friendly string
  * Only showing the minimum units needed to represent the time
  */
 export const formatTimeInSeconds = (seconds?: number) => {
-  if (!seconds) return '';
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-  return [hours, minutes, remainingSeconds]
-    .map((val, idx) => `${val}${idx === 0 ? 'h' : idx === 1 ? 'm' : 's'}`)
-    .filter((val) => parseInt(val) > 0)
-    .join(' ');
+  // Whole seconds only: sub-second (and empty/negative) inputs render nothing here.
+  if (!seconds || seconds < 1) return '';
+  return formatDurationMs(Math.floor(seconds) * 1000);
 };

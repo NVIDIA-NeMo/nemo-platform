@@ -146,3 +146,8 @@ site/
 
 # Generated Fern-only public API reference spec
 docs/fern/openapi/openapi.public.yaml
+
+# nektos/act files commonly used
+.act-variables
+.act-secrets
+

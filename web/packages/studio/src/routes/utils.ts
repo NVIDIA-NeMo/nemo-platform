@@ -343,6 +343,14 @@ export const getPromptTuningFormRoute = (workspace: string, options?: { model?: 
   return basePath;
 };
 
+export const getNewCustomizationJobRoute = (workspace: string, options?: { model?: string }) => {
+  const basePath = generatePath(ROUTES.workspace.newCustomizationJob, { workspace });
+  if (options?.model) {
+    return `${basePath}?model=${encodeURIComponent(options.model)}`;
+  }
+  return basePath;
+};
+
 export const getNewFilesetRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.filesetNew, { workspace });
 };
@@ -478,6 +486,15 @@ export const getDataDesignerJobDetailsRoute = (workspace: string, dataDesignerJo
 
 export const getNewDataDesignerJobRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.dataDesignerJobNew, { workspace });
+};
+
+export const getDataDesignerJobBuildRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.dataDesignerJobBuild, { workspace });
+};
+
+/** Not linked from any UI — reachable only by typing the URL. */
+export const getLegacyNewDataDesignerJobRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.dataDesignerJobNewLegacy, { workspace });
 };
 
 export const getModelChatRoute = (model: NamedEntityRef) => {

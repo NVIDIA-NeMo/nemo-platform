@@ -36,7 +36,7 @@ from fastapi.responses import StreamingResponse
 from nemo_agents_plugin.api.v2._perms import GatewayPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.authz import scope
-from nemo_agents_plugin.entities import Agent, AgentDeployment
+from nemo_agents_plugin.entities import Agent, AgentDeployment, is_container_deployment_mode
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 
@@ -67,6 +67,55 @@ _HOP_BY_HOP = {
     "x-nmp-principal-id",
     "x-nmp-principal-on-behalf-of",
 }
+
+
+# ---------------------------------------------------------------------------
+# Endpoint resolution — subprocess vs. container mode
+# ---------------------------------------------------------------------------
+#
+# STOP-GAP: these two helpers are the *only* place the gateway learns where an
+# agent lives. For subprocess deployments that is the loopback
+# ``AgentDeployment.endpoint`` the agents plugin bakes in at spawn. For container
+# deployments (docker/k8s) the real address (k8s Service DNS, docker host:port)
+# is known only to the deployments plugin and projected onto ``endpoints`` by the
+# agents controller. The rest of the proxy (streaming, SSE, header stripping, the
+# SSRF origin guard in ``_proxy``) is mode-agnostic and untouched.
+#
+# POSSIBLE FUTURE DIRECTION: one option being considered is folding agent routing
+# into the Inference Gateway (so IGW also serves as the agents gateway). If that
+# direction is taken, this bespoke proxy — including ``_get_deployment_endpoint`` /
+# ``_is_deployment_routable`` and the container branch below — would likely retire.
+# That re-architecture is not committed to here; this stop-gap stands on its own.
+
+# Container modes (docker/k8s) resolve their address from the projected ``endpoints``
+# rather than the loopback ``endpoint``. The agents controller maps the deployments-plugin
+# Deployment.status (READY/...) onto the agents-local status, so a routable container
+# deployment reads as "running" — the same value subprocess uses.
+
+
+def _get_deployment_endpoint(dep: AgentDeployment) -> str | None:
+    """Return the address to proxy to for *dep*, or ``None`` if none is available yet.
+
+    - **subprocess** → the loopback ``endpoint`` the agents plugin allocates at spawn.
+    - **docker/k8s** → the first http(s) URL from ``endpoints``, which the agents
+      controller projects from the deployments-plugin ``Deployment``.
+    """
+    if is_container_deployment_mode(dep.deployment_mode):
+        for ep in dep.endpoints:
+            if ep.protocol in ("http", "https") and ep.url:
+                return ep.url
+        return None
+    return dep.endpoint or None
+
+
+def _is_deployment_routable(dep: AgentDeployment) -> bool:
+    """Return ``True`` if *dep* is currently up and has a resolvable endpoint.
+
+    A deployment is routable when its status is ``running`` (for container modes,
+    the controller projects the deployments-plugin READY status onto ``running``)
+    and an endpoint can be resolved for its mode.
+    """
+    return dep.status == "running" and _get_deployment_endpoint(dep) is not None
 
 
 async def _serve_agent_proxy(
@@ -150,13 +199,21 @@ async def _serve_deployment_proxy(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    if dep.status != "running" or not dep.endpoint:
+    if not _is_deployment_routable(dep):
         raise HTTPException(
             status_code=503,
-            detail=f"Deployment '{name}' is not running (status='{dep.status}').",
+            detail=f"Deployment '{name}' is not routable (mode='{dep.deployment_mode}', status='{dep.status}').",
         )
 
-    return await _proxy(request, dep.endpoint, trailing_uri, model_name=name)
+    endpoint = _get_deployment_endpoint(dep)
+    # _is_deployment_routable guarantees a non-None endpoint, but narrow for the type checker.
+    if endpoint is None:  # pragma: no cover - defensive
+        raise HTTPException(
+            status_code=503,
+            detail=f"Deployment '{name}' has no routable endpoint (status='{dep.status}').",
+        )
+
+    return await _proxy(request, endpoint, trailing_uri, model_name=name)
 
 
 @router.api_route(
@@ -217,13 +274,21 @@ async def _resolve_agent_endpoint(name: str, workspace: str, entity_client: Nemo
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    running = [d for d in result.data if d.agent == name and d.status == "running" and d.endpoint]
+    running = [d for d in result.data if d.agent == name and _is_deployment_routable(d)]
     if not running:
         raise HTTPException(
             status_code=503,
             detail=f"No running deployment found for agent '{name}' in workspace '{workspace}'.",
         )
-    return running[0].endpoint
+    # first-match, no load-balancing across running deployments (out of scope).
+    endpoint = _get_deployment_endpoint(running[0])
+    # _is_deployment_routable guarantees a non-None endpoint, but narrow for the type checker.
+    if endpoint is None:  # pragma: no cover - defensive
+        raise HTTPException(
+            status_code=503,
+            detail=f"No routable endpoint for agent '{name}' in workspace '{workspace}'.",
+        )
+    return endpoint
 
 
 async def _proxy(
@@ -240,6 +305,12 @@ async def _proxy(
     ``content-length`` is stripped from forwarded headers because chunked
     transfer encoding makes the original value invalid.
     """
+    # The SSRF guard below is origin-relative, not a host allow-list: it only
+    # rejects a trailing_uri that escapes the *resolved* endpoint's origin. That
+    # means it works unchanged for container-mode targets — a k8s in-cluster
+    # Service DNS name (``<svc>.<ns>.svc.cluster.local:<port>``) or a docker
+    # host:port — exactly as it does for subprocess loopback, as long as the
+    # resolved endpoint is a well-formed ``scheme://netloc`` (checked next).
     endpoint_parsed = urlparse(endpoint)
     if not endpoint_parsed.scheme or not endpoint_parsed.netloc:
         raise HTTPException(status_code=500, detail="Deployment endpoint is misconfigured.")

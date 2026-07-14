@@ -31,6 +31,14 @@ pip install nemo-platform
 pip install "nemo-platform[all]"
 ```
 
+On Python 3.14, prefix the `nemo-platform[all]` install with
+`PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` while the transitive `litellm` Rust
+extension catches up to Python 3.14:
+
+```bash
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 pip install "nemo-platform[all]"
+```
+
 Then bring up the platform:
 
 ```bash

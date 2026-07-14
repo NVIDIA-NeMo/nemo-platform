@@ -14,7 +14,7 @@ from functools import cached_property
 from pathlib import PurePath
 from typing import Protocol, runtime_checkable
 
-from fsspec.callbacks import Callback
+from fsspec.callbacks import DEFAULT_CALLBACK, Callback
 from fsspec.core import has_magic
 from nemo_platform.resources.files.filesets import AsyncFilesetsResource, FilesetsResource
 from nemo_platform.resources.files.otlp.otlp import AsyncOtlpResource, OtlpResource
@@ -24,6 +24,7 @@ from nemo_platform_plugin.files.types import (
     CreateFilesetRequest,
     FilesetFileOutput,
     FilesetOutput,
+    ListFilesQueryParams,
 )
 
 from filesets.filesystem.filesystem import (
@@ -71,16 +72,16 @@ class ListFilesResponse:
 
         # Priority: caching > not_cached > cached > not_cacheable
         if "caching" in statuses:
-            return "caching"
+            return CacheStatus.CACHING
         if "not_cached" in statuses:
-            return "not_cached"
+            return CacheStatus.NOT_CACHED
         if all(s == "cached" for s in statuses):
-            return "cached"
+            return CacheStatus.CACHED
         if all(s == "not_cacheable" for s in statuses):
-            return "not_cacheable"
+            return CacheStatus.NOT_CACHEABLE
 
         # Mixed cached/not_cacheable - return cached since some files are cached
-        return "cached"
+        return CacheStatus.CACHED
 
 
 @runtime_checkable
@@ -139,10 +140,17 @@ class FilesResource:
     For fsspec filesystem access, use ``resource.fsspec``.
     """
 
-    def __init__(self, client, *, files_client: FilesClient | None = None) -> None:
+    def __init__(
+        self,
+        client,
+        *,
+        files_client: FilesClient | None = None,
+        async_files_client: AsyncFilesClient | None = None,
+    ) -> None:
         # Retain the platform client so the generated fileset/otlp sub-resources
         # (which speak to the platform client, not the FilesClient) can be exposed.
         self._platform_client = client
+        self._async_client = async_files_client
         if files_client is not None:
             self._client = files_client
         else:
@@ -168,7 +176,7 @@ class FilesResource:
     @cached_property
     def fsspec(self) -> FilesetFileSystem:
         """Access the underlying fsspec filesystem."""
-        return FilesetFileSystem(client=self._client)
+        return FilesetFileSystem(client=self._client, async_client=self._async_client)
 
     def _ensure_fileset_exists(self, workspace: str, fileset: str) -> None:
         """Create fileset if it doesn't exist (idempotent)."""
@@ -615,7 +623,7 @@ class FilesResource:
         # For path prefixes, the API handles filtering server-side
         api_path = None if has_magic(path) else (path or None)
 
-        query_params = {}
+        query_params: ListFilesQueryParams = {}
         if api_path is not None:
             query_params["path"] = api_path
         if include_cache_status:
@@ -794,10 +802,7 @@ class AsyncFilesResource:
             # Build list of (remote, local) path pairs preserving directory structure
             rpaths = [build_fileset_ref(p, workspace=ws, fileset=fileset) for p in remote_path]
             lpaths = [str(PurePath(local_path) / p) for p in remote_path]
-            kwargs: dict = {"rpath": rpaths, "lpath": lpaths, "batch_size": max_workers}
-            if callback is not None:
-                kwargs["callback"] = callback
-            await self.fsspec._get(**kwargs)
+            await self.fsspec._get(rpaths, lpaths, batch_size=max_workers, callback=callback or DEFAULT_CALLBACK)
             return
 
         ws, path_fileset, path = parse_fileset_path(
@@ -817,16 +822,16 @@ class AsyncFilesResource:
             # Build list of (remote, local) path pairs preserving directory structure
             rpaths = [build_fileset_ref(f.path, workspace=ws, fileset=fileset) for f in matching_files.data]
             lpaths = [str(PurePath(local_path) / f.path) for f in matching_files.data]
-            kwargs = {"rpath": rpaths, "lpath": lpaths, "batch_size": max_workers}
-            if callback is not None:
-                kwargs["callback"] = callback
-            await self.fsspec._get(**kwargs)
+            await self.fsspec._get(rpaths, lpaths, batch_size=max_workers, callback=callback or DEFAULT_CALLBACK)
         else:
             fileset_ref = build_fileset_ref(path, workspace=ws, fileset=fileset)
-            kwargs = {"rpath": fileset_ref, "lpath": local_path, "recursive": True, "batch_size": max_workers}
-            if callback is not None:
-                kwargs["callback"] = callback
-            await self.fsspec._get(**kwargs)
+            await self.fsspec._get(
+                fileset_ref,
+                local_path,
+                recursive=True,
+                batch_size=max_workers,
+                callback=callback or DEFAULT_CALLBACK,
+            )
 
     async def upload(
         self,
@@ -1129,7 +1134,7 @@ class AsyncFilesResource:
         # For path prefixes, the API handles filtering server-side
         api_path = None if has_magic(path) else (path or None)
 
-        query_params = {}
+        query_params: ListFilesQueryParams = {}
         if api_path is not None:
             query_params["path"] = api_path
         if include_cache_status:

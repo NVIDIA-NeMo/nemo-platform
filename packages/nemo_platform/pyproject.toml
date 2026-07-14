@@ -87,7 +87,7 @@ core-service = [
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 data-designer-nemo = [
-  "data-designer==0.6.1",
+  "data-designer==0.7.0",
   "anyio>=4.0",
   "duckdb",
   "pydantic>=2",
@@ -145,8 +145,8 @@ guardrails-service = [
   "uvicorn>=0.32.1",
   "httpx>=0.27.2",
   "gunicorn>=23.0.0",
-  "langchain-openai>=1.3.3,<2.0.0",
-  "langchain-nvidia-ai-endpoints>=1.4.1,<2.0.0",
+  "langchain-openai>=1.3.5,<2.0.0",
+  "langchain-nvidia-ai-endpoints>=1.4.3,<2.0.0",
   "nmp-common",
   "yara-python==4.5.1",
   "alembic>=1.10.4,<2.0.0",
@@ -242,8 +242,8 @@ nemo-agents-plugin = [
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-anonymizer-plugin = [
   "nemo-platform-plugin",
-  "nemo-anonymizer>=0.2.1",
-  "data-designer==0.6.1",
+  "nemo-anonymizer>=0.3.0",
+  "data-designer==0.7.0",
   "data-designer-nemo",
   "httpx>=0.27",
   "fastapi",
@@ -264,7 +264,7 @@ nemo-auditor-plugin = [
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-data-designer-plugin = [
   "nemo-platform-plugin",
-  "data-designer==0.6.1",
+  "data-designer==0.7.0",
   "data-designer-nemo",
   "httpx>=0.27",
   "fastapi",
@@ -293,18 +293,19 @@ nemo-evaluator-sdk = [
   "sacrebleu>=2.5.1",
   "rouge_score==0.1.2",
   "ragas==0.4.3",
-  "langchain-openai>=1.3.3",
-  "langchain-nvidia-ai-endpoints>=1.4.1,<2.0.0",
+  "langchain-openai>=1.3.5",
+  "langchain-nvidia-ai-endpoints>=1.4.3,<2.0.0",
+  "nemo-relay>=0.4.0,<0.5.0",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-guardrails-plugin = [
   "nemo-platform-plugin",
   "nemoguardrails[tracing]==0.23.0",
-  "langchain>=1.3.11",
+  "langchain>=1.3.13",
   "langchain-community>=0.3.31,<0.4",
-  "langchain-core>=1.4.8",
-  "langchain-openai>=1.3.3",
+  "langchain-core>=1.4.9",
+  "langchain-openai>=1.3.5",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -351,7 +352,7 @@ nemo-safe-synthesizer-plugin = [
   "gunicorn>=23.0.0",
   "httpx>=0.27.2",
   "nemo-platform-plugin",
-  "nemo-safe-synthesizer==0.1.2",
+  "nemo-safe-synthesizer==0.1.7",
   "pydantic[email]>=2.9.2",
   "pydantic-settings>=2.2.1",
   "python-multipart~=0.0.9",
