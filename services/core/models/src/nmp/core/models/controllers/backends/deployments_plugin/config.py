@@ -32,6 +32,15 @@ class DeploymentsPluginConfig(BaseModel):
         default_factory=lambda: ["nemo", "services", "run", "--sidecars", "adapters"]
     )
     lora_sidecar_args: list[str] = Field(default_factory=list)
+    busybox_image: str = Field(
+        default="docker.io/library/busybox",
+        description="BusyBox image repository for LoRA cache init containers. "
+        "Fully qualified so it resolves on runtimes that block docker.io short names.",
+    )
+    busybox_image_tag: str = Field(
+        default="latest",
+        description="BusyBox image tag for LoRA cache init containers.",
+    )
     delete_wait_seconds: float = Field(default=5.0, gt=0)
     delete_poll_seconds: float = Field(default=0.5, gt=0)
 

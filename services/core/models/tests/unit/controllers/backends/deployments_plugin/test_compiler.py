@@ -79,6 +79,9 @@ def test_lora_uses_native_sidecar_on_k8s_and_container_on_docker() -> None:
         docker = compile_model_deployment(_resolved("vllm", lora=True, runtime=Runtime.DOCKER), config)
 
     assert k8s.scratch_volume is not None
+    init = k8s.server_config.init_containers[0]
+    assert init.name == "lora-cache-init"
+    assert init.image == "docker.io/library/busybox:latest"
     sidecar = k8s.server_config.init_containers[-1]
     assert sidecar.restart_policy == "Always"
     assert sidecar.image == "registry/nmp-api:tag"

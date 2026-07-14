@@ -36,7 +36,12 @@ class DockerBackendConfigModel(DockerConfig):
 
 
 class NoneBackendConfigModel(BaseModel):
-    """Configuration for None backend."""
+    """Configuration for the ``none`` backend (no deployment substrate).
+
+    Used when ``platform.runtime`` is ``none``. The backend is a deliberate
+    no-op: create/update/delete raise ``NotImplementedError``, status returns
+    ``UNKNOWN``, and orphan reconciliation sees no managed deployments.
+    """
 
     enabled: bool = Field(default=False, description="Whether this backend is enabled")
 
@@ -67,6 +72,12 @@ backend_classes: Dict[BackendName, type[ServiceBackend]] = {
 # imported lazily.
 _LAZY_BACKEND_NAMES = frozenset({"deployments_plugin"})
 
+_DEPLOYMENTS_PLUGIN_IMPORT_ERROR = (
+    "The deployments_plugin models backend requires the nemo-deployments-plugin "
+    "package. Install it (or include the deployments plugin in your platform "
+    "profile) before setting models.controller.backends.deployments_plugin.enabled."
+)
+
 
 def _resolve_backend_class(
     name: BackendName, available_backends: Dict[BackendName, type[ServiceBackend]]
@@ -75,8 +86,12 @@ def _resolve_backend_class(
     if name in available_backends:
         return available_backends[name]
     if name == "deployments_plugin":
-        from nmp.core.models.controllers.backends.deployments_plugin import DeploymentsPluginServiceBackend
-
+        try:
+            from nmp.core.models.controllers.backends.deployments_plugin.backend import (
+                DeploymentsPluginServiceBackend,
+            )
+        except ImportError as exc:
+            raise ImportError(_DEPLOYMENTS_PLUGIN_IMPORT_ERROR) from exc
         return DeploymentsPluginServiceBackend
     available = ", ".join(sorted({*available_backends, *_LAZY_BACKEND_NAMES}))
     raise KeyError(f"Unknown backend '{name}'. Available backends: {available}")

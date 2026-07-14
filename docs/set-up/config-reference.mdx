@@ -631,6 +631,10 @@ models:
         - --sidecars
         - adapters
         lora_sidecar_args: []
+        # BusyBox image repository for LoRA cache init containers. Fully qualified so it resolves on runtimes that block docker.io short names. | default: 'docker.io/library/busybox'
+        busybox_image: docker.io/library/busybox
+        # BusyBox image tag for LoRA cache init containers. | default: 'latest'
+        busybox_image_tag: latest
         # default: 5.0
         delete_wait_seconds: 5.0
         # default: 0.5

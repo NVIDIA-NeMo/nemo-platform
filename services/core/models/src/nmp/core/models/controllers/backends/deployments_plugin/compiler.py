@@ -75,6 +75,10 @@ def _image(name: str, tag: str) -> str:
     return name if "@" in name or name.endswith(f":{tag}") else f"{name}:{tag}"
 
 
+def _busybox_image(config: DeploymentsPluginConfig) -> str:
+    return _image(config.busybox_image, config.busybox_image_tag)
+
+
 def _weighted(resolved: ResolvedPluginDeployment, engine: str) -> bool:
     is_files = resolved.weights_type == ModelWeightsType.FILES_SERVICE
     if engine == ENGINE_VLLM:
@@ -205,7 +209,7 @@ def compile_model_deployment(
         init_containers.append(
             Container(
                 name="lora-cache-init",
-                image="busybox:1.36",
+                image=_busybox_image(config),
                 command=["sh", "-c", f"mkdir -p {_LORA_MOUNT} && chmod -R 777 {_LORA_MOUNT}"],
                 volumeMounts=[VolumeMount(name=names.scratch, mountPath=_SCRATCH_MOUNT)],
             )

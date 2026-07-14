@@ -166,7 +166,8 @@ class ParallelismConfig(BaseModel):
 
 BackendName = Literal["docker", "nim_operator", "deployments_plugin", "none"]
 
-# Map backend names to their config model classes
+# Map backend names to their config model classes.
+# ``none`` is the no-op substrate used when platform.runtime is ``none``.
 BACKEND_CONFIG_MODELS: dict[str, type[BackendConfig]] = {
     "docker": DockerBackendConfigModel,
     "nim_operator": K8sNimOperatorBackendConfigModel,

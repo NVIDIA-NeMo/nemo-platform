@@ -4,7 +4,6 @@
 """Resolve models API objects into compiler inputs."""
 
 from dataclasses import dataclass
-from typing import Optional
 from urllib.parse import urljoin
 
 from nemo_platform.types.inference.model_deployment import ModelDeployment
@@ -22,7 +21,7 @@ class ResolvedPluginDeployment:
 
     deployment: ModelDeployment
     config: ModelDeploymentConfig
-    model_entity: Optional[ModelEntity]
+    model_entity: ModelEntity | None
     view: DeploymentConfigView
     weights_type: ModelWeightsType
     model_namespace: str | None
@@ -54,7 +53,8 @@ def resolve_plugin_deployment(ctx: ModelContext, huggingface_model_puller: str) 
     view = deployment_config_view(ctx.model_deployment_config)
     namespace, name, revision = resolve_model_source(ctx.model_entity, view)
     platform_config = get_platform_config()
-    files_url = platform_config.service_discovery.get("files") or platform_config.base_url
+    files_service_url = platform_config.service_discovery.get("files") or platform_config.base_url
+    files_hf_url = urljoin(files_service_url.rstrip("/") + "/", "apis/files/v2/hf")
     return ResolvedPluginDeployment(
         deployment=ctx.model_deployment,
         config=ctx.model_deployment_config,
@@ -68,7 +68,7 @@ def resolve_plugin_deployment(ctx: ModelContext, huggingface_model_puller: str) 
         model_namespace=namespace,
         model_name=name,
         model_revision=revision,
-        files_hf_url=urljoin(files_url.rstrip("/") + "/", "apis/files/v2/hf"),
+        files_hf_url=files_hf_url,
         huggingface_model_puller=huggingface_model_puller,
         runtime=platform_config.runtime,
     )

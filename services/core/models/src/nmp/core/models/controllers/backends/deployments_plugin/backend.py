@@ -154,10 +154,11 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
             await self.delete_model_deployment(ctx.model_deployment.workspace, ctx.model_deployment.name)
         except Exception:
             logger.warning(
-                "Failed to roll back deployments-plugin substrate for %s/%s after a create failure; "
-                "orphaned entities may remain",
-                ctx.model_deployment.workspace,
-                ctx.model_deployment.name,
+                "Failed to roll back deployments-plugin substrate after a create failure; orphaned entities may remain",
+                extra={
+                    "workspace": ctx.model_deployment.workspace,
+                    "deployment_name": ctx.model_deployment.name,
+                },
                 exc_info=True,
             )
 
