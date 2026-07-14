@@ -95,7 +95,7 @@ class TraceListFilter(BaseModel):
     status: SpanStatus | None = None
     started_at_gte: datetime | None = None
     started_at_lte: datetime | None = None
-    experiment_id: str | None = None
+    evaluation_id: str | None = None
     test_case_id: str | None = None
 
 
@@ -112,7 +112,7 @@ class IntakeTrace(BaseModel):
     input: str | None = None
     output: str | None = None
     project: str | None = None
-    experiment_id: str | None = None
+    evaluation_id: str | None = None
     test_case_id: str | None = None
     started_at: datetime
     ended_at: datetime | None = None

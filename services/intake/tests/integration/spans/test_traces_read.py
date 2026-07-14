@@ -65,7 +65,7 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
         "/apis/intake/v2/workspaces/default/traces",
         params={
             "filter[session_id]": "trace-session",
-            "filter[experiment_id]": "experiment-a",
+            "filter[evaluation_id]": "experiment-a",
             "page_size": 20,
         },
     )
@@ -88,9 +88,11 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
     assert Decimal(str(trace["cost_output_usd"])) == Decimal("0.0037")
     assert trace["span_count"] == 2
     assert trace["error_count"] == 0
+    assert trace["evaluation_context"]["evaluation_id"] == "experiment-a"
+    assert trace["evaluation_context"]["test_case_id"] == "case-a"
     assert trace["experiment_context"]["experiment_id"] == "experiment-a"
     assert trace["experiment_context"]["test_case_id"] == "case-a"
-    assert "evaluation_context" not in trace
+    assert "evaluation_id" not in trace
     assert "experiment_id" not in trace
     assert "test_case_id" not in trace
     assert "source_format" not in trace
@@ -111,9 +113,11 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
     summary_trace = summary_response.json()["data"][0]
     assert summary_trace["id"] == trace["id"]
     assert summary_trace["status"] == "success"
+    assert summary_trace["evaluation_context"]["evaluation_id"] == "experiment-a"
+    assert summary_trace["evaluation_context"]["test_case_id"] == "case-a"
     assert summary_trace["experiment_context"]["experiment_id"] == "experiment-a"
     assert summary_trace["experiment_context"]["test_case_id"] == "case-a"
-    assert "evaluation_context" not in summary_trace
+    assert "evaluation_id" not in summary_trace
     assert "experiment_id" not in summary_trace
     assert "test_case_id" not in summary_trace
     assert "input_tokens" not in summary_trace

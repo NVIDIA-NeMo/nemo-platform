@@ -4408,7 +4408,8 @@ paths:
         schema:
           $ref: '#/components/schemas/TraceFilter'
         description: Filter root-span-backed traces by id, session_id, root status,
-          root span started_at, experiment_id, and test_case_id.
+          root span started_at, evaluation_id (or its deprecated alias experiment_id),
+          and test_case_id.
       responses:
         '200':
           description: Successful Response
@@ -17857,8 +17858,14 @@ components:
         name:
           title: Name
           type: string
+        evaluation_context:
+          $ref: '#/components/schemas/EvaluationContext'
         experiment_context:
-          $ref: '#/components/schemas/ExperimentContext'
+          allOf:
+          - $ref: '#/components/schemas/ExperimentContext'
+          description: Deprecated alias for evaluation_context; will be removed in
+            a future release.
+          deprecated: true
         started_at:
           type: string
           format: date-time
@@ -17931,12 +17938,18 @@ components:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
           description: Filter by root span start timestamp.
+        evaluation_id:
+          description: Filter by root-span evaluation id.
+          title: Evaluation Id
+          type: string
         experiment_id:
-          description: Filter by root-span experiment id.
+          deprecated: true
+          description: Deprecated alias for evaluation_id. Filter by root-span evaluation
+            id.
           title: Experiment Id
           type: string
         test_case_id:
-          description: Filter by root-span experiment test case id.
+          description: Filter by root-span evaluation test case id.
           title: Test Case Id
           type: string
       title: TraceFilter

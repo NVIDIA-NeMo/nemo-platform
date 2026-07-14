@@ -29,8 +29,11 @@ class TraceFilterParam(TypedDict, total=False):
     id: str
     """Filter by canonical Intake trace id."""
 
+    evaluation_id: str
+    """Filter by root-span evaluation id."""
+
     experiment_id: str
-    """Filter by root-span experiment id."""
+    """Deprecated alias for evaluation_id. Filter by root-span evaluation id."""
 
     session_id: str
     """Filter by session id."""
@@ -42,4 +45,4 @@ class TraceFilterParam(TypedDict, total=False):
     """Filter by root span status."""
 
     test_case_id: str
-    """Filter by root-span experiment test case id."""
+    """Filter by root-span evaluation test case id."""

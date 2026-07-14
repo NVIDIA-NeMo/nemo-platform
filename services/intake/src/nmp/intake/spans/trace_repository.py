@@ -36,7 +36,7 @@ TRACE_COLUMNS = [
     "root_span_id",
     "name",
     "project",
-    "experiment_id",
+    "evaluation_id",
     "test_case_id",
     "started_at",
     "ended_at",
@@ -196,7 +196,7 @@ def _trace_select_columns(*, include_aggregates: bool) -> str:
         "traces.root_span_id AS root_span_id",
         "traces.name AS name",
         "traces.project AS project",
-        "traces.experiment_id AS experiment_id",
+        "traces.evaluation_id AS evaluation_id",
         "traces.test_case_id AS test_case_id",
         "traces.started_at AS started_at",
         "traces.ended_at AS ended_at",
@@ -220,7 +220,7 @@ def _trace_index_sql(table: str, filters: TraceListFilter) -> tuple[str, dict[st
             nullIf(trace_roots.root_span_id, '') AS root_span_id,
             nullIf(trace_roots.root_name, '') AS name,
             nullIf(trace_roots.project, '') AS project,
-            nullIf(trace_roots.experiment_id, '') AS experiment_id,
+            nullIf(trace_roots.evaluation_id, '') AS evaluation_id,
             nullIf(trace_roots.test_case_id, '') AS test_case_id,
             trace_roots.root_started_at AS started_at,
             trace_roots.root_ended_at AS ended_at,
@@ -276,8 +276,9 @@ def _trace_aggregates_sql(table: str) -> tuple[str, dict[str, Any]]:
     return query, parameters
 
 
+# Maps API/filter field names to their physical trace_index columns.
 _TRACE_INDEX_FILTER_COLUMNS = {
-    "experiment_id": "experiment_id",
+    "evaluation_id": "evaluation_id",
     "test_case_id": "test_case_id",
 }
 
@@ -392,7 +393,7 @@ def _row_to_trace(row: dict[str, Any]) -> IntakeTrace:
         input=row.get("input") or None,
         output=row.get("output") or None,
         project=row.get("project") or None,
-        experiment_id=row.get("experiment_id") or None,
+        evaluation_id=row.get("evaluation_id") or None,
         test_case_id=row.get("test_case_id") or None,
         started_at=row["started_at"],
         ended_at=ended_at,

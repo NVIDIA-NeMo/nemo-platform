@@ -5,7 +5,7 @@
 // produce JSX such as status badges and links. Not a component module.
 /* eslint-disable react-refresh/only-export-components */
 
-import type { ExperimentContext, Trace } from '@nemo/sdk/generated/platform/schema';
+import type { EvaluationContext, Trace } from '@nemo/sdk/generated/platform/schema';
 import {
   formatUnknownKeyValue,
   isMeaningfulValue,
@@ -122,11 +122,11 @@ const TRACE_SUMMARY_DESCRIPTORS: readonly TraceFieldDescriptor[] = [
   },
 ];
 
-const EXPERIMENT_CONTEXT_DESCRIPTORS: readonly {
-  readonly key: keyof ExperimentContext | string;
+const EVALUATION_CONTEXT_DESCRIPTORS: readonly {
+  readonly key: keyof EvaluationContext | string;
   readonly label: string;
 }[] = [
-  { key: 'experiment_id', label: 'Experiment ID' },
+  { key: 'evaluation_id', label: 'Evaluation ID' },
   { key: 'test_case_id', label: 'Test Case ID' },
 ];
 
@@ -159,6 +159,7 @@ const collectUnmappedTraceEntries = (trace: Trace): TraceKeyValueEntry[] => {
   const mappedKeys = new Set([
     ...TRACE_SUMMARY_DESCRIPTORS.map((descriptor) => descriptor.key),
     ...TRACE_HIGHLIGHT_METRIC_KEYS,
+    'evaluation_context',
     'experiment_context',
   ]);
 
@@ -227,17 +228,17 @@ export const buildTraceHighlightMetrics = (trace: Trace): TraceHighlightMetric[]
   },
 ];
 
-export const buildExperimentContextEntries = (
-  experimentContext: ExperimentContext | null | undefined
+export const buildEvaluationContextEntries = (
+  evaluationContext: EvaluationContext | null | undefined
 ): TraceKeyValueEntry[] => {
-  if (!experimentContext) {
+  if (!evaluationContext) {
     return [];
   }
 
   const mappedKeys = new Set<string>();
-  const knownEntries = EXPERIMENT_CONTEXT_DESCRIPTORS.flatMap(({ key, label }) => {
+  const knownEntries = EVALUATION_CONTEXT_DESCRIPTORS.flatMap(({ key, label }) => {
     mappedKeys.add(String(key));
-    const value = experimentContext[key as keyof ExperimentContext];
+    const value = evaluationContext[key as keyof EvaluationContext];
     if (!isMeaningfulValue(value)) {
       return [];
     }
@@ -252,7 +253,7 @@ export const buildExperimentContextEntries = (
     ];
   });
 
-  const extraEntries = Object.entries(experimentContext)
+  const extraEntries = Object.entries(evaluationContext)
     .filter(([key, value]) => !mappedKeys.has(key) && isMeaningfulValue(value))
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([key, value]) => ({
