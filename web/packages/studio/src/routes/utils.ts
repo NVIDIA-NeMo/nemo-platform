@@ -205,6 +205,10 @@ export const getWorkspaceInferenceProvidersRoute = (
   return base;
 };
 
+export const getWorkspaceVirtualModelsRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.virtualModels, { workspace });
+};
+
 export const getWorkspaceDeploymentsRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.deployments, { workspace });
 };
