@@ -6,8 +6,6 @@
 import json
 from datetime import datetime, timezone
 
-import pytest
-from fastapi import HTTPException
 from nmp.common.api.filter import parse_json_filter
 from nmp.common.api.parsed_filter import ParsedFilter
 from nmp.intake.spans.api.traces import _trace_filter

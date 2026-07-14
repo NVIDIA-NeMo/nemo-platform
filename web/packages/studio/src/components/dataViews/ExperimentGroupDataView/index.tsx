@@ -227,7 +227,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
                 kind="tertiary"
                 color="neutral"
                 size="small"
-                aria-label={isPinned ? 'Unpin experiment' : 'Pin experiment'}
+                aria-label={isPinned ? 'Unpin evaluation' : 'Pin evaluation'}
                 aria-pressed={isPinned}
                 onClick={() => togglePin(row.original)}
               >
