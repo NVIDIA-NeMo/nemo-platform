@@ -16,8 +16,7 @@
     "test:ci": "vitest run --coverage",
     "test:watch": "vitest watch",
     "test:once": "vitest --run",
-    "typecheck": "tsc --noEmit",
-    "typecheck:go": "tsgo --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
     "@nemo/sdk": "workspace:*",
@@ -50,7 +49,6 @@
     "@types/papaparse": "^5.3.16",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "happy-dom": "catalog:",
