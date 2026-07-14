@@ -1,0 +1,45 @@
+# Testbed subjects for the analyst harness — one table per subject.
+# Top-level keys are shared defaults merged into every subject.
+base_url = "https://nemo-platform-freeplay.dev.aire.nvidia.com"
+
+[nvq]
+type = "intake"
+agent = "content-dedup"
+workspace = "nvq"
+# since = "7d"   # optional default lookback (Nd/Nh/Nm or an ISO date)
+
+[tau2-airline]
+type = "benchmark"
+domain = "airline"
+base_url = "https://nemo-platform-freeplay.dev.aire.nvidia.com"  # remote (freeplay) default
+workspace = "tau2-airline"
+tau2_repo = "../tau2-bench"   # tau2-bench checkout: relative to the repo root (sibling clone), or absolute
+agent_llm = "openai/nvidia/nvidia/nemotron-3-super-v3"   # a model your proxy key serves (GET {OPENAI_API_BASE}/v1/models)
+user_llm  = "openai/nvidia/nvidia/nemotron-3-super-v3"   # the user simulator
+task_split_name = "train"   # dev/iteration split (30 tasks); keep `test` (20) held-out for final eval
+num_tasks = 30       # full train split; narrow (e.g. 5) for faster iteration loops
+num_trials = 1
+max_concurrency = 8
+seed = 300
+include_rewards = true            # also ingest a "-oracle" workspace (answer key) beside the realistic one (default true; false = realistic only)
+# tau2_bin = "/custom/tau2"       # optional: override the derived <tau2_repo>/.venv/bin/tau2
+# tau2_data_dir = "/custom/data"  # optional: override the derived <tau2_repo>/data
+# timeout = 600                   # optional per-task timeout (seconds)
+
+[tau2-retail]
+type = "benchmark"
+domain = "retail"
+base_url = "http://localhost:8080"
+workspace = "tau2-retail"
+tau2_repo = "../tau2-bench"   # tau2-bench checkout: relative to the repo root (sibling clone), or absolute
+agent_llm = "openai/nvidia/nvidia/nemotron-3-super-v3"   # a model your proxy key serves (GET {OPENAI_API_BASE}/v1/models)
+user_llm  = "openai/nvidia/nvidia/nemotron-3-super-v3"   # the user simulator
+task_split_name = "test"
+num_tasks = 40       # full retail test split
+num_trials = 1
+max_concurrency = 8
+seed = 300
+include_rewards = true            # also ingest a "-oracle" workspace (answer key) beside the realistic one (default true; false = realistic only)
+# tau2_bin = "/custom/tau2"       # optional: override the derived <tau2_repo>/.venv/bin/tau2
+# tau2_data_dir = "/custom/data"  # optional: override the derived <tau2_repo>/data
+# timeout = 600                   # optional per-task timeout (seconds)
