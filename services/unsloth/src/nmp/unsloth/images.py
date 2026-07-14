@@ -1,31 +1,36 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Docker image resolution for nmp-unsloth job steps.
-
-Mirrors :mod:`nmp.automodel.images`. Consumed by the compiler in
-:mod:`nmp.unsloth.app.jobs.compiler` (and its training sub-compiler) to
-stamp the right image refs onto each container step.
-
-Unsloth ships a **single** image, ``nmp-unsloth-training``, used by all four
-steps (file_io, model_entity, training) — the CPU task steps reuse the training
-image rather than a separate ``nmp-unsloth-tasks`` build. Override the whole
-image via ``NMP_UNSLOTH_TRAINING_IMAGE``.
-"""
+"""Docker image resolution for nmp-unsloth job steps."""
 
 from __future__ import annotations
 
-from nmp.customization_common.service.images import resolve_qualified_image
+from nmp.customization_common.service.images import (
+    CUSTOMIZER_PYTHON_ENTRYPOINT,
+    get_customizer_tasks_image,
+    resolve_qualified_image,
+)
 from nmp.unsloth.config import config
 
 BASE_IMAGE_NAME = "nmp-unsloth-base"
-TASKS_IMAGE_NAME = "nmp-unsloth-tasks"
 TRAINING_IMAGE_NAME = "nmp-unsloth-training"
 
-# Must match ENTRYPOINT in Dockerfile.nmp-unsloth-{tasks,training}.
-# Job specs must set this explicitly: Docker API ``create()`` replaces the
-# image entrypoint when the platform passes ``entrypoint=[]``.
-UNSLOTH_PYTHON_ENTRYPOINT = ["/opt/venv/bin/python"]
+UNSLOTH_PYTHON_ENTRYPOINT = CUSTOMIZER_PYTHON_ENTRYPOINT
+
+FILE_IO_TASK_COMMAND = [
+    "-m",
+    "nmp.customization_common.tasks.file_io",
+    "--service-source",
+    "unsloth",
+    "--service-name",
+    "unsloth",
+]
+MODEL_ENTITY_TASK_COMMAND = [
+    "-m",
+    "nmp.customization_common.tasks.model_entity",
+    "--service-name",
+    "unsloth",
+]
 
 
 def get_unsloth_qualified_image(name: str, override: str | None = None) -> str:
@@ -34,12 +39,8 @@ def get_unsloth_qualified_image(name: str, override: str | None = None) -> str:
 
 
 def get_tasks_image() -> str:
-    """CPU task steps (file_io, model_entity).
-
-    Unsloth ships a single image, so the CPU task steps reuse the
-    ``nmp-unsloth-training`` image rather than a separate tasks image.
-    """
-    return get_training_image()
+    """CPU task steps (file_io, model_entity) — shared ``nmp-customizer-tasks`` image."""
+    return get_customizer_tasks_image(backend_override=config.tasks_image, image_registry=config.image_registry)
 
 
 def get_training_image() -> str:

@@ -66,7 +66,7 @@ from nmp.rl.app.jobs.training.schemas import (
 )
 from nmp.rl.config import config
 from nmp.rl.entities.values import FinetuningType, TrainingType
-from nmp.rl.images import RL_PYTHON_ENTRYPOINT, get_tasks_image, get_training_image
+from nmp.rl.images import FILE_IO_TASK_COMMAND, MODEL_ENTITY_TASK_COMMAND, RL_PYTHON_ENTRYPOINT, get_tasks_image, get_training_image
 from nmp.rl.schemas import DPOTraining, RlJobOutput
 
 logger = logging.getLogger(__name__)
@@ -332,7 +332,9 @@ async def platform_job_config_compiler(
     base_env = _base_environment()
 
     def _cpu_task_step(
-        name: str, command: str, task_config: FileIOTaskConfig | ModelEntityTaskConfig
+        name: str,
+        command: list[str],
+        task_config: FileIOTaskConfig | ModelEntityTaskConfig,
     ) -> PlatformJobStep:
         return PlatformJobStep(
             name=name,
@@ -341,7 +343,7 @@ async def platform_job_config_compiler(
                 container=ContainerSpec(
                     image=get_tasks_image(),
                     entrypoint=RL_PYTHON_ENTRYPOINT,
-                    command=["-m", command],
+                    command=command,
                 ),
                 resources=cpu_resources,
             ),
@@ -352,14 +354,14 @@ async def platform_job_config_compiler(
     steps: list[PlatformJobStep] = [
         _cpu_task_step(
             "model-and-dataset-download",
-            "nmp.rl.tasks.file_io",
+            FILE_IO_TASK_COMMAND,
             _build_download_config(job_spec, me, workspace=workspace),
         ),
         _build_training_step(job_spec, base_env, trust_remote_code=trust_remote_code, profile=profile),
-        _cpu_task_step("model-upload", "nmp.rl.tasks.file_io", _build_upload_config(job_spec.output.fileset)),
+        _cpu_task_step("model-upload", FILE_IO_TASK_COMMAND, _build_upload_config(job_spec.output.fileset)),
         _cpu_task_step(
             "model-entity-creation",
-            "nmp.rl.tasks.model_entity",
+            MODEL_ENTITY_TASK_COMMAND,
             _build_model_entity_config(workspace, job_spec, trust_remote_code=trust_remote_code),
         ),
     ]

@@ -43,7 +43,7 @@ be configured with all of:
    (the platform rewrites the `NMP_*_URL` it injects into pods to this, so the
    download/upload steps can call the files/jobs APIs).
 4. The target GPU cluster has, available as pullable/loaded images: the job-step
-   images (`nmp-rl-tasks`, `nmp-rl-training`), the **jobs-launcher** image (each
+   images (`nmp-customizer-tasks`, `nmp-rl-training`), the **jobs-launcher** image (each
    step runs a launcher init container), and a **job-storage PVC** the steps share.
 5. Multi-node only (`parallelism.num_nodes > 1`): `NMP_RL_MULTINODE_SHARED_STORAGE_PATH`
    (a shared filesystem for Ray's cross-node coordination).

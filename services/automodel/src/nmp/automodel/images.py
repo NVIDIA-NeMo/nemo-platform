@@ -6,16 +6,32 @@
 from __future__ import annotations
 
 from nmp.automodel.config import config
-from nmp.customization_common.service.images import resolve_qualified_image
+from nmp.customization_common.service.images import (
+    CUSTOMIZER_PYTHON_ENTRYPOINT,
+    get_customizer_tasks_image,
+    resolve_qualified_image,
+)
 
 BASE_IMAGE_NAME = "nmp-automodel-base"
-TASKS_IMAGE_NAME = "nmp-automodel-tasks"
 TRAINING_IMAGE_NAME = "nmp-automodel-training"
 
-# Must match ENTRYPOINT in docker/automodel/Dockerfile.nmp-automodel-{tasks,training}.
-# Job specs must set this explicitly: Docker API create() replaces the image
-# entrypoint when the platform passes entrypoint=[].
-AUTOMODEL_PYTHON_ENTRYPOINT = ["/opt/venv/bin/python"]
+# Alias for backward compatibility in compiler imports.
+AUTOMODEL_PYTHON_ENTRYPOINT = CUSTOMIZER_PYTHON_ENTRYPOINT
+
+FILE_IO_TASK_COMMAND = [
+    "-m",
+    "nmp.customization_common.tasks.file_io",
+    "--service-source",
+    "automodel",
+    "--service-name",
+    "customizer",
+]
+MODEL_ENTITY_TASK_COMMAND = [
+    "-m",
+    "nmp.customization_common.tasks.model_entity",
+    "--service-name",
+    "customizer",
+]
 
 
 def get_automodel_qualified_image(name: str, override: str | None = None) -> str:
@@ -24,8 +40,8 @@ def get_automodel_qualified_image(name: str, override: str | None = None) -> str
 
 
 def get_tasks_image() -> str:
-    """CPU task steps (file_io, model_entity)."""
-    return get_automodel_qualified_image(TASKS_IMAGE_NAME, config.tasks_image)
+    """CPU task steps (file_io, model_entity) — shared ``nmp-customizer-tasks`` image."""
+    return get_customizer_tasks_image(backend_override=config.tasks_image, image_registry=config.image_registry)
 
 
 def get_training_image() -> str:

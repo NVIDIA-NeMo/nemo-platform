@@ -50,7 +50,7 @@ from nmp.unsloth.app.constants import (
 from nmp.unsloth.app.jobs.training.compiler import compile_training_step
 from nmp.unsloth.config import config
 from nmp.unsloth.entities.values import FinetuningType
-from nmp.unsloth.images import UNSLOTH_PYTHON_ENTRYPOINT, get_tasks_image
+from nmp.unsloth.images import FILE_IO_TASK_COMMAND, MODEL_ENTITY_TASK_COMMAND, UNSLOTH_PYTHON_ENTRYPOINT, get_tasks_image
 from nmp.unsloth.schemas import UnslothJobOutput
 
 logger = logging.getLogger(__name__)
@@ -245,7 +245,7 @@ async def platform_job_config_compiler(
                 container=ContainerSpec(
                     image=get_tasks_image(),
                     entrypoint=UNSLOTH_PYTHON_ENTRYPOINT,
-                    command=["-m", "nmp.unsloth.tasks.file_io"],
+                    command=FILE_IO_TASK_COMMAND,
                 ),
                 resources=cpu_resources,
             ),
@@ -265,7 +265,7 @@ async def platform_job_config_compiler(
                 container=ContainerSpec(
                     image=get_tasks_image(),
                     entrypoint=UNSLOTH_PYTHON_ENTRYPOINT,
-                    command=["-m", "nmp.unsloth.tasks.file_io"],
+                    command=FILE_IO_TASK_COMMAND,
                 ),
                 resources=cpu_resources,
             ),
@@ -279,7 +279,7 @@ async def platform_job_config_compiler(
                 container=ContainerSpec(
                     image=get_tasks_image(),
                     entrypoint=UNSLOTH_PYTHON_ENTRYPOINT,
-                    command=["-m", "nmp.unsloth.tasks.model_entity"],
+                    command=MODEL_ENTITY_TASK_COMMAND,
                 ),
                 resources=cpu_resources,
             ),

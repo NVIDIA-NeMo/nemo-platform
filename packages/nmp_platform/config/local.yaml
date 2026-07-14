@@ -123,9 +123,9 @@ models:
         enabled: true
         # LoRA adapter-download sidecar for deployments with lora_enabled. The
         # docker backend has no separate args field (unlike k8s) and keeps the
-        # image ENTRYPOINT — nmp-automodel-tasks is `/opt/venv/bin/python`, so
+        # image ENTRYPOINT — nmp-customizer-tasks is `/opt/venv/bin/python`, so
         # the module goes in lora_sidecar_command (runs `python -m <module>`).
-        lora_sidecar_image_name: nmp-automodel-tasks
+        lora_sidecar_image_name: nmp-customizer-tasks
         lora_sidecar_command: ["-m", "nmp.core.models.sidecars.adapters.main"]
 
 # Inference gateway configuration - uses default values

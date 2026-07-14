@@ -214,7 +214,7 @@ def pytest_collection_modifyitems(config, items):
         "e2e",
         "auth_idp",
         "smoke_gpu_tasks",
-        "smoke_nmp_automodel_tasks",
+        "smoke_nmp_customizer_tasks",
         "smoke_nmp_automodel_training",
         "integration",
         "regression",

@@ -49,7 +49,7 @@ on:
       container-ids:
         description: >-
           Custom only. Comma-separated container IDs.
-          Allowed: nmp-api, nmp-cpu-tasks, nmp-automodel-tasks,
+          Allowed: nmp-api, nmp-cpu-tasks, nmp-customizer-tasks,
           nmp-automodel-training, nmp-unsloth-training, auditor-tasks,
           safe-synthesizer-tasks.
         required: false
@@ -112,7 +112,7 @@ env:
     [
       {"id":"nmp-api","target":"nmp-api-docker"},
       {"id":"nmp-cpu-tasks","target":"nmp-cpu-tasks-docker"},
-      {"id":"nmp-automodel-tasks","target":"nmp-automodel-tasks-docker"},
+      {"id":"nmp-customizer-tasks","target":"nmp-customizer-tasks"},
       {"id":"nmp-automodel-training","target":"nmp-automodel-training-docker"},
       {"id":"nmp-unsloth-training","target":"nmp-unsloth-training"},
       {"id":"auditor-tasks","target":"auditor-tasks-docker"},

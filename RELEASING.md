@@ -34,7 +34,7 @@ input description in that workflow.
 | Type | IDs |
 | --- | --- |
 | Wheels | `nemo-platform`, `nemo-platform-plugin` |
-| Containers | `nmp-api`, `nmp-cpu-tasks`, `nmp-automodel-tasks`, `nmp-automodel-training`, `nmp-unsloth-training`, `auditor-tasks`, `safe-synthesizer-tasks` |
+| Containers | `nmp-api`, `nmp-cpu-tasks`, `nmp-customizer-tasks`, `nmp-automodel-training`, `nmp-unsloth-training`, `auditor-tasks`, `safe-synthesizer-tasks` |
 | Helm chart | `nemo-platform` |
 
 For every selected wheel, the workflow checks that its package configuration
@@ -66,7 +66,7 @@ Examples:
 | --- | --- |
 | Scheduled-style nightly | Leave `release-type` as `nightly` and use the default `all` scope. |
 | Stable full release | `release-type: stable`, `source-sha: <40-character SHA>`, `version: <MAJOR.MINOR.PATCH>`, `release-scope: all`. |
-| One container | `release-scope: custom`, `container-ids: nmp-automodel-tasks`. |
+| One container | `release-scope: custom`, `container-ids: nmp-customizer-tasks`. |
 | Helm-only validation | `release-scope: helm`, `dry-run: true`. |
 
 Nightlies also run automatically Monday through Friday at 8:00 PM

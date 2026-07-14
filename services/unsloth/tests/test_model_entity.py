@@ -38,7 +38,7 @@ def _make_job_ctx(workspace: str = "default"):
 
 
 def _make_runner(sdk):
-    from nmp.unsloth.tasks.model_entity.run import ModelEntityRunner
+    from nmp.customization_common.tasks.model_entity.run import ModelEntityRunner
 
     return ModelEntityRunner(sdk=sdk, job_ctx=_make_job_ctx())
 
@@ -58,7 +58,7 @@ def _raise_runner_conflict() -> None:
     """
     import sys
 
-    run_mod = sys.modules["nmp.unsloth.tasks.model_entity.run"]
+    run_mod = sys.modules["nmp.customization_common.tasks.model_entity.run"]
     raise run_mod.ConflictError.__new__(run_mod.ConflictError, "already exists")
 
 
@@ -78,19 +78,19 @@ def _model_entity(*, workspace: str = "default", name: str = "base", spec: objec
 
 class TestSanitizeName:
     def test_lowercases_and_replaces_invalid_chars(self) -> None:
-        from nmp.unsloth.tasks.model_entity.run import sanitize_name
+        from nmp.customization_common.tasks.model_entity.run import sanitize_name
 
         assert sanitize_name("sft-cfg", "Qwen/Qwen3-0.6B") == "sft-cfg-qwen-qwen3-0.6b"
 
     def test_collapses_consecutive_hyphens(self) -> None:
-        from nmp.unsloth.tasks.model_entity.run import sanitize_name
+        from nmp.customization_common.tasks.model_entity.run import sanitize_name
 
         # "/" is not in the allowed set, so each "/" becomes "-", then
         # the consecutive-hyphen collapse fires.
         assert sanitize_name("p", "a//b") == "p-a-b"
 
     def test_caps_length_below_60_and_strips_trailing_hyphen(self) -> None:
-        from nmp.unsloth.tasks.model_entity.run import sanitize_name
+        from nmp.customization_common.tasks.model_entity.run import sanitize_name
 
         # 59-char limit accounts for the "-v1" the backend appends.
         long_name = "a" * 80
@@ -105,7 +105,7 @@ class TestSanitizeName:
 
 
 class TestCreateFullEntity:
-    @patch("nmp.unsloth.tasks.model_entity.run.client_from_platform")
+    @patch("nmp.customization_common.tasks.model_entity.run.client_from_platform")
     def test_creates_model_entity_for_full_sft(self, mock_cfp) -> None:
         from nmp.customization_common.schemas.file_io import FileSetRef
         from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig
@@ -133,7 +133,7 @@ class TestCreateFullEntity:
         assert deploy_target is new_me
         assert result is not None
 
-    @patch("nmp.unsloth.tasks.model_entity.run.client_from_platform")
+    @patch("nmp.customization_common.tasks.model_entity.run.client_from_platform")
     def test_conflict_falls_back_to_update(self, mock_cfp) -> None:
         from nmp.customization_common.schemas.file_io import FileSetRef
         from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig
@@ -160,7 +160,7 @@ class TestCreateFullEntity:
         assert update_call.kwargs["name"] == "trained-model"
         assert update_call.kwargs["workspace"] == "default"
 
-    @patch("nmp.unsloth.tasks.model_entity.run.client_from_platform")
+    @patch("nmp.customization_common.tasks.model_entity.run.client_from_platform")
     def test_missing_fileset_raises_creation_error(self, mock_cfp) -> None:
         from nmp.customization_common.schemas.file_io import FileSetRef
         from nmp.customization_common.schemas.model_entity import ModelEntityCreationError, ModelEntityTaskConfig
@@ -187,7 +187,7 @@ class TestCreateFullEntity:
 
 
 class TestCreateAdapter:
-    @patch("nmp.unsloth.tasks.model_entity.run.client_from_platform")
+    @patch("nmp.customization_common.tasks.model_entity.run.client_from_platform")
     def test_creates_adapter_for_lora(self, mock_cfp) -> None:
         from nmp.customization_common.schemas.file_io import FileSetRef
         from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig, PEFTConfig
@@ -213,7 +213,7 @@ class TestCreateAdapter:
         sdk.models.adapters.create.assert_called_once()
         assert deploy_target is base_me
 
-    @patch("nmp.unsloth.tasks.model_entity.run.client_from_platform")
+    @patch("nmp.customization_common.tasks.model_entity.run.client_from_platform")
     def test_adapter_conflict_falls_back_to_update(self, mock_cfp) -> None:
         from nmp.customization_common.schemas.file_io import FileSetRef
         from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig, PEFTConfig

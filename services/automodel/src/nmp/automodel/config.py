@@ -13,7 +13,7 @@ class AutomodelConfig(create_service_config_class("automodel")):  # type: ignore
     image_registry: str | None = Field(
         default=None,
         description=(
-            "Registry host/path prefix for nmp-automodel-tasks and nmp-automodel-training. "
+            "Registry host/path prefix for nmp-customizer-tasks and nmp-automodel-training. "
             "Override via NMP_AUTOMODEL_IMAGE_REGISTRY for other environments, defaults to the platform's image registry."
         ),
     )

@@ -2,18 +2,18 @@
 
 All Automodel Docker build files live under **`docker/automodel/`** (wheel vendor script: `docker/base/build-ffmpeg-vendor.sh`).
 
-Three images for the **nmp-automodel** customization backend. Published as flat repo names under **`my-registry/nemo-platform-dev/nmp-automodel-*`** (no nested `nmp/...` path — some registries reject that on push).
+Two images for the **nmp-automodel** customization backend, plus the shared **`nmp-customizer-tasks`** CPU image used by all customization backends. Published as flat repo names under **`my-registry/nemo-platform-dev/nmp-*`** (no nested `nmp/...` path — some registries reject that on push).
 
 | Image | Dockerfile | Role |
 |-------|------------|------|
 | `nmp-automodel-base` | `docker/automodel/Dockerfile.nmp-automodel-base` | PyTorch 26.05 + Automodel + `mamba-ssm` / `causal-conv1d` wheels |
-| `nmp-automodel-tasks` | `docker/automodel/Dockerfile.nmp-automodel-tasks` | Platform task glue (`file_io`, `model_entity`, `model_spec`); GPU-capable base |
+| `nmp-customizer-tasks` | `docker/Dockerfile.nmp-customizer-tasks` | Shared CPU tasks (`file_io`, `model_entity`, `model_spec`, LoRA sidecar) |
 | `nmp-automodel-training` | `docker/automodel/Dockerfile.nmp-automodel-training` | Training step (`nmp.automodel.tasks.training`) |
 
 Full references (default tag `local`):
 
 - `my-registry/nemo-platform-dev/nmp-automodel-base:local`
-- `my-registry/nemo-platform-dev/nmp-automodel-tasks:local`
+- `my-registry/nemo-platform-dev/nmp-customizer-tasks:local`
 - `my-registry/nemo-platform-dev/nmp-automodel-training:local`
 
 Bake file: **`docker-bake.hcl`** at the Platform repo root (`context = "."`). Run all commands from the Platform repo root.
@@ -103,4 +103,4 @@ docker run --rm $NMP_AUTOMODEL_TASKS_IMAGE
 docker run --rm $NMP_AUTOMODEL_TASKS_IMAGE -m nmp.automodel.tasks --list
 ```
 
-The job compiler resolves `nmp-automodel-tasks` and `nmp-automodel-training` under `NMP_AUTOMODEL_IMAGE_REGISTRY` (default `my-registry/nemo-platform-dev`). See `nmp.automodel.images`.
+The job compiler resolves `nmp-customizer-tasks` and `nmp-automodel-training` under `NMP_AUTOMODEL_IMAGE_REGISTRY` (default `my-registry/nemo-platform-dev`). See `nmp.automodel.images`.
