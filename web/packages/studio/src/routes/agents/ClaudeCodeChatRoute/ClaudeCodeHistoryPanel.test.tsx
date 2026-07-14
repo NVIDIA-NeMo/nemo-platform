@@ -240,7 +240,7 @@ describe('ClaudeCodeHistoryPanel', () => {
       <ClaudeCodeHistoryPanel
         activeSessionId="session-1"
         artifacts={{
-          selections: [{ label: 'Environment', value: ' ' }],
+          selections: [],
           files: [],
           links: [],
           jobs: [{ name: 'agent-eval-1' }],
@@ -255,6 +255,26 @@ describe('ClaudeCodeHistoryPanel', () => {
     expect(screen.getByText('Jobs')).toBeInTheDocument();
     expect(screen.getByText('Tools')).toBeInTheDocument();
     expect(screen.getAllByRole('separator')).toHaveLength(1);
+  });
+
+  it('ignores selections with whitespace-only values', () => {
+    render(
+      <ClaudeCodeHistoryPanel
+        activeSessionId="session-1"
+        artifacts={{
+          selections: [{ label: 'Environment', value: ' ' }],
+          files: [],
+          links: [],
+          jobs: [],
+          tools: [],
+        }}
+        onNewChat={vi.fn()}
+        onSelectSession={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText('Selections')).not.toBeInTheDocument();
+    expect(screen.getByText('No artifacts yet')).toBeInTheDocument();
   });
 
   it('lists Claude Code skills in the expanded skills block', async () => {
