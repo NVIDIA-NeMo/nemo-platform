@@ -16,7 +16,10 @@ export const FloatingPanel = ({ children, onOpenChange, open, title }: FloatingP
   const actionLabel = `${open ? 'Collapse' : 'Expand'} ${title}`;
 
   return (
-    <section className="shrink-0 overflow-hidden rounded border border-base bg-surface-base dark:bg-surface-raised">
+    <section
+      aria-label={title}
+      className={`overflow-hidden rounded border border-base bg-surface-base dark:bg-surface-raised ${open ? 'flex min-h-0 flex-1 flex-col' : 'shrink-0'}`}
+    >
       <button
         aria-expanded={open}
         aria-label={actionLabel}
@@ -31,7 +34,9 @@ export const FloatingPanel = ({ children, onOpenChange, open, title }: FloatingP
         />
       </button>
       {open && (
-        <div className="flex max-h-96 min-h-0 flex-col border-t border-base">{children}</div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-base">
+          {children}
+        </div>
       )}
     </section>
   );

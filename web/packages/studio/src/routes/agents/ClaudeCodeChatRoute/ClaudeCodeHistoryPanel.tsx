@@ -8,9 +8,12 @@ import { HistoryPanelContents } from '@studio/routes/agents/ClaudeCodeChatRoute/
 import { SkillsPanelContents } from '@studio/routes/agents/ClaudeCodeChatRoute/historyPanel/SkillsPanelContents';
 import type { ClaudeCodeHistoryPanelProps } from '@studio/routes/agents/ClaudeCodeChatRoute/historyPanel/types';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
-import { CLAUDE_CODE_HISTORY_OPEN_KEY } from '@studio/util/localStorage';
+import {
+  CLAUDE_CODE_HISTORY_OPEN_KEY,
+  CLAUDE_CODE_OPEN_FLOATING_PANEL_KEY,
+} from '@studio/util/localStorage';
 import { PanelRightClose, PanelRightOpen } from 'lucide-react';
-import { type FC, useState } from 'react';
+import { type FC } from 'react';
 
 type OpenFloatingPanel = 'history' | 'skills';
 
@@ -19,9 +22,17 @@ export const ClaudeCodeHistoryPanel: FC<ClaudeCodeHistoryPanelProps> = ({
   ...props
 }) => {
   const [historyOpen, setHistoryOpen] = useLocalStorage(CLAUDE_CODE_HISTORY_OPEN_KEY, 'true');
-  const [openFloatingPanel, setOpenFloatingPanel] = useState<OpenFloatingPanel>();
+  const [openFloatingPanel, setOpenFloatingPanel, clearOpenFloatingPanel] =
+    useLocalStorage<OpenFloatingPanel>(CLAUDE_CODE_OPEN_FLOATING_PANEL_KEY);
   const isOpen = historyOpen !== 'false';
   const toggleLabel = isOpen ? 'Collapse Claude history' : 'Expand Claude history';
+  const handleFloatingPanelOpenChange = (panel: OpenFloatingPanel, open: boolean) => {
+    if (open) {
+      setOpenFloatingPanel(panel);
+      return;
+    }
+    clearOpenFloatingPanel();
+  };
 
   if (!isOpen) {
     return (
@@ -67,15 +78,15 @@ export const ClaudeCodeHistoryPanel: FC<ClaudeCodeHistoryPanelProps> = ({
       )}
       <FloatingPanel
         open={openFloatingPanel === 'history'}
-        title="Chat history"
-        onOpenChange={(open) => setOpenFloatingPanel(open ? 'history' : undefined)}
+        title="All Chats"
+        onOpenChange={(open) => handleFloatingPanelOpenChange('history', open)}
       >
         <HistoryPanelContents {...props} />
       </FloatingPanel>
       <FloatingPanel
         open={openFloatingPanel === 'skills'}
         title="Skills"
-        onOpenChange={(open) => setOpenFloatingPanel(open ? 'skills' : undefined)}
+        onOpenChange={(open) => handleFloatingPanelOpenChange('skills', open)}
       >
         <SkillsPanelContents />
       </FloatingPanel>

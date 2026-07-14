@@ -45,7 +45,7 @@ describe('ClaudeCodeHistoryPanel', () => {
       />
     );
 
-    const historyButton = screen.getByRole('button', { name: 'Expand Chat history' });
+    const historyButton = screen.getByRole('button', { name: 'Expand All Chats' });
     const skillsButton = screen.getByRole('button', { name: 'Expand Skills' });
     expect(historyButton).toHaveAttribute('aria-expanded', 'false');
     expect(skillsButton).toHaveAttribute('aria-expanded', 'false');
@@ -53,16 +53,18 @@ describe('ClaudeCodeHistoryPanel', () => {
 
     await user.click(historyButton);
 
-    expect(screen.getByRole('button', { name: 'Collapse Chat history' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'Collapse All Chats' })).toHaveAttribute(
       'aria-expanded',
       'true'
     );
     expect(skillsButton).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByRole('button', { name: 'New chat' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'All Chats' })).toHaveClass('min-h-0', 'flex-1');
+    expect(screen.getByRole('region', { name: 'Skills' })).toHaveClass('shrink-0');
 
     await user.click(skillsButton);
 
-    expect(screen.getByRole('button', { name: 'Expand Chat history' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'Expand All Chats' })).toHaveAttribute(
       'aria-expanded',
       'false'
     );
@@ -96,7 +98,7 @@ describe('ClaudeCodeHistoryPanel', () => {
       },
     ]);
 
-    render(
+    const { unmount } = render(
       <ClaudeCodeHistoryPanel
         activeSessionId="session-1"
         onNewChat={onNewChat}
@@ -104,7 +106,7 @@ describe('ClaudeCodeHistoryPanel', () => {
       />
     );
 
-    await user.click(screen.getByRole('button', { name: 'Expand Chat history' }));
+    await user.click(screen.getByRole('button', { name: 'Expand All Chats' }));
 
     expect(await screen.findByText('Review the latest agent work')).toBeInTheDocument();
     expect(screen.getByText('Bash')).toBeInTheDocument();
@@ -114,6 +116,20 @@ describe('ClaudeCodeHistoryPanel', () => {
 
     await user.click(screen.getByRole('button', { name: /Review the latest agent work/ }));
     expect(onSelectSession).toHaveBeenCalledWith('session-1');
+
+    unmount();
+    render(
+      <ClaudeCodeHistoryPanel
+        activeSessionId="session-1"
+        onNewChat={onNewChat}
+        onSelectSession={onSelectSession}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: 'Collapse All Chats' })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
   });
 
   it('shows the summarized title while preserving the full first prompt in the tooltip', async () => {
@@ -147,7 +163,7 @@ describe('ClaudeCodeHistoryPanel', () => {
       />
     );
 
-    await user.click(screen.getByRole('button', { name: 'Expand Chat history' }));
+    await user.click(screen.getByRole('button', { name: 'Expand All Chats' }));
 
     const sessionButton = await screen.findByRole('button', {
       name: 'Create Spam Detector Agent now',
