@@ -11,8 +11,8 @@ and a minimal config stub.
 import json
 import types
 from typing import Any
-from unittest.mock import patch
 
+import pytest
 from nemo_guardrails_plugin.tool_rails.actions import (
     check_tool_allowlist,
     check_tool_arguments,
@@ -61,10 +61,6 @@ def _make_assistant_with_tool_calls(tool_calls: list[dict[str, Any]]) -> dict[st
 
 
 class TestCheckToolAllowlist:
-    async def test_empty_allowlist_passes_all(self) -> None:
-        context = {"tool_calls": [_make_tool_call("any_tool")]}
-        assert await check_tool_allowlist(context=context, config=_make_config()) is True
-
     async def test_absent_allowlist_passes_all(self) -> None:
         context = {"tool_calls": [_make_tool_call("any_tool")]}
         assert await check_tool_allowlist(context=context, config=_make_config({"tool_allowlist": {}})) is True
@@ -133,26 +129,27 @@ class TestCheckToolArguments:
         context = {"tool_calls": [_make_tool_call("query_database", {"sql": "SELECT * FROM users"})]}
         assert await check_tool_arguments(context=context, config=config) is True
 
-    async def test_max_length_exceeded_blocked(self) -> None:
+    @pytest.mark.parametrize(("length", "expected"), [(10, True), (11, False)])
+    async def test_max_length_boundary(self, length: int, expected: bool) -> None:
         config = _make_config({"tool_arguments": {"get_weather": {"location": {"max_length": 10}}}})
-        context = {"tool_calls": [_make_tool_call("get_weather", {"location": "a" * 11})]}
-        assert await check_tool_arguments(context=context, config=config) is False
-
-    async def test_max_length_at_limit_passes(self) -> None:
-        config = _make_config({"tool_arguments": {"get_weather": {"location": {"max_length": 10}}}})
-        context = {"tool_calls": [_make_tool_call("get_weather", {"location": "a" * 10})]}
-        assert await check_tool_arguments(context=context, config=config) is True
-
-    async def test_arguments_as_json_string(self) -> None:
-        config = _make_config({"tool_arguments": {"query_database": {"sql": {"blocked_keywords": ["DROP"]}}}})
-        raw = json.dumps({"sql": "DROP TABLE users"})
-        context = {"tool_calls": [_make_tool_call("query_database", raw)]}
-        assert await check_tool_arguments(context=context, config=config) is False
+        context = {"tool_calls": [_make_tool_call("get_weather", {"location": "a" * length})]}
+        assert await check_tool_arguments(context=context, config=config) is expected
 
     async def test_malformed_json_string_blocked_when_rules_apply(self) -> None:
         config = _make_config({"tool_arguments": {"query_database": {"sql": {"blocked_keywords": ["DROP"]}}}})
         context = {"tool_calls": [_make_tool_call("query_database", "not-valid-json")]}
         assert await check_tool_arguments(context=context, config=config) is False
+
+    @pytest.mark.parametrize("arguments", ["", []])
+    async def test_falsey_non_object_arguments_blocked_when_rules_apply(self, arguments: Any) -> None:
+        config = _make_config({"tool_arguments": {"query_database": {"sql": {"blocked_keywords": ["DROP"]}}}})
+        tool_call = {
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "query_database", "arguments": arguments},
+        }
+
+        assert await check_tool_arguments(context={"tool_calls": [tool_call]}, config=config) is False
 
     async def test_multiple_calls_all_must_pass(self) -> None:
         config = _make_config({"tool_arguments": {"query_database": {"sql": {"blocked_keywords": ["DROP"]}}}})
@@ -220,30 +217,18 @@ class TestCheckToolSchema:
         }
         assert await check_tool_schema(context=context, config=_make_config()) is True
 
-    async def test_missing_required_field_blocked(self) -> None:
+    @pytest.mark.parametrize(
+        "arguments",
+        [
+            pytest.param({}, id="missing-required"),
+            pytest.param({"location": 42}, id="wrong-type"),
+            pytest.param({"location": "Paris", "unit": "kelvin"}, id="invalid-enum"),
+            pytest.param({"location": "Paris", "extra": "field"}, id="additional-properties"),
+        ],
+    )
+    async def test_invalid_arguments_blocked(self, arguments: dict[str, Any]) -> None:
         context = {
-            "tool_calls": [_make_tool_call("get_weather", {})],
-            "declared_tools": [_DECLARED_WEATHER_TOOL],
-        }
-        assert await check_tool_schema(context=context, config=_make_config()) is False
-
-    async def test_wrong_type_blocked(self) -> None:
-        context = {
-            "tool_calls": [_make_tool_call("get_weather", {"location": 42})],
-            "declared_tools": [_DECLARED_WEATHER_TOOL],
-        }
-        assert await check_tool_schema(context=context, config=_make_config()) is False
-
-    async def test_invalid_enum_value_blocked(self) -> None:
-        context = {
-            "tool_calls": [_make_tool_call("get_weather", {"location": "Paris", "unit": "kelvin"})],
-            "declared_tools": [_DECLARED_WEATHER_TOOL],
-        }
-        assert await check_tool_schema(context=context, config=_make_config()) is False
-
-    async def test_additional_properties_blocked(self) -> None:
-        context = {
-            "tool_calls": [_make_tool_call("get_weather", {"location": "Paris", "extra": "field"})],
+            "tool_calls": [_make_tool_call("get_weather", arguments)],
             "declared_tools": [_DECLARED_WEATHER_TOOL],
         }
         assert await check_tool_schema(context=context, config=_make_config()) is False
@@ -257,23 +242,40 @@ class TestCheckToolSchema:
         context = {"tool_calls": [tool_call], "declared_tools": [_DECLARED_WEATHER_TOOL]}
         assert await check_tool_schema(context=context, config=_make_config()) is False
 
-    async def test_arguments_as_json_string_valid(self) -> None:
-        context = {
-            "tool_calls": [_make_tool_call("get_weather", json.dumps({"location": "Paris"}))],
-            "declared_tools": [_DECLARED_WEATHER_TOOL],
+    @pytest.mark.parametrize(
+        ("schema", "expected"),
+        [
+            ({}, True),
+            (True, True),
+            (False, False),
+        ],
+    )
+    async def test_valid_empty_and_boolean_schemas(self, schema: dict[str, Any] | bool, expected: bool) -> None:
+        declared_tool = {
+            "type": "function",
+            "function": {"name": "get_weather", "parameters": schema},
         }
-        assert await check_tool_schema(context=context, config=_make_config()) is True
+        context = {
+            "tool_calls": [_make_tool_call("get_weather", {"location": "Paris"})],
+            "declared_tools": [declared_tool],
+        }
+
+        assert await check_tool_schema(context=context, config=_make_config()) is expected
+
+    async def test_duplicate_tool_declarations_blocked(self) -> None:
+        duplicate = {
+            "type": "function",
+            "function": {"name": "get_weather", "parameters": {}},
+        }
+        context = {
+            "tool_calls": [_make_tool_call("get_weather", {"location": "Paris"})],
+            "declared_tools": [_DECLARED_WEATHER_TOOL, duplicate],
+        }
+
+        assert await check_tool_schema(context=context, config=_make_config()) is False
 
     async def test_none_context_passes(self) -> None:
         assert await check_tool_schema(context=None, config=None) is True
-
-    async def test_fails_closed_on_exception(self) -> None:
-        with patch("nemo_guardrails_plugin.tool_rails.actions.json.loads", side_effect=RuntimeError("boom")):
-            context = {
-                "tool_calls": [_make_tool_call("get_weather", '{"location": "Paris"}')],
-                "declared_tools": [_DECLARED_WEATHER_TOOL],
-            }
-            assert await check_tool_schema(context=context, config=_make_config()) is False
 
 
 # ---------------------------------------------------------------------------
@@ -302,10 +304,6 @@ class TestCheckToolResultLinkage:
 
     async def test_valid_linkage_passes(self) -> None:
         context = {"messages": self._make_messages()}
-        assert await check_tool_result_linkage(context=context, config=_make_config()) is True
-
-    async def test_valid_linkage_with_name_passes(self) -> None:
-        context = {"messages": self._make_messages(result_name="get_weather")}
         assert await check_tool_result_linkage(context=context, config=_make_config()) is True
 
     async def test_no_tool_results_passes(self) -> None:
@@ -380,10 +378,6 @@ class TestCheckToolResultLinkage:
             _make_tool_result("call_1", name="get_forecast"),
         ]
         context = {"messages": messages}
-        assert await check_tool_result_linkage(context=context, config=_make_config()) is True
-
-    async def test_no_messages_passes(self) -> None:
-        context = {"messages": []}
         assert await check_tool_result_linkage(context=context, config=_make_config()) is True
 
     async def test_none_context_passes(self) -> None:

@@ -10,37 +10,68 @@ per GuardrailConfig without writing custom Colang.
 
 import json
 import logging
+from typing import Any
 
+import jsonschema
 from nemoguardrails.actions import action
 from nemoguardrails.rails.llm.config import RailsConfig
 
 logger = logging.getLogger(__name__)
 
+_MISSING = object()
 
-def _context_data(context: dict | None) -> dict:
+
+def _context_data(context: dict[str, Any] | None) -> dict[str, Any]:
     return context or {}
 
 
-def _custom_data(config: RailsConfig | None) -> dict:
+def _custom_data(config: RailsConfig | None) -> dict[str, Any]:
     return (config.custom_data if config else None) or {}
 
 
-def _tool_calls(context: dict | None) -> list[dict]:
-    return _context_data(context).get("tool_calls") or []
+def _tool_calls(context: dict[str, Any] | None) -> list[dict[str, Any]]:
+    tool_calls = _context_data(context).get("tool_calls")
+    if tool_calls is None:
+        return []
+    if not isinstance(tool_calls, list) or not all(isinstance(tool_call, dict) for tool_call in tool_calls):
+        raise ValueError("context.tool_calls must be a list of objects")
+    return tool_calls
 
 
-def _tool_name(tool_call: dict) -> str:
-    return tool_call.get("function", {}).get("name", "")
+def _tool_name(tool_call: dict[str, Any]) -> str:
+    function = tool_call.get("function")
+    if not isinstance(function, dict):
+        return ""
+    name = function.get("name")
+    return name if isinstance(name, str) else ""
 
 
-def _parse_tool_arguments(tool_call: dict, *, action_name: str) -> dict | None:
+def _tool_names_from_context(context: dict[str, Any] | None) -> list[str]:
+    tool_calls = _tool_calls(context)
+    if tool_calls:
+        return [_tool_name(tool_call) for tool_call in tool_calls]
+
+    tool_name = _context_data(context).get("tool_name")
+    if tool_name is None:
+        return []
+    if not isinstance(tool_name, str):
+        raise ValueError("context.tool_name must be a string")
+    return [tool_name]
+
+
+def _parse_tool_arguments(tool_call: dict[str, Any], *, action_name: str) -> dict[str, Any] | None:
     """Return OpenAI tool-call arguments as a dict, or None when invalid.
 
     Tool-call arguments can arrive as either an already-decoded object or a JSON
     string. The tool rails only support object arguments, so malformed JSON,
     arrays, scalars, and other shapes fail closed.
     """
-    raw_args = tool_call.get("function", {}).get("arguments") or {}
+    function = tool_call.get("function")
+    if not isinstance(function, dict):
+        logger.warning("%s: missing function object; blocking", action_name)
+        return None
+
+    raw_args = function.get("arguments", {})
     if isinstance(raw_args, str):
         try:
             parsed_args = json.loads(raw_args)
@@ -61,15 +92,44 @@ def _parse_tool_arguments(tool_call: dict, *, action_name: str) -> dict | None:
     return raw_args
 
 
-def _tool_schema_by_name(declared_tools: list[dict]) -> dict[str, dict]:
-    return {
-        tool["function"]["name"]: tool["function"]["parameters"]
-        for tool in declared_tools
-        if tool.get("function", {}).get("name") and tool.get("function", {}).get("parameters")
-    }
+def _tool_schemas_by_name(declared_tools: list[dict[str, Any]]) -> dict[str, dict[str, Any] | bool]:
+    """Index declared schemas, rejecting duplicate tool declarations."""
+    schemas: dict[str, dict[str, Any] | bool] = {}
+    for tool in declared_tools:
+        function = tool.get("function")
+        if not isinstance(function, dict):
+            continue
+
+        name = function.get("name")
+        schema = function.get("parameters", _MISSING)
+        if not isinstance(name, str) or not name or schema is _MISSING:
+            continue
+        if name in schemas:
+            raise ValueError(f"duplicate declaration for tool {name!r}")
+
+        schemas[name] = schema
+    return schemas
 
 
-def _validate_tool_result_exchange(prior_calls_by_id: dict[str, dict], tool_results: list[dict]) -> bool:
+def _argument_violation(value: Any, rules: dict[str, Any]) -> str | None:
+    """Return the violated rule name, if any."""
+    text = str(value)
+    blocked_keywords = rules.get("blocked_keywords") or []
+    normalized_text = text.casefold()
+    if any(keyword.casefold() in normalized_text for keyword in blocked_keywords):
+        return "blocked_keywords"
+
+    max_length = rules.get("max_length")
+    if max_length is not None and len(text) > max_length:
+        return "max_length"
+
+    return None
+
+
+def _validate_tool_result_exchange(
+    prior_calls_by_id: dict[str, dict[str, Any]],
+    tool_results: list[dict[str, Any]],
+) -> bool:
     """Validate one assistant tool-call exchange and its following tool results.
 
     Each role="tool" result must refer to a distinct tool_call_id from the
@@ -117,7 +177,7 @@ def _validate_tool_result_exchange(prior_calls_by_id: dict[str, dict], tool_resu
 
 @action(is_system_action=True)
 async def check_tool_allowlist(
-    context: dict | None = None,
+    context: dict[str, Any] | None = None,
     config: RailsConfig | None = None,
 ) -> bool:
     """Block tool calls whose name is not on the configured allowlist.
@@ -133,37 +193,21 @@ async def check_tool_allowlist(
     }
     """
     try:
-        context_data = _context_data(context)
-        tool_calls = _tool_calls(context)
         custom_data = _custom_data(config)
         allowed_tools = custom_data.get("tool_allowlist", {}).get("allowed_tools") or []
 
         if not allowed_tools:
             return True
 
-        # tool_output context: tool_calls list set by process_bot_tool_call flow
-        if tool_calls:
-            tool_names = [_tool_name(tc) for tc in tool_calls]
-            result = all(name in allowed_tools for name in tool_names)
-            logger.debug(
-                "check_tool_allowlist: tool_names=%s allowed_tools=%s result=%s",
-                tool_names,
-                allowed_tools,
-                result,
-            )
-            return result
-        # tool_input context: process_user_tool_messages sets $tool_name per iteration
-        tool_name = context_data.get("tool_name")
-        if tool_name is not None:
-            result = tool_name in allowed_tools
-            logger.debug(
-                "check_tool_allowlist: tool_name=%s allowed_tools=%s result=%s",
-                tool_name,
-                allowed_tools,
-                result,
-            )
-            return result
-        return True
+        tool_names = _tool_names_from_context(context)
+        result = all(name in allowed_tools for name in tool_names)
+        logger.debug(
+            "check_tool_allowlist: tool_names=%s allowed_tools=%s result=%s",
+            tool_names,
+            allowed_tools,
+            result,
+        )
+        return result
     except Exception:
         logger.exception("check_tool_allowlist failed unexpectedly; blocking")
         return False
@@ -171,7 +215,7 @@ async def check_tool_allowlist(
 
 @action(is_system_action=True)
 async def check_tool_arguments(
-    context: dict | None = None,
+    context: dict[str, Any] | None = None,
     config: RailsConfig | None = None,
 ) -> bool:
     """Block tool calls whose arguments violate per-tool rules.
@@ -209,25 +253,14 @@ async def check_tool_arguments(
                 return False
 
             for arg_name, arg_rules in tool_rules.items():
-                value = str(args.get(arg_name, ""))
-                blocked = [kw.upper() for kw in (arg_rules.get("blocked_keywords") or [])]
-                if any(kw in value.upper() for kw in blocked):
+                value = args.get(arg_name, "")
+                if violation := _argument_violation(value, arg_rules):
                     logger.debug(
-                        "check_tool_arguments: blocking tool=%s argument=%s value=%r blocked_keywords=%s",
+                        "check_tool_arguments: blocking tool=%s argument=%s rule=%s value=%r",
                         name,
                         arg_name,
+                        violation,
                         value,
-                        arg_rules.get("blocked_keywords") or [],
-                    )
-                    return False
-                max_length = arg_rules.get("max_length")
-                if max_length is not None and len(value) > max_length:
-                    logger.debug(
-                        "check_tool_arguments: blocking tool=%s argument=%s value_length=%s max_length=%s",
-                        name,
-                        arg_name,
-                        len(value),
-                        max_length,
                     )
                     return False
 
@@ -243,7 +276,7 @@ async def check_tool_arguments(
 
 @action(is_system_action=True)
 async def check_tool_schema(
-    context: dict | None = None,
+    context: dict[str, Any] | None = None,
     config: RailsConfig | None = None,
 ) -> bool:
     """Validate tool call arguments against the tool's declared JSON Schema.
@@ -259,8 +292,6 @@ async def check_tool_schema(
     }
     """
     try:
-        import jsonschema
-
         context_data = _context_data(context)
         tool_calls = _tool_calls(context)
         declared_tools = context_data.get("declared_tools") or []
@@ -271,22 +302,30 @@ async def check_tool_schema(
             logger.warning("check_tool_schema: tool calls present but request declared no tools; blocking")
             return False
 
-        schema_by_name = _tool_schema_by_name(declared_tools)
+        if not isinstance(declared_tools, list) or not all(isinstance(tool, dict) for tool in declared_tools):
+            logger.warning("check_tool_schema: declared_tools must be a list of objects; blocking")
+            return False
+
+        try:
+            schema_by_name = _tool_schemas_by_name(declared_tools)
+        except ValueError as exc:
+            logger.warning("check_tool_schema: %s; blocking", exc)
+            return False
 
         for tc in tool_calls:
             name = _tool_name(tc)
-            schema = schema_by_name.get(name)
-            if not schema:
+            if name not in schema_by_name:
                 logger.warning("check_tool_schema: no declared schema for tool %r; blocking", name)
                 return False
 
+            schema = schema_by_name[name]
             args = _parse_tool_arguments(tc, action_name="check_tool_schema")
             if args is None:
                 return False
 
             try:
                 jsonschema.validate(instance=args, schema=schema)
-            except jsonschema.ValidationError as exc:
+            except (jsonschema.SchemaError, jsonschema.ValidationError) as exc:
                 logger.debug("check_tool_schema: argument validation failed for tool %r: %s", name, exc.message)
                 return False
 
@@ -302,7 +341,7 @@ async def check_tool_schema(
 
 @action(is_system_action=True)
 async def check_tool_result_linkage(
-    context: dict | None = None,
+    context: dict[str, Any] | None = None,
     config: RailsConfig | None = None,
 ) -> bool:
     """Validate that each role:'tool' result links back to a real prior tool call.
@@ -324,8 +363,8 @@ async def check_tool_result_linkage(
     try:
         messages = _context_data(context).get("messages") or []
 
-        current_calls_by_id: dict[str, dict] = {}
-        current_results: list[dict] = []
+        current_calls_by_id: dict[str, dict[str, Any]] = {}  # Calls from the current assistant turn.
+        current_results: list[dict[str, Any]] = []  # Results to validate against those calls.
 
         for message in messages:
             role = message.get("role")

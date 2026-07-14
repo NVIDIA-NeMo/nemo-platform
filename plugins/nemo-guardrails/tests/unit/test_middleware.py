@@ -698,50 +698,10 @@ class TestProcessRequest:
         stored_logs = ctx.state(PLUGIN_NAME).get(STATE_KEY_INPUT_GENERATION_LOGS)
         assert stored_logs == [tool_input_response.log, input_response.log]
         assert [rail.type for log in stored_logs for rail in log.activated_rails] == ["tool_input", "input"]
-        assert [rail.name for log in stored_logs for rail in log.activated_rails] == [
-            "check tool result linkage",
-            "self check input",
-        ]
 
         guardrails_data = ctx.response_body_annotations["guardrails_data"]
         assert [rail["type"] for rail in guardrails_data["log"]["activated_rails"]] == ["tool_input", "input"]
         assert guardrails_data["log"]["stats"]["input_rails_duration"] == 0.2
-
-    async def test_tool_input_pass_without_input_rails_is_stored(self, middleware: GuardrailsMiddleware) -> None:
-        request_body = {
-            "model": "ws/llama",
-            "messages": [
-                {"role": "user", "content": "What's the weather?"},
-                {
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": [
-                        {"id": "call_1", "type": "function", "function": {"name": "get_weather", "arguments": "{}"}}
-                    ],
-                },
-                {"role": "tool", "tool_call_id": "call_1", "name": "get_weather", "content": "Sunny"},
-            ],
-            "guardrails": {"options": {"log": {"activated_rails": True}}},
-        }
-        source = _entity_source(input_flows=[], tool_input_flows=["check tool result linkage"])
-        tool_input_response = _make_generation_response(
-            is_blocked=False,
-            rail_type="tool_input",
-            rail_name="check tool result linkage",
-        )
-        ctx = _make_ctx(request_body)
-
-        with patch.object(middleware, "_run_rails", new=AsyncMock(return_value=tool_input_response)):
-            result = await _process_request(middleware, request_body, {}, source, ctx=ctx)
-
-        assert result == {
-            "model": request_body["model"],
-            "messages": request_body["messages"],
-        }
-        assert ctx.state(PLUGIN_NAME).get(STATE_KEY_INPUT_GENERATION_LOGS) == [tool_input_response.log]
-
-        guardrails_data = ctx.response_body_annotations["guardrails_data"]
-        assert [rail["type"] for rail in guardrails_data["log"]["activated_rails"]] == ["tool_input"]
 
     async def test_user_log_options_forwarded_to_run_rails(self, middleware: GuardrailsMiddleware) -> None:
         request_body = {

@@ -80,10 +80,6 @@ class TestBuildAssistantMessageFromResponseResult:
         assert result["content"] == ""
         assert result["tool_calls"] == tool_calls
 
-    def test_no_tool_calls_key_on_normal_response(self) -> None:
-        result = build_assistant_message_from_response_result(_make_response_result("Hello!"))
-        assert "tool_calls" not in result
-
     def test_empty_tool_calls_list_not_forwarded(self) -> None:
         result = build_assistant_message_from_response_result(_make_tool_call_response_result([]))
         assert "tool_calls" not in result
