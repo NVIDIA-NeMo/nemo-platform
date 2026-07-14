@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""`testbed` — a test runner for the optimization loop (maintainer tooling).
+"""`testbed` — a test runner for the insights analysis workflow (maintainer tooling).
 
     uv run python -m testbed list
     uv run python -m testbed doctor [<name>]

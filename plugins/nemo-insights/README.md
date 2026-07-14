@@ -51,7 +51,7 @@ export NEMO_INSIGHTS_ANALYST_TIMEZONE=America/Denver
 ## Development
 
 ```bash
-uv run pytest plugins/nemo-insights/tests
+uv run --group insights pytest plugins/nemo-insights/tests
 uv run ruff check plugins/nemo-insights
 ```
 
