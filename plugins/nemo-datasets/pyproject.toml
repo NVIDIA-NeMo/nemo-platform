@@ -12,7 +12,7 @@ dependencies = [
 version = "0.1.0"
 
 [tool.uv.sources]
-nemo-platform-plugin = { path = "../../packages/nemo_platform_plugin", editable = true }
+nemo-platform-plugin = { workspace = true }
 
 [project.entry-points."nemo.cli"]
 datasets = "nemo_datasets_plugin.cli:DatasetsCLI"

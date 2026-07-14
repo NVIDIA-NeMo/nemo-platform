@@ -18,6 +18,13 @@ class DatasetsCLI(NemoCLI):
     def get_cli(self) -> typer.Typer:
         app = typer.Typer(help="Dataset profiling commands.")
 
+        @app.callback()
+        def _root() -> None:
+            """Dataset profiling commands."""
+            # A no-op callback keeps ``profile`` an explicit subcommand (``nemo datasets profile
+            # <path>``) instead of Typer collapsing the lone command into ``nemo datasets <path>``,
+            # which would break the moment a second command is added.
+
         @app.command()
         def profile(
             path: str = typer.Argument(..., help="Path to a local directory of dataset files."),
