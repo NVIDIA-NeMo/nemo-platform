@@ -3,6 +3,7 @@
 
 import SafeSynthesizerLogo from '@nemo/common/src/svgs/safe_synthesizer_logo.svg?react';
 import { NavigationDrawer } from '@studio/components/Layouts/NavigationDrawer';
+import { DataDesignerIconFc } from '@studio/constants/constants';
 import {
   AGENTS_ENABLED,
   BASE_MODELS_ENABLED,
@@ -50,7 +51,6 @@ import {
   ChartBar,
   Database,
   HatGlasses,
-  LayoutList,
   ListChecks,
   Home,
   ShieldCheck,
@@ -150,7 +150,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
       ? [
           {
             id: 'data-designer',
-            slotIcon: <LayoutList className={iconColorClass} />,
+            slotIcon: <DataDesignerIconFc className={iconColorClass} />,
             slotLabel: 'Data Designer',
             href: getDataDesignerJobListRoute(workspace),
           },

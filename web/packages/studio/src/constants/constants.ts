@@ -10,6 +10,8 @@
  * its affiliates is strictly prohibited.
  */
 
+import { Palette } from 'lucide-react';
+
 export const CHAT_DEFAULT_MAX_TOKENS = 4096;
 export const DEFAULT_LARGE_PAGE_SIZE = 1000;
 export const DATASET_NAME_REGEX = /^[a-zA-Z0-9._-]+$/;
@@ -77,3 +79,5 @@ export const KNOWN_TEXT_EXTENSIONS = new Set([
   'dockerfile',
   'makefile',
 ]);
+
+export const DataDesignerIconFc = Palette;
