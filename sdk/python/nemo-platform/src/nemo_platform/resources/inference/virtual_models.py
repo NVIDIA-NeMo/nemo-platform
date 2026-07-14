@@ -33,9 +33,14 @@ from ..._response import (
 )
 from ...pagination import SyncDefaultPagination, AsyncDefaultPagination
 from ..._base_client import AsyncPaginator, make_request_options
-from ...types.inference import virtual_model_list_params, virtual_model_patch_params, virtual_model_create_params
+from ...types.inference import (
+    virtual_model_list_params,
+    virtual_model_patch_params,
+    virtual_model_create_params,
+)
 from ...types.inference.virtual_model import VirtualModel
 from ...types.inference.middleware_call_param import MiddlewareCallParam
+from ...types.inference.virtual_model_filter_param import VirtualModelFilterParam
 from ...types.inference.virtual_model_inference_config_param import VirtualModelInferenceConfigParam
 from ..._exceptions import ConflictError
 
@@ -208,6 +213,8 @@ class VirtualModelsResource(SyncAPIResource):
         self,
         *,
         workspace: str | None = None,
+        exclude_autoprovisioned: bool | Omit = omit,
+        filter: VirtualModelFilterParam | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
         sort: str | Omit = omit,
@@ -224,6 +231,12 @@ class VirtualModelsResource(SyncAPIResource):
         Use `workspace=-` to list across all workspaces accessible to the caller.
 
         Args:
+          exclude_autoprovisioned: When true, controller-managed (autoprovisioned) passthrough VirtualModels are
+              excluded from the results.
+
+          filter: Filter virtual models by workspace, project, name, default_model_entity,
+              created_at, and updated_at.
+
           page: Page number (1-indexed).
 
           page_size: Number of results per page.
@@ -252,6 +265,8 @@ class VirtualModelsResource(SyncAPIResource):
                 timeout=timeout,
                 query=maybe_transform(
                     {
+                        "exclude_autoprovisioned": exclude_autoprovisioned,
+                        "filter": filter,
                         "page": page,
                         "page_size": page_size,
                         "sort": sort,
@@ -568,6 +583,8 @@ class AsyncVirtualModelsResource(AsyncAPIResource):
         self,
         *,
         workspace: str | None = None,
+        exclude_autoprovisioned: bool | Omit = omit,
+        filter: VirtualModelFilterParam | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
         sort: str | Omit = omit,
@@ -584,6 +601,12 @@ class AsyncVirtualModelsResource(AsyncAPIResource):
         Use `workspace=-` to list across all workspaces accessible to the caller.
 
         Args:
+          exclude_autoprovisioned: When true, controller-managed (autoprovisioned) passthrough VirtualModels are
+              excluded from the results.
+
+          filter: Filter virtual models by workspace, project, name, default_model_entity,
+              created_at, and updated_at.
+
           page: Page number (1-indexed).
 
           page_size: Number of results per page.
@@ -612,6 +635,8 @@ class AsyncVirtualModelsResource(AsyncAPIResource):
                 timeout=timeout,
                 query=maybe_transform(
                     {
+                        "exclude_autoprovisioned": exclude_autoprovisioned,
+                        "filter": filter,
                         "page": page,
                         "page_size": page_size,
                         "sort": sort,

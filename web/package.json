@@ -50,6 +50,7 @@
     "lint-staged": "^16.4.0",
     "prettier": "^3.6.2",
     "tsx": "catalog:",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
     "typescript-eslint": "^8.59.0"
   },
   "engines": {

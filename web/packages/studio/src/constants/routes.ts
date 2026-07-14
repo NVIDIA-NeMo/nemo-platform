@@ -89,6 +89,7 @@ export const ROUTES = {
      */
     filesetDetail: `/workspaces/:${P.workspace}/filesets/:${P.filesetName}/detail`,
     inferenceProviders: `/workspaces/:${P.workspace}/inference-providers`,
+    virtualModels: `/workspaces/:${P.workspace}/virtual-models`,
     deploymentConfigs: `/workspaces/:${P.workspace}/deployment-configs`,
     deployments: `/workspaces/:${P.workspace}/deployments`,
     /** Deployments list with details side panel (deployment name + panel segment, e.g. `details`). */

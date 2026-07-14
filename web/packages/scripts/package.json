@@ -10,13 +10,11 @@
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit --noErrorTruncation",
-    "typecheck:go": "tsgo --noEmit --noErrorTruncation",
     "sortEnv": "tsx ./src/sortEnv.ts "
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "@types/yargs": "^17.0.33",
-    "@typescript/native-preview": "catalog:",
     "knip": "^6.6.2",
     "prettier": "^3.2.5",
     "typescript": "catalog:",

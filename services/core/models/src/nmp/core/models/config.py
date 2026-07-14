@@ -8,6 +8,7 @@ from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.common.config import Runtime, create_service_config_class, get_platform_config, get_service_config
 from nmp.core.models.controllers.backends.registry import (
     BackendConfig,
+    DeploymentsPluginBackendConfigModel,
     DockerBackendConfigModel,
     K8sNimOperatorBackendConfigModel,
     NoneBackendConfigModel,
@@ -163,12 +164,14 @@ class ParallelismConfig(BaseModel):
 # Backend and controller configuration
 # -----------------------------------------------------------------------------
 
-BackendName = Literal["docker", "nim_operator"]
+BackendName = Literal["docker", "nim_operator", "deployments_plugin", "none"]
 
-# Map backend names to their config model classes
+# Map backend names to their config model classes.
+# ``none`` is the no-op substrate used when platform.runtime is ``none``.
 BACKEND_CONFIG_MODELS: dict[str, type[BackendConfig]] = {
     "docker": DockerBackendConfigModel,
     "nim_operator": K8sNimOperatorBackendConfigModel,
+    "deployments_plugin": DeploymentsPluginBackendConfigModel,
     "none": NoneBackendConfigModel,
 }
 

@@ -244,3 +244,35 @@ def test_backend_registry_multiple_enabled_backends_raises_error(mock_nmp_sdk):
             backend_configs=config_with_multiple_enabled,
             huggingface_model_puller="nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10",
         )
+
+
+def test_deployments_plugin_missing_package_raises_guidance(mock_nmp_sdk):
+    """Missing nemo-deployments-plugin should surface install guidance."""
+    import builtins
+
+    from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginBackendConfigModel
+    from nmp.core.models.controllers.backends.registry import _resolve_backend_class, backend_classes
+
+    real_import = builtins.__import__
+
+    def mock_import(name: str, *args: object, **kwargs: object) -> object:
+        if name == "nmp.core.models.controllers.backends.deployments_plugin.backend":
+            raise ImportError("No module named 'nemo_deployments_plugin'")
+        return real_import(name, *args, **kwargs)
+
+    with (
+        patch("builtins.__import__", side_effect=mock_import),
+        pytest.raises(ImportError, match="nemo-deployments-plugin"),
+    ):
+        _resolve_backend_class("deployments_plugin", backend_classes)
+
+    # Enabled config path should fail the same way during registry init.
+    with (
+        patch("builtins.__import__", side_effect=mock_import),
+        pytest.raises(ImportError, match="nemo-deployments-plugin"),
+    ):
+        BackendRegistry.from_config(
+            nmp_sdk=mock_nmp_sdk,
+            backend_configs={"deployments_plugin": DeploymentsPluginBackendConfigModel(enabled=True)},
+            huggingface_model_puller="puller:latest",
+        )

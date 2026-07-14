@@ -1,0 +1,6 @@
+# Analyze-mode CI reads each subject's pinned state from here (one PR = one
+# state per subject). A missing entry fails loudly — add the subject after
+# minting its fixture, or pass --state <state-vN> explicitly.
+[subjects]
+tau2-airline = "state-v6"
+nvq = "state-v7"
