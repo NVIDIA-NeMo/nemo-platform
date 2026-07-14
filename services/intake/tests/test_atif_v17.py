@@ -238,7 +238,10 @@ def test_atif_v17_embedded_subagents_expand_recursively_in_the_parent_trace() ->
     review = next(span for span in spans if span.name == "review-agent")
     external_ref = next(span for span in spans if span.name == "subagent-subagents/external-trajectory.json")
 
+    # User messages are compacted into their consuming LLM spans. Stable-ID
+    # tombstones retire rows written by the previous one-span-per-message map.
     assert len(spans) == 12
+    assert len([span for span in spans if span.is_deleted]) == 3
     assert len({span.external_span_id for span in spans}) == len(spans)
     assert {span.trace_id for span in spans} == {"run-123"}
     assert {span.session_id for span in spans} == {"run-123"}
@@ -729,6 +732,93 @@ def test_atif_mapping_marks_trajectory_error_for_own_tool_error() -> None:
     assert root.status == SpanStatus.ERROR
 
 
+def test_atif_mapping_compacts_multi_round_context_into_llm_inputs() -> None:
+    first_observation = {
+        "results": [
+            {
+                "source_call_id": "call-1",
+                "content": "first result",
+            }
+        ]
+    }
+    trajectory = AtifTrajectory.model_validate(
+        {
+            "schema_version": "ATIF-v1.7",
+            "session_id": "multi-round-session",
+            "agent": {"name": "sample-agent", "version": "1.0.0"},
+            "steps": [
+                {"step_id": 1, "source": "user", "message": "environment context"},
+                {"step_id": 2, "source": "user", "message": "solve the task"},
+                {
+                    "step_id": 3,
+                    "source": "agent",
+                    "message": "checking",
+                    "tool_calls": [
+                        {
+                            "tool_call_id": "call-1",
+                            "function_name": "search",
+                            "arguments": {"query": "answer"},
+                        }
+                    ],
+                    "observation": first_observation,
+                },
+                {"step_id": 4, "source": "user", "message": "refine the result"},
+                {"step_id": 5, "source": "agent", "message": "final answer"},
+            ],
+        }
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )
+
+    visible_spans = [span for span in spans if not span.is_deleted]
+    root = next(span for span in visible_spans if span.kind == SpanKind.AGENT)
+    llm_spans = [span for span in visible_spans if span.kind == SpanKind.LLM]
+    tool = next(span for span in visible_spans if span.kind == SpanKind.TOOL)
+
+    assert len(visible_spans) == 4
+    assert not any(span.name.startswith("user-") for span in visible_spans)
+    assert {span.name for span in spans if span.is_deleted} == {"user-1", "user-2", "user-4"}
+    assert json.loads(root.input) == {
+        "messages": [
+            {"source": "user", "message": "environment context"},
+            {"source": "user", "message": "solve the task"},
+            {"source": "user", "message": "refine the result"},
+        ]
+    }
+    assert root.output == "final answer"
+
+    assert json.loads(llm_spans[0].input) == {
+        "messages": [
+            {"source": "user", "message": "environment context"},
+            {"source": "user", "message": "solve the task"},
+        ]
+    }
+    assert json.loads(llm_spans[1].input) == {
+        "observation": first_observation,
+        "messages": [{"source": "user", "message": "refine the result"}],
+    }
+    assert json.loads(llm_spans[1].output) == {"message": "final answer"}
+    assert tool.external_parent_span_id == llm_spans[0].external_span_id
+    assert json.loads(tool.output) == first_observation["results"][0]
+
+    first_raw = json.loads(llm_spans[0].attributes_string["atif.raw"])
+    second_raw = json.loads(llm_spans[1].attributes_string["atif.raw"])
+    assert first_raw["nemo.input_context"] == {
+        "messages": [
+            {"source": "user", "message": "environment context"},
+            {"source": "user", "message": "solve the task"},
+        ]
+    }
+    assert second_raw["nemo.input_context"] == {
+        "observation": first_observation,
+        "messages": [{"source": "user", "message": "refine the result"}],
+    }
+
+
 def test_atif_mapping_span_ids_are_trace_native_and_ignore_evaluation_run_id() -> None:
     base = {
         "schema_version": "ATIF-v1.5",
@@ -942,13 +1032,12 @@ def test_atif_mapping_does_not_infer_step_or_tool_ends() -> None:
         trajectory=trajectory,
         ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
     )
-    user = next(span for span in spans if span.name == "user-1")
     step = next(span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.LLM)
     tool = next(span for span in spans if span.name == "bash")
     root = next(span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.AGENT)
 
-    assert user.start_time == base
-    assert user.end_time is None
+    assert step.input == "solve"
+    assert not any(span.name == "user-1" and not span.is_deleted for span in spans)
     assert step.start_time == base + timedelta(seconds=5)
     assert step.end_time is None
     assert tool.start_time == step.start_time
@@ -987,14 +1076,14 @@ def test_atif_mapping_leaves_end_time_none_when_underivable() -> None:
         trajectory=trajectory,
         ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
     )
-    user = next(span for span in spans if span.name == "user-1")
     tool = next(span for span in spans if span.name == "bash")
     llm_steps = [span for span in spans if span.name == "sample-agent" and span.kind == SpanKind.LLM]
     last = llm_steps[-1]
 
     # Malformed invocation blocks never fail ingest and never fabricate ends
     # from later steps. The out-of-order explicit end is also dropped.
-    assert user.end_time is None
+    assert llm_steps[0].input == "solve"
+    assert not any(span.name == "user-1" and not span.is_deleted for span in spans)
     assert tool.end_time is None
     assert last.start_time == base + timedelta(seconds=10)
     assert last.end_time is None

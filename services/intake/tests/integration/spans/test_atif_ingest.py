@@ -198,6 +198,55 @@ def test_atif_ingest_accepts_supported_schema_versions_without_rewriting(
     assert spans[0]["source"] == "atif"
 
 
+def test_atif_reingest_retires_consumed_message_spans(client: TestClient):
+    session_id = "atif-reingest-readable-turns"
+    user_step = {
+        "step_id": 1,
+        "timestamp": _atif_timestamp(_BASE_TIME + timedelta(minutes=5)),
+        "source": "user",
+        "message": "solve the task",
+    }
+    body = {
+        "schema_version": "ATIF-v1.7",
+        "session_id": session_id,
+        "agent": {"name": "test-agent", "version": "1.0"},
+        "steps": [user_step],
+    }
+
+    first_ingest = client.post("/apis/intake/v2/workspaces/default/ingest/atif", json=body)
+    assert first_ingest.status_code == 201, first_ingest.text
+
+    params = {
+        "filter[session_id]": session_id,
+        "filter[started_at][gte]": _HISTORICAL_GTE,
+        "page_size": 10,
+        "sort": "started_at",
+    }
+    first_read = client.get("/apis/intake/v2/workspaces/default/spans", params=params)
+    assert first_read.status_code == 200, first_read.text
+    assert [span["name"] for span in first_read.json()["data"]] == ["test-agent", "user-1"]
+
+    body["steps"].append(
+        {
+            "step_id": 2,
+            "timestamp": _atif_timestamp(_BASE_TIME + timedelta(minutes=5, seconds=1)),
+            "source": "agent",
+            "message": "done",
+        }
+    )
+    second_ingest = client.post("/apis/intake/v2/workspaces/default/ingest/atif", json=body)
+    assert second_ingest.status_code == 201, second_ingest.text
+
+    second_read = client.get("/apis/intake/v2/workspaces/default/spans", params=params)
+    assert second_read.status_code == 200, second_read.text
+    visible_spans = second_read.json()["data"]
+    assert len(visible_spans) == 2
+    assert not any(span["name"] == "user-1" for span in visible_spans)
+    llm_span = next(span for span in visible_spans if span["kind"] == "LLM")
+    assert llm_span["input"] == user_step["message"]
+    assert json.loads(llm_span["output"]) == {"message": "done"}
+
+
 def test_atif_ingest_expands_embedded_subagent_trajectory_into_the_parent_trace(client: TestClient):
     session_id = "atif-v1-7-embedded-subagent"
     root_started_at = _BASE_TIME + timedelta(minutes=10)
@@ -267,13 +316,11 @@ def test_atif_ingest_expands_embedded_subagent_trajectory_into_the_parent_trace(
     delegation = next(span for span in spans if span["name"] == "orchestrator" and span["kind"] == "LLM")
     worker = next(span for span in spans if span["name"] == "worker-agent" and span["kind"] == "AGENT")
     worker_step = next(span for span in spans if span["name"] == "worker-agent" and span["kind"] == "LLM")
-    user_step = next(span for span in spans if span["name"] == "user-1")
 
-    assert len(spans) == 5
+    assert len(spans) == 4
     assert sorted(span["name"] for span in spans) == [
         "orchestrator",
         "orchestrator",
-        "user-1",
         "worker-agent",
         "worker-agent",
     ]
@@ -282,9 +329,11 @@ def test_atif_ingest_expands_embedded_subagent_trajectory_into_the_parent_trace(
     assert delegation["parent_span_id"] == root["span_id"]
     assert delegation["agent_name"] == "orchestrator"
     assert worker["parent_span_id"] == delegation["span_id"]
-    assert user_step["parent_span_id"] == worker["span_id"]
     assert worker_step["parent_span_id"] == worker["span_id"]
     assert worker_step["agent_name"] == "worker-agent"
+    assert worker_step["input"] == body["subagent_trajectories"][0]["steps"][0]["message"]
+    assert json.loads(worker_step["output"]) == {"message": "Task complete."}
+    assert not any(span["name"] == "user-1" for span in spans)
     assert root["started_at"] == _span_started_at(root_started_at)
     assert root["ended_at"] == _span_ended_at(subagent_ended_at)
 
@@ -496,12 +545,11 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     )
     assert spans_response.status_code == 200, spans_response.text
     spans = spans_response.json()["data"]
-    assert len(spans) == 7
+    assert len(spans) == 6
     spans_by_name = {span["name"]: span for span in spans}
     assert [span["name"] for span in spans].count("sample-agent") == 3
     assert set(spans_by_name) == {
         "sample-agent",
-        "user-1",
         "Bash",
         "subagent-subagents/subagent-session-1.json",
         "harbor.verifier",
@@ -598,11 +646,6 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         "verifier_result": body["extra"]["verifier_result"],
     }
 
-    user_step = spans_by_name["user-1"]
-    assert user_step["kind"] == "AGENT"
-    assert user_step["parent_span_id"] == trajectory["span_id"]
-    assert user_step["input"] == body["steps"][0]["message"]
-
     assert llm_step["kind"] == "LLM"
     assert llm_step["name"] == body["agent"]["name"]
     assert llm_step["agent_name"] == body["agent"]["name"]
@@ -614,6 +657,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     assert llm_step["cached_tokens"] == 0
     assert llm_step["total_tokens"] == 25904
     assert Decimal(str(llm_step["cost_total_usd"])) == Decimal("0.13123")
+    assert llm_step["input"] == body["steps"][0]["message"]
     llm_output = json.loads(llm_step["output"])
     assert llm_output["message"] == body["steps"][1]["message"]
     assert llm_output["reasoning_content"] == body["steps"][1]["reasoning_content"]
@@ -641,7 +685,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     assert agent_step_response.status_code == 200, agent_step_response.text
     agent_step = agent_step_response.json()
     assert agent_step["kind"] == "LLM"
-    assert "input" not in agent_step
+    assert json.loads(agent_step["input"]) == {"observation": body["steps"][1]["observation"]}
     assert json.loads(agent_step["output"]) == {"message": body["steps"][2]["message"]}
     assert agent_step["input_tokens"] == 25928
     assert agent_step["output_tokens"] == 124
@@ -697,11 +741,8 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
 
     # Re-ingesting into the same session keeps span ids stable; evaluation_run_id is ignored on ingest.
     same_session_body = {
-        "schema_version": "ATIF-v1.7",
-        "session_id": body["session_id"],
-        "evaluation_context": evaluation_context,
-        "agent": body["agent"],
-        "steps": [body["steps"][0]],
+        **body,
+        "evaluation_context": {**evaluation_context, "evaluation_run_id": "ignored-reingest-run"},
     }
     same_session_response = client.post("/apis/intake/v2/workspaces/default/ingest/atif", json=same_session_body)
     assert same_session_response.status_code == 201, same_session_response.text
@@ -716,8 +757,8 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         },
     )
     assert same_session_response.status_code == 200, same_session_response.text
-    same_session_spans_by_name = {span["name"]: span for span in same_session_response.json()["data"]}
-    assert same_session_spans_by_name["user-1"]["span_id"] == user_step["span_id"]
+    same_session_llm_ids = {span["span_id"] for span in same_session_response.json()["data"] if span["kind"] == "LLM"}
+    assert same_session_llm_ids == {span["span_id"] for span in agent_steps}
 
 
 def test_atif_trace_tokens_do_not_double_count_when_trajectory_and_steps_both_carry_metrics(

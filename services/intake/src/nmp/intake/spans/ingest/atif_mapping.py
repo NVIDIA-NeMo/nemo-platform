@@ -123,8 +123,40 @@ def _trajectory_tree_to_spans(
         if subagent.trajectory_id is not None
     }
     expanded_subagent_ids: set[str] = set()
+    pending_context_steps: list[tuple[int, AtifStep]] = []
+    previous_agent_step: AtifStepAgent | None = None
     for index, step in enumerate(trajectory.steps):
+        if not isinstance(step, AtifStepAgent):
+            pending_context_steps.append((index, step))
+            continue
         step_ended_at = _step_ended_at(step)
+        input_context_steps = [context_step for _context_index, context_step in pending_context_steps]
+        input_context = _agent_step_input_context(
+            context_steps=input_context_steps,
+            previous_agent_step=previous_agent_step,
+        )
+        # Older Intake versions materialized user/system messages as active
+        # spans. Write tombstones for those stable IDs so re-pushing an existing
+        # trajectory removes the obsolete one-sided rows as well as producing
+        # the compacted LLM input below.
+        spans.extend(
+            _step_to_span(
+                workspace=workspace,
+                default_session_id=trace_session_id,
+                default_agent_name=trajectory.agent.name,
+                default_agent_version=trajectory.agent.version,
+                default_model_name=trajectory.agent.model_name,
+                external_parent_span_id=trajectory_span.external_span_id,
+                trajectory_identity=trajectory_identity,
+                step=context_step,
+                index=context_index,
+                input_value=_string_or_json(context_step.message),
+                input_context=None,
+                step_ended_at=_step_ended_at(context_step),
+                ingested_at=ingested_at,
+            ).model_copy(update={"is_deleted": 1})
+            for context_index, context_step in pending_context_steps
+        )
         step_span = _step_to_span(
             workspace=workspace,
             default_session_id=trace_session_id,
@@ -135,6 +167,8 @@ def _trajectory_tree_to_spans(
             trajectory_identity=trajectory_identity,
             step=step,
             index=index,
+            input_value=_agent_step_input(input_context),
+            input_context=input_context,
             step_ended_at=step_ended_at,
             ingested_at=ingested_at,
         )
@@ -195,6 +229,29 @@ def _trajectory_tree_to_spans(
                         ingested_at=ingested_at,
                     )
                 )
+        pending_context_steps.clear()
+        previous_agent_step = step
+    # A user/system message followed by an agent step is input to that inference,
+    # not an independently timed operation. Preserve only trailing messages as
+    # standalone spans when the producer ended without a consuming agent turn.
+    for index, step in pending_context_steps:
+        spans.append(
+            _step_to_span(
+                workspace=workspace,
+                default_session_id=trace_session_id,
+                default_agent_name=trajectory.agent.name,
+                default_agent_version=trajectory.agent.version,
+                default_model_name=trajectory.agent.model_name,
+                external_parent_span_id=trajectory_span.external_span_id,
+                trajectory_identity=trajectory_identity,
+                step=step,
+                index=index,
+                input_value=_string_or_json(step.message),
+                input_context=None,
+                step_ended_at=_step_ended_at(step),
+                ingested_at=ingested_at,
+            )
+        )
     for subagent in trajectory.subagent_trajectories or []:
         assert subagent.trajectory_id is not None
         if subagent.trajectory_id in expanded_subagent_ids:
@@ -317,11 +374,19 @@ def _step_to_span(
     trajectory_identity: TrajectoryIdentity,
     step: AtifStep,
     index: int,
+    input_value: str | None,
+    input_context: dict[str, Any] | None,
     step_ended_at: datetime | None,
     ingested_at: datetime,
 ) -> IntakeSpan:
     """Map one ATIF step to a child span in the shared trace."""
     raw_step = _model_dict(step)
+    source_step_json = json_dumps(raw_step)
+    if input_context is not None:
+        # ATIF stores a complete interaction sequence rather than duplicating
+        # the full prompt on every agent step. Keep the exact records Intake used
+        # to derive this span's display input alongside the source step.
+        raw_step["nemo.input_context"] = input_context
     metrics = _step_metrics(step)
     model_name = _step_model_name(step)
     input_tokens = metrics.prompt_tokens if metrics is not None else None
@@ -331,7 +396,7 @@ def _step_to_span(
         default_session_id,
         *trajectory_identity,
         str(index),
-        json_dumps(raw_step),
+        source_step_json,
         prefix="span",
     )
     attribute_bags = _span_attributes(
@@ -361,7 +426,7 @@ def _step_to_span(
         attributes_string=attribute_bags.string,
         attributes_number=attribute_bags.number,
         attributes_bool=attribute_bags.boolean,
-        input=_step_input(step) or "",
+        input=input_value or "",
         output=_step_output(step) or "",
         event_ts=ingested_at,
     )
@@ -756,11 +821,46 @@ def _step_kind(step: AtifStep) -> SpanKind:
     return SpanKind.LLM if isinstance(step, AtifStepAgent) else SpanKind.AGENT
 
 
-def _step_input(step: AtifStep) -> str | None:
-    """Extract span input from a non-agent step."""
-    if isinstance(step, AtifStepAgent):
+def _agent_step_input(
+    input_context: dict[str, Any] | None,
+) -> str | None:
+    """Build the recorded input delta for an ATIF agent inference.
+
+    ATIF stores a sequential interaction history rather than a per-inference
+    request body. The messages since the previous agent step and that step's
+    observation are the new context recorded for the current inference. This is
+    deliberately not labeled as the full model prompt: ATIF may omit system
+    instructions, tool definitions, or older cached history from each step.
+    """
+    if input_context is None:
         return None
-    return _string_or_json(step.message)
+
+    messages = input_context.get("messages")
+    if len(input_context) == 1 and isinstance(messages, list) and len(messages) == 1:
+        message = messages[0]
+        if isinstance(message, dict) and "message" in message:
+            return _string_or_json(message["message"])
+    return json_dumps_preserve(input_context)
+
+
+def _agent_step_input_context(
+    *,
+    context_steps: list[AtifStep],
+    previous_agent_step: AtifStepAgent | None,
+) -> dict[str, Any] | None:
+    """Return the source records used to derive an agent span's display input."""
+    input_context: dict[str, Any] = {}
+    if previous_agent_step is not None and previous_agent_step.observation is not None:
+        input_context["observation"] = _model_dict(previous_agent_step.observation)
+    if context_steps:
+        input_context["messages"] = [
+            {
+                "source": context_step.source,
+                "message": _json_value(context_step.message),
+            }
+            for context_step in context_steps
+        ]
+    return input_context or None
 
 
 def _step_output(step: AtifStep) -> str | None:
@@ -817,11 +917,20 @@ def _trajectory_has_step_cost_metrics(trajectory: AtifTrajectory) -> bool:
 
 
 def _trajectory_input(trajectory: AtifTrajectory) -> str | None:
-    """Return the first user message from a trajectory."""
-    for step in trajectory.steps:
-        if step.source == "user":
-            return _string_or_json(step.message)
-    return None
+    """Return all user/system messages recorded for a trajectory."""
+    messages = [
+        {
+            "source": step.source,
+            "message": _json_value(step.message),
+        }
+        for step in trajectory.steps
+        if not isinstance(step, AtifStepAgent)
+    ]
+    if not messages:
+        return None
+    if len(messages) == 1:
+        return _string_or_json(messages[0]["message"])
+    return json_dumps_preserve({"messages": messages})
 
 
 def _trajectory_output(trajectory: AtifTrajectory) -> str | None:
