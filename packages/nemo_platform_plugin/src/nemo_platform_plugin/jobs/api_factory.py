@@ -80,11 +80,10 @@ logger = logging.getLogger(__name__)
 # This type is aliased to ensure we don't expose internal stainless
 # type paths to services integrating the job service.
 #
-# TODO(AIRCORE-827): these still alias the Stainless-generated ``*Param`` TypedDicts.
+# TODO(AIRCORE-922): remove these Stainless-generated ``*Param`` TypedDict aliases.
 # The plugin now owns pydantic equivalents in ``jobs/spec.py`` and ``jobs/providers.py``,
 # but ~10 consuming plugins construct these as dict literals (TypedDict), so repointing
-# them to the pydantic models is a cross-cutting change tracked as the "drop the Stainless
-# dependency" follow-up — out of scope for the Jobs *client* migration.
+# them to the pydantic models is a cross-cutting change tracked by AIRCORE-922.
 PlatformJobSpec = PlatformJobSpecParam
 PlatformJobStep = PlatformJobStepSpecParam
 StepLifecycle = StepLifecycleParam

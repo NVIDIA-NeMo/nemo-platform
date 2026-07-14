@@ -316,7 +316,7 @@ async def start_update_model_spec_job(model_entity: ModelEntity):
                 body=CreatePlatformJobRequest(
                     source="models-system",
                     # ``task_spec`` is built from the api_factory ``*Param`` TypedDict
-                    # aliases (see AIRCORE-827); validate it into the plugin pydantic
+                    # aliases (see AIRCORE-922); validate it into the plugin pydantic
                     # ``PlatformJobSpec`` the request model expects.
                     platform_spec=PlatformJobSpecModel.model_validate(task_spec),
                     spec={},

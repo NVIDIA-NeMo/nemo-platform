@@ -9,7 +9,7 @@ from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.jobs.client import JobsClient
 
 
-def test_client_from_platform_preserves_stainless_retry_contract() -> None:
+def test_client_from_platform_preserves_retry_count_with_nemoclient_defaults() -> None:
     http_client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)))
     platform = NeMoPlatform(
         base_url="http://test",
@@ -22,4 +22,4 @@ def test_client_from_platform_preserves_stainless_retry_contract() -> None:
 
     assert client.retry is not None
     assert client.retry.max_retries == 4
-    assert {408, 409, 429, 500, 502, 599}.issubset(client.retry.retryable_status_codes)
+    assert client.retry.retryable_status_codes == (502, 503, 504, 429)
