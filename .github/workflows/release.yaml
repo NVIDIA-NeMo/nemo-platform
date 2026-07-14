@@ -123,9 +123,9 @@ env:
   RELEASE_HELM_REGISTRY: nvcr.io/0921617854601259/nemo-platform
   RELEASE_NIGHTLY_WHEEL_INDEX: https://pypi.nvidia.com
   RELEASE_STABLE_WHEEL_INDEX: https://pypi.org/simple
+  # Nightly GHCR readiness checks authenticate with the repository GITHUB_TOKEN.
   RELEASE_NIGHTLY_CONTAINER_REGISTRY: ghcr.io/nvidia-nemo/nemo-platform
   RELEASE_STABLE_CONTAINER_REGISTRY: nvcr.io/nvidia/nemo-platform
-  # Make this package public in GitHub Packages after its first push.
   RELEASE_NIGHTLY_HELM_OCI_REGISTRY: oci://ghcr.io/nvidia-nemo/nemo-platform
   # Stable charts must be promoted from RELEASE_HELM_REGISTRY before polling.
   RELEASE_STABLE_HELM_REPOSITORY: https://helm.ngc.nvidia.com/nvidia/nemo-platform
@@ -801,6 +801,7 @@ jobs:
     timeout-minutes: 240
     permissions:
       contents: read
+      packages: read
     env:
       POLL_INTERVAL_SECONDS: "30"
     steps:
@@ -848,8 +849,8 @@ jobs:
             echo "Found ${package}==${WHEEL_VERSION}"
           done < <(jq -r '.[]' <<< "${WHEEL_IDS}")
 
-      # Both final container registries are public, so this check deliberately
-      # uses docker manifest inspect without credentials.
+      # Stable containers are public. Nightly GHCR containers require the
+      # repository GITHUB_TOKEN.
       - name: Wait for selected containers in the final registry
         if: >-
           needs.plan-release.outputs.has_containers == 'true' &&
@@ -858,12 +859,19 @@ jobs:
         env:
           CONTAINER_IDS: ${{ needs.plan-release.outputs.container_ids }}
           CONTAINER_TAG: ${{ needs.plan-release.outputs.release_label }}
+          GHCR_TOKEN: ${{ github.token }}
+          RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
           CONTAINER_REGISTRY: >-
             ${{ needs.plan-release.outputs.release_type == 'nightly' &&
             env.RELEASE_NIGHTLY_CONTAINER_REGISTRY ||
             env.RELEASE_STABLE_CONTAINER_REGISTRY }}
         run: |
           set -euo pipefail
+
+          if [[ "${RELEASE_TYPE}" == "nightly" ]]; then
+            printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io \
+              --username "${GITHUB_ACTOR}" --password-stdin
+          fi
 
           while IFS= read -r container_id; do
             ref="${CONTAINER_REGISTRY}/${container_id}:${CONTAINER_TAG}"
@@ -874,8 +882,8 @@ jobs:
             echo "Found ${ref}"
           done < <(jq -r '.[]' <<< "${CONTAINER_IDS}")
 
-      # Both final Helm chart locations are public, so this check deliberately
-      # uses Helm without registry credentials.
+      # The stable Helm repository is public. Nightly GHCR charts require the
+      # repository GITHUB_TOKEN.
       - name: Wait for Helm chart in the final registry
         if: >-
           needs.plan-release.outputs.include_helm == 'true' &&
@@ -885,12 +893,15 @@ jobs:
           RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
           CHART_ID: ${{ env.RELEASE_HELM_ID }}
           CHART_VERSION: ${{ needs.stage-helm.outputs.chart_version }}
+          GHCR_TOKEN: ${{ github.token }}
           NIGHTLY_HELM_OCI_REGISTRY: ${{ env.RELEASE_NIGHTLY_HELM_OCI_REGISTRY }}
           STABLE_HELM_REPOSITORY: ${{ env.RELEASE_STABLE_HELM_REPOSITORY }}
         run: |
           set -euo pipefail
 
           if [[ "${RELEASE_TYPE}" == "nightly" ]]; then
+            printf '%s' "${GHCR_TOKEN}" | helm registry login ghcr.io \
+              --username "${GITHUB_ACTOR}" --password-stdin
             chart_ref="${NIGHTLY_HELM_OCI_REGISTRY}/${CHART_ID}"
             chart_is_available() {
               helm show chart "${chart_ref}" --version "${CHART_VERSION}" >/dev/null 2>&1
