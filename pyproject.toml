@@ -67,6 +67,8 @@ dependencies = [
 version = "0.0.0"
 
 [dependency-groups]
+# Optional Insights analyst plugin.
+insights = ["nemo-insights-plugin"]
 dev = [
   "pre-commit>=3.8.0",
   "pydantic-settings>=2.6.1",
@@ -368,6 +370,7 @@ nmp-dev-mcp = { workspace = true }
 nmp-testing = { workspace = true }
 nmp-build-tools = { workspace = true }
 nemo-platform-plugin = { workspace = true }
+nemo-insights-plugin = { path = "plugins/nemo-insights", editable = true }
 
 nemo-evaluator-plugin = { workspace = true }
 nemo-guardrails-plugin = { workspace = true }
@@ -443,7 +446,12 @@ members = [
   "services/unsloth",
   "services/rl",
 ]
-
+exclude = [
+  # Keep the analyst out of `uv sync --all-packages`; install it explicitly
+  # through the `insights` dependency group.
+  "plugins/nemo-insights",
+  "plugins/nemo-insights/examples/*",
+]
 
 
 [build-system]
@@ -520,6 +528,7 @@ output = "coverage.xml"
 extraPaths = [
   "plugins/nemo-guardrails/src",
   "plugins/nemo-evaluator/src",
+  "plugins/nemo-insights/src",
   "tests/agentic-use",
   "tests/agentic-use/shared",
 ]
@@ -553,6 +562,8 @@ extra-paths = [
   # nemo-evaluator plugin is not a workspace member; add its src so ty can
   # resolve nemo_evaluator imports when checking plugin test files.
   "plugins/nemo-evaluator/src",
+  # The optional Insights analyst is not part of the default environment.
+  "plugins/nemo-insights/src",
   # Agentic-use tests place both tests/agentic-use and tests/agentic-use/shared
   # on sys.path in tests/conftest.py.
   "tests/agentic-use",
