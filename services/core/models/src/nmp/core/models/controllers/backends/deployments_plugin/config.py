@@ -10,7 +10,11 @@ class DeploymentsPluginConfig(BaseModel):
     default_executor: str | None = None
     docker_executor: str | None = None
     k8s_executor: str | None = None
-    pending_timeout_seconds: int = 7200
+    pending_timeout_seconds: int = Field(
+        default=7200,
+        ge=60,
+        description="Maximum seconds a deployment may stay PENDING before ERROR.",
+    )
     max_restart_count: int = 5
     default_storage_class: str | None = None
     default_pvc_size: str = "200Gi"

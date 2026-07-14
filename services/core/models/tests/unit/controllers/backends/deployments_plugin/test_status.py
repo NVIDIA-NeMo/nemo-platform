@@ -6,6 +6,8 @@ from nemo_deployments_plugin.entities import Deployment, Volume
 from nemo_deployments_plugin.types import Endpoint
 from nmp.core.models.controllers.backends.deployments_plugin.status import (
     aggregate_status,
+    apply_pending_timeout,
+    build_pending_timeout_error,
     map_status,
     project_host_url,
 )
@@ -68,3 +70,38 @@ def test_lost_puller_is_error() -> None:
 def test_unknown_puller_surfaces_unknown() -> None:
     puller = Deployment(name="puller", workspace="default", deployment_config="puller", status="UNKNOWN")
     assert aggregate_status(None, puller, None).status == "UNKNOWN"
+
+
+def test_apply_pending_timeout_escalates_pending_only() -> None:
+    pending = aggregate_status(None, None, None)
+    assert (
+        apply_pending_timeout(
+            pending,
+            elapsed_seconds=30,
+            timeout_seconds=60,
+            deployment_name="my-dep",
+        ).status
+        == "PENDING"
+    )
+    timed_out = apply_pending_timeout(
+        pending,
+        elapsed_seconds=90,
+        timeout_seconds=60,
+        deployment_name="my-dep",
+    )
+    assert timed_out.status == "ERROR"
+    assert timed_out.error_details is not None
+    assert timed_out.error_details["reason"] == "pending_timeout"
+
+
+def test_build_pending_timeout_error_includes_substrate() -> None:
+    substrate = {"server": {"status": "STARTING"}}
+    result = build_pending_timeout_error(
+        deployment_name="my-dep",
+        elapsed_seconds=120,
+        timeout_seconds=60,
+        substrate=substrate,
+    )
+    assert result.status == "ERROR"
+    assert result.error_details is not None
+    assert result.error_details["substrate"] == substrate

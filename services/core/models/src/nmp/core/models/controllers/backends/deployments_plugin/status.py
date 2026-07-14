@@ -9,6 +9,7 @@ from nemo_deployments_plugin.entities import Deployment, Volume
 from nemo_deployments_plugin.types import Endpoint
 from nemo_platform.types.inference import ModelDeploymentStatus
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
+from nmp.core.models.controllers.backends.common import format_duration
 
 _STATUS_MAP: dict[str, ModelDeploymentStatus] = {
     "PENDING": "PENDING",
@@ -96,4 +97,50 @@ def aggregate_status(
         status="PENDING",
         status_message="Waiting for deployments-plugin substrate resources.",
         error_details={"substrate": substrate},
+    )
+
+
+def build_pending_timeout_error(
+    *,
+    deployment_name: str,
+    elapsed_seconds: float,
+    timeout_seconds: int,
+    substrate: dict[str, Any] | None = None,
+) -> DeploymentStatusUpdate:
+    """Build ERROR status when a deployment exceeds ``pending_timeout_seconds``."""
+    status_msg = (
+        f"Deployment '{deployment_name}' timed out after {format_duration(elapsed_seconds)} waiting for "
+        f"deployments-plugin substrate to become READY (timeout: {format_duration(timeout_seconds)})."
+    )
+    error_details: dict[str, Any] = {
+        "reason": "pending_timeout",
+        "elapsed_seconds": int(elapsed_seconds),
+        "timeout_seconds": timeout_seconds,
+        "deployment_name": deployment_name,
+    }
+    if substrate is not None:
+        error_details["substrate"] = substrate
+    return DeploymentStatusUpdate(
+        status="ERROR",
+        status_message=status_msg,
+        error_details=error_details,
+    )
+
+
+def apply_pending_timeout(
+    result: DeploymentStatusUpdate,
+    *,
+    elapsed_seconds: float,
+    timeout_seconds: int,
+    deployment_name: str,
+) -> DeploymentStatusUpdate:
+    """Escalate a PENDING projection to ERROR once the deployment ages out."""
+    if result.status != "PENDING" or elapsed_seconds < timeout_seconds:
+        return result
+    substrate = result.error_details.get("substrate") if result.error_details else None
+    return build_pending_timeout_error(
+        deployment_name=deployment_name,
+        elapsed_seconds=elapsed_seconds,
+        timeout_seconds=timeout_seconds,
+        substrate=substrate,
     )

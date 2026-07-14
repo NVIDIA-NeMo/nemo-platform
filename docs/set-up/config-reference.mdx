@@ -597,7 +597,7 @@ models:
         default_executor:
         docker_executor:
         k8s_executor:
-        # default: 7200
+        # Maximum seconds a deployment may stay PENDING before ERROR. | default: 7200
         pending_timeout_seconds: 7200
         # default: 5
         max_restart_count: 5

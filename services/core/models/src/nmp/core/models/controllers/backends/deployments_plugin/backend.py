@@ -16,12 +16,13 @@ from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 from nmp.common.config import Runtime
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate, ServiceBackend
+from nmp.core.models.controllers.backends.common import deployment_elapsed_seconds
 from nmp.core.models.controllers.backends.deployments_plugin.compiler import compile_model_deployment
 from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
 from nmp.core.models.controllers.backends.deployments_plugin.executor import executor_for_runtime
 from nmp.core.models.controllers.backends.deployments_plugin.naming import entity_names
 from nmp.core.models.controllers.backends.deployments_plugin.resolve import resolve_plugin_deployment
-from nmp.core.models.controllers.backends.deployments_plugin.status import aggregate_status
+from nmp.core.models.controllers.backends.deployments_plugin.status import aggregate_status, apply_pending_timeout
 from nmp.core.models.controllers.backends.engine import ENGINE_GENERIC, config_engine
 from nmp.core.models.controllers.context import ModelContext
 
@@ -87,6 +88,20 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
                 status="PENDING",
                 status_message="Waiting for prior deployments-plugin substrate teardown before recreate.",
             )
+        executor = executor_for_runtime(self._cfg, resolved.runtime)
+        if executor is None:
+            return DeploymentStatusUpdate(
+                status="ERROR",
+                status_message=(
+                    "No deployments-plugin executor configured for the current runtime. "
+                    "Set docker_executor, k8s_executor, or default_executor under "
+                    "models.controller.backends.deployments_plugin."
+                ),
+                error_details={
+                    "reason": "executor_not_configured",
+                    "runtime": resolved.runtime.value,
+                },
+            )
         try:
             compiled = compile_model_deployment(resolved, self._cfg)
             entities = self._entity_client()
@@ -94,7 +109,6 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
                 await entities.create(compiled.volume)
             if compiled.scratch_volume is not None:
                 await entities.create(compiled.scratch_volume)
-            executor = executor_for_runtime(self._cfg, resolved.runtime)
             if compiled.puller_config is not None:
                 await entities.create(compiled.puller_config)
                 await entities.create(
@@ -154,7 +168,14 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
         server = await self._get_optional(Deployment, ctx.model_deployment.workspace, names.server)
         puller = await self._get_optional(Deployment, ctx.model_deployment.workspace, names.puller)
         volume = await self._get_optional(Volume, ctx.model_deployment.workspace, names.volume)
-        return aggregate_status(volume, puller, server, previously_ready=ctx.model_deployment.status == "READY")
+        result = aggregate_status(volume, puller, server, previously_ready=ctx.model_deployment.status == "READY")
+        elapsed = deployment_elapsed_seconds(ctx.model_deployment)
+        return apply_pending_timeout(
+            result,
+            elapsed_seconds=elapsed,
+            timeout_seconds=self._cfg.pending_timeout_seconds,
+            deployment_name=ctx.model_deployment.name,
+        )
 
     async def update_model_deployment(self, ctx: ModelContext) -> DeploymentStatusUpdate:
         del ctx

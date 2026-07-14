@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -44,6 +45,7 @@ def _resolved() -> ResolvedPluginDeployment:
 @pytest.mark.asyncio
 async def test_get_status_projects_ready_endpoint() -> None:
     backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
+    backend.init()
     backend._entities = AsyncMock()
     backend._entities.get = AsyncMock(
         side_effect=[
@@ -59,7 +61,14 @@ async def test_get_status_projects_ready_endpoint() -> None:
         ]
     )
     result = await backend.get_model_deployment_status(
-        SimpleNamespace(model_deployment=SimpleNamespace(name="my-dep", workspace="default", status="PENDING"))
+        SimpleNamespace(
+            model_deployment=SimpleNamespace(
+                name="my-dep",
+                workspace="default",
+                status="PENDING",
+                created_at=datetime.now(timezone.utc),
+            )
+        )
     )
     assert result.status == "READY"
     assert result.host_url == "http://server"
@@ -68,10 +77,18 @@ async def test_get_status_projects_ready_endpoint() -> None:
 @pytest.mark.asyncio
 async def test_missing_ready_server_is_lost() -> None:
     backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
+    backend.init()
     backend._entities = AsyncMock()
     backend._entities.get = AsyncMock(side_effect=NemoEntityNotFoundError("missing"))
     result = await backend.get_model_deployment_status(
-        SimpleNamespace(model_deployment=SimpleNamespace(name="my-dep", workspace="default", status="READY"))
+        SimpleNamespace(
+            model_deployment=SimpleNamespace(
+                name="my-dep",
+                workspace="default",
+                status="READY",
+                created_at=datetime.now(timezone.utc),
+            )
+        )
     )
     assert result.status == "LOST"
 
@@ -152,6 +169,7 @@ async def test_docker_lora_fails_fast_before_touching_substrate() -> None:
 async def test_create_waits_when_prior_teardown_incomplete() -> None:
     backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
     backend.init()
+    backend._entities = AsyncMock()
     with (
         patch(
             "nmp.core.models.controllers.backends.deployments_plugin.backend.resolve_plugin_deployment",
@@ -166,6 +184,68 @@ async def test_create_waits_when_prior_teardown_incomplete() -> None:
         result = await backend.create_model_deployment(_ctx())
     assert result.status == "PENDING"
     assert "teardown" in result.status_message.lower()
+    backend._entities.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_missing_executor_fails_fast_before_touching_substrate() -> None:
+    backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
+    backend.init()
+    backend._entities = AsyncMock()
+    backend._entities.get = AsyncMock(side_effect=NemoEntityNotFoundError("missing"))
+    backend._entities.delete = AsyncMock(side_effect=NemoEntityNotFoundError("missing"))
+    with (
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.backend.resolve_plugin_deployment",
+            return_value=_resolved(),
+        ),
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.backend.executor_for_runtime",
+            return_value=None,
+        ),
+    ):
+        result = await backend.create_model_deployment(_ctx())
+    assert result.status == "ERROR"
+    assert "executor" in result.status_message.lower()
+    assert result.error_details is not None
+    assert result.error_details["reason"] == "executor_not_configured"
+    backend._entities.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pending_timeout_escalates_stuck_deployment() -> None:
+    backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
+    backend.init()
+    backend._backend_config = DeploymentsPluginConfig(pending_timeout_seconds=60)
+    backend._entities = AsyncMock()
+    server = Deployment(
+        name="my-dep-server",
+        workspace="default",
+        deployment_config="my-dep-server",
+        status="STARTING",
+    )
+    backend._entities.get = AsyncMock(
+        side_effect=[
+            server,
+            NemoEntityNotFoundError("missing"),
+            NemoEntityNotFoundError("missing"),
+        ]
+    )
+    created_at = datetime.now(timezone.utc) - timedelta(seconds=120)
+    result = await backend.get_model_deployment_status(
+        SimpleNamespace(
+            model_deployment=SimpleNamespace(
+                name="my-dep",
+                workspace="default",
+                status="PENDING",
+                created_at=created_at,
+            )
+        )
+    )
+    assert result.status == "ERROR"
+    assert result.error_details is not None
+    assert result.error_details["reason"] == "pending_timeout"
+    assert result.error_details["timeout_seconds"] == 60
 
 
 @pytest.mark.asyncio
