@@ -116,7 +116,7 @@ def _build_insights_router() -> APIRouter:
         except NemoEntityValidationError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except Exception as exc:
-            logger.exception("Failed to create insight '%s'", body.title)
+            logger.exception("Failed to create insight")
             raise HTTPException(status_code=500, detail="Failed to create insight.") from exc
         return saved
 
@@ -156,7 +156,7 @@ def _build_insights_router() -> APIRouter:
                 filter_obj=filter_obj or None,
             )
         except Exception as exc:
-            logger.exception("Failed to list insights in workspace '%s'", workspace)
+            logger.exception("Failed to list insights")
             raise HTTPException(status_code=500, detail="Failed to list insights.") from exc
 
         pagination = PaginationData.model_validate(result.pagination.model_dump()) if result.pagination else None
@@ -188,7 +188,7 @@ def _build_insights_router() -> APIRouter:
                 detail=f"Insight '{insight_id}' not found in workspace '{workspace}'.",
             ) from exc
         except Exception as exc:
-            logger.exception("Failed to get insight '%s'", insight_id)
+            logger.exception("Failed to get insight")
             raise HTTPException(status_code=500, detail="Failed to get insight.") from exc
         return insight
 
@@ -214,7 +214,7 @@ def _build_insights_router() -> APIRouter:
                 detail=f"Insight '{insight_id}' not found in workspace '{workspace}'.",
             ) from exc
         except Exception as exc:
-            logger.exception("Failed to fetch insight '%s' for update", insight_id)
+            logger.exception("Failed to fetch insight for update")
             raise HTTPException(status_code=500, detail="Failed to fetch insight.") from exc
 
         if body.title is not None:
@@ -238,7 +238,7 @@ def _build_insights_router() -> APIRouter:
         except NemoEntityValidationError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except Exception as exc:
-            logger.exception("Failed to update insight '%s'", insight_id)
+            logger.exception("Failed to update insight")
             raise HTTPException(status_code=500, detail="Failed to update insight.") from exc
         return saved
 
@@ -263,7 +263,7 @@ def _build_insights_router() -> APIRouter:
                 detail=f"Insight '{insight_id}' not found in workspace '{workspace}'.",
             ) from exc
         except Exception as exc:
-            logger.exception("Failed to delete insight '%s'", insight_id)
+            logger.exception("Failed to delete insight")
             raise HTTPException(status_code=500, detail="Failed to delete insight.") from exc
 
     return router
@@ -297,7 +297,7 @@ async def _get_or_create_analysis_config(
     except NemoEntityNotFoundError:
         pass
     except Exception as exc:
-        logger.exception("Failed to fetch analysis config for agent '%s'", agent)
+        logger.exception("Failed to fetch analysis config")
         raise HTTPException(status_code=500, detail="Failed to fetch analysis config.") from exc
 
     config = AnalysisConfig(name=agent, workspace=workspace, agent=agent, enabled=enabled_if_created)
@@ -320,7 +320,7 @@ async def _get_or_create_analysis_run_status(
     except NemoEntityNotFoundError:
         pass
     except Exception as exc:
-        logger.exception("Failed to fetch analysis run status for agent '%s'", agent)
+        logger.exception("Failed to fetch analysis run status")
         raise HTTPException(status_code=500, detail="Failed to fetch analysis run status.") from exc
 
     status = AnalysisRunStatus(name=agent, workspace=workspace, agent=agent)
@@ -356,7 +356,7 @@ def _build_analysis_configs_router() -> APIRouter:
         try:
             return await entity_client.update(config)
         except Exception as exc:
-            logger.exception("Failed to enable analysis for agent '%s'", agent)
+            logger.exception("Failed to enable analysis")
             raise HTTPException(status_code=500, detail="Failed to enable analysis config.") from exc
 
     @router.post(
@@ -382,7 +382,7 @@ def _build_analysis_configs_router() -> APIRouter:
         try:
             return await entity_client.update(config)
         except Exception as exc:
-            logger.exception("Failed to disable analysis for agent '%s'", agent)
+            logger.exception("Failed to disable analysis")
             raise HTTPException(status_code=500, detail="Failed to disable analysis config.") from exc
 
     @router.get(
@@ -415,7 +415,7 @@ def _build_analysis_configs_router() -> APIRouter:
                 filter_obj=filter_obj or None,
             )
         except Exception as exc:
-            logger.exception("Failed to list analysis configs in workspace '%s'", workspace)
+            logger.exception("Failed to list analysis configs")
             raise HTTPException(status_code=500, detail="Failed to list analysis configs.") from exc
 
         pagination = PaginationData.model_validate(result.pagination.model_dump()) if result.pagination else None
@@ -444,7 +444,7 @@ def _build_analysis_configs_router() -> APIRouter:
         except NemoEntityNotFoundError as exc:
             raise HTTPException(status_code=404, detail=_config_not_found(agent, workspace)) from exc
         except Exception as exc:
-            logger.exception("Failed to get analysis config for agent '%s'", agent)
+            logger.exception("Failed to get analysis config")
             raise HTTPException(status_code=500, detail="Failed to get analysis config.") from exc
 
     @router.patch(
@@ -466,7 +466,7 @@ def _build_analysis_configs_router() -> APIRouter:
         except NemoEntityNotFoundError as exc:
             raise HTTPException(status_code=404, detail=_config_not_found(agent, workspace)) from exc
         except Exception as exc:
-            logger.exception("Failed to fetch analysis config for agent '%s'", agent)
+            logger.exception("Failed to fetch analysis config")
             raise HTTPException(status_code=500, detail="Failed to fetch analysis config.") from exc
 
         for field, value in body.model_dump(exclude_unset=True).items():
@@ -477,7 +477,7 @@ def _build_analysis_configs_router() -> APIRouter:
         except NemoEntityNotFoundError as exc:
             raise HTTPException(status_code=404, detail=_config_not_found(agent, workspace)) from exc
         except Exception as exc:
-            logger.exception("Failed to update analysis config for agent '%s'", agent)
+            logger.exception("Failed to update analysis config")
             raise HTTPException(status_code=500, detail="Failed to update analysis config.") from exc
 
     return router
@@ -510,7 +510,7 @@ def _build_analysis_run_statuses_router() -> APIRouter:
                 sort=sort,
             )
         except Exception as exc:
-            logger.exception("Failed to list analysis run statuses in workspace '%s'", workspace)
+            logger.exception("Failed to list analysis run statuses")
             raise HTTPException(status_code=500, detail="Failed to list analysis run statuses.") from exc
 
         pagination = PaginationData.model_validate(result.pagination.model_dump()) if result.pagination else None
@@ -539,7 +539,7 @@ def _build_analysis_run_statuses_router() -> APIRouter:
         except NemoEntityNotFoundError as exc:
             raise HTTPException(status_code=404, detail=_run_status_not_found(agent, workspace)) from exc
         except Exception as exc:
-            logger.exception("Failed to get analysis run status for agent '%s'", agent)
+            logger.exception("Failed to get analysis run status")
             raise HTTPException(status_code=500, detail="Failed to get analysis run status.") from exc
 
     @router.patch(
@@ -568,7 +568,7 @@ def _build_analysis_run_statuses_router() -> APIRouter:
         except NemoEntityNotFoundError as exc:
             raise HTTPException(status_code=404, detail=_run_status_not_found(agent, workspace)) from exc
         except Exception as exc:
-            logger.exception("Failed to update analysis run status for agent '%s'", agent)
+            logger.exception("Failed to update analysis run status")
             raise HTTPException(status_code=500, detail="Failed to update analysis run status.") from exc
 
     return router
