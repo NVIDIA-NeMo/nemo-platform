@@ -963,17 +963,7 @@ def job_route_factory(
             list_page = (await jobs.list_jobs(workspace=workspace, query_params=list_query)).page()
             return Page(
                 data=[from_response(job) for job in list_page.items],
-                pagination=PaginationData(
-                    # The list envelope always carries pagination metadata; coalesce
-                    # to the request values / zero to satisfy the non-optional PaginationData.
-                    page=list_page.metadata["page"] if list_page.metadata["page"] is not None else page,
-                    page_size=(
-                        list_page.metadata["page_size"] if list_page.metadata["page_size"] is not None else page_size
-                    ),
-                    current_page_size=len(list_page.items),
-                    total_pages=list_page.metadata["total_pages"] or 0,
-                    total_results=list_page.metadata["total_results"] or 0,
-                ),
+                pagination=PaginationData.model_validate(list_page.metadata),
                 sort=sort,
                 filter=user_filter or None,
             )

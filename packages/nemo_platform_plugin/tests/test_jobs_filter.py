@@ -64,7 +64,13 @@ def _fake_page():
     """A ``PageResult``-like object for the typed client's ``list_jobs().page()``."""
     return SimpleNamespace(
         items=[],
-        metadata={"page": 1, "page_size": 10, "total_pages": 1, "total_results": 0},
+        metadata={
+            "page": 1,
+            "page_size": 10,
+            "current_page_size": 0,
+            "total_pages": 1,
+            "total_results": 0,
+        },
     )
 
 

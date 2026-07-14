@@ -23,7 +23,7 @@ def _validated_page(
     response: httpx.Response,
     model_type: type[ModelT],
     strategy: type[PaginationStrategy[Any, Any]],
-) -> tuple[list[ModelT], dict]:
+) -> tuple[list[ModelT], dict, Any]:
     """Decode one page and normalize response-contract failures."""
     try:
         body = response.json()
@@ -34,12 +34,13 @@ def _validated_page(
         exc = ValueError("Paginated responses must be JSON objects")
         raise NemoResponseValidationError(response, exc) from exc
 
-    raw_items = strategy.extract_items(body)
     try:
+        raw_items = strategy.extract_items(body)
         items = [model_type.model_validate(item) for item in raw_items]
-    except ValidationError as exc:
+        metadata = strategy.extract_metadata(body)
+    except (KeyError, TypeError, ValueError, ValidationError) as exc:
         raise NemoResponseValidationError(response, exc) from exc
-    return items, body
+    return items, body, metadata
 
 
 def _parse_stream_line(line: str, headers: httpx.Headers) -> str | None:
@@ -400,11 +401,10 @@ class NemoPaginatedResponse(Generic[PaginatedModelT_co, PaginatedStrategyT_co]):
     def http_response(self) -> httpx.Response:
         return self._first_response
 
-    def _parse_page(self, raw: httpx.Response) -> tuple[list[PaginatedModelT_co], dict]:
-        """Parse a page response into (items, raw_body)."""
+    def _parse_page(self, raw: httpx.Response) -> tuple[list[PaginatedModelT_co], dict, Any]:
+        """Parse a page response into items, its raw body, and typed metadata."""
         raise_for_status(raw)
-        items, body = _validated_page(raw, self._model_type, self._strategy)
-        return items, body
+        return _validated_page(raw, self._model_type, self._strategy)
 
     @overload
     def page(
@@ -416,18 +416,17 @@ class NemoPaginatedResponse(Generic[PaginatedModelT_co, PaginatedStrategyT_co]):
 
     def page(self) -> PageResult[PaginatedModelT_co, Any]:
         """Return the first page as a :class:`PageResult` with metadata."""
-        items, body = self._parse_page(self._first_response)
-        metadata = self._strategy.extract_metadata(body)
+        items, _, metadata = self._parse_page(self._first_response)
         return PageResult(items=items, metadata=metadata)
 
     def items(self) -> Iterator[PaginatedModelT_co]:
         """Iterate all items across all pages, fetching subsequent pages lazily."""
-        items, body = self._parse_page(self._first_response)
+        items, body, _ = self._parse_page(self._first_response)
         yield from items
 
         next_page = self._strategy.next_page(body)
         while next_page is not None:
-            items, body = self._parse_page(self._fetch_page(self.request, next_page))
+            items, body, _ = self._parse_page(self._fetch_page(self.request, next_page))
             yield from items
             next_page = self._strategy.next_page(body)
 
@@ -441,14 +440,12 @@ class NemoPaginatedResponse(Generic[PaginatedModelT_co, PaginatedStrategyT_co]):
 
     def pages(self) -> Iterator[PageResult[PaginatedModelT_co, Any]]:
         """Iterate page by page, yielding :class:`PageResult` objects with metadata."""
-        items, body = self._parse_page(self._first_response)
-        metadata = self._strategy.extract_metadata(body)
+        items, body, metadata = self._parse_page(self._first_response)
         yield PageResult(items=items, metadata=metadata)
 
         next_page = self._strategy.next_page(body)
         while next_page is not None:
-            items, body = self._parse_page(self._fetch_page(self.request, next_page))
-            metadata = self._strategy.extract_metadata(body)
+            items, body, metadata = self._parse_page(self._fetch_page(self.request, next_page))
             yield PageResult(items=items, metadata=metadata)
             next_page = self._strategy.next_page(body)
 
@@ -483,11 +480,10 @@ class AsyncNemoPaginatedResponse(Generic[PaginatedModelT_co, PaginatedStrategyT_
     def http_response(self) -> httpx.Response:
         return self._first_response
 
-    def _parse_page(self, raw: httpx.Response) -> tuple[list[PaginatedModelT_co], dict]:
-        """Parse a page response into (items, raw_body)."""
+    def _parse_page(self, raw: httpx.Response) -> tuple[list[PaginatedModelT_co], dict, Any]:
+        """Parse a page response into items, its raw body, and typed metadata."""
         raise_for_status(raw)
-        items, body = _validated_page(raw, self._model_type, self._strategy)
-        return items, body
+        return _validated_page(raw, self._model_type, self._strategy)
 
     @overload
     def page(
@@ -499,20 +495,19 @@ class AsyncNemoPaginatedResponse(Generic[PaginatedModelT_co, PaginatedStrategyT_
 
     def page(self) -> PageResult[PaginatedModelT_co, Any]:
         """Return the first page as a :class:`PageResult` with metadata."""
-        items, body = self._parse_page(self._first_response)
-        metadata = self._strategy.extract_metadata(body)
+        items, _, metadata = self._parse_page(self._first_response)
         return PageResult(items=items, metadata=metadata)
 
     async def items(self) -> AsyncIterator[PaginatedModelT_co]:
         """Iterate all items across all pages, fetching subsequent pages lazily."""
-        items, body = self._parse_page(self._first_response)
+        items, body, _ = self._parse_page(self._first_response)
         for item in items:
             yield item
 
         next_page = self._strategy.next_page(body)
         while next_page is not None:
             raw = await self._fetch_page(self.request, next_page)
-            items, body = self._parse_page(raw)
+            items, body, _ = self._parse_page(raw)
             for item in items:
                 yield item
             next_page = self._strategy.next_page(body)
@@ -527,14 +522,12 @@ class AsyncNemoPaginatedResponse(Generic[PaginatedModelT_co, PaginatedStrategyT_
 
     async def pages(self) -> AsyncIterator[PageResult[PaginatedModelT_co, Any]]:
         """Iterate page by page, yielding :class:`PageResult` objects with metadata."""
-        items, body = self._parse_page(self._first_response)
-        metadata = self._strategy.extract_metadata(body)
+        items, body, metadata = self._parse_page(self._first_response)
         yield PageResult(items=items, metadata=metadata)
 
         next_page = self._strategy.next_page(body)
         while next_page is not None:
             raw = await self._fetch_page(self.request, next_page)
-            items, body = self._parse_page(raw)
-            metadata = self._strategy.extract_metadata(body)
+            items, body, metadata = self._parse_page(raw)
             yield PageResult(items=items, metadata=metadata)
             next_page = self._strategy.next_page(body)

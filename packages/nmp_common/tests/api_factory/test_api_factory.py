@@ -311,6 +311,7 @@ def _page_resp(items, *, page=1, page_size=10, total_pages=1, total_results=None
     page_result.metadata = {
         "page": page,
         "page_size": page_size,
+        "current_page_size": len(items),
         "total_pages": total_pages,
         "total_results": total_results if total_results is not None else len(items),
     }

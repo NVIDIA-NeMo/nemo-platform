@@ -13,7 +13,7 @@ from collections.abc import AsyncIterable, Iterable
 from dataclasses import dataclass, replace
 from typing import Any, ClassVar, Generic, ParamSpec, Protocol, TypedDict, TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 from typing_extensions import TypeVar as TypeVarExt
 
 P = ParamSpec("P")
@@ -76,10 +76,14 @@ class PaginationStrategy(Generic[PageTokenT, MetadataT_co]):
 
 
 class OffsetPaginationMetadata(TypedDict):
-    page: int | None
-    page_size: int | None
-    total_pages: int | None
-    total_results: int | None
+    page: int
+    page_size: int
+    current_page_size: int
+    total_pages: int
+    total_results: int
+
+
+_OFFSET_PAGINATION_METADATA_ADAPTER = TypeAdapter(OffsetPaginationMetadata)
 
 
 class OffsetPagination(PaginationStrategy[int, OffsetPaginationMetadata]):
@@ -102,6 +106,7 @@ class OffsetPagination(PaginationStrategy[int, OffsetPaginationMetadata]):
     pagination_field: ClassVar[str] = "pagination"
     page_field: ClassVar[str] = "page"
     page_size_field: ClassVar[str] = "page_size"
+    current_page_size_field: ClassVar[str] = "current_page_size"
     total_pages_field: ClassVar[str] = "total_pages"
     total_results_field: ClassVar[str] = "total_results"
 
@@ -126,13 +131,18 @@ class OffsetPagination(PaginationStrategy[int, OffsetPaginationMetadata]):
 
     @classmethod
     def extract_metadata(cls, response_body: dict) -> OffsetPaginationMetadata:
-        pagination = response_body.get(cls.pagination_field) or {}
-        return {
-            "page": pagination.get(cls.page_field),
-            "page_size": pagination.get(cls.page_size_field),
-            "total_pages": pagination.get(cls.total_pages_field),
-            "total_results": pagination.get(cls.total_results_field),
-        }
+        pagination = response_body.get(cls.pagination_field)
+        return _OFFSET_PAGINATION_METADATA_ADAPTER.validate_python(
+            {
+                "page": pagination[cls.page_field],
+                "page_size": pagination[cls.page_size_field],
+                "current_page_size": pagination[cls.current_page_size_field],
+                "total_pages": pagination[cls.total_pages_field],
+                "total_results": pagination[cls.total_results_field],
+            }
+            if isinstance(pagination, dict)
+            else pagination
+        )
 
 
 class CursorPaginationMetadata(TypedDict):

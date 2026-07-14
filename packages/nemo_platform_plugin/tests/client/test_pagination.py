@@ -11,6 +11,7 @@ import httpx
 import pytest
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.endpoint import get
+from nemo_platform_plugin.client.errors import NemoResponseValidationError
 from nemo_platform_plugin.client.method import method
 from nemo_platform_plugin.client.response import AsyncNemoPaginatedResponse, NemoPaginatedResponse
 from nemo_platform_plugin.client.types import CursorPagination, OffsetPagination, Paginated, RetryPolicy
@@ -105,6 +106,7 @@ class TestPaginatedSync:
         assert page.metadata["total_pages"] == 5
         assert page.metadata["total_results"] == 10
         assert page.metadata["page_size"] == 2
+        assert page.metadata["current_page_size"] == 1
         # No additional requests for data()
         assert mock_http.request.call_count == 1
 
@@ -119,8 +121,8 @@ class TestPaginatedSync:
         items = list(resp.items())
         assert items == []
 
-    def test_no_pagination_metadata(self) -> None:
-        """When pagination is None, treat as single page."""
+    @pytest.mark.parametrize("iteration", ["page", "items", "pages"])
+    def test_missing_pagination_metadata_is_invalid(self, iteration: str) -> None:
         mock_http = MagicMock(spec=httpx.Client)
         mock_http.request.return_value = httpx.Response(
             200,
@@ -131,9 +133,26 @@ class TestPaginatedSync:
         client = NemoClient(base_url=BASE, workspace="default", http_client=mock_http)
         resp = client.send(LIST_ITEMS())
 
-        items = list(resp.items())
-        assert len(items) == 1
-        assert mock_http.request.call_count == 1
+        with pytest.raises(NemoResponseValidationError):
+            if iteration == "page":
+                resp.page()
+            elif iteration == "items":
+                list(resp.items())
+            else:
+                list(resp.pages())
+
+    def test_partial_pagination_metadata_is_invalid(self) -> None:
+        mock_http = MagicMock(spec=httpx.Client)
+        mock_http.request.return_value = httpx.Response(
+            200,
+            request=httpx.Request("GET", f"{BASE}/apis/test/v2/workspaces/default/items"),
+            json={"data": [{"id": 1, "name": "a"}], "pagination": {"page": 1}},
+        )
+
+        resp = NemoClient(base_url=BASE, workspace="default", http_client=mock_http).send(LIST_ITEMS())
+
+        with pytest.raises(NemoResponseValidationError):
+            resp.page()
 
     def test_page_query_param_passed_on_subsequent_pages(self) -> None:
         """Subsequent page fetches should include page=N in query params."""
