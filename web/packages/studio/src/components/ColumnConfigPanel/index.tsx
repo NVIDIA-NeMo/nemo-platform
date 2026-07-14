@@ -19,6 +19,7 @@ import {
   TextInput,
 } from '@nvidia/foundations-react-core';
 import { ICON_COLOR_CLASS } from '@studio/components/AddColumnPalette/constants';
+import { SeedDatasetConfig } from '@studio/components/ColumnConfigPanel/SeedDatasetConfig';
 import { CardIconBadge } from '@studio/components/common/SelectableCard';
 import {
   type BuilderColumn,
@@ -209,14 +210,22 @@ export const ColumnConfigPanel: FC<ColumnConfigPanelProps> = ({
           />
         </FormField>
 
-        {fields.map((field) => (
-          <FieldControl
-            key={field.key}
-            field={field}
-            value={values[field.key] ?? ''}
-            onChange={(value) => setValue(field.key, value)}
+        {option.columnType === 'seed-dataset' ? (
+          <SeedDatasetConfig
+            key={column.id}
+            values={values}
+            onPatch={(patch) => onChange({ values: { ...values, ...patch } })}
           />
-        ))}
+        ) : (
+          fields.map((field) => (
+            <FieldControl
+              key={field.key}
+              field={field}
+              value={values[field.key] ?? ''}
+              onChange={(value) => setValue(field.key, value)}
+            />
+          ))
+        )}
       </Stack>
 
       <Flex align="center" justify="start" className="shrink-0 border-t border-base p-density-lg">

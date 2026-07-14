@@ -4,7 +4,7 @@
 import Papa from 'papaparse';
 import { ReactNode } from 'react';
 
-export const parseCSV = (response: string) => {
+export const parseCSVTable = (response: string) => {
   const csvData = Papa.parse(response, { header: true });
   const rawRows = csvData.data as Record<string, unknown>[];
   const columnNames = csvData.meta.fields || [];
@@ -43,7 +43,7 @@ export interface ParsedFileContent {
  */
 export const parseFileContent = (filePath: string, content: string): ParsedFileContent => {
   if (filePath.endsWith('.csv')) {
-    const csvData = parseCSV(content);
+    const csvData = parseCSVTable(content);
     return { type: 'csv', tabularData: csvData };
   }
   if (filePath.endsWith('.json') || filePath.endsWith('.jsonl')) {

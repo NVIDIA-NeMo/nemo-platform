@@ -19,6 +19,7 @@ export interface BuilderPaletteProps {
   modelGroups: ModelWorkspaceGroup[];
   isLoadingModels?: boolean;
   onAddColumn: (selection: AddColumnSelection) => void;
+  disabledColumnReasons?: Partial<Record<string, string>>;
   onAddModel: (selection: ModelSelection, provider: string) => void;
   onSelectModel: (id: string | null) => void;
 }
@@ -32,6 +33,7 @@ export const BuilderPalette: FC<BuilderPaletteProps> = ({
   modelGroups,
   isLoadingModels,
   onAddColumn,
+  disabledColumnReasons,
   onAddModel,
   onSelectModel,
 }) => (
@@ -48,7 +50,7 @@ export const BuilderPalette: FC<BuilderPaletteProps> = ({
     />
     <div className="min-h-0 flex-1">
       {tab === 'columns' ? (
-        <AddColumnPalette onAddColumn={onAddColumn} />
+        <AddColumnPalette onAddColumn={onAddColumn} disabledReasons={disabledColumnReasons} />
       ) : (
         <AddModelPalette
           models={models}

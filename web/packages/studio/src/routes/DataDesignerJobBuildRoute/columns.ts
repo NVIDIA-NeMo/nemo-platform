@@ -6,6 +6,8 @@ import {
   DatetimeSamplerParamsUnit,
   PersonSamplerParamsSex,
   SamplerType,
+  type SamplingStrategy,
+  type SeedConfig,
   TimeDeltaSamplerParamsUnit,
 } from '@nemo/sdk/generated/data-designer/schema';
 import { COLUMN_TYPE_GROUPS } from '@studio/components/AddColumnPalette/constants';
@@ -101,6 +103,23 @@ const CODE_LANGS = [
 ] as const;
 
 const asOptions = (values: readonly string[]) => values.map((value) => ({ label: value, value }));
+
+export const SEED_FILESET_REF_KEY = 'fileset_ref';
+export const SEED_FILE_PATH_KEY = 'file_path';
+export const SEED_SAMPLING_STRATEGY_KEY = 'sampling_strategy';
+export const SEED_AVAILABLE_COLUMNS_KEY = 'available_columns';
+
+export const SAMPLING_STRATEGY_OPTIONS = [
+  { label: 'Ordered', value: 'ordered' },
+  { label: 'Shuffle', value: 'shuffle' },
+] as const;
+
+/** The seed file's discovered column names for a seed-dataset column (empty if none/undiscovered). */
+export const getSeedAvailableColumns = (column: BuilderColumn): string[] =>
+  (column.values[SEED_AVAILABLE_COLUMNS_KEY] ?? '')
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean);
 
 const PROMPT_FIELD: ColumnField = {
   key: 'prompt',
@@ -233,7 +252,22 @@ const FIELDS_BY_COLUMN_TYPE: Record<NonNullable<DataDesignerColumnType>, ColumnF
         'Parameters for the chosen validator. For "code": { "code_lang": "python" }. For "remote": { "url": "https://…" }.',
     },
   ],
-  'seed-dataset': [],
+  'seed-dataset': [
+    {
+      key: SEED_FILESET_REF_KEY,
+      label: 'Fileset',
+      kind: 'text',
+      required: true,
+      helperText: 'The platform fileset to seed rows from.',
+    },
+    {
+      key: SEED_FILE_PATH_KEY,
+      label: 'File',
+      kind: 'text',
+      required: true,
+      helperText: 'The file within the fileset to read rows from.',
+    },
+  ],
   custom: [
     {
       key: 'generation_strategy',
@@ -645,12 +679,25 @@ export const buildGraph = (columns: BuilderColumn[]): { nodes: DagNode[]; edges:
   const knownNames = new Set(columns.map((column) => column.name).filter(Boolean));
   const idByName = new Map(columns.filter((c) => c.name).map((c) => [c.name, c.id]));
 
+  for (const column of columns) {
+    if (column.option.columnType !== 'seed-dataset') continue;
+    for (const name of getSeedAvailableColumns(column)) {
+      knownNames.add(name);
+      if (!idByName.has(name)) idByName.set(name, column.id);
+    }
+  }
+
   const nodes: DagNode[] = [];
   const edges: DagEdge[] = [];
+  const edgeKeys = new Set<string>();
 
   for (const column of columns) {
     const { option } = column;
     const deps = columnDependencies(column, knownNames);
+    const tags =
+      option.columnType === 'seed-dataset'
+        ? getSeedAvailableColumns(column).map((name) => `{{${name}}}`)
+        : [...deps].map((name) => `{{${name}}}`);
     nodes.push({
       id: column.id,
       data: {
@@ -659,12 +706,16 @@ export const buildGraph = (columns: BuilderColumn[]): { nodes: DagNode[]; edges:
         description: option.description,
         icon: option.icon,
         colorClassName: ACCENT_VAR_CLASS[option.color],
-        tags: [...deps].map((name) => `{{${name}}}`),
+        tags,
       },
     });
     for (const dep of deps) {
       const source = idByName.get(dep);
-      if (source && source !== column.id) edges.push({ source, target: column.id });
+      if (!source || source === column.id) continue;
+      const key = `${source}->${column.id}`;
+      if (edgeKeys.has(key)) continue;
+      edgeKeys.add(key);
+      edges.push({ source, target: column.id });
     }
   }
 
@@ -818,15 +869,44 @@ const toColumnConfig = (column: BuilderColumn): Record<string, unknown> => {
   return config;
 };
 
+/** Assembles the `FilesetFileSeedSource` composite path: `{workspace}/{fileset}#{file}`. */
+export const buildSeedFilesetPath = (filesetRef: string, filePath: string): string =>
+  `${filesetRef}#${filePath}`;
+
+const buildSeedConfig = (columns: BuilderColumn[]): SeedConfig | undefined => {
+  const seedColumn = columns.find(
+    (column) =>
+      column.option.columnType === 'seed-dataset' &&
+      column.values[SEED_FILESET_REF_KEY]?.trim() &&
+      column.values[SEED_FILE_PATH_KEY]?.trim()
+  );
+  if (!seedColumn) return undefined;
+
+  const path = buildSeedFilesetPath(
+    seedColumn.values[SEED_FILESET_REF_KEY].trim(),
+    seedColumn.values[SEED_FILE_PATH_KEY].trim()
+  );
+  const seedConfig: SeedConfig = {
+    source: { seed_type: 'nmp', path },
+  };
+  const samplingStrategy = seedColumn.values[SEED_SAMPLING_STRATEGY_KEY]?.trim();
+  if (samplingStrategy) seedConfig.sampling_strategy = samplingStrategy as SamplingStrategy;
+  return seedConfig;
+};
+
 export const buildDataDesignerConfig = (
   columns: BuilderColumn[],
   models: BuilderModel[] = [],
   servedModelNames: Map<string, string> = new Map()
 ): DataDesignerConfig => {
   const config: DataDesignerConfig = {
-    columns: columns.map(toColumnConfig) as unknown as DataDesignerConfig['columns'],
+    columns: columns
+      .filter((column) => column.option.columnType !== 'seed-dataset')
+      .map(toColumnConfig) as unknown as DataDesignerConfig['columns'],
   };
   const modelConfigs = buildModelConfigs(models, servedModelNames);
   if (modelConfigs) config.model_configs = modelConfigs;
+  const seedConfig = buildSeedConfig(columns);
+  if (seedConfig) config.seed_config = seedConfig;
   return config;
 };
