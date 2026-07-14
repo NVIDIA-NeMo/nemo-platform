@@ -147,6 +147,34 @@ def test_no_verifiability_without_a_target():
     assert result.verifiability is None
 
 
+def test_verifiability_ignores_below_threshold_extractable_noise():
+    # One coincidental "#### <n>" in a large sample is noise, not a verifiable dataset (kto-mix-14k).
+    features = [_f("prompt", "string"), _f("completion", "string")]
+    rows = [{"prompt": "q", "completion": "just prose"} for _ in range(100)]
+    rows[0]["completion"] = "the answer is #### 7"  # 1/100 = 1% < 5% floor
+    assert classify(features, {}, rows).verifiability is None
+
+
+def test_verifiability_asserted_above_coverage_floor():
+    features = [_f("prompt", "string"), _f("completion", "string")]
+    rows = [{"prompt": "q", "completion": "just prose"} for _ in range(10)]
+    for row in rows[:2]:
+        row["completion"] = "answer #### 7"  # 2/10 = 20% >= 5% floor
+    result = classify(features, {}, rows)
+    assert result.verifiability.method == "extractable_final_answer"
+    assert result.verifiability.coverage == 0.2
+
+
+def test_sparse_ground_truth_falls_through_to_extractable_answer():
+    # A ground_truth column present in too few rows must not mask a strong extractable-answer signal.
+    features = [_f("completion", "string"), _f("ground_truth", "string")]
+    rows = [{"completion": "reasoning #### 5", "ground_truth": None} for _ in range(100)]
+    rows[0]["ground_truth"] = "5"  # 1/100 ground_truth coverage -> below floor, must fall through
+    result = classify(features, {}, rows)
+    assert result.verifiability.method == "extractable_final_answer"
+    assert result.verifiability.coverage == 1.0
+
+
 def test_implicit_prompt_evidence_from_embedded_transcript():
     features = [_f("chosen", "string"), _f("rejected", "string")]
     rows = [{"chosen": "\n\nHuman: hi\n\nAssistant: hello", "rejected": "\n\nHuman: hi\n\nAssistant: hey"}]
