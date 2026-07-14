@@ -751,10 +751,12 @@ jobs:
             helm cm-push "${CHART_PACKAGE}" nemo-platform
           fi
 
-  dispatch-release-deployment:
-    name: Dispatch release deployment
+  signal-deployment:
+    name: Signal deployment
     needs: [plan-release, stage-helm, poll-final-release]
     if: >-
+      !cancelled() &&
+      needs.poll-final-release.result == 'success' &&
       needs.plan-release.outputs.include_helm == 'true' &&
       needs.plan-release.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
@@ -1048,16 +1050,6 @@ jobs:
             --title "${RELEASE_TAG}" \
             --generate-notes \
             "${notes_range[@]}"
-
-  signal-deployment:
-    name: Signal deployment
-    needs: [plan-release, poll-final-release]
-    if: >-
-      needs.poll-final-release.result == 'success' &&
-      needs.plan-release.outputs.dry_run != 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "::notice::Placeholder - signal the completed release"
 
   notify-end:
     name: Notify release result
