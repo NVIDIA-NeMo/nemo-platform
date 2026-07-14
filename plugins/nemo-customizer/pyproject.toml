@@ -32,6 +32,8 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/nemo_customizer"]
 
+[tool.nemo.openapi]
+
 
 [tool.uv.sources]
 nemo-platform-plugin = { workspace = true }
