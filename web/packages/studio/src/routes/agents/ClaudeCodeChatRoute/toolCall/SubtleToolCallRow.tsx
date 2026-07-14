@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Flex, Text } from '@nvidia/foundations-react-core';
+import { Stack, Text } from '@nvidia/foundations-react-core';
 import { CODE_BLOCK_SURFACE_CLASS } from '@studio/routes/agents/ClaudeCodeChatRoute/toolCall/constants';
 import { summarizeRepeatedSubtleToolActions } from '@studio/routes/agents/ClaudeCodeChatRoute/toolCall/helpers';
 import type { SubtleToolAction } from '@studio/routes/agents/ClaudeCodeChatRoute/toolCall/types';
@@ -29,13 +29,12 @@ const InvocationPanel = ({
   invocationIndex,
   toolCallId,
 }: InvocationPanelProps) => (
-  <Flex
-    direction="col"
+  <Stack
     className="w-full min-w-0 max-w-full overflow-hidden"
     data-testid="claude-code-tool-call-invocation"
     id={`${toolCallId}-invocation-${invocationIndex}`}
   >
-    <Flex direction="col" className="relative w-full min-w-0 max-w-full">
+    <Stack className="relative w-full min-w-0 max-w-full">
       <button
         aria-label={`Copy invocation${invocationCount === 1 ? '' : ` ${invocationIndex + 1}`}`}
         className="absolute right-density-xs top-density-xs z-10 rounded p-0.5 hover:bg-surface-sunken"
@@ -51,8 +50,8 @@ const InvocationPanel = ({
       >
         <code data-testid="claude-code-tool-call-invocation-content">{invocation}</code>
       </pre>
-    </Flex>
-  </Flex>
+    </Stack>
+  </Stack>
 );
 
 export const SubtleToolCallRow = ({ actions }: SubtleToolCallRowProps) => (
@@ -93,8 +92,7 @@ export const SubtleToolCallRow = ({ actions }: SubtleToolCallRowProps) => (
                 <span className="min-w-0 truncate">{action.message}</span>
               </summary>
               {action.details?.length ? (
-                <Flex
-                  direction="col"
+                <Stack
                   className="mt-0.5 w-full min-w-0 max-w-full space-y-0.5 overflow-hidden pl-7"
                   data-testid="claude-code-tool-call-subtle-detail-list"
                 >
@@ -130,30 +128,24 @@ export const SubtleToolCallRow = ({ actions }: SubtleToolCallRowProps) => (
                                 className="size-3 shrink-0 transition-transform group-open/invocation:rotate-90"
                               />
                             </summary>
-                            <Flex
-                              direction="col"
-                              className="mt-density-xs w-full min-w-0 max-w-full pl-density-sm"
-                            >
+                            
                               <InvocationPanel
                                 invocation={invocation}
                                 invocationCount={invocations.length}
                                 invocationIndex={detailIndex}
                                 toolCallId={action.toolCallId}
                               />
-                            </Flex>
                           </details>
                         );
                       })}
-                </Flex>
+                </Stack>
               ) : (
-                <Flex direction="col" className="mt-density-xs w-full min-w-0 max-w-full pl-7">
                   <InvocationPanel
                     invocation={invocations[0]!}
                     invocationCount={1}
                     invocationIndex={0}
                     toolCallId={action.toolCallId}
                   />
-                </Flex>
               )}
             </details>
           );
