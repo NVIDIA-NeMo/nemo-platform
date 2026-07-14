@@ -95,10 +95,10 @@ America/Los_Angeles.
    GitHub release and tag at the selected SHA. GitHub generates the release
    notes from the previous numeric SemVer tag. Subset releases do not create a
    GitHub release or tag.
-
-The deployment-signalling job is currently a placeholder. A successful poll
-means the selected artifacts are public; it does not yet mean a deployment was
-created by this workflow.
+8. After polling succeeds, releases that include the Helm chart dispatch a
+   deployment signal to the configured internal release repository. The
+   downstream workflow creates a pending GitHub Deployment, and the deployment
+   controller completes it independently. Releases without Helm skip this step.
 
 ## Publication destinations
 
