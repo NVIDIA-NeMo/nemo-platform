@@ -148,6 +148,41 @@ into one module shared with the IGW tool rails so there is a single tested sourc
 of truth. The one external dependency is coverage beyond LangChain/LangGraph,
 which waits on Relay exposing managed-tool-execution seams in other form factors.
 
+## IGW vs. Relay: surface coverage
+
+The two execution environments reach different parts of the agent. The inference
+gateway (IGW) is a proxy in front of the model endpoints: it sees every LLM call,
+handles each one independently with no memory across calls, and its only lever is
+to block or rewrite the whole turn. Relay runs inside the agent's execution loop:
+when the agent's model and tool calls go through Relay's managed execution, it
+wraps each step, remembers earlier steps, and can block, rewrite, or replace an
+individual step. The consequence is that everything at or past the tool-execution
+boundary is reachable by Relay and invisible to IGW, because the agent's tools
+never pass through the gateway.
+
+| Agent surface | IGW | Relay |
+|---|---|---|
+| LLM request (the prompt) | ✅ inspect / rewrite / block | ✅ inspect / rewrite / block |
+| LLM response (the reply) | ✅ inspect / rewrite / block | ✅ inspect / rewrite / block |
+| Proposed tool calls | ⏳ block the whole turn | ✅ at the real execution boundary |
+| Tool arguments (before the call runs) | ⏳ block the whole turn | ✅ block **or** rewrite the actual call |
+| Tool execution & result | ❌ runs out of band | ✅ block / replace / inspect the real result |
+| Tool-result integrity (linkage) | ⏳ validate linkage + block | ✅ via the real result |
+| Retrieved documents (RAG) | ❌ | ◐ model the retriever as a tool |
+| Embedder / reranker | ❌ | ◐ observe-only |
+| Sub-agent boundaries | ❌ | ✅ scope-aware policy |
+| Cross-step / trajectory (loops, budgets, taint) | ❌ no memory across calls | ✅ stateful policy |
+
+Legend: ✅ supported · ◐ possible but not first-class · ❌ not possible · ⏳ IGW
+branch, in review.
+
+IGW covers the two LLM surfaces fully and the proposed-call / argument / linkage
+surfaces partially — always block-the-turn, never at the real boundary.
+Everything from tool execution onward (execution and result, sub-agent scope,
+cross-step trajectory) is Relay-only, because those steps happen inside the loop
+IGW cannot see. That boundary is the whole reason the agentic work lives in the
+Relay execution path.
+
 ## Design direction (beyond the spike)
 
 The exact-command matcher existed to prove the hook and give the ticket a
