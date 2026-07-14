@@ -169,7 +169,7 @@ describe('buildModelConfigs', () => {
 
   it('omits empty optional fields and inference parameters', () => {
     expect(buildModelConfigs([model({ provider: '' })])).toEqual([
-      { alias: 'default', model: 'openai/gpt-4o-mini' },
+      { alias: 'default', model: 'openai/gpt-4o-mini', provider: '' },
     ]);
   });
 
