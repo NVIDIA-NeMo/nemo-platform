@@ -31,20 +31,9 @@ durable container through the deployments plugin.
 | `docker` | A Docker container | Yes | A container image and a configured `docker` executor |
 | `k8s` | A Kubernetes Deployment + Service | Yes | A container image and a configured `k8s` executor |
 
-In every mode the agent is reached the same way — through the Agents gateway
-at `/apis/agents/v2/workspaces/<workspace>/agents/<name>/-/<path>`. The gateway
-resolves the agent's active deployment and proxies the request, so clients do
-not need to know which mode the agent runs in.
-
-<Note>
-
-Container modes (`docker`/`k8s`) are additive — subprocess mode is unchanged
-and remains the default. The k8s runtime contract (in-cluster inference
-gateway wiring, workspace plugin-wheel staging) is still evolving; Docker is
-the most turnkey container path today.
-
-</Note>
-
+In every mode the agent is reached the same way — through the Agents gateway,
+which resolves the agent's active deployment and proxies the request, so
+clients do not need to know which mode the agent runs in.
 ---
 
 ## Subprocess Mode (Default)
@@ -118,22 +107,39 @@ routes to that projected address.
 
 **1. A container image for the agent.** Container modes run a NAT runtime image
 that has `nat` on its `PATH` plus your agent's dependencies (tools, custom
-components). Build one with `nemo agents package`:
+components). Build one with `nemo agents package`. Image building requires the
+`container` extra — install it with `pip install 'nemo-agents-plugin[container]'`
+if `nemo agents package` reports that `python-on-whales` is missing.
+
+The examples below use the calculator agent that ships with the source
+checkout. From the repository root, its project directory is
+`plugins/nemo-agents/examples/calculator-agent/` — the workflow YAML lives at
+`src/calculator_agent/calculator-agent.yml` and the project's `pyproject.toml`
+sits at the directory root. `cd` into that project directory first so the paths
+below resolve:
 
 <Tabs>
 
 <Tab title="CLI">
 
 ```bash
-# Render a Dockerfile, build the image, and tag it locally
+# From the repo root, switch into the example's project directory
+cd plugins/nemo-agents/examples/calculator-agent
+
+# Render a Dockerfile, build the image, and tag it locally.
+# --pyproject builds in "project mode" so the agent's custom components
+# (here, the `calculator` function group) are installed into the image.
+# Omit --pyproject only for a single-file agent that has no local package.
 nemo agents package \
-  --agent ./calculator-agent.yml \
+  --agent src/calculator_agent/calculator-agent.yml \
+  --pyproject pyproject.toml \
   --nat-version 1.8.0 \
   --tag calc-agent:local
 
 # For k8s, publish to a registry your cluster can pull from
 nemo agents package \
-  --agent ./calculator-agent.yml \
+  --agent src/calculator_agent/calculator-agent.yml \
+  --pyproject pyproject.toml \
   --nat-version 1.8.0 \
   --tag calc-agent:1.0 \
   --publish --registry <your-registry>
@@ -198,8 +204,9 @@ run in the core controller, whose Role already grants those permissions.
 <Tab title="CLI">
 
 ```bash
+# Run from the example's project directory (see Prerequisites)
 nemo agents create --name calc-agent \
-  --agent-config ./calculator-agent.yml
+  --agent-config src/calculator_agent/calculator-agent.yml
 
 # --mode docker compiles to the deployments plugin's docker executor
 nemo agents deploy --agent calc-agent \
@@ -256,8 +263,9 @@ that address directly.
 <Tab title="CLI">
 
 ```bash
+# Run from the example's project directory (see Prerequisites)
 nemo agents create --name calc-agent \
-  --agent-config ./calculator-agent.yml
+  --agent-config src/calculator_agent/calculator-agent.yml
 
 nemo agents deploy --agent calc-agent \
   --mode k8s \
@@ -320,6 +328,18 @@ conventions apply to the agent's workflow YAML:
 To make an external model available to the agent, register a provider first —
 see [Deploy Models](/documentation/models-and-inference/tutorials/deploy-models#add-external-providers)
 for NVIDIA Build, OpenAI, and Anthropic examples.
+
+<Note>
+
+For container modes, the gateway URL injected into the agent must be reachable
+**from inside the container**, not just from the platform host. A loopback
+default like `http://localhost:8080` resolves to the container itself and the
+agent's model calls will fail. Set the platform's base URL to a
+container-reachable address — for example the Docker bridge address
+(`http://172.17.0.1:8080`) under Docker, or the in-cluster gateway address under
+Kubernetes.
+
+</Note>
 
 ---
 

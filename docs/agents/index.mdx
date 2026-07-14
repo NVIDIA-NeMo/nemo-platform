@@ -85,7 +85,7 @@ A platform-managed agent consists of three components:
 
 1. **The agent entity.** `nemo agents create` stores the workflow YAML as an entity in the workspace. The same configuration can be redeployed, evaluated, or optimized without re-registering it.
 1. **The deployment controller.** `nemo agents deploy` passes the stored config to the Agents service controller. By default it launches a `nat start fastapi` process, assigns a port, watches its health, and tears it down on `nemo agents undeploy`. With `--mode docker` or `--mode k8s` it instead runs the agent as a durable container through the deployments plugin — see [Deploy Agents](/documentation/agents/deploy-agents).
-1. **The Agents gateway.** Client requests reach the agent at `/apis/agents/v2/workspaces/<workspace>/agents/<name>/-/<path>`. The gateway resolves the agent to its current running deployment and proxies the request, including streaming responses. From a client's perspective, the agent is an OpenAI-compatible endpoint owned by NeMo Platform.
+1. **The Agents gateway.** The gateway resolves the agent to its current running deployment and proxies client requests to it, including streaming responses. From a client's perspective, the agent is an OpenAI-compatible endpoint owned by NeMo Platform.
 
 Model traffic from inside the agent process routes back through the Inference Gateway, which resolves model entity names to upstream providers and supplies their credentials. This is why agent configs do not carry `base_url` or `api_key` values — the deployment injects the gateway URL automatically, and the gateway looks up the rest.
 
