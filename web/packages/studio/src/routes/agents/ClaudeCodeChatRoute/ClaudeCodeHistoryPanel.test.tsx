@@ -163,8 +163,8 @@ describe('ClaudeCodeHistoryPanel', () => {
         activeSessionId="session-1"
         artifacts={{
           workspace: 'default',
-          selections: [],
-          files: [],
+          selections: [{ label: 'Environment', value: 'production' }],
+          files: [{ action: 'Wrote', path: 'agents/beach-finder.yml' }],
           links: [],
           jobs: [
             {
@@ -173,7 +173,7 @@ describe('ClaudeCodeHistoryPanel', () => {
               source: 'evaluator',
             },
           ],
-          tools: [],
+          tools: ['Bash'],
         }}
         onNewChat={vi.fn()}
         onSelectSession={vi.fn()}
@@ -190,6 +190,8 @@ describe('ClaudeCodeHistoryPanel', () => {
       'dark:bg-surface-raised'
     );
     expect(screen.queryByText('Workspace')).not.toBeInTheDocument();
+    expect(screen.getByText('beach-finder.yml')).toBeInTheDocument();
+    expect(screen.getAllByRole('separator')).toHaveLength(3);
     expect(screen.getByRole('link', { name: /agent-eval-1/ })).toHaveAttribute(
       'href',
       '/workspaces/default/agents/evaluations/agent-eval-1'

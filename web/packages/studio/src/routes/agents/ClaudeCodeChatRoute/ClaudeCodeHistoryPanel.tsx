@@ -42,7 +42,7 @@ export const ClaudeCodeHistoryPanel: FC<ClaudeCodeHistoryPanelProps> = ({
   }
 
   return (
-    <aside className="flex min-h-80 w-full shrink-0 flex-col gap-density-md overflow-y-auto bg-transparent p-density-md lg:w-[30rem] xl:w-[32rem]">
+    <aside className="flex min-h-80 w-full shrink-0 flex-col gap-density-md overflow-y-auto bg-transparent py-density-md pl-density-md pr-density-lg lg:w-[30rem] xl:w-[32rem]">
       {!hideArtifacts && (
         <ClaudeCodeArtifactsPane
           artifacts={props.artifacts}

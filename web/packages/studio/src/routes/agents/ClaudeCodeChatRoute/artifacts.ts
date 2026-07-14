@@ -250,16 +250,29 @@ const pushUnique = (items: string[], value: string) => {
   if (!items.includes(value)) items.push(value);
 };
 
+const isAgentSelectionQuestion = (question: string): boolean => {
+  const normalized = question.toLowerCase();
+  return (
+    /\b(?:which|what)\s+agent\b/.test(normalized) ||
+    /\b(?:select|choose|pick)\s+(?:(?:an?|the)\s+)?agent\b/.test(normalized) ||
+    /\bagent\s+(?:id|name|reference)\b/.test(normalized)
+  );
+};
+
 const inferSelectionLabel = (question: string, header?: string): string => {
   const combined = `${header ?? ''} ${question}`.toLowerCase();
-  if (combined.includes('agent')) return 'Agent';
+  if (isAgentSelectionQuestion(question)) return 'Agent';
   if (combined.includes('model')) return 'Model';
   if (combined.includes('deployment')) return 'Deployment';
   if (combined.includes('fileset')) return 'Fileset';
   if (combined.includes('dataset')) return 'Dataset';
   if (combined.includes('provider')) return 'Provider';
 
-  const label = header?.trim() || question.trim().replace(/\?$/, '');
+  const headerLabel = header?.trim();
+  const label =
+    headerLabel && headerLabel.toLowerCase() !== 'agent'
+      ? headerLabel
+      : question.trim().replace(/\?$/, '');
   return label.length > 40 ? label.slice(0, 40) : label;
 };
 
