@@ -235,6 +235,28 @@ describe('ClaudeCodeHistoryPanel', () => {
     expect(screen.getByText('No artifacts yet')).toBeInTheDocument();
   });
 
+  it('omits empty artifact sections and their dividers', () => {
+    render(
+      <ClaudeCodeHistoryPanel
+        activeSessionId="session-1"
+        artifacts={{
+          selections: [{ label: 'Environment', value: ' ' }],
+          files: [],
+          links: [],
+          jobs: [{ name: 'agent-eval-1' }],
+          tools: ['Bash'],
+        }}
+        onNewChat={vi.fn()}
+        onSelectSession={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText('Selections')).not.toBeInTheDocument();
+    expect(screen.getByText('Jobs')).toBeInTheDocument();
+    expect(screen.getByText('Tools')).toBeInTheDocument();
+    expect(screen.getAllByRole('separator')).toHaveLength(1);
+  });
+
   it('lists Claude Code skills in the expanded skills block', async () => {
     const user = userEvent.setup();
     render(

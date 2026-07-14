@@ -11,10 +11,7 @@ import {
   SelectionArtifacts,
   ToolArtifacts,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/historyPanel/ArtifactSections';
-import {
-  getSelectedArtifactModel,
-  hasArtifacts,
-} from '@studio/routes/agents/ClaudeCodeChatRoute/historyPanel/helpers';
+import { getSelectedArtifactModel } from '@studio/routes/agents/ClaudeCodeChatRoute/historyPanel/helpers';
 import type { ClaudeCodeChatArtifacts } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import { PanelRightClose } from 'lucide-react';
 import { Fragment, type ReactNode } from 'react';
@@ -33,45 +30,53 @@ export const ClaudeCodeArtifactsPane = ({
   collapseLabel: string;
   onCollapse: () => void;
 }) => {
-  const selectedModel = artifacts ? getSelectedArtifactModel(artifacts) : undefined;
+  const agent = artifacts?.agent?.trim();
+  const selectedModel = artifacts ? getSelectedArtifactModel(artifacts)?.trim() : undefined;
+  const selections = artifacts?.selections.filter(
+    (selection) => selection.label.trim() && selection.value.trim()
+  );
+  const jobs = artifacts?.jobs.filter((job) => job.name.trim());
+  const files = artifacts?.files.filter((file) => file.path.trim());
+  const links = artifacts?.links.filter((link) => link.label.trim());
+  const tools = artifacts?.tools.filter((tool) => tool.trim());
   const sections: ArtifactPaneSection[] = [];
 
-  if (artifacts?.agent || selectedModel) {
+  if (agent || selectedModel) {
     sections.push({
       id: 'summary',
       content: (
         <Stack gap="density-sm" className="min-w-0">
-          <ArtifactRow label="Agent" value={artifacts?.agent} />
+          <ArtifactRow label="Agent" value={agent} />
           <ArtifactRow label="Model" value={selectedModel} />
         </Stack>
       ),
     });
   }
 
-  if (artifacts?.selections.length) {
+  if (selections?.length) {
     sections.push({
       id: 'selections',
-      content: <SelectionArtifacts selections={artifacts.selections} />,
+      content: <SelectionArtifacts selections={selections} />,
     });
   }
 
-  if (artifacts?.jobs.length) {
+  if (jobs?.length) {
     sections.push({
       id: 'jobs',
-      content: <JobArtifacts jobs={artifacts.jobs} workspace={artifacts.workspace} />,
+      content: <JobArtifacts jobs={jobs} workspace={artifacts?.workspace} />,
     });
   }
 
-  if (artifacts?.files.length) {
-    sections.push({ id: 'files', content: <FileArtifacts files={artifacts.files} /> });
+  if (files?.length) {
+    sections.push({ id: 'files', content: <FileArtifacts files={files} /> });
   }
 
-  if (artifacts?.links.length) {
-    sections.push({ id: 'links', content: <LinkArtifacts links={artifacts.links} /> });
+  if (links?.length) {
+    sections.push({ id: 'links', content: <LinkArtifacts links={links} /> });
   }
 
-  if (artifacts?.tools.length) {
-    sections.push({ id: 'tools', content: <ToolArtifacts tools={artifacts.tools} /> });
+  if (tools?.length) {
+    sections.push({ id: 'tools', content: <ToolArtifacts tools={tools} /> });
   }
 
   return (
@@ -100,11 +105,11 @@ export const ClaudeCodeArtifactsPane = ({
           </Button>
         </Tooltip>
       </Flex>
-      {hasArtifacts(artifacts) ? (
+      {sections.length ? (
         <Stack gap="density-sm" padding="density-md" className="min-h-0 flex-1 overflow-y-auto">
           {sections.map((section, index) => (
             <Fragment key={section.id}>
-              {index > 0 && <Divider />}
+              {index > 0 && <Divider className="h-auto! flex-none!" />}
               {section.content}
             </Fragment>
           ))}
