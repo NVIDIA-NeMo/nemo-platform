@@ -97,4 +97,4 @@ nemo-platform-plugin = { source = "../../packages/nemo_platform_plugin/src/nemo_
 
 # Opt this plugin into OpenAPI spec generation
 [tool.nemo.openapi]
-
+data_designer_plugin_allowlist = ["fileset-seed-datasets"]

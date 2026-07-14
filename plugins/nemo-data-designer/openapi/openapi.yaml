@@ -684,67 +684,6 @@ components:
         \ value or a distribution for dynamic sampling.\n    top_p: Nucleus sampling\
         \ probability (0.0-1.0). Can be a fixed value or a distribution for dynamic\
         \ sampling.\n    max_tokens: Maximum number of tokens to generate in the response."
-    ChunkedValidationConfig:
-      properties:
-        name:
-          type: string
-          title: Name
-        drop:
-          type: boolean
-          title: Drop
-          default: false
-        column_type:
-          type: string
-          const: anonymizer-chunked-validation
-          title: Column Type
-          default: anonymizer-chunked-validation
-        skip:
-          $ref: '#/components/schemas/SkipConfig'
-        propagate_skip:
-          type: boolean
-          title: Propagate Skip
-          description: "If True (default), this column auto-skips when any of its\
-            \ required_columns was skipped. Independent of skip \u2014 a column with\
-            \ no SkipConfig still propagates upstream skips. Set to False for null-tolerant\
-            \ columns."
-          default: true
-        pool:
-          items:
-            type: string
-          type: array
-          minItems: 1
-          title: Pool
-        max_entities_per_call:
-          type: integer
-          exclusiveMinimum: 0.0
-          title: Max Entities Per Call
-        excerpt_window_chars:
-          type: integer
-          exclusiveMinimum: 0.0
-          title: Excerpt Window Chars
-        max_parallel_chunks:
-          title: Max Parallel Chunks
-          type: integer
-          exclusiveMinimum: 0.0
-        single_chunk_full_text:
-          type: boolean
-          title: Single Chunk Full Text
-          default: true
-        prompt_template:
-          type: string
-          title: Prompt Template
-        system_prompt:
-          title: System Prompt
-          type: string
-      additionalProperties: false
-      type: object
-      required:
-      - name
-      - pool
-      - max_entities_per_call
-      - excerpt_window_chars
-      - prompt_template
-      title: ChunkedValidationConfig
     CodeLang:
       type: string
       enum:
@@ -1033,13 +972,9 @@ components:
             - $ref: '#/components/schemas/ValidationColumnConfig'
             - $ref: '#/components/schemas/EmbeddingColumnConfig'
             - $ref: '#/components/schemas/ImageColumnConfig'
-            - $ref: '#/components/schemas/ChunkedValidationConfig'
-            - $ref: '#/components/schemas/DetectionTransformConfig'
             discriminator:
               propertyName: column_type
               mapping:
-                anonymizer-chunked-validation: '#/components/schemas/ChunkedValidationConfig'
-                anonymizer-detection-transform: '#/components/schemas/DetectionTransformConfig'
                 custom: '#/components/schemas/CustomColumnConfig'
                 embedding: '#/components/schemas/EmbeddingColumnConfig'
                 expression: '#/components/schemas/ExpressionColumnConfig'
@@ -1209,48 +1144,6 @@ components:
         \ granularity. Options:\n        - \"Y\": Years\n        - \"M\": Months\n\
         \        - \"D\": Days (default)\n        - \"h\": Hours\n        - \"m\"\
         : Minutes\n        - \"s\": Seconds"
-    DetectionTransformConfig:
-      properties:
-        name:
-          type: string
-          title: Name
-        drop:
-          type: boolean
-          title: Drop
-          default: false
-        column_type:
-          type: string
-          const: anonymizer-detection-transform
-          title: Column Type
-          default: anonymizer-detection-transform
-        skip:
-          $ref: '#/components/schemas/SkipConfig'
-        propagate_skip:
-          type: boolean
-          title: Propagate Skip
-          description: "If True (default), this column auto-skips when any of its\
-            \ required_columns was skipped. Independent of skip \u2014 a column with\
-            \ no SkipConfig still propagates upstream skips. Set to False for null-tolerant\
-            \ columns."
-          default: true
-        operation:
-          $ref: '#/components/schemas/DetectionTransformOperation'
-      additionalProperties: false
-      type: object
-      required:
-      - name
-      - operation
-      title: DetectionTransformConfig
-    DetectionTransformOperation:
-      type: string
-      enum:
-      - parse_detected_entities
-      - prepare_validation_inputs
-      - enrich_validation_decisions
-      - apply_validation_to_seed_entities
-      - merge_and_build_candidates
-      - apply_validation_and_finalize
-      title: DetectionTransformOperation
     DirectorySeedSource:
       properties:
         seed_type:
