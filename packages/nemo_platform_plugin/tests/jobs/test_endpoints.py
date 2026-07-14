@@ -122,14 +122,6 @@ def test_resume_job() -> None:
     assert prepared.path_template.endswith("/jobs/{name}/resume")
 
 
-def test_rerun_job() -> None:
-    prepared = endpoints.rerun_job(workspace="default", job="j-1")
-    assert prepared.method == "POST"
-    assert prepared.path_template.endswith("/jobs/{job}/rerun")
-    assert prepared.path_params == {"workspace": "default", "job": "j-1"}
-    assert prepared.response_type is PlatformJobResponse
-
-
 # ---------------------------------------------------------------------------
 # Job status
 # ---------------------------------------------------------------------------

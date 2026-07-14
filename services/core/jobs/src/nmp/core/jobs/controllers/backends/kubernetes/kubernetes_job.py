@@ -7,6 +7,7 @@ from typing import Any, Generic, Literal, TypeVar
 from kubernetes import client
 from kubernetes.client.models import V1Job, V1JobStatus
 from kubernetes.client.rest import ApiException
+from nemo_platform_plugin.jobs.types import PlatformJobTaskUpdate
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobStepWithContext
 from nmp.core.jobs.app.constants import (
@@ -389,20 +390,22 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
             # Job already deleted
             # List all the tasks on the step that are ACTIVE and mark them as CANCELLED too,
             # since at this point all those pods should be deleted.
-            tasks = self._nmp_sdk.jobs.tasks.list(
+            tasks = self._jobs.list_job_step_tasks(
                 name=step.name,
                 job=step.job,
                 workspace=step.workspace,
-            )
+            ).data()
             for task in tasks.data:
                 if task.status == PlatformJobStatus.ACTIVE:
-                    self._nmp_sdk.jobs.tasks.create_or_update(
+                    self._jobs.update_job_step_task(
                         name=task.name,
                         workspace=step.workspace,
                         job=step.job,
                         step=step.name,
-                        status=PlatformJobStatus.CANCELLED.value,
-                        status_details={"message": "Task cancelled as part of job cancellation"},
+                        body=PlatformJobTaskUpdate(
+                            status=PlatformJobStatus.CANCELLED,
+                            status_details={"message": "Task cancelled as part of job cancellation"},
+                        ),
                     )
 
             return JobUpdate(

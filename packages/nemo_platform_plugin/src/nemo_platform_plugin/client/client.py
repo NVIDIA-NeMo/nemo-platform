@@ -53,11 +53,24 @@ from nemo_platform_plugin.client.types import (
     RetryPolicy,
     Stream,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 DEFAULT_TIMEOUT = 60.0
+
+
+def _parse_json_body(response_type: type, data: Any) -> Any:
+    """Parse a decoded JSON body against an endpoint's return annotation.
+
+    Most endpoints return a ``BaseModel`` subclass (parsed via ``model_validate``),
+    but the annotation may be any type — a bare generic (``list[Profile]``,
+    ``dict[str, X]``), a union, etc. Those have no ``model_validate``, so fall back
+    to a ``TypeAdapter`` which validates arbitrary annotated types.
+    """
+    if isinstance(response_type, type) and issubclass(response_type, BaseModel):
+        return response_type.model_validate(data)
+    return TypeAdapter(response_type).validate_python(data)
 
 
 def _get_stream_model_type(response_type: type) -> type[BaseModel]:
@@ -409,7 +422,7 @@ class NemoClient(BaseNemoClient):
         raise_for_status(raw)
         body = None
         if request.response_type is not None:
-            body = request.response_type.model_validate(raw.json())
+            body = _parse_json_body(request.response_type, raw.json())
         return NemoResponse(http_response=raw, body=body, request=request)
 
     def _request_with_retry(
@@ -613,7 +626,7 @@ class AsyncNemoClient(BaseNemoClient):
         raise_for_status(raw)
         body = None
         if request.response_type is not None:
-            body = request.response_type.model_validate(raw.json())
+            body = _parse_json_body(request.response_type, raw.json())
         return NemoResponse(http_response=raw, body=body, request=request)
 
     async def _request_with_retry(

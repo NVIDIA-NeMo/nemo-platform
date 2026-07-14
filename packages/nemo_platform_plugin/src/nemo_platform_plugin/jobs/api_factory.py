@@ -45,9 +45,6 @@ from nemo_platform.types.jobs import (
     StepLifecycleParam,
     SubprocessExecutionProviderParam,
 )
-from nemo_platform.types.jobs import (
-    PlatformJobResponse as PlatformJob,
-)
 from nemo_platform.types.jobs.platform_job_step_spec_param import Executor
 from nemo_platform_plugin.api.filter import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
 from nemo_platform_plugin.api.parsed_filter import ParsedFilter, make_filter_dep
@@ -67,7 +64,14 @@ from nemo_platform_plugin.jobs.schemas import (
     PlatformJobStatus,
     PlatformJobStatusResponse,
 )
-from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest, JobLogsQueryParams, ListJobsQueryParams
+from nemo_platform_plugin.jobs.types import (
+    CreatePlatformJobRequest,
+    JobLogsQueryParams,
+    ListJobsQueryParams,
+)
+from nemo_platform_plugin.jobs.types import (
+    PlatformJobResponse as PlatformJob,
+)
 from nemo_platform_plugin.schema import DatetimeFilter, Filter, Page, PaginationData, StringFilter
 from pydantic import BaseModel, Field, TypeAdapter
 
@@ -75,6 +79,12 @@ logger = logging.getLogger(__name__)
 
 # This type is aliased to ensure we don't expose internal stainless
 # type paths to services integrating the job service.
+#
+# TODO(AIRCORE-827): these still alias the Stainless-generated ``*Param`` TypedDicts.
+# The plugin now owns pydantic equivalents in ``jobs/spec.py`` and ``jobs/providers.py``,
+# but ~10 consuming plugins construct these as dict literals (TypedDict), so repointing
+# them to the pydantic models is a cross-cutting change tracked as the "drop the Stainless
+# dependency" follow-up — out of scope for the Jobs *client* migration.
 PlatformJobSpec = PlatformJobSpecParam
 PlatformJobStep = PlatformJobStepSpecParam
 StepLifecycle = StepLifecycleParam
@@ -954,11 +964,13 @@ def job_route_factory(
             return Page(
                 data=[from_response(job) for job in list_page.items],
                 pagination=PaginationData(
-                    page=list_page.page,
-                    page_size=list_page.page_size,
+                    # The list envelope always carries pagination metadata; coalesce
+                    # to the request values / zero to satisfy the non-optional PaginationData.
+                    page=list_page.page if list_page.page is not None else page,
+                    page_size=list_page.page_size if list_page.page_size is not None else page_size,
                     current_page_size=len(list_page.items),
-                    total_pages=list_page.total_pages,
-                    total_results=list_page.total_results,
+                    total_pages=list_page.total_pages or 0,
+                    total_results=list_page.total_results or 0,
                 ),
                 sort=sort,
                 filter=user_filter or None,

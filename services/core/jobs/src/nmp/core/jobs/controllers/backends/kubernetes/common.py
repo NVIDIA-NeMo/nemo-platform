@@ -12,6 +12,8 @@ from kubernetes import client, config
 from kubernetes.client.models import V1Pod
 from kubernetes.client.rest import ApiException
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.execution_profiles import (
     BaseKubernetesExecutionProfileConfig as PluginBaseKubernetesExecutionProfileConfig,
 )
@@ -36,6 +38,7 @@ from nemo_platform_plugin.jobs.execution_profiles import (
 from nemo_platform_plugin.jobs.execution_profiles import (
     KubernetesVolumeMount as PluginKubernetesVolumeMount,
 )
+from nemo_platform_plugin.jobs.types import PlatformJobTaskUpdate
 from nmp.common.auth import AuthContext
 from nmp.common.config import get_platform_config
 from nmp.common.jobs.constants import (
@@ -1128,15 +1131,17 @@ def update_all_tasks(
             error_details["message"] = f"Pod {pod_status.name} is in error state"
 
         # Upsert the task against the Jobs API.
-        nmp_sdk.jobs.tasks.create_or_update(
-            pod_status.task_id,
+        client_from_platform(nmp_sdk, JobsClient).update_job_step_task(
+            name=pod_status.task_id,
             workspace=step.workspace,
             job=step.job,
             step=step.name,
-            status=status.value,
-            status_details=status_details,
-            error_details=error_details,  # type: ignore
-            error_stack=error_stack,
+            body=PlatformJobTaskUpdate(
+                status=status,
+                status_details=status_details,
+                error_details=error_details,
+                error_stack=error_stack,
+            ),
         )
         logger.info(f"updated task '{pod_status.task_id}'")
 

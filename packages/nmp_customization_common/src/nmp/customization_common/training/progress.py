@@ -18,6 +18,7 @@ from typing import Any, cast
 
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from nemo_platform_plugin.jobs.types import PlatformJobTaskUpdate
 from nmp.common.sdk_factory import get_task_sdk
 from nmp.customization_common.service.context import NMPJobContext
@@ -72,7 +73,7 @@ class JobsServiceProgressReporter:
                 job=self._job_ctx.job_id,
                 step=self._job_ctx.step,
                 body=PlatformJobTaskUpdate(
-                    status=status,
+                    status=PlatformJobStatus(status),
                     status_details=status_details or {},
                     error_details=error_details or {},
                 ),

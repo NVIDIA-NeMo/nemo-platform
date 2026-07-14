@@ -20,7 +20,6 @@ import docker.types
 from docker.errors import APIError, ImageNotFound, NotFound
 from docker.models.containers import Container
 from docker.types import LogConfig, Mount
-from nemo_platform.types.jobs import PlatformJobStepWithContext
 from nemo_platform_plugin.jobs.execution_profiles import (
     DockerJobExecutionProfile as PluginDockerJobExecutionProfile,
 )
@@ -35,6 +34,11 @@ from nemo_platform_plugin.jobs.execution_profiles import (
 )
 from nemo_platform_plugin.jobs.execution_profiles import (
     DockerVolumeMount as DockerVolumeMount,
+)
+from nemo_platform_plugin.jobs.types import (
+    PlatformJobStatusUpdateRequest,
+    PlatformJobStepWithContext,
+    PlatformJobTaskUpdate,
 )
 from nmp.common.auth import AuthContext
 from nmp.common.config import get_platform_config, nmp_user_data_dir
@@ -821,12 +825,11 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 status = PlatformJobStatus.CANCELLED
                 status_details["message"] = "Job is cancelled, not creating container"
             logger.info("Job step is not scheduling container", extra={"status": updated_step.status})
-            self._nmp_sdk.jobs.steps.update_status(
-                step.name,
+            self._jobs.update_job_step_status(
+                name=step.name,
                 workspace=step.workspace,
                 job=step.job,
-                status=status.value,
-                status_details=status_details,
+                body=PlatformJobStatusUpdateRequest(status=status, status_details=status_details),
             )
         return is_cancelling_or_pausing
 
@@ -865,12 +868,11 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 self._run_container_in_thread(step, container_args)
             except FailedToScheduleError as e:
                 status = PlatformJobStatus.ERROR
-                self._nmp_sdk.jobs.steps.update_status(
-                    step.name,
+                self._jobs.update_job_step_status(
+                    name=step.name,
                     workspace=step.workspace,
                     job=step.job,
-                    status=status.value,
-                    error_details=e.error_details,  # type: ignore
+                    body=PlatformJobStatusUpdateRequest(status=status, error_details=e.error_details),
                 )
                 logger.exception("Failed to schedule container for job step")
             except Exception:
@@ -972,12 +974,11 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 status_details["message"] = f"Pulling image {container_args['image']} from registry"
 
                 # Send the status update to indicate we are pulling the image
-                self._nmp_sdk.jobs.steps.update_status(
-                    step.name,
+                self._jobs.update_job_step_status(
+                    name=step.name,
                     workspace=step.workspace,
                     job=step.job,
-                    status=status,
-                    status_details=status_details,
+                    body=PlatformJobStatusUpdateRequest(status=status, status_details=status_details),
                 )
                 try:
                     pull_start = time.time()
@@ -1001,12 +1002,11 @@ chmod -R 777 {job_vol}/{storage_subpath}
 
                 # Send the status update to indicate we are starting the container
                 status_details["message"] = f"Creating container with image {container_args['image']}"
-                self._nmp_sdk.jobs.steps.update_status(
-                    step.name,
+                self._jobs.update_job_step_status(
+                    name=step.name,
                     workspace=step.workspace,
                     job=step.job,
-                    status=status,
-                    status_details=status_details,
+                    body=PlatformJobStatusUpdateRequest(status=status, status_details=status_details),
                 )
 
                 # Now create it with the pulled container image
@@ -1090,12 +1090,11 @@ chmod -R 777 {job_vol}/{storage_subpath}
             # If no errors to this point, start the container
             status_details["message"] = "Starting container"
             pre_start_status_write_started_at = time.monotonic()
-            self._nmp_sdk.jobs.steps.update_status(
-                step.name,
+            self._jobs.update_job_step_status(
+                name=step.name,
                 workspace=step.workspace,
                 job=step.job,
-                status=status,
-                status_details=status_details,
+                body=PlatformJobStatusUpdateRequest(status=status, status_details=status_details),
             )
             logger.debug(
                 "Docker pre-start status update succeeded",
@@ -1246,14 +1245,16 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 raise
 
         task_id = self.get_label_from_container(container, JOB_TASK_ID_LABEL)
-        self._nmp_sdk.jobs.tasks.create_or_update(
-            task_id,
+        self._jobs.update_job_step_task(
+            name=task_id,
             workspace=step.workspace,
             job=step.job,
             step=step.name,
-            status=PlatformJobStatus.ERROR.value,
-            status_details=status_details,  # type: ignore
-            error_details=error_details,  # type: ignore
+            body=PlatformJobTaskUpdate(
+                status=PlatformJobStatus.ERROR,
+                status_details=status_details,
+                error_details=error_details,
+            ),
         )
         logger.info(
             "Updated task",
@@ -1412,15 +1413,17 @@ chmod -R 777 {job_vol}/{storage_subpath}
         )
 
         # Upsert the task against the Jobs API.
-        self._nmp_sdk.jobs.tasks.create_or_update(
-            task_id,
+        self._jobs.update_job_step_task(
+            name=task_id,
             workspace=step.workspace,
             job=step.job,
             step=step.name,
-            status=status.value,
-            status_details=status_details,
-            error_details=error_details,
-            error_stack=error_stack,
+            body=PlatformJobTaskUpdate(
+                status=status,
+                status_details=status_details,
+                error_details=error_details,
+                error_stack=error_stack,
+            ),
         )
         logger.info("Updated task", extra={"task_id": task_id, "status": status})
         return JobUpdate(status=status.value, status_details=status_details, error_details=error_details)

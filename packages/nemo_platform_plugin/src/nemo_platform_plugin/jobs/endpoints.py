@@ -44,8 +44,8 @@ from nemo_platform_plugin.jobs.types import (
     PlatformJobTaskUpdate,
 )
 
-# The execution-profiles endpoint returns a discriminated union over all
-# configured backend profile types.
+# The execution-profiles endpoint returns a union over all configured backend
+# profile types (matches the Stainless ``JobListExecutionProfilesResponseItem``).
 ExecutionProfile = (
     DockerJobExecutionProfile
     | KubernetesJobExecutionProfile
@@ -106,9 +106,9 @@ def pause_job(*, workspace: str | None = None, name: str) -> PlatformJobResponse
 def resume_job(*, workspace: str | None = None, name: str) -> PlatformJobResponse: ...
 
 
-@post("/apis/jobs/v2/workspaces/{workspace}/jobs/{job}/rerun")
-@abstractmethod
-def rerun_job(*, workspace: str | None = None, job: str) -> PlatformJobResponse: ...
+# NOTE: no ``rerun_job`` — the server's ``/rerun`` route is test-only and not
+# mounted in the release service (see services/core/jobs/.../api/v2/jobs/rerun.py),
+# so exposing it on the client would 404 in production.
 
 
 # ---------------------------------------------------------------------------

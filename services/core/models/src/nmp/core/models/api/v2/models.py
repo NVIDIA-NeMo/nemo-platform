@@ -19,6 +19,7 @@ from nemo_platform_plugin.jobs.api_factory import (
 )
 from nemo_platform_plugin.jobs.client import AsyncJobsClient
 from nemo_platform_plugin.jobs.image import get_qualified_image
+from nemo_platform_plugin.jobs.spec import PlatformJobSpec as PlatformJobSpecModel
 from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest
 from nmp.common.api.common import Page
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
@@ -314,7 +315,10 @@ async def start_update_model_spec_job(model_entity: ModelEntity):
                 workspace=model_entity.workspace,
                 body=CreatePlatformJobRequest(
                     source="models-system",
-                    platform_spec=task_spec,
+                    # ``task_spec`` is built from the api_factory ``*Param`` TypedDict
+                    # aliases (see AIRCORE-827); validate it into the plugin pydantic
+                    # ``PlatformJobSpec`` the request model expects.
+                    platform_spec=PlatformJobSpecModel.model_validate(task_spec),
                     spec={},
                     description=f"Model Spec Analyzer for model {model_entity.workspace}/{model_entity.name}",
                     ownership=model_entity.ownership,

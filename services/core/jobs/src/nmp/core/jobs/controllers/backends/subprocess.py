@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from nemo_platform.types.jobs import PlatformJobStepWithContext
+from nemo_platform_plugin.jobs.types import PlatformJobStepWithContext, PlatformJobTaskUpdate
 from nmp.common.auth import AuthContext
 from nmp.common.config import get_platform_config
 from nmp.common.jobs.constants import (
@@ -251,14 +251,16 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
         self._start_log_capture(step, metadata, "stderr")
 
         status_details = {"message": "Subprocess scheduled", **self._task_status_details(metadata)}
-        self._nmp_sdk.jobs.tasks.create_or_update(
-            metadata.task_id,
+        self._jobs.update_job_step_task(
+            name=metadata.task_id,
             workspace=step.workspace,
             job=step.job,
             step=step.name,
-            status=PlatformJobStatus.PENDING.value,
-            status_details=status_details,
-            error_details={},
+            body=PlatformJobTaskUpdate(
+                status=PlatformJobStatus.PENDING,
+                status_details=status_details,
+                error_details={},
+            ),
         )
 
         return JobUpdate(status=PlatformJobStatus.PENDING.value, status_details=status_details)
@@ -355,11 +357,11 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
 
     def _get_task_fallback_update(self, step: PlatformJobStepWithContext) -> JobUpdate | None:
         try:
-            tasks = self._nmp_sdk.jobs.tasks.list(
+            tasks = self._jobs.list_job_step_tasks(
                 name=step.name,
                 job=step.job,
                 workspace=step.workspace,
-            )
+            ).data()
         except Exception:
             logger.warning(
                 "Failed to fetch tasks for subprocess metadata fallback",
@@ -575,15 +577,17 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
         error_details: dict,
         error_stack: str = "",
     ) -> None:
-        self._nmp_sdk.jobs.tasks.create_or_update(
-            metadata.task_id,
+        self._jobs.update_job_step_task(
+            name=metadata.task_id,
             workspace=step.workspace,
             job=step.job,
             step=step.name,
-            status=status.value,
-            status_details=status_details,
-            error_details=error_details,
-            error_stack=error_stack,
+            body=PlatformJobTaskUpdate(
+                status=status,
+                status_details=status_details,
+                error_details=error_details,
+                error_stack=error_stack,
+            ),
         )
 
     @staticmethod

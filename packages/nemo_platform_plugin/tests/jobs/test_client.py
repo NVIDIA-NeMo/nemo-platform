@@ -8,12 +8,12 @@ unwrapping, pagination, binary, error mapping) without a network."""
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
 from nemo_platform_plugin.client.errors import NotFoundError
-from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.client import AsyncJobsClient, JobsClient
 from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest
 
 BASE = "http://test:8000"
@@ -133,3 +133,46 @@ def test_get_job_not_found_maps_error() -> None:
     with pytest.raises(NotFoundError) as exc:
         client.get_job(name="missing")
     assert exc.value.status_code == 404
+
+
+# A JSON array response (not an object) — the shape that broke ``send()`` when
+# the endpoint's return annotation is a bare ``list[...]`` generic.
+_PROFILES_JSON = [
+    {"backend": "subprocess", "provider": "subprocess", "profile": "default", "config": {}},
+    {"backend": "e2e", "provider": "cpu", "profile": "default", "config": {}},
+]
+
+
+def test_get_execution_profiles_parses_list_response() -> None:
+    mock_http = _mock_http(
+        httpx.Response(
+            200,
+            request=httpx.Request("GET", f"{BASE}/apis/jobs/v2/execution-profiles"),
+            json=_PROFILES_JSON,
+        )
+    )
+    client = JobsClient(base_url=BASE, workspace="default", http_client=mock_http)
+
+    profiles = client.get_execution_profiles().data()
+
+    assert isinstance(profiles, list)
+    assert len(profiles) == 2
+    assert {p.backend for p in profiles} == {"subprocess", "e2e"}
+
+
+@pytest.mark.asyncio
+async def test_async_get_execution_profiles_parses_list_response() -> None:
+    mock_http = MagicMock(spec=httpx.AsyncClient)
+    mock_http.request = AsyncMock(
+        return_value=httpx.Response(
+            200,
+            request=httpx.Request("GET", f"{BASE}/apis/jobs/v2/execution-profiles"),
+            json=_PROFILES_JSON,
+        )
+    )
+    client = AsyncJobsClient(base_url=BASE, workspace="default", http_client=mock_http)
+
+    profiles = (await client.get_execution_profiles()).data()
+
+    assert isinstance(profiles, list)
+    assert {p.backend for p in profiles} == {"subprocess", "e2e"}

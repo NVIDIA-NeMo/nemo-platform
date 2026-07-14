@@ -9,15 +9,18 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Generic, Optional, TypeVar
 
-from nemo_platform import NeMoPlatform, NotFoundError
-from nemo_platform.types import PlatformJobStatus
-from nemo_platform.types.jobs import PlatformJobStep, PlatformJobStepWithContext
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
+from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.execution_profiles import (
     RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES as RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES,
 )
 from nemo_platform_plugin.jobs.execution_profiles import (
     JobExecutionProfileConfig as JobExecutionProfileConfig,
 )
+from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
+from nemo_platform_plugin.jobs.types import PlatformJobStepResponse, PlatformJobStepWithContext
 from nmp.common.config.base import (
     LOOPBACK_ADDRESSES,
     PlatformConfig,
@@ -41,7 +44,10 @@ DEFAULT_PROVIDER = "cpu"
 
 
 class JobUpdate(BaseModel):
-    status: PlatformJobStatus
+    # Accept the enum or its raw string value: backends historically construct
+    # this with ``PlatformJobStatus.<X>.value`` (a str). The plugin enum is a
+    # ``str``-Enum, so pydantic coerces the string back to the enum.
+    status: PlatformJobStatus | str
     status_details: dict | None = None
     error_details: dict | None = None
 
@@ -84,6 +90,10 @@ class JobBackend(Generic[ExecutionProviderConfigT, ExecutionProfileConfigT], ABC
         profile_name: str,
     ):
         self._nmp_sdk = nmp_sdk
+        # Typed Jobs client sharing the SDK's transport/headers. Built once; every
+        # call passes ``workspace=`` explicitly (including the cross-workspace "-"),
+        # so the client's default workspace is never relied upon.
+        self._jobs = client_from_platform(nmp_sdk, JobsClient)
         self._execution_profile_config = execution_profile_config
         self._profile_name = profile_name
         self.init()
@@ -127,15 +137,15 @@ class JobBackend(Generic[ExecutionProviderConfigT, ExecutionProfileConfigT], ABC
                 env_var_str += f"{envvar.name}={workspace}/{secret_name}"
         return env_var_str
 
-    def get_step(self, job: str, step_name: str, workspace: str) -> PlatformJobStep:
-        """Fetch the latest state of a job step from the NeMo Platform SDK."""
-        return self._nmp_sdk.jobs.steps.retrieve(name=step_name, workspace=workspace, job=job)
+    def get_step(self, job: str, step_name: str, workspace: str) -> PlatformJobStepResponse:
+        """Fetch the latest state of a job step via the typed Jobs client."""
+        return self._jobs.get_job_step(name=step_name, workspace=workspace, job=job).data()
 
-    def get_step_safe(self, job: str, step_name: str, workspace: str) -> Optional[PlatformJobStep]:
-        """Fetch the job step from the NeMo Platform SDK, or None if not found (e.g. 404, workspace deleted)."""
+    def get_step_safe(self, job: str, step_name: str, workspace: str) -> Optional[PlatformJobStepResponse]:
+        """Fetch the job step, or None if not found (e.g. 404, workspace deleted)."""
         try:
             return self.get_step(job=job, step_name=step_name, workspace=workspace)
-        except NotFoundError:
+        except ClientNotFoundError:
             return None
         except Exception as e:
             raise e
@@ -149,7 +159,7 @@ class JobBackend(Generic[ExecutionProviderConfigT, ExecutionProfileConfigT], ABC
         try:
             step = self.get_step(job=job, step_name=step_name, workspace=workspace)
             return step.status in ("cancelled", "error", "completed")
-        except NotFoundError:
+        except ClientNotFoundError:
             # If the job step entity is not found, we treat it as terminal so cleanup can proceed.
             return True
         except Exception as e:
@@ -158,9 +168,9 @@ class JobBackend(Generic[ExecutionProviderConfigT, ExecutionProfileConfigT], ABC
     def check_job_is_terminal(self, job: str, workspace: str) -> bool:
         """Check if a job is in a terminal state."""
         try:
-            job_response = self._nmp_sdk.jobs.retrieve(name=job, workspace=workspace)
+            job_response = self._jobs.get_job(name=job, workspace=workspace).data()
             return job_response.status in ("cancelled", "error", "completed")
-        except NotFoundError:
+        except ClientNotFoundError:
             # If the job entity is not found, we treat it as terminal so cleanup can proceed.
             return True
         except Exception as e:
@@ -228,11 +238,11 @@ class JobBackend(Generic[ExecutionProviderConfigT, ExecutionProfileConfigT], ABC
             return False
 
         try:
-            tasks = self._nmp_sdk.jobs.tasks.list(
+            tasks = self._jobs.list_job_step_tasks(
                 name=step.name,
                 job=step.job,
                 workspace=step.workspace,
-            )
+            ).data()
         except Exception:
             logger.warning("Failed to fetch tasks for staleness check", extra={"step": step.name, "job": step.job})
             return False
