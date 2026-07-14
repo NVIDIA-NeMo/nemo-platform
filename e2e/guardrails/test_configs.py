@@ -38,7 +38,7 @@ def test_guardrail_config_create_and_retrieve(sdk: NeMoPlatform, workspace: str)
     assert created.workspace == workspace
     assert created.description == "Initial CRUD config"
     assert created.id
-    assert created.entity_id == f"{workspace}/{name}"
+    assert created.entity_id == created.id  # `entity_id` is an alias for `id`, not a `workspace/name` ref.
     assert created.created_at is not None
     assert created.updated_at is not None
 
