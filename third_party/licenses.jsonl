@@ -47,6 +47,7 @@
 {"name": "databricks-sdk", "license": "APACHE-2.0", "compatible": true}
 {"name": "dataclasses-json", "license": "MIT", "compatible": true}
 {"name": "datasets", "license": "APACHE-2.0", "compatible": true}
+{"name": "defusedxml", "license": "PSF-2.0", "compatible": true}
 {"name": "diff-cover", "license": "APACHE-2.0", "compatible": true}
 {"name": "dill", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "distro", "license": "APACHE-2.0", "compatible": true}
@@ -69,7 +70,6 @@
 {"name": "fastmcp", "license": "APACHE-2.0", "compatible": true}
 {"name": "fastuuid", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "filelock", "license": "UNLICENSE", "compatible": true}
-{"name": "filetype", "license": "MIT", "compatible": true}
 {"name": "flatbuffers", "license": "APACHE-2.0", "compatible": true}
 {"name": "frozenlist", "license": "APACHE-2.0", "compatible": true}
 {"name": "fsspec", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -91,7 +91,6 @@
 {"name": "hvac", "license": "APACHE-2.0", "compatible": true}
 {"name": "idna", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "importlib-metadata", "license": "APACHE-2.0", "compatible": true}
-{"name": "iniconfig", "license": "MIT", "compatible": true}
 {"name": "instructor", "license": "MIT", "compatible": true}
 {"name": "isodate", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "jaraco-classes", "license": "MIT", "compatible": true}
@@ -235,7 +234,6 @@
 {"name": "pymilvus", "license": "APACHE-2.0", "compatible": true}
 {"name": "pyopenssl", "license": "APACHE-2.0", "compatible": true}
 {"name": "pyperclip", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "pytest", "license": "MIT", "compatible": true}
 {"name": "python-dateutil", "license": "APACHE-2.0", "compatible": true}
 {"name": "python-dotenv", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "python-json-logger", "license": "BSD-3-CLAUSE", "compatible": true}
