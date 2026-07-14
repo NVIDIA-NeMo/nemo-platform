@@ -29,3 +29,5 @@ export function DataDesignerDocsLink({
     </a>
   );
 }
+
+export default DataDesignerDocsLink;
