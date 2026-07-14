@@ -214,19 +214,29 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
           const { pinned_at } = row.original;
           const isPinned = pinned_at != null;
           return (
-            <Button
-              kind="tertiary"
-              color="neutral"
-              size="small"
-              aria-label={isPinned ? 'Unpin experiment' : 'Pin experiment'}
-              aria-pressed={isPinned}
-              onClick={() => togglePin(row.original)}
+            <Tooltip
+              slotContent={
+                <Text kind="body/regular/sm">
+                  {isPinned ? 'Unpin for all users' : 'Pin for all users'}
+                </Text>
+              }
+              className={tooltipClassName}
+              side="right"
             >
-              <Pin
-                className={isPinned ? 'text-brand' : 'text-secondary'}
-                {...(isPinned ? { fill: 'currentColor' } : {})}
-              />
-            </Button>
+              <Button
+                kind="tertiary"
+                color="neutral"
+                size="small"
+                aria-label={isPinned ? 'Unpin experiment' : 'Pin experiment'}
+                aria-pressed={isPinned}
+                onClick={() => togglePin(row.original)}
+              >
+                <Pin
+                  className={isPinned ? 'text-brand' : 'text-secondary'}
+                  {...(isPinned ? { fill: 'currentColor' } : {})}
+                />
+              </Button>
+            </Tooltip>
           );
         },
       }),
