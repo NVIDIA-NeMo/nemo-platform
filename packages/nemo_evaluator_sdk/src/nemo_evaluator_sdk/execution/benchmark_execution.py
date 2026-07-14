@@ -208,12 +208,7 @@ def _metric_errors_for_ref(metric_errors: dict[str, str] | None, metric_ref: str
 def _metric_diagnostics_for_ref(
     metric_diagnostics: dict[str, list[MetricDiagnostic]] | None, metric_ref: str
 ) -> dict[str, list[MetricDiagnostic]] | None:
-    """Return the metric-specific diagnostics payload for a per-metric row.
-
-    Mirrors :func:`_metric_errors_for_ref`: combined benchmark rows can carry
-    diagnostics for multiple metric refs, so keep only this metric's entry when
-    building an individual metric result.
-    """
+    """Return the metric-specific diagnostics payload for a per-metric row."""
     if not metric_diagnostics:
         return None
     diagnostics = metric_diagnostics.get(metric_ref)

@@ -173,7 +173,7 @@ class MetricDiagnostic(BaseModel):
     message: str = Field(description="Human-readable diagnostic message.")
     details: dict[str, Any] | None = Field(
         default=None,
-        description="Optional metric-specific structured context for debugging and inspection.",
+        description="Optional metric-specific structured context for debugging.",
     )
 
 
@@ -186,7 +186,7 @@ class MetricResult(BaseModel):
     diagnostics: list[MetricDiagnostic] = Field(
         default_factory=list,
         description=(
-            "Optional diagnostic findings that explain how the result was derived. For debugging and inspection only."
+            "Optional diagnostic findings that explain how the result was derived for debugging."
         ),
     )
 

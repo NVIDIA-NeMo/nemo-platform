@@ -284,8 +284,10 @@ class DiffDiagnosticExactMatchMetric:
         reference = str(input.row.data.get("reference", ""))
         matched = prediction == reference
         outputs = [MetricOutput(name=self.type, value=1.0 if matched else 0.0)]
+
         if matched:
             return MetricResult(outputs=outputs)
+
         diff = "\n".join(
             difflib.unified_diff(
                 reference.splitlines(),
