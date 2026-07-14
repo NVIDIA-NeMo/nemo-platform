@@ -11,9 +11,10 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterable, Iterable
 from dataclasses import dataclass, replace
-from typing import Any, ClassVar, Generic, ParamSpec, Protocol, TypedDict, TypeVar
+from typing import Any, ClassVar, Generic, ParamSpec, Protocol, TypeVar
 
 from pydantic import BaseModel, TypeAdapter
+from typing_extensions import TypedDict
 from typing_extensions import TypeVar as TypeVarExt
 
 P = ParamSpec("P")
