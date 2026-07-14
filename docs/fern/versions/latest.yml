@@ -203,6 +203,8 @@ navigation:
   - section: Agents
     path: ../../agents/index.mdx
     contents:
+    - page: Deploy Agents
+      path: ../../agents/deploy-agents.mdx
     - page: Optimize Agents
       path: ../../agents/optimization.mdx
     - page: Secure Agents
