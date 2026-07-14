@@ -50,14 +50,11 @@ interface DatasetFileSelectProps {
    *  selects a file. Also hides the post-commit file list since the parent
    *  form already reflects the selection. */
   autoCommit?: boolean;
-  /** Fileset ``purpose`` the picker lists. Defaults to ``'dataset'``; pass
-   *  ``'generic'`` to browse non-dataset filesets. */
+  /** Fileset ``purpose`` the picker lists. Defaults to ``'dataset'``. */
   filesetPurpose?: FilesetPurpose;
   /** Label for the fileset picker. Defaults to ``'Dataset'``. */
   datasetLabel?: string;
-  /** When true, selecting a fileset auto-selects the first root-level file
-   *  matching ``acceptedFileTypes`` (pairs with ``autoCommit``). No-op when no
-   *  such file exists. */
+  /** Auto-select the first root-level accepted file on fileset selection. */
   autoSelectFirstAcceptable?: boolean;
 }
 

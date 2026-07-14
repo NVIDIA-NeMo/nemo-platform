@@ -74,16 +74,15 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
           (file) => ({ id: getExistingFileId(file), type: 'existing', file }) as const
         );
         dispatch({ type: 'SET_FILES', payload: uploadFiles });
-        // Optionally skip the manual file pick: auto-select the first root-level
-        // file whose extension is accepted. The reducer already auto-selects a
-        // lone file, so only act when there's more than one (otherwise we'd
-        // toggle the reducer's selection back off).
+        // Auto-select the first root-level accepted file (only when >1, since
+        // the reducer already auto-selects a lone file).
         if (autoSelectFirstAcceptable && uploadFiles.length > 1) {
+          const allowed = acceptableFileTypes.map((t) => t.toLowerCase());
           const target = uploadFiles.find((f) => {
             const path = f.file.path;
-            if (path.includes('/')) return false; // root-level only
+            if (path.includes('/')) return false;
             const ext = getFileExtension(path)?.toLowerCase();
-            return !!ext && acceptableFileTypes.includes(ext);
+            return !!ext && allowed.includes(ext);
           });
           if (target) dispatch({ type: 'TOGGLE_FILE_SELECTION', payload: target });
         }

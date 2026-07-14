@@ -62,8 +62,6 @@ export const SimpleFilesTable = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [files, allowedExtensions, invalidFileMode]);
 
-  // Only nudge about disabled files while the user hasn't yet landed on a valid
-  // selection — once a supported file is picked, the hint is just noise.
   const hasValidSelection = selectedFiles.some((file) => isFileAllowed(file));
   const disabledFilesMessage =
     invalidFileMode === 'disable' &&
@@ -115,8 +113,6 @@ export const SimpleFilesTable = () => {
       col.accessor('name', { header: 'Name' }),
       col.accessor('size', {
         header: 'Size',
-        // Fixed-width column (proper DataView API: an explicit ``size`` marks
-        // the column as non-auto-sized). File sizes are short.
         size: 120,
         cell: (ctx) => formatFileSize(ctx.getValue()),
       }),
@@ -136,13 +132,7 @@ export const SimpleFilesTable = () => {
 
   return (
     <Stack className="min-h-0 flex-1 w-full" gap="density-md">
-      {/* The virtualized table sizes columns to their measured content and caps
-          each cell's max-width there, so the row never fills its container.
-          Pin the widths ourselves (``tr>*`` hits both header th and body td, so
-          they stay aligned): column 3 (Size) is a fixed 120px, and column 2
-          (Name) takes width:100% to absorb the leftover space — the classic
-          auto-table fill trick. max-w-none lifts the measured cap so Name can
-          actually grow. Column 1 is the 40px radio. */}
+      {/* Name column fills the row; Size (col 3) is pinned to 120px. */}
       <div className="border border-base rounded-md overflow-hidden [&_tr>*:nth-child(2)]:w-full! [&_tr>*:nth-child(2)]:max-w-none! [&_tr>*:nth-child(3)]:w-[120px]! [&_tr>*:nth-child(3)]:min-w-[120px]! [&_tr>*:nth-child(3)]:max-w-[120px]!">
         <RadioGroupRoot
           name="simple-files-table"

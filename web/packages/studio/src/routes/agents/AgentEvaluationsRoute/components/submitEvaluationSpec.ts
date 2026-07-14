@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { parseFilesetLocation } from '@nemo/common/src/components/DatasetFileSelect/parseFilesetLocation';
+import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
 import { getSampleAgent } from '@studio/constants/sampleAgents';
 import { evalOutputFilesetFor } from '@studio/routes/agents/AgentSuggestionsRoute/utils';
 
@@ -10,6 +11,9 @@ export const MODE_FILESET = 'fileset';
 
 /** Sentinel ``evalConfig`` value that switches the form into create mode. */
 export const CREATE_NEW = '__create_new__';
+
+/** Suggested name for a new eval config (e.g. "wise-blue"). */
+export const generateEvalConfigName = (): string => generateDefaultName({ length: 2 });
 
 /** Form values the eval-submit modal collects. */
 export interface SubmitEvaluationFormValues {
@@ -34,9 +38,8 @@ export interface SubmitSpec {
   agent: string;
   evalConfig: string;
   evalConfigFileset: string;
-  /** When set, fetch each source and seed it into ``evalConfigFileset`` before
-   *  POSTing to ``/jobs/evaluate``. Omitted when reusing an existing eval
-   *  config (or an existing fileset) since we shouldn't overwrite files. */
+  /** Files to seed into ``evalConfigFileset`` before submitting. Omitted when
+   *  reusing an existing config. */
   seedSources?: EvalSeedSource[];
 }
 
@@ -49,15 +52,8 @@ export const contentTypeForFile = (name: string): string => {
 /** Basename of a public asset path — the flat name it's seeded as in the fileset. */
 export const fileNameOf = (path: string): string => path.slice(path.lastIndexOf('/') + 1);
 
-/**
- * Builds the eval-job spec from the form. Three branches:
- * - reuse an existing eval config → reference its fileset untouched (no seed);
- * - create from an existing fileset's YAML → that fileset becomes the config
- *   fileset (no seed);
- * - create from an example → seed the example into a new slug fileset.
- *
- * ``existingConfigs`` maps an eval-config fileset to the YAML it last ran.
- */
+/** Builds the eval-job spec from the form (reuse existing config, pick a
+ *  fileset YAML, or seed an example into a new fileset). */
 export const buildSubmitSpec = (
   formData: SubmitEvaluationFormValues,
   existingConfigs: Map<string, string>
@@ -70,9 +66,7 @@ export const buildSubmitSpec = (
     };
   }
   if (formData.mode === MODE_FILESET) {
-    // Schema refine guarantees ``datasetFile`` parses to a fileset reference
-    // with a non-empty ``objectPath`` before reaching this point. The picked
-    // file's own fileset becomes the eval-config fileset.
+    // datasetFile is validated by the schema refine before we get here.
     const parsed = parseFilesetLocation(formData.datasetFile!)!;
     return {
       agent: formData.agent,
@@ -81,9 +75,8 @@ export const buildSubmitSpec = (
     };
   }
   const example = getSampleAgent(formData.exampleKey);
-  // Namespace the seeded config per example so switching examples on the same
-  // fileset doesn't make the first-seeded config stick (datasets already have
-  // distinct basenames).
+  // Namespace the config per example so switching examples doesn't reuse the
+  // first-seeded config.
   const evalConfigName = `${example.key}-${fileNameOf(example.evalConfigPath)}`;
   return {
     agent: formData.agent,
@@ -107,8 +100,7 @@ export const buildSubmitSpec = (
 const OUTPUT_SUFFIX_LENGTH = 5;
 const OUTPUT_SUFFIX_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
-/** Random 5-char suffix so re-running for the same agent doesn't 409 on an
- *  existing output fileset. */
+/** Random 5-char suffix so re-runs don't 409 on an existing output fileset. */
 const randomSuffix = (): string => {
   const bytes = new Uint8Array(OUTPUT_SUFFIX_LENGTH);
   crypto.getRandomValues(bytes);
@@ -117,20 +109,15 @@ const randomSuffix = (): string => {
   return out;
 };
 
-/** Fresh per-run output fileset name (``<agent>-eval-out-<random>``) so re-runs
- *  never collide. Generated once per submission and reused for both the
- *  pre-create (to stamp a description) and the job spec's ``output``. */
+/** Fresh per-run output fileset name (``<agent>-eval-out-<random>``). */
 export const generateOutputFilesetName = (agent: string): string =>
   `${evalOutputFilesetFor(agent)}-${randomSuffix()}`;
 
-/** Human-readable description stamped on the eval output fileset at create
- *  time (the eval job's auto-create is a no-op once the fileset exists, so the
- *  description persists). */
+/** Description stamped on the eval output fileset. */
 export const evalOutputDescription = (spec: SubmitSpec): string =>
   `Agent Evaluation output, agent: ${spec.agent}, config: ${spec.evalConfigFileset}`;
 
-/** POST body for ``/jobs/evaluate``. ``output`` is the pre-created per-run
- *  fileset name from {@link generateOutputFilesetName}. */
+/** POST body for ``/jobs/evaluate``. */
 export const evaluateRequestBody = (spec: SubmitSpec, output: string) => ({
   spec: {
     agent: spec.agent,

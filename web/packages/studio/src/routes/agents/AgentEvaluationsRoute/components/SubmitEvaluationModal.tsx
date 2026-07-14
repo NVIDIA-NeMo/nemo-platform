@@ -8,7 +8,6 @@ import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSel
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal, type FormModalProps } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { generateEvalConfigName } from '@nemo/common/src/utils/generateDefaultName';
 import { customFetch } from '@nemo/sdk/generated/fetchers/platform';
 import { filesCreateFileset } from '@nemo/sdk/generated/platform/api';
 import { SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
@@ -29,6 +28,7 @@ import {
   CREATE_NEW,
   evalOutputDescription,
   evaluateRequestBody,
+  generateEvalConfigName,
   generateOutputFilesetName,
   MODE_DEFAULT,
   MODE_FILESET,
@@ -67,8 +67,22 @@ const submitEvaluationSchema = z
   })
   .superRefine((data, ctx) => {
     if (data.evalConfig !== CREATE_NEW) return;
-    if (data.mode === MODE_DEFAULT && !data.newName.trim()) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Name is required', path: ['newName'] });
+    if (data.mode === MODE_DEFAULT) {
+      // newName becomes the fileset name — enforce the platform naming rules.
+      const name = data.newName.trim();
+      if (!name) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Name is required',
+          path: ['newName'],
+        });
+      } else if (!/^[a-zA-Z0-9_.-]+$/.test(name)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Use only letters, digits, dots, hyphens, and underscores',
+          path: ['newName'],
+        });
+      }
     }
     if (data.mode === MODE_FILESET && !parseFilesetLocation(data.datasetFile ?? '')?.objectPath) {
       ctx.addIssue({
@@ -83,8 +97,7 @@ type SubmitEvaluationFormData = z.infer<typeof submitEvaluationSchema>;
 
 const makeDefaultValues = (agent?: string): SubmitEvaluationFormData => ({
   agent: agent ?? '',
-  // Default to create so a first-time agent goes straight to the create form;
-  // existing configs are still one click away in the dropdown.
+  // Default to create; existing configs are one click away in the dropdown.
   evalConfig: CREATE_NEW,
   newName: generateEvalConfigName(),
   mode: MODE_DEFAULT,
@@ -143,9 +156,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   } = useMutation({
     mutationFn: async (spec: SubmitSpec) => {
       if (spec.seedSources) {
-        // Create mode (example): fetch the selected example's eval assets on
-        // demand and seed them into the new eval-config fileset so the user
-        // doesn't have to pre-upload anything.
+        // Seed the selected example's eval assets into the new config fileset.
         const files: EvalSeedFile[] = await Promise.all(
           spec.seedSources.map(async (source) => ({
             path: source.path,
@@ -161,9 +172,8 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
           'Agent Evaluation Config'
         );
       }
-      // Pre-create the per-run output fileset so we can stamp a description on
-      // it. The eval job uploads with fileset_auto_create=True, which no-ops
-      // once the fileset exists — so the description we set here persists.
+      // Pre-create the output fileset so it carries a description; the job's
+      // auto-create no-ops once it exists. Best-effort — never block submission.
       const outputFileset = generateOutputFilesetName(spec.agent);
       try {
         await filesCreateFileset(workspace, {
@@ -172,8 +182,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
           purpose: 'generic',
         });
       } catch {
-        // Best-effort: if this fails, the job still auto-creates the output
-        // fileset (without a description). Don't block submission.
+        // Job still auto-creates the fileset (without a description).
       }
       const body = evaluateRequestBody(spec, outputFileset);
       const res = await customFetch<{ name?: string }>({
@@ -215,9 +224,8 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   const mode = useWatch({ control, name: 'mode' });
   const selectedAgent = useWatch({ control, name: 'agent' });
 
-  // Existing eval configs for the selected agent: distinct eval-config
-  // filesets from that agent's prior jobs, each mapped to the eval-config YAML
-  // it ran (needed to re-run against the same file).
+  // Existing eval configs for the agent: distinct config filesets from prior
+  // jobs, mapped to the YAML each ran.
   const existingConfigs = useMemo(() => {
     const map = new Map<string, string>();
     const agentKey = bareName(selectedAgent);
@@ -249,10 +257,8 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     if (matchedKey) setValue('exampleKey', matchedKey);
   }, [selectedAgent, setValue]);
 
-  // Preselect the latest existing eval config for the agent (jobs are sorted
-  // newest-first, so the first key is the most recent), falling back to create
-  // when the agent has none. Ref-guarded to run once per agent so it seeds the
-  // default without overriding the user's later manual pick.
+  // Preselect the latest existing config for the agent (else create). Ref-guarded
+  // to run once per agent so it doesn't override the user's later manual pick.
   const autoSelectedAgentRef = useRef<string | null>(null);
   useEffect(() => {
     if (!open) {

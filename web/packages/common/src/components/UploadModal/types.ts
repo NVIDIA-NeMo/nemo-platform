@@ -66,14 +66,11 @@ export interface UploadModalProps {
   /** When false, the dataset picker hides the "Create new dataset" option.
    *  Defaults to ``true`` (legacy behaviour). */
   allowNewDataset?: boolean;
-  /** Fileset ``purpose`` the picker lists. Defaults to ``'dataset'``; pass
-   *  ``'generic'`` to browse non-dataset filesets. */
+  /** Fileset ``purpose`` the picker lists. Defaults to ``'dataset'``. */
   filesetPurpose?: FilesetPurpose;
   /** Label for the fileset picker. Defaults to ``'Dataset'``. */
   datasetLabel?: string;
-  /** When true, selecting a fileset auto-selects the first root-level file
-   *  matching ``acceptableFileTypes`` (pairs with ``autoCommit`` to skip the
-   *  manual file pick). No-op when no such file exists. */
+  /** Auto-select the first root-level accepted file on fileset selection. */
   autoSelectFirstAcceptable?: boolean;
   attributes?: {
     ModalRoot?: React.ComponentProps<typeof ModalRoot>;

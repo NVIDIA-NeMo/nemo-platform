@@ -46,15 +46,11 @@ export type UploadModalState = {
    *  picker in ``autoCommit`` mode where uploading new files would race with
    *  the user editing the dataset name. Defaults to ``true``. */
   allowNewDataset: boolean;
-  /** Fileset ``purpose`` the picker lists (and creates). Defaults to
-   *  ``'dataset'``; set to ``'generic'`` to browse non-dataset filesets. */
+  /** Fileset ``purpose`` the picker lists. Defaults to ``'dataset'``. */
   filesetPurpose?: FilesetPurpose;
-  /** Label for the fileset picker (``slotLabel`` / placeholder / heading).
-   *  Defaults to ``'Dataset'``. */
+  /** Label for the fileset picker. Defaults to ``'Dataset'``. */
   datasetLabel?: string;
-  /** When true, selecting a fileset auto-selects the first root-level file
-   *  whose extension is in ``acceptableFileTypes`` (used with ``autoCommit``
-   *  to skip the manual file pick). No-op when the fileset has no such file. */
+  /** Auto-select the first root-level accepted file on fileset selection. */
   autoSelectFirstAcceptable?: boolean;
   errors: Record<string, string>;
 };

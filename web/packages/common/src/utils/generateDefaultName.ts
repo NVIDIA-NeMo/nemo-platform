@@ -29,11 +29,3 @@ export const generateDefaultName = ({
     style: 'lowerCase',
   });
 };
-
-/**
- * Suggests a short, memorable, semantically-meaningless name for a reusable
- * eval config (e.g. "wise-pretzel"). Two words (adjective-animal) keep it
- * readable in a dropdown while staying valid as a fileset name.
- */
-export const generateEvalConfigName = (): string =>
-  generateDefaultName({ dictionaries: [adjectives, animals], length: 2 });
