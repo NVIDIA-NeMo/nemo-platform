@@ -175,14 +175,15 @@ jobs:
 
   analyze:
     needs: plan
-    # PR gate: on `pull_request` events, only run with the `run-insights` label. Every
-    # other trigger (workflow_dispatch, any future dispatch-like event) is gated on
-    # mode alone, matching stack-check/produce above.
+    # PR gate: run only when `run-insights` is applied, not again on every
+    # synchronize event. Remove and reapply the label to request another run.
+    # Dispatch-like events remain gated on mode alone.
     if: >-
       needs.plan.outputs.mode == 'analyze' &&
       (github.event_name != 'pull_request' ||
-       (github.event.pull_request.head.repo.full_name == github.repository &&
-        contains(github.event.pull_request.labels.*.name, 'run-insights')))
+       (github.event.action == 'labeled' &&
+        github.event.label.name == 'run-insights' &&
+        github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions: { contents: read }

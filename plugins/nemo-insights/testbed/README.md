@@ -245,10 +245,10 @@ validation trigger):
   diffing the resulting Insights is the reliability signal ("pass^k for
   insights") this pipeline exists to surface, not noise to suppress.
 
-**One PR = one state per subject:** `pull_request` events (paths under `src/`
-or `testbed/`) force `mode=analyze` against `tau2-airline` and additionally
-require the `run-insights` label, so every labeled push analyzes the same
-pinned state and insight diffs are attributable to code, not state drift.
+**One analysis run per PR:** applying the `run-insights` label runs
+`mode=analyze` against `tau2-airline` at the current PR head. Later commits do
+not rerun it on `synchronize`, avoiding repeated inference spend. Remove and
+reapply the label to request an explicit rerun.
 States are per-produce-dispatch compositions, so subjects pin different
 versions — each under `[subjects]` in `testbed/state.lock`; a subject with no
 entry errors (add its line after minting a fixture). Lock-bump PRs edit the
