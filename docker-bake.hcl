@@ -292,8 +292,6 @@ group "docker-cpu" {
   targets = [
     "nmp-api-docker",
     "nmp-cpu-tasks-docker",
-    "nmp-customizer-tasks",
-    "nmp-customizer-tasks-smoke-test",
   ]
 }
 
@@ -317,6 +315,8 @@ group "nmp-automodel" {
     "nmp-automodel-base-builder",
     "nmp-automodel-training-docker",
     "nmp-automodel-training-smoke-test",
+    "nmp-customizer-tasks",
+    "nmp-customizer-tasks-smoke-test",
   ]
 }
 
@@ -330,6 +330,7 @@ group "nmp-rl" {
   targets = [
     "nmp-rl-base-builder",
     "nmp-rl-training",
+    "nmp-customizer-tasks",
   ]
 }
 

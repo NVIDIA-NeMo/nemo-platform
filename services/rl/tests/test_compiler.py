@@ -217,6 +217,13 @@ async def test_compiler_emits_four_steps(monkeypatch: pytest.MonkeyPatch, mock_s
         "rl",
     ]
 
+    upload_meta = steps[2]["config"]["upload"][0]["metadata"]
+    assert upload_meta == {
+        "model": "default/base-model",
+        "finetuning_type": "all_weights",
+        "output_type": "model",
+    }
+
 
 @pytest.mark.asyncio
 async def test_compiler_rejects_model_without_fileset(monkeypatch: pytest.MonkeyPatch, mock_sdk: Mock) -> None:

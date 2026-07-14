@@ -97,3 +97,34 @@ async def test_training_step_gets_separate_validation_path_for_different_fileset
 
     download = next(s for s in job["steps"] if s["name"] == "model-and-dataset-download")
     assert len(download["config"]["download"]) == 3
+
+
+@pytest.mark.asyncio
+async def test_upload_step_stamps_output_metadata() -> None:
+    from nmp.unsloth.app.jobs import compiler as compiler_mod
+
+    original_fetch = compiler_mod.fetch_model_entity
+    compiler_mod.fetch_model_entity = AsyncMock(
+        return_value=types.SimpleNamespace(
+            workspace="default",
+            name="qwen3-1.7b",
+            fileset="default/qwen3-1.7b",
+            trust_remote_code=False,
+        ),
+    )
+    try:
+        job = await platform_job_config_compiler(
+            workspace="default",
+            job_spec=_spec(validation_path=None),
+            sdk=MagicMock(),
+        )
+    finally:
+        compiler_mod.fetch_model_entity = original_fetch
+
+    upload = next(s for s in job["steps"] if s["name"] == "model-upload")
+    assert upload["config"]["upload"][0]["metadata"] == {
+        "model": "default/qwen3-1.7b",
+        "finetuning_type": "lora",
+        "save_method": "lora",
+        "output_type": "adapter",
+    }

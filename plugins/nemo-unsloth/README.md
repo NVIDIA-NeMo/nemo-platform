@@ -33,10 +33,10 @@ What happens after submit:
 
 1. The plugin's `to_spec` validates the model entity + dataset fileset against the live platform.
 2. `UnslothJob.compile` produces a 4-step `PlatformJobSpec`:
-   1. **`model-and-dataset-download`** — CPU step, `nmp.unsloth.tasks.file_io` pulls the model entity's fileset + the dataset fileset to the shared PVC.
-   2. **`training`** — GPU step, `nmp.unsloth.tasks.training` runs `train_sft` against the local paths.
-   3. **`model-upload`** — CPU step, `nmp.unsloth.tasks.file_io` uploads the saved checkpoint to a new fileset (named after `output.fileset`).
-   4. **`model-entity-creation`** — CPU step, `nmp.unsloth.tasks.model_entity` registers the output entity (adapter for LoRA, full model entity otherwise).
+   1. **`model-and-dataset-download`** — CPU step, `nmp.customization_common.tasks.file_io` (with `--service-source unsloth`) pulls the model entity's fileset + the dataset fileset to the shared PVC (`nmp-customizer-tasks` image).
+   2. **`training`** — GPU step, `nmp.unsloth.tasks.training` runs `train_sft` against the local paths (`nmp-unsloth-training` image).
+   3. **`model-upload`** — CPU step, `nmp.customization_common.tasks.file_io` uploads the saved checkpoint to a new fileset (named after `output.fileset`).
+   4. **`model-entity-creation`** — CPU step, `nmp.customization_common.tasks.model_entity` registers the output entity (adapter for LoRA, full model entity otherwise).
 3. The platform Jobs runner schedules each step; tail logs with the standard jobs API.
 
 ## CLI surface
