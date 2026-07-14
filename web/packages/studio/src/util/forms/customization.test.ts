@@ -8,7 +8,6 @@ import {
   formToUnslothCreate,
   type CustomizationFormFields,
 } from '@studio/util/forms/customization';
-import { describe, expect, it } from 'vitest';
 
 // Deep-clone the defaults so per-test mutations (e.g. flipping finetuning_type)
 // never leak through shared nested references into FORM_DEFAULTS or other tests.

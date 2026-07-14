@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+// vi.mock calls below are hoisted by vitest, so this import still resolves the mocks.
+import { NewCustomizationForm } from '@studio/components/NewCustomizationForm';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import {
   CustomizationDatasetValidationResult,
@@ -42,9 +44,6 @@ const emptyValidation: CustomizationDatasetValidationResult = {
   trainingRowCount: 0,
   validationRowCount: 0,
 };
-
-// Imported after the mocks are registered.
-import { NewCustomizationForm } from '@studio/components/NewCustomizationForm';
 
 describe('NewCustomizationForm', () => {
   beforeEach(() => {

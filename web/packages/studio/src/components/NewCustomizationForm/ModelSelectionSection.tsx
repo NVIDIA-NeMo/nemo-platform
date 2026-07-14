@@ -3,8 +3,7 @@
 
 import { useModelsFromWorkspace } from '@nemo/common/src/api/models/useModelsFromWorkspace';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
-import { ModelSelectV2 } from '@nemo/common/src/components/ModelSelectV2';
-import type { ModelSelection } from '@nemo/common/src/components/ModelSelectV2';
+import { ModelSelectV2, type ModelSelection } from '@nemo/common/src/components/ModelSelectV2';
 import { FormField, Stack } from '@nvidia/foundations-react-core';
 import { FormSection } from '@studio/components/NewCustomizationForm/FormSection';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';

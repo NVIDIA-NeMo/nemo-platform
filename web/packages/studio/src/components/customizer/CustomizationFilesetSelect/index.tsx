@@ -5,8 +5,8 @@ import { CodeEditor } from '@nemo/common/src/components/CodeEditor';
 import { ContentType } from '@nemo/common/src/components/CodeEditor/constants';
 import { useFilePreview } from '@nemo/common/src/components/DatasetFileSelect/hooks/useFilePreview';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
-import { ControlledSwitch } from '@nemo/common/src/components/form/ControlledSwitch';
 import { FileList, FileListItem } from '@nemo/common/src/components/FileList';
+import { ControlledSwitch } from '@nemo/common/src/components/form/ControlledSwitch';
 import {
   getEntityReference,
   getPartsFromReference,

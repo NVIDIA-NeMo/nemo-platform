@@ -4,7 +4,6 @@
 import { validateFileFormat } from '@nemo/common/src/utils/fileValidation';
 import type { FilesetFileOutput } from '@nemo/sdk/generated/platform/schema';
 import { datasetFileContentQueryOptions } from '@studio/api/datasets/useDatasetFileContent';
-import type { TrainingType } from '@studio/util/customizerSchema';
 import {
   datasetFileEncodingQueryOptions,
   type FileEncodingResult,
@@ -13,6 +12,7 @@ import { parseFilesetUri } from '@studio/hooks/useCustomizationFiles/utils';
 import { useDatasetFileDiscovery } from '@studio/hooks/useDatasetFileDiscovery';
 import {
   type CustomizerSchemaDetection,
+  type TrainingType,
   detectCustomizerSchema,
   expectedSchemaCopy,
   inferRowSchema,

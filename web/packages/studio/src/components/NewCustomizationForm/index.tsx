@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
 import {
   useCustomizationCreateAutomodelJob,
   useCustomizationCreateUnslothJob,
@@ -32,11 +32,10 @@ import {
   customizationFormSchema,
   formToAutomodelCreate,
   formToUnslothCreate,
+  type CustomizationFormFields,
 } from '@studio/util/forms/customization';
-import type { CustomizationFormFields } from '@studio/util/forms/customization';
 import { FC, useEffect, useMemo, useRef, useState } from 'react';
-import type { FieldErrors, Resolver } from 'react-hook-form';
-import { FormProvider, useForm, useWatch } from 'react-hook-form';
+import { type FieldErrors, FormProvider, type Resolver, useForm, useWatch } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 
 interface NewCustomizationFormProps {
@@ -87,8 +86,7 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
     control: form.control,
     name: 'unsloth.training.finetuning_type',
   });
-  const finetuningType =
-    backend === 'automodel' ? automodelFinetuningType : unslothFinetuningType;
+  const finetuningType = backend === 'automodel' ? automodelFinetuningType : unslothFinetuningType;
   const isLora = finetuningType === 'lora' || finetuningType === 'lora_merged';
 
   const { mutateAsync: createAutomodel, isPending: isPendingAutomodel } =
@@ -104,17 +102,18 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
       },
     });
 
-  const { mutateAsync: createUnsloth, isPending: isPendingUnsloth } = useCustomizationCreateUnslothJob({
-    mutation: {
-      onSuccess: (job) => {
-        toast.success('Fine-tuning job started');
-        navigate(getWorkspaceCustomizationJobDetailsRoute(workspace, job.name));
+  const { mutateAsync: createUnsloth, isPending: isPendingUnsloth } =
+    useCustomizationCreateUnslothJob({
+      mutation: {
+        onSuccess: (job) => {
+          toast.success('Fine-tuning job started');
+          navigate(getWorkspaceCustomizationJobDetailsRoute(workspace, job.name));
+        },
+        onError: (error: Error) => {
+          toast.error(getErrorMessage(error, 'Failed to create fine-tuning job'));
+        },
       },
-      onError: (error: Error) => {
-        toast.error(getErrorMessage(error, 'Failed to create fine-tuning job'));
-      },
-    },
-  });
+    });
 
   const isPending = isPendingAutomodel || isPendingUnsloth;
 
