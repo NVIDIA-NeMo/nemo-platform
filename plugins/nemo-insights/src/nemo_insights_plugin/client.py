@@ -20,6 +20,7 @@ helper is the one place that branch lives.
 from urllib.parse import urlparse
 
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform.auth.helpers import discover_nmp_config
 from nemo_platform.config.config import Config
 
 # Loopback hosts are served by an unauthenticated local platform; attaching
@@ -33,8 +34,10 @@ def make_client(base_url: str | None) -> AsyncNeMoPlatform:
 
     - No ``base_url``: use the active nmp context for both URL and auth.
     - Loopback ``base_url``: direct mode (local platform is unauthenticated).
-    - Remote ``base_url`` with an nmp config present: combine the URL with the
-      context's auth so the SDK injects and refreshes a Bearer token.
+    - Authenticated remote ``base_url`` with an nmp config present: combine the
+      URL with the context's auth so the SDK injects and refreshes a Bearer token.
+    - Unauthenticated remote ``base_url``: direct mode, even when an unrelated
+      OAuth context exists locally.
     - Remote ``base_url`` without an nmp config: direct mode (no credentials to
       use; the request will surface a clear auth error).
     """
@@ -44,6 +47,9 @@ def make_client(base_url: str | None) -> AsyncNeMoPlatform:
     host = (urlparse(base_url).hostname or "").lower()
     config_path = Config.get_default_config_path()
     if host in LOOPBACK_HOSTS or not config_path.exists():
+        return AsyncNeMoPlatform(base_url=base_url)
+
+    if not discover_nmp_config(base_url).auth_enabled:
         return AsyncNeMoPlatform(base_url=base_url)
 
     return AsyncNeMoPlatform(base_url=base_url, config_path=config_path)
