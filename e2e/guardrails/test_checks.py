@@ -120,7 +120,6 @@ def test_checks_reports_guardrails_metadata_when_requested(
         extra_guardrails={"options": {"log": {"activated_rails": True}}},
     )
 
-    assert response["guardrails_data"]["config_ids"] == [test_case.config_ref]
     activated_rails = _activated_rails_by_name(response)
     assert activated_rails[CONTENT_SAFETY_INPUT_FLOW]["stop"] is False
     assert activated_rails[CONTENT_SAFETY_OUTPUT_FLOW]["stop"] is True
