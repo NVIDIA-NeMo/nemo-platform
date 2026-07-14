@@ -406,6 +406,16 @@ class TestListVirtualModels:
         assert "vm-manual" in names
         assert "vm-auto" not in names
 
+    def test_list_filters_by_name_like(self, client: TestClient):
+        """filter[name][$like] matches VirtualModels by substring."""
+        _create(client, "vm-alpha")
+        _create(client, "vm-beta")
+
+        resp = client.get(f"{BASE}?filter[name][$like]=alph")
+        assert resp.status_code == 200, resp.text
+        names = {item["name"] for item in resp.json()["data"]}
+        assert names == {"vm-alpha"}
+
     def test_list_includes_autoprovisioned_by_default(self, client: TestClient):
         """Autoprovisioned VirtualModels are returned when the flag is not set."""
         _create(client, "vm-manual-2", default_model_entity="default/model-a")

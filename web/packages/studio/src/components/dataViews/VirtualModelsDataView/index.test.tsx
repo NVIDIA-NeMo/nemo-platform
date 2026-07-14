@@ -42,9 +42,9 @@ const sampleVm = {
   parent: '',
 };
 
-const renderDataView = () =>
+const renderDataViewAt = (entry: string) =>
   renderRoute(<VirtualModelsDataView workspace="default" />, {
-    history: '/workspaces/default/virtual-models',
+    history: entry,
     routes: [
       {
         path: '/workspaces/:workspace/virtual-models',
@@ -52,6 +52,8 @@ const renderDataView = () =>
       },
     ],
   });
+
+const renderDataView = () => renderDataViewAt('/workspaces/default/virtual-models');
 
 describe('VirtualModelsDataView', () => {
   afterEach(() => {
@@ -80,6 +82,22 @@ describe('VirtualModelsDataView', () => {
     await waitFor(() => expect(urls.length).toBeGreaterThan(0));
     const params = new URL(urls.at(-1)!).searchParams;
     expect(params.get('include_autoprovisioned')).toBe('false');
+  });
+
+  it('sends filter[name][$like] when a name search is active', async () => {
+    const urls: string[] = [];
+    server.use(
+      http.get(VMS_URL, ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json(page([sampleVm]));
+      })
+    );
+    renderDataViewAt('/workspaces/default/virtual-models?s=my-vm');
+
+    await waitFor(() =>
+      expect(urls.some((u) => new URL(u).searchParams.has('filter[name][$like]'))).toBe(true)
+    );
+    expect(new URL(urls.at(-1)!).searchParams.get('filter[name][$like]')).toBe('my-vm');
   });
 
   it('shows an empty state when there are no virtual models', async () => {

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { withOperators } from '@nemo/common/src/api/filterOperators';
+import { dateTimeFilter } from '@nemo/common/src/components/DataView/dateTimeFilter';
 import {
   ROW_ACTIONS_COLUMN_SIZE,
   StudioDataView,
@@ -15,8 +17,12 @@ import {
   useDeleteVirtualModel,
   useListVirtualModels,
 } from '@nemo/sdk/generated/platform/api';
-import { VirtualModel } from '@nemo/sdk/generated/platform/schema';
-import { Flex, Stack, StatusMessage, Text } from '@nvidia/foundations-react-core';
+import {
+  DatetimeFilter,
+  VirtualModel,
+  VirtualModelFilter,
+} from '@nemo/sdk/generated/platform/schema';
+import { Button, Flex, Stack, StatusMessage, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { ErrorPanel } from '@studio/components/ErrorPanel';
@@ -66,12 +72,25 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
       : sortState.id
     : '-created_at';
 
+  const filter = useMemo<VirtualModelFilter>(() => {
+    const columnFilters = new Map(dataViewState.debouncedColumnFilters.map((f) => [f.id, f.value]));
+    const name = dataViewState.debouncedSearchBar || undefined;
+    const defaultModelEntity = columnFilters.get('default_model_entity') as string | undefined;
+    const createdAt = columnFilters.get('created_at') as DatetimeFilter | undefined;
+    return withOperators<VirtualModelFilter>({
+      ...(name ? { name: { $like: name } } : {}),
+      ...(defaultModelEntity ? { default_model_entity: { $like: defaultModelEntity } } : {}),
+      ...(createdAt ? { created_at: createdAt } : {}),
+    });
+  }, [dataViewState.debouncedSearchBar, dataViewState.debouncedColumnFilters]);
+
   const { data, isFetching, error } = useListVirtualModels(
     workspace,
     {
       page: dataViewState.pagination.state.pageIndex + 1,
       page_size: dataViewState.pagination.state.pageSize,
       sort: sortParam,
+      filter,
       // Autoprovisioned VMs are controller-managed passthroughs; hide them from the UI.
       include_autoprovisioned: false,
     },
@@ -137,6 +156,9 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
         accessor('default_model_entity', {
           header: 'Default model',
           enableSorting: false,
+          meta: {
+            filter: { type: 'text', label: 'Default Model' },
+          },
           cell({ row }) {
             const value = row.original.default_model_entity;
             return (
@@ -160,6 +182,9 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
           header: 'Created',
           enableSorting: true,
           size: 150,
+          meta: {
+            filter: dateTimeFilter('Created At'),
+          },
           cell({ row }) {
             return row.original.created_at ? (
               <RelativeTime datetime={row.original.created_at} />
@@ -192,7 +217,10 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
       [openDetailsPanel]
     );
 
-  const isInitialEmpty = virtualModelsWithId.length === 0 && !isFetching && !error;
+  const hasSearchOrFilters =
+    !!dataViewState.debouncedSearchBar || dataViewState.debouncedColumnFilters.length > 0;
+  const isInitialEmpty =
+    virtualModelsWithId.length === 0 && !isFetching && !error && !hasSearchOrFilters;
 
   const emptyState = (
     <Flex
@@ -214,9 +242,13 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
     <Stack gap="density-xl" {...attributes?.Stack}>
       <StudioDataView
         dataViewState={dataViewState}
+        searchField="name"
         makeColumns={makeColumns}
         onRowClick={(row: VirtualModelWithId) => openDetailsPanel(row)}
         attributes={{
+          DataViewSearchBar: {
+            placeholder: 'Search by name...',
+          },
           DataViewRoot: {
             data: virtualModelsWithId,
             totalCount: pagination?.total_results,
@@ -228,8 +260,13 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
                 emptyState
               ) : (
                 <TableEmptyState
-                  header="No Virtual Models"
-                  emptyMessage="No virtual models found in this workspace"
+                  header="No Results Found"
+                  emptyMessage="No virtual models match your search or filters"
+                  actions={
+                    <Button kind="tertiary" onClick={dataViewState.resetFilters}>
+                      Clear Filters
+                    </Button>
+                  }
                 />
               ),
             renderErrorState: () => (
