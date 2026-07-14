@@ -3,7 +3,7 @@
 
 from datetime import datetime, timezone
 
-from nmp.intake.api.v2.evaluations.schemas import EvaluationSessionResponse
+from nmp.intake.api.v2.experiments.schemas import EvaluationSessionResponse
 from nmp.intake.spans.domain import SpanStatus
 from nmp.intake.spans.evaluation_session_repository import EvaluationSessionRow
 

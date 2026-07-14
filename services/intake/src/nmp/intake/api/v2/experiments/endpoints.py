@@ -24,7 +24,7 @@ from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
 from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError
 from nmp.common.service.dependencies import get_entity_client
-from nmp.intake.api.v2.evaluations.schemas import (
+from nmp.intake.api.v2.experiments.schemas import (
     EVALUATION_SESSION_SUMMARY_INPUT_CHAR_LIMIT,
     EvaluationFilter,
     EvaluationRequest,

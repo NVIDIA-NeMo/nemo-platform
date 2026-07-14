@@ -22,15 +22,15 @@ Behavior:
 
 Usage::
 
-    uv run services/intake/scripts/spans/seed_evaluations_demo.py \\
+    uv run services/intake/scripts/spans/seed_experiments_demo.py \\
         --base-url http://127.0.0.1:8000
 
     # Wipe ALL experiment groups + evaluations in the workspace, then re-seed:
-    uv run services/intake/scripts/spans/seed_evaluations_demo.py \\
+    uv run services/intake/scripts/spans/seed_experiments_demo.py \\
         --base-url http://127.0.0.1:8000 --wipe-and-seed
 
 For the parameterized smoke test that exercises one evaluation + many sessions,
-see ``seed_evaluation_rollup_data.py`` in the same directory.
+see ``seed_experiment_rollup_data.py`` in the same directory.
 """
 
 from __future__ import annotations
@@ -433,7 +433,7 @@ def _evaluation_body(spec: EvaluationSpec, group_id: str) -> dict[str, Any]:
         "experiment_group_id": group_id,
         "description": spec.description,
         "metadata": {
-            "seeded_by": "services/intake/scripts/spans/seed_evaluations_demo.py",
+            "seeded_by": "services/intake/scripts/spans/seed_experiments_demo.py",
             "model_name": spec.model_name,
             **spec.metadata,
         },

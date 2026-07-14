@@ -9,7 +9,7 @@ from typing import Any, cast
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from nmp.intake.api.v2.evaluations.endpoints import get_evaluation_rollup_repository
+from nmp.intake.api.v2.experiments.endpoints import get_evaluation_rollup_repository
 
 GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
 EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"

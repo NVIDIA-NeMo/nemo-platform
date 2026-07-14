@@ -7,7 +7,7 @@ import logging
 from typing import ClassVar, List
 
 from nmp.common.service import RouterConfig, Service
-from nmp.intake.api.v2.evaluations import endpoints as evaluations
+from nmp.intake.api.v2.experiments import endpoints as experiments
 from nmp.intake.config import IntakeConfig
 from nmp.intake.spans.api import annotations, evaluator_results, spans, traces
 from nmp.intake.spans.clickhouse_client import ClickHouseSettings, ClickHouseSpanClient
@@ -52,8 +52,8 @@ class IntakeService(Service[IntakeConfig]):
                 description="Post-hoc annotation endpoints (feedback, labels, notes, metadata)",
             ),
             RouterConfig(
-                evaluations.router,
-                tag="Evaluations",
+                experiments.router,
+                tag="Experiments",
                 description="Create, list, get, and delete Evaluations and Experiment Groups",
             ),
             RouterConfig(otlp.router, tag="Ingest", description="OTLP/HTTP trace ingest endpoints"),

@@ -137,15 +137,15 @@ authz:
           description: "Read intake experiment groups"
         update:
           description: "Update intake experiment groups"
-      experiments:
+      evaluations:
         create:
-          description: "Create intake experiments"
+          description: "Create intake evaluations"
         delete:
-          description: "Delete intake experiments"
+          description: "Delete intake evaluations"
         read:
-          description: "Read intake experiments"
+          description: "Read intake evaluations"
         update:
-          description: "Update intake experiments"
+          description: "Update intake evaluations"
       ingest:
         create:
           description: "Ingest traces into intake"
@@ -306,7 +306,6 @@ authz:
       - intake.evaluator-results.list
       - intake.evaluator-results.read
       - intake.experiment-groups.read
-      - intake.experiments.read
       - intake.spans.list
       - intake.spans.read
       - intake.traces.read
@@ -357,9 +356,6 @@ authz:
       - intake.experiment-groups.create
       - intake.experiment-groups.delete
       - intake.experiment-groups.update
-      - intake.experiments.create
-      - intake.experiments.delete
-      - intake.experiments.update
       - intake.ingest.create
       - jobs.cancel
       - jobs.create

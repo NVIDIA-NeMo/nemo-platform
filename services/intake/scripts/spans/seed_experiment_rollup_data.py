@@ -10,7 +10,7 @@ ClickHouse-hydrated rollup converges. Useful for verifying the rollup pipeline
 at varying session counts.
 
 For a curated multi-group dataset for the Studio UI team, see
-``seed_evaluations_demo.py`` in the same directory.
+``seed_experiments_demo.py`` in the same directory.
 """
 
 from __future__ import annotations
@@ -125,7 +125,7 @@ def _upsert_evaluation(
         "dataset_name": DATASET_NAME,
         "dataset_version": "v1",
         "experiment_group_id": group_id,
-        "metadata": {"seeded_by": "services/intake/scripts/spans/seed_evaluation_rollup_data.py"},
+        "metadata": {"seeded_by": "services/intake/scripts/spans/seed_experiment_rollup_data.py"},
     }
     response = client.post(_intake_url(base_url, workspace, "/evaluations"), json=body)
     if response.status_code == 409:

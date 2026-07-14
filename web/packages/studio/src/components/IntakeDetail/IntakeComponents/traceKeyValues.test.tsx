@@ -66,7 +66,7 @@ describe('traceKeyValues', () => {
     ]);
   });
 
-  it('includes experiment context entries when present', () => {
+  it('includes evaluation context entries when present', () => {
     const trace = mockTraceById('trace-agent-run-001');
     expect(trace).toBeDefined();
 
@@ -75,7 +75,7 @@ describe('traceKeyValues', () => {
     expect(entries.map((entry) => entry.label)).toEqual(['Experiment ID', 'Test Case ID']);
   });
 
-  it('returns no experiment context entries when context is absent', () => {
+  it('returns no evaluation context entries when context is absent', () => {
     const trace = mockTraceById('trace-agent-run-002');
     expect(trace).toBeDefined();
 

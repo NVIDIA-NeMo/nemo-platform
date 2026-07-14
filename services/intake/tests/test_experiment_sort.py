@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import pytest
 from fastapi import HTTPException
-from nmp.intake.api.v2.evaluations.endpoints import _sort_evaluations, _validate_sort_field
-from nmp.intake.api.v2.evaluations.schemas import EvaluationResponse, EvaluatorAggregate
+from nmp.intake.api.v2.experiments.endpoints import _sort_evaluations, _validate_sort_field
+from nmp.intake.api.v2.experiments.schemas import EvaluationResponse, EvaluatorAggregate
 
 
 def _exp(

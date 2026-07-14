@@ -123,7 +123,7 @@ export const IntakeTraceDetailView: FC<IntakeTraceDetailViewProps> = ({
               ? [
                   {
                     value: EXPERIMENT_CONTEXT_SECTION,
-                    slotLabel: <Text kind="body/semibold/sm">Experiment Context</Text>,
+                    slotLabel: <Text kind="body/semibold/sm">Evaluation Context</Text>,
                     slotContent: (
                       <Stack className="min-w-0">
                         <KeyValueRows entries={experimentEntries} />

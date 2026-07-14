@@ -28,7 +28,7 @@ describe('EvaluationTraceDetailRoute', () => {
     expect(await screen.findByText('Trace Answer customer policy question')).toBeInTheDocument();
   });
 
-  it('renders the experiment context panel', async () => {
+  it('renders the evaluation context panel', async () => {
     renderTraceDetail();
     await screen.findByText('Trace Answer customer policy question');
     expect(screen.getByText('Evaluation Context')).toBeInTheDocument();

@@ -12,7 +12,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
-from nmp.intake.api.v2.evaluations.endpoints import (
+from nmp.intake.api.v2.experiments.endpoints import (
     _METRIC_STATS,
     _extract_metric_predicates,
     _is_metric_field,
@@ -20,7 +20,7 @@ from nmp.intake.api.v2.evaluations.endpoints import (
     _matches_metric_predicates,
     _operation_references_metric,
 )
-from nmp.intake.api.v2.evaluations.schemas import EvaluationResponse, EvaluatorAggregate, MetricStatFilters
+from nmp.intake.api.v2.experiments.schemas import EvaluationResponse, EvaluatorAggregate, MetricStatFilters
 
 EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
 GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"

@@ -14,8 +14,8 @@ from datetime import datetime, timezone
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from nmp.intake.api.v2.evaluations.endpoints import _sort_evaluations, _validate_default_sort
-from nmp.intake.api.v2.evaluations.schemas import EvaluationResponse, EvaluatorAggregate
+from nmp.intake.api.v2.experiments.endpoints import _sort_evaluations, _validate_default_sort
+from nmp.intake.api.v2.experiments.schemas import EvaluationResponse, EvaluatorAggregate
 
 EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
 GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
