@@ -21,7 +21,7 @@ describe('spanKeyValues', () => {
         ...span!,
         usage_details: {},
         cost_details: {},
-        evaluation_context: { metadata: {} },
+        evaluation_context: {},
       },
       { workspace: 'default' }
     );
