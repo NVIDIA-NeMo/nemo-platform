@@ -41,7 +41,6 @@ on:
       - ".github/actions/insights-testbed-prep/**"
 
 env:
-  OPENAI_API_BASE: ${{ vars.OPENAI_API_BASE || 'https://inference-api.nvidia.com' }}
   TAU2_JUDGE_LLM: ${{ vars.TAU2_JUDGE_LLM || 'openai/nvidia/nvidia/evals-nemotron-ultra' }}
   TAU2_BENCH_REF: 8ebb7499622fc2be9b9d510d6f7a7653461f4f29
 
@@ -112,13 +111,15 @@ jobs:
     permissions: { contents: write }   # release asset upload
     env:
       GH_TOKEN: ${{ github.token }}
-      INFERENCE_API_KEY: ${{ secrets.INFERENCE_API_KEY }}
+      INFERENCE_API_KEY: ${{ secrets.NVIDIA_INFERENCE_KEY }}
       # Same gateway key; litellm/tau2 read it under the OpenAI-conventional name.
-      OPENAI_API_KEY: ${{ secrets.INFERENCE_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.NVIDIA_INFERENCE_KEY }}
+      OPENAI_API_BASE: ${{ secrets.NVIDIA_INFERENCE_URL }}
     steps:
       - name: Require secrets
         run: |
-          [ -n "$INFERENCE_API_KEY" ] || { echo "secret INFERENCE_API_KEY is not set"; exit 1; }
+          [ -n "$INFERENCE_API_KEY" ] || { echo "secret NVIDIA_INFERENCE_KEY is not set"; exit 1; }
+          [ -n "$OPENAI_API_BASE" ] || { echo "secret NVIDIA_INFERENCE_URL is not set"; exit 1; }
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with: { path: nemo-platform, persist-credentials: false }
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -191,10 +192,10 @@ jobs:
         subject: ${{ fromJSON(needs.plan.outputs.subjects) }}
     env:
       GH_TOKEN: ${{ github.token }}
-      INFERENCE_API_KEY: ${{ secrets.INFERENCE_API_KEY }}
+      INFERENCE_API_KEY: ${{ secrets.NVIDIA_INFERENCE_KEY }}
     steps:
       - name: Require secrets
-        run: '[ -n "$INFERENCE_API_KEY" ] || { echo "secret INFERENCE_API_KEY is not set"; exit 1; }'
+        run: '[ -n "$INFERENCE_API_KEY" ] || { echo "secret NVIDIA_INFERENCE_KEY is not set"; exit 1; }'
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with: { path: nemo-platform, persist-credentials: false }
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3

@@ -321,7 +321,7 @@ deliberately after a mint you want as its new shared baseline, or override
 per-run with the dispatch `state` input (applies to every subject in the run;
 locally: `analyze <subject> --state state-vN`).
 
-Secrets: one repo secret, `INFERENCE_API_KEY` (the inference-gateway key; the
-workflow also exposes it as `OPENAI_API_KEY` for litellm/tau2). The analyst and
-the tau2 sim LLMs both reach `inference-api.nvidia.com` (public), so `produce`
-and `analyze` need no VPN and work unmodified on public runners.
+Secrets: the workflow uses Actions secrets `NVIDIA_INFERENCE_KEY` and
+`NVIDIA_INFERENCE_URL`, exposing them under the `INFERENCE_API_KEY` and
+OpenAI-compatible environment names expected by the analyst and litellm/tau2.
+The analyst and tau2 sim LLMs need no VPN and work on public runners.
