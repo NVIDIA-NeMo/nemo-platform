@@ -43,7 +43,7 @@ class ExperimentGroupResponse(BaseModel):
 
     insight_id: Optional[str] = None
 
-    metadata: Optional[Dict[str, object]] = None
+    metadata: Optional[Dict[str, str]] = None
 
     summary: Optional[str] = None
 

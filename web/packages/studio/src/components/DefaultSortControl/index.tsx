@@ -79,7 +79,7 @@ export const DefaultSortControl: FC<DefaultSortControlProps> = ({
     <FormField slotLabel="Default sort">
       <Stack gap="density-md">
         <Text kind="body/regular/sm" className="text-secondary">
-          The field this group&apos;s experiments are sorted by on load.
+          Sets the default sort order for all users when they open this group.
         </Text>
         <div className="flex items-center gap-2">
           <SelectRoot

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { formatTimeInSeconds, utcToLocalDate } from './date';
+import { formatDurationMs, formatTimeInSeconds, utcToLocalDate } from './date';
 
 describe('formatTimeInSeconds', () => {
   it('Returns empty string when seconds is undefined', () => {
@@ -15,6 +15,59 @@ describe('formatTimeInSeconds', () => {
     expect(formatTimeInSeconds(3600 + 60)).toBe('1h 1m');
     expect(formatTimeInSeconds(3600 + 60 + 30)).toBe('1h 1m 30s');
     expect(formatTimeInSeconds(3600 * 25)).toBe('25h');
+  });
+
+  it('Never renders a sub-second component', () => {
+    expect(formatTimeInSeconds(30.9)).toBe('30s');
+  });
+
+  it('Returns empty string for sub-second and negative values', () => {
+    expect(formatTimeInSeconds(0.9)).toBe('');
+    expect(formatTimeInSeconds(-5)).toBe('');
+  });
+});
+
+describe('formatDurationMs', () => {
+  it('Returns an em dash for null/undefined', () => {
+    expect(formatDurationMs(null)).toBe('—');
+    expect(formatDurationMs(undefined)).toBe('—');
+  });
+
+  it('Renders a single millisecond segment under one second', () => {
+    expect(formatDurationMs(34)).toBe('34ms');
+    expect(formatDurationMs(999)).toBe('999ms');
+  });
+
+  it('Renders seconds and milliseconds', () => {
+    expect(formatDurationMs(12_034)).toBe('12s 34ms');
+  });
+
+  it('Renders minutes, seconds, and milliseconds', () => {
+    expect(formatDurationMs(612_013)).toBe('10m 12s 13ms');
+  });
+
+  it('Includes hours for long durations', () => {
+    expect(formatDurationMs(3_661_000)).toBe('1h 1m 1s');
+  });
+
+  it('Drops zero-valued units, including interior ones', () => {
+    expect(formatDurationMs(12_000)).toBe('12s');
+    expect(formatDurationMs(600_000)).toBe('10m');
+    expect(formatDurationMs(3_600_000 + 5_000)).toBe('1h 5s');
+  });
+
+  it('Rounds fractional milliseconds', () => {
+    expect(formatDurationMs(34.6)).toBe('35ms');
+  });
+
+  it('Keeps precision for sub-millisecond durations', () => {
+    expect(formatDurationMs(0.34)).toBe('0.34ms');
+    expect(formatDurationMs(0.5)).toBe('0.5ms');
+  });
+
+  it('Renders zero and negative values as 0ms', () => {
+    expect(formatDurationMs(0)).toBe('0ms');
+    expect(formatDurationMs(-5)).toBe('0ms');
   });
 });
 

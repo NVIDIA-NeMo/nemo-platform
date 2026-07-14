@@ -22,6 +22,9 @@ type InlineUploadPickerProps = Pick<
   | 'acceptableFileSize'
   | 'invalidFileMode'
   | 'allowNewDataset'
+  | 'filesetPurpose'
+  | 'datasetLabel'
+  | 'autoSelectFirstAcceptable'
 > & {
   /** Called once the picked / uploaded file is committed. */
   onSubmit: (data: SubmitUploadType) => void;
@@ -148,6 +151,9 @@ export const InlineUploadPicker: FC<InlineUploadPickerProps> = ({
   acceptableFileSize,
   invalidFileMode,
   allowNewDataset,
+  filesetPurpose,
+  datasetLabel,
+  autoSelectFirstAcceptable,
   onSubmit,
   addButtonText = 'Add file',
   autoCommit = false,
@@ -168,6 +174,10 @@ export const InlineUploadPicker: FC<InlineUploadPickerProps> = ({
       acceptableFileSize: acceptableFileSize ?? uploadModalInitialState.acceptableFileSize,
       invalidFileMode: invalidFileMode ?? uploadModalInitialState.invalidFileMode,
       allowNewDataset: effectiveAllowNewDataset,
+      filesetPurpose: filesetPurpose ?? uploadModalInitialState.filesetPurpose,
+      datasetLabel: datasetLabel ?? uploadModalInitialState.datasetLabel,
+      autoSelectFirstAcceptable:
+        autoSelectFirstAcceptable ?? uploadModalInitialState.autoSelectFirstAcceptable,
     }),
     [
       allowMultipleFileSelection,
@@ -175,6 +185,9 @@ export const InlineUploadPicker: FC<InlineUploadPickerProps> = ({
       acceptableFileSize,
       invalidFileMode,
       effectiveAllowNewDataset,
+      filesetPurpose,
+      datasetLabel,
+      autoSelectFirstAcceptable,
     ]
   );
   return (

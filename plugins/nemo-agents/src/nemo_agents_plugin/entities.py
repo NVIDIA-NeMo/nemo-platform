@@ -15,9 +15,37 @@ from typing import Any, Literal
 
 from nemo_platform_plugin.entity import NemoEntity
 from nemo_platform_plugin.refs import FilesetRef
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 DeploymentStatus = Literal["pending", "starting", "running", "failed", "deleting"]
+
+# Runtime backend for an AgentDeployment. ``subprocess`` (the default) runs the
+# agent as a local ``nat serve`` process reachable on a loopback ``endpoint``.
+# ``docker``/``k8s`` run the agent as a durable container deployment via the
+# deployments plugin; their routable address is projected onto ``endpoints``.
+DeploymentMode = Literal["subprocess", "docker", "k8s"]
+
+# Modes that compile to the nemo-deployments plugin (not local subprocess).
+CONTAINER_DEPLOYMENT_MODES: frozenset[str] = frozenset({"docker", "k8s"})
+
+
+def is_container_deployment_mode(mode: str) -> bool:
+    """Return True when *mode* uses the deployments-plugin runner backend."""
+    return mode in CONTAINER_DEPLOYMENT_MODES
+
+
+class Endpoint(BaseModel):
+    """A routable network endpoint for a deployment.
+
+    Mirrors ``nemo_deployments_plugin.types.Endpoint`` so container-mode
+    deployments can carry the address the deployments-plugin ``Deployment``
+    projected without the agents plugin depending on that plugin at the
+    entity-schema layer.
+    """
+
+    name: str
+    url: str
+    protocol: Literal["http", "https", "grpc", "tcp"] = "http"
 
 
 # ---------------------------------------------------------------------------
@@ -116,8 +144,35 @@ class AgentDeployment(NemoEntity, entity_type="agent_deployment"):
         default="pending",
         description="Lifecycle status: pending | starting | running | failed | deleting.",
     )
+    deployment_mode: DeploymentMode = Field(
+        default="subprocess",
+        description=(
+            "Runtime backend for this deployment. 'subprocess' (default) reads the loopback "
+            "'endpoint'; 'docker'/'k8s' read the projected 'endpoints'."
+        ),
+    )
+    # Dual addressing: subprocess uses loopback ``endpoint``; docker/k8s project
+    # routable addresses onto ``endpoints`` and leave ``endpoint`` empty.
     endpoint: str = Field(
-        default="", description="HTTP endpoint of the running agent process (e.g. http://localhost:9001)."
+        default="", description="Subprocess loopback endpoint of the agent process (e.g. http://localhost:9001)."
+    )
+    endpoints: list[Endpoint] = Field(
+        default_factory=list,
+        description=(
+            "Routable endpoints for container modes, projected from the deployments-plugin "
+            "Deployment. Empty for subprocess mode (which uses 'endpoint')."
+        ),
+    )
+    image: str = Field(
+        default="",
+        description="Container image for docker/k8s modes. Empty for subprocess; falls back to AgentsConfig.deployments.default_image.",
+    )
+    plugin_deployment: str = Field(
+        default="",
+        description=(
+            "Name of the linked nemo-deployments Deployment entity. Defaults to this "
+            "deployment's name when empty (set by the controller on create)."
+        ),
     )
     port: int = Field(default=0, description="Port the agent process is listening on.")
     pid: int = Field(default=0, description="OS process ID of the agent subprocess.")

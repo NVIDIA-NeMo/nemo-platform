@@ -120,8 +120,8 @@ export const AgentEvaluationsListRoute: FC = () => {
           slotHeading="Agent Evaluations"
           slotDescription="Evaluation jobs run against deployed agents — submitted by the optimizer apply flow or directly via the evaluate-agent job API."
           slotActions={
-            <Button kind="primary" onClick={() => setSubmitOpen(true)}>
-              New evaluation
+            <Button kind="primary" color="brand" onClick={() => setSubmitOpen(true)}>
+              Run Evaluation
             </Button>
           }
         />

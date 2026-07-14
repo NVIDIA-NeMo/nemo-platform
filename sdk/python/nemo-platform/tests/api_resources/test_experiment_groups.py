@@ -53,7 +53,7 @@ class TestExperimentGroups:
             default_sort="default_sort",
             description="description",
             insight_id="insight_id",
-            metadata={"foo": "bar"},
+            metadata={"foo": "string"},
             summary="summary",
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
@@ -167,7 +167,7 @@ class TestExperimentGroups:
             default_sort="default_sort",
             description="description",
             insight_id="insight_id",
-            metadata={"foo": "bar"},
+            metadata={"foo": "string"},
             summary="summary",
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
@@ -234,6 +234,7 @@ class TestExperimentGroups:
             workspace="workspace",
             filter={
                 "is_deleted": True,
+                "metadata": {"foo": "string"},
                 "name": "name",
             },
             page=1,
@@ -352,7 +353,7 @@ class TestAsyncExperimentGroups:
             default_sort="default_sort",
             description="description",
             insight_id="insight_id",
-            metadata={"foo": "bar"},
+            metadata={"foo": "string"},
             summary="summary",
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
@@ -466,7 +467,7 @@ class TestAsyncExperimentGroups:
             default_sort="default_sort",
             description="description",
             insight_id="insight_id",
-            metadata={"foo": "bar"},
+            metadata={"foo": "string"},
             summary="summary",
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
@@ -533,6 +534,7 @@ class TestAsyncExperimentGroups:
             workspace="workspace",
             filter={
                 "is_deleted": True,
+                "metadata": {"foo": "string"},
                 "name": "name",
             },
             page=1,

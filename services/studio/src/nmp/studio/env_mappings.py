@@ -82,7 +82,7 @@ ENV_MAPPINGS: list[EnvMapping] = [
     EnvMapping(
         marker="STUDIO_UI_VITE_FF_DATA_DESIGNER_ENABLED",
         config_path="studio.feature_flags.data_designer_enabled",
-        default="false",
+        default="true",
     ),
     EnvMapping(
         marker="STUDIO_UI_VITE_FF_DATASETS_ENABLED",

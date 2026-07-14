@@ -10,6 +10,7 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
+import { formatDurationMs } from '@nemo/common/src/utils/date';
 import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import {
   listExperimentSessions,
@@ -195,7 +196,7 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
       meta: { alignment: 'right' },
       cell: ({ row }) => {
         const ms = row.original.latency_ms;
-        return <Text>{ms != null ? `${Math.round(ms)} ms` : '-'}</Text>;
+        return <Text>{ms != null ? formatDurationMs(ms) : '-'}</Text>;
       },
     }),
     accessor('status', {

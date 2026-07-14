@@ -143,6 +143,7 @@ async def test_run_local_allows_missing_model_configs(
         is_local=True,
     )
 
+    assert isinstance(step_config, AnonymizerStepConfig)
     assert step_config.model_configs_yaml == ""
     assert step_config.dd_model_providers == []
     round_tripped = AnonymizerStepConfig.model_validate(step_config.model_dump())
@@ -157,7 +158,6 @@ async def test_run_local_model_configs_uses_injected_async_sdk(
     csv = tmp_path / "input.csv"
     csv.write_text("text\nhello\n")
     local_first_registry = ModelProviderRegistry(
-        default="local-provider",
         providers=[NDDModelProvider(name="local-provider", endpoint="http://localhost:8000")],
     )
     local_first_lookup = AsyncMock(return_value=local_first_registry)
@@ -179,7 +179,9 @@ async def test_run_local_model_configs_uses_injected_async_sdk(
     )
 
     local_first_lookup.assert_awaited_once()
+    assert local_first_lookup.await_args is not None
     assert local_first_lookup.await_args.kwargs["sdk"] is async_sdk
+    assert isinstance(step_config, AnonymizerStepConfig)
     assert len(step_config.dd_model_providers) == 1
     assert step_config.dd_model_providers[0]["name"] == "local-provider"
 

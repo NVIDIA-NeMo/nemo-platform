@@ -254,6 +254,7 @@ overrides:
   pydocket: MIT
 
   nemo-safe-synthesizer: Apache-2.0
+  nemo-relay: Apache-2.0  # https://github.com/NVIDIA/NeMo-Relay (ships Apache-2.0 LICENSE; osv reports UNKNOWN)
   nemoguardrails: Apache-2.0
   fastuuid: BSD-3-Clause
   orjson: Apache-2.0

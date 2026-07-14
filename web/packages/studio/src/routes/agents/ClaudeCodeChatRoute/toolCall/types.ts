@@ -7,6 +7,8 @@ export interface SubtleToolAction {
   readonly detail: string;
   readonly details?: readonly string[];
   readonly Icon: LucideIcon;
+  readonly invocation: string;
+  readonly invocations?: readonly string[];
   readonly message: string;
   readonly title?: string;
   readonly toolCallId: string;

@@ -3,7 +3,10 @@
 
 import { UploadModalProvider } from '@nemo/common/src/components/UploadModal/Context/UploadModalProvider';
 import { useUploadModalContext } from '@nemo/common/src/components/UploadModal/Context/useUploadModalContext';
-import { UploadModalState } from '@nemo/common/src/components/UploadModal/Context/useUploadModalReducer';
+import {
+  uploadModalInitialState,
+  UploadModalState,
+} from '@nemo/common/src/components/UploadModal/Context/useUploadModalReducer';
 import { DatasetSelect } from '@nemo/common/src/components/UploadModal/DatasetUploader/Select';
 import { filesListFilesetFiles, useFilesListFilesets } from '@nemo/sdk/generated/platform/api';
 import { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
@@ -57,7 +60,7 @@ const ContextReader = ({
   return null;
 };
 
-const createWrapper = () => {
+const createWrapper = (initialState?: Partial<UploadModalState>) => {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -65,10 +68,14 @@ const createWrapper = () => {
   });
   return ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <UploadModalProvider>{children}</UploadModalProvider>
+      <UploadModalProvider initialState={{ ...uploadModalInitialState, ...initialState }}>
+        {children}
+      </UploadModalProvider>
     </QueryClientProvider>
   );
 };
+
+const filesetFile = (path: string) => ({ path, file_ref: `ref-${path}` });
 
 describe('DatasetSelect', () => {
   const user = userEvent.setup();
@@ -180,6 +187,54 @@ describe('DatasetSelect', () => {
     expect(contextState?.dataset?.type === 'existing' && contextState.dataset.dataset.name).toBe(
       'dataset1'
     );
+  });
+
+  it('auto-selects the first root-level accepted file when autoSelectFirstAcceptable is set', async () => {
+    vi.mocked(filesListFilesetFiles).mockResolvedValueOnce({
+      data: [filesetFile('smaller_test.csv'), filesetFile('email_phishing_analyzer-eval.yml')],
+    } as Awaited<ReturnType<typeof filesListFilesetFiles>>);
+
+    let contextState: UploadModalState | undefined;
+    render(
+      <>
+        <DatasetSelect project="test-project" />
+        <ContextReader onContextChange={(state) => (contextState = state)} />
+      </>,
+      { wrapper: createWrapper({ autoSelectFirstAcceptable: true, acceptableFileTypes: ['.yml'] }) }
+    );
+
+    await user.click(screen.getByRole('combobox'));
+    await user.click(await screen.findByRole('option', { name: 'dataset1' }));
+
+    await waitFor(() => {
+      expect(contextState?.selectedFiles).toHaveLength(1);
+    });
+    expect((contextState?.selectedFiles[0]?.file as { path?: string }).path).toBe(
+      'email_phishing_analyzer-eval.yml'
+    );
+  });
+
+  it('selects nothing when no root-level accepted file exists', async () => {
+    vi.mocked(filesListFilesetFiles).mockResolvedValueOnce({
+      data: [filesetFile('smaller_test.csv'), filesetFile('nested/config.yml')],
+    } as Awaited<ReturnType<typeof filesListFilesetFiles>>);
+
+    let contextState: UploadModalState | undefined;
+    render(
+      <>
+        <DatasetSelect project="test-project" />
+        <ContextReader onContextChange={(state) => (contextState = state)} />
+      </>,
+      { wrapper: createWrapper({ autoSelectFirstAcceptable: true, acceptableFileTypes: ['.yml'] }) }
+    );
+
+    await user.click(screen.getByRole('combobox'));
+    await user.click(await screen.findByRole('option', { name: 'dataset1' }));
+
+    await waitFor(() => {
+      expect(contextState?.dataset?.type).toBe('existing');
+    });
+    expect(contextState?.selectedFiles).toHaveLength(0);
   });
 
   it('includes "New Dataset" option', async () => {

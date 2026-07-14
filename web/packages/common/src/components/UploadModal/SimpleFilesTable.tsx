@@ -62,9 +62,11 @@ export const SimpleFilesTable = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [files, allowedExtensions, invalidFileMode]);
 
+  const hasValidSelection = selectedFiles.some((file) => isFileAllowed(file));
   const disabledFilesMessage =
     invalidFileMode === 'disable' &&
     allowedExtensions.size > 0 &&
+    !hasValidSelection &&
     visibleFiles.some((file) => !isFileAllowed(file))
       ? `Only ${acceptableFileTypes.join(', ')} files can be selected. Upload a supported file or choose a different fileset.`
       : null;
@@ -111,6 +113,7 @@ export const SimpleFilesTable = () => {
       col.accessor('name', { header: 'Name' }),
       col.accessor('size', {
         header: 'Size',
+        size: 120,
         cell: (ctx) => formatFileSize(ctx.getValue()),
       }),
     ],
@@ -129,7 +132,8 @@ export const SimpleFilesTable = () => {
 
   return (
     <Stack className="min-h-0 flex-1 w-full" gap="density-md">
-      <div className="border border-base rounded-md overflow-hidden">
+      {/* Name column fills the row; Size (col 3) is pinned to 120px. */}
+      <div className="border border-base rounded-md overflow-hidden [&_tr>*:nth-child(2)]:w-full! [&_tr>*:nth-child(2)]:max-w-none! [&_tr>*:nth-child(3)]:w-[120px]! [&_tr>*:nth-child(3)]:min-w-[120px]! [&_tr>*:nth-child(3)]:max-w-[120px]!">
         <RadioGroupRoot
           name="simple-files-table"
           value={selectedFiles[0]?.id ?? ''}

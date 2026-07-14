@@ -114,6 +114,40 @@ def test_experiment_status_and_root_cause_update(client: TestClient) -> None:
     assert updated.json()["root_cause"] == "best cost/accuracy trade-off"
 
 
+def test_filter_experiments_by_metadata(client: TestClient) -> None:
+    group = _group(client, name="g-meta")
+    for name, model in (("exp-claude", "claude-opus"), ("exp-gpt", "gpt-5")):
+        resp = client.post(
+            EXPERIMENTS,
+            json={
+                "name": name,
+                "experiment_group_id": group["id"],
+                "dataset_name": "ds",
+                "metadata": {"model": model, "lane": "gold"},
+            },
+        )
+        assert resp.status_code == 201, resp.text
+
+    # A distinct value narrows to the one experiment that has it.
+    only_claude = client.get(EXPERIMENTS, params={"filter[metadata.model]": "claude-opus"})
+    assert only_claude.status_code == 200, only_claude.text
+    assert [e["name"] for e in only_claude.json()["data"]] == ["exp-claude"]
+
+    # A shared value returns both.
+    both = client.get(EXPERIMENTS, params={"filter[metadata.lane]": "gold"})
+    assert {e["name"] for e in both.json()["data"]} == {"exp-claude", "exp-gpt"}
+
+
+def test_filter_experiment_groups_by_metadata(client: TestClient) -> None:
+    for name, team in (("grp-sy", "switchyard"), ("grp-opt", "optimizer")):
+        resp = client.post(GROUPS, json={"name": name, "metadata": {"team": team}})
+        assert resp.status_code == 201, resp.text
+
+    listed = client.get(GROUPS, params={"filter[metadata.team]": "switchyard"})
+    assert listed.status_code == 200, listed.text
+    assert [g["name"] for g in listed.json()["data"]] == ["grp-sy"]
+
+
 def test_new_fields_are_optional(client: TestClient) -> None:
     # Omitting every new field is valid; they default to null.
     gbody = _group(client, name="g-min")
