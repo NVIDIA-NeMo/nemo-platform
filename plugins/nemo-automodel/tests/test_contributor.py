@@ -28,7 +28,6 @@ def test_contributor_mounts_job_collection() -> None:
         app.include_router(spec.router, prefix=spec.prefix)
 
     paths = _route_paths(app)
-    assert "/v2/workspaces/{workspace}/automodel/healthz" in paths
     assert "/v2/workspaces/{workspace}/automodel/jobs" in paths
 
 

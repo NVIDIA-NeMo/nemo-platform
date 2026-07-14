@@ -84,7 +84,7 @@ def test_router_merges_contributor_routes(monkeypatch: pytest.MonkeyPatch) -> No
             app.include_router(spec.router)
 
     client = TestClient(app)
-    assert client.get("/healthz").json()["contributors"] == ["fake"]
+    assert client.get("/v2/healthz").json()["contributors"] == ["fake"]
     assert client.get("/v2/workspaces/ws-a/fake/ping").json() == {"backend": "fake"}
 
 
@@ -192,6 +192,6 @@ def test_authz_derives_from_contributor_routes(monkeypatch: pytest.MonkeyPatch) 
     assert not any(spec.deny for methods in contribution.endpoints.values() for spec in methods.values())
     assert "customization.automodel.jobs.create" in contribution.permissions
     assert "customization.unsloth.jobs.create" in contribution.permissions
-    # The hub's own /healthz is authenticated-but-permissionless (ruled, not denied).
-    hub_healthz = contribution.endpoints["/apis/customization/healthz"]["get"]
+    # The hub's own /v2/healthz is authenticated-but-permissionless (ruled, not denied).
+    hub_healthz = contribution.endpoints["/apis/customization/v2/healthz"]["get"]
     assert hub_healthz.permissions == [] and not hub_healthz.deny

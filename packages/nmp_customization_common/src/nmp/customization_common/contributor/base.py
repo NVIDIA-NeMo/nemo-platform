@@ -15,8 +15,7 @@ from __future__ import annotations
 from typing import Any, Callable, ClassVar
 
 import typer
-from fastapi import APIRouter
-from nemo_platform_plugin.authz import AuthzScope, CallerKind, path_rule
+from nemo_platform_plugin.authz import AuthzScope
 from nemo_platform_plugin.customization_contributor import CustomizationContributorSDKResources
 from nemo_platform_plugin.jobs.api_factory import JobRouteOption
 from nemo_platform_plugin.jobs.routes import add_job_routes
@@ -55,21 +54,18 @@ class BaseContributor:
         raise NotImplementedError
 
     def get_routers(self) -> list[RouterSpec]:
-        """Health endpoint + ``add_job_routes`` for the backend job collection.
+        """``add_job_routes`` for the backend job collection.
 
-        HTTP authz is derived from the ``@path_rule``-decorated routes: the health
-        endpoint is authenticated-but-permissionless, and the job collection's
-        permissions (``customization.<name>.jobs.*``) are stamped onto the factory
-        routes via the ``customization`` :class:`AuthzScope` (scope ``customization``,
-        permission namespace deepened to ``customization.<name>.jobs``).
+        The job collection's permissions (``customization.<name>.jobs.*``) are
+        stamped onto the factory routes via the ``customization``
+        :class:`AuthzScope` (scope ``customization``, permission namespace
+        deepened to ``customization.<name>.jobs``).
+
+        Backend health is not exposed per contributor — the customization router
+        reports a single ``/apis/customization/v2/healthz`` that enumerates the
+        registered contributors.
         """
         config = self._get_config()
-        router = APIRouter()
-
-        @router.get("/healthz")
-        @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
-        async def healthz() -> dict[str, str]:
-            return {"backend": self.name, "status": "ok"}
 
         jobs_router = add_job_routes(
             self.job_cls,
@@ -81,12 +77,6 @@ class BaseContributor:
         )
 
         return [
-            RouterSpec(
-                router=router,
-                prefix=f"/v2/workspaces/{{workspace}}/{self.name}",
-                tag=self._title,
-                description=f"{self._title} contributor health.",
-            ),
             RouterSpec(
                 router=jobs_router,
                 prefix="/v2/workspaces/{workspace}",

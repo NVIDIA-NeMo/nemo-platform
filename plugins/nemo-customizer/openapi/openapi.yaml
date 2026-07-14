@@ -3,12 +3,12 @@ info:
   title: customization (plugin)
   version: 0.0.0
 paths:
-  /apis/customization/healthz:
+  /apis/customization/v2/healthz:
     get:
       tags:
       - Customization
       summary: Healthz
-      operationId: healthz_apis_customization_healthz_get
+      operationId: healthz_apis_customization_v2_healthz_get
       responses:
         '200':
           description: Successful Response
@@ -17,24 +17,7 @@ paths:
               schema:
                 additionalProperties: true
                 type: object
-                title: Response Healthz Apis Customization Healthz Get
-  /apis/customization/v2/workspaces/{workspace}/automodel/healthz:
-    get:
-      tags:
-      - Automodel
-      summary: Healthz
-      operationId: healthz_apis_customization_v2_workspaces__workspace__automodel_healthz_get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                additionalProperties:
-                  type: string
-                type: object
-                title: Response Healthz Apis Customization V2 Workspaces  Workspace  Automodel
-                  Healthz Get
+                title: Response Healthz Apis Customization V2 Healthz Get
   /apis/customization/v2/workspaces/{workspace}/automodel/jobs:
     post:
       tags:
@@ -409,23 +392,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /apis/customization/v2/workspaces/{workspace}/rl/healthz:
-    get:
-      tags:
-      - Rl
-      summary: Healthz
-      operationId: healthz_apis_customization_v2_workspaces__workspace__rl_healthz_get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                additionalProperties:
-                  type: string
-                type: object
-                title: Response Healthz Apis Customization V2 Workspaces  Workspace  Rl
-                  Healthz Get
   /apis/customization/v2/workspaces/{workspace}/rl/jobs:
     post:
       tags:
@@ -800,23 +766,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /apis/customization/v2/workspaces/{workspace}/unsloth/healthz:
-    get:
-      tags:
-      - Unsloth
-      summary: Healthz
-      operationId: healthz_apis_customization_v2_workspaces__workspace__unsloth_healthz_get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                additionalProperties:
-                  type: string
-                type: object
-                title: Response Healthz Apis Customization V2 Workspaces  Workspace  Unsloth
-                  Healthz Get
   /apis/customization/v2/workspaces/{workspace}/unsloth/jobs:
     post:
       tags:

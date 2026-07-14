@@ -31,19 +31,19 @@ def _make_automodel_app() -> FastAPI:
     return app
 
 
-def test_automodel_healthz_under_workspace() -> None:
-    client = TestClient(_make_automodel_app())
-    response = client.get("/v2/workspaces/test-ws/automodel/healthz")
-    assert response.status_code == 200
-    assert response.json() == {"backend": "automodel", "status": "ok"}
-
-
 def test_automodel_jobs_collection_path() -> None:
     paths = _route_paths(_make_automodel_app())
     assert "/v2/workspaces/{workspace}/automodel/jobs" in paths
 
 
-def test_customization_router_merges_automodel(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_contributor_exposes_no_per_backend_healthz() -> None:
+    """Backend health is not exposed per contributor; the customization router
+    reports a single ``/v2/healthz`` that enumerates contributors instead."""
+    paths = _route_paths(_make_automodel_app())
+    assert not any(p.endswith("/healthz") for p in paths)
+
+
+def test_customization_router_healthz_lists_contributors(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "nemo_customizer.router.discover_customization_contributors",
         lambda: {"automodel": AutomodelContributor()},
@@ -55,8 +55,7 @@ def test_customization_router_merges_automodel(monkeypatch: pytest.MonkeyPatch) 
         app.include_router(spec.router, prefix=prefix)
 
     client = TestClient(app)
-    assert client.get("/healthz").json()["contributors"] == ["automodel"]
-    assert client.get("/v2/workspaces/ws-a/automodel/healthz").status_code == 200
+    assert client.get("/v2/healthz").json()["contributors"] == ["automodel"]
 
 
 def test_workspace_isolation_list_uses_path_segment() -> None:
@@ -64,4 +63,3 @@ def test_workspace_isolation_list_uses_path_segment() -> None:
     app = _make_automodel_app()
     paths = _route_paths(app)
     assert "/v2/workspaces/{workspace}/automodel/jobs" in paths
-    assert "/v2/workspaces/{workspace}/automodel/healthz" in paths
