@@ -87,7 +87,7 @@ core-service = [
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 data-designer-nemo = [
-  "data-designer==0.6.1",
+  "data-designer==0.7.0",
   "anyio>=4.0",
   "duckdb",
   "pydantic>=2",
@@ -242,8 +242,8 @@ nemo-agents-plugin = [
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-anonymizer-plugin = [
   "nemo-platform-plugin",
-  "nemo-anonymizer>=0.2.1",
-  "data-designer==0.6.1",
+  "nemo-anonymizer>=0.3.0",
+  "data-designer==0.7.0",
   "data-designer-nemo",
   "httpx>=0.27",
   "fastapi",
@@ -264,7 +264,7 @@ nemo-auditor-plugin = [
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-data-designer-plugin = [
   "nemo-platform-plugin",
-  "data-designer==0.6.1",
+  "data-designer==0.7.0",
   "data-designer-nemo",
   "httpx>=0.27",
   "fastapi",
