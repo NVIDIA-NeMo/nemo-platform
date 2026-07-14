@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ControlledJsonInput } from '@studio/components/NewCustomizationForm/ControlledJsonInput';
-import { render, screen } from '@studio/tests/util/render';
+import { act, render, screen, waitFor } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 import { FC } from 'react';
 import { FormProvider, useForm, useWatch } from 'react-hook-form';
@@ -16,8 +16,9 @@ const Spy: FC = () => {
   return <div data-testid="value">{value === undefined ? 'UNDEFINED' : JSON.stringify(value)}</div>;
 };
 
-const Harness: FC = () => {
+const Harness: FC<{ onReady?: (setValue: (v: unknown) => void) => void }> = ({ onReady }) => {
   const methods = useForm<FormShape>({ defaultValues: { cfg: undefined } });
+  onReady?.((v) => methods.setValue('cfg', v));
   return (
     <FormProvider {...methods}>
       <ControlledJsonInput
@@ -67,5 +68,19 @@ describe('ControlledJsonInput', () => {
     await typeInto(user, '{{ not json');
     expect(screen.getByText('Invalid JSON')).toBeInTheDocument();
     expect(screen.getByTestId('value')).toHaveTextContent('UNDEFINED');
+  });
+
+  it('resyncs the text box when the field is changed externally', async () => {
+    let setValue: (v: unknown) => void = () => {};
+    render(<Harness onReady={(fn) => (setValue = fn)} />);
+
+    // The box starts empty; an external setValue must be reflected in the text.
+    await act(async () => setValue({ b: 2 }));
+    const box = screen.getByRole('textbox', { name: /config/i });
+    await waitFor(() => expect(box).toHaveValue(JSON.stringify({ b: 2 }, null, 2)));
+
+    // Clearing the field externally empties the box.
+    await act(async () => setValue(undefined));
+    await waitFor(() => expect(box).toHaveValue(''));
   });
 });

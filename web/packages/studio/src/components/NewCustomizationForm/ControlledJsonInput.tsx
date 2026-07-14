@@ -3,7 +3,7 @@
 
 import type { UseControllerComponentProps } from '@nemo/common/src/types';
 import { FormField, TextArea } from '@nvidia/foundations-react-core';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useController } from 'react-hook-form';
 
 interface Props extends UseControllerComponentProps {
@@ -34,6 +34,31 @@ export const ControlledJsonInput = ({
     value == null ? '' : JSON.stringify(value, null, 2)
   );
   const [parseError, setParseError] = useState<string>();
+
+  // Re-sync the local text when `value` changes from OUTSIDE this input (e.g. a
+  // form reset or an external setValue). We keep the box untouched when its text
+  // already represents `value` (idle, or our own edit whose onChange set it) or
+  // is a mid-edit invalid fragment — so typing and cursor position are never
+  // disturbed.
+  const textRef = useRef(text);
+  textRef.current = text;
+  useEffect(() => {
+    const trimmed = textRef.current.trim();
+    if (!trimmed) {
+      if (value != null) setText(JSON.stringify(value, null, 2));
+      return;
+    }
+    let current: unknown;
+    try {
+      current = JSON.parse(trimmed);
+    } catch {
+      return; // invalid mid-edit text — don't clobber it
+    }
+    if (JSON.stringify(current) !== JSON.stringify(value)) {
+      setText(value == null ? '' : JSON.stringify(value, null, 2));
+      setParseError(undefined);
+    }
+  }, [value]);
 
   const handleChange = (next: string) => {
     setText(next);
