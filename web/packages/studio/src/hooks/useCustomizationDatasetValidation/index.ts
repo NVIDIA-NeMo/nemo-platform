@@ -136,16 +136,7 @@ export interface CustomizationDatasetValidationResult {
     ok: boolean;
     fileErrors: EncodingFileError[];
   };
-  /**
-   * Inferred field shape from the first row of the first successfully detected
-   * file: list of [key, jsType] tuples (e.g. [["prompt", "string"], ...]).
-   */
-  /**
-   * TypeScript-shaped string describing the inferred schema of the first
-   * recognized row, with nested objects/arrays expanded so users can verify
-   * the full structure — not just see "object". Empty when nothing was
-   * detected; callers should hide the preview block in that case.
-   */
+  /** TS-shaped string of the first recognized row's inferred schema; empty when none. */
   schemaShape: string;
   hasTraining: boolean;
   hasValidation: boolean;
@@ -297,15 +288,9 @@ const validateOne = async (
 };
 
 /**
- * Downloads the content of every training/validation file in a fileset and runs:
- *   - Format check via validateFileFormat from @nemo/common (line-by-line JSONL parse)
- *   - Strict customizer-aligned schema detection via detectCustomizerSchema, scoped
- *     to the currently selected training type (SFT vs DPO have different rules,
- *     mirroring services/customizer/.../schemas.py discriminators)
- *
- * Reuses the existing JSONL parser in @nemo/common; do NOT duplicate it here.
- *
- * sampleLimit defaults to 0 (parse every line). Positive values truncate the sample.
+ * Downloads every training/validation file in a fileset and runs format, schema
+ * (scoped to the training type), encoding, and completeness checks.
+ * sampleLimit defaults to 0 (parse every line); positive values truncate.
  */
 export const useCustomizationDatasetValidation = ({
   fileset,

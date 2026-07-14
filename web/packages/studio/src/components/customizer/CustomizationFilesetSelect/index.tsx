@@ -46,7 +46,6 @@ import { useController, useFormContext, useWatch } from 'react-hook-form';
 
 const NEW_DATASET_VALUE = '__new_dataset__';
 
-/** Form path that holds the selected training-fileset reference, per backend. */
 type DatasetFieldName = 'automodel.dataset.training' | 'unsloth.dataset.path';
 
 export interface CustomizationFilesetSelectProps {
@@ -60,8 +59,6 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
   const { control, setValue } = useFormContext<CustomizationFormFields>();
   const backend = useWatch({ control, name: 'backend' });
 
-  // Both backends take a fileset reference string; the field path and the
-  // training objective (which drives schema validation) differ by backend.
   const fieldName: DatasetFieldName =
     backend === 'automodel' ? 'automodel.dataset.training' : 'unsloth.dataset.path';
   const automodelTrainingType = useWatch({ control, name: 'automodel.training.training_type' });
@@ -78,10 +75,6 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
     isFetching,
     error,
   } = useListFilesets(workspace, {
-    // Pull the largest page the backend allows for client-side filtering.
-    // The filesets endpoint caps page_size at 100 (validates with 422 on
-    // larger values — DEFAULT_LARGE_PAGE_SIZE = 1000 fails). Once server-side
-    // search lands, drop this and paginate properly.
     page_size: 100,
     sort: 'created_at',
     filter: { purpose: 'dataset' },
@@ -89,8 +82,6 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
   const filesets = useMemo(() => filesetsResponse?.data ?? [], [filesetsResponse?.data]);
   const dropdownDisabled = isPending || isFetching || !!error;
 
-  // The stored value is an entity reference ('workspace/name' or 'name'); split
-  // it back into parts so we can retrieve the fileset and build its URN.
   const selectedParts = selectedRef ? getPartsFromReference(selectedRef) : undefined;
   const filesetURN =
     selectedParts?.workspace && selectedParts?.name
@@ -111,10 +102,6 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
   });
   const { training, validation: validationFiles } = validation;
 
-  // Unsloth SFT needs the chat template applied for messages datasets, otherwise
-  // there's no text column to train on and SFTTrainer raises "You must specify a
-  // formatting_func". Drive the flag off the detected schema: chat → render via
-  // the tokenizer's template; prompt/text → leave the raw text field as-is.
   const detectedVariant = validation.schema?.variant;
   useEffect(() => {
     if (backend !== 'unsloth' || !detectedVariant) return;
@@ -141,7 +128,6 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
 
   const selectedDropdownValue = (selectedRef as string) ?? '';
 
-  // File preview state and content fetching
   const {
     previewFile,
     previewContent,
@@ -151,8 +137,6 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
     clearPreview,
   } = useFilePreview();
 
-  // FileList items: training files first, then validation files. The
-  // FileValidationPanel handles error/info banners separately.
   const filesetFiles = useMemo<FileListItem[]>(() => {
     if (fetchFilesetStatus !== 'success') return [];
     return [...training, ...validationFiles].map((file) => ({
@@ -191,9 +175,6 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
         }
         status={fieldError || hasMissingTrainingFiles ? 'error' : undefined}
       >
-        {/* Compound Select form (rather than `<Select items={...}>`) so the
-            per-item className on the New Dataset row is honored — the items
-            array drops className silently. */}
         <SelectRoot
           value={selectedDropdownValue}
           onValueChange={handleSelectChange}
@@ -220,7 +201,6 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
                 </SelectItem>
               );
             })}
-            {/* Visually offsets the create-new action from the dataset list. */}
             <SelectItem className="border-t border-base" value={NEW_DATASET_VALUE}>
               New Dataset
             </SelectItem>
@@ -261,11 +241,6 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
         <FileList files={filesetFiles} allowDelete={false} onPreviewFile={setPreviewFile} />
       )}
 
-      {/* Always visible. Sits between the matched files list (above) and the
-          auto-split + File Validation sections (below) so users can read the
-          discovery rules right where they need them. When no fileset is
-          selected yet, the file list is absent and the tooltip naturally sits
-          right below the dropdown. */}
       <PatternsTooltipTrigger
         label={hasMissingTrainingFiles ? undefined : 'How are files matched within the Dataset?'}
       />
@@ -307,11 +282,6 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
           modal
           className="max-w-[960px] w-full"
         >
-          {/* Use the same CodeEditor the Fileset browser uses for previews —
-              it virtualizes content so multi-MB JSONL files render without
-              freezing the browser. The lightweight FileContentPreview from
-              @nemo/common runs Shiki on the entire string and hangs above
-              ~1 MB. */}
           {previewError ? (
             <div className="flex h-full items-center justify-center text-red-600">
               Error loading file: {previewError.message}

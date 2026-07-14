@@ -66,14 +66,9 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
   );
 
   const form = useForm<CustomizationFormFields>({
-    // The form type is vendored-driven (nested specs are Partial), while the
-    // schema validates those params as required (defaults always supply them).
-    // That variance is safe here, so cast the resolver to the form's field type.
     resolver: zodResolver(customizationFormSchema) as unknown as Resolver<CustomizationFormFields>,
     defaultValues,
     mode: 'onChange',
-    // Keep field values when a section unmounts (e.g. switching backend or
-    // collapsing an accordion) so the form state stays complete.
     shouldUnregister: false,
   });
 
@@ -119,22 +114,15 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
 
   const onSubmit = async (fields: CustomizationFormFields) => {
     setValidationErrors([]);
-    // Await the mutation so react-hook-form keeps formState.isSubmitting true
-    // (and the sections disabled) for the whole request, not just validation.
-    try {
-      if (fields.backend === 'automodel') {
-        await createAutomodel({ workspace, data: formToAutomodelCreate(fields) });
-      } else {
-        await createUnsloth({ workspace, data: formToUnslothCreate(fields) });
-      }
-    } catch {
-      // Failure is surfaced by the mutation's onError toast; swallow here so
-      // react-hook-form clears isSubmitting and re-enables the form.
+    if (fields.backend === 'automodel') {
+      await createAutomodel({ workspace, data: formToAutomodelCreate(fields) }).catch(
+        () => undefined
+      );
+    } else {
+      await createUnsloth({ workspace, data: formToUnslothCreate(fields) }).catch(() => undefined);
     }
   };
 
-  // Surface validation failures instead of silently blocking submit. Collects
-  // the leaf error messages from the (deeply nested) RHF error tree.
   const onInvalid = (formErrors: FieldErrors<CustomizationFormFields>) => {
     const messages: string[] = [];
     const collect = (node: unknown) => {
@@ -168,9 +156,6 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
           <form
             className="w-full"
             aria-label="Fine-tune a Model"
-            // Validation is handled by React Hook Form + Zod. Disable native
-            // constraint validation so the browser doesn't try (and fail) to
-            // focus hidden `required` controls like ModelSelectV2's filter input.
             noValidate
             onSubmit={form.handleSubmit(onSubmit, onInvalid)}
           >

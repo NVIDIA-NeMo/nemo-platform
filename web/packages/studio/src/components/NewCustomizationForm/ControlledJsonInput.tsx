@@ -12,13 +12,6 @@ interface Props extends UseControllerComponentProps {
   disabled?: boolean;
 }
 
-/**
- * Raw-JSON editor bound to a form field. Parses on change: valid JSON is written
- * to the field (as the parsed value — object, array, string, etc.), an empty box
- * clears it to `undefined`, and invalid JSON shows an inline error without
- * corrupting the stored value. Used for the customizer's free-form / nested
- * config fields (rope_scaling, loftq_config, layer_replication, …).
- */
 export const ControlledJsonInput = ({
   useControllerProps,
   formFieldProps,
@@ -35,11 +28,6 @@ export const ControlledJsonInput = ({
   );
   const [parseError, setParseError] = useState<string>();
 
-  // Re-sync the local text when `value` changes from OUTSIDE this input (e.g. a
-  // form reset or an external setValue). We keep the box untouched when its text
-  // already represents `value` (idle, or our own edit whose onChange set it) or
-  // is a mid-edit invalid fragment — so typing and cursor position are never
-  // disturbed.
   const textRef = useRef(text);
   textRef.current = text;
   useEffect(() => {

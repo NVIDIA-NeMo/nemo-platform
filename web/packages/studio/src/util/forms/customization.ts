@@ -4,25 +4,13 @@
 import type { AutomodelJobInput, UnslothJobInput } from '@nemo/sdk/vendored/customizer/schema';
 import { z } from 'zod';
 
-// ---------------------------------------------------------------------------
-// Form shape — the vendored create-request specs are the source of truth. The
-// spec fields are nested under their backend key so the type stays structurally
-// identical to what the API expects. No separate mapper interface needed; submit
-// just reads f.automodel / f.unsloth directly.
-// ---------------------------------------------------------------------------
-
 export interface CustomizationFormFields {
   backend: 'automodel' | 'unsloth';
-  /** Output model / adapter name (maps to job.name AND spec.output.name) */
   outputName: string;
   description: string;
   automodel: AutomodelJobInput['spec'];
   unsloth: UnslothJobInput['spec'];
 }
-
-// ---------------------------------------------------------------------------
-// Default values
-// ---------------------------------------------------------------------------
 
 const UNSLOTH_DEFAULT_TARGET_MODULES = [
   'q_proj',
@@ -110,16 +98,6 @@ export const FORM_DEFAULTS: CustomizationFormFields = {
     hardware: { precision: 'bf16' },
   },
 };
-
-// ---------------------------------------------------------------------------
-// Zod schema — validates only the fields the form actually touches.
-// Deep-nested optional fields not shown in the UI are left unchecked.
-//
-// Each backend's spec is its own schema. The top-level schema validates ONLY
-// the selected backend (see the superRefine below): the form keeps both
-// sub-objects in state, and switching backends unmounts the other backend's
-// field controllers — so its values are stale/absent and must not gate submit.
-// ---------------------------------------------------------------------------
 
 const automodelSpecSchema = z
   .object({
@@ -248,7 +226,6 @@ export const customizationFormSchema = z
     backend: z.enum(['automodel', 'unsloth']),
     outputName: z.string().min(1, 'Output model name is required'),
     description: z.string(),
-    // Validated conditionally in the superRefine — only the active backend.
     automodel: z.unknown(),
     unsloth: z.unknown(),
   })
@@ -263,12 +240,6 @@ export const customizationFormSchema = z
     }
   });
 
-// ---------------------------------------------------------------------------
-// Submit helpers — the form keeps every sub-object populated (so values survive
-// backend/mode switches), so each mapper strips config that doesn't apply to the
-// selected mode rather than leaking stale values into the payload.
-// ---------------------------------------------------------------------------
-
 export const formToAutomodelCreate = (f: CustomizationFormFields): AutomodelJobInput => {
   const { training } = f.automodel;
   const usesLora =
@@ -281,12 +252,9 @@ export const formToAutomodelCreate = (f: CustomizationFormFields): AutomodelJobI
       ...f.automodel,
       training: {
         ...training,
-        // LoRA params only apply to LoRA finetuning; teacher model only to
-        // distillation. Omit otherwise so switching modes can't leak stale config.
         lora: usesLora ? training.lora : undefined,
         teacher_model: isDistillation ? training.teacher_model || undefined : undefined,
       },
-      // Automodel requires output.name; outputName is validated non-empty.
       output: { name: f.outputName, description: f.description || undefined },
     },
   };
@@ -300,16 +268,10 @@ export const formToUnslothCreate = (f: CustomizationFormFields): UnslothJobInput
     description: f.description || undefined,
     spec: {
       ...f.unsloth,
-      // Full-weight (all_weights) training cannot quantize — the backend rejects
-      // finetuning_type='all_weights' with 4-bit/8-bit loading. Force them off
-      // (these flags aren't UI-exposed, so the mapper is the right place).
       model: usesLora
         ? f.unsloth.model
         : { ...f.unsloth.model, load_in_4bit: false, load_in_8bit: false },
-      // Omit `gpus` when blank so "empty" consistently means "unset" (backend
-      // picks devices), whether the field was left untouched or typed-then-cleared.
       hardware: { ...f.unsloth.hardware, gpus: f.unsloth.hardware?.gpus || undefined },
-      // LoRA params only apply to LoRA finetuning — drop them for full-weight runs.
       training: training && { ...training, lora: usesLora ? training.lora : undefined },
       output: { name: f.outputName || undefined, description: f.description || undefined },
     },

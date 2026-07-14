@@ -19,8 +19,6 @@ describe('AutoSplitNotice', () => {
   });
 
   it('formats large counts with thousands separators', () => {
-    // 12000 chosen for unambiguous rounding (12000 * 0.1 = 1200 exactly).
-    // Both numbers are large enough to exercise the comma separator.
     render(<AutoSplitNotice trainingRowCount={12000} />);
     expect(
       screen.getByText('90% (10,800) examples will be used for training.')

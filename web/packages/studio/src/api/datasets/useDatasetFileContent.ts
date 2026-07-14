@@ -96,11 +96,6 @@ export const datasetFileContentQueryOptions = ({
       } else {
         const start = range ? range[0] : 0;
         const end = range ? range[1] : FILE_PREVIEW_MAX_BYTES - 1;
-        // A size-capped preview (no explicit range, file larger than the cap) is
-        // sliced at a raw byte boundary and almost always ends mid-line. Trim
-        // back to the last newline so callers only ever see complete lines —
-        // otherwise a truncated trailing fragment reads as invalid JSON/JSONL
-        // (e.g., the customizer dataset format check) or renders a partial row.
         const isSizeCappedPreview =
           range === undefined && fileSize !== null && fileSize > FILE_PREVIEW_MAX_BYTES;
         const needsRange = range !== undefined || isSizeCappedPreview;
