@@ -116,40 +116,34 @@ def test_safe_synthesizer_resource_includes_response_detail_in_errors() -> None:
 
 
 @pytest.mark.asyncio
-async def test_async_safe_synthesizer_resource_get_logs_preserves_request_options() -> None:
+async def test_async_safe_synthesizer_resource_get_logs_forwards_query_params() -> None:
     platform = MagicMock()
     resource = AsyncSafeSynthesizerJobsResource(platform)
 
     mock_jobs = MagicMock()
-    options_client = MagicMock()
-    mock_jobs.with_options.return_value = options_client
-    options_client.send = AsyncMock(return_value=_paginated_resp([], total=0, next_page=None))
+    mock_jobs.list_job_logs = AsyncMock(return_value=_paginated_resp([], total=0, next_page=None))
     with patch("nemo_safe_synthesizer_plugin.sdk.resources.client_from_platform", return_value=mock_jobs):
         response = await resource.get_logs(
             "safe-synth-job",
             workspace="default",
             limit=10,
-            extra_headers={"X-Trace": "trace-id"},
-            extra_query={"include_internal": True},
-            extra_body={"audit": True},
-            timeout=5.0,
+            page_cursor="next-page",
+            step_id=None,
         )
 
     assert response.data == []
-    mock_jobs.with_options.assert_called_once_with(timeout=5.0)
-    request = options_client.send.await_args.args[0]
-    assert request.query_params == {"limit": 10, "include_internal": True}
-    assert json.loads(request.content) == {"audit": True}
-    assert options_client.send.await_args.kwargs["headers"] == {"X-Trace": "trace-id"}
+    mock_jobs.list_job_logs.assert_awaited_once_with(
+        name="safe-synth-job",
+        workspace="default",
+        query_params={"limit": 10, "page_cursor": "next-page"},
+    )
 
 
-def test_safe_synthesizer_resource_get_logs_keeps_client_options_out_of_query() -> None:
+def test_safe_synthesizer_resource_get_logs_forwards_query_params() -> None:
     platform = MagicMock()
     resource = SafeSynthesizerJobsResource(platform)
     mock_jobs = MagicMock()
-    options_client = MagicMock()
-    mock_jobs.with_options.return_value = options_client
-    options_client.send.return_value = _paginated_resp([], total=0, next_page=None)
+    mock_jobs.list_job_logs.return_value = _paginated_resp([], total=0, next_page=None)
 
     with patch("nemo_safe_synthesizer_plugin.sdk.resources.client_from_platform", return_value=mock_jobs):
         response = resource.get_logs(
@@ -157,14 +151,15 @@ def test_safe_synthesizer_resource_get_logs_keeps_client_options_out_of_query() 
             workspace="default",
             attempt_id=2,
             step_id="step-1",
-            timeout=10.0,
+            task_id=None,
         )
 
     assert response.data == []
-    mock_jobs.with_options.assert_called_once_with(timeout=10.0)
-    request = options_client.send.call_args.args[0]
-    assert request.query_params == {"attempt_id": 2, "step_id": "step-1"}
-    assert "timeout" not in request.query_params
+    mock_jobs.list_job_logs.assert_called_once_with(
+        name="safe-synth-job",
+        workspace="default",
+        query_params={"attempt_id": 2, "step_id": "step-1"},
+    )
 
 
 def test_job_builder_uploads_dataframe_and_submits_spec() -> None:
