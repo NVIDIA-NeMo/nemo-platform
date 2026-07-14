@@ -11,7 +11,7 @@ if [ "${STALE_HOURS}" -lt 1 ]; then
   exit 1
 fi
 
-owner="NVIDIA-NeMo"
+owner="${GITHUB_REPOSITORY_OWNER,,}"
 repo="${GITHUB_REPOSITORY#*/}"
 repo="${repo,,}"
 
@@ -51,9 +51,9 @@ total_deleted=0
 total_candidates=0
 
 find_packages() {
-  gh api --method GET --paginate "/orgs/${owner}/packages" \
-    -f package_type=container \
-    -F per_page=100 \
+  gh api --paginate "/orgs/${GITHUB_REPOSITORY_OWNER}/packages?package_type=container&per_page=100"
+
+  gh api --paginate "/orgs/${GITHUB_REPOSITORY_OWNER}/packages?package_type=container&per_page=100" \
     | jq -r --arg prefix "${repo}/" '.[] | select(.name | startswith($prefix)) | .name'
 }
 
@@ -89,7 +89,7 @@ fi
 
 while IFS= read -r package_name; do
   encoded_package_name="$(url_encode "${package_name}")"
-  endpoint="/orgs/${owner}/packages/container/${encoded_package_name}"
+  endpoint="/orgs/${GITHUB_REPOSITORY_OWNER}/packages/container/${encoded_package_name}"
 
   echo "::group::${package_name}"
 
