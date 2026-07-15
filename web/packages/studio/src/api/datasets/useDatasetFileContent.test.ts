@@ -53,20 +53,60 @@ describe('useDatasetFileContent gate', () => {
     await expect((queryFn as () => Promise<string>)()).resolves.toBe('# heading');
   });
 
-  it('returns full text (no preview cap) for fullContent editor loads', async () => {
+  it('returns full text (no preview cap) for fullContent editor loads within the ceiling', async () => {
+    const headSpy = vi.spyOn(axios, 'head').mockResolvedValueOnce({
+      headers: { 'content-length': String(EDITOR_MAX_BYTES - 1) },
+    } as never);
+
     const { queryFn } = datasetFileContentQueryOptions({ ...baseParams, fullContent: true });
     await expect((queryFn as () => Promise<string>)()).resolves.toBe('# heading');
+
+    headSpy.mockRestore();
   });
 
   it('refuses fullContent loads above the editor ceiling instead of truncating', async () => {
-    // A file reporting a size past EDITOR_MAX_BYTES must throw so the caller shows a
-    // "too large" state — never silently load a prefix that would truncate on save.
     const headSpy = vi.spyOn(axios, 'head').mockResolvedValueOnce({
       headers: { 'content-length': String(EDITOR_MAX_BYTES + 1) },
     } as never);
 
     const { queryFn } = datasetFileContentQueryOptions({ ...baseParams, fullContent: true });
     await expect((queryFn as () => Promise<string>)()).rejects.toThrow(/too large to edit/i);
+
+    headSpy.mockRestore();
+  });
+
+  it('fails closed on fullContent loads when Content-Length is missing', async () => {
+    const headSpy = vi.spyOn(axios, 'head').mockResolvedValueOnce({ headers: {} } as never);
+
+    const { queryFn } = datasetFileContentQueryOptions({ ...baseParams, fullContent: true });
+    await expect((queryFn as () => Promise<string>)()).rejects.toThrow(/too large to edit/i);
+
+    headSpy.mockRestore();
+  });
+
+  it('fails closed on fullContent loads when Content-Length is non-numeric', async () => {
+    const headSpy = vi.spyOn(axios, 'head').mockResolvedValueOnce({
+      headers: { 'content-length': 'not-a-number' },
+    } as never);
+
+    const { queryFn } = datasetFileContentQueryOptions({ ...baseParams, fullContent: true });
+    await expect((queryFn as () => Promise<string>)()).rejects.toThrow(/too large to edit/i);
+
+    headSpy.mockRestore();
+  });
+
+  it('enforces the cap before downloading a parquet blob on fullContent loads', async () => {
+    const { filesDownloadFile } = await import('@nemo/sdk/generated/platform/api');
+    vi.mocked(filesDownloadFile).mockClear();
+    const headSpy = vi.spyOn(axios, 'head').mockResolvedValueOnce({ headers: {} } as never);
+
+    const { queryFn } = datasetFileContentQueryOptions({
+      ...baseParams,
+      path: 'data/sample.parquet',
+      fullContent: true,
+    });
+    await expect((queryFn as () => Promise<string>)()).rejects.toThrow(/too large to edit/i);
+    expect(filesDownloadFile).not.toHaveBeenCalled();
 
     headSpy.mockRestore();
   });

@@ -80,6 +80,17 @@ export const datasetFileContentQueryOptions = ({
         throw new Error('Unable to find base file.');
       }
 
+      // Enforce the editor cap before either branch pulls the whole file into memory —
+      // the parquet branch downloads the entire blob unconditionally, so a check inside
+      // it would come after the very download it's meant to prevent. Fail closed when the
+      // size is unknown: a missing or non-numeric Content-Length must not slip an
+      // unbounded file through.
+      if (fullContent && range === undefined) {
+        if (fileSize === null || Number.isNaN(fileSize) || fileSize > EDITOR_MAX_BYTES) {
+          throw new Error('File is too large to edit in the browser.');
+        }
+      }
+
       if (path.endsWith('parquet')) {
         try {
           let data: string = '';
@@ -104,11 +115,6 @@ export const datasetFileContentQueryOptions = ({
           throw new Error('Invalid response while downloading parquet file');
         }
       } else {
-        if (fullContent && range === undefined) {
-          if (fileSize !== null && fileSize > EDITOR_MAX_BYTES) {
-            throw new Error('File is too large to edit in the browser.');
-          }
-        }
         const start = range ? range[0] : 0;
         const end = range ? range[1] : FILE_PREVIEW_MAX_BYTES - 1;
         const isSizeCappedPreview =
