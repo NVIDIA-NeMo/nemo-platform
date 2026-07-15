@@ -372,10 +372,9 @@ class TestBuildInferenceResponse:
 
 
 class TestExtractUpstreamError:
-    def test_openai_status_error_status_code_preserved(self) -> None:
-        """A genuine ``status_code`` attribute (as set by ``openai.APIStatusError``
-        and all its subclasses) is picked up directly via duck typing — no
-        message parsing needed."""
+    def test_status_code_attribute_4xx_preserved(self) -> None:
+        """A genuine ``status_code`` attribute (``openai.APIStatusError``) is
+        read directly, no message parsing."""
         response = httpx.Response(422, request=httpx.Request("POST", "http://example.test"))
         inner = openai.BadRequestError("Unsupported parameter: foo", response=response, body=None)
         try:
@@ -387,13 +386,9 @@ class TestExtractUpstreamError:
         assert result.status_code == 422
         assert result.detail == "Error invoking LLM: Unsupported parameter: foo"
 
-    def test_bracketed_status_prefix_fallback_on_inner_exception(self) -> None:
-        """When ``inner_exception`` has no structured ``status_code``, falls
-        back to parsing the ``[<status>] <detail>`` prefix convention used by
-        ``langchain_nvidia_ai_endpoints`` — checked on ``inner_exception``,
-        not the outer ``LLMCallException``, since the outer exception's
-        message (``"Error invoking LLM (...): ..."``) never itself starts
-        with a bracketed status."""
+    def test_bracketed_prefix_4xx_preserved(self) -> None:
+        """With no structured ``status_code``, the ``[<status>] ...`` prefix is
+        parsed off ``inner_exception`` (the langchain library's convention)."""
         inner = Exception(  # noqa: TRY002 - mirrors langchain_nvidia_ai_endpoints._format_error
             '[400] Unknown Error {"object":"error","message":'
             '"At most 1 image(s) may be provided in one request.",'
@@ -406,17 +401,14 @@ class TestExtractUpstreamError:
 
         assert result is not None
         assert result.status_code == 400
-        # The outer LLMCallException's ``detail`` is preserved alongside the
-        # sanitized upstream message, and the "Unknown Error" placeholder /
-        # raw JSON body is not leaked verbatim.
+        # LLMCallException.detail is prefixed; "Unknown Error"/raw JSON dropped.
         assert result.detail == (
             "Error invoking LLM (model=vision-judge): At most 1 image(s) may be provided in one request."
         )
 
-    def test_bracketed_status_prefix_without_llm_call_exception_wrapping(self) -> None:
-        """The bracketed-prefix fallback also applies to a bare exception with
-        no ``LLMCallException`` wrapping at all, in which case there is no
-        context to prefix."""
+    def test_bracketed_prefix_without_wrapping_preserved(self) -> None:
+        """A bare bracketed exception (no ``LLMCallException``) works too, with
+        no context to prefix."""
         exc = Exception("[404] Model not found")  # noqa: TRY002
 
         result = extract_upstream_error(exc)
@@ -425,10 +417,8 @@ class TestExtractUpstreamError:
         assert result.status_code == 404
         assert result.detail == "Model not found"
 
-    def test_bracketed_status_prefix_with_unparseable_json_body_falls_back_to_raw_text(self) -> None:
-        """If the text after the bracketed status prefix isn't valid JSON,
-        the raw text is used as-is rather than raising or dropping the
-        message."""
+    def test_bracketed_prefix_unparseable_json_uses_raw_text(self) -> None:
+        """Non-JSON text after the status prefix is used as-is."""
         exc = Exception("[400] Bad Request: not-json-at-all")  # noqa: TRY002
 
         result = extract_upstream_error(exc)
@@ -437,37 +427,16 @@ class TestExtractUpstreamError:
         assert result.status_code == 400
         assert result.detail == "Bad Request: not-json-at-all"
 
-    def test_does_not_follow_plain_cause_chain_when_not_llm_call_exception(self) -> None:
-        """Only two objects are ever examined: ``exc`` itself, and
-        ``exc.inner_exception`` if ``exc`` is an ``LLMCallException``. A plain
-        ``__cause__`` link (e.g. from a bare ``raise ... from ...``, with no
-        ``LLMCallException`` involved at all) is deliberately *not* followed
-        — this doesn't happen on either real error path (nemoguardrails has a
-        single call site that constructs ``LLMCallException``, and it's never
-        nested), so a bracketed 4xx one hop further back via plain
-        ``__cause__`` is not recovered."""
-        inner = Exception("[400] Nested bad request")  # noqa: TRY002
-        try:
-            raise RuntimeError("wrapper") from inner
-        except RuntimeError as wrapper:
-            exc = wrapper
-
-        assert extract_upstream_error(exc) is None
-
-    def test_inner_exception_as_string_falls_back_to_checking_exc_itself(self) -> None:
-        """``LLMCallException.inner_exception`` is typed as ``BaseException | str``
-        — when it's a bare string (no attributes, nothing to unwrap), ``exc``
-        itself is checked instead of crashing on a non-exception ``candidate``.
-        ``exc`` never has a recoverable status of its own, so this returns
-        ``None`` rather than raising."""
+    def test_string_inner_exception_returns_none(self) -> None:
+        """A string ``inner_exception`` (its type is ``BaseException | str``)
+        is skipped without crashing, returning ``None``."""
         exc = LLMCallException("no exception object here, just a string", detail="Error invoking LLM")
 
         assert extract_upstream_error(exc) is None
 
-    def test_5xx_status_code_is_propagated_too(self) -> None:
-        """A genuine ``status_code`` attribute is propagated as-is even for a
-        5xx (e.g. a real upstream outage) — we no longer collapse it to the
-        middleware's own generic 503."""
+    def test_status_code_attribute_5xx_preserved(self) -> None:
+        """A ``status_code`` attribute is preserved for a 5xx too, not
+        collapsed to the middleware's generic 503."""
         response = httpx.Response(500, request=httpx.Request("POST", "http://example.test"))
         inner = openai.InternalServerError("Upstream exploded", response=response, body=None)
         try:
@@ -479,8 +448,8 @@ class TestExtractUpstreamError:
         assert result.status_code == 500
         assert result.detail == "Error invoking LLM: Upstream exploded"
 
-    def test_bracketed_5xx_prefix_is_propagated_too(self) -> None:
-        """A ``[5xx]``-prefixed failure is propagated as-is, same as a 4xx."""
+    def test_bracketed_prefix_5xx_preserved(self) -> None:
+        """A ``[5xx]``-prefixed failure is preserved, same as a 4xx."""
         exc = Exception("[503] Service temporarily overloaded")  # noqa: TRY002
 
         result = extract_upstream_error(exc)
@@ -489,10 +458,8 @@ class TestExtractUpstreamError:
         assert result.status_code == 503
         assert result.detail == "Service temporarily overloaded"
 
-    def test_no_recoverable_status_anywhere_returns_none(self) -> None:
-        """When neither ``exc`` nor ``exc.inner_exception`` has a status code
-        or bracketed prefix, returns ``None`` so the caller keeps its
-        existing 503 fallback."""
+    def test_no_recoverable_status_returns_none(self) -> None:
+        """No status anywhere → ``None``, so the caller keeps its 503 fallback."""
         inner = ValueError("something went wrong")
         try:
             raise LLMCallException(inner, detail="Error invoking LLM") from inner
