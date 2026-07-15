@@ -63,6 +63,25 @@ test_path_matches_provider_gateway_trailing_uri if {
 	)
 }
 
+test_path_matches_structured_path_suffix if {
+	common.path_matches_pattern(
+		"/apis/agents/v2/workspaces/my-ns/agents/my-agent/-/internal/v1/chat/completions",
+		"/apis/agents/v2/workspaces/{workspace}/agents/{name}/-/internal/{trailing_uri:path}",
+	)
+}
+
+test_normalize_endpoint_prefers_structured_path_suffix_over_catch_all if {
+	mock_endpoints := {
+		"/apis/agents/v2/workspaces/{workspace}/agents/{name}/-/{trailing_uri:path}": {"post": {}},
+		"/apis/agents/v2/workspaces/{workspace}/agents/{name}/-/internal/{trailing_uri:path}": {"post": {}},
+	}
+
+	common.normalize_endpoint(
+		"/apis/agents/v2/workspaces/my-ns/agents/my-agent/-/internal/v1/chat/completions",
+	) == "/apis/agents/v2/workspaces/{workspace}/agents/{name}/-/internal/{trailing_uri:path}"
+		with data.authz.endpoints as mock_endpoints
+}
+
 # TEST: Negative cases for trailing URI
 test_path_matches_trailing_uri_wrong_prefix if {
 	not common.path_matches_pattern(

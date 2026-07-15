@@ -212,8 +212,11 @@ get_applicable_principals := principals if {
 #
 # For patterns containing /-/:
 #   - Wildcard suffix (single placeholder like {trailing_uri}): matches any trailing segments.
-#   - Structured suffix (e.g., v1/models or v1/models/{name}): each suffix segment must match
-#     the corresponding trailing path segment exactly (or be a placeholder).
+#   - Structured suffix ending in a FastAPI path converter (e.g., internal/{trailing_uri:path}):
+#     static leading suffix segments match exactly, and the final path converter matches one or
+#     more remaining trailing segments.
+#   - Other structured suffixes (e.g., v1/models or v1/models/{name}): each suffix segment must
+#     match the corresponding trailing path segment exactly (or be a placeholder).
 #
 # This distinction prevents /openai/-/v1/models from incorrectly matching
 # /openai/-/v1/chat/completions — only the catch-all /-/{trailing_uri} pattern matches.
@@ -253,6 +256,44 @@ path_matches_pattern(path, pattern) if {
 
 	# At least one trailing segment must exist after the separator
 	count(path_parts) > count(prefix_pattern_parts) + 1
+} else if {
+	# /-/ pattern with a structured suffix whose final segment is a FastAPI path
+	# converter. For example, .../-/internal/{trailing_uri:path} matches
+	# .../-/internal/v1/chat/completions, while still requiring the "internal" segment.
+	contains(pattern, "/-/")
+	startswith(pattern, "/-/") == false
+
+	# Split pattern at first /-/ into prefix and suffix (same as wildcard branch above).
+	pattern_prefix_with_sep := split(pattern, "/-/")[0]
+	suffix_raw := concat("/", array.slice(split(pattern, "/-/"), 1, count(split(pattern, "/-/"))))
+	suffix_parts := split(suffix_raw, "/")
+	count(suffix_parts) > 1
+
+	path_wildcard_suffix := suffix_parts[count(suffix_parts) - 1]
+	startswith(path_wildcard_suffix, "{")
+	endswith(path_wildcard_suffix, ":path}")
+
+	path_parts := split(path, "/")
+	prefix_pattern_parts := split(pattern_prefix_with_sep, "/")
+
+	# Index where trailing segments begin (right after the "-" separator)
+	trailing_start := count(prefix_pattern_parts) + 1
+
+	# Path must include every fixed suffix segment plus at least one segment for the path converter.
+	count(path_parts) - trailing_start >= count(suffix_parts)
+
+	# Match prefix segments
+	every i in numbers.range(0, count(prefix_pattern_parts) - 1) {
+		segment_matches(path_parts[i], prefix_pattern_parts[i])
+	}
+
+	# Next segment must be the separator "-"
+	path_parts[count(prefix_pattern_parts)] == "-"
+
+	# Match each non-wildcard suffix segment.
+	every j in numbers.range(0, count(suffix_parts) - 2) {
+		segment_matches(path_parts[trailing_start + j], suffix_parts[j])
+	}
 } else if {
 	# /-/ pattern with a structured suffix (specific segments after the separator).
 	# For example, the pattern .../openai/-/v1/models must NOT match the path
@@ -327,8 +368,9 @@ normalize_endpoint(path) := pattern if {
 		path_matches_pattern(base_path, p)
 	}
 
-	# Find the pattern with the fewest placeholders (most specific)
-	# Count placeholders by counting segments that start with {
+	# Find the pattern with the fewest placeholders (most specific), then prefer the
+	# longer pattern among ties so a route such as /-/internal/{trailing_uri:path}
+	# wins over a public /-/{trailing_uri:path} catch-all for internal paths.
 	pattern_scores := {p: count([seg |
 		some seg in split(p, "/")
 		startswith(seg, "{")
@@ -338,10 +380,15 @@ normalize_endpoint(path) := pattern if {
 
 	# Get the minimum score (fewest placeholders)
 	min_score := min([score | some score in [pattern_scores[p] | some p in matching_patterns]])
+	most_specific_patterns := {p |
+		some p in matching_patterns
+		pattern_scores[p] == min_score
+	}
+	max_segments := max([count(split(p, "/")) | some p in most_specific_patterns])
 
-	# Return a pattern with the minimum score
-	some pattern in matching_patterns
-	pattern_scores[pattern] == min_score
+	# Return a pattern with the minimum score and greatest segment count.
+	some pattern in most_specific_patterns
+	count(split(pattern, "/")) == max_segments
 }
 
 # --- Request-scoped memoization -------------------------------------------------

@@ -7,6 +7,7 @@ import gzip
 import io
 import json
 import tarfile
+from types import SimpleNamespace
 
 import pytest
 
@@ -50,6 +51,25 @@ async def test_authorization_data_merges_plugin_authz_contributions(monkeypatch)
 
     assert data["authz"]["endpoints"][plugin_path]["get"]["permissions"] == ["example-plugin.jobs.read"]
     assert "example-plugin.jobs.read" in data["authz"]["roles"]["Viewer"]["permissions"]
+
+
+@pytest.mark.asyncio
+async def test_authorization_data_includes_runtime_authz_config(monkeypatch):
+    from nmp.core.auth.app import bundle
+
+    monkeypatch.setattr("nemo_platform_plugin.authz_discovery.discover_plugin_authz", lambda: [])
+    monkeypatch.setattr(
+        bundle,
+        "get_service_config",
+        lambda _cls: SimpleNamespace(
+            on_invalid_plugin="hard_fail",
+            platform_admin_exempt_from_service_only=True,
+        ),
+    )
+
+    data = await bundle._build_authorization_data_internal(entities_client=None)
+
+    assert data["authz"]["config"]["platform_admin_exempt_from_service_only"] is True
 
 
 @pytest.mark.asyncio

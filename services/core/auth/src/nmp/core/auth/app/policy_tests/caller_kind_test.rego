@@ -7,8 +7,9 @@ import data.authz
 # Data contract: an endpoint method may declare an optional `callers` list of
 # caller-kind strings ("principal", "service_principal"). A route is "service-only"
 # when it lists "service_principal" but NOT "principal". On such routes, human
-# (non-service) callers are denied — overriding the permission allows — except a
-# PlatformAdmin, who keeps its global bypass and stays allowed. Absence of `callers`
+# (non-service) callers are denied — overriding the permission allows and the
+# PlatformAdmin global allow by default. Operators may opt PlatformAdmin back in with
+# authz.config.platform_admin_exempt_from_service_only=true. Absence of `callers`
 # preserves today's PRINCIPAL-default behavior (no new restriction).
 
 caller_kind_test_data := {
@@ -96,10 +97,9 @@ test_service_only_route_allows_service_principal if {
 	result.allowed == true
 }
 
-# A human PlatformAdmin is ALLOWED on a service-only route — its global admin bypass is not
-# clawed back here (only non-admin humans are denied, per
-# test_service_only_route_denies_human_principal above).
-test_service_only_route_allows_platform_admin if {
+# A human PlatformAdmin is DENIED on a service-only route by default — the caller-kind
+# deny overrides the global admin allow unless the runtime exemption knob is enabled.
+test_service_only_route_denies_platform_admin_by_default if {
 	result := authz.allow
 		with input as {
 			"principal_id": "platform-admin@example.com",
@@ -110,6 +110,23 @@ test_service_only_route_allows_platform_admin if {
 		with data.authz.endpoints as caller_kind_test_data.endpoints
 		with data.authz.workspaces as caller_kind_test_data.workspaces
 		with data.authz.principals as caller_kind_test_data.principals
+
+	result.allowed == false
+}
+
+# The runtime knob can restore PlatformAdmin access to service-only routes.
+test_service_only_route_allows_platform_admin_when_exempted if {
+	result := authz.allow
+		with input as {
+			"principal_id": "platform-admin@example.com",
+			"method": "GET",
+			"path": "/apis/jobs/v2/workspaces/ws1/internal-jobs/job-1",
+		}
+		with data.authz.roles as caller_kind_test_data.roles
+		with data.authz.endpoints as caller_kind_test_data.endpoints
+		with data.authz.workspaces as caller_kind_test_data.workspaces
+		with data.authz.principals as caller_kind_test_data.principals
+		with data.authz.config as {"platform_admin_exempt_from_service_only": true}
 
 	result.allowed == true
 }

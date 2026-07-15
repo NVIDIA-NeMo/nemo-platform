@@ -331,15 +331,16 @@ service_only_route if {
 }
 
 # Deny a human (non-service) caller on a service-only route. This is a deny_request so it
-# overrides the allow rules — including the ServiceSystem "*" wildcard — otherwise humans
-# would leak onto service-only routes. Service principals (id starts with "service:") are
-# unaffected and stay allowed. A human PlatformAdmin keeps its global bypass here: an admin
-# retains access to every route, service-only routes included.
+# overrides the allow rules — including the ServiceSystem "*" wildcard and the PlatformAdmin
+# global allow — otherwise humans would leak onto service-only routes. Service principals
+# (id starts with "service:") are unaffected and stay allowed. Operators may opt a human
+# PlatformAdmin back into service-only routes with
+# authz.config.platform_admin_exempt_from_service_only=true.
 deny_request if {
 	service_only_route
 	principal_id := extract_principal_id
 	not startswith(principal_id, "service:")
-	not platform_admin_in_system
+	not platform_admin_service_only_exempt
 }
 
 # Caller-kind enforcement for principal-only routes — the symmetric counterpart of the
@@ -374,6 +375,13 @@ platform_admin_in_system if {
 	count(applicable_principals) > 0
 	some principal in applicable_principals
 	"PlatformAdmin" in data.authz.principals[principal].workspaces.system
+}
+
+default platform_admin_service_only_exempt := false
+
+platform_admin_service_only_exempt if {
+	platform_admin_in_system
+	object.get(data.authz.config, "platform_admin_exempt_from_service_only", false) == true
 }
 
 entities_workspace_object_path(base_path, method) if {

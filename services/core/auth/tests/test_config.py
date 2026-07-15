@@ -21,6 +21,7 @@ def test_auth_config_defaults():
     assert cfg.bundle_cache_seconds == 5
     assert cfg.admin_email is None
     assert cfg.default_workspace == "default"
+    assert cfg.platform_admin_exempt_from_service_only is False
 
 
 def test_default_workspace_custom():

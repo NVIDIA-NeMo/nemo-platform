@@ -176,6 +176,22 @@ class TestProxyByDeploymentName:
         assert resp.status_code == 200
         assert resp.content == upstream_body
 
+    def test_internal_route_strips_internal_prefix(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        dep = _make_deployment(status="running", endpoint="http://localhost:9001")
+        mock_entity_client.get = AsyncMock(return_value=dep)
+
+        httpx_mock = _make_httpx_mock(200, b'{"ok": true}')
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock) as mock_cls:
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/internal/v1/chat/completions",
+                json={"messages": []},
+            )
+
+        assert resp.status_code == 200
+        stream_call = mock_cls.return_value.__aenter__.return_value.stream
+        assert stream_call.call_args.kwargs["url"] == "http://localhost:9001/v1/chat/completions"
+
     def test_5xx_from_agent_becomes_502(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         """Agent 5xx responses must be translated to 502 Bad Gateway."""
         dep = _make_deployment(status="running", endpoint="http://localhost:9001")
@@ -335,6 +351,25 @@ class TestProxyByAgentName:
             )
 
         assert resp.status_code == 200
+
+    def test_internal_route_resolves_running_deployment(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
+        dep = _make_deployment(agent="calc", status="running", endpoint="http://localhost:9001")
+        mock_entity_client.list = AsyncMock(return_value=_list_response([dep]))
+
+        httpx_mock = _make_httpx_mock(200, b'{"ok": true}')
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock) as mock_cls:
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/agents/calc/-/internal/v1/chat/completions",
+                json={"messages": []},
+            )
+
+        assert resp.status_code == 200
+        stream_call = mock_cls.return_value.__aenter__.return_value.stream
+        assert stream_call.call_args.kwargs["url"] == "http://localhost:9001/v1/chat/completions"
 
     def test_agent_not_found_returns_404(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         mock_entity_client.get = AsyncMock(side_effect=NemoEntityNotFoundError("not found"))

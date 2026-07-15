@@ -125,6 +125,8 @@ auth:
   embedded_pdp_memory_limit_mb: 32
   # Fail-mode for a plugin that contributes invalid HTTP authz. | default: 'hard_fail' | values: 'deny_route' | 'quarantine' | 'hard_fail'
   on_invalid_plugin: hard_fail
+  # Allow human PlatformAdmin principals to use plugin routes that declare callers=[SERVICE_PRINCIPAL]. Disabled by default so service-only routes stay machine-only unless an operator explicitly opts into the admin exemption. | default: False
+  platform_admin_exempt_from_service_only: false
 ```
 
 ### `entities`

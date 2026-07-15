@@ -10,9 +10,17 @@ Two proxy routes:
     forwards the request.  This is the primary user-facing path, analogous to
     how IGW routes by model name.
 
+``/v2/workspaces/{workspace}/agents/{name}/-/internal/{trailing_uri}``
+    Internal-only proxy by **agent name** — same runtime target as the user-facing
+    path, but reserved for service principals.
+
 ``/v2/workspaces/{workspace}/deployments/{name}/-/{trailing_uri}``
     Proxy by **deployment name** — for direct targeting of a specific
     deployment (e.g. A/B testing).
+
+``/v2/workspaces/{workspace}/deployments/{name}/-/internal/{trailing_uri}``
+    Internal-only proxy by **deployment name** — same runtime target as the
+    user-facing deployment path, but reserved for service principals.
 
 The ``/-/`` separator prevents URL conflicts with the CRUD routes
 (``/agents/{name}`` and ``/deployments/{name}``).  This mirrors the pattern
@@ -135,6 +143,50 @@ async def _serve_agent_proxy(
 
 
 @router.api_route(
+    "/agents/{name}/-/internal/{trailing_uri:path}",
+    methods=_PROXY_READ_METHODS,
+    tags=["Agent Gateway"],
+    include_in_schema=False,
+)
+@scope.read
+@path_rule(
+    callers=[CallerKind.SERVICE_PRINCIPAL],
+    permissions=[GatewayPerms.INVOKE],
+)
+async def proxy_by_agent_name_internal_read(
+    workspace: str,
+    name: str,
+    trailing_uri: str,
+    request: Request,
+    entity_client: NemoEntitiesClient = Depends(get_entity_client),
+) -> StreamingResponse:
+    """Service-principal read proxy to the active deployment for *agent name*."""
+    return await _serve_agent_proxy(workspace, name, trailing_uri, request, entity_client)
+
+
+@router.api_route(
+    "/agents/{name}/-/internal/{trailing_uri:path}",
+    methods=_PROXY_WRITE_METHODS,
+    tags=["Agent Gateway"],
+    include_in_schema=False,
+)
+@scope.write
+@path_rule(
+    callers=[CallerKind.SERVICE_PRINCIPAL],
+    permissions=[GatewayPerms.INVOKE],
+)
+async def proxy_by_agent_name_internal_write(
+    workspace: str,
+    name: str,
+    trailing_uri: str,
+    request: Request,
+    entity_client: NemoEntitiesClient = Depends(get_entity_client),
+) -> StreamingResponse:
+    """Service-principal write proxy to the active deployment for *agent name*."""
+    return await _serve_agent_proxy(workspace, name, trailing_uri, request, entity_client)
+
+
+@router.api_route(
     "/agents/{name}/-/{trailing_uri:path}",
     methods=_PROXY_READ_METHODS,
     tags=["Agent Gateway"],
@@ -214,6 +266,50 @@ async def _serve_deployment_proxy(
         )
 
     return await _proxy(request, endpoint, trailing_uri, model_name=name)
+
+
+@router.api_route(
+    "/deployments/{name}/-/internal/{trailing_uri:path}",
+    methods=_PROXY_READ_METHODS,
+    tags=["Agent Gateway"],
+    include_in_schema=False,
+)
+@scope.read
+@path_rule(
+    callers=[CallerKind.SERVICE_PRINCIPAL],
+    permissions=[GatewayPerms.INVOKE],
+)
+async def proxy_by_deployment_name_internal_read(
+    workspace: str,
+    name: str,
+    trailing_uri: str,
+    request: Request,
+    entity_client: NemoEntitiesClient = Depends(get_entity_client),
+) -> StreamingResponse:
+    """Service-principal read proxy directly to the named deployment."""
+    return await _serve_deployment_proxy(workspace, name, trailing_uri, request, entity_client)
+
+
+@router.api_route(
+    "/deployments/{name}/-/internal/{trailing_uri:path}",
+    methods=_PROXY_WRITE_METHODS,
+    tags=["Agent Gateway"],
+    include_in_schema=False,
+)
+@scope.write
+@path_rule(
+    callers=[CallerKind.SERVICE_PRINCIPAL],
+    permissions=[GatewayPerms.INVOKE],
+)
+async def proxy_by_deployment_name_internal_write(
+    workspace: str,
+    name: str,
+    trailing_uri: str,
+    request: Request,
+    entity_client: NemoEntitiesClient = Depends(get_entity_client),
+) -> StreamingResponse:
+    """Service-principal write proxy directly to the named deployment."""
+    return await _serve_deployment_proxy(workspace, name, trailing_uri, request, entity_client)
 
 
 @router.api_route(

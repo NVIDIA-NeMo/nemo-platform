@@ -27,6 +27,7 @@ auth:
   # Low timeouts for fast test feedback (same as integration tests)
   policy_data_refresh_interval: 2
   bundle_cache_seconds: 15  # 0 = refresh on every authz call for instant permission changes
+  platform_admin_exempt_from_service_only: false
   admin_email: "admin@example.com"
 
   # --- Azure AD OIDC (NeMo Platform dev deployment) ---

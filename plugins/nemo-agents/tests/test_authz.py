@@ -18,6 +18,7 @@ from nemo_platform_plugin.authz_discovery import _derive_service_contribution
 
 _BASE = "/apis/agents/v2/workspaces/{workspace}"
 _GATEWAY_AGENT = f"{_BASE}/agents/{{name}}/-/{{trailing_uri:path}}"
+_GATEWAY_AGENT_INTERNAL = f"{_BASE}/agents/{{name}}/-/internal/{{trailing_uri:path}}"
 # Methods the gateway forwards, split by scope (see gateway._PROXY_READ_METHODS /
 # _PROXY_WRITE_METHODS), lower-cased for the wire format.
 _PROXY_READ_METHODS = {"get", "head", "options"}
@@ -87,6 +88,25 @@ def test_gateway_proxy_binding() -> None:
     assert contrib.endpoints[deployment_gw]["post"].permissions == ["agents.gateway.invoke"]
     # The coarse permission is declared.
     assert "agents.gateway.invoke" in contrib.permissions
+
+
+def test_gateway_internal_proxy_binding() -> None:
+    contrib = _contribution()
+    methods = contrib.endpoints[_GATEWAY_AGENT_INTERNAL]
+    assert set(methods) == _PROXY_METHODS
+    for method, binding in methods.items():
+        assert binding.permissions == ["agents.gateway.invoke"], method
+        assert binding.callers == ["service_principal"], method
+        assert not binding.deny, method
+        expected_scopes = (
+            ["agents:write", "platform:write"] if method in _PROXY_WRITE_METHODS else ["agents:read", "platform:read"]
+        )
+        assert binding.scopes == expected_scopes, method
+
+    deployment_internal_gw = f"{_BASE}/deployments/{{name}}/-/internal/{{trailing_uri:path}}"
+    assert set(contrib.endpoints[deployment_internal_gw]) == _PROXY_METHODS
+    assert contrib.endpoints[deployment_internal_gw]["post"].callers == ["service_principal"]
+    assert contrib.endpoints[deployment_internal_gw]["post"].permissions == ["agents.gateway.invoke"]
 
 
 def test_gateway_invoke_granted_to_viewer() -> None:

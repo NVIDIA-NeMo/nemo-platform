@@ -29,7 +29,7 @@ _bundle_cache: Optional[Tuple[bytes, str, float]] = None  # (bundle_bytes, etag,
 _bundle_lock = asyncio.Lock()
 
 
-def get_bundle_cache_seconds() -> int:
+def get_bundle_cache_seconds() -> float:
     """Get bundle cache seconds from config."""
     return get_service_config(AuthServiceConfig).bundle_cache_seconds
 
@@ -192,6 +192,16 @@ def merge_plugin_authz_contributions(static_data: dict) -> dict:
     return merged
 
 
+def _inject_runtime_authz_config(static_data: dict) -> dict:
+    """Attach auth-service runtime knobs consumed by the Rego policy."""
+    config = get_service_config(AuthServiceConfig)
+    authz_config = static_data.setdefault("authz", {}).setdefault("config", {})
+    authz_config["platform_admin_exempt_from_service_only"] = bool(
+        getattr(config, "platform_admin_exempt_from_service_only", False)
+    )
+    return static_data
+
+
 async def _build_authorization_data_internal(entities_client: Optional[EntityClient] = None) -> dict:
     """Build authorization data for NeMo Platform.
 
@@ -215,6 +225,7 @@ async def _build_authorization_data_internal(entities_client: Optional[EntityCli
         static_data = yaml.safe_load(f)
 
     static_data = merge_plugin_authz_contributions(static_data)
+    static_data = _inject_runtime_authz_config(static_data)
     validate_static_authz_data(static_data)
 
     # Initialize workspaces and principals if not present

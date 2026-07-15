@@ -71,6 +71,15 @@ class AuthServiceConfig(SharedAuthConfig):
         description="Fail-mode for a plugin that contributes invalid HTTP authz.",
     )
 
+    platform_admin_exempt_from_service_only: bool = Field(
+        default=False,
+        description=(
+            "Allow human PlatformAdmin principals to use plugin routes that declare "
+            "callers=[SERVICE_PRINCIPAL]. Disabled by default so service-only routes stay "
+            "machine-only unless an operator explicitly opts into the admin exemption."
+        ),
+    )
+
 
 # Backward compatibility alias
 AuthConfig = AuthServiceConfig

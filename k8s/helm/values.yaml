@@ -296,6 +296,7 @@ basePlatformConfig: |
     policy_decision_point_base_url: "{{ printf "http://%s:%s" (include "nmp-api.api-servicename" . ) (toString .Values.api.service.port) }}"
     policy_data_refresh_interval: 5
     bundle_cache_seconds: 5
+    platform_admin_exempt_from_service_only: false
     admin_email: "admin@example.com"
 
   # -- service is the common configuration for service settings on the platform
