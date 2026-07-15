@@ -77,6 +77,31 @@ describe('FileRowEditor', () => {
     expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
   });
 
+  it('re-enables Save File for a second edit after a successful save', async () => {
+    const user = userEvent.setup();
+    const onSaveFile = vi.fn().mockResolvedValue(undefined);
+    render(<FileRowEditor initialRows={SAMPLE_ROWS} onSaveFile={onSaveFile} />);
+
+    const saveFileButton = screen.getByRole('button', { name: 'Save File' });
+
+    // Cycle 1: edit → stage → save.
+    await user.click(screen.getByText('cuDNN'));
+    await user.type(screen.getByLabelText('topic'), ' one');
+    await user.click(screen.getByRole('button', { name: 'Stage Changes' }));
+    expect(saveFileButton).toBeEnabled();
+    await user.click(saveFileButton);
+    await waitFor(() => expect(saveFileButton).toBeDisabled());
+    expect(onSaveFile).toHaveBeenCalledTimes(1);
+
+    // Cycle 2: edit a row again → stage → the button must re-enable and save again.
+    await user.click(screen.getByText('TensorRT'));
+    await user.type(screen.getByLabelText('topic'), ' two');
+    await user.click(screen.getByRole('button', { name: 'Stage Changes' }));
+    await waitFor(() => expect(saveFileButton).toBeEnabled());
+    await user.click(saveFileButton);
+    await waitFor(() => expect(onSaveFile).toHaveBeenCalledTimes(2));
+  });
+
   it('keeps the dirty state when a save fails so the user can retry', async () => {
     const user = userEvent.setup();
     const onSaveFile = vi.fn().mockRejectedValue(new Error('upload failed'));

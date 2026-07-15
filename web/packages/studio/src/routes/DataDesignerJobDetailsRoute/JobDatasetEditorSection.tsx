@@ -15,7 +15,7 @@ import {
   Text,
 } from '@nvidia/foundations-react-core';
 import {
-  FILE_PREVIEW_MAX_BYTES,
+  EDITOR_MAX_BYTES,
   useDatasetFileContent,
 } from '@studio/api/datasets/useDatasetFileContent';
 import { useDatasetFilesUpload } from '@studio/api/datasets/useDatasetFilesUpload';
@@ -123,6 +123,10 @@ export const JobDatasetEditorSection: FC = () => {
   // The hook returns Parquet content already decoded to JSONL, so parse it as JSONL.
   const parseFormat: DataFileFormat = sourceFormat === 'parquet' ? 'jsonl' : sourceFormat;
 
+  const isTooLargeToEdit = Boolean(
+    selectedFile && sourceFormat !== 'parquet' && selectedFile.size > EDITOR_MAX_BYTES
+  );
+
   const {
     data: rawContent,
     isLoading: isContentLoading,
@@ -131,7 +135,8 @@ export const JobDatasetEditorSection: FC = () => {
     workspace: filesetWorkspace,
     name: filesetName,
     path: selectedPath ?? '',
-    enabled: Boolean(filesetWorkspace && filesetName && selectedPath),
+    fullContent: true,
+    enabled: Boolean(filesetWorkspace && filesetName && selectedPath && !isTooLargeToEdit),
   });
 
   const parsed = useMemo(() => {
@@ -147,13 +152,6 @@ export const JobDatasetEditorSection: FC = () => {
       };
     }
   }, [rawContent, parseFormat]);
-
-  const isContentTruncated = Boolean(
-    selectedFile && sourceFormat !== 'parquet' && selectedFile.size > FILE_PREVIEW_MAX_BYTES
-  );
-  const saveDisabledReason = isContentTruncated
-    ? 'This file is too large to load in full — saving is disabled to avoid truncating it.'
-    : undefined;
 
   const toast = useToast();
   const { mutateAsync: uploadFiles, isPending: isSaving } = useDatasetFilesUpload();
@@ -239,6 +237,15 @@ export const JobDatasetEditorSection: FC = () => {
       );
     }
 
+    if (isTooLargeToEdit) {
+      return centered(
+        <Empty
+          title="File too large to edit"
+          description="This file exceeds the 8 MB limit for in-browser editing. Download it to edit locally."
+        />
+      );
+    }
+
     if (isContentLoading || parsed == null) {
       return centered(<Spinner aria-label="Loading file" description="Loading file..." />);
     }
@@ -265,7 +272,6 @@ export const JobDatasetEditorSection: FC = () => {
         showOpenFile={false}
         onSaveFile={handleSaveFile}
         isSaving={isSaving}
-        saveDisabledReason={saveDisabledReason}
       />
     );
   };

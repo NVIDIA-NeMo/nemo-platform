@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { datasetFileContentQueryOptions } from '@studio/api/datasets/useDatasetFileContent';
+import {
+  datasetFileContentQueryOptions,
+  EDITOR_MAX_BYTES,
+} from '@studio/api/datasets/useDatasetFileContent';
+import axios from 'axios';
 
 vi.mock('@nemo/sdk/generated/platform/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@nemo/sdk/generated/platform/api')>();
@@ -47,6 +51,24 @@ describe('useDatasetFileContent gate', () => {
     // and fall through to the Range fetch — treat as text.
     const { queryFn } = datasetFileContentQueryOptions({ ...baseParams, path: 'noextension' });
     await expect((queryFn as () => Promise<string>)()).resolves.toBe('# heading');
+  });
+
+  it('returns full text (no preview cap) for fullContent editor loads', async () => {
+    const { queryFn } = datasetFileContentQueryOptions({ ...baseParams, fullContent: true });
+    await expect((queryFn as () => Promise<string>)()).resolves.toBe('# heading');
+  });
+
+  it('refuses fullContent loads above the editor ceiling instead of truncating', async () => {
+    // A file reporting a size past EDITOR_MAX_BYTES must throw so the caller shows a
+    // "too large" state — never silently load a prefix that would truncate on save.
+    const headSpy = vi.spyOn(axios, 'head').mockResolvedValueOnce({
+      headers: { 'content-length': String(EDITOR_MAX_BYTES + 1) },
+    } as never);
+
+    const { queryFn } = datasetFileContentQueryOptions({ ...baseParams, fullContent: true });
+    await expect((queryFn as () => Promise<string>)()).rejects.toThrow(/too large to edit/i);
+
+    headSpy.mockRestore();
   });
 
   it('serializes parquet rows with BigInt columns as JSONL text', async () => {

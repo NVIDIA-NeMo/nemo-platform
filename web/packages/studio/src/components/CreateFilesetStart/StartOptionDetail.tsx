@@ -66,7 +66,7 @@ export const StartOptionDetail: FC<StartOptionDetailProps> = ({
 }) => {
   const content =
     option.id === 'template' ? (
-      <Grid colMinWidth="260px" gap="density-md">
+      <Grid colMinWidth="300px" gap="density-md">
         {FILESET_TEMPLATES.map((template) => (
           <TemplateCard
             key={template.id}
