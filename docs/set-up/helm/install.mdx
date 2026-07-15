@@ -31,7 +31,9 @@ kubectl create namespace "$NMP_NAMESPACE"
 
 ## Fetch the chart
 
-### Stable charts from NGC
+<Tabs>
+
+<Tab title="Stable NGC">
 
 Add the NeMo Platform Helm repository and inspect the values for the pinned stable chart version:
 
@@ -45,6 +47,9 @@ helm show values nemo-platform/nemo-platform \
   --version "$NMP_HELM_CHART_VERSION" > values.yaml
 ```
 
+</Tab>
+<Tab title="Direct archive">
+
 If you prefer to fetch the chart archive directly, use the same version variable:
 
 ```sh
@@ -55,7 +60,8 @@ helm pull "https://helm.ngc.nvidia.com/nvidia/nemo-platform/charts/nemo-platform
 helm show values "./nemo-platform-${NMP_HELM_CHART_VERSION}.tgz" > values.yaml
 ```
 
-### Nightly charts from GHCR
+</Tab>
+<Tab title="Nightly GHCR">
 
 NeMo Platform also publishes nightly Helm charts to GitHub Container Registry for testing before a stable NGC release. The package is available at [nemo-platform/nemo-platform](https://github.com/NVIDIA-NeMo/nemo-platform/pkgs/container/nemo-platform%2Fnemo-platform), and the Helm OCI reference is:
 
@@ -79,6 +85,10 @@ Inspect the values for the nightly chart:
 helm show values "$NMP_HELM_CHART_REF" \
   --version "$NMP_HELM_CHART_VERSION" > values.yaml
 ```
+
+</Tab>
+
+</Tabs>
 
 ## Configure values
 
@@ -247,9 +257,31 @@ kubectl rollout status deployment/nemo-platform-api -n "$NMP_NAMESPACE" --timeou
 For a local smoke test, port-forward the API service and call the readiness endpoint:
 
 ```sh
-kubectl -n "$NMP_NAMESPACE" port-forward svc/nemo-platform-api 8080:8080
-curl -sf http://localhost:8080/health/ready
+kubectl -n "$NMP_NAMESPACE" port-forward svc/nemo-platform-api 8080:8080 &
+NMP_PORT_FORWARD_PID=$!
+trap 'kill "$NMP_PORT_FORWARD_PID" 2>/dev/null || true' EXIT
+
+for attempt in $(seq 1 30); do
+  if curl -sf http://localhost:8080/health/ready; then
+    break
+  fi
+
+  if ! kill -0 "$NMP_PORT_FORWARD_PID" 2>/dev/null; then
+    echo "Port-forward process exited before the API became ready." >&2
+    wait "$NMP_PORT_FORWARD_PID"
+    exit 1
+  fi
+
+  if [ "$attempt" -eq 30 ]; then
+    echo "API did not become ready at http://localhost:8080/health/ready." >&2
+    exit 1
+  fi
+
+  sleep 2
+done
 ```
+
+Leave the shell open while running CLI commands through the forwarded port. The trap stops the port-forward when the shell exits; to stop it earlier, run `kill "$NMP_PORT_FORWARD_PID"`.
 
 Configure the CLI to use the deployed API:
 
@@ -266,6 +298,17 @@ Update `NMP_HELM_CHART_VERSION`, review the release notes for required values ch
 helm repo update nemo-platform
 
 helm upgrade "$NMP_HELM_RELEASE" nemo-platform/nemo-platform \
+  --version "$NMP_HELM_CHART_VERSION" \
+  --namespace "$NMP_NAMESPACE" \
+  -f values.yaml \
+  --wait \
+  --timeout 20m
+```
+
+For a release installed from GHCR with `NMP_HELM_CHART_REF`, use the Helm OCI reference:
+
+```sh
+helm upgrade "$NMP_HELM_RELEASE" "$NMP_HELM_CHART_REF" \
   --version "$NMP_HELM_CHART_VERSION" \
   --namespace "$NMP_NAMESPACE" \
   -f values.yaml \
@@ -291,11 +334,11 @@ helm uninstall "$NMP_HELM_RELEASE" -n "$NMP_NAMESPACE"
 - CRDs are not removed by Helm design ([upstream issue](https://github.com/helm/helm/issues/4840)) to avoid destroying custom resources across the cluster.
 - Completed jobs, secrets, and the namespace may also remain.
 
-If you need a complete teardown for CI/CD pipelines or reinstalling in the same namespace, run the following after `helm uninstall`:
+If you need a complete teardown for CI/CD pipelines or reinstalling in the same namespace, delete the namespace after `helm uninstall` and inventory CRDs before deleting any cluster-wide API definitions:
 
 ```sh
 kubectl delete namespace "$NMP_NAMESPACE"
-kubectl delete crd <crd_name>
+kubectl get crd -o custom-columns=NAME:.metadata.name,API_GROUP:.spec.group
 ```
 
 <Warning>
