@@ -246,7 +246,7 @@ externalDatabase:
 # Set configuration here to apply custom, structured configuration across all services.
 # Applied after the base platform config is evaluated for templates. Enables adding / overriding YAML-based elements in the evaluated platform config.
 # It is usually recommended to use this config section instead of `basePlatformConfig` unless you need to use templating features.
-# For example, you can set the NIM default StorageClass via models.controller.backends.deployments_plugin.config.default_storage_class.
+# For example, you can set the NIM default StorageClass via models.controller.backends.deployments_plugin.default_storage_class.
 # For full configuration reference, see https://docs.nvidia.com/nemo-platform
 platformConfig: {}
 

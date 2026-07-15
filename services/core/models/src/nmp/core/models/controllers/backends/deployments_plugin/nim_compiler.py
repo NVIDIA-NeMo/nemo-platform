@@ -54,7 +54,9 @@ if [ "$count" -ne 1 ]; then
   exit 1
 fi
 plugin_file="$(printf '%s\\n' "$py_files" | sed '/^$/d' | sed -n '1p')"
-mv "$plugin_file" "{plugin_path}"
+if [ "$plugin_file" != "{plugin_path}" ]; then
+  mv "$plugin_file" "{plugin_path}"
+fi
 """
 
 

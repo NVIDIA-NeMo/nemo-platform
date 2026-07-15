@@ -62,8 +62,7 @@ platformConfig:
     controller:
       backends:
         deployments_plugin:
-          config:
-            default_storage_class: "nfs"
+          default_storage_class: "nfs"
 ```
 
 Replace `"nfs"` with your StorageClass name (e.g. `oci-nfs`, `gp3`). For NIM scaling and multi-node deployments, use a ReadWriteMany-capable StorageClass.

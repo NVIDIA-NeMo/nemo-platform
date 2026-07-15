@@ -202,6 +202,8 @@ def test_tool_call_plugin_init_containers_use_scratch_path_when_unweighted() -> 
     assert inits is not None
     assert inits[0].volume_mounts == [VolumeMount(name="scr", mountPath="/scratch")]
     assert "/scratch/plugin/plugin.py" in inits[0].command[2]
+    finalize_script = inits[2].command[2]
+    assert 'if [ "$plugin_file" != "/scratch/plugin/plugin.py" ]; then' in finalize_script
 
 
 def test_apply_nim_override_config_overrides_operator_defaults() -> None:
