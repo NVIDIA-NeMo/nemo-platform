@@ -2389,11 +2389,10 @@ class TestProcessRequestErrorSurfacing:
         assert exc_info.value.status_code == 422
         assert exc_info.value.detail == "Error invoking LLM: Unsupported parameter: foo"
 
-    async def test_upstream_5xx_still_wraps_to_503(self, middleware: GuardrailsMiddleware) -> None:
-        """A ``[5xx]``-prefixed or unrecognized failure keeps the existing
-        503 policy — only 4xx is safe to reinterpret as "don't retry this
-        exact request"; a 5xx from the provider is a genuine outage and
-        collapsing it to some other status would misrepresent that."""
+    async def test_upstream_5xx_also_propagated_verbatim(self, middleware: GuardrailsMiddleware) -> None:
+        """A ``[5xx]``-prefixed upstream failure is propagated as-is, same as
+        a 4xx — the middleware's generic 503 fallback is now reserved for
+        failures with no recoverable upstream status at all."""
         request_body = {
             "messages": [{"role": "user", "content": "Hi"}],
             "model": "ws/llama",
@@ -2404,13 +2403,33 @@ class TestProcessRequestErrorSurfacing:
 
         with patch.object(middleware, "_prepare_lease", new=_patch_prepare_lease()):
             with patch("nemo_guardrails_plugin.middleware.run_generate_in_new_loop", side_effect=_llm_eror):
+                with pytest.raises(InferenceMiddlewareError) as exc_info:
+                    await _process_request(middleware, request_body, {}, _entity_source())
+
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.detail == "Service temporarily overloaded"
+
+    async def test_no_recoverable_status_still_wraps_to_generic_503(self, middleware: GuardrailsMiddleware) -> None:
+        """When the failure carries no recoverable upstream status at all
+        (e.g. a plain library bug below the lease boundary), the middleware
+        still falls back to its own generic 503 with the fixed ``error_msg``."""
+        request_body = {
+            "messages": [{"role": "user", "content": "Hi"}],
+            "model": "ws/llama",
+        }
+
+        def _llm_eror(*_args: Any, **_kwargs: Any) -> Any:
+            raise ValueError("something went wrong")
+
+        with patch.object(middleware, "_prepare_lease", new=_patch_prepare_lease()):
+            with patch("nemo_guardrails_plugin.middleware.run_generate_in_new_loop", side_effect=_llm_eror):
                 with pytest.raises(InferenceMiddlewareUnavailableError) as exc_info:
                     await _process_request(middleware, request_body, {}, _entity_source())
 
         assert exc_info.value.status_code == 503
         # Detail is the generic, fixed error_msg — not the raw upstream text.
-        # extract_upstream_client_error() returned None for this 5xx, so
-        # _run_rails's fallback (not the 4xx-preserving branch) ran.
+        # extract_upstream_error() returned None here, so _run_rails's
+        # fallback (not the status-preserving branch) ran.
         assert exc_info.value.detail == "Failed to run input rails"
-        assert isinstance(exc_info.value.__cause__, Exception)
-        assert "Service temporarily overloaded" in str(exc_info.value.__cause__)
+        assert isinstance(exc_info.value.__cause__, ValueError)
+        assert "something went wrong" in str(exc_info.value.__cause__)

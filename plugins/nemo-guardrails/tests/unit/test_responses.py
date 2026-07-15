@@ -14,7 +14,7 @@ from nemo_guardrails_plugin.responses import (
     build_immediate_response,
     build_inference_response,
     build_output_response_body,
-    extract_upstream_client_error,
+    extract_upstream_error,
 )
 from nemo_platform_plugin.inference_middleware import InferenceMiddlewareError, InferenceResponse
 from nemoguardrails.exceptions import LLMCallException
@@ -367,11 +367,11 @@ class TestBuildInferenceResponse:
 
 
 # ---------------------------------------------------------------------------
-# extract_upstream_client_error
+# extract_upstream_error
 # ---------------------------------------------------------------------------
 
 
-class TestExtractUpstreamClientError:
+class TestExtractUpstreamError:
     def test_openai_status_error_status_code_preserved(self) -> None:
         """A genuine ``status_code`` attribute (as set by ``openai.APIStatusError``
         and all its subclasses) is picked up directly via duck typing — no
@@ -381,7 +381,7 @@ class TestExtractUpstreamClientError:
         try:
             raise LLMCallException(inner, detail="Error invoking LLM") from inner
         except LLMCallException as exc:
-            result = extract_upstream_client_error(exc)
+            result = extract_upstream_error(exc)
 
         assert result is not None
         assert result.status_code == 422
@@ -402,7 +402,7 @@ class TestExtractUpstreamClientError:
         try:
             raise LLMCallException(inner, detail="Error invoking LLM (model=vision-judge)") from inner
         except LLMCallException as exc:
-            result = extract_upstream_client_error(exc)
+            result = extract_upstream_error(exc)
 
         assert result is not None
         assert result.status_code == 400
@@ -419,7 +419,7 @@ class TestExtractUpstreamClientError:
         context to prefix."""
         exc = Exception("[404] Model not found")  # noqa: TRY002
 
-        result = extract_upstream_client_error(exc)
+        result = extract_upstream_error(exc)
 
         assert result is not None
         assert result.status_code == 404
@@ -431,7 +431,7 @@ class TestExtractUpstreamClientError:
         message."""
         exc = Exception("[400] Bad Request: not-json-at-all")  # noqa: TRY002
 
-        result = extract_upstream_client_error(exc)
+        result = extract_upstream_error(exc)
 
         assert result is not None
         assert result.status_code == 400
@@ -452,7 +452,7 @@ class TestExtractUpstreamClientError:
         except RuntimeError as wrapper:
             exc = wrapper
 
-        assert extract_upstream_client_error(exc) is None
+        assert extract_upstream_error(exc) is None
 
     def test_inner_exception_as_string_falls_back_to_checking_exc_itself(self) -> None:
         """``LLMCallException.inner_exception`` is typed as ``BaseException | str``
@@ -462,26 +462,32 @@ class TestExtractUpstreamClientError:
         ``None`` rather than raising."""
         exc = LLMCallException("no exception object here, just a string", detail="Error invoking LLM")
 
-        assert extract_upstream_client_error(exc) is None
+        assert extract_upstream_error(exc) is None
 
-    def test_status_code_outside_client_error_range_is_ignored(self) -> None:
-        """A ``status_code`` attribute present but outside the 4xx range
-        (e.g. a genuine 500) is not treated as a recoverable client error."""
+    def test_5xx_status_code_is_propagated_too(self) -> None:
+        """A genuine ``status_code`` attribute is propagated as-is even for a
+        5xx (e.g. a real upstream outage) — we no longer collapse it to the
+        middleware's own generic 503."""
         response = httpx.Response(500, request=httpx.Request("POST", "http://example.test"))
         inner = openai.InternalServerError("Upstream exploded", response=response, body=None)
         try:
             raise LLMCallException(inner, detail="Error invoking LLM") from inner
         except LLMCallException as exc:
-            result = extract_upstream_client_error(exc)
+            result = extract_upstream_error(exc)
 
-        assert result is None
+        assert result is not None
+        assert result.status_code == 500
+        assert result.detail == "Error invoking LLM: Upstream exploded"
 
-    def test_bracketed_5xx_prefix_returns_none(self) -> None:
-        """A ``[5xx]``-prefixed failure is left alone — only 4xx is safe to
-        reinterpret as a preserved client error; a 5xx is a genuine outage."""
+    def test_bracketed_5xx_prefix_is_propagated_too(self) -> None:
+        """A ``[5xx]``-prefixed failure is propagated as-is, same as a 4xx."""
         exc = Exception("[503] Service temporarily overloaded")  # noqa: TRY002
 
-        assert extract_upstream_client_error(exc) is None
+        result = extract_upstream_error(exc)
+
+        assert result is not None
+        assert result.status_code == 503
+        assert result.detail == "Service temporarily overloaded"
 
     def test_no_recoverable_status_anywhere_returns_none(self) -> None:
         """When neither ``exc`` nor ``exc.inner_exception`` has a status code
@@ -491,6 +497,6 @@ class TestExtractUpstreamClientError:
         try:
             raise LLMCallException(inner, detail="Error invoking LLM") from inner
         except LLMCallException as exc:
-            result = extract_upstream_client_error(exc)
+            result = extract_upstream_error(exc)
 
         assert result is None

@@ -3,9 +3,9 @@
 
 """Integration tests that exercise the real ``langchain_nvidia_ai_endpoints``
 error path (nemoguardrails' bundled ``nim`` engine), not a hand-constructed
-exception. ``responses.extract_upstream_client_error`` assumes that library
-formats every raised error as a ``"[<status>] <detail>"``-prefixed message —
-these tests call the real library against a mocked upstream so a future
+exception. ``responses.extract_upstream_error`` assumes that library formats
+every raised error as a ``"[<status>] <detail>"``-prefixed message — these
+tests call the real library against a mocked upstream so a future
 ``langchain_nvidia_ai_endpoints`` upgrade that changes that convention fails
 loudly here, instead of only in production.
 """
@@ -168,7 +168,7 @@ class TestUpstreamErrorSurfacing:
         caller as a 400 with the upstream detail, not the middleware's generic
         503. Exercises the real library end-to-end — no hand-built exception —
         so it fails if a library upgrade changes the ``"[<status>] ..."``
-        convention ``extract_upstream_client_error`` depends on.
+        convention ``extract_upstream_error`` depends on.
         """
         harness = igw_loopback_harness()
 
@@ -192,15 +192,13 @@ class TestUpstreamErrorSurfacing:
             finally:
                 self._delete_config_if_present(harness, fixture.config_name)
 
-    def test_upstream_500_from_vision_judge_stays_503(
+    def test_upstream_500_from_vision_judge_is_also_preserved(
         self,
         igw_loopback_harness: Callable[..., IGWLoopbackHarness],
     ) -> None:
-        """A genuine upstream 5xx (outage, not a bad request) must NOT be
-        reinterpreted — it should fall through to the plugin's existing
-        generic 503, same as before this fix existed. Pins the boundary:
-        only 4xx from the provider is treated as a non-transient client
-        error worth surfacing verbatim.
+        """A genuine upstream 5xx is propagated verbatim too, same as a 4xx —
+        the middleware's generic 503 fallback is reserved for failures with
+        no recoverable upstream status at all (e.g. a connection error).
         """
         harness = igw_loopback_harness()
 
@@ -220,6 +218,6 @@ class TestUpstreamErrorSurfacing:
                 with pytest.raises(nemo_platform.APIStatusError) as exc_info:
                     self._send_message(harness, fixture.vm_name)
 
-                assert exc_info.value.status_code == HTTPStatus.SERVICE_UNAVAILABLE
+                assert exc_info.value.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
             finally:
                 self._delete_config_if_present(harness, fixture.config_name)
