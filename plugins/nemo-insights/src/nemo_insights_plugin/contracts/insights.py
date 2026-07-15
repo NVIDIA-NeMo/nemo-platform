@@ -22,7 +22,8 @@ def load_insights_document(path: Path) -> dict[str, Any]:
     except OSError as exc:
         raise InsightsFileError(f"insights file {path} is not readable as UTF-8: {exc}") from None
     except yaml.YAMLError as exc:
-        raise InsightsFileError(f"insights file {path} must contain valid YAML: {exc}") from None
+        detail = " ".join(str(exc).split())
+        raise InsightsFileError(f"insights file {path} must contain valid YAML: {detail}") from None
     if not isinstance(payload, dict):
         raise InsightsFileError(f"insights file {path} must contain a YAML mapping at its root")
     if "insights" in payload:

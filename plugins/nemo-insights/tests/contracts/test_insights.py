@@ -33,7 +33,6 @@ def test_load_insights_document_returns_validated_mapping(tmp_path: Path) -> Non
         ("insights: null\n", "`insights` must be a list"),
         ("insights: 42\n", "`insights` must be a list"),
         ("insights:\n  - id: one\n  - broken\n", "item 2 must be a YAML mapping"),
-        ("insights: [\n", "valid YAML"),
     ],
 )
 def test_invalid_insights_shapes_are_actionable(tmp_path: Path, content: str, message: str) -> None:
@@ -42,6 +41,18 @@ def test_invalid_insights_shapes_are_actionable(tmp_path: Path, content: str, me
 
     with pytest.raises(InsightsFileError, match=message):
         load_insights_document(path)
+
+
+def test_invalid_yaml_error_includes_path_on_one_line(tmp_path: Path) -> None:
+    path = tmp_path / "insights.yaml"
+    path.write_text("insights: [\n", encoding="utf-8")
+
+    with pytest.raises(InsightsFileError, match="valid YAML") as exc_info:
+        load_insights_document(path)
+
+    message = str(exc_info.value)
+    assert str(path) in message
+    assert "\n" not in message
 
 
 def test_invalid_utf8_is_actionable_without_raw_chain(tmp_path: Path) -> None:
