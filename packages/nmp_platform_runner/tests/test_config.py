@@ -24,7 +24,7 @@ def _make_config(
     sidecars: set[str] | None = None,
     host: str = "0.0.0.0",
     port: int = 8080,
-    config_path: str = "/tmp/test.yaml",
+    config_path: str = "/nonexistent/nmp-test-config.yaml",
 ) -> ResolvedRunConfiguration:
     return ResolvedRunConfiguration(
         services=services if services is not None else {"auth", "entities"},
@@ -210,3 +210,60 @@ class TestApplyRunEnvDeployed:
         }
         apply_run_environment(_make_config(host="0.0.0.0", port=8080), env=env)
         assert env["NMP_BASE_URL"] == "http://nemo-platform-api:9090"
+
+
+class TestApplyRunEnvConfigBaseUrl:
+    """Standalone mode with an explicit platform.base_url in the config file.
+
+    The config value's *host* must seed NMP_BASE_URL (instead of the
+    bind-derived loopback default) so operators can set a container-reachable
+    base URL via config alone — but paired with the actual bind port, not the
+    port hardcoded in the config. An externally-provided NMP_BASE_URL still
+    wins.
+    """
+
+    def _write_config(self, tmp_path, body: str) -> str:
+        path = tmp_path / "config.yaml"
+        path.write_text(body, encoding="utf-8")
+        return str(path)
+
+    def test_seeds_base_url_host_from_config_file(self, tmp_path):
+        config_path = self._write_config(tmp_path, "platform:\n  base_url: http://172.17.0.1:8080\n")
+        env: dict[str, str] = {}
+        apply_run_environment(_make_config(host="0.0.0.0", port=8080, config_path=config_path), env=env)
+        assert env["NMP_BASE_URL"] == "http://172.17.0.1:8080"
+        # Embedded PDP base URL follows NMP_BASE_URL.
+        assert env["NMP_AUTH_POLICY_DECISION_POINT_BASE_URL"] == "http://172.17.0.1:8080"
+
+    def test_uses_actual_bind_port_not_config_port(self, tmp_path):
+        # The config hardcodes :8080 but the platform is launched on 59007
+        # (as the e2e harness does). NMP_BASE_URL must carry the real bind port
+        # so internal in-process clients can reach the server.
+        config_path = self._write_config(tmp_path, "platform:\n  base_url: http://172.17.0.1:8080\n")
+        env: dict[str, str] = {}
+        apply_run_environment(_make_config(host="0.0.0.0", port=59007, config_path=config_path), env=env)
+        assert env["NMP_BASE_URL"] == "http://172.17.0.1:59007"
+        assert env["NMP_AUTH_POLICY_DECISION_POINT_BASE_URL"] == "http://172.17.0.1:59007"
+
+    def test_config_base_url_without_port_gets_bind_port(self, tmp_path):
+        config_path = self._write_config(tmp_path, "platform:\n  base_url: http://172.17.0.1\n")
+        env: dict[str, str] = {}
+        apply_run_environment(_make_config(host="0.0.0.0", port=9090, config_path=config_path), env=env)
+        assert env["NMP_BASE_URL"] == "http://172.17.0.1:9090"
+
+    def test_external_env_still_wins_over_config_file(self, tmp_path):
+        config_path = self._write_config(tmp_path, "platform:\n  base_url: http://172.17.0.1:8080\n")
+        env: dict[str, str] = {"NMP_BASE_URL": "http://nemo-platform-api:8080"}
+        apply_run_environment(_make_config(host="0.0.0.0", port=8080, config_path=config_path), env=env)
+        assert env["NMP_BASE_URL"] == "http://nemo-platform-api:8080"
+
+    def test_falls_back_to_bind_derived_when_config_omits_base_url(self, tmp_path):
+        config_path = self._write_config(tmp_path, "platform:\n  runtime: docker\n")
+        env: dict[str, str] = {}
+        apply_run_environment(_make_config(host="0.0.0.0", port=8080, config_path=config_path), env=env)
+        assert env["NMP_BASE_URL"] == "http://127.0.0.1:8080"
+
+    def test_falls_back_to_bind_derived_when_config_file_missing(self):
+        env: dict[str, str] = {}
+        apply_run_environment(_make_config(host="0.0.0.0", port=8080, config_path="/nonexistent/nmp.yaml"), env=env)
+        assert env["NMP_BASE_URL"] == "http://127.0.0.1:8080"
