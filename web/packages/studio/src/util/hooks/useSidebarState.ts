@@ -13,8 +13,11 @@ import { useCallback, useEffect, useRef } from 'react';
  * - Auto-expands when the viewport widens past the breakpoint.
  * - Skips one auto-change after a manual toggle to respect user intent.
  */
-export const useSidebarState = () => {
-  const [navOpen, setNavOpen] = useLocalStorage(SIDE_NAV_OPEN_KEY, 'true');
+export const useSidebarState = (defaultExpanded = true) => {
+  const [navOpen, setNavOpen] = useLocalStorage(
+    SIDE_NAV_OPEN_KEY,
+    defaultExpanded ? 'true' : 'false'
+  );
   const expanded = navOpen === 'true';
   const lastSetByRef = useRef<'auto' | 'manual'>('auto');
 

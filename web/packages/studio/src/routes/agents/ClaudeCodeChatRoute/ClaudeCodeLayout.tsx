@@ -43,7 +43,7 @@ export const ClaudeCodeLayout: FC<ClaudeCodeLayoutProps> = ({
   );
 
   return (
-    <Flex className="h-full min-h-[calc(100vh-var(--nv-app-bar-height))] w-full flex-col bg-surface-sunken text-primary dark:bg-surface-raised lg:flex-row">
+    <Flex className="h-full min-h-[calc(100vh-var(--nv-app-bar-height))] w-full flex-col bg-surface-sunken text-primary dark:bg-surface-base lg:flex-row">
       <Flex className="h-full min-h-0 min-w-0 flex-1">{children}</Flex>
       <ClaudeCodeHistoryPanel
         activeSessionId={activeSessionId}

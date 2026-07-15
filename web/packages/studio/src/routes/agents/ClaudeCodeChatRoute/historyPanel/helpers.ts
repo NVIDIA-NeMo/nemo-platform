@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ClaudeCodePanelTab } from '@studio/routes/agents/ClaudeCodeChatRoute/historyPanel/types';
 import type {
   ClaudeCodeChatArtifacts,
   ClaudeCodeChatFileArtifact,
@@ -31,9 +30,6 @@ const REQUEST_PREFIXES = [
 
 const INLINE_REQUEST_PREFIX =
   /(?:\b(?:can|could|would|will|should)\s+(?:you|we)\s+|\bis\s+it\s+possible(?:\s+for\s+(?:us|you|me))?\s+to\s+|\b(?:i|we)\s+(?:need|want)\s+to\s+|\bi(?:'d| would)\s+like(?:\s+you)?\s+to\s+|\bhelp(?:\s+(?:me|us))?(?:\s+to)?\s+)/gi;
-
-export const isClaudeCodePanelTab = (value: string): value is ClaudeCodePanelTab =>
-  value === 'history' || value === 'skills';
 
 export const getCompactRelativeTime = (mtime: number): string => {
   const elapsedMs = Math.max(Date.now() - mtime * 1000, 0);

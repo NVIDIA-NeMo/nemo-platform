@@ -35,7 +35,8 @@ describe('ClaudeCodeHistoryPanel', () => {
     ]);
   });
 
-  it('renders history and skills segmented controls', () => {
+  it('starts history and skills collapsed and expands them independently', async () => {
+    const user = userEvent.setup();
     render(
       <ClaudeCodeHistoryPanel
         activeSessionId="session-1"
@@ -44,9 +45,34 @@ describe('ClaudeCodeHistoryPanel', () => {
       />
     );
 
-    expect(screen.getByRole('radio', { name: 'History' })).toBeChecked();
-    expect(screen.getByRole('radio', { name: 'Skills' })).not.toBeChecked();
+    const historyButton = screen.getByRole('button', { name: 'Expand All Chats' });
+    const skillsButton = screen.getByRole('button', { name: 'Expand Skills' });
+    expect(historyButton).toHaveAttribute('aria-expanded', 'false');
+    expect(skillsButton).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('button', { name: 'New chat' })).not.toBeInTheDocument();
+
+    await user.click(historyButton);
+
+    expect(screen.getByRole('button', { name: 'Collapse All Chats' })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+    expect(skillsButton).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByRole('button', { name: 'New chat' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'All Chats' })).toHaveClass('min-h-0', 'flex-1');
+    expect(screen.getByRole('region', { name: 'Skills' })).toHaveClass('shrink-0');
+
+    await user.click(skillsButton);
+
+    expect(screen.getByRole('button', { name: 'Expand All Chats' })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+    expect(screen.getByRole('button', { name: 'Collapse Skills' })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+    expect(screen.queryByRole('button', { name: 'New chat' })).not.toBeInTheDocument();
   });
 
   it('renders history sessions and keeps selection working', async () => {
@@ -72,13 +98,15 @@ describe('ClaudeCodeHistoryPanel', () => {
       },
     ]);
 
-    render(
+    const { unmount } = render(
       <ClaudeCodeHistoryPanel
         activeSessionId="session-1"
         onNewChat={onNewChat}
         onSelectSession={onSelectSession}
       />
     );
+
+    await user.click(screen.getByRole('button', { name: 'Expand All Chats' }));
 
     expect(await screen.findByText('Review the latest agent work')).toBeInTheDocument();
     expect(screen.getByText('Bash')).toBeInTheDocument();
@@ -88,9 +116,24 @@ describe('ClaudeCodeHistoryPanel', () => {
 
     await user.click(screen.getByRole('button', { name: /Review the latest agent work/ }));
     expect(onSelectSession).toHaveBeenCalledWith('session-1');
+
+    unmount();
+    render(
+      <ClaudeCodeHistoryPanel
+        activeSessionId="session-1"
+        onNewChat={onNewChat}
+        onSelectSession={onSelectSession}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: 'Collapse All Chats' })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
   });
 
   it('shows the summarized title while preserving the full first prompt in the tooltip', async () => {
+    const user = userEvent.setup();
     const firstPrompt = 'I want to create an agent that does spam detection for incoming email.';
     mocks.listClaudeCodeHistorySessions.mockResolvedValue([
       {
@@ -120,6 +163,8 @@ describe('ClaudeCodeHistoryPanel', () => {
       />
     );
 
+    await user.click(screen.getByRole('button', { name: 'Expand All Chats' }));
+
     const sessionButton = await screen.findByRole('button', {
       name: 'Create Spam Detector Agent now',
     });
@@ -134,8 +179,8 @@ describe('ClaudeCodeHistoryPanel', () => {
         activeSessionId="session-1"
         artifacts={{
           workspace: 'default',
-          selections: [],
-          files: [],
+          selections: [{ label: 'Environment', value: 'production' }],
+          files: [{ action: 'Wrote', path: 'agents/beach-finder.yml' }],
           links: [],
           jobs: [
             {
@@ -144,7 +189,7 @@ describe('ClaudeCodeHistoryPanel', () => {
               source: 'evaluator',
             },
           ],
-          tools: [],
+          tools: ['Bash'],
         }}
         onNewChat={vi.fn()}
         onSelectSession={vi.fn()}
@@ -152,7 +197,17 @@ describe('ClaudeCodeHistoryPanel', () => {
     );
 
     expect(screen.getByText('Jobs')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Chat artifacts' })).toHaveClass(
+      'overflow-hidden',
+      'rounded',
+      'border',
+      'shrink-0',
+      'bg-surface-base',
+      'dark:bg-surface-raised'
+    );
     expect(screen.queryByText('Workspace')).not.toBeInTheDocument();
+    expect(screen.getByText('beach-finder.yml')).toBeInTheDocument();
+    expect(screen.getAllByRole('separator')).toHaveLength(3);
     expect(screen.getByRole('link', { name: /agent-eval-1/ })).toHaveAttribute(
       'href',
       '/workspaces/default/agents/evaluations/agent-eval-1'
@@ -180,7 +235,49 @@ describe('ClaudeCodeHistoryPanel', () => {
     expect(screen.getByText('No artifacts yet')).toBeInTheDocument();
   });
 
-  it('lists Claude Code skills in the skills tab', async () => {
+  it('omits empty artifact sections and their dividers', () => {
+    render(
+      <ClaudeCodeHistoryPanel
+        activeSessionId="session-1"
+        artifacts={{
+          selections: [],
+          files: [],
+          links: [],
+          jobs: [{ name: 'agent-eval-1' }],
+          tools: ['Bash'],
+        }}
+        onNewChat={vi.fn()}
+        onSelectSession={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText('Selections')).not.toBeInTheDocument();
+    expect(screen.getByText('Jobs')).toBeInTheDocument();
+    expect(screen.getByText('Tools')).toBeInTheDocument();
+    expect(screen.getAllByRole('separator')).toHaveLength(1);
+  });
+
+  it('ignores selections with whitespace-only values', () => {
+    render(
+      <ClaudeCodeHistoryPanel
+        activeSessionId="session-1"
+        artifacts={{
+          selections: [{ label: 'Environment', value: ' ' }],
+          files: [],
+          links: [],
+          jobs: [],
+          tools: [],
+        }}
+        onNewChat={vi.fn()}
+        onSelectSession={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText('Selections')).not.toBeInTheDocument();
+    expect(screen.getByText('No artifacts yet')).toBeInTheDocument();
+  });
+
+  it('lists Claude Code skills in the expanded skills block', async () => {
     const user = userEvent.setup();
     render(
       <ClaudeCodeHistoryPanel
@@ -190,7 +287,7 @@ describe('ClaudeCodeHistoryPanel', () => {
       />
     );
 
-    await user.click(screen.getByRole('radio', { name: 'Skills' }));
+    await user.click(screen.getByRole('button', { name: 'Expand Skills' }));
 
     expect(await screen.findByText('Inference')).toBeInTheDocument();
     expect(screen.getByText('Use NeMo Platform inference.')).toBeInTheDocument();
