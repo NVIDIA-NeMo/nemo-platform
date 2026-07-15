@@ -17,7 +17,14 @@ from nemo_insights_plugin.analyst.run import ClientConstructionError, run_analys
 from nemo_insights_plugin.client import make_client
 from nemo_insights_plugin.contracts.checks import CheckResult, advisories, format_report, required_failures
 from nemo_insights_plugin.contracts.insights import InsightsFileError, validate_insights_file
-from nemo_insights_plugin.contracts.profile import EnvFileError, ProfileError, discover_profile, load_env_file
+from nemo_insights_plugin.contracts.profile import (
+    DEFAULT_BASE_URL,
+    EnvFileError,
+    ProfileError,
+    discover_profile,
+    load_env_file,
+    resolve_base_url,
+)
 from nemo_insights_plugin.preflight import (
     AnalysisProbes,
     check_environment,
@@ -29,7 +36,6 @@ from nemo_platform import NeMoPlatformError
 from nemo_platform_plugin.cli import NemoCLI
 from pydantic_ai import AgentRunError
 
-DEFAULT_BASE_URL = "http://localhost:8080"
 DEFAULT_WORKSPACE = "default"
 _PREFLIGHT_PROBES: AnalysisProbes | None = None
 
@@ -63,11 +69,6 @@ def _load_profile_or_error(profile_path: Path | None) -> tuple[AnalysisProfile |
     if loaded:
         typer.echo(f"Loaded .env from {found.parent / '.env'} ({len(loaded)} vars)", err=True)
     return profile, None
-
-
-def _base_url(explicit: str | None) -> str:
-    """Resolve the platform URL after any profile environment is loaded."""
-    return explicit or os.environ.get("NMP_BASE_URL") or DEFAULT_BASE_URL
 
 
 def _preflight_or_exit(checks: list[CheckResult]) -> None:
@@ -116,7 +117,7 @@ def _resolve_analysis(
             spec_error = str(exc)
     spec_content, spec_checks = read_agent_spec(spec_path, spec_error)
 
-    resolved_base_url = _base_url(base_url)
+    resolved_base_url = resolve_base_url(base_url)
     profile_output = None
     if insights_output is None and profile is not None:
         profile_output = profile.profile_dir / ".nemo-optimizer" / "insights.yaml"
@@ -313,7 +314,7 @@ class InsightsCLI(NemoCLI):
                             await check_environment(
                                 agent=profile.agent,
                                 workspace=profile.workspace,
-                                base_url=_base_url(base_url),
+                                base_url=resolve_base_url(base_url),
                                 profile_dir=profile.profile_dir,
                                 probes=_PREFLIGHT_PROBES,
                             )

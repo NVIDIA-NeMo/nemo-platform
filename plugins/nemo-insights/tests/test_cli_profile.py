@@ -8,6 +8,7 @@ import nemo_insights_plugin.analyst.run as analyst_run
 import pytest
 import typer
 from nemo_insights_plugin import cli, preflight
+from nemo_insights_plugin.contracts.profile import DEFAULT_BASE_URL
 from nemo_insights_plugin.preflight import AnalysisProbes
 from nemo_platform import NeMoPlatformError
 from pydantic_ai import AgentRunError
@@ -190,7 +191,7 @@ def test_doctor_renders_invalid_profile_env_as_command_error(
             {"NMP_BASE_URL": "https://nmp.example", "NEMO_BASE_URL": "https://legacy.example"},
             "https://nmp.example",
         ),
-        ([], {"NEMO_BASE_URL": "https://legacy.example"}, cli.DEFAULT_BASE_URL),
+        ([], {"NEMO_BASE_URL": "https://legacy.example"}, DEFAULT_BASE_URL),
     ],
 )
 def test_base_url_precedence_uses_only_nmp_base_url(
