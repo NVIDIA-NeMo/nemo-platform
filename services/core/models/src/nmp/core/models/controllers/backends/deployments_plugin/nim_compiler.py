@@ -15,8 +15,10 @@ from typing import Any
 from nemo_deployments_plugin.entities import (
     Affinity,
     Container,
+    DeploymentBackendConfig,
     EnvVar,
     K8sDeploymentConfig,
+    PodSecurityContext,
     Probe,
     ResourceRequirements,
     Toleration,
@@ -28,6 +30,7 @@ from nmp.core.models.app import is_multi_llm_image, parse_model_name_revision
 from nmp.core.models.controllers.backends.common import DeploymentConfigView
 from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
 from nmp.core.models.controllers.backends.deployments_plugin.resolve import ResolvedPluginDeployment
+from nmp.core.models.controllers.backends.engine import ENGINE_VLLM
 
 _WEIGHTS_MOUNT = "/model-store"
 _SCRATCH_MOUNT = "/scratch"
@@ -263,6 +266,46 @@ def k8s_backend_config_from_nim_operator(view: DeploymentConfigView) -> K8sDeplo
     if not k8s_kwargs:
         return None
     return K8sDeploymentConfig(**k8s_kwargs)
+
+
+def pod_security_context_for_engine(
+    engine: str,
+    view: DeploymentConfigView,
+    config: DeploymentsPluginConfig,
+) -> PodSecurityContext | None:
+    """Map backend default uid/gid onto pod securityContext for k8s workloads."""
+    if engine == ENGINE_VLLM:
+        user_id = view.run_as_user if view.run_as_user is not None else config.default_vllm_user_id
+        group_id = view.run_as_group if view.run_as_group is not None else config.default_vllm_group_id
+    else:
+        user_id = view.run_as_user if view.run_as_user is not None else config.default_user_id
+        group_id = view.run_as_group if view.run_as_group is not None else config.default_group_id
+    if user_id is None and group_id is None:
+        return None
+    return PodSecurityContext(run_as_user=user_id, run_as_group=group_id, fs_group=group_id)
+
+
+def build_k8s_deployment_backend_config(
+    engine: str,
+    view: DeploymentConfigView,
+    config: DeploymentsPluginConfig,
+) -> DeploymentBackendConfig:
+    """Merge operator overrides and engine security defaults into backend_config.k8s."""
+    k8s = k8s_backend_config_from_nim_operator(view) or K8sDeploymentConfig()
+    security_context = pod_security_context_for_engine(engine, view, config)
+    if security_context is not None:
+        k8s.security_context = security_context
+    if any(
+        (
+            k8s.tolerations,
+            k8s.affinity,
+            k8s.security_context,
+            k8s.namespace,
+            k8s.service_account,
+        )
+    ):
+        return DeploymentBackendConfig(k8s=k8s)
+    return DeploymentBackendConfig()
 
 
 def startup_probe_failure_threshold(view: DeploymentConfigView, *, period_seconds: int = 10) -> int | None:

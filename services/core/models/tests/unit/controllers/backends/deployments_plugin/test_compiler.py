@@ -146,6 +146,9 @@ def test_nim_k8s_nim_operator_config_maps_tolerations_and_resources() -> None:
     assert server.resources.limits["memory"] == "32Gi"
     assert server.readiness_probe is not None
     assert server.readiness_probe.failure_threshold == 60
+    assert k8s.security_context is not None
+    assert k8s.security_context.run_as_user == 1000
+    assert k8s.security_context.run_as_group == 2000
 
 
 def test_generic_weightless_is_server_only() -> None:

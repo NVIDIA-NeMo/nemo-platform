@@ -11,8 +11,10 @@ from nmp.core.models.controllers.backends.common import DeploymentConfigView
 from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
 from nmp.core.models.controllers.backends.deployments_plugin.nim_compiler import (
     apply_k8s_nim_operator_container_overrides,
+    build_k8s_deployment_backend_config,
     compile_nim_server_env,
     k8s_backend_config_from_nim_operator,
+    pod_security_context_for_engine,
     startup_probe_failure_threshold,
     tool_call_plugin_init_containers,
 )
@@ -119,3 +121,21 @@ def test_apply_k8s_nim_operator_container_overrides_updates_resources_and_probe(
     apply_k8s_nim_operator_container_overrides(container, probe, view)
     assert container.resources.requests["cpu"] == "2"
     assert probe.failure_threshold == 3
+
+
+def test_pod_security_context_uses_nim_defaults() -> None:
+    view = DeploymentConfigView()
+    config = DeploymentsPluginConfig(default_user_id=1000, default_group_id=2000)
+    security_context = pod_security_context_for_engine("nim", view, config)
+    assert security_context is not None
+    assert security_context.run_as_user == 1000
+    assert security_context.run_as_group == 2000
+
+
+def test_build_k8s_deployment_backend_config_merges_security_context() -> None:
+    view = DeploymentConfigView()
+    config = DeploymentsPluginConfig(default_user_id=1000, default_group_id=2000)
+    backend = build_k8s_deployment_backend_config("nim", view, config)
+    assert backend.k8s is not None
+    assert backend.k8s.security_context is not None
+    assert backend.k8s.security_context.run_as_user == 1000

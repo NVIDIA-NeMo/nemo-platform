@@ -31,8 +31,8 @@ from nmp.core.models.controllers.backends.deployments_plugin.naming import Entit
 from nmp.core.models.controllers.backends.deployments_plugin.nim_compiler import (
     _TOOL_CALL_PLUGIN_PATH,
     apply_k8s_nim_operator_container_overrides,
+    build_k8s_deployment_backend_config,
     compile_nim_server_env,
-    k8s_backend_config_from_nim_operator,
     tool_call_plugin_init_containers,
 )
 from nmp.core.models.controllers.backends.deployments_plugin.resolve import ResolvedPluginDeployment
@@ -148,9 +148,11 @@ def compile_model_deployment(
     weighted = _weighted(resolved, engine)
     lora_enabled = resolved.view.lora_enabled and engine != ENGINE_GENERIC
     k8s_backend = (
-        k8s_backend_config_from_nim_operator(resolved.view) if resolved.runtime == Runtime.KUBERNETES else None
+        build_k8s_deployment_backend_config(engine, resolved.view, config)
+        if resolved.runtime == Runtime.KUBERNETES
+        else None
     )
-    backend_config = DeploymentBackendConfig(k8s=k8s_backend) if k8s_backend is not None else None
+    backend_config = k8s_backend if k8s_backend is not None and k8s_backend.k8s is not None else None
     volume = None
     scratch_volume = None
     puller_config = None
