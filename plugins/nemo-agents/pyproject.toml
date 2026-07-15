@@ -11,6 +11,14 @@ dependencies = [
     "nvidia-nat-core>=1.8.0,<1.9",
     "nvidia-nat-langchain>=1.8.0,<1.9",
     "nvidia-nat-config-optimizer>=1.8.0,<1.9",
+    # Restate the effective floors nvidia-nat-langchain already imposes on its
+    # own transitive deps (litellm via langchain-litellm>=0.6.5, pyopenssl
+    # directly). litellm has >1000 releases on PyPI; surfacing these bounds at
+    # the top level collapses pip's candidate set and prevents its backtracking
+    # resolver from blowing up (ResolutionTooDeep) on `pip install
+    # nemo-platform[all]`.
+    "litellm>=1.83.14",
+    "pyopenssl>=26.0.0,<27.0.0",
     # ASTD-164: tight pins avoid pip ResolutionTooDeep via aioboto3/langchain-aws.
     "langchain-aws==1.1.0",
     "boto3>=1.40.46,<1.40.62",
