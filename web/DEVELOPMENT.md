@@ -26,8 +26,8 @@ Runs type checking across all packages before pushing to remote.
 
 **What it does:**
 
-- Executes `pnpm run --recursive --parallel typecheck:go`
-- Uses the [TypeScript native port](https://devblogs.microsoft.com/typescript/typescript-native-port/) for improved performance
+- From `web/`, executes `pnpm --filter="...[origin/main]" run --parallel --if-present typecheck`
+- Runs the native TypeScript 7 compiler (`tsc`), matching CI
 - Prevents pushing code with type errors
 
 **Bypass if needed:**

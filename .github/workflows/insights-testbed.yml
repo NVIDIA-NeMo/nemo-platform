@@ -1,0 +1,229 @@
+name: insights-testbed
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "What to run"
+        type: choice
+        options: [produce, analyze, stack-check]
+        default: analyze
+      subjects:
+        description: "Comma-separated testbed subjects"
+        type: string
+        default: tau2-airline
+      state:
+        description: "Empty = each subject's state.lock pin"
+        type: string
+        default: ""
+      num_tasks:
+        description: "Override subject num_tasks (empty = testbeds.toml value)"
+        type: string
+        default: ""
+      num_trials:
+        description: "Override subject num_trials (empty = testbeds.toml value)"
+        type: string
+        default: ""
+      publish_state:
+        description: "produce only: upload the new state version to the testbed-state release"
+        type: boolean
+        default: true
+      reason:
+        description: "produce only: why this fixture exists (one line for the release catalog)"
+        type: string
+        default: ""
+  pull_request:
+    types: [opened, synchronize, labeled]
+    paths:
+      - "plugins/nemo-insights/**"
+      - ".github/workflows/insights-testbed.yml"
+      - ".github/actions/insights-intake-stack/**"
+      - ".github/actions/insights-testbed-prep/**"
+
+env:
+  TAU2_JUDGE_LLM: ${{ vars.TAU2_JUDGE_LLM || 'openai/nvidia/nvidia/evals-nemotron-ultra' }}
+  TAU2_BENCH_REF: 8ebb7499622fc2be9b9d510d6f7a7653461f4f29
+
+jobs:
+  plugin-tests:
+    name: Insights plugin tests
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with: { path: nemo-platform, persist-credentials: false }
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          working-directory: nemo-platform
+      - name: Run plugin tests
+        working-directory: nemo-platform
+        run: uv run --frozen --group insights pytest -q plugins/nemo-insights/tests
+
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.resolve.outputs.mode }}
+      subjects: ${{ steps.resolve.outputs.subjects }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with: { path: nemo-platform, persist-credentials: false }
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          working-directory: nemo-platform
+      - id: resolve
+        env:
+          INPUT_MODE: ${{ inputs.mode }}
+          INPUT_SUBJECTS: ${{ inputs.subjects }}
+        run: uv run --no-project python nemo-platform/plugins/nemo-insights/testbed/eval/plan.py
+
+  stack-check:
+    needs: plan
+    if: needs.plan.outputs.mode == 'stack-check'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with: { path: nemo-platform, persist-credentials: false }
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: sierra-research/tau2-bench
+          ref: ${{ env.TAU2_BENCH_REF }}
+          path: tau2-bench
+          persist-credentials: false
+      - uses: ./nemo-platform/.github/actions/insights-testbed-prep
+        with: { install-tau2: "false", sync-insights: "false" }
+      - uses: ./nemo-platform/.github/actions/insights-intake-stack
+      - name: Verify stack end-to-end
+        run: uv run --no-project python nemo-platform/plugins/nemo-insights/testbed/eval/stack.py --verify
+      - name: Platform log on failure
+        if: failure()
+        run: tail -100 "$RUNNER_TEMP/platform.log" || true
+
+  produce:
+    needs: plan
+    # produce is EXPLICIT-ONLY: a human dispatches it (e.g. after a tau2-bench or agent
+    # change warrants a new fixture). It must never fire from PRs, pushes, or any
+    # future automatic trigger — hence the hard event gate on top of the mode check.
+    if: needs.plan.outputs.mode == 'produce' && github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    concurrency: { group: testbed-state-produce, cancel-in-progress: false }
+    permissions: { contents: write }   # release asset upload
+    env:
+      GH_TOKEN: ${{ github.token }}
+      INFERENCE_API_KEY: ${{ secrets.NVIDIA_INFERENCE_KEY }}
+      # Same gateway key; litellm/tau2 read it under the OpenAI-conventional name.
+      OPENAI_API_KEY: ${{ secrets.NVIDIA_INFERENCE_KEY }}
+      OPENAI_API_BASE: ${{ secrets.NVIDIA_INFERENCE_URL }}
+    steps:
+      - name: Require secrets
+        run: |
+          [ -n "$INFERENCE_API_KEY" ] || { echo "secret NVIDIA_INFERENCE_KEY is not set"; exit 1; }
+          [ -n "$OPENAI_API_BASE" ] || { echo "secret NVIDIA_INFERENCE_URL is not set"; exit 1; }
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with: { path: nemo-platform, persist-credentials: false }
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: sierra-research/tau2-bench
+          ref: ${{ env.TAU2_BENCH_REF }}
+          path: tau2-bench
+          persist-credentials: false
+      - uses: ./nemo-platform/.github/actions/insights-testbed-prep
+      - uses: ./nemo-platform/.github/actions/insights-intake-stack
+      - name: Run subjects (tau2 -> ingest -> insights)
+        working-directory: nemo-platform/plugins/nemo-insights
+        env:
+          SUBJECTS: ${{ needs.plan.outputs.subjects }}
+          NUM_TASKS: ${{ inputs.num_tasks }}
+          NUM_TRIALS: ${{ inputs.num_trials }}
+        run: uv run --project ../.. python testbed/eval/run_subjects.py
+      - name: Snapshot state
+        if: always()
+        working-directory: nemo-platform/plugins/nemo-insights
+        env:
+          SUBJECTS_JSON: ${{ needs.plan.outputs.subjects }}
+          # NUM_TASKS / NUM_TRIALS / REASON feed the manifest's CI-lineage fields.
+          NUM_TASKS: ${{ inputs.num_tasks }}
+          NUM_TRIALS: ${{ inputs.num_trials }}
+          REASON: ${{ inputs.reason }}
+        run: uv run --project ../.. python -m testbed snapshot --subjects-json "$SUBJECTS_JSON" --base http://localhost:8080 -o "$RUNNER_TEMP/bundles/candidate.tar.zst"
+      - name: Round-trip fidelity guard
+        working-directory: nemo-platform/plugins/nemo-insights
+        # Re-ingest the candidate into scratch workspaces on the in-job stack, re-export,
+        # doc-diff; any mismatch fails the job before the candidate can be published.
+        # platform-root auto-resolves to the containing nemo-platform checkout.
+        run: uv run --project ../.. python -m testbed roundtrip "$RUNNER_TEMP/bundles/candidate.tar.zst" --base http://localhost:8080
+      - name: Upload state artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          # run_attempt suffix: upload-artifact@v4 409s on duplicate names within a
+          # run, which would fail this always() step on a re-run and block publish.
+          name: state-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/bundles/candidate.tar.zst
+          if-no-files-found: warn
+      - name: Publish to testbed-state release
+        if: success() && inputs.publish_state
+        working-directory: nemo-platform/plugins/nemo-insights
+        env:
+          REASON: ${{ inputs.reason }}
+        # --no-verify: the round-trip fidelity guard already ran as its own step above.
+        run: uv run --project ../.. python -m testbed publish "$RUNNER_TEMP/bundles/candidate.tar.zst" --reason "$REASON" --no-verify
+      - name: Platform log on failure
+        if: failure()
+        run: tail -200 "$RUNNER_TEMP/platform.log" || true
+
+  analyze:
+    needs: plan
+    # PR gate: run only when `run-insights` is applied, not again on every
+    # synchronize event. Remove and reapply the label to request another run.
+    # Dispatch-like events remain gated on mode alone.
+    if: >-
+      needs.plan.outputs.mode == 'analyze' &&
+      (github.event_name != 'pull_request' ||
+       (github.event.action == 'labeled' &&
+        github.event.label.name == 'run-insights' &&
+        github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions: { contents: read }
+    strategy:
+      fail-fast: false
+      matrix:
+        subject: ${{ fromJSON(needs.plan.outputs.subjects) }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      INFERENCE_API_KEY: ${{ secrets.NVIDIA_INFERENCE_KEY }}
+    steps:
+      - name: Require secrets
+        run: '[ -n "$INFERENCE_API_KEY" ] || { echo "secret NVIDIA_INFERENCE_KEY is not set"; exit 1; }'
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with: { path: nemo-platform, persist-credentials: false }
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: sierra-research/tau2-bench
+          ref: ${{ env.TAU2_BENCH_REF }}
+          path: tau2-bench
+          persist-credentials: false
+      - uses: ./nemo-platform/.github/actions/insights-testbed-prep
+        with: { install-tau2: "false" }
+      - uses: ./nemo-platform/.github/actions/insights-intake-stack
+      - name: Generate insights
+        working-directory: nemo-platform/plugins/nemo-insights
+        env:
+          SUBJECT: ${{ matrix.subject }}
+          STATE: ${{ inputs.state }}
+        # Empty STATE = bare analyze = the subject's state.lock pin (the
+        # reproducible default); a non-empty ref overrides it via --state.
+        run: |
+          uv run --project ../.. python -m testbed analyze "$SUBJECT" ${STATE:+--state "$STATE"} --summary-md "$GITHUB_STEP_SUMMARY"
+          cat "testbed/tmp/insights_${SUBJECT}.yaml"
+      - name: Upload insights
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: insights-${{ matrix.subject }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: nemo-platform/plugins/nemo-insights/testbed/tmp/insights_${{ matrix.subject }}.yaml
+      - name: Platform log on failure
+        if: failure()
+        run: tail -200 "$RUNNER_TEMP/platform.log" || true

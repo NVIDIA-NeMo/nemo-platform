@@ -3,11 +3,28 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
-from nemo_platform import ConflictError
+from nemo_platform_plugin.client.errors import ConflictError as ClientConflictError
+from nemo_platform_plugin.client.errors import NemoTransportError
+from nemo_platform_plugin.jobs.result_manager import CreateJobResultError
 from nmp.common.config import Configuration
 from nmp.common.jobs import result_manager as rm
 from nmp.common.jobs.file_manager import AsyncFilesetFileManager, FilesetFileManager, TmpDirPath
+
+
+def _resp(data):
+    """Wrap a payload in a NemoResponse-like object whose ``.data()`` returns it."""
+    m = MagicMock()
+    m.data.return_value = data
+    return m
+
+
+def _conflict_error() -> ClientConflictError:
+    """Build the ConflictError the typed client raises on a 409 response."""
+    request = httpx.Request("POST", "http://test")
+    return ClientConflictError(httpx.Response(status_code=409, json={}, request=request))
+
 
 # =============================================================================
 # FilesetFileManager Factory Tests
@@ -81,13 +98,13 @@ def test_create_result_returns_existing_on_conflict_sync(tmp_path, mock_sdk, moc
     test_file = tmp_path / "artifact.bin"
     test_file.write_bytes(b"test content")
 
-    # Configure SDK to raise ConflictError on create, return existing on retrieve
+    # Configure the typed jobs client to raise ConflictError on create, return existing on retrieve.
     existing_result = MagicMock(name="my-result")
-    mock_nmp_sdk.jobs.results.create.side_effect = ConflictError(message="conflict", response=MagicMock(), body=None)
-    mock_nmp_sdk.jobs.results.retrieve.return_value = existing_result
-
-    # Mock job retrieval to return fileset name
-    mock_nmp_sdk.jobs.retrieve.return_value = MagicMock(attempt_id="att-123", fileset="test-fileset")
+    mock_jobs = MagicMock()
+    mock_jobs.create_job_result.side_effect = _conflict_error()
+    mock_jobs.get_job_result.return_value = _resp(existing_result)
+    # Job retrieval provides the fileset name.
+    mock_jobs.get_job.return_value = _resp(MagicMock(attempt_id="att-123", fileset="test-fileset"))
 
     mgr = rm.ResultManager(
         job_name="test-job",
@@ -97,12 +114,41 @@ def test_create_result_returns_existing_on_conflict_sync(tmp_path, mock_sdk, moc
         jobs_sdk=mock_nmp_sdk,
     )
 
-    # Patch the _create_file_manager method to return our mock
-    with patch.object(mgr, "_create_file_manager", return_value=mock_sync_file_manager):
+    # Patch the _create_file_manager method to return our mock, and the typed-client
+    # factory to return our mock jobs client.
+    with (
+        patch.object(mgr, "_create_file_manager", return_value=mock_sync_file_manager),
+        patch("nemo_platform_plugin.jobs.result_manager.client_from_platform", return_value=mock_jobs),
+    ):
         result = mgr.create_result("my-result", test_file)
 
-    mock_nmp_sdk.jobs.results.retrieve.assert_called_once_with(name="my-result", job="test-job", workspace="test-ws")
+    mock_jobs.get_job_result.assert_called_once_with(name="my-result", job="test-job", workspace="test-ws")
     assert result is existing_result
+
+
+def test_create_result_wraps_transport_errors_sync(tmp_path, mock_sdk, mock_nmp_sdk, mock_sync_file_manager):
+    test_file = tmp_path / "artifact.bin"
+    test_file.write_bytes(b"test content")
+    request = httpx.Request("POST", "http://test/apis/jobs/v2/workspaces/test-ws/jobs/test-job/results/my-result")
+    mock_jobs = MagicMock()
+    mock_jobs.get_job.return_value = _resp(MagicMock(attempt_id="att-123", fileset="test-fileset"))
+    mock_jobs.create_job_result.side_effect = NemoTransportError(
+        httpx.ConnectError("Connection refused", request=request)
+    )
+    mgr = rm.ResultManager(
+        job_name="test-job",
+        workspace="test-ws",
+        file_manager_cls=FilesetFileManager,
+        files_sdk=mock_sdk,
+        jobs_sdk=mock_nmp_sdk,
+    )
+
+    with (
+        patch.object(mgr, "_create_file_manager", return_value=mock_sync_file_manager),
+        patch("nemo_platform_plugin.jobs.result_manager.client_from_platform", return_value=mock_jobs),
+        pytest.raises(CreateJobResultError, match="Error creating job result"),
+    ):
+        mgr.create_result("my-result", test_file)
 
 
 @pytest.mark.asyncio
@@ -113,15 +159,13 @@ async def test_create_result_returns_existing_on_conflict_async(
     test_file = tmp_path / "artifact.bin"
     test_file.write_bytes(b"test content")
 
-    # Configure async SDK to raise ConflictError on create, return existing on retrieve
+    # Configure the typed async jobs client to raise ConflictError on create, return existing on retrieve.
     existing_result = MagicMock(name="my-result")
-    mock_async_nmp_sdk.jobs.results.create.side_effect = ConflictError(
-        message="conflict", response=MagicMock(), body=None
-    )
-    mock_async_nmp_sdk.jobs.results.retrieve.return_value = existing_result
-
-    # Mock job retrieval to return fileset name
-    mock_async_nmp_sdk.jobs.retrieve.return_value = MagicMock(attempt_id="att-123", fileset="test-fileset")
+    mock_jobs = MagicMock()
+    mock_jobs.create_job_result = AsyncMock(side_effect=_conflict_error())
+    mock_jobs.get_job_result = AsyncMock(return_value=_resp(existing_result))
+    # Job retrieval provides the fileset name.
+    mock_jobs.get_job = AsyncMock(return_value=_resp(MagicMock(attempt_id="att-123", fileset="test-fileset")))
 
     mgr = rm.AsyncResultManager(
         job_name="test-job",
@@ -131,14 +175,44 @@ async def test_create_result_returns_existing_on_conflict_async(
         jobs_sdk=mock_async_nmp_sdk,
     )
 
-    # Patch the _create_file_manager method to return our mock
-    with patch.object(mgr, "_create_file_manager", return_value=mock_async_file_manager):
+    # Patch the _create_file_manager method to return our mock, and the typed-client
+    # factory to return our mock jobs client.
+    with (
+        patch.object(mgr, "_create_file_manager", return_value=mock_async_file_manager),
+        patch("nemo_platform_plugin.jobs.result_manager.client_from_platform", return_value=mock_jobs),
+    ):
         result = await mgr.create_result("my-result", test_file)
 
-    mock_async_nmp_sdk.jobs.results.retrieve.assert_called_once_with(
-        name="my-result", job="test-job", workspace="test-ws"
-    )
+    mock_jobs.get_job_result.assert_called_once_with(name="my-result", job="test-job", workspace="test-ws")
     assert result is existing_result
+
+
+@pytest.mark.asyncio
+async def test_create_result_wraps_transport_errors_async(
+    tmp_path, mock_sdk, mock_async_nmp_sdk, mock_async_file_manager
+):
+    test_file = tmp_path / "artifact.bin"
+    test_file.write_bytes(b"test content")
+    request = httpx.Request("POST", "http://test/apis/jobs/v2/workspaces/test-ws/jobs/test-job/results/my-result")
+    mock_jobs = MagicMock()
+    mock_jobs.get_job = AsyncMock(return_value=_resp(MagicMock(attempt_id="att-123", fileset="test-fileset")))
+    mock_jobs.create_job_result = AsyncMock(
+        side_effect=NemoTransportError(httpx.ConnectError("Connection refused", request=request))
+    )
+    mgr = rm.AsyncResultManager(
+        job_name="test-job",
+        workspace="test-ws",
+        file_manager_cls=AsyncFilesetFileManager,
+        files_sdk=mock_sdk,
+        jobs_sdk=mock_async_nmp_sdk,
+    )
+
+    with (
+        patch.object(mgr, "_create_file_manager", return_value=mock_async_file_manager),
+        patch("nemo_platform_plugin.jobs.result_manager.client_from_platform", return_value=mock_jobs),
+        pytest.raises(CreateJobResultError, match="Error creating job result"),
+    ):
+        await mgr.create_result("my-result", test_file)
 
 
 @pytest.mark.asyncio

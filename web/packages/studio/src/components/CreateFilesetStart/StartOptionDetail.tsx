@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Divider, Flex, Stack, Text } from '@nvidia/foundations-react-core';
+import { Divider, Flex, Grid, Stack, Text } from '@nvidia/foundations-react-core';
 import { TemplateCard } from '@studio/components/CreateFilesetStart/TemplateCard';
 import { FILESET_TEMPLATES } from '@studio/components/CreateFilesetStart/templates';
 import type {
@@ -66,7 +66,7 @@ export const StartOptionDetail: FC<StartOptionDetailProps> = ({
 }) => {
   const content =
     option.id === 'template' ? (
-      <Flex gap="density-md" className="w-full flex-wrap">
+      <Grid colMinWidth="260px" gap="density-md">
         {FILESET_TEMPLATES.map((template) => (
           <TemplateCard
             key={template.id}
@@ -75,7 +75,7 @@ export const StartOptionDetail: FC<StartOptionDetailProps> = ({
             onSelect={() => onSelectTemplate(template.id)}
           />
         ))}
-      </Flex>
+      </Grid>
     ) : (
       DETAIL_CONTENT[option.id]
     );

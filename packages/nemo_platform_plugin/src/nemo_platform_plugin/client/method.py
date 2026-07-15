@@ -29,8 +29,8 @@ and ``pyright`` resolves them cleanly.
 from __future__ import annotations
 
 import functools
-from collections.abc import Callable
-from typing import Any, Coroutine, Generic, TypeVar, overload
+from collections.abc import Awaitable, Callable
+from typing import Generic, TypeVar, overload
 
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.response import (
@@ -49,6 +49,7 @@ from nemo_platform_plugin.client.types import (
     Paginated,
     PreparedRequest,
     ResponseT,
+    StrategyT,
     Stream,
 )
 
@@ -76,9 +77,7 @@ class EndpointMethod(Generic[P, SyncReturnT, AsyncReturnT]):
     @overload
     def __get__(self, obj: NemoClient, objtype: type | None = None) -> Callable[P, SyncReturnT]: ...
     @overload
-    def __get__(
-        self, obj: AsyncNemoClient, objtype: type | None = None
-    ) -> Callable[P, Coroutine[Any, Any, AsyncReturnT]]: ...
+    def __get__(self, obj: AsyncNemoClient, objtype: type | None = None) -> Callable[P, Awaitable[AsyncReturnT]]: ...
 
     def __get__(self, obj: NemoClient | AsyncNemoClient | None, objtype: type | None = None) -> object:
         assert obj is not None
@@ -116,8 +115,12 @@ def method(
 
 @overload
 def method(
-    endpoint_fn: Callable[P, PreparedRequest[Paginated[ModelT, Any]]],
-) -> EndpointMethod[P, NemoPaginatedResponse[ModelT], AsyncNemoPaginatedResponse[ModelT]]: ...
+    endpoint_fn: Callable[P, PreparedRequest[Paginated[ModelT, StrategyT]]],
+) -> EndpointMethod[
+    P,
+    NemoPaginatedResponse[ModelT, StrategyT],
+    AsyncNemoPaginatedResponse[ModelT, StrategyT],
+]: ...
 
 
 @overload

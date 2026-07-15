@@ -24,6 +24,7 @@ import pytest
 
 from tests.utils import assert_matches_type
 from nemo_platform import NeMoPlatform, AsyncNeMoPlatform
+from nemo_platform._utils import parse_datetime
 from nemo_platform.pagination import SyncDefaultPagination, AsyncDefaultPagination
 from nemo_platform.types.inference import (
     VirtualModel,
@@ -188,6 +189,31 @@ class TestVirtualModels:
     def test_method_list_with_all_params(self, client: NeMoPlatform) -> None:
         virtual_model = client.inference.virtual_models.list(
             workspace="workspace",
+            exclude_autoprovisioned=True,
+            filter={
+                "created_at": {
+                    "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                    "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                },
+                "default_model_entity": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
+                "name": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
+                "project": "project",
+                "updated_at": {
+                    "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                    "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                },
+                "workspace": "workspace",
+            },
             page=1,
             page_size=1,
             sort="sort",
@@ -533,6 +559,31 @@ class TestAsyncVirtualModels:
     async def test_method_list_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
         virtual_model = await async_client.inference.virtual_models.list(
             workspace="workspace",
+            exclude_autoprovisioned=True,
+            filter={
+                "created_at": {
+                    "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                    "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                },
+                "default_model_entity": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
+                "name": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
+                "project": "project",
+                "updated_at": {
+                    "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                    "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                },
+                "workspace": "workspace",
+            },
             page=1,
             page_size=1,
             sort="sort",

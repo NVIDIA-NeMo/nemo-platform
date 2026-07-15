@@ -34,7 +34,7 @@ import functools
 import inspect
 import string
 from collections.abc import AsyncIterable, Callable, Iterable
-from typing import Any, get_type_hints
+from typing import get_type_hints
 
 from nemo_platform_plugin.client.types import (
     BLESSED_CLIENT_PARAMS,
@@ -121,7 +121,7 @@ def _build_prepared_request(
     query_params: dict[str, str | int | bool | None] | None = None
     content: bytes | Iterable[bytes] | AsyncIterable[bytes] | None = None
     content_type: str | None = None
-    client_options: dict[str, Any] | None = None
+    client_options: dict[str, object] | None = None
     body_model: BaseModel | None = None
 
     for name, value in bound.arguments.items():

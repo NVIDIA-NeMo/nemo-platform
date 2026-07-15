@@ -25,7 +25,7 @@ disable-model-invocation: true
 
 1. If the user named a package, use it (e.g. `studio`, `common`, `sdk`).
 2. Otherwise infer from open files or cwd under `web/packages/`.
-3. Read **`package.json`**: **`name`**, **`test`**, **`test:ci`**, **`typecheck`**, **`typecheck:go`** (if present), **`lint`** / **`lint:fix`** (if present).
+3. Read **`package.json`**: **`name`**, **`test`**, **`test:ci`**, **`typecheck`**, **`lint`** / **`lint:fix`** (if present).
 4. Read Vitest config (**`vite.config.ts`** / **`vitest.config.ts`**) → **`test.coverage`**: **`reportsDirectory`**, **`include` / `exclude`**.
 
 If there is **no** coverage tooling, add **`--coverage`** + reporters on the CLI for baseline, or build the shortlist without JSON (search + file importance only).
@@ -78,7 +78,7 @@ If the file is **untestable without refactor**, add a **short skip note** in the
 ### 3d. Verify before next file
 
 1. `pnpm vitest --run path/to/File.test.ts` (and any related specs) until **exit 0**.
-2. **`pnpm typecheck`**; **`pnpm typecheck:go`** if defined. Fix TypeScript issues (TanStack context, SDK types, etc.).
+2. **`pnpm typecheck`**. Fix TypeScript issues (TanStack context, SDK types, etc.).
 3. Optionally re-run coverage for the package and note improvement for that file.
 
 Keep a **running list** of every file path you **create or edit** during §3 (new **`*.test.*`**, and any production files you touch). You will pass that list to eslint in §4.

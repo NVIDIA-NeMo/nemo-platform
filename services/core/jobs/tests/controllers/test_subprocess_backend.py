@@ -16,6 +16,8 @@ from nmp.core.jobs.controllers.backends.subprocess import (
     SubprocessProcessKey,
 )
 
+from services.core.jobs.tests.controllers.client_mocks import data_response
+
 
 def _subprocess_backend(mock_nmp_client, tmp_path, mock_platform_config) -> SubprocessJobBackend:
     with patch("nmp.core.jobs.controllers.backends.subprocess.get_platform_config", return_value=mock_platform_config):
@@ -56,7 +58,7 @@ def _schedule_without_otel_export(backend: SubprocessJobBackend, step):
 
 
 def test_schedule_starts_process_and_stages_environment(
-    mock_nmp_client, tmp_path, mock_platform_config, test_step_pending
+    mock_nmp_client, mock_jobs_client, tmp_path, mock_platform_config, test_step_pending
 ):
     backend = _subprocess_backend(mock_nmp_client, tmp_path, mock_platform_config)
     step = _step_with_command(test_step_pending, ["/bin/sh", "-c", "printf 'hello local\\n'"])
@@ -70,7 +72,7 @@ def test_schedule_starts_process_and_stages_environment(
     assert metadata.process.wait(timeout=5) == 0
     assert metadata.work_dir.is_relative_to(tmp_path)
     assert metadata.persistent_dir.is_relative_to(tmp_path)
-    mock_nmp_client.jobs.tasks.create_or_update.assert_called()
+    mock_jobs_client.update_job_step_task.assert_called()
 
 
 def test_created_step_does_not_ttl_before_backend_acceptance(
@@ -176,7 +178,9 @@ def test_schedule_terminates_process_when_post_popen_setup_fails(
     assert not any(tmp_path.iterdir())
 
 
-def test_sync_completed_closes_logs(mock_nmp_client, tmp_path, mock_platform_config, test_step_pending):
+def test_sync_completed_closes_logs(
+    mock_nmp_client, mock_jobs_client, tmp_path, mock_platform_config, test_step_pending
+):
     backend = _subprocess_backend(mock_nmp_client, tmp_path, mock_platform_config)
     step = _step_with_command(test_step_pending, ["/bin/sh", "-c", "printf 'hello logs\\n'"])
 
@@ -192,8 +196,8 @@ def test_sync_completed_closes_logs(mock_nmp_client, tmp_path, mock_platform_con
     assert update.status == PlatformJobStatus.COMPLETED
     assert metadata.closed_logs is True
     assert "hello logs" in metadata.log_path.read_text(encoding="utf-8")
-    last_call = mock_nmp_client.jobs.tasks.create_or_update.call_args
-    assert last_call.kwargs["status"] == PlatformJobStatus.COMPLETED.value
+    last_call = mock_jobs_client.update_job_step_task.call_args
+    assert last_call.kwargs["body"].status == PlatformJobStatus.COMPLETED
 
 
 def test_shutdown_finishes_logs(mock_nmp_client, tmp_path, mock_platform_config, test_step_pending):
@@ -332,7 +336,7 @@ def test_cancelling_terminates_running_process(mock_nmp_client, tmp_path, mock_p
 
 
 def test_sync_uses_persisted_task_when_local_metadata_is_missing(
-    mock_nmp_client, tmp_path, mock_platform_config, test_step_active
+    mock_nmp_client, mock_jobs_client, tmp_path, mock_platform_config, test_step_active
 ):
     backend = _subprocess_backend(mock_nmp_client, tmp_path, mock_platform_config)
     step = _step_with_command(test_step_active, ["/bin/sh", "-c", "sleep 10"])
@@ -344,16 +348,18 @@ def test_sync_uses_persisted_task_when_local_metadata_is_missing(
     metadata.process.terminate()
     assert metadata.process.wait(timeout=5) is not None
     backend._process_registry.pop(key)
-    mock_nmp_client.jobs.tasks.list.return_value = SimpleNamespace(
-        data=[
-            SimpleNamespace(
-                status=PlatformJobStatus.ACTIVE.value,
-                status_details={"message": "Job is running"},
-                error_details={},
-                created_at=step.created_at,
-                updated_at=step.updated_at,
-            )
-        ]
+    mock_jobs_client.list_job_step_tasks.return_value = data_response(
+        SimpleNamespace(
+            data=[
+                SimpleNamespace(
+                    status=PlatformJobStatus.ACTIVE.value,
+                    status_details={"message": "Job is running"},
+                    error_details={},
+                    created_at=step.created_at,
+                    updated_at=step.updated_at,
+                )
+            ]
+        )
     )
 
     update = backend.sync(step)
@@ -364,27 +370,29 @@ def test_sync_uses_persisted_task_when_local_metadata_is_missing(
 
 
 def test_get_task_fallback_update_handles_missing_task_timestamps(
-    mock_nmp_client, tmp_path, mock_platform_config, test_step_active
+    mock_nmp_client, mock_jobs_client, tmp_path, mock_platform_config, test_step_active
 ):
     backend = _subprocess_backend(mock_nmp_client, tmp_path, mock_platform_config)
     step = _step_with_command(test_step_active, ["/bin/sh", "-c", "true"])
-    mock_nmp_client.jobs.tasks.list.return_value = SimpleNamespace(
-        data=[
-            SimpleNamespace(
-                status=PlatformJobStatus.PENDING.value,
-                status_details={"message": "missing timestamps"},
-                error_details={},
-                created_at=None,
-                updated_at=None,
-            ),
-            SimpleNamespace(
-                status=PlatformJobStatus.ACTIVE.value,
-                status_details={"message": "latest"},
-                error_details={},
-                created_at=step.created_at,
-                updated_at=step.updated_at,
-            ),
-        ]
+    mock_jobs_client.list_job_step_tasks.return_value = data_response(
+        SimpleNamespace(
+            data=[
+                SimpleNamespace(
+                    status=PlatformJobStatus.PENDING.value,
+                    status_details={"message": "missing timestamps"},
+                    error_details={},
+                    created_at=None,
+                    updated_at=None,
+                ),
+                SimpleNamespace(
+                    status=PlatformJobStatus.ACTIVE.value,
+                    status_details={"message": "latest"},
+                    error_details={},
+                    created_at=step.created_at,
+                    updated_at=step.updated_at,
+                ),
+            ]
+        )
     )
 
     update = backend._get_task_fallback_update(step)
@@ -396,11 +404,11 @@ def test_get_task_fallback_update_handles_missing_task_timestamps(
 
 
 def test_sync_keeps_recent_pending_step_pending_when_local_metadata_is_missing(
-    mock_nmp_client, tmp_path, mock_platform_config, test_step_pending
+    mock_nmp_client, mock_jobs_client, tmp_path, mock_platform_config, test_step_pending
 ):
     backend = _subprocess_backend(mock_nmp_client, tmp_path, mock_platform_config)
     step = _step_with_command(test_step_pending, ["/bin/sh", "-c", "true"])
-    mock_nmp_client.jobs.tasks.list.return_value = SimpleNamespace(data=[])
+    mock_jobs_client.list_job_step_tasks.return_value = data_response(SimpleNamespace(data=[]))
 
     update = backend.sync(step)
 

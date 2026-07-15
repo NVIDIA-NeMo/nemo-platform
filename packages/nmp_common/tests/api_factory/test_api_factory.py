@@ -2,20 +2,26 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
-from httpx import Request, Response
-from nemo_platform import APIStatusError
 from nemo_platform.types.jobs import PlatformJobResponse as PlatformJob
 from nemo_platform.types.shared.platform_job_status import PlatformJobStatus
+from nemo_platform_plugin.client.errors import (
+    ConflictError as ClientConflictError,
+)
+from nemo_platform_plugin.client.errors import (
+    NotFoundError as ClientNotFoundError,
+)
 from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
@@ -38,7 +44,6 @@ from nemo_platform_plugin.jobs.api_factory import (
     _validate_job_spec,
     job_route_factory,
 )
-from nmp.common.api.common import Page, PaginationData
 from nmp.common.errors.sdk_exception_handlers import register_sdk_exception_handlers
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
 from nmp.common.jobs.schemas import (
@@ -284,12 +289,71 @@ async def test_pydantic_jsonl_result_serializer_validation_error(tmp_path: Path)
     assert json.loads(lines[0])["error"]["line"] == 1
 
 
-@pytest.fixture
-def mock_service_with_job_routes():
-    """Create a test FastAPI app with job routes for testing job route functionality."""
+def _resp(data):
+    """Wrap a payload in a NemoResponse-like object whose ``.data()`` returns it.
+
+    Production now consumes typed-client responses via ``(await client.<op>(...)).data()``,
+    so mocked jobs-client methods must return an object with a ``.data()`` accessor
+    rather than the payload directly.
+    """
+    m = MagicMock()
+    m.data.return_value = data
+    return m
+
+
+def _page_resp(items, *, page=1, page_size=10, total_pages=1, total_results=None):
+    """Wrap a list of jobs in a response whose ``.page()`` returns a PageResult-like object.
+
+    The list handler calls ``.page()`` and reads its items and offset metadata.
+    """
+    page_result = MagicMock()
+    page_result.items = items
+    page_result.metadata = {
+        "page": page,
+        "page_size": page_size,
+        "current_page_size": len(items),
+        "total_pages": total_pages,
+        "total_results": total_results if total_results is not None else len(items),
+    }
+    m = MagicMock()
+    m.page.return_value = page_result
+    return m
+
+
+def _cursor_page_resp(page: PlatformJobLogPage):
+    """Wrap a Jobs log envelope as a cursor-paginated typed-client response."""
+    page_result = MagicMock()
+    page_result.items = page.data
+    page_result.metadata = {
+        "total": page.total,
+        "next_page": page.next_page,
+        "prev_page": page.prev_page,
+    }
+    response = MagicMock()
+    response.page.return_value = page_result
+    return response
+
+
+def _client_error(error_cls, status_code: int, detail: str):
+    """Build a NemoHTTPError subclass from an httpx.Response, as the typed client raises."""
+    request = httpx.Request("POST", "http://test")
+    response = httpx.Response(status_code=status_code, json={"detail": detail}, request=request)
+    return error_cls(response)
+
+
+@contextmanager
+def _job_routes_app():
+    """Create a test FastAPI app with job routes, patching the typed jobs client.
+
+    The generated handlers call ``client_from_platform(sdk, AsyncJobsClient)`` and then
+    invoke methods on the returned client. We patch ``client_from_platform`` in the
+    api_factory module to return a single ``MagicMock`` jobs client that tests configure
+    (each method as an ``AsyncMock`` returning a ``_resp(...)`` / ``_page_resp(...)``).
+    """
     from nmp.common.service.dependencies import get_sdk_client
 
     mock_sdk = MagicMock()
+    mock_jobs = MagicMock()
     router = job_route_factory(
         service_name="test_service",
         job_type="TestJob",
@@ -306,7 +370,16 @@ def mock_service_with_job_routes():
 
     # Include a prefix to indicate the location of the jobs router
     app.include_router(router, prefix="/v2/workspaces/{workspace}/test")
-    return app, mock_sdk
+
+    with patch("nemo_platform_plugin.jobs.api_factory.client_from_platform", return_value=mock_jobs):
+        yield app, mock_jobs
+
+
+@pytest.fixture
+def mock_service_with_job_routes():
+    """Yield a test FastAPI app plus the mocked typed jobs client for job-route tests."""
+    with _job_routes_app() as (app, mock_jobs):
+        yield app, mock_jobs
 
 
 def create_mock_platform_job(
@@ -365,12 +438,12 @@ def create_mock_log_page(
 
 def test_get_job_logs_default_parameters(mock_service_with_job_routes):
     """Test get_job_logs with default parameters (no limit or page_cursor)."""
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
     client = TestClient(app)
 
-    # Mock the SDK response
+    # Mock the jobs-client response
     mock_log_page = create_mock_log_page(num_logs=5, total=10)
-    mock_sdk.jobs.get_logs = AsyncMock(return_value=mock_log_page)
+    mock_jobs.list_job_logs = AsyncMock(return_value=_cursor_page_resp(mock_log_page))
 
     # Make the request
     response = client.get("/v2/workspaces/default/test/jobs/test-job-123/logs")
@@ -381,23 +454,22 @@ def test_get_job_logs_default_parameters(mock_service_with_job_routes):
     assert len(response_data["data"]) == 5
     assert response_data["total"] == 10
 
-    # Verify SDK was called with correct parameters
-    mock_sdk.jobs.get_logs.assert_called_once_with(
+    # None-valued limit/page_cursor are omitted from query_params.
+    mock_jobs.list_job_logs.assert_called_once_with(
         workspace="default",
         name="test-job-123",
-        limit=None,
-        page_cursor=None,
+        query_params={},
     )
 
 
 def test_get_job_logs_with_limit(mock_service_with_job_routes):
     """Test get_job_logs with limit parameter."""
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
     client = TestClient(app)
 
-    # Mock the SDK response
+    # Mock the jobs-client response
     mock_log_page = create_mock_log_page(num_logs=2, total=10, next_page="next_cursor_123")
-    mock_sdk.jobs.get_logs = AsyncMock(return_value=mock_log_page)
+    mock_jobs.list_job_logs = AsyncMock(return_value=_cursor_page_resp(mock_log_page))
 
     # Make the request with limit
     response = client.get("/v2/workspaces/default/test/jobs/test-job-123/logs?limit=2")
@@ -409,23 +481,21 @@ def test_get_job_logs_with_limit(mock_service_with_job_routes):
     assert response_data["total"] == 10
     assert response_data["next_page"] == "next_cursor_123"
 
-    # Verify SDK was called with correct parameters
-    mock_sdk.jobs.get_logs.assert_called_once_with(
+    mock_jobs.list_job_logs.assert_called_once_with(
         workspace="default",
         name="test-job-123",
-        limit=2,
-        page_cursor=None,
+        query_params={"limit": 2},
     )
 
 
 def test_get_job_logs_with_page_cursor(mock_service_with_job_routes):
     """Test get_job_logs with page_cursor parameter."""
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
     client = TestClient(app)
 
-    # Mock the SDK response
+    # Mock the jobs-client response
     mock_log_page = create_mock_log_page(num_logs=3, total=10, next_page="next_cursor_456", prev_page="prev_cursor_789")
-    mock_sdk.jobs.get_logs = AsyncMock(return_value=mock_log_page)
+    mock_jobs.list_job_logs = AsyncMock(return_value=_cursor_page_resp(mock_log_page))
 
     # Make the request with page_cursor
     response = client.get("/v2/workspaces/default/test/jobs/test-job-123/logs?page_cursor=cursor_abc_123")
@@ -438,25 +508,23 @@ def test_get_job_logs_with_page_cursor(mock_service_with_job_routes):
     assert response_data["next_page"] == "next_cursor_456"
     assert response_data["prev_page"] == "prev_cursor_789"
 
-    # Verify SDK was called with correct parameters
-    mock_sdk.jobs.get_logs.assert_called_once_with(
+    mock_jobs.list_job_logs.assert_called_once_with(
         workspace="default",
         name="test-job-123",
-        limit=None,
-        page_cursor="cursor_abc_123",
+        query_params={"page_cursor": "cursor_abc_123"},
     )
 
 
 def test_get_job_logs_with_both_parameters(mock_service_with_job_routes):
     """Test get_job_logs with both limit and page_cursor parameters."""
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
     client = TestClient(app)
 
-    # Mock the SDK response
+    # Mock the jobs-client response
     mock_log_page = create_mock_log_page(
         num_logs=5, total=100, next_page="next_cursor_combined", prev_page="prev_cursor_combined"
     )
-    mock_sdk.jobs.get_logs = AsyncMock(return_value=mock_log_page)
+    mock_jobs.list_job_logs = AsyncMock(return_value=_cursor_page_resp(mock_log_page))
 
     # Make the request with both parameters
     response = client.get("/v2/workspaces/default/test/jobs/test-job-123/logs?limit=5&page_cursor=combined_cursor_xyz")
@@ -469,23 +537,21 @@ def test_get_job_logs_with_both_parameters(mock_service_with_job_routes):
     assert response_data["next_page"] == "next_cursor_combined"
     assert response_data["prev_page"] == "prev_cursor_combined"
 
-    # Verify SDK was called with correct parameters
-    mock_sdk.jobs.get_logs.assert_called_once_with(
+    mock_jobs.list_job_logs.assert_called_once_with(
         workspace="default",
         name="test-job-123",
-        limit=5,
-        page_cursor="combined_cursor_xyz",
+        query_params={"limit": 5, "page_cursor": "combined_cursor_xyz"},
     )
 
 
 def test_get_job_logs_with_zero_limit(mock_service_with_job_routes):
     """Test get_job_logs with limit=0."""
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
     client = TestClient(app)
 
-    # Mock the SDK response
+    # Mock the jobs-client response
     mock_log_page = create_mock_log_page(num_logs=0, total=10, next_page="next_cursor_zero")
-    mock_sdk.jobs.get_logs = AsyncMock(return_value=mock_log_page)
+    mock_jobs.list_job_logs = AsyncMock(return_value=_cursor_page_resp(mock_log_page))
 
     # Make the request with limit=0
     response = client.get("/v2/workspaces/default/test/jobs/test-job-123/logs?limit=0")
@@ -497,23 +563,22 @@ def test_get_job_logs_with_zero_limit(mock_service_with_job_routes):
     assert response_data["total"] == 10
     assert response_data["next_page"] == "next_cursor_zero"
 
-    # Verify SDK was called with correct parameters
-    mock_sdk.jobs.get_logs.assert_called_once_with(
+    # limit=0 is not None, so it is included in query_params.
+    mock_jobs.list_job_logs.assert_called_once_with(
         workspace="default",
         name="test-job-123",
-        limit=0,
-        page_cursor=None,
+        query_params={"limit": 0},
     )
 
 
 def test_get_job_logs_empty_page_cursor(mock_service_with_job_routes):
     """Test get_job_logs with empty string page_cursor."""
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
     client = TestClient(app)
 
-    # Mock the SDK response
+    # Mock the jobs-client response
     mock_log_page = create_mock_log_page(num_logs=3, total=10)
-    mock_sdk.jobs.get_logs = AsyncMock(return_value=mock_log_page)
+    mock_jobs.list_job_logs = AsyncMock(return_value=_cursor_page_resp(mock_log_page))
 
     # Make the request with empty page_cursor
     response = client.get("/v2/workspaces/default/test/jobs/test-job-123/logs?page_cursor=")
@@ -523,29 +588,21 @@ def test_get_job_logs_empty_page_cursor(mock_service_with_job_routes):
     response_data = response.json()
     assert len(response_data["data"]) == 3
 
-    # Verify SDK was called with empty string (which should be treated as None by FastAPI)
-    mock_sdk.jobs.get_logs.assert_called_once_with(
+    # Empty string is not None, so it is included in query_params.
+    mock_jobs.list_job_logs.assert_called_once_with(
         workspace="default",
         name="test-job-123",
-        limit=None,
-        page_cursor="",
+        query_params={"page_cursor": ""},
     )
 
 
 def test_get_job_logs_job_not_found(mock_service_with_job_routes):
     """Test get_job_logs when job is not found."""
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
     client = TestClient(app)
 
-    # Mock the SDK to raise an exception
-    request = Request("GET", "https://api.example.com/jobs/nonexistent-job/logs")
-    mock_sdk.jobs.get_logs = AsyncMock(
-        side_effect=APIStatusError(
-            message="Job not found",
-            response=Response(status_code=404, request=request),
-            body={"detail": "Job not found"},
-        )
-    )
+    # The typed client raises a NemoHTTPError subclass on non-2xx responses.
+    mock_jobs.list_job_logs = AsyncMock(side_effect=_client_error(ClientNotFoundError, 404, "Job not found"))
 
     # Make the request
     response = client.get("/v2/workspaces/default/test/jobs/nonexistent-job/logs")
@@ -555,23 +612,22 @@ def test_get_job_logs_job_not_found(mock_service_with_job_routes):
     response_data = response.json()
     assert "Job not found" in response_data["detail"]
 
-    # Verify SDK was called
-    mock_sdk.jobs.get_logs.assert_called_once_with(
+    # Verify the jobs client was called
+    mock_jobs.list_job_logs.assert_called_once_with(
         workspace="default",
         name="nonexistent-job",
-        limit=None,
-        page_cursor=None,
+        query_params={},
     )
 
 
 def test_get_job_logs_large_limit(mock_service_with_job_routes):
     """Test get_job_logs with a large limit value."""
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
     client = TestClient(app)
 
-    # Mock the SDK response
+    # Mock the jobs-client response
     mock_log_page = create_mock_log_page(num_logs=1000, total=1000)
-    mock_sdk.jobs.get_logs = AsyncMock(return_value=mock_log_page)
+    mock_jobs.list_job_logs = AsyncMock(return_value=_cursor_page_resp(mock_log_page))
 
     # Make the request with large limit
     response = client.get("/v2/workspaces/default/test/jobs/test-job-123/logs?limit=1000")
@@ -582,12 +638,10 @@ def test_get_job_logs_large_limit(mock_service_with_job_routes):
     assert len(response_data["data"]) == 1000
     assert response_data["total"] == 1000
 
-    # Verify SDK was called with correct parameters
-    mock_sdk.jobs.get_logs.assert_called_once_with(
+    mock_jobs.list_job_logs.assert_called_once_with(
         workspace="default",
         name="test-job-123",
-        limit=1000,
-        page_cursor=None,
+        query_params={"limit": 1000},
     )
 
 
@@ -595,12 +649,12 @@ def test_get_job_logs_special_characters_in_cursor(mock_service_with_job_routes)
     """Test get_job_logs with special characters in page_cursor."""
     import urllib.parse
 
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
     client = TestClient(app)
 
-    # Mock the SDK response
+    # Mock the jobs-client response
     mock_log_page = create_mock_log_page(num_logs=2, total=10)
-    mock_sdk.jobs.get_logs = AsyncMock(return_value=mock_log_page)
+    mock_jobs.list_job_logs = AsyncMock(return_value=_cursor_page_resp(mock_log_page))
 
     # Make the request with special characters in cursor (URL encoded)
     special_cursor = "cursor_with_special_chars_!@#$%^&*()_+-="
@@ -612,18 +666,17 @@ def test_get_job_logs_special_characters_in_cursor(mock_service_with_job_routes)
     response_data = response.json()
     assert len(response_data["data"]) == 2
 
-    # Verify SDK was called with correct parameters (decoded)
-    mock_sdk.jobs.get_logs.assert_called_once_with(
+    # Verify the jobs client was called with correct parameters (decoded)
+    mock_jobs.list_job_logs.assert_called_once_with(
         workspace="default",
         name="test-job-123",
-        limit=None,
-        page_cursor=special_cursor,
+        query_params={"page_cursor": special_cursor},
     )
 
 
 def test_get_job_logs_response_structure(mock_service_with_job_routes):
     """Test that get_job_logs returns proper PlatformJobLogPage structure."""
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
     client = TestClient(app)
 
     # Create a detailed mock log page
@@ -651,7 +704,7 @@ def test_get_job_logs_response_structure(mock_service_with_job_routes):
         prev_page="cursor_prev_page_123",
     )
 
-    mock_sdk.jobs.get_logs = AsyncMock(return_value=mock_log_page)
+    mock_jobs.list_job_logs = AsyncMock(return_value=_cursor_page_resp(mock_log_page))
 
     # Make the request
     response = client.get("/v2/workspaces/default/test/jobs/test-job-456/logs?limit=2&page_cursor=middle_cursor")
@@ -674,30 +727,19 @@ def test_get_job_logs_response_structure(mock_service_with_job_routes):
     assert log_entry["job_task"] == "data_validation"
     assert log_entry["message"] == "Starting data validation process"
 
-    # Verify SDK was called with correct parameters
-    mock_sdk.jobs.get_logs.assert_called_once_with(
+    # Verify the jobs client was called with correct parameters
+    mock_jobs.list_job_logs.assert_called_once_with(
         workspace="default",
         name="test-job-456",
-        limit=2,
-        page_cursor="middle_cursor",
+        query_params={"limit": 2, "page_cursor": "middle_cursor"},
     )
 
 
 def test_list_jobs_no_results(mock_service_with_job_routes):
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
 
     client = TestClient(app)
-    mock_sdk.jobs.list = AsyncMock(
-        return_value=Page(
-            data=[],
-            pagination=PaginationData(page=1, page_size=5, current_page_size=0, total_pages=0, total_results=0),
-            sort="-created_at",
-            filter={
-                "source": "test_service",
-                "status": "completed",
-            },
-        )
-    )
+    mock_jobs.list_jobs = AsyncMock(return_value=_page_resp([], page=1, page_size=5, total_pages=0, total_results=0))
 
     response = client.get("/v2/workspaces/default/test/jobs?page=1&page_size=5&filter[status]=completed")
 
@@ -709,14 +751,14 @@ def test_list_jobs_no_results(mock_service_with_job_routes):
     # The user filter is AND-composed with the service-source predicate so
     # logical roots ($or/$and/$not) stay scoped — a flat dict merge would
     # silently drop the source clause under a logical root. The composed tree
-    # is forwarded as a JSON string via ``extra_query`` so the SDK querystring
+    # is forwarded as a JSON string in ``query_params`` so the querystring
     # serializer doesn't mangle list-of-dict values.
-    mock_sdk.jobs.list.assert_called_once_with(
+    mock_jobs.list_jobs.assert_called_once_with(
         workspace="default",
-        page=1,
-        page_size=5,
-        sort="-created_at",
-        extra_query={
+        query_params={
+            "page": 1,
+            "page_size": 5,
+            "sort": "-created_at",
             "filter": json.dumps(
                 {
                     "$and": [
@@ -724,25 +766,26 @@ def test_list_jobs_no_results(mock_service_with_job_routes):
                         {"source": {"$eq": "test_service"}},
                     ]
                 }
-            )
+            ),
         },
     )
 
 
 def test_list_jobs_with_results(mock_service_with_job_routes):
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
 
     client = TestClient(app)
-    mock_sdk.jobs.list = AsyncMock(
-        return_value=Page(
-            data=[
+    mock_jobs.list_jobs = AsyncMock(
+        return_value=_page_resp(
+            [
                 create_mock_platform_job("job-1", "completed", "2023-01-01T10:00:00Z"),
                 create_mock_platform_job("job-2", "completed", "2023-01-01T11:00:00Z"),
                 create_mock_platform_job("job-3", "completed", "2023-01-01T12:00:00Z"),
             ],
-            pagination=PaginationData(page=1, page_size=5, current_page_size=3, total_pages=1, total_results=3),
-            sort="-created_at",
-            filter={"source": "test_service"},
+            page=1,
+            page_size=5,
+            total_pages=1,
+            total_results=3,
         )
     )
 
@@ -759,38 +802,42 @@ def test_list_jobs_with_results(mock_service_with_job_routes):
     assert response_data["pagination"]["total_results"] == 3
 
     # No user filter — source predicate stands alone (no $and wrap needed).
-    mock_sdk.jobs.list.assert_called_once_with(
+    mock_jobs.list_jobs.assert_called_once_with(
         workspace="default",
-        page=1,
-        page_size=5,
-        sort="-created_at",
-        extra_query={"filter": json.dumps({"source": {"$eq": "test_service"}})},
+        query_params={
+            "page": 1,
+            "page_size": 5,
+            "sort": "-created_at",
+            "filter": json.dumps({"source": {"$eq": "test_service"}}),
+        },
     )
 
 
 def test_list_jobs_with_multiple_pages(mock_service_with_job_routes):
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
 
     client = TestClient(app)
-    mock_sdk.jobs.list = AsyncMock(
+    mock_jobs.list_jobs = AsyncMock(
         side_effect=[
-            Page(
-                data=[
+            _page_resp(
+                [
                     create_mock_platform_job("job-1", "active", "2023-01-01T10:00:00Z"),
                     create_mock_platform_job("job-2", "active", "2023-01-01T11:00:00Z"),
                 ],
-                pagination=PaginationData(page=1, page_size=2, current_page_size=2, total_pages=3, total_results=6),
-                sort="-created_at",
-                filter={"source": "test_service", "status": "active"},
+                page=1,
+                page_size=2,
+                total_pages=3,
+                total_results=6,
             ),
-            Page(
-                data=[
+            _page_resp(
+                [
                     create_mock_platform_job("job-3", "active", "2023-01-01T10:00:00Z"),
                     create_mock_platform_job("job-4", "active", "2023-01-01T11:00:00Z"),
                 ],
-                pagination=PaginationData(page=2, page_size=2, current_page_size=2, total_pages=3, total_results=6),
-                sort="-created_at",
-                filter={"source": "test_service", "status": "active"},
+                page=2,
+                page_size=2,
+                total_pages=3,
+                total_results=6,
             ),
         ]
     )
@@ -812,16 +859,18 @@ def test_list_jobs_with_multiple_pages(mock_service_with_job_routes):
             ]
         }
     )
-    mock_sdk.jobs.list.assert_called_once_with(
+    mock_jobs.list_jobs.assert_called_once_with(
         workspace="default",
-        page=1,
-        page_size=2,
-        sort="-created_at",
-        extra_query={"filter": expected_filter},
+        query_params={
+            "page": 1,
+            "page_size": 2,
+            "sort": "-created_at",
+            "filter": expected_filter,
+        },
     )
 
     # Fetch the second page
-    mock_sdk.reset_mock()
+    mock_jobs.list_jobs.reset_mock()
     response = client.get("/v2/workspaces/default/test/jobs?page=2&page_size=2&filter[status]=active")
 
     response_data = response.json()
@@ -830,29 +879,32 @@ def test_list_jobs_with_multiple_pages(mock_service_with_job_routes):
     assert response_data["pagination"]["total_pages"] == 3
     assert response_data["pagination"]["total_results"] == 6
 
-    mock_sdk.jobs.list.assert_called_once_with(
+    mock_jobs.list_jobs.assert_called_once_with(
         workspace="default",
-        page=2,
-        page_size=2,
-        sort="-created_at",
-        extra_query={"filter": expected_filter},
+        query_params={
+            "page": 2,
+            "page_size": 2,
+            "sort": "-created_at",
+            "filter": expected_filter,
+        },
     )
 
 
 def test_list_jobs_with_custom_sort(mock_service_with_job_routes):
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
 
     client = TestClient(app)
-    mock_sdk.jobs.list = AsyncMock(
-        return_value=Page(
-            data=[
+    mock_jobs.list_jobs = AsyncMock(
+        return_value=_page_resp(
+            [
                 create_mock_platform_job("job-3", "completed", "2023-01-03T10:00:00Z"),
                 create_mock_platform_job("job-2", "completed", "2023-01-02T10:00:00Z"),
                 create_mock_platform_job("job-1", "completed", "2023-01-01T10:00:00Z"),
             ],
-            pagination=PaginationData(page=1, page_size=10, current_page_size=3, total_pages=1, total_results=3),
-            sort="created_at",
-            filter={"source": "test_service"},
+            page=1,
+            page_size=10,
+            total_pages=1,
+            total_results=3,
         )
     )
 
@@ -864,32 +916,34 @@ def test_list_jobs_with_custom_sort(mock_service_with_job_routes):
     assert response_data["data"][1]["id"] == "job-2"
     assert response_data["data"][2]["id"] == "job-1"
 
-    mock_sdk.jobs.list.assert_called_once_with(
+    mock_jobs.list_jobs.assert_called_once_with(
         workspace="default",
-        page=1,
-        page_size=10,
-        sort="created_at",
-        extra_query={"filter": json.dumps({"source": {"$eq": "test_service"}})},
+        query_params={
+            "page": 1,
+            "page_size": 10,
+            "sort": "created_at",
+            "filter": json.dumps({"source": {"$eq": "test_service"}}),
+        },
     )
 
 
 def test_list_jobs_invalid_filter(mock_service_with_job_routes):
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
 
     client = TestClient(app)
     # ``source`` is not in BaseJobsListFilter — make_filter_dep's allowlist
-    # rejects unknown fields with a 400 before any SDK call is made.
+    # rejects unknown fields with a 400 before any jobs-client call is made.
     response = client.get("/v2/workspaces/default/test/jobs?page=1&page_size=5&filter[source]=foo")
 
     assert response.status_code == 400
     response_data = response.json()
     assert "source" in response_data["detail"]
 
-    mock_sdk.jobs.list.assert_not_called()
+    mock_jobs.list_jobs.assert_not_called()
 
 
 def test_list_jobs_invalid_sort(mock_service_with_job_routes):
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
 
     client = TestClient(app)
     response = client.get("/v2/workspaces/default/test/jobs?page=1&page_size=5&sort=foo")
@@ -901,12 +955,12 @@ def test_list_jobs_invalid_sort(mock_service_with_job_routes):
         == "Input should be 'created_at', '-created_at', 'updated_at' or '-updated_at'"
     )
 
-    mock_sdk.jobs.list.assert_not_called()
+    mock_jobs.list_jobs.assert_not_called()
 
 
 def test_list_job_results_includes_download_url(mock_service_with_job_routes):
     """Test that list_job_results includes download_url for each result."""
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
     client = TestClient(app)
 
     mock_results = [
@@ -926,11 +980,7 @@ def test_list_job_results_includes_download_url(mock_service_with_job_routes):
         ),
     ]
 
-    mock_sdk.jobs.results.list = AsyncMock(
-        return_value=PlatformJobListResultResponse(
-            data=mock_results,
-        )
-    )
+    mock_jobs.list_job_results = AsyncMock(return_value=_resp(PlatformJobListResultResponse(data=mock_results)))
 
     # Make the request
     response = client.get("/v2/workspaces/default/test/jobs/test-job-123/results")
@@ -960,20 +1010,16 @@ def test_list_job_results_includes_download_url(mock_service_with_job_routes):
         == "http://testserver/v2/workspaces/default/test/jobs/test-job-123/results/result2/download"
     )
 
-    # Verify SDK was called correctly
-    mock_sdk.jobs.results.list.assert_called_once_with(name="test-job-123", workspace="default")
+    # Verify the jobs client was called correctly
+    mock_jobs.list_job_results.assert_called_once_with(name="test-job-123", workspace="default")
 
 
 def test_list_job_results_empty_list(mock_service_with_job_routes):
     """Test that list_job_results works correctly with empty results."""
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
     client = TestClient(app)
 
-    mock_sdk.jobs.results.list = AsyncMock(
-        return_value=PlatformJobListResultResponse(
-            data=[],
-        )
-    )
+    mock_jobs.list_job_results = AsyncMock(return_value=_resp(PlatformJobListResultResponse(data=[])))
 
     # Make the request
     response = client.get("/v2/workspaces/default/test/jobs/test-job-456/results")
@@ -984,13 +1030,13 @@ def test_list_job_results_empty_list(mock_service_with_job_routes):
     assert "data" in response_data
     assert len(response_data["data"]) == 0
 
-    # Verify SDK was called correctly
-    mock_sdk.jobs.results.list.assert_called_once_with(name="test-job-456", workspace="default")
+    # Verify the jobs client was called correctly
+    mock_jobs.list_job_results.assert_called_once_with(name="test-job-456", workspace="default")
 
 
 def test_get_job_result_includes_download_url(mock_service_with_job_routes):
     """Test that get_job_result includes download_url in the response."""
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
     client = TestClient(app)
 
     # Create mock result without download_url
@@ -1002,7 +1048,7 @@ def test_get_job_result_includes_download_url(mock_service_with_job_routes):
         artifact_url="default/test-fileset#test_result",
     )
 
-    mock_sdk.jobs.results.retrieve = AsyncMock(return_value=mock_result)
+    mock_jobs.get_job_result = AsyncMock(return_value=_resp(mock_result))
 
     # Make the request
     response = client.get("/v2/workspaces/default/test/jobs/test-job-789/results/test_result")
@@ -1025,13 +1071,13 @@ def test_get_job_result_includes_download_url(mock_service_with_job_routes):
     assert response_data["artifact_storage_type"] == "fileset"
     assert response_data["artifact_url"] == "default/test-fileset#test_result"
 
-    # Verify SDK was called correctly
-    mock_sdk.jobs.results.retrieve.assert_called_once_with(name="test_result", job="test-job-789", workspace="default")
+    # Verify the jobs client was called correctly
+    mock_jobs.get_job_result.assert_called_once_with(name="test_result", job="test-job-789", workspace="default")
 
 
 def test_get_job_result_download_url_format(mock_service_with_job_routes):
     """Test that download_url has the correct format with special characters in result name."""
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
     client = TestClient(app)
 
     # Create mock result with a result name that has underscores
@@ -1043,7 +1089,7 @@ def test_get_job_result_download_url_format(mock_service_with_job_routes):
         artifact_url="default/test-fileset#evaluation_report_v1",
     )
 
-    mock_sdk.jobs.results.retrieve = AsyncMock(return_value=mock_result)
+    mock_jobs.get_job_result = AsyncMock(return_value=_resp(mock_result))
 
     # Make the request
     response = client.get("/v2/workspaces/default/test/jobs/test-job-abc/results/evaluation_report_v1")
@@ -1060,15 +1106,15 @@ def test_get_job_result_download_url_format(mock_service_with_job_routes):
         == "http://testserver/v2/workspaces/default/test/jobs/test-job-abc/results/evaluation_report_v1/download"
     )
 
-    # Verify SDK was called correctly
-    mock_sdk.jobs.results.retrieve.assert_called_once_with(
+    # Verify the jobs client was called correctly
+    mock_jobs.get_job_result.assert_called_once_with(
         name="evaluation_report_v1", job="test-job-abc", workspace="default"
     )
 
 
 def test_list_job_results_download_url_different_job_ids(mock_service_with_job_routes):
     """Test that download_url correctly reflects different job IDs."""
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
     client = TestClient(app)
 
     # Test with different job IDs
@@ -1083,11 +1129,7 @@ def test_list_job_results_download_url_different_job_ids(mock_service_with_job_r
             artifact_url=f"default/test-fileset#{job_id}/output",
         )
 
-        mock_sdk.jobs.results.list = AsyncMock(
-            return_value=PlatformJobListResultResponse(
-                data=[mock_result],
-            )
-        )
+        mock_jobs.list_job_results = AsyncMock(return_value=_resp(PlatformJobListResultResponse(data=[mock_result])))
 
         # Make the request
         response = client.get(f"/v2/workspaces/default/test/jobs/{job_id}/results")
@@ -1102,26 +1144,16 @@ def test_list_job_results_download_url_different_job_ids(mock_service_with_job_r
         )
 
         # Reset mock for next iteration
-        mock_sdk.reset_mock()
+        mock_jobs.reset_mock()
 
 
 def test_get_job_result_not_found(mock_service_with_job_routes):
     """Test that get_job_result handles not found errors correctly."""
-    app, mock_sdk = mock_service_with_job_routes
+    app, mock_jobs = mock_service_with_job_routes
     client = TestClient(app)
 
-    from httpx import Request, Response
-    from nemo_platform import APIStatusError
-
-    # Mock the SDK to raise a 404 error
-    request = Request("GET", "https://api.example.com/jobs/nonexistent-job/results/nonexistent-result")
-    mock_sdk.jobs.results.retrieve = AsyncMock(
-        side_effect=APIStatusError(
-            message="Result not found",
-            response=Response(status_code=404, request=request),
-            body={"detail": "Result not found"},
-        )
-    )
+    # The typed client raises a NemoHTTPError subclass on non-2xx responses.
+    mock_jobs.get_job_result = AsyncMock(side_effect=_client_error(ClientNotFoundError, 404, "Result not found"))
 
     # Make the request
     response = client.get("/v2/workspaces/default/test/jobs/nonexistent-job/results/nonexistent-result")
@@ -1131,8 +1163,8 @@ def test_get_job_result_not_found(mock_service_with_job_routes):
     response_data = response.json()
     assert "Result not found" in response_data["detail"]
 
-    # Verify SDK was called
-    mock_sdk.jobs.results.retrieve.assert_called_once_with(
+    # Verify the jobs client was called
+    mock_jobs.get_job_result.assert_called_once_with(
         name="nonexistent-result", job="nonexistent-job", workspace="default"
     )
 
@@ -1418,10 +1450,12 @@ def test_create_job_injects_workspace_and_entity_client():
     app.dependency_overrides[get_sdk_client] = lambda: mock_sdk
     app.dependency_overrides[get_entity_client] = lambda: mock_entity_client
 
-    mock_sdk.jobs.create = AsyncMock(return_value=create_mock_platform_job("test-job-123", "pending"))
+    mock_jobs = MagicMock()
+    mock_jobs.create_job = AsyncMock(return_value=_resp(create_mock_platform_job("test-job-123", "pending")))
 
     client = TestClient(app)
-    response = client.post("/v2/workspaces/default/test/jobs", json={"spec": {"foo": "test", "bar": 42}})
+    with patch("nemo_platform_plugin.jobs.api_factory.client_from_platform", return_value=mock_jobs):
+        response = client.post("/v2/workspaces/default/test/jobs", json={"spec": {"foo": "test", "bar": 42}})
 
     assert response.status_code == 201
     assert received_workspace == "default"
@@ -1464,13 +1498,15 @@ def test_sync_compiler_is_called_correctly():
     app.include_router(router, prefix="/v2/workspaces/{workspace}/test")
 
     mock_sdk = MagicMock()
-    mock_sdk.jobs.create = AsyncMock(return_value=create_mock_platform_job("test-job-123", "pending"))
+    mock_jobs = MagicMock()
+    mock_jobs.create_job = AsyncMock(return_value=_resp(create_mock_platform_job("test-job-123", "pending")))
 
     app.dependency_overrides[get_sdk_client] = lambda: mock_sdk
     app.dependency_overrides[get_entity_client] = lambda: mock_entity_client
 
     client = TestClient(app)
-    response = client.post("/v2/workspaces/default/test/jobs", json={"spec": {"foo": "test", "bar": 42}})
+    with patch("nemo_platform_plugin.jobs.api_factory.client_from_platform", return_value=mock_jobs):
+        response = client.post("/v2/workspaces/default/test/jobs", json={"spec": {"foo": "test", "bar": 42}})
 
     assert response.status_code == 201
     assert compiler_called, "Sync compiler should have been called"
@@ -1736,31 +1772,21 @@ class TestCompilePlatformSpec:
         assert "not json serializable" in exc_info.value.detail.lower()
 
 
-def _make_api_status_error(status_code: int, detail: str) -> APIStatusError:
-    """Create an APIStatusError with a realistic body structure."""
-    body = {"detail": detail}
-    return APIStatusError(
-        message=f"Error code: {status_code} - {body}",
-        response=Response(status_code=status_code, json=body, request=Request("POST", "http://test")),
-        body=body,
-    )
-
-
 class TestSDKExceptionHandling:
-    """Tests that APIStatusError from SDK calls is handled by the global exception handler.
+    """Tests that NemoHTTPError from typed-client calls is handled by the global exception handler.
 
-    The api_factory endpoints should NOT catch APIStatusError themselves — the global
-    sdk_status_error_handler registered on the app extracts the detail cleanly from
-    the exception body, avoiding the ugly stringified format like:
+    The api_factory endpoints should NOT catch the client errors themselves — the global
+    nemo_client_error_handler registered on the app extracts the detail cleanly from
+    the exception, avoiding an ugly stringified format like:
         {"detail": "Error code: 409 - {'detail': 'Job already exists'}"}
     """
 
     def test_create_job_duplicate_name_returns_clean_409(self, mock_service_with_job_routes):
-        app, mock_sdk = mock_service_with_job_routes
+        app, mock_jobs = mock_service_with_job_routes
         client = TestClient(app, raise_server_exceptions=False)
 
         error_detail = "Unable to create job: Job with name 'my-job' already exists in workspace 'default'."
-        mock_sdk.jobs.create = AsyncMock(side_effect=_make_api_status_error(409, error_detail))
+        mock_jobs.create_job = AsyncMock(side_effect=_client_error(ClientConflictError, 409, error_detail))
 
         response = client.post(
             "/v2/workspaces/default/test/jobs",
@@ -1771,11 +1797,11 @@ class TestSDKExceptionHandling:
         assert response.json()["detail"] == error_detail
 
     def test_get_job_not_found_returns_clean_404(self, mock_service_with_job_routes):
-        app, mock_sdk = mock_service_with_job_routes
+        app, mock_jobs = mock_service_with_job_routes
         client = TestClient(app, raise_server_exceptions=False)
 
         error_detail = "Job 'nonexistent' not found in workspace 'default'."
-        mock_sdk.jobs.retrieve = AsyncMock(side_effect=_make_api_status_error(404, error_detail))
+        mock_jobs.get_job = AsyncMock(side_effect=_client_error(ClientNotFoundError, 404, error_detail))
 
         response = client.get("/v2/workspaces/default/test/jobs/nonexistent")
 
@@ -1783,11 +1809,11 @@ class TestSDKExceptionHandling:
         assert response.json()["detail"] == error_detail
 
     def test_delete_job_not_found_returns_clean_404(self, mock_service_with_job_routes):
-        app, mock_sdk = mock_service_with_job_routes
+        app, mock_jobs = mock_service_with_job_routes
         client = TestClient(app, raise_server_exceptions=False)
 
         error_detail = "Job 'nonexistent' not found."
-        mock_sdk.jobs.delete = AsyncMock(side_effect=_make_api_status_error(404, error_detail))
+        mock_jobs.delete_job = AsyncMock(side_effect=_client_error(ClientNotFoundError, 404, error_detail))
 
         response = client.delete("/v2/workspaces/default/test/jobs/nonexistent")
 
@@ -1795,11 +1821,11 @@ class TestSDKExceptionHandling:
         assert response.json()["detail"] == error_detail
 
     def test_cancel_job_bad_state_returns_clean_409(self, mock_service_with_job_routes):
-        app, mock_sdk = mock_service_with_job_routes
+        app, mock_jobs = mock_service_with_job_routes
         client = TestClient(app, raise_server_exceptions=False)
 
         error_detail = "Job 'my-job' cannot be cancelled in its current state."
-        mock_sdk.jobs.cancel = AsyncMock(side_effect=_make_api_status_error(409, error_detail))
+        mock_jobs.cancel_job = AsyncMock(side_effect=_client_error(ClientConflictError, 409, error_detail))
 
         response = client.post("/v2/workspaces/default/test/jobs/my-job/cancel")
 
@@ -1807,11 +1833,11 @@ class TestSDKExceptionHandling:
         assert response.json()["detail"] == error_detail
 
     def test_pause_job_returns_clean_error(self, mock_service_with_job_routes):
-        app, mock_sdk = mock_service_with_job_routes
+        app, mock_jobs = mock_service_with_job_routes
         client = TestClient(app, raise_server_exceptions=False)
 
         error_detail = "Job 'my-job' cannot be paused."
-        mock_sdk.jobs.pause = AsyncMock(side_effect=_make_api_status_error(409, error_detail))
+        mock_jobs.pause_job = AsyncMock(side_effect=_client_error(ClientConflictError, 409, error_detail))
 
         response = client.post("/v2/workspaces/default/test/jobs/my-job/pause")
 
@@ -1819,11 +1845,11 @@ class TestSDKExceptionHandling:
         assert response.json()["detail"] == error_detail
 
     def test_resume_job_returns_clean_error(self, mock_service_with_job_routes):
-        app, mock_sdk = mock_service_with_job_routes
+        app, mock_jobs = mock_service_with_job_routes
         client = TestClient(app, raise_server_exceptions=False)
 
         error_detail = "Job 'my-job' cannot be resumed."
-        mock_sdk.jobs.resume = AsyncMock(side_effect=_make_api_status_error(409, error_detail))
+        mock_jobs.resume_job = AsyncMock(side_effect=_client_error(ClientConflictError, 409, error_detail))
 
         response = client.post("/v2/workspaces/default/test/jobs/my-job/resume")
 
@@ -1831,11 +1857,11 @@ class TestSDKExceptionHandling:
         assert response.json()["detail"] == error_detail
 
     def test_get_logs_returns_clean_error(self, mock_service_with_job_routes):
-        app, mock_sdk = mock_service_with_job_routes
+        app, mock_jobs = mock_service_with_job_routes
         client = TestClient(app, raise_server_exceptions=False)
 
         error_detail = "Job 'nonexistent' not found."
-        mock_sdk.jobs.get_logs = AsyncMock(side_effect=_make_api_status_error(404, error_detail))
+        mock_jobs.list_job_logs = AsyncMock(side_effect=_client_error(ClientNotFoundError, 404, error_detail))
 
         response = client.get("/v2/workspaces/default/test/jobs/nonexistent/logs")
 
@@ -1843,11 +1869,11 @@ class TestSDKExceptionHandling:
         assert response.json()["detail"] == error_detail
 
     def test_list_results_returns_clean_error(self, mock_service_with_job_routes):
-        app, mock_sdk = mock_service_with_job_routes
+        app, mock_jobs = mock_service_with_job_routes
         client = TestClient(app, raise_server_exceptions=False)
 
         error_detail = "Job 'nonexistent' not found."
-        mock_sdk.jobs.results.list = AsyncMock(side_effect=_make_api_status_error(404, error_detail))
+        mock_jobs.list_job_results = AsyncMock(side_effect=_client_error(ClientNotFoundError, 404, error_detail))
 
         response = client.get("/v2/workspaces/default/test/jobs/nonexistent/results")
 
@@ -1857,11 +1883,11 @@ class TestSDKExceptionHandling:
     def test_error_detail_is_not_stringified(self, mock_service_with_job_routes):
         """Verify the response detail is the clean string, not a stringified repr like
         "Error code: 409 - {'detail': '...'}" which was the old behavior."""
-        app, mock_sdk = mock_service_with_job_routes
+        app, mock_jobs = mock_service_with_job_routes
         client = TestClient(app, raise_server_exceptions=False)
 
         error_detail = "Job already exists."
-        mock_sdk.jobs.create = AsyncMock(side_effect=_make_api_status_error(409, error_detail))
+        mock_jobs.create_job = AsyncMock(side_effect=_client_error(ClientConflictError, 409, error_detail))
 
         response = client.post(
             "/v2/workspaces/default/test/jobs",

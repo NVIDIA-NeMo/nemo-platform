@@ -1,6 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import {
+  type DataDesignerConfig,
+  DatetimeSamplerParamsUnit,
+  PersonSamplerParamsSex,
+  SamplerType,
+  TimeDeltaSamplerParamsUnit,
+} from '@nemo/sdk/generated/data-designer/schema';
 import { COLUMN_TYPE_GROUPS } from '@studio/components/AddColumnPalette/constants';
 import type {
   AddColumnSelection,
@@ -10,6 +17,10 @@ import type {
 } from '@studio/components/AddColumnPalette/types';
 import type { TemplateColumnSpec } from '@studio/components/CreateFilesetStart/types';
 import type { DagEdge, DagNode } from '@studio/components/DagCanvas/types';
+import {
+  type BuilderModel,
+  buildModelConfigs,
+} from '@studio/routes/DataDesignerJobBuildRoute/models';
 
 export type FieldReference =
   /** Value is a Jinja2 template; `{{ column_name }}` tokens are dependencies. */
@@ -19,7 +30,14 @@ export type FieldReference =
   /** Value is a comma-separated list of column names. */
   | 'list';
 
-export type FieldKind = 'text' | 'textarea' | 'select';
+/** Input control kind for a column config field. */
+export type FieldKind = 'text' | 'textarea' | 'select' | 'number' | 'switch';
+
+/**
+ * How a field's string value is serialized into the SDK column config. Defaults to a plain
+ * string; sampler params commonly need numbers, booleans, JSON objects, or numeric lists.
+ */
+export type FieldDataType = 'string' | 'number' | 'boolean' | 'json' | 'number-list';
 
 export interface ColumnField {
   /** Key into {@link BuilderColumn.values} and the eventual SDK config. */
@@ -32,20 +50,30 @@ export interface ColumnField {
   options?: readonly { label: string; value: string }[];
   /** If set, values in this field create dependency edges to other columns. */
   reference?: FieldReference;
+  /**
+   * Serialize the value as a comma-separated list (e.g. sampler category values). Unlike
+   * `reference: 'list'`, this does not treat the entries as column names / dependencies.
+   */
+  list?: boolean;
+  /**
+   * How to coerce the string form value when serializing to the SDK config. Defaults to a
+   * plain string; `number`/`boolean` parse the value, `json` parses an object/array literal.
+   * Used by sampler params whose SDK types are non-string (see PARAM_FIELDS_BY_SAMPLER_TYPE).
+   */
+  valueType?: 'number' | 'boolean' | 'json';
+  /**
+   * How the string value is coerced for the SDK config (number, boolean, JSON, numeric list).
+   * Defaults to `'string'`. Also drives validation (numbers must parse, JSON must be well-formed).
+   */
+  dataType?: FieldDataType;
 }
 
-/**
- * A column the user has added to the canvas: the picked catalog option plus the values
- * entered in the config modal. `name` is the column's identifier — other columns
- * reference it via `{{ name }}`. Not yet the SDK column config.
- */
+/** Not yet the SDK column config — that's produced by {@link buildDataDesignerConfig}. */
 export interface BuilderColumn {
   /** Canvas-unique id (also the DAG node id). */
   id: string;
   option: ColumnTypeOption;
-  /** The column name (Jinja2 identifier other columns can reference). */
   name: string;
-  /** Field values keyed by {@link ColumnField.key}. */
   values: Record<string, string>;
 }
 
@@ -101,10 +129,6 @@ const SYSTEM_PROMPT_FIELD: ColumnField = {
   helperText: 'Optional. Also supports {{ column_name }} references.',
 };
 
-/**
- * The user-editable fields for a column type, in display order. `name` is handled
- * separately by the modal (every column has one), so it is not included here.
- */
 const FIELDS_BY_COLUMN_TYPE: Record<NonNullable<DataDesignerColumnType>, ColumnField[]> = {
   'llm-text': [PROMPT_FIELD, MODEL_ALIAS_FIELD, SYSTEM_PROMPT_FIELD],
   'llm-code': [
@@ -132,7 +156,21 @@ const FIELDS_BY_COLUMN_TYPE: Record<NonNullable<DataDesignerColumnType>, ColumnF
     },
     SYSTEM_PROMPT_FIELD,
   ],
-  'llm-judge': [PROMPT_FIELD, MODEL_ALIAS_FIELD, SYSTEM_PROMPT_FIELD],
+  'llm-judge': [
+    PROMPT_FIELD,
+    MODEL_ALIAS_FIELD,
+    {
+      key: 'scores',
+      label: 'Scores (JSON)',
+      kind: 'textarea',
+      dataType: 'json',
+      required: true,
+      placeholder:
+        '[{ "name": "Quality", "description": "Overall answer quality.", "options": { "1": "Very poor", "5": "Excellent" } }]',
+      helperText: 'JSON array of judge score definitions.',
+    },
+    SYSTEM_PROMPT_FIELD,
+  ],
   image: [
     { ...PROMPT_FIELD, placeholder: 'Generate an image of {{ subject }}.' },
     MODEL_ALIAS_FIELD,
@@ -184,6 +222,16 @@ const FIELDS_BY_COLUMN_TYPE: Record<NonNullable<DataDesignerColumnType>, ColumnF
       required: true,
       options: asOptions(['code', 'local_callable', 'remote']),
     },
+    {
+      key: 'validator_params',
+      label: 'Validator params (JSON)',
+      kind: 'textarea',
+      dataType: 'json',
+      required: true,
+      placeholder: '{ "code_lang": "python" }',
+      helperText:
+        'Parameters for the chosen validator. For "code": { "code_lang": "python" }. For "remote": { "url": "https://…" }.',
+    },
   ],
   'seed-dataset': [],
   custom: [
@@ -194,6 +242,8 @@ const FIELDS_BY_COLUMN_TYPE: Record<NonNullable<DataDesignerColumnType>, ColumnF
       options: asOptions(['cell_by_cell', 'full_column']),
     },
   ],
+  // Shared across all sampler sub-types, emitted at the top level of the sampler config.
+  // Sub-type-specific fields (collected into `params`) come from PARAM_FIELDS_BY_SAMPLER_TYPE.
   sampler: [
     {
       key: 'convert_to',
@@ -205,8 +255,322 @@ const FIELDS_BY_COLUMN_TYPE: Record<NonNullable<DataDesignerColumnType>, ColumnF
   ],
 };
 
-export const getColumnFields = (columnType: DataDesignerColumnType): ColumnField[] =>
-  columnType ? (FIELDS_BY_COLUMN_TYPE[columnType] ?? []) : [];
+const BOOL_OPTIONS = [
+  { label: 'Yes', value: 'true' },
+  { label: 'No', value: 'false' },
+] as const;
+
+/** `p` (probability of success) field, shared by the Bernoulli-family samplers. */
+const probabilityField = (helperText: string): ColumnField => ({
+  key: 'p',
+  label: 'Probability of success (p)',
+  kind: 'number',
+  dataType: 'number',
+  required: true,
+  placeholder: '0.0 – 1.0',
+  helperText,
+});
+
+/** Optional `decimal_places` rounding field, shared by the continuous distributions. */
+const DECIMAL_PLACES_FIELD: ColumnField = {
+  key: 'decimal_places',
+  label: 'Decimal places (optional)',
+  kind: 'number',
+  dataType: 'number',
+  placeholder: 'e.g. 2',
+  helperText: 'Round sampled values to this many decimal places.',
+};
+
+/** `dist_name` / `dist_params` fields, shared by the Scipy and Bernoulli-mixture samplers. */
+const DIST_NAME_FIELD: ColumnField = {
+  key: 'dist_name',
+  label: 'Distribution name',
+  kind: 'text',
+  required: true,
+  placeholder: 'e.g. beta, gamma, expon',
+  helperText: 'A scipy.stats distribution name.',
+};
+
+const DIST_PARAMS_FIELD: ColumnField = {
+  key: 'dist_params',
+  label: 'Distribution parameters (JSON)',
+  kind: 'textarea',
+  dataType: 'json',
+  required: true,
+  placeholder: '{ "a": 2, "b": 5 }',
+  helperText: 'JSON object of parameters for the scipy.stats distribution.',
+};
+
+/** `locale` / `sex` / `city` / `age_range` fields shared by the two Person samplers. */
+const PERSON_SHARED_FIELDS: ColumnField[] = [
+  {
+    key: 'locale',
+    label: 'Locale (optional)',
+    kind: 'text',
+    placeholder: 'e.g. en_US',
+    helperText: 'Language and geographic region to sample from.',
+  },
+  {
+    key: 'sex',
+    label: 'Sex (optional)',
+    kind: 'select',
+    options: asOptions(Object.values(PersonSamplerParamsSex)),
+    helperText: 'Restrict sampling to a single sex.',
+  },
+  {
+    key: 'city',
+    label: 'City (optional)',
+    kind: 'text',
+    list: true,
+    placeholder: 'e.g. San Jose, Austin',
+    helperText: 'Comma-separated city names to restrict to.',
+  },
+  {
+    key: 'age_range',
+    label: 'Age range (optional)',
+    kind: 'text',
+    dataType: 'number-list',
+    placeholder: 'e.g. 18, 65',
+    helperText: 'Two comma-separated ages: min, max.',
+  },
+];
+
+/**
+ * Sampler sub-type-specific fields, collected into the sampler config's required `params`
+ * object (see `SamplerColumnConfig`). Every sampler sub-type surfaced in the palette is
+ * listed; sub-types with no builder-editable params map to an empty array.
+ */
+const PARAM_FIELDS_BY_SAMPLER_TYPE: Partial<Record<SamplerType, ColumnField[]>> = {
+  [SamplerType.uuid]: [
+    {
+      key: 'prefix',
+      label: 'Prefix (optional)',
+      kind: 'text',
+      placeholder: 'e.g. user-',
+      helperText: 'Prepended to each generated UUID.',
+    },
+    {
+      key: 'short_form',
+      label: 'Short form (optional)',
+      kind: 'select',
+      valueType: 'boolean',
+      options: BOOL_OPTIONS,
+      helperText: 'Truncate UUIDs to 8 characters.',
+    },
+    {
+      key: 'uppercase',
+      label: 'Uppercase (optional)',
+      kind: 'select',
+      valueType: 'boolean',
+      options: BOOL_OPTIONS,
+      helperText: 'Capitalize all letters in the UUID.',
+    },
+  ],
+  [SamplerType.category]: [
+    {
+      key: 'values',
+      label: 'Categories',
+      kind: 'textarea',
+      required: true,
+      list: true,
+      placeholder: 'science, technology, history, arts, business',
+      helperText: 'Comma-separated values to sample from.',
+    },
+    {
+      key: 'weights',
+      label: 'Weights (optional)',
+      kind: 'text',
+      dataType: 'number-list',
+      placeholder: 'e.g. 3, 1, 1, 2',
+      helperText: 'Comma-separated weights, one per category, in order.',
+    },
+  ],
+  [SamplerType.subcategory]: [
+    {
+      key: 'category',
+      label: 'Parent category column',
+      kind: 'text',
+      required: true,
+      reference: 'single',
+      placeholder: 'Name of the parent category column',
+      helperText: 'The category column this subcategory is conditioned on.',
+    },
+    {
+      key: 'values',
+      label: 'Subcategory values (JSON)',
+      kind: 'textarea',
+      dataType: 'json',
+      required: true,
+      placeholder: '{ "science": ["physics", "biology"], "arts": ["music"] }',
+      helperText: 'JSON mapping each parent value to its list of subcategory values.',
+    },
+  ],
+  [SamplerType.uniform]: [
+    {
+      key: 'low',
+      label: 'Low',
+      kind: 'number',
+      dataType: 'number',
+      required: true,
+      placeholder: 'Lower bound (inclusive)',
+      helperText: 'Lower bound of the range.',
+    },
+    {
+      key: 'high',
+      label: 'High',
+      kind: 'number',
+      dataType: 'number',
+      required: true,
+      placeholder: 'Upper bound',
+      helperText: 'Upper bound of the range (must exceed low).',
+    },
+    DECIMAL_PLACES_FIELD,
+  ],
+  [SamplerType.gaussian]: [
+    {
+      key: 'mean',
+      label: 'Mean',
+      kind: 'number',
+      dataType: 'number',
+      required: true,
+      placeholder: 'Center of the distribution',
+      helperText: 'Mean (center) of the distribution.',
+    },
+    {
+      key: 'stddev',
+      label: 'Standard deviation',
+      kind: 'number',
+      dataType: 'number',
+      required: true,
+      placeholder: 'Spread of the distribution',
+      helperText: 'Standard deviation; must be positive.',
+    },
+    DECIMAL_PLACES_FIELD,
+  ],
+  [SamplerType.bernoulli]: [probabilityField('Probability of sampling 1 (0.0 – 1.0).')],
+  [SamplerType.bernoulli_mixture]: [
+    probabilityField('Probability of sampling from the mixture distribution (0.0 – 1.0).'),
+    DIST_NAME_FIELD,
+    DIST_PARAMS_FIELD,
+  ],
+  [SamplerType.binomial]: [
+    {
+      key: 'n',
+      label: 'Number of trials (n)',
+      kind: 'number',
+      dataType: 'number',
+      required: true,
+      placeholder: 'e.g. 10',
+      helperText: 'Number of independent trials; a positive integer.',
+    },
+    probabilityField('Probability of success on each trial (0.0 – 1.0).'),
+  ],
+  [SamplerType.poisson]: [
+    {
+      key: 'mean',
+      label: 'Mean (rate λ)',
+      kind: 'number',
+      dataType: 'number',
+      required: true,
+      placeholder: 'e.g. 4',
+      helperText: 'Mean number of events per interval; must be positive.',
+    },
+  ],
+  [SamplerType.scipy]: [DIST_NAME_FIELD, DIST_PARAMS_FIELD, DECIMAL_PLACES_FIELD],
+  [SamplerType.person]: [
+    ...PERSON_SHARED_FIELDS,
+    {
+      key: 'with_synthetic_personas',
+      label: 'Include synthetic personas',
+      kind: 'switch',
+      dataType: 'boolean',
+      helperText: 'Append synthetic persona columns (locale-dependent).',
+    },
+    {
+      key: 'select_field_values',
+      label: 'Field-value filters (JSON, optional)',
+      kind: 'textarea',
+      dataType: 'json',
+      placeholder: '{ "occupation": ["engineer", "teacher"] }',
+      helperText: 'JSON mapping managed-dataset fields to allowed values.',
+    },
+  ],
+  [SamplerType.datetime]: [
+    {
+      key: 'start',
+      label: 'Start',
+      kind: 'text',
+      required: true,
+      placeholder: 'e.g. 2020-01-01',
+      helperText: 'Earliest datetime (inclusive).',
+    },
+    {
+      key: 'end',
+      label: 'End',
+      kind: 'text',
+      required: true,
+      placeholder: 'e.g. 2024-01-01',
+      helperText: 'Exclusive upper bound.',
+    },
+    {
+      key: 'unit',
+      label: 'Unit (optional)',
+      kind: 'select',
+      options: asOptions(Object.values(DatetimeSamplerParamsUnit)),
+      helperText: 'Sampling granularity (Y, M, D, h, m, s). Defaults to D.',
+    },
+  ],
+  [SamplerType.timedelta]: [
+    {
+      key: 'dt_min',
+      label: 'Minimum delta',
+      kind: 'number',
+      dataType: 'number',
+      required: true,
+      placeholder: 'e.g. 1',
+      helperText: 'Minimum time-delta (inclusive, non-negative).',
+    },
+    {
+      key: 'dt_max',
+      label: 'Maximum delta',
+      kind: 'number',
+      dataType: 'number',
+      required: true,
+      placeholder: 'e.g. 30',
+      helperText: 'Maximum time-delta (exclusive, greater than the minimum).',
+    },
+    {
+      key: 'reference_column_name',
+      label: 'Reference datetime column',
+      kind: 'text',
+      required: true,
+      reference: 'single',
+      placeholder: 'Name of an existing datetime column',
+      helperText: 'The delta is added to values from this column.',
+    },
+    {
+      key: 'unit',
+      label: 'Unit (optional)',
+      kind: 'select',
+      options: asOptions(Object.values(TimeDeltaSamplerParamsUnit)),
+      helperText: 'Delta unit (D, h, m, s). Defaults to D.',
+    },
+  ],
+};
+
+/** The sampler `params` fields for a sampler sub-type (empty for sub-types without any). */
+const getSamplerParamFields = (samplerType: SamplerType | undefined): ColumnField[] =>
+  samplerType ? (PARAM_FIELDS_BY_SAMPLER_TYPE[samplerType] ?? []) : [];
+
+export const getColumnFields = (
+  option: Pick<ColumnTypeOption, 'columnType' | 'samplerType'>
+): ColumnField[] => {
+  const { columnType, samplerType } = option;
+  if (!columnType) return [];
+  const base = FIELDS_BY_COLUMN_TYPE[columnType] ?? [];
+  if (columnType === 'sampler') return [...getSamplerParamFields(samplerType), ...base];
+  return base;
+};
 
 /** Accent color → NVIDIA Foundations text token, matching `CardNode`'s idle styling. */
 const ACCENT_VAR_CLASS: Record<ColumnTypeColor, string> = {
@@ -219,10 +583,6 @@ const ACCENT_VAR_CLASS: Record<ColumnTypeColor, string> = {
   yellow: 'text-[color:var(--text-color-accent-yellow)]',
 };
 
-/**
- * Resolves an {@link AddColumnSelection} (fired by the palette) to its full catalog
- * option. Matches on `column_type`, and additionally on `sampler_type` for samplers.
- */
 export const findColumnOption = (selection: AddColumnSelection): ColumnTypeOption | undefined => {
   for (const group of COLUMN_TYPE_GROUPS) {
     const match = group.options.find(
@@ -234,11 +594,7 @@ export const findColumnOption = (selection: AddColumnSelection): ColumnTypeOptio
   return undefined;
 };
 
-/**
- * Resolves a template's column specs into placed {@link BuilderColumn}s, numbering ids
- * from `startId` (so subsequent user-added columns can continue from the returned count).
- * Specs whose column type can't be matched in the palette are skipped.
- */
+// Specs whose column type can't be matched in the palette are silently skipped.
 export const buildColumnsFromTemplate = (
   specs: readonly TemplateColumnSpec[],
   startId = 0
@@ -261,18 +617,13 @@ export const extractJinjaReferences = (text: string): string[] => {
   return refs;
 };
 
-/**
- * The names of columns this column depends on, resolved against the set of known column
- * names. Combines Jinja2 template references (prompt, expr, …) with explicit column-name
- * fields (embedding target, validation targets). Self-references are ignored.
- */
 const columnDependencies = (column: BuilderColumn, knownNames: Set<string>): Set<string> => {
   const deps = new Set<string>();
   const add = (candidate: string) => {
     const name = candidate.trim();
     if (name && name !== column.name && knownNames.has(name)) deps.add(name);
   };
-  for (const field of getColumnFields(column.option.columnType)) {
+  for (const field of getColumnFields(column.option)) {
     const value = column.values[field.key]?.trim();
     if (!value) continue;
     switch (field.reference) {
@@ -290,11 +641,6 @@ const columnDependencies = (column: BuilderColumn, knownNames: Set<string>): Set
   return deps;
 };
 
-/**
- * Builds the DAG from the current columns. Nodes carry the column name/type for display;
- * edges are drawn only where one column references another (via Jinja2 `{{ }}` or a
- * column-name field), so unconnected columns render as independent roots.
- */
 export const buildGraph = (columns: BuilderColumn[]): { nodes: DagNode[]; edges: DagEdge[] } => {
   const knownNames = new Set(columns.map((column) => column.name).filter(Boolean));
   const idByName = new Map(columns.filter((c) => c.name).map((c) => [c.name, c.id]));
@@ -325,11 +671,6 @@ export const buildGraph = (columns: BuilderColumn[]): { nodes: DagNode[]; edges:
   return { nodes, edges };
 };
 
-/**
- * A default, unique column name for a freshly added column, derived from its type
- * (e.g. `llm_text_1`). Ensures the new column is immediately referenceable and never
- * collides with an existing name.
- */
 export const defaultColumnName = (option: ColumnTypeOption, takenNames: Set<string>): string => {
   const base = (option.samplerType ?? option.columnType ?? 'column').replace(/[^a-zA-Z0-9]+/g, '_');
   for (let n = 1; ; n++) {
@@ -346,4 +687,146 @@ export const validateColumnName = (name: string, takenNames: Set<string>): strin
   }
   if (takenNames.has(trimmed)) return 'A column with this name already exists.';
   return null;
+};
+
+/**
+ * Reports why a filled-in field value is malformed for its {@link ColumnField.dataType}
+ * (bad number, invalid JSON, non-numeric list entry), or `null` if it is well-formed.
+ * `output_format` is treated as JSON regardless of its declared type.
+ */
+const fieldValueError = (field: ColumnField, value: string): string | null => {
+  const isJson = field.dataType === 'json' || field.key === 'output_format';
+  if (isJson) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      return `${field.label} must be valid JSON.`;
+    }
+    if (field.key === 'scores' && !Array.isArray(parsed)) {
+      return `${field.label} must be a JSON array.`;
+    }
+    return null;
+  }
+  if (field.dataType === 'number' && !Number.isFinite(Number(value))) {
+    return `${field.label} must be a number.`;
+  }
+  if (
+    field.dataType === 'number-list' &&
+    splitList(value).some((v) => !Number.isFinite(Number(v)))
+  ) {
+    return `${field.label} must be a comma-separated list of numbers.`;
+  }
+  return null;
+};
+
+/**
+ * Validates every column is ready to submit: unique, well-formed names; every field
+ * marked `required` in {@link getColumnFields} filled in; and typed fields (numbers, JSON,
+ * numeric lists) parse. Returns one human-readable message per problem found, or an
+ * empty array if the recipe is submittable.
+ */
+export const validateColumns = (columns: BuilderColumn[]): string[] => {
+  if (columns.length === 0) return ['Add at least one column before creating the job.'];
+
+  const errors: string[] = [];
+  for (const column of columns) {
+    const label = column.name || column.option.label;
+    const takenNames = new Set(
+      columns.filter((other) => other.id !== column.id).map((other) => other.name)
+    );
+    const nameError = validateColumnName(column.name, takenNames);
+    if (nameError) errors.push(`${label}: ${nameError}`);
+
+    for (const field of getColumnFields(column.option)) {
+      const value = column.values[field.key]?.trim();
+      if (!value) {
+        if (field.required) errors.push(`${label}: ${field.label} is required.`);
+        continue;
+      }
+      const valueError = fieldValueError(field, value);
+      if (valueError) errors.push(`${label}: ${valueError}`);
+    }
+  }
+  return errors;
+};
+
+/** Splits a comma-separated field value into trimmed, non-empty entries. */
+const splitList = (value: string): string[] =>
+  value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+/**
+ * Coerces a field's trimmed string value into the type the SDK config expects, per the
+ * field's {@link ColumnField.dataType} (and the legacy `list` / `reference: 'list'` flags).
+ * Assumes the value is non-empty and already validated by {@link validateColumns}.
+ */
+const serializeFieldValue = (field: ColumnField, value: string): unknown => {
+  switch (field.dataType) {
+    case 'number':
+      return Number(value);
+    case 'boolean':
+      return value === 'true';
+    case 'json':
+      return JSON.parse(value);
+    case 'number-list':
+      return splitList(value).map(Number);
+    default:
+      return field.list || field.reference === 'list' ? splitList(value) : value;
+  }
+};
+
+/**
+ * Converts a sampler column into the SDK's `SamplerColumnConfig` shape. Sub-type params
+ * are nested under the required `params` object; `convert_to` stays at the top level.
+ */
+const toSamplerConfig = (column: BuilderColumn): Record<string, unknown> => {
+  const params: Record<string, unknown> = {};
+  for (const field of getSamplerParamFields(column.option.samplerType)) {
+    const value = column.values[field.key]?.trim();
+    if (!value) continue;
+    params[field.key] = serializeFieldValue(field, value);
+  }
+
+  const config: Record<string, unknown> = {
+    name: column.name,
+    column_type: 'sampler',
+    sampler_type: column.option.samplerType,
+    params,
+  };
+  const convertTo = column.values.convert_to?.trim();
+  if (convertTo) config.convert_to = convertTo;
+  return config;
+};
+
+const toColumnConfig = (column: BuilderColumn): Record<string, unknown> => {
+  if (column.option.columnType === 'sampler') return toSamplerConfig(column);
+
+  const config: Record<string, unknown> = {
+    name: column.name,
+    column_type: column.option.columnType,
+  };
+
+  for (const field of getColumnFields(column.option)) {
+    const value = column.values[field.key]?.trim();
+    if (!value) continue;
+    config[field.key] =
+      field.key === 'output_format' ? JSON.parse(value) : serializeFieldValue(field, value);
+  }
+  return config;
+};
+
+export const buildDataDesignerConfig = (
+  columns: BuilderColumn[],
+  models: BuilderModel[] = [],
+  servedModelNames: Map<string, string> = new Map()
+): DataDesignerConfig => {
+  const config: DataDesignerConfig = {
+    columns: columns.map(toColumnConfig) as unknown as DataDesignerConfig['columns'],
+  };
+  const modelConfigs = buildModelConfigs(models, servedModelNames);
+  if (modelConfigs) config.model_configs = modelConfigs;
+  return config;
 };

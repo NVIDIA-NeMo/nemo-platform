@@ -385,6 +385,7 @@ resources:
           middleware_call: MiddlewareCall
           update_virtual_model_request: UpdateVirtualModelRequest
           virtual_model: VirtualModel
+          virtual_model_filter: VirtualModelFilter
           virtual_model_inference_config: VirtualModelInferenceConfig
           virtual_models_page: VirtualModelsPage
         methods:

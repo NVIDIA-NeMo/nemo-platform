@@ -7,6 +7,7 @@ export { filesetRoutes } from '@studio/routes/groups/filesetRoutes';
 export { secretsRoutes } from '@studio/routes/groups/secretsRoutes';
 export { guardrailsRoutes } from '@studio/routes/groups/guardrailsRoutes';
 export { inferenceProviderRoutes } from '@studio/routes/groups/inferenceProviderRoutes';
+export { virtualModelsRoutes } from '@studio/routes/groups/virtualModelsRoutes';
 export { deploymentRoutes } from '@studio/routes/groups/deploymentRoutes';
 export { evaluationRoutes } from '@studio/routes/groups/evaluationRoutes';
 export { experimentRoutes } from '@studio/routes/groups/experimentRoutes';

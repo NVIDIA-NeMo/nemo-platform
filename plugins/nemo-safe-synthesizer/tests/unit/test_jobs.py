@@ -3,8 +3,8 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
-from nemo_platform import NotFoundError
 from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nemo_platform_plugin.client.errors import PermissionDeniedError as ClientPermissionDeniedError
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
@@ -17,6 +17,38 @@ from nemo_safe_synthesizer_plugin.runtime import TASK_MODULE
 
 DEFAULT_WORKSPACE = "default"
 DEFAULT_DATA_SOURCE = "default/test-data#file.csv"
+
+
+def _client_error(error_cls, status_code: int, detail: str):
+    """Build a NemoHTTPError subclass from an httpx.Response, as the typed client raises."""
+    request = httpx.Request("GET", "http://test")
+    response = httpx.Response(status_code=status_code, json={"detail": detail}, request=request)
+    return error_cls(response)
+
+
+def _patch_jobs_client(jobs_client: MagicMock, files_client: MagicMock):
+    """Patch ``client_from_platform`` in the endpoints module, dispatching by class.
+
+    The compiler validates the ``data_source`` fileset via
+    ``client_from_platform(sdk, AsyncFilesClient).get_fileset(...)`` and then resolves
+    the pretrained-model adapter via
+    ``client_from_platform(sdk, AsyncJobsClient).get_job_result(...)`` — return the
+    matching mock for each.
+    """
+    from nemo_platform_plugin.files.client import AsyncFilesClient
+    from nemo_platform_plugin.jobs.client import AsyncJobsClient
+
+    def _dispatch(_sdk, client_cls):
+        if client_cls is AsyncJobsClient:
+            return jobs_client
+        if client_cls is AsyncFilesClient:
+            return files_client
+        raise AssertionError(f"unexpected client class: {client_cls!r}")
+
+    return patch(
+        "nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints.client_from_platform",
+        side_effect=_dispatch,
+    )
 
 
 @pytest.fixture
@@ -154,8 +186,9 @@ async def test_job_config_compiler_container_mode_uses_image_ref_override(mock_s
 
 
 @pytest.mark.asyncio
-async def test_job_config_compiler_validates_pretrained_model_job(mock_sdk):
-    mock_sdk.jobs.results.retrieve = AsyncMock(
+async def test_job_config_compiler_validates_pretrained_model_job(mock_sdk, mock_files_client):
+    jobs_client = MagicMock()
+    jobs_client.get_job_result = AsyncMock(
         return_value=MagicMock(artifact_url="default/job-results-prior#results/attempt-1/adapter")
     )
     spec = PluginJobConfig.model_validate(
@@ -166,9 +199,10 @@ async def test_job_config_compiler_validates_pretrained_model_job(mock_sdk):
         }
     )
 
-    await _compile(spec, mock_sdk)
+    with _patch_jobs_client(jobs_client, mock_files_client):
+        await _compile(spec, mock_sdk)
 
-    mock_sdk.jobs.results.retrieve.assert_awaited_once_with(
+    jobs_client.get_job_result.assert_awaited_once_with(
         name="adapter",
         job="prior-safe-synth-job",
         workspace=DEFAULT_WORKSPACE,
@@ -176,8 +210,9 @@ async def test_job_config_compiler_validates_pretrained_model_job(mock_sdk):
 
 
 @pytest.mark.asyncio
-async def test_plugin_job_config_allows_pretrained_model_job_runtime_config(mock_sdk):
-    mock_sdk.jobs.results.retrieve = AsyncMock(
+async def test_plugin_job_config_allows_pretrained_model_job_runtime_config(mock_sdk, mock_files_client):
+    jobs_client = MagicMock()
+    jobs_client.get_job_result = AsyncMock(
         return_value=MagicMock(artifact_url="default/job-results-prior#results/attempt-1/adapter")
     )
     spec = PluginJobConfig.model_validate(
@@ -188,7 +223,8 @@ async def test_plugin_job_config_allows_pretrained_model_job_runtime_config(mock
         }
     )
 
-    compiled = await _compile(spec, mock_sdk)
+    with _patch_jobs_client(jobs_client, mock_files_client):
+        compiled = await _compile(spec, mock_sdk)
     step = next(iter(compiled["steps"]))
     reparsed = PluginJobConfig.model_validate(step["config"])
 
@@ -238,10 +274,9 @@ def test_runtime_job_config_preserves_pretrained_model_without_pretrained_model_
 
 
 @pytest.mark.asyncio
-async def test_job_config_compiler_pretrained_model_job_not_found(mock_sdk):
-    mock_sdk.jobs.results.retrieve = AsyncMock(
-        side_effect=NotFoundError(message="not found", response=MagicMock(status_code=404), body=None)
-    )
+async def test_job_config_compiler_pretrained_model_job_not_found(mock_sdk, mock_files_client):
+    jobs_client = MagicMock()
+    jobs_client.get_job_result = AsyncMock(side_effect=_client_error(ClientNotFoundError, 404, "not found"))
     spec = PluginJobConfig.model_validate(
         {
             "data_source": DEFAULT_DATA_SOURCE,
@@ -250,8 +285,9 @@ async def test_job_config_compiler_pretrained_model_job_not_found(mock_sdk):
         }
     )
 
-    with pytest.raises(PlatformJobCompilationError, match="Could not find adapter result"):
-        await _compile(spec, mock_sdk)
+    with _patch_jobs_client(jobs_client, mock_files_client):
+        with pytest.raises(PlatformJobCompilationError, match="Could not find adapter result"):
+            await _compile(spec, mock_sdk)
 
 
 def test_plugin_job_config_rejects_conflicting_pretrained_model_sources():

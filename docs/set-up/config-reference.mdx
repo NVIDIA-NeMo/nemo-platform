@@ -593,6 +593,54 @@ models:
         max_restart_count: 5
         # Whether this backend is enabled | default: False
         enabled: false
+      deployments_plugin:
+        default_executor:
+        docker_executor:
+        k8s_executor:
+        # Maximum seconds a deployment may stay PENDING before ERROR. | default: 7200
+        pending_timeout_seconds: 7200
+        # default: 5
+        max_restart_count: 5
+        default_storage_class:
+        # default: '200Gi'
+        default_pvc_size: 200Gi
+        # default: 'nvcr.io/nim/meta/llama-3.1-8b-instruct'
+        default_nimservice_image: nvcr.io/nim/meta/llama-3.1-8b-instruct
+        # default: '1.8.5'
+        default_nimservice_image_tag: 1.8.5
+        # default: 'vllm/vllm-openai'
+        default_vllm_image: vllm/vllm-openai
+        # default: 'v0.8.5'
+        default_vllm_image_tag: v0.8.5
+        # default: 1000
+        default_user_id: 1000
+        # default: 2000
+        default_group_id: 2000
+        # default: 2000
+        default_vllm_user_id: 2000
+        # default: 0
+        default_vllm_group_id: 0
+        # default: 30
+        peft_refresh_interval: 30
+        # default: 'nmp-api'
+        lora_sidecar_image_name: nmp-api
+        lora_sidecar_command:
+        - nemo
+        - services
+        - run
+        - --sidecars
+        - adapters
+        lora_sidecar_args: []
+        # BusyBox image repository for LoRA cache init containers. Fully qualified so it resolves on runtimes that block docker.io short names. | default: 'docker.io/library/busybox'
+        busybox_image: docker.io/library/busybox
+        # BusyBox image tag for LoRA cache init containers. | default: 'latest'
+        busybox_image_tag: latest
+        # default: 5.0
+        delete_wait_seconds: 5.0
+        # default: 0.5
+        delete_poll_seconds: 0.5
+        # default: False
+        enabled: false
       none:
         # Whether this backend is enabled | default: False
         enabled: false

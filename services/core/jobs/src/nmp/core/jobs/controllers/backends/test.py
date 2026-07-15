@@ -2,37 +2,17 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import logging
-from typing import Generic, Literal, TypeVar
+from typing import Generic, TypeVar
 
-from nemo_platform.types.jobs import PlatformJobStepWithContext
+from nemo_platform_plugin.jobs.execution_profiles import E2EJobExecutionProfile as E2EJobExecutionProfile
+from nemo_platform_plugin.jobs.types import PlatformJobStepWithContext
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.app.providers import CPUExecutionProvider, ExecutionProviderT, GPUExecutionProvider
-from nmp.core.jobs.app.schemas import BaseExecutionProfile
 from nmp.core.jobs.controllers.backends.base import JobBackend, JobExecutionProfileConfig, JobUpdate
 from nmp.core.jobs.controllers.backends.docker import DockerJobExecutionProfileConfig
 from nmp.core.jobs.controllers.backends.kubernetes import KubernetesJobExecutionProfileConfig
-from pydantic import Field
 
 ProviderT = TypeVar("ProviderT", bound=ExecutionProviderT)
-
-
-class E2EJobExecutionProfile(BaseExecutionProfile):
-    """
-    Execution configuration for E2E testing.
-    This backend auto-completes jobs without actually running containers,
-    making tests fast and deterministic.
-    """
-
-    backend: Literal["e2e"] = "e2e"
-    config: JobExecutionProfileConfig = Field(
-        default_factory=JobExecutionProfileConfig,
-        description="Configuration for the e2e test executor",
-    )
-
-    @property
-    def supports_persistent_storage(self) -> bool:
-        """E2E backend claims to support persistent storage since jobs auto-complete without execution."""
-        return True
 
 
 class MockJobBackend(Generic[ProviderT]):

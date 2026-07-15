@@ -23,6 +23,8 @@ dependencies = [
     "kubernetes>=31.0.0",
     "urllib3>=2.7.0",
     "nmp-common",
+    "nemo-deployments-plugin",
+    "nemo-platform-plugin",
     "docker>=7.1.0",
     "tenacity>=8.5.0",  # Retry logic for Docker backend operations
 ]
@@ -60,4 +62,6 @@ dev = [
 
 [tool.uv.sources]
 nmp-common = { workspace = true }
+nemo-deployments-plugin = { workspace = true }
+nemo-platform-plugin = { workspace = true }
 models = { workspace = true }

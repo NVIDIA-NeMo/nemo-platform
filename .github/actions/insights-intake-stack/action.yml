@@ -1,0 +1,10 @@
+name: insights-intake-stack
+description: Self-contained Intake (ClickHouse + auth,entities,intake) on :8080 over $RUNNER_TEMP/state
+runs:
+  using: composite
+  steps:
+    - name: Start ClickHouse + platform services
+      shell: bash
+      run: >-
+        uv run --no-project python
+        nemo-platform/plugins/nemo-insights/testbed/eval/stack.py

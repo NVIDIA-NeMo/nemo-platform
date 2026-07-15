@@ -12,8 +12,35 @@ from kubernetes import client, config
 from kubernetes.client.models import V1Pod
 from kubernetes.client.rest import ApiException
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.execution_profiles import (
+    BaseKubernetesExecutionProfileConfig as PluginBaseKubernetesExecutionProfileConfig,
+)
+from nemo_platform_plugin.jobs.execution_profiles import (
+    ImagePullSecret as ImagePullSecret,
+)
+from nemo_platform_plugin.jobs.execution_profiles import (
+    KubernetesEmptyDirVolume as KubernetesEmptyDirVolume,
+)
+from nemo_platform_plugin.jobs.execution_profiles import (
+    KubernetesJobStorageConfig as PluginKubernetesJobStorageConfig,
+)
+from nemo_platform_plugin.jobs.execution_profiles import (
+    KubernetesObjectMetadata as KubernetesObjectMetadata,
+)
+from nemo_platform_plugin.jobs.execution_profiles import (
+    KubernetesPersistentVolumeClaim as KubernetesPersistentVolumeClaim,
+)
+from nemo_platform_plugin.jobs.execution_profiles import (
+    KubernetesVolume as PluginKubernetesVolume,
+)
+from nemo_platform_plugin.jobs.execution_profiles import (
+    KubernetesVolumeMount as PluginKubernetesVolumeMount,
+)
+from nemo_platform_plugin.jobs.types import PlatformJobStepWithContext, PlatformJobTaskUpdate
 from nmp.common.auth import AuthContext
-from nmp.common.config import ImagePullSecret, get_platform_config
+from nmp.common.config import get_platform_config
 from nmp.common.jobs.constants import (
     DEFAULT_CONFIG_STORAGE_PATH,
     DEFAULT_NEMO_JOB_STEP_CONFIG_FILE_PATH,
@@ -32,9 +59,7 @@ from nmp.common.jobs.constants import (
     TERMINAL_EXIT_CODES,
 )
 from nmp.common.jobs.schemas import PlatformJobStatus
-from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobStepWithContext
 from nmp.core.jobs.app.constants import (
-    DEFAULT_VOLUME_PERMISSIONS_IMAGE,
     JOB_ATTEMPT_ID_LABEL,
     JOB_EXECUTION_BACKEND_LABEL,
     JOB_EXECUTION_PROFILE_LABEL,
@@ -53,13 +78,12 @@ from nmp.core.jobs.app.constants import (
 )
 from nmp.core.jobs.app.providers import ComputeResources, ContainerSpec
 from nmp.core.jobs.controllers.backends.base import (
-    JobExecutionProfileConfig,
     get_logs_endpoint_from_fileset,
     resolve_gpu_job_shm_size,
     resolve_task_image,
 )
 from nmp.core.jobs.controllers.backends.exceptions import FailedToScheduleError, JobStorageError
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -125,15 +149,16 @@ def build_image_pull_secrets(
     """Build Kubernetes image pull secrets from configuration."""
     global_image_pull_secrets = get_platform_config().image_pull_secrets
 
-    # Merge the two lists, avoiding duplicates
-    merged_secrets = {secret.name: secret for secret in global_image_pull_secrets}
+    # Merge the two lists by secret name, avoiding duplicates. Both the global
+    # (platform config) and profile (plugin) ImagePullSecret models expose
+    # ``name``; only the name is needed to build the reference.
+    merged_names: dict[str, None] = {}
+    for secret in global_image_pull_secrets:
+        merged_names[secret.name] = None
     for secret in image_pull_secrets:
-        merged_secrets[secret.name] = secret
+        merged_names[secret.name] = None
 
-    result = []
-    for secret in list(merged_secrets.values()):
-        result.append(client.V1LocalObjectReference(name=secret.name))
-    return result
+    return [client.V1LocalObjectReference(name=name) for name in merged_names]
 
 
 def build_resource_requirements(
@@ -204,11 +229,6 @@ def build_pod_security_context(security_context: dict[str, Any] | None) -> clien
         return load_from_dict(security_context, klass="V1PodSecurityContext")
     except Exception as e:
         raise ValueError(f"Invalid security context configuration: {e}") from e
-
-
-class KubernetesObjectMetadata(BaseModel):
-    labels: dict[str, str] = Field(default_factory=dict)
-    annotations: dict[str, str] = Field(default_factory=dict)
 
 
 def build_metadata(labels: dict[str, str] | None, metadata: KubernetesObjectMetadata | None) -> client.V1ObjectMeta:
@@ -579,35 +599,15 @@ def load_from_dict(data: dict, klass: str):
     return obj
 
 
-class KubernetesPersistentVolumeClaim(BaseModel):
-    """Kubernetes Persistent Volume Claim definition."""
-
-    claim_name: str = Field(description="Persistent Volume Claim Name")
-    read_only: bool = Field(default=False, description="Whether the volume is mounted read-only")
-
-
-class KubernetesEmptyDirVolume(BaseModel):
-    """Kubernetes EmptyDir Volume definition."""
-
-    medium: str | None = Field(default=None, description="The medium of the emptyDir volume (e.g., 'Memory')")
-    size_limit: str | None = Field(default=None, description="The size limit of the emptyDir volume (e.g., '1Gi')")
+# The Kubernetes volume/config data shapes live in the shared plugin leaf node
+# (imported as ``Plugin*`` below) so the typed HTTP client and the server agree
+# on the wire shape.  The server subclasses add the ``to_k8s()`` behaviour that
+# requires the ``kubernetes`` client library, and re-type the volume fields so
+# ``to_k8s()`` is available on nested volumes.
 
 
-class KubernetesVolume(BaseModel):
+class KubernetesVolume(PluginKubernetesVolume):
     """Kubernetes Volume definition."""
-
-    name: str = Field(description="Volume Name")
-    persistent_volume_claim: KubernetesPersistentVolumeClaim | None = Field(
-        default=None, description="Persistent Volume Claim configuration"
-    )
-    empty_dir: KubernetesEmptyDirVolume | None = Field(default=None, description="EmptyDir Volume configuration")
-
-    @model_validator(mode="after")
-    def validate_self(self):
-        """Ensure that exactly one volume source is specified."""
-        if sum(source is not None for source in [self.persistent_volume_claim, self.empty_dir]) != 1:
-            raise ValueError("Exactly one of 'persistent_volume_claim' or 'empty_dir' must be specified.")
-        return self
 
     def to_k8s(self) -> client.V1Volume:
         """Convert to Kubernetes V1Volume object."""
@@ -625,13 +625,8 @@ class KubernetesVolume(BaseModel):
         return volume
 
 
-class KubernetesVolumeMount(BaseModel):
+class KubernetesVolumeMount(PluginKubernetesVolumeMount):
     """Kubernetes Volume Mount definition."""
-
-    name: str = Field(description="Volume Name")
-    mount_path: str = Field(description="Mount Path in the container")
-    sub_path: str | None = Field(default=None, description="Sub-path within the volume to mount")
-    read_only: bool = Field(default=False, description="Whether the volume mount is read-only")
 
     def to_k8s(self) -> client.V1VolumeMount:
         """Convert to Kubernetes V1VolumeMount object."""
@@ -643,78 +638,21 @@ class KubernetesVolumeMount(BaseModel):
         )
 
 
-class KubernetesJobStorageConfig(BaseModel):
+class KubernetesJobStorageConfig(PluginKubernetesJobStorageConfig):
     """Configuration for persistent storage in Kubernetes jobs."""
 
-    pvc_name: str = Field(default="", description="Persistent Volume Claim Name to use for job storage.")
-    volume_permissions_image: str = Field(
-        default=DEFAULT_VOLUME_PERMISSIONS_IMAGE, description="Image used to set volume permissions"
-    )
+    # Volume fields re-typed to the server subclasses so nested volumes carry ``to_k8s()``.
     additional_volumes: list[KubernetesVolume] = Field(default_factory=list, description="Additional volumes to mount")
     additional_volume_mounts: list[KubernetesVolumeMount] = Field(
         default_factory=list, description="Additional volume mounts"
     )
 
 
-class BaseKubernetesExecutionProfileConfig(JobExecutionProfileConfig):
-    """Common configuration for Kubernetes execution environment."""
+class BaseKubernetesExecutionProfileConfig(PluginBaseKubernetesExecutionProfileConfig):
+    """Kubernetes execution config whose storage carries ``to_k8s()`` (server-side)."""
 
-    namespace: str | None = Field(
-        default=None,
-        description="Kubernetes namespace to submit the job to. If not set, it will be determined from the environment.",
-    )
-
-    service_account_name: str = Field(
-        default="default",
-        description="Kubernetes service account name for job pods. Uses the Kubernetes default service account when set to 'default'.",
-    )
-
-    # Scheduling and resource configuration
-    tolerations: list[dict[str, Any]] = Field(
-        default_factory=list, description="Tolerations for the Kubernetes job pods."
-    )
-    node_selector: dict[str, str] = Field(
-        default_factory=dict, description="Node selector for the Kubernetes job pods."
-    )
-    affinity: dict[str, Any] = Field(default_factory=dict, description="Affinity for the Kubernetes job pods.")
-    resources: ComputeResources = Field(
-        default_factory=ComputeResources, description="Resource requests and limits for the Kubernetes job pods."
-    )
-    pod_security_context: dict[str, Any] = Field(
-        default_factory=dict, description="Pod security context for the Kubernetes job pods."
-    )
-
-    # Image pull secrets
-    image_pull_secrets: list[ImagePullSecret] = Field(
-        default_factory=list, description="Image pull secrets for the Kubernetes job pods."
-    )
-
-    # Optional metadata to add to each job object
-    job_metadata: KubernetesObjectMetadata = Field(
-        default_factory=KubernetesObjectMetadata,
-        description="Metadata to add to each job object in the Kubernetes job.",
-    )
-
-    # Optional metadata to add to each pod in the job
-    pod_metadata: KubernetesObjectMetadata = Field(
-        default_factory=KubernetesObjectMetadata, description="Metadata to add to each pod in the Kubernetes job."
-    )
-
-    # Storage configurations for the job
     storage: KubernetesJobStorageConfig = Field(
         default_factory=KubernetesJobStorageConfig, description="Storage configuration for the Kubernetes job pods."
-    )
-
-    num_gpus: int = Field(default=1, description="Number of GPUs to request for the job")
-
-    scheduler_name: str = Field(
-        default="",
-        description="The scheduler name to use for the pod spec. When non-empty, this value is applied to the pod's schedulerName field, enabling custom schedulers such as KAI Scheduler. Empty string omits schedulerName so the cluster default scheduler is used.",
-    )
-
-    launcher_image: str = Field(
-        default="nvcr.io/nvidia/nemo-microservices/jobs-launcher:latest",
-        description="Container image that contains the jobs-launcher binary.",
     )
 
 
@@ -1192,15 +1130,17 @@ def update_all_tasks(
             error_details["message"] = f"Pod {pod_status.name} is in error state"
 
         # Upsert the task against the Jobs API.
-        nmp_sdk.jobs.tasks.create_or_update(
-            pod_status.task_id,
+        client_from_platform(nmp_sdk, JobsClient).update_job_step_task(
+            name=pod_status.task_id,
             workspace=step.workspace,
             job=step.job,
             step=step.name,
-            status=status.value,
-            status_details=status_details,
-            error_details=error_details,  # type: ignore
-            error_stack=error_stack,
+            body=PlatformJobTaskUpdate(
+                status=status,
+                status_details=status_details,
+                error_details=error_details,
+                error_stack=error_stack,
+            ),
         )
         logger.info(f"updated task '{pod_status.task_id}'")
 

@@ -322,7 +322,7 @@ export const mockEvalConfigRag = {
           version_id: '',
           api_endpoint: {
             url: 'http://nemo-embedding-ms.nemo-retrieval.svc.cluster.local:8080/v1/embeddings',
-            model_id: 'nvidia/nv-embedqa-e5-v5',
+            model_id: 'nvidia-nv-embedqa-e5-v5',
             format: 'nim',
           },
         },

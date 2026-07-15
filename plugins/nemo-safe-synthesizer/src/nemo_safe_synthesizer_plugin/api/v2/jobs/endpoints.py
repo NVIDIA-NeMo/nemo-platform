@@ -35,6 +35,7 @@ from nemo_platform_plugin.jobs.api_factory import (
     SubprocessExecutionProviderSpec,
     job_route_factory,
 )
+from nemo_platform_plugin.jobs.client import AsyncJobsClient
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from nemo_safe_synthesizer.config.external_results import SafeSynthesizerSummary
@@ -176,12 +177,13 @@ async def job_config_compiler(
             transformed_spec.pretrained_model_job, workspace_fallback=workspace
         )
         try:
-            await sdk.jobs.results.retrieve(name="adapter", job=model_job, workspace=model_workspace)
-        except NotFoundError as e:
+            jobs = client_from_platform(sdk, AsyncJobsClient)
+            await jobs.get_job_result(name="adapter", job=model_job, workspace=model_workspace)
+        except ClientNotFoundError as e:
             raise PlatformJobCompilationError(
                 f"Could not find adapter result for NSS job {model_workspace}/{model_job!r}"
             ) from e
-        except PermissionDeniedError as e:
+        except ClientPermissionDeniedError as e:
             raise PlatformJobCompilationError(
                 f"Failed to retrieve adapter result for NSS job {model_workspace}/{model_job!r}: "
                 f"access denied to workspace {model_workspace!r}"

@@ -26,6 +26,7 @@ import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from nemo_platform_plugin.filter_ops import ComparisonOperation, FilterOperator
 from nemo_platform_plugin.inference_middleware import (
     _AUTOPROVISIONED_DESC,
     InferenceMiddlewareError,
@@ -35,7 +36,10 @@ from nemo_platform_plugin.inference_middleware import (
     VirtualModelInferenceConfig,
 )
 from nmp.common.api.common import Page, PaginationData
+from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
+from nmp.common.api.utils import generate_openapi_extra_params
 from nmp.common.entities import EntityClient, EntityConflictError, EntityNotFoundError
+from nmp.common.entities.values import DatetimeFilter, Filter, StringFilter
 from nmp.common.service.dependencies import get_entity_client
 from nmp.core.inference_gateway.api.dependencies import global_middleware_registry
 from nmp.core.inference_gateway.api.middleware_registry import MiddlewareRegistry
@@ -47,6 +51,17 @@ router = APIRouter()
 
 EntityClientDep = Annotated[EntityClient, Depends(get_entity_client)]
 MiddlewareRegistryDep = Annotated[MiddlewareRegistry, Depends(global_middleware_registry)]
+
+
+class VirtualModelFilter(Filter):
+    """Filter for VirtualModel list queries."""
+
+    workspace: str | None = Field(None, description="Filter by workspace.")
+    project: str | None = Field(None, description="Filter by project URN.")
+    name: StringFilter | str | None = Field(None, description="Filter by name.")
+    default_model_entity: StringFilter | str | None = Field(None, description="Filter by default model entity.")
+    created_at: DatetimeFilter | None = Field(None, description="Filter by creation date.")
+    updated_at: DatetimeFilter | None = Field(None, description="Filter by update date.")
 
 
 def _middleware_validation_error(detail: str) -> HTTPException:
@@ -326,6 +341,12 @@ async def create_virtual_model(
     status_code=status.HTTP_200_OK,
     response_model=Page[VirtualModel],
     response_model_exclude_none=True,
+    openapi_extra=generate_openapi_extra_params(
+        filter_schema=VirtualModelFilter,
+        filter_description=(
+            "Filter virtual models by workspace, project, name, default_model_entity, created_at, and updated_at."
+        ),
+    ),
 )
 async def list_virtual_models(
     workspace: str,
@@ -336,18 +357,33 @@ async def list_virtual_models(
         default="-created_at",
         description="Sort field.  Prefix with ``-`` for descending order.",
     ),
+    exclude_autoprovisioned: bool = Query(
+        default=False,
+        description=(
+            "When true, controller-managed (autoprovisioned) passthrough VirtualModels are excluded from the results."
+        ),
+    ),
+    parsed_filter: ParsedFilter = Depends(make_filter_dep(VirtualModelFilter)),
 ) -> Page[VirtualModel]:
     """List VirtualModels for the given workspace.
 
     Use ``workspace=-`` to list across all workspaces accessible to the caller.
     """
+    filter_workspace = parsed_filter.remove("workspace") or workspace
+    if exclude_autoprovisioned:
+        # ``autoprovisioned`` lives under the entity ``data`` blob; reference it
+        # directly so this does not depend on VirtualModelFilter exposing the field.
+        parsed_filter.and_with(
+            ComparisonOperation(operator=FilterOperator.EQ, field="data.autoprovisioned", value=False)
+        )
     try:
         result = await entity_client.list(
             VirtualModel,
-            workspace=workspace,
+            workspace=filter_workspace,
             page=page,
             page_size=page_size,
             sort=sort,
+            filter_operation=parsed_filter.operation,
         )
     except HTTPException:
         raise
@@ -364,7 +400,7 @@ async def list_virtual_models(
         total_pages=result.pagination.total_pages,
         total_results=result.pagination.total_results,
     )
-    return Page(data=result.data, pagination=pagination, sort=sort)
+    return Page(data=result.data, pagination=pagination, sort=sort, filter=parsed_filter.to_response())
 
 
 @router.get(

@@ -14,13 +14,32 @@ import uuid
 from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Generic, Literal, TypeVar
+from typing import Any, Generic, TypeVar
 
 import docker.types
 from docker.errors import APIError, ImageNotFound, NotFound
 from docker.models.containers import Container
 from docker.types import LogConfig, Mount
-from nemo_platform.types.jobs import PlatformJobStepWithContext
+from nemo_platform_plugin.jobs.execution_profiles import (
+    DockerJobExecutionProfile as PluginDockerJobExecutionProfile,
+)
+from nemo_platform_plugin.jobs.execution_profiles import (
+    DockerJobExecutionProfileConfig as PluginDockerJobExecutionProfileConfig,
+)
+from nemo_platform_plugin.jobs.execution_profiles import (
+    DockerJobNetworkConfig as PluginDockerJobNetworkConfig,
+)
+from nemo_platform_plugin.jobs.execution_profiles import (
+    DockerJobStorageConfig as DockerJobStorageConfig,
+)
+from nemo_platform_plugin.jobs.execution_profiles import (
+    DockerVolumeMount as DockerVolumeMount,
+)
+from nemo_platform_plugin.jobs.types import (
+    PlatformJobStatusUpdateRequest,
+    PlatformJobStepWithContext,
+    PlatformJobTaskUpdate,
+)
 from nmp.common.auth import AuthContext
 from nmp.common.config import get_platform_config, nmp_user_data_dir
 from nmp.common.docker.gpu_pool import GPUAllocationError
@@ -69,10 +88,8 @@ from nmp.core.jobs.app.providers import (
     ExecutionProviderT,
     GPUExecutionProvider,
 )
-from nmp.core.jobs.app.schemas import BaseExecutionProfile
 from nmp.core.jobs.controllers.backends.base import (
     JobBackend,
-    JobExecutionProfileConfig,
     JobUpdate,
     get_logs_endpoint_from_fileset,
     resolve_gpu_job_shm_size,
@@ -86,7 +103,7 @@ from nmp.core.jobs.controllers.backends.exceptions import (
     SchedulingDeferred,
 )
 from opentelemetry import trace
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 import docker
 
@@ -123,6 +140,10 @@ NMP_JOBS_DOCKER_OWNER_ID_ENVVAR = "NMP_JOBS_DOCKER_OWNER_ID"
 ProviderT = TypeVar("ProviderT", bound=ExecutionProviderT)
 
 
+# DockerVolumeMount and DockerJobStorageConfig are pure data shapes shared with
+# the typed HTTP client — imported from the plugin leaf node (see imports).
+
+
 def _resolve_jobs_controller_instance_id() -> str:
     configured = os.getenv(NMP_JOBS_DOCKER_OWNER_ID_ENVVAR)
     if configured:
@@ -139,65 +160,33 @@ class DockerTimestampParseResult:
     is_zero: bool
 
 
-class DockerVolumeMount(BaseModel):
-    volume_name: str = Field(description="Name of the Docker volume to mount")
-    mount_path: str = Field(description="Path inside the container where the volume will be mounted")
-    kind: Literal["volume", "tmpfs"] = Field(
-        default="volume",
-        description="Type of the Docker volume to mount. Options are 'volume' or 'tmpfs' (default: 'volume'). tmpfs volumes are only supported on Linux hosts.",
-    )
-    options: dict | None = Field(default=None, description="Additional options for the volume")
-    allow_create_volume: bool = Field(
-        default=False, description="Whether to allow the creation of the volume if it does not exist (default: false)."
-    )
-
-
-class DockerJobStorageConfig(BaseModel):
-    """Configuration for persistent storage in Docker jobs."""
-
-    volume_name: str = Field(
-        default="nemo-jobs-storage", description="Name of the Docker volume for persistent storage"
-    )
-    volume_permissions_image: str = Field(
-        default=DEFAULT_VOLUME_PERMISSIONS_IMAGE, description="Docker image used to set permissions on the volume"
-    )
-    additional_volume_mounts: list[DockerVolumeMount] = Field(
-        default_factory=list,
-        description="List of additional Docker volume mounts for the job",
-    )
-
-
-class DockerJobNetworkConfig(BaseModel):
+# Server-side override: the default network name comes from the
+# ``NEMO_JOBS_DEFAULT_DOCKER_NETWORK`` env var (used by quickstart and e2e).
+# No docstring on purpose — a docstring would surface as the schema
+# ``description``, and this type carries none on the wire.
+class DockerJobNetworkConfig(PluginDockerJobNetworkConfig):
     job_container_network: str = Field(
         default=NEMO_JOBS_DEFAULT_DOCKER_NETWORK, description="Docker network for the job container"
     )
 
 
-class DockerJobExecutionProfileConfig(JobExecutionProfileConfig):
+class DockerJobExecutionProfileConfig(PluginDockerJobExecutionProfileConfig):
     """Configuration for Docker Job execution profile."""
 
-    storage: DockerJobStorageConfig = Field(
-        default_factory=DockerJobStorageConfig, description="Docker storage configuration"
-    )
+    # ``networking`` re-typed to the server ``DockerJobNetworkConfig`` (env-var default).
     networking: DockerJobNetworkConfig = Field(
         default_factory=DockerJobNetworkConfig, description="Docker networking configuration"
     )
 
 
-class DockerJobExecutionProfile(BaseExecutionProfile):
+class DockerJobExecutionProfile(PluginDockerJobExecutionProfile):
     """
     Execution configuration for a Docker Job.
     This is used to define the executor type, provider, profile, and any additional configuration
     required for the executor to run the job on Docker
     """
 
-    backend: Literal["docker"] = "docker"
     config: DockerJobExecutionProfileConfig = Field(description="Additional configuration for the docker executor")
-
-    @property
-    def supports_persistent_storage(self) -> bool:
-        """Indicates if the execution profile supports persistent storage."""
-        return self.config.storage is not None
 
 
 class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], Generic[ProviderT]):
@@ -836,12 +825,11 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 status = PlatformJobStatus.CANCELLED
                 status_details["message"] = "Job is cancelled, not creating container"
             logger.info("Job step is not scheduling container", extra={"status": updated_step.status})
-            self._nmp_sdk.jobs.steps.update_status(
-                step.name,
+            self._jobs.update_job_step_status(
+                name=step.name,
                 workspace=step.workspace,
                 job=step.job,
-                status=status.value,
-                status_details=status_details,
+                body=PlatformJobStatusUpdateRequest(status=status, status_details=status_details),
             )
         return is_cancelling_or_pausing
 
@@ -879,15 +867,17 @@ chmod -R 777 {job_vol}/{storage_subpath}
             try:
                 self._run_container_in_thread(step, container_args)
             except FailedToScheduleError as e:
-                status = PlatformJobStatus.ERROR
-                self._nmp_sdk.jobs.steps.update_status(
-                    step.name,
-                    workspace=step.workspace,
-                    job=step.job,
-                    status=status.value,
-                    error_details=e.error_details,  # type: ignore
-                )
                 logger.exception("Failed to schedule container for job step")
+                status = PlatformJobStatus.ERROR
+                try:
+                    self._jobs.update_job_step_status(
+                        name=step.name,
+                        workspace=step.workspace,
+                        job=step.job,
+                        body=PlatformJobStatusUpdateRequest(status=status, error_details=e.error_details),
+                    )
+                except Exception:
+                    logger.exception("Failed to persist scheduling error for job step")
             except Exception:
                 logger.exception("Unexpected error while scheduling container for job step")
             finally:
@@ -895,7 +885,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
 
     def _run_container_in_thread(self, step: PlatformJobStepWithContext, container_args: dict):
         status_details = {}
-        status = PlatformJobStatus.PENDING.value
+        status = PlatformJobStatus.PENDING
 
         # If a request to pause or cancel came in while we were waiting for scheduling loop,
         # cancel scheduling the container
@@ -987,12 +977,11 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 status_details["message"] = f"Pulling image {container_args['image']} from registry"
 
                 # Send the status update to indicate we are pulling the image
-                self._nmp_sdk.jobs.steps.update_status(
-                    step.name,
+                self._jobs.update_job_step_status(
+                    name=step.name,
                     workspace=step.workspace,
                     job=step.job,
-                    status=status,
-                    status_details=status_details,
+                    body=PlatformJobStatusUpdateRequest(status=status, status_details=status_details),
                 )
                 try:
                     pull_start = time.time()
@@ -1016,12 +1005,11 @@ chmod -R 777 {job_vol}/{storage_subpath}
 
                 # Send the status update to indicate we are starting the container
                 status_details["message"] = f"Creating container with image {container_args['image']}"
-                self._nmp_sdk.jobs.steps.update_status(
-                    step.name,
+                self._jobs.update_job_step_status(
+                    name=step.name,
                     workspace=step.workspace,
                     job=step.job,
-                    status=status,
-                    status_details=status_details,
+                    body=PlatformJobStatusUpdateRequest(status=status, status_details=status_details),
                 )
 
                 # Now create it with the pulled container image
@@ -1105,12 +1093,11 @@ chmod -R 777 {job_vol}/{storage_subpath}
             # If no errors to this point, start the container
             status_details["message"] = "Starting container"
             pre_start_status_write_started_at = time.monotonic()
-            self._nmp_sdk.jobs.steps.update_status(
-                step.name,
+            self._jobs.update_job_step_status(
+                name=step.name,
                 workspace=step.workspace,
                 job=step.job,
-                status=status,
-                status_details=status_details,
+                body=PlatformJobStatusUpdateRequest(status=status, status_details=status_details),
             )
             logger.debug(
                 "Docker pre-start status update succeeded",
@@ -1224,7 +1211,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
 
         if container is None:
             return JobUpdate(
-                status=PlatformJobStatus.ERROR.value,
+                status=PlatformJobStatus.ERROR,
                 status_details={"message": message},
                 error_details={"message": message},
             )
@@ -1247,7 +1234,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 },
             )
             return JobUpdate(
-                status=PlatformJobStatus.ERROR.value,
+                status=PlatformJobStatus.ERROR,
                 status_details=status_details,
                 error_details=error_details,
             )
@@ -1261,14 +1248,16 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 raise
 
         task_id = self.get_label_from_container(container, JOB_TASK_ID_LABEL)
-        self._nmp_sdk.jobs.tasks.create_or_update(
-            task_id,
+        self._jobs.update_job_step_task(
+            name=task_id,
             workspace=step.workspace,
             job=step.job,
             step=step.name,
-            status=PlatformJobStatus.ERROR.value,
-            status_details=status_details,  # type: ignore
-            error_details=error_details,  # type: ignore
+            body=PlatformJobTaskUpdate(
+                status=PlatformJobStatus.ERROR,
+                status_details=status_details,
+                error_details=error_details,
+            ),
         )
         logger.info(
             "Updated task",
@@ -1280,9 +1269,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 "error_details": error_details,
             },
         )
-        return JobUpdate(
-            status=PlatformJobStatus.ERROR.value, status_details=status_details, error_details=error_details
-        )
+        return JobUpdate(status=PlatformJobStatus.ERROR, status_details=status_details, error_details=error_details)
 
     def sync_pending(self, step: PlatformJobStepWithContext, container: Container | None) -> JobUpdate:
         if container is None:
@@ -1427,18 +1414,20 @@ chmod -R 777 {job_vol}/{storage_subpath}
         )
 
         # Upsert the task against the Jobs API.
-        self._nmp_sdk.jobs.tasks.create_or_update(
-            task_id,
+        self._jobs.update_job_step_task(
+            name=task_id,
             workspace=step.workspace,
             job=step.job,
             step=step.name,
-            status=status.value,
-            status_details=status_details,
-            error_details=error_details,
-            error_stack=error_stack,
+            body=PlatformJobTaskUpdate(
+                status=status,
+                status_details=status_details,
+                error_details=error_details,
+                error_stack=error_stack,
+            ),
         )
         logger.info("Updated task", extra={"task_id": task_id, "status": status})
-        return JobUpdate(status=status.value, status_details=status_details, error_details=error_details)
+        return JobUpdate(status=status, status_details=status_details, error_details=error_details)
 
     def map_docker_container_status_to_platform_status(
         self, step: PlatformJobStepWithContext, container: Container
