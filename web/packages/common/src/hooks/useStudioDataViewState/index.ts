@@ -173,7 +173,9 @@ export const useStudioDataViewState = <FilterType = Record<string, unknown>>(
   }, [sortParam, defaultSortEntries, multiSort]);
 
   // Convert sorting object to URL string format
-  const defaultSortString = defaultSortEntries.length ? encodeSorting(defaultSortEntries, multiSort) : null;
+  const defaultSortString = defaultSortEntries.length
+    ? encodeSorting(defaultSortEntries, multiSort)
+    : null;
 
   // Update URL params helper
   const updateUrlParams = useCallback(

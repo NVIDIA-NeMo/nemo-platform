@@ -161,7 +161,8 @@ export const DefaultSortControl: FC<DefaultSortControlProps> = ({
   const addRow = () => {
     // Default the new row to a static field not already used, so it isn't a duplicate of an existing row.
     const used = new Set(rows.map((row) => row.field));
-    const nextField = STATIC_FIELDS.find((f) => !used.has(f.value))?.value ?? STATIC_FIELDS[0].value;
+    const nextField =
+      STATIC_FIELDS.find((f) => !used.has(f.value))?.value ?? STATIC_FIELDS[0].value;
     emit([...rows, { field: nextField, desc: true }]);
   };
 
@@ -169,8 +170,8 @@ export const DefaultSortControl: FC<DefaultSortControlProps> = ({
     <FormField slotLabel="Default sort">
       <Stack gap="density-md">
         <Text kind="body/regular/sm" className="text-secondary">
-          Sets the default sort order for all users when they open this group. The first field is the
-          primary sort; add more fields to break ties.
+          Sets the default sort order for all users when they open this group. The first field is
+          the primary sort; add more fields to break ties.
         </Text>
         <Stack gap="density-sm">
           {rows.map((row, index) => (
