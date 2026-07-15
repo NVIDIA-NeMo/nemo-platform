@@ -202,10 +202,16 @@ class DockerDeploymentBackend(DeploymentBackend):
             "environment": env_dict(container_spec),
             **restart_policy_kwargs(config.restart_policy, config.backoff_limit),
         }
+        # Mirror Kubernetes semantics (see the k8s compiler): a container spec's
+        # ``command`` is the entrypoint override and ``args`` is the command
+        # (CMD). Map them onto docker's distinct ``entrypoint`` / ``command``
+        # kwargs so a driven container overrides the image's baked-in ENTRYPOINT
+        # instead of appending to it. Conflating both into docker ``command``
+        # leaves the image ENTRYPOINT in force and silently drops the spec.
         if container_spec.command:
-            run_kwargs["command"] = container_spec.command
+            run_kwargs["entrypoint"] = list(container_spec.command)
         if container_spec.args:
-            run_kwargs["command"] = list(container_spec.command) + list(container_spec.args)
+            run_kwargs["command"] = list(container_spec.args)
 
         volume_bindings = build_volume_bindings(workspace, merged_volume_mounts(config, container_spec))
         if volume_bindings:

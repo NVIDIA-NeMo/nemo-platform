@@ -60,6 +60,37 @@ describe('Claude Code chat artifacts', () => {
     ]);
   });
 
+  it('does not replace the agent name with an agent deployment action', () => {
+    const withAgent = updateClaudeCodeChatArtifactsFromSelections(
+      createEmptyClaudeCodeChatArtifacts(),
+      [{ header: 'Agent', question: 'Which agent should be used?' }],
+      { 'Which agent should be used?': 'beach-finder' }
+    );
+
+    const withDeploymentAction = updateClaudeCodeChatArtifactsFromSelections(
+      withAgent,
+      [
+        {
+          header: 'Agent',
+          question: 'The agent already exists. How should it be redeployed?',
+        },
+      ],
+      {
+        'The agent already exists. How should it be redeployed?': 'delete + recreate + redeploy',
+      }
+    );
+
+    expect(withDeploymentAction.agent).toBe('beach-finder');
+    expect(withDeploymentAction.selections[0]).toEqual({
+      label: 'Agent',
+      value: 'beach-finder',
+    });
+    expect(withDeploymentAction.selections[1]).toMatchObject({
+      value: 'delete + recreate + redeploy',
+    });
+    expect(withDeploymentAction.selections[1]?.label).not.toBe('Agent');
+  });
+
   it('collects relevant tool artifacts from streamed events', () => {
     const artifacts = updateClaudeCodeChatArtifactsFromEvent(
       { ...createEmptyClaudeCodeChatArtifacts(), workspace: 'default' },

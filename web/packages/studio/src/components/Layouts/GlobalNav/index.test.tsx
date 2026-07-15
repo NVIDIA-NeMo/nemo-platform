@@ -6,7 +6,7 @@ import { mockUseParams } from '@studio/tests/util/mockUseParams';
 import { SIDE_NAV_OPEN_KEY } from '@studio/util/localStorage';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { generatePath, MemoryRouter } from 'react-router-dom';
+import { createMemoryRouter, generatePath, MemoryRouter, RouterProvider } from 'react-router-dom';
 
 vi.mock('@studio/components/Breadcrumbs', () => ({
   Breadcrumbs: () => <div data-testid="breadcrumbs" />,
@@ -87,6 +87,62 @@ describe('GlobalNav', () => {
 
       expect(screen.getByRole('button', { name: 'Collapse sidebar' })).toBeInTheDocument();
       expect(screen.getByText('NeMo Studio')).toBeInTheDocument();
+    });
+
+    it('starts collapsed on the Code Agent route when no preference is saved', async () => {
+      createMatchMediaMock(true);
+
+      await renderGlobalNav(
+        generatePath(ROUTES.workspace.claudeCodeChat, { workspace: 'test-workspace' })
+      );
+
+      expect(screen.getByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument();
+      expect(screen.queryByText('NeMo Studio')).not.toBeInTheDocument();
+    });
+
+    it('respects a saved expanded preference on the Code Agent route', async () => {
+      localStorage.setItem(SIDE_NAV_OPEN_KEY, JSON.stringify('true'));
+      createMatchMediaMock(true);
+
+      await renderGlobalNav(
+        generatePath(ROUTES.workspace.claudeCodeChat, { workspace: 'test-workspace' })
+      );
+
+      expect(screen.getByRole('button', { name: 'Collapse sidebar' })).toBeInTheDocument();
+      expect(screen.getByText('NeMo Studio')).toBeInTheDocument();
+    });
+
+    it('uses the Code Agent default during in-app navigation', async () => {
+      createMatchMediaMock(true);
+      const { GlobalNav } = await import('@studio/components/Layouts/GlobalNav/index');
+      const router = createMemoryRouter(
+        [
+          {
+            path: '*',
+            element: (
+              <GlobalNav sideNav={() => <div data-testid="side-nav">Side Nav Content</div>} />
+            ),
+          },
+        ],
+        { initialEntries: ['/workspaces/test-workspace/jobs'] }
+      );
+      render(<RouterProvider router={router} />);
+
+      expect(screen.getByRole('button', { name: 'Collapse sidebar' })).toBeInTheDocument();
+
+      await act(async () => {
+        await router.navigate(
+          generatePath(ROUTES.workspace.claudeCodeChat, { workspace: 'test-workspace' })
+        );
+      });
+
+      expect(screen.getByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument();
+
+      await act(async () => {
+        await router.navigate('/workspaces/test-workspace/jobs');
+      });
+
+      expect(screen.getByRole('button', { name: 'Collapse sidebar' })).toBeInTheDocument();
     });
 
     it('auto-collapses sidebar when initial viewport is narrow', async () => {

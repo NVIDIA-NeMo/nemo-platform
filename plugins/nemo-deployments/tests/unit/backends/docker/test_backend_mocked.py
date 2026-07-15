@@ -45,6 +45,35 @@ async def test_create_deployment_starts_container(
 
 
 @pytest.mark.asyncio
+async def test_create_deployment_maps_command_to_entrypoint(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    """A spec's ``command`` overrides the image ENTRYPOINT; ``args`` is the CMD.
+
+    This mirrors Kubernetes semantics and is required so a driven container
+    (e.g. a packaged agent that bakes its own ``ENTRYPOINT``) runs the
+    platform-supplied command instead of the image default.
+    """
+    mock_entities.get.return_value = sample_config()  # command=["echo"], args=["hello"]
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    mock_docker_client.containers.run.return_value = MagicMock(id="abc123")
+
+    await docker_backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    _, run_kwargs = mock_docker_client.containers.run.call_args
+    assert run_kwargs["entrypoint"] == ["echo"]
+    assert run_kwargs["command"] == ["hello"]
+
+
+@pytest.mark.asyncio
 async def test_read_status_ready_when_running_without_probe(
     docker_backend: DockerDeploymentBackend,
     mock_entities: AsyncMock,

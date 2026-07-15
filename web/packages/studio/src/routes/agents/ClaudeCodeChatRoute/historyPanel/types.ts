@@ -10,5 +10,3 @@ export interface ClaudeCodeHistoryPanelProps {
   onNewChat: () => void;
   onSelectSession: (sessionId: string) => void;
 }
-
-export type ClaudeCodePanelTab = 'history' | 'skills';

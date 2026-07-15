@@ -1,0 +1,427 @@
+---
+title: "Deploy Agents"
+description: ""
+---
+<a id="deploy-agents"></a>
+
+Deploy a registered agent as a running service and invoke it through the
+Agents gateway. An agent can run in one of three modes — as a local
+subprocess (the default), or as a durable container on Docker or Kubernetes.
+
+<Note>
+
+Resource names for agents and deployments must contain only letters (a-z,
+A-Z), digits (0-9), underscores, hyphens, and dots. For example:
+`calc-agent`, `my-agent`, `react-agent`.
+
+</Note>
+
+<Markdown src="/snippets/_snippets/tutorials/cli-sdk-setup.mdx" />
+---
+
+## Deployment Modes
+
+`nemo agents deploy --mode <mode>` selects the runtime backend for a
+deployment. The default is `subprocess`; `docker` and `k8s` run the agent as a
+durable container through the deployments plugin.
+
+| Mode | Runs as | Survives a platform restart | Requires |
+|------|---------|-----------------------------|----------|
+| `subprocess` (default) | A local `nat start fastapi` process on the platform host | No | Nothing extra |
+| `docker` | A Docker container | Yes | A container image and a configured `docker` executor |
+| `k8s` | A Kubernetes Deployment + Service | Yes | A container image and a configured `k8s` executor |
+
+In every mode the agent is reached the same way — through the Agents gateway,
+which resolves the agent's active deployment and proxies the request, so
+clients do not need to know which mode the agent runs in.
+---
+
+## Subprocess Mode (Default)
+
+The simplest path: the platform launches a `nat start fastapi` process for the
+agent on its own host, assigns a port, watches its health, and tears it down
+on `nemo agents undeploy`. No image or executor configuration is required.
+
+
+<Tabs>
+
+<Tab title="CLI">
+
+```bash
+# Register the agent from a NAT workflow YAML
+nemo agents create --name calc-agent \
+  --agent-config ./calculator-agent.yml
+
+# Deploy as a local subprocess (waits for "running" by default)
+nemo agents deploy --agent calc-agent
+
+# Invoke through the Agents gateway
+nemo agents invoke --agent calc-agent --input "What is 12 multiplied by 8?"
+```
+
+</Tab>
+<Tab title="Python SDK">
+
+```python
+import os
+
+import yaml
+from nemo_platform import NeMoPlatform
+
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
+
+# Register the agent from a NAT workflow YAML
+with open("calculator-agent.yml") as f:
+    config = yaml.safe_load(f)
+client.agents.create(name="calc-agent", config=config)
+
+# Deploy as a local subprocess
+client.agents.deployments.create(agent="calc-agent")
+
+# Invoke through the Agents gateway
+response = client.agents.invoke(
+    agent="calc-agent",
+    input="What is 12 multiplied by 8?",
+)
+```
+
+</Tab>
+
+</Tabs>
+
+---
+
+## Container Modes (Docker / Kubernetes)
+
+Container modes give an agent a durable deployment that survives a platform
+restart. Instead of a local process, the platform compiles the agent into a
+generic deployment and hands it to the **deployments plugin**, which runs it on
+the configured executor (Docker or Kubernetes) and projects the running
+container's address back onto the agent deployment. The Agents gateway then
+routes to that projected address.
+
+### Prerequisites
+
+**1. A container image for the agent.** Container modes run a NAT runtime image
+that has `nat` on its `PATH` plus your agent's dependencies (tools, custom
+components). Build one with `nemo agents package`. Image building requires the
+`container` extra — install it with `pip install 'nemo-agents-plugin[container]'`
+if `nemo agents package` reports that `python-on-whales` is missing.
+
+The examples below use the calculator agent that ships with the source
+checkout. From the repository root, its project directory is
+`plugins/nemo-agents/examples/calculator-agent/` — the workflow YAML lives at
+`src/calculator_agent/calculator-agent.yml` and the project's `pyproject.toml`
+sits at the directory root. `cd` into that project directory first so the paths
+below resolve:
+
+<Tabs>
+
+<Tab title="CLI">
+
+```bash
+# From the repo root, switch into the example's project directory
+cd plugins/nemo-agents/examples/calculator-agent
+
+# Render a Dockerfile, build the image, and tag it locally.
+# --pyproject builds in "project mode" so the agent's custom components
+# (here, the `calculator` function group) are installed into the image.
+# Omit --pyproject only for a single-file agent that has no local package.
+nemo agents package \
+  --agent src/calculator_agent/calculator-agent.yml \
+  --pyproject pyproject.toml \
+  --nat-version 1.8.0 \
+  --tag calc-agent:local
+
+# For k8s, publish to a registry your cluster can pull from
+nemo agents package \
+  --agent src/calculator_agent/calculator-agent.yml \
+  --pyproject pyproject.toml \
+  --nat-version 1.8.0 \
+  --tag calc-agent:1.0 \
+  --publish --registry <your-registry>
+```
+
+</Tab>
+
+</Tabs>
+<Note>
+
+`--mode docker` needs an image the platform's Docker daemon can run.
+`--mode k8s` needs an image the cluster nodes can pull (a registry image, or an
+image pre-loaded onto the nodes) — the k8s backend does not use image pull
+secrets. Pass the image with `--image`, or set
+`agents.deployments.default_image` in the platform configuration.
+
+</Note>
+
+**2. A configured deployments executor.** The platform operator defines named
+executors in the platform configuration and points the agents plugin at them.
+A minimal Docker + Kubernetes configuration:
+
+```yaml
+agents:
+  deployments:
+    # Names below must match deployments.executors[].name
+    docker_executor: local-docker
+    k8s_executor: k8s-local
+    # Optional: the image used when --image is omitted
+    default_image: ""
+    # Container port the NAT server binds (and the readiness probe target)
+    container_port: 8000
+
+deployments:
+  default_executor: local-docker
+  executors:
+    - name: local-docker
+      backend: docker
+      config:
+        # Set false when running locally-built (not registry) images
+        pull_images: false
+    - name: k8s-local
+      backend: k8s
+      config:
+        # Omit kubeconfig_path to use in-cluster ServiceAccount auth
+        default_namespace: default
+```
+
+<Note>
+
+The Kubernetes backend requires the `kubernetes` Python client in the platform
+image and a ServiceAccount with permission to manage Deployments, Services,
+ConfigMaps, and Pods in the target namespace. In the packaged Helm chart these
+run in the core controller, whose Role already grants those permissions.
+
+</Note>
+
+### Deploy on Docker
+
+<Tabs>
+
+<Tab title="CLI">
+
+```bash
+# Run from the example's project directory (see Prerequisites)
+nemo agents create --name calc-agent \
+  --agent-config src/calculator_agent/calculator-agent.yml
+
+# --mode docker compiles to the deployments plugin's docker executor
+nemo agents deploy --agent calc-agent \
+  --mode docker \
+  --image calc-agent:local
+
+# Reached through the Agents gateway, exactly like subprocess mode
+nemo agents invoke --agent calc-agent --input "What is 12 multiplied by 8?"
+```
+
+</Tab>
+<Tab title="Python SDK">
+
+```python
+import os
+
+import yaml
+from nemo_platform import NeMoPlatform
+
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
+
+with open("src/calculator_agent/calculator-agent.yml") as f:
+    config = yaml.safe_load(f)
+client.agents.create(name="calc-agent", config=config)
+
+client.agents.deployments.create(
+    agent="calc-agent",
+    deployment_mode="docker",
+    image="calc-agent:local",
+)
+
+response = client.agents.invoke(
+    agent="calc-agent",
+    input="What is 12 multiplied by 8?",
+)
+```
+
+</Tab>
+
+</Tabs>
+
+### Deploy on Kubernetes
+
+Deployment is identical apart from `--mode k8s`. The deployments plugin creates
+a Kubernetes Deployment and a ClusterIP Service, and projects the Service's
+in-cluster DNS address (`<service>.<namespace>.svc.cluster.local:<port>`) onto
+the agent deployment. Because the Agents gateway runs in-cluster, it routes to
+that address directly.
+
+<Tabs>
+
+<Tab title="CLI">
+
+```bash
+# Run from the example's project directory (see Prerequisites)
+nemo agents create --name calc-agent \
+  --agent-config src/calculator_agent/calculator-agent.yml
+
+nemo agents deploy --agent calc-agent \
+  --mode k8s \
+  --image <registry>/calc-agent:1.0
+
+nemo agents invoke --agent calc-agent --input "What is 12 multiplied by 8?"
+```
+
+</Tab>
+<Tab title="Python SDK">
+
+```python
+import os
+
+import yaml
+from nemo_platform import NeMoPlatform
+
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
+
+with open("src/calculator_agent/calculator-agent.yml") as f:
+    config = yaml.safe_load(f)
+client.agents.create(name="calc-agent", config=config)
+
+client.agents.deployments.create(
+    agent="calc-agent",
+    deployment_mode="k8s",
+    image="<registry>/calc-agent:1.0",
+)
+
+response = client.agents.invoke(
+    agent="calc-agent",
+    input="What is 12 multiplied by 8?",
+)
+```
+
+</Tab>
+
+</Tabs>
+---
+
+## Model Access from a Deployed Agent
+
+Regardless of mode, model traffic from inside the agent routes back through the
+[Inference Gateway](/documentation/models-and-inference). The platform injects
+the gateway URL when it deploys the agent, and the gateway resolves model
+entity names to upstream providers and supplies their credentials. Two
+conventions apply to the agent's workflow YAML:
+
+- **Leave `base_url` and `api_key` unset** on `openai` and `nim` LLMs — the
+  deployment injects the gateway URL and the gateway looks up upstream
+  credentials.
+- **Reference models by their Inference Gateway entity name**, with slashes and
+  dots converted to hyphens (`meta/llama-3.1-8b-instruct` becomes
+  `default/meta-llama-3-1-8b-instruct`). Use `${NEMO_DEFAULT_MODEL}` to defer to
+  the platform's configured default model.
+
+To make an external model available to the agent, register a provider first —
+see [Deploy Models](/documentation/models-and-inference/tutorials/deploy-models#add-external-providers)
+for NVIDIA Build, OpenAI, and Anthropic examples.
+
+<Note>
+
+For container modes, the gateway URL injected into the agent must be reachable
+**from inside the container**, not just from the platform host. A loopback
+default like `http://localhost:8080` resolves to the container itself and the
+agent's model calls will fail. Set the platform's base URL to a
+container-reachable address — for example the Docker bridge address
+(`http://172.17.0.1:8080`) under Docker, or the in-cluster gateway address under
+Kubernetes.
+
+</Note>
+
+---
+
+## Inspect a Deployment
+
+<Tabs>
+
+<Tab title="CLI">
+
+```bash
+# Block until the deployment is running or failed
+nemo agents deployments wait --agent calc-agent
+
+# List / inspect deployments
+nemo agents deployments list
+nemo agents deployments get <deployment-name>
+```
+
+</Tab>
+<Tab title="Python SDK">
+
+```python
+import os
+
+from nemo_platform import NeMoPlatform
+
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
+
+deployment = client.agents.deployments.get("<deployment-name>")
+print(deployment["deployment_mode"], deployment["status"], deployment["endpoints"])
+```
+
+</Tab>
+
+</Tabs>
+For a container-mode deployment, the deployment reports `deployment_mode`
+(`docker` or `k8s`), a `status` of `running` once ready, and an `endpoints`
+list carrying the container's routable address. Subprocess deployments carry a
+loopback `endpoint` instead. The Agents gateway uses whichever the deployment's
+mode provides, so invocation is identical across modes.
+
+---
+
+## Deployment Cleanup
+
+
+<Tabs>
+
+<Tab title="CLI">
+
+```bash
+# Stop the running deployment (removes the process/container/k8s objects)
+nemo agents undeploy <deployment-name>
+
+# Remove the agent entity
+nemo agents delete <agent-name>
+```
+
+</Tab>
+<Tab title="Python SDK">
+
+```python
+import os
+
+from nemo_platform import NeMoPlatform
+
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
+
+# Stop the running deployment (removes the process/container/k8s objects)
+client.agents.deployments.delete("<deployment-name>")
+
+# Remove the agent entity
+client.agents.delete("<agent-name>")
+```
+
+</Tab>
+
+</Tabs>
