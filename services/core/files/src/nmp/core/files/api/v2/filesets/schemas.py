@@ -24,9 +24,19 @@ from nmp.common.entities.values import DatetimeFilter, Filter, StringFilter, map
 from nmp.core.files.app.backends import FileInfo
 from nmp.core.files.app.backends.base import StorageConfigType
 from nmp.core.files.entities import Fileset, FilesetPurpose
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 FilesetPage = Page[FilesetOutput]
+
+
+class ProfileFilesetResponse(BaseModel):
+    """Response for a submitted fileset-profiling job."""
+
+    job_name: str = Field(description="Name of the submitted profiling job.")
+    job_id: str = Field(description="ID of the submitted profiling job.")
+    status: Optional[str] = Field(default=None, description="Status of the job at submission time.")
+    workspace: str = Field(description="Workspace of the profiled fileset.")
+    fileset: str = Field(description="Name of the profiled fileset.")
 
 
 # ---------------------------------------------------------------------------

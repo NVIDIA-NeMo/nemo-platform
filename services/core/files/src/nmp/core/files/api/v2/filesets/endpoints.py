@@ -17,6 +17,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.files.dataset_profile import DatasetProfile
 from nmp.common.api.common import GenericSortField, PaginationData
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
@@ -50,6 +51,7 @@ from nmp.core.files.api.v2.filesets.schemas import (
     FilesetOutput,
     FilesetPage,
     ListFilesetFilesResponse,
+    ProfileFilesetResponse,
     UpdateFilesetRequest,
     fileset_file_output_from_info,
     fileset_output_from_entity,
@@ -63,6 +65,7 @@ from nmp.core.files.app.external_hosts import (
     ExternalHostNotAllowedError,
 )
 from nmp.core.files.app.file_lock import FileLockManager
+from nmp.core.files.app.profile_job import submit_profile_job
 from nmp.core.files.app.streaming import (
     MultipartChunkProcessor,
     OctetStreamChunkProcessor,
@@ -81,6 +84,7 @@ from nmp.core.files.exceptions import (
 )
 from starlette.status import (
     HTTP_200_OK,
+    HTTP_202_ACCEPTED,
     HTTP_400_BAD_REQUEST,
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
@@ -346,6 +350,67 @@ async def retrieve_fileset(
     logger.info(f"GET /filesets/{name} - workspace={workspace}")
     retrieved = await get_fileset(workspace, name, entity_store)
     return fileset_output_from_entity(retrieved)
+
+
+@router.post(
+    "/v2/workspaces/{workspace}/filesets/{name}/profile",
+    summary="Profile Fileset",
+    status_code=HTTP_202_ACCEPTED,
+)
+async def profile_fileset(
+    workspace: str,
+    name: str,
+    entity_store: EntityClient = Depends(get_entity_client),
+    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+) -> ProfileFilesetResponse:
+    """
+    Profile a fileset's dataset contents.
+
+    Submits a background job that runs the dataset profiler over the fileset's
+    files and publishes the resulting profile as a job result artifact named
+    ``profile``. Returns the submitted job so the caller can poll its status and
+    fetch the artifact when it completes.
+    """
+    logger.info(f"POST /filesets/{name}/profile - workspace={workspace}")
+    # Raise 404 if the fileset does not exist.
+    await get_fileset(workspace, name, entity_store)
+    job = await submit_profile_job(sdk, workspace=workspace, fileset_name=name)
+    return ProfileFilesetResponse(
+        job_name=job.name,
+        job_id=job.id,
+        status=str(job.status) if job.status is not None else None,
+        workspace=workspace,
+        fileset=name,
+    )
+
+
+@router.get(
+    "/v2/workspaces/{workspace}/filesets/{name}/profile",
+    summary="Get Fileset Profile",
+    status_code=HTTP_200_OK,
+)
+async def get_fileset_profile(
+    workspace: str,
+    name: str,
+    entity_store: EntityClient = Depends(get_entity_client),
+) -> DatasetProfile:
+    """
+    Get the stored dataset profile for a fileset.
+
+    Returns the profile computed by the most recent profiling job. Responds with
+    404 if the fileset has not been profiled yet (trigger one with
+    ``POST .../filesets/{name}/profile``).
+    """
+    logger.info(f"GET /filesets/{name}/profile - workspace={workspace}")
+    fileset = await get_fileset(workspace, name, entity_store)
+    dataset_metadata = fileset.metadata.dataset if fileset.metadata else None
+    profile = dataset_metadata.profile if dataset_metadata else None
+    if profile is None:
+        raise HTTPException(
+            HTTP_404_NOT_FOUND,
+            f"Fileset '{name}' has no profile yet. Trigger one with POST .../filesets/{name}/profile.",
+        )
+    return profile
 
 
 @router.delete(

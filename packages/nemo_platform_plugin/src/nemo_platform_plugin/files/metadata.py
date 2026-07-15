@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from jsonschema.exceptions import SchemaError
 from jsonschema.validators import validator_for
+from nemo_platform_plugin.files.dataset_profile import DatasetProfile
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -36,6 +37,13 @@ class DatasetMetadataContent(BaseModel):
         description=(
             "Optional per-file row schemas keyed by relative path within the fileset. "
             "Each value may be inline JSON Schema or a schema_defs key."
+        ),
+    )
+    profile: DatasetProfile | None = Field(
+        default=None,
+        description=(
+            "Machine-computed dataset profile (structure, stats, and classification). Populated by "
+            "the profiler job; trigger one with POST .../filesets/{name}/profile."
         ),
     )
 
