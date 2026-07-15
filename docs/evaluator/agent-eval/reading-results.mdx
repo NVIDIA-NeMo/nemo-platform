@@ -1,0 +1,94 @@
+---
+title: "Reading Results"
+description: "Reference for what a run returns — the in-memory AgentEvalResult (summary, per-metric scores, trials, run id) — and the on-disk run bundle it writes when you set output_dir, including the browsable HTML report."
+---
+
+`AgentEvaluator().run(...)` returns an `AgentEvalResult`. Set an `output_dir` and it *also* writes a
+**run bundle** to disk. The object and the bundle hold the same data — use the object for programmatic
+follow-up, and the bundle (especially `report.html`) to inspect or share a run.
+
+## The result object
+
+```python
+result = await AgentEvaluator().run(tasks=..., target=...)
+```
+
+| Attribute | What it holds |
+|---|---|
+| `result.run_id` | stable identifier for this run (e.g. `agent-eval-20260715…`) |
+| `result.summary` | aggregated scores and coverage — see [below](#the-summary) |
+| `result.scores` | one entry per **(task, trial, metric)** |
+| `result.trials` | one entry per **trial** |
+| `result.tasks` | the tasks that were evaluated |
+| `result.output_dir` / `result.dashboard_path` | where the bundle and `report.html` were written (when `output_dir` was set) |
+
+### The summary
+
+`result.summary` (an `AgentEvalSummary`):
+
+- **`summary.scores.scores`** — the aggregates. Each is named `<metric.type>.<output>` (and
+  `view.<name>` for a [view](/documentation/evaluate-models/agent-eval/score-by-component)), with
+  `mean`, `min`, `max`, and `std_dev`. This is what the guides print:
+
+  ```python
+  for aggregate in result.summary.scores.scores:
+      print(f"{aggregate.name}: {aggregate.mean}")
+  ```
+
+- **`summary.metric_coverage`** — per metric output, how many trials were `total` / `scored` / failed /
+  missing, so you can tell a low mean from low coverage.
+- **`summary.task_count`**, **`summary.trial_count`**, **`summary.score_count`**.
+
+### Per-metric scores
+
+Each entry in `result.scores` carries: `id`, `run_id`, `task_id`, `trial_id`, `metric_type`, `status`
+(e.g. `completed` / `failed`), `outputs` (the metric's named outputs), `diagnostics`, and `metadata`.
+Use these to drill from an aggregate down to the individual (task, metric) that produced it.
+
+### Trials
+
+Each entry in `result.trials` carries: `id`, `task_id`, `status` (`completed` / `partial` / `failed`),
+`output` (the agent's final answer), `evidence` (trajectory, final state, logs), and `metadata`. Trials
+are the durable, scorer-agnostic record — they can be re-scored offline later.
+
+## The run bundle
+
+Set `output_dir` and `run()` writes these files (the same data, on disk):
+
+| File | Contents |
+|---|---|
+| `run.json` | the run manifest — run id and a map of the artifact files |
+| `summary.json` | the aggregated summary (means / min / max / std-dev and coverage) |
+| `scores.jsonl` | one row per (task, trial, metric) |
+| `trials.jsonl` | one row per trial — output, evidence, status |
+| `tasks.jsonl` | the tasks that were evaluated |
+| `benchmark.json` | benchmark-grouping metadata for the run |
+| `report.html` | a browsable dashboard — open it in a browser |
+
+```python
+from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig
+
+result = await AgentEvaluator().run(
+    tasks=..., target=..., config=AgentEvalRunConfig(output_dir="./agent-eval-run"),
+)
+# -> ./agent-eval-run/report.html, summary.json, scores.jsonl, trials.jsonl, ...
+```
+
+`report.html` is the fastest way to eyeball a run or hand it to someone else; the `.jsonl` files are
+convenient for loading scores and trials into your own tooling.
+
+<Note>
+
+`report.html` is written only when `AgentEvalRunConfig.write_dashboard` is `True` (the default). Set
+`write_dashboard=False` to emit just the JSON/JSONL artifacts and skip the HTML; the `.json` and
+`.jsonl` files are always written whenever `output_dir` is set.
+
+</Note>
+
+## Related
+
+<Cards>
+  <Card title="Quickstart" href="/documentation/evaluate-models/agent-eval/quickstart" />
+  <Card title="Score by Component" href="/documentation/evaluate-models/agent-eval/score-by-component" />
+  <Card title="Writing Metrics" href="/documentation/evaluate-models/agent-eval/writing-metrics" />
+</Cards>
