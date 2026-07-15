@@ -337,6 +337,27 @@ async def test_delete_retries_on_next_call_when_deployment_still_exists() -> Non
 
 
 @pytest.mark.asyncio
+async def test_delete_completes_when_plugin_deployment_failed() -> None:
+    backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
+    backend.init()
+    backend._entities = AsyncMock()
+    server = Deployment(
+        name="my-dep-server",
+        workspace="default",
+        deployment_config="my-dep-server",
+        status="FAILED",
+        desired_state="STOPPED",
+    )
+    backend._entities.get = AsyncMock(return_value=server)
+    backend._entities.delete = AsyncMock()
+
+    result = await backend.delete_model_deployment("default", "my-dep")
+
+    assert result.status == "DELETED"
+    backend._entities.delete.assert_any_await(Deployment, name="my-dep-server", workspace="default")
+
+
+@pytest.mark.asyncio
 async def test_delete_escalates_to_error_after_deleting_timeout() -> None:
     backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
     backend.init()

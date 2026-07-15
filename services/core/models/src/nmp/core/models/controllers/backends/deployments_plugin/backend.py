@@ -220,11 +220,20 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
         """Initiate plugin deployment stop and return True once config can be removed."""
         deployment = await self._get_optional(Deployment, workspace, deployment_name)
         if deployment is not None:
-            if deployment.status != "DELETING" or deployment.desired_state != "STOPPED":
+            if deployment.status == "FAILED":
+                # Plugin reconciler gave up on substrate teardown; remove the stale
+                # entity so models delete can finish config/volume cleanup.
+                try:
+                    await self._entity_client().delete(Deployment, name=deployment_name, workspace=workspace)
+                except NemoEntityNotFoundError:
+                    pass
+            elif deployment.status != "DELETING" or deployment.desired_state != "STOPPED":
                 deployment.status = "DELETING"
                 deployment.desired_state = "STOPPED"
                 await self._entity_client().update(deployment)
-            return False
+                return False
+            else:
+                return False
         try:
             await self._entity_client().delete(DeploymentConfig, name=config_name, workspace=workspace)
         except NemoEntityNotFoundError:
