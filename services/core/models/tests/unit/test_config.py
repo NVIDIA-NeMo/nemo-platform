@@ -57,6 +57,8 @@ def test_get_default_backends_for_docker_runtime():
     assert "deployments_plugin" in backends
     assert isinstance(backends["deployments_plugin"], DeploymentsPluginBackendConfigModel)
     assert backends["deployments_plugin"].enabled is True
+    assert backends["deployments_plugin"].docker_executor == "local-docker"
+    assert backends["deployments_plugin"].default_executor == "local-docker"
     assert "docker" not in backends
     assert "nim_operator" not in backends
 
@@ -67,6 +69,8 @@ def test_get_default_backends_for_kubernetes_runtime():
     assert "deployments_plugin" in backends
     assert isinstance(backends["deployments_plugin"], DeploymentsPluginBackendConfigModel)
     assert backends["deployments_plugin"].enabled is True
+    assert backends["deployments_plugin"].k8s_executor == "local-k8s"
+    assert backends["deployments_plugin"].default_executor == "local-k8s"
     assert "nim_operator" not in backends
     assert "docker" not in backends
 
@@ -77,6 +81,7 @@ def test_get_default_backends_for_none_runtime():
     assert "deployments_plugin" in backends
     assert isinstance(backends["deployments_plugin"], DeploymentsPluginBackendConfigModel)
     assert backends["deployments_plugin"].enabled is True
+    assert backends["deployments_plugin"].default_executor is None
 
 
 def test_merge_backends_with_no_custom_backends():

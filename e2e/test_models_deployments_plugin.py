@@ -96,6 +96,15 @@ def _wait_for_deployment_deleted(
         try:
             deployment = sdk.inference.deployments.retrieve(name, workspace=workspace)
             last_status = deployment.status
+            if deployment.status == "ERROR":
+                pytest.fail(
+                    _deployment_diagnostic(
+                        sdk,
+                        workspace=workspace,
+                        name=name,
+                        prefix=f"Deployment {name!r} entered ERROR while waiting for deletion",
+                    )
+                )
         except NotFoundError:
             return
         time.sleep(2)

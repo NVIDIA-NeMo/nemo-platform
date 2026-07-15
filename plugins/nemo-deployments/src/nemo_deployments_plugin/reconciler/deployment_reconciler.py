@@ -23,6 +23,14 @@ logger = logging.getLogger(__name__)
 _DELETE_COMPLETE_STATUSES = frozenset({"SUCCEEDED", "DELETED"})
 
 
+def _is_terminal_deleting_timeout_failure(deployment: Deployment) -> bool:
+    """Return True when delete reconciliation already recorded a deleting timeout."""
+    if deployment.status != "FAILED":
+        return False
+    details = deployment.error_details
+    return isinstance(details, dict) and details.get("reason") == "deleting_timeout"
+
+
 def deployment_id(deployment: Deployment) -> str:
     return f"{deployment.workspace}/{deployment.name}"
 
@@ -182,6 +190,8 @@ class DeploymentReconciler:
     async def _reconcile_delete(self, deployment: Deployment) -> None:
         dep_id = deployment_id(deployment)
         self._drift_cache.remove(dep_id)
+        if _is_terminal_deleting_timeout_failure(deployment):
+            return
         timeout_update = self._check_deleting_timeout(deployment)
         if timeout_update is not None:
             await self._update_deployment_status(deployment, timeout_update)

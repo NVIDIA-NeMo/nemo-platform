@@ -381,8 +381,10 @@ def controller_with_docker_and_igw(
 
         yield controller, model_cache, test_clients.sdk, mock_nim_image, docker_test_context, test_clients.async_sdk
 
-        controller._loop.run_until_complete(deployments_controller.on_shutdown())
-        controller.shutdown()
+        try:
+            controller._loop.run_until_complete(deployments_controller.on_shutdown())
+        finally:
+            controller.shutdown()
 
 
 # =============================================================================

@@ -39,6 +39,7 @@ from nmp.core.models.controllers.backends.engine import ENGINE_NIM, ENGINE_VLLM
 _WEIGHTS_MOUNT = "/model-store"
 _SCRATCH_MOUNT = "/scratch"
 _TOOL_CALL_PLUGIN_PATH = "/model-store/plugin/plugin.py"
+_TOOL_CALL_PLUGIN_SCRATCH_PATH = "/scratch/plugin/plugin.py"
 _TOOL_CALL_PLUGIN_SCRATCH_DIR = "/scratch/plugin"
 _TOOL_CALL_PLUGIN_FINALIZE_SCRIPT = """set -euo pipefail
 py_files="$(find "{scratch_dir}" -type f -name '*.py' || true)"
@@ -78,12 +79,18 @@ def _puller_image_parts(image: str) -> tuple[str, str] | None:
     return image[:last_colon_idx], image[last_colon_idx + 1 :]
 
 
+def tool_call_plugin_install_path(*, weighted: bool) -> str:
+    """Return the in-container path where the tool-call plugin is installed."""
+    return _TOOL_CALL_PLUGIN_PATH if weighted else _TOOL_CALL_PLUGIN_SCRATCH_PATH
+
+
 def tool_call_plugin_init_containers(
     resolved: ResolvedPluginDeployment,
     config: DeploymentsPluginConfig,
     *,
     names_volume: str,
     names_scratch: str,
+    weighted: bool,
 ) -> list[Container] | None:
     """Build init containers that fetch and install a tool-call plugin fileset."""
     plugin_fileset = _plugin_fileset(resolved.view, resolved.model_entity)
@@ -97,18 +104,25 @@ def tool_call_plugin_init_containers(
     puller_repo, puller_tag = puller_parts
     scratch_mount = VolumeMount(name=names_scratch, mountPath=_SCRATCH_MOUNT)
     weights_mount = VolumeMount(name=names_volume, mountPath=_WEIGHTS_MOUNT)
+    plugin_path = tool_call_plugin_install_path(weighted=weighted)
     busybox = _image(config.busybox_image, config.busybox_image_tag)
+    prepare_mounts = [scratch_mount]
+    finalize_mounts = [scratch_mount]
+    if weighted:
+        prepare_mounts.append(weights_mount)
+        finalize_mounts.append(weights_mount)
+        prepare_script = (
+            "set -e; mkdir -p /model-store/plugin /scratch/plugin; "
+            f"rm -f {_TOOL_CALL_PLUGIN_PATH}; rm -rf /scratch/plugin/*"
+        )
+    else:
+        prepare_script = f"set -e; mkdir -p /scratch/plugin; rm -f {plugin_path}; rm -rf /scratch/plugin/*"
     return [
         Container(
             name="tool-call-plugin-prepare",
             image=busybox,
-            command=[
-                "sh",
-                "-c",
-                "set -e; mkdir -p /model-store/plugin /scratch/plugin; "
-                f"rm -f {_TOOL_CALL_PLUGIN_PATH}; rm -rf /scratch/plugin/*",
-            ],
-            volumeMounts=[scratch_mount, weights_mount],
+            command=["sh", "-c", prepare_script],
+            volumeMounts=prepare_mounts,
         ),
         Container(
             name="tool-call-plugin-pull",
@@ -128,10 +142,10 @@ def tool_call_plugin_init_containers(
                 "-c",
                 _TOOL_CALL_PLUGIN_FINALIZE_SCRIPT.format(
                     scratch_dir=_TOOL_CALL_PLUGIN_SCRATCH_DIR,
-                    plugin_path=_TOOL_CALL_PLUGIN_PATH,
+                    plugin_path=plugin_path,
                 ),
             ],
-            volumeMounts=[scratch_mount, weights_mount],
+            volumeMounts=finalize_mounts,
         ),
     ]
 
@@ -171,14 +185,11 @@ def compile_nim_server_env(
         if not is_multi_llm_image(effective_image):
             env["NIM_FT_MODEL"] = _WEIGHTS_MOUNT
             env["NIM_CUSTOM_MODEL"] = _WEIGHTS_MOUNT
-    else:
-        env["NIM_MODEL_NAME"] = _WEIGHTS_MOUNT
-        env["NIM_MODEL_PATH"] = _WEIGHTS_MOUNT
-        if resolved.model_name:
-            served = (
-                f"{resolved.model_namespace}/{resolved.model_name}" if resolved.model_namespace else resolved.model_name
-            )
-            env.setdefault("NIM_SERVED_MODEL_NAME", served)
+    elif resolved.model_name:
+        served = (
+            f"{resolved.model_namespace}/{resolved.model_name}" if resolved.model_namespace else resolved.model_name
+        )
+        env.setdefault("NIM_SERVED_MODEL_NAME", served)
 
     model_entity = resolved.model_entity
     if model_entity:
@@ -295,7 +306,10 @@ def build_k8s_deployment_backend_config(
     config: DeploymentsPluginConfig,
 ) -> DeploymentBackendConfig:
     """Merge operator overrides and engine security defaults into backend_config.k8s."""
-    k8s = k8s_backend_config_from_nim_operator(view) or K8sDeploymentConfig()
+    if engine == ENGINE_NIM:
+        k8s = k8s_backend_config_from_nim_operator(view) or K8sDeploymentConfig()
+    else:
+        k8s = K8sDeploymentConfig()
     security_context = pod_security_context_for_engine(engine, view, config)
     if security_context is not None:
         k8s.security_context = security_context
@@ -329,9 +343,14 @@ def apply_container_resources(container: Container, resources: dict[str, Any]) -
     limits = resources.get("limits") if isinstance(resources.get("limits"), dict) else {}
     if not requests and not limits:
         return
+    existing = container.resources
+    merged_requests = dict(existing.requests) if existing and existing.requests else {}
+    merged_limits = dict(existing.limits) if existing and existing.limits else {}
+    merged_requests.update({str(key): str(value) for key, value in requests.items()})
+    merged_limits.update({str(key): str(value) for key, value in limits.items()})
     container.resources = ResourceRequirements(
-        requests={str(key): str(value) for key, value in requests.items()},
-        limits={str(key): str(value) for key, value in limits.items()},
+        requests=merged_requests,
+        limits=merged_limits,
     )
 
 
@@ -477,9 +496,9 @@ def apply_nim_override_config(
         if repository:
             container.image = _image(str(repository), str(image_info.get("tag") or "latest"))
 
-    if override.get("command"):
+    if "command" in override:
         container.command = [str(item) for item in override["command"]]
-    if override.get("args"):
+    if "args" in override:
         container.args = [str(item) for item in override["args"]]
 
     resources = override.get("resources")
@@ -492,15 +511,11 @@ def apply_nim_override_config(
 
     readiness = override.get("readinessProbe")
     if isinstance(readiness, dict):
-        probe = _probe_from_nim_service_probe(readiness)
-        if probe is not None:
-            container.readiness_probe = probe
+        container.readiness_probe = _probe_from_nim_service_probe(readiness)
 
     liveness = override.get("livenessProbe")
     if isinstance(liveness, dict):
-        probe = _probe_from_nim_service_probe(liveness)
-        if probe is not None:
-            container.liveness_probe = probe
+        container.liveness_probe = _probe_from_nim_service_probe(liveness)
 
     startup = override.get("startupProbe")
     if isinstance(startup, dict):

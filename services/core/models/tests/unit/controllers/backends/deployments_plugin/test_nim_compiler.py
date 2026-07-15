@@ -10,6 +10,7 @@ from nemo_deployments_plugin.entities import (
     Probe,
     ResourceRequirements,
     Toleration,
+    VolumeMount,
 )
 from nemo_platform.types.inference.k8s_nim_operator_config import K8sNIMOperatorConfig
 from nmp.common.config import Runtime
@@ -17,6 +18,7 @@ from nmp.core.models.app import ModelWeightsType
 from nmp.core.models.controllers.backends.common import DeploymentConfigView
 from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
 from nmp.core.models.controllers.backends.deployments_plugin.nim_compiler import (
+    apply_container_resources,
     apply_k8s_nim_operator_container_overrides,
     apply_nim_override_config,
     build_k8s_deployment_backend_config,
@@ -98,7 +100,9 @@ def test_tool_call_plugin_init_containers_require_puller_tag() -> None:
         runtime=resolved.runtime,
     )
     assert (
-        tool_call_plugin_init_containers(resolved, DeploymentsPluginConfig(), names_volume="vol", names_scratch="scr")
+        tool_call_plugin_init_containers(
+            resolved, DeploymentsPluginConfig(), names_volume="vol", names_scratch="scr", weighted=True
+        )
         is None
     )
 
@@ -147,6 +151,57 @@ def test_build_k8s_deployment_backend_config_merges_security_context() -> None:
     assert backend.k8s is not None
     assert backend.k8s.security_context is not None
     assert backend.k8s.security_context.run_as_user == 1000
+
+
+def test_build_k8s_deployment_backend_config_ignores_nim_operator_fields_for_vllm() -> None:
+    view = DeploymentConfigView(
+        k8s_nim_operator_config=K8sNIMOperatorConfig(node_selector={"zone": "us-west1-a"}),
+    )
+    backend = build_k8s_deployment_backend_config("vllm", view, DeploymentsPluginConfig())
+    assert backend.k8s is not None
+    assert backend.k8s.affinity is None
+
+
+def test_apply_container_resources_deep_merges_existing_values() -> None:
+    container = Container(
+        name="server",
+        image="nim:1.0",
+        resources=ResourceRequirements(requests={"cpu": "1", "memory": "8Gi"}, limits={"memory": "16Gi"}),
+    )
+    apply_container_resources(container, {"requests": {"cpu": "4"}, "limits": {"cpu": "2"}})
+    assert container.resources.requests == {"cpu": "4", "memory": "8Gi"}
+    assert container.resources.limits == {"memory": "16Gi", "cpu": "2"}
+
+
+def test_tool_call_plugin_init_containers_use_scratch_path_when_unweighted() -> None:
+    resolved = _resolved()
+    resolved = ResolvedPluginDeployment(
+        deployment=resolved.deployment,
+        config=resolved.config,
+        model_entity=resolved.model_entity,
+        view=DeploymentConfigView(
+            model_namespace="org",
+            model_name="model",
+            tool_call_config=SimpleNamespace(
+                tool_call_plugin="ws/fileset",
+                tool_call_parser=None,
+                auto_tool_choice=None,
+            ),
+        ),
+        weights_type=ModelWeightsType.BAKED_CONTAINER,
+        model_namespace=resolved.model_namespace,
+        model_name=resolved.model_name,
+        model_revision=resolved.model_revision,
+        files_hf_url=resolved.files_hf_url,
+        huggingface_model_puller="puller:latest",
+        runtime=resolved.runtime,
+    )
+    inits = tool_call_plugin_init_containers(
+        resolved, DeploymentsPluginConfig(), names_volume="vol", names_scratch="scr", weighted=False
+    )
+    assert inits is not None
+    assert inits[0].volume_mounts == [VolumeMount(name="scr", mountPath="/scratch")]
+    assert "/scratch/plugin/plugin.py" in inits[0].command[2]
 
 
 def test_apply_nim_override_config_overrides_operator_defaults() -> None:

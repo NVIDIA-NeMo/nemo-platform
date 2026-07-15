@@ -96,17 +96,22 @@ def test_deployments_plugin_docker_lifecycle(controller_with_deployments_plugin,
     reconcile(controller)
 
     @retry(stop=stop_after_delay(30), wait=wait_fixed(0.2), reraise=True)
-    def wait_for_container_deleted():
+    def wait_for_delete_complete():
+        reconcile(controller)
         try:
-            c = docker_client.containers.get(server_container_name)
-            c.reload()
-            if c.status in ["exited", "removing", "dead"]:
-                return
-            raise AssertionError(f"Container still running: {c.status}")
+            container = docker_client.containers.get(server_container_name)
+            container.reload()
+            if container.status not in ["exited", "removing", "dead"]:
+                raise AssertionError(f"Container still running: {container.status}")
         except NotFound:
+            pass
+        try:
+            sdk.inference.providers.retrieve(provider_name, workspace=provider_workspace)
+        except NotFoundError:
             return
+        raise AssertionError("ModelProvider still exists after deployment delete")
 
-    wait_for_container_deleted()
+    wait_for_delete_complete()
 
     with pytest.raises(NotFoundError):
         sdk.inference.providers.retrieve(provider_name, workspace=provider_workspace)

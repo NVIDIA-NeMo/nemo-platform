@@ -29,12 +29,12 @@ from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_
 from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
 from nmp.core.models.controllers.backends.deployments_plugin.naming import EntityNames, entity_names
 from nmp.core.models.controllers.backends.deployments_plugin.nim_compiler import (
-    _TOOL_CALL_PLUGIN_PATH,
     apply_k8s_nim_operator_container_overrides,
     apply_nim_override_config,
     build_k8s_deployment_backend_config,
     compile_nim_server_env,
     tool_call_plugin_init_containers,
+    tool_call_plugin_install_path,
 )
 from nmp.core.models.controllers.backends.deployments_plugin.resolve import ResolvedPluginDeployment
 from nmp.core.models.controllers.backends.engine import (
@@ -191,18 +191,15 @@ def compile_model_deployment(
             backendConfig=backend_config or DeploymentBackendConfig(),
         )
 
-    tool_call_inits = (
-        tool_call_plugin_init_containers(
-            resolved,
-            config,
-            names_volume=names.volume,
-            names_scratch=names.scratch,
-        )
-        if weighted
-        else None
+    tool_call_inits = tool_call_plugin_init_containers(
+        resolved,
+        config,
+        names_volume=names.volume,
+        names_scratch=names.scratch,
+        weighted=weighted,
     )
     needs_scratch = lora_enabled or tool_call_inits is not None
-    tool_call_plugin_path = _TOOL_CALL_PLUGIN_PATH if tool_call_inits is not None else None
+    tool_call_plugin_path = tool_call_plugin_install_path(weighted=weighted) if tool_call_inits is not None else None
 
     if engine == ENGINE_VLLM:
         image_name, image_tag = resolve_vllm_image(
