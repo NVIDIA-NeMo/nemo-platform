@@ -61,6 +61,19 @@ class E2EHarnessConfig(TypedDict, total=False):
     lifecycle: Literal["fresh", "reuse"]
     compose_project_prefix: str
     env: dict[str, str]
+    # Subprocess backend only. When set, the harness (a) binds the platform on all
+    # interfaces (``--host 0.0.0.0``) and (b) rewrites ``platform.base_url`` in the
+    # rendered config to ``http://<this host>:<the free port it chose>`` right
+    # before launch. The platform still runs as a normal local process, but the
+    # base URL it injects into container-mode agent deployments (docker/k8s) then
+    # points at a host reachable from *inside* those containers (e.g. the docker
+    # bridge ``172.17.0.1``) instead of a loopback the container can't reach.
+    # Binding all interfaces is required so the platform's own in-process clients,
+    # which also use ``NMP_BASE_URL``, can still reach it at that host. The runner
+    # seeds ``NMP_BASE_URL`` from the config ``platform.base_url`` host (paired
+    # with the real bind port), so the rewritten host takes effect instead of the
+    # bind-derived loopback default.
+    container_base_url_host: str
 
 
 @dataclass
@@ -345,6 +358,8 @@ def _resolve_e2e_harness_config_from_node(node: Node) -> E2EHarnessConfig:
     if backend not in {"subprocess", "docker", "docker_compose"}:
         raise pytest.UsageError(f"unsupported e2e harness backend: {backend}")
     normalized["backend"] = backend
+    if "container_base_url_host" in normalized and backend != "subprocess":
+        raise pytest.UsageError("container_base_url_host is only supported with the 'subprocess' harness backend")
     if backend == "docker_compose":
         required = {"compose_file", "service_url"}
         missing = sorted(required - set(normalized))
@@ -544,6 +559,14 @@ def _find_free_port() -> int:
         return sock.getsockname()[1]
 
 
+def _set_platform_base_url(config_path: Path, base_url: str) -> None:
+    """Rewrite ``platform.base_url`` in an already-materialized config file."""
+    config_data = yaml.safe_load(config_path.read_text()) or {}
+    platform = config_data.setdefault("platform", {})
+    platform["base_url"] = base_url
+    config_path.write_text(yaml.safe_dump(config_data, default_flow_style=False, sort_keys=True))
+
+
 def _process_exited(proc: subprocess.Popen[Any]) -> bool:
     return proc.poll() is not None
 
@@ -631,11 +654,15 @@ def _start_services(
         return _start_services_docker(config_path, config_data, config_hash)
     if backend == "docker_compose":
         return _start_services_docker_compose(config_path, config_data, harness_config, config_hash, log_path)
-    return _start_services_subprocess(config_path, config_data, config_hash, log_path)
+    return _start_services_subprocess(config_path, config_data, harness_config, config_hash, log_path)
 
 
 def _start_services_subprocess(
-    config_path: Path, config_data: dict[str, Any], config_hash: str, log_path: Path
+    config_path: Path,
+    config_data: dict[str, Any],
+    harness_config: E2EHarnessConfig,
+    config_hash: str,
+    log_path: Path,
 ) -> RunningServices:
     port = _find_free_port()
     url = f"http://127.0.0.1:{port}"
@@ -652,6 +679,22 @@ def _start_services_subprocess(
         "--port",
         str(port),
     ]
+
+    # For container-mode agent deployments the platform must advertise a base URL
+    # reachable from inside the deployed agent container, not the loopback the
+    # platform binds by default. Two coordinated changes make that work:
+    #   1. Bind all interfaces (--host 0.0.0.0) instead of the CLI default
+    #      127.0.0.1, so the platform is reachable on the container-facing host
+    #      (e.g. the docker bridge 172.17.0.1) as well as loopback.
+    #   2. Rewrite platform.base_url on disk to http://<host>:<this port>. The
+    #      free port is only known here, after the config file was materialized.
+    #      The platform seeds NMP_BASE_URL from this, so both the platform's own
+    #      in-process clients and the injected agent LLM base_url point at a
+    #      host the agent container can reach.
+    container_host = harness_config.get("container_base_url_host")
+    if container_host:
+        args += ["--host", "0.0.0.0"]
+        _set_platform_base_url(config_path, f"http://{container_host}:{port}")
     data_dir = e2e_services_data_dir(log_path.parent, config_hash)
     data_dir.mkdir(parents=True, exist_ok=True)
     env = e2e_services_env(config_path, data_dir)
