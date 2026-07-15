@@ -33,7 +33,12 @@ def make_check_result(
     hint: str | None = None,
 ) -> CheckResult:
     """Build a passing, blocking, or advisory result from a boolean probe."""
-    status: CheckStatus = "pass" if ok else "fail" if severity == "required" else "warn"
+    if ok:
+        status: CheckStatus = "pass"
+    elif severity == "required":
+        status = "fail"
+    else:
+        status = "warn"
     return CheckResult(
         name=name,
         group=group,

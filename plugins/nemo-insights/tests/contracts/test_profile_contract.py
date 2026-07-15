@@ -122,6 +122,26 @@ def test_load_env_file_wraps_permission_errors(
     assert exc_info.value.__cause__ is None
 
 
+def test_load_env_file_wraps_existence_check_permission_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / ".env"
+    original_is_file = Path.is_file
+
+    def deny(candidate: Path) -> bool:
+        if candidate == path:
+            raise PermissionError("permission denied")
+        return original_is_file(candidate)
+
+    monkeypatch.setattr(Path, "is_file", deny)
+
+    with pytest.raises(EnvFileError, match="permission denied") as exc_info:
+        load_env_file(path, {})
+
+    assert exc_info.value.__cause__ is None
+
+
 def test_resolve_agent_spec_uses_configured_then_conventional_precedence(tmp_path: Path) -> None:
     readme = tmp_path / "README.md"
     readme.write_text("# Readme", encoding="utf-8")
