@@ -106,7 +106,16 @@ class ListEntitiesQueryParams(TypedDict, total=False):
     page_size: NotRequired[int]
     sort: NotRequired[str]
     filter: NotRequired[str]
+    # Group matching entities by a data field; the server returns the tallies in
+    # the ``group_counts`` envelope field instead of the usual item payload.
+    count_by: NotRequired[str]
 
 
 class EntityByNameQueryParams(TypedDict, total=False):
     parent: NotRequired[str]
+
+
+class EntityDeleteQueryParams(TypedDict, total=False):
+    parent: NotRequired[str]
+    # Optimistic locking: the delete only succeeds if the entity still has this version.
+    expected_db_version: NotRequired[int]

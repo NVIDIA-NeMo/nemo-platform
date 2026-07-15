@@ -18,6 +18,7 @@ from nemo_platform_plugin.entities.types import (
     Entity,
     EntityByNameQueryParams,
     EntityCreateInput,
+    EntityDeleteQueryParams,
     EntityUpdate,
     ListEntitiesQueryParams,
 )
@@ -61,7 +62,7 @@ def update_entity_by_name(
 @delete("/apis/entities/v2/workspaces/{workspace}/entities/{entity_type}/{name}")
 @abstractmethod
 def delete_entity_by_name(
-    *, workspace: str | None = None, entity_type: str, name: str, query_params: EntityByNameQueryParams | None = None
+    *, workspace: str | None = None, entity_type: str, name: str, query_params: EntityDeleteQueryParams | None = None
 ) -> DeleteResponse: ...
 
 

@@ -45,13 +45,14 @@ class EntityClient(_PluginEntityClient):
         Returns:
             A new EntityClient backed by an SDK with service principal headers.
         """
-        from nemo_platform.resources.entities import AsyncEntitiesResource
         from nmp.common.observability import MARK_INTERNAL_REQUEST_HEADERS
-        from nmp.common.sdk_factory import with_options_preserving_request_router
 
-        underlying_sdk = self.entities_api._client
         headers: dict[str, str] = {"X-NMP-Principal-Id": f"service:{service_name}"}
         if internal:
             headers.update(MARK_INTERNAL_REQUEST_HEADERS)
-        service_sdk = with_options_preserving_request_router(underlying_sdk, set_default_headers=headers)
-        return EntityClient(AsyncEntitiesResource(service_sdk))
+        # with_options merges headers into the client's defaults and shares the
+        # underlying httpx transport (connection pool, auth), so this is cheap.
+        # It clones via copy.copy, so the platform URL resolver carries over and
+        # no request-router fixup is needed the way the Stainless path required.
+        service_client = self._client.with_options(headers=headers)
+        return EntityClient(service_client)

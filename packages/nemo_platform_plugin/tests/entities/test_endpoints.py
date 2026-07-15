@@ -111,7 +111,26 @@ def test_delete_entity_by_name() -> None:
     assert prepared.method == "DELETE"
     assert prepared.path_params == {"workspace": "default", "entity_type": "widget", "name": "my-widget"}
     assert prepared.content is None
+    assert prepared.query_params is None
     assert prepared.response_type is DeleteResponse
+
+
+def test_delete_entity_by_name_with_version_guard() -> None:
+    """``expected_db_version`` is the optimistic-locking guard and must ride as a query param.
+
+    The server declares it as ``Query(...)`` on the delete route, so the key name here is a
+    wire contract: a rename on either side silently turns a guarded delete into an
+    unconditional one. See the integration test in the entities service for the paired
+    server-side assertion.
+    """
+    prepared = endpoints.delete_entity_by_name(
+        workspace="default",
+        entity_type="widget",
+        name="my-widget",
+        query_params={"parent": "parent-id", "expected_db_version": 7},
+    )
+
+    assert prepared.query_params == {"parent": "parent-id", "expected_db_version": 7}
 
 
 def test_get_entity_by_id() -> None:
