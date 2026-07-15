@@ -689,10 +689,8 @@ models:
         busybox_image: docker.io/library/busybox
         # BusyBox image tag for LoRA cache init containers. | default: 'latest'
         busybox_image_tag: latest
-        # default: 5.0
-        delete_wait_seconds: 5.0
-        # default: 0.5
-        delete_poll_seconds: 0.5
+        # Maximum seconds a deployment may stay DELETING before ERROR. 0 disables timeout escalation. | default: 60
+        deleting_timeout_seconds: 60
         # default: False
         enabled: false
       none:

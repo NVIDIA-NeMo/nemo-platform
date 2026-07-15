@@ -41,8 +41,11 @@ class DeploymentsPluginConfig(BaseModel):
         default="latest",
         description="BusyBox image tag for LoRA cache init containers.",
     )
-    delete_wait_seconds: float = Field(default=5.0, gt=0)
-    delete_poll_seconds: float = Field(default=0.5, gt=0)
+    deleting_timeout_seconds: int = Field(
+        default=60,
+        ge=0,
+        description=("Maximum seconds a deployment may stay DELETING before ERROR. 0 disables timeout escalation."),
+    )
 
 
 class DeploymentsPluginBackendConfigModel(DeploymentsPluginConfig):

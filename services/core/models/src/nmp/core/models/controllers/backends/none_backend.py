@@ -34,7 +34,13 @@ class NoneServiceBackend(ServiceBackend):
             error_details={"error": "NoneServiceBackend does not support deployments"},
         )
 
-    async def delete_model_deployment(self, workspace: str, name: str) -> DeploymentStatusUpdate:
+    async def delete_model_deployment(
+        self,
+        workspace: str,
+        name: str,
+        *,
+        deleting_elapsed_seconds: float | None = None,
+    ) -> DeploymentStatusUpdate:
         """Delete a model deployment."""
         raise NotImplementedError("NoneServiceBackend does not support deployments")
 

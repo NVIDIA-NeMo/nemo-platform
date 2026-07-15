@@ -233,6 +233,31 @@ async def test_reconcile_individual_deployment_error_fallback_conflict_is_noop(
 
 
 @pytest.mark.asyncio
+async def test_reconcile_created_docker_lora_error_persisted(reconciler, mock_backend_registry, make_deployment):
+    """CREATED + docker LoRA backend ERROR is persisted with a clear single-container message."""
+    deployment = make_deployment(status="CREATED")
+    mock_backend = MagicMock()
+    mock_backend.create_model_deployment = AsyncMock(
+        return_value=DeploymentStatusUpdate(
+            status="ERROR",
+            status_message=(
+                "LoRA serving is not supported on the docker runtime yet "
+                "(deployments-plugin docker is single-container). Deploy LoRA "
+                "models on the kubernetes runtime instead."
+            ),
+        )
+    )
+    mock_backend_registry.get_backend.return_value = mock_backend
+    reconciler._models_sdk.inference.deployments.update_status = AsyncMock()
+
+    await reconciler._reconcile_individual_deployment(deployment, mock_backend.create_model_deployment, "create")
+
+    call_kwargs = reconciler._models_sdk.inference.deployments.update_status.call_args.kwargs
+    assert call_kwargs["status"] == "ERROR"
+    assert "single-container" in call_kwargs["status_message"]
+
+
+@pytest.mark.asyncio
 async def test_reconcile_deployments_with_created_status(reconciler, mock_backend_registry, make_deployment):
     """Test processing deployments calls handler for CREATED deployments."""
     created_deployment = make_deployment(

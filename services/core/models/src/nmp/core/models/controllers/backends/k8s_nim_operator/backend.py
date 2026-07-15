@@ -340,7 +340,13 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
                 host_url=None,
             )
 
-    async def delete_model_deployment(self, workspace: str, name: str) -> DeploymentStatusUpdate:
+    async def delete_model_deployment(
+        self,
+        workspace: str,
+        name: str,
+        *,
+        deleting_elapsed_seconds: float | None = None,
+    ) -> DeploymentStatusUpdate:
         """Delete a model deployment by workspace and name (model deployment ID).
 
         Delete has only workspace/name (no config/engine -- it is also called for

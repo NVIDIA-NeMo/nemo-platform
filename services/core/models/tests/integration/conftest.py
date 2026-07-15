@@ -178,7 +178,13 @@ class MockServiceBackend(ServiceBackend):
         self.status_calls.append(deployment)
         return self.status_responses.get(deployment.name, self.default_status_response)
 
-    async def delete_model_deployment(self, workspace: str, name: str) -> DeploymentStatusUpdate:
+    async def delete_model_deployment(
+        self,
+        workspace: str,
+        name: str,
+        *,
+        deleting_elapsed_seconds: float | None = None,
+    ) -> DeploymentStatusUpdate:
         """Record call and return configured response."""
         self.delete_calls.append((workspace, name))
         return self.delete_response
