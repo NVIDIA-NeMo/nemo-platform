@@ -34,7 +34,10 @@ import type { FC } from 'react';
  * each field is any the experiments list can sort by, matching the sort/filter API grammar.
  */
 
-type SortEntry = { field: string; desc: boolean };
+interface SortEntry {
+  field: string;
+  desc: boolean;
+}
 
 interface SortFieldRowProps {
   field: string;

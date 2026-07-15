@@ -49,7 +49,10 @@ export interface UseStudioDataViewStateOptions extends Omit<
   filterFieldMap?: Record<string, string> | ((id: string) => string | undefined);
 }
 
-type SortEntry = { id: string; desc: boolean };
+interface SortEntry {
+  id: string;
+  desc: boolean;
+}
 
 const sortEntryToString = (entry: SortEntry): string => (entry.desc ? `-${entry.id}` : entry.id);
 
@@ -63,8 +66,14 @@ const encodeSorting = (sortingState: SortEntry[], multiSort: boolean): string | 
 /** Parse the URL `sort` value into ordered sort entries. Single-sort reads only the first field. */
 const decodeSorting = (sortParam: string | null, multiSort: boolean): SortEntry[] => {
   if (!sortParam) return [];
-  const tokens = (multiSort ? sortParam.split(',') : [sortParam]).map((t) => t.trim()).filter(Boolean);
-  return tokens.map((t) => ({ id: t.startsWith('-') ? t.slice(1) : t, desc: t.startsWith('-') }));
+  // Always split on comma so a stray multi-field URL is parsed field-by-field; in single-sort mode
+  // keep only the first field rather than treating the whole comma string as one (malformed) id.
+  const tokens = sortParam
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const used = multiSort ? tokens : tokens.slice(0, 1);
+  return used.map((t) => ({ id: t.startsWith('-') ? t.slice(1) : t, desc: t.startsWith('-') }));
 };
 
 /**

@@ -218,7 +218,9 @@ describe('useStudioDataViewState', () => {
     });
 
     it('reads only the first field when multiSort is disabled (single-sort default)', () => {
-      const wrapper = createWrapper(['/?sort=-cost_usd.mean']);
+      // A multi-field URL must be truncated to its first field in single-sort mode, not parsed as
+      // one malformed comma-joined id.
+      const wrapper = createWrapper(['/?sort=-cost_usd.mean,name']);
 
       const { result } = renderHook(() => useStudioDataViewState(), { wrapper });
 

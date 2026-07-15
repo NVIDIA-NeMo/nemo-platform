@@ -105,6 +105,10 @@ def test_validate_default_sort_rejects_unsortable_fields() -> None:
         # A single bad token anywhere in a multi-field list fails the whole value.
         "cost_usd.mean,bogus",
         "-evaluators.reward.mean,cost_usd.bogus",
+        # An empty or all-blank value is not a usable sort and must be rejected, not silently accepted.
+        "",
+        ",",
+        "  ,  ",
     ):
         with pytest.raises(HTTPException) as exc:
             _validate_default_sort(value)

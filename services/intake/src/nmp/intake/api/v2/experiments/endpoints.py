@@ -1150,10 +1150,15 @@ def _validate_default_sort(default_sort: str | None) -> None:
     """
     if default_sort is None:
         return
-    for token in default_sort.split(","):
-        field_token = token.strip()
-        if not field_token:
-            continue
+    fields = [token.strip() for token in default_sort.split(",") if token.strip()]
+    if not fields:
+        # An empty or all-blank string (``""``, ``","``) is not a usable sort; reject it here rather
+        # than persist a value the list ``sort`` param would later 400 on.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The 'default_sort' parameter must contain at least one field.",
+        )
+    for field_token in fields:
         field = field_token[1:] if field_token.startswith("-") else field_token
         _validate_sort_field(field)
 
