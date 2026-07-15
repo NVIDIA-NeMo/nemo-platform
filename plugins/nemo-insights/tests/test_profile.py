@@ -4,13 +4,8 @@
 from pathlib import Path
 
 import pytest
-from nemo_insights_plugin.profile import (
-    ProfileError,
-    discover_profile,
-    load_env_file,
-    load_profile,
-    pick_agent_spec,
-)
+from nemo_insights_plugin.contracts.profile import ProfileError
+from nemo_insights_plugin.profile import load_profile, pick_agent_spec
 
 FULL_PROFILE = """\
 agent: flight-planner
@@ -39,15 +34,6 @@ def test_load_profile_reads_analysis_fields_and_ignores_experiment_fields(tmp_pa
     assert profile.profile_dir == tmp_path.resolve()
 
 
-def test_discover_profile_walks_up(tmp_path: Path) -> None:
-    profile = tmp_path / "optimizer.yaml"
-    profile.write_text("agent: a\n", encoding="utf-8")
-    child = tmp_path / "a" / "b"
-    child.mkdir(parents=True)
-
-    assert discover_profile(child) == profile
-
-
 def test_profile_requires_nonempty_agent(tmp_path: Path) -> None:
     path = tmp_path / "optimizer.yaml"
     path.write_text("agent: ''\n", encoding="utf-8")
@@ -63,12 +49,3 @@ def test_pick_agent_spec_is_profile_relative(tmp_path: Path) -> None:
     expected.write_text("# Agent", encoding="utf-8")
 
     assert pick_agent_spec(load_profile(path)) == expected.resolve()
-
-
-def test_load_env_file_never_overrides_process_values(tmp_path: Path) -> None:
-    env = {"EXPORTED": "shell"}
-    path = tmp_path / ".env"
-    path.write_text("EXPORTED=file\nFROM_FILE=value\n", encoding="utf-8")
-
-    assert load_env_file(path, env) == ["FROM_FILE"]
-    assert env == {"EXPORTED": "shell", "FROM_FILE": "value"}

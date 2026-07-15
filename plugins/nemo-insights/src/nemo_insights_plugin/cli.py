@@ -16,22 +16,15 @@ import typer
 from nemo_insights_plugin.analyst.run import ClientConstructionError, run_analyst
 from nemo_insights_plugin.client import make_client
 from nemo_insights_plugin.contracts.checks import CheckResult, advisories, format_report, required_failures
+from nemo_insights_plugin.contracts.insights import InsightsFileError, validate_insights_file
+from nemo_insights_plugin.contracts.profile import EnvFileError, ProfileError, discover_profile, load_env_file
 from nemo_insights_plugin.preflight import (
     AnalysisProbes,
     check_environment,
     check_profile,
     read_agent_spec,
 )
-from nemo_insights_plugin.profile import (
-    AnalysisProfile,
-    InsightsFileError,
-    ProfileError,
-    discover_profile,
-    load_env_file,
-    load_profile,
-    pick_agent_spec,
-    validate_insights_file,
-)
+from nemo_insights_plugin.profile import AnalysisProfile, load_profile, pick_agent_spec
 from nemo_platform import NeMoPlatformError
 from nemo_platform_plugin.cli import NemoCLI
 from pydantic_ai import AgentRunError
@@ -276,7 +269,7 @@ class InsightsCLI(NemoCLI):
                     insights_output=insights_output,
                 )
                 output = asyncio.run(_run_analysis(analysis, verbose=verbose))
-            except (ProfileError, InsightsFileError, OSError, UnicodeError) as exc:
+            except (ProfileError, EnvFileError, InsightsFileError, OSError, UnicodeError) as exc:
                 typer.echo(f"Error: {_one_line_error(exc)}", err=True)
                 raise typer.Exit(1) from None
             typer.echo(output)
@@ -301,7 +294,7 @@ class InsightsCLI(NemoCLI):
             try:
                 try:
                     profile, profile_error = _load_profile_or_error(profile_path)
-                except ProfileError as exc:
+                except (ProfileError, EnvFileError) as exc:
                     profile, profile_error = None, str(exc)
                 spec_path: Path | None = None
                 spec_error: str | None = None
