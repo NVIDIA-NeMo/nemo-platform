@@ -4,8 +4,10 @@
 import {
   evaluatorField,
   evaluatorNameOf,
+  formatSortList,
   formatSortString,
   isEvaluatorField,
+  parseSortList,
   parseSortString,
 } from '@studio/components/DefaultSortControl/util';
 
@@ -25,5 +27,28 @@ describe('DefaultSortControl util', () => {
     expect(parseSortString('run_count')).toEqual({ field: 'run_count', desc: false });
     expect(formatSortString('cost_usd.mean', true)).toBe('-cost_usd.mean');
     expect(formatSortString('run_count', false)).toBe('run_count');
+  });
+
+  it('round-trips multi-field sort lists, preserving order', () => {
+    expect(parseSortList('-evaluators.reward.mean,cost_usd.mean')).toEqual([
+      { field: 'evaluators.reward.mean', desc: true },
+      { field: 'cost_usd.mean', desc: false },
+    ]);
+    expect(
+      formatSortList([
+        { field: 'evaluators.reward.mean', desc: true },
+        { field: 'cost_usd.mean', desc: false },
+      ])
+    ).toBe('-evaluators.reward.mean,cost_usd.mean');
+  });
+
+  it('parses a single-field list and ignores blank/whitespace tokens', () => {
+    expect(parseSortList('-cost_usd.mean')).toEqual([{ field: 'cost_usd.mean', desc: true }]);
+    expect(parseSortList(' -cost_usd.mean , latency_ms.mean ')).toEqual([
+      { field: 'cost_usd.mean', desc: true },
+      { field: 'latency_ms.mean', desc: false },
+    ]);
+    expect(parseSortList('')).toEqual([]);
+    expect(parseSortList('cost_usd.mean,,')).toEqual([{ field: 'cost_usd.mean', desc: false }]);
   });
 });

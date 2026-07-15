@@ -90,9 +90,12 @@ class ExperimentGroupsResource(SyncAPIResource):
         Args:
           name: Workspace-unique group name.
 
-          default_sort: Default sort for this group's evaluations list, as a `sort`-param string
-              (leading '-' = descending); defaults to '-created_at'. Accepts any field the
-              evaluations list `sort` param does; clients apply it as the list `sort` param.
+          default_sort: Default sort for this group's evaluations list, as a `sort`-param string: a
+              comma-separated, ordered list of fields where the first is the primary sort and
+              the rest break ties (leading '-' on a field = descending), e.g.
+              '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any
+              field the evaluations list `sort` param does; clients apply it as the list
+              `sort` param.
 
           description: Human-readable purpose of the group.
 
@@ -206,9 +209,12 @@ class ExperimentGroupsResource(SyncAPIResource):
         Args:
           body_name: Workspace-unique group name.
 
-          default_sort: Default sort for this group's evaluations list, as a `sort`-param string
-              (leading '-' = descending); defaults to '-created_at'. Accepts any field the
-              evaluations list `sort` param does; clients apply it as the list `sort` param.
+          default_sort: Default sort for this group's evaluations list, as a `sort`-param string: a
+              comma-separated, ordered list of fields where the first is the primary sort and
+              the rest break ties (leading '-' on a field = descending), e.g.
+              '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any
+              field the evaluations list `sort` param does; clients apply it as the list
+              `sort` param.
 
           description: Human-readable purpose of the group.
 
@@ -403,9 +409,12 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         Args:
           name: Workspace-unique group name.
 
-          default_sort: Default sort for this group's evaluations list, as a `sort`-param string
-              (leading '-' = descending); defaults to '-created_at'. Accepts any field the
-              evaluations list `sort` param does; clients apply it as the list `sort` param.
+          default_sort: Default sort for this group's evaluations list, as a `sort`-param string: a
+              comma-separated, ordered list of fields where the first is the primary sort and
+              the rest break ties (leading '-' on a field = descending), e.g.
+              '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any
+              field the evaluations list `sort` param does; clients apply it as the list
+              `sort` param.
 
           description: Human-readable purpose of the group.
 
@@ -519,9 +528,12 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         Args:
           body_name: Workspace-unique group name.
 
-          default_sort: Default sort for this group's evaluations list, as a `sort`-param string
-              (leading '-' = descending); defaults to '-created_at'. Accepts any field the
-              evaluations list `sort` param does; clients apply it as the list `sort` param.
+          default_sort: Default sort for this group's evaluations list, as a `sort`-param string: a
+              comma-separated, ordered list of fields where the first is the primary sort and
+              the rest break ties (leading '-' on a field = descending), e.g.
+              '-evaluators.reward.mean,cost_usd.mean'. Defaults to '-created_at'. Accepts any
+              field the evaluations list `sort` param does; clients apply it as the list
+              `sort` param.
 
           description: Human-readable purpose of the group.
 

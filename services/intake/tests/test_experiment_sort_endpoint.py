@@ -48,6 +48,30 @@ def test_unknown_sort_field_returns_400(client: TestClient) -> None:
     assert response.status_code == 400, response.text
 
 
+def test_multi_field_metric_sort_returns_503_when_rollups_unavailable(client: TestClient) -> None:
+    # Entity field first, metric second: the metric key still needs rollups, so the whole sort 503s.
+    _make_evaluation(client)
+    response = client.get(EVALUATIONS, params={"sort": "name,-cost_usd.mean"})
+    assert response.status_code == 503, response.text
+
+
+def test_multi_field_entity_sort_succeeds_without_rollups(client: TestClient) -> None:
+    _make_evaluation(client)
+    response = client.get(EVALUATIONS, params={"sort": "name,-created_at"})
+    assert response.status_code == 200, response.text
+
+
+def test_unknown_field_in_multi_field_sort_returns_400(client: TestClient) -> None:
+    response = client.get(EVALUATIONS, params={"sort": "name,bogus.field"})
+    assert response.status_code == 400, response.text
+
+
+def test_empty_sort_returns_400(client: TestClient) -> None:
+    for value in ("", ","):
+        response = client.get(EVALUATIONS, params={"sort": value})
+        assert response.status_code == 400, response.text
+
+
 def test_too_many_evaluations_to_sort_returns_413(client: TestClient, monkeypatch) -> None:
     # The whole filtered set is sorted in memory; over the cap we refuse rather than return a
     # silently truncated result. 413 (distinct from the 400 bad-sort-field case) so a caller can tell

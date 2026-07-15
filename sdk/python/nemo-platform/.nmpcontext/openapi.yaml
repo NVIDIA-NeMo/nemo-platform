@@ -3398,19 +3398,23 @@ paths:
         in: query
         required: false
         schema:
-          description: 'Field to sort by; prefix with ''-'' for descending. Sort by
-            an evaluation attribute (name, created_at, updated_at, pinned_at) or by
-            an aggregate metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or
-            evaluators.<name>.<stat>, where <stat> is one of mean, median, p90, p95,
-            p99, sum, count. When omitted, defaults to -created_at with pinned evaluations
-            first.'
+          description: "Comma-separated list of fields to sort by, applied in order\
+            \ (the first field dominates); prefix any field with '-' for descending\
+            \ \u2014 e.g. '-evaluators.reward.mean,cost_usd.mean'. Each field is an\
+            \ evaluation attribute (name, created_at, updated_at, pinned_at) or an\
+            \ aggregate metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or\
+            \ evaluators.<name>.<stat>, where <stat> is one of mean, median, p90,\
+            \ p95, p99, sum, count. When omitted, defaults to -created_at with pinned\
+            \ evaluations first."
           title: Sort
           type: string
-        description: 'Field to sort by; prefix with ''-'' for descending. Sort by
-          an evaluation attribute (name, created_at, updated_at, pinned_at) or by
-          an aggregate metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>,
-          where <stat> is one of mean, median, p90, p95, p99, sum, count. When omitted,
-          defaults to -created_at with pinned evaluations first.'
+        description: "Comma-separated list of fields to sort by, applied in order\
+          \ (the first field dominates); prefix any field with '-' for descending\
+          \ \u2014 e.g. '-evaluators.reward.mean,cost_usd.mean'. Each field is an\
+          \ evaluation attribute (name, created_at, updated_at, pinned_at) or an aggregate\
+          \ metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>,\
+          \ where <stat> is one of mean, median, p90, p95, p99, sum, count. When omitted,\
+          \ defaults to -created_at with pinned evaluations first."
       - in: query
         name: filter
         style: deepObject
@@ -10907,10 +10911,12 @@ components:
         default_sort:
           type: string
           title: Default Sort
-          description: Default sort for this group's evaluations list, as a `sort`-param
-            string (leading '-' = descending); defaults to '-created_at'. Accepts
-            any field the evaluations list `sort` param does; clients apply it as
-            the list `sort` param.
+          description: 'Default sort for this group''s evaluations list, as a `sort`-param
+            string: a comma-separated, ordered list of fields where the first is the
+            primary sort and the rest break ties (leading ''-'' on a field = descending),
+            e.g. ''-evaluators.reward.mean,cost_usd.mean''. Defaults to ''-created_at''.
+            Accepts any field the evaluations list `sort` param does; clients apply
+            it as the list `sort` param.'
           default: -created_at
       additionalProperties: false
       type: object

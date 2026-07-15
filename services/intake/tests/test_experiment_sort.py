@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 from fastapi import HTTPException
-from nmp.intake.api.v2.experiments.endpoints import _sort_evaluations, _validate_sort_field
+from nmp.intake.api.v2.experiments.endpoints import _parse_sort_keys, _sort_evaluations, _validate_sort_field
 from nmp.intake.api.v2.experiments.schemas import EvaluationResponse, EvaluatorAggregate
 
 
@@ -97,3 +97,57 @@ def test_validate_rejects_unknown_field() -> None:
         with pytest.raises(HTTPException) as exc:
             _validate_sort_field(field)
         assert exc.value.status_code == 400
+
+
+def test_parse_sort_keys_single_field() -> None:
+    keys, metric = _parse_sort_keys("-cost_usd.mean")
+    assert keys == [("cost_usd.mean", True)]
+    assert metric is True
+
+
+def test_parse_sort_keys_multi_field_preserves_order_and_per_field_direction() -> None:
+    keys, metric = _parse_sort_keys("-evaluators.reward.mean,cost_usd.mean")
+    assert keys == [("evaluators.reward.mean", True), ("cost_usd.mean", False)]
+    assert metric is True
+
+
+def test_parse_sort_keys_entity_only_is_not_metric_backed() -> None:
+    keys, metric = _parse_sort_keys("name,-created_at")
+    assert keys == [("name", False), ("created_at", True)]
+    assert metric is False
+
+
+def test_parse_sort_keys_metric_flag_true_if_any_key_is_a_metric() -> None:
+    _, metric = _parse_sort_keys("name,-cost_usd.mean")
+    assert metric is True
+
+
+def test_parse_sort_keys_tolerates_whitespace() -> None:
+    keys, _ = _parse_sort_keys(" name , -cost_usd.mean ")
+    assert keys == [("name", False), ("cost_usd.mean", True)]
+
+
+def test_parse_sort_keys_rejects_unknown_field_in_any_position() -> None:
+    with pytest.raises(HTTPException) as exc:
+        _parse_sort_keys("name,bogus.field")
+    assert exc.value.status_code == 400
+
+
+def test_parse_sort_keys_rejects_empty() -> None:
+    for value in ("", "  ", ",", " , "):
+        with pytest.raises(HTTPException) as exc:
+            _parse_sort_keys(value)
+        assert exc.value.status_code == 400
+
+
+def test_multi_field_sort_ranks_by_first_key_then_tiebreak() -> None:
+    # Switchyard's default ranking: reward desc, then cost asc as the tiebreak.
+    rows = [
+        _exp("a", evaluators={"reward": 0.9}, cost_mean=2.0),
+        _exp("b", evaluators={"reward": 0.9}, cost_mean=1.0),
+        _exp("c", evaluators={"reward": 0.5}, cost_mean=0.1),
+    ]
+    keys, _ = _parse_sort_keys("-evaluators.reward.mean,cost_usd.mean")
+    ordered = _sort_evaluations(rows, keys=keys)
+    # a and b tie on reward (0.9) -> cheaper (b) wins the tiebreak; c has lower reward -> last.
+    assert _names(ordered) == ["b", "a", "c"]

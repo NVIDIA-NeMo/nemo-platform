@@ -42,12 +42,13 @@ function usePaginationState(defaultState: PaginationDefaultState = {}) {
   };
 }
 
-function useSortingState(defaultState?: Partial<ColumnSort>) {
-  const [sortingState, setSorting] = useState<SortingState>(
-    defaultState?.id !== undefined && defaultState?.desc !== undefined
+function useSortingState(defaultState?: Partial<ColumnSort> | SortingState) {
+  const [sortingState, setSorting] = useState<SortingState>(() => {
+    if (Array.isArray(defaultState)) return defaultState;
+    return defaultState?.id !== undefined && defaultState?.desc !== undefined
       ? [{ id: defaultState.id, desc: defaultState.desc }]
-      : []
-  );
+      : [];
+  });
   return { state: sortingState, set: setSorting };
 }
 
@@ -120,7 +121,7 @@ export function useDataViewState(defaultState?: {
   expansion?: ExpandedState;
   rowHighlight?: string;
   searchBar?: string;
-  sorting?: Partial<ColumnSort>;
+  sorting?: Partial<ColumnSort> | SortingState;
   tab?: string;
 }) {
   return {

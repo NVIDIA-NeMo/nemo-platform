@@ -31,7 +31,8 @@ vi.mock('../../components/DataView/internal', () => ({
         mockPaginationState = { ...options.pagination };
       }
       if (options?.sorting) {
-        mockSortingState = [options.sorting];
+        // Mirror the real useSortingState: an array initial sort is used as-is; a single object is wrapped.
+        mockSortingState = Array.isArray(options.sorting) ? options.sorting : [options.sorting];
       } else {
         mockSortingState = [];
       }
@@ -203,6 +204,25 @@ describe('useStudioDataViewState', () => {
       const { result } = renderHook(() => useStudioDataViewState(), { wrapper });
 
       expect(result.current.sorting.state).toEqual([{ id: 'name', desc: false }]);
+    });
+
+    it('parses an ordered multi-field sort from the URL when multiSort is enabled', () => {
+      const wrapper = createWrapper(['/?sort=-cost_usd.mean,name']);
+
+      const { result } = renderHook(() => useStudioDataViewState({ multiSort: true }), { wrapper });
+
+      expect(result.current.sorting.state).toEqual([
+        { id: 'cost_usd.mean', desc: true },
+        { id: 'name', desc: false },
+      ]);
+    });
+
+    it('reads only the first field when multiSort is disabled (single-sort default)', () => {
+      const wrapper = createWrapper(['/?sort=-cost_usd.mean']);
+
+      const { result } = renderHook(() => useStudioDataViewState(), { wrapper });
+
+      expect(result.current.sorting.state).toEqual([{ id: 'cost_usd.mean', desc: true }]);
     });
 
     it('should use defaultSort when URL has no sort param', () => {
