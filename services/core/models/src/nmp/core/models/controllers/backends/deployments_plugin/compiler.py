@@ -1,13 +1,18 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Compile ModelDeployments into deployments-plugin entity specifications."""
+"""Compile ModelDeployments into deployments-plugin entity specifications.
+
+Parity ports from ``k8s_nim_operator/nimservice_compiler.py`` — please review
+mapping of ``k8s_nim_operator_config`` → plugin ``K8sDeploymentConfig``.
+"""
 
 from dataclasses import dataclass
 
 from nemo_deployments_plugin.entities import (
     Container,
     ContainerPort,
+    DeploymentBackendConfig,
     DeploymentConfig,
     EnvVar,
     HTTPGetAction,
@@ -23,6 +28,13 @@ from nmp.core.models.app import ModelWeightsType
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
 from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
 from nmp.core.models.controllers.backends.deployments_plugin.naming import EntityNames, entity_names
+from nmp.core.models.controllers.backends.deployments_plugin.nim_compiler import (
+    _TOOL_CALL_PLUGIN_PATH,
+    apply_k8s_nim_operator_container_overrides,
+    compile_nim_server_env,
+    k8s_backend_config_from_nim_operator,
+    tool_call_plugin_init_containers,
+)
 from nmp.core.models.controllers.backends.deployments_plugin.resolve import ResolvedPluginDeployment
 from nmp.core.models.controllers.backends.engine import (
     ENGINE_GENERIC,
@@ -135,6 +147,10 @@ def compile_model_deployment(
     names = entity_names(resolved.deployment.name)
     weighted = _weighted(resolved, engine)
     lora_enabled = resolved.view.lora_enabled and engine != ENGINE_GENERIC
+    k8s_backend = (
+        k8s_backend_config_from_nim_operator(resolved.view) if resolved.runtime == Runtime.KUBERNETES else None
+    )
+    backend_config = DeploymentBackendConfig(k8s=k8s_backend) if k8s_backend is not None else None
     volume = None
     scratch_volume = None
     puller_config = None
@@ -164,7 +180,21 @@ def compile_model_deployment(
             labels=_labels(resolved, engine, "puller"),
             restartPolicy="OnFailure",
             backoffLimit=config.max_restart_count,
+            backendConfig=backend_config or DeploymentBackendConfig(),
         )
+
+    tool_call_inits = (
+        tool_call_plugin_init_containers(
+            resolved,
+            config,
+            names_volume=names.volume,
+            names_scratch=names.scratch,
+        )
+        if weighted
+        else None
+    )
+    needs_scratch = lora_enabled or tool_call_inits is not None
+    tool_call_plugin_path = _TOOL_CALL_PLUGIN_PATH if tool_call_inits is not None else None
 
     if engine == ENGINE_VLLM:
         image_name, image_tag = resolve_vllm_image(
@@ -178,12 +208,12 @@ def compile_model_deployment(
             resolved.view.image_tag or config.default_nimservice_image_tag,
         )
         args = list(resolved.view.additional_args or [])
-        env = dict(resolved.view.additional_envs or {})
-        env.update({"NIM_MODEL_NAME": _WEIGHTS_MOUNT, "NIM_MODEL_PATH": _WEIGHTS_MOUNT})
-        if resolved.model_name:
-            env["NIM_SERVED_MODEL_NAME"] = (
-                f"{resolved.model_namespace}/{resolved.model_name}" if resolved.model_namespace else resolved.model_name
-            )
+        env = compile_nim_server_env(
+            resolved,
+            config,
+            weighted=weighted,
+            tool_call_plugin_path=tool_call_plugin_path,
+        )
         if lora_enabled:
             env["NIM_PEFT_SOURCE"] = _LORA_MOUNT
             env["NIM_PEFT_REFRESH_INTERVAL"] = str(config.peft_refresh_interval)
@@ -195,9 +225,10 @@ def compile_model_deployment(
     mounts: list[VolumeMount] = []
     if weighted:
         mounts.append(VolumeMount(name=names.volume, mountPath=_WEIGHTS_MOUNT, readOnly=True))
-    init_containers: list[Container] = []
+    init_containers: list[Container] = list(tool_call_inits or [])
     server_config_containers: list[Container]
-    if lora_enabled:
+    readiness_probe = Probe(httpGet=HTTPGetAction(path=resolve_health_path(engine, resolved.view), port=8000))
+    if needs_scratch:
         scratch_volume = Volume(
             name=names.scratch,
             workspace=resolved.deployment.workspace,
@@ -205,6 +236,7 @@ def compile_model_deployment(
             backendConfig=VolumeBackendConfig(k8s=K8sVolumeConfig(storageClass=config.default_storage_class)),
         )
         mounts.append(VolumeMount(name=names.scratch, mountPath=_SCRATCH_MOUNT))
+    if lora_enabled:
         # Ensure the LoRA cache dir exists before the server/sidecar start.
         init_containers.append(
             Container(
@@ -222,8 +254,10 @@ def compile_model_deployment(
             env=_env(env),
             ports=[ContainerPort(name="http", containerPort=8000)],
             volumeMounts=mounts,
-            readinessProbe=Probe(httpGet=HTTPGetAction(path=resolve_health_path(engine, resolved.view), port=8000)),
+            readinessProbe=readiness_probe,
         )
+        if engine == ENGINE_NIM:
+            apply_k8s_nim_operator_container_overrides(server, readiness_probe, resolved.view)
         if resolved.runtime == Runtime.DOCKER:
             # Docker v1 is single-container today; emit a second container so the
             # shape matches the locked design for when the plugin docker backend
@@ -235,17 +269,18 @@ def compile_model_deployment(
             server_config_containers = [server]
             init_containers.append(lora)
     else:
-        server_config_containers = [
-            Container(
-                name="server",
-                image=_image(image_name, image_tag),
-                args=args,
-                env=_env(env),
-                ports=[ContainerPort(name="http", containerPort=8000)],
-                volumeMounts=mounts,
-                readinessProbe=Probe(httpGet=HTTPGetAction(path=resolve_health_path(engine, resolved.view), port=8000)),
-            )
-        ]
+        server = Container(
+            name="server",
+            image=_image(image_name, image_tag),
+            args=args,
+            env=_env(env),
+            ports=[ContainerPort(name="http", containerPort=8000)],
+            volumeMounts=mounts,
+            readinessProbe=readiness_probe,
+        )
+        if engine == ENGINE_NIM:
+            apply_k8s_nim_operator_container_overrides(server, readiness_probe, resolved.view)
+        server_config_containers = [server]
 
     server_config = DeploymentConfig(
         name=names.server,
@@ -254,6 +289,7 @@ def compile_model_deployment(
         initContainers=init_containers,
         labels=_labels(resolved, engine, "server"),
         restartPolicy="Always",
+        backendConfig=backend_config or DeploymentBackendConfig(),
     )
     return CompiledModelDeployment(
         names=names,

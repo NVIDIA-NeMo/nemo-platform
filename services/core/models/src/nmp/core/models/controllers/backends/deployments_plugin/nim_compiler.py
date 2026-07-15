@@ -1,0 +1,305 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""NIM-specific compilation helpers for the deployments-plugin models backend.
+
+Parity ports from ``k8s_nim_operator/nimservice_compiler.py`` — please review
+mapping of ``k8s_nim_operator_config`` → plugin ``K8sDeploymentConfig``.
+"""
+
+from __future__ import annotations
+
+import math
+from typing import Any
+
+from nemo_deployments_plugin.entities import (
+    Affinity,
+    Container,
+    EnvVar,
+    K8sDeploymentConfig,
+    Probe,
+    ResourceRequirements,
+    Toleration,
+    VolumeMount,
+)
+from nemo_platform.types.inference.k8s_nim_operator_config import K8sNIMOperatorConfig
+from nemo_platform.types.models.model_entity import ModelEntity
+from nmp.core.models.app import is_multi_llm_image, parse_model_name_revision
+from nmp.core.models.controllers.backends.common import DeploymentConfigView
+from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
+from nmp.core.models.controllers.backends.deployments_plugin.resolve import ResolvedPluginDeployment
+
+_WEIGHTS_MOUNT = "/model-store"
+_SCRATCH_MOUNT = "/scratch"
+_TOOL_CALL_PLUGIN_PATH = "/model-store/plugin/plugin.py"
+_TOOL_CALL_PLUGIN_SCRATCH_DIR = "/scratch/plugin"
+_TOOL_CALL_PLUGIN_FINALIZE_SCRIPT = """set -euo pipefail
+py_files="$(find "{scratch_dir}" -type f -name '*.py' || true)"
+count="$(printf '%s\\n' "$py_files" | sed '/^$/d' | wc -l | tr -d ' ')"
+if [ "$count" -eq 0 ]; then
+  echo "tool_call_plugin fileset contains no .py files"
+  exit 1
+fi
+if [ "$count" -ne 1 ]; then
+  echo "tool_call_plugin fileset must contain exactly one .py file, found $count"
+  printf '%s\\n' "$py_files"
+  exit 1
+fi
+plugin_file="$(printf '%s\\n' "$py_files" | sed '/^$/d' | sed -n '1p')"
+mv "$plugin_file" "{plugin_path}"
+"""
+
+
+def _plugin_fileset(view: DeploymentConfigView, model_entity: ModelEntity | None) -> str | None:
+    if view.tool_call_config and view.tool_call_config.tool_call_plugin:
+        return view.tool_call_config.tool_call_plugin
+    if (
+        model_entity
+        and model_entity.spec
+        and model_entity.spec.tool_call_config
+        and model_entity.spec.tool_call_config.tool_call_plugin
+    ):
+        return model_entity.spec.tool_call_config.tool_call_plugin
+    return None
+
+
+def _puller_image_parts(image: str) -> tuple[str, str] | None:
+    last_slash_idx = image.rfind("/")
+    last_colon_idx = image.rfind(":")
+    if last_colon_idx <= last_slash_idx:
+        return None
+    return image[:last_colon_idx], image[last_colon_idx + 1 :]
+
+
+def tool_call_plugin_init_containers(
+    resolved: ResolvedPluginDeployment,
+    config: DeploymentsPluginConfig,
+    *,
+    names_volume: str,
+    names_scratch: str,
+) -> list[Container] | None:
+    """Build init containers that fetch and install a tool-call plugin fileset."""
+    plugin_fileset = _plugin_fileset(resolved.view, resolved.model_entity)
+    if plugin_fileset is None:
+        return None
+    if not resolved.huggingface_model_puller:
+        return None
+    puller_parts = _puller_image_parts(resolved.huggingface_model_puller)
+    if puller_parts is None:
+        return None
+    puller_repo, puller_tag = puller_parts
+    scratch_mount = VolumeMount(name=names_scratch, mountPath=_SCRATCH_MOUNT)
+    weights_mount = VolumeMount(name=names_volume, mountPath=_WEIGHTS_MOUNT)
+    busybox = _image(config.busybox_image, config.busybox_image_tag)
+    return [
+        Container(
+            name="tool-call-plugin-prepare",
+            image=busybox,
+            command=[
+                "sh",
+                "-c",
+                "set -e; mkdir -p /model-store/plugin /scratch/plugin; "
+                f"rm -f {_TOOL_CALL_PLUGIN_PATH}; rm -rf /scratch/plugin/*",
+            ],
+            volumeMounts=[scratch_mount, weights_mount],
+        ),
+        Container(
+            name="tool-call-plugin-pull",
+            image=f"{puller_repo}:{puller_tag}",
+            command=["download", plugin_fileset, "--local-dir", _TOOL_CALL_PLUGIN_SCRATCH_DIR],
+            env=[
+                EnvVar(name="HF_ENDPOINT", value=resolved.files_hf_url),
+                EnvVar(name="HF_TOKEN", value="service:models"),
+            ],
+            volumeMounts=[scratch_mount],
+        ),
+        Container(
+            name="tool-call-plugin-finalize",
+            image=busybox,
+            command=[
+                "sh",
+                "-c",
+                _TOOL_CALL_PLUGIN_FINALIZE_SCRIPT.format(
+                    scratch_dir=_TOOL_CALL_PLUGIN_SCRATCH_DIR,
+                    plugin_path=_TOOL_CALL_PLUGIN_PATH,
+                ),
+            ],
+            volumeMounts=[scratch_mount, weights_mount],
+        ),
+    ]
+
+
+def compile_nim_server_env(
+    resolved: ResolvedPluginDeployment,
+    config: DeploymentsPluginConfig,
+    *,
+    weighted: bool,
+    tool_call_plugin_path: str | None,
+) -> dict[str, str]:
+    """Compile NIM server environment variables."""
+    view = resolved.view
+    env: dict[str, str] = dict(view.additional_envs or {})
+
+    model_fqdn: str | None = None
+    if view.model_name:
+        parsed_namespace, parsed_name, parsed_revision = parse_model_name_revision(
+            model_namespace=view.model_namespace,
+            model_name=view.model_name,
+            model_revision=view.model_revision,
+        )
+        if parsed_namespace and parsed_name:
+            model_fqdn = f"{parsed_namespace}/{parsed_name}"
+        elif parsed_name:
+            model_fqdn = parsed_name
+        if model_fqdn and parsed_revision:
+            model_fqdn += f"@{parsed_revision}"
+
+    if model_fqdn:
+        env["NIM_SERVED_MODEL_NAME"] = model_fqdn
+
+    if weighted:
+        env["NIM_MODEL_NAME"] = _WEIGHTS_MOUNT
+        env["NIM_MODEL_PATH"] = _WEIGHTS_MOUNT
+        effective_image = view.image_name or config.default_nimservice_image
+        if not is_multi_llm_image(effective_image):
+            env["NIM_FT_MODEL"] = _WEIGHTS_MOUNT
+            env["NIM_CUSTOM_MODEL"] = _WEIGHTS_MOUNT
+    else:
+        env["NIM_MODEL_NAME"] = _WEIGHTS_MOUNT
+        env["NIM_MODEL_PATH"] = _WEIGHTS_MOUNT
+        if resolved.model_name:
+            served = (
+                f"{resolved.model_namespace}/{resolved.model_name}" if resolved.model_namespace else resolved.model_name
+            )
+            env.setdefault("NIM_SERVED_MODEL_NAME", served)
+
+    model_entity = resolved.model_entity
+    if model_entity:
+        env["NMP_MODEL_ENTITY_WORKSPACE"] = model_entity.workspace
+        env["NMP_MODEL_ENTITY_NAME"] = model_entity.name
+        if model_entity.trust_remote_code:
+            env["NIM_FORCE_TRUST_REMOTE_CODE"] = "1"
+            env["NIM_TRUST_CUSTOM_CODE"] = "1"
+        if model_entity.spec:
+            if model_entity.spec.chat_template:
+                env["NIM_CHAT_TEMPLATE"] = model_entity.spec.chat_template
+            tool_cfg = model_entity.spec.tool_call_config
+            if tool_cfg:
+                if tool_cfg.tool_call_parser:
+                    env["NIM_TOOL_CALL_PARSER"] = tool_cfg.tool_call_parser
+                if tool_call_plugin_path:
+                    env["NIM_TOOL_PARSER_PLUGIN"] = tool_call_plugin_path
+                if tool_cfg.auto_tool_choice is not None:
+                    env["NIM_ENABLE_AUTO_TOOL_CHOICE"] = "1" if tool_cfg.auto_tool_choice else "0"
+
+    if view.chat_template:
+        env["NIM_CHAT_TEMPLATE"] = view.chat_template
+
+    deploy_tool_cfg = view.tool_call_config
+    if deploy_tool_cfg:
+        if deploy_tool_cfg.tool_call_parser:
+            env["NIM_TOOL_CALL_PARSER"] = deploy_tool_cfg.tool_call_parser
+        if deploy_tool_cfg.tool_call_plugin and tool_call_plugin_path:
+            env["NIM_TOOL_PARSER_PLUGIN"] = tool_call_plugin_path
+        if deploy_tool_cfg.auto_tool_choice is not None:
+            env["NIM_ENABLE_AUTO_TOOL_CHOICE"] = "1" if deploy_tool_cfg.auto_tool_choice else "0"
+
+    return env
+
+
+def _image(name: str, tag: str) -> str:
+    return name if "@" in name or name.endswith(f":{tag}") else f"{name}:{tag}"
+
+
+def _k8s_config_dict(k8s_config: K8sNIMOperatorConfig | dict[str, Any] | Any) -> dict[str, Any]:
+    if hasattr(k8s_config, "model_dump"):
+        return k8s_config.model_dump(exclude_none=True)
+    if isinstance(k8s_config, dict):
+        return {key: value for key, value in k8s_config.items() if value is not None}
+    return {}
+
+
+def _tolerations_from_config(raw: list[dict[str, Any]]) -> list[Toleration]:
+    tolerations: list[Toleration] = []
+    for item in raw:
+        if isinstance(item, dict):
+            tolerations.append(Toleration(**{key: value for key, value in item.items() if value is not None}))
+    return tolerations
+
+
+def _affinity_from_node_selector(node_selector: dict[str, str]) -> Affinity:
+    return Affinity(
+        node_affinity={
+            "requiredDuringSchedulingIgnoredDuringExecution": {
+                "nodeSelectorTerms": [
+                    {
+                        "matchExpressions": [
+                            {"key": key, "operator": "In", "values": [value]} for key, value in node_selector.items()
+                        ]
+                    }
+                ]
+            }
+        }
+    )
+
+
+def k8s_backend_config_from_nim_operator(view: DeploymentConfigView) -> K8sDeploymentConfig | None:
+    """Map per-deployment ``k8s_nim_operator_config`` onto plugin ``K8sDeploymentConfig``."""
+    if view.k8s_nim_operator_config is None:
+        return None
+    config_dict = _k8s_config_dict(view.k8s_nim_operator_config)
+    if not config_dict:
+        return None
+
+    k8s_kwargs: dict[str, Any] = {}
+    tolerations = config_dict.get("tolerations")
+    if isinstance(tolerations, list):
+        parsed = _tolerations_from_config(tolerations)
+        if parsed:
+            k8s_kwargs["tolerations"] = parsed
+    node_selector = config_dict.get("node_selector")
+    if isinstance(node_selector, dict) and node_selector:
+        k8s_kwargs["affinity"] = _affinity_from_node_selector(node_selector)
+    if not k8s_kwargs:
+        return None
+    return K8sDeploymentConfig(**k8s_kwargs)
+
+
+def startup_probe_failure_threshold(view: DeploymentConfigView, *, period_seconds: int = 10) -> int | None:
+    """Derive readiness failure threshold from ``startup_probe_grace_seconds``."""
+    if view.k8s_nim_operator_config is None:
+        return None
+    config_dict = _k8s_config_dict(view.k8s_nim_operator_config)
+    grace_seconds = config_dict.get("startup_probe_grace_seconds")
+    if grace_seconds is None:
+        return None
+    return max(1, math.ceil(int(grace_seconds) / period_seconds))
+
+
+def apply_container_resources(container: Container, resources: dict[str, Any]) -> None:
+    """Apply k8s resource requirements to a plugin container."""
+    requests = resources.get("requests") if isinstance(resources.get("requests"), dict) else {}
+    limits = resources.get("limits") if isinstance(resources.get("limits"), dict) else {}
+    if not requests and not limits:
+        return
+    container.resources = ResourceRequirements(
+        requests={str(key): str(value) for key, value in requests.items()},
+        limits={str(key): str(value) for key, value in limits.items()},
+    )
+
+
+def apply_k8s_nim_operator_container_overrides(
+    container: Container,
+    probe: Probe,
+    view: DeploymentConfigView,
+) -> None:
+    """Apply per-deployment operator config fields that target the server container."""
+    if view.k8s_nim_operator_config is None:
+        return
+    config_dict = _k8s_config_dict(view.k8s_nim_operator_config)
+    resources = config_dict.get("resources")
+    if isinstance(resources, dict):
+        apply_container_resources(container, resources)
+    failure_threshold = startup_probe_failure_threshold(view, period_seconds=probe.period_seconds)
+    if failure_threshold is not None:
+        probe.failure_threshold = failure_threshold
