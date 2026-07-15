@@ -1745,13 +1745,13 @@ class TestStreamingLeaseLifecycle:
             }
         ]
 
-        class _llm_erorOnCloseStream:
+        class _LlmErrorOnCloseStream:
             """Async iterator that yields normally then fails on aclose()."""
 
             def __init__(self) -> None:
                 self._items = iter(chunks_yielded)
 
-            def __aiter__(self) -> "_llm_erorOnCloseStream":
+            def __aiter__(self) -> "_LlmErrorOnCloseStream":
                 return self
 
             async def __anext__(self) -> dict[str, Any]:
@@ -1769,7 +1769,7 @@ class TestStreamingLeaseLifecycle:
         with patch.object(middleware, "_prepare_lease", new=patched_prepare):
             with patch(
                 "nemo_guardrails_plugin.middleware.handle_streaming_output_check",
-                return_value=_llm_erorOnCloseStream(),
+                return_value=_LlmErrorOnCloseStream(),
             ):
                 result = await _process_response(
                     middleware,
@@ -2319,10 +2319,10 @@ class TestProcessRequestErrorSurfacing:
             "model": "ws/llama",
         }
 
-        async def _llm_eror(*_args: Any, **_kwargs: Any) -> Any:
+        async def _llm_error(*_args: Any, **_kwargs: Any) -> Any:
             raise RuntimeError("cache exploded")
 
-        with patch.object(middleware, "_prepare_lease", new=_llm_eror):
+        with patch.object(middleware, "_prepare_lease", new=_llm_error):
             with pytest.raises(InferenceMiddlewareUnavailableError) as exc_info:
                 await _process_request(middleware, request_body, {}, _entity_source())
 
@@ -2344,7 +2344,7 @@ class TestProcessRequestErrorSurfacing:
             "model": "ws/llama",
         }
 
-        def _llm_eror(*_args: Any, **_kwargs: Any) -> Any:
+        def _llm_error(*_args: Any, **_kwargs: Any) -> Any:
             inner = Exception(  # noqa: TRY002 - mirrors langchain_nvidia_ai_endpoints._format_error
                 '[400] Unknown Error {"object":"error","message":'
                 '"At most 1 image(s) may be provided in one request.",'
@@ -2353,7 +2353,7 @@ class TestProcessRequestErrorSurfacing:
             raise LLMCallException(inner, detail="Error invoking LLM (model=vision-judge)") from inner
 
         with patch.object(middleware, "_prepare_lease", new=_patch_prepare_lease()):
-            with patch("nemo_guardrails_plugin.middleware.run_generate_in_new_loop", side_effect=_llm_eror):
+            with patch("nemo_guardrails_plugin.middleware.run_generate_in_new_loop", side_effect=_llm_error):
                 with pytest.raises(InferenceMiddlewareError) as exc_info:
                     await _process_request(middleware, request_body, {}, _entity_source())
 
@@ -2375,13 +2375,13 @@ class TestProcessRequestErrorSurfacing:
             "model": "ws/llama",
         }
 
-        def _llm_eror(*_args: Any, **_kwargs: Any) -> Any:
+        def _llm_error(*_args: Any, **_kwargs: Any) -> Any:
             response = httpx.Response(422, request=httpx.Request("POST", "http://example.test"))
             inner = openai.BadRequestError("Unsupported parameter: foo", response=response, body=None)
             raise LLMCallException(inner, detail="Error invoking LLM") from inner
 
         with patch.object(middleware, "_prepare_lease", new=_patch_prepare_lease()):
-            with patch("nemo_guardrails_plugin.middleware.run_generate_in_new_loop", side_effect=_llm_eror):
+            with patch("nemo_guardrails_plugin.middleware.run_generate_in_new_loop", side_effect=_llm_error):
                 with pytest.raises(InferenceMiddlewareError) as exc_info:
                     await _process_request(middleware, request_body, {}, _entity_source())
 
@@ -2398,11 +2398,11 @@ class TestProcessRequestErrorSurfacing:
             "model": "ws/llama",
         }
 
-        def _llm_eror(*_args: Any, **_kwargs: Any) -> Any:
+        def _llm_error(*_args: Any, **_kwargs: Any) -> Any:
             raise Exception("[503] Service temporarily overloaded")  # noqa: TRY002
 
         with patch.object(middleware, "_prepare_lease", new=_patch_prepare_lease()):
-            with patch("nemo_guardrails_plugin.middleware.run_generate_in_new_loop", side_effect=_llm_eror):
+            with patch("nemo_guardrails_plugin.middleware.run_generate_in_new_loop", side_effect=_llm_error):
                 with pytest.raises(InferenceMiddlewareError) as exc_info:
                     await _process_request(middleware, request_body, {}, _entity_source())
 
@@ -2418,11 +2418,11 @@ class TestProcessRequestErrorSurfacing:
             "model": "ws/llama",
         }
 
-        def _llm_eror(*_args: Any, **_kwargs: Any) -> Any:
+        def _llm_error(*_args: Any, **_kwargs: Any) -> Any:
             raise ValueError("something went wrong")
 
         with patch.object(middleware, "_prepare_lease", new=_patch_prepare_lease()):
-            with patch("nemo_guardrails_plugin.middleware.run_generate_in_new_loop", side_effect=_llm_eror):
+            with patch("nemo_guardrails_plugin.middleware.run_generate_in_new_loop", side_effect=_llm_error):
                 with pytest.raises(InferenceMiddlewareUnavailableError) as exc_info:
                     await _process_request(middleware, request_body, {}, _entity_source())
 
