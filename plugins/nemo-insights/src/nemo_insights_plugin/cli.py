@@ -15,15 +15,12 @@ import httpx
 import typer
 from nemo_insights_plugin.analyst.run import ClientConstructionError, run_analyst
 from nemo_insights_plugin.client import make_client
+from nemo_insights_plugin.contracts.checks import CheckResult, advisories, format_report, required_failures
 from nemo_insights_plugin.preflight import (
     AnalysisProbes,
-    CheckResult,
-    advisories,
     check_environment,
     check_profile,
-    format_report,
     read_agent_spec,
-    required_failures,
 )
 from nemo_insights_plugin.profile import (
     AnalysisProfile,
