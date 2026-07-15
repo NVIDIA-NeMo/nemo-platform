@@ -24,7 +24,7 @@ import subprocess
 import sys
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -51,8 +51,12 @@ SMOKE_JOB_TIMEOUT_SECONDS = 180.0
 K8S_JOB_TIMEOUT_SECONDS = float(os.environ.get("NSS_E2E_JOB_TIMEOUT_SECONDS", "5400"))
 POLL_INTERVAL_SECONDS = float(os.environ.get("NSS_E2E_POLL_INTERVAL_SECONDS", "10"))
 RESULT_DOWNLOAD_TIMEOUT_SECONDS = float(os.environ.get("NSS_E2E_RESULT_DOWNLOAD_TIMEOUT_SECONDS", "600"))
+MODEL_FILESETS_TIMEOUT_SECONDS = float(os.environ.get("NSS_E2E_MODEL_FILESETS_TIMEOUT_SECONDS", "300"))
+DELETE_VERIFY_TIMEOUT_SECONDS = float(os.environ.get("NSS_E2E_DELETE_VERIFY_TIMEOUT_SECONDS", "60"))
 DEFAULT_INPUT_ROWS = int(os.environ.get("NSS_E2E_INPUT_ROWS", "250"))
 DEFAULT_NUM_RECORDS = int(os.environ.get("NSS_E2E_NUM_RECORDS", "250"))
+
+NssJobFactory = Callable[[str, str, dict[str, Any]], dict[str, Any]]
 
 
 def _unique_name(prefix: str) -> str:
@@ -181,6 +185,10 @@ def _list_nss_jobs(sdk: NeMoPlatform, workspace: str) -> dict[str, Any]:
     return response.json()
 
 
+def _job_names(jobs: dict[str, Any]) -> set[str]:
+    return {str(entry["name"]) for entry in jobs.get("data", [])}
+
+
 def _retrieve_nss_job(sdk: NeMoPlatform, workspace: str, name: str) -> dict[str, Any]:
     response = sdk._client.get(
         _nss_url(sdk, workspace, f"jobs/{name}"),
@@ -191,7 +199,25 @@ def _retrieve_nss_job(sdk: NeMoPlatform, workspace: str, name: str) -> dict[str,
     return response.json()
 
 
-def _delete_nss_job(sdk: NeMoPlatform, workspace: str, name: str) -> None:
+def _wait_for_job_absent(
+    sdk: NeMoPlatform,
+    workspace: str,
+    name: str,
+    *,
+    timeout_seconds: float = DELETE_VERIFY_TIMEOUT_SECONDS,
+    poll_interval_seconds: float = 2.0,
+) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    last_names: set[str] = set()
+    while time.monotonic() < deadline:
+        last_names = _job_names(_list_nss_jobs(sdk, workspace))
+        if name not in last_names:
+            return
+        time.sleep(poll_interval_seconds)
+    pytest.fail(f"Safe Synthesizer job {name!r} still exists after delete; visible jobs: {sorted(last_names)}")
+
+
+def _delete_nss_job(sdk: NeMoPlatform, workspace: str, name: str, *, verify: bool = True) -> None:
     response = sdk._client.delete(
         _nss_url(sdk, workspace, f"jobs/{name}"),
         headers=_string_headers(sdk),
@@ -199,6 +225,8 @@ def _delete_nss_job(sdk: NeMoPlatform, workspace: str, name: str) -> None:
     )
     if response.status_code not in {200, 202, 204, 404}:
         response.raise_for_status()
+    if verify:
+        _wait_for_job_absent(sdk, workspace, name)
 
 
 def _cancel_nss_job(sdk: NeMoPlatform, workspace: str, name: str) -> dict[str, Any] | None:
@@ -310,6 +338,20 @@ def _assert_csv_rows(content: bytes, *, expected_rows: int | None = None, min_ro
     return rows
 
 
+def _assert_known_pii_replaced(content: bytes) -> None:
+    text = content.decode("utf-8")
+    for source_value in ("customer1@example.com", "customer250@example.com", "415-555-0001", "415-555-0250"):
+        assert source_value not in text
+
+
+def _process_output_text(output: str | bytes | None) -> str:
+    if output is None:
+        return ""
+    if isinstance(output, bytes):
+        return output.decode("utf-8", errors="replace")
+    return output
+
+
 def _platform_root() -> Path:
     candidates: list[Path] = []
     if os.environ.get("NMP_PLATFORM_ROOT"):
@@ -335,24 +377,32 @@ def nss_model_filesets(sdk: NeMoPlatform) -> None:
 
     platform_root = _platform_root()
     script = platform_root / "plugins/nemo-safe-synthesizer/scripts/setup_model_filesets.py"
-    result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "--project",
-            str(platform_root),
-            "python",
-            str(script),
-            "--files-api-url",
-            str(sdk.base_url).rstrip("/"),
-            "--workspace",
-            "default",
-        ],
-        cwd=platform_root,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "uv",
+                "run",
+                "--project",
+                str(platform_root),
+                "python",
+                str(script),
+                "--files-api-url",
+                str(sdk.base_url).rstrip("/"),
+                "--workspace",
+                "default",
+            ],
+            cwd=platform_root,
+            timeout=MODEL_FILESETS_TIMEOUT_SECONDS,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.TimeoutExpired as exc:
+        pytest.fail(
+            f"Timed out after {MODEL_FILESETS_TIMEOUT_SECONDS:g}s registering Safe Synthesizer model filesets\n"
+            f"stdout:\n{_process_output_text(exc.stdout)}\n"
+            f"stderr:\n{_process_output_text(exc.stderr)}"
+        )
     if result.returncode != 0:
         pytest.fail(
             f"Failed to register Safe Synthesizer model filesets\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
@@ -366,6 +416,24 @@ def nss_dataset(sdk: NeMoPlatform, workspace: str) -> Iterator[tuple[str, str]]:
         yield fileset, data_source
     finally:
         _delete_fileset(sdk, workspace, fileset)
+
+
+@pytest.fixture
+def nss_job(sdk: NeMoPlatform, workspace: str) -> Iterator[NssJobFactory]:
+    job_names: list[str] = []
+
+    def create(prefix: str, data_source: str, config: dict[str, Any]) -> dict[str, Any]:
+        job_name = _unique_name(prefix)
+        job = _create_nss_job(sdk, workspace, name=job_name, data_source=data_source, config=config)
+        job_names.append(job_name)
+        return job
+
+    try:
+        yield create
+    finally:
+        for job_name in reversed(job_names):
+            _cancel_nss_job(sdk, workspace, job_name)
+            _delete_nss_job(sdk, workspace, job_name)
 
 
 def test_safe_synthesizer_api_health(sdk: NeMoPlatform, workspace: str) -> None:
@@ -401,42 +469,39 @@ def test_safe_synthesizer_job_create_list_retrieve_cancel_delete(
     sdk: NeMoPlatform,
     workspace: str,
     nss_dataset: tuple[str, str],
+    nss_job: NssJobFactory,
 ) -> None:
     _, data_source = nss_dataset
-    job_name = _unique_name("nss-smoke")
 
-    job = _create_nss_job(
-        sdk,
-        workspace,
-        name=job_name,
-        data_source=data_source,
-        config={
+    job = nss_job(
+        "nss-smoke",
+        data_source,
+        {
             "enable_synthesis": False,
             "enable_replace_pii": False,
         },
     )
-    try:
-        assert job["name"] == job_name
+    job_name = str(job["name"])
+    assert job["name"] == job_name
 
-        jobs = _list_nss_jobs(sdk, workspace)
-        assert job_name in {entry["name"] for entry in jobs["data"]}
+    jobs = _list_nss_jobs(sdk, workspace)
+    assert job_name in _job_names(jobs)
 
-        retrieved = _retrieve_nss_job(sdk, workspace, job_name)
-        assert retrieved["name"] == job_name
-        assert retrieved["spec"]["data_source"] == data_source
+    retrieved = _retrieve_nss_job(sdk, workspace, job_name)
+    assert retrieved["name"] == job_name
+    assert retrieved["spec"]["data_source"] == data_source
 
-        _cancel_nss_job(sdk, workspace, job_name)
-        status, _ = _wait_for_status(
-            sdk,
-            workspace,
-            job_name,
-            timeout_seconds=SMOKE_JOB_TIMEOUT_SECONDS,
-            poll_interval_seconds=2.0,
-        )
-        assert status in TERMINAL_STATUSES
-    finally:
-        _cancel_nss_job(sdk, workspace, job_name)
-        _delete_nss_job(sdk, workspace, job_name)
+    cancel_response = _cancel_nss_job(sdk, workspace, job_name)
+    status, _ = _wait_for_status(
+        sdk,
+        workspace,
+        job_name,
+        timeout_seconds=SMOKE_JOB_TIMEOUT_SECONDS,
+        poll_interval_seconds=2.0,
+    )
+    assert status != "error"
+    if cancel_response is not None:
+        assert status == "cancelled"
 
 
 @pytest.mark.container_only
@@ -447,16 +512,14 @@ def test_safe_synthesizer_k8s_job_cancel_transitions(
     sdk: NeMoPlatform,
     workspace: str,
     nss_dataset: tuple[str, str],
+    nss_job: NssJobFactory,
     nss_model_filesets: None,
 ) -> None:
     _, data_source = nss_dataset
-    job_name = _unique_name("nss-cancel")
-    _create_nss_job(
-        sdk,
-        workspace,
-        name=job_name,
-        data_source=data_source,
-        config={
+    job = nss_job(
+        "nss-cancel",
+        data_source,
+        {
             "enable_synthesis": True,
             "enable_replace_pii": False,
             "generation": {"num_records": DEFAULT_NUM_RECORDS},
@@ -464,28 +527,27 @@ def test_safe_synthesizer_k8s_job_cancel_transitions(
             "privacy": {"dp_enabled": False},
         },
     )
-    try:
-        _, history = _wait_for_status(
-            sdk,
-            workspace,
-            job_name,
-            target_statuses=STARTED_STATUSES,
-            timeout_seconds=300,
-        )
-        cancel_response = _cancel_nss_job(sdk, workspace, job_name)
-        assert cancel_response is not None
+    job_name = str(job["name"])
 
-        final_status, final_history = _wait_for_status(
-            sdk,
-            workspace,
-            job_name,
-            timeout_seconds=600,
-        )
-        assert final_status in {"cancelled", "completed", "error"}
-        assert history + final_history
-    finally:
-        _cancel_nss_job(sdk, workspace, job_name)
-        _delete_nss_job(sdk, workspace, job_name)
+    _, history = _wait_for_status(
+        sdk,
+        workspace,
+        job_name,
+        target_statuses=STARTED_STATUSES,
+        timeout_seconds=300,
+    )
+    assert "error" not in history
+    cancel_response = _cancel_nss_job(sdk, workspace, job_name)
+    assert cancel_response is not None
+
+    final_status, final_history = _wait_for_status(
+        sdk,
+        workspace,
+        job_name,
+        timeout_seconds=600,
+    )
+    assert final_status == "cancelled"
+    assert "cancelled" in final_history
 
 
 @pytest.mark.container_only
@@ -496,32 +558,31 @@ def test_safe_synthesizer_pii_replacement_job_completes(
     sdk: NeMoPlatform,
     workspace: str,
     nss_dataset: tuple[str, str],
+    nss_job: NssJobFactory,
     nss_model_filesets: None,
 ) -> None:
     _, data_source = nss_dataset
-    job_name = _unique_name("nss-pii")
-    _create_nss_job(
-        sdk,
-        workspace,
-        name=job_name,
-        data_source=data_source,
-        config={
+    job = nss_job(
+        "nss-pii",
+        data_source,
+        {
             "enable_synthesis": False,
             "enable_replace_pii": True,
         },
     )
-    try:
-        _assert_job_completed(sdk, workspace, job_name)
-        results = _list_nss_results(sdk, workspace, job_name)
-        assert {"summary", "synthetic-data"}.issubset(_result_names(results))
-        _assert_csv_rows(
-            _download_nss_result(sdk, workspace, job_name, "synthetic-data"),
-            expected_rows=DEFAULT_INPUT_ROWS,
-        )
-        summary = json.loads(_download_nss_result(sdk, workspace, job_name, "summary"))
-        assert summary.get("timing") is not None
-    finally:
-        _delete_nss_job(sdk, workspace, job_name)
+    job_name = str(job["name"])
+
+    _assert_job_completed(sdk, workspace, job_name)
+    results = _list_nss_results(sdk, workspace, job_name)
+    assert {"summary", "synthetic-data"}.issubset(_result_names(results))
+    synthetic_content = _download_nss_result(sdk, workspace, job_name, "synthetic-data")
+    _assert_csv_rows(
+        synthetic_content,
+        expected_rows=DEFAULT_INPUT_ROWS,
+    )
+    _assert_known_pii_replaced(synthetic_content)
+    summary = json.loads(_download_nss_result(sdk, workspace, job_name, "summary"))
+    assert summary.get("timing") is not None
 
 
 @pytest.mark.container_only
@@ -532,16 +593,14 @@ def test_safe_synthesizer_full_workflow_downloads_artifacts(
     sdk: NeMoPlatform,
     workspace: str,
     nss_dataset: tuple[str, str],
+    nss_job: NssJobFactory,
     nss_model_filesets: None,
 ) -> None:
     _, data_source = nss_dataset
-    job_name = _unique_name("nss-full")
-    _create_nss_job(
-        sdk,
-        workspace,
-        name=job_name,
-        data_source=data_source,
-        config={
+    job = nss_job(
+        "nss-full",
+        data_source,
+        {
             "enable_synthesis": True,
             "enable_replace_pii": True,
             "generation": {"num_records": DEFAULT_NUM_RECORDS},
@@ -549,24 +608,23 @@ def test_safe_synthesizer_full_workflow_downloads_artifacts(
             "privacy": {"dp_enabled": False},
         },
     )
-    try:
-        _assert_job_completed(sdk, workspace, job_name)
-        results = _list_nss_results(sdk, workspace, job_name)
-        result_names = _result_names(results)
-        assert {"summary", "synthetic-data", "evaluation-report", "adapter"}.issubset(result_names)
+    job_name = str(job["name"])
 
-        synthetic_rows = _assert_csv_rows(
-            _download_nss_result(sdk, workspace, job_name, "synthetic-data"),
-            expected_rows=DEFAULT_NUM_RECORDS,
-        )
-        assert set(synthetic_rows[0]) >= {"name", "email", "favorite_ice_cream_flavor"}
+    _assert_job_completed(sdk, workspace, job_name)
+    results = _list_nss_results(sdk, workspace, job_name)
+    result_names = _result_names(results)
+    assert {"summary", "synthetic-data", "evaluation-report", "adapter"}.issubset(result_names)
 
-        summary = json.loads(_download_nss_result(sdk, workspace, job_name, "summary"))
-        timing = summary["timing"]
-        assert timing["training_time_sec"] is not None
-        assert timing["generation_time_sec"] is not None
+    synthetic_rows = _assert_csv_rows(
+        _download_nss_result(sdk, workspace, job_name, "synthetic-data"),
+        expected_rows=DEFAULT_NUM_RECORDS,
+    )
+    assert set(synthetic_rows[0]) >= {"name", "email", "favorite_ice_cream_flavor"}
 
-        report = _download_nss_result(sdk, workspace, job_name, "evaluation-report")
-        assert b"<html" in report.lower() or b"<!doctype html" in report.lower()
-    finally:
-        _delete_nss_job(sdk, workspace, job_name)
+    summary = json.loads(_download_nss_result(sdk, workspace, job_name, "summary"))
+    timing = summary["timing"]
+    assert timing["training_time_sec"] is not None
+    assert timing["generation_time_sec"] is not None
+
+    report = _download_nss_result(sdk, workspace, job_name, "evaluation-report")
+    assert b"<html" in report.lower() or b"<!doctype html" in report.lower()
