@@ -3,7 +3,14 @@
 
 from types import SimpleNamespace
 
-from nemo_deployments_plugin.entities import Container, Probe
+from nemo_deployments_plugin.entities import (
+    Container,
+    DeploymentBackendConfig,
+    K8sDeploymentConfig,
+    Probe,
+    ResourceRequirements,
+    Toleration,
+)
 from nemo_platform.types.inference.k8s_nim_operator_config import K8sNIMOperatorConfig
 from nmp.common.config import Runtime
 from nmp.core.models.app import ModelWeightsType
@@ -11,6 +18,7 @@ from nmp.core.models.controllers.backends.common import DeploymentConfigView
 from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
 from nmp.core.models.controllers.backends.deployments_plugin.nim_compiler import (
     apply_k8s_nim_operator_container_overrides,
+    apply_nim_override_config,
     build_k8s_deployment_backend_config,
     compile_nim_server_env,
     k8s_backend_config_from_nim_operator,
@@ -139,3 +147,75 @@ def test_build_k8s_deployment_backend_config_merges_security_context() -> None:
     assert backend.k8s is not None
     assert backend.k8s.security_context is not None
     assert backend.k8s.security_context.run_as_user == 1000
+
+
+def test_apply_nim_override_config_overrides_operator_defaults() -> None:
+    from nemo_deployments_plugin.entities import DeploymentConfig
+
+    container = Container(name="server", image="nim:1.0")
+    container.resources = ResourceRequirements(requests={"cpu": "1"})
+    container.readiness_probe = Probe()
+    server_config = DeploymentConfig(
+        name="dep-server",
+        workspace="default",
+        containers=[container],
+        backendConfig=DeploymentBackendConfig(
+            k8s=K8sDeploymentConfig(
+                tolerations=[Toleration(key="old-key")],
+            )
+        ),
+    )
+    view = DeploymentConfigView(
+        k8s_nim_operator_config=K8sNIMOperatorConfig(resources={"requests": {"cpu": "2"}}),
+        override_config={
+            "resources": {"requests": {"cpu": "8"}, "limits": {"memory": "64Gi"}},
+            "nodeSelector": {"zone": "b"},
+            "env": [{"name": "EXTRA", "value": "1"}],
+            "image": {"repository": "nvcr.io/override", "tag": "2.0"},
+            "readinessProbe": {
+                "enabled": True,
+                "probe": {"httpGet": {"path": "/ready", "port": 8080}, "failureThreshold": 12},
+            },
+            "userID": 42,
+            "groupID": 84,
+            "labels": {"custom": "label"},
+        },
+    )
+    apply_nim_override_config(
+        container,
+        server_config,
+        view,
+        engine="nim",
+        runtime=Runtime.KUBERNETES,
+    )
+    assert container.image == "nvcr.io/override:2.0"
+    assert container.resources.requests["cpu"] == "8"
+    assert container.resources.limits["memory"] == "64Gi"
+    assert {item.name: item.value for item in container.env}["EXTRA"] == "1"
+    assert container.readiness_probe is not None
+    assert container.readiness_probe.http_get is not None
+    assert container.readiness_probe.http_get.path == "/ready"
+    assert container.readiness_probe.http_get.port == 8080
+    assert container.readiness_probe.failure_threshold == 12
+    k8s = server_config.backend_config.k8s
+    assert k8s is not None
+    assert k8s.affinity is not None
+    assert k8s.security_context is not None
+    assert k8s.security_context.run_as_user == 42
+    assert server_config.labels["custom"] == "label"
+
+
+def test_apply_nim_override_config_ignored_on_docker() -> None:
+    from nemo_deployments_plugin.entities import DeploymentConfig
+
+    container = Container(name="server", image="nim:1.0")
+    server_config = DeploymentConfig(name="dep-server", workspace="default", containers=[container])
+    view = DeploymentConfigView(override_config={"image": {"repository": "override", "tag": "x"}})
+    apply_nim_override_config(
+        container,
+        server_config,
+        view,
+        engine="nim",
+        runtime=Runtime.DOCKER,
+    )
+    assert container.image == "nim:1.0"

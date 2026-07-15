@@ -31,6 +31,7 @@ from nmp.core.models.controllers.backends.deployments_plugin.naming import Entit
 from nmp.core.models.controllers.backends.deployments_plugin.nim_compiler import (
     _TOOL_CALL_PLUGIN_PATH,
     apply_k8s_nim_operator_container_overrides,
+    apply_nim_override_config,
     build_k8s_deployment_backend_config,
     compile_nim_server_env,
     tool_call_plugin_init_containers,
@@ -298,6 +299,14 @@ def compile_model_deployment(
         restartPolicy="Always",
         backendConfig=backend_config or DeploymentBackendConfig(),
     )
+    if engine == ENGINE_NIM:
+        apply_nim_override_config(
+            server,
+            server_config,
+            resolved.view,
+            engine=engine,
+            runtime=resolved.runtime,
+        )
     return CompiledModelDeployment(
         names=names,
         volume=volume,

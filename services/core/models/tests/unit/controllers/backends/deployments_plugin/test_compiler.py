@@ -151,6 +151,40 @@ def test_nim_k8s_nim_operator_config_maps_tolerations_and_resources() -> None:
     assert k8s.security_context.run_as_group == 2000
 
 
+def test_nim_override_config_wins_over_k8s_nim_operator_config() -> None:
+    resolved = _resolved("nim")
+    resolved = ResolvedPluginDeployment(
+        deployment=resolved.deployment,
+        config=resolved.config,
+        model_entity=resolved.model_entity,
+        view=DeploymentConfigView(
+            model_namespace="org",
+            model_name="model",
+            k8s_nim_operator_config=K8sNIMOperatorConfig(
+                node_selector={"zone": "a"},
+                resources={"requests": {"cpu": "2"}},
+            ),
+            override_config={
+                "nodeSelector": {"zone": "override-zone"},
+                "resources": {"requests": {"cpu": "16"}},
+            },
+        ),
+        weights_type=ModelWeightsType.BAKED_CONTAINER,
+        model_namespace=None,
+        model_name=None,
+        model_revision=None,
+        files_hf_url=resolved.files_hf_url,
+        huggingface_model_puller=resolved.huggingface_model_puller,
+        runtime=Runtime.KUBERNETES,
+    )
+    compiled = compile_model_deployment(resolved, DeploymentsPluginConfig())
+    server = compiled.server_config.containers[0]
+    assert server.resources.requests["cpu"] == "16"
+    k8s = compiled.server_config.backend_config.k8s
+    assert k8s is not None
+    assert k8s.affinity is not None
+
+
 def test_generic_weightless_is_server_only() -> None:
     resolved = _resolved("generic")
     resolved = ResolvedPluginDeployment(

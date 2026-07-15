@@ -1458,9 +1458,10 @@ class ContainerExecutorConfig(BaseModel):
     override_config: Optional[Dict[str, Any]] = Field(
         default=None,
         deprecated=True,
-        description="Deprecated escape hatch from the k8s-nim-operator era. Raw container "
-        "spec fragments merged after generated defaults (NIM engine on k8s only). "
-        "Prefer k8s_nim_operator_config for typed fields. Ignored by non-NIM engines.",
+        description="Deprecated escape hatch from the k8s-nim-operator era. Partial NIMService "
+        "Spec fragments deep-merged after generated defaults and k8s_nim_operator_config "
+        "(NIM engine on k8s only). Mapped onto deployments_plugin Container and "
+        "K8sDeploymentConfig fields. Ignored by non-NIM engines and docker runtime.",
     )
 
 

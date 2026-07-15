@@ -16,7 +16,10 @@ from nemo_deployments_plugin.entities import (
     Affinity,
     Container,
     DeploymentBackendConfig,
+    DeploymentConfig,
     EnvVar,
+    ExecAction,
+    HTTPGetAction,
     K8sDeploymentConfig,
     PodSecurityContext,
     Probe,
@@ -26,11 +29,12 @@ from nemo_deployments_plugin.entities import (
 )
 from nemo_platform.types.inference.k8s_nim_operator_config import K8sNIMOperatorConfig
 from nemo_platform.types.models.model_entity import ModelEntity
+from nmp.common.config import Runtime
 from nmp.core.models.app import is_multi_llm_image, parse_model_name_revision
 from nmp.core.models.controllers.backends.common import DeploymentConfigView
 from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
 from nmp.core.models.controllers.backends.deployments_plugin.resolve import ResolvedPluginDeployment
-from nmp.core.models.controllers.backends.engine import ENGINE_VLLM
+from nmp.core.models.controllers.backends.engine import ENGINE_NIM, ENGINE_VLLM
 
 _WEIGHTS_MOUNT = "/model-store"
 _SCRATCH_MOUNT = "/scratch"
@@ -346,3 +350,206 @@ def apply_k8s_nim_operator_container_overrides(
     failure_threshold = startup_probe_failure_threshold(view, period_seconds=probe.period_seconds)
     if failure_threshold is not None:
         probe.failure_threshold = failure_threshold
+
+
+def _resource_string(value: Any) -> str:
+    if isinstance(value, dict) and "root" in value:
+        return str(value["root"])
+    return str(value)
+
+
+def _normalize_resources(resources: dict[str, Any]) -> dict[str, dict[str, str]]:
+    normalized: dict[str, dict[str, str]] = {}
+    for section in ("requests", "limits"):
+        raw = resources.get(section)
+        if isinstance(raw, dict):
+            normalized[section] = {str(key): _resource_string(val) for key, val in raw.items()}
+    return normalized
+
+
+def _merge_env_override(container: Container, env_list: list[Any]) -> None:
+    by_name = {item.name: index for index, item in enumerate(container.env)}
+    for item in env_list:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        if not name:
+            continue
+        value = item.get("value")
+        if value is None:
+            continue
+        env_var = EnvVar(name=str(name), value=str(value))
+        if name in by_name:
+            container.env[by_name[name]] = env_var
+        else:
+            container.env.append(env_var)
+            by_name[name] = len(container.env) - 1
+
+
+def _probe_from_k8s_dict(data: dict[str, Any]) -> Probe | None:
+    if not isinstance(data, dict):
+        return None
+    kwargs: dict[str, Any] = {}
+    for src, dest in (
+        ("initialDelaySeconds", "initial_delay_seconds"),
+        ("periodSeconds", "period_seconds"),
+        ("timeoutSeconds", "timeout_seconds"),
+        ("failureThreshold", "failure_threshold"),
+    ):
+        if src in data and data[src] is not None:
+            kwargs[dest] = int(data[src])
+    http_get = data.get("httpGet")
+    if isinstance(http_get, dict):
+        kwargs["http_get"] = HTTPGetAction(
+            path=http_get.get("path", "/"),
+            port=http_get.get("port", 8000),
+            scheme=http_get.get("scheme", "HTTP"),
+        )
+    exec_action = data.get("exec")
+    if isinstance(exec_action, dict) and exec_action.get("command"):
+        kwargs["exec_action"] = ExecAction(command=[str(item) for item in exec_action["command"]])
+    if not kwargs:
+        return None
+    return Probe(**kwargs)
+
+
+def _probe_from_nim_service_probe(probe_wrapper: dict[str, Any]) -> Probe | None:
+    if probe_wrapper.get("enabled") is False:
+        return None
+    inner = probe_wrapper.get("probe")
+    if isinstance(inner, dict):
+        return _probe_from_k8s_dict(inner)
+    return _probe_from_k8s_dict(probe_wrapper)
+
+
+def _container_from_spec_entry(spec_container: dict[str, Any], *, native_sidecar: bool) -> Container | None:
+    name = spec_container.get("name")
+    image_info = spec_container.get("image")
+    if not name or not isinstance(image_info, dict):
+        return None
+    repository = image_info.get("repository")
+    if not repository:
+        return None
+    tag = image_info.get("tag") or "latest"
+    env: list[EnvVar] = []
+    for item in spec_container.get("env") or []:
+        if isinstance(item, dict) and item.get("name") and item.get("value") is not None:
+            env.append(EnvVar(name=str(item["name"]), value=str(item["value"])))
+    return Container(
+        name=str(name),
+        image=_image(str(repository), str(tag)),
+        command=[str(item) for item in spec_container.get("command") or []],
+        args=[str(item) for item in spec_container.get("args") or []],
+        env=env,
+        restartPolicy="Always" if native_sidecar else None,
+    )
+
+
+def _ensure_k8s_backend(server_config: DeploymentConfig) -> K8sDeploymentConfig:
+    backend = server_config.backend_config
+    if backend.k8s is None:
+        backend.k8s = K8sDeploymentConfig()
+    return backend.k8s
+
+
+def apply_nim_override_config(
+    container: Container,
+    server_config: DeploymentConfig,
+    view: DeploymentConfigView,
+    *,
+    engine: str,
+    runtime: Runtime,
+) -> None:
+    """Apply ``override_config`` NIMService Spec fragments onto plugin entities.
+
+    Precedence: generated defaults < ``k8s_nim_operator_config`` < ``override_config``.
+    Only honored for NIM engine deployments on the Kubernetes runtime.
+    """
+    if engine != ENGINE_NIM or runtime != Runtime.KUBERNETES:
+        return
+    override = view.override_config
+    if not override:
+        return
+
+    image_info = override.get("image")
+    if isinstance(image_info, dict):
+        repository = image_info.get("repository")
+        if repository:
+            container.image = _image(str(repository), str(image_info.get("tag") or "latest"))
+
+    if override.get("command"):
+        container.command = [str(item) for item in override["command"]]
+    if override.get("args"):
+        container.args = [str(item) for item in override["args"]]
+
+    resources = override.get("resources")
+    if isinstance(resources, dict):
+        apply_container_resources(container, _normalize_resources(resources))
+
+    env_list = override.get("env")
+    if isinstance(env_list, list):
+        _merge_env_override(container, env_list)
+
+    readiness = override.get("readinessProbe")
+    if isinstance(readiness, dict):
+        probe = _probe_from_nim_service_probe(readiness)
+        if probe is not None:
+            container.readiness_probe = probe
+
+    liveness = override.get("livenessProbe")
+    if isinstance(liveness, dict):
+        probe = _probe_from_nim_service_probe(liveness)
+        if probe is not None:
+            container.liveness_probe = probe
+
+    startup = override.get("startupProbe")
+    if isinstance(startup, dict):
+        probe = container.readiness_probe or Probe(httpGet=HTTPGetAction(path="/v1/health/ready", port=8000))
+        startup_probe = _probe_from_nim_service_probe(startup)
+        if startup_probe is not None and startup_probe.failure_threshold is not None:
+            probe.failure_threshold = startup_probe.failure_threshold
+        container.readiness_probe = probe
+
+    k8s = _ensure_k8s_backend(server_config)
+    node_selector = override.get("nodeSelector")
+    if isinstance(node_selector, dict) and node_selector:
+        k8s.affinity = _affinity_from_node_selector({str(k): str(v) for k, v in node_selector.items()})
+
+    tolerations = override.get("tolerations")
+    if isinstance(tolerations, list):
+        parsed = _tolerations_from_config([item for item in tolerations if isinstance(item, dict)])
+        if parsed:
+            k8s.tolerations = parsed
+
+    user_id = override.get("userID")
+    group_id = override.get("groupID")
+    if user_id is not None or group_id is not None:
+        security_context = k8s.security_context or PodSecurityContext()
+        if user_id is not None:
+            security_context.run_as_user = int(user_id)
+        if group_id is not None:
+            security_context.run_as_group = int(group_id)
+            security_context.fs_group = int(group_id)
+        k8s.security_context = security_context
+
+    labels = override.get("labels")
+    if isinstance(labels, dict):
+        server_config.labels.update({str(key): str(value) for key, value in labels.items()})
+
+    init_containers = override.get("initContainers")
+    if isinstance(init_containers, list):
+        for entry in init_containers:
+            if isinstance(entry, dict):
+                parsed = _container_from_spec_entry(entry, native_sidecar=False)
+                if parsed is not None:
+                    server_config.init_containers.append(parsed)
+
+    sidecar_containers = override.get("sidecarContainers")
+    if isinstance(sidecar_containers, list):
+        for entry in sidecar_containers:
+            if isinstance(entry, dict):
+                parsed = _container_from_spec_entry(entry, native_sidecar=True)
+                if parsed is not None:
+                    server_config.init_containers.append(parsed)
+
+    server_config.backend_config = DeploymentBackendConfig(k8s=k8s)
