@@ -808,7 +808,7 @@ async def test_list_jobs_across_multiple_workspaces(
     from unittest.mock import MagicMock
 
     from nmp.common.entities.client import EntityClient
-    from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobSortField
+    from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobListSortField
     from nmp.testing import create_test_client
 
     # Create entity store with multiple workspaces and projects
@@ -870,7 +870,7 @@ async def test_list_jobs_across_multiple_workspaces(
         # List jobs in "default" workspace
         jobs_default, count_default = await mock_dispatcher.list_jobs(
             parsed=ParsedFilter(operation=None),
-            sort=PlatformJobSortField.CREATED_AT_ASC,
+            sort=PlatformJobListSortField.CREATED_AT_ASC,
             limit=100,
             offset=0,
             workspace=DEFAULT_WORKSPACE,
@@ -892,7 +892,7 @@ async def test_list_jobs_across_multiple_workspaces(
         # List jobs in "other-workspace"
         jobs_other, count_other = await mock_dispatcher.list_jobs(
             parsed=ParsedFilter(operation=None),
-            sort=PlatformJobSortField.CREATED_AT_ASC,
+            sort=PlatformJobListSortField.CREATED_AT_ASC,
             limit=100,
             offset=0,
             workspace="other-workspace",
@@ -912,7 +912,7 @@ async def test_list_jobs_across_multiple_workspaces(
         # Now query across both workspaces using ALL_WORKSPACES
         jobs_all, count_all = await mock_dispatcher.list_jobs(
             parsed=ParsedFilter(operation=None),
-            sort=PlatformJobSortField.CREATED_AT_ASC,
+            sort=PlatformJobListSortField.CREATED_AT_ASC,
             limit=100,
             offset=0,
             workspace=ALL_WORKSPACES,
@@ -921,6 +921,41 @@ async def test_list_jobs_across_multiple_workspaces(
         # Should return all 4 jobs
         assert len(jobs_all) == 4, f"Expected 4 jobs across all workspaces, but got {len(jobs_all)}"
         assert count_all == 4
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_sort_by_source(
+    mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
+):
+    """list_jobs sorts by the source field ascending and descending."""
+    from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobListSortField
+
+    for source in ("zebra-source", "alpha-source", "middle-source"):
+        await mock_dispatcher.create_job(
+            CreatePlatformJobRequest(
+                name=f"job-{source}",
+                source=source,
+                project=TestConstants.PROJECT,
+                spec=TestConstants.SPEC_BASIC,
+                platform_spec=TestConstants.PLATFORM_SPEC,
+            ),
+            DEFAULT_WORKSPACE,
+        )
+
+    jobs_asc, _ = await mock_dispatcher.list_jobs(
+        parsed=ParsedFilter(operation=None),
+        sort=PlatformJobListSortField.SOURCE_ASC,
+        workspace=DEFAULT_WORKSPACE,
+    )
+    assert [j.source for j in jobs_asc] == ["alpha-source", "middle-source", "zebra-source"]
+
+    jobs_desc, _ = await mock_dispatcher.list_jobs(
+        parsed=ParsedFilter(operation=None),
+        sort=PlatformJobListSortField.SOURCE_DESC,
+        workspace=DEFAULT_WORKSPACE,
+    )
+    assert [j.source for j in jobs_desc] == ["zebra-source", "middle-source", "alpha-source"]
 
 
 # =============================================================================

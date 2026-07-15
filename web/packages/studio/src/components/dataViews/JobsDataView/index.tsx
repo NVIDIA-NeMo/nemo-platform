@@ -11,8 +11,8 @@ import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataView
 import { getSortParam } from '@nemo/common/src/utils/query';
 import { useJobsListJobs } from '@nemo/sdk/generated/platform/api';
 import type {
+  PlatformJobListSortField,
   PlatformJobResponse,
-  PlatformJobSortField,
   PlatformJobsListFilter,
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, StatusMessage } from '@nvidia/foundations-react-core';
@@ -32,7 +32,7 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { iconColorClass } from '@studio/routes/constants';
 import { keepPreviousData } from '@tanstack/react-query';
 import { ChartBar, Cog, LayoutList, ListChecks, Sliders, Sparkles } from 'lucide-react';
-import { ComponentProps, type ReactNode } from 'react';
+import { ComponentProps, type ReactNode, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const SOURCE_DISPLAY: Record<string, { label: string; icon: ReactNode }> = {
@@ -86,7 +86,7 @@ export const JobsDataView = () => {
     {
       page: dataViewState.pagination.state.pageIndex + 1,
       page_size: dataViewState.pagination.state.pageSize,
-      sort: getSortParam(dataViewState.sorting.state) as PlatformJobSortField,
+      sort: getSortParam(dataViewState.sorting.state) as PlatformJobListSortField,
       filter: {
         ...userFilter,
         ...(hasUserSourceFilter
@@ -113,6 +113,19 @@ export const JobsDataView = () => {
       ? (jobsData?.data ?? [])
       : jobsData.data.filter((job) => job.source !== JOB_SOURCE.CUSTOMIZATION);
 
+  // Surface plugin sources not in the static list (e.g. nemo-agents-plugin).
+  const seenSourcesRef = useRef<Set<string>>(new Set());
+  for (const job of jobsData?.data ?? []) {
+    if (job.source) seenSourcesRef.current.add(job.source);
+  }
+
+  const staticSourceValues = new Set(sourceFilterOptions.map((option) => option.value));
+  const dynamicSourceOptions = [...seenSourcesRef.current]
+    .filter((source) => !staticSourceValues.has(source) && !hiddenJobSources.includes(source))
+    .sort()
+    .map((source) => ({ label: SOURCE_DISPLAY[source]?.label ?? source, value: source }));
+  const mergedSourceOptions = [...sourceFilterOptions, ...dynamicSourceOptions];
+
   const makeColumns: ComponentProps<typeof StudioDataView<PlatformJobResponse>>['makeColumns'] = ({
     accessor,
   }) => [
@@ -124,11 +137,12 @@ export const JobsDataView = () => {
       id: 'source',
       header: 'Source',
       size: 200,
+      enableSorting: true,
       meta: {
         filter: {
           type: 'single-select' as const,
           label: 'Source',
-          options: sourceFilterOptions,
+          options: mergedSourceOptions,
         },
       },
       cell: ({ row, column: col }) => {

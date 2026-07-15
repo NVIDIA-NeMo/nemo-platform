@@ -4583,7 +4583,7 @@ paths:
         required: false
         schema:
           allOf:
-          - $ref: '#/components/schemas/PlatformJobSortField'
+          - $ref: '#/components/schemas/PlatformJobListSortField'
           description: The field to sort by. To sort in decreasing order, use `-`
             in front of the field name.
           default: -created_at
@@ -14969,6 +14969,17 @@ components:
       required:
       - data
       title: PlatformJobListResultResponse
+    PlatformJobListSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      - source
+      - -source
+      title: PlatformJobListSortField
+      description: Sort fields for the job *list* endpoint.
     PlatformJobListTaskResponse:
       properties:
         data:

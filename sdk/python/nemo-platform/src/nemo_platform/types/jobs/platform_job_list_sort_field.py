@@ -15,33 +15,10 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from __future__ import annotations
+from typing_extensions import Literal, TypeAlias
 
-from typing_extensions import TypedDict
+__all__ = ["PlatformJobListSortField"]
 
-from .platform_job_list_sort_field import PlatformJobListSortField
-from .platform_jobs_list_filter_param import PlatformJobsListFilterParam
-
-__all__ = ["JobListParams"]
-
-
-class JobListParams(TypedDict, total=False):
-    workspace: str
-
-    filter: PlatformJobsListFilterParam
-    """
-    Filter jobs by workspace, project, name, status, source, created_at, and
-    updated_at.
-    """
-
-    page: int
-    """Page number."""
-
-    page_size: int
-    """Page size."""
-
-    sort: PlatformJobListSortField
-    """The field to sort by.
-
-    To sort in decreasing order, use `-` in front of the field name.
-    """
+PlatformJobListSortField: TypeAlias = Literal[
+    "created_at", "-created_at", "updated_at", "-updated_at", "source", "-source"
+]

@@ -31,6 +31,7 @@ from nemo_platform.types.jobs import (
     KubernetesVolume,
     KubernetesVolumeMount,
     PlatformJobEnvironmentVariable,
+    PlatformJobListSortField,
     PlatformJobResponse,
     PlatformJobResponsesPage,
     PlatformJobSecretEnvironmentVariableRef,

@@ -36,6 +36,7 @@ from pydantic import Field
 CreatePlatformJobRequest = _types.CreatePlatformJobRequest
 PlatformJobAttemptSortField = _types.PlatformJobAttemptSortField
 PlatformJobLogSortField = _types.PlatformJobLogSortField
+PlatformJobListSortField = _types.PlatformJobListSortField
 PlatformJobResponse = _types.PlatformJobResponse
 PlatformJobSortField = _types.PlatformJobSortField
 PlatformJobStatusDetailsUpdateRequest = _types.PlatformJobStatusDetailsUpdateRequest

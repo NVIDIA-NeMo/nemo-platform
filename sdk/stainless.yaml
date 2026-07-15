@@ -550,6 +550,7 @@ resources:
       kubernetes_volume: KubernetesVolume
       kubernetes_volume_mount: KubernetesVolumeMount
       platform_job_environment_variable: PlatformJobEnvironmentVariable
+      platform_job_list_sort_field: PlatformJobListSortField
       platform_job_response: PlatformJobResponse
       platform_job_responses_page: PlatformJobResponsesPage
       platform_job_secret_environment_variable_ref: PlatformJobSecretEnvironmentVariableRef
@@ -915,11 +916,11 @@ resources:
   evaluations:
     standalone_api: true
     models:
-      evaluator_aggregate: EvaluatorAggregate
       evaluation_filter: EvaluationFilter
       evaluation_request: EvaluationRequest
       evaluation_response: EvaluationResponse
       evaluation_responses_page: EvaluationResponsesPage
+      evaluator_aggregate: EvaluatorAggregate
       metric_stat_filters: MetricStatFilters
       number_filter: NumberFilter
     methods:
