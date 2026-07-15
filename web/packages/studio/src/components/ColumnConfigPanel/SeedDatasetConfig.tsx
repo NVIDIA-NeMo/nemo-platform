@@ -127,7 +127,12 @@ export const SeedDatasetConfig: FC<SeedDatasetConfigProps> = ({ values, onPatch 
           disabled={!filesetRef}
           items={fileItems}
           value={filePath || undefined}
-          onValueChange={(value) => onPatch({ [SEED_FILE_PATH_KEY]: value ?? '' })}
+          onValueChange={(value) =>
+            onPatch({
+              [SEED_FILE_PATH_KEY]: value ?? '',
+              [SEED_AVAILABLE_COLUMNS_KEY]: '',
+            })
+          }
           placeholder={
             !filesetRef
               ? 'Select a fileset first'

@@ -74,7 +74,7 @@ export const SelectableCard: FC<SelectableCardProps> = ({
   <button
     type="button"
     onClick={disabled ? undefined : onActivate}
-    aria-disabled={disabled || undefined}
+    disabled={disabled}
     aria-pressed={selected}
     title={disabled ? disabledReason : undefined}
     className={`flex w-[240px] justify-between flex-col items-start gap-1.5 rounded-md border bg-surface-raised px-2 py-1.5 text-left transition-colors ${
