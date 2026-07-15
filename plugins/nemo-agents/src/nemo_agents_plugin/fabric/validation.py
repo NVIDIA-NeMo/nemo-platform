@@ -6,12 +6,10 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from nemo_fabric import FabricConfig
+from typing import Any
 
 FABRIC_VALIDATION_TIMEOUT_SECONDS = 60.0
 
@@ -39,7 +37,7 @@ class FabricPreflightError(FabricValidationError):
 
 
 async def validate_fabric_config(
-    fabric_config: "FabricConfig",
+    fabric_config: Any,
     *,
     base_dir: Path | str,
     fabric: Any | None = None,
@@ -77,11 +75,11 @@ def _fabric_validation_types() -> tuple[type, type[Exception]]:
     # TODO(AIRCORE-896): Keep this import lazy until Fabric SDK/runtime wheels
     # are available to the repo resolver and can be added as plugin dependencies.
     try:
-        from nemo_fabric import Fabric, FabricConfigError
+        nemo_fabric = importlib.import_module("nemo_fabric")
     except ImportError as error:
         raise FabricValidationError("NeMo Fabric SDK is required to plan and preflight FabricConfig.") from error
 
-    return Fabric, FabricConfigError
+    return getattr(nemo_fabric, "Fabric"), getattr(nemo_fabric, "FabricConfigError")
 
 
 def _ensure_doctor_passed(report: dict[str, Any]) -> None:

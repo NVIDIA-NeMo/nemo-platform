@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import asyncio
-import builtins
+import importlib
 import sys
 import threading
 import types
@@ -74,8 +74,8 @@ class _FakeFabric:
 @pytest.fixture()
 def fake_nemo_fabric(monkeypatch: pytest.MonkeyPatch) -> None:
     module = types.ModuleType("nemo_fabric")
-    module.Fabric = _FakeFabric
-    module.FabricConfigError = _FakeFabricConfigError
+    setattr(module, "Fabric", _FakeFabric)
+    setattr(module, "FabricConfigError", _FakeFabricConfigError)
     monkeypatch.setitem(sys.modules, "nemo_fabric", module)
 
 
@@ -158,15 +158,15 @@ class TestValidateFabricConfig:
         assert result.doctor_report == {"status": "pass", "checks": []}
 
     async def test_missing_fabric_dependency_reports_actionable_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        real_import = builtins.__import__
+        real_import_module = importlib.import_module
 
-        def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        def fake_import_module(name: str, package: str | None = None) -> Any:
             if name == "nemo_fabric":
                 raise ImportError("No module named 'nemo_fabric'")
-            return real_import(name, *args, **kwargs)
+            return real_import_module(name, package)
 
         monkeypatch.delitem(sys.modules, "nemo_fabric", raising=False)
-        monkeypatch.setattr(builtins, "__import__", fake_import)
+        monkeypatch.setattr(importlib, "import_module", fake_import_module)
 
         with pytest.raises(FabricValidationError, match="NeMo Fabric SDK is required"):
             await validate_fabric_config(object(), base_dir=Path("/tmp/agent"), fabric=_FakeFabric())

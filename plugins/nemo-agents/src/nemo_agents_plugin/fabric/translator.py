@@ -5,13 +5,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import importlib
+from typing import Any
 
 from nemo_agents_plugin.agent_config import AgentConfig, HarnessConfig, ModelConfig
-
-if TYPE_CHECKING:
-    from nemo_fabric import FabricConfig
-
 
 HARNESS_ADAPTER_IDS = {
     "claude": "nvidia.fabric.claude",
@@ -25,7 +22,7 @@ class FabricTranslationError(ValueError):
     """Raised when Platform agent config cannot be translated to Fabric config."""
 
 
-def translate_agent_config(config: AgentConfig, harness_name: str | None = None) -> "FabricConfig":
+def translate_agent_config(config: AgentConfig, harness_name: str | None = None) -> Any:
     """Translate Platform-owned agent config into a typed in-memory FabricConfig.
 
     The Fabric SDK import is intentionally local to this function so existing
@@ -69,13 +66,19 @@ def _fabric_model_types() -> tuple[type, type, type, type, type]:
     # TODO(AIRCORE-896): Keep this import lazy until Fabric SDK/runtime wheels
     # are available to the repo resolver and can be added as plugin dependencies.
     try:
-        from nemo_fabric import EnvironmentConfig, FabricConfig, HarnessConfig, MetadataConfig, ModelConfig
+        nemo_fabric = importlib.import_module("nemo_fabric")
     except ImportError as error:
         raise FabricTranslationError(
             "NeMo Fabric SDK is required to translate nemo-agents-spec-v1 config to FabricConfig."
         ) from error
 
-    return FabricConfig, HarnessConfig, MetadataConfig, ModelConfig, EnvironmentConfig
+    return (
+        getattr(nemo_fabric, "FabricConfig"),
+        getattr(nemo_fabric, "HarnessConfig"),
+        getattr(nemo_fabric, "MetadataConfig"),
+        getattr(nemo_fabric, "ModelConfig"),
+        getattr(nemo_fabric, "EnvironmentConfig"),
+    )
 
 
 def _select_harness(config: AgentConfig, harness_name: str | None) -> tuple[str, HarnessConfig]:
@@ -113,7 +116,7 @@ def _model_payload(model: ModelConfig) -> dict[str, Any]:
     return model.model_dump(exclude_none=True)
 
 
-def _apply_telemetry(fabric_config: "FabricConfig", config: AgentConfig, model: ModelConfig) -> None:
+def _apply_telemetry(fabric_config: Any, config: AgentConfig, model: ModelConfig) -> None:
     telemetry = config.telemetry
     if not telemetry.enabled:
         return
