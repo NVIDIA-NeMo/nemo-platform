@@ -81,7 +81,6 @@ dev = [
   "pytest>=9.0.3",
   "fastapi[standard]==0.138.0",
   "papermill>=2.6.0",
-  "notebook>=7.5.6",
   "aiohttp>=3.14.1",
   "ipykernel>=6.29.5",
   "ty==0.0.56",
@@ -265,7 +264,7 @@ constraint-dependencies = [
   "authlib>=1.6.11",
   "black>=26.3.1",
   "bleach>=6.4.0",
-  "cryptography>=46.0.7",
+  "cryptography>=48.0.1,<49",
   "diffusers>=0.38.0",
   "filelock>=3.20.3",
   "jupyter-server>=2.20.0",
@@ -324,6 +323,7 @@ override-dependencies = [
   "xgrammar>=0.1.32",        # High – customizer + nmp-gpu-tasks
   "fastmcp>=3.2.0",          # GHSA-vv7q-7jx5-f767 (Critical) + GHSA-rww4-4w9c-7733 (High); overrides vendored sdk/python/nemo-platform <3 constraint
   "wandb>=0.28.0",           # wandb-core Go CVEs (nspect); unsloth + training images
+  "cryptography>=48.0.1,<49", # Pulse Critical; overrides data-designer-engine 0.7.0's <47 cap after changelog review
   "click>=8.2.0",            # Below CVEs are based on constraints that garak has
   "litellm>=1.83.10",        # CVE-2026-42208 (Critical SQL injection), CVE-2026-40217, and 5 other High CVEs
   "python-dotenv>=1.2.2",
