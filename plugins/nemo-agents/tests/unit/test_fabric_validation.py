@@ -5,12 +5,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import builtins
 import sys
+import threading
 import types
 from pathlib import Path
 from typing import Any
 
+import nemo_agents_plugin.fabric.validation as validation
 import pytest
 from nemo_agents_plugin.fabric.validation import (
     FabricPreflightError,
@@ -39,22 +42,28 @@ class _FakeFabric:
         doctor_report: Any | None = None,
         plan_error: Exception | None = None,
         doctor_error: Exception | None = None,
+        doctor_delay: float = 0.0,
     ) -> None:
         self.plan_result = plan
         self.doctor_report = doctor_report or _FakeDoctorReport({"status": "pass", "checks": []})
         self.plan_error = plan_error
         self.doctor_error = doctor_error
+        self.doctor_delay = doctor_delay
         self.plan_calls: list[dict[str, Any]] = []
+        self.plan_thread_ids: list[int] = []
         self.doctor_calls: list[dict[str, Any]] = []
 
     def plan(self, fabric_config: Any, *, base_dir: Path | str) -> Any:
         self.plan_calls.append({"fabric_config": fabric_config, "base_dir": base_dir})
+        self.plan_thread_ids.append(threading.get_ident())
         if self.plan_error is not None:
             raise self.plan_error
         return self.plan_result
 
     async def doctor(self, fabric_config: Any, *, base_dir: Path | str) -> Any:
         self.doctor_calls.append({"fabric_config": fabric_config, "base_dir": base_dir})
+        if self.doctor_delay:
+            await asyncio.sleep(self.doctor_delay)
         if self.doctor_error is not None:
             raise self.doctor_error
         return self.doctor_report
@@ -82,6 +91,15 @@ class TestValidateFabricConfig:
         assert fabric.plan_calls == [{"fabric_config": fabric_config, "base_dir": Path("/tmp/agent")}]
         assert fabric.doctor_calls == [{"fabric_config": fabric_config, "base_dir": Path("/tmp/agent")}]
 
+    async def test_runs_plan_off_event_loop_thread(self, fake_nemo_fabric: None) -> None:
+        main_thread_id = threading.get_ident()
+        fabric = _FakeFabric()
+
+        await validate_fabric_config(object(), base_dir=Path("/tmp/agent"), fabric=fabric)
+
+        assert fabric.plan_thread_ids
+        assert fabric.plan_thread_ids[0] != main_thread_id
+
     async def test_wraps_plan_errors(self, fake_nemo_fabric: None) -> None:
         fabric = _FakeFabric(plan_error=_FakeFabricConfigError("bad config"))
 
@@ -92,6 +110,13 @@ class TestValidateFabricConfig:
         fabric = _FakeFabric(doctor_error=RuntimeError("doctor exploded"))
 
         with pytest.raises(FabricValidationError, match="Fabric doctor failed: doctor exploded"):
+            await validate_fabric_config(object(), base_dir=Path("/tmp/agent"), fabric=fabric)
+
+    async def test_wraps_doctor_timeout(self, fake_nemo_fabric: None, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(validation, "FABRIC_VALIDATION_TIMEOUT_SECONDS", 0.01)
+        fabric = _FakeFabric(doctor_delay=1.0)
+
+        with pytest.raises(FabricValidationError, match="Fabric doctor timed out after 0.01s"):
             await validate_fabric_config(object(), base_dir=Path("/tmp/agent"), fabric=fabric)
 
     async def test_preflight_failure_reports_failed_checks(self, fake_nemo_fabric: None) -> None:
