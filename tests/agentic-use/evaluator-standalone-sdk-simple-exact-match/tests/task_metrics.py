@@ -57,7 +57,7 @@ class ExactMatchEvaluationMetric:
             ]
         )
         diagnostics: list[MetricDiagnostic] = []
-        if not summary_matches:
+        if code_ran and not summary_matches:
             diagnostics.append(
                 MetricDiagnostic(
                     message="summary mismatch",

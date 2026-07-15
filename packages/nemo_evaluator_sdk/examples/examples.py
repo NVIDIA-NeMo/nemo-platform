@@ -288,13 +288,12 @@ class DiffDiagnosticExactMatchMetric:
         if matched:
             return MetricResult(outputs=outputs)
 
-        diff = "\n".join(
+        diff = "".join(
             difflib.unified_diff(
-                reference.splitlines(),
-                prediction.splitlines(),
+                reference.splitlines(keepends=True),
+                prediction.splitlines(keepends=True),
                 fromfile="expected",
                 tofile="actual",
-                lineterm="",
             )
         )
         return MetricResult(
