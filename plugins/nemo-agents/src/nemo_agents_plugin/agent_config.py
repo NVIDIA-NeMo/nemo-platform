@@ -12,9 +12,16 @@ the RFC122 contract lands.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+import yaml
+from nemo_agents_plugin.entities import AGENT_CONFIG_FILENAME
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+
+
+class AgentConfigLoadError(ValueError):
+    """Raised when a Platform-owned agent.yaml cannot be loaded."""
 
 
 class ModelConfig(BaseModel):
@@ -76,3 +83,33 @@ class AgentConfig(BaseModel):
             available = ", ".join(sorted(self.harnesses))
             raise ValueError(f"default_harness must reference one of harnesses: {available}")
         return self
+
+
+def load_agent_config(path: str | Path) -> AgentConfig:
+    """Load a Platform-owned agent.yaml file as an AgentConfig."""
+    config_path = Path(path)
+
+    try:
+        raw_config = config_path.read_text(encoding="utf-8")
+    except OSError as error:
+        raise AgentConfigLoadError(f"Unable to read agent config {config_path}: {error}") from error
+    except UnicodeDecodeError as error:
+        raise AgentConfigLoadError(f"Agent config {config_path} is not valid UTF-8: {error}") from error
+
+    try:
+        data = yaml.safe_load(raw_config)
+    except yaml.YAMLError as error:
+        raise AgentConfigLoadError(f"YAML parse error in agent config {config_path}: {error}") from error
+
+    if not isinstance(data, dict):
+        raise AgentConfigLoadError(f"Agent config {config_path} root must be a YAML mapping.")
+
+    try:
+        return AgentConfig.model_validate(data)
+    except ValidationError as error:
+        raise AgentConfigLoadError(f"Invalid agent config {config_path}: {error}") from error
+
+
+def load_agent_config_from_dir(agent_dir: str | Path) -> AgentConfig:
+    """Load the canonical agent.yaml file from an agent directory."""
+    return load_agent_config(Path(agent_dir) / AGENT_CONFIG_FILENAME)
