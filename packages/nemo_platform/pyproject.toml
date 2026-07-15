@@ -222,6 +222,7 @@ models-service = [
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-agents-example-calculator = [
   "nvidia-nat-core>=1.8.0,<1.9",
+  "nvidia-nat-langchain>=1.8.0,<1.9",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.

@@ -65,6 +65,13 @@ def test_executor_for_mode_prefers_mode_specific() -> None:
     assert executor_for_mode(cfg, "k8s") == "k8s-exec"
 
 
+def test_config_mount_path_default_is_under_writable_workspace() -> None:
+    # Docker mode materializes the config as the non-root container user, so the
+    # default must live under the image's writable WORKDIR (/workspace); a
+    # root-level path like /config is not writable and crash-loops the container.
+    assert DeploymentsRunnerConfig().config_mount_path.startswith("/workspace/")
+
+
 def test_build_deployment_config_always_single_container() -> None:
     cfg = build_deployment_config(
         name="hello-dep",
@@ -72,7 +79,7 @@ def test_build_deployment_config_always_single_container() -> None:
         image="nat-runtime:latest",
         port=8000,
         nat_config={"llms": {"nim": {"_type": "nim"}}},
-        config_mount_path="/config/agent.yaml",
+        config_mount_path="/workspace/config.yaml",
         mode="docker",
         gateway_base_url="http://host.docker.internal:8080",
     )
@@ -86,7 +93,7 @@ def test_build_deployment_config_always_single_container() -> None:
     assert container.readiness_probe is not None
     assert cfg.init_containers == []
     assert len(cfg.config_files) == 1
-    assert cfg.config_files[0].path == "/config/agent.yaml"
+    assert cfg.config_files[0].path == "/workspace/config.yaml"
     loaded = yaml.safe_load(cfg.config_files[0].content)
     assert loaded["llms"]["nim"]["_type"] == "nim"
 
@@ -98,7 +105,7 @@ def test_build_deployment_config_k8s_uses_nat_entrypoint() -> None:
         image="nat-runtime:latest",
         port=8000,
         nat_config={},
-        config_mount_path="/config/agent.yaml",
+        config_mount_path="/workspace/config.yaml",
         mode="k8s",
         gateway_base_url="http://nmp:8080",
     )
@@ -114,7 +121,7 @@ def test_build_deployment_config_k8s_option_b_when_image_set() -> None:
         image="nat-runtime:latest",
         port=8000,
         nat_config={},
-        config_mount_path="/config/agent.yaml",
+        config_mount_path="/workspace/config.yaml",
         mode="k8s",
         gateway_base_url="http://nmp:8080",
         plugin_wheels_init_image="busybox:1.36",
@@ -131,7 +138,7 @@ def test_build_deployment_config_docker_never_emits_init_containers() -> None:
         image="nat-runtime:latest",
         port=8000,
         nat_config={},
-        config_mount_path="/config/agent.yaml",
+        config_mount_path="/workspace/config.yaml",
         mode="docker",
         gateway_base_url="http://host.docker.internal:8080",
         plugin_wheels_init_image="busybox:1.36",

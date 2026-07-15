@@ -19,7 +19,10 @@ Usage (once the SDK hub is wired up)::
     nemo.agents.delete("calculator")
 
     # Deployment lifecycle
-    dep = nemo.agents.deployments.create(agent="calculator")
+    dep = nemo.agents.deployments.create(agent="calculator")  # subprocess
+    dep = nemo.agents.deployments.create(
+        agent="calculator", deployment_mode="docker", image="calculator:local"
+    )
     deps = nemo.agents.deployments.list()
     dep = nemo.agents.deployments.get("calculator-a1b2")
     nemo.agents.deployments.delete("calculator-a1b2")
@@ -211,12 +214,34 @@ class _DeploymentResource:
         *,
         agent: str,
         name: str | None = None,
+        deployment_mode: str = "subprocess",
+        image: str | None = None,
         workspace: str = _DEFAULT_WORKSPACE,
     ) -> dict[str, Any]:
-        """Create a deployment for *agent*."""
-        payload: dict[str, Any] = {"agent": agent}
+        """Create a deployment for *agent*.
+
+        Args:
+            agent: Name of the agent to deploy.
+            name: Deployment name (auto-generated if omitted).
+            deployment_mode: Runtime backend — ``"subprocess"`` (default),
+                ``"docker"``, or ``"k8s"``. Container modes run the agent as a
+                durable container through the deployments plugin and require a
+                configured executor.
+            image: Container image for ``docker``/``k8s`` modes. Falls back to
+                ``agents.deployments.default_image`` when omitted. Rejected in
+                ``subprocess`` mode.
+            workspace: Target workspace.
+
+        Returns:
+            The created deployment as a dict.
+        """
+        if image and deployment_mode == "subprocess":
+            raise ValueError("image requires deployment_mode='docker' or 'k8s'.")
+        payload: dict[str, Any] = {"agent": agent, "deployment_mode": deployment_mode}
         if name:
             payload["name"] = name
+        if image:
+            payload["image"] = image
         return self._parent._post(f"/v2/workspaces/{workspace}/deployments", payload)
 
     def list(self, workspace: str = _DEFAULT_WORKSPACE) -> List[dict[str, Any]]:
