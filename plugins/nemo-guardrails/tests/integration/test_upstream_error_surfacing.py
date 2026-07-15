@@ -124,17 +124,23 @@ class TestUpstreamErrorSurfacing:
                 vision_base_url=harness.nim_base_url,
             ),
         )
-        harness.add_virtual_model(
-            workspace=harness.workspace,
-            name=test_data_names.main_model_served_name,
-            default_model_entity=test_data_names.main_model_entity_ref,
-        )
-        harness.add_virtual_model(
-            workspace=harness.workspace,
-            name=test_data_names.request_virtual_model_name,
-            default_model_entity=test_data_names.main_model_entity_ref,
-            request_middleware=[self._middleware_call(harness.workspace, test_data_names.guardrail_config_name)],
-        )
+        # Config is created; clean it up if VirtualModel wiring fails before we
+        # hand a _Fixture (and its teardown responsibility) back to the caller.
+        try:
+            harness.add_virtual_model(
+                workspace=harness.workspace,
+                name=test_data_names.main_model_served_name,
+                default_model_entity=test_data_names.main_model_entity_ref,
+            )
+            harness.add_virtual_model(
+                workspace=harness.workspace,
+                name=test_data_names.request_virtual_model_name,
+                default_model_entity=test_data_names.main_model_entity_ref,
+                request_middleware=[self._middleware_call(harness.workspace, test_data_names.guardrail_config_name)],
+            )
+        except Exception:
+            self._delete_config_if_present(harness, test_data_names.guardrail_config_name)
+            raise
         return _Fixture(
             vm_name=test_data_names.request_virtual_model_name,
             config_name=test_data_names.guardrail_config_name,

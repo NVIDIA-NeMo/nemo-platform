@@ -28,7 +28,8 @@ GUARDRAILS_DATA_FIELD = "guardrails_data"
 # on every error it raises. The status represents the underlying status code
 # that we'd like to preserve when returning the error to the caller.
 _LANGCHAIN_ERROR_MESSAGE_PREFIX = re.compile(r"^\s*\[(\d{3})\]\s*(.*)", re.DOTALL)
-_HTTP_STATUS_RANGE = range(100, 600)
+# Error codes embedded in the upstream error message that we surface to the caller.
+_HTTP_ERROR_STATUS_RANGE = range(400, 600)
 
 
 def extract_upstream_error(exc: BaseException) -> InferenceMiddlewareError | None:
@@ -73,7 +74,7 @@ def extract_upstream_error(exc: BaseException) -> InferenceMiddlewareError | Non
 
     # Signal 1: a genuine `status_code` attribute, e.g. set by `openai.APIStatusError`.
     status_code = getattr(candidate, "status_code", None)
-    if isinstance(status_code, int) and status_code in _HTTP_STATUS_RANGE:
+    if isinstance(status_code, int) and status_code in _HTTP_ERROR_STATUS_RANGE:
         detail = getattr(candidate, "message", None) or str(candidate)
         return InferenceMiddlewareError(f"{context}: {detail}" if context else detail, status_code=status_code)
 
@@ -81,7 +82,7 @@ def extract_upstream_error(exc: BaseException) -> InferenceMiddlewareError | Non
     # message prefix that's all `langchain_nvidia_ai_endpoints` leaves behind.
     if match := _LANGCHAIN_ERROR_MESSAGE_PREFIX.match(str(candidate)):
         status_code = int(match.group(1))
-        if status_code in _HTTP_STATUS_RANGE:
+        if status_code in _HTTP_ERROR_STATUS_RANGE:
             detail = _sanitized_client_error_detail(match.group(2).strip()) or str(candidate)
             return InferenceMiddlewareError(f"{context}: {detail}" if context else detail, status_code=status_code)
 

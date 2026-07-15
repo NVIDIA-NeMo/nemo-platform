@@ -458,6 +458,12 @@ class TestExtractUpstreamError:
         assert result.status_code == 503
         assert result.detail == "Service temporarily overloaded"
 
+    def test_non_error_status_returns_none(self) -> None:
+        """A 1xx-3xx status embedded in the error message is ignored."""
+        exc = Exception("[302] Found")  # noqa: TRY002
+
+        assert extract_upstream_error(exc) is None
+
     def test_no_recoverable_status_returns_none(self) -> None:
         """No status anywhere → ``None``, so the caller keeps its 503 fallback."""
         inner = ValueError("something went wrong")
