@@ -245,7 +245,7 @@ export const Default: StoryObj = {
   name: 'Default (Jobs)',
   render: function DefaultStory() {
     const dataViewState = useStudioDataViewState({
-      defaultSort: { id: 'created_at', desc: true },
+      defaultSort: [{ id: 'created_at', desc: true }],
       defaultPageSize: 10,
     });
 
@@ -290,7 +290,7 @@ export const WithRowClick: StoryObj = {
   name: 'Row Click (Jobs)',
   render: function RowClickStory() {
     const dataViewState = useStudioDataViewState({
-      defaultSort: { id: 'created_at', desc: true },
+      defaultSort: [{ id: 'created_at', desc: true }],
       defaultPageSize: 10,
     });
 
@@ -336,7 +336,7 @@ export const WithSelectionAndActions: StoryObj = {
   name: 'Selection + Actions (Jobs)',
   render: function SelectionActionsStory() {
     const dataViewState = useStudioDataViewState({
-      defaultSort: { id: 'created_at', desc: true },
+      defaultSort: [{ id: 'created_at', desc: true }],
       defaultPageSize: 10,
       columnPinning: {
         left: ['row-selection'],
@@ -432,7 +432,7 @@ export const LongTextWrapping: StoryObj = {
   name: 'Text Wrapping (Datasets)',
   render: function LongTextStory() {
     const dataViewState = useStudioDataViewState({
-      defaultSort: { id: 'created_at', desc: true },
+      defaultSort: [{ id: 'created_at', desc: true }],
       defaultPageSize: 10,
     });
 
@@ -668,7 +668,7 @@ export const ManyRows: StoryObj = {
   name: 'Many Rows (Scrolling)',
   render: function ManyRowsStory() {
     const dataViewState = useStudioDataViewState({
-      defaultSort: { id: 'created_at', desc: true },
+      defaultSort: [{ id: 'created_at', desc: true }],
       defaultPageSize: 100,
     });
 
@@ -718,7 +718,7 @@ export const FlexHeightLayout: StoryObj = {
   parameters: { layout: 'fullscreen' },
   render: function FlexHeightStory() {
     const dataViewState = useStudioDataViewState({
-      defaultSort: { id: 'created_at', desc: true },
+      defaultSort: [{ id: 'created_at', desc: true }],
       defaultPageSize: 100,
     });
 
@@ -771,7 +771,7 @@ export const InteractiveElementExclusion: StoryObj = {
   name: 'Interactive Element Exclusion',
   render: function InteractiveExclusionStory() {
     const dataViewState = useStudioDataViewState({
-      defaultSort: { id: 'created_at', desc: true },
+      defaultSort: [{ id: 'created_at', desc: true }],
       defaultPageSize: 10,
     });
 
@@ -860,7 +860,7 @@ export const AllFilterTypes: StoryObj = {
   name: 'All Filter Types',
   render: function AllFilterTypesStory() {
     const dataViewState = useStudioDataViewState({
-      defaultSort: { id: 'created_at', desc: true },
+      defaultSort: [{ id: 'created_at', desc: true }],
       defaultPageSize: 10,
     });
 

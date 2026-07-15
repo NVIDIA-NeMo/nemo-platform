@@ -60,7 +60,7 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
   } = useDeferredUnmount<VirtualModelWithId>({ delay: 300 });
 
   const dataViewState = useStudioDataViewState({
-    defaultSort: { id: 'created_at', desc: true },
+    defaultSort: [{ id: 'created_at', desc: true }],
   });
 
   const [modalVirtualModel, setModalVirtualModel] = useState<VirtualModel>();

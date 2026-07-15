@@ -61,7 +61,7 @@ export const JobsDataView = () => {
   const navigate = useNavigate();
 
   const dataViewState = useStudioDataViewState({
-    defaultSort: { id: 'created_at', desc: true },
+    defaultSort: [{ id: 'created_at', desc: true }],
   });
 
   const userFilter = { ...(dataViewState.apiFilter.filter ?? {}) };

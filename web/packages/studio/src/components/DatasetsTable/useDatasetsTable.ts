@@ -46,7 +46,7 @@ export function useDatasetsTable({
 
   // DataView state for pagination, row selection, sorting, search, and filters
   const dataViewState = useStudioDataViewState({
-    defaultSort: { id: 'created_at', desc: true },
+    defaultSort: [{ id: 'created_at', desc: true }],
   });
 
   const hasActiveFilters = dataViewState.debouncedColumnFilters.length > 0;

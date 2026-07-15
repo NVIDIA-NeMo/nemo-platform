@@ -54,7 +54,7 @@ export const SafeSynthesizerJobsDataView: FC = () => {
   const queryClient = useQueryClient();
 
   const dataViewState = useStudioDataViewState({
-    defaultSort: { id: 'created_at', desc: true },
+    defaultSort: [{ id: 'created_at', desc: true }],
   });
 
   const [deleteJobs, setDeleteJobs] = useState<SafeSynthesizerJob[]>([]);

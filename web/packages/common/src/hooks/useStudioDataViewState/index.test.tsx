@@ -30,12 +30,8 @@ vi.mock('../../components/DataView/internal', () => ({
       if (options?.pagination) {
         mockPaginationState = { ...options.pagination };
       }
-      if (options?.sorting) {
-        // Mirror the real useSortingState: an array initial sort is used as-is; a single object is wrapped.
-        mockSortingState = Array.isArray(options.sorting) ? options.sorting : [options.sorting];
-      } else {
-        mockSortingState = [];
-      }
+      // Mirror the real useSortingState: the initial sort is always an ordered array.
+      mockSortingState = options?.sorting ?? [];
       if (options?.searchBar) {
         mockSearchBarState = options.searchBar;
       }
@@ -233,7 +229,7 @@ describe('useStudioDataViewState', () => {
       const { result } = renderHook(
         () =>
           useStudioDataViewState({
-            defaultSort: { id: 'updated_at', desc: true },
+            defaultSort: [{ id: 'updated_at', desc: true }],
           }),
         { wrapper }
       );
@@ -247,7 +243,7 @@ describe('useStudioDataViewState', () => {
       const { result } = renderHook(
         () =>
           useStudioDataViewState({
-            defaultSort: { id: 'name', desc: false },
+            defaultSort: [{ id: 'name', desc: false }],
           }),
         { wrapper }
       );
@@ -261,7 +257,7 @@ describe('useStudioDataViewState', () => {
       const { result } = renderHook(
         () =>
           useStudioDataViewState({
-            defaultSort: { id: 'created_at', desc: true },
+            defaultSort: [{ id: 'created_at', desc: true }],
           }),
         { wrapper }
       );
@@ -374,7 +370,7 @@ describe('useStudioDataViewState', () => {
       const { rerender } = renderHook(
         () =>
           useStudioDataViewState({
-            defaultSort: { id: 'created_at', desc: true },
+            defaultSort: [{ id: 'created_at', desc: true }],
           }),
         { wrapper }
       );
@@ -511,7 +507,7 @@ describe('useStudioDataViewState', () => {
       const { result } = renderHook(
         () =>
           useStudioDataViewState({
-            defaultSort: { id: 'created_at', desc: true },
+            defaultSort: [{ id: 'created_at', desc: true }],
           }),
         { wrapper }
       );

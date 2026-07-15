@@ -33,11 +33,11 @@ export interface UseStudioDataViewStateOptions extends Omit<
   /** Default page size when not specified in URL. Defaults to 50. */
   defaultPageSize?: number;
   /**
-   * Default sorting when not specified in URL.
-   * Uses the same format as DataView's sorting state.
-   * Example: { id: 'created_at', desc: true } for descending by created_at.
+   * Default sorting when not specified in URL. Always an ordered list — a single-column default is
+   * just an array of one. Uses the same format as DataView's sorting state.
+   * Example: [{ id: 'created_at', desc: true }] for descending by created_at.
    */
-  defaultSort?: { id: string; desc: boolean } | { id: string; desc: boolean }[];
+  defaultSort?: SortEntry[];
   /**
    * Enable multi-column sort. When true, the `sort` URL param and the sorting state round-trip an
    * ordered, comma-separated list of fields (e.g. shift-click a second column header). Defaults to
@@ -53,6 +53,9 @@ interface SortEntry {
   id: string;
   desc: boolean;
 }
+
+// Stable empty-sort reference so the no-default case doesn't churn `urlSorting`'s memo each render.
+const EMPTY_SORT: SortEntry[] = [];
 
 const sortEntryToString = (entry: SortEntry): string => (entry.desc ? `-${entry.id}` : entry.id);
 
@@ -163,10 +166,7 @@ export const useStudioDataViewState = <FilterType = Record<string, unknown>>(
 
   // Parse sort from URL, falling back to defaultSort
   const sortParam = searchParams.get('sort');
-  const defaultSortEntries = useMemo(
-    () => (defaultSort ? (Array.isArray(defaultSort) ? defaultSort : [defaultSort]) : []),
-    [defaultSort]
-  );
+  const defaultSortEntries = defaultSort ?? EMPTY_SORT;
   const urlSorting = useMemo(() => {
     const decoded = decodeSorting(sortParam, multiSort);
     return decoded.length ? decoded : defaultSortEntries;

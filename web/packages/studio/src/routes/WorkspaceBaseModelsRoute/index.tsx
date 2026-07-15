@@ -122,7 +122,7 @@ export const WorkspaceBaseModelsRoute: FC = () => {
   const dataViewState = useStudioDataViewState<
     Partial<ModelEntityFilterInput> & { [CUSTOMIZABLE_FILTER_ID]?: CustomizableFilterState }
   >({
-    defaultSort: { id: 'name', desc: false },
+    defaultSort: [{ id: 'name', desc: false }],
   });
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
