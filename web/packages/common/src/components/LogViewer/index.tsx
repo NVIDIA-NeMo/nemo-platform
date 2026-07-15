@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useStickToBottom } from '@nemo/common/src/hooks/useStickToBottom';
 import { triggerDownload } from '@nemo/common/src/utils/file';
 import { formatLogs } from '@nemo/common/src/utils/logs';
 import type { PlatformJobLog } from '@nemo/sdk/generated/platform/schema';
@@ -15,7 +16,7 @@ import {
 } from '@nvidia/foundations-react-core';
 import classNames from 'classnames';
 import { ArrowUp, Download } from 'lucide-react';
-import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FC, useMemo, useState } from 'react';
 
 const DEFAULT_ROW_COUNT = 30;
 
@@ -34,13 +35,18 @@ export const LogViewer: FC<LogViewerProps> = ({
   rows = DEFAULT_ROW_COUNT,
   emptyMessage = 'No logs available yet',
 }) => {
-  const codeScrollRef = useRef<HTMLDivElement>(null);
   const [showAllLogs, setShowAllLogs] = useState(false);
-  const shouldAutoScrollRef = useRef(true);
   const tailLogs = logs?.slice(-rows) || [];
   const displayedLogs = showAllLogs ? logs : tailLogs;
   const logText = formatLogs(displayedLogs);
   const hasMoreLogs = logs && logs.length > rows;
+
+  const isShowingLogs = useMemo(() => logs.length > 0 && !isLoading, [logs.length, isLoading]);
+
+  const { ref: codeScrollRef, scrollToBottom } = useStickToBottom<HTMLDivElement>({
+    enabled: isShowingLogs,
+    resetKey: showAllLogs,
+  });
 
   const handleDownload = () => {
     if (downloadFilename) {
@@ -48,64 +54,10 @@ export const LogViewer: FC<LogViewerProps> = ({
     }
   };
 
-  const scrollToBottomNow = useCallback(() => {
-    const codeElement = codeScrollRef.current;
-    if (codeElement) {
-      const maxScrollTop = codeElement.scrollHeight - codeElement.clientHeight;
-      codeElement.scrollTop = maxScrollTop;
-    }
-  }, []);
-
   const handleLoadMore = () => {
-    shouldAutoScrollRef.current = true;
+    scrollToBottom();
     setShowAllLogs(true);
   };
-
-  const isShowingLogs = useMemo(() => logs.length > 0 && !isLoading, [logs.length, isLoading]);
-
-  // Watch for actual DOM changes (catches CodeSnippet internal rendering)
-  useEffect(() => {
-    if (!isShowingLogs) return;
-    const codeElement = codeScrollRef.current;
-    if (!codeElement) return;
-
-    const mutationObserver = new MutationObserver(() => {
-      if (shouldAutoScrollRef.current) {
-        scrollToBottomNow();
-      }
-    });
-
-    mutationObserver.observe(codeElement, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    });
-
-    return () => {
-      mutationObserver.disconnect();
-    };
-  }, [scrollToBottomNow, isShowingLogs, showAllLogs]);
-
-  // Track if user scrolls away from bottom
-  useEffect(() => {
-    if (!isShowingLogs) return;
-    const codeElement = codeScrollRef.current;
-    if (!codeElement) return;
-
-    const handleScroll = () => {
-      const threshold = 50;
-      const isAtBottom =
-        Math.abs(codeElement.scrollHeight - codeElement.clientHeight - codeElement.scrollTop) <
-        threshold;
-      shouldAutoScrollRef.current = isAtBottom;
-    };
-
-    codeElement.addEventListener('scroll', handleScroll);
-
-    return () => {
-      codeElement.removeEventListener('scroll', handleScroll);
-    };
-  }, [isShowingLogs, showAllLogs]);
 
   if (isLoading) {
     return <Spinner size="medium" aria-label="Loading..." />;

@@ -56,6 +56,7 @@ from .function_definition_param import FunctionDefinitionParam as FunctionDefini
 from .virtual_model_list_params import VirtualModelListParams as VirtualModelListParams
 from .chat_completion_tool_param import ChatCompletionToolParam as ChatCompletionToolParam
 from .served_model_mapping_param import ServedModelMappingParam as ServedModelMappingParam
+from .virtual_model_filter_param import VirtualModelFilterParam as VirtualModelFilterParam
 from .virtual_model_patch_params import VirtualModelPatchParams as VirtualModelPatchParams
 from .model_provider_filter_param import ModelProviderFilterParam as ModelProviderFilterParam
 from .virtual_model_create_params import VirtualModelCreateParams as VirtualModelCreateParams

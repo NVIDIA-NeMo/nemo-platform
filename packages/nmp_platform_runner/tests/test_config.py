@@ -61,9 +61,9 @@ def test_no_arguments_defaults_to_all_services_and_default_controllers():
             "jobs",
             "models",
             "secrets",
+            "safe-synthesizer",
         }
     )
-    assert "safe-synthesizer" not in resolved.services
     # Default controllers include all available controllers (core + any installed plugins).
     assert resolved.controllers.issuperset({"jobs", "models", "entities"})
 

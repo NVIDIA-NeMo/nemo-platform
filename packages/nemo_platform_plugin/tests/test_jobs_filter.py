@@ -19,7 +19,9 @@ import json
 from datetime import datetime
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import patch
 
+import pytest
 from fastapi import FastAPI
 from nemo_platform_plugin.dependencies import get_entity_client, get_sdk_client
 from nemo_platform_plugin.jobs.api_factory import job_route_factory
@@ -27,15 +29,27 @@ from pydantic import BaseModel
 from starlette.testclient import TestClient
 
 
-def _forwarded_filter(sdk: "_CapturingSdk") -> dict:
-    """Decode the JSON ``filter`` param the factory pushed through ``extra_query``.
+@pytest.fixture(autouse=True)
+def _patch_client_from_platform():
+    """The factory calls ``client_from_platform(sdk, AsyncJobsClient)``; the test's
+    ``_CapturingSdk`` exposes the captured client as ``sdk.jobs_client``, so route
+    it through here."""
+    with patch(
+        "nemo_platform_plugin.jobs.api_factory.client_from_platform",
+        side_effect=lambda sdk, _cls: sdk.jobs_client,
+    ):
+        yield
 
-    The factory bypasses the SDK's typed ``filter`` kwarg because the bundled
+
+def _forwarded_filter(sdk: _CapturingSdk) -> dict:
+    """Decode the JSON ``filter`` param the factory pushed through ``query_params``.
+
+    The factory bypasses the client's typed ``filter`` handling because the
     querystring serializer mangles ``$and``-style list-of-dict values. It sends
-    a JSON-encoded filter via ``extra_query`` instead — tests parse it back
-    here so assertions stay shape-driven, not string-driven.
+    a JSON-encoded filter via the ``filter`` query param instead — tests parse
+    it back here so assertions stay shape-driven, not string-driven.
     """
-    return json.loads(sdk.list_kwargs["extra_query"]["filter"])
+    return json.loads(sdk.list_kwargs["query_params"]["filter"])
 
 
 class _Spec(BaseModel):
@@ -46,33 +60,40 @@ def _fake_compiler(workspace, original_spec, transformed_spec, entity_client, jo
     return {"steps": []}
 
 
-def _fake_pagination():
+def _fake_page():
+    """A ``PageResult``-like object for the typed client's ``list_jobs().page()``."""
     return SimpleNamespace(
-        model_dump=lambda: {
+        items=[],
+        metadata={
             "page": 1,
             "page_size": 10,
             "current_page_size": 0,
             "total_pages": 1,
             "total_results": 0,
-        }
+        },
     )
 
 
 def _fake_list_response():
-    return SimpleNamespace(data=[], pagination=_fake_pagination())
+    return SimpleNamespace(page=_fake_page)
 
 
 class _CapturingSdk:
-    """Captures kwargs passed to ``sdk.jobs.list(...)`` for assertion."""
+    """Captures kwargs passed to ``JobsClient.list_jobs(...)`` for assertion.
+
+    The factory now calls ``client_from_platform(sdk, AsyncJobsClient).list_jobs(...)``.
+    ``_build_app`` patches ``client_from_platform`` to return this object's
+    ``jobs_client`` so the ``list_jobs`` kwargs are captured here.
+    """
 
     def __init__(self) -> None:
         self.list_kwargs: dict[str, Any] = {}
 
-        async def _list(**kwargs: Any) -> Any:
+        async def _list_jobs(**kwargs: Any) -> Any:
             self.list_kwargs = kwargs
             return _fake_list_response()
 
-        self.jobs = SimpleNamespace(list=_list)
+        self.jobs_client = SimpleNamespace(list_jobs=_list_jobs)
 
 
 def _build_app() -> tuple[FastAPI, _CapturingSdk]:
@@ -324,30 +345,28 @@ class TestForwardedFilterSurvivesSdkSerialization:
     *what* the factory hands to ``sdk.jobs.list``, but not whether the SDK's
     querystring serializer can encode it onto the wire without mangling.
 
-    These tests run the forwarded ``extra_query`` value through the bundled
-    SDK's actual ``Querystring`` (with the platform client's ``array_format``
-    setting), then through ``make_filter_dep``'s parsing path, and assert the
+    The typed client forwards ``filter`` as a single JSON-string query param
+    (not through the Stainless deep-object serializer, which mangled
+    ``$and``-style list-of-dict values). These tests take that forwarded value
+    and run it through ``make_filter_dep``'s parsing path, asserting the
     resulting ``FilterOperation`` tree matches what the plugin composed.
 
-    A regression that broke the SDK encoding (e.g., reverting to a typed
-    ``filter=`` dict with logical-array values) would produce repr-joined
-    garbage on the wire and fail to round-trip here.
+    A regression that reverted to a typed ``filter=`` dict with logical-array
+    values would produce repr-joined garbage on the wire and fail to round-trip
+    here.
     """
 
     @staticmethod
-    def _round_trip(sdk: "_CapturingSdk") -> dict:
-        from nemo_platform._qs import Querystring
-
-        qs = Querystring(array_format="comma")  # matches AsyncNeMoPlatform's qs
-        items = qs.stringify_items(sdk.list_kwargs.get("extra_query") or {})
-        # Find the encoded ``filter`` value as it would appear in the URL.
-        filter_values = [v for k, v in items if k == "filter"]
-        assert len(filter_values) == 1, f"expected one filter param, got {filter_values!r}"
+    def _round_trip(sdk: _CapturingSdk) -> dict:
+        # The migrated factory forwards a single JSON-encoded ``filter`` string
+        # via ``query_params`` — no deep-object array serialization involved.
+        filter_value = (sdk.list_kwargs.get("query_params") or {}).get("filter")
+        assert filter_value is not None, "expected a forwarded filter param"
         # Decode just like core jobs make_filter_dep would: see leading ``{``,
         # route through parse_json_filter.
         from nemo_platform_plugin.api.filter import parse_json_filter
 
-        operation = parse_json_filter(filter_values[0])
+        operation = parse_json_filter(filter_value)
         return operation.to_dict()
 
     def test_user_filter_round_trip(self):

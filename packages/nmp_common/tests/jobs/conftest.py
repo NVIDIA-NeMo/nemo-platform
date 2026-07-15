@@ -8,6 +8,7 @@ import pytest
 from nmp.common.entities import DEFAULT_WORKSPACE
 from nmp.common.entities.utils import get_random_bytes
 from nmp.common.jobs.file_manager import FilesetFileManager
+from nmp.common.jobs.schemas import FileStorageType
 
 NMP_URL = "http://localhost:8080"
 
@@ -115,7 +116,7 @@ def mock_sync_file_manager():
     mock_fm = MagicMock()
     mock_fm.validate_storage.return_value = None
     mock_fm.upload.return_value = "test-ws/test-fileset#results/att-123/my-result"
-    mock_fm.storage_type.return_value = MagicMock(value="fileset")
+    mock_fm.storage_type.return_value = FileStorageType.FILESET
     return mock_fm
 
 
@@ -128,5 +129,5 @@ def mock_async_file_manager():
     mock_fm = MagicMock()
     mock_fm.validate_storage = AsyncMock(return_value=None)
     mock_fm.upload = AsyncMock(return_value="test-ws/test-fileset#results/att-123/my-result")
-    mock_fm.storage_type.return_value = MagicMock(value="fileset")
+    mock_fm.storage_type.return_value = FileStorageType.FILESET
     return mock_fm

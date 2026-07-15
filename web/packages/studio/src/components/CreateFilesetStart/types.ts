@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { InferenceParams } from '@nemo/sdk/generated/platform/schema';
 import type { BadgeProps } from '@nvidia/foundations-react-core';
 import type { AddColumnSelection } from '@studio/components/AddColumnPalette/types';
 import type { LucideIcon } from 'lucide-react';
@@ -34,6 +35,22 @@ export interface TemplateColumnSpec extends AddColumnSelection {
   values?: Record<string, string>;
 }
 
+/** Picking one preloads the build canvas with its columns and any models they reference. */
+
+export interface TemplateModelSpec {
+  /** Alias the template's columns reference via `model_alias`. */
+  alias: string;
+  /** Preferred model URN (e.g. `nvidia/llama-3.3-nemotron-super-49b-v1.5`); optional. */
+  model?: string;
+  /** Optional inference parameter defaults. */
+  inferenceParams?: Partial<InferenceParams>;
+}
+
+/**
+ * A ready-made recipe shown as a card in the secondary area when the "Start from a
+ * template" option is selected. Picking one preloads the build canvas with its columns
+ * and any models they reference.
+ */
 export interface FilesetTemplate {
   /** Stable id passed to {@link CreateFilesetStartProps.onContinue} when chosen. */
   id: string;
@@ -42,6 +59,8 @@ export interface FilesetTemplate {
   icon: LucideIcon;
   tag: StartOptionTag;
   columns: TemplateColumnSpec[];
+  /** Models preloaded into the job config, referenced by the columns' `model_alias`. */
+  models?: TemplateModelSpec[];
 }
 
 export interface TemplateCardProps {

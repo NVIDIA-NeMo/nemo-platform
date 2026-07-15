@@ -4,11 +4,17 @@
 import logging
 import threading
 import time
+from typing import cast
 
-from nemo_platform import APIError, APIStatusError, NeMoPlatform
-from nemo_platform.types.jobs import PlatformJobStepWithContext
-from nemo_platform.types.jobs.platform_job_steps_list_filter_param import PlatformJobStepsListFilterParam
-from nemo_platform.types.shared.platform_job_status import PlatformJobStatus as SDKPlatformJobStatus
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NemoClientError, NemoHTTPError
+from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.types import (
+    ListStepsQueryParams,
+    PlatformJobStatusUpdateRequest,
+    PlatformJobStepWithContext,
+)
 from nmp.common.controller import Controller
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.common.observability import scoped_app_ctx, start_span_with_ctx
@@ -32,6 +38,10 @@ class JobReconciler(Controller):
     ) -> None:
         self._backend_registry = backend_registry
         self._nmp_sdk = nmp_sdk
+        # Typed Jobs client sharing the SDK's transport; every call passes
+        # ``workspace=`` explicitly (incl. cross-workspace "-"), so the client's
+        # default workspace is never relied upon.
+        self._jobs = client_from_platform(nmp_sdk, JobsClient)
         self._stop_signal = stop_signal
         self._is_healthy = False
         self._logger = logger
@@ -58,7 +68,7 @@ class JobReconciler(Controller):
         fetch_started_at = time.monotonic()
         with tracer.start_as_current_span("jobs_reconciler/fetch_steps_for_reconciliation"):
             try:
-                statuses: list[SDKPlatformJobStatus] = [
+                statuses: list[str] = [
                     PlatformJobStatus.PENDING.value,
                     PlatformJobStatus.ACTIVE.value,
                     PlatformJobStatus.CANCELLING.value,
@@ -66,7 +76,7 @@ class JobReconciler(Controller):
                 ]
                 steps_to_reconcile = self.get_steps_for_reconciliation(statuses)
                 self._is_healthy = True
-            except APIError:
+            except NemoClientError:
                 self._is_healthy = False
                 logger.exception("Could not fetch job steps for reconciliation", exc_info=True)
                 return
@@ -108,10 +118,7 @@ class JobReconciler(Controller):
                             },
                         )
                         logger.info(f"Updating job step status from '{step.status}' to '{job_update.status}'")
-                        if (
-                            job_update.status == PlatformJobStatus.ERROR.value
-                            and step.status != PlatformJobStatus.ERROR
-                        ):
+                        if job_update.status == PlatformJobStatus.ERROR and step.status != PlatformJobStatus.ERROR:
                             log_job_diagnostics_if_debug(
                                 self._nmp_sdk,
                                 step,
@@ -126,7 +133,7 @@ class JobReconciler(Controller):
                             status_details=job_update.status_details,
                             error_details=job_update.error_details,
                         )
-                except APIStatusError as e:
+                except NemoHTTPError as e:
                     # In cases when attempting to update job step status results in a conflict (409),
                     # log a warning and continue processing other steps.
                     if e.status_code == 409:
@@ -175,20 +182,23 @@ class JobReconciler(Controller):
         step: PlatformJobStepWithContext,
         provider: str,
         profile: str,
-        status: str,
+        status: PlatformJobStatus,
         status_details: dict | None = None,
         error_details: dict | None = None,
     ):
         started_at = time.monotonic()
+        update_fields: dict = {"status": status}
+        if status_details is not None:
+            update_fields["status_details"] = status_details
+        if error_details is not None:
+            update_fields["error_details"] = error_details
         try:
-            response = self._nmp_sdk.jobs.steps.update_status(
-                step.name,
+            response = self._jobs.update_job_step_status(
+                name=step.name,
                 workspace=step.workspace,
                 job=step.job,
-                status=status,
-                status_details=status_details,  # type: ignore
-                error_details=error_details,  # type: ignore
-            )
+                body=PlatformJobStatusUpdateRequest(**update_fields),
+            ).data()
         except Exception:
             logger.warning(
                 "Reconciler step status update failed",
@@ -219,18 +229,26 @@ class JobReconciler(Controller):
         )
         return response
 
-    def get_steps_for_reconciliation(self, statuses: list[SDKPlatformJobStatus]) -> list[PlatformJobStepWithContext]:
+    def get_steps_for_reconciliation(self, statuses: list[str]) -> list[PlatformJobStepWithContext]:
         """
         Return the list of steps to reconcile.
         """
-        # Iterate through all pages to get all steps
+        # Iterate through all pages to get all steps.
+        # deepObject query param: sent as ``filter[status]=pending,active,...``
+        # (comma form), which the steps-list route splits back into a list. The
+        # bracketed key isn't expressible as a TypedDict field, so cast the dict.
         steps = []
-        filter_params: PlatformJobStepsListFilterParam = {"status": statuses}
-        for step in self._nmp_sdk.jobs.steps.list(
+        query = cast(
+            ListStepsQueryParams,
+            {
+                "filter[status]": ",".join(statuses),
+                "sort": "updated_at",
+            },
+        )
+        for step in self._jobs.list_steps(
             name="-",  # Use "-" to indicate all jobs
             workspace="-",  # Cross-workspace query
-            filter=filter_params,
-            sort="updated_at",
-        ):
+            query_params=query,
+        ).items():
             steps.append(step)
         return steps

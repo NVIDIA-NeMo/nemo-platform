@@ -205,6 +205,10 @@ export const getWorkspaceInferenceProvidersRoute = (
   return base;
 };
 
+export const getWorkspaceVirtualModelsRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.virtualModels, { workspace });
+};
+
 export const getWorkspaceDeploymentsRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.deployments, { workspace });
 };
@@ -337,6 +341,14 @@ export const getExperimentTraceDetailRoute = (
 
 export const getPromptTuningFormRoute = (workspace: string, options?: { model?: string }) => {
   const basePath = generatePath(ROUTES.workspace.promptTuningForm, { workspace });
+  if (options?.model) {
+    return `${basePath}?model=${encodeURIComponent(options.model)}`;
+  }
+  return basePath;
+};
+
+export const getNewCustomizationJobRoute = (workspace: string, options?: { model?: string }) => {
+  const basePath = generatePath(ROUTES.workspace.newCustomizationJob, { workspace });
   if (options?.model) {
     return `${basePath}?model=${encodeURIComponent(options.model)}`;
   }

@@ -3,6 +3,7 @@
 
 import SafeSynthesizerLogo from '@nemo/common/src/svgs/safe_synthesizer_logo.svg?react';
 import { NavigationDrawer } from '@studio/components/Layouts/NavigationDrawer';
+import { DataDesignerIconFc } from '@studio/constants/constants';
 import {
   AGENTS_ENABLED,
   BASE_MODELS_ENABLED,
@@ -42,6 +43,7 @@ import {
   getWorkspaceJobsRoute,
   getWorkspaceSafeSynthesizerRoute,
   getWorkspaceSettingsRoute,
+  getWorkspaceVirtualModelsRoute,
 } from '@studio/routes/utils';
 import {
   Beaker,
@@ -49,7 +51,6 @@ import {
   ChartBar,
   Database,
   HatGlasses,
-  LayoutList,
   ListChecks,
   Home,
   ShieldCheck,
@@ -61,6 +62,7 @@ import {
   Lightbulb,
   Activity,
   FlaskConical,
+  Waypoints,
 } from 'lucide-react';
 import { useMemo } from 'react';
 
@@ -148,7 +150,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
       ? [
           {
             id: 'data-designer',
-            slotIcon: <LayoutList className={iconColorClass} />,
+            slotIcon: <DataDesignerIconFc className={iconColorClass} />,
             slotLabel: 'Data Designer',
             href: getDataDesignerJobListRoute(workspace),
           },
@@ -184,6 +186,15 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
           },
         ]
       : [];
+
+    const virtualModelsNav = [
+      {
+        id: 'virtual-models',
+        slotIcon: <Waypoints className={iconColorClass} />,
+        slotLabel: 'Virtual Models',
+        href: getWorkspaceVirtualModelsRoute(workspace),
+      },
+    ];
 
     const modelCompareNav = MODEL_COMPARE_ENABLED
       ? [
@@ -242,36 +253,33 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
             },
           ]
         : []),
-      ...(BASE_MODELS_ENABLED || customizerNav.length > 0 || DEPLOYMENTS_ENABLED
-        ? [
-            {
-              group: 'Models',
-              items: [
-                ...(BASE_MODELS_ENABLED
-                  ? [
-                      {
-                        id: 'models',
-                        slotIcon: <Boxes className={iconColorClass} />,
-                        slotLabel: 'Base Models',
-                        href: getWorkspaceBaseModelsRoute(workspace),
-                      },
-                    ]
-                  : []),
-                ...customizerNav,
-                ...(DEPLOYMENTS_ENABLED
-                  ? [
-                      {
-                        id: 'deployments',
-                        slotIcon: <Rocket className={iconColorClass} />,
-                        slotLabel: 'Deployments',
-                        href: getWorkspaceDeploymentsRoute(workspace),
-                      },
-                    ]
-                  : []),
-              ],
-            },
-          ]
-        : []),
+      {
+        group: 'Models',
+        items: [
+          ...(BASE_MODELS_ENABLED
+            ? [
+                {
+                  id: 'models',
+                  slotIcon: <Boxes className={iconColorClass} />,
+                  slotLabel: 'Base Models',
+                  href: getWorkspaceBaseModelsRoute(workspace),
+                },
+              ]
+            : []),
+          ...customizerNav,
+          ...(DEPLOYMENTS_ENABLED
+            ? [
+                {
+                  id: 'deployments',
+                  slotIcon: <Rocket className={iconColorClass} />,
+                  slotLabel: 'Deployments',
+                  href: getWorkspaceDeploymentsRoute(workspace),
+                },
+              ]
+            : []),
+          ...virtualModelsNav,
+        ],
+      },
       ...(dataItems.length > 0 ? [{ group: 'Data', items: dataItems }] : []),
       ...(evaluateItems.length > 0 ? [{ group: 'Evaluate', items: evaluateItems }] : []),
       ...(safetyItems.length > 0 ? [{ group: 'Safety', items: safetyItems }] : []),

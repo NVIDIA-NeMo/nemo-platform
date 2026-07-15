@@ -19,11 +19,25 @@ from __future__ import annotations
 
 from typing_extensions import TypedDict
 
+from .virtual_model_filter_param import VirtualModelFilterParam
+
 __all__ = ["VirtualModelListParams"]
 
 
 class VirtualModelListParams(TypedDict, total=False):
     workspace: str
+
+    exclude_autoprovisioned: bool
+    """
+    When true, controller-managed (autoprovisioned) passthrough VirtualModels are
+    excluded from the results.
+    """
+
+    filter: VirtualModelFilterParam
+    """
+    Filter virtual models by workspace, project, name, default_model_entity,
+    created_at, and updated_at.
+    """
 
     page: int
     """Page number (1-indexed)."""

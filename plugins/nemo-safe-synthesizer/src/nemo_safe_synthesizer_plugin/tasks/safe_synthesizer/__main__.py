@@ -27,7 +27,9 @@ import pandas as pd
 from datasets import Dataset, DatasetDict, load_dataset
 from nemo_platform import NeMoPlatform
 from nemo_platform.filesets import parse_fileset_ref
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.config import get_platform_config
+from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.constants import (
     DEFAULT_TASK_STORAGE_PATH,
     EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
@@ -36,6 +38,7 @@ from nemo_platform_plugin.jobs.constants import (
     NEMO_JOB_WORKSPACE_ENVVAR,
 )
 from nemo_platform_plugin.jobs.file_manager import FilesetFileManager
+from nemo_platform_plugin.jobs.schemas import PlatformJobResultCreateRequest
 from nemo_platform_plugin.sdk_provider import get_platform_sdk
 from nemo_safe_synthesizer.config.internal_results import SafeSynthesizerResults
 from nemo_safe_synthesizer.observability import initialize_observability
@@ -154,7 +157,7 @@ def upload_results(result: SafeSynthesizerResults, adapter_path: Path | None = N
     )
     file_manager.validate_storage()
 
-    job = sdk.jobs.retrieve(name=job_id, workspace=workspace)
+    job = client_from_platform(sdk, JobsClient).get_job(name=job_id, workspace=workspace).data()
     attempt_id = job.attempt_id
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -209,12 +212,11 @@ def write_results_local(result: SafeSynthesizerResults, output_dir: Path, adapte
 
 def _create_job_result(sdk: NeMoPlatform, workspace: str, job_name: str, result_name: str, artifact_url: str):
     """Create a job result record."""
-    sdk.jobs.results.create(
+    client_from_platform(sdk, JobsClient).create_job_result(
         name=result_name,
         job=job_name,
         workspace=workspace,
-        artifact_url=artifact_url,
-        artifact_storage_type="fileset",
+        body=PlatformJobResultCreateRequest(artifact_url=artifact_url, artifact_storage_type="fileset"),
     )
     logger.info("Created job result: %s", result_name)
 
@@ -237,7 +239,11 @@ def _resolve_pretrained_model(
         workspace_fallback=workspace,
     )
     try:
-        adapter_result = sdk.jobs.results.retrieve(name="adapter", job=model_job, workspace=model_workspace)
+        adapter_result = (
+            client_from_platform(sdk, JobsClient)
+            .get_job_result(name="adapter", job=model_job, workspace=model_workspace)
+            .data()
+        )
     except Exception as e:
         raise RuntimeError(
             f"Failed to resolve adapter result for pretrained_model_job={job_config.pretrained_model_job!r}"

@@ -28,11 +28,22 @@ so this module stays importable without it.
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
+import shutil
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import (
+    SKILL_MODE_CODEX_SKILLS_DIR,
+    AgentSkill,
+    SkillProvenance,
+    install_skill,
+    resolve_skill_mode,
+)
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
 from nemo_evaluator_sdk.agent_eval.workspace_seeds import SEED_FILES_INPUT_KEY, seed_workspace
@@ -72,6 +83,14 @@ _ARTIFACTS_SUBDIR = "artifacts"
 # Per-task workspace: where seed files are staged and where the harness reads/writes. We
 # create it, point Fabric's ``environment.workspace`` at it, and expose it as ``workspace`` evidence.
 _WORKSPACE_SUBDIR = "workspace"
+# Per-task skill staging dir (native injection): the skill's files are resolved here and a per-task
+# ``skills`` profile overlay points Fabric at it. For codex self-injection the skill lands in the
+# workspace instead (no overlay).
+_SKILL_SUBDIR = "skill"
+# Sentinel skill path attached only to probe Fabric's capability planner for the selected adapter's
+# skills routing (see ``_resolve_skill_mode``). Never staged and need not exist on disk — the planner
+# just reports how it would route a skill for this adapter.
+_SKILL_PROBE_PATH = "nemo-eval-skill-capability-probe"
 # Evidence key + descriptor kind for the staged workspace, consumed by the
 # workspace-reading metrics.
 _WORKSPACE_EVIDENCE_KEY = "workspace"
@@ -79,13 +98,13 @@ _WORKSPACE_EVIDENCE_KIND = "filesystem"
 # File-exporter output names we choose for the Relay ATIF/ATOF trajectory (Relay accepts these as inputs).
 _ATIF_FILENAME_TEMPLATE = "trajectory-{session_id}.atif.json"
 _ATOF_FILENAME = "events.atof.jsonl"
+# ``kind`` Fabric stamps on the promoted Relay ATIF artifact; used to surface it as trace evidence.
+_ATIF_ARTIFACT_KIND = "atif"
 # Names for the trailing overlays that re-assert the evaluator-owned per-task settings (see
 # ``_eval_lock_profiles``): Fabric applies caller profiles over the config, so these must trail them.
 _WORKSPACE_PROFILE_NAME = "eval_workspace"
 _MODEL_PROFILE_NAME = "eval_model"
 _ARTIFACTS_PROFILE_NAME = "eval_artifacts"
-# ``kind`` Fabric stamps on the promoted Relay ATIF artifact; used to surface it as trace evidence.
-_ATIF_ARTIFACT_KIND = "atif"
 
 
 class FabricAgentRuntime:
@@ -109,6 +128,7 @@ class FabricAgentRuntime:
         timeout_s: int = DEFAULT_FABRIC_TIMEOUT_S,
         capture_trajectory: bool = True,
         runtime_name: str = _RUNTIME_NAME,
+        skill: AgentSkill | None = None,
     ) -> None:
         self._config = config
         self._profiles = list(profiles or [])
@@ -118,6 +138,19 @@ class FabricAgentRuntime:
         self._timeout_s = timeout_s
         self._capture_trajectory = capture_trajectory
         self._runtime_name = runtime_name
+        self._skill = skill
+
+    def with_skill(self, skill: AgentSkill | None) -> FabricAgentRuntime:
+        """Return a copy of this runtime with the skill replaced; ``self`` is not modified.
+
+        Lets an A/B eval run the same taskset with and without a skill by deriving both runtimes from
+        one configured instance (baseline = ``with_skill(None)``, treated = ``with_skill(the_skill)``),
+        so they differ in exactly the skill and nothing else. A shallow copy suffices — the shared
+        fields are immutable config/paths.
+        """
+        clone = copy.copy(self)
+        clone._skill = skill
+        return clone
 
     async def run_tasks(
         self,
@@ -132,6 +165,11 @@ class FabricAgentRuntime:
             raise RuntimeError(_MISSING_FABRIC_MSG) from exc
 
         resolved_config = config or AgentEvalRunConfig()
+        # Assign a run id once per run so two runs (e.g. an A/B baseline vs. skilled variant) written
+        # under the same work_root/output_dir land in distinct, non-colliding evidence trees. Callers
+        # that set run_id keep their identifier.
+        if resolved_config.run_id is None:
+            resolved_config = resolved_config.model_copy(update={"run_id": _new_run_id()})
         agent_config = FabricConfig.from_mapping(self._config)
         # Fail fast (once) if trajectory capture is requested but the nemo-relay gateway isn't
         # importable, rather than failing every task the same way inside the per-task guard.
@@ -144,17 +182,71 @@ class FabricAgentRuntime:
         # and trajectory settings are composed directly onto a copy of the config (config-first), not
         # layered as profiles.
         base_profiles = [FabricProfileConfig.from_mapping(profile) for profile in self._profiles]
-        semaphore = asyncio.Semaphore(resolved_config.parallelism)
 
         # ``Fabric`` (formerly ``FabricClient``) is a lightweight, reusable facade — not a lifecycle
         # context manager — so it is created once and reused across tasks with no cleanup.
         client = Fabric()
 
+        # Resolve once how a skill would reach this harness (the adapter is constant across tasks) by
+        # asking Fabric's own capability planner, so any adapter that declares native skills support — ours
+        # or an end-user's — is picked up automatically instead of via a hardcoded allow-list. Fail fast
+        # rather than silently run a skill-free trial mislabeled as "with skill", which would corrupt an
+        # A/B comparison. Only touched when a skill is set, so the no-skill path is unaffected.
+        skill_mode: str | None = None
+        if self._skill is not None:
+            skill_mode = self._resolve_skill_mode(client, agent_config, base_profiles)
+            if skill_mode is None:
+                adapter_id = agent_config.harness.adapter_id
+                raise RuntimeError(
+                    f"FabricAgentRuntime received a skill but adapter {adapter_id!r} has no known "
+                    "skill-injection strategy: Fabric does not route skills to it natively and it is not a "
+                    "codex harness. Use a skills-native or codex harness, or drop the skill."
+                )
+
+        semaphore = asyncio.Semaphore(resolved_config.parallelism)
+
         async def run_one(index: int, task: AgentEvalTask) -> AgentEvalTrial:
             async with semaphore:
-                return await self._run_task(client, agent_config, base_profiles, index, task, resolved_config)
+                return await self._run_task(
+                    client, agent_config, base_profiles, index, task, resolved_config, skill_mode
+                )
 
         return await asyncio.gather(*(run_one(index, task) for index, task in enumerate(tasks)))
+
+    def _resolve_skill_mode(
+        self,
+        client: Fabric,
+        agent_config: FabricConfig,
+        base_profiles: list[FabricProfileConfig],
+    ) -> str | None:
+        """Ask Fabric how a skill would reach the selected harness, or ``None`` if it can't.
+
+        Probes Fabric's capability planner: plan a copy of the config with a sentinel skill path attached
+        (it need not exist on disk) and read how the adapter routes skills. Querying the authoritative
+        source at runtime means adapters that declare native skills support — ours or an end-user's — are
+        detected without a hardcoded list. See :func:`~...skills.resolve_skill_mode`.
+        """
+        probe_config = agent_config.model_copy(deep=True)
+        probe_config.add_skill_path(_SKILL_PROBE_PATH)
+        plan = client.plan(probe_config, profiles=base_profiles, base_dir=self._base_dir)
+        return resolve_skill_mode(capability_plan=plan.capability_plan, harness=plan.adapter.harness)
+
+    def _existing_skill_paths(self) -> list[str]:
+        """Skill paths the base config/profiles already declare (union, order-preserved).
+
+        Fabric applies profile ``skills.paths`` last-wins, so the native skill overlay has to re-list
+        these alongside the evaluated skill or the treated arm would silently drop them (see
+        ``install_skill``). Read from the raw config/profile mappings the runtime was given, so it covers
+        both config- and profile-declared skills without a Fabric round-trip.
+        """
+        paths: list[str] = []
+        for section in (self._config, *self._profiles):
+            skills = section.get("skills") if isinstance(section, Mapping) else None
+            declared = skills.get("paths") if isinstance(skills, Mapping) else None
+            for path in declared or []:
+                if isinstance(path, str) and path not in paths:
+                    paths.append(path)
+        return paths
 
     async def _run_task(
         self,
@@ -164,9 +256,10 @@ class FabricAgentRuntime:
         index: int,
         task: AgentEvalTask,
         config: AgentEvalRunConfig,
+        skill_mode: str | None,
     ) -> AgentEvalTrial:
         # nemo_fabric is already imported+validated in ``run_tasks``; this is a cached sys.modules
-        # lookup, not a re-load, so the type is used where it's constructed instead of threaded down.
+        # lookup, not a re-load, so the types are used where they're constructed instead of threaded down.
         from nemo_fabric import FabricProfileConfig, RunRequest  # ty: ignore[unresolved-import]
 
         evidence_dir = self._evidence_dir(index, task, config)
@@ -180,10 +273,29 @@ class FabricAgentRuntime:
         # downloads), so it is offloaded off the shared event loop.
         workspace_dir = evidence_dir / _WORKSPACE_SUBDIR
         workspace_dir.mkdir(parents=True, exist_ok=True)
+        skill_provenance: SkillProvenance | None = None
         try:
             # Stage seed files into the workspace for their on-disk side effect; the prompt is the task
             # instruction only, so the returned paths are unused.
             await asyncio.to_thread(seed_workspace, workspace_dir, task.inputs.get(SEED_FILES_INPUT_KEY))
+
+            # Inject the skill (if any) for this task. A native harness gets a per-task ``skills`` profile
+            # overlay; codex self-injection stages the bundle into the workspace and emits no overlay.
+            # Provenance is stamped on the trial for the A/B diff. Blocking file I/O, off the event loop.
+            skill_profiles: list[FabricProfileConfig] = []
+            if self._skill is not None and skill_mode is not None:
+                installation = await asyncio.to_thread(
+                    install_skill,
+                    skill=self._skill,
+                    adapter_id=agent_config.harness.adapter_id,
+                    mode=skill_mode,
+                    workspace_dir=workspace_dir,
+                    skill_stage_dir=(evidence_dir / _SKILL_SUBDIR).resolve(),
+                    existing_skill_paths=self._existing_skill_paths(),
+                )
+                skill_provenance = installation.provenance
+                skill_profiles = [FabricProfileConfig.from_mapping(p) for p in installation.profiles]
+
             task_config = self._compose_config(agent_config, evidence_dir, workspace_dir)
             # Caller ``base_profiles`` are applied by Fabric over the config; the evaluator-owned
             # settings are re-asserted as trailing overlays so they win over any caller profile.
@@ -195,21 +307,35 @@ class FabricAgentRuntime:
                 # ``Fabric.run`` folds the per-invocation input + request id into a ``RunRequest``.
                 client.run(
                     task_config,
-                    profiles=[*base_profiles, *lock_profiles],
+                    # Caller profiles, then the native skill overlay, then the evaluator lock overlays;
+                    # the lock overlays trail so the per-task workspace/model/artifacts stay authoritative.
+                    profiles=[*base_profiles, *skill_profiles, *lock_profiles],
                     base_dir=self._base_dir,
                     request=RunRequest(input=task.agent_prompt(), request_id=task.id),
                 ),
                 timeout=self._timeout_s,
             )
         except TimeoutError as exc:
-            return self._failed_trial(task, evidence_dir, exc)
+            return self._failed_trial(task, evidence_dir, exc, extra_metadata={"skill": skill_provenance})
         except Exception as exc:  # noqa: BLE001 - a task failure must not abort the whole run
-            return self._failed_trial(task, evidence_dir, exc)
+            return self._failed_trial(task, evidence_dir, exc, extra_metadata={"skill": skill_provenance})
 
-        return self._to_trial(task, result, evidence_dir, workspace_dir)
+        # Codex self-injection staged the bundle *inside* the workspace so the harness could discover it.
+        # Now that the run is done (and captured in the trajectory), remove it before the workspace is
+        # exposed as filesystem evidence — otherwise the injected files read as agent output and skew
+        # workspace-reading metrics (a treated run with no agent-created files would look non-empty).
+        if skill_mode == SKILL_MODE_CODEX_SKILLS_DIR and skill_provenance is not None:
+            await asyncio.to_thread(_remove_injected_bundle, workspace_dir, skill_provenance["location"])
+        return self._to_trial(task, result, evidence_dir, workspace_dir, skill_provenance=skill_provenance)
 
     def _to_trial(
-        self, task: AgentEvalTask, result: RunResult, evidence_dir: Path, workspace_dir: Path
+        self,
+        task: AgentEvalTask,
+        result: RunResult,
+        evidence_dir: Path,
+        workspace_dir: Path,
+        *,
+        skill_provenance: SkillProvenance | None = None,
     ) -> AgentEvalTrial:
         # Persist the full normalized Fabric result so graders (and debugging) can see the raw
         # envelope, and expose it as an evidence descriptor.
@@ -223,6 +349,8 @@ class FabricAgentRuntime:
             "adapter_kind": result.adapter_kind,
             "invocation_id": result.invocation_id,
             "agent_model": self._model,
+            # Skill provenance (name + content hash + injection mode) for the A/B diff; None baseline.
+            "skill": skill_provenance,
         }
 
         if result.status != "succeeded":
@@ -433,9 +561,35 @@ class FabricAgentRuntime:
         root = self._work_root
         if root is None:
             root = (config.output_dir or Path.cwd()) / "evidence" / "fabric"
+        # The run id isolates this run's evidence from other runs sharing the same root (A/B baseline
+        # vs. skilled); run_tasks always populates it, so the fallback only guards a direct call.
+        run_id = config.run_id or _new_run_id()
         safe_task_id = _safe_path_name(task.id)
         task_dir = f"{index:06d}-{safe_task_id}" if safe_task_id else f"task-{index:06d}"
-        return Path(root) / task_dir
+        return Path(root) / _safe_path_name(run_id) / task_dir
+
+
+def _remove_injected_bundle(workspace_dir: Path, location: str) -> None:
+    """Remove the Codex-injected skill subtree from ``workspace_dir`` and prune emptied parents.
+
+    ``location`` is workspace-relative (``.agents/skills/<name>``). Best-effort: the skill was already
+    captured in the run's trajectory, so SkillUsedMetric (which reads the trace, not the workspace) is
+    unaffected, and any filesystem error here must not fail an otherwise-successful trial.
+    """
+    workspace_root = workspace_dir.resolve()
+    injected = (workspace_dir / location).resolve()
+    # Guard against a location escaping the workspace (defensive; provenance is evaluator-authored).
+    if workspace_root not in injected.parents or not injected.exists():
+        return
+    shutil.rmtree(injected, ignore_errors=True)
+    # Prune now-empty reserved parents (``.agents/skills``, ``.agents``) but never the workspace itself.
+    parent = injected.parent
+    while parent != workspace_root and parent.is_dir():
+        try:
+            parent.rmdir()  # only succeeds while empty
+        except OSError:
+            break
+        parent = parent.parent
 
 
 def _normalize_output(output: RunOutput | JsonValue) -> JsonValue:
@@ -477,3 +631,8 @@ def _result_error(result: RunResult) -> Mapping[str, Any]:
 
 def _safe_path_name(value: str) -> str:
     return "".join(char if char.isalnum() or char in "._-" else "-" for char in value).strip(".-")[:120]
+
+
+def _new_run_id() -> str:
+    timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S%f")
+    return f"fabric-{timestamp}-{uuid4().hex[:8]}"

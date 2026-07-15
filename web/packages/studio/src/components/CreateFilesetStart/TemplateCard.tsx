@@ -22,7 +22,7 @@ export const TemplateCard: FC<TemplateCardProps> = ({ template, selected, onSele
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
-      className={`flex h-[200px] min-w-[260px] flex-1 flex-col items-start gap-3 rounded-md border bg-surface-raised p-5 text-left transition focus-visible:border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#76b900] ${stateClasses}`}
+      className={`flex h-[200px] min-w-[260px] flex-1 flex-col items-start gap-3 overflow-hidden rounded-md border bg-surface-raised p-5 text-left transition focus-visible:border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#76b900] ${stateClasses}`}
     >
       <Flex
         align="center"
@@ -32,11 +32,15 @@ export const TemplateCard: FC<TemplateCardProps> = ({ template, selected, onSele
         <Icon size={20} className="text-primary" aria-hidden />
       </Flex>
 
-      <Stack gap="density-xs">
+      <Stack gap="density-xs" className="min-h-0">
         <Text kind="body/bold/md" className="text-primary">
           {template.title}
         </Text>
-        <Text kind="body/regular/sm" className="text-secondary">
+        <Text
+          kind="body/regular/sm"
+          className="line-clamp-3 text-secondary"
+          title={template.description}
+        >
           {template.description}
         </Text>
       </Stack>

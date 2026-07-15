@@ -123,7 +123,7 @@ repos:
     hooks:
       - id: studio-typecheck
         name: Run UI typecheck
-        entry: bash -c '[ -n "$CI" ] && exit 0; command -v pnpm >/dev/null 2>&1 || { echo "pnpm not installed, skipping typecheck (see web/README.md for setup)"; exit 0; }; cd web && pnpm --filter="...[origin/main]" run --parallel --if-present typecheck:go'
+        entry: bash -c '[ -n "$CI" ] && exit 0; command -v pnpm >/dev/null 2>&1 || { echo "pnpm not installed, skipping typecheck (see web/README.md for setup)"; exit 0; }; cd web && pnpm --filter="...[origin/main]" run --parallel --if-present typecheck'
         language: system
         files: ^web/
         pass_filenames: false

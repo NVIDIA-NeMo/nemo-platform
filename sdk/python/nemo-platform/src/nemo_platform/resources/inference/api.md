@@ -10,6 +10,7 @@ from nemo_platform.types.inference import (
     MiddlewareCall,
     UpdateVirtualModelRequest,
     VirtualModel,
+    VirtualModelFilter,
     VirtualModelInferenceConfig,
     VirtualModelsPage,
 )

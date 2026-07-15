@@ -11,6 +11,16 @@ import pandas as pd
 import pytest
 
 
+def _resp(data):
+    """Wrap a payload in a NemoResponse-like object whose ``.data()`` returns it.
+
+    Production consumes typed-client responses via ``client.<op>(...).data()``.
+    """
+    m = MagicMock()
+    m.data.return_value = data
+    return m
+
+
 def import_task_main_without_heavy_runtime(monkeypatch):
     pytest.importorskip("nemo_safe_synthesizer.config.job")
     library_builder = ModuleType("nemo_safe_synthesizer.sdk.library_builder")
@@ -128,10 +138,15 @@ def test_run_local_resolves_pretrained_model_job_before_run(tmp_path, monkeypatc
     )
 
     sdk = MagicMock()
-    sdk.jobs.results.retrieve.return_value = SimpleNamespace(
-        artifact_url="default/job-results-prior#results/attempt-1/adapter"
-    )
     monkeypatch.setattr(task_main, "get_platform_sdk", lambda: sdk)
+
+    # Production resolves the prior adapter via
+    # client_from_platform(sdk, JobsClient).get_job_result(...).data().
+    jobs_client = MagicMock()
+    jobs_client.get_job_result.return_value = _resp(
+        SimpleNamespace(artifact_url="default/job-results-prior#results/attempt-1/adapter")
+    )
+    monkeypatch.setattr(task_main, "client_from_platform", lambda _sdk, _cls: jobs_client)
 
     file_manager = MagicMock()
     file_manager.download_from_url.return_value = SimpleNamespace(
@@ -157,7 +172,7 @@ def test_run_local_resolves_pretrained_model_job_before_run(tmp_path, monkeypatc
     task_main.run_local(spec_file=spec_file, workspace="default", output_dir=output_dir, data_source=data_file)
 
     assert captured["adapter_location"] == adapter_dir
-    sdk.jobs.results.retrieve.assert_called_once_with(
+    jobs_client.get_job_result.assert_called_once_with(
         name="adapter",
         job="prior-safe-synth-job",
         workspace="default",
@@ -191,10 +206,15 @@ def test_run_local_cleans_pretrained_model_tmp_when_run_config_raises(tmp_path, 
     )
 
     sdk = MagicMock()
-    sdk.jobs.results.retrieve.return_value = SimpleNamespace(
-        artifact_url="default/job-results-prior#results/attempt-1/adapter"
-    )
     monkeypatch.setattr(task_main, "get_platform_sdk", lambda: sdk)
+
+    # Production resolves the prior adapter via
+    # client_from_platform(sdk, JobsClient).get_job_result(...).data().
+    jobs_client = MagicMock()
+    jobs_client.get_job_result.return_value = _resp(
+        SimpleNamespace(artifact_url="default/job-results-prior#results/attempt-1/adapter")
+    )
+    monkeypatch.setattr(task_main, "client_from_platform", lambda _sdk, _cls: jobs_client)
 
     pretrained_model_tmp = SimpleNamespace(
         path=adapter_dir,

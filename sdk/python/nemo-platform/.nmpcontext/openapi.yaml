@@ -3024,6 +3024,26 @@ paths:
           default: -created_at
           title: Sort
         description: Sort field.  Prefix with ``-`` for descending order.
+      - name: exclude_autoprovisioned
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: When true, controller-managed (autoprovisioned) passthrough
+            VirtualModels are excluded from the results.
+          default: false
+          title: Exclude Autoprovisioned
+        description: When true, controller-managed (autoprovisioned) passthrough VirtualModels
+          are excluded from the results.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/VirtualModelFilter'
+        description: Filter virtual models by workspace, project, name, default_model_entity,
+          created_at, and updated_at.
       responses:
         '200':
           description: Paginated list of virtual models
@@ -18640,6 +18660,40 @@ components:
         empty middleware lists, ``default_model_entity`` pointing to that entity).
 
         All existing inference requests continue to work without changes.'
+    VirtualModelFilter:
+      additionalProperties: false
+      description: Filter for VirtualModel list queries.
+      properties:
+        workspace:
+          description: Filter by workspace.
+          title: Workspace
+          type: string
+        project:
+          description: Filter by project URN.
+          title: Project
+          type: string
+        name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
+          description: Filter by name.
+          title: Name
+        default_model_entity:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
+          description: Filter by default model entity.
+          title: Default Model Entity
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter by creation date.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter by update date.
+      title: VirtualModelFilter
+      type: object
     VirtualModelInferenceConfig:
       properties:
         model:

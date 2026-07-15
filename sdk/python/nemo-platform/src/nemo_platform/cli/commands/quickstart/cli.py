@@ -967,6 +967,9 @@ def _run_job_diagnostic(port: int, registry: str, tag: str, *, admin_email: str 
     import uuid
 
     from nemo_platform import NeMoPlatform
+    from nemo_platform_plugin.client.adapter import client_from_platform
+    from nemo_platform_plugin.jobs.client import JobsClient
+    from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest
 
     # When auth is enabled, use an unsigned JWT for the admin principal.
     default_headers = None
@@ -997,29 +1000,32 @@ def _run_job_diagnostic(port: int, registry: str, tag: str, *, admin_email: str 
         job_name = f"diagnostic-{uuid.uuid4().hex[:8]}"
         console.print(f"  • Creating diagnostic job: {job_name}")
 
-        job = client.jobs.create(
-            platform_spec={
-                "steps": [
-                    {
-                        "name": "diagnostic",
-                        "executor": {
-                            "provider": "cpu",
-                            "container": {
-                                "image": cpu_image,
-                                "entrypoint": [
-                                    "python",
-                                    "-c",
-                                    "import sys; print(f'Python {sys.version}'); print('Job system is working correctly!')",
-                                ],
+        jobs_client = client_from_platform(client, JobsClient)
+        job = jobs_client.create_job(
+            body=CreatePlatformJobRequest(
+                platform_spec={
+                    "steps": [
+                        {
+                            "name": "diagnostic",
+                            "executor": {
+                                "provider": "cpu",
+                                "container": {
+                                    "image": cpu_image,
+                                    "entrypoint": [
+                                        "python",
+                                        "-c",
+                                        "import sys; print(f'Python {sys.version}'); print('Job system is working correctly!')",
+                                    ],
+                                },
                             },
-                        },
-                    }
-                ]
-            },
-            source="quickstart-doctor",
-            spec={},
-            name=job_name,
-        )
+                        }
+                    ]
+                },
+                source="quickstart-doctor",
+                spec={},
+                name=job_name,
+            )
+        ).data()
 
         console.print("  • Waiting for job to complete...")
 
@@ -1028,10 +1034,10 @@ def _run_job_diagnostic(port: int, registry: str, tag: str, *, admin_email: str 
         poll_interval = 2
         elapsed = 0
         status = "pending"
-        job_status = client.jobs.retrieve(job.name)
+        job_status = jobs_client.get_job(name=job.name).data()
 
         while elapsed < max_wait:
-            job_status = client.jobs.retrieve(job.name)
+            job_status = jobs_client.get_job(name=job.name).data()
             status = job_status.status
 
             if status in ("completed", "error", "cancelled"):
@@ -1058,9 +1064,9 @@ def _run_job_diagnostic(port: int, registry: str, tag: str, *, admin_email: str 
         # Fetch and display logs
         console.print("\n  [bold]Job output:[/bold]")
         try:
-            logs = client.jobs.get_logs(job.name)
+            logs = jobs_client.list_job_logs(name=job.name)
             log_lines = []
-            for log_entry in logs:
+            for log_entry in logs.items():
                 if hasattr(log_entry, "message"):
                     log_lines.append(log_entry.message)
 
@@ -1075,7 +1081,7 @@ def _run_job_diagnostic(port: int, registry: str, tag: str, *, admin_email: str 
         # Clean up the job (only if successful)
         if status == "completed":
             try:
-                client.jobs.delete(job.name)
+                jobs_client.delete_job(name=job.name)
             except Exception:
                 pass  # Ignore cleanup errors
         else:

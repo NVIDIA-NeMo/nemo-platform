@@ -16,6 +16,10 @@ import logging
 import os
 from typing import Any, cast
 
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
+from nemo_platform_plugin.jobs.types import PlatformJobTaskUpdate
 from nmp.common.sdk_factory import get_task_sdk
 from nmp.customization_common.service.context import NMPJobContext
 
@@ -62,14 +66,17 @@ class JobsServiceProgressReporter:
             return
 
         try:
-            self._sdk.jobs.tasks.create_or_update(
+            jobs = client_from_platform(self._sdk, JobsClient)
+            jobs.update_job_step_task(
                 name=self._job_ctx.normalized_task,
                 workspace=self._job_ctx.workspace,
                 job=self._job_ctx.job_id,
                 step=self._job_ctx.step,
-                status=status,  # ty: ignore[invalid-argument-type]
-                status_details=status_details or {},
-                error_details=error_details or {},
+                body=PlatformJobTaskUpdate(
+                    status=PlatformJobStatus(status),
+                    status_details=status_details or {},
+                    error_details=error_details or {},
+                ),
             )
         except Exception as e:
             logger.warning(f"Failed to update task progress: {e}")
@@ -79,12 +86,13 @@ class JobsServiceProgressReporter:
             return {"train_loss": [], "val_loss": []}
 
         try:
-            task = self._sdk.jobs.tasks.retrieve(
+            jobs = client_from_platform(self._sdk, JobsClient)
+            task = jobs.get_job_step_task(
                 name=self._job_ctx.normalized_task,
                 workspace=self._job_ctx.workspace,
                 job=self._job_ctx.job_id,
                 step=self._job_ctx.step,
-            )
+            ).data()
             metrics = cast(dict[str, Any], (task.status_details or {}).get("metrics", {}) or {})
             return {
                 "train_loss": metrics.get("train_loss", []),

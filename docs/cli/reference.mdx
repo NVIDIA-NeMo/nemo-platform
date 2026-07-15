@@ -3464,10 +3464,24 @@ nemo inference virtual-models list [OPTIONS]
 **Options:**
 
 * `--workspace`
+* `--exclude-autoprovisioned`: When true, controller-managed (autoprovisioned) passthrough VirtualModels are excluded from the results.
 * `--page <INTEGER>`: Page number (1-indexed).
 * `--page-size <INTEGER>`: Number of results per page.
 * `--sort`: Sort field. Prefix with `-` for descending order.
 * `--all-pages`: Fetch all pages
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  created_at: \{gte: str, lte: str}
+  updated_at: \{gte: str, lte: str}
+
+Filter virtual models by workspace, project, name, default_model_entity, created_at, and updated_at.
+* `--filter.default-model-entity`
+* `--filter.name`
+* `--filter.project`
+* `--filter.workspace`
 
 **Help:**
 

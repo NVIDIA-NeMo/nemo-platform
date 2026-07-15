@@ -12,7 +12,10 @@ import time
 from collections.abc import Callable
 
 from nemo_platform import NeMoPlatform
-from nemo_platform.types.jobs.platform_job_response import PlatformJobResponse
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.schemas import PlatformJobLogPage
+from nemo_platform_plugin.jobs.types import PlatformJobResponse
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +128,7 @@ def wait_for_platform_job(
 
     def get_status() -> str:
         nonlocal last_job
-        last_job = sdk.jobs.retrieve(job_name, workspace=workspace)
+        last_job = client_from_platform(sdk, JobsClient).get_job(name=job_name, workspace=workspace).data()
         current = last_job.status.lower() if last_job.status else ""
         if not status_history or status_history[-1] != current:
             status_history.append(current)
@@ -143,7 +146,7 @@ def wait_for_platform_job(
     except TimeoutError as e:
         error_parts = [str(e), f"Status history: {' -> '.join(status_history)}"]
         try:
-            job_status = sdk.jobs.get_status(job_name, workspace=workspace)
+            job_status = client_from_platform(sdk, JobsClient).get_job_status(name=job_name, workspace=workspace).data()
             error_parts.append(f"Job status details: {job_status.model_dump()}")
         except Exception as detail_err:
             error_parts.append(f"Failed to get job status: {detail_err}")
@@ -257,7 +260,8 @@ def wait_for_job_logs(
     logs = None
 
     while time.time() - start_time < timeout:
-        logs = sdk.jobs.get_logs(workspace=workspace, name=job_name)
+        page = client_from_platform(sdk, JobsClient).list_job_logs(workspace=workspace, name=job_name).page()
+        logs = PlatformJobLogPage(data=page.items, **page.metadata)
         if len(logs.data) >= min_log_count:
             return logs
         time.sleep(poll_interval)

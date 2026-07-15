@@ -33,15 +33,24 @@ class _FakeRuntimeCfg:
         self.artifacts = artifacts
 
 
+class _FakeHarness:
+    """Stand-in for nemo_fabric FabricConfig.harness — the skill path reads ``adapter_id`` off it."""
+
+    def __init__(self, adapter_id: str) -> None:
+        self.adapter_id = adapter_id
+
+
 class _FakeConfig:
     """Stand-in for nemo_fabric.FabricConfig with the config-first helpers the runtime composes onto."""
 
     def __init__(self, mapping: dict[str, Any]) -> None:
         self.mapping = mapping
+        self.harness = _FakeHarness(mapping.get("harness", {}).get("adapter_id", ""))
         self.environment: _FakeEnvironment | None = None
         self.runtime = _FakeRuntimeCfg()
         self.models: dict[str, Any] = dict(mapping.get("models", {}))
         self.relay: dict[str, Any] | None = None  # records enable_relay(...)
+        self.skill_paths: list[str] = []  # records add_skill_path(...) (the capability-plan probe uses it)
 
     @classmethod
     def from_mapping(cls, mapping: dict[str, Any]) -> _FakeConfig:
@@ -53,7 +62,11 @@ class _FakeConfig:
         clone.runtime = _FakeRuntimeCfg(self.runtime.artifacts)
         clone.models = copy.deepcopy(self.models)
         clone.relay = copy.deepcopy(self.relay)
+        clone.skill_paths = list(self.skill_paths)
         return clone
+
+    def add_skill_path(self, path: Any) -> None:
+        self.skill_paths.append(str(path))
 
     def enable_relay(
         self, *, project: str | None = None, output_dir: str | None = None, config: Any = None
@@ -135,6 +148,38 @@ class _FakeEvent:
         self.message = message
 
 
+# Adapters the fake planner reports as accepting the native Fabric ``skills`` config, mirroring
+# adapters/*/fabric-adapter.json. ``acme.custom.native`` stands in for an END-USER adapter the platform
+# doesn't ship — the runtime learns it accepts skills purely from the plan, with no hardcoded list.
+_NATIVE_SKILL_ADAPTERS = {
+    "nvidia.fabric.hermes.sdk",
+    "nvidia.fabric.hermes.cli",
+    "nvidia.fabric.claude",
+    "acme.custom.native",
+}
+_KNOWN_HARNESSES = ("hermes", "codex", "claude", "deepagents")
+
+
+def _harness_name(adapter_id: str) -> str:
+    """Derive the Fabric harness name from an adapter id (mirrors what the planner reports)."""
+    return next((h for h in _KNOWN_HARNESSES if h in adapter_id), "custom")
+
+
+class _FakeAdapterInfo:
+    """Stand-in for nemo_fabric AdapterInfo — the runtime reads ``harness`` off ``RunPlan.adapter``."""
+
+    def __init__(self, harness: str) -> None:
+        self.harness = harness
+
+
+class _FakePlan:
+    """Stand-in for nemo_fabric RunPlan (from Fabric.plan): capability routing + selected adapter."""
+
+    def __init__(self, *, capability_plan: dict[str, Any], harness: str) -> None:
+        self.capability_plan = capability_plan
+        self.adapter = _FakeAdapterInfo(harness)
+
+
 class _FakeResult:
     def __init__(
         self,
@@ -165,12 +210,26 @@ def _install_fake_fabric(monkeypatch: pytest.MonkeyPatch, handler: Any) -> type:
     class _FakeClient:
         # Fabric is a plain reusable facade (not an async context manager).
         recorded: list[dict[str, Any]] = []
+        planned: list[dict[str, Any]] = []
 
         async def run(self, agent: Any, **kwargs: Any) -> Any:
             _FakeClient.recorded.append({"agent": agent, **kwargs})
             return handler(agent, kwargs)
 
+        def plan(self, agent: Any, *, profiles: Any = None, base_dir: Any = None) -> _FakePlan:
+            # Mirror Fabric's capability planner: a ``skills`` route appears only when a skill path is
+            # attached, and it routes ``harness_native`` iff the selected adapter accepts native skills.
+            _FakeClient.planned.append({"agent": agent, "profiles": profiles, "base_dir": base_dir})
+            adapter_id = agent.harness.adapter_id
+            has_skill_path = bool(getattr(agent, "skill_paths", None))
+            native = has_skill_path and adapter_id in _NATIVE_SKILL_ADAPTERS
+            routes = (
+                [{"kind": "skills", "target": "harness_native" if native else "unsupported"}] if has_skill_path else []
+            )
+            return _FakePlan(capability_plan={"routes": routes}, harness=_harness_name(adapter_id))
+
     _FakeClient.recorded = []
+    _FakeClient.planned = []
     module = types.ModuleType("nemo_fabric")
     module.Fabric = _FakeClient  # type: ignore[attr-defined]
     module.FabricConfig = _FakeConfig  # type: ignore[attr-defined]
@@ -229,7 +288,8 @@ async def test_fabric_runtime_maps_succeeded_result_to_completed_trial(
     assert trial.evidence is not None
     assert trial.evidence.descriptors["result"].ref.endswith("fabric_result.json")
     assert trial.evidence.descriptors["stdout"].ref == str(tmp_path / "stdout.txt")
-    result_file = tmp_path / "fabric" / "000000-task-1" / "fabric_result.json"
+    # Evidence lands under a per-run id subdir (isolates A/B baseline vs. skilled runs sharing a root).
+    result_file = next((tmp_path / "fabric").glob("*/000000-task-1/fabric_result.json"))
     assert json.loads(result_file.read_text(encoding="utf-8"))["status"] == "succeeded"
     # Config-first: the model is set on the config's default model and relay (ATIF trajectory) is
     # enabled on the config, rather than layered as profile overlays.
@@ -583,3 +643,181 @@ async def test_fabric_runtime_normalizes_runoutput_response(tmp_path: Path, monk
     assert trial.output is not None
     assert trial.output.output_text == "PONG"  # extracted from the normalized mapping
     assert trial.output.response == {"response": "PONG", "returncode": 0}  # plain dict, not RunOutput
+
+
+def _skill_bundle(base: Path, *, name: str = "code-review", body: str = "Be thorough.") -> Path:
+    """Write a minimal agentskills bundle under ``base/skills/<name>/`` and return its path."""
+    root = base / "skills" / name
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "SKILL.md").write_text(f"---\nname: {name}\ndescription: d\n---\n\n{body}\n", encoding="utf-8")
+    return root
+
+
+_HERMES_CONFIG = {"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.hermes.sdk"}}
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_native_skill_adds_overlay_and_provenance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output={"response": "ok"})
+
+    client_cls = _install_fake_fabric(monkeypatch, handler)
+    skill = AgentSkill.from_directory(_skill_bundle(tmp_path, body="# Code Review\n\nBe thorough."))
+    runtime = fabric_runtime.FabricAgentRuntime(config=_HERMES_CONFIG, work_root=tmp_path / "fabric", skill=skill)
+
+    trials = await runtime.run_tasks([_TASK])
+
+    # The mode is resolved by probing Fabric's capability planner (with a skill path attached), not a
+    # hardcoded adapter list.
+    assert client_cls.planned, "expected the runtime to query Fabric.plan for skills routing"
+    assert client_cls.planned[0]["agent"].skill_paths, "expected a probe skill path attached for planning"
+    # A native `skills` overlay reaches client.run pointing at the staged <name>/ skill dir.
+    profiles = client_cls.recorded[0]["profiles"]
+    skill_profile = next(p for p in profiles if p.name == "eval_skill")
+    assert skill_profile.mapping["skills"]["paths"][0].endswith("/code-review")
+    # Provenance is stamped into trial metadata for the A/B diff.
+    prov = trials[0].metadata["skill"]
+    assert prov["name"] == "code-review"
+    assert prov["mode"] == "native"
+    assert prov["hash"]
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_native_skill_preserves_preconfigured_skills(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Regression: Fabric applies profile skills.paths last-wins, so the native overlay must re-list any
+    # skills the config/profiles already declare — otherwise the treated arm would drop them and the A/B
+    # would differ by more than the injected skill.
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output={"response": "ok"})
+
+    client_cls = _install_fake_fabric(monkeypatch, handler)
+    config = {**_HERMES_CONFIG, "skills": {"paths": ["/pre/existing-a"]}}
+    skill = AgentSkill.from_directory(_skill_bundle(tmp_path))
+    runtime = fabric_runtime.FabricAgentRuntime(
+        config=config,
+        work_root=tmp_path / "fabric",
+        skill=skill,
+        profiles=[{"name": "caller", "skills": {"paths": ["/pre/existing-b"]}}],
+    )
+
+    await runtime.run_tasks([_TASK])
+
+    overlay = next(p for p in client_cls.recorded[0]["profiles"] if p.name == "eval_skill")
+    paths = overlay.mapping["skills"]["paths"]
+    # Config- and profile-declared skills are preserved, in order, ahead of the evaluated skill.
+    assert paths[:2] == ["/pre/existing-a", "/pre/existing-b"]
+    assert paths[-1].endswith("/code-review")
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_native_skill_on_runtime_discovered_adapter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An end-user adapter the platform doesn't ship (harness "custom", not codex) still gets native
+    # injection purely because Fabric's planner routes its skills ``harness_native`` — nothing is
+    # hardcoded, so runtime capability discovery is what makes this work.
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output={"response": "ok"})
+
+    client_cls = _install_fake_fabric(monkeypatch, handler)
+    custom = {"metadata": {"name": "a"}, "harness": {"adapter_id": "acme.custom.native"}}
+    skill = AgentSkill.from_directory(_skill_bundle(tmp_path))
+    runtime = fabric_runtime.FabricAgentRuntime(config=custom, work_root=tmp_path / "fabric", skill=skill)
+
+    trials = await runtime.run_tasks([_TASK])
+
+    profiles = client_cls.recorded[0]["profiles"]
+    assert any(p.name == "eval_skill" for p in profiles)
+    assert trials[0].metadata["skill"]["mode"] == "native"
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_codex_skill_staged_for_run_then_excluded_from_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    seen: dict[str, bool] = {}
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        # Codex discovers the bundle from .agents/skills/<name>/ in its workspace *during* the run.
+        workspace = Path(agent.environment.workspace)
+        seen["present_during_run"] = (workspace / ".agents" / "skills" / "code-review" / "SKILL.md").is_file()
+        return _FakeResult(status="succeeded", output={"response": "ok"})
+
+    client_cls = _install_fake_fabric(monkeypatch, handler)
+    skill = AgentSkill.from_directory(_skill_bundle(tmp_path))
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric", skill=skill)
+
+    trials = await runtime.run_tasks([_TASK])
+
+    # Staged into the workspace so the harness could discover it during the run...
+    assert seen["present_during_run"] is True
+    # ...then removed (with its emptied .agents parents) before the workspace is exposed as evidence, so
+    # the injected files don't read as agent output to workspace-reading metrics.
+    workspace = next((tmp_path / "fabric").glob("*/000000-task-1/workspace"))
+    assert not (workspace / ".agents").exists()
+    # No skills overlay; provenance still records the codex injection.
+    names = [p.name for p in client_cls.recorded[0]["profiles"]]
+    assert "eval_skill" not in names
+    assert trials[0].metadata["skill"]["mode"] == "codex_skills_dir"
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_skill_on_unsupported_adapter_fails_fast(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output={"response": "ok"})
+
+    _install_fake_fabric(monkeypatch, handler)
+    unsupported = {"metadata": {"name": "a"}, "harness": {"adapter_id": "some.other.adapter"}}
+    runtime = fabric_runtime.FabricAgentRuntime(
+        config=unsupported,
+        work_root=tmp_path / "fabric",
+        skill=AgentSkill.from_directory(_skill_bundle(tmp_path, name="s")),
+    )
+
+    with pytest.raises(RuntimeError, match="no known skill-injection strategy"):
+        await runtime.run_tasks([_TASK])
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_no_skill_leaves_metadata_none(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output={"response": "ok"})
+
+    client_cls = _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric")
+
+    trials = await runtime.run_tasks([_TASK])
+
+    assert trials[0].metadata["skill"] is None
+    # No skill -> no planner probe (the no-skill path must not pay for a plan()).
+    assert client_cls.planned == []
+
+
+def test_with_skill_returns_independent_copy() -> None:
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    base = fabric_runtime.FabricAgentRuntime(config=_HERMES_CONFIG, model="m", work_root="/tmp/x")
+    skill = AgentSkill(name="s", directory=Path("/skills/s"))
+
+    treated = base.with_skill(skill)
+
+    # A new instance is returned; the original is untouched.
+    assert treated is not base
+    assert base._skill is None
+    assert treated._skill is skill

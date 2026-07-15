@@ -66,7 +66,7 @@ export const flagDefinitions = {
   evaluatorEnabled: previewFlag('VITE_FF_EVALUATOR_ENABLED', true),
   experiment: previewFlag('VITE_FF_EXPERIMENT', false),
   filesetDetailsEnabled: previewFlag('VITE_FF_FILESET_DETAILS_ENABLED'),
-  guardrailsEnabled: previewFlag('VITE_FF_GUARDRAILS_ENABLED'),
+  guardrailsEnabled: previewFlag('VITE_FF_GUARDRAILS_ENABLED', true),
   inferenceProviderEnabled: previewFlag('VITE_FF_INFERENCE_PROVIDER_ENABLED'),
   intakeEnabled: previewFlag('VITE_FF_INTAKE_ENABLED', false),
   jobsEnabled: previewFlag('VITE_FF_JOBS_ENABLED', true),
