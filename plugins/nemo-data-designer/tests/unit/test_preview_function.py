@@ -35,19 +35,8 @@ def _config() -> dd.DataDesignerConfig:
     return builder.build()
 
 
-def _patch_preview_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Bypass real model-config extraction so the test config's incomplete
-    # ``ModelConfig`` (no provider) doesn't fail provider resolution. The
-    # call site lives inside ``data_designer_nemo.runnable.resolve_runnable_config``
-    # since the cross-call-site refactor.
-    from data_designer_nemo import runnable as runnable_module
-
-    monkeypatch.setattr(runnable_module, "get_model_configs", lambda config: [])
-
-
 @pytest.mark.asyncio
 async def test_preview_function_streams_worker_frames_and_done(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_preview_dependencies(monkeypatch)
 
     def fake_worker(
         send_frame: Callable[[BaseModel], None],
@@ -71,7 +60,6 @@ async def test_preview_function_streams_worker_frames_and_done(monkeypatch: pyte
 
 
 def test_preview_route_streams_ndjson_and_heartbeats(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_preview_dependencies(monkeypatch)
 
     def slow_worker(
         send_frame: Callable[[BaseModel], None],
