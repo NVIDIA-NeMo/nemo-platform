@@ -66,9 +66,9 @@ def load_profile_model(path: Path, model: type[ProfileModel]) -> ProfileModel:
 def load_env_file(path: Path, env: MutableMapping[str, str] = os.environ) -> list[str]:
     """Load simple KEY=VALUE entries without replacing existing environment keys."""
     try:
-        if not path.is_file():
-            return []
         lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return []
     except (OSError, UnicodeError) as exc:
         raise EnvFileError(
             f"Could not read environment file {path}: {exc}. Check that the file is readable UTF-8 text, then retry."
