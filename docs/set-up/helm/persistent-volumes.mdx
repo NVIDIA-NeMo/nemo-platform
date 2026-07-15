@@ -58,12 +58,12 @@ For NIM deployments launched via the NeMo Platform, you can set the default Stor
 
 ```yaml
 platformConfig:
- models:
- controller:
- backends:
- nim_operator:
- config:
- default_storage_class: "nfs"
+  models:
+    controller:
+      backends:
+        deployments_plugin:
+          config:
+            default_storage_class: "nfs"
 ```
 
 Replace `"nfs"` with your StorageClass name (e.g. `oci-nfs`, `gp3`). For NIM scaling and multi-node deployments, use a ReadWriteMany-capable StorageClass.

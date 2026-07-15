@@ -140,7 +140,12 @@ def _lora_sidecar(
 def compile_model_deployment(
     resolved: ResolvedPluginDeployment, config: DeploymentsPluginConfig
 ) -> CompiledModelDeployment:
-    """Compile volume, puller, and always-on serving config specifications."""
+    """Compile a model deployment into deployments-plugin entity specifications.
+
+    Chooses the engine compiler path (nim / vllm / generic), optionally emits a
+    weighted puller chain, and maps ``k8s_nim_operator_config`` onto plugin k8s
+    backend settings when the platform runtime is Kubernetes.
+    """
     engine = config_engine(resolved.config)
     if engine not in {ENGINE_NIM, ENGINE_VLLM, ENGINE_GENERIC}:
         raise ValueError(f"Unsupported engine {engine!r}.")

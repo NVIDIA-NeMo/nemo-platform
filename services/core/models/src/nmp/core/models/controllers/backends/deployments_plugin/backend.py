@@ -165,6 +165,11 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
             )
 
     async def get_model_deployment_status(self, ctx: ModelContext) -> DeploymentStatusUpdate:
+        """Project plugin entity health into models deployment status.
+
+        Aggregates Volume, puller, and server Deployment entities, then applies
+        ``pending_timeout_seconds`` when the deployment remains PENDING too long.
+        """
         if ctx.model_deployment is None:
             return DeploymentStatusUpdate(status="UNKNOWN", status_message="Model deployment unavailable.")
         names = entity_names(ctx.model_deployment.name)
@@ -233,8 +238,11 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
             return None
 
     async def list_managed_deployment_names(self) -> list[str]:
-        # Labels live on immutable DeploymentConfig entities; deployments-plugin
-        # does not currently mirror them onto Deployment.
+        """List workspace/name IDs for model deployments managed by this backend.
+
+        Discovers server-role DeploymentConfig entities stamped with models-controller
+        ownership labels (deployments-plugin does not mirror labels onto Deployment).
+        """
         result = await self._entity_client().list(DeploymentConfig, workspace="-")
         names = {
             f"{config.labels[_DEPLOYMENT_WORKSPACE_LABEL]}/{config.labels[_DEPLOYMENT_NAME_LABEL]}"

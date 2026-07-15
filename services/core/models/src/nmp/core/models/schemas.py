@@ -1291,10 +1291,11 @@ class ModelType(str, Enum):
 
 
 class K8sNIMOperatorConfig(BaseModel):
-    """Kubernetes configuration for NIM deployment via k8s-nim-operator.
+    """Kubernetes pod placement and probe overrides for NIM deployments on Kubernetes.
 
-    These fields provide typed access to commonly-used NIMService Spec fields
-    and are applied before override_config in the compilation precedence.
+    Historically applied via the removed k8s-nim-operator backend. The
+    deployments_plugin compiler still maps these fields onto plugin
+    ``K8sDeploymentConfig`` for NIM engine deployments.
     """
 
     resources: Optional[Dict[str, Any]] = Field(
@@ -1443,20 +1444,23 @@ class ContainerExecutorConfig(BaseModel):
         description="Raw container/`serve` args appended verbatim to the container's arg vector.",
     )
 
-    # Kubernetes configuration for k8s-nim-operator (NIM engine on k8s only).
-    # Carried here so the k8s NIM operator backend keeps working; ignored by the
-    # docker and vLLM paths.
+    # Kubernetes placement/probe overrides for NIM engine deployments on k8s.
     k8s_nim_operator_config: Optional[K8sNIMOperatorConfig] = Field(
         default=None,
-        description="Typed Kubernetes configuration for common NIMService Spec fields (NIM engine on k8s). "
-        "Applied after defaults but before override_config. Ignored by non-NIM engines.",
+        deprecated=True,
+        description="Deprecated name retained for API compatibility. Typed Kubernetes "
+        "configuration for common NIM pod fields (resources, tolerations, nodeSelector, "
+        "startup probe grace). Mapped by deployments_plugin onto plugin K8sDeploymentConfig. "
+        "Ignored by non-NIM engines and docker runtime.",
     )
 
-    # Raw NIMService spec override (NIM engine on k8s only).
+    # Raw per-container override map (NIM engine on k8s only).
     override_config: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Raw NIMService spec configuration that takes precedence over generated config (NIM engine "
-        "on k8s). Allows advanced configuration options directly. Ignored by non-NIM engines.",
+        deprecated=True,
+        description="Deprecated escape hatch from the k8s-nim-operator era. Raw container "
+        "spec fragments merged after generated defaults (NIM engine on k8s only). "
+        "Prefer k8s_nim_operator_config for typed fields. Ignored by non-NIM engines.",
     )
 
 
