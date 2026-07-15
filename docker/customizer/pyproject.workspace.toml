@@ -18,6 +18,7 @@ members = [
   "packages/nemo_platform_plugin",
   "packages/nmp_common",
   "packages/nmp_customization_common",
+  "plugins/nemo-deployments",
   "services/core/models",
 ]
 
@@ -26,6 +27,7 @@ nmp-build-tools = { workspace = true }
 models = { workspace = true }
 nemo-platform-sdk = { workspace = true }
 nemo-platform-plugin = { workspace = true }
+nemo-deployments-plugin = { workspace = true }
 nmp-common = { workspace = true }
 nmp-customization-common = { workspace = true }
 nmp-models = { workspace = true }
