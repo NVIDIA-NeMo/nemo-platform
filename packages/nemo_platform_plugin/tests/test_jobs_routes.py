@@ -201,6 +201,73 @@ class TestDeriveJobType:
 
         assert _derive_job_type(J) == "RawJob"
 
+    def test_dotted_name_folds_into_pascalcase(self) -> None:
+        # A dot must not survive into the schema class name: Pydantic renders it
+        # as a ``__`` separator in the OpenAPI ref, which schema-name
+        # normalization then strips, collapsing per-backend names (e.g.
+        # "automodel.jobs" and "rl.jobs") to a single "jobsJobRequest".
+        class J(NemoJob):
+            name = "automodel.jobs"
+            spec_schema = _WidgetSpec
+
+            def run(self, config: dict) -> dict:
+                return config
+
+        job_type = _derive_job_type(J)
+        assert job_type == "AutomodelJobs"
+        assert "." not in job_type
+
+
+class TestPerJobTypeSchemaNaming:
+    """Guard the end-to-end path where dotted job names used to collapse.
+
+    Two backends whose ``name`` differs only before the dot (``alpha.jobs`` /
+    ``beta.jobs``) must produce distinct request schemas that survive
+    ``tweak_spec``'s schema-name normalization, each referencing its own spec
+    schema. Before the ``_derive_job_type`` dot fix, both collapsed to a single
+    ``jobsJobRequest`` and every backend's POST body aliased the first one.
+    """
+
+    def test_dotted_backends_keep_distinct_request_schemas(self) -> None:
+        from fastapi import FastAPI
+        from nmp.common.api.utils import tweak_spec
+
+        class AlphaSpec(BaseModel):
+            alpha_field: str
+
+        class BetaSpec(BaseModel):
+            beta_field: int
+
+        def _make_job(job_name: str, spec_cls: type[BaseModel]) -> type[NemoJob]:
+            class _J(NemoJob):
+                name = job_name
+                spec_schema = spec_cls
+
+                def run(self, config: dict) -> dict:
+                    return config
+
+                @classmethod
+                async def compile(cls, **kwargs):  # pragma: no cover - not invoked by openapi()
+                    raise NotImplementedError
+
+            return _J
+
+        app = FastAPI()
+        app.include_router(add_job_routes(_make_job("alpha.jobs", AlphaSpec)))
+        app.include_router(add_job_routes(_make_job("beta.jobs", BetaSpec)))
+
+        spec = tweak_spec(app.openapi())
+        schemas = spec["components"]["schemas"]
+
+        request_keys = {k for k in schemas if k.endswith("JobRequest")}
+        assert request_keys == {"AlphaJobsJobRequest", "BetaJobsJobRequest"}
+
+        def _spec_ref(request_key: str) -> str:
+            return schemas[request_key]["properties"]["spec"]["$ref"].split("/")[-1]
+
+        assert _spec_ref("AlphaJobsJobRequest") == "AlphaSpec"
+        assert _spec_ref("BetaJobsJobRequest") == "BetaSpec"
+
 
 # ---------------------------------------------------------------------------
 # _adapt_to_spec

@@ -36,14 +36,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/jobsJobRequest'
+              $ref: '#/components/schemas/AutomodelJobsJobRequest'
       responses:
         '201':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/jobsJob'
+                $ref: '#/components/schemas/AutomodelJobsJob'
         '422':
           description: Validation Error
           content:
@@ -87,7 +87,7 @@ paths:
         required: false
         schema:
           allOf:
-          - $ref: '#/components/schemas/jobsJobsSortField'
+          - $ref: '#/components/schemas/AutomodelJobsJobsSortField'
           description: The field to sort by. To sort in decreasing order, use `-`
             in front of the field name.
           default: -created_at
@@ -99,7 +99,7 @@ paths:
         required: false
         explode: true
         schema:
-          $ref: '#/components/schemas/Automodel.jobsJobsListFilter'
+          $ref: '#/components/schemas/AutomodelJobsJobsListFilter'
         description: Filter jobs on various criteria.
       responses:
         '200':
@@ -107,7 +107,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/jobsJob_'
+                $ref: '#/components/schemas/AutomodelJobsJobsPage'
         '422':
           description: Validation Error
           content:
@@ -218,7 +218,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/jobsJob'
+                $ref: '#/components/schemas/AutomodelJobsJob'
         '422':
           description: Validation Error
           content:
@@ -277,7 +277,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/jobsJob'
+                $ref: '#/components/schemas/AutomodelJobsJob'
         '422':
           description: Validation Error
           content:
@@ -410,14 +410,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/jobsJobRequest'
+              $ref: '#/components/schemas/RlJobsJobRequest'
       responses:
         '201':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/jobsJob'
+                $ref: '#/components/schemas/RlJobsJob'
         '422':
           description: Validation Error
           content:
@@ -461,7 +461,7 @@ paths:
         required: false
         schema:
           allOf:
-          - $ref: '#/components/schemas/jobsJobsSortField'
+          - $ref: '#/components/schemas/RlJobsJobsSortField'
           description: The field to sort by. To sort in decreasing order, use `-`
             in front of the field name.
           default: -created_at
@@ -473,7 +473,7 @@ paths:
         required: false
         explode: true
         schema:
-          $ref: '#/components/schemas/Rl.jobsJobsListFilter'
+          $ref: '#/components/schemas/RlJobsJobsListFilter'
         description: Filter jobs on various criteria.
       responses:
         '200':
@@ -481,7 +481,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/jobsJob_'
+                $ref: '#/components/schemas/RlJobsJobsPage'
         '422':
           description: Validation Error
           content:
@@ -592,7 +592,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/jobsJob'
+                $ref: '#/components/schemas/RlJobsJob'
         '422':
           description: Validation Error
           content:
@@ -651,7 +651,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/jobsJob'
+                $ref: '#/components/schemas/RlJobsJob'
         '422':
           description: Validation Error
           content:
@@ -784,14 +784,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/jobsJobRequest'
+              $ref: '#/components/schemas/UnslothJobsJobRequest'
       responses:
         '201':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/jobsJob'
+                $ref: '#/components/schemas/UnslothJobsJob'
         '422':
           description: Validation Error
           content:
@@ -835,7 +835,7 @@ paths:
         required: false
         schema:
           allOf:
-          - $ref: '#/components/schemas/jobsJobsSortField'
+          - $ref: '#/components/schemas/UnslothJobsJobsSortField'
           description: The field to sort by. To sort in decreasing order, use `-`
             in front of the field name.
           default: -created_at
@@ -847,7 +847,7 @@ paths:
         required: false
         explode: true
         schema:
-          $ref: '#/components/schemas/Unsloth.jobsJobsListFilter'
+          $ref: '#/components/schemas/UnslothJobsJobsListFilter'
         description: Filter jobs on various criteria.
       responses:
         '200':
@@ -855,7 +855,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/jobsJob_'
+                $ref: '#/components/schemas/UnslothJobsJobsPage'
         '422':
           description: Validation Error
           content:
@@ -966,7 +966,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/jobsJob'
+                $ref: '#/components/schemas/UnslothJobsJob'
         '422':
           description: Validation Error
           content:
@@ -1025,7 +1025,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/jobsJob'
+                $ref: '#/components/schemas/UnslothJobsJob'
         '422':
           description: Validation Error
           content:
@@ -1142,37 +1142,6 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
-    Automodel.jobsJobsListFilter:
-      additionalProperties: false
-      properties:
-        created_at:
-          allOf:
-          - $ref: '#/components/schemas/DatetimeFilter'
-          description: Jobs created at 'gte' datetime or 'lte' datetime.
-        name:
-          anyOf:
-          - $ref: '#/components/schemas/StringFilter'
-          - type: string
-          description: Name of the job.
-          title: Name
-        workspace:
-          description: Workspace of the job.
-          title: Workspace
-          type: string
-        project:
-          description: Project containing the job.
-          title: Project
-          type: string
-        status:
-          allOf:
-          - $ref: '#/components/schemas/PlatformJobStatus'
-          description: The current status.
-        updated_at:
-          allOf:
-          - $ref: '#/components/schemas/DatetimeFilter'
-          description: Jobs updated at 'gte' datetime or 'lte' datetime.
-      title: Automodel.jobsJobsListFilter
-      type: object
     AutomodelJobInput:
       properties:
         name:
@@ -1242,6 +1211,144 @@ components:
       - output
       title: AutomodelJobOutput
       description: Stored canonical spec after ``to_spec()``.
+    AutomodelJobsJob:
+      properties:
+        id:
+          title: Id
+          type: string
+        name:
+          type: string
+          title: Name
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        workspace:
+          title: Workspace
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        spec:
+          $ref: '#/components/schemas/AutomodelJobOutput'
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          title: Status Details
+          additionalProperties: true
+          type: object
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - name
+      - spec
+      title: AutomodelJobsJob
+    AutomodelJobsJobRequest:
+      properties:
+        name:
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        spec:
+          $ref: '#/components/schemas/AutomodelJobInput'
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - spec
+      title: AutomodelJobsJobRequest
+    AutomodelJobsJobsListFilter:
+      additionalProperties: false
+      properties:
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs created at 'gte' datetime or 'lte' datetime.
+        name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
+          description: Name of the job.
+          title: Name
+        workspace:
+          description: Workspace of the job.
+          title: Workspace
+          type: string
+        project:
+          description: Project containing the job.
+          title: Project
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/PlatformJobStatus'
+          description: The current status.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs updated at 'gte' datetime or 'lte' datetime.
+      title: AutomodelJobsJobsListFilter
+      type: object
+    AutomodelJobsJobsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/AutomodelJobsJob'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: AutomodelJobsJobsPage
+    AutomodelJobsJobsSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: AutomodelJobsJobsSortField
     BatchSpec:
       properties:
         global_batch_size:
@@ -1268,6 +1375,158 @@ components:
       additionalProperties: false
       type: object
       title: BatchSpec
+    DPOTraining:
+      properties:
+        optimizer_type:
+          allOf:
+          - $ref: '#/components/schemas/OptimizerType'
+          description: "Optimizer + LR-scheduler combination (AdamW/Adam \xD7 cosine-annealing/flat-LR).\
+            \ Defaults to AdamW with cosine annealing."
+        learning_rate:
+          type: number
+          title: Learning Rate
+          description: Peak learning rate.
+          default: 0.0001
+        min_learning_rate:
+          title: Min Learning Rate
+          description: Minimum LR for cosine decay.
+          type: number
+        weight_decay:
+          type: number
+          title: Weight Decay
+          description: Weight decay coefficient.
+          default: 0.01
+        adam_beta1:
+          type: number
+          title: Adam Beta1
+          description: Adam beta1.
+          default: 0.9
+        adam_beta2:
+          type: number
+          title: Adam Beta2
+          description: Adam beta2.
+          default: 0.999
+        adam_eps:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Adam Eps
+          description: Adam epsilon (numerical stability term).
+          default: 1.0e-05
+        warmup_steps:
+          type: integer
+          minimum: 0.0
+          title: Warmup Steps
+          description: Linear warmup steps.
+          default: 0
+        epochs:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Epochs
+          description: Number of passes through the dataset.
+          default: 1
+        max_steps:
+          title: Max Steps
+          description: Max training steps (overrides epochs if set).
+          type: integer
+          exclusiveMinimum: 0.0
+        val_check_interval:
+          title: Val Check Interval
+          description: Validation interval. Float <= 1.0 is fraction of epoch; > 1.0
+            is step count.
+          type: number
+        val_at_end:
+          type: boolean
+          title: Val At End
+          description: Run a final validation pass after the last training step. Keep
+            enabled so the final checkpoint carries validation metrics and best-checkpoint
+            selection works; set False only to skip the extra eval.
+          default: true
+        keep_top_k:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Keep Top K
+          description: Number of best checkpoints to retain (ranked by validation
+            loss).
+          default: 1
+        batch_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Batch Size
+          description: Global batch size across all GPUs.
+          default: 32
+        micro_batch_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Micro Batch Size
+          description: Per-GPU micro batch size.
+          default: 1
+        activation_checkpointing:
+          type: boolean
+          title: Activation Checkpointing
+          description: Recompute activations during the backward pass to reduce memory
+            at the cost of compute. Enable to fit larger models or longer sequences.
+          default: false
+        max_seq_length:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Max Seq Length
+          description: Maximum token sequence length for training.
+          default: 2048
+        seed:
+          title: Seed
+          description: Random seed for reproducibility.
+          type: integer
+        parallelism:
+          $ref: '#/components/schemas/ParallelismParams'
+        execution_profile:
+          title: Execution Profile
+          description: Execution profile for the GPU training step (operator-configured).
+            Falls back to the service default when omitted.
+          type: string
+          minLength: 1
+        type:
+          type: string
+          const: dpo
+          title: Type
+          default: dpo
+        ref_policy_kl_penalty:
+          type: number
+          minimum: 0.0
+          title: Ref Policy Kl Penalty
+          description: KL penalty coefficient (beta in the DPO paper).
+          default: 0.05
+        preference_average_log_probs:
+          type: boolean
+          title: Preference Average Log Probs
+          description: Average log probabilities for preference loss calculation.
+          default: false
+        sft_average_log_probs:
+          type: boolean
+          title: Sft Average Log Probs
+          description: Average log probabilities for SFT regularization loss.
+          default: false
+        preference_loss_weight:
+          type: number
+          minimum: 0.0
+          title: Preference Loss Weight
+          description: Weight for the preference (DPO) loss term.
+          default: 1.0
+        sft_loss_weight:
+          type: number
+          minimum: 0.0
+          title: Sft Loss Weight
+          description: Weight for SFT regularization loss (0 = disabled).
+          default: 0.0
+        max_grad_norm:
+          type: number
+          minimum: 0.0
+          title: Max Grad Norm
+          description: Maximum gradient norm for clipping.
+          default: 1.0
+      additionalProperties: false
+      type: object
+      title: DPOTraining
+      description: "Direct Preference Optimization (full-weight only \u2014 PEFT unsupported)."
     DatasetSpec:
       properties:
         training:
@@ -1300,6 +1559,51 @@ components:
           type: string
       title: DatetimeFilter
       type: object
+    DeploymentParams:
+      properties:
+        gpu:
+          type: integer
+          title: Gpu
+          description: Number of GPUs required for the deployment.
+          default: 1
+        additional_envs:
+          title: Additional Envs
+          description: Additional environment variables for the deployment.
+          additionalProperties:
+            type: string
+          type: object
+        disk_size:
+          title: Disk Size
+          description: Disk size for the deployment.
+          type: string
+        image_name:
+          title: Image Name
+          description: Container image name from NGC. If not specified, defaults to
+            multi-llm.
+          type: string
+        image_tag:
+          title: Image Tag
+          description: Container image tag from NGC.
+          type: string
+        lora_enabled:
+          type: boolean
+          title: Lora Enabled
+          description: When auto-deploying a full SFT training, setting this true
+            allows subsequent LoRA adapters to be deployed against it.
+          default: true
+        tool_call_config:
+          allOf:
+          - $ref: '#/components/schemas/ToolCallParams'
+          description: Tool calling configuration override for the NIM deployment.
+      additionalProperties: false
+      type: object
+      title: DeploymentParams
+      description: 'Inline deployment parameters for auto-deploying a trained model.
+
+
+        Used in :class:`UnslothJobInput.deployment_config` and passed through to
+
+        the model_entity task at compile time. When unset, no deployment is launched.'
     FileStorageType:
       type: string
       enum:
@@ -1314,6 +1618,24 @@ components:
           title: Detail
       type: object
       title: HTTPValidationError
+    HardwareSpec:
+      properties:
+        gpus:
+          title: Gpus
+          description: Comma-separated GPU indices ('0' or '0,1') for CUDA_VISIBLE_DEVICES.
+            Selection, not reservation.
+          type: string
+        precision:
+          type: string
+          enum:
+          - bf16
+          - fp16
+          title: Precision
+          description: Mixed-precision dtype for training. bf16 recommended for Ampere+.
+          default: bf16
+      additionalProperties: false
+      type: object
+      title: HardwareSpec
     IntegrationsSpecInput:
       properties:
         wandb:
@@ -1433,6 +1755,79 @@ components:
 
 
         To enable MLflow, provide a non-null ``mlflow`` object on :class:`IntegrationsSpec`.'
+    ModelLoadSpec:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Model entity reference. Accepts 'name' (uses the job's workspace)
+            or 'workspace/name'. The plugin's run resolves this to a local path before
+            training.
+        max_seq_length:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Max Seq Length
+          default: 2048
+        load_in_4bit:
+          type: boolean
+          title: Load In 4Bit
+          description: bitsandbytes 4-bit. Mutex with load_in_8bit. Default for Unsloth's
+            headline path.
+          default: true
+        load_in_8bit:
+          type: boolean
+          title: Load In 8Bit
+          default: false
+        dtype:
+          type: string
+          enum:
+          - auto
+          - bfloat16
+          - float16
+          - float32
+          title: Dtype
+          default: auto
+        trust_remote_code:
+          type: boolean
+          title: Trust Remote Code
+          default: false
+        device_map:
+          anyOf:
+          - type: string
+          - type: integer
+          - additionalProperties:
+              type: integer
+            type: object
+          title: Device Map
+          description: "Device placement forwarded to FastLanguageModel.from_pretrained.\
+            \ Omit (null) to pin the whole model to the single visible GPU ({'': 0})\
+            \ \u2014 the right default for this single-GPU backend, and it avoids\
+            \ accelerate's auto-placement under-sizing GPU memory on unified-memory\
+            \ parts (e.g. GB10 / DGX Spark), which otherwise spills layers to CPU\
+            \ and aborts 4-bit loads. Set 'auto', 'balanced', 'sequential', a device\
+            \ index, or a custom map for multi-device experiments."
+        rope_scaling:
+          title: Rope Scaling
+          description: 'RoPE scaling config for long-context extension, passed to
+            FastLanguageModel.from_pretrained (e.g. {''type'': ''linear'', ''factor'':
+            2.0}). None uses the model''s native context length.'
+          additionalProperties: true
+          type: object
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      title: ModelLoadSpec
+      description: 'Args to ``FastLanguageModel.from_pretrained``.
+
+
+        ``name`` is a NeMo Platform model entity reference (``"name"`` or
+
+        ``"workspace/name"``). The plugin''s run orchestration resolves the
+
+        entity, downloads its fileset to a local path, and hands that path
+
+        to :func:`train_sft`.'
     OptimizerSpec:
       properties:
         learning_rate:
@@ -1495,6 +1890,15 @@ components:
       additionalProperties: false
       type: object
       title: OptimizerSpec
+    OptimizerType:
+      type: string
+      enum:
+      - adamw_with_cosine_annealing
+      - adam_with_cosine_annealing
+      - adamw_with_flat_lr
+      - adam_with_flat_lr
+      title: OptimizerType
+      description: Optimizer and scheduler combination types.
     OutputRequest:
       properties:
         name:
@@ -1562,6 +1966,54 @@ components:
       - total_pages
       - total_results
       title: PaginationData
+    ParallelismParams:
+      properties:
+        num_gpus_per_node:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Num Gpus Per Node
+          description: Number of GPUs per node.
+          default: 1
+        num_nodes:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Num Nodes
+          description: "Number of nodes (>1 \u2192 multi-node Ray cluster)."
+          default: 1
+        tensor_parallel_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Tensor Parallel Size
+          description: Tensor parallel size.
+          default: 1
+        pipeline_parallel_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Pipeline Parallel Size
+          description: Pipeline parallel size.
+          default: 1
+        context_parallel_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Context Parallel Size
+          description: Context parallel size.
+          default: 1
+        sequence_parallel:
+          type: boolean
+          title: Sequence Parallel
+          description: Enable sequence parallelism.
+          default: false
+      additionalProperties: false
+      type: object
+      title: ParallelismParams
+      description: 'Distributed training parallelism configuration.
+
+
+        Single-node multi-GPU uses ``num_nodes=1`` with ``num_gpus_per_node>1``;
+
+        multi-node sets ``num_nodes>1`` and the compiler emits a distributed-GPU
+
+        executor (see :mod:`nmp.rl.app.jobs.compiler`).'
     ParallelismSpec:
       properties:
         num_nodes:
@@ -1843,7 +2295,153 @@ components:
       - created_at
       - updated_at
       title: PlatformJobTaskStatusResponse
-    Rl.jobsJobsListFilter:
+    RlJobInput:
+      properties:
+        name:
+          title: Name
+          type: string
+        model:
+          type: string
+          title: Model
+          description: Model entity reference ('name' or 'workspace/name').
+        dataset:
+          type: string
+          title: Dataset
+          description: Preference dataset fileset reference. Must contain training.jsonl
+            + validation.jsonl.
+        training:
+          allOf:
+          - $ref: '#/components/schemas/DPOTraining'
+          description: DPO training method and hyperparameters.
+        integrations:
+          $ref: '#/components/schemas/IntegrationsSpecInput'
+        output:
+          $ref: '#/components/schemas/OutputRequest'
+      additionalProperties: false
+      type: object
+      required:
+      - model
+      - dataset
+      - training
+      title: RlJobInput
+      description: POST body / CLI JSON for ``nemo customization rl submit``.
+    RlJobOutput:
+      properties:
+        name:
+          title: Name
+          description: Optional job name; auto-generated when omitted.
+          type: string
+        model:
+          type: string
+          title: Model
+          description: Model entity reference ('name' or 'workspace/name').
+        dataset:
+          type: string
+          title: Dataset
+          description: Preference dataset fileset reference ('name' or 'workspace/name').
+        training:
+          allOf:
+          - $ref: '#/components/schemas/DPOTraining'
+          description: Training method and hyperparameters (DPO).
+        integrations:
+          allOf:
+          - $ref: '#/components/schemas/IntegrationsSpecOutput'
+          description: W&B / MLflow integrations.
+        output:
+          allOf:
+          - $ref: '#/components/schemas/OutputResponse'
+          description: Output artifact created by this job.
+      type: object
+      required:
+      - model
+      - dataset
+      - training
+      - output
+      title: RlJobOutput
+      description: 'Canonical NeMo-RL job spec (output of the plugin transform).
+
+
+        The ``dataset`` fileset must contain ``training.jsonl`` and ``validation.jsonl``
+
+        (any of the four supported preference formats); the dataset-preparation step
+
+        splits/normalizes them at runtime.'
+    RlJobsJob:
+      properties:
+        id:
+          title: Id
+          type: string
+        name:
+          type: string
+          title: Name
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        workspace:
+          title: Workspace
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        spec:
+          $ref: '#/components/schemas/RlJobOutput'
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          title: Status Details
+          additionalProperties: true
+          type: object
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - name
+      - spec
+      title: RlJobsJob
+    RlJobsJobRequest:
+      properties:
+        name:
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        spec:
+          $ref: '#/components/schemas/RlJobInput'
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - spec
+      title: RlJobsJobRequest
+    RlJobsJobsListFilter:
       additionalProperties: false
       properties:
         created_at:
@@ -1872,8 +2470,40 @@ components:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
           description: Jobs updated at 'gte' datetime or 'lte' datetime.
-      title: Rl.jobsJobsListFilter
+      title: RlJobsJobsListFilter
       type: object
+    RlJobsJobsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/RlJobsJob'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: RlJobsJobsPage
+    RlJobsJobsSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: RlJobsJobsSortField
     ScheduleSpec:
       properties:
         epochs:
@@ -1925,6 +2555,27 @@ components:
           type: array
       title: StringFilter
       type: object
+    ToolCallParams:
+      properties:
+        tool_call_parser:
+          title: Tool Call Parser
+          description: Name of the tool call parser to use (e.g., 'openai', 'hermes',
+            'pythonic', 'llama3_json', 'mistral').
+          type: string
+        tool_call_plugin:
+          title: Tool Call Plugin
+          description: 'Reference to a fileset containing the custom tool call plugin
+            Python file. Expected format: ''{workspace}/{fileset_name}''.'
+          type: string
+          pattern: ^[\w\-.]+/[\w\-.]+$
+        auto_tool_choice:
+          title: Auto Tool Choice
+          description: Whether to enable automatic tool choice.
+          type: boolean
+      additionalProperties: false
+      type: object
+      title: ToolCallParams
+      description: Tool calling configuration for NIM deployments.
     TrainingSpec:
       properties:
         training_type:
@@ -2002,7 +2653,175 @@ components:
       additionalProperties: false
       type: object
       title: TrainingSpec
-    Unsloth.jobsJobsListFilter:
+    UnslothJobInput:
+      properties:
+        name:
+          title: Name
+          type: string
+        model:
+          $ref: '#/components/schemas/ModelLoadSpec'
+        dataset:
+          $ref: '#/components/schemas/DatasetSpec'
+        training:
+          $ref: '#/components/schemas/TrainingSpec'
+        schedule:
+          $ref: '#/components/schemas/ScheduleSpec'
+        batch:
+          $ref: '#/components/schemas/BatchSpec'
+        optimizer:
+          $ref: '#/components/schemas/OptimizerSpec'
+        hardware:
+          $ref: '#/components/schemas/HardwareSpec'
+        integrations:
+          $ref: '#/components/schemas/IntegrationsSpecInput'
+        output:
+          $ref: '#/components/schemas/OutputRequest'
+        deployment_config:
+          anyOf:
+          - type: string
+            title: Reference
+            description: A reference to DeploymentParams.
+          - $ref: '#/components/schemas/DeploymentParams'
+          title: Deployment Config
+          description: Deployment configuration for auto-deploying the model after
+            training. Pass a string to reference an existing ModelDeploymentConfig
+            by name ('my-config' or 'workspace/my-config'). An object provides inline
+            NIM deployment parameters. Omit to skip deployment.
+      additionalProperties: false
+      type: object
+      required:
+      - model
+      - dataset
+      title: UnslothJobInput
+      description: POST body / CLI JSON for ``nemo customization unsloth run``.
+    UnslothJobOutput:
+      properties:
+        name:
+          title: Name
+          type: string
+        model:
+          $ref: '#/components/schemas/ModelLoadSpec'
+        dataset:
+          $ref: '#/components/schemas/DatasetSpec'
+        training:
+          $ref: '#/components/schemas/TrainingSpec'
+        schedule:
+          $ref: '#/components/schemas/ScheduleSpec'
+        batch:
+          $ref: '#/components/schemas/BatchSpec'
+        optimizer:
+          $ref: '#/components/schemas/OptimizerSpec'
+        hardware:
+          $ref: '#/components/schemas/HardwareSpec'
+        integrations:
+          $ref: '#/components/schemas/IntegrationsSpecOutput'
+        output:
+          $ref: '#/components/schemas/OutputResponse'
+        deployment_config:
+          anyOf:
+          - type: string
+            title: Reference
+            description: A reference to DeploymentParams.
+          - $ref: '#/components/schemas/DeploymentParams'
+          title: Deployment Config
+          description: Deployment configuration for auto-deploying the model after
+            training. Pass a string to reference an existing ModelDeploymentConfig
+            by name ('my-config' or 'workspace/my-config'). An object provides inline
+            NIM deployment parameters. Omit to skip deployment.
+      additionalProperties: false
+      type: object
+      required:
+      - model
+      - dataset
+      - output
+      title: UnslothJobOutput
+      description: 'Canonical spec stored after the plugin''s ``to_spec()`` resolves
+        output naming.
+
+
+        Defaults match :class:`~nemo_unsloth_plugin.schema.UnslothJobInput` so SDK
+
+        callers and tests can construct :class:`UnslothJobOutput` directly without
+
+        restating every sub-section. The plugin''s ``to_spec`` always passes the
+
+        resolved input values through, so these defaults never override real input.'
+    UnslothJobsJob:
+      properties:
+        id:
+          title: Id
+          type: string
+        name:
+          type: string
+          title: Name
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        workspace:
+          title: Workspace
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        spec:
+          $ref: '#/components/schemas/UnslothJobOutput'
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          title: Status Details
+          additionalProperties: true
+          type: object
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - name
+      - spec
+      title: UnslothJobsJob
+    UnslothJobsJobRequest:
+      properties:
+        name:
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        spec:
+          $ref: '#/components/schemas/UnslothJobInput'
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - spec
+      title: UnslothJobsJobRequest
+    UnslothJobsJobsListFilter:
       additionalProperties: false
       properties:
         created_at:
@@ -2031,8 +2850,40 @@ components:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
           description: Jobs updated at 'gte' datetime or 'lte' datetime.
-      title: Unsloth.jobsJobsListFilter
+      title: UnslothJobsJobsListFilter
       type: object
+    UnslothJobsJobsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/UnslothJobsJob'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: UnslothJobsJobsPage
+    UnslothJobsJobsSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: UnslothJobsJobsSortField
     ValidationError:
       properties:
         loc:
@@ -2107,110 +2958,3 @@ components:
         Provide ``api_key_secret`` referencing a secret that contains ``WANDB_API_KEY``.
 
         Optionally set ``base_url`` for self-hosted W&B servers.'
-    jobsJob:
-      properties:
-        id:
-          title: Id
-          type: string
-        name:
-          type: string
-          title: Name
-        description:
-          title: Description
-          type: string
-        project:
-          title: Project
-          type: string
-        workspace:
-          title: Workspace
-          type: string
-        created_at:
-          title: Created At
-          type: string
-          format: date-time
-        updated_at:
-          title: Updated At
-          type: string
-          format: date-time
-        spec:
-          $ref: '#/components/schemas/AutomodelJobOutput'
-        status:
-          $ref: '#/components/schemas/PlatformJobStatus'
-        status_details:
-          title: Status Details
-          additionalProperties: true
-          type: object
-        error_details:
-          title: Error Details
-          additionalProperties: true
-          type: object
-        ownership:
-          title: Ownership
-          additionalProperties: true
-          type: object
-        custom_fields:
-          title: Custom Fields
-          additionalProperties: true
-          type: object
-      type: object
-      required:
-      - name
-      - spec
-      title: jobsJob
-    jobsJobRequest:
-      properties:
-        name:
-          title: Name
-          type: string
-        description:
-          title: Description
-          type: string
-        project:
-          title: Project
-          type: string
-        spec:
-          $ref: '#/components/schemas/AutomodelJobInput'
-        ownership:
-          title: Ownership
-          additionalProperties: true
-          type: object
-        custom_fields:
-          title: Custom Fields
-          additionalProperties: true
-          type: object
-      type: object
-      required:
-      - spec
-      title: jobsJobRequest
-    jobsJob_:
-      properties:
-        data:
-          items:
-            $ref: '#/components/schemas/jobsJob'
-          type: array
-          title: Data
-        pagination:
-          allOf:
-          - $ref: '#/components/schemas/PaginationData'
-          description: Pagination information.
-        sort:
-          title: Sort
-          description: The field on which the results are sorted.
-          type: string
-        filter:
-          title: Filter
-          description: Filtering information.
-          additionalProperties: true
-          type: object
-      type: object
-      required:
-      - data
-      title: jobsJob_
-    jobsJobsSortField:
-      type: string
-      enum:
-      - created_at
-      - -created_at
-      - updated_at
-      - -updated_at
-      title: jobsJobsSortField
