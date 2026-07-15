@@ -284,6 +284,8 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
           prompt:
             'On a scale of 1–5 (1 = very poor, 5 = excellent), rate the quality of the following answer.\n\nQuestion: {{ instruction }}\nAnswer: {{ chosen }}\n\nReturn only the integer score.',
           model_alias: 'default',
+          scores:
+            '[{ "name": "Quality", "description": "Overall answer quality.", "options": { "1": "Very poor", "5": "Excellent" } }]',
         },
       },
     ],

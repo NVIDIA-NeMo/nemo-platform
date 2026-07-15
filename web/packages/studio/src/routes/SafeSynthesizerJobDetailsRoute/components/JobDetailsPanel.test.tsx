@@ -128,6 +128,7 @@ vi.mock('lucide-react', () => ({
   File: () => <svg data-testid="document-icon" />,
   Cog: () => <svg data-testid="cog-icon" />,
   Copy: () => <svg data-testid="copy-doc-icon" />,
+  Palette: () => <svg data-testid="palette-icon" />,
 }));
 
 // Test wrapper
