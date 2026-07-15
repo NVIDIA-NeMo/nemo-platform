@@ -27,6 +27,8 @@ export interface IntakeTraceDetailContentProps {
   traceId: string;
   /** Leading breadcrumb items. Defaults to the Intake root when omitted. */
   parentBreadcrumbs?: BreadcrumbsItemProps[];
+  /** When true, shows "Test case: <test_case_id>" as the header instead of "Trace <name>". */
+  showTestCaseTitle?: boolean;
 }
 
 /**
@@ -36,6 +38,7 @@ export interface IntakeTraceDetailContentProps {
 export const IntakeTraceDetailContent: FC<IntakeTraceDetailContentProps> = ({
   traceId,
   parentBreadcrumbs,
+  showTestCaseTitle,
 }) => {
   const workspace = useWorkspaceFromPath();
 
@@ -44,6 +47,7 @@ export const IntakeTraceDetailContent: FC<IntakeTraceDetailContentProps> = ({
       workspace={workspace}
       traceId={traceId}
       parentBreadcrumbs={parentBreadcrumbs}
+      showTestCaseTitle={showTestCaseTitle}
     />
   );
 };

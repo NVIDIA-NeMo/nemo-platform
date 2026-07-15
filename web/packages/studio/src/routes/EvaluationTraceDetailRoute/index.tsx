@@ -36,5 +36,11 @@ export const EvaluationTraceDetailRoute: FC = () => {
     [workspace, experimentGroupName, evaluationName]
   );
 
-  return <IntakeTraceDetailContent traceId={traceId} parentBreadcrumbs={parentBreadcrumbs} />;
+  return (
+    <IntakeTraceDetailContent
+      traceId={traceId}
+      parentBreadcrumbs={parentBreadcrumbs}
+      showTestCaseTitle
+    />
+  );
 };

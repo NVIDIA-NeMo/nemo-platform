@@ -32,6 +32,8 @@ interface IntakeTraceDetailViewProps {
   traceId: string;
   /** Leading breadcrumb items. Defaults to the Intake root when omitted. */
   parentBreadcrumbs?: BreadcrumbsItemProps[];
+  /** When true, shows "Test case: <test_case_id>" as the header instead of "Trace <name>". Falls back to "Trace <name>" when test_case_id is absent. */
+  showTestCaseTitle?: boolean;
 }
 
 /**
@@ -41,6 +43,7 @@ export const IntakeTraceDetailView: FC<IntakeTraceDetailViewProps> = ({
   workspace,
   traceId,
   parentBreadcrumbs,
+  showTestCaseTitle,
 }) => {
   const {
     data: trace,
@@ -98,12 +101,15 @@ export const IntakeTraceDetailView: FC<IntakeTraceDetailViewProps> = ({
     return null;
   }
 
-  const title = getTraceDisplayName(trace);
+  const title =
+    showTestCaseTitle && trace.experiment_context?.test_case_id
+      ? `Test case: ${trace.experiment_context.test_case_id}`
+      : `Trace ${getTraceDisplayName(trace)}`;
 
   return (
-    <AccessibleTitle title={`Trace ${title}`}>
+    <AccessibleTitle title={title}>
       <Stack gap="density-2xl" padding="density-2xl" className="h-full overflow-auto">
-        <PageHeader className="p-0" slotHeading={`Trace ${title}`} />
+        <PageHeader className="p-0" slotHeading={title} />
         <TraceSummaryHeader trace={trace} />
         <TraceSpanAccordions workspace={workspace} trace={trace} />
         <IntakeAccordion
