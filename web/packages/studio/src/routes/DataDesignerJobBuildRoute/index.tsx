@@ -160,7 +160,7 @@ export const DataDesignerJobBuildRoute: FC = () => {
 
   return (
     <AccessibleTitle title={heading}>
-      <Stack className=" h-full">
+      <Stack className="h-full min-h-0">
         <BuilderToolbar
           name={name}
           onNameChange={setName}
@@ -182,7 +182,7 @@ export const DataDesignerJobBuildRoute: FC = () => {
           onToggle={() => setIsDetailsOpen((open) => !open)}
         />
 
-        <Flex className="min-h-0 border-t border-base h-full">
+        <Flex className="min-h-0 flex-1 border-t border-base">
           <BuilderPalette
             tab={builder.paletteTab}
             onTabChange={builder.setPaletteTab}

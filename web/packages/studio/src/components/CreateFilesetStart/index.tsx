@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useModelsListProviders } from '@nemo/sdk/generated/platform/api';
 import {
   Block,
   Button,
@@ -18,13 +19,44 @@ import type {
   CreateFilesetStartProps,
   StartOptionId,
 } from '@studio/components/CreateFilesetStart/types';
+import { DEFAULT_LARGE_PAGE_SIZE } from '@studio/constants/constants';
+import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { PRESET_CREDENTIALS } from '@studio/routes/InferenceProvidersListRoute/CreateInferenceProviderSidePanel/inferenceProviderPresets';
+import { getWorkspaceInferenceProvidersRoute } from '@studio/routes/utils';
 import { ArrowRight } from 'lucide-react';
-import { useState, type FC } from 'react';
+import { useMemo, useState, type FC } from 'react';
+
+/** Hostname of the NVIDIA Build (build.nvidia.com) inference endpoint, e.g. integrate.api.nvidia.com. */
+const BUILD_PROVIDER_HOSTNAME = new URL(PRESET_CREDENTIALS.build.host_url).hostname;
+
+const isBuildProvider = (hostUrl: string | undefined): boolean => {
+  if (!hostUrl) return false;
+  try {
+    return new URL(hostUrl).hostname === BUILD_PROVIDER_HOSTNAME;
+  } catch {
+    return false;
+  }
+};
 
 export const CreateFilesetStart: FC<CreateFilesetStartProps> = ({ onContinue }) => {
+  const workspace = useWorkspaceFromPath();
   const [selectedId, setSelectedId] = useState<StartOptionId | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const selectedOption = START_OPTIONS.find((option) => option.id === selectedId) ?? null;
+
+  const { data: providersPage, isLoading: isLoadingProviders } = useModelsListProviders(
+    workspace,
+    { page_size: DEFAULT_LARGE_PAGE_SIZE },
+    { query: {} }
+  );
+  const hasBuildProvider = useMemo(
+    () => (providersPage?.data ?? []).some((provider) => isBuildProvider(provider.host_url)),
+    [providersPage?.data]
+  );
+  const llmDisabled = !isLoadingProviders && !hasBuildProvider;
+  const inferenceProvidersHref = getWorkspaceInferenceProvidersRoute(workspace, {
+    preset: 'build',
+  });
 
   const selectOption = (optionId: StartOptionId) => {
     setSelectedId(optionId);
@@ -75,6 +107,8 @@ export const CreateFilesetStart: FC<CreateFilesetStartProps> = ({ onContinue }) 
               option={selectedOption}
               selectedTemplateId={selectedTemplateId}
               onSelectTemplate={setSelectedTemplateId}
+              llmDisabled={llmDisabled}
+              inferenceProvidersHref={inferenceProvidersHref}
             />
           ) : null}
         </Stack>

@@ -10,18 +10,27 @@ import type { FC } from 'react';
  * a leading icon badge above a title, description, and a use-case badge, rendered as a
  * selectable `<button>`. Mirrors {@link StartOptionCard} so the two card rows read alike.
  */
-export const TemplateCard: FC<TemplateCardProps> = ({ template, selected, onSelect }) => {
+export const TemplateCard: FC<TemplateCardProps> = ({
+  template,
+  selected,
+  disabled = false,
+  onSelect,
+}) => {
   const Icon = template.icon;
 
-  const stateClasses = selected
-    ? 'cursor-pointer border-[#76b900]'
-    : 'cursor-pointer border-base hover:-translate-y-0.5 hover:border-[#76b900] hover:bg-surface-hover hover:shadow-md';
+  const stateClasses = disabled
+    ? 'cursor-not-allowed border-base opacity-50'
+    : selected
+      ? 'cursor-pointer border-[#76b900]'
+      : 'cursor-pointer border-base hover:-translate-y-0.5 hover:border-[#76b900] hover:bg-surface-hover hover:shadow-md';
 
   return (
     <button
       type="button"
       onClick={onSelect}
+      disabled={disabled}
       aria-pressed={selected}
+      title={disabled ? 'Requires the NVIDIA Build inference provider' : template.description}
       className={`flex h-[200px] min-w-[260px] flex-1 flex-col items-start gap-3 overflow-hidden rounded-md border bg-surface-raised p-5 text-left transition focus-visible:border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#76b900] ${stateClasses}`}
     >
       <Flex

@@ -394,3 +394,12 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
 
 export const findTemplate = (id: string): FilesetTemplate | undefined =>
   FILESET_TEMPLATES.find((template) => template.id === id);
+
+/**
+ * Whether a template calls an inference provider. Templates that reference one or more
+ * models (LLM generations, embeddings, judges, …) need the NVIDIA Build provider to run;
+ * pure sampler/expression templates do not. Used to gate cards when no build provider is
+ * configured in the workspace.
+ */
+export const templateRequiresLlm = (template: FilesetTemplate): boolean =>
+  (template.models?.length ?? 0) > 0;

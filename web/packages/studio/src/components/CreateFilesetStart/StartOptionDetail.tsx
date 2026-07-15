@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Divider, Flex, Grid, Stack, Text } from '@nvidia/foundations-react-core';
+import { Banner, Divider, Flex, Grid, Stack, Text } from '@nvidia/foundations-react-core';
 import { TemplateCard } from '@studio/components/CreateFilesetStart/TemplateCard';
-import { FILESET_TEMPLATES } from '@studio/components/CreateFilesetStart/templates';
+import {
+  FILESET_TEMPLATES,
+  templateRequiresLlm,
+} from '@studio/components/CreateFilesetStart/templates';
 import type {
   DetailPoint,
   StartOption,
@@ -11,6 +14,7 @@ import type {
 } from '@studio/components/CreateFilesetStart/types';
 import { Layers, Sparkles, Wand2 } from 'lucide-react';
 import type { FC, ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 
 const SCRATCH_POINTS: DetailPoint[] = [
   {
@@ -63,7 +67,13 @@ export const StartOptionDetail: FC<StartOptionDetailProps> = ({
   option,
   selectedTemplateId,
   onSelectTemplate,
+  llmDisabled,
+  inferenceProvidersHref,
 }) => {
+  // Show the provider error label only when a card is actually disabled by it.
+  const hasDisabledTemplate =
+    option.id === 'template' && llmDisabled && FILESET_TEMPLATES.some(templateRequiresLlm);
+
   const content =
     option.id === 'template' ? (
       <Grid colMinWidth="300px" gap="density-md">
@@ -72,6 +82,7 @@ export const StartOptionDetail: FC<StartOptionDetailProps> = ({
             key={template.id}
             template={template}
             selected={selectedTemplateId === template.id}
+            disabled={llmDisabled && templateRequiresLlm(template)}
             onSelect={() => onSelectTemplate(template.id)}
           />
         ))}
@@ -91,6 +102,16 @@ export const StartOptionDetail: FC<StartOptionDetailProps> = ({
         {option.title}
       </Text>
       {content}
+      {hasDisabledTemplate ? (
+        <Banner status="warning" kind="inline">
+          Templates that generate data with a model are disabled — this workspace has no NVIDIA
+          Build inference provider.{' '}
+          <Link to={inferenceProvidersHref} className="underline">
+            Add the NVIDIA Build provider
+          </Link>{' '}
+          to enable them.
+        </Banner>
+      ) : null}
     </Stack>
   );
 };

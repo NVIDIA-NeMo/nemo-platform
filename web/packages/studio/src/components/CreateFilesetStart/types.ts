@@ -66,6 +66,7 @@ export interface FilesetTemplate {
 export interface TemplateCardProps {
   template: FilesetTemplate;
   selected: boolean;
+  disabled?: boolean;
   onSelect: () => void;
 }
 
@@ -87,6 +88,8 @@ export interface StartOptionDetailProps {
   /** Id of the currently-chosen template, when {@link option} is "template". */
   selectedTemplateId: string | null;
   onSelectTemplate: (templateId: string) => void;
+  llmDisabled: boolean;
+  inferenceProvidersHref: string;
 }
 
 export interface CreateFilesetStartProps {
