@@ -1,0 +1,10 @@
+# Preserve NGC PyTorch + HF stack installed before platform glue.
+# Same pattern as docker/automodel/no_override_requirements.txt: impossible
+# markers block uv from re-resolving these when adding editable platform packages.
+transformers; sys_platform == 'never'
+torch; sys_platform == 'never'
+torchvision; sys_platform == 'never'
+tokenizers; sys_platform == 'never'
+accelerate; sys_platform == 'never'
+safetensors; sys_platform == 'never'
+numpy; sys_platform == 'never'

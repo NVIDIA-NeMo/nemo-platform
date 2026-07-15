@@ -46,7 +46,7 @@ def test_causal_conv1d_importable():
 
 @pytest.mark.smoke_nmp_customizer_tasks
 def test_nmp_customizer_tasks_importable():
-    from nmp.core.models.sidecars.adapters.main import main as lora_sidecar_main  # noqa: F401
+    from nmp.core.models.sidecars.adapters.main import run as lora_sidecar_run  # noqa: F401
     from nmp.core.models.tasks.model_spec import __main__ as model_spec_main  # noqa: F401
     from nmp.customization_common.tasks import file_io  # noqa: F401
     from nmp.customization_common.tasks.file_io import __main__ as file_io_main  # noqa: F401

@@ -53,11 +53,11 @@ docker buildx bake \
 
 The build pulls the NGC PyTorch base, then:
 
-1. `uv pip install unsloth --torch-backend=auto transformers==4.57.6 huggingface-hub==0.36.2` with
+1. `uv pip install unsloth --torch-backend=auto transformers==5.5.0 huggingface-hub==1.5.0` with
    `preserve_base_torch.txt` overrides so the NGC base's PyTorch + CUDA are not
    replaced. Unsloth's resolver still pulls `unsloth_zoo`, trl, peft,
    accelerate, datasets, bitsandbytes, and xformers. **transformers is pinned
-   explicitly** to `4.57.6` (override at build time via
+   explicitly** to `5.5.0` (override at build time via
    `--build-arg TRANSFORMERS_VERSION=...`).
 1b. bitsandbytes — compiled from source against the NGC CUDA 13.1 toolkit
     (PyPI wheels only ship through cuda130), replacing the wheel from step 1.
@@ -314,8 +314,8 @@ nemo files filesets delete qwen-unsloth-smoke-out -w default
   separate ML stack. If you need both backends on the same cluster, run
   both images side by side; jobs from each backend route to their own
   `nmp-{backend}-training` image via env-var overrides.
-- **transformers + huggingface-hub pins** — the training image pins `transformers==4.57.6`
-  and `huggingface-hub==0.36.2` in
+- **transformers + huggingface-hub pins** — the training image pins `transformers==5.5.0`
+  and `huggingface-hub==1.5.0` in
   `docker/Dockerfile.nmp-unsloth-training` (compatible with unsloth's upstream
   blocklists). Other HF deps (trl, peft, bitsandbytes, etc.) still come from
   unsloth's resolver. **PyTorch + CUDA** stay on the NGC base stack via

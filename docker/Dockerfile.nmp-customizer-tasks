@@ -38,20 +38,34 @@ WORKDIR /app
 RUN mkdir -p /home/${USERNAME}/.cache && \
     chown -R ${USER_UID}:${USER_GID} /home/${USERNAME} /app/services/core/models
 
-# Model-spec needs accelerate alongside base transformers; Nemotron/Mamba configs
-# need the prebuilt CUDA wheels (installed --no-deps after sync).
+# HF stack for model_spec + Nemotron configs. preserve_base_torch.txt blocks uv from
+# pulling PyPI torch (same idea as Automodel update_pyproject_pytorch.sh /
+# docker/common/uv-pytorch.toml). TRANSFORMERS_VERSION matches Automodel r0.5.0 pin.
+ARG TRANSFORMERS_VERSION=5.8.1
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
+    --overrides /app/docker/customizer/preserve_base_torch.txt \
+    "transformers==${TRANSFORMERS_VERSION}" \
     "accelerate>=1.0.0"
 
+# Nemotron/Mamba CUDA wheels — compiled against NGC 26.05 torch; install --no-deps
+# after the HF stack so a PyPI torch never lands in the venv first.
 RUN --mount=from=causal-conv1d-wheel-src,target=/tmp/causal-conv1d-wheel-src,readonly \
     --mount=from=mamba-ssm-wheel-src,target=/tmp/mamba-ssm-wheel-src,readonly \
     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache-dir --no-deps \
     /tmp/causal-conv1d-wheel-src/wheels/cu13.2/causal_conv1d-*cp312*.whl \
     /tmp/mamba-ssm-wheel-src/wheels/cu13.2/mamba_ssm-2.3.0-cp312*.whl
 
+# Platform glue — no_override_requirements.txt keeps uv from clobbering NGC torch
+# or re-resolving the HF stack (same pattern as nmp-automodel-training).
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --package nmp-customization-common --package nmp-models --no-dev --inexact
+    uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
+    --overrides /app/docker/customizer/no_override_requirements.txt \
+    -e /app/sdk/python/nemo-platform \
+    -e /app/packages/nemo_platform_plugin \
+    -e /app/packages/nmp_common \
+    -e /app/packages/nmp_customization_common \
+    -e /app/services/core/models
 
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 ENTRYPOINT ["/opt/venv/bin/python"]

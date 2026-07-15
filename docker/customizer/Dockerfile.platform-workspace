@@ -5,6 +5,9 @@
 
 FROM scratch AS platform-workspace
 COPY docker/customizer/pyproject.workspace.toml pyproject.toml
+# uv --overrides files the tasks Dockerfile reads at /app/docker/customizer/.
+COPY docker/customizer/preserve_base_torch.txt docker/customizer/preserve_base_torch.txt
+COPY docker/customizer/no_override_requirements.txt docker/customizer/no_override_requirements.txt
 COPY docs docs
 COPY openapi openapi
 COPY packages/nmp_build_tools packages/nmp_build_tools
