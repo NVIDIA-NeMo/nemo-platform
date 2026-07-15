@@ -33,6 +33,10 @@ platformConfig:
       backends:
         nim_operator:
           enabled: false
+        deployments_plugin:
+          enabled: true
+          k8s_executor: kind-k8s
+          default_executor: kind-k8s
   # Wire a nemo-deployments k8s executor so deployment_mode=k8s agent
   # deployments (test_nemo_agents_k8s.py) run as real Deployment+Service
   # workloads. default_namespace is omitted so the executor uses its own pod

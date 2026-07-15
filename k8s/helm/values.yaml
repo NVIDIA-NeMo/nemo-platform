@@ -344,9 +344,18 @@ basePlatformConfig: |
   models:
     controller:
       backends:
-        nim_operator:
+        deployments_plugin:
           enabled: true
-          files_auth_secret: {{ include "nemo-platform.modelsFilesAuthSecretName" . | quote }}
+          k8s_executor: local-k8s
+          default_executor: local-k8s
+
+  deployments:
+    executors:
+      - name: local-k8s
+        backend: k8s
+        config:
+          default_namespace: {{ .Release.Namespace | quote }}
+    default_executor: local-k8s
 
   # -- inference_gateway is the configuration specific to inference request routing
   inference_gateway: {}

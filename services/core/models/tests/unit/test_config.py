@@ -12,6 +12,7 @@ from nmp.core.models.config import (
     get_default_backends_for_runtime,
     merge_backends,
 )
+from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginBackendConfigModel
 from nmp.core.models.controllers.backends.registry import (
     DockerBackendConfigModel,
     K8sNimOperatorBackendConfigModel,
@@ -54,20 +55,22 @@ def test_config_structure():
 
 
 def test_get_default_backends_for_docker_runtime():
-    """Test that docker backend is selected and enabled for DOCKER runtime."""
+    """Test that deployments_plugin backend is selected and enabled for DOCKER runtime."""
     backends = get_default_backends_for_runtime(Runtime.DOCKER)
-    assert "docker" in backends
-    assert isinstance(backends["docker"], DockerBackendConfigModel)
-    assert backends["docker"].enabled is True
+    assert "deployments_plugin" in backends
+    assert isinstance(backends["deployments_plugin"], DeploymentsPluginBackendConfigModel)
+    assert backends["deployments_plugin"].enabled is True
+    assert "docker" not in backends
     assert "nim_operator" not in backends
 
 
 def test_get_default_backends_for_kubernetes_runtime():
-    """Test that nim_operator backend is selected and enabled for KUBERNETES runtime."""
+    """Test that deployments_plugin backend is selected and enabled for KUBERNETES runtime."""
     backends = get_default_backends_for_runtime(Runtime.KUBERNETES)
-    assert "nim_operator" in backends
-    assert isinstance(backends["nim_operator"], K8sNimOperatorBackendConfigModel)
-    assert backends["nim_operator"].enabled is True
+    assert "deployments_plugin" in backends
+    assert isinstance(backends["deployments_plugin"], DeploymentsPluginBackendConfigModel)
+    assert backends["deployments_plugin"].enabled is True
+    assert "nim_operator" not in backends
     assert "docker" not in backends
 
 

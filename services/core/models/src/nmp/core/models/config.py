@@ -191,9 +191,17 @@ def get_default_backends_for_runtime(runtime: Runtime) -> dict[BackendName, Back
     # Default backend for each runtime is enabled so that a minimal platform config
     # (e.g. only platform.runtime: "docker") works without requiring models.controller.backends
     if runtime == Runtime.DOCKER:
-        backends["docker"] = DockerBackendConfigModel(enabled=True)
+        backends["deployments_plugin"] = DeploymentsPluginBackendConfigModel(
+            enabled=True,
+            docker_executor="local-docker",
+            default_executor="local-docker",
+        )
     elif runtime == Runtime.KUBERNETES:
-        backends["nim_operator"] = K8sNimOperatorBackendConfigModel(enabled=True)
+        backends["deployments_plugin"] = DeploymentsPluginBackendConfigModel(
+            enabled=True,
+            k8s_executor="local-k8s",
+            default_executor="local-k8s",
+        )
     elif runtime == Runtime.NONE:
         backends["none"] = NoneBackendConfigModel(enabled=True)
     if not backends:
