@@ -13,14 +13,24 @@ class InsightsFileError(ValueError):
     """A shared Insights file is unreadable or structurally invalid."""
 
 
-def load_insights_document(path: Path) -> dict[str, Any]:
-    """Read and validate one existing UTF-8 Insights YAML document."""
+def _read_and_validate(path: Path) -> dict[str, Any]:
+    """Read, parse, and shape-check one Insights YAML document.
+
+    The read is the single existence boundary: a missing file surfaces as a
+    bare ``FileNotFoundError`` (not wrapped) so callers can each decide
+    whether that counts as absent input or a hard error, without a separate
+    ``stat()`` racing the actual read.
+    """
     try:
-        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raise
     except UnicodeError as exc:
         raise InsightsFileError(f"insights file {path} is not valid UTF-8: {exc}") from None
     except OSError as exc:
-        raise InsightsFileError(f"insights file {path} is not readable as UTF-8: {exc}") from None
+        raise InsightsFileError(f"insights file {path} could not be read: {exc}") from None
+    try:
+        payload = yaml.safe_load(text)
     except yaml.YAMLError as exc:
         detail = " ".join(str(exc).split())
         raise InsightsFileError(f"insights file {path} must contain valid YAML: {detail}") from None
@@ -36,14 +46,19 @@ def load_insights_document(path: Path) -> dict[str, Any]:
     return dict(payload)
 
 
+def load_insights_document(path: Path) -> dict[str, Any]:
+    """Read and validate one existing UTF-8 Insights YAML document."""
+    try:
+        return _read_and_validate(path)
+    except FileNotFoundError as exc:
+        raise InsightsFileError(f"insights file {path} could not be read: {exc}") from None
+
+
 def validate_insights_file(path: Path | None) -> None:
     """Validate an existing file; allow absent optional output files."""
     if path is None:
         return
     try:
-        path.stat()
+        _read_and_validate(path)
     except FileNotFoundError:
         return
-    except OSError as exc:
-        raise InsightsFileError(f"insights file {path} is not readable as UTF-8: {exc}") from None
-    load_insights_document(path)
