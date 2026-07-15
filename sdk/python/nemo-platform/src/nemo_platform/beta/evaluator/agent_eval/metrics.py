@@ -16,13 +16,22 @@ Two complementary pieces, both keyed off ``AgentEvalTrial``:
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Mapping
 from typing import Any
 
 from nemo_platform.beta.evaluator.agent_eval.trials import EVIDENCE_FINAL_STATE
-from nemo_platform.beta.evaluator.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
-from pydantic import BaseModel, ConfigDict
+from nemo_platform.beta.evaluator.metrics.protocol import (
+    CandidateOutput,
+    MetricInput,
+    MetricOutput,
+    MetricOutputSpec,
+    MetricResult,
+)
+from nemo_platform.beta.evaluator.values.atif import Trajectory
+from nemo_platform.beta.evaluator.values.evidence import EVIDENCE_TRACE
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +114,75 @@ class EvidencePresenceMetric:
         return MetricResult(outputs=[MetricOutput(name=self._output_name, value=present)])
 
 
+class SkillUsedMetric:
+    """Emit ``skill_present`` and ``skill_used`` so an eval can flag a failure to use an injected skill.
+
+    * ``skill_present`` — ``True`` when a skill was injected into the trial. Reads the provenance a
+      skill-aware runtime stamps onto candidate metadata under the ``"skill"`` key
+      (``{"name", "hash", "mode", "adapter_id", "location", ...}``, see ``fabric.skills.SkillProvenance``);
+      baseline trials carry none.
+    * ``skill_used`` — best-effort ``True`` when the agent referenced the injected skill in its ATIF
+      trajectory. It matches the skill's staged ``location`` (a specific, low-false-positive path
+      signal — e.g. a read of ``.agents/skills/<name>/SKILL.md``) against tool-call names/arguments,
+      step messages, reasoning, and observations. A bare skill-*name* match is intentionally NOT
+      counted (the name commonly appears in the task prompt), so ``skill_present=True, skill_used=False``
+      flags a *likely* failure to use the skill.
+
+    Limitation: an absent trajectory reference cannot fully distinguish "not used" from "used without
+    leaving a filesystem trace" — strongest for codex-style filesystem discovery, weaker for in-context
+    skill loading. Authoritative usage detection via harness skill-activation events is a follow-up.
+    With no skill present, both outputs are ``False``.
+    """
+
+    metric_type: str = "skill_used"
+    OUTPUT_PRESENT: str = "skill_present"
+    OUTPUT_USED: str = "skill_used"
+    # Metadata key skill-aware runtimes stamp the provenance under (matches the fabric runtime).
+    _METADATA_KEY: str = "skill"
+
+    def __init__(self, *, trace_evidence: str = EVIDENCE_TRACE) -> None:
+        self._trace_evidence = trace_evidence
+
+    @property
+    def type(self) -> str:
+        return self.metric_type
+
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [
+            MetricOutputSpec.boolean(self.OUTPUT_PRESENT),
+            MetricOutputSpec.boolean(self.OUTPUT_USED),
+        ]
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        provenance = input.candidate.metadata.get(self._METADATA_KEY)
+        present = isinstance(provenance, Mapping) and bool(provenance)
+        used = await self._skill_used(input.candidate, provenance) if present else False
+        return MetricResult(
+            outputs=[
+                MetricOutput(name=self.OUTPUT_PRESENT, value=present),
+                MetricOutput(name=self.OUTPUT_USED, value=used),
+            ]
+        )
+
+    async def _skill_used(self, candidate: CandidateOutput, provenance: Mapping[str, Any]) -> bool:
+        location = provenance.get("location")
+        if not isinstance(location, str) or not location:
+            return False
+        evidence = candidate.evidence
+        if evidence is None or evidence.get(self._trace_evidence) is None:
+            return False
+        try:
+            trajectory = await (await evidence.trace(self._trace_evidence)).trace()
+        except (KeyError, ValueError, ValidationError, OSError) as exc:
+            # Best-effort: a missing/malformed/invalid trajectory must score skill_used=False, not raise.
+            # ValidationError covers Trajectory.model_validate; OSError covers the underlying file read.
+            logger.warning(
+                "SkillUsedMetric scored skill_used=False: could not read trace %r: %s", self._trace_evidence, exc
+            )
+            return False
+        return _trajectory_references(trajectory, location)
+
+
 class TrialMeasurements(BaseModel):
     """Numeric measurements projected from trial metadata.
 
@@ -144,6 +222,26 @@ class TrialMeasurements(BaseModel):
             reward=_reward(metadata, passed),
             passed=passed,
         )
+
+
+def _trajectory_references(trajectory: Trajectory, needle: str) -> bool:
+    """Whether ``needle`` appears anywhere an agent action could reference the skill.
+
+    Scans each step's message, reasoning, tool calls (name + arguments), and observation results.
+    """
+    for step in trajectory.steps:
+        if needle in step.message or (step.reasoning_content is not None and needle in step.reasoning_content):
+            return True
+        for call in step.tool_calls or []:
+            if needle in call.function_name:
+                return True
+            if call.arguments is not None and needle in json.dumps(call.arguments, default=str):
+                return True
+        if step.observation is not None:
+            for result in step.observation.results:
+                if result.content is not None and needle in json.dumps(result.content, default=str):
+                    return True
+    return False
 
 
 def _as_int(value: Any) -> int | None:

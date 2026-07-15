@@ -11,9 +11,10 @@ import httpx
 import pytest
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.endpoint import get
+from nemo_platform_plugin.client.errors import NemoResponseValidationError
 from nemo_platform_plugin.client.method import method
 from nemo_platform_plugin.client.response import AsyncNemoPaginatedResponse, NemoPaginatedResponse
-from nemo_platform_plugin.client.types import OffsetPagination, Paginated, RetryPolicy
+from nemo_platform_plugin.client.types import CursorPagination, OffsetPagination, Paginated, RetryPolicy
 from pydantic import BaseModel
 
 BASE = "http://test:8000"
@@ -101,10 +102,11 @@ class TestPaginatedSync:
         page = resp.page()
         assert len(page.items) == 1
         assert page.items[0].name == "a"
-        assert page.page == 1
-        assert page.total_pages == 5
-        assert page.total_results == 10
-        assert page.page_size == 2
+        assert page.metadata["page"] == 1
+        assert page.metadata["total_pages"] == 5
+        assert page.metadata["total_results"] == 10
+        assert page.metadata["page_size"] == 2
+        assert page.metadata["current_page_size"] == 1
         # No additional requests for data()
         assert mock_http.request.call_count == 1
 
@@ -119,8 +121,8 @@ class TestPaginatedSync:
         items = list(resp.items())
         assert items == []
 
-    def test_no_pagination_metadata(self) -> None:
-        """When pagination is None, treat as single page."""
+    @pytest.mark.parametrize("iteration", ["page", "items", "pages"])
+    def test_missing_pagination_metadata_is_invalid(self, iteration: str) -> None:
         mock_http = MagicMock(spec=httpx.Client)
         mock_http.request.return_value = httpx.Response(
             200,
@@ -131,9 +133,26 @@ class TestPaginatedSync:
         client = NemoClient(base_url=BASE, workspace="default", http_client=mock_http)
         resp = client.send(LIST_ITEMS())
 
-        items = list(resp.items())
-        assert len(items) == 1
-        assert mock_http.request.call_count == 1
+        with pytest.raises(NemoResponseValidationError):
+            if iteration == "page":
+                resp.page()
+            elif iteration == "items":
+                list(resp.items())
+            else:
+                list(resp.pages())
+
+    def test_partial_pagination_metadata_is_invalid(self) -> None:
+        mock_http = MagicMock(spec=httpx.Client)
+        mock_http.request.return_value = httpx.Response(
+            200,
+            request=httpx.Request("GET", f"{BASE}/apis/test/v2/workspaces/default/items"),
+            json={"data": [{"id": 1, "name": "a"}], "pagination": {"page": 1}},
+        )
+
+        resp = NemoClient(base_url=BASE, workspace="default", http_client=mock_http).send(LIST_ITEMS())
+
+        with pytest.raises(NemoResponseValidationError):
+            resp.page()
 
     def test_page_query_param_passed_on_subsequent_pages(self) -> None:
         """Subsequent page fetches should include page=N in query params."""
@@ -150,6 +169,25 @@ class TestPaginatedSync:
         # Second call should have page=2 in params
         second_call_params = mock_http.request.call_args_list[1][1]["params"]
         assert second_call_params["page"] == 2
+
+    @pytest.mark.parametrize("iteration", ["items", "pages"])
+    def test_iteration_continues_after_response_page(self, iteration: str) -> None:
+        """A request beginning after page one must not fetch that page again."""
+        mock_http = MagicMock(spec=httpx.Client)
+        mock_http.request.side_effect = [
+            _page_response([{"id": 3, "name": "c"}], page=2, total_pages=3),
+            _page_response([{"id": 4, "name": "d"}], page=3, total_pages=3),
+        ]
+        response = NemoClient(base_url=BASE, workspace="default", http_client=mock_http).send(LIST_ITEMS())
+
+        if iteration == "items":
+            names = [item.name for item in response.items()]
+        else:
+            names = [item.name for page in response.pages() for item in page.items]
+
+        assert names == ["c", "d"]
+        assert mock_http.request.call_count == 2
+        assert mock_http.request.call_args_list[1].kwargs["params"]["page"] == 3
 
 
 # ---------------------------------------------------------------------------
@@ -213,9 +251,28 @@ class TestPaginatedAsync:
 
         page = resp.page()
         assert len(page.items) == 1
-        assert page.page == 1
-        assert page.total_pages == 3
+        assert page.metadata["page"] == 1
+        assert page.metadata["total_pages"] == 3
         assert mock_http.request.call_count == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("iteration", ["items", "pages"])
+    async def test_async_iteration_continues_after_response_page(self, iteration: str) -> None:
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.request.side_effect = [
+            _page_response([{"id": 3, "name": "c"}], page=2, total_pages=3),
+            _page_response([{"id": 4, "name": "d"}], page=3, total_pages=3),
+        ]
+        response = await AsyncNemoClient(base_url=BASE, workspace="default", http_client=mock_http).send(LIST_ITEMS())
+
+        if iteration == "items":
+            names = [item.name async for item in response.items()]
+        else:
+            names = [item.name async for page in response.pages() for item in page.items]
+
+        assert names == ["c", "d"]
+        assert mock_http.request.call_count == 2
+        assert mock_http.request.call_args_list[1].kwargs["params"]["page"] == 3
 
 
 # ---------------------------------------------------------------------------
@@ -337,3 +394,88 @@ class TestCustomStrategy:
         second_call_params = mock_http.request.call_args_list[1][1]["params"]
         assert "offset" in second_call_params
         assert second_call_params["offset"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Cursor pagination
+# ---------------------------------------------------------------------------
+
+
+@get("/apis/test/v2/workspaces/{workspace}/logs")
+def LIST_LOGS(
+    *, workspace: str | None = None, query_params: dict[str, str | int] | None = None
+) -> Paginated[Item, CursorPagination]:
+    raise NotImplementedError
+
+
+def _cursor_response(
+    items: list[dict], *, total: int, next_page: str | None, prev_page: str | None = None
+) -> httpx.Response:
+    return httpx.Response(
+        200,
+        request=httpx.Request("GET", f"{BASE}/apis/test/v2/workspaces/default/logs"),
+        json={
+            "data": items,
+            "total": total,
+            "next_page": next_page,
+            "prev_page": prev_page,
+        },
+    )
+
+
+class TestCursorPagination:
+    def test_page_exposes_typed_cursor_metadata(self) -> None:
+        mock_http = MagicMock(spec=httpx.Client)
+        mock_http.request.return_value = _cursor_response([{"id": 1, "name": "a"}], total=2, next_page="cursor-2")
+
+        page = NemoClient(base_url=BASE, workspace="default", http_client=mock_http).send(LIST_LOGS()).page()
+
+        assert [item.name for item in page.items] == ["a"]
+        assert page.metadata == {"total": 2, "next_page": "cursor-2", "prev_page": None}
+
+    def test_items_follow_cursors_and_preserve_filters(self) -> None:
+        mock_http = MagicMock(spec=httpx.Client)
+        mock_http.request.side_effect = [
+            _cursor_response([{"id": 1, "name": "a"}], total=2, next_page="cursor-2"),
+            _cursor_response([{"id": 2, "name": "b"}], total=2, next_page=None, prev_page="cursor-1"),
+        ]
+        response = NemoClient(base_url=BASE, workspace="default", http_client=mock_http).send(
+            LIST_LOGS(query_params={"limit": 1, "attempt_id": 3})
+        )
+
+        assert [item.name for item in response.items()] == ["a", "b"]
+        assert mock_http.request.call_count == 2
+        assert mock_http.request.call_args_list[1].kwargs["params"] == {
+            "limit": 1,
+            "attempt_id": 3,
+            "page_cursor": "cursor-2",
+        }
+
+    def test_pages_follow_cursors_from_explicit_start(self) -> None:
+        mock_http = MagicMock(spec=httpx.Client)
+        mock_http.request.side_effect = [
+            _cursor_response([{"id": 2, "name": "b"}], total=3, next_page="cursor-3", prev_page="cursor-1"),
+            _cursor_response([{"id": 3, "name": "c"}], total=3, next_page=None, prev_page="cursor-2"),
+        ]
+        response = NemoClient(base_url=BASE, workspace="default", http_client=mock_http).send(
+            LIST_LOGS(query_params={"page_cursor": "cursor-2"})
+        )
+
+        pages = list(response.pages())
+
+        assert [[item.name for item in page.items] for page in pages] == [["b"], ["c"]]
+        assert pages[0].metadata["prev_page"] == "cursor-1"
+        assert pages[1].metadata["next_page"] is None
+        assert mock_http.request.call_args_list[1].kwargs["params"]["page_cursor"] == "cursor-3"
+
+    @pytest.mark.asyncio
+    async def test_async_items_follow_cursors(self) -> None:
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.request.side_effect = [
+            _cursor_response([{"id": 1, "name": "a"}], total=2, next_page="cursor-2"),
+            _cursor_response([{"id": 2, "name": "b"}], total=2, next_page=None, prev_page="cursor-1"),
+        ]
+        response = await AsyncNemoClient(base_url=BASE, workspace="default", http_client=mock_http).send(LIST_LOGS())
+
+        assert [item.name async for item in response.items()] == ["a", "b"]
+        assert mock_http.request.call_args_list[1].kwargs["params"]["page_cursor"] == "cursor-2"

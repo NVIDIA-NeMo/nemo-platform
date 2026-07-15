@@ -5,11 +5,15 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote
 
 import httpx
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import AsyncJobsClient, JobsClient
+from nemo_platform_plugin.jobs.schemas import PlatformJobLogPage
+from nemo_platform_plugin.jobs.types import JobLogsQueryParams
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
 from nemo_safe_synthesizer_plugin.sdk import http_utils
 
@@ -80,11 +84,27 @@ class SafeSynthesizerJobsResource:
 
     def get_status(self, name: str, *, workspace: str | None = None) -> Any:
         """Retrieve Safe Synthesizer job status."""
-        return self._platform.jobs.get_status(name, workspace=workspace)
+        return client_from_platform(self._platform, JobsClient).get_job_status(name=name, workspace=workspace).data()
 
-    def get_logs(self, name: str, *, workspace: str | None = None, **kwargs: Any) -> Any:
+    def get_logs(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        **params: Any,
+    ) -> Any:
         """Retrieve paginated Safe Synthesizer job logs from the Jobs service."""
-        return self._platform.jobs.get_logs(name, workspace=workspace, **kwargs)
+        query_params = {key: value for key, value in params.items() if value is not None}
+        page = (
+            client_from_platform(self._platform, JobsClient)
+            .list_job_logs(
+                name=name,
+                workspace=workspace,
+                query_params=cast(JobLogsQueryParams, query_params) or None,
+            )
+            .page()
+        )
+        return PlatformJobLogPage(data=page.items, **page.metadata)
 
 
 class SafeSynthesizerResource:
@@ -161,11 +181,25 @@ class AsyncSafeSynthesizerJobsResource:
 
     async def get_status(self, name: str, *, workspace: str | None = None) -> Any:
         """Retrieve Safe Synthesizer job status."""
-        return await self._platform.jobs.get_status(name, workspace=workspace)
+        jobs = client_from_platform(self._platform, AsyncJobsClient)
+        return (await jobs.get_job_status(name=name, workspace=workspace)).data()
 
-    async def get_logs(self, name: str, *, workspace: str | None = None, **kwargs: Any) -> Any:
+    async def get_logs(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        **params: Any,
+    ) -> Any:
         """Retrieve paginated Safe Synthesizer job logs from the Jobs service."""
-        return await self._platform.jobs.get_logs(name, workspace=workspace, **kwargs)
+        query_params = {key: value for key, value in params.items() if value is not None}
+        response = await client_from_platform(self._platform, AsyncJobsClient).list_job_logs(
+            name=name,
+            workspace=workspace,
+            query_params=cast(JobLogsQueryParams, query_params) or None,
+        )
+        page = response.page()
+        return PlatformJobLogPage(data=page.items, **page.metadata)
 
 
 class AsyncSafeSynthesizerResource:

@@ -5,13 +5,17 @@ import logging
 import threading
 import time
 import traceback
-from typing import TypedDict, cast, get_args
+from typing import cast
 
-import nemo_platform
-from nemo_platform import APIStatusError, NeMoPlatform
-from nemo_platform.types import PlatformJobStatus as SDKPlatformJobStatus
-from nemo_platform.types.jobs import PlatformJobStepWithContext
-from nemo_platform.types.jobs.platform_job_steps_list_filter_param import PlatformJobStepsListFilterParam
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NemoClientError, NemoHTTPError
+from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.types import (
+    ListStepsQueryParams,
+    PlatformJobStatusUpdateRequest,
+    PlatformJobStepWithContext,
+)
 from nmp.common.controller import Controller
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.common.observability import start_span_with_ctx
@@ -28,18 +32,6 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_PROFILE = "default"
 DEFAULT_PROVIDER = "cpu"
-SDK_PLATFORM_JOB_STATUSES = frozenset(get_args(SDKPlatformJobStatus))
-
-
-class StepStatusDetailParams(TypedDict, total=False):
-    status_details: dict[str, object]
-    error_details: dict[str, object]
-
-
-def as_sdk_platform_job_status(status: str) -> SDKPlatformJobStatus:
-    if status not in SDK_PLATFORM_JOB_STATUSES:
-        raise ValueError(f"Unsupported platform job status: {status}")
-    return cast(SDKPlatformJobStatus, status)
 
 
 class JobScheduler(Controller):
@@ -51,6 +43,10 @@ class JobScheduler(Controller):
     ) -> None:
         self._backend_registry = backend_registry
         self._nmp_sdk = nmp_sdk
+        # Typed Jobs client sharing the SDK's transport; every call passes
+        # ``workspace=`` explicitly (incl. cross-workspace "-"), so the client's
+        # default workspace is never relied upon.
+        self._jobs = client_from_platform(nmp_sdk, JobsClient)
         self._stop_signal = stop_signal
         self._is_healthy = False
         self._logger = logger
@@ -80,7 +76,7 @@ class JobScheduler(Controller):
             try:
                 steps = self.get_steps_for_scheduling()
                 self._is_healthy = True
-            except nemo_platform.APIError:
+            except NemoClientError:
                 self._is_healthy = False
                 logger.exception("Could not fetch job steps for scheduling", exc_info=True)
                 return
@@ -118,7 +114,7 @@ class JobScheduler(Controller):
                             status_details=update.status_details,
                             error_details=update.error_details,
                         )
-                    except APIStatusError as e:
+                    except NemoHTTPError as e:
                         # Stopgap for a scheduler/reconciler race: by the time the scheduler persists
                         # CREATED -> PENDING, another controller pass may already have advanced the
                         # step to ACTIVE (or later). In that case, treating the stale PENDING write
@@ -151,7 +147,7 @@ class JobScheduler(Controller):
                     self._update_step_status_with_timing(
                         step=step,
                         phase="resource_allocation_error",
-                        status=PlatformJobStatus.ERROR.value,
+                        status=PlatformJobStatus.ERROR,
                         status_details={"message": e.message},
                         error_details={"message": e.message},
                     )
@@ -177,7 +173,7 @@ class JobScheduler(Controller):
                     self._update_step_status_with_timing(
                         step=step,
                         phase="unexpected_error",
-                        status=PlatformJobStatus.ERROR.value,
+                        status=PlatformJobStatus.ERROR,
                         status_details={"message": str(e)},
                         error_details={"message": str(e), "error": traceback.format_exc()},
                     )
@@ -187,24 +183,23 @@ class JobScheduler(Controller):
         *,
         step: PlatformJobStepWithContext,
         phase: str,
-        status: str,
+        status: PlatformJobStatus,
         status_details: dict[str, object] | None = None,
         error_details: dict[str, object] | None = None,
     ):
         started_at = time.monotonic()
-        detail_params: StepStatusDetailParams = {}
+        update_fields: dict = {"status": status}
         if status_details is not None:
-            detail_params["status_details"] = status_details
+            update_fields["status_details"] = status_details
         if error_details is not None:
-            detail_params["error_details"] = error_details
+            update_fields["error_details"] = error_details
         try:
-            response = self._nmp_sdk.jobs.steps.update_status(
-                step.name,
+            response = self._jobs.update_job_step_status(
+                name=step.name,
                 workspace=step.workspace,
                 job=step.job,
-                status=as_sdk_platform_job_status(status),
-                **detail_params,
-            )
+                body=PlatformJobStatusUpdateRequest(**update_fields),
+            ).data()
         except Exception:
             logger.warning(
                 "Scheduler step status update failed",
@@ -238,17 +233,22 @@ class JobScheduler(Controller):
         Return the oldest set of steps to schedule. We using the
         set of pending steps as our queue for what to schedule next.
         """
-        # Iterate through all pages to get all steps
+        # The steps-list route parses ``filter`` as a deepObject query param, so
+        # the status list is sent as ``filter[status]=created,resuming`` (comma
+        # form), which the server splits back into a list.
         steps = []
-        filter_params: PlatformJobStepsListFilterParam = {
-            "status": [PlatformJobStatus.CREATED.value, PlatformJobStatus.RESUMING.value]
-        }
-        for step in self._nmp_sdk.jobs.steps.list(
+        query = cast(
+            ListStepsQueryParams,
+            {
+                "filter[status]": f"{PlatformJobStatus.CREATED.value},{PlatformJobStatus.RESUMING.value}",
+                "sort": "created_at",
+            },
+        )
+        for step in self._jobs.list_steps(
             name="-",  # Use "-" to indicate all jobs
             workspace="-",  # Cross-workspace query
-            filter=filter_params,
-            sort="created_at",
-        ):
+            query_params=query,
+        ).items():
             steps.append(step)
         return steps
 
@@ -268,16 +268,16 @@ class JobScheduler(Controller):
         self,
         step: PlatformJobStepWithContext,
         update: JobUpdate,
-        error: APIStatusError,
+        error: NemoHTTPError,
     ) -> bool:
-        if error.status_code != 409 or update.status != PlatformJobStatus.PENDING.value:
+        if error.status_code != 409 or update.status != PlatformJobStatus.PENDING:
             return False
 
-        current_step = self._nmp_sdk.jobs.steps.retrieve(
-            step.name,
+        current_step = self._jobs.get_job_step(
+            name=step.name,
             workspace=step.workspace,
             job=step.job,
-        )
+        ).data()
         original_status = PlatformJobStatus(step.status)
         current_status = PlatformJobStatus(current_step.status)
         return current_status != original_status and original_status.can_transition_to(current_status)

@@ -21,9 +21,11 @@ import copy
 import inspect
 import json
 import time
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Iterator, Mapping
+from contextlib import asynccontextmanager, contextmanager
+from functools import cache
 from pathlib import Path
-from typing import Any, Self, TypeVar, get_args, get_origin, overload
+from typing import Any, Self, TypeVar, cast, get_args, get_origin, overload
 from urllib.parse import quote
 
 import httpx
@@ -31,7 +33,11 @@ from nemo_platform_plugin.client.auth import (
     StaticToken,
     TokenProvider,
 )
-from nemo_platform_plugin.client.errors import raise_for_status
+from nemo_platform_plugin.client.errors import (
+    NemoResponseValidationError,
+    NemoTransportError,
+    raise_for_status,
+)
 from nemo_platform_plugin.client.response import (
     AsyncNemoBinaryResponse,
     AsyncNemoPaginatedResponse,
@@ -51,31 +57,57 @@ from nemo_platform_plugin.client.types import (
     PreparedRequest,
     ResponseT,
     RetryPolicy,
+    StrategyT,
     Stream,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 DEFAULT_TIMEOUT = 60.0
 
 
-def _get_stream_model_type(response_type: type) -> type[BaseModel]:
+@cache
+def _type_adapter(response_type: type[ResponseT]) -> TypeAdapter[ResponseT]:
+    """Build each response annotation's validation schema once."""
+    return TypeAdapter(response_type)
+
+
+def _parse_json_body(response_type: type[ResponseT], data: object) -> ResponseT:
+    """Parse a decoded JSON body against an endpoint's return annotation.
+
+    ``TypeAdapter`` handles both model classes and arbitrary annotations such as
+    ``list[Profile]`` while preserving the annotation's type for callers.
+    """
+    return _type_adapter(response_type).validate_python(data)
+
+
+def _parse_response_body(response_type: type[ResponseT], response: httpx.Response) -> ResponseT:
+    """Decode and validate a response, normalizing contract failures."""
+    try:
+        return _parse_json_body(response_type, response.json())
+    except (ValueError, ValidationError) as exc:
+        raise NemoResponseValidationError(response, exc) from exc
+
+
+def _get_stream_model_type(response_type: type[Stream[ModelT]]) -> type[ModelT]:
     """Extract the ModelT from a Stream[ModelT] generic alias."""
     args = get_args(response_type)
     if not args:
         raise TypeError(f"Stream response type must be parameterized, got {response_type}")
-    return args[0]
+    return cast(type[ModelT], args[0])
 
 
-def _get_paginated_types(response_type: type) -> tuple[type[BaseModel], type]:
+def _get_paginated_types(
+    response_type: type[Paginated[ModelT, StrategyT]],
+) -> tuple[type[ModelT], type[StrategyT]]:
     """Extract (ModelT, StrategyT) from a Paginated[ModelT, StrategyT] generic alias."""
     args = get_args(response_type)
     if not args:
         raise TypeError(f"Paginated response type must be parameterized, got {response_type}")
     model_type = args[0]
     strategy_type = args[1] if len(args) > 1 else OffsetPagination
-    return model_type, strategy_type
+    return cast(type[ModelT], model_type), cast(type[StrategyT], strategy_type)
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +179,7 @@ class BaseNemoClient:
         self._auth: TokenProvider | None = StaticToken(auth) if isinstance(auth, str) else auth
         self._retry = retry
         self._default_headers = dict(default_headers) if default_headers else {}
-        self._timeout: float | None = None
+        self._timeout: float | httpx.Timeout | None = None
 
     @property
     def base_url(self) -> str:
@@ -209,7 +241,7 @@ class BaseNemoClient:
         *,
         headers: Mapping[str, str] | None = None,
         retry: RetryPolicy | None = None,
-        timeout: float | None = None,
+        timeout: float | httpx.Timeout | None = None,
     ) -> Self:
         """Return a copy of this client with the given options merged in.
 
@@ -305,11 +337,11 @@ class NemoClient(BaseNemoClient):
     @overload
     def send(
         self,
-        request: PreparedRequest[Paginated[ModelT, Any]],
+        request: PreparedRequest[Paginated[ModelT, StrategyT]],
         *,
         headers: dict[str, str] | None = None,
         retry: RetryPolicy | None = None,
-    ) -> NemoPaginatedResponse[ModelT]: ...
+    ) -> NemoPaginatedResponse[ModelT, StrategyT]: ...
     @overload
     def send(
         self,
@@ -381,16 +413,12 @@ class NemoClient(BaseNemoClient):
         resolved_retry = self._resolve_retry(retry)
 
         if self._is_binary(request):
-            stream_ctx = self._http.stream(
-                request.method, url, content=request.content, headers=req_headers, params=params
-            )
+            stream_ctx = self._stream_with_retry(request, url, req_headers, params, resolved_retry)
             return NemoBinaryResponse(stream_ctx, request)
 
         if self._is_stream(request):
             assert request.response_type is not None
-            stream_ctx = self._http.stream(
-                request.method, url, content=request.content, headers=req_headers, params=params
-            )
+            stream_ctx = self._stream_with_retry(request, url, req_headers, params, resolved_retry)
             model_type = _get_stream_model_type(request.response_type)
             return NemoStreamResponse(stream_ctx, model_type, request)
 
@@ -409,7 +437,7 @@ class NemoClient(BaseNemoClient):
         raise_for_status(raw)
         body = None
         if request.response_type is not None:
-            body = request.response_type.model_validate(raw.json())
+            body = _parse_response_body(request.response_type, raw)
         return NemoResponse(http_response=raw, body=body, request=request)
 
     def _request_with_retry(
@@ -433,7 +461,7 @@ class NemoClient(BaseNemoClient):
                 if backoff is not None:
                     time.sleep(backoff)
                     continue
-                raise
+                raise NemoTransportError(exc) from exc
             if retry:
                 backoff = _should_retry(raw, None, attempt, retry)
                 if backoff is not None:
@@ -445,12 +473,45 @@ class NemoClient(BaseNemoClient):
         assert last_response is not None
         return last_response
 
+    @contextmanager
+    def _stream_with_retry(
+        self,
+        request: PreparedRequest,
+        url: str,
+        headers: dict[str, str] | None,
+        params: dict | None,
+        retry: RetryPolicy | None,
+    ) -> Iterator[httpx.Response]:
+        """Open a stream, retrying failures before handing it to the caller."""
+        for attempt in range(retry.max_retries + 1 if retry else 1):
+            yielded = False
+            try:
+                kwargs: dict = {"content": request.content, "headers": headers, "params": params}
+                if self._timeout is not None:
+                    kwargs["timeout"] = self._timeout
+                with self._http.stream(request.method, url, **kwargs) as raw:
+                    backoff = _should_retry(raw, None, attempt, retry) if retry else None
+                    if backoff is not None:
+                        time.sleep(backoff)
+                        continue
+                    yielded = True
+                    yield raw
+                    return
+            except httpx.TransportError as exc:
+                if yielded:
+                    raise NemoTransportError(exc) from exc
+                backoff = _should_retry(None, exc, attempt, retry) if retry else None
+                if backoff is not None:
+                    time.sleep(backoff)
+                    continue
+                raise NemoTransportError(exc) from exc
+
     def _make_page_fetcher(
-        self, strategy: type[PaginationStrategy], retry: RetryPolicy | None = None
+        self, strategy: type[PaginationStrategy[Any, Any]], retry: RetryPolicy | None = None
     ) -> SyncPageFetcher:
         """Create a page-fetching callback bound to this client and strategy."""
 
-        def fetch(request: PreparedRequest, page: int | str) -> httpx.Response:
+        def fetch(request: PreparedRequest, page: Any) -> httpx.Response:
             url = self._resolve_path(request)
             req_headers = self._request_headers(request)
             existing_params = self._resolve_query_params(request) or {}
@@ -517,11 +578,11 @@ class AsyncNemoClient(BaseNemoClient):
     @overload
     async def send(
         self,
-        request: PreparedRequest[Paginated[ModelT, Any]],
+        request: PreparedRequest[Paginated[ModelT, StrategyT]],
         *,
         headers: dict[str, str] | None = None,
         retry: RetryPolicy | None = None,
-    ) -> AsyncNemoPaginatedResponse[ModelT]: ...
+    ) -> AsyncNemoPaginatedResponse[ModelT, StrategyT]: ...
     @overload
     async def send(
         self,
@@ -585,16 +646,12 @@ class AsyncNemoClient(BaseNemoClient):
         resolved_retry = self._resolve_retry(retry)
 
         if self._is_binary(request):
-            stream_ctx = self._http.stream(
-                request.method, url, content=request.content, headers=req_headers, params=params
-            )
+            stream_ctx = self._stream_with_retry(request, url, req_headers, params, resolved_retry)
             return AsyncNemoBinaryResponse(stream_ctx, request)
 
         if self._is_stream(request):
             assert request.response_type is not None
-            stream_ctx = self._http.stream(
-                request.method, url, content=request.content, headers=req_headers, params=params
-            )
+            stream_ctx = self._stream_with_retry(request, url, req_headers, params, resolved_retry)
             model_type = _get_stream_model_type(request.response_type)
             return AsyncNemoStreamResponse(stream_ctx, model_type, request)
 
@@ -613,7 +670,7 @@ class AsyncNemoClient(BaseNemoClient):
         raise_for_status(raw)
         body = None
         if request.response_type is not None:
-            body = request.response_type.model_validate(raw.json())
+            body = _parse_response_body(request.response_type, raw)
         return NemoResponse(http_response=raw, body=body, request=request)
 
     async def _request_with_retry(
@@ -637,7 +694,7 @@ class AsyncNemoClient(BaseNemoClient):
                 if backoff is not None:
                     await asyncio.sleep(backoff)
                     continue
-                raise
+                raise NemoTransportError(exc) from exc
             if retry:
                 backoff = _should_retry(raw, None, attempt, retry)
                 if backoff is not None:
@@ -649,12 +706,45 @@ class AsyncNemoClient(BaseNemoClient):
         assert last_response is not None
         return last_response
 
+    @asynccontextmanager
+    async def _stream_with_retry(
+        self,
+        request: PreparedRequest,
+        url: str,
+        headers: dict[str, str] | None,
+        params: dict | None,
+        retry: RetryPolicy | None,
+    ) -> AsyncIterator[httpx.Response]:
+        """Open an async stream, retrying failures before handing it to the caller."""
+        for attempt in range(retry.max_retries + 1 if retry else 1):
+            yielded = False
+            try:
+                kwargs: dict = {"content": request.content, "headers": headers, "params": params}
+                if self._timeout is not None:
+                    kwargs["timeout"] = self._timeout
+                async with self._http.stream(request.method, url, **kwargs) as raw:
+                    backoff = _should_retry(raw, None, attempt, retry) if retry else None
+                    if backoff is not None:
+                        await asyncio.sleep(backoff)
+                        continue
+                    yielded = True
+                    yield raw
+                    return
+            except httpx.TransportError as exc:
+                if yielded:
+                    raise NemoTransportError(exc) from exc
+                backoff = _should_retry(None, exc, attempt, retry) if retry else None
+                if backoff is not None:
+                    await asyncio.sleep(backoff)
+                    continue
+                raise NemoTransportError(exc) from exc
+
     def _make_page_fetcher(
-        self, strategy: type[PaginationStrategy], retry: RetryPolicy | None = None
+        self, strategy: type[PaginationStrategy[Any, Any]], retry: RetryPolicy | None = None
     ) -> AsyncPageFetcher:
         """Create an async page-fetching callback bound to this client and strategy."""
 
-        async def fetch(request: PreparedRequest, page: int | str) -> httpx.Response:
+        async def fetch(request: PreparedRequest, page: Any) -> httpx.Response:
             url = self._resolve_path(request)
             req_headers = self._request_headers(request)
             existing_params = self._resolve_query_params(request) or {}

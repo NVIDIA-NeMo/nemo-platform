@@ -147,8 +147,8 @@ class TestFilesBasic:
             )
             page1 = resp1.page()
             assert len(page1.items) == 2
-            assert page1.page == 1
-            assert page1.page_size == 2
+            assert page1.metadata["page"] == 1
+            assert page1.metadata["page_size"] == 2
 
             # Test second page
             resp2 = files.list_filesets(
@@ -157,7 +157,7 @@ class TestFilesBasic:
             )
             page2 = resp2.page()
             assert len(page2.items) == 2
-            assert page2.page == 2
+            assert page2.metadata["page"] == 2
 
             # Verify pages have different data
             page1_ids = {fs.id for fs in page1.items}

@@ -14,8 +14,7 @@ import type {
   ClaudeCodeChatSelectionArtifact,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import { getJobProgressDetailRoute } from '@studio/routes/agents/ClaudeCodeChatRoute/utils/jobProgress';
-import cn from 'classnames';
-import { ArrowRight, Boxes, Briefcase, FileCode2, Link2, Sparkles, Wrench } from 'lucide-react';
+import { ArrowRight, File, Wrench } from 'lucide-react';
 import { type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -44,56 +43,24 @@ export const ArtifactChip = ({ children }: { children: ReactNode }) => {
   );
 };
 
-export const ArtifactRow = ({
-  icon,
-  label,
-  value,
-}: {
-  icon: ReactNode;
-  label: string;
-  value?: string;
-}) => {
+export const ArtifactRow = ({ label, value }: { label: string; value?: string }) => {
   if (!value) return null;
 
   return (
-    <Flex align="start" gap="density-sm" className="min-w-0">
-      <span className="mt-1 flex size-5 shrink-0 items-center justify-center text-secondary">
-        {icon}
-      </span>
-      <Flex align="center" gap="density-xs" className="min-w-0 flex-1 flex-wrap">
-        <Text kind="label/bold/sm" color="secondary" className="shrink-0">
-          {label}:
-        </Text>
-        <ArtifactChip>{value}</ArtifactChip>
-      </Flex>
+    <Flex align="center" gap="density-xs" className="min-w-0 flex-wrap">
+      <Text kind="label/bold/sm" color="secondary" className="shrink-0">
+        {label}:
+      </Text>
+      <ArtifactChip>{value}</ArtifactChip>
     </Flex>
   );
 };
 
-export const ArtifactSection = ({
-  background,
-  children,
-  icon,
-  title,
-}: {
-  background?: boolean;
-  children: ReactNode;
-  icon: ReactNode;
-  title: string;
-}) => (
-  <Stack
-    gap="density-xs"
-    className={cn(
-      'min-w-0',
-      background && 'rounded border border-base bg-surface-sunken px-density-sm py-density-sm'
-    )}
-  >
-    <Flex align="center" gap="density-xs" className="text-secondary">
-      {icon}
-      <Text kind="label/bold/sm" color="secondary">
-        {title}
-      </Text>
-    </Flex>
+export const ArtifactSection = ({ children, title }: { children: ReactNode; title: string }) => (
+  <Stack gap="density-xs" className="min-w-0">
+    <Text kind="label/bold/sm" color="secondary">
+      {title}
+    </Text>
     {children}
   </Stack>
 );
@@ -102,16 +69,17 @@ export const FileArtifacts = ({ files }: { files: ClaudeCodeChatFileArtifact[] }
   if (!files.length) return null;
 
   return (
-    <ArtifactSection icon={<FileCode2 size={14} />} title="Files">
+    <ArtifactSection title="Files">
       <Stack gap="density-xs">
         {files.slice(0, 6).map((file) => (
           <Flex
             key={`${file.action}-${file.path}`}
             align="center"
             gap="density-xs"
-            className="min-w-0 rounded border border-base bg-surface-sunken px-density-sm py-density-xs"
+            className="min-w-0 py-density-xs"
             title={file.path}
           >
+            <File aria-hidden="true" size={14} className="shrink-0 text-secondary" />
             <Text kind="label/bold/sm" className="shrink-0">
               {file.action}
             </Text>
@@ -131,7 +99,7 @@ export const LinkArtifacts = ({ links }: { links: ClaudeCodeChatLinkArtifact[] }
   if (!links.length) return null;
 
   return (
-    <ArtifactSection icon={<Link2 size={14} />} title="Studio links">
+    <ArtifactSection title="Studio links">
       <Flex gap="density-xs" className="min-w-0 flex-wrap">
         {links.slice(0, 6).map((link) => {
           const target = getStudioInternalLinkTarget(
@@ -186,7 +154,7 @@ export const JobArtifacts = ({
   if (!jobs.length) return null;
 
   return (
-    <ArtifactSection icon={<Briefcase size={14} />} title="Jobs">
+    <ArtifactSection title="Jobs">
       <Flex gap="density-xs" className="min-w-0 flex-wrap">
         {jobs.slice(0, 6).map((job) => {
           const target = getStudioInternalLinkTarget(
@@ -220,15 +188,10 @@ export const SelectionArtifacts = ({
   if (!selections.length) return null;
 
   return (
-    <ArtifactSection background icon={<Boxes size={14} />} title="Selections">
+    <ArtifactSection title="Selections">
       <Stack gap="density-xs">
         {selections.slice(0, 6).map((selection) => (
-          <ArtifactRow
-            key={selection.label}
-            icon={<Sparkles size={14} />}
-            label={selection.label}
-            value={selection.value}
-          />
+          <ArtifactRow key={selection.label} label={selection.label} value={selection.value} />
         ))}
       </Stack>
     </ArtifactSection>
@@ -239,7 +202,7 @@ export const ToolArtifacts = ({ tools }: { tools: string[] }) => {
   if (!tools.length) return null;
 
   return (
-    <ArtifactSection background icon={<Wrench size={14} />} title="Tools">
+    <ArtifactSection title="Tools">
       <Flex gap="density-xs" className="min-w-0 flex-wrap">
         {tools.slice(0, 8).map((tool) => (
           <ArtifactChip key={tool}>{tool}</ArtifactChip>

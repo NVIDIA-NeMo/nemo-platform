@@ -38,7 +38,7 @@ export const ColumnConfigPanel: FC<ColumnConfigPanelProps> = ({
 }) => {
   const { option, name, values } = column;
   const { icon: Icon, label, description, color } = option;
-  const fields = getColumnFields(option.columnType);
+  const fields = getColumnFields(option);
   const nameError = validateColumnName(name, takenNames);
 
   const setValue = (key: string, value: string) =>

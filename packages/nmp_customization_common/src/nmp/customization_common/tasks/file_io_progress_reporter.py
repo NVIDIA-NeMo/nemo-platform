@@ -6,8 +6,11 @@
 import logging
 from typing import Any, Protocol
 
-from nemo_platform import NeMoPlatform, omit
-from nemo_platform._exceptions import APIError
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NemoHTTPError
+from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.types import PlatformJobTaskUpdate
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.customization_common.schemas.file_io import ProgressReportError
 from nmp.customization_common.service.context import NMPJobContext
@@ -64,17 +67,25 @@ class JobsServiceProgressReporter:
             with sdk_error_handler(
                 ProgressReportError,
                 f"update progress for task: {self.task_id}, job: {self.job_id}, step: {self.step_name}",
-                passthrough=(APIError,),
+                passthrough=(NemoHTTPError,),
             ):
-                self.sdk.jobs.tasks.create_or_update(
-                    self.task_id,
+                # Only set fields that have values (mirrors the SDK's ``omit``
+                # sentinels — ``exclude_unset`` keeps them off the wire).
+                task_update: dict[str, Any] = {"status": status}
+                if status_details:
+                    task_update["status_details"] = status_details
+                if error_details:
+                    task_update["error_details"] = error_details
+                if error_stack:
+                    task_update["error_stack"] = error_stack
+
+                jobs = client_from_platform(self.sdk, JobsClient)
+                jobs.update_job_step_task(
+                    name=self.task_id,
                     workspace=self.workspace,
                     job=self.job_id,
                     step=self.step_name,
-                    status=status.value,
-                    status_details=status_details if status_details else omit,
-                    error_details=error_details if error_details else omit,
-                    error_stack=error_stack if error_stack else omit,
+                    body=PlatformJobTaskUpdate(**task_update),
                 )
                 logger.debug(f"Progress updated: {status} - {status_details}")
         except Exception as e:

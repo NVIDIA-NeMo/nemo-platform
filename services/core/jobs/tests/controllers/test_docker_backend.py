@@ -58,8 +58,14 @@ from nmp.core.jobs.controllers.backends.docker import (
     DockerVolumeMount,
     GPUDockerJobBackend,
 )
-from nmp.core.jobs.controllers.backends.exceptions import ResourceAllocationError, SchedulingDeferred
+from nmp.core.jobs.controllers.backends.exceptions import (
+    FailedToScheduleError,
+    ResourceAllocationError,
+    SchedulingDeferred,
+)
 from pydantic import ValidationError
+
+from services.core.jobs.tests.controllers.client_mocks import data_response
 
 TEST_JOBS_CONTROLLER_INSTANCE_ID = "test-owner"
 
@@ -357,6 +363,8 @@ def test_docker_job_sync(docker_job, docker_client_mock, test_job_step):
         JOB_STEP_NAME_LABEL: test_job_step.name,
         JOB_TASK_ID_LABEL: task_id,
     }
+    # Error-path status derivation reads container.logs(...).decode() for error_stack.
+    container_mock.logs.return_value = b"boom"
     # Clear side_effect so return_value takes precedence
     docker_client_mock.containers.get.side_effect = None
     docker_client_mock.containers.get.return_value = container_mock
@@ -1027,6 +1035,8 @@ def test_gpu_cleanup_on_job_error(mock_nmp_client, docker_client_mock):
         JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
         JOB_TYPE_LABEL: JOB_TYPE_JOB,
     }
+    # Error-path status derivation reads container.logs(...).decode() for error_stack.
+    container_mock.logs.return_value = b"boom"
 
     # Clear side_effect so return_value takes precedence
     docker_client_mock.containers.get.side_effect = None
@@ -1352,6 +1362,7 @@ def test_schedule_additional_volume_mounts(docker_job: CPUDockerJobBackend, dock
 )
 def test_cancel_scheduling(
     docker_job,
+    mock_jobs_client,
     test_job_step,
     step_status,
     expected_result,
@@ -1360,33 +1371,34 @@ def test_cancel_scheduling(
     expected_message,
 ):
     """Test cancel_scheduling behavior for different step statuses."""
-    # Mock the retrieved step with the specified status
+    # Mock the retrieved step with the specified status. get_step fetches it via
+    # the typed client's get_job_step(...).data().
     mock_refreshed_step = MagicMock()
     mock_refreshed_step.status = step_status.value
-    docker_job._nmp_sdk.jobs.steps.retrieve.return_value = mock_refreshed_step
+    mock_jobs_client.get_job_step.return_value = data_response(mock_refreshed_step)
 
     result = docker_job.cancel_scheduling(test_job_step)
 
     # Verify result matches expectation
     assert result is expected_result
 
-    # Verify API retrieve was called (get_step calls retrieve with keyword args)
-    docker_job._nmp_sdk.jobs.steps.retrieve.assert_called_once_with(
+    # Verify the step was fetched via the typed client (get_step -> get_job_step)
+    mock_jobs_client.get_job_step.assert_called_once_with(
         name=test_job_step.name, workspace=test_job_step.workspace, job=test_job_step.job
     )
 
     if should_update_status:
-        # Verify update_status was called with expected parameters (name as positional to match backend call)
-        docker_job._nmp_sdk.jobs.steps.update_status.assert_called_once_with(
-            test_job_step.name,
-            workspace=test_job_step.workspace,
-            job=test_job_step.job,
-            status=expected_final_status.value,
-            status_details={"message": expected_message},
-        )
+        # Verify update_job_step_status was called with the expected status/details in the body.
+        mock_jobs_client.update_job_step_status.assert_called_once()
+        call = mock_jobs_client.update_job_step_status.call_args
+        assert call.kwargs["name"] == test_job_step.name
+        assert call.kwargs["workspace"] == test_job_step.workspace
+        assert call.kwargs["job"] == test_job_step.job
+        assert call.kwargs["body"].status == expected_final_status
+        assert call.kwargs["body"].status_details == {"message": expected_message}
     else:
-        # Verify update_status was NOT called
-        docker_job._nmp_sdk.jobs.steps.update_status.assert_not_called()
+        # Verify update_job_step_status was NOT called
+        mock_jobs_client.update_job_step_status.assert_not_called()
 
 
 @pytest.mark.parametrize("cleanup_completed_jobs_immediately", [True, False])
@@ -1678,6 +1690,23 @@ def test_docker_schedule_defers_when_start_admission_full(docker_job, docker_cli
             docker_job._container_start_admission.release()
 
 
+def test_failed_schedule_logs_status_update_failure_and_releases_admission(docker_job, test_job_step):
+    assert docker_job._container_start_admission.acquire(blocking=False)
+    docker_job._run_container_in_thread = MagicMock(
+        side_effect=FailedToScheduleError("container failed", error_details={"message": "container failed"})
+    )
+    docker_job._jobs.update_job_step_status.side_effect = RuntimeError("jobs service unavailable")
+
+    with patch("nmp.core.jobs.controllers.backends.docker.logger.exception") as log_exception:
+        docker_job.run_container(test_job_step, {})
+
+    log_exception.assert_any_call("Failed to schedule container for job step")
+    log_exception.assert_any_call("Failed to persist scheduling error for job step")
+    docker_job._jobs.update_job_step_status.assert_called_once()
+    assert docker_job._container_start_admission.acquire(blocking=False)
+    docker_job._container_start_admission.release()
+
+
 def test_resuming_step_skips_before_active_ttl_enforcement(docker_job, test_job_step):
     """RESUMING must not apply ttl_seconds_before_active (pause/resume rebasing)."""
     ttl_seconds = docker_job._execution_profile_config.ttl_seconds_before_active
@@ -1698,7 +1727,7 @@ def test_before_active_ttl_uses_latest_of_created_and_updated(docker_job, test_j
     assert docker_job.check_step_ttl_before_active(test_job_step, ttl_seconds) is False
 
 
-def test_cleanup_pending_created_container_by_ttl(docker_job, docker_client_mock, test_job_step):
+def test_cleanup_pending_created_container_by_ttl(docker_job, docker_client_mock, mock_jobs_client, test_job_step):
     """A stale PENDING step with a Docker-created container transitions to ERROR."""
     # Get the TTL configuration (default is 30 minutes)
     ttl_seconds = docker_job._execution_profile_config.ttl_seconds_before_active
@@ -1740,15 +1769,17 @@ def test_cleanup_pending_created_container_by_ttl(docker_job, docker_client_mock
     container_mock.kill.assert_called_once()
 
     # Verify that the task was updated via the API
-    docker_job._nmp_sdk.jobs.tasks.create_or_update.assert_called_once_with(
-        task_id,
-        workspace=test_job_step.workspace,
-        job=test_job_step.job,
-        step=test_job_step.name,
-        status=PlatformJobStatus.ERROR.value,
-        status_details={"message": "Job timed out after reaching max TTL of 1800 seconds"},
-        error_details={"message": "Job timed out after reaching max TTL of 1800 seconds"},
-    )
+    mock_jobs_client.update_job_step_task.assert_called_once()
+    task_call = mock_jobs_client.update_job_step_task.call_args
+    assert task_call.kwargs["name"] == task_id
+    assert task_call.kwargs["workspace"] == test_job_step.workspace
+    assert task_call.kwargs["job"] == test_job_step.job
+    assert task_call.kwargs["step"] == test_job_step.name
+    assert task_call.kwargs["body"].status == PlatformJobStatus.ERROR
+    assert task_call.kwargs["body"].status_details == {
+        "message": "Job timed out after reaching max TTL of 1800 seconds"
+    }
+    assert task_call.kwargs["body"].error_details == {"message": "Job timed out after reaching max TTL of 1800 seconds"}
 
 
 def test_pending_running_container_preempts_before_active_ttl(docker_job, docker_client_mock, test_job_step):
@@ -1813,7 +1844,7 @@ def test_pending_exited_container_preempts_before_active_ttl(docker_job, docker_
     container_mock.kill.assert_not_called()
 
 
-def test_cleanup_active_by_ttl(docker_job, docker_client_mock, test_job_step):
+def test_cleanup_active_by_ttl(docker_job, docker_client_mock, mock_jobs_client, test_job_step):
     """Test that sync of an ACTIVE step transitions to an ERROR state when step's created_at exceeds TTL."""
     # Get the TTL configuration for active jobs (default is 24 hours)
     ttl_seconds = docker_job._execution_profile_config.ttl_seconds_active
@@ -1854,19 +1885,23 @@ def test_cleanup_active_by_ttl(docker_job, docker_client_mock, test_job_step):
     container_mock.kill.assert_called_once()
 
     # Verify that the task was updated via the API
-    docker_job._nmp_sdk.jobs.tasks.create_or_update.assert_called_once_with(
-        task_id,
-        workspace=test_job_step.workspace,
-        job=test_job_step.job,
-        step=test_job_step.name,
-        status=PlatformJobStatus.ERROR.value,
-        status_details={"message": "Job timed out after reaching max TTL of 86400 seconds"},
-        error_details={"message": "Job timed out after reaching max TTL of 86400 seconds"},
-    )
+    mock_jobs_client.update_job_step_task.assert_called_once()
+    task_call = mock_jobs_client.update_job_step_task.call_args
+    assert task_call.kwargs["name"] == task_id
+    assert task_call.kwargs["workspace"] == test_job_step.workspace
+    assert task_call.kwargs["job"] == test_job_step.job
+    assert task_call.kwargs["step"] == test_job_step.name
+    assert task_call.kwargs["body"].status == PlatformJobStatus.ERROR
+    assert task_call.kwargs["body"].status_details == {
+        "message": "Job timed out after reaching max TTL of 86400 seconds"
+    }
+    assert task_call.kwargs["body"].error_details == {
+        "message": "Job timed out after reaching max TTL of 86400 seconds"
+    }
 
 
 def test_ttl_enforcement_handles_409_when_kill_races_with_stopped_container(
-    docker_job, docker_client_mock, test_job_step
+    docker_job, docker_client_mock, mock_jobs_client, test_job_step
 ):
     """Test TTL enforcement handles gracefully when container.kill() races with a stopped container."""
     # Get the TTL configuration for pending/created jobs
@@ -1915,18 +1950,20 @@ def test_ttl_enforcement_handles_409_when_kill_races_with_stopped_container(
     container_mock.kill.assert_called_once()
 
     # Verify that the task was updated via the API despite the 409 error
-    docker_job._nmp_sdk.jobs.tasks.create_or_update.assert_called_once_with(
-        task_id,
-        workspace=test_job_step.workspace,
-        job=test_job_step.job,
-        step=test_job_step.name,
-        status=PlatformJobStatus.ERROR.value,
-        status_details={"message": "Job timed out after reaching max TTL of 1800 seconds"},
-        error_details={"message": "Job timed out after reaching max TTL of 1800 seconds"},
-    )
+    mock_jobs_client.update_job_step_task.assert_called_once()
+    task_call = mock_jobs_client.update_job_step_task.call_args
+    assert task_call.kwargs["name"] == task_id
+    assert task_call.kwargs["workspace"] == test_job_step.workspace
+    assert task_call.kwargs["job"] == test_job_step.job
+    assert task_call.kwargs["step"] == test_job_step.name
+    assert task_call.kwargs["body"].status == PlatformJobStatus.ERROR
+    assert task_call.kwargs["body"].status_details == {
+        "message": "Job timed out after reaching max TTL of 1800 seconds"
+    }
+    assert task_call.kwargs["body"].error_details == {"message": "Job timed out after reaching max TTL of 1800 seconds"}
 
 
-def test_sync_stop_container_already_stopped(docker_job, docker_client_mock, test_job_step):
+def test_sync_stop_container_already_stopped(docker_job, docker_client_mock, mock_jobs_client, test_job_step):
     """Test that sync handles gracefully when container.stop() is called on already stopped container."""
     # Set the step to CANCELLING status (which triggers sync_stop_container)
     test_job_step.status = PlatformJobStatus.CANCELLING
@@ -1967,16 +2004,16 @@ def test_sync_stop_container_already_stopped(docker_job, docker_client_mock, tes
     assert result.error_details == {}
 
     # Verify that the task was updated via the API
-    docker_job._nmp_sdk.jobs.tasks.create_or_update.assert_called_once_with(
-        task_id,
-        workspace=test_job_step.workspace,
-        job=test_job_step.job,
-        step=test_job_step.name,
-        status=PlatformJobStatus.CANCELLED.value,
-        status_details={"message": "Job was cancelled successfully with exit code 0"},
-        error_details={},
-        error_stack="",
-    )
+    mock_jobs_client.update_job_step_task.assert_called_once()
+    task_call = mock_jobs_client.update_job_step_task.call_args
+    assert task_call.kwargs["name"] == task_id
+    assert task_call.kwargs["workspace"] == test_job_step.workspace
+    assert task_call.kwargs["job"] == test_job_step.job
+    assert task_call.kwargs["step"] == test_job_step.name
+    assert task_call.kwargs["body"].status == PlatformJobStatus.CANCELLED
+    assert task_call.kwargs["body"].status_details == {"message": "Job was cancelled successfully with exit code 0"}
+    assert task_call.kwargs["body"].error_details == {}
+    assert task_call.kwargs["body"].error_stack == ""
 
 
 def test_sync_stop_container_skips_when_not_owned_by_jobs_controller(docker_job, docker_client_mock, test_job_step):

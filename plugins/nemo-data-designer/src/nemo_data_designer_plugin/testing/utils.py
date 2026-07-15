@@ -36,7 +36,9 @@ from nemo_platform_plugin.files.types import CreateFilesetRequest
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import PlatformJobResults
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
+from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.result_manager import ResultManager
+from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest
 from nemo_platform_plugin.secrets.client import SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 from nmp.core.files.service import FilesService
@@ -431,16 +433,19 @@ async def task_context(
                 workspace="default",
             ) as client_context,
         ):
-            job = client_context.sdk.jobs.create(
+            jobs_client = client_from_platform(client_context.sdk, JobsClient)
+            job = jobs_client.create_job(
                 workspace="default",
-                name=job_name,
-                source="data-designer",
-                # Store the canonical DataDesignerStepConfig as the job's spec so that
-                # downstream Data Designer routes (e.g. ``GET /jobs/create/{name}``,
-                # which deserializes the stored spec back through the schema) succeed.
-                spec=step_config,
-                platform_spec=job_config_dict,
-            )
+                body=CreatePlatformJobRequest(
+                    name=job_name,
+                    source="data-designer",
+                    # Store the canonical DataDesignerStepConfig as the job's spec so that
+                    # downstream Data Designer routes (e.g. ``GET /jobs/create/{name}``,
+                    # which deserializes the stored spec back through the schema) succeed.
+                    spec=step_config if isinstance(step_config, dict) else step_config.model_dump(),
+                    platform_spec=job_config_dict,
+                ),
+            ).data()
             job_ctx = JobContext(
                 workspace="default",
                 storage=StoragePaths(ephemeral=ephemeral, persistent=persistent),

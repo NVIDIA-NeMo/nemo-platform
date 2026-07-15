@@ -9,15 +9,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Generic, Literal, Type, TypeVar, overload
 
-from nemo_platform import APIError, AsyncNeMoPlatform, ConflictError, NeMoPlatform
+from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform.filesets import parse_fileset_ref
-from nemo_platform.types import PlatformJobResultResponse as SDKPlatformJobResult
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import ConflictError as ClientConflictError
+from nemo_platform_plugin.client.errors import NemoClientError
+from nemo_platform_plugin.jobs.client import AsyncJobsClient, JobsClient
 from nemo_platform_plugin.jobs.constants import NEMO_JOB_WORKSPACE_ENVVAR
 from nemo_platform_plugin.jobs.file_manager import (
     AsyncFilesetFileManager,
     FilesetFileManager,
     TmpDirPath,
 )
+from nemo_platform_plugin.jobs.schemas import PlatformJobResultCreateRequest, PlatformJobResultResponse
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +68,8 @@ class BaseResultManager(Generic[FileManagerClsT, PlatformSDKT], ABC):
 class ResultManager(BaseResultManager[Type[FilesetFileManager], NeMoPlatform]):
     def _fetch_job_metadata(self) -> tuple[str, str]:
         """Fetch job and return (attempt_id, fileset_name)."""
-        job = self.jobs_sdk.jobs.retrieve(name=self.job_name, workspace=self.workspace)
+        jobs = client_from_platform(self.jobs_sdk, JobsClient)
+        job = jobs.get_job(name=self.job_name, workspace=self.workspace).data()
         attempt_id = self.attempt_id if self.attempt_id is not None else job.attempt_id
         return attempt_id, job.fileset
 
@@ -81,7 +86,7 @@ class ResultManager(BaseResultManager[Type[FilesetFileManager], NeMoPlatform]):
         result_name: str,
         artifact_local_path: str | Path,
         ignore_patterns: list[str] | str | None = None,
-    ) -> SDKPlatformJobResult:
+    ) -> PlatformJobResultResponse:
         attempt_id, fileset_name = self._fetch_job_metadata()
         file_manager = self._create_file_manager(fileset_name)
         file_manager.validate_storage()
@@ -90,23 +95,26 @@ class ResultManager(BaseResultManager[Type[FilesetFileManager], NeMoPlatform]):
         artifact_url = file_manager.upload(
             local_path=artifact_local_path, remote_path=remote_path, ignore_patterns=ignore_patterns
         )
+        jobs = client_from_platform(self.jobs_sdk, JobsClient)
         try:
-            job_result = self.jobs_sdk.jobs.results.create(
+            job_result = jobs.create_job_result(
                 name=result_name,
                 job=self.job_name,
                 workspace=self.workspace,
-                artifact_url=artifact_url,
-                artifact_storage_type=file_manager.storage_type().value,
-            )
-        except ConflictError:
+                body=PlatformJobResultCreateRequest(
+                    artifact_url=artifact_url,
+                    artifact_storage_type=file_manager.storage_type(),
+                ),
+            ).data()
+        except ClientConflictError:
             # Result already exists - fetch and return the existing one
             # This supports the use case of saving partial results across multiple batches
-            job_result = self.jobs_sdk.jobs.results.retrieve(
+            job_result = jobs.get_job_result(
                 name=result_name,
                 job=self.job_name,
                 workspace=self.workspace,
-            )
-        except APIError as e:
+            ).data()
+        except NemoClientError as e:
             msg = f"Error creating job result: {str(e)}"
             logger.exception(msg)
             raise CreateJobResultError(msg) from e
@@ -125,7 +133,8 @@ class ResultManager(BaseResultManager[Type[FilesetFileManager], NeMoPlatform]):
 class AsyncResultManager(BaseResultManager[Type[AsyncFilesetFileManager], AsyncNeMoPlatform]):
     async def _fetch_job_metadata(self) -> tuple[str, str]:
         """Fetch job and return (attempt_id, fileset_name)."""
-        job = await self.jobs_sdk.jobs.retrieve(name=self.job_name, workspace=self.workspace)
+        jobs = client_from_platform(self.jobs_sdk, AsyncJobsClient)
+        job = (await jobs.get_job(name=self.job_name, workspace=self.workspace)).data()
         attempt_id = self.attempt_id if self.attempt_id is not None else job.attempt_id
         return attempt_id, job.fileset
 
@@ -142,7 +151,7 @@ class AsyncResultManager(BaseResultManager[Type[AsyncFilesetFileManager], AsyncN
         result_name: str,
         artifact_local_path: str | Path,
         ignore_patterns: list[str] | str | None = None,
-    ) -> SDKPlatformJobResult:
+    ) -> PlatformJobResultResponse:
         attempt_id, fileset_name = await self._fetch_job_metadata()
         file_manager = self._create_file_manager(fileset_name)
         await file_manager.validate_storage()
@@ -151,23 +160,30 @@ class AsyncResultManager(BaseResultManager[Type[AsyncFilesetFileManager], AsyncN
         artifact_url = await file_manager.upload(
             local_path=artifact_local_path, remote_path=remote_path, ignore_patterns=ignore_patterns
         )
+        jobs = client_from_platform(self.jobs_sdk, AsyncJobsClient)
         try:
-            job_result = await self.jobs_sdk.jobs.results.create(
-                name=result_name,
-                job=self.job_name,
-                workspace=self.workspace,
-                artifact_url=artifact_url,
-                artifact_storage_type=file_manager.storage_type().value,
-            )
-        except ConflictError:
+            job_result = (
+                await jobs.create_job_result(
+                    name=result_name,
+                    job=self.job_name,
+                    workspace=self.workspace,
+                    body=PlatformJobResultCreateRequest(
+                        artifact_url=artifact_url,
+                        artifact_storage_type=file_manager.storage_type(),
+                    ),
+                )
+            ).data()
+        except ClientConflictError:
             # Result already exists - fetch and return the existing one
             # This supports the use case of saving partial results across multiple batches
-            job_result = await self.jobs_sdk.jobs.results.retrieve(
-                name=result_name,
-                job=self.job_name,
-                workspace=self.workspace,
-            )
-        except APIError as e:
+            job_result = (
+                await jobs.get_job_result(
+                    name=result_name,
+                    job=self.job_name,
+                    workspace=self.workspace,
+                )
+            ).data()
+        except NemoClientError as e:
             msg = f"Error creating job result: {str(e)}"
             logger.exception(msg)
             raise CreateJobResultError(msg) from e

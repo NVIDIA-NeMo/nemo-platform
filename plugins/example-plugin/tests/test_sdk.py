@@ -116,7 +116,19 @@ def test_sync_get_item() -> None:
 def test_sync_list_items() -> None:
     client, mock_http = _sync_client()
     mock_http.request.return_value = _resp(
-        200, {"data": [ITEM_PAYLOAD], "pagination": None, "sort": None, "filter": None}
+        200,
+        {
+            "data": [ITEM_PAYLOAD],
+            "pagination": {
+                "page": 1,
+                "page_size": 20,
+                "current_page_size": 1,
+                "total_pages": 1,
+                "total_results": 1,
+            },
+            "sort": None,
+            "filter": None,
+        },
     )
 
     resp = client.list_items()
@@ -189,7 +201,19 @@ async def test_async_get_item() -> None:
 async def test_async_list_items() -> None:
     client, mock_http = _async_client()
     mock_http.request.return_value = _resp(
-        200, {"data": [ITEM_PAYLOAD], "pagination": None, "sort": None, "filter": None}
+        200,
+        {
+            "data": [ITEM_PAYLOAD],
+            "pagination": {
+                "page": 1,
+                "page_size": 20,
+                "current_page_size": 1,
+                "total_pages": 1,
+                "total_results": 1,
+            },
+            "sort": None,
+            "filter": None,
+        },
     )
 
     resp = await client.list_items()

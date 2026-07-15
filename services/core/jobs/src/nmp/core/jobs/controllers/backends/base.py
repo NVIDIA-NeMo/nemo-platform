@@ -9,33 +9,21 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Generic, Optional, TypeVar
 
-from nemo_platform import NeMoPlatform, NotFoundError
-from nemo_platform.types import PlatformJobStatus
-from nemo_platform.types.jobs import PlatformJobStep, PlatformJobStepWithContext
-from nmp.common.auth.models import NMP_PRINCIPAL_ENVVAR
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
+from nemo_platform_plugin.jobs import execution_profiles as _execution_profiles
+from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
+from nemo_platform_plugin.jobs.types import PlatformJobStepResponse, PlatformJobStepWithContext
 from nmp.common.config.base import (
     LOOPBACK_ADDRESSES,
-    NMP_CONFIG_WARNINGS_DISABLED_ENV_VAR,
     PlatformConfig,
     determine_loopback_override,
 )
-from nmp.common.jobs.constants import (
-    CONFIG_TASK_STORAGE_PATH_ENVVAR,
-    EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
-    NEMO_JOB_ATTEMPT_ID_ENVVAR,
-    NEMO_JOB_FILESET_ENVVAR,
-    NEMO_JOB_ID_ENVVAR,
-    NEMO_JOB_SECRETS_ENVVAR,
-    NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR,
-    NEMO_JOB_STEP_ENVVAR,
-    NEMO_JOB_TASK_ENVVAR,
-    NEMO_JOB_WORKSPACE_ENVVAR,
-    PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
-    TASK_CONFIG_ENVVAR,
-)
 from nmp.common.sdk_factory import get_entity_parts
 from nmp.core.jobs.app.providers import ComputeResources
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -44,72 +32,18 @@ ExecutionProfileConfigT = TypeVar("ExecutionProfileConfigT")
 
 DEFAULT_PROFILE = "default"
 DEFAULT_PROVIDER = "cpu"
+JobExecutionProfileConfig = _execution_profiles.JobExecutionProfileConfig
+RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES = _execution_profiles.RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES
 
-# Env var names set by the platform during job creation; user-provided profile environment must not conflict.
-RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES: frozenset[str] = frozenset(
-    {
-        # From nmp.common.jobs.constants
-        CONFIG_TASK_STORAGE_PATH_ENVVAR,
-        EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
-        NEMO_JOB_ATTEMPT_ID_ENVVAR,
-        NEMO_JOB_FILESET_ENVVAR,
-        NEMO_JOB_ID_ENVVAR,
-        NEMO_JOB_SECRETS_ENVVAR,
-        NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR,
-        NEMO_JOB_STEP_ENVVAR,
-        NEMO_JOB_TASK_ENVVAR,
-        NEMO_JOB_WORKSPACE_ENVVAR,
-        PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
-        TASK_CONFIG_ENVVAR,
-        # Auth
-        NMP_PRINCIPAL_ENVVAR,
-        # OTEL (telemetry)
-        "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
-        "OTEL_LOGS_EXPORTER",
-        "OTEL_SERVICE_NAME",
-        "OTEL_EXPORTER_OTLP_LOGS_HEADERS",
-        # Platform shared envvars (to_shared_envvars with NMP_ prefix)
-        NMP_CONFIG_WARNINGS_DISABLED_ENV_VAR,
-        "NMP_BASE_URL",
-        "NMP_JOBS_URL",
-        "NMP_FILES_URL",
-        "NMP_MODELS_URL",
-        "NMP_SECRETS_URL",
-    }
-)
+# The env-var-name reserved set and the base ``JobExecutionProfileConfig`` now
+# live in the shared plugin leaf node (imported above) so that both the server
+# and the typed HTTP client agree on the wire shape and validation.
 
 
 class JobUpdate(BaseModel):
     status: PlatformJobStatus
     status_details: dict | None = None
     error_details: dict | None = None
-
-
-class JobExecutionProfileConfig(BaseModel):
-    ttl_seconds_before_active: int = 30 * 60  # 30 minutes
-    ttl_seconds_active: int = 24 * 60 * 60  # 24 hours
-    ttl_seconds_after_finished: int = 60 * 60  # 1 hour
-    cleanup_completed_jobs_immediately: bool = True
-    launcher_tool_path: str = Field(default="/tools/jobs-launcher", description="Path to the jobs launcher tool")
-    default_task_image: str | None = Field(
-        default=None,
-        min_length=1,
-        description="Default container image for job task pods. Used when a job step omits container.image. "
-        "When unset, falls back to the platform CPU tasks image (platform.image_registry/nmp-cpu-tasks:platform.image_tag).",
-    )
-    env: dict[str, str] = Field(
-        default_factory=dict,
-        description="Optional env vars applied to all jobs (e.g. HOME=/tmp). Keys must not conflict with platform-reserved names. Job steps may override these variables.",
-    )
-
-    @model_validator(mode="after")
-    def validate_env_no_reserved_names(self) -> JobExecutionProfileConfig:
-        conflicting = [k for k in self.env if k in RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES]
-        if conflicting:
-            raise ValueError(
-                f"Profile environment keys must not conflict with platform-reserved names: {sorted(conflicting)}"
-            )
-        return self
 
 
 _DEFAULT_TASK_IMAGE_NAME = "nmp-cpu-tasks"
@@ -150,6 +84,10 @@ class JobBackend(Generic[ExecutionProviderConfigT, ExecutionProfileConfigT], ABC
         profile_name: str,
     ):
         self._nmp_sdk = nmp_sdk
+        # Typed Jobs client sharing the SDK's transport/headers. Built once; every
+        # call passes ``workspace=`` explicitly (including the cross-workspace "-"),
+        # so the client's default workspace is never relied upon.
+        self._jobs = client_from_platform(nmp_sdk, JobsClient)
         self._execution_profile_config = execution_profile_config
         self._profile_name = profile_name
         self.init()
@@ -193,15 +131,15 @@ class JobBackend(Generic[ExecutionProviderConfigT, ExecutionProfileConfigT], ABC
                 env_var_str += f"{envvar.name}={workspace}/{secret_name}"
         return env_var_str
 
-    def get_step(self, job: str, step_name: str, workspace: str) -> PlatformJobStep:
-        """Fetch the latest state of a job step from the NeMo Platform SDK."""
-        return self._nmp_sdk.jobs.steps.retrieve(name=step_name, workspace=workspace, job=job)
+    def get_step(self, job: str, step_name: str, workspace: str) -> PlatformJobStepResponse:
+        """Fetch the latest state of a job step via the typed Jobs client."""
+        return self._jobs.get_job_step(name=step_name, workspace=workspace, job=job).data()
 
-    def get_step_safe(self, job: str, step_name: str, workspace: str) -> Optional[PlatformJobStep]:
-        """Fetch the job step from the NeMo Platform SDK, or None if not found (e.g. 404, workspace deleted)."""
+    def get_step_safe(self, job: str, step_name: str, workspace: str) -> Optional[PlatformJobStepResponse]:
+        """Fetch the job step, or None if not found (e.g. 404, workspace deleted)."""
         try:
             return self.get_step(job=job, step_name=step_name, workspace=workspace)
-        except NotFoundError:
+        except ClientNotFoundError:
             return None
         except Exception as e:
             raise e
@@ -215,7 +153,7 @@ class JobBackend(Generic[ExecutionProviderConfigT, ExecutionProfileConfigT], ABC
         try:
             step = self.get_step(job=job, step_name=step_name, workspace=workspace)
             return step.status in ("cancelled", "error", "completed")
-        except NotFoundError:
+        except ClientNotFoundError:
             # If the job step entity is not found, we treat it as terminal so cleanup can proceed.
             return True
         except Exception as e:
@@ -224,9 +162,9 @@ class JobBackend(Generic[ExecutionProviderConfigT, ExecutionProfileConfigT], ABC
     def check_job_is_terminal(self, job: str, workspace: str) -> bool:
         """Check if a job is in a terminal state."""
         try:
-            job_response = self._nmp_sdk.jobs.retrieve(name=job, workspace=workspace)
+            job_response = self._jobs.get_job(name=job, workspace=workspace).data()
             return job_response.status in ("cancelled", "error", "completed")
-        except NotFoundError:
+        except ClientNotFoundError:
             # If the job entity is not found, we treat it as terminal so cleanup can proceed.
             return True
         except Exception as e:
@@ -294,11 +232,11 @@ class JobBackend(Generic[ExecutionProviderConfigT, ExecutionProfileConfigT], ABC
             return False
 
         try:
-            tasks = self._nmp_sdk.jobs.tasks.list(
+            tasks = self._jobs.list_job_step_tasks(
                 name=step.name,
                 job=step.job,
                 workspace=step.workspace,
-            )
+            ).data()
         except Exception:
             logger.warning("Failed to fetch tasks for staleness check", extra={"step": step.name, "job": step.job})
             return False

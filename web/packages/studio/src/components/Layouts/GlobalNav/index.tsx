@@ -23,15 +23,22 @@ interface Props {
   sideNav?: (collapsed: boolean) => ReactNode;
 }
 
-export const GlobalNav: FC<Props> = ({ sideNav }) => {
-  const { expanded, toggle } = useSidebarState();
+interface GlobalNavContentProps extends Props {
+  isDashboardRoute: boolean;
+  isClaudeCodeChatRoute: boolean;
+}
+
+const GlobalNavContent: FC<GlobalNavContentProps> = ({
+  sideNav,
+  isDashboardRoute,
+  isClaudeCodeChatRoute,
+}) => {
   const workspace = useWorkspaceFromPathIfExists();
-  const location = useLocation();
-  const isDashboardRoute =
-    matchPath({ path: ROUTES.workspace.dashboard, end: true }, location.pathname) !== null;
-  const isClaudeCodeChatRoute =
-    matchPath({ path: ROUTES.workspace.claudeCodeChat, end: true }, location.pathname) !== null;
+  const { expanded, toggle } = useSidebarState(!isClaudeCodeChatRoute);
   const shouldMountClaudeCodeTopBarChat = !isDashboardRoute && !isClaudeCodeChatRoute;
+  const sidebarBackground = isClaudeCodeChatRoute
+    ? 'bg-surface-sunken dark:bg-surface-base'
+    : 'bg-surface-navigation';
 
   const toggleLabel = expanded ? 'Collapse sidebar' : 'Expand sidebar';
   const ToggleSidebarButton = (
@@ -51,7 +58,7 @@ export const GlobalNav: FC<Props> = ({ sideNav }) => {
   return (
     <>
       <Flex
-        className={`[grid-area:logobar] bg-surface-navigation transition-colors border-r border-b border-base ${expanded ? 'pl-4 pr-2' : ''}`}
+        className={`[grid-area:logobar] ${sidebarBackground} transition-colors border-r border-b border-base ${expanded ? 'pl-4 pr-2' : ''}`}
         align="center"
         gap="density-md"
         justify={expanded ? 'between' : 'center'}
@@ -89,12 +96,29 @@ export const GlobalNav: FC<Props> = ({ sideNav }) => {
       />
       {sideNav && (
         <div
-          className="h-full max-h-[calc(100vh-var(--nv-app-bar-height))] overflow-y-auto [grid-area:sidebar]"
+          className={`h-full max-h-[calc(100vh-var(--nv-app-bar-height))] overflow-y-auto [grid-area:sidebar] ${isClaudeCodeChatRoute ? `${sidebarBackground} [&_.nv-vertical-nav-root]:bg-transparent!` : ''}`}
           data-tour="sidebar"
         >
           {sideNav(!expanded)}
         </div>
       )}
     </>
+  );
+};
+
+export const GlobalNav: FC<Props> = ({ sideNav }) => {
+  const location = useLocation();
+  const isDashboardRoute =
+    matchPath({ path: ROUTES.workspace.dashboard, end: true }, location.pathname) !== null;
+  const isClaudeCodeChatRoute =
+    matchPath({ path: ROUTES.workspace.claudeCodeChat, end: true }, location.pathname) !== null;
+
+  return (
+    <GlobalNavContent
+      key={isClaudeCodeChatRoute ? 'code-agent' : 'default'}
+      sideNav={sideNav}
+      isDashboardRoute={isDashboardRoute}
+      isClaudeCodeChatRoute={isClaudeCodeChatRoute}
+    />
   );
 };

@@ -4,6 +4,8 @@
 """Unit tests for jobs controller backends base module."""
 
 import datetime
+from contextlib import contextmanager
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from nmp.common.config import PlatformConfig
@@ -13,6 +15,8 @@ from nmp.core.jobs.app.providers import ContainerSpec, CPUExecutionProvider
 from nmp.core.jobs.app.schemas import PlatformJobStepSpec, StepLifecycle
 from nmp.core.jobs.controllers.backends.base import get_logs_endpoint_from_fileset, resolve_task_image
 from nmp.core.jobs.controllers.backends.test import MockKubernetesCPUJobBackend
+
+from services.core.jobs.tests.controllers.client_mocks import data_response
 
 
 class TestGetLogsEndpointFromFileset:
@@ -193,6 +197,29 @@ def _make_backend(mock_sdk: MagicMock | None = None) -> MockKubernetesCPUJobBack
     return MockKubernetesCPUJobBackend(nmp_sdk=sdk, execution_profile_config=MagicMock(), profile_name="default")
 
 
+@contextmanager
+def _patched_jobs_client(backend):
+    """Stub the backend's held ``self._jobs`` handle and yield the mock ``JobsClient``.
+
+    The backend builds its typed Jobs client once in ``JobBackend.__init__`` and
+    reuses it as ``self._jobs``, so tests stub that handle directly (rather than
+    patching ``client_from_platform``). ``check_step_is_stale`` fetches tasks via
+    ``self._jobs.list_job_step_tasks(...).data()``; the returned page exposes the
+    task list on its ``.data`` attribute.
+    """
+    mock_jobs = MagicMock()
+    original = backend._jobs
+    backend._jobs = mock_jobs
+    try:
+        yield mock_jobs
+    finally:
+        backend._jobs = original
+
+
+def _set_tasks(mock_jobs: MagicMock, tasks: list) -> None:
+    mock_jobs.list_job_step_tasks.return_value = data_response(SimpleNamespace(data=tasks))
+
+
 class TestCheckTaskStaleness:
     """Tests for JobBackend.check_step_is_stale."""
 
@@ -216,106 +243,107 @@ class TestCheckTaskStaleness:
             created_at=datetime.datetime.now(datetime.timezone.utc),
         )
 
-        assert backend.check_step_is_stale(step) is False
-        backend._nmp_sdk.jobs.tasks.list.assert_not_called()
+        with _patched_jobs_client(backend) as mock_jobs:
+            assert backend.check_step_is_stale(step) is False
+            mock_jobs.list_job_step_tasks.assert_not_called()
 
     def test_not_stale_when_no_active_tasks(self):
-        mock_sdk = MagicMock()
-        mock_sdk.jobs.tasks.list.return_value.data = [
-            _make_task(status="completed"),
-            _make_task(status="error"),
-        ]
-        backend = _make_backend(mock_sdk)
+        backend = _make_backend()
         step = _make_step(
             staleness_timeout=60,
             created_at=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=120),
         )
 
-        assert backend.check_step_is_stale(step) is False
+        with _patched_jobs_client(backend) as mock_jobs:
+            _set_tasks(mock_jobs, [_make_task(status="completed"), _make_task(status="error")])
+            assert backend.check_step_is_stale(step) is False
 
     def test_not_stale_when_task_recently_updated(self):
-        mock_sdk = MagicMock()
-        mock_sdk.jobs.tasks.list.return_value.data = [
-            _make_task(status="active", updated_at=datetime.datetime.now(datetime.timezone.utc)),
-        ]
-        backend = _make_backend(mock_sdk)
+        backend = _make_backend()
         step = _make_step(
             staleness_timeout=60,
             created_at=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=120),
         )
 
-        assert backend.check_step_is_stale(step) is False
+        with _patched_jobs_client(backend) as mock_jobs:
+            _set_tasks(
+                mock_jobs,
+                [_make_task(status="active", updated_at=datetime.datetime.now(datetime.timezone.utc))],
+            )
+            assert backend.check_step_is_stale(step) is False
 
     def test_stale_when_all_active_tasks_exceed_threshold(self):
         now = datetime.datetime.now(datetime.timezone.utc)
-        mock_sdk = MagicMock()
-        mock_sdk.jobs.tasks.list.return_value.data = [
-            _make_task(status="active", updated_at=now - datetime.timedelta(seconds=200)),
-            _make_task(status="active", updated_at=now - datetime.timedelta(seconds=300)),
-            _make_task(status="completed"),
-        ]
-        backend = _make_backend(mock_sdk)
+        backend = _make_backend()
         step = _make_step(
             staleness_timeout=60,
             created_at=now - datetime.timedelta(seconds=120),
         )
 
-        assert backend.check_step_is_stale(step) is True
+        with _patched_jobs_client(backend) as mock_jobs:
+            _set_tasks(
+                mock_jobs,
+                [
+                    _make_task(status="active", updated_at=now - datetime.timedelta(seconds=200)),
+                    _make_task(status="active", updated_at=now - datetime.timedelta(seconds=300)),
+                    _make_task(status="completed"),
+                ],
+            )
+            assert backend.check_step_is_stale(step) is True
 
     def test_not_stale_when_one_active_task_is_fresh(self):
         now = datetime.datetime.now(datetime.timezone.utc)
-        mock_sdk = MagicMock()
-        mock_sdk.jobs.tasks.list.return_value.data = [
-            _make_task(status="active", updated_at=now - datetime.timedelta(seconds=200)),
-            _make_task(status="active", updated_at=now - datetime.timedelta(seconds=10)),
-        ]
-        backend = _make_backend(mock_sdk)
+        backend = _make_backend()
         step = _make_step(
             staleness_timeout=60,
             created_at=now - datetime.timedelta(seconds=120),
         )
 
-        assert backend.check_step_is_stale(step) is False
+        with _patched_jobs_client(backend) as mock_jobs:
+            _set_tasks(
+                mock_jobs,
+                [
+                    _make_task(status="active", updated_at=now - datetime.timedelta(seconds=200)),
+                    _make_task(status="active", updated_at=now - datetime.timedelta(seconds=10)),
+                ],
+            )
+            assert backend.check_step_is_stale(step) is False
 
     def test_returns_false_on_api_failure(self):
-        mock_sdk = MagicMock()
-        mock_sdk.jobs.tasks.list.side_effect = RuntimeError("connection error")
-        backend = _make_backend(mock_sdk)
+        backend = _make_backend()
         step = _make_step(
             staleness_timeout=60,
             created_at=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=120),
         )
 
-        assert backend.check_step_is_stale(step) is False
+        with _patched_jobs_client(backend) as mock_jobs:
+            mock_jobs.list_job_step_tasks.side_effect = RuntimeError("connection error")
+            assert backend.check_step_is_stale(step) is False
 
     def test_handles_naive_updated_at_as_utc(self):
         now = datetime.datetime.now(datetime.timezone.utc)
         naive_old = (now - datetime.timedelta(seconds=200)).replace(tzinfo=None)
-        mock_sdk = MagicMock()
-        mock_sdk.jobs.tasks.list.return_value.data = [
-            _make_task(status="active", updated_at=naive_old),
-        ]
-        backend = _make_backend(mock_sdk)
+        backend = _make_backend()
         step = _make_step(
             staleness_timeout=60,
             created_at=now - datetime.timedelta(seconds=120),
         )
 
-        assert backend.check_step_is_stale(step) is True
+        with _patched_jobs_client(backend) as mock_jobs:
+            _set_tasks(mock_jobs, [_make_task(status="active", updated_at=naive_old)])
+            assert backend.check_step_is_stale(step) is True
 
     def test_returns_false_when_task_missing_updated_at(self):
         now = datetime.datetime.now(datetime.timezone.utc)
-        mock_sdk = MagicMock()
-        mock_sdk.jobs.tasks.list.return_value.data = [
-            _make_task(status="active", updated_at=None),
-        ]
-        backend = _make_backend(mock_sdk)
+        backend = _make_backend()
         step = _make_step(
             staleness_timeout=60,
             created_at=now - datetime.timedelta(seconds=120),
         )
 
-        assert backend.check_step_is_stale(step) is False
+        with _patched_jobs_client(backend) as mock_jobs:
+            _set_tasks(mock_jobs, [_make_task(status="active", updated_at=None)])
+            assert backend.check_step_is_stale(step) is False
 
 
 class TestResolveTaskImage:

@@ -25,6 +25,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from nemo_platform import APIStatusError
+from nemo_platform_plugin.client.errors import NemoHTTPError
 from nmp.common.entities.client import (
     EntityConflictError,
     EntityNotFoundError,
@@ -33,6 +34,12 @@ from nmp.common.entities.client import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _scrub_crlf(value: str) -> str:
+    """Strip CR/LF so user-controlled request fields cannot forge log lines."""
+    return value.replace("\r", " ").replace("\n", " ")
+
 
 # Map entity store exceptions to HTTP status codes
 ENTITY_ERROR_STATUS_CODES: dict[type[EntityStoreError], int] = {
@@ -65,14 +72,35 @@ async def sdk_status_error_handler(request: Request, exc: APIStatusError) -> JSO
 
     logger.debug(
         "Converting SDK exception to HTTP response: %s %s -> %d",
-        request.method,
-        request.url.path,
+        _scrub_crlf(request.method),
+        _scrub_crlf(request.url.path),
         exc.status_code,
     )
 
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": detail},
+    )
+
+
+async def nemo_client_error_handler(request: Request, exc: NemoHTTPError) -> JSONResponse:
+    """Convert NemoClient HTTP exceptions back to HTTP responses.
+
+    The typed ``NemoClient`` raises ``NemoHTTPError`` (and subclasses) on
+    non-2xx service-to-service responses; convert them to proper HTTP
+    responses the same way :func:`sdk_status_error_handler` does for the
+    Stainless SDK.
+    """
+    logger.debug(
+        "Converting NemoClient exception to HTTP response: %s %s -> %d",
+        _scrub_crlf(request.method),
+        _scrub_crlf(request.url.path),
+        exc.status_code,
+    )
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
     )
 
 
@@ -99,8 +127,8 @@ async def entity_store_error_handler(request: Request, exc: EntityStoreError) ->
         "Converting %s to %d: %s %s",
         type(exc).__name__,
         status_code,
-        request.method,
-        request.url.path,
+        _scrub_crlf(request.method),
+        _scrub_crlf(request.url.path),
     )
 
     return JSONResponse(
@@ -119,12 +147,17 @@ def register_sdk_exception_handlers(app: FastAPI) -> None:
     Args:
         app: The FastAPI application to register handlers on
     """
-    app.add_exception_handler(APIStatusError, sdk_status_error_handler)
-    app.add_exception_handler(EntityStoreError, entity_store_error_handler)
+    # Handlers are annotated with the specific exception subtype they handle;
+    # Starlette's stub types the callback against the base ``Exception``, so ty
+    # flags the narrower signature. The handlers are correct at runtime.
+    app.add_exception_handler(APIStatusError, sdk_status_error_handler)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(NemoHTTPError, nemo_client_error_handler)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(EntityStoreError, entity_store_error_handler)  # ty: ignore[invalid-argument-type]
 
 
 __all__ = [
     "sdk_status_error_handler",
+    "nemo_client_error_handler",
     "entity_store_error_handler",
     "register_sdk_exception_handlers",
 ]

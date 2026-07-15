@@ -111,8 +111,15 @@ describe('Routes', () => {
 
     it('every workspace route except the default route is behind a feature flag', () => {
       const defaultRoute = getWorkspaceDetailsDefaultRoute(WORKSPACE_ROUTE_PLACEHOLDER);
+      // Intentionally always-on (ungated) workspace routes. Keep this list tiny —
+      // new features should be flag-gated, not added here.
+      const alwaysOnWorkspaceRoutes = new Set<string>([ROUTES.workspace.virtualModels]);
       const remainingWorkspacePaths = [
-        ...new Set(collectAllPaths(routes).filter(isWorkspaceScopedPath)),
+        ...new Set(
+          collectAllPaths(routes)
+            .filter(isWorkspaceScopedPath)
+            .filter((path) => !alwaysOnWorkspaceRoutes.has(path))
+        ),
       ].sort();
 
       expect(remainingWorkspacePaths).toEqual([defaultRoute]);

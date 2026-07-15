@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import JobsClient
 from nmp.core.jobs.config import config
 
 _MAX_LOG_ENTRIES = 20
@@ -95,14 +97,16 @@ def collect_job_diagnostics(
         "step_name": step_ref.name,
     }
 
+    jobs = client_from_platform(sdk, JobsClient)
+
     try:
-        job = sdk.jobs.retrieve(step_ref.job, workspace=step_ref.workspace)
+        job = jobs.get_job(name=step_ref.job, workspace=step_ref.workspace).data()
         diagnostics["job"] = _job_dict(job)
     except Exception as exc:
         diagnostics["job_error"] = str(exc)
 
     try:
-        status = sdk.jobs.get_status(step_ref.job, workspace=step_ref.workspace)
+        status = jobs.get_job_status(name=step_ref.job, workspace=step_ref.workspace).data()
         diagnostics["status_api"] = {
             "status": status.status,
             "status_details": status.status_details,
@@ -119,21 +123,21 @@ def collect_job_diagnostics(
         diagnostics["status_api_error"] = str(exc)
 
     try:
-        refreshed_step = sdk.jobs.steps.retrieve(step_ref.name, job=step_ref.job, workspace=step_ref.workspace)
+        refreshed_step = jobs.get_job_step(name=step_ref.name, job=step_ref.job, workspace=step_ref.workspace).data()
         diagnostics["step"] = _step_dict(refreshed_step)
     except Exception as exc:
         diagnostics["step_error"] = str(exc)
 
     try:
-        tasks = sdk.jobs.tasks.list(step_ref.name, job=step_ref.job, workspace=step_ref.workspace)
+        tasks = jobs.list_job_step_tasks(name=step_ref.name, job=step_ref.job, workspace=step_ref.workspace).data()
         diagnostics["tasks_api"] = [_task_dict(task) for task in tasks.data]
     except Exception as exc:
         diagnostics["tasks_api_error"] = str(exc)
 
     try:
         if config.include_job_logs_in_diagnostics:
-            logs = sdk.jobs.get_logs(workspace=step_ref.workspace, name=step_ref.job)
-            diagnostics["job_logs"] = [entry.message for entry in logs.data[-_MAX_LOG_ENTRIES:]]
+            logs = jobs.list_job_logs(workspace=step_ref.workspace, name=step_ref.job).page()
+            diagnostics["job_logs"] = [entry.message for entry in logs.items[-_MAX_LOG_ENTRIES:]]
     except Exception as exc:
         diagnostics["job_logs_error"] = str(exc)
 
