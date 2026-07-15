@@ -8,9 +8,6 @@
 # is blocked and the ingress addon cannot bootstrap. The chart still keeps split
 # pods on the API service URL while the API pod itself loops back to localhost.
 
-k8s-nim-operator:
-  enabled: false
-
 postgresql:
   persistence:
     storageClass: standard

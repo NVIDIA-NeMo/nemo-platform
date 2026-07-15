@@ -10,9 +10,6 @@
 #   while the API pod itself loops back to localhost
 # - keeps ingress enabled for browser/curl access through minikube ingress
 
-k8s-nim-operator:
-  enabled: false
-
 postgresql:
   persistence:
     storageClass: standard

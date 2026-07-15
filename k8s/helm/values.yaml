@@ -73,8 +73,6 @@ imagePullSecrets: []
 rbac:
   # -- Specifies whether to enable the core Controller to have RBAC permissions to Volcano for scheduling distributed jobs.
   volcanoEnabled: true
-  # -- Specifies whether to enable the core Controller to have RBAC permissions to k8s-nim-operator's NIMService for scheduling NIMs.
-  k8sNimOperatorEnabled: true
 
 # -- Multi-node networking configuration for distributed GPU training.
 # These settings control Kyverno policies that inject cloud-specific networking and NCCL configurations.
@@ -167,16 +165,6 @@ ncclTest:
         cpu: "8"
         memory: 16Gi
 
-## Optional dependencies configuration. For production deployments, it is recommended to use existing installations of these dependencies.
-k8s-nim-operator:
-  # -- Specifies whether to enable the default NIM Operator installation. To learn more, see [Install NIM Operator](https://docs.nvidia.com/nim-operator/latest/install.html).
-  # If you are using an existing NIM Operator installation, set this to false.
-  enabled: true
-  nfd:
-    nodeFeatureRules:
-      # -- Specifies whether to enable device ID feature rules.
-      deviceID: false
-
 # -- Local PostgreSQL configuration for the NeMo Platform.
 # @default -- This object has the following default values for the PostgreSQL configuration.
 postgresql:
@@ -258,7 +246,7 @@ externalDatabase:
 # Set configuration here to apply custom, structured configuration across all services.
 # Applied after the base platform config is evaluated for templates. Enables adding / overriding YAML-based elements in the evaluated platform config.
 # It is usually recommended to use this config section instead of `basePlatformConfig` unless you need to use templating features.
-# For example, you can set the NIM default StorageClass via models.controller.backends.k8s-nim-operator.config.default_storage_class.
+# For example, you can set the NIM default StorageClass via models.controller.backends.deployments_plugin.config.default_storage_class.
 # For full configuration reference, see the NeMo Platform's config reference:
 # https://docs.nvidia.com/nemo-platform
 platformConfig: {}

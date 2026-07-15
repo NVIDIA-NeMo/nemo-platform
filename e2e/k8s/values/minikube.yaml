@@ -3,13 +3,6 @@
 #
 # Usage: helm upgrade -i nemo-platform k8s/helm -f e2e/k8s/values/minikube.yaml
 
-# Enable NIM operator for local GPU testing
-k8s-nim-operator:
-  enabled: true
-  operator:
-    admissionController:
-      enabled: false
-
 postgresql:
   image:
     repository: docker.io/library/postgres
