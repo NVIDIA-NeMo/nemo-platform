@@ -179,6 +179,66 @@ def test_doctor_renders_invalid_profile_env_as_command_error(
 
 
 @pytest.mark.parametrize(
+    ("arguments", "environment", "profile_env", "expected"),
+    [
+        (
+            ["--base-url", "https://flag.example"],
+            {"NMP_BASE_URL": "https://process.example"},
+            "NMP_BASE_URL=https://profile.example\n",
+            "https://flag.example",
+        ),
+        ([], {}, "NMP_BASE_URL=https://profile.example\n", "https://profile.example"),
+        (
+            [],
+            {"NMP_BASE_URL": "https://process.example"},
+            "NMP_BASE_URL=https://profile.example\n",
+            "https://process.example",
+        ),
+        ([], {"NEMO_BASE_URL": "https://legacy.example"}, None, DEFAULT_BASE_URL),
+    ],
+    ids=["explicit", "profile-env", "process-env", "legacy-ignored"],
+)
+def test_doctor_resolves_base_url_after_profile_env_loading(
+    app: typer.Typer,
+    profile_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    arguments: list[str],
+    environment: dict[str, str],
+    profile_env: str | None,
+    expected: str,
+) -> None:
+    http_urls: list[str] = []
+    workspace_urls: list[str] = []
+
+    async def record_workspace_probe(base_url: str, workspace: str, agent: str) -> bool:
+        workspace_urls.append(base_url)
+        return True
+
+    monkeypatch.setattr(
+        cli,
+        "_PREFLIGHT_PROBES",
+        AnalysisProbes(
+            env={"INFERENCE_API_KEY": "k"},
+            http_ok=lambda base_url: http_urls.append(base_url) or True,
+            workspace_ok=record_workspace_probe,
+        ),
+    )
+    monkeypatch.delenv("NMP_BASE_URL", raising=False)
+    monkeypatch.delenv("NEMO_BASE_URL", raising=False)
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+    if profile_env is not None:
+        (profile_tree / ".env").write_text(profile_env, encoding="utf-8")
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["doctor", *arguments])
+
+    assert result.exit_code == 0, result.output
+    assert http_urls == [expected]
+    assert workspace_urls == [expected]
+
+
+@pytest.mark.parametrize(
     ("arguments", "environment", "expected"),
     [
         (
