@@ -13,6 +13,7 @@ uv run python -m testbed analyze tau2-airline --live  # analyze the recorded run
 uv run python -m testbed analyze nvq --live           # intake: analyze existing live traces
 uv run python -m testbed snapshot tau2-airline        # export the subject's workspaces (read API) into a portable bundle
 uv run python -m testbed restore --state state-v7     # re-ingest a state bundle into fixture workspaces (additive, idempotent)
+uv run python -m testbed restore --state state-vN --into WORKSPACE
 ```
 
 Bare `analyze <subject>` is a fully reproducible run: pinned data (the subject's
@@ -108,12 +109,21 @@ first (re-ingest into scratch workspaces → re-export → doc diff), or pass
 Then pin it: add `nvq = "state-vN"` under `[subjects]` in `testbed/state.lock`.
 
 **Restore without analyzing:** `uv run python -m testbed restore (FILE | --state state-v7) [--base URL]`.
+To restore a one-workspace bundle directly into a named workspace, use
+`uv run python -m testbed restore --state state-vN --into WORKSPACE`. `--into`
+accepts only one-workspace bundles and requires a fresh, empty target
+workspace. The default restore remains fixture-scoped and idempotent.
 
 What restore touches:
 
-- **Platform: additive only.** Ingests into `<ws>-<ref>` (`<ws>-<sha256[:8]>`
-  for local files); never writes into existing workspaces. Per-collection
-  guard: counts match → skip, empty → ingest, anything else → hard error.
+- **Platform, default fixture restore:** additive, idempotent, and healing.
+  Ingests into `<ws>-<ref>` (`<ws>-<sha256[:8]>` for local files).
+  Per-collection guard: counts match → skip, empty → ingest, supported
+  interrupted states → heal, anything else → hard error.
+- **Platform, direct `--into` restore:** writes to the exact named workspace
+  only after proving all three collections are empty. It is fresh-target-only,
+  and rerunning into the now-populated workspace fails rather than acting
+  idempotently.
 - **Local `testbed/tmp`: run records seeded.** The bundle's run records
   replace yours — clobbered files are moved to `testbed/tmp/backup-<timestamp>/`
   first, and only the bundle's own subjects' files are ever touched. Bundles

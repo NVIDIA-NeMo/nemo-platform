@@ -342,6 +342,7 @@ def quiet_platform(monkeypatch):
         "posts": [],
         "ensured": [],
         "counts": [],
+        "events": [],
         "span_counts": [],
         "annotation_counts": [],
         "result_counts": [],
@@ -351,24 +352,53 @@ def quiet_platform(monkeypatch):
     def _counter(name):
         def fake(base_url, workspace, *, client=None):
             calls["counts"].append((name, workspace))
+            calls["events"].append(("count", name, workspace))
             return calls[f"{name}_counts"].pop(0)
 
         return fake
 
     def fake_first(base_url, workspace, *, client=None):
         calls["counts"].append(("first_span", workspace))
+        calls["events"].append(("count", "first_span", workspace))
         # default (no preloaded id): probe unavailable -> count-only fallback
         return calls["first_ids"].pop(0) if calls["first_ids"] else None
+
+    def fake_ensure(url, workspace, *, client=None):
+        calls["ensured"].append(workspace)
+        calls["events"].append(("ensure", workspace))
+
+    def fake_export(url, workspace, request, *, client=None):
+        calls["requests"].append((workspace, request))
+        calls["events"].append(("write", "span", workspace))
+
+    def fake_post(client, url, body):
+        calls["posts"].append((url, body))
+        endpoint = "annotation" if url.endswith("/annotations") else "result"
+        workspace = url.split("/workspaces/", 1)[1].split("/", 1)[0]
+        calls["events"].append(("write", endpoint, workspace))
+
+    real_client = httpx.Client
+
+    def reject_unexpected_request(request: httpx.Request) -> httpx.Response:
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            calls["events"].append(("write", request.method, request.url.path))
+            raise AssertionError(f"unexpected {request.method} mutation: {request.url}")
+        raise AssertionError(f"unexpected HTTP request: {request.method} {request.url}")
+
+    transport = httpx.MockTransport(reject_unexpected_request)
+
+    def client_factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real_client(*args, **kwargs)
 
     monkeypatch.setattr(reingest, "span_count", _counter("span"))
     monkeypatch.setattr(reingest, "annotation_count", _counter("annotation"))
     monkeypatch.setattr(reingest, "evaluator_result_count", _counter("result"))
     monkeypatch.setattr(reingest, "_first_span_id", fake_first, raising=False)
-    monkeypatch.setattr(reingest, "ensure_workspace", lambda url, ws, client=None: calls["ensured"].append(ws))
-    monkeypatch.setattr(
-        reingest, "export_trace_request", lambda url, ws, req, client=None: calls["requests"].append((ws, req))
-    )
-    monkeypatch.setattr(reingest, "_post_created", lambda client, url, body: calls["posts"].append((url, body)))
+    monkeypatch.setattr(reingest, "ensure_workspace", fake_ensure)
+    monkeypatch.setattr(reingest, "export_trace_request", fake_export)
+    monkeypatch.setattr(reingest, "_post_created", fake_post)
+    monkeypatch.setattr(reingest.httpx, "Client", client_factory)
     return calls
 
 
@@ -383,6 +413,264 @@ def fake_docker(monkeypatch):
 
     monkeypatch.setattr(reingest.subprocess, "run", fake_run)
     return runs
+
+
+@pytest.mark.parametrize(
+    ("counts_key", "message"),
+    [
+        ("span_counts", "spans"),
+        ("annotation_counts", "annotations"),
+        ("result_counts", "evaluator results"),
+    ],
+)
+def test_require_empty_rejects_existing_target_data(tmp_path, quiet_platform, counts_key: str, message: str) -> None:
+    export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC], [ANNOTATION_DOC], [RESULT_DOC])
+    quiet_platform["span_counts"] = [0]
+    quiet_platform["annotation_counts"] = [0]
+    quiet_platform["result_counts"] = [0]
+    quiet_platform[counts_key] = [1]
+
+    with pytest.raises(RuntimeError, match=message):
+        reingest.ingest_bundle(
+            "http://x",
+            export_dir,
+            _manifest("ws-a", 1, 1, 1),
+            workspace_map={"ws-a": "target"},
+            catalog=CATALOG,
+            require_empty=True,
+        )
+
+    assert quiet_platform["events"] == [
+        ("ensure", "target"),
+        ("count", "span", "target"),
+        ("count", "annotation", "target"),
+        ("count", "result", "target"),
+    ]
+    assert quiet_platform["requests"] == []
+    assert quiet_platform["posts"] == []
+
+
+@pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])
+def test_require_empty_transport_rejects_all_http_mutations(quiet_platform, method: str) -> None:
+    with reingest.httpx.Client() as client:
+        with pytest.raises(AssertionError, match=f"unexpected {method} mutation"):
+            client.request(method, "http://x/hidden-mutation")
+
+    assert quiet_platform["events"] == [("write", method, "/hidden-mutation")]
+
+
+def test_require_empty_direct_restore_uses_real_http_transport(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC], [ANNOTATION_DOC], [RESULT_DOC])
+    counts = {"spans": 0, "annotations": 0, "evaluator-results": 0}
+    requests: list[tuple[str, str]] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        requests.append((request.method, path))
+        if request.method == "POST" and path == "/apis/entities/v2/workspaces":
+            return httpx.Response(409)
+        if request.method == "GET":
+            collection = path.rsplit("/", 1)[-1]
+            return httpx.Response(200, json={"pagination": {"total_results": counts[collection]}, "data": []})
+        if request.method == "POST" and path.endswith("/ingest/otlp/v1/traces"):
+            counts["spans"] = 1
+            return httpx.Response(200, json={"errors": []})
+        if request.method == "POST" and path.endswith("/annotations"):
+            counts["annotations"] = 1
+            return httpx.Response(201, json={})
+        if request.method == "POST" and path.endswith("/evaluator-results"):
+            counts["evaluator-results"] = 1
+            return httpx.Response(201, json={})
+        raise AssertionError(f"unexpected request: {request.method} {path}")
+
+    real_client = httpx.Client
+    transport = httpx.MockTransport(handle)
+
+    def client_factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr(reingest.httpx, "Client", client_factory)
+
+    outcome = reingest.ingest_bundle(
+        "http://platform.example",
+        export_dir,
+        _manifest("ws-a", 1, 1, 1),
+        workspace_map={"ws-a": "target"},
+        catalog=CATALOG,
+        require_empty=True,
+        sleep=lambda seconds: None,
+    )
+
+    assert [request for request in requests if request[0] != "GET"] == [
+        ("POST", "/apis/entities/v2/workspaces"),
+        ("POST", "/apis/intake/v2/workspaces/target/ingest/otlp/v1/traces"),
+        ("POST", "/apis/intake/v2/workspaces/target/annotations"),
+        ("POST", "/apis/intake/v2/workspaces/target/evaluator-results"),
+    ]
+    assert outcome["ws-a"] == {
+        "workspace": "target",
+        "spans": {"ingested": 1, "skipped": 0},
+        "annotations": {"ingested": 1, "skipped": 0},
+        "evaluator_results": {"ingested": 1, "skipped": 0},
+    }
+
+
+def test_require_empty_rechecks_spans_before_ingest(tmp_path, quiet_platform) -> None:
+    export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC])
+    quiet_platform["span_counts"] = [0, 1]
+    quiet_platform["annotation_counts"] = [0]
+    quiet_platform["result_counts"] = [0]
+
+    with pytest.raises(RuntimeError, match="spans"):
+        reingest.ingest_bundle(
+            "http://x",
+            export_dir,
+            _manifest("ws-a", 1),
+            workspace_map={"ws-a": "target"},
+            catalog=CATALOG,
+            require_empty=True,
+        )
+
+    assert quiet_platform["events"] == [
+        ("ensure", "target"),
+        ("count", "span", "target"),
+        ("count", "annotation", "target"),
+        ("count", "result", "target"),
+        ("count", "span", "target"),
+    ]
+    assert quiet_platform["requests"] == []
+    assert quiet_platform["posts"] == []
+
+
+def test_require_empty_rechecks_annotations_before_post(tmp_path, quiet_platform) -> None:
+    export_dir = _write_export(tmp_path, "ws-a", [], [ANNOTATION_DOC])
+    quiet_platform["span_counts"] = [0]
+    quiet_platform["annotation_counts"] = [0, 1]
+    quiet_platform["result_counts"] = [0]
+
+    with pytest.raises(RuntimeError, match="annotations"):
+        reingest.ingest_bundle(
+            "http://x",
+            export_dir,
+            _manifest("ws-a", 0, 1),
+            workspace_map={"ws-a": "target"},
+            catalog=CATALOG,
+            require_empty=True,
+        )
+
+    assert quiet_platform["events"] == [
+        ("ensure", "target"),
+        ("count", "span", "target"),
+        ("count", "annotation", "target"),
+        ("count", "result", "target"),
+        ("count", "annotation", "target"),
+    ]
+    assert quiet_platform["requests"] == []
+    assert quiet_platform["posts"] == []
+
+
+def test_require_empty_rechecks_results_before_post(tmp_path, quiet_platform) -> None:
+    export_dir = _write_export(tmp_path, "ws-a", [], [], [RESULT_DOC])
+    quiet_platform["span_counts"] = [0]
+    quiet_platform["annotation_counts"] = [0]
+    quiet_platform["result_counts"] = [0, 1]
+
+    with pytest.raises(RuntimeError, match="evaluator results"):
+        reingest.ingest_bundle(
+            "http://x",
+            export_dir,
+            _manifest("ws-a", 0, 0, 1),
+            workspace_map={"ws-a": "target"},
+            catalog=CATALOG,
+            require_empty=True,
+        )
+
+    assert quiet_platform["events"] == [
+        ("ensure", "target"),
+        ("count", "span", "target"),
+        ("count", "annotation", "target"),
+        ("count", "result", "target"),
+        ("count", "result", "target"),
+    ]
+    assert quiet_platform["requests"] == []
+    assert quiet_platform["posts"] == []
+
+
+def test_require_empty_ingests_all_nonempty_collections_in_order(tmp_path, quiet_platform) -> None:
+    export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC], [ANNOTATION_DOC], [RESULT_DOC])
+    quiet_platform["span_counts"] = [0, 0, 1]
+    quiet_platform["annotation_counts"] = [0, 0]
+    quiet_platform["result_counts"] = [0, 0]
+
+    outcome = reingest.ingest_bundle(
+        "http://x",
+        export_dir,
+        _manifest("ws-a", 1, 1, 1),
+        workspace_map={"ws-a": "target"},
+        catalog=CATALOG,
+        require_empty=True,
+        sleep=lambda seconds: None,
+    )
+
+    assert quiet_platform["events"] == [
+        ("ensure", "target"),
+        ("count", "span", "target"),
+        ("count", "annotation", "target"),
+        ("count", "result", "target"),
+        ("count", "span", "target"),
+        ("write", "span", "target"),
+        ("count", "span", "target"),
+        ("count", "annotation", "target"),
+        ("write", "annotation", "target"),
+        ("count", "result", "target"),
+        ("write", "result", "target"),
+    ]
+    assert len(quiet_platform["requests"]) == 1
+    assert [url.rsplit("/", 1)[-1] for url, _ in quiet_platform["posts"]] == [
+        "annotations",
+        "evaluator-results",
+    ]
+    assert outcome["ws-a"] == {
+        "workspace": "target",
+        "spans": {"ingested": 1, "skipped": 0},
+        "annotations": {"ingested": 1, "skipped": 0},
+        "evaluator_results": {"ingested": 1, "skipped": 0},
+    }
+
+
+def test_require_empty_all_empty_bundle_has_no_recounts_or_writes(tmp_path, quiet_platform) -> None:
+    export_dir = _write_export(tmp_path, "ws-a", [])
+    quiet_platform["span_counts"] = [0]
+    quiet_platform["annotation_counts"] = [0]
+    quiet_platform["result_counts"] = [0]
+
+    outcome = reingest.ingest_bundle(
+        "http://x",
+        export_dir,
+        _manifest("ws-a", 0),
+        workspace_map={"ws-a": "target"},
+        catalog=CATALOG,
+        require_empty=True,
+    )
+
+    assert quiet_platform["events"] == [
+        ("ensure", "target"),
+        ("count", "span", "target"),
+        ("count", "annotation", "target"),
+        ("count", "result", "target"),
+    ]
+    assert quiet_platform["requests"] == []
+    assert quiet_platform["posts"] == []
+    assert outcome["ws-a"] == {
+        "workspace": "target",
+        "spans": {"ingested": 0, "skipped": 0},
+        "annotations": {"ingested": 0, "skipped": 0},
+        "evaluator_results": {"ingested": 0, "skipped": 0},
+    }
 
 
 def test_ingest_bundle_zero_ingests_everything(tmp_path, quiet_platform):
@@ -1248,3 +1536,14 @@ def test_manifest_since_naive_timestamp_is_utc():
 def test_manifest_since_missing_bound_is_epoch():
     assert reingest.manifest_since({}) == datetime(1970, 1, 1, tzinfo=timezone.utc)
     assert reingest.manifest_since({"min_start_time": None}) == datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+
+def test_explicit_workspace_map_single_workspace() -> None:
+    assert reingest.explicit_workspace_map(["run-scoped-workspace"], "stable-workspace") == {
+        "run-scoped-workspace": "stable-workspace"
+    }
+
+
+def test_explicit_workspace_map_rejects_multi_workspace_bundle() -> None:
+    with pytest.raises(SystemExit, match="single-workspace"):
+        reingest.explicit_workspace_map(["realistic", "oracle"], "stable-workspace")
