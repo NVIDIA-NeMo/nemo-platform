@@ -7,14 +7,13 @@ import os
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
 
 import httpx
 from nemo_insights_plugin.analyst.analyst_backend import make_analyst_backend
 from nemo_insights_plugin.client import make_client
+from nemo_insights_plugin.contracts.checks import CheckResult, make_check_result
 from nemo_insights_plugin.profile import AnalysisProfile
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatformError
-from pydantic import BaseModel
 
 _EXPECTED_PLATFORM_ERRORS = (NeMoPlatformError, httpx.HTTPError, OSError, RuntimeError, ValueError)
 
@@ -57,43 +56,6 @@ class AnalysisProbes:
     env: Mapping[str, str] = field(default_factory=lambda: os.environ)
     http_ok: Callable[[str], bool] = _default_http_ok
     workspace_ok: Callable[[str, str, str], Awaitable[bool]] = _default_workspace_ok
-
-
-class CheckResult(BaseModel):
-    """One required or advisory readiness check."""
-
-    name: str
-    group: str
-    status: Literal["pass", "warn", "fail"]
-    severity: Literal["required", "advisory"]
-    message: str
-    hint: str | None = None
-
-
-def _result(
-    name: str,
-    group: str,
-    ok: bool,
-    severity: Literal["required", "advisory"],
-    pass_message: str,
-    fail_message: str,
-    *,
-    hint: str | None = None,
-) -> CheckResult:
-    if ok:
-        status = "pass"
-    elif severity == "required":
-        status = "fail"
-    else:
-        status = "warn"
-    return CheckResult(
-        name=name,
-        group=group,
-        status=status,
-        severity=severity,
-        message=pass_message if ok else fail_message,
-        hint=None if ok else hint,
-    )
 
 
 def check_profile(
@@ -211,7 +173,7 @@ async def check_environment(
     reachable = active.http_ok(base_url)
     queryable = await active.workspace_ok(base_url, workspace, agent)
     return [
-        _result(
+        make_check_result(
             "INFERENCE_API_KEY",
             "credentials",
             credential,
@@ -220,7 +182,7 @@ async def check_environment(
             "INFERENCE_API_KEY not set",
             hint=credential_hint,
         ),
-        _result(
+        make_check_result(
             "platform-reachable",
             "platform",
             reachable,
@@ -229,7 +191,7 @@ async def check_environment(
             f"{base_url} unreachable",
             hint="check --base-url/NMP_BASE_URL and platform health",
         ),
-        _result(
+        make_check_result(
             "workspace-query",
             "platform",
             queryable,
@@ -239,26 +201,3 @@ async def check_environment(
             hint="check the workspace, authentication context, and Intake availability",
         ),
     ]
-
-
-def format_report(results: list[CheckResult]) -> str:
-    """Format checks into a readable grouped report."""
-    marks = {"pass": "✓", "warn": "⚠", "fail": "✗"}
-    lines: list[str] = []
-    for group in sorted({result.group for result in results}):
-        lines.append(group.capitalize())
-        for result in (item for item in results if item.group == group):
-            lines.append(f"  {marks[result.status]} {result.message}")
-            if result.hint and result.status != "pass":
-                lines.append(f"      hint: {result.hint}")
-    return "\n".join(lines)
-
-
-def required_failures(results: list[CheckResult]) -> list[CheckResult]:
-    """Return failures that prevent an analysis run."""
-    return [result for result in results if result.status == "fail" and result.severity == "required"]
-
-
-def advisories(results: list[CheckResult]) -> list[CheckResult]:
-    """Return non-blocking environment warnings."""
-    return [result for result in results if result.status == "warn"]

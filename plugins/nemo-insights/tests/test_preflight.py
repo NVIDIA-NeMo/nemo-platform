@@ -7,14 +7,12 @@ from pathlib import Path
 import httpx
 import pytest
 from nemo_insights_plugin import preflight
+from nemo_insights_plugin.contracts.checks import format_report, required_failures
 from nemo_insights_plugin.preflight import (
     AnalysisProbes,
-    CheckResult,
     check_agent_spec,
     check_environment,
     check_profile,
-    format_report,
-    required_failures,
 )
 from nemo_insights_plugin.profile import AnalysisProfile
 from nemo_platform import NeMoPlatformError
@@ -153,20 +151,3 @@ def test_healthy_setup_formats_grouped_report(tmp_path: Path) -> None:
     assert "Credentials\n  ✓ INFERENCE_API_KEY set" in report
     assert "Platform\n  ✓ http://localhost:8080 reachable" in report
     assert not required_failures(results)
-
-
-def test_format_report_includes_failure_hints() -> None:
-    report = format_report(
-        [
-            CheckResult(
-                name="profile-found",
-                group="profile",
-                status="fail",
-                severity="required",
-                message="no optimizer.yaml found",
-                hint="create optimizer.yaml",
-            )
-        ]
-    )
-
-    assert report == "Profile\n  ✗ no optimizer.yaml found\n      hint: create optimizer.yaml"
