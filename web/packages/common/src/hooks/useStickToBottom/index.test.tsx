@@ -25,12 +25,12 @@ const mockGeometry = (element: HTMLElement) => {
   });
 };
 
-const Harness: FC<{ enabled?: boolean }> = ({ enabled }) => {
+const Harness: FC<{ enabled?: boolean; attached?: boolean }> = ({ enabled, attached = true }) => {
   const { ref, scrollToBottom } = useStickToBottom<HTMLDivElement>({ enabled });
   return (
     <>
       <button onClick={scrollToBottom}>scroll</button>
-      <div ref={ref} data-testid="scroll" />
+      {attached && <div ref={ref} data-testid="scroll" />}
     </>
   );
 };
@@ -48,10 +48,8 @@ it('scrollToBottom() jumps the container to the bottom', async () => {
 });
 
 it('scrollToBottom() does not throw before the element is attached', async () => {
-  // enabled=false does not detach scrollToBottom; it simply has nothing to scroll
-  // until the ref is attached. Calling it must not throw.
   const user = userEvent.setup();
-  render(<Harness enabled={false} />);
+  render(<Harness enabled attached={false} />);
 
   await expect(user.click(screen.getByRole('button', { name: 'scroll' }))).resolves.not.toThrow();
 });

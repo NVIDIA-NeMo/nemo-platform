@@ -52,6 +52,9 @@ export function useStickToBottom<T extends HTMLElement = HTMLElement>({
     const element = ref.current;
     if (!element) return;
 
+    shouldAutoScrollRef.current = true;
+    element.scrollTop = element.scrollHeight - element.clientHeight;
+
     const observer = new MutationObserver(() => {
       if (shouldAutoScrollRef.current) {
         element.scrollTop = element.scrollHeight - element.clientHeight;

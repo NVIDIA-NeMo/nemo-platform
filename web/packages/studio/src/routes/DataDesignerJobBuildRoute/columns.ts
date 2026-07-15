@@ -697,10 +697,14 @@ export const validateColumnName = (name: string, takenNames: Set<string>): strin
 const fieldValueError = (field: ColumnField, value: string): string | null => {
   const isJson = field.dataType === 'json' || field.key === 'output_format';
   if (isJson) {
+    let parsed: unknown;
     try {
-      JSON.parse(value);
+      parsed = JSON.parse(value);
     } catch {
       return `${field.label} must be valid JSON.`;
+    }
+    if (field.key === 'scores' && !Array.isArray(parsed)) {
+      return `${field.label} must be a JSON array.`;
     }
     return null;
   }

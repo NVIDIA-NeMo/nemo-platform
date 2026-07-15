@@ -340,7 +340,7 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
         inferenceParams: {
           generation_type: 'embedding',
           encoding_format: 'float',
-          extra_body: { input_type: 'query', truncate: 'NONE' },
+          extra_body: { input_type: 'passage', truncate: 'NONE' },
         },
       },
     ],
