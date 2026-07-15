@@ -17,8 +17,12 @@ from datetime import datetime, timezone
 
 import pytest
 from nemo_agents_plugin.entities import (
+    AGENT_CONFIG_FILENAME,
+    NAT_WORKFLOW_CONFIG_FORMAT,
+    NEMO_AGENTS_SPEC_CONFIG_FORMAT,
     Agent,
     AgentDeployment,
+    agent_config_file_ref,
     agent_spec_file_ref,
     agent_spec_fileset_name,
     agent_spec_local_path,
@@ -47,7 +51,7 @@ class TestAgentEntity:
         assert a.workspace == "default"
         assert a.description == ""
         assert a.config == {}
-        assert a.config_format == "nat-workflow-v1"
+        assert a.config_format == NAT_WORKFLOW_CONFIG_FORMAT
 
     def test_config_stored(self) -> None:
         config = {"llms": {"my_llm": {"_type": "nim", "model_name": "llama"}}}
@@ -60,7 +64,7 @@ class TestAgentEntity:
             workspace="default",
             description="A calculator",
             config={"key": "value"},
-            config_format="nat-workflow-v1",
+            config_format=NAT_WORKFLOW_CONFIG_FORMAT,
         )
         data = a._get_data_fields()
         assert "description" in data
@@ -176,7 +180,7 @@ class TestCreateAgentRequest:
         assert req.name == "calc"
         assert req.config == {"llms": {}}
         assert req.description == ""
-        assert req.config_format == "nat-workflow-v1"
+        assert req.config_format == NAT_WORKFLOW_CONFIG_FORMAT
 
     def test_missing_config_raises(self) -> None:
         with pytest.raises(ValidationError):
@@ -193,11 +197,20 @@ class TestCreateAgentRequest:
 
 
 class TestSpecLocationConvention:
+    def test_config_contract_constants(self) -> None:
+        assert AGENT_CONFIG_FILENAME == "agent.yaml"
+        assert NAT_WORKFLOW_CONFIG_FORMAT == "nat-workflow-v1"
+        assert NEMO_AGENTS_SPEC_CONFIG_FORMAT == "nemo-agents-spec-v1"
+
     def test_spec_location_convention(self) -> None:
         assert agent_spec_fileset_name("checkout-bot") == "checkout-bot-spec"
         ref = agent_spec_file_ref("default", "checkout-bot")
         assert str(ref) == "default/checkout-bot-spec#AGENT-SPEC.md"
         assert agent_spec_local_path("checkout-bot").as_posix() == "agents/checkout-bot-spec/AGENT-SPEC.md"
+
+    def test_config_file_ref_uses_canonical_agent_yaml(self) -> None:
+        ref = agent_config_file_ref("default", "checkout-bot")
+        assert str(ref) == "default/checkout-bot-spec#agent.yaml"
 
 
 # ---------------------------------------------------------------------------

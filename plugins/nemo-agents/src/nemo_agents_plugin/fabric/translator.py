@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Translate Platform-owned agent config into Fabric SDK config."""
+"""Translate Platform-owned agent config into typed in-memory FabricConfig."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ class FabricTranslationError(ValueError):
 
 
 def translate_agent_config(config: AgentConfig, harness_name: str | None = None) -> "FabricConfig":
-    """Translate Platform-owned agent config into a FabricConfig.
+    """Translate Platform-owned agent config into a typed in-memory FabricConfig.
 
     The Fabric SDK import is intentionally local to this function so existing
     NAT-backed NeMo Agents paths do not require Fabric to be installed.

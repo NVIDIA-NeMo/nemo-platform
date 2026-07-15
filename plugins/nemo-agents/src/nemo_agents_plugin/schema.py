@@ -22,7 +22,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from nemo_agents_plugin.entities import Agent, AgentDeployment, DeploymentMode, DeploymentStatus
+from nemo_agents_plugin.entities import (
+    NAT_WORKFLOW_CONFIG_FORMAT,
+    Agent,
+    AgentDeployment,
+    DeploymentMode,
+    DeploymentStatus,
+)
 from nemo_platform_plugin.schema import NemoFilter, NemoListResponse
 from pydantic import BaseModel, Field
 
@@ -36,8 +42,8 @@ class CreateAgentRequest(BaseModel):
 
     name: str = Field(description="Unique agent name within the workspace.")
     description: str = Field(default="", description="Human-readable description.")
-    config: dict[str, Any] = Field(description="NAT workflow config dict.")
-    config_format: str = Field(default="nat-workflow-v1", description="Config format identifier.")
+    config: dict[str, Any] = Field(description="Agent config dict interpreted according to config_format.")
+    config_format: str = Field(default=NAT_WORKFLOW_CONFIG_FORMAT, description="Config format identifier.")
 
 
 class CreateDeploymentRequest(BaseModel):
