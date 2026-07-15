@@ -148,6 +148,7 @@ jobs:
       release_label: ${{ steps.plan.outputs.release_label }}
       nightly_timestamp: ${{ steps.plan.outputs.nightly_timestamp }}
       wheel_version: ${{ steps.wheel-version.outputs.wheel_version }}
+      helm_version: ${{ steps.helm-version.outputs.helm_version }}
       wheel_ids: ${{ steps.plan.outputs.wheel_ids }}
       container_ids: ${{ steps.plan.outputs.container_ids }}
       has_wheels: ${{ steps.plan.outputs.has_wheels }}
@@ -172,6 +173,14 @@ jobs:
             const allContainers = JSON.parse(process.env.RELEASE_CONTAINERS_JSON);
             const allWheelIds = allWheels.map((wheel) => wheel.id);
             const allContainerIds = allContainers.map((container) => container.id);
+            const semverCorePattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+            // ECMA-compatible SemVer 2.0.0 pattern from https://semver.org/.
+            const semverPattern = new RegExp(
+              "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)"
+              + "(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)"
+              + "(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
+              + "(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+            );
             const inputs = context.payload.inputs ?? {};
             const isManual = context.eventName === "workflow_dispatch";
             const releaseType = isManual ? inputs["release-type"] : "nightly";
@@ -188,7 +197,7 @@ jobs:
               if (!/^[0-9a-f]{40}$/i.test(sourceSha)) {
                 throw new Error("Stable releases require an exact 40-character source SHA.");
               }
-              if (!/^\d+\.\d+\.\d+$/.test(version)) {
+              if (!semverCorePattern.test(version)) {
                 throw new Error("Stable releases require a MAJOR.MINOR.PATCH version.");
               }
             } else {
@@ -287,7 +296,7 @@ jobs:
               ) {
                 throw new Error("helm-version can only be used for stable Helm-only releases.");
               }
-              if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(helmVersionOverride)) {
+              if (!semverPattern.test(helmVersionOverride)) {
                 throw new Error("helm-version must be a SemVer chart version.");
               }
             }
@@ -468,6 +477,58 @@ jobs:
           fi
           wheel_version="$(python3 .github/scripts/stamp_sdk_version.py "${args[@]}")"
           echo "wheel_version=${wheel_version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Resolve Helm version
+        id: helm-version
+        if: steps.plan.outputs.include_helm == 'true'
+        shell: bash
+        env:
+          HELM_CHART: ${{ env.RELEASE_HELM_PATH }}
+          RELEASE_TYPE: ${{ steps.plan.outputs.release_type }}
+          RELEASE_VERSION: ${{ steps.plan.outputs.version }}
+          NIGHTLY_TIMESTAMP: ${{ steps.plan.outputs.nightly_timestamp }}
+          HELM_VERSION_OVERRIDE: ${{ steps.plan.outputs.helm_version_override }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${HELM_VERSION_OVERRIDE}" ]]; then
+            helm_version="${HELM_VERSION_OVERRIDE}"
+          elif [[ "${RELEASE_TYPE}" == "nightly" ]]; then
+            # Nightlies align to the release core from the latest release or
+            # RC tag. Build-metadata chart fixes use helm-version instead.
+            base_version="$(
+              git tag --merged HEAD --list \
+                | awk '
+                  /^[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$/ {
+                    sub(/-rc[0-9]+$/, "")
+                    print
+                  }
+                ' \
+                | sort -V -u \
+                | tail -n 1
+            )"
+            if [[ -z "${base_version}" ]]; then
+              base_version="$(
+                awk '
+                  $1 == "version:" {
+                    version = $2
+                    gsub(/^["'\''"]|["'\''"]$/, "", version)
+                    print version
+                    exit
+                  }
+                ' "${HELM_CHART}/Chart.yaml"
+              )"
+            fi
+            if [[ -z "${base_version}" ]]; then
+              echo "Unable to resolve Helm chart base version for nightly release." >&2
+              exit 1
+            fi
+            helm_version="${base_version}-nightly-${NIGHTLY_TIMESTAMP}"
+          else
+            helm_version="${RELEASE_VERSION}"
+          fi
+
+          echo "helm_version=${helm_version}" >> "${GITHUB_OUTPUT}"
 
   notify-start:
     # Start alerts intentionally run for dry runs so the webhook can be tested.
@@ -665,8 +726,6 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ needs.plan-release.outputs.source_sha }}
-          fetch-depth: 0
-          fetch-tags: true
           persist-credentials: false
 
       - name: Set up Helm
@@ -690,10 +749,8 @@ jobs:
           NIGHTLY_IMAGE_REGISTRY: ${{ env.RELEASE_NIGHTLY_CONTAINER_REGISTRY }}
           STABLE_IMAGE_REGISTRY: ${{ env.RELEASE_HELM_REGISTRY }}
           RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
-          RELEASE_VERSION: ${{ needs.plan-release.outputs.version }}
           RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
-          NIGHTLY_TIMESTAMP: ${{ needs.plan-release.outputs.nightly_timestamp }}
-          HELM_VERSION_OVERRIDE: ${{ needs.plan-release.outputs.helm_version_override }}
+          HELM_VERSION: ${{ needs.plan-release.outputs.helm_version }}
         run: |
           set -euo pipefail
 
@@ -711,30 +768,7 @@ jobs:
             release_registry="${STABLE_IMAGE_REGISTRY}"
           fi
 
-          chart_version="${HELM_VERSION_OVERRIDE}"
-          if [[ -z "${chart_version}" ]]; then
-            if [[ "${RELEASE_TYPE}" == "nightly" ]]; then
-              # Nightlies align to the release core from the latest release or
-              # RC tag. Build-metadata chart fixes use helm-version instead.
-              base_version="$(
-                git tag --merged HEAD --list \
-                  | awk '
-                    /^[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$/ {
-                      sub(/-rc[0-9]+$/, "")
-                      print
-                    }
-                  ' \
-                  | sort -V -u \
-                  | tail -n 1
-              )"
-              if [[ -z "${base_version}" ]]; then
-                base_version="$(yq -r '.version' "${chart_dir}/Chart.yaml")"
-              fi
-              chart_version="${base_version}-nightly-${NIGHTLY_TIMESTAMP}"
-            else
-              chart_version="${RELEASE_VERSION}"
-            fi
-          fi
+          chart_version="${HELM_VERSION}"
 
           yq -i ".platformConfig.platform.image_registry = \"${release_registry}\"" "${chart_dir}/values.yaml"
           yq -i ".api.image.repository = \"${release_registry}/nmp-api\"" "${chart_dir}/values.yaml"
