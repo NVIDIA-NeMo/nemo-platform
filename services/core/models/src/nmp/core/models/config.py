@@ -6,13 +6,8 @@ from typing import Any, Literal
 
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.common.config import Runtime, create_service_config_class, get_platform_config, get_service_config
-from nmp.core.models.controllers.backends.registry import (
-    BackendConfig,
-    DeploymentsPluginBackendConfigModel,
-    DockerBackendConfigModel,
-    K8sNimOperatorBackendConfigModel,
-    NoneBackendConfigModel,
-)
+from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginBackendConfigModel
+from nmp.core.models.controllers.backends.registry import BackendConfig
 from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
@@ -164,15 +159,11 @@ class ParallelismConfig(BaseModel):
 # Backend and controller configuration
 # -----------------------------------------------------------------------------
 
-BackendName = Literal["docker", "nim_operator", "deployments_plugin", "none"]
+BackendName = Literal["deployments_plugin"]
 
 # Map backend names to their config model classes.
-# ``none`` is the no-op substrate used when platform.runtime is ``none``.
 BACKEND_CONFIG_MODELS: dict[str, type[BackendConfig]] = {
-    "docker": DockerBackendConfigModel,
-    "nim_operator": K8sNimOperatorBackendConfigModel,
     "deployments_plugin": DeploymentsPluginBackendConfigModel,
-    "none": NoneBackendConfigModel,
 }
 
 
@@ -203,7 +194,7 @@ def get_default_backends_for_runtime(runtime: Runtime) -> dict[BackendName, Back
             default_executor="local-k8s",
         )
     elif runtime == Runtime.NONE:
-        backends["none"] = NoneBackendConfigModel(enabled=True)
+        backends["deployments_plugin"] = DeploymentsPluginBackendConfigModel(enabled=True)
     if not backends:
         logger.warning(f"No default backends defined for runtime type: {runtime}")
 
@@ -280,37 +271,31 @@ def merge_backends(
         else:
             merged_backends[backend_name] = custom_config
 
-    # If the runtime-default backend is "none", the platform's preferred
-    # runtime (docker/kubernetes) was auto-demoted because it wasn't
-    # available (see NemoPlatformConfig.validate_runtime). The "none" backend
-    # is the only viable option in that state, so we must guarantee it is
-    # the single enabled backend regardless of what the user's config says:
-    #   - Force-enable merged["none"], even if the user explicitly disabled
-    #     it — otherwise we can end up with zero enabled backends and crash
-    #     the registry with "No backends are enabled".
-    #   - Force-disable any other still-enabled custom backends — otherwise
-    #     the registry crashes with "Multiple backends are enabled".
-    none_default = default_backends.get("none")
-    if none_default is not None and none_default.enabled:
-        current_none = merged_backends.get("none", none_default)
-        if not current_none.enabled:
-            logger.warning(
-                "Backend 'none' was disabled in config but the platform runtime is "
-                "not available; force-enabling 'none' since it is the only viable "
-                "backend in this state."
-            )
-            current_none = current_none.model_copy(update={"enabled": True})
-        merged_backends["none"] = current_none
-
-        for name in list(merged_backends):
-            cfg = merged_backends[name]
-            if name != "none" and cfg.enabled:
+    # When platform.runtime is NONE (docker/k8s unavailable), the default
+    # deployments_plugin backend is the only viable option. Force-enable it and
+    # disable any other enabled custom backends so the registry sees exactly one.
+    if get_platform_config().runtime == Runtime.NONE:
+        fallback_default = default_backends.get("deployments_plugin")
+        if fallback_default is not None and fallback_default.enabled:
+            current = merged_backends.get("deployments_plugin", fallback_default)
+            if not current.enabled:
                 logger.warning(
-                    "Backend '%s' was enabled in config but the platform runtime "
-                    "is not available; disabling it and using 'none' backend instead.",
-                    name,
+                    "Backend 'deployments_plugin' was disabled in config but the platform runtime is "
+                    "not available; force-enabling 'deployments_plugin' since it is the only viable "
+                    "backend in this state."
                 )
-                merged_backends[name] = cfg.model_copy(update={"enabled": False})
+                current = current.model_copy(update={"enabled": True})
+            merged_backends["deployments_plugin"] = current
+
+            for name in list(merged_backends):
+                cfg = merged_backends[name]
+                if name != "deployments_plugin" and cfg.enabled:
+                    logger.warning(
+                        "Backend '%s' was enabled in config but the platform runtime "
+                        "is not available; disabling it and using 'deployments_plugin' instead.",
+                        name,
+                    )
+                    merged_backends[name] = cfg.model_copy(update={"enabled": False})
 
     return merged_backends
 
@@ -380,9 +365,7 @@ class ControllerConfig(BaseModel):
         result: dict[str, BackendConfig] = {}
         for backend_name, config_data in v.items():
             # If already a BackendConfig instance, use it directly
-            if isinstance(
-                config_data, (DockerBackendConfigModel, K8sNimOperatorBackendConfigModel, NoneBackendConfigModel)
-            ):
+            if isinstance(config_data, DeploymentsPluginBackendConfigModel):
                 result[backend_name] = config_data
                 continue
 

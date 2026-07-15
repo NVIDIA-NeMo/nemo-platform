@@ -9,13 +9,16 @@ from typing import Any, Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from nemo_deployments_plugin.config import ControllerConfig, DeploymentsConfig, ExecutorConfigEntry
+from nemo_deployments_plugin.controller import DeploymentsController
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nmp.common.config import Runtime
 from nmp.core.inference_gateway.api.dependencies import global_model_cache
 from nmp.core.inference_gateway.api.model_cache import ModelCache, model_provider_getter_from_sdk, refresh_model_cache
 from nmp.core.inference_gateway.config import InferenceGatewayConfig
 from nmp.core.inference_gateway.service import InferenceGatewayService
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate, ServiceBackend
-from nmp.core.models.controllers.backends.docker import DockerServiceBackend
+from nmp.core.models.controllers.backends.deployments_plugin.backend import DeploymentsPluginServiceBackend
 from nmp.core.models.controllers.backends.registry import BackendRegistry
 from nmp.core.models.controllers.models_controller import ModelsController
 from nmp.core.models.service import ModelsService
@@ -265,6 +268,15 @@ def docker_backend_config(
 
 
 @pytest.fixture
+def deployments_plugin_backend_config() -> dict[str, Any]:
+    return {
+        "docker_executor": "local-docker",
+        "default_executor": "local-docker",
+        "deleting_timeout_seconds": 300,
+    }
+
+
+@pytest.fixture
 def controller_with_docker_and_igw(
     test_clients: ClientContext,
     docker_client,
@@ -273,6 +285,8 @@ def controller_with_docker_and_igw(
     docker_backend_config,
     docker_test_context,
     models_controller_container_cleanup,
+    deployments_plugin_backend_config,
+    worker_id: str,
 ) -> Generator[
     tuple[ModelsController, ModelCache, NeMoPlatform, str, DockerTestContext, AsyncNeMoPlatform], None, None
 ]:
@@ -297,42 +311,77 @@ def controller_with_docker_and_igw(
             return mock_sidecar_image
         return real_get_qualified_image(name, tag=tag, registry=registry)
 
-    # Create Docker backend
-    docker_backend = DockerServiceBackend(
-        nmp_sdk=test_clients.async_sdk,
-        config=docker_backend_config,
+    start_port, end_port = get_worker_port_range(worker_id)
+    deployments_config = DeploymentsConfig(
+        executors=[
+            ExecutorConfigEntry(
+                name="local-docker",
+                backend="docker",
+                config={
+                    "pull_images": False,
+                    "port_range_start": start_port,
+                    "port_range_end": end_port,
+                },
+            )
+        ],
+        default_executor="local-docker",
+        controller=ControllerConfig(interval_seconds=1, orphan_cleanup_interval_seconds=0),
     )
-    backend_registry = BackendRegistry(registry={"docker": docker_backend})
+
+    plugin_backend = DeploymentsPluginServiceBackend(
+        nmp_sdk=test_clients.async_sdk,
+        config=deployments_plugin_backend_config,
+        huggingface_model_puller="alpine:3.20",
+    )
+    plugin_backend.init()
+    backend_registry = BackendRegistry(registry={"deployments_plugin": plugin_backend})
+    deployments_controller = DeploymentsController()
 
     mock_platform_config = MagicMock()
     mock_platform_config.models_url = "http://testserver"
+    mock_platform_config.base_url = "http://testserver"
+    mock_platform_config.runtime = Runtime.DOCKER
     mock_platform_config.get_service_url.return_value = "http://testserver"
+    mock_platform_config.service_discovery = {"files": "http://testserver"}
+
     with (
         patch("nmp.core.models.config.get_platform_config", return_value=mock_platform_config),
         patch("nmp.core.models.controllers.main.get_platform_config", return_value=mock_platform_config),
-        patch("nmp.core.models.controllers.models_controller.get_async_platform_sdk") as mock_sdk_factory,
         patch(
-            "nmp.core.models.controllers.backends.docker.creation_reconciler.get_qualified_image",
+            "nmp.core.models.controllers.backends.deployments_plugin.resolve.get_platform_config",
+            return_value=mock_platform_config,
+        ),
+        patch("nmp.core.models.controllers.models_controller.get_async_platform_sdk") as mock_sdk_factory,
+        patch("nemo_platform_plugin.sdk_provider.get_async_platform_sdk") as mock_sdk,
+        patch("nemo_deployments_plugin.config.DeploymentsConfig.get", return_value=deployments_config),
+        patch(
+            "nemo_platform_plugin.jobs.image.get_qualified_image",
             side_effect=patched_get_qualified_image,
         ),
     ):
         mock_sdk_factory.return_value = test_clients.async_sdk
+        mock_sdk.return_value = test_clients.async_sdk
 
         controller = ModelsController(
             backend_registry=backend_registry,
             stop_signal=None,
         )
-
-        # Mock the provider reconciler to avoid event loop conflicts
-        # when it tries to call through the IGW proxy for autodiscovery
         controller._provider_reconciler.reconcile_model_providers = AsyncMock(return_value=None)
+        controller._loop.run_until_complete(deployments_controller.on_startup())
 
-        # Access IGW model cache
+        original_step = controller.step
+
+        def step_with_deployments_plugin() -> None:
+            original_step()
+            controller._loop.run_until_complete(deployments_controller.reconcile())
+
+        controller.step = step_with_deployments_plugin
+
         model_cache = global_model_cache()
 
         yield controller, model_cache, test_clients.sdk, mock_nim_image, docker_test_context, test_clients.async_sdk
 
-        # Clean up controller resources (event loop, backend registry, etc.)
+        controller._loop.run_until_complete(deployments_controller.on_shutdown())
         controller.shutdown()
 
 

@@ -11,7 +11,7 @@ import json
 from datetime import datetime
 
 import pytest
-from nmp.core.models.controllers.backends.k8s_nim_operator.types.nimservice import Spec
+from nimservice_spec_types import Spec
 from nmp.core.models.schemas import (
     ContainerExecutorConfig,
     CreateModelDeploymentConfigRequest,
