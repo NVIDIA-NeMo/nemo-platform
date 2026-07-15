@@ -5,12 +5,15 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from nemo_fabric import FabricConfig
+
+FABRIC_VALIDATION_TIMEOUT_SECONDS = 60.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,12 +55,17 @@ async def validate_fabric_config(
     fabric_client = fabric or Fabric()
 
     try:
-        plan = fabric_client.plan(fabric_config, base_dir=base_dir)
+        plan = await asyncio.to_thread(fabric_client.plan, fabric_config, base_dir=base_dir)
     except FabricConfigError as error:
         raise FabricValidationError(f"Fabric plan failed: {error}") from error
 
     try:
-        doctor_report = await fabric_client.doctor(fabric_config, base_dir=base_dir)
+        doctor_report = await asyncio.wait_for(
+            fabric_client.doctor(fabric_config, base_dir=base_dir),
+            timeout=FABRIC_VALIDATION_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError as error:
+        raise FabricValidationError(f"Fabric doctor timed out after {FABRIC_VALIDATION_TIMEOUT_SECONDS:g}s.") from error
     except Exception as error:
         raise FabricValidationError(f"Fabric doctor failed: {error}") from error
 

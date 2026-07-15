@@ -45,7 +45,9 @@ class _FakeFabric:
         doctor_delay: float = 0.0,
     ) -> None:
         self.plan_result = plan
-        self.doctor_report = doctor_report or _FakeDoctorReport({"status": "pass", "checks": []})
+        self.doctor_report = (
+            doctor_report if doctor_report is not None else _FakeDoctorReport({"status": "pass", "checks": []})
+        )
         self.plan_error = plan_error
         self.doctor_error = doctor_error
         self.doctor_delay = doctor_delay
