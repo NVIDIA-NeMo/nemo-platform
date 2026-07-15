@@ -89,7 +89,8 @@ export const LogViewer: FC<LogViewerProps> = ({
             ref: codeScrollRef,
             className: classNames(
               'min-w-0 max-w-full',
-              { '!overflow-y-hidden': !showAllLogs },
+              // Keep scroll on when wrapping: wrapped rows exceed the fixed height.
+              { '!overflow-y-hidden': !showAllLogs && !wrapLines },
               {
                 'whitespace-pre-wrap [overflow-wrap:anywhere] [&_code]:whitespace-pre-wrap [&_pre]:whitespace-pre-wrap [&_pre]:[overflow-wrap:anywhere]':
                   wrapLines,
@@ -106,6 +107,7 @@ export const LogViewer: FC<LogViewerProps> = ({
               <Button
                 size="tiny"
                 kind={wrapLines ? 'secondary' : 'tertiary'}
+                aria-label="Wrap lines"
                 aria-pressed={wrapLines}
                 onClick={() => setWrapLines((prev) => !prev)}
               >
