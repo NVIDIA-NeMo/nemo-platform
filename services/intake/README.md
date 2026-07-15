@@ -16,10 +16,34 @@ Active v2 workspace endpoints:
 - `GET /apis/intake/v2/workspaces/{workspace}/annotations`
 - `POST /apis/intake/v2/workspaces/{workspace}/annotations`
 - `DELETE /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}`
-- `GET /apis/intake/v2/workspaces/{workspace}/evaluator-results`
+- `GET`/`POST /apis/intake/v2/workspaces/{workspace}/evaluator-results`
+- `POST`/`GET /apis/intake/v2/workspaces/{workspace}/experiment-groups` (+ `GET`/`PUT`/`DELETE .../{name}`)
+- `POST`/`GET /apis/intake/v2/workspaces/{workspace}/evaluations` (+ `GET`/`PUT`/`DELETE .../{name}`, `.../{name}/pin`, `.../{name}/sessions`)
 - `POST /apis/intake/v2/workspaces/{workspace}/ingest/otlp/v1/traces`
 - `POST /apis/intake/v2/workspaces/{workspace}/ingest/chat-completions`
 - `POST /apis/intake/v2/workspaces/{workspace}/ingest/atif`
+
+## Logging experiment data (end-to-end)
+
+The Experiments feature captures evaluation runs as leaderboard rows. The flow:
+
+1. Create an **Experiment Group** — `POST /experiment-groups`.
+2. Create an **Evaluation** under it — `POST /evaluations`. Its `name` is the `evaluation_id` you
+   reference when logging.
+3. Log traces + evaluator results to an ingest endpoint. The Evaluation must exist first. Attach
+   evaluation identity per endpoint: **ATIF/Harbor** and **chat-completions** carry it in the JSON body
+   as `evaluation_context = {evaluation_id, test_case_id}`; **OTLP** carries it as root-span attributes
+   `nemo.experiment.id` (the Evaluation name) and `nemo.test_case.id`.
+4. Read the rollups — `GET /evaluations/{name}` and `.../{name}/sessions` — or view them in Studio
+   (behind the `VITE_FF_EXPERIMENT` flag).
+
+For the step-by-step guide with copy-pasteable payloads for all three ingest endpoints, the Harbor
+mapping, and a troubleshooting table, see the **`nemo-experiments-upload`** agent skill:
+`packages/nemo_platform_ext/src/nemo_platform_ext/skills/nemo-experiments-upload/`.
+
+> Naming note: the entity/API is mid-rename. The API surfaces "Evaluation" and "Experiment Group",
+> but the stored entity is still `Experiment` and the OTLP evaluation attribute key is
+> `nemo.experiment.id`. This doc follows the current in-code naming.
 
 ## Local Development
 
