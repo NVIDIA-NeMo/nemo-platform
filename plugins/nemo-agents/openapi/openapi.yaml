@@ -2659,7 +2659,7 @@ components:
           additionalProperties: true
           type: object
           title: Config
-          description: NAT workflow config dict.
+          description: Agent config dict interpreted according to config_format.
         config_format:
           type: string
           title: Config Format
