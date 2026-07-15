@@ -221,9 +221,7 @@ def test_deprecated_field_aliases_are_backwards_compatible(client: TestClient) -
     # Group response carries both the canonical count and the deprecated experiment_count alias.
     assert group["experiment_count"] == group["evaluation_count"]
 
-    parent = client.post(
-        EVALUATIONS, json=_evaluation_body(name="parent-eval", experiment_group_id=group["id"])
-    ).json()
+    parent = client.post(EVALUATIONS, json=_evaluation_body(name="parent-eval", experiment_group_id=group["id"])).json()
 
     # Create a child referencing the parent via the DEPRECATED parent_experiment_id request field.
     body = _evaluation_body(name="child-eval", experiment_group_id=group["id"])
