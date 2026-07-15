@@ -30,6 +30,9 @@ class ExperimentGroupResponse(BaseModel):
 
     default_sort: str
 
+    experiment_count: int
+    """Deprecated alias for evaluation_count."""
+
     name: str
 
     workspace: str

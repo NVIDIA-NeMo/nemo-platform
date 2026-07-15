@@ -30,7 +30,7 @@ class EvaluationContext(BaseModel):
     """
 
     evaluation_id: Optional[str] = None
-    """Name of an existing Experiment entity."""
+    """Name of an existing Evaluation."""
 
     test_case_id: Optional[str] = None
     """Optional producer-supplied test case id."""

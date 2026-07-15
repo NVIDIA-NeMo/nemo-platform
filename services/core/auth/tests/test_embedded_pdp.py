@@ -192,6 +192,39 @@ class TestAllowEntrypoint:
         )
         assert result["allowed"] is True
 
+    def test_legacy_experiments_url_alias_authorized_through_pdp(self, static_authz_data):
+        """The deprecated /experiments alias must authorize through the real bundle (not just
+        FastAPI's router): a normal user with intake.evaluations.* is allowed, exactly like
+        /evaluations, and a read-only user is denied — proving it's real authz, not a bypass.
+
+        This guards the class of bug where hidden router aliases are absent from the
+        OpenAPI-derived auth bundle and therefore fail-closed for non-service principals.
+        """
+        static_authz_data["authz"]["principals"] = {
+            "editor@example.com": {"workspaces": {"ws1": ["Editor"]}},
+            "viewer@example.com": {"workspaces": {"ws1": ["Viewer"]}},
+        }
+        set_policy_data(static_authz_data)
+
+        # Editor (has intake.evaluations.create) may POST to both the canonical and the alias URL.
+        for path in (
+            "/apis/intake/v2/workspaces/ws1/evaluations",
+            "/apis/intake/v2/workspaces/ws1/experiments",
+        ):
+            result = evaluate("allow", {"principal_id": "editor@example.com", "path": path, "method": "POST"})
+            assert result["allowed"] is True, f"editor should be allowed to POST {path}"
+
+        # Viewer (read-only) is denied POST to the alias — real permission check, not a blanket allow.
+        denied = evaluate(
+            "allow",
+            {
+                "principal_id": "viewer@example.com",
+                "path": "/apis/intake/v2/workspaces/ws1/experiments",
+                "method": "POST",
+            },
+        )
+        assert denied["allowed"] is False
+
     def test_service_principal_bypass(self, minimal_authz_data):
         set_policy_data(minimal_authz_data)
         result = evaluate(

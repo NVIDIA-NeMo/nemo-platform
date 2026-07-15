@@ -10171,7 +10171,7 @@ components:
       properties:
         evaluation_id:
           title: Evaluation Id
-          description: Name of an existing Experiment entity.
+          description: Name of an existing Evaluation.
           type: string
         test_case_id:
           title: Test Case Id
@@ -10297,6 +10297,11 @@ components:
           description: Entity id of the evaluation this one was derived from (e.g.
             a variant of a baseline), if any.
           type: string
+        parent_experiment_id:
+          title: Parent Experiment Id
+          description: Deprecated alias for parent_evaluation_id.
+          deprecated: true
+          type: string
         status:
           title: Status
           description: Producer-defined lifecycle status of the evaluation.
@@ -10417,6 +10422,12 @@ components:
           $ref: '#/components/schemas/EvaluatorAggregate'
         latency_ms:
           $ref: '#/components/schemas/EvaluatorAggregate'
+        parent_experiment_id:
+          title: Parent Experiment Id
+          description: Deprecated alias for parent_evaluation_id.
+          deprecated: true
+          readOnly: true
+          type: string
       type: object
       required:
       - id
@@ -10424,6 +10435,7 @@ components:
       - workspace
       - experiment_group_id
       - dataset_name
+      - parent_experiment_id
       title: EvaluationResponse
       description: Evaluation as served by the API, including ClickHouse-hydrated
         rollups.
@@ -10530,6 +10542,12 @@ components:
           title: Evaluator Scores
           description: Per-evaluator session-mean score. Includes NUMERIC and BOOLEAN
             evaluator results only; text/categorical results are omitted.
+        experiment_name:
+          type: string
+          title: Experiment Name
+          description: Deprecated alias for evaluation_name.
+          deprecated: true
+          readOnly: true
       type: object
       required:
       - workspace
@@ -10539,6 +10557,7 @@ components:
       - root_span_id
       - started_at
       - status
+      - experiment_name
       title: EvaluationSessionResponse
       description: "One ingested session of an Evaluation \u2014 a single test case\
         \ execution.\n\nHydrated from ClickHouse at read time by reading root/session\
@@ -10920,12 +10939,19 @@ components:
           title: Evaluation Count
           description: Number of live (non-soft-deleted) evaluations in this group.
           default: 0
+        experiment_count:
+          type: integer
+          title: Experiment Count
+          description: Deprecated alias for evaluation_count.
+          deprecated: true
+          readOnly: true
       type: object
       required:
       - id
       - name
       - workspace
       - default_sort
+      - experiment_count
       title: ExperimentGroupResponse
       description: ExperimentGroup as served by the API.
     ExperimentGroupResponsesPage:

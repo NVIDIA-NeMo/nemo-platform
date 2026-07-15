@@ -912,13 +912,13 @@ authz:
     /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/pin:
       delete:
         permissions:
-        - intake.evaluations.delete
+        - intake.evaluations.update
         scopes:
         - intake:write
         - platform:write
       post:
         permissions:
-        - intake.evaluations.create
+        - intake.evaluations.update
         scopes:
         - intake:write
         - platform:write
@@ -929,6 +929,70 @@ authz:
         scopes:
         - intake:read
         - platform:read
+    # Deprecated /experiments* aliases: the child endpoints moved to /evaluations, but the old
+    # paths are kept as hidden back-compat routes (include_in_schema=False), so they are absent
+    # from the OpenAPI-derived bundle. Map them here to the intake.evaluations.* permissions and
+    # mark x-not-in-openapi so the orphan check skips them. Remove alongside the router aliases.
+    /apis/intake/v2/workspaces/{workspace}/experiments:
+      get:
+        permissions:
+        - intake.evaluations.read
+        scopes:
+        - intake:read
+        - platform:read
+        x-not-in-openapi: true
+      post:
+        permissions:
+        - intake.evaluations.create
+        scopes:
+        - intake:write
+        - platform:write
+        x-not-in-openapi: true
+    /apis/intake/v2/workspaces/{workspace}/experiments/{name}:
+      delete:
+        permissions:
+        - intake.evaluations.delete
+        scopes:
+        - intake:write
+        - platform:write
+        x-not-in-openapi: true
+      get:
+        permissions:
+        - intake.evaluations.read
+        scopes:
+        - intake:read
+        - platform:read
+        x-not-in-openapi: true
+      put:
+        permissions:
+        - intake.evaluations.update
+        scopes:
+        - intake:write
+        - platform:write
+        x-not-in-openapi: true
+    /apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin:
+      delete:
+        permissions:
+        - intake.evaluations.update
+        scopes:
+        - intake:write
+        - platform:write
+        x-not-in-openapi: true
+      post:
+        permissions:
+        - intake.evaluations.update
+        scopes:
+        - intake:write
+        - platform:write
+        x-not-in-openapi: true
+    /apis/intake/v2/workspaces/{workspace}/experiments/{name}/sessions:
+      get:
+        permissions:
+        - intake.evaluations.read
+        scopes:
+        - intake:read
+        - platform:read
+        x-not-in-openapi: true
     /apis/intake/v2/workspaces/{workspace}/evaluator-results:
       get:
         permissions:

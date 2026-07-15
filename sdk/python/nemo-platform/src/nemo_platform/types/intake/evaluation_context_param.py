@@ -30,7 +30,7 @@ class EvaluationContextParam(TypedDict, total=False):
     """
 
     evaluation_id: str
-    """Name of an existing Experiment entity."""
+    """Name of an existing Evaluation."""
 
     test_case_id: str
     """Optional producer-supplied test case id."""

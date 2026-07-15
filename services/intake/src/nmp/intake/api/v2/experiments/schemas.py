@@ -10,13 +10,13 @@ Response models are standalone: they translate from the stored entity via
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
 from nmp.common.entities.values import DatetimeFilter, Filter, NumberFilter, map_entity_field
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup
 from nmp.intake.spans.domain import SpanStatus
 from nmp.intake.spans.evaluation_session_repository import EvaluationSessionRow
-from pydantic import AnyUrl, BaseModel, ConfigDict, Field
+from pydantic import AnyUrl, BaseModel, ConfigDict, Field, computed_field, model_validator
 
 EvaluationSessionMode = Literal["summary", "detailed"]
 EVALUATION_SESSION_SUMMARY_INPUT_CHAR_LIMIT = 1000
@@ -62,11 +62,28 @@ class EvaluationRequest(BaseModel):
         default=None,
         description="Entity id of the evaluation this one was derived from (e.g. a variant of a baseline), if any.",
     )
+    parent_experiment_id: str | None = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated alias for parent_evaluation_id.",
+    )
     status: str | None = Field(default=None, description="Producer-defined lifecycle status of the evaluation.")
     root_cause: str | None = Field(
         default=None,
         description="Human- or agent-authored explanation of the evaluation's outcome (e.g. why it was killed).",
     )
+
+    @model_validator(mode="after")
+    def _coalesce_deprecated_parent(self) -> Self:
+        """Accept the deprecated ``parent_experiment_id`` alias; the canonical field wins if both are set.
+
+        Read the raw value via ``__dict__`` to avoid tripping the field's deprecation warning on
+        every request.
+        """
+        deprecated_parent = self.__dict__.get("parent_experiment_id")
+        if self.parent_evaluation_id is None and deprecated_parent is not None:
+            self.parent_evaluation_id = deprecated_parent
+        return self
 
 
 class ExperimentGroupResponse(BaseModel):
@@ -86,6 +103,11 @@ class ExperimentGroupResponse(BaseModel):
         default=0,
         description="Number of live (non-soft-deleted) evaluations in this group.",
     )
+
+    @computed_field(deprecated=True, description="Deprecated alias for evaluation_count.")  # type: ignore[prop-decorator]
+    @property
+    def experiment_count(self) -> int:
+        return self.evaluation_count
 
     @classmethod
     def from_entity(cls, entity: ExperimentGroup) -> ExperimentGroupResponse:
@@ -166,6 +188,11 @@ class EvaluationResponse(BaseModel):
     )
     cost_usd: EvaluatorAggregate | None = None
     latency_ms: EvaluatorAggregate | None = None
+
+    @computed_field(deprecated=True, description="Deprecated alias for parent_evaluation_id.")  # type: ignore[prop-decorator]
+    @property
+    def parent_experiment_id(self) -> str | None:
+        return self.parent_evaluation_id
 
     @classmethod
     def from_entity(cls, entity: Experiment) -> EvaluationResponse:
@@ -290,6 +317,12 @@ class EvaluationSessionResponse(BaseModel):
 
     workspace: str
     evaluation_name: str
+
+    @computed_field(deprecated=True, description="Deprecated alias for evaluation_name.")  # type: ignore[prop-decorator]
+    @property
+    def experiment_name(self) -> str:
+        return self.evaluation_name
+
     session_id: str
     test_case_id: str | None = Field(
         default=None,

@@ -348,6 +348,12 @@ _MIGRATIONS: list[tuple[str, Callable[..., None]]] = [
     # applied 0003 has the old keys baked in. Re-running the schema function drops and
     # recreates the MV with the current catalog keys.
     ("ch_trace_index_0004_nemo_keys", _create_trace_index_schema),
+    # The trace_index column ``experiment_id`` was renamed to ``evaluation_id`` (column,
+    # ``idx_evaluation_id``, and the MV SELECT alias). Environments that already applied 0004 still
+    # have the old ``experiment_id`` column, while the read path now queries ``evaluation_id`` — so
+    # re-run the rebuild under a new key. The function drops and recreates trace_index with the new
+    # column and backfills losslessly from ``spans`` (the durable source of truth).
+    ("ch_trace_index_0005_evaluation_id", _create_trace_index_schema),
 ]
 CURRENT_SCHEMA_VERSION = _MIGRATIONS[-1][0]
 

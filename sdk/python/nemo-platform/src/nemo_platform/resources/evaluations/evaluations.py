@@ -88,6 +88,7 @@ class EvaluationsResource(SyncAPIResource):
         description: str | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         parent_evaluation_id: str | Omit = omit,
+        parent_experiment_id: str | Omit = omit,
         root_cause: str | Omit = omit,
         source_link: str | Omit = omit,
         status: str | Omit = omit,
@@ -118,6 +119,8 @@ class EvaluationsResource(SyncAPIResource):
 
           parent_evaluation_id: Entity id of the evaluation this one was derived from (e.g. a variant of a
               baseline), if any.
+
+          parent_experiment_id: Deprecated alias for parent_evaluation_id.
 
           root_cause: Human- or agent-authored explanation of the evaluation's outcome (e.g. why it
               was killed).
@@ -154,6 +157,7 @@ class EvaluationsResource(SyncAPIResource):
                         "description": description,
                         "metadata": metadata,
                         "parent_evaluation_id": parent_evaluation_id,
+                        "parent_experiment_id": parent_experiment_id,
                         "root_cause": root_cause,
                         "source_link": source_link,
                         "status": status,
@@ -220,6 +224,7 @@ class EvaluationsResource(SyncAPIResource):
         description: str | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         parent_evaluation_id: str | Omit = omit,
+        parent_experiment_id: str | Omit = omit,
         root_cause: str | Omit = omit,
         source_link: str | Omit = omit,
         status: str | Omit = omit,
@@ -249,6 +254,8 @@ class EvaluationsResource(SyncAPIResource):
 
           parent_evaluation_id: Entity id of the evaluation this one was derived from (e.g. a variant of a
               baseline), if any.
+
+          parent_experiment_id: Deprecated alias for parent_evaluation_id.
 
           root_cause: Human- or agent-authored explanation of the evaluation's outcome (e.g. why it
               was killed).
@@ -286,6 +293,7 @@ class EvaluationsResource(SyncAPIResource):
                     "description": description,
                     "metadata": metadata,
                     "parent_evaluation_id": parent_evaluation_id,
+                    "parent_experiment_id": parent_experiment_id,
                     "root_cause": root_cause,
                     "source_link": source_link,
                     "status": status,
@@ -529,6 +537,7 @@ class AsyncEvaluationsResource(AsyncAPIResource):
         description: str | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         parent_evaluation_id: str | Omit = omit,
+        parent_experiment_id: str | Omit = omit,
         root_cause: str | Omit = omit,
         source_link: str | Omit = omit,
         status: str | Omit = omit,
@@ -559,6 +568,8 @@ class AsyncEvaluationsResource(AsyncAPIResource):
 
           parent_evaluation_id: Entity id of the evaluation this one was derived from (e.g. a variant of a
               baseline), if any.
+
+          parent_experiment_id: Deprecated alias for parent_evaluation_id.
 
           root_cause: Human- or agent-authored explanation of the evaluation's outcome (e.g. why it
               was killed).
@@ -595,6 +606,7 @@ class AsyncEvaluationsResource(AsyncAPIResource):
                         "description": description,
                         "metadata": metadata,
                         "parent_evaluation_id": parent_evaluation_id,
+                        "parent_experiment_id": parent_experiment_id,
                         "root_cause": root_cause,
                         "source_link": source_link,
                         "status": status,
@@ -661,6 +673,7 @@ class AsyncEvaluationsResource(AsyncAPIResource):
         description: str | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         parent_evaluation_id: str | Omit = omit,
+        parent_experiment_id: str | Omit = omit,
         root_cause: str | Omit = omit,
         source_link: str | Omit = omit,
         status: str | Omit = omit,
@@ -690,6 +703,8 @@ class AsyncEvaluationsResource(AsyncAPIResource):
 
           parent_evaluation_id: Entity id of the evaluation this one was derived from (e.g. a variant of a
               baseline), if any.
+
+          parent_experiment_id: Deprecated alias for parent_evaluation_id.
 
           root_cause: Human- or agent-authored explanation of the evaluation's outcome (e.g. why it
               was killed).
@@ -727,6 +742,7 @@ class AsyncEvaluationsResource(AsyncAPIResource):
                     "description": description,
                     "metadata": metadata,
                     "parent_evaluation_id": parent_evaluation_id,
+                    "parent_experiment_id": parent_experiment_id,
                     "root_cause": root_cause,
                     "source_link": source_link,
                     "status": status,

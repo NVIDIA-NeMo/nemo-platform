@@ -37,6 +37,9 @@ class EvaluationResponse(BaseModel):
 
     name: str
 
+    parent_experiment_id: str
+    """Deprecated alias for parent_evaluation_id."""
+
     workspace: str
 
     agent_names: Optional[List[str]] = None

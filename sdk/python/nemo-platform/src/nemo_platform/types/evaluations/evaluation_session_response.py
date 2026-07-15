@@ -33,6 +33,9 @@ class EvaluationSessionResponse(BaseModel):
 
     evaluation_name: str
 
+    experiment_name: str
+    """Deprecated alias for evaluation_name."""
+
     root_span_id: str
 
     session_id: str

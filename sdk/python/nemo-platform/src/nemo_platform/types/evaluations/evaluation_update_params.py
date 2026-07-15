@@ -55,6 +55,9 @@ class EvaluationUpdateParams(TypedDict, total=False):
     a variant of a baseline), if any.
     """
 
+    parent_experiment_id: str
+    """Deprecated alias for parent_evaluation_id."""
+
     root_cause: str
     """Human- or agent-authored explanation of the evaluation's outcome (e.g.
 
