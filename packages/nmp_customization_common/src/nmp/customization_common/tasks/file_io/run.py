@@ -5,7 +5,16 @@
 
 Handles file operations between NeMo Platform Files Service and the job's shared PVC.
 
-Usage:
+Each backend's compiler sets ``--service-source`` and ``--service-name`` via
+``FILE_IO_TASK_COMMAND`` in that backend's ``images.py`` (the job step passes
+these flags; do not hardcode one backend when documenting or invoking locally):
+
+- automodel: ``--service-source automodel --service-name customizer``
+- unsloth: ``--service-source unsloth --service-name unsloth``
+- rl: ``--service-source rl --service-name rl``
+
+Usage (example — match the backend you are exercising)::
+
     export NEMO_JOB_STEP_CONFIG_FILE_PATH=<path to job_step_config.json>
     python -m nmp.customization_common.tasks.file_io --service-source automodel --service-name customizer
 """

@@ -50,10 +50,12 @@ class AutomodelJob(BaseSubmitJob):
         options: dict | None = None,
     ) -> PlatformJobSpec:
         del entity_client, options
-        require_container_runtime(cls.runtime_label)
         canonical = (
             spec if isinstance(spec, AutomodelJobOutput) else AutomodelJobOutput.model_validate(spec.model_dump())
         )
+        # Multi-node jobs compile to a gpu_distributed (Volcano) executor, which
+        # only exists on Kubernetes; gate here so docker platforms fail fast.
+        require_container_runtime(cls.runtime_label, num_nodes=canonical.parallelism.num_nodes)
         canonical.validate_for_training()
 
         plugin_config = get_config()

@@ -20,8 +20,8 @@ from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from pydantic import BaseModel
 
 
-def require_container_runtime(backend_label: str) -> None:
-    """Refuse to compile unless the platform can run GPU container jobs.
+def require_container_runtime(backend_label: str, *, num_nodes: int = 1) -> None:
+    """Refuse to compile unless the platform can run the requested container job.
 
     SFT backends (automodel / unsloth) build a container ``PlatformJobSpec`` the
     platform runs on either supported target:
@@ -30,13 +30,24 @@ def require_container_runtime(backend_label: str) -> None:
       ``gpu_distributed`` jobs via Volcano.
     - **Docker** — the platform's local Docker GPU executor (single host).
 
-    Both are valid, so we accept either. Only fail when the platform reports
-    neither (``runtime: none``) — e.g. a Docker-runtime platform that fell back to
-    NONE because no Docker daemon is reachable — surfacing the misconfiguration
-    before the Jobs API rejects the spec.
+    Single-node jobs accept either runtime. **Multi-node jobs** (``num_nodes >
+    1``) compile to a ``gpu_distributed`` executor that only the Volcano
+    (Kubernetes) backend can place — Docker has no multi-node/``gpu_distributed``
+    backend — so they require ``platform.runtime: kubernetes``. Failing here
+    surfaces the misconfiguration at compile time instead of as an opaque
+    "no backend found" scheduling error (or, for ``runtime: none``, before the
+    Jobs API rejects the spec).
     """
     platform_config = NemoPlatformConfig.get()
     runtime = platform_config.runtime
+
+    if num_nodes > 1 and runtime != Runtime.KUBERNETES:
+        raise PlatformJobCompilationError(
+            f"{backend_label} multi-node training (num_nodes={num_nodes}) requires "
+            "platform.runtime: kubernetes — multi-node jobs run on the Volcano "
+            "(gpu_distributed) backend, which has no Docker equivalent. "
+            f"Current runtime: {runtime.value}.",
+        )
 
     if runtime == Runtime.KUBERNETES:
         return

@@ -5,7 +5,7 @@ labels:
 ---
 ## NeMo-RL Training Container
 
-This container image provides a NeMo-RL-based DPO training runtime on Ray. It is designed to run as part of NeMo Platform.
+This container image provides the NeMo-RL training runtime on Ray. It is designed to run as part of NeMo Platform.
 
 ### Resources
 

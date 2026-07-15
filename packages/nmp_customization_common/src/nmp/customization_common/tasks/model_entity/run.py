@@ -56,6 +56,15 @@ ACTIVE_DEPLOYMENT_STATUSES = frozenset({"CREATED", "PENDING", "READY"})
 SPEC_POLL_INTERVAL_SECONDS = 10
 SPEC_POLL_TIMEOUT_SECONDS = 600
 
+TRANSIENT_RETRYABLE_EXCEPTIONS = (
+    InternalServerError,
+    APITimeoutError,
+    APIConnectionError,
+    ClientInternalServerError,
+    httpx.TimeoutException,
+    httpx.ConnectError,
+)
+
 
 def get_config(config_path: Path) -> ModelEntityTaskConfig:
     """Load and validate the model_entity step config from disk."""
@@ -86,10 +95,21 @@ class ModelEntityRunner:
             try:
                 target = self.sdk.models.retrieve(name=name, workspace=workspace)
                 spec = target.spec
-                if spec and getattr(spec, "family", None) and getattr(spec, "base_num_parameters", None) is not None:
-                    logger.info(f"Spec populated on {workspace}/{name}")
-                    return target
-            except (APIConnectionError, APITimeoutError, InternalServerError) as e:
+                if spec is not None:
+                    family = getattr(spec, "family", None)
+                    base_num_parameters = getattr(spec, "base_num_parameters", None)
+                    if family and base_num_parameters is not None:
+                        logger.info(f"Spec populated on {workspace}/{name}")
+                        return target
+                    raise ModelEntityCreationError(
+                        f"Model spec on {workspace}/{name} is missing required fields: "
+                        "family and base_num_parameters must be set (typically by the "
+                        "platform model_spec task). Verify the model checkpoint is valid "
+                        "and in a supported format."
+                    )
+            except ModelEntityCreationError:
+                raise
+            except TRANSIENT_RETRYABLE_EXCEPTIONS as e:
                 logger.warning(f"Transient error polling spec for {workspace}/{name}: {e}")
             time.sleep(SPEC_POLL_INTERVAL_SECONDS)
 
@@ -121,7 +141,7 @@ class ModelEntityRunner:
     @retry(
         stop=stop_after_attempt(MAX_RETRIES),
         wait=wait_exponential(multiplier=2, min=INITIAL_BACKOFF_SECONDS, max=MAX_BACKOFF_SECONDS),
-        retry=retry_if_exception_type((InternalServerError, APITimeoutError, APIConnectionError)),
+        retry=retry_if_exception_type(TRANSIENT_RETRYABLE_EXCEPTIONS),
         reraise=True,
     )
     def create_model_entity(self, config: ModelEntityTaskConfig) -> tuple[dict, ModelEntity]:
@@ -138,14 +158,7 @@ class ModelEntityRunner:
                 workspace=fileset_workspace, name=config.fileset.name
             )
             logger.info(f"Fileset validation successful: {fileset_workspace}/{config.fileset.name}")
-        except (
-            InternalServerError,
-            APITimeoutError,
-            APIConnectionError,
-            ClientInternalServerError,
-            httpx.TimeoutException,
-            httpx.ConnectError,
-        ):
+        except TRANSIENT_RETRYABLE_EXCEPTIONS:
             raise
         except Exception as e:
             logger.error(f"Fileset validation failed: {fileset_workspace}/{config.fileset.name}")
@@ -202,7 +215,7 @@ class ModelEntityRunner:
                     f"for base model {base_me.workspace}/{base_me.name}"
                 )
                 return output_me.model_dump(), base_me
-            except (InternalServerError, APITimeoutError, APIConnectionError):
+            except TRANSIENT_RETRYABLE_EXCEPTIONS:
                 raise
             except Exception as update_error:
                 logger.exception(
@@ -249,7 +262,7 @@ class ModelEntityRunner:
                 )
                 logger.info(f"Successfully updated model entity: {output_me.workspace}/{output_me.name}")
                 return output_me.model_dump(), output_me
-            except (InternalServerError, APITimeoutError, APIConnectionError):
+            except TRANSIENT_RETRYABLE_EXCEPTIONS:
                 raise
             except Exception as update_error:
                 logger.exception(f"Failed to update existing model entity: {update_error}")
