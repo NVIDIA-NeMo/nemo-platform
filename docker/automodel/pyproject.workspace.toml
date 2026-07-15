@@ -14,21 +14,17 @@ constraint-dependencies = ["greenlet>=3.0.0,<3.5"]
 [tool.uv.workspace]
 members = [
   "packages/nmp_build_tools",
-  "packages/models",
   "sdk/python/nemo-platform",
   "packages/nemo_platform_plugin",
   "packages/nmp_common",
   "packages/nmp_customization_common",
   "services/automodel",
-  "services/core/models",
 ]
 
 [tool.uv.sources]
 nmp-build-tools = { workspace = true }
-models = { workspace = true }
 nemo-platform-sdk = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 nmp-common = { workspace = true }
 nmp-customization-common = { workspace = true }
 nmp-automodel = { workspace = true }
-nmp-models = { workspace = true }

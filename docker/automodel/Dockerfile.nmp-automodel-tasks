@@ -29,11 +29,15 @@ RUN mkdir -p /home/${USERNAME}/.cache && \
 
 # /app/pyproject.toml is pyproject.workspace.toml (see Dockerfile.platform-workspace).
 # --inexact: keep PyTorch / Automodel packages already in the base venv; add nmp-automodel + deps.
+# nmp-models is only needed for the model_spec task/parallelism helper here; install
+# it without resolving the full models-service deployment backend dependency graph.
 ENV UV_LINK_MODE=copy \
     UV_PROJECT_ENVIRONMENT=${VIRTUAL_ENV}
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --package nmp-automodel --package nmp-models --no-dev --inexact
+    uv sync --package nmp-automodel --no-dev --inexact && \
+    uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache --no-deps --no-sources \
+    -e /app/services/core/models
 
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 ENTRYPOINT ["/opt/venv/bin/python"]

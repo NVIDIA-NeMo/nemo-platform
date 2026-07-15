@@ -15,10 +15,11 @@ COPY docker/automodel/no_override_requirements.txt docker/automodel/no_override_
 COPY docs docs
 COPY openapi openapi
 COPY packages/nmp_build_tools packages/nmp_build_tools
-COPY packages/models packages/models
 COPY packages/nmp_common packages/nmp_common
 COPY packages/nmp_customization_common packages/nmp_customization_common
 COPY packages/nemo_platform_plugin packages/nemo_platform_plugin
 COPY sdk/python/nemo-platform sdk/python/nemo-platform
 COPY services/automodel services/automodel
+# Copied for the tasks image only. It is installed outside the reduced uv
+# workspace to avoid pulling the full models-service deployment backend graph.
 COPY services/core/models services/core/models
