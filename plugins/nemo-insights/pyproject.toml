@@ -45,7 +45,3 @@ packages = ["src/nemo_insights_plugin"]
 asyncio_mode = "auto"
 pythonpath = ["src", "."]
 testpaths = ["tests"]
-
-[tool.uv.sources]
-nemo-platform = { workspace = true }
-nemo-platform-plugin = { workspace = true }
