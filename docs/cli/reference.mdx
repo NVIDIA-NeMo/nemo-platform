@@ -7,6 +7,7 @@ Command-line interface for NeMo Platform.
 **Getting started:**
 - Browse documentation with **`nemo docs --list`**
 - Run local platform services with **`nemo services run --help`**
+- Deploy to Kubernetes with **`nemo docs set-up/helm/install`**
 
 **Examples:**
 
@@ -593,6 +594,7 @@ Read NeMo Platform documentation.
 
 ```shell
 nemo docs get-started/setup
+nemo docs set-up/helm/install
 nemo docs --list
 nemo docs cli/configuration
 ```
@@ -605,7 +607,7 @@ nemo docs [OPTIONS] [PATH]
 
 **Arguments:**
 
-* `<PATH>`: Path to a doc topic (e.g., get-started/setup). Omit to see available topics.
+* `<PATH>`: Path to a doc topic (e.g., get-started/setup or set-up/helm/install). Omit to see available topics.
 
 **Options:**
 

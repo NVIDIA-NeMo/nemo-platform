@@ -24,7 +24,7 @@ Use `make docs` when you are only editing `docs/fern/` config. Use `make docs-wa
 ## Rules that bite if you miss them
 
 - **Navigation is the build.** Fern only builds pages listed in `docs/fern/versions/latest.yml`. A `.mdx` not in the nav is **not built** (404, not indexed) — that is how unready features are gated. Do **not** use `hidden: true` for gating (it still builds/serves the page).
-- **Gated (unready) features** stay in the repo but out of the nav: `auth/`, `customizer/`, `safe-synthesizer/`, `set-up/` + `helm/`, `evaluator/benchmarks/`, and a few individual pages. Ready-to-paste nav blocks for re-publishing are in `docs/fern/gated-nav.yml`. To publish one: move its block into `latest.yml`, re-add inbound links, run `make docs-check && make docs-broken-links`.
+- **Gated (unready) features** stay in the repo but out of the nav: `auth/`, `customizer/`, `safe-synthesizer/`, `evaluator/benchmarks/`, and a few individual pages. Ready-to-paste nav blocks for re-publishing are in `docs/fern/gated-nav.yml`. To publish one: move its block into `latest.yml`, re-add inbound links, run `make docs-check && make docs-broken-links`.
 - **Don't link into gated pages.** A link from a published page into a gated page is a dead link. `make docs-check` fails on it; `make docs-fix-links` delinks it to plain text. (Replaces the old MkDocs `hide_unready_docs` auto-delinking.)
 - **Internal links** use canonical nav URLs like `/documentation/get-started/core-concepts/workspaces`, not relative `.md`/source paths. `make docs-broken-links` is the check.
 - **No `{{variable}}` substitutions.** Fern has no substitution step; product names are inlined as literal text. (Prompt-template tokens like `` `{{input}}` `` inside backticks are real content — leave them.)

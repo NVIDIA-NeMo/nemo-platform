@@ -93,7 +93,7 @@ Fern groups endpoints by their OpenAPI tag in the sidebar (Customizer, Evaluator
 
 Some features are not shipped yet and must be **fully excluded from the build** — not just hidden from the sidebar. Fern's `hidden: true` still builds and serves the page (reachable by direct URL and indexable), so it is **not** used for this. Instead, the gated pages are simply **left out of `versions/latest.yml`**: Fern only builds pages referenced in the navigation, so an omitted page is never built (it 404s and is not indexed). This matches the old MkDocs `hide_unready_docs` hook, which dropped the same files from the build.
 
-The gated `.mdx` files stay in the repo so they remain maintained. The gated trees today are: `auth/`, `customizer/`, `safe-synthesizer/`, `set-up/` + `helm/`, `evaluator/benchmarks/`, plus individual pages (`evaluator/metrics/{job-management,results}`, `run-inference/tutorials/deploy-models`, `example-applications/`, `troubleshooting/{cluster-setup,customizer}`, `get-started/quickstart`).
+The gated `.mdx` files stay in the repo so they remain maintained. The gated trees today are: `auth/`, `customizer/`, `safe-synthesizer/`, `evaluator/benchmarks/`, plus individual pages (`evaluator/metrics/{job-management,results}`, `run-inference/tutorials/deploy-models`, `example-applications/`, `troubleshooting/{cluster-setup,customizer}`, `get-started/quickstart`).
 
 Inbound links from visible pages into gated pages are **delinked to plain text** (not rewritten URLs), since the target is not built — otherwise they would be broken links.
 
