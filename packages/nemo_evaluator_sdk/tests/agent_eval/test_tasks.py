@@ -51,7 +51,7 @@ def test_task_serializes_metric_instances_as_descriptors() -> None:
     task = AgentEvalTask(
         id="task-1",
         intent="answer the prompt",
-        inputs={"prompt": "Question?"},
+        inputs={"instruction": "Question?"},
         metrics=[_Metric()],
     )
 
@@ -68,7 +68,7 @@ def test_task_rejects_duplicate_metric_types() -> None:
         AgentEvalTask(
             id="task-1",
             intent="answer the prompt",
-            inputs={"prompt": "Question?"},
+            inputs={"instruction": "Question?"},
             metrics=[_Metric(), _Metric()],
         )
 
@@ -78,7 +78,7 @@ def test_task_validates_view_signals_against_metric_outputs() -> None:
         AgentEvalTask(
             id="task-1",
             intent="answer the prompt",
-            inputs={"prompt": "Question?"},
+            inputs={"instruction": "Question?"},
             metrics=[_Metric()],
             views={
                 "outcome_correctness": SemanticView(
