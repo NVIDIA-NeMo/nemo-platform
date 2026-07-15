@@ -60,6 +60,11 @@ on:
         required: false
         type: boolean
         default: false
+      helm-version:
+        description: "Optional exact Helm chart version override for stable Helm-only releases."
+        required: false
+        type: string
+        default: ""
       update-ngc-metadata:
         description: "Synchronize NGC metadata from the this branch."
         required: false
@@ -148,6 +153,7 @@ jobs:
       has_wheels: ${{ steps.plan.outputs.has_wheels }}
       has_containers: ${{ steps.plan.outputs.has_containers }}
       include_helm: ${{ steps.plan.outputs.include_helm }}
+      helm_version_override: ${{ steps.plan.outputs.helm_version_override }}
       update_ngc_metadata: ${{ steps.plan.outputs.update_ngc_metadata }}
       send_notifications: ${{ steps.plan.outputs.send_notifications }}
       dry_run: ${{ steps.plan.outputs.dry_run }}
@@ -173,6 +179,7 @@ jobs:
             const updateNgcMetadata = isManual && inputs["update-ngc-metadata"] === "true";
             const sendNotifications = inputs["send-notifications"] !== "false";
             const dryRun = isManual && inputs["dry-run"] === "true";
+            const helmVersionOverride = isManual ? (inputs["helm-version"] ?? "").trim() : "";
 
             let sourceSha = isManual ? (inputs["source-sha"] ?? "").trim() : context.sha;
             const version = releaseType === "stable" ? (inputs.version ?? "").trim() : "";
@@ -271,6 +278,20 @@ jobs:
             const wheelIds = wheels.map((wheel) => wheel.id);
             const containerIds = containers.map((container) => container.id);
 
+            if (helmVersionOverride) {
+              if (
+                releaseType !== "stable"
+                || !includeHelm
+                || wheelIds.length > 0
+                || containerIds.length > 0
+              ) {
+                throw new Error("helm-version can only be used for stable Helm-only releases.");
+              }
+              if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(helmVersionOverride)) {
+                throw new Error("helm-version must be a SemVer chart version.");
+              }
+            }
+
             const nightlyTimestamp = releaseType === "nightly"
               ? new Date().toISOString().replace(/\D/g, "").slice(0, 14)
               : "";
@@ -291,6 +312,7 @@ jobs:
             core.setOutput("has_wheels", String(wheelIds.length > 0));
             core.setOutput("has_containers", String(containerIds.length > 0));
             core.setOutput("include_helm", String(includeHelm));
+            core.setOutput("helm_version_override", helmVersionOverride);
             core.setOutput("update_ngc_metadata", String(updateNgcMetadata));
             core.setOutput("send_notifications", String(sendNotifications));
             core.setOutput("dry_run", String(dryRun));
@@ -643,6 +665,8 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ needs.plan-release.outputs.source_sha }}
+          fetch-depth: 0
+          fetch-tags: true
           persist-credentials: false
 
       - name: Set up Helm
@@ -669,6 +693,7 @@ jobs:
           RELEASE_VERSION: ${{ needs.plan-release.outputs.version }}
           RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
           NIGHTLY_TIMESTAMP: ${{ needs.plan-release.outputs.nightly_timestamp }}
+          HELM_VERSION_OVERRIDE: ${{ needs.plan-release.outputs.helm_version_override }}
         run: |
           set -euo pipefail
 
@@ -680,15 +705,35 @@ jobs:
           helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
           helm dependency build "${chart_dir}"
 
-          chart_version="$(yq -r '.version' "${chart_dir}/Chart.yaml")"
           if [[ "${RELEASE_TYPE}" == "nightly" ]]; then
-            chart_version="${chart_version}-nightly-${NIGHTLY_TIMESTAMP}"
             release_registry="${NIGHTLY_IMAGE_REGISTRY}"
           else
-            # TODO: Decide whether stable chart versions should track the platform
-            # release version or remain independently managed in Chart.yaml.
-            chart_version="${RELEASE_VERSION}"
             release_registry="${STABLE_IMAGE_REGISTRY}"
+          fi
+
+          chart_version="${HELM_VERSION_OVERRIDE}"
+          if [[ -z "${chart_version}" ]]; then
+            if [[ "${RELEASE_TYPE}" == "nightly" ]]; then
+              # Nightlies align to the release core from the latest release or
+              # RC tag. Build-metadata chart fixes use helm-version instead.
+              base_version="$(
+                git tag --merged HEAD --list \
+                  | awk '
+                    /^[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$/ {
+                      sub(/-rc[0-9]+$/, "")
+                      print
+                    }
+                  ' \
+                  | sort -V -u \
+                  | tail -n 1
+              )"
+              if [[ -z "${base_version}" ]]; then
+                base_version="$(yq -r '.version' "${chart_dir}/Chart.yaml")"
+              fi
+              chart_version="${base_version}-nightly-${NIGHTLY_TIMESTAMP}"
+            else
+              chart_version="${RELEASE_VERSION}"
+            fi
           fi
 
           yq -i ".platformConfig.platform.image_registry = \"${release_registry}\"" "${chart_dir}/values.yaml"
