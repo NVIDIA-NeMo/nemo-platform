@@ -9,6 +9,7 @@ import { SpanPayloadViewMode } from '@studio/components/IntakeDetail/IntakeCompo
 import { type FC, useEffect, useMemo, useState } from 'react';
 
 const LARGE_PAYLOAD_RENDER_DEFER_CHAR_LIMIT = 20_000;
+const MAX_JSON_INDENTATION_DEPTH = 100;
 
 /**
  * Shared renderer for span request/response payloads (the Input/Output sections
@@ -38,6 +39,9 @@ const adjacentSignificantCharacter = (
   }
   return null;
 };
+
+const jsonIndent = (depth: number): string =>
+  '  '.repeat(Math.min(depth, MAX_JSON_INDENTATION_DEPTH));
 
 /** Pretty-print JSON punctuation without reparsing numeric values or reordering object keys. */
 const formatJsonLosslessly = (payload: string): string => {
@@ -79,7 +83,7 @@ const formatJsonLosslessly = (payload: string): string => {
       indentation += 1;
       const matchingClose = character === '{' ? '}' : ']';
       if (adjacentSignificantCharacter(payload, index + 1, 1) !== matchingClose) {
-        formatted += `\n${'  '.repeat(indentation)}`;
+        formatted += `\n${jsonIndent(indentation)}`;
       }
       continue;
     }
@@ -88,14 +92,14 @@ const formatJsonLosslessly = (payload: string): string => {
       indentation = Math.max(0, indentation - 1);
       const matchingOpen = character === '}' ? '{' : '[';
       if (adjacentSignificantCharacter(payload, index - 1, -1) !== matchingOpen) {
-        formatted += `\n${'  '.repeat(indentation)}`;
+        formatted += `\n${jsonIndent(indentation)}`;
       }
       formatted += character;
       continue;
     }
 
     if (character === ',') {
-      formatted += `,\n${'  '.repeat(indentation)}`;
+      formatted += `,\n${jsonIndent(indentation)}`;
       continue;
     }
 

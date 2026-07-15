@@ -58,6 +58,23 @@ describe('SpanPayloadBlock', () => {
     expect(code).toHaveTextContent('"huge": 1e+400');
   });
 
+  it('bounds indentation for deeply nested JSON payloads', () => {
+    const nestingDepth = 250;
+    renderRoute(
+      <SpanPayloadBlock
+        value={`${'['.repeat(nestingDepth)}0${']'.repeat(nestingDepth)}`}
+        emptyMessage="No payload"
+        viewMode={SpanPayloadViewMode.json}
+      />
+    );
+
+    const renderedJson = screen.getByTestId('nv-code-snippet-code').textContent ?? '';
+    const maximumIndentation = Math.max(
+      ...renderedJson.split('\n').map((line) => line.length - line.trimStart().length)
+    );
+    expect(maximumIndentation).toBe(200);
+  });
+
   it('shows a clear error for invalid JSON payloads', () => {
     renderRoute(
       <SpanPayloadBlock
