@@ -95,6 +95,29 @@ describe('useDatasetFileContent gate', () => {
     headSpy.mockRestore();
   });
 
+  it('fails closed on fullContent loads when Content-Length is partially numeric', async () => {
+    // parseInt('123garbage') === 123, which would slip a truncated size past the cap.
+    const headSpy = vi.spyOn(axios, 'head').mockResolvedValueOnce({
+      headers: { 'content-length': `${EDITOR_MAX_BYTES - 1}garbage` },
+    } as never);
+
+    const { queryFn } = datasetFileContentQueryOptions({ ...baseParams, fullContent: true });
+    await expect((queryFn as () => Promise<string>)()).rejects.toThrow(/too large to edit/i);
+
+    headSpy.mockRestore();
+  });
+
+  it('fails closed on fullContent loads when Content-Length is negative', async () => {
+    const headSpy = vi.spyOn(axios, 'head').mockResolvedValueOnce({
+      headers: { 'content-length': '-1' },
+    } as never);
+
+    const { queryFn } = datasetFileContentQueryOptions({ ...baseParams, fullContent: true });
+    await expect((queryFn as () => Promise<string>)()).rejects.toThrow(/too large to edit/i);
+
+    headSpy.mockRestore();
+  });
+
   it('enforces the cap before downloading a parquet blob on fullContent loads', async () => {
     const { filesDownloadFile } = await import('@nemo/sdk/generated/platform/api');
     vi.mocked(filesDownloadFile).mockClear();

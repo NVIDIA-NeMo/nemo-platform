@@ -20,10 +20,21 @@ function jsonReplacer(_key: string, value: unknown): unknown {
 function serializeParquetRow(row: unknown): string {
   return JSON.stringify(row, jsonReplacer);
 }
-// Cap text-file preview at 512 KB. Enough to show meaningful JSONL content
-// while preventing OOM crashes on multi-GB external dataset shards. Text files larger
-// than this are fetched with a Range request, so callers that write content back must not
-// overwrite the source (the loaded rows are only a prefix of the file).
+
+/**
+ * Parse a Content-Length header into a byte count, accepting only a strict
+ * non-negative integer. Returns null for missing, malformed (`123garbage`),
+ * negative (`-1`), or otherwise non-numeric values so the fail-closed editor
+ * cap treats an untrustworthy size as unknown rather than letting a partially
+ * numeric value (which `parseInt` would happily coerce) slip through.
+ */
+function parseContentLength(contentLength: unknown): number | null {
+  if (typeof contentLength !== 'string' || !/^\d+$/.test(contentLength)) {
+    return null;
+  }
+  const size = Number(contentLength);
+  return Number.isSafeInteger(size) ? size : null;
+}
 export const FILE_PREVIEW_MAX_BYTES = 512 * 1024;
 
 export const EDITOR_MAX_BYTES = 8 * 1024 * 1024;
@@ -67,24 +78,14 @@ export const datasetFileContentQueryOptions = ({
         encodeURIComponent(path)
       );
 
-      // HEAD the file to confirm it exists and read Content-Length for conditional ranging.
-      // Prepend PLATFORM_BASE_URL so axios resolves the correct host (the relative
-      // path alone resolves against window.location, which differs in tests and
-      // may differ in deployed environments with a custom base path).
       let fileSize: number | null = null;
       try {
         const headResponse = await axios.head(`${PLATFORM_BASE_URL}${fileUrl}`);
-        const contentLength = headResponse.headers['content-length'];
-        fileSize = contentLength ? parseInt(String(contentLength), 10) : null;
+        fileSize = parseContentLength(headResponse.headers['content-length']);
       } catch {
         throw new Error('Unable to find base file.');
       }
 
-      // Enforce the editor cap before either branch pulls the whole file into memory —
-      // the parquet branch downloads the entire blob unconditionally, so a check inside
-      // it would come after the very download it's meant to prevent. Fail closed when the
-      // size is unknown: a missing or non-numeric Content-Length must not slip an
-      // unbounded file through.
       if (fullContent && range === undefined) {
         if (fileSize === null || Number.isNaN(fileSize) || fileSize > EDITOR_MAX_BYTES) {
           throw new Error('File is too large to edit in the browser.');
@@ -94,7 +95,6 @@ export const datasetFileContentQueryOptions = ({
       if (path.endsWith('parquet')) {
         try {
           let data: string = '';
-          // Use SDK so the request includes auth (Bearer token). asyncBufferFromUrl does a raw fetch with no credentials → 401.
           const blob = await filesDownloadFile(workspace!, name, path);
           if (!blob) throw new Error('Invalid response while downloading parquet file');
           const buffer = await blob.arrayBuffer();
