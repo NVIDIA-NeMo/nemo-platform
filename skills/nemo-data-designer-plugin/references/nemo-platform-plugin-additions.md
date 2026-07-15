@@ -96,7 +96,7 @@ nemo data-designer personas download --list
 nemo data-designer personas download
 
 # Specific locales
-nemo data-designer personas download --locale en_US --locale ja_JP
+nemo data-designer personas download --locale en_US --locale fr_FR
 
 # All locales
 nemo data-designer personas download --all
