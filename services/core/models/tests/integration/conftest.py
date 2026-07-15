@@ -10,14 +10,18 @@ from typing import Any, Generator, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from nemo_deployments_plugin.config import ControllerConfig, DeploymentsConfig, ExecutorConfigEntry
+from nemo_deployments_plugin.controller import DeploymentsController
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
 from nemo_platform.types.models.model_entity import ModelEntity
+from nmp.common.config import Runtime
 from nmp.common.secrets.encryption import get_base64_encoded_random_bytes
 from nmp.core.files.app.backends.base import FileInfo
 from nmp.core.files.app.backends.huggingface import HuggingfaceStorageImpl
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate, ServiceBackend
+from nmp.core.models.controllers.backends.deployments_plugin.backend import DeploymentsPluginServiceBackend
 from nmp.core.models.controllers.backends.registry import BackendRegistry
 from nmp.core.models.controllers.context import ModelContext
 from nmp.core.models.controllers.models_controller import ModelsController
@@ -37,6 +41,14 @@ from nmp.testing.docker import (
 )
 
 import docker
+
+try:
+    docker.from_env().ping()
+    DOCKER_AVAILABLE = True
+except Exception:
+    DOCKER_AVAILABLE = False
+
+skip_without_docker = pytest.mark.skipif(not DOCKER_AVAILABLE, reason="Docker daemon not available")
 
 blockbuster = blockbuster_fixture(autouse=True)
 
@@ -357,6 +369,114 @@ def docker_backend_config(
         "models_docker_host_service_name": "localhost",
         "model_labels": docker_owner_labels,
     }
+
+
+# =============================================================================
+# Deployments-plugin Docker Integration Fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def deployments_plugin_backend_config(worker_id: str) -> dict[str, Any]:
+    """Flat deployments_plugin backend config for integration tests."""
+    return {
+        "docker_executor": "local-docker",
+        "default_executor": "local-docker",
+        "deleting_timeout_seconds": 300,
+    }
+
+
+@pytest.fixture
+def deployments_plugin_platform_config(worker_id: str) -> MagicMock:
+    """Platform config with docker runtime and worker-scoped executor ports."""
+    start_port, end_port = get_worker_port_range(worker_id)
+    mock_platform_config = MagicMock()
+    mock_platform_config.models_url = "http://testserver"
+    mock_platform_config.base_url = "http://testserver"
+    mock_platform_config.runtime = Runtime.DOCKER
+    mock_platform_config.get_service_url.return_value = "http://testserver"
+    mock_platform_config.service_discovery = {"files": "http://testserver"}
+    mock_platform_config._deployments_config = DeploymentsConfig(
+        executors=[
+            ExecutorConfigEntry(
+                name="local-docker",
+                backend="docker",
+                config={
+                    "pull_images": False,
+                    "port_range_start": start_port,
+                    "port_range_end": end_port,
+                },
+            )
+        ],
+        default_executor="local-docker",
+        controller=ControllerConfig(
+            interval_seconds=1,
+            orphan_cleanup_interval_seconds=0,
+        ),
+    )
+    return mock_platform_config
+
+
+@pytest.fixture
+def controller_with_deployments_plugin(
+    test_clients,
+    docker_client,  # noqa: ARG001 - ensures docker is available
+    mock_nim_image,
+    docker_test_context,
+    models_controller_container_cleanup,
+    deployments_plugin_backend_config,
+    deployments_plugin_platform_config,
+):
+    """Models controller + deployments plugin controller on real Docker."""
+    mock_platform_config = deployments_plugin_platform_config
+    deployments_config = mock_platform_config._deployments_config
+
+    plugin_backend = DeploymentsPluginServiceBackend(
+        nmp_sdk=test_clients.async_sdk,
+        config=deployments_plugin_backend_config,
+        huggingface_model_puller="alpine:3.20",
+    )
+    plugin_backend.init()
+    backend_registry = BackendRegistry(registry={"deployments_plugin": plugin_backend})
+
+    deployments_controller = DeploymentsController()
+
+    def reconcile_stack(models_controller: ModelsController) -> None:
+        models_controller.step()
+        models_controller._loop.run_until_complete(deployments_controller.reconcile())
+
+    with (
+        patch("nmp.core.models.config.get_platform_config", return_value=mock_platform_config),
+        patch("nmp.core.models.controllers.main.get_platform_config", return_value=mock_platform_config),
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.resolve.get_platform_config",
+            return_value=mock_platform_config,
+        ),
+        patch("nmp.core.models.controllers.models_controller.get_async_platform_sdk") as mock_models_sdk,
+        patch("nemo_platform_plugin.sdk_provider.get_async_platform_sdk") as mock_sdk,
+        patch("nemo_deployments_plugin.config.DeploymentsConfig.get", return_value=deployments_config),
+    ):
+        mock_models_sdk.return_value = test_clients.async_sdk
+        mock_sdk.return_value = test_clients.async_sdk
+
+        models_controller = ModelsController(
+            backend_registry=backend_registry,
+            stop_signal=None,
+        )
+        models_controller._provider_reconciler.reconcile_model_providers = AsyncMock(return_value=None)
+        models_controller._loop.run_until_complete(deployments_controller.on_startup())
+
+        yield (
+            models_controller,
+            deployments_controller,
+            test_clients.sdk,
+            mock_nim_image,
+            docker_test_context,
+            reconcile_stack,
+        )
+
+        models_controller._loop.run_until_complete(deployments_controller.on_shutdown())
+        models_controller.shutdown()
 
 
 # =============================================================================
