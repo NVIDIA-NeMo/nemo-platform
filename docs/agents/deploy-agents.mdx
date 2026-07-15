@@ -231,7 +231,7 @@ client = NeMoPlatform(
     workspace="default",
 )
 
-with open("calculator-agent.yml") as f:
+with open("src/calculator_agent/calculator-agent.yml") as f:
     config = yaml.safe_load(f)
 client.agents.create(name="calc-agent", config=config)
 
@@ -250,6 +250,7 @@ response = client.agents.invoke(
 </Tab>
 
 </Tabs>
+
 ### Deploy on Kubernetes
 
 Deployment is identical apart from `--mode k8s`. The deployments plugin creates
@@ -288,7 +289,7 @@ client = NeMoPlatform(
     workspace="default",
 )
 
-with open("calculator-agent.yml") as f:
+with open("src/calculator_agent/calculator-agent.yml") as f:
     config = yaml.safe_load(f)
 client.agents.create(name="calc-agent", config=config)
 
