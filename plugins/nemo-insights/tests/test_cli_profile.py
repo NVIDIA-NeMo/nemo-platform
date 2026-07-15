@@ -101,6 +101,82 @@ def test_profile_env_is_loaded_before_base_url_resolution(app: typer.Typer, prof
     assert recorder.kwargs["base_url"] == "https://platform.example"
 
 
+def test_analyze_renders_invalid_profile_env_as_command_error(
+    app: typer.Typer,
+    profile_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = AnalystRecorder()
+    probe_calls: list[str] = []
+
+    async def record_workspace_probe(base_url: str, workspace: str, agent: str) -> bool:
+        probe_calls.append("workspace")
+        return True
+
+    monkeypatch.setattr(cli, "run_analyst", recorder)
+    monkeypatch.setattr(
+        cli,
+        "_PREFLIGHT_PROBES",
+        AnalysisProbes(
+            env={"INFERENCE_API_KEY": "k"},
+            http_ok=lambda base_url: probe_calls.append("http") or True,
+            workspace_ok=record_workspace_probe,
+        ),
+    )
+    env_file = profile_tree / ".env"
+    env_file.write_bytes(b"KEY=\xff")
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["analyze"])
+
+    assert result.exit_code == 1
+    error_lines = [line for line in result.stderr.splitlines() if line.startswith("Error:")]
+    assert len(error_lines) == 1
+    assert error_lines[0].startswith(f"Error: Could not read environment file {env_file}:")
+    assert "Check that the file is readable UTF-8 text, then retry." in error_lines[0]
+    assert "Traceback" not in result.output
+    assert recorder.kwargs is None
+    assert probe_calls == []
+
+
+def test_doctor_renders_invalid_profile_env_as_command_error(
+    app: typer.Typer,
+    profile_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = AnalystRecorder()
+    probe_calls: list[str] = []
+
+    async def record_workspace_probe(base_url: str, workspace: str, agent: str) -> bool:
+        probe_calls.append("workspace")
+        return True
+
+    monkeypatch.setattr(cli, "run_analyst", recorder)
+    monkeypatch.setattr(
+        cli,
+        "_PREFLIGHT_PROBES",
+        AnalysisProbes(
+            env={"INFERENCE_API_KEY": "k"},
+            http_ok=lambda base_url: probe_calls.append("http") or True,
+            workspace_ok=record_workspace_probe,
+        ),
+    )
+    env_file = profile_tree / ".env"
+    env_file.write_bytes(b"KEY=\xff")
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["doctor"])
+
+    assert result.exit_code == 1
+    error_lines = [line for line in result.stderr.splitlines() if line.startswith("Error:")]
+    assert len(error_lines) == 1
+    assert error_lines[0].startswith(f"Error: Could not read environment file {env_file}:")
+    assert "Check that the file is readable UTF-8 text, then retry." in error_lines[0]
+    assert "Traceback" not in result.output
+    assert recorder.kwargs is None
+    assert probe_calls == []
+
+
 @pytest.mark.parametrize(
     ("arguments", "environment", "expected"),
     [

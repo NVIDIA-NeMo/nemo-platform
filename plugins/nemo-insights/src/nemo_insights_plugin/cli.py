@@ -294,7 +294,7 @@ class InsightsCLI(NemoCLI):
             try:
                 try:
                     profile, profile_error = _load_profile_or_error(profile_path)
-                except (ProfileError, EnvFileError) as exc:
+                except ProfileError as exc:
                     profile, profile_error = None, str(exc)
                 spec_path: Path | None = None
                 spec_error: str | None = None
@@ -321,7 +321,7 @@ class InsightsCLI(NemoCLI):
                     return results
 
                 results = asyncio.run(_flow())
-            except (OSError, UnicodeError) as exc:
+            except (EnvFileError, OSError, UnicodeError) as exc:
                 typer.echo(f"Error: {_one_line_error(exc)}", err=True)
                 raise typer.Exit(1) from None
             typer.echo(format_report(results))
