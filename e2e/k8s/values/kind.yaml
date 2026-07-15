@@ -1,10 +1,6 @@
 # kind values for CPU-only GitHub Actions Kubernetes E2E runs.
 
-k8s-nim-operator:
-  enabled: false
-
 rbac:
-  k8sNimOperatorEnabled: false
   volcanoEnabled: false
 
 postgresql:
