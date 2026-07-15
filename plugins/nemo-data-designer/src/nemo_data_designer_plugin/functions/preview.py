@@ -84,7 +84,7 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
             )
 
             try:
-                data_designer.check_models(config_builder)
+                await anyio.to_thread.run_sync(data_designer.check_models, config_builder)
             except DataDesignerError as e:
                 raise NDDInvalidConfigError(str(e))
             except TimeoutError as e:

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from collections.abc import Callable
 
@@ -57,6 +58,40 @@ async def test_preview_function_streams_worker_frames_and_done(monkeypatch: pyte
     ]
 
     assert [frame.model_dump()["kind"] for frame in frames] == ["log", "done"]
+
+
+@pytest.mark.asyncio
+async def test_preview_function_runs_model_health_check_off_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    event_loop_thread = threading.current_thread()
+    check_models_thread: threading.Thread | None = None
+
+    class FakeDataDesigner:
+        def check_models(self, _config_builder: dd.DataDesignerConfigBuilder) -> None:
+            nonlocal check_models_thread
+            check_models_thread = threading.current_thread()
+
+    def fake_create_data_designer(*args, **kwargs) -> FakeDataDesigner:
+        return FakeDataDesigner()
+
+    def fake_worker(*args) -> None:
+        pass
+
+    monkeypatch.setattr(preview_module, "create_data_designer", fake_create_data_designer)
+    monkeypatch.setattr(preview_module, "_make_preview_dataset", fake_worker)
+
+    frames = [
+        frame
+        async for frame in PreviewFunction().run(
+            PreviewSpec(config=_config(), num_records=2),
+            ctx=FunctionContext(workspace="team-a"),
+            async_sdk=AsyncNeMoPlatform(base_url="http://testserver", workspace="default"),
+            is_local=True,
+        )
+    ]
+
+    assert [frame.model_dump()["kind"] for frame in frames] == ["done"]
+    assert check_models_thread is not None
+    assert check_models_thread is not event_loop_thread
 
 
 def test_preview_route_streams_ndjson_and_heartbeats(monkeypatch: pytest.MonkeyPatch) -> None:
