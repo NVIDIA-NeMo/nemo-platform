@@ -93,6 +93,8 @@ class LocalDataDesignerContext:
         ]
 
     def get_person_reader(self) -> PersonReader | None:
+        # Returning None here means we pass None to the DataDesigner constructor
+        # and just use whatever the library configures internally by default.
         return None
 
     async def get_model_providers(self, model_configs: list[dd.ModelConfig]) -> list[dd.ModelProvider]:
