@@ -405,6 +405,65 @@ def test_analyze_live_base_overrides_stanza(monkeypatch, tmp_path):
     assert seen["base_url"] == "http://localhost:8080"
 
 
+def test_analyze_glamr_live_base_preserves_remote_auth(monkeypatch, tmp_path):
+    from testbed.adapters import IntakeAdapter, TestbedAdapter
+    from testbed.registry import Subject
+
+    glamr = Subject(
+        "glamr",
+        "intake",
+        {
+            "agent": "glamr",
+            "workspace": "default",
+            "base_url": "https://original.example",
+            "auth": "basic",
+            "intake_path_prefix": "/glamr/intake",
+            "auth_user_env": "GLAMR_INTAKE_USER",
+            "auth_password_env": "GLAMR_INTAKE_PASSWORD",
+        },
+    )
+    monkeypatch.setattr(cli, "load_registry", lambda _path: {"glamr": glamr})
+    monkeypatch.setattr(cli, "_load_dotenv", lambda *args, **kwargs: None)
+    monkeypatch.setattr(cli, "TMP", tmp_path)
+    monkeypatch.setenv("INFERENCE_API_KEY", "sk-test")
+    monkeypatch.setenv("GLAMR_INTAKE_USER", "intake-user")
+    monkeypatch.setenv("GLAMR_INTAKE_PASSWORD", "secret")
+    built: dict[str, object] = {}
+    real_build_adapter = cli.build_adapter
+
+    def capture_build_adapter(subject: Subject) -> TestbedAdapter:
+        built.update(subject.config)
+        return real_build_adapter(subject)
+
+    async def fake_analyze(
+        self: IntakeAdapter,
+        *,
+        record: dict[str, object] | None,
+        since: datetime | None,
+        verbose: bool,
+        out_path: Path,
+    ) -> str:
+        return "REPORT-OK"
+
+    monkeypatch.setattr(cli, "build_adapter", capture_build_adapter)
+    monkeypatch.setattr(IntakeAdapter, "analyze", fake_analyze)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["testbed", "analyze", "glamr", "--live", "--base", "https://override.example"],
+    )
+
+    cli.main()
+
+    assert built["base_url"] == "https://override.example"
+    assert {key: built[key] for key in cli._REMOTE_AUTH_KEYS} == {
+        "auth": "basic",
+        "intake_path_prefix": "/glamr/intake",
+        "auth_user_env": "GLAMR_INTAKE_USER",
+        "auth_password_env": "GLAMR_INTAKE_PASSWORD",
+    }
+
+
 def test_analyze_live_base_retargets_record(monkeypatch, tmp_path):
     """--live --base must also retarget the benchmark run record."""
     from testbed.runstore import save_run
@@ -1223,6 +1282,63 @@ def test_snapshot_base_overrides_source_url(monkeypatch, tmp_path):
     )
     cli.main()
     assert seen["base_urls"] == ["http://ci-host:8080", "http://ci-host:8080"]
+
+
+def test_snapshot_glamr_base_preserves_remote_auth(monkeypatch, tmp_path):
+    from testbed.registry import Subject
+
+    glamr = Subject(
+        "glamr",
+        "intake",
+        {
+            "agent": "glamr",
+            "workspace": "default",
+            "base_url": "https://original.example",
+            "auth": "basic",
+            "intake_path_prefix": "/glamr/intake",
+            "auth_user_env": "GLAMR_INTAKE_USER",
+            "auth_password_env": "GLAMR_INTAKE_PASSWORD",
+        },
+    )
+    monkeypatch.setattr(cli, "load_registry", lambda _path: {"glamr": glamr})
+    monkeypatch.setattr(cli, "TMP", tmp_path)
+    captured: dict[str, object] = {}
+
+    def fake_snapshot_export(
+        subjects: list[Subject],
+        out: Path,
+        tmp_dir: Path,
+        *,
+        since: datetime | None,
+    ) -> Path:
+        (subject,) = subjects
+        captured.update(subject.config)
+        return out
+
+    monkeypatch.setattr(cli.artifact, "snapshot_export", fake_snapshot_export)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "testbed",
+            "snapshot",
+            "glamr",
+            "--base",
+            "https://override.example",
+            "-o",
+            str(tmp_path / "glamr.tar.zst"),
+        ],
+    )
+
+    cli.main()
+
+    assert captured["base_url"] == "https://override.example"
+    assert {key: captured[key] for key in cli._REMOTE_AUTH_KEYS} == {
+        "auth": "basic",
+        "intake_path_prefix": "/glamr/intake",
+        "auth_user_env": "GLAMR_INTAKE_USER",
+        "auth_password_env": "GLAMR_INTAKE_PASSWORD",
+    }
 
 
 def test_snapshot_subjects_json_for_ci(monkeypatch, tmp_path):
