@@ -873,7 +873,13 @@ def job_route_factory(
             # the request body's ``spec`` is a plain dict on the wire. The
             # Stainless SDK serialized models implicitly — the typed client
             # validates the body first, so coerce to a dict here.
-            # JSON mode so binary fields (e.g. cloudpickle blobs) serialize as base64, not raw bytes.
+            #
+            # Dump ``mode="json"`` (not python): the spec is bound for JSON transport and JSON storage,
+            # and the request body's ``spec`` is an opaque ``dict`` that has lost the nested models'
+            # serializers. A python-mode dump leaves non-JSON-native values (e.g. a cloudpickle metric
+            # bundle's raw ``bytes``, whose ``ser_json_bytes="base64"`` never runs) that then fail to
+            # JSON-encode on the wire (invalid utf-8 on the pickle marker). ``mode="json"`` runs each
+            # nested model's own JSON serializer, so bytes base64-encode and round-trip on read.
             spec_dict = job_spec.model_dump(mode="json") if isinstance(job_spec, BaseModel) else job_spec
 
             # Only include optional fields when they have values — passing None
