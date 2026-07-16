@@ -128,7 +128,7 @@ def test_generic_model_deployment_lifecycle(sdk: NeMoPlatform, workspace: str) -
             "gpu": 0,
             "image_name": GENERIC_HTTP_IMAGE,
             "image_tag": GENERIC_HTTP_TAG,
-            "additional_args": ["-m", "http.server", "8000"],
+            "additional_args": ["python3", "-m", "http.server", "8000"],
             "health_check_path": "/",
         },
     )

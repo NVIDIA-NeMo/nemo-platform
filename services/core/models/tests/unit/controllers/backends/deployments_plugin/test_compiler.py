@@ -191,7 +191,11 @@ def test_generic_weightless_is_server_only() -> None:
         deployment=resolved.deployment,
         config=resolved.config,
         model_entity=None,
-        view=DeploymentConfigView(image_name="custom/image", image_tag="1"),
+        view=DeploymentConfigView(
+            image_name="custom/image",
+            image_tag="1",
+            additional_args=["python3", "-m", "http.server", "8000"],
+        ),
         weights_type=ModelWeightsType.BAKED_CONTAINER,
         model_namespace=None,
         model_name=None,
@@ -205,6 +209,8 @@ def test_generic_weightless_is_server_only() -> None:
     assert compiled.puller_config is None
     assert compiled.puller_prerequisite is False
     assert compiled.server_config.containers[0].image == "custom/image:1"
+    assert compiled.server_config.containers[0].args == ["python3", "-m", "http.server", "8000"]
+    assert compiled.server_config.containers[0].command == []
     k8s = compiled.server_config.backend_config.k8s
     assert k8s is None
 
