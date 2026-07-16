@@ -23,7 +23,9 @@ from collections.abc import Mapping
 from pathlib import Path
 
 import httpx
+from nemo_platform import AsyncNeMoPlatform
 from testbed import export
+from testbed.intake_client import build_basic_auth_intake_client
 from testbed.registry import Subject
 
 LOCAL_URL = "http://localhost:8080"  # the local NeMo Platform (the default restore/analyze target)
@@ -127,6 +129,29 @@ def workspaces_for_subject(subject: Subject) -> list[str]:
     )
 
 
+def _basic_auth_intake_client_for(subjects: list[Subject], source_url: str) -> AsyncNeMoPlatform | None:
+    """Build the configured basic-auth Intake client, if this snapshot needs one."""
+    basic_subject = next((subject for subject in subjects if subject.config.get("auth") == "basic"), None)
+    if basic_subject is None:
+        return None
+    config = basic_subject.config
+    credentials: dict[str, str] = {}
+    for role, key in (("username", "auth_user_env"), ("password", "auth_password_env")):
+        env_name = config.get(key)
+        value = os.environ.get(str(env_name)) if env_name else None
+        if not value:
+            env_label = str(env_name) if env_name else key
+            sys.exit(f"snapshot: subject '{basic_subject.name}' is missing basic-auth {role} credential: {env_label}")
+        credentials[role] = value
+    real_prefix = str(config.get("intake_path_prefix", "/api/intake")).rstrip("/") + "/"
+    return build_basic_auth_intake_client(
+        base_url=source_url,
+        username=credentials["username"],
+        password=credentials["password"],
+        real_prefix=real_prefix,
+    )
+
+
 def backup_records(testbed_tmp: Path, names: list[str], *, backup_dir: Path | None = None) -> Path:
     """Move the named local files into *backup_dir* (default ``<testbed_tmp>/backup-<UTC stamp>/``);
     returns that dir.
@@ -209,13 +234,14 @@ def snapshot_export(
             "snapshot them separately or pass --base URL"
         )
     source_url = urls.pop()
+    client = _basic_auth_intake_client_for(subjects, source_url)
     records = pick_records(tmp_dir, [s.name for s in subjects])
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=tmp_dir) as tmp:
         state = Path(tmp) / "state"
         (state / "tmp").mkdir(parents=True)
-        stats = export.export_workspaces(source_url, workspaces, state, since=since)
+        stats = export.export_workspaces(source_url, workspaces, state, since=since, client=client)
         for rec in records:
             shutil.copy2(rec, state / "tmp" / rec.name)
         manifest = build_export_manifest(

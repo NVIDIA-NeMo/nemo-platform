@@ -58,6 +58,7 @@ REGISTRY_PATH = HERE / "testbeds.toml"
 TMP = HERE / "tmp"
 ENV_PATH = HERE / ".env"
 LOCAL_URL = artifact.LOCAL_URL  # the local NeMo Platform (the default restore/analyze target)
+_REMOTE_AUTH_KEYS = ("auth", "intake_path_prefix", "auth_user_env", "auth_password_env")
 
 
 def _load_dotenv(path: Path = ENV_PATH) -> None:
@@ -104,11 +105,15 @@ def _doctor(subjects: dict[str, Subject], name: str | None) -> None:
             print(f"✓ {subject_name} ({subject.type}) — ready: uv run python -m testbed analyze {subject_name} --live")
 
 
-def _with_base(subject: Subject, base: str | None) -> Subject:
+def _with_base(subject: Subject, base: str | None, *, drop_auth: bool = True) -> Subject:
     """Rebuild *subject* pointed at *base* (the uniform ``--base`` override); unchanged when None."""
     if base is None:
         return subject
-    return Subject(subject.name, subject.type, {**subject.config, "base_url": base})
+    config = {**subject.config, "base_url": base}
+    if drop_auth:
+        for key in _REMOTE_AUTH_KEYS:
+            config.pop(key, None)
+    return Subject(subject.name, subject.type, config)
 
 
 def _local_source(args: argparse.Namespace) -> str | None:
@@ -680,7 +685,7 @@ def main() -> None:
         # all-stanzas-must-agree check trivially holds; without it the stanza
         # agreement (or disagreement) stands as-is.
         result = artifact.snapshot_export(
-            [_with_base(subjects[n], args.base) for n in names],
+            [_with_base(subjects[n], args.base, drop_auth=False) for n in names],
             out,
             TMP,
             since=since,
@@ -751,7 +756,11 @@ def main() -> None:
     # Target platform: --base wins everywhere; without it, pinned/state mode
     # restores onto the local platform (reproducible default) and --live reads
     # the stanza's own base_url.
-    subject = _with_base(subject, args.base if args.live else (args.base or LOCAL_URL))
+    subject = _with_base(
+        subject,
+        args.base if args.live else (args.base or LOCAL_URL),
+        drop_auth=not args.live,
+    )
     subject = _apply_overrides(subject, args.sets)
     if not os.environ.get("INFERENCE_API_KEY"):
         sys.exit("Set INFERENCE_API_KEY (NVIDIA Inference Gateway sk-... key) and re-run.")

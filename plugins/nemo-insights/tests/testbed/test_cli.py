@@ -346,6 +346,50 @@ def test_run_base_replaces_local(monkeypatch, tmp_path):
     assert seen["base_url"] == "http://localhost:8080"
 
 
+def test_with_base_drops_remote_auth_by_default() -> None:
+    from testbed.registry import Subject
+
+    glamr = Subject(
+        "glamr",
+        "intake",
+        {
+            "agent": "glamr",
+            "workspace": "default",
+            "base_url": "https://remote",
+            "auth": "basic",
+            "intake_path_prefix": "/api/intake",
+            "auth_user_env": "GLAMR_INTAKE_USER",
+            "auth_password_env": "GLAMR_INTAKE_PASSWORD",
+        },
+    )
+
+    assert cli._with_base(glamr, "http://localhost:8080").config == {
+        "agent": "glamr",
+        "workspace": "default",
+        "base_url": "http://localhost:8080",
+    }
+
+
+def test_with_base_preserves_remote_auth_when_requested() -> None:
+    from testbed.registry import Subject
+
+    glamr = Subject(
+        "glamr",
+        "intake",
+        {
+            "agent": "glamr",
+            "workspace": "default",
+            "base_url": "https://remote",
+            "auth": "basic",
+            "intake_path_prefix": "/api/intake",
+            "auth_user_env": "GLAMR_INTAKE_USER",
+            "auth_password_env": "GLAMR_INTAKE_PASSWORD",
+        },
+    )
+
+    assert cli._with_base(glamr, "https://remote", drop_auth=False).config["auth"] == "basic"
+
+
 def test_analyze_live_base_overrides_stanza(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "TMP", tmp_path)
     monkeypatch.setenv("INFERENCE_API_KEY", "sk")
