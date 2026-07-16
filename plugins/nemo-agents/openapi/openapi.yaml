@@ -8,7 +8,11 @@ paths:
       tags:
       - Agents
       summary: Create Agent
-      description: Create a new agent from a NAT workflow config.
+      description: "Create an agent.\n\nManaged (``config`` supplied): stores the\
+        \ NAT workflow the platform will run.\nExternal (``url`` supplied): fetches\
+        \ the running agent's A2A card and stores\na pointer \u2014 the platform never\
+        \ runs it. ``CreateAgentRequest`` enforces that\nexactly one of ``config``/``url``\
+        \ is present."
       operationId: create_agent_apis_agents_v2_workspaces__workspace__agents_post
       parameters:
       - name: workspace
@@ -2281,7 +2285,7 @@ components:
           type: object
           title: Config
           description: NAT workflow config (YAML-equivalent dict, keyed by component
-            name).
+            name). Empty for external agents.
         config_format:
           type: string
           title: Config Format
@@ -2289,6 +2293,29 @@ components:
             \ dict.  Not read or validated by NAT \u2014 used by NeMo Platform for\
             \ future config migration.  Currently only 'nat-workflow-v1' is supported."
           default: nat-workflow-v1
+        source:
+          type: string
+          enum:
+          - managed
+          - external
+          title: Source
+          description: '''managed'' (default) agents are deployed and run by NeMo
+            Platform. ''external'' agents run outside the platform; NMP holds only
+            a pointer to them.'
+          default: managed
+        endpoint:
+          type: string
+          title: Endpoint
+          description: Base URL of an external agent (e.g. http://host:10000). Empty
+            for managed agents, whose runtime address lives on the AgentDeployment
+            instead.
+          default: ''
+        card:
+          additionalProperties: true
+          type: object
+          title: Card
+          description: A2A agent card fetched from an external agent at registration
+            (name, description, skills). Empty for managed agents.
         id:
           type: string
           title: Id
@@ -2654,24 +2681,34 @@ components:
         description:
           type: string
           title: Description
-          description: Human-readable description.
+          description: Human-readable description. For external agents, falls back
+            to the agent card's description.
           default: ''
         config:
+          title: Config
+          description: NAT workflow config dict. Required for a managed agent; omit
+            for external.
           additionalProperties: true
           type: object
-          title: Config
-          description: NAT workflow config dict.
         config_format:
           type: string
           title: Config Format
           description: Config format identifier.
           default: nat-workflow-v1
+        url:
+          title: Url
+          description: Base URL of a running external agent (e.g. http://host:10000).
+            Provide instead of config.
+          type: string
       type: object
       required:
       - name
-      - config
       title: CreateAgentRequest
-      description: Request body for ``POST /v2/workspaces/{workspace}/agents``.
+      description: "Request body for ``POST /v2/workspaces/{workspace}/agents``.\n\
+        \nCreates either a **managed** agent (supply ``config`` \u2014 a NAT workflow\
+        \ the\nplatform will run) or an **external** agent (supply ``url`` \u2014\
+        \ a pointer to\na NAT agent already running elsewhere, whose A2A card the\
+        \ platform fetches\nat creation). Provide exactly one of ``config`` or ``url``."
     CreateDeploymentRequest:
       properties:
         agent:

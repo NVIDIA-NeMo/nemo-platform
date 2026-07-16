@@ -5,6 +5,7 @@ import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema/AgentDep
 import { Block, SegmentedControl, SidePanel } from '@nvidia/foundations-react-core';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { AgentDetailsContent } from '@studio/components/sidePanels/AgentPanels/AgentPanel/AgentDetailsContent';
+import { AgentWorkflowContent } from '@studio/components/sidePanels/AgentPanels/AgentPanel/AgentWorkflowContent';
 import { ChatPlaygroundContent } from '@studio/components/sidePanels/AgentPanels/AgentPanel/ChatPlaygroundContent';
 import { DeploymentLogsView } from '@studio/components/sidePanels/AgentPanels/AgentPanel/DeploymentLogsView';
 import type { AgentPanelTab } from '@studio/components/sidePanels/AgentPanels/AgentPanel/types';
@@ -59,6 +60,7 @@ export const AgentPanel: FC<AgentPanelProps> = ({
   const tabItems = useMemo(
     () => [
       { value: 'agent-details', children: 'Details' },
+      { value: 'agent-workflow', children: 'Workflow' },
       { value: 'chat-playground', children: 'Chat Playground' },
       { value: 'deployment-logs', children: 'Logs' },
     ],
@@ -111,6 +113,8 @@ export const AgentPanel: FC<AgentPanelProps> = ({
 
   if (selectedTab === 'deployment-logs') {
     content = <DeploymentLogsView workspace={workspace} deployments={agentDeployments} />;
+  } else if (selectedTab === 'agent-workflow') {
+    content = <AgentWorkflowContent agent={agent} />;
   } else if (selectedTab === 'chat-playground') {
     content = (
       <ChatPlaygroundContent
@@ -120,6 +124,8 @@ export const AgentPanel: FC<AgentPanelProps> = ({
         healthyDeployments={healthyDeployments}
         isDeploymentsLoading={isDeploymentsLoading}
         isDeploying={isDeploying}
+        isExternal={agent?.source === 'external'}
+        externalEndpoint={agent?.endpoint}
         chatAreaRef={chatAreaRef}
         onSelectDeployment={(v) => setSelectedDeploymentName(v)}
         onDeploy={() => setCreateDeploymentOpen(true)}

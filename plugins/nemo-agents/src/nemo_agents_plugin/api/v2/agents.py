@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from nemo_agents_plugin.a2a import AgentCardError, fetch_agent_card
 from nemo_agents_plugin.api.v2._perms import AgentPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.authz import scope
@@ -50,14 +51,35 @@ async def create_agent(
     body: CreateAgentRequest,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> Agent:
-    """Create a new agent from a NAT workflow config."""
-    agent = Agent(
-        name=body.name,
-        workspace=workspace,
-        description=body.description,
-        config=body.config,
-        config_format=body.config_format,
-    )
+    """Create an agent.
+
+    Managed (``config`` supplied): stores the NAT workflow the platform will run.
+    External (``url`` supplied): fetches the running agent's A2A card and stores
+    a pointer — the platform never runs it. ``CreateAgentRequest`` enforces that
+    exactly one of ``config``/``url`` is present.
+    """
+    if body.url:
+        try:
+            card = await fetch_agent_card(body.url)
+        except AgentCardError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        card_description = card.get("description") if isinstance(card.get("description"), str) else ""
+        agent = Agent(
+            name=body.name,
+            workspace=workspace,
+            description=body.description or card_description or "",
+            source="external",
+            endpoint=body.url.strip(),
+            card=card,
+        )
+    else:
+        agent = Agent(
+            name=body.name,
+            workspace=workspace,
+            description=body.description,
+            config=body.config or {},
+            config_format=body.config_format,
+        )
     try:
         saved = await entity_client.create(agent)
     except NemoEntityConflictError as exc:

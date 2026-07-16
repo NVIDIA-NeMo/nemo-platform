@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
-import { Button, PageHeader, Stack } from '@nvidia/foundations-react-core';
+import { Button, Flex, PageHeader, Stack } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { AgentsTable, type AgentTableRow } from '@studio/components/dataViews/AgentsDataView';
 import {
@@ -15,6 +15,7 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { CreateDeploymentModal } from '@studio/routes/agents/AgentDeploymentsListRoute/CreateDeploymentModal';
 import { CloneAgentModal } from '@studio/routes/agents/AgentsListRoute/CloneAgentModal';
 import { CreateExampleAgentModal } from '@studio/routes/agents/AgentsListRoute/CreateExampleAgentModal';
+import { RegisterAgentModal } from '@studio/routes/agents/AgentsListRoute/RegisterAgentModal';
 import { getAgentDetailRoute, getAgentsListRoute } from '@studio/routes/utils';
 import { type FC, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -27,6 +28,7 @@ export const AgentsListRoute: FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [createDeploymentAgent, setCreateDeploymentAgent] = useState<string | null>(null);
   const [isCreateExampleOpen, setCreateExampleOpen] = useState(false);
+  const [isRegisterOpen, setRegisterOpen] = useState(false);
   const [cloneSource, setCloneSource] = useState<AgentTableRow | null>(null);
   const [loadedAgents, setLoadedAgents] = useState<Agent[]>([]);
   const { [ROUTE_PARAMS.agentName]: agentNameParam } = useParams<{ agentName?: string }>();
@@ -55,9 +57,14 @@ export const AgentsListRoute: FC = () => {
           slotHeading="Agents"
           slotDescription="View and manage AI agents and their deployments."
           slotActions={
-            <Button color="brand" onClick={() => setCreateExampleOpen(true)}>
-              Create Example Agent
-            </Button>
+            <Flex gap="density-md">
+              <Button kind="secondary" onClick={() => setRegisterOpen(true)}>
+                Register Existing Agent
+              </Button>
+              <Button color="brand" onClick={() => setCreateExampleOpen(true)}>
+                Create Example Agent
+              </Button>
+            </Flex>
           }
         />
         <AgentsTable
@@ -65,6 +72,8 @@ export const AgentsListRoute: FC = () => {
           onCreateDeployment={(agentName) => setCreateDeploymentAgent(agentName)}
           onCloneAgent={setCloneSource}
           onAgentsLoaded={setLoadedAgents}
+          onRegisterAgent={() => setRegisterOpen(true)}
+          onCreateExampleAgent={() => setCreateExampleOpen(true)}
         />
       </Stack>
       <CreateExampleAgentModal
@@ -72,6 +81,11 @@ export const AgentsListRoute: FC = () => {
         onClose={() => setCreateExampleOpen(false)}
         workspace={workspace}
         existingAgents={loadedAgents}
+      />
+      <RegisterAgentModal
+        open={isRegisterOpen}
+        onClose={() => setRegisterOpen(false)}
+        workspace={workspace}
       />
       <CloneAgentModal
         open={cloneSource !== null}

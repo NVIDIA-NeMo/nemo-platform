@@ -19,6 +19,12 @@ from pydantic import BaseModel, Field
 
 DeploymentStatus = Literal["pending", "starting", "running", "failed", "deleting"]
 
+# Where an agent's runtime lives. ``managed`` agents are run by NeMo Platform
+# (config compiled to a ``nat serve`` deployment). ``external`` agents run
+# outside the platform; NMP only holds a pointer (``endpoint``) plus the A2A
+# agent card fetched at registration time — it never spawns them.
+AgentSource = Literal["managed", "external"]
+
 # Runtime backend for an AgentDeployment. ``subprocess`` (the default) runs the
 # agent as a local ``nat serve`` process reachable on a loopback ``endpoint``.
 # ``docker``/``k8s`` run the agent as a durable container deployment via the
@@ -113,7 +119,7 @@ class Agent(NemoEntity, entity_type="agent"):
     description: str = Field(default="", description="Human-readable description of the agent.")
     config: dict[str, Any] = Field(
         default_factory=dict,
-        description="NAT workflow config (YAML-equivalent dict, keyed by component name).",
+        description="NAT workflow config (YAML-equivalent dict, keyed by component name). Empty for external agents.",
     )
     config_format: str = Field(
         default="nat-workflow-v1",
@@ -121,6 +127,27 @@ class Agent(NemoEntity, entity_type="agent"):
             "platform-internal schema version tag for the agent config dict.  "
             "Not read or validated by NAT — used by NeMo Platform for future config migration.  "
             "Currently only 'nat-workflow-v1' is supported."
+        ),
+    )
+    source: AgentSource = Field(
+        default="managed",
+        description=(
+            "'managed' (default) agents are deployed and run by NeMo Platform. "
+            "'external' agents run outside the platform; NMP holds only a pointer to them."
+        ),
+    )
+    endpoint: str = Field(
+        default="",
+        description=(
+            "Base URL of an external agent (e.g. http://host:10000). Empty for managed "
+            "agents, whose runtime address lives on the AgentDeployment instead."
+        ),
+    )
+    card: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "A2A agent card fetched from an external agent at registration "
+            "(name, description, skills). Empty for managed agents."
         ),
     )
 

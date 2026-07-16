@@ -70,6 +70,14 @@ async def create_deployment(
         logger.exception("Failed to look up agent '%s'", body.agent)
         raise HTTPException(status_code=500, detail="Failed to look up agent.") from exc
 
+    # External agents run outside NeMo Platform; there is nothing for the
+    # platform to deploy. Reject rather than spawn a doomed empty-config process.
+    if agent.source == "external":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Agent '{body.agent}' is external and runs outside NeMo Platform; it cannot be deployed.",
+        )
+
     # 2. Build deployment name (auto-generate if not provided)
     deployment_name = body.name or f"{body.agent}-{secrets.token_hex(4)}"
 
