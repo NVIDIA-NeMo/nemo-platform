@@ -8,45 +8,62 @@ import type { InferenceParams } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, FormField, Stack, Text, TextInput } from '@nvidia/foundations-react-core';
 import { CardIconBadge } from '@studio/components/common/SelectableCard';
 import {
-  type BuilderModel,
-  type BuilderModelPatch,
   providerForModel,
   validateModelAlias,
 } from '@studio/routes/DataDesignerJobBuildRoute/models';
+import type { JobBuilderFormValues } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
 import { Cpu, Trash2, X } from 'lucide-react';
 import type { FC } from 'react';
+import { useController, useFormContext, useWatch } from 'react-hook-form';
 
 export interface ModelConfigPanelProps {
-  model: BuilderModel;
-  takenAliases: Set<string>;
+  modelId: string;
   modelGroups: ModelWorkspaceGroup[];
   isLoadingModels?: boolean;
-  onChange: (patch: BuilderModelPatch) => void;
   onRemove: () => void;
   onClose: () => void;
 }
 
-/** Right-hand config panel for a model — sibling of ColumnConfigPanel, same inline layout. */
+/** Right-hand config panel for a model, with subscriptions scoped to its individual fields. */
 export const ModelConfigPanel: FC<ModelConfigPanelProps> = ({
-  model,
-  takenAliases,
+  modelId,
   modelGroups,
   isLoadingModels,
-  onChange,
   onRemove,
   onClose,
 }) => {
-  const aliasError = validateModelAlias(model.alias, takenAliases);
-  const modelValue: ModelSelection | null = model.model ? { model: model.model } : null;
+  const { control, getValues, setValue } = useFormContext<JobBuilderFormValues>();
+  const modelIndex = getValues('models').findIndex((model) => model.id === modelId);
+  const { field: aliasField } = useController({ control, name: `models.${modelIndex}.alias` });
+  const { field: modelField } = useController({ control, name: `models.${modelIndex}.model` });
+  const { field: providerField } = useController({
+    control,
+    name: `models.${modelIndex}.provider`,
+  });
+  const { field: inferenceParamsField } = useController({
+    control,
+    name: `models.${modelIndex}.inferenceParams`,
+  });
+  const modelCount = getValues('models').length;
+  const aliases = useWatch({
+    control,
+    name: Array.from({ length: modelCount }, (_, index) => `models.${index}.alias` as const),
+  });
+  const alias = aliasField.value ?? '';
+  const aliasError = validateModelAlias(
+    alias,
+    new Set(aliases.filter((value, index) => index !== modelIndex && Boolean(value)))
+  );
+  const modelValue: ModelSelection | null = modelField.value ? { model: modelField.value } : null;
 
-  const handleModelChange = (selection: ModelSelection) =>
-    onChange({ model: selection.model, provider: providerForModel(modelGroups, selection.model) });
-  const handleParamsChange = (params: Partial<InferenceParams>) =>
-    onChange({ inferenceParams: params });
+  const handleModelChange = (selection: ModelSelection) => {
+    modelField.onChange(selection.model);
+    providerField.onChange(providerForModel(modelGroups, selection.model));
+  };
 
   return (
     <aside
-      aria-label={`Configure ${model.alias || 'model'}`}
+      aria-label={`Configure ${alias || 'model'}`}
       className="flex h-full w-full flex-col bg-surface-base"
     >
       <Flex
@@ -84,12 +101,12 @@ export const ModelConfigPanel: FC<ModelConfigPanelProps> = ({
           slotLabel="Alias"
           required
           slotInfo="LLM columns reference this model via their model alias."
-          status={model.alias && aliasError ? 'error' : undefined}
-          slotError={model.alias ? (aliasError ?? undefined) : undefined}
+          status={alias && aliasError ? 'error' : undefined}
+          slotError={alias ? (aliasError ?? undefined) : undefined}
         >
           <TextInput
-            value={model.alias}
-            onValueChange={(value) => onChange({ alias: value })}
+            value={alias}
+            onValueChange={aliasField.onChange}
             placeholder="e.g. default"
             attributes={{ Input: { 'aria-label': 'Model alias' } }}
           />
@@ -105,8 +122,10 @@ export const ModelConfigPanel: FC<ModelConfigPanelProps> = ({
             showParams
             fullWidth
             dropdownSide="bottom"
-            inferenceParams={model.inferenceParams}
-            onInferenceParamsChange={handleParamsChange}
+            inferenceParams={inferenceParamsField.value ?? {}}
+            onInferenceParamsChange={(params: Partial<InferenceParams>) =>
+              setValue(`models.${modelIndex}.inferenceParams`, params)
+            }
             aria-label="Model selector"
           />
         </FormField>

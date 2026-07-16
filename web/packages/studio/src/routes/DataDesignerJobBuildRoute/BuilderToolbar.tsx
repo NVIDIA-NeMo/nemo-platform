@@ -4,20 +4,15 @@
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { Button, Flex, Tag, Text, TextInput } from '@nvidia/foundations-react-core';
 import type { StartOptionTag } from '@studio/components/CreateFilesetStart/types';
+import type { JobBuilderFormValues } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
 import { FileJson, Pencil } from 'lucide-react';
 import { type FC, useState } from 'react';
+import { useController, useFormContext } from 'react-hook-form';
 
 export interface BuilderToolbarProps {
-  /** The fileset name; shown read-only until the pencil icon is clicked. */
-  name: string;
-  onNameChange: (name: string) => void;
-  /** Number of columns currently on the canvas. */
-  columnCount: number;
   /** The template's badge (recipe use case), shown when building from a template. */
   templateTag?: StartOptionTag;
-  /** Full-run record count, as a raw digit string (no thousands separators). */
-  rows: string;
-  onRowsChange: (rows: string) => void;
+  columnCount: number;
   onPreview: () => void;
   isPreviewing: boolean;
   onSubmit: () => void;
@@ -25,18 +20,19 @@ export interface BuilderToolbarProps {
 }
 
 export const BuilderToolbar: FC<BuilderToolbarProps> = ({
-  name,
-  onNameChange,
-  columnCount,
   templateTag,
-  rows,
-  onRowsChange,
+  columnCount,
   onPreview,
   isPreviewing,
   onSubmit,
   isSubmitting,
 }) => {
   const [isEditingName, setIsEditingName] = useState(false);
+  const { control } = useFormContext<JobBuilderFormValues>();
+  const { field: nameField } = useController({ control, name: 'name' });
+  const { field: rowsField } = useController({ control, name: 'rows' });
+  const name = nameField.value ?? '';
+  const rows = rowsField.value ?? '';
   const previewRows = Number(rows) > 0 ? Math.min(Number(rows), 10) : 10;
 
   return (
@@ -52,7 +48,7 @@ export const BuilderToolbar: FC<BuilderToolbarProps> = ({
           <TextInput
             autoFocus
             value={name}
-            onValueChange={onNameChange}
+            onValueChange={nameField.onChange}
             onBlur={() => setIsEditingName(false)}
             attributes={{ Input: { 'aria-label': 'Fileset name', className: 'w-[220px]' } }}
           />
@@ -93,7 +89,7 @@ export const BuilderToolbar: FC<BuilderToolbarProps> = ({
             min={1}
             step={1}
             value={rows}
-            onValueChange={onRowsChange}
+            onValueChange={rowsField.onChange}
             attributes={{ Input: { 'aria-label': 'Records to generate', className: 'w-[96px]' } }}
           />
         </Flex>

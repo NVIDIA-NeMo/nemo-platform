@@ -22,40 +22,49 @@ import { ICON_COLOR_CLASS } from '@studio/components/AddColumnPalette/constants'
 import { SeedDatasetConfig } from '@studio/components/ColumnConfigPanel/SeedDatasetConfig';
 import { CardIconBadge } from '@studio/components/common/SelectableCard';
 import {
-  type BuilderColumn,
   type ColumnField,
   getColumnFields,
   validateColumnName,
 } from '@studio/routes/DataDesignerJobBuildRoute/columns';
+import type { JobBuilderFormValues } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
 import { Trash2, X } from 'lucide-react';
 import type { FC } from 'react';
+import { useController, useFormContext, useWatch } from 'react-hook-form';
 
-/** Renders one config field as the appropriate control, wrapped in a `FormField`. */
-const FieldControl: FC<{
+interface FieldControlProps {
+  columnIndex: number;
   field: ColumnField;
-  value: string;
-  onChange: (value: string) => void;
-}> = ({ field, value, onChange }) => {
-  const control = () => {
+}
+
+/** A field-level RHF subscription; editing it leaves the route, list, and other fields alone. */
+const FieldControl: FC<FieldControlProps> = ({ columnIndex, field }) => {
+  const { control } = useFormContext<JobBuilderFormValues>();
+  const { field: formField } = useController({
+    control,
+    name: `columns.${columnIndex}.values.${field.key}`,
+  });
+  const value = formField.value ?? '';
+
+  const controlElement = () => {
     switch (field.kind) {
       case 'textarea':
         return (
           <TextArea
             value={value}
-            onValueChange={onChange}
+            onValueChange={formField.onChange}
             placeholder={field.placeholder}
             resizeable="auto"
           />
         );
       case 'select':
         return (
-          <SelectRoot value={value || undefined} onValueChange={onChange}>
+          <SelectRoot value={value || undefined} onValueChange={formField.onChange}>
             <SelectTrigger className="w-full" placeholder="Select…" />
             <SelectContent className="w-(--radix-popper-anchor-width)">
               <SelectListbox>
-                {field.options?.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
+                {field.options?.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
                   </SelectItem>
                 ))}
               </SelectListbox>
@@ -66,23 +75,28 @@ const FieldControl: FC<{
         return (
           <TextInput
             value={value}
-            onValueChange={onChange}
+            onValueChange={formField.onChange}
             placeholder={field.placeholder}
             attributes={{ Input: { type: 'number', inputMode: 'decimal' } }}
           />
         );
       default:
-        return <TextInput value={value} onValueChange={onChange} placeholder={field.placeholder} />;
+        return (
+          <TextInput
+            value={value}
+            onValueChange={formField.onChange}
+            placeholder={field.placeholder}
+          />
+        );
     }
   };
 
-  // A boolean toggle reads better as an inline switch than a stacked FormField control.
   if (field.kind === 'switch') {
     return (
       <FormField slotLabel={field.label} slotInfo={field.helperText}>
         <Switch
           checked={value === 'true'}
-          onCheckedChange={(checked) => onChange(checked ? 'true' : 'false')}
+          onCheckedChange={(checked) => formField.onChange(checked ? 'true' : 'false')}
         />
       </FormField>
     );
@@ -90,29 +104,51 @@ const FieldControl: FC<{
 
   return (
     <FormField slotLabel={field.label} required={field.required} slotInfo={field.helperText}>
-      {control()}
+      {controlElement()}
+    </FormField>
+  );
+};
+
+interface ColumnNameControlProps {
+  columnIndex: number;
+}
+
+const ColumnNameControl: FC<ColumnNameControlProps> = ({ columnIndex }) => {
+  const { control, getValues } = useFormContext<JobBuilderFormValues>();
+  const { field } = useController({ control, name: `columns.${columnIndex}.name` });
+  const columnCount = getValues('columns').length;
+  const names = useWatch({
+    control,
+    name: Array.from({ length: columnCount }, (_, index) => `columns.${index}.name` as const),
+  });
+  const takenNames = new Set(names.filter((name, index) => index !== columnIndex && Boolean(name)));
+  const value = field.value ?? '';
+  const nameError = validateColumnName(value, takenNames);
+
+  return (
+    <FormField
+      slotLabel="Column name"
+      required
+      slotInfo="Other columns reference this via {{ name }}."
+      status={value && nameError ? 'error' : undefined}
+      slotError={value ? (nameError ?? undefined) : undefined}
+    >
+      <TextInput
+        value={value}
+        onValueChange={field.onChange}
+        placeholder="e.g. topic"
+        attributes={{ Input: { 'aria-label': 'Column name' } }}
+      />
     </FormField>
   );
 };
 
 export interface ColumnConfigPanelProps {
-  /** The column currently being edited. */
-  column: BuilderColumn;
-  /** Names used by other columns, for the uniqueness check. */
-  takenNames: Set<string>;
-  /** Fired live as the user edits the name or any field. */
-  onChange: (patch: { name?: string; values?: Record<string, string> }) => void;
-  /** Removes this column from the canvas. */
+  columnId: string;
   onRemove: () => void;
-  /** Closes the panel (deselects the column). */
   onClose: () => void;
 }
 
-/**
- * Setup note shown for the managed `person` sampler. Unlike the other samplers, it reads
- * from downloaded Nemotron Personas datasets, so it fails at preview/build time (with
- * "Failed to access Nemotron personas filesets") until those are available for the locale.
- */
 const PersonSamplerNote: FC = () => (
   <Banner kind="inline" status="info" title="Requires a managed dataset">
     <Text kind="body/regular/sm">
@@ -121,42 +157,24 @@ const PersonSamplerNote: FC = () => (
     </Text>
     <ol className="list-decimal pl-density-lg">
       <li>
-        Download the Nemotron Personas dataset for your locale into the Data Designer service's
-        managed assets directory.
+        Download the Nemotron Personas dataset for your locale into the managed assets directory.
       </li>
       <li>
         Set <Text kind="body/bold/sm">Locale</Text> below to a supported value (e.g. en_US, en_IN,
         fr_FR, ja_JP, ko_KR, pt_BR).
       </li>
     </ol>
-    <Text kind="body/regular/sm">
-      Without the managed dataset, use a different sampler for local previews.
-    </Text>
   </Banner>
 );
 
-/**
- * Right-hand config panel for the selected column on the build canvas.
- *
- * Renders as an inline pane (not an overlay) so the canvas stays visible while editing.
- * Edits are applied live via {@link ColumnConfigPanelProps.onChange} — as the user types
- * Jinja2 `{{ column_name }}` references, the canvas re-derives its dependency edges. The
- * fields shown are derived from the column type via {@link getColumnFields}.
- */
-export const ColumnConfigPanel: FC<ColumnConfigPanelProps> = ({
-  column,
-  takenNames,
-  onChange,
-  onRemove,
-  onClose,
-}) => {
-  const { option, name, values } = column;
+/** Right-hand config panel for one selected column. */
+export const ColumnConfigPanel: FC<ColumnConfigPanelProps> = ({ columnId, onRemove, onClose }) => {
+  const { getValues } = useFormContext<JobBuilderFormValues>();
+  const columnIndex = getValues('columns').findIndex((column) => column.id === columnId);
+  const column = getValues(`columns.${columnIndex}`);
+  const { option } = column;
   const { icon: Icon, label, description, color } = option;
   const fields = getColumnFields(option);
-  const nameError = validateColumnName(name, takenNames);
-
-  const setValue = (key: string, value: string) =>
-    onChange({ values: { ...values, [key]: value } });
 
   return (
     <aside
@@ -194,36 +212,13 @@ export const ColumnConfigPanel: FC<ColumnConfigPanelProps> = ({
       </Flex>
 
       <Stack gap="density-lg" padding="density-lg" className="min-h-0 flex-1 overflow-y-auto">
-        {option.samplerType === SamplerType.person && <PersonSamplerNote />}
-        <FormField
-          slotLabel="Column name"
-          required
-          slotInfo="Other columns reference this via {{ name }}."
-          status={name && nameError ? 'error' : undefined}
-          slotError={name ? (nameError ?? undefined) : undefined}
-        >
-          <TextInput
-            value={name}
-            onValueChange={(value) => onChange({ name: value })}
-            placeholder="e.g. topic"
-            attributes={{ Input: { 'aria-label': 'Column name' } }}
-          />
-        </FormField>
-
+        {option.samplerType === SamplerType.person ? <PersonSamplerNote /> : null}
+        <ColumnNameControl columnIndex={columnIndex} />
         {option.columnType === 'seed-dataset' ? (
-          <SeedDatasetConfig
-            key={column.id}
-            values={values}
-            onPatch={(patch) => onChange({ values: { ...values, ...patch } })}
-          />
+          <SeedDatasetConfig columnIndex={columnIndex} />
         ) : (
           fields.map((field) => (
-            <FieldControl
-              key={field.key}
-              field={field}
-              value={values[field.key] ?? ''}
-              onChange={(value) => setValue(field.key, value)}
-            />
+            <FieldControl key={field.key} columnIndex={columnIndex} field={field} />
           ))
         )}
       </Stack>
