@@ -2280,14 +2280,13 @@ components:
           additionalProperties: true
           type: object
           title: Config
-          description: NAT workflow config (YAML-equivalent dict, keyed by component
-            name).
+          description: Agent config dict interpreted according to config_format.
         config_format:
           type: string
           title: Config Format
-          description: "platform-internal schema version tag for the agent config\
-            \ dict.  Not read or validated by NAT \u2014 used by NeMo Platform for\
-            \ future config migration.  Currently only 'nat-workflow-v1' is supported."
+          description: platform-internal schema version tag for the agent config dict.
+            `nat-workflow-v1` is the default legacy NAT workflow format; `nemo-agents-spec-v1`
+            identifies the Platform-owned agent.yaml spec format.
           default: nat-workflow-v1
         id:
           type: string
@@ -2334,11 +2333,11 @@ components:
       - entity_id
       - parent
       title: Agent
-      description: "An agent definition \u2014 stores the NAT workflow config and\
-        \ metadata.\n\nEntity type: ``agent``\nPrimary lookup: by ``name`` within\
-        \ a ``workspace``.\n\nThe agent's spec lives at the location returned by\n\
-        :func:`agent_spec_file_ref` \u2014 it is **not** stored on the entity\nbecause\
-        \ the path is fully derivable from ``(workspace, name)``."
+      description: "An agent definition \u2014 stores agent config and metadata.\n\
+        \nEntity type: ``agent``\nPrimary lookup: by ``name`` within a ``workspace``.\n\
+        \nThe agent's spec files live at the locations returned by\n:func:`agent_spec_file_ref`\
+        \ and :func:`agent_config_file_ref` \u2014 they\nare **not** stored on the\
+        \ entity because the paths are fully derivable\nfrom ``(workspace, name)``."
     AgentDeployment:
       properties:
         name:
@@ -2660,7 +2659,7 @@ components:
           additionalProperties: true
           type: object
           title: Config
-          description: NAT workflow config dict.
+          description: Agent config dict interpreted according to config_format.
         config_format:
           type: string
           title: Config Format
