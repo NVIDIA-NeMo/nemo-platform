@@ -5,10 +5,18 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 import respx
-from nemo_agents_plugin.a2a import AgentCardError, fetch_agent_card
+from nemo_agents_plugin.a2a import (
+    A2AMessageError,
+    AgentCardError,
+    extract_message_text,
+    fetch_agent_card,
+    send_a2a_message,
+)
 
 CARD = {"name": "Calculator Agent", "description": "does math", "skills": [{"id": "add", "name": "add"}]}
 
@@ -56,3 +64,65 @@ async def test_non_card_json_rejected() -> None:
     )
     with pytest.raises(AgentCardError):
         await fetch_agent_card("http://host:10000")
+
+
+class TestExtractMessageText:
+    def test_message_parts(self) -> None:
+        result = {"kind": "message", "parts": [{"kind": "text", "text": "hello"}]}
+        assert extract_message_text(result) == "hello"
+
+    def test_task_artifacts(self) -> None:
+        result = {
+            "kind": "task",
+            "artifacts": [{"parts": [{"kind": "text", "text": "42"}]}],
+            "status": {"state": "completed"},
+        }
+        assert extract_message_text(result) == "42"
+
+    def test_task_status_message(self) -> None:
+        result = {"status": {"message": {"parts": [{"kind": "text", "text": "done"}]}}}
+        assert extract_message_text(result) == "done"
+
+    def test_no_text_returns_empty(self) -> None:
+        assert extract_message_text({"artifacts": [{"parts": [{"kind": "file"}]}]}) == ""
+        assert extract_message_text(None) == ""
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_send_message_returns_reply_text() -> None:
+    route = respx.post("http://host:10000/").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": "1",
+                "result": {"kind": "message", "parts": [{"kind": "text", "text": "the answer"}]},
+            },
+        )
+    )
+    reply = await send_a2a_message("http://host:10000/", "what is it?")
+    assert reply == "the answer"
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["method"] == "message/send"
+    assert sent["params"]["message"]["parts"][0]["text"] == "what is it?"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_send_message_jsonrpc_error_raises() -> None:
+    respx.post("http://host:10000/").mock(
+        return_value=httpx.Response(
+            200, json={"jsonrpc": "2.0", "id": "1", "error": {"code": -32000, "message": "boom"}}
+        )
+    )
+    with pytest.raises(A2AMessageError, match="boom"):
+        await send_a2a_message("http://host:10000/", "hi")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_send_message_transport_error_raises() -> None:
+    respx.post("http://host:10000/").mock(side_effect=httpx.ConnectError("refused"))
+    with pytest.raises(A2AMessageError, match="could not reach"):
+        await send_a2a_message("http://host:10000/", "hi")

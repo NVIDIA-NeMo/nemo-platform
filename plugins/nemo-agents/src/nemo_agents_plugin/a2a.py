@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 from urllib.parse import urljoin
+from uuid import uuid4
 
 import httpx
 
@@ -26,9 +27,16 @@ AGENT_CARD_PATHS = ("/.well-known/agent-card.json", "/.well-known/agent.json")
 _MAX_CARD_BYTES = 512 * 1024
 _FETCH_TIMEOUT_S = 10.0
 
+# Agents can take a while to answer; allow more headroom than card discovery.
+_MESSAGE_TIMEOUT_S = 120.0
+
 
 class AgentCardError(Exception):
     """Raised when an external agent's card can't be fetched or parsed."""
+
+
+class A2AMessageError(Exception):
+    """Raised when a ``message/send`` call to an external agent fails."""
 
 
 def _card_url(base_url: str, path: str) -> str:
@@ -73,3 +81,76 @@ async def fetch_agent_card(base_url: str) -> dict[str, Any]:
             return card
 
     raise AgentCardError(f"Could not fetch A2A agent card: {last_error}.")
+
+
+def _collect_text_parts(parts: Any) -> list[str]:
+    """Pull the text out of an A2A ``parts`` array, ignoring non-text parts."""
+    out: list[str] = []
+    if isinstance(parts, list):
+        for part in parts:
+            if isinstance(part, dict) and isinstance(part.get("text"), str) and part["text"]:
+                out.append(part["text"])
+    return out
+
+
+def extract_message_text(result: Any) -> str:
+    """Extract assistant text from an A2A ``message/send`` result.
+
+    The result is either a Message (``parts`` directly) or a Task (text lives in
+    ``artifacts[].parts`` and/or ``status.message.parts``). Concatenate whatever
+    text parts are present; return "" if none.
+    """
+    if not isinstance(result, dict):
+        return ""
+    texts: list[str] = []
+    texts += _collect_text_parts(result.get("parts"))
+    artifacts = result.get("artifacts")
+    if isinstance(artifacts, list):
+        for artifact in artifacts:
+            if isinstance(artifact, dict):
+                texts += _collect_text_parts(artifact.get("parts"))
+    status = result.get("status")
+    if isinstance(status, dict) and isinstance(status.get("message"), dict):
+        texts += _collect_text_parts(status["message"].get("parts"))
+    return "\n".join(texts)
+
+
+async def send_a2a_message(endpoint: str, text: str) -> str:
+    """Send *text* to an external A2A agent via ``message/send`` and return its reply.
+
+    Speaks A2A JSON-RPC 2.0 directly (no A2A client dependency). Raises
+    :class:`A2AMessageError` on transport failure, a JSON-RPC error, or a
+    non-JSON response.
+    """
+    payload = {
+        "jsonrpc": "2.0",
+        "id": uuid4().hex,
+        "method": "message/send",
+        "params": {
+            "message": {
+                "role": "user",
+                "parts": [{"kind": "text", "text": text}],
+                "messageId": uuid4().hex,
+                "kind": "message",
+            }
+        },
+    }
+    try:
+        async with httpx.AsyncClient(timeout=_MESSAGE_TIMEOUT_S, follow_redirects=True) as client:
+            resp = await client.post(endpoint, json=payload, headers={"Accept": "application/json"})
+    except httpx.HTTPError as exc:
+        raise A2AMessageError(f"could not reach agent at {endpoint} ({exc.__class__.__name__})") from exc
+
+    if resp.status_code != 200:
+        raise A2AMessageError(f"agent returned HTTP {resp.status_code}")
+    try:
+        data = resp.json()
+    except ValueError as exc:
+        raise A2AMessageError("agent response was not valid JSON") from exc
+
+    if isinstance(data, dict) and data.get("error"):
+        err = data["error"]
+        msg = err.get("message") if isinstance(err, dict) else str(err)
+        raise A2AMessageError(f"agent error: {msg}")
+
+    return extract_message_text(data.get("result") if isinstance(data, dict) else None)

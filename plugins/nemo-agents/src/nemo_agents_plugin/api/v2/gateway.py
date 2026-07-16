@@ -27,12 +27,15 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import AsyncIterator
+import time
+from typing import Any, AsyncIterator
 from urllib.parse import urljoin, urlparse, urlunparse
+from uuid import uuid4
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+from nemo_agents_plugin.a2a import A2AMessageError, send_a2a_message
 from nemo_agents_plugin.api.v2._perms import GatewayPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.authz import scope
@@ -416,3 +419,122 @@ async def _proxy(
         headers={k: v for k, v in response_headers.items() if k.lower() != "content-length"},
         media_type=content_type,
     )
+
+
+# ---------------------------------------------------------------------------
+# External agent chat — OpenAI chat/completions <-> A2A message/send bridge
+# ---------------------------------------------------------------------------
+#
+# External agents run outside NeMo Platform and speak A2A JSON-RPC, not the
+# OpenAI chat API the Studio chat playground uses. This route accepts an
+# OpenAI chat/completions request, forwards the latest user turn to the agent
+# via ``message/send``, and returns the reply in OpenAI shape (SSE when the
+# client asked to stream). Managed agents keep using the deployment proxy above.
+
+
+def _latest_user_text(messages: Any) -> str:
+    """Return the text of the last user message in an OpenAI messages array.
+
+    ``content`` may be a plain string or an array of content parts; join text parts.
+    """
+    if not isinstance(messages, list):
+        return ""
+    for message in reversed(messages):
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts: list[str] = []
+            for part in content:
+                if isinstance(part, dict):
+                    text = part.get("text")
+                    if isinstance(text, str):
+                        parts.append(text)
+            return "".join(parts)
+    return ""
+
+
+def _openai_completion(text: str, model: str) -> dict[str, Any]:
+    return {
+        "id": f"chatcmpl-{uuid4().hex}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": text},
+                "finish_reason": "stop",
+            }
+        ],
+    }
+
+
+async def _openai_sse(text: str, model: str) -> AsyncIterator[bytes]:
+    created = int(time.time())
+    completion_id = f"chatcmpl-{uuid4().hex}"
+
+    def _chunk(delta: dict[str, Any], finish: str | None) -> bytes:
+        payload = {
+            "id": completion_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
+        }
+        return f"data: {json.dumps(payload)}\n\n".encode()
+
+    yield _chunk({"role": "assistant", "content": text}, None)
+    yield _chunk({}, "stop")
+    yield b"data: [DONE]\n\n"
+
+
+@router.post(
+    "/agents/{name}/chat/completions",
+    tags=["Agent Gateway"],
+    include_in_schema=False,
+    response_model=None,
+)
+@scope.write
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[GatewayPerms.INVOKE],
+)
+async def external_agent_chat_completions(
+    workspace: str,
+    name: str,
+    request: Request,
+    entity_client: NemoEntitiesClient = Depends(get_entity_client),
+) -> StreamingResponse | JSONResponse:
+    """Bridge an OpenAI chat/completions call to an external agent's A2A endpoint."""
+    try:
+        agent = await entity_client.get(Agent, name=name, workspace=workspace)
+    except NemoEntityNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found in workspace '{workspace}'.") from exc
+
+    if agent.source != "external":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Agent '{name}' is managed; chat through its deployment, not this endpoint.",
+        )
+
+    a2a_endpoint = (agent.card or {}).get("url") or agent.endpoint
+    if not isinstance(a2a_endpoint, str) or not a2a_endpoint:
+        raise HTTPException(status_code=400, detail=f"External agent '{name}' has no endpoint to chat with.")
+
+    body = await request.json()
+    text = _latest_user_text(body.get("messages"))
+    if not text:
+        raise HTTPException(status_code=400, detail="Request has no user message to send.")
+
+    try:
+        reply = await send_a2a_message(a2a_endpoint, text)
+    except A2AMessageError as exc:
+        raise HTTPException(status_code=502, detail=f"External agent chat failed: {exc}") from exc
+
+    model = body.get("model") or name
+    if body.get("stream"):
+        return StreamingResponse(_openai_sse(reply, model), media_type="text/event-stream")
+    return JSONResponse(_openai_completion(reply, model))

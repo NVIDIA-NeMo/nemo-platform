@@ -140,7 +140,6 @@ export const AgentPanel: FC<AgentPanelProps> = ({
         isDeploymentsLoading={isDeploymentsLoading}
         isDeploying={isDeploying}
         isExternal={agent?.source === 'external'}
-        externalEndpoint={agent?.endpoint}
         chatAreaRef={chatAreaRef}
         onSelectDeployment={(v) => setSelectedDeploymentName(v)}
         onDeploy={() => setCreateDeploymentOpen(true)}
