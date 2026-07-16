@@ -43,7 +43,8 @@ class DatasetMetadataContent(BaseModel):
         default=None,
         description=(
             "Machine-computed dataset profile (structure, stats, and classification). Populated by "
-            "the profiler job; trigger one with POST .../filesets/{name}/profile."
+            "the profiler job; read it via GET .../filesets/{name}/profile (omitted from fileset "
+            "list/get responses to bound payload size)."
         ),
     )
 

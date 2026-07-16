@@ -27,6 +27,7 @@ from nemo_platform.types.jobs import (
     PlatformJobStepSpecParam,
 )
 from nemo_platform_plugin.jobs.image import get_qualified_image
+from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,47 @@ _PROFILE_TASK_IMAGE = "nmp-cpu-tasks"
 _PROFILE_TASK_COMMAND = ["nemo_datasets_plugin.tasks.profile"]
 _PROFILE_STEP_NAME = "profile"
 _PROFILE_JOB_SOURCE = "files"
+_TERMINAL_JOB_STATES = frozenset(status.value for status in PlatformJobStatus.terminals())
+
+
+def _job_targets_fileset(job: PlatformJobResponse, fileset_name: str) -> bool:
+    spec = job.spec or {}
+    return isinstance(spec, dict) and spec.get("fileset") == fileset_name
+
+
+def _is_active(job: PlatformJobResponse) -> bool:
+    """True when the job's status is not one of the terminal states.
+
+    ``job.status`` is a plain lowercase string from the SDK today. ``getattr(_, "value", _)``
+    also unwraps a ``PlatformJobStatus`` enum, so if the SDK ever emits one this keeps matching
+    the lowercase terminal values instead of degrading to ``"platformjobstatus.completed"``.
+    """
+    status = getattr(job.status, "value", job.status)
+    return str(status).lower() not in _TERMINAL_JOB_STATES
+
+
+async def find_active_profile_job(
+    sdk: AsyncNeMoPlatform,
+    *,
+    workspace: str,
+    fileset_name: str,
+) -> PlatformJobResponse | None:
+    """Return an in-flight profiling job for ``fileset_name``, or None.
+
+    The Jobs service is the source of truth for job state; profiling jobs are tagged with
+    ``source="files"`` and ``spec={"fileset": ...}``, so we query it directly rather than
+    persisting a job pointer on the fileset. We filter by ``source`` server-side and test
+    terminality in memory over a single ``sdk.jobs.list`` scan.
+
+    We deliberately do not narrow by status server-side: filtering by a *set* of non-terminal
+    statuses did not match reliably in practice (an earlier attempt returned nothing and broke
+    dedup). The trade-off is scanning every ``source="files"`` job for the workspace — fine at
+    current volumes; revisit with a verified server-side status filter if that history grows.
+    """
+    async for job in sdk.jobs.list(workspace=workspace, filter={"source": _PROFILE_JOB_SOURCE}):
+        if _job_targets_fileset(job, fileset_name) and _is_active(job):
+            return job
+    return None
 
 
 def _build_platform_spec(workspace: str, fileset_name: str) -> PlatformJobSpecParam:

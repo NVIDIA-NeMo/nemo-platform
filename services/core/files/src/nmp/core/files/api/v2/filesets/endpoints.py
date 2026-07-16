@@ -17,7 +17,6 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform_plugin.files.dataset_profile import DatasetProfile
 from nmp.common.api.common import GenericSortField, PaginationData
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
@@ -50,6 +49,7 @@ from nmp.core.files.api.v2.filesets.schemas import (
     FilesetFilter,
     FilesetOutput,
     FilesetPage,
+    FilesetProfileResponse,
     ListFilesetFilesResponse,
     ProfileFilesetResponse,
     UpdateFilesetRequest,
@@ -65,14 +65,14 @@ from nmp.core.files.app.external_hosts import (
     ExternalHostNotAllowedError,
 )
 from nmp.core.files.app.file_lock import FileLockManager
-from nmp.core.files.app.profile_job import submit_profile_job
+from nmp.core.files.app.profile_job import find_active_profile_job, submit_profile_job
 from nmp.core.files.app.streaming import (
     MultipartChunkProcessor,
     OctetStreamChunkProcessor,
     streaming_file_upload,
 )
 from nmp.core.files.config import FilesConfig
-from nmp.core.files.entities import Fileset
+from nmp.core.files.entities import Fileset, FilesetPurpose
 from nmp.core.files.exceptions import (
     InactivityTimeoutError,
     InvalidPathError,
@@ -366,14 +366,32 @@ async def profile_fileset(
     """
     Profile a fileset's dataset contents.
 
-    Submits a background job that runs the dataset profiler over the fileset's
-    files and publishes the resulting profile as a job result artifact named
-    ``profile``. Returns the submitted job so the caller can poll its status and
-    fetch the artifact when it completes.
+    Submits a background job that runs the dataset profiler over the fileset,
+    persists the resulting profile onto the fileset (read it via
+    ``GET .../filesets/{name}/profile``), and publishes it as a job result
+    artifact. If a profiling job for this fileset is already running, that job is
+    returned instead of submitting a duplicate.
     """
     logger.info(f"POST /filesets/{name}/profile - workspace={workspace}")
-    # Raise 404 if the fileset does not exist.
-    await get_fileset(workspace, name, entity_store)
+    fileset = await get_fileset(workspace, name, entity_store)
+    if fileset.purpose != FilesetPurpose.DATASET:
+        raise HTTPException(
+            HTTP_400_BAD_REQUEST,
+            f"Fileset '{name}' has purpose '{fileset.purpose}'; only 'dataset' filesets can be profiled.",
+        )
+
+    # Dedupe: reuse an already-running profiling job rather than spawning a duplicate.
+    existing = await find_active_profile_job(sdk, workspace=workspace, fileset_name=name)
+    if existing is not None:
+        return ProfileFilesetResponse(
+            job_name=existing.name,
+            job_id=existing.id,
+            status=str(existing.status) if existing.status is not None else None,
+            workspace=workspace,
+            fileset=name,
+            reused=True,
+        )
+
     job = await submit_profile_job(sdk, workspace=workspace, fileset_name=name)
     return ProfileFilesetResponse(
         job_name=job.name,
@@ -393,24 +411,26 @@ async def get_fileset_profile(
     workspace: str,
     name: str,
     entity_store: EntityClient = Depends(get_entity_client),
-) -> DatasetProfile:
+    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+) -> FilesetProfileResponse:
     """
-    Get the stored dataset profile for a fileset.
+    Get the stored dataset profile for a fileset, with the current profiling state.
 
-    Returns the profile computed by the most recent profiling job. Responds with
-    404 if the fileset has not been profiled yet (trigger one with
-    ``POST .../filesets/{name}/profile``).
+    ``state`` is ``ready`` (a profile is available), ``running`` (a profiling job is
+    in flight), or ``absent`` (never profiled).
     """
     logger.info(f"GET /filesets/{name}/profile - workspace={workspace}")
     fileset = await get_fileset(workspace, name, entity_store)
     dataset_metadata = fileset.metadata.dataset if fileset.metadata else None
     profile = dataset_metadata.profile if dataset_metadata else None
-    if profile is None:
-        raise HTTPException(
-            HTTP_404_NOT_FOUND,
-            f"Fileset '{name}' has no profile yet. Trigger one with POST .../filesets/{name}/profile.",
-        )
-    return profile
+
+    if profile is not None:
+        return FilesetProfileResponse(state="ready", profile=profile)
+
+    active = await find_active_profile_job(sdk, workspace=workspace, fileset_name=name)
+    if active is not None:
+        return FilesetProfileResponse(state="running", job_name=active.name)
+    return FilesetProfileResponse(state="absent")
 
 
 @router.delete(
@@ -502,6 +522,17 @@ async def update_fileset_metadata(
 
         if new_service_source:
             request.custom_fields["service_source"] = new_service_source
+
+    # The dataset profile is a server-managed, derived artifact that reads strip out (see
+    # fileset_output_from_entity), so a client never sees it — and a wholesale metadata PATCH
+    # would null it back out. Preserve the stored profile unless this request explicitly carries
+    # one (the profiler task writes a fresh profile through this same PATCH path).
+    if "metadata" in request.model_fields_set and request.metadata is not None:
+        stored_dataset = fileset.metadata.dataset if fileset.metadata else None
+        stored_profile = stored_dataset.profile if stored_dataset else None
+        incoming_dataset = request.metadata.dataset
+        if stored_profile is not None and incoming_dataset is not None and incoming_dataset.profile is None:
+            incoming_dataset.profile = stored_profile
 
     diff = request.model_dump(include=request.model_fields_set)
     fileset = fileset.model_copy(update=diff)
