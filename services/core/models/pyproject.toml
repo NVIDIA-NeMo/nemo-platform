@@ -22,7 +22,6 @@ dependencies = [
     "pyyaml>=6.0.2",
     "urllib3>=2.7.0",
     "nmp-common",
-    "nemo-deployments-plugin",
     "nemo-platform-plugin",
     "tenacity>=8.5.0",
 ]
@@ -59,6 +58,5 @@ dev = [
 
 [tool.uv.sources]
 nmp-common = { workspace = true }
-nemo-deployments-plugin = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 models = { workspace = true }

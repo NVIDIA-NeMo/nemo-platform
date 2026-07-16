@@ -9167,20 +9167,14 @@ components:
         k8s_nim_operator_config:
           allOf:
           - $ref: '#/components/schemas/K8sNIMOperatorConfig'
-          description: Deprecated name retained for API compatibility. Typed Kubernetes
-            configuration for common NIM pod fields (resources, tolerations, nodeSelector,
-            startup probe grace). Mapped by deployments_plugin onto plugin K8sDeploymentConfig.
-            Ignored by non-NIM engines and docker runtime.
-          deprecated: true
+          description: Typed Kubernetes configuration for common NIMService Spec fields
+            (NIM engine on k8s). Applied after defaults but before override_config.
+            Ignored by non-NIM engines.
         override_config:
           title: Override Config
-          description: 'Deprecated escape hatch from the k8s-nim-operator era. Partial
-            NIMService Spec fragments deep-merged after generated defaults and k8s_nim_operator_config
-            (NIM engine on k8s only). Supported keys: image, command, args, resources,
-            env, readinessProbe, livenessProbe, startupProbe, nodeSelector, tolerations,
-            userID, groupID, labels, initContainers, sidecarContainers. Ignored by
-            non-NIM engines and docker runtime.'
-          deprecated: true
+          description: Raw NIMService spec configuration that takes precedence over
+            generated config (NIM engine on k8s). Allows advanced configuration options
+            directly. Ignored by non-NIM engines.
           additionalProperties: true
           type: object
       type: object
@@ -12823,15 +12817,12 @@ components:
           exclusiveMinimum: 0.0
       type: object
       title: K8sNIMOperatorConfig
-      description: 'Kubernetes pod placement and probe overrides for NIM deployments
-        on Kubernetes.
+      description: 'Kubernetes configuration for NIM deployment via k8s-nim-operator.
 
 
-        Historically applied via the removed k8s-nim-operator backend. The
+        These fields provide typed access to commonly-used NIMService Spec fields
 
-        deployments_plugin compiler still maps these fields onto plugin
-
-        ``K8sDeploymentConfig`` for NIM engine deployments.'
+        and are applied before override_config in the compilation precedence.'
     KubernetesConfigMapVolume:
       properties:
         name:

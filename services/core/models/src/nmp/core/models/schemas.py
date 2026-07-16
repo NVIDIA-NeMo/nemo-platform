@@ -1291,11 +1291,10 @@ class ModelType(str, Enum):
 
 
 class K8sNIMOperatorConfig(BaseModel):
-    """Kubernetes pod placement and probe overrides for NIM deployments on Kubernetes.
+    """Kubernetes configuration for NIM deployment via k8s-nim-operator.
 
-    Historically applied via the removed k8s-nim-operator backend. The
-    deployments_plugin compiler still maps these fields onto plugin
-    ``K8sDeploymentConfig`` for NIM engine deployments.
+    These fields provide typed access to commonly-used NIMService Spec fields
+    and are applied before override_config in the compilation precedence.
     """
 
     resources: Optional[Dict[str, Any]] = Field(
@@ -1444,26 +1443,20 @@ class ContainerExecutorConfig(BaseModel):
         description="Raw container/`serve` args appended verbatim to the container's arg vector.",
     )
 
-    # Kubernetes placement/probe overrides for NIM engine deployments on k8s.
+    # Kubernetes configuration for k8s-nim-operator (NIM engine on k8s only).
+    # Carried here so the k8s NIM operator backend keeps working; ignored by the
+    # docker and vLLM paths.
     k8s_nim_operator_config: Optional[K8sNIMOperatorConfig] = Field(
         default=None,
-        deprecated=True,
-        description="Deprecated name retained for API compatibility. Typed Kubernetes "
-        "configuration for common NIM pod fields (resources, tolerations, nodeSelector, "
-        "startup probe grace). Mapped by deployments_plugin onto plugin K8sDeploymentConfig. "
-        "Ignored by non-NIM engines and docker runtime.",
+        description="Typed Kubernetes configuration for common NIMService Spec fields (NIM engine on k8s). "
+        "Applied after defaults but before override_config. Ignored by non-NIM engines.",
     )
 
-    # Raw per-container override map (NIM engine on k8s only).
+    # Raw NIMService spec override (NIM engine on k8s only).
     override_config: Optional[Dict[str, Any]] = Field(
         default=None,
-        deprecated=True,
-        description="Deprecated escape hatch from the k8s-nim-operator era. Partial NIMService "
-        "Spec fragments deep-merged after generated defaults and k8s_nim_operator_config "
-        "(NIM engine on k8s only). Supported keys: image, command, args, resources, env, "
-        "readinessProbe, livenessProbe, startupProbe, nodeSelector, tolerations, userID, "
-        "groupID, labels, initContainers, sidecarContainers. Ignored by non-NIM engines and "
-        "docker runtime.",
+        description="Raw NIMService spec configuration that takes precedence over generated config (NIM engine "
+        "on k8s). Allows advanced configuration options directly. Ignored by non-NIM engines.",
     )
 
 

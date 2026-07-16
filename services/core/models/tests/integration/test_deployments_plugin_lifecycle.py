@@ -15,7 +15,14 @@ from nmp.core.models.controllers.backends.deployments_plugin.naming import entit
 from tenacity import retry, stop_after_delay, wait_fixed
 
 import docker
-from conftest import skip_without_docker
+
+try:
+    docker.from_env().ping()
+    _DOCKER_AVAILABLE = True
+except Exception:
+    _DOCKER_AVAILABLE = False
+
+skip_without_docker = pytest.mark.skipif(not _DOCKER_AVAILABLE, reason="Docker daemon not available")
 
 pytestmark = [
     skip_without_docker,

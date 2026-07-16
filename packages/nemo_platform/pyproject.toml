@@ -211,11 +211,9 @@ models-service = [
   "pydantic-settings>=2.8.1",
   "sqlmodel>=0.0.22",
   "pyyaml>=6.0.2",
-  "kubernetes>=31.0.0",
   "urllib3>=2.7.0",
   "nmp-common",
   "nemo-platform-plugin",
-  "docker>=7.1.0",
   "tenacity>=8.5.0",
 ]
 

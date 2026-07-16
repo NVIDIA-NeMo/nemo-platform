@@ -42,14 +42,6 @@ from nmp.testing.docker import (
 
 import docker
 
-try:
-    docker.from_env().ping()
-    DOCKER_AVAILABLE = True
-except Exception:
-    DOCKER_AVAILABLE = False
-
-skip_without_docker = pytest.mark.skipif(not DOCKER_AVAILABLE, reason="Docker daemon not available")
-
 blockbuster = blockbuster_fixture(autouse=True)
 
 
