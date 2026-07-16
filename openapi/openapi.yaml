@@ -4430,7 +4430,7 @@ paths:
           description: Response mode. summary returns root-span fields without payloads
             or rollups; preview adds token, cost, and span-count rollups plus 300-character
             input/output previews; detailed returns rollups and full payloads.
-          default: detailed
+          default: preview
           title: Mode
         description: Response mode. summary returns root-span fields without payloads
           or rollups; preview adds token, cost, and span-count rollups plus 300-character

@@ -58,7 +58,7 @@ async def list_traces(
     page_size: int = Query(default=10, ge=1, le=1000, description="Page size."),
     sort: TraceSortField = Query(default=TraceSortField.STARTED_AT_DESC),
     mode: TraceMode = Query(
-        default="detailed",
+        default="preview",
         description=(
             "Response mode. summary returns root-span fields without payloads or rollups; preview adds token, cost, "
             "and span-count rollups plus 300-character input/output previews; detailed returns rollups and full payloads."

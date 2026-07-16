@@ -11,6 +11,8 @@ from fastapi.testclient import TestClient
 
 def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_request):
     base_ns = int(datetime.now(timezone.utc).replace(microsecond=0).timestamp() * 1_000_000_000)
+    input_text = "i" * 350
+    output_text = "o" * 350
     body = make_otlp_request(
         [
             {
@@ -27,8 +29,8 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
                     "deployment.environment.name": "prod",
                     "tag.tags": ["trace-read"],
                     "metadata": {"owner": "trace-test"},
-                    "input.value": '{"task":"solve"}',
-                    "output.value": '{"answer":"done"}',
+                    "input.value": input_text,
+                    "output.value": output_text,
                 },
             },
             {
@@ -78,8 +80,8 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
     assert trace["workspace"] == "default"
     assert trace["root_span_id"] == "0000000000000001"
     assert trace["name"] == "root-agent"
-    assert trace["input"] == '{"task":"solve"}'
-    assert trace["output"] == '{"answer":"done"}'
+    assert trace["input"] == input_text[:300]
+    assert trace["output"] == output_text[:300]
     assert trace["status"] == "success"
     assert trace["input_tokens"] == 420
     assert trace["output_tokens"] == 310
@@ -104,6 +106,8 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
     get_response = client.get(f"/apis/intake/v2/workspaces/default/traces/{trace['id']}")
     assert get_response.status_code == 200, get_response.text
     assert get_response.json()["id"] == trace["id"]
+    assert get_response.json()["input"] == input_text
+    assert get_response.json()["output"] == output_text
 
     summary_response = client.get(
         "/apis/intake/v2/workspaces/default/traces",
@@ -132,8 +136,8 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
     )
     assert preview_response.status_code == 200, preview_response.text
     preview_trace = preview_response.json()["data"][0]
-    assert preview_trace["input"] == '{"task":"solve"}'
-    assert preview_trace["output"] == '{"answer":"done"}'
+    assert preview_trace["input"] == input_text[:300]
+    assert preview_trace["output"] == output_text[:300]
     assert preview_trace["span_count"] == 2
 
 
