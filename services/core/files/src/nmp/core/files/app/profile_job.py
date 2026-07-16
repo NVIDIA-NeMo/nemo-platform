@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from typing import NamedTuple
 
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform.types.jobs import (
@@ -36,6 +37,7 @@ _PROFILE_TASK_COMMAND = ["nemo_datasets_plugin.tasks.profile"]
 _PROFILE_STEP_NAME = "profile"
 _PROFILE_JOB_SOURCE = "files"
 _TERMINAL_JOB_STATES = frozenset(status.value for status in PlatformJobStatus.terminals())
+_FAILED_JOB_STATES = _TERMINAL_JOB_STATES - {PlatformJobStatus.COMPLETED.value}
 
 
 def _job_targets_fileset(job: PlatformJobResponse, fileset_name: str) -> bool:
@@ -54,17 +56,39 @@ def _is_active(job: PlatformJobResponse) -> bool:
     return str(status).lower() not in _TERMINAL_JOB_STATES
 
 
-async def find_active_profile_job(
+def is_failed_job(job: PlatformJobResponse) -> bool:
+    """True when a terminal job ended in error or cancellation (i.e. not completion)."""
+    status = getattr(job.status, "value", job.status)
+    return str(status).lower() in _FAILED_JOB_STATES
+
+
+def _is_newer(job: PlatformJobResponse, other: PlatformJobResponse) -> bool:
+    """True if ``job`` was created after ``other`` (a missing timestamp sorts oldest)."""
+    if job.created_at is None:
+        return False
+    if other.created_at is None:
+        return True
+    return job.created_at > other.created_at
+
+
+class ProfileJobLookup(NamedTuple):
+    """The in-flight and most-recent-terminal profiling jobs for a fileset."""
+
+    active: PlatformJobResponse | None
+    latest_terminal: PlatformJobResponse | None
+
+
+async def scan_profile_jobs(
     sdk: AsyncNeMoPlatform,
     *,
     workspace: str,
     fileset_name: str,
-) -> PlatformJobResponse | None:
-    """Return an in-flight profiling job for ``fileset_name``, or None.
+) -> ProfileJobLookup:
+    """Return the in-flight and most-recent-terminal profiling jobs for ``fileset_name``.
 
     The Jobs service is the source of truth for job state; profiling jobs are tagged with
     ``source="files"`` and ``spec={"fileset": ...}``, so we query it directly rather than
-    persisting a job pointer on the fileset. We filter by ``source`` server-side and test
+    persisting a job pointer on the fileset. We filter by ``source`` server-side and classify
     terminality in memory over a single ``sdk.jobs.list`` scan.
 
     We deliberately do not narrow by status server-side: filtering by a *set* of non-terminal
@@ -72,10 +96,26 @@ async def find_active_profile_job(
     dedup). The trade-off is scanning every ``source="files"`` job for the workspace — fine at
     current volumes; revisit with a verified server-side status filter if that history grows.
     """
+    active: PlatformJobResponse | None = None
+    latest_terminal: PlatformJobResponse | None = None
     async for job in sdk.jobs.list(workspace=workspace, filter={"source": _PROFILE_JOB_SOURCE}):
-        if _job_targets_fileset(job, fileset_name) and _is_active(job):
-            return job
-    return None
+        if not _job_targets_fileset(job, fileset_name):
+            continue
+        if _is_active(job):
+            active = active or job
+        elif latest_terminal is None or _is_newer(job, latest_terminal):
+            latest_terminal = job
+    return ProfileJobLookup(active=active, latest_terminal=latest_terminal)
+
+
+async def find_active_profile_job(
+    sdk: AsyncNeMoPlatform,
+    *,
+    workspace: str,
+    fileset_name: str,
+) -> PlatformJobResponse | None:
+    """Return an in-flight profiling job for ``fileset_name``, or None (see ``scan_profile_jobs``)."""
+    return (await scan_profile_jobs(sdk, workspace=workspace, fileset_name=fileset_name)).active
 
 
 def _build_platform_spec(workspace: str, fileset_name: str) -> PlatformJobSpecParam:

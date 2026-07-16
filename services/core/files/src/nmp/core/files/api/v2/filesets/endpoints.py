@@ -51,7 +51,7 @@ from nmp.core.files.api.v2.filesets.schemas import (
     FilesetPage,
     FilesetProfileResponse,
     ListFilesetFilesResponse,
-    ProfileFilesetResponse,
+    SubmitProfileJobResponse,
     UpdateFilesetRequest,
     fileset_file_output_from_info,
     fileset_output_from_entity,
@@ -65,7 +65,12 @@ from nmp.core.files.app.external_hosts import (
     ExternalHostNotAllowedError,
 )
 from nmp.core.files.app.file_lock import FileLockManager
-from nmp.core.files.app.profile_job import find_active_profile_job, submit_profile_job
+from nmp.core.files.app.profile_job import (
+    find_active_profile_job,
+    is_failed_job,
+    scan_profile_jobs,
+    submit_profile_job,
+)
 from nmp.core.files.app.streaming import (
     MultipartChunkProcessor,
     OctetStreamChunkProcessor,
@@ -362,7 +367,7 @@ async def profile_fileset(
     name: str,
     entity_store: EntityClient = Depends(get_entity_client),
     sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
-) -> ProfileFilesetResponse:
+) -> SubmitProfileJobResponse:
     """
     Profile a fileset's dataset contents.
 
@@ -380,10 +385,13 @@ async def profile_fileset(
             f"Fileset '{name}' has purpose '{fileset.purpose}'; only 'dataset' filesets can be profiled.",
         )
 
-    # Dedupe: reuse an already-running profiling job rather than spawning a duplicate.
+    # Dedupe: reuse an already-running profiling job rather than spawning a duplicate. Best-effort
+    # only — two concurrent POSTs can both observe "no active job" and both submit. A duplicate is
+    # wasteful, not incorrect: profiling is deterministic over the same content, so the writes
+    # converge. True single-flight would need a lock or a deterministic (non-unique) job name.
     existing = await find_active_profile_job(sdk, workspace=workspace, fileset_name=name)
     if existing is not None:
-        return ProfileFilesetResponse(
+        return SubmitProfileJobResponse(
             job_name=existing.name,
             job_id=existing.id,
             status=str(existing.status) if existing.status is not None else None,
@@ -393,7 +401,7 @@ async def profile_fileset(
         )
 
     job = await submit_profile_job(sdk, workspace=workspace, fileset_name=name)
-    return ProfileFilesetResponse(
+    return SubmitProfileJobResponse(
         job_name=job.name,
         job_id=job.id,
         status=str(job.status) if job.status is not None else None,
@@ -416,20 +424,26 @@ async def get_fileset_profile(
     """
     Get the stored dataset profile for a fileset, with the current profiling state.
 
-    ``state`` is ``ready`` (a profile is available), ``running`` (a profiling job is
-    in flight), or ``absent`` (never profiled).
+    ``state`` is ``ready`` (a profile is available), ``running`` (a job is in flight),
+    ``failed`` (the last job errored or was cancelled and no profile exists), or ``absent``
+    (never profiled). A stored profile short-circuits to ``ready`` without querying the Jobs
+    service, so a re-profile running over an existing profile still reads ``ready`` (with the
+    current profile) and GET stays resilient to a Jobs-service outage.
     """
     logger.info(f"GET /filesets/{name}/profile - workspace={workspace}")
     fileset = await get_fileset(workspace, name, entity_store)
     dataset_metadata = fileset.metadata.dataset if fileset.metadata else None
     profile = dataset_metadata.profile if dataset_metadata else None
 
+    # A stored profile is ready to consume; return it without querying Jobs (see docstring).
     if profile is not None:
         return FilesetProfileResponse(state="ready", profile=profile)
 
-    active = await find_active_profile_job(sdk, workspace=workspace, fileset_name=name)
-    if active is not None:
-        return FilesetProfileResponse(state="running", job_name=active.name)
+    jobs = await scan_profile_jobs(sdk, workspace=workspace, fileset_name=name)
+    if jobs.active is not None:
+        return FilesetProfileResponse(state="running", job_name=jobs.active.name)
+    if jobs.latest_terminal is not None and is_failed_job(jobs.latest_terminal):
+        return FilesetProfileResponse(state="failed", job_name=jobs.latest_terminal.name)
     return FilesetProfileResponse(state="absent")
 
 
