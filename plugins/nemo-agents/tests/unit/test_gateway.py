@@ -721,3 +721,44 @@ class TestExternalAgentChat:
         resp = client.post(self._URL, json={"messages": [{"role": "user", "content": "hi"}]})
 
         assert resp.status_code == 502
+
+
+class TestExternalAgentGenerate:
+    """nat eval hits .../agents/{name}/-/generate/full -> A2A bridge for external agents."""
+
+    _URL = "/apis/agents/v2/workspaces/default/agents/ext/-/generate/full"
+
+    def test_generate_full_bridges_to_a2a(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+        send = AsyncMock(return_value="156")
+        monkeypatch.setattr(gateway_module, "send_a2a_message", send)
+
+        resp = client.post(self._URL, json={"input_message": "What is 12 * 13?"})
+
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/event-stream")
+        assert '"value": "156"' in resp.text
+        assert send.await_args is not None
+        assert send.await_args.args[1] == "What is 12 * 13?"
+
+    def test_missing_input_message_returns_400(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+        monkeypatch.setattr(gateway_module, "send_a2a_message", AsyncMock(return_value="x"))
+
+        resp = client.post(self._URL, json={"nope": "x"})
+
+        assert resp.status_code == 400
+
+    def test_non_generate_path_returns_400(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents/ext/-/v1/chat/completions",
+            json={"input_message": "hi"},
+        )
+
+        assert resp.status_code == 400

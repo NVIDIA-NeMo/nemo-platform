@@ -68,20 +68,11 @@ export const AgentDetailsContent: FC<AgentDetailsContentProps> = ({
               {agent.description}
             </Text>
           )}
-          {isExternal ? (
-            <Text kind="body/regular/sm" color="secondary">
-              Runs outside NeMo Platform. Deploy and evaluate are unavailable for external agents.
-            </Text>
-          ) : (
-            <Flex gap="2" align="center">
-              <Button
-                className="flex-1"
-                kind="primary"
-                onClick={onSubmitEval}
-                disabled={!agentName}
-              >
-                Evaluate this Agent
-              </Button>
+          <Flex gap="2" align="center">
+            <Button className="flex-1" kind="primary" onClick={onSubmitEval} disabled={!agentName}>
+              Evaluate this Agent
+            </Button>
+            {!isExternal && (
               <div
                 ref={deployButtonRef}
                 className={`flex-1 rounded-md ${
@@ -99,7 +90,13 @@ export const AgentDetailsContent: FC<AgentDetailsContentProps> = ({
                   {isDeploying ? 'Deploying…' : 'Deploy this Agent'}
                 </Button>
               </div>
-            </Flex>
+            )}
+          </Flex>
+          {isExternal && (
+            <Text kind="body/regular/sm" color="secondary">
+              Runs outside NeMo Platform. Deploy is unavailable; evaluation runs against the agent's
+              endpoint.
+            </Text>
           )}
         </Stack>
       </Block>
@@ -205,54 +202,54 @@ export const AgentDetailsContent: FC<AgentDetailsContentProps> = ({
                     ),
                   value: 'deployments',
                 },
-                {
-                  chevronPosition: 'start' as const,
-                  slotTrigger: 'Recent Evaluations',
-                  slotContent:
-                    agentEvals.length === 0 ? (
-                      <Stack gap="2">
-                        <Text color="secondary">No evaluation jobs found for this agent.</Text>
-                        <Block>
-                          <Link to={getAgentEvaluationsListRoute(workspace)} className="text-xs">
-                            View all evaluations →
-                          </Link>
-                        </Block>
-                      </Stack>
-                    ) : (
-                      <Stack gap="0" className="-mx-4 -mb-4">
-                        {agentEvals.map((job) => (
-                          <Link
-                            key={job.name}
-                            to={getAgentEvaluationDetailRoute(workspace, job.name)}
-                            className="no-underline text-inherit"
-                          >
-                            <Flex
-                              align="center"
-                              gap="2"
-                              className="px-4 py-3 border-b border-base last:border-b-0 hover:bg-surface-hover"
-                            >
-                              <Stack gap="0" className="flex-1 min-w-0">
-                                <Text kind="body/semibold/sm" className="truncate">
-                                  {job.name}
-                                </Text>
-                                <Text kind="body/regular/xs" color="secondary">
-                                  <RelativeTime datetime={job.created_at} />
-                                </Text>
-                              </Stack>
-                              <StatusBadge status={job.status} />
-                            </Flex>
-                          </Link>
-                        ))}
-                        <Block className="px-4 py-3 border-t border-base">
-                          <Link to={getAgentEvaluationsListRoute(workspace)} className="text-xs">
-                            View all evaluations →
-                          </Link>
-                        </Block>
-                      </Stack>
-                    ),
-                  value: 'evaluations',
-                },
               ]),
+          {
+            chevronPosition: 'start' as const,
+            slotTrigger: 'Recent Evaluations',
+            slotContent:
+              agentEvals.length === 0 ? (
+                <Stack gap="2">
+                  <Text color="secondary">No evaluation jobs found for this agent.</Text>
+                  <Block>
+                    <Link to={getAgentEvaluationsListRoute(workspace)} className="text-xs">
+                      View all evaluations →
+                    </Link>
+                  </Block>
+                </Stack>
+              ) : (
+                <Stack gap="0" className="-mx-4 -mb-4">
+                  {agentEvals.map((job) => (
+                    <Link
+                      key={job.name}
+                      to={getAgentEvaluationDetailRoute(workspace, job.name)}
+                      className="no-underline text-inherit"
+                    >
+                      <Flex
+                        align="center"
+                        gap="2"
+                        className="px-4 py-3 border-b border-base last:border-b-0 hover:bg-surface-hover"
+                      >
+                        <Stack gap="0" className="flex-1 min-w-0">
+                          <Text kind="body/semibold/sm" className="truncate">
+                            {job.name}
+                          </Text>
+                          <Text kind="body/regular/xs" color="secondary">
+                            <RelativeTime datetime={job.created_at} />
+                          </Text>
+                        </Stack>
+                        <StatusBadge status={job.status} />
+                      </Flex>
+                    </Link>
+                  ))}
+                  <Block className="px-4 py-3 border-t border-base">
+                    <Link to={getAgentEvaluationsListRoute(workspace)} className="text-xs">
+                      View all evaluations →
+                    </Link>
+                  </Block>
+                </Stack>
+              ),
+            value: 'evaluations',
+          },
         ]}
       />
     </Stack>
