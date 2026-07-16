@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field
 FilesetPage = Page[FilesetOutput]
 
 
-class ProfileFilesetResponse(BaseModel):
+class SubmitProfileJobResponse(BaseModel):
     """Response for a submitted fileset-profiling job."""
 
     job_name: str = Field(description="Name of the submitted profiling job.")
@@ -47,10 +47,16 @@ class ProfileFilesetResponse(BaseModel):
 class FilesetProfileResponse(BaseModel):
     """The stored dataset profile plus the status of profiling for this fileset."""
 
-    state: Literal["ready", "running", "absent"] = Field(
-        description="ready (a profile exists) | running (a job is in flight) | absent."
+    state: Literal["ready", "running", "failed", "absent"] = Field(
+        description=(
+            "ready (a profile exists) | running (a job is in flight) | "
+            "failed (the last job errored or was cancelled and no profile exists) | absent (never profiled)."
+        )
     )
-    job_name: Optional[str] = Field(default=None, description="Name of the in-flight profiling job, when running.")
+    job_name: Optional[str] = Field(
+        default=None,
+        description="Name of the profiling job behind the state: the in-flight job when running, the failed job when failed.",
+    )
     profile: Optional[DatasetProfile] = Field(default=None, description="The stored profile, present when ready.")
 
 

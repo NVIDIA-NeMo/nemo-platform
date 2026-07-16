@@ -22,7 +22,7 @@ from nmp.core.files.api.v2.filesets.endpoints import (
 )
 from nmp.core.files.api.v2.filesets.schemas import (
     FilesetProfileResponse,
-    ProfileFilesetResponse,
+    SubmitProfileJobResponse,
     fileset_output_from_entity,
 )
 from nmp.core.files.app.profile_job import _build_platform_spec, _is_active, submit_profile_job
@@ -107,7 +107,7 @@ async def test_profile_fileset_submits_when_no_active_job():
 
     resp = await profile_fileset("ws1", "fs1", entity_store=entity_store, sdk=sdk)
 
-    assert isinstance(resp, ProfileFilesetResponse)
+    assert isinstance(resp, SubmitProfileJobResponse)
     assert resp.job_name == "profile-fs1-abcd1234"
     assert resp.reused is False
     sdk.jobs.create.assert_awaited_once()
@@ -222,6 +222,57 @@ async def test_get_fileset_profile_absent():
 
     assert resp.state == "absent"
     assert resp.profile is None
+
+
+@pytest.mark.asyncio
+async def test_get_fileset_profile_failed():
+    entity_store = AsyncMock()
+    entity_store.get.return_value = _dataset_fileset(profile=None)
+    errored = SimpleNamespace(
+        name="profile-fs1-err", id="e", status="error", spec={"fileset": "fs1"}, created_at=datetime(2026, 1, 1)
+    )
+    sdk = _sdk(jobs=(errored,))
+
+    resp = await get_fileset_profile("ws1", "fs1", entity_store=entity_store, sdk=sdk)
+
+    assert resp.state == "failed"
+    assert resp.job_name == "profile-fs1-err"
+    assert resp.profile is None
+
+
+@pytest.mark.asyncio
+async def test_get_fileset_profile_absent_when_last_job_completed():
+    # A completed job normally leaves a profile (→ ready); a completed terminal with no stored
+    # profile is not a failure, so the state is "absent", not "failed".
+    entity_store = AsyncMock()
+    entity_store.get.return_value = _dataset_fileset(profile=None)
+    done = SimpleNamespace(
+        name="profile-fs1-done", id="d", status="completed", spec={"fileset": "fs1"}, created_at=datetime(2026, 1, 1)
+    )
+    sdk = _sdk(jobs=(done,))
+
+    resp = await get_fileset_profile("ws1", "fs1", entity_store=entity_store, sdk=sdk)
+
+    assert resp.state == "absent"
+
+
+@pytest.mark.asyncio
+async def test_get_fileset_profile_failed_uses_latest_terminal():
+    # With multiple terminal jobs and no stored profile, the most recent one decides the state.
+    entity_store = AsyncMock()
+    entity_store.get.return_value = _dataset_fileset(profile=None)
+    old_done = SimpleNamespace(
+        name="old", id="o", status="completed", spec={"fileset": "fs1"}, created_at=datetime(2026, 1, 1)
+    )
+    new_err = SimpleNamespace(
+        name="new", id="n", status="error", spec={"fileset": "fs1"}, created_at=datetime(2026, 2, 1)
+    )
+    sdk = _sdk(jobs=(old_done, new_err))
+
+    resp = await get_fileset_profile("ws1", "fs1", entity_store=entity_store, sdk=sdk)
+
+    assert resp.state == "failed"
+    assert resp.job_name == "new"
 
 
 # --- payload bloat -----------------------------------------------------------
