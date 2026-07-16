@@ -48,7 +48,8 @@ export const BuilderToolbar: FC<BuilderToolbarProps> = ({
             autoFocus
             useControllerProps={{ name: 'name' }}
             onBlur={() => setIsEditingName(false)}
-            attributes={{ Input: { 'aria-label': 'Fileset name', className: 'w-[220px]' } }}
+            formFieldProps={{ className: 'w-[220px]' }}
+            attributes={{ Input: { 'aria-label': 'Fileset name' } }}
           />
         ) : (
           <Text kind="label/bold/md" className="whitespace-nowrap">
@@ -84,10 +85,10 @@ export const BuilderToolbar: FC<BuilderToolbarProps> = ({
           </Text>
           <ControlledTextInput
             useControllerProps={{ name: 'rows' }}
+            formFieldProps={{ className: 'w-[96px]' }}
             attributes={{
               Input: {
                 'aria-label': 'Records to generate',
-                className: 'w-[96px]',
                 min: 1,
                 step: 1,
                 type: 'number',
