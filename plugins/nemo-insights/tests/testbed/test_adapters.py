@@ -66,6 +66,24 @@ def test_intake_check_basic_auth_reports_missing_credentials(monkeypatch: pytest
     assert any("GLAMR_INTAKE_PASSWORD" in item for item in missing)
 
 
+def test_intake_check_basic_auth_reports_missing_username_env_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GLAMR_INTAKE_PASSWORD", "secret")
+
+    missing = IntakeAdapter(_basic_intake_subject(auth_user_env=None)).check()
+
+    assert any("auth_user_env" in item for item in missing)
+    assert not any("auth_password_env" in item for item in missing)
+
+
+def test_intake_check_basic_auth_reports_missing_password_env_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GLAMR_INTAKE_USER", "intake")
+
+    missing = IntakeAdapter(_basic_intake_subject(auth_password_env=None)).check()
+
+    assert any("auth_password_env" in item for item in missing)
+    assert not any("auth_user_env" in item for item in missing)
+
+
 async def test_intake_analyze_basic_auth_injects_built_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("GLAMR_INTAKE_USER", "intake")
     monkeypatch.setenv("GLAMR_INTAKE_PASSWORD", "secret")

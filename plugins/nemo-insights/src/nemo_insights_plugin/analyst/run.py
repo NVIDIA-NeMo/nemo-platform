@@ -92,9 +92,11 @@ async def run_analyst(
         result = await _run_agent(analyst, deps, verbose=verbose)
         return await backend.persist_result(workspace=workspace, agent=agent, result=result)
     finally:
-        if observability is not None:
-            observability.shutdown()
-        await client.close()
+        try:
+            if observability is not None:
+                observability.shutdown()
+        finally:
+            await client.close()
 
 
 def _analyst_observability_enabled() -> bool:

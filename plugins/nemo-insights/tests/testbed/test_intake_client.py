@@ -6,7 +6,9 @@
 import base64
 
 import httpx
+import pytest
 from nemo_platform import AsyncNeMoPlatform
+from testbed import intake_client as intake_client_module
 from testbed.intake_client import build_basic_auth_intake_client, build_rewriting_http_client
 
 
@@ -33,6 +35,14 @@ async def test_rewrites_sdk_prefix_and_attaches_basic_auth() -> None:
     assert seen["auth"] == f"Basic {base64.b64encode(b'intake:secret').decode()}"
 
 
+async def test_rewriting_http_client_uses_60_second_timeout() -> None:
+    client = build_rewriting_http_client(username="u", password="p")
+    try:
+        assert client.timeout == httpx.Timeout(60.0)
+    finally:
+        await client.aclose()
+
+
 async def test_leaves_non_intake_paths_untouched() -> None:
     seen: dict[str, str | None] = {}
 
@@ -53,10 +63,35 @@ async def test_leaves_non_intake_paths_untouched() -> None:
     assert seen["url"] == "https://agenthub.aire.nvidia.com/other/path"
 
 
-def test_build_basic_auth_intake_client_returns_sdk_client() -> None:
+async def test_build_basic_auth_intake_client_returns_sdk_client() -> None:
     client = build_basic_auth_intake_client(
         base_url="https://agenthub.aire.nvidia.com",
         username="u",
         password="p",
     )
-    assert isinstance(client, AsyncNeMoPlatform)
+    try:
+        assert isinstance(client, AsyncNeMoPlatform)
+    finally:
+        await client.close()
+
+
+async def test_sdk_client_closes_its_http_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(200)))
+    monkeypatch.setattr(
+        intake_client_module,
+        "build_rewriting_http_client",
+        lambda **kwargs: http_client,
+    )
+    client = build_basic_auth_intake_client(
+        base_url="https://agenthub.aire.nvidia.com",
+        username="u",
+        password="p",
+    )
+
+    try:
+        assert not http_client.is_closed
+        await client.close()
+        assert http_client.is_closed
+    finally:
+        if not http_client.is_closed:
+            await http_client.aclose()

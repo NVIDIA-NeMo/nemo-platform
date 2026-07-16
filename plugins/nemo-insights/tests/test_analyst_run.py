@@ -69,3 +69,31 @@ async def test_client_closed_when_backend_construction_raises(monkeypatch: pytes
         )
 
     assert client.closed
+
+
+async def test_client_closed_when_observability_shutdown_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FakeClient()
+    seen: dict[str, object] = {}
+    _stub_pipeline(monkeypatch, seen)
+
+    class FailingObservability:
+        def shutdown(self) -> None:
+            raise RuntimeError("shutdown failed")
+
+    monkeypatch.setattr(run_module, "_analyst_observability_enabled", lambda: True)
+    monkeypatch.setattr(
+        run_module,
+        "setup_analyst_observability",
+        lambda **kwargs: FailingObservability(),
+    )
+
+    with pytest.raises(RuntimeError, match="shutdown failed"):
+        await run_module.run_analyst(
+            agent="agent",
+            agent_spec=None,
+            workspace="workspace",
+            base_url="https://platform",
+            client=client,  # type: ignore[arg-type]
+        )
+
+    assert client.closed
