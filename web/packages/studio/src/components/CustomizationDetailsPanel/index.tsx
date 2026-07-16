@@ -45,7 +45,7 @@ export const CustomizationDetailsPanel: FC<Props> = ({ customizationJobName, wor
     refetchInterval: (query) => getJobRefetchInterval(query.state.data?.status),
   });
 
-  const { data: logs } = useJobLogs({
+  const { data: logs, isLoading: isLogsLoading } = useJobLogs({
     workspace,
     name: customizationJobName,
     enabled: !!customization,
@@ -175,7 +175,11 @@ export const CustomizationDetailsPanel: FC<Props> = ({ customizationJobName, wor
             </Flex>
           }
           slotContent={
-            <LogViewer logs={logs ?? []} downloadFilename={`${customizationJobName}.log`} />
+            <LogViewer
+              logs={logs ?? []}
+              isLoading={isLogsLoading}
+              downloadFilename={`${customizationJobName}.log`}
+            />
           }
         />
       }
