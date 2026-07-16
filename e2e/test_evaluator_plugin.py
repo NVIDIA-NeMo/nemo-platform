@@ -113,8 +113,8 @@ def _add_mock_provider_or_skip(
         raise
     except APIStatusError as exc:
         error_body = None if exc.body is None else json.dumps(exc.body, default=str)
-        mock_mode_unavailable = exc.status_code == 502 and (
-            error_body is None or "Cannot connect to host mock.local" in error_body
+        mock_mode_unavailable = (
+            exc.status_code == 502 and error_body is not None and "Cannot connect to host mock.local" in error_body
         )
         if mock_mode_unavailable:
             pytest.skip(
@@ -452,7 +452,7 @@ def test_fileset_fragment_and_glob_datasets(evaluator_sdk: NeMoPlatform) -> None
             wait_futures = [executor.submit(_wait_for_evaluator_job, job) for _, _, job in submitted_jobs]
             for (label, expected_scores, job), wait_future in zip(submitted_jobs, wait_futures, strict=True):
                 wait_future.result()
-                assert sorted(_row_score_values(job.get_result())) == sorted(expected_scores), label
+                assert _row_score_values(job.get_result()) == expected_scores, label
     finally:
         for _, _, job in submitted_jobs:
             _cleanup_evaluator_job(evaluator_sdk, job.name)
