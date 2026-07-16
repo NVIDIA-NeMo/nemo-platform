@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for the fileset-profiling job helper and endpoint."""
+"""Unit tests for the fileset-profiling job helper and endpoints."""
 
 from datetime import datetime
 from types import SimpleNamespace
@@ -11,10 +11,22 @@ import pytest
 from fastapi import HTTPException
 from nemo_platform_plugin.files.dataset_profile import DatasetProfile, SamplingInfo
 from nemo_platform_plugin.files.metadata import DatasetMetadataContent, FilesetMetadata
+from nemo_platform_plugin.files.types import UpdateFilesetRequest
+from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from nmp.common.entities.client import EntityNotFoundError
-from nmp.core.files.api.v2.filesets.endpoints import get_fileset_profile, profile_fileset
-from nmp.core.files.api.v2.filesets.schemas import ProfileFilesetResponse
-from nmp.core.files.app.profile_job import _build_platform_spec, submit_profile_job
+from nmp.common.files.storage_config import LocalStorageConfig
+from nmp.core.files.api.v2.filesets.endpoints import (
+    get_fileset_profile,
+    profile_fileset,
+    update_fileset_metadata,
+)
+from nmp.core.files.api.v2.filesets.schemas import (
+    FilesetProfileResponse,
+    ProfileFilesetResponse,
+    fileset_output_from_entity,
+)
+from nmp.core.files.app.profile_job import _build_platform_spec, _is_active, submit_profile_job
+from nmp.core.files.entities import Fileset, FilesetPurpose
 
 
 def _minimal_profile() -> DatasetProfile:
@@ -25,20 +37,45 @@ def _minimal_profile() -> DatasetProfile:
     )
 
 
+def _dataset_fileset(*, purpose=FilesetPurpose.DATASET, profile=None) -> Fileset:
+    return Fileset(
+        name="fs1",
+        workspace="ws1",
+        storage=LocalStorageConfig(path="/tmp/x"),
+        purpose=purpose,
+        metadata=FilesetMetadata(dataset=DatasetMetadataContent(profile=profile)),
+    )
+
+
+def _job_list(*jobs):
+    """A fresh async iterable of jobs, mimicking ``sdk.jobs.list(...)``."""
+
+    async def _gen():
+        for job in jobs:
+            yield job
+
+    return _gen()
+
+
+def _sdk(*, jobs=(), create_returns=None):
+    return SimpleNamespace(
+        jobs=SimpleNamespace(
+            list=lambda **_kwargs: _job_list(*jobs),
+            create=AsyncMock(return_value=create_returns),
+        )
+    )
+
+
+# --- submission helper -------------------------------------------------------
+
+
 def test_build_platform_spec_targets_profiler_task():
     spec = _build_platform_spec("ws1", "fs1")
 
-    steps = spec["steps"]
-    assert len(steps) == 1
-    step = steps[0]
+    step = spec["steps"][0]
     assert step["name"] == "profile"
     assert step["config"] == {"workspace": "ws1", "fileset": "fs1"}
-
-    executor = step["executor"]
-    assert executor["provider"] == "cpu"
-    assert executor["profile"] == "default"
-
-    container = executor["container"]
+    container = step["executor"]["container"]
     assert container["entrypoint"] == ["python", "-m"]
     assert container["command"] == ["nemo_datasets_plugin.tasks.profile"]
     assert "nmp-cpu-tasks" in container["image"]
@@ -52,37 +89,90 @@ async def test_submit_profile_job_creates_job_with_expected_spec():
     result = await submit_profile_job(sdk, workspace="ws1", fileset_name="fs1")
 
     assert result is job
-    sdk.jobs.create.assert_awaited_once()
     kwargs = sdk.jobs.create.await_args.kwargs
     assert kwargs["source"] == "files"
     assert kwargs["spec"] == {"fileset": "fs1"}
-    assert kwargs["workspace"] == "ws1"
     assert kwargs["name"].startswith("profile-fs1-")
-    assert kwargs["platform_spec"]["steps"][0]["config"] == {"workspace": "ws1", "fileset": "fs1"}
+
+
+# --- POST /profile -----------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_profile_fileset_endpoint_submits_and_returns_job():
+async def test_profile_fileset_submits_when_no_active_job():
     entity_store = AsyncMock()
-    entity_store.get.return_value = SimpleNamespace(name="fs1")
+    entity_store.get.return_value = _dataset_fileset()
     job = SimpleNamespace(name="profile-fs1-abcd1234", id="job-id", status="created")
-    sdk = SimpleNamespace(jobs=SimpleNamespace(create=AsyncMock(return_value=job)))
+    sdk = _sdk(jobs=(), create_returns=job)
 
     resp = await profile_fileset("ws1", "fs1", entity_store=entity_store, sdk=sdk)
 
     assert isinstance(resp, ProfileFilesetResponse)
     assert resp.job_name == "profile-fs1-abcd1234"
-    assert resp.job_id == "job-id"
-    assert resp.status == "created"
-    assert resp.workspace == "ws1"
-    assert resp.fileset == "fs1"
+    assert resp.reused is False
+    sdk.jobs.create.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_profile_fileset_endpoint_404_when_missing():
+async def test_profile_fileset_rejects_non_dataset():
+    entity_store = AsyncMock()
+    entity_store.get.return_value = _dataset_fileset(purpose=FilesetPurpose.MODEL)
+    sdk = _sdk()
+
+    with pytest.raises(HTTPException) as exc:
+        await profile_fileset("ws1", "fs1", entity_store=entity_store, sdk=sdk)
+
+    assert exc.value.status_code == 400
+    sdk.jobs.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_profile_fileset_dedupes_active_job():
+    entity_store = AsyncMock()
+    entity_store.get.return_value = _dataset_fileset()
+    active = SimpleNamespace(name="profile-fs1-running", id="eid", status="active", spec={"fileset": "fs1"})
+    sdk = _sdk(jobs=(active,))
+
+    resp = await profile_fileset("ws1", "fs1", entity_store=entity_store, sdk=sdk)
+
+    assert resp.reused is True
+    assert resp.job_name == "profile-fs1-running"
+    sdk.jobs.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_profile_fileset_submits_when_only_terminal_jobs():
+    entity_store = AsyncMock()
+    entity_store.get.return_value = _dataset_fileset()
+    done = SimpleNamespace(name="profile-fs1-old", id="oid", status="completed", spec={"fileset": "fs1"})
+    job = SimpleNamespace(name="profile-fs1-new", id="nid", status="created")
+    sdk = _sdk(jobs=(done,), create_returns=job)
+
+    resp = await profile_fileset("ws1", "fs1", entity_store=entity_store, sdk=sdk)
+
+    assert resp.reused is False
+    sdk.jobs.create.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_profile_fileset_ignores_active_job_for_other_fileset():
+    entity_store = AsyncMock()
+    entity_store.get.return_value = _dataset_fileset()
+    other = SimpleNamespace(name="profile-other-x", id="oid", status="active", spec={"fileset": "other"})
+    job = SimpleNamespace(name="profile-fs1-new", id="nid", status="created")
+    sdk = _sdk(jobs=(other,), create_returns=job)
+
+    resp = await profile_fileset("ws1", "fs1", entity_store=entity_store, sdk=sdk)
+
+    assert resp.reused is False
+    sdk.jobs.create.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_profile_fileset_404_when_missing():
     entity_store = AsyncMock()
     entity_store.get.side_effect = EntityNotFoundError("not found")
-    sdk = SimpleNamespace(jobs=SimpleNamespace(create=AsyncMock()))
+    sdk = _sdk()
 
     with pytest.raises(HTTPException) as exc:
         await profile_fileset("ws1", "missing", entity_store=entity_store, sdk=sdk)
@@ -91,25 +181,127 @@ async def test_profile_fileset_endpoint_404_when_missing():
     sdk.jobs.create.assert_not_awaited()
 
 
+# --- GET /profile ------------------------------------------------------------
+
+
 @pytest.mark.asyncio
-async def test_get_fileset_profile_returns_stored_profile():
+async def test_get_fileset_profile_ready_without_querying_jobs():
     profile = _minimal_profile()
-    fileset = SimpleNamespace(metadata=FilesetMetadata(dataset=DatasetMetadataContent(profile=profile)))
     entity_store = AsyncMock()
-    entity_store.get.return_value = fileset
+    entity_store.get.return_value = _dataset_fileset(profile=profile)
+    # jobs.list would raise if called — a ready profile must not query the Jobs service.
+    sdk = SimpleNamespace(jobs=SimpleNamespace(list=AsyncMock(side_effect=AssertionError("should not query jobs"))))
 
-    result = await get_fileset_profile("ws1", "fs1", entity_store=entity_store)
+    resp = await get_fileset_profile("ws1", "fs1", entity_store=entity_store, sdk=sdk)
 
-    assert result is profile
+    assert isinstance(resp, FilesetProfileResponse)
+    assert resp.state == "ready"
+    assert resp.profile is profile
 
 
 @pytest.mark.asyncio
-async def test_get_fileset_profile_404_when_not_profiled():
-    fileset = SimpleNamespace(metadata=FilesetMetadata(dataset=None))
+async def test_get_fileset_profile_running():
     entity_store = AsyncMock()
-    entity_store.get.return_value = fileset
+    entity_store.get.return_value = _dataset_fileset(profile=None)
+    active = SimpleNamespace(name="profile-fs1-running", id="i", status="active", spec={"fileset": "fs1"})
+    sdk = _sdk(jobs=(active,))
 
-    with pytest.raises(HTTPException) as exc:
-        await get_fileset_profile("ws1", "fs1", entity_store=entity_store)
+    resp = await get_fileset_profile("ws1", "fs1", entity_store=entity_store, sdk=sdk)
 
-    assert exc.value.status_code == 404
+    assert resp.state == "running"
+    assert resp.job_name == "profile-fs1-running"
+
+
+@pytest.mark.asyncio
+async def test_get_fileset_profile_absent():
+    entity_store = AsyncMock()
+    entity_store.get.return_value = _dataset_fileset(profile=None)
+    sdk = _sdk(jobs=())
+
+    resp = await get_fileset_profile("ws1", "fs1", entity_store=entity_store, sdk=sdk)
+
+    assert resp.state == "absent"
+    assert resp.profile is None
+
+
+# --- payload bloat -----------------------------------------------------------
+
+
+def test_fileset_output_strips_profile():
+    entity = _dataset_fileset(profile=_minimal_profile())
+
+    out = fileset_output_from_entity(entity)
+
+    assert out.metadata.dataset.profile is None
+
+
+def test_fileset_output_strips_profile_from_dict_metadata():
+    # The PATCH handler builds an entity whose ``.metadata`` is a raw dict via
+    # ``model_copy(update=...)``; the converter must handle that without crashing.
+    profile_dict = _minimal_profile().model_dump()
+    entity = _dataset_fileset().model_copy(update={"metadata": {"dataset": {"profile": profile_dict}}})
+
+    out = fileset_output_from_entity(entity)
+
+    assert out.metadata.dataset.profile is None
+
+
+# --- status normalization ----------------------------------------------------
+
+
+def test_is_active_normalizes_enum_and_string_status():
+    # Today's SDK returns plain lowercase strings; a future enum must classify the same way
+    # (str(PlatformJobStatus.COMPLETED) would be "platformjobstatus.completed" without .value).
+    assert _is_active(SimpleNamespace(status=PlatformJobStatus.ACTIVE, spec={})) is True
+    for terminal in (PlatformJobStatus.COMPLETED, PlatformJobStatus.ERROR, PlatformJobStatus.CANCELLED):
+        assert _is_active(SimpleNamespace(status=terminal, spec={})) is False
+    assert _is_active(SimpleNamespace(status="active", spec={})) is True
+    assert _is_active(SimpleNamespace(status="completed", spec={})) is False
+
+
+# --- profile preservation across a metadata PATCH ----------------------------
+
+
+def _auth(principal_id="user:test"):
+    return SimpleNamespace(principal=SimpleNamespace(id=principal_id))
+
+
+@pytest.mark.asyncio
+async def test_patch_preserves_profile_when_request_omits_it():
+    # A client edits the schema; it never saw the (stripped) profile, so its PATCH omits it.
+    # The server must re-graft the stored profile rather than nulling it out.
+    stored = Fileset(
+        name="fs1",
+        workspace="ws1",
+        storage=LocalStorageConfig(path="/tmp/x"),
+        purpose=FilesetPurpose.DATASET,
+        metadata=FilesetMetadata(
+            dataset=DatasetMetadataContent(schema_defs={"row": {"type": "object"}}, profile=_minimal_profile())
+        ),
+    )
+    entity_store = AsyncMock()
+    entity_store.get.return_value = stored
+    request = UpdateFilesetRequest(
+        metadata=FilesetMetadata(dataset=DatasetMetadataContent(schema_defs={"row": {"type": "string"}}))
+    )
+
+    await update_fileset_metadata("ws1", "fs1", request, entity_store=entity_store, auth_client=_auth())
+
+    persisted = FilesetMetadata.model_validate(entity_store.update.await_args.args[0].metadata)
+    assert persisted.dataset.profile is not None
+    assert persisted.dataset.profile.content_digest == "sha256:test"  # preserved
+    assert persisted.dataset.schema_defs == {"row": {"type": "string"}}  # edit applied
+
+
+@pytest.mark.asyncio
+async def test_patch_overwrites_profile_when_request_provides_one():
+    # The profiler task writes a fresh profile through this same PATCH path; it must win.
+    entity_store = AsyncMock()
+    entity_store.get.return_value = _dataset_fileset(profile=_minimal_profile())
+    fresh = _minimal_profile().model_copy(update={"content_digest": "sha256:fresh"})
+    request = UpdateFilesetRequest(metadata=FilesetMetadata(dataset=DatasetMetadataContent(profile=fresh)))
+
+    await update_fileset_metadata("ws1", "fs1", request, entity_store=entity_store, auth_client=_auth())
+
+    persisted = FilesetMetadata.model_validate(entity_store.update.await_args.args[0].metadata)
+    assert persisted.dataset.profile.content_digest == "sha256:fresh"

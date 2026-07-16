@@ -11,8 +11,9 @@ This module adds server-specific concerns: converter functions that map domain
 entities to response DTOs, the FilesetFilter schema, and the FilesetPage alias.
 """
 
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 
+from nemo_platform_plugin.files.dataset_profile import DatasetProfile
 from nemo_platform_plugin.files.types import CacheStatus
 from nemo_platform_plugin.files.types import CreateFilesetRequest as CreateFilesetRequest
 from nemo_platform_plugin.files.types import FilesetFileOutput as FilesetFileOutput
@@ -37,6 +38,20 @@ class ProfileFilesetResponse(BaseModel):
     status: Optional[str] = Field(default=None, description="Status of the job at submission time.")
     workspace: str = Field(description="Workspace of the profiled fileset.")
     fileset: str = Field(description="Name of the profiled fileset.")
+    reused: bool = Field(
+        default=False,
+        description="True if an already-running profiling job was returned instead of submitting a new one.",
+    )
+
+
+class FilesetProfileResponse(BaseModel):
+    """The stored dataset profile plus the status of profiling for this fileset."""
+
+    state: Literal["ready", "running", "absent"] = Field(
+        description="ready (a profile exists) | running (a job is in flight) | absent."
+    )
+    job_name: Optional[str] = Field(default=None, description="Name of the in-flight profiling job, when running.")
+    profile: Optional[DatasetProfile] = Field(default=None, description="The stored profile, present when ready.")
 
 
 # ---------------------------------------------------------------------------
@@ -45,20 +60,31 @@ class ProfileFilesetResponse(BaseModel):
 
 
 def fileset_output_from_entity(entity: Fileset) -> FilesetOutput:
-    """Convert a Fileset domain entity to a FilesetOutput response DTO."""
-    return FilesetOutput(
+    """Convert a Fileset domain entity to a FilesetOutput response DTO.
+
+    The dataset ``profile`` can be large, so it is stripped from the DTO and exposed only via
+    ``GET .../filesets/{name}/profile``; fileset list/get payloads stay bounded.
+    """
+    output = FilesetOutput(
         id=entity.id,
         name=entity.name,
         workspace=entity.workspace,
         description=entity.description or "",
         purpose=entity.purpose,
         storage=entity.storage,
+        # ``entity.metadata`` may be a raw dict (e.g. after ``model_copy(update=...)`` in the PATCH
+        # handler); constructing the DTO here validates it into a ``FilesetMetadata`` first.
         metadata=entity.metadata,
         custom_fields=entity.custom_fields,
         project=entity.project or "",
         created_at=entity.created_at.isoformat() if entity.created_at else "",
         updated_at=entity.updated_at.isoformat() if entity.updated_at else "",
     )
+    dataset = output.metadata.dataset
+    if dataset is not None and dataset.profile is not None:
+        stripped = output.metadata.model_copy(update={"dataset": dataset.model_copy(update={"profile": None})})
+        output = output.model_copy(update={"metadata": stripped})
+    return output
 
 
 def fileset_file_output_from_info(
