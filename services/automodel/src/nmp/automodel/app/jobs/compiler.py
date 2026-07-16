@@ -53,6 +53,7 @@ from nmp.customization_common.schemas.file_io import (
     FileSetRef,
     UploadItem,
 )
+from nmp.customization_common.tasks.file_io_metadata import build_output_fileset_metadata_from_model_entity
 from nmp.customization_common.schemas.model_entity import (
     DeploymentParameters as ModelEntityDeploymentParameters,
 )
@@ -178,36 +179,6 @@ def _build_file_download_config(
         )
 
     return FileIOTaskConfig(download=downloads)
-
-
-def _build_output_fileset_metadata(me: ModelEntity) -> dict | None:
-    """Build tool_calling metadata to propagate to the output fileset.
-
-    Extracts chat_template and tool_call_config from the source model entity's spec
-    so the model-spec-runner will apply them to the output model entity.
-
-    Returns:
-        A dict like {"tool_calling": {...}} suitable for fileset metadata, or None
-        if there is nothing to propagate.
-    """
-    if me.spec is None:
-        return None
-
-    tool_calling: dict = {}
-
-    if me.spec.chat_template:
-        tool_calling["chat_template"] = me.spec.chat_template
-
-    if me.spec.tool_call_config:
-        tcc = me.spec.tool_call_config
-        if tcc.tool_call_parser:
-            tool_calling["tool_call_parser"] = tcc.tool_call_parser
-        if tcc.tool_call_plugin:
-            tool_calling["tool_call_plugin"] = tcc.tool_call_plugin
-        if tcc.auto_tool_choice is not None:
-            tool_calling["auto_tool_choice"] = tcc.auto_tool_choice
-
-    return {"tool_calling": tool_calling} if tool_calling else None
 
 
 def _build_file_upload_config(
@@ -441,7 +412,7 @@ async def platform_job_config_compiler(
     # These are propagated to:
     #   1. The training step config (chat_template takes highest priority in template resolution)
     #   2. The output fileset metadata (so the model-spec-runner sets them on the output model)
-    fileset_metadata = _build_output_fileset_metadata(me)
+    fileset_metadata = build_output_fileset_metadata_from_model_entity(me)
     file_io_upload_config = _build_file_upload_config(transformed_spec.output.fileset, fileset_metadata)
 
     # Build model_entity config for creating the model entity

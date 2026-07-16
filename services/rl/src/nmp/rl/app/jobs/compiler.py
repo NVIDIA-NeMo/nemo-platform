@@ -50,7 +50,7 @@ from nmp.customization_common.schemas.file_io import (
 )
 from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig
 from nmp.customization_common.service.platform_client import fetch_model_entity
-from nmp.customization_common.tasks.file_io_metadata import build_output_metadata
+from nmp.customization_common.tasks.file_io_metadata import build_output_fileset_metadata_from_model_entity
 from nmp.rl.app.constants import (
     BASE_LOG_DIR_ENVVAR,
     DEFAULT_DATASET_PATH,
@@ -121,17 +121,13 @@ def _build_download_config(job_spec: RlJobOutput, me: ModelEntity, *, workspace:
     )
 
 
-def _build_upload_config(job_spec: RlJobOutput) -> FileIOTaskConfig:
+def _build_upload_config(job_spec: RlJobOutput, me) -> FileIOTaskConfig:
     return FileIOTaskConfig(
         upload=[
             UploadItem(
                 src=DEFAULT_OUTPUT_MODEL_PATH,
                 dest=FileSetRef(workspace=None, name=job_spec.output.fileset),
-                metadata=build_output_metadata(
-                    model=job_spec.model,
-                    finetuning_type=FinetuningType.ALL_WEIGHTS.value,
-                    output_type=str(job_spec.output.type),
-                ),
+                metadata=build_output_fileset_metadata_from_model_entity(me),
             ),
         ],
     )
@@ -375,7 +371,7 @@ async def platform_job_config_compiler(
             _build_download_config(job_spec, me, workspace=workspace),
         ),
         _build_training_step(job_spec, base_env, trust_remote_code=trust_remote_code, profile=profile),
-        _cpu_task_step("model-upload", FILE_IO_TASK_COMMAND, _build_upload_config(job_spec)),
+        _cpu_task_step("model-upload", FILE_IO_TASK_COMMAND, _build_upload_config(job_spec, me)),
         _cpu_task_step(
             "model-entity-creation",
             MODEL_ENTITY_TASK_COMMAND,
