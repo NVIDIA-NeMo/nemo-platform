@@ -74,7 +74,8 @@ TEMP_ROOT = Path(__file__).resolve().parent / "tmp"
 _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 _EPOCH_ISO = "1970-01-01T00:00:00Z"
 _STATUS_CODE_ERROR = 2  # opentelemetry.proto.trace.v1.Status.STATUS_CODE_ERROR
-SPAN_BATCH = 100  # spans per OTLP request (ingest caps bodies at 5 MiB; tau2 spans are a few KB)
+OTLP_REQUEST_MAX_BYTES = 4 * 1024 * 1024
+OTLP_REQUEST_MAX_SPANS = 100
 
 # Where the attribute catalog lives inside a nemo-platform checkout.
 CATALOG_RELPATH = Path("services/intake/src/nmp/intake/spans/span_attribute_catalog.py")
@@ -333,6 +334,52 @@ def build_trace_request(otlp_spans: list[dict]) -> ExportTraceServiceRequest:
             span.status.code = _STATUS_CODE_ERROR
         _add_attributes(span.attributes, spec["attributes"])
     return request
+
+
+def build_trace_requests(
+    docs: list[dict],
+    catalog,
+    *,
+    max_bytes: int | None = None,
+    max_spans: int | None = None,
+) -> list[ExportTraceServiceRequest]:
+    """Convert span docs into OTLP export requests bounded by span count and protobuf size.
+
+    Each doc is converted once via :func:`doc_to_otlp`. A candidate batch is flushed
+    when adding the next span would exceed ``max_spans`` or ``max_bytes`` (measured
+    with protobuf ``ByteSize()``). A single span whose request exceeds ``max_bytes``
+    raises before any request is returned.
+    """
+    if max_bytes is None:
+        max_bytes = OTLP_REQUEST_MAX_BYTES
+    if max_spans is None:
+        max_spans = OTLP_REQUEST_MAX_SPANS
+    requests: list[ExportTraceServiceRequest] = []
+    batch: list[dict] = []
+
+    def _reject_oversized(otlp: dict, doc: dict) -> None:
+        size = build_trace_request([otlp]).ByteSize()
+        if size > max_bytes:
+            raise ValueError(f"span {doc.get('span_id')}: OTLP body exceeds {max_bytes} bytes ({size})")
+
+    for doc in docs:
+        otlp = doc_to_otlp(doc, catalog)
+        if not batch:
+            _reject_oversized(otlp, doc)
+            batch = [otlp]
+            continue
+        candidate = batch + [otlp]
+        candidate_request = build_trace_request(candidate)
+        if len(candidate) > max_spans or candidate_request.ByteSize() > max_bytes:
+            requests.append(build_trace_request(batch))
+            _reject_oversized(otlp, doc)
+            batch = [otlp]
+        else:
+            batch = candidate
+
+    if batch:
+        requests.append(build_trace_request(batch))
+    return requests
 
 
 def _collection_count(
@@ -700,9 +747,8 @@ def ingest_bundle(
             healing = expected_spans > 0 and not ingest_spans
             if ingest_spans:
                 print(f"ingesting {len(spans)} spans into {target}")
-                for start in range(0, len(spans), SPAN_BATCH):
-                    batch = [doc_to_otlp(doc, catalog) for doc in spans[start : start + SPAN_BATCH]]
-                    request = build_trace_request(batch)
+                trace_requests = build_trace_requests(spans, catalog)
+                for request in trace_requests:
                     export_trace_request(base_url, target, request, client=client)
                 if spans:
                     _wait_for_spans(base_url, target, expected_spans or len(spans), client=client, sleep=sleep)
