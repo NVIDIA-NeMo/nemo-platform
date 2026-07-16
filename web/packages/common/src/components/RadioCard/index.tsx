@@ -84,8 +84,8 @@ export const RadioCard: FC<RadioCardProps> = ({
   return (
     <RadioGroupItem
       aria-labelledby={id}
-      className="group block w-full items-start"
       {...attributes?.RadioGroupItem}
+      className={cn('group block w-full items-start', attributes?.RadioGroupItem?.className)}
     >
       <Card
         className={cn(
