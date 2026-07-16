@@ -39,6 +39,7 @@ import platform
 import subprocess
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -97,6 +98,10 @@ _AGENT_IMAGE_BASE = "python:3.11-slim"
 # A locally-built image tag (never pushed to a registry — the executor is
 # configured with pull_images=false so the local image is used as-is).
 _AGENT_IMAGE = "nmp-e2e-calculator-agent:local"
+
+# Upper bound for the agent image build so a hung `docker build` fails fast with
+# a clear error instead of blocking until the CI job-level timeout.
+_IMAGE_BUILD_TIMEOUT_SECONDS = 600
 
 _TEST_AGENT_RESPONSE = "The answer to your question is 42."
 
@@ -230,7 +235,7 @@ def _wait_for_deployment_running(
 
 @pytest.fixture(scope="session")
 def calculator_agent_image() -> str:
-    """Build a NAT runtime image for the calculator agent example (idempotent).
+    """Build a NAT runtime image for the calculator agent example.
 
     A slim python base with the calculator example package installed, so ``nat``
     is on the PATH and the agent's components resolve. The NAT runtime
@@ -239,13 +244,11 @@ def calculator_agent_image() -> str:
     place — the example's pyproject.toml — with nothing to keep in sync here.
     Built with the host Docker daemon; tagged locally and never pushed (the
     executor uses pull_images=false).
+
+    The fixed-tag image is always rebuilt from the current checkout — reusing a
+    pre-existing tag could run stale calculator/NAT code and let the test pass
+    without exercising the code under test.
     """
-    import docker
-
-    client = docker.from_env()
-    if client.images.list(name=_AGENT_IMAGE):
-        return _AGENT_IMAGE
-
     dockerfile = "\n".join(
         [
             f"FROM {_AGENT_IMAGE_BASE}",
@@ -271,6 +274,7 @@ def calculator_agent_image() -> str:
             ["docker", "build", "-t", _AGENT_IMAGE, str(build_path)],
             capture_output=True,
             text=True,
+            timeout=_IMAGE_BUILD_TIMEOUT_SECONDS,
         )
         if proc.returncode != 0:
             pytest.fail(f"Failed to build calculator agent image:\n{proc.stdout}\n{proc.stderr}")
@@ -300,6 +304,20 @@ def _remove_agent_container_if_present(deployment_name: str) -> None:
                 pass
             except Exception:
                 pass
+
+
+def _run_cleanup_steps(*steps: Callable[[], None]) -> None:
+    """Run each teardown step, isolating failures so all steps always execute.
+
+    A raise in one step (e.g. a deployment-delete timeout) must not skip the
+    remaining cleanup (container removal, agent delete), which would leak
+    resources.
+    """
+    for step in steps:
+        try:
+            step()
+        except Exception:
+            pass
 
 
 def test_docker_agent_deploys_and_invokes_through_gateway(
@@ -364,7 +382,9 @@ def test_docker_agent_deploys_and_invokes_through_gateway(
         content = response["choices"][0]["message"]["content"]
         assert _TEST_AGENT_RESPONSE in content, response
     finally:
-        _delete_deployment_if_exists(sdk, workspace=workspace, name=deployment_name)
-        _wait_for_deployment_deleted(sdk, workspace=workspace, name=deployment_name)
-        _remove_agent_container_if_present(deployment_name)
-        _delete_agent_if_exists(sdk, workspace=workspace, name=agent_name)
+        _run_cleanup_steps(
+            lambda: _delete_deployment_if_exists(sdk, workspace=workspace, name=deployment_name),
+            lambda: _wait_for_deployment_deleted(sdk, workspace=workspace, name=deployment_name),
+            lambda: _remove_agent_container_if_present(deployment_name),
+            lambda: _delete_agent_if_exists(sdk, workspace=workspace, name=agent_name),
+        )
