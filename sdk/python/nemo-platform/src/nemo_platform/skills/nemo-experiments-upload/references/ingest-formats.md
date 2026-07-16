@@ -7,12 +7,16 @@ Full request schemas for the three intake ingest endpoints. All are under
 ## `evaluation_context` (shared by all)
 
 ```json
-"evaluation_context": {
-  "evaluation_id": "my-eval-baseline",   // the Evaluation's NAME (not its entity id)
-  "test_case_id": "dataset/case-001"     // optional: which task/test case this run is
+{
+  "evaluation_context": {
+    "evaluation_id": "my-eval-baseline",
+    "test_case_id": "dataset/case-001"
+  }
 }
 ```
 
+- `evaluation_id` is the Evaluation's **name** (not its entity id); `test_case_id` is optional (which
+  task/test case this run covers).
 - The referenced Evaluation **must already exist** (create it first) or the request is rejected with
   `400 "…must be created before it can be logged."`
 - The model is lenient (`extra="ignore"`): retired keys (`evaluation_sha`, `evaluation_run_id`,
@@ -139,12 +143,17 @@ Cost/token/model attributes are read from standard GenAI / OpenInference keys (f
 | provider | `gen_ai.system`, `gen_ai.provider.name`, `llm.provider` |
 | session id | `gen_ai.conversation.id`, `session.id` |
 
-Point any OTLP exporter at the endpoint, e.g.:
+Point any OTLP exporter at the endpoint and force HTTP/protobuf — some SDKs default to gRPC, which
+won't reach this `/v1/traces` HTTP endpoint:
 
 ```bash
+: "${NMP_BASE_URL:=http://localhost:8080}"
+: "${WORKSPACE:=default}"
 export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="${NMP_BASE_URL}/apis/intake/v2/workspaces/${WORKSPACE}/ingest/otlp/v1/traces"
+export OTEL_EXPORTER_OTLP_TRACES_PROTOCOL="http/protobuf"
 ```
-and set `nemo.experiment.id` (+ `nemo.test_case.id`) on the root span of each run.
+
+Then set `nemo.experiment.id` (+ `nemo.test_case.id`) on the root span of each run.
 
 ---
 

@@ -43,7 +43,10 @@ token values Harbor recorded. If Harbor didn't record a cost for a run, that run
     "task_id": "tau-bench/airline-042",
     "verifier_result": { "rewards": { "reward": 1.0 } }
   },
-  "steps": [ /* the trajectory steps */ ]
+  "steps": [
+    { "step_id": 1, "timestamp": "2026-01-01T00:00:00Z", "source": "user", "message": "..." },
+    { "step_id": 2, "timestamp": "2026-01-01T00:00:01Z", "source": "agent", "model_name": "provider/model", "message": "..." }
+  ]
 }
 ```
 

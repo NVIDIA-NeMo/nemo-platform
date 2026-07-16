@@ -1,6 +1,6 @@
 ---
 name: nemo-experiments-upload
-description: End-to-end guide for getting evaluation data into NeMo Platform Intake so it shows up as Experiments. Create an Experiment Group, create an Evaluation, then log traces and evaluator results via the ATIF (Harbor), chat-completions, or OTLP ingest endpoint with evaluation_context — and view the rollups in Studio. Use when a user wants to upload, log, ingest, publish, or send evaluation runs, agent traces, or scores to NeMo Experiments / Intake.
+description: End-to-end guide for getting evaluation data into NeMo Platform Intake so it shows up as Experiments. Create an Experiment Group, create an Evaluation, then log traces and evaluator results via the ATIF (Harbor), chat-completions, or OTLP ingest endpoint — and view the rollups in Studio. Use when a user wants to upload, log, ingest, publish, or send evaluation runs, agent traces, or scores to NeMo Experiments / Intake.
 triggers:
   - log traces to intake
   - upload experiment results
@@ -33,9 +33,15 @@ Everything below uses `${NMP_BASE_URL}` (default `http://localhost:8080`) and a 
 Confirm intake is up before doing anything. If this fails, the platform isn't running — route to `setup`/`nemo-status` and stop.
 
 ```bash
+set -euo pipefail
 : "${NMP_BASE_URL:=http://localhost:8080}"
 : "${WORKSPACE:=default}"
-curl -sf "${NMP_BASE_URL}/health/ready" >/dev/null && echo "platform ready" || echo "NOT READY"
+if curl -sf "${NMP_BASE_URL}/health/ready" >/dev/null; then
+  echo "platform ready"
+else
+  echo "NOT READY — platform isn't running; route to setup/nemo-status and stop" >&2
+  exit 1
+fi
 ```
 
 ## What you do
@@ -47,15 +53,28 @@ Run the steps in order. Steps 1–2 create the entities; step 3 logs the data; s
 A group is the leaderboard container. You need its `id` for the next step.
 
 ```bash
-GROUP_ID=$(curl -sf -X POST \
-  "${NMP_BASE_URL}/apis/intake/v2/workspaces/${WORKSPACE}/experiment-groups" \
+set -euo pipefail
+: "${NMP_BASE_URL:=http://localhost:8080}"
+: "${WORKSPACE:=default}"
+groups="${NMP_BASE_URL}/apis/intake/v2/workspaces/${WORKSPACE}/experiment-groups"
+# Create the group. 201 = created, 409 = already exists; any other status is a real failure.
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "${groups}" \
   -H 'Content-Type: application/json' \
-  -d '{"name": "my-experiment-group", "description": "example run"}' \
+  -d '{"name": "my-experiment-group", "description": "example run"}')
+case "${code}" in
+  201|409) ;;
+  *) echo "group create failed: HTTP ${code}" >&2; exit 1 ;;
+esac
+# Fetch the id (works whether it was just created or already existed).
+GROUP_ID=$(curl -sf "${groups}/my-experiment-group" \
   | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
+[ -n "${GROUP_ID}" ] || { echo "could not resolve experiment group id" >&2; exit 1; }
 echo "group id: ${GROUP_ID}"
 ```
 
-`409` means the name already exists — GET it instead: `curl -sf .../experiment-groups/my-experiment-group`.
+The POST accepts only `201` (created) or `409` (already exists) — any other status stops the step
+instead of masking it. The `id` is then read with a GET, so this works on both first run and re-run;
+`set -euo pipefail` + the `[ -n ]` guard keep it from continuing with an empty `GROUP_ID`.
 
 ### 2. Create an Evaluation
 
@@ -78,7 +97,10 @@ curl -sf -X POST \
 
 ### 3. Log traces + evaluator results
 
-Pick the ingest endpoint that matches your producer. **Read `references/ingest-formats.md` for the full schema and a copy-pasteable example for each.** All three attach evaluation identity via `evaluation_context = {evaluation_id: "<the Evaluation name>", test_case_id: "<task id>"}`.
+Pick the ingest endpoint that matches your producer. **Read `references/ingest-formats.md` for the full schema and a copy-pasteable example for each.** How you attach evaluation identity depends on the endpoint:
+
+- **ATIF and chat-completions** (JSON body) — add an `evaluation_context = {evaluation_id: "<the Evaluation name>", test_case_id: "<task id>"}` object to the payload.
+- **OTLP** — there is no body field; set identity as **root-span resource attributes** `nemo.experiment.id` (the Evaluation **name**) and `nemo.test_case.id`. Spans missing these still ingest but won't associate to an Evaluation.
 
 | Producer | Endpoint | Read |
 |---|---|---|
@@ -88,7 +110,7 @@ Pick the ingest endpoint that matches your producer. **Read `references/ingest-f
 
 Evaluator **scores** arrive one of two ways (both covered in the references):
 - **Automatically** with ATIF — put rewards under `extra.verifier_result.rewards` (one key per criterion).
-- **Explicitly** — `POST .../evaluator-results` with `{span_id, session_id, name, value, data_type}`.
+- **Explicitly** — `POST .../evaluator-results` with `{span_id, session_id, name, data_type, value}` — use `string_value` instead of `value` for `CATEGORICAL`/`TEXT` results (see `references/ingest-formats.md`).
 
 ### 4. Verify the data landed
 
@@ -122,7 +144,7 @@ You succeeded when `GET .../evaluations/my-eval-baseline` shows:
 - `run_count` ≥ 1 (each ingested session counts as one run), and
 - non-empty `evaluator_names` / `aggregate_scores` if you logged rewards, and/or `cost_usd` if your spans carried cost.
 
-If `run_count` is 0 after ingesting, the traces didn't associate — almost always a wrong `evaluation_context.evaluation_id` (see Gotchas).
+If `run_count` is 0 after ingesting, the traces didn't associate — almost always a wrong evaluation identity: `evaluation_context.evaluation_id` for ATIF/chat-completions, or the `nemo.experiment.id` root-span attribute for OTLP (see Gotchas).
 
 ## If verification fails
 
@@ -130,7 +152,7 @@ If `run_count` is 0 after ingesting, the traces didn't associate — almost alwa
 |---|---|---|
 | `400 "…must be created before it can be logged."` | Ingested before the Evaluation existed, or `evaluation_id` doesn't match | Create the Evaluation (step 2); ensure `evaluation_context.evaluation_id` equals its **name** |
 | `422 Unprocessable` on ingest | Unknown/typo'd top-level key (ATIF/chat-completions are `extra="forbid"`) or bad `schema_version` | Check the exact schema in `references/ingest-formats.md`; remove stray keys |
-| Ingest 2xx but `run_count` stays 0 | `evaluation_context` missing or `evaluation_id` ≠ the Evaluation's name | Attach `evaluation_context`; use the Evaluation **name**, not its id |
+| Ingest 2xx but `run_count` stays 0 | Evaluation identity missing/wrong — `evaluation_context.evaluation_id` (ATIF/chat-completions) or the `nemo.experiment.id` root-span attribute (OTLP) ≠ the Evaluation's name | Attach the identity for your endpoint; use the Evaluation **name**, not its id |
 | `503` on GET evaluation / sessions | ClickHouse (telemetry store) not running | Start ClickHouse; rollups and sessions require it |
 | Scores don't show up | Rewards not under `extra.verifier_result.rewards`, or wrong `data_type` on `/evaluator-results` | See `references/troubleshooting.md` |
 
