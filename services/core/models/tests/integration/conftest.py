@@ -467,8 +467,10 @@ def controller_with_deployments_plugin(
             reconcile_stack,
         )
 
-        models_controller._loop.run_until_complete(deployments_controller.on_shutdown())
-        models_controller.shutdown()
+        try:
+            models_controller._loop.run_until_complete(deployments_controller.on_shutdown())
+        finally:
+            models_controller.shutdown()
 
 
 # =============================================================================

@@ -3,6 +3,7 @@
 
 from types import SimpleNamespace
 
+import pytest
 from nemo_deployments_plugin.entities import (
     Container,
     DeploymentBackendConfig,
@@ -276,3 +277,19 @@ def test_apply_nim_override_config_ignored_on_docker() -> None:
         runtime=Runtime.DOCKER,
     )
     assert container.image == "nim:1.0"
+
+
+def test_apply_nim_override_config_rejects_unsupported_keys() -> None:
+    from nemo_deployments_plugin.entities import DeploymentConfig
+
+    container = Container(name="server", image="nim:1.0")
+    server_config = DeploymentConfig(name="dep-server", workspace="default", containers=[container])
+    view = DeploymentConfigView(override_config={"authSecret": "secret", "replicas": 2})
+    with pytest.raises(ValueError, match="unsupported keys: authSecret, replicas"):
+        apply_nim_override_config(
+            container,
+            server_config,
+            view,
+            engine="nim",
+            runtime=Runtime.KUBERNETES,
+        )

@@ -59,6 +59,26 @@ if [ "$plugin_file" != "{plugin_path}" ]; then
 fi
 """
 
+_SUPPORTED_NIM_OVERRIDE_CONFIG_KEYS = frozenset(
+    {
+        "image",
+        "command",
+        "args",
+        "resources",
+        "env",
+        "readinessProbe",
+        "livenessProbe",
+        "startupProbe",
+        "nodeSelector",
+        "tolerations",
+        "userID",
+        "groupID",
+        "labels",
+        "initContainers",
+        "sidecarContainers",
+    }
+)
+
 
 def _plugin_fileset(view: DeploymentConfigView, model_entity: ModelEntity | None) -> str | None:
     if view.tool_call_config and view.tool_call_config.tool_call_plugin:
@@ -473,6 +493,16 @@ def _ensure_k8s_backend(server_config: DeploymentConfig) -> K8sDeploymentConfig:
     return backend.k8s
 
 
+def _validate_nim_override_config_keys(override: dict[str, Any]) -> None:
+    """Reject override_config keys that the deployments_plugin NIM compiler does not apply."""
+    unsupported = sorted(set(override) - _SUPPORTED_NIM_OVERRIDE_CONFIG_KEYS)
+    if unsupported:
+        supported = ", ".join(sorted(_SUPPORTED_NIM_OVERRIDE_CONFIG_KEYS))
+        raise ValueError(
+            f"override_config contains unsupported keys: {', '.join(unsupported)}. Supported keys: {supported}."
+        )
+
+
 def apply_nim_override_config(
     container: Container,
     server_config: DeploymentConfig,
@@ -491,6 +521,8 @@ def apply_nim_override_config(
     override = view.override_config
     if not override:
         return
+
+    _validate_nim_override_config_keys(override)
 
     image_info = override.get("image")
     if isinstance(image_info, dict):
