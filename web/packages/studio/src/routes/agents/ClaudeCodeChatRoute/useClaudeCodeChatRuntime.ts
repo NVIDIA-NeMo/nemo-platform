@@ -22,6 +22,7 @@ import {
 import {
   createEmptyClaudeCodeChatArtifacts,
   updateClaudeCodeChatArtifactsFromEvent,
+  updateClaudeCodeChatArtifactsFromInputSelection,
   updateClaudeCodeChatArtifactsFromSelections,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/artifacts';
 import { getAssistantPartsFromClaudeEvent } from '@studio/routes/agents/ClaudeCodeChatRoute/stream';
@@ -637,6 +638,12 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
           requestId: activeInput.requestId,
           decision,
         });
+        if (!decision.skipped && decision.value) {
+          const inputValue = decision.value;
+          setArtifacts((current) =>
+            updateClaudeCodeChatArtifactsFromInputSelection(current, activeInput, inputValue)
+          );
+        }
         if (!decision.skipped && trimmedDisplayText) appendUserMessage(trimmedDisplayText);
         dispatchBlocking({
           type: 'clear_input',
@@ -650,7 +657,7 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
         onError?.(new Error(errorMessage));
       }
     },
-    [sessionId, activeInput, appendUserMessage, onError]
+    [sessionId, activeInput, appendUserMessage, onError, setArtifacts]
   );
 
   const submitActiveDecision = useCallback(

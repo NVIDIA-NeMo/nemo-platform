@@ -459,6 +459,8 @@ describe('useClaudeCodeChatRuntime', () => {
       decision: { value: { agent: 'react-agent' } },
     });
     expect(mocks.appendUserMessage).toHaveBeenCalledWith('Selected agent: react-agent');
+    expect(result.current.artifacts.selections).toEqual([{ label: 'Agent', value: 'react-agent' }]);
+    expect(result.current.artifacts.agent).toBe('react-agent');
     expect(result.current.inputRequest).toBeNull();
 
     await act(async () => {

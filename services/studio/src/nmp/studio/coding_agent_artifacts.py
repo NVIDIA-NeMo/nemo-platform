@@ -5,6 +5,7 @@
 
 import json
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from nmp.studio import studio_links
@@ -57,6 +58,14 @@ class ChatArtifactsResponse(BaseModel):
     tools: list[str] = Field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class InputSelectionTool:
+    """Picker tool metadata needed to reconstruct a persisted selection."""
+
+    name: str
+    input: dict[str, Any]
+
+
 _ANSWER_PAIR_RE = re.compile(r'"((?:\\.|[^"\\])*)"\s*=\s*"((?:\\.|[^"\\])*)"')
 _INLINE_CODE_VALUE_RE = re.compile(r"(`+)(?P<value>.*?)\1", re.DOTALL)
 _MARKDOWN_LINK_RE = re.compile(r"\[(?P<label>[^\]]+)\]\((?P<href>[^)]+)\)")
@@ -64,6 +73,12 @@ _FILE_CHANGE_TOOL_ACTIONS = {
     "Edit": "Edited",
     "MultiEdit": "Edited",
     "Write": "Wrote",
+}
+_INPUT_SELECTION_TOOL_NAMES = {
+    "select_agent",
+    "select_dataset_file",
+    "select_eval_config",
+    "select_model",
 }
 _STUDIO_CONTEXT_WORKSPACE_RE = re.compile(r"^Current Studio workspace:\s*(?P<workspace>.+)$", re.MULTILINE)
 _SPEC_HEADINGS = {
@@ -138,9 +153,18 @@ def _set_selection_artifact(artifacts: ChatArtifactsResponse, label: str, value:
     artifacts.selections.append(ChatSelectionArtifactResponse(label=label, value=cleaned_value))
 
 
+def _is_agent_selection_question(question: str) -> bool:
+    normalized = question.lower()
+    return bool(
+        re.search(r"\b(?:which|what)\s+agent\b", normalized)
+        or re.search(r"\b(?:select|choose|pick)\s+(?:(?:an?|the)\s+)?agent\b", normalized)
+        or re.search(r"\bagent\s+(?:id|name|reference)\b", normalized)
+    )
+
+
 def _selection_label(question: str, header: str | None = None) -> str:
     combined = f"{header or ''} {question}".lower()
-    if "agent" in combined:
+    if _is_agent_selection_question(question):
         return "Agent"
     if "model" in combined:
         return "Model"
@@ -153,7 +177,8 @@ def _selection_label(question: str, header: str | None = None) -> str:
     if "provider" in combined:
         return "Provider"
 
-    label = header or question.strip().rstrip("?")
+    header_label = header.strip() if header else None
+    label = header_label if header_label and header_label.lower() != "agent" else question.strip().rstrip("?")
     return label[:40] if len(label) > 40 else label
 
 
@@ -361,11 +386,19 @@ def record_tool_artifacts(
     input_value: Any,
     tool_use_id: str | None,
     question_labels_by_tool_use_id: dict[str, dict[str, str]],
+    input_selection_tools_by_tool_use_id: dict[str, InputSelectionTool],
 ) -> None:
+    short_name = tool_name.rsplit("__", maxsplit=1)[-1]
     if tool_name == "AskUserQuestion" and tool_use_id:
         labels = _ask_user_question_labels(input_value)
         if labels:
             question_labels_by_tool_use_id[tool_use_id] = labels
+
+    if short_name in _INPUT_SELECTION_TOOL_NAMES and tool_use_id and isinstance(input_value, dict):
+        input_selection_tools_by_tool_use_id[tool_use_id] = InputSelectionTool(
+            name=short_name,
+            input=input_value,
+        )
 
     action = _FILE_CHANGE_TOOL_ACTIONS.get(tool_name)
     if action and isinstance(input_value, dict):
@@ -396,10 +429,23 @@ def record_workspace_artifact(artifacts: ChatArtifactsResponse, content: str) ->
         artifacts.workspace = match.group("workspace").strip()
 
 
+def _tool_result_text(content: Any) -> str | None:
+    if isinstance(content, str):
+        return string_value(content)
+    if not isinstance(content, list):
+        return None
+
+    text_parts = [
+        text for part in content if isinstance(part, dict) and (text := string_value(part.get("text"))) is not None
+    ]
+    return "\n".join(text_parts) or None
+
+
 def record_user_tool_result_artifacts(
     artifacts: ChatArtifactsResponse,
     content: Any,
     question_labels_by_tool_use_id: dict[str, dict[str, str]],
+    input_selection_tools_by_tool_use_id: dict[str, InputSelectionTool],
 ) -> None:
     if not isinstance(content, list):
         return
@@ -407,9 +453,53 @@ def record_user_tool_result_artifacts(
     for part in content:
         if not isinstance(part, dict) or part.get("type") != "tool_result":
             continue
-        result_text = string_value(part.get("content"))
+        result_text = _tool_result_text(part.get("content"))
         if not result_text:
             continue
         tool_use_id = string_value(part.get("tool_use_id"))
         labels = question_labels_by_tool_use_id.get(tool_use_id or "")
         record_answer_selections(artifacts, result_text, labels)
+
+        selection_tool = input_selection_tools_by_tool_use_id.get(tool_use_id or "")
+        if selection_tool:
+            record_input_selection(artifacts, selection_tool, result_text)
+
+
+def record_input_selection(
+    artifacts: ChatArtifactsResponse,
+    tool: InputSelectionTool,
+    result_text: str,
+) -> None:
+    """Record a submitted Studio picker result as a selection artifact."""
+    try:
+        result = json.loads(result_text)
+    except json.JSONDecodeError:
+        return
+    if not isinstance(result, dict) or result.get("status") != "submitted":
+        return
+
+    if tool.name == "select_agent":
+        agent = string_value(result.get("agent"))
+        if agent:
+            _set_selection_artifact(artifacts, "Agent", agent)
+        return
+
+    if tool.name == "select_model":
+        output_key = string_value(tool.input.get("output_key")) or "model"
+        model = string_value(result.get(output_key))
+        if model:
+            _set_selection_artifact(artifacts, "Model", model)
+        return
+
+    if tool.name == "select_dataset_file":
+        fileset = string_value(result.get("dataset_fileset"))
+        path = string_value(result.get("dataset_path"))
+        if fileset and path:
+            _set_selection_artifact(artifacts, "Dataset", f"{fileset}/{path}")
+        return
+
+    if tool.name == "select_eval_config":
+        fileset = string_value(result.get("eval_config_fileset"))
+        path = string_value(result.get("eval_config"))
+        if fileset and path:
+            _set_selection_artifact(artifacts, "Eval config", f"{fileset}/{path}")
