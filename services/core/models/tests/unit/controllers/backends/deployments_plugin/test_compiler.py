@@ -205,6 +205,8 @@ def test_generic_weightless_is_server_only() -> None:
     assert compiled.puller_config is None
     assert compiled.puller_prerequisite is False
     assert compiled.server_config.containers[0].image == "custom/image:1"
+    k8s = compiled.server_config.backend_config.k8s
+    assert k8s is None
 
 
 def test_lora_uses_native_sidecar_on_k8s_and_container_on_docker() -> None:

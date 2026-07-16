@@ -145,6 +145,21 @@ def test_pod_security_context_uses_nim_defaults() -> None:
     assert security_context.run_as_group == 2000
 
 
+def test_pod_security_context_generic_uses_image_user_by_default() -> None:
+    view = DeploymentConfigView()
+    config = DeploymentsPluginConfig(default_user_id=1000, default_group_id=2000)
+    assert pod_security_context_for_engine("generic", view, config) is None
+
+
+def test_pod_security_context_generic_honors_explicit_run_as() -> None:
+    view = DeploymentConfigView(run_as_user=0, run_as_group=0)
+    config = DeploymentsPluginConfig(default_user_id=1000, default_group_id=2000)
+    security_context = pod_security_context_for_engine("generic", view, config)
+    assert security_context is not None
+    assert security_context.run_as_user == 0
+    assert security_context.run_as_group == 0
+
+
 def test_build_k8s_deployment_backend_config_merges_security_context() -> None:
     view = DeploymentConfigView()
     config = DeploymentsPluginConfig(default_user_id=1000, default_group_id=2000)

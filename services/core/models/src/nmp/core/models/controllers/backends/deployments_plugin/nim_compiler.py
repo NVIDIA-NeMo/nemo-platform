@@ -34,7 +34,7 @@ from nmp.core.models.app import is_multi_llm_image, parse_model_name_revision
 from nmp.core.models.controllers.backends.common import DeploymentConfigView
 from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
 from nmp.core.models.controllers.backends.deployments_plugin.resolve import ResolvedPluginDeployment
-from nmp.core.models.controllers.backends.engine import ENGINE_NIM, ENGINE_VLLM
+from nmp.core.models.controllers.backends.engine import ENGINE_GENERIC, ENGINE_NIM, ENGINE_VLLM
 
 _WEIGHTS_MOUNT = "/model-store"
 _SCRATCH_MOUNT = "/scratch"
@@ -314,6 +314,10 @@ def pod_security_context_for_engine(
     if engine == ENGINE_VLLM:
         user_id = view.run_as_user if view.run_as_user is not None else config.default_vllm_user_id
         group_id = view.run_as_group if view.run_as_group is not None else config.default_vllm_group_id
+    elif engine == ENGINE_GENERIC:
+        # Generic containers use the image's own user unless run_as_* is set explicitly.
+        user_id = view.run_as_user
+        group_id = view.run_as_group
     else:
         user_id = view.run_as_user if view.run_as_user is not None else config.default_user_id
         group_id = view.run_as_group if view.run_as_group is not None else config.default_group_id

@@ -16,6 +16,8 @@ import uuid
 import pytest
 from nemo_platform import NeMoPlatform, NotFoundError
 
+# Kind smoke generic deployment image (python -m http.server). Keep in sync with
+# .github/actions/setup-kind-cluster/action.yaml GENERIC_HTTP_* prepull vars.
 GENERIC_HTTP_IMAGE = "docker.io/library/python"
 GENERIC_HTTP_TAG = "3.12-alpine"
 

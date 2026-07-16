@@ -31,11 +31,11 @@ As an alternative to PVC-based file storage, you can configure the Files service
 
  ```yaml
  core:
- storage:
- storageClass: "nfs"
- accessModes:
- - ReadWriteMany
- size: 200Gi
+   storage:
+     storageClass: "nfs"
+     accessModes:
+       - ReadWriteMany
+     size: 200Gi
  ```
 
  If `storageClass` is empty (default), the cluster’s default StorageClass is used.
@@ -46,8 +46,8 @@ To use a pre-created PersistentVolume instead of having the chart create a PVC, 
 
 ```yaml
 core:
- storage:
- existingPersistentVolumeName: "my-existing-pv-name"
+  storage:
+    existingPersistentVolumeName: "my-existing-pv-name"
 ```
 
 When set, the chart does not create a new PVC; pods mount the named volume.
