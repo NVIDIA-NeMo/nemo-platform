@@ -24,10 +24,6 @@ on:
         description: "Override subject num_trials (empty = testbeds.toml value)"
         type: string
         default: ""
-      publish_state:
-        description: "produce only: upload the new state version to the testbed-state release"
-        type: boolean
-        default: true
       reason:
         description: "produce only: why this fixture exists (one line for the release catalog)"
         type: string
@@ -43,6 +39,7 @@ on:
 env:
   TAU2_JUDGE_LLM: ${{ vars.TAU2_JUDGE_LLM || 'openai/nvidia/nvidia/evals-nemotron-ultra' }}
   TAU2_BENCH_REF: 8ebb7499622fc2be9b9d510d6f7a7653461f4f29
+  TESTBED_STATE_REPO: ${{ vars.TESTBED_STATE_REPO || 'NVIDIA-dev/NeMo-Optimizer' }}
 
 jobs:
   plugin-tests:
@@ -108,9 +105,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     concurrency: { group: testbed-state-produce, cancel-in-progress: false }
-    permissions: { contents: write }   # release asset upload
+    permissions: { contents: read }
+    # Keep these credentials exclusively in this required-review environment,
+    # never as repository- or organization-level Actions secrets.
+    environment: insights-testbed
     env:
-      GH_TOKEN: ${{ github.token }}
       INFERENCE_API_KEY: ${{ secrets.NVIDIA_INFERENCE_KEY }}
       # Same gateway key; litellm/tau2 read it under the OpenAI-conventional name.
       OPENAI_API_KEY: ${{ secrets.NVIDIA_INFERENCE_KEY }}
@@ -150,7 +149,8 @@ jobs:
       - name: Round-trip fidelity guard
         working-directory: nemo-platform/plugins/nemo-insights
         # Re-ingest the candidate into scratch workspaces on the in-job stack, re-export,
-        # doc-diff; any mismatch fails the job before the candidate can be published.
+        # doc-diff; any mismatch fails the job and marks the uploaded candidate unverified.
+        # Maintainers publish manually only after confirming this step passed.
         # platform-root auto-resolves to the containing nemo-platform checkout.
         run: uv run --project ../.. python -m testbed roundtrip "$RUNNER_TEMP/bundles/candidate.tar.zst" --base http://localhost:8080
       - name: Upload state artifact
@@ -158,17 +158,10 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           # run_attempt suffix: upload-artifact@v4 409s on duplicate names within a
-          # run, which would fail this always() step on a re-run and block publish.
+          # run, which would otherwise hide the diagnostic candidate on a re-run.
           name: state-candidate-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/bundles/candidate.tar.zst
           if-no-files-found: warn
-      - name: Publish to testbed-state release
-        if: success() && inputs.publish_state
-        working-directory: nemo-platform/plugins/nemo-insights
-        env:
-          REASON: ${{ inputs.reason }}
-        # --no-verify: the round-trip fidelity guard already ran as its own step above.
-        run: uv run --project ../.. python -m testbed publish "$RUNNER_TEMP/bundles/candidate.tar.zst" --reason "$REASON" --no-verify
       - name: Platform log on failure
         if: failure()
         run: tail -200 "$RUNNER_TEMP/platform.log" || true
@@ -184,6 +177,9 @@ jobs:
        (github.event.action == 'labeled' &&
         github.event.label.name == 'run-insights' &&
         github.event.pull_request.head.repo.full_name == github.repository))
+    # Keep these credentials exclusively in this required-review environment:
+    # analyze executes same-repository PR code with inference and fixture-read secrets.
+    environment: insights-testbed
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions: { contents: read }
@@ -192,11 +188,14 @@ jobs:
       matrix:
         subject: ${{ fromJSON(needs.plan.outputs.subjects) }}
     env:
-      GH_TOKEN: ${{ github.token }}
       INFERENCE_API_KEY: ${{ secrets.NVIDIA_INFERENCE_KEY }}
     steps:
       - name: Require secrets
-        run: '[ -n "$INFERENCE_API_KEY" ] || { echo "secret NVIDIA_INFERENCE_KEY is not set"; exit 1; }'
+        env:
+          GH_TOKEN: ${{ secrets.TESTBED_STATE_GH_READ_TOKEN }}
+        run: |
+          [ -n "$GH_TOKEN" ] || { echo "secret TESTBED_STATE_GH_READ_TOKEN is not set"; exit 1; }
+          [ -n "$INFERENCE_API_KEY" ] || { echo "secret NVIDIA_INFERENCE_KEY is not set"; exit 1; }
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with: { path: nemo-platform, persist-credentials: false }
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -211,6 +210,7 @@ jobs:
       - name: Generate insights
         working-directory: nemo-platform/plugins/nemo-insights
         env:
+          GH_TOKEN: ${{ secrets.TESTBED_STATE_GH_READ_TOKEN }}
           SUBJECT: ${{ matrix.subject }}
           STATE: ${{ inputs.state }}
         # Empty STATE = bare analyze = the subject's state.lock pin (the

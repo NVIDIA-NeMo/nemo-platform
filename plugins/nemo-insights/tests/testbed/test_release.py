@@ -30,6 +30,14 @@ def test_next_ref():
     assert release.next_ref(None) == "state-v1"
 
 
+def test_state_repo_defaults_to_existing_fixture_home():
+    assert release.state_repo({}) == "NVIDIA-dev/NeMo-Optimizer"
+
+
+def test_state_repo_allows_explicit_override():
+    assert release.state_repo({"TESTBED_STATE_REPO": "owner/repository"}) == "owner/repository"
+
+
 def test_lock_ref_returns_subject_entry(tmp_path):
     lock = _write_lock(tmp_path)
     assert release.lock_ref(lock, "tau2-airline") == "state-v6"
@@ -62,6 +70,8 @@ def test_repo_lock_file_is_per_subject_and_pins_tau2_airline():
 
 def test_release_asset_names_missing_release_returns_empty(monkeypatch):
     def fake_gh(*args):
+        if args[:1] == ("api",):
+            return "[]"
         raise subprocess.CalledProcessError(1, ["gh", *args], stderr="release not found\n")
 
     monkeypatch.setattr(release, "_gh", fake_gh)
@@ -70,7 +80,33 @@ def test_release_asset_names_missing_release_returns_empty(monkeypatch):
 
 def test_release_asset_names_other_failure_raises(monkeypatch):
     def fake_gh(*args):
+        if args[:1] == ("api",):
+            return "[]"
         raise subprocess.CalledProcessError(1, ["gh", *args], stderr="HTTP 500 (Internal Server Error)\n")
+
+    monkeypatch.setattr(release, "_gh", fake_gh)
+    with pytest.raises(subprocess.CalledProcessError):
+        release._release_asset_names()
+
+
+def test_release_asset_names_inaccessible_repo_raises(monkeypatch):
+    def fake_gh(*args):
+        raise subprocess.CalledProcessError(1, ["gh", *args], stderr="HTTP 404: Not Found\n")
+
+    monkeypatch.setattr(release, "_gh", fake_gh)
+    with pytest.raises(subprocess.CalledProcessError):
+        release._release_asset_names()
+
+
+def test_release_asset_names_does_not_substring_match_auth_error(monkeypatch):
+    def fake_gh(*args):
+        if args[:1] == ("api",):
+            return "[]"
+        raise subprocess.CalledProcessError(
+            1,
+            ["gh", *args],
+            stderr="GraphQL: release not found because the token is unauthorized\n",
+        )
 
     monkeypatch.setattr(release, "_gh", fake_gh)
     with pytest.raises(subprocess.CalledProcessError):
@@ -165,7 +201,18 @@ def test_download_ref_gh_args_and_return_path(tmp_path, monkeypatch):
     dest = tmp_path / "dl"
     result = release.download_ref("state-v4", dest)
     assert calls == [
-        ("release", "download", "testbed-state", "--pattern", "state-v4.tar.zst", "--dir", str(dest), "--clobber")
+        (
+            "release",
+            "download",
+            "testbed-state",
+            "--pattern",
+            "state-v4.tar.zst",
+            "--dir",
+            str(dest),
+            "--clobber",
+            "--repo",
+            "NVIDIA-dev/NeMo-Optimizer",
+        )
     ]
     assert dest.is_dir()
     assert result == tmp_path / "dl" / "state-v4.tar.zst"
