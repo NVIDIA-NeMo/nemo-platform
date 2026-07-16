@@ -11,7 +11,6 @@ from pydantic import Field, RootModel
 class SupportedJobTypes(str, Enum):
     ONLINE = "online"
     OFFLINE = "offline"
-    RETRIEVER = "retriever"
 
 
 class SecretRef(RootModel):

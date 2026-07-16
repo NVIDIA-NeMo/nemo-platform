@@ -36,7 +36,6 @@ class MetricType(str, Enum):
     NOISE_SENSITIVITY = "noise_sensitivity"
 
     SYSTEM = "system"
-    SYSTEM_RETRIEVER = "system-retriever"
 
 
 class TaskStatus(str, Enum):

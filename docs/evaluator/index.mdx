@@ -145,10 +145,10 @@ Most teams get the best results by starting metric-first:
 
 1. **Develop and validate your metrics first**
  - Start with [Metrics](/documentation/evaluate-models/metrics) to define how quality should be scored for your use case.
- - Use live evaluation (`POST /v2/workspaces/{workspace}/evaluation/metric-evaluate`) with small `DatasetRows` payloads to iterate quickly.
+ - Iterate quickly with the SDK's local evaluation (`Evaluator.run()`) on small inline datasets—it runs in-process and returns a completed result without creating a platform job. See [SDK Resources](/documentation/evaluate-models/sdk-resources).
 
 1. **Scale metric evaluation to jobs**
- - When metrics are validated, run async metric jobs (`/evaluation/metric-jobs`) on larger datasets.
+ - When metrics are validated, run durable evaluate jobs (`POST /v2/workspaces/{workspace}/evaluate/jobs`, or `Evaluator.submit()`) on larger datasets.
  - Use filesets for production-scale inputs. See [Manage Files](/documentation/get-started/core-concepts/manage-files).
 
 1. **Monitor and analyze results**
@@ -168,8 +168,7 @@ Most teams get the best results by starting metric-first:
 
 Review configurations, data formats, and result examples for each evaluation.
 
--   **Retrieval** — Evaluate document retrieval pipelines on standard or custom datasets.
--   **RAG** — Evaluate Retrieval Augmented Generation pipelines (retrieval plus generation).
+-   **RAG** — Evaluate Retrieval Augmented Generation pipelines (retrieval plus generation), including retrieval quality via RAGAS metrics.
 -   **Agentic** — Assess agent-based and multi-step reasoning models, including topic adherence and tool use.
 -   **LLM-as-a-Judge** — Use another LLM to evaluate outputs with flexible scoring criteria. Define custom rubrics or numerical ranges.
 -   **Similarity Metrics** — Create metrics for text similarity, exact matching, and standard NLP evaluations using Jinja2 templating.
