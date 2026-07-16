@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema/AgentDeployment';
-import { Block, SegmentedControl, SidePanel } from '@nvidia/foundations-react-core';
+import { Block, SegmentedControl, SidePanel, Stack, Text } from '@nvidia/foundations-react-core';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { AgentDetailsContent } from '@studio/components/sidePanels/AgentPanels/AgentPanel/AgentDetailsContent';
 import { AgentWorkflowContent } from '@studio/components/sidePanels/AgentPanels/AgentPanel/AgentWorkflowContent';
@@ -18,6 +18,7 @@ import {
 } from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthroughStorage';
 import { CreateDeploymentModal } from '@studio/routes/agents/AgentDeploymentsListRoute/CreateDeploymentModal';
 import { SubmitEvaluationModal } from '@studio/routes/agents/AgentEvaluationsRoute/components/SubmitEvaluationModal';
+import { Globe } from 'lucide-react';
 import { type ComponentProps, type FC, useEffect, useMemo, useRef, useState } from 'react';
 
 export type { AgentPanelTab };
@@ -112,7 +113,21 @@ export const AgentPanel: FC<AgentPanelProps> = ({
   let content: React.ReactNode;
 
   if (selectedTab === 'deployment-logs') {
-    content = <DeploymentLogsView workspace={workspace} deployments={agentDeployments} />;
+    content =
+      agent?.source === 'external' ? (
+        <Block padding="4">
+          <Stack gap="2" align="center" className="pt-8 text-center">
+            <Globe className="size-8 text-subtle" />
+            <Text kind="body/semibold/md">This agent runs outside NeMo Platform</Text>
+            <Text kind="body/regular/sm" color="secondary">
+              There is no NeMo deployment to read logs from. Logs are available on the host where
+              the agent runs.
+            </Text>
+          </Stack>
+        </Block>
+      ) : (
+        <DeploymentLogsView workspace={workspace} deployments={agentDeployments} />
+      );
   } else if (selectedTab === 'agent-workflow') {
     content = <AgentWorkflowContent agent={agent} />;
   } else if (selectedTab === 'chat-playground') {
