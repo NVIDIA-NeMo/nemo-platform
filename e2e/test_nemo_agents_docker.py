@@ -45,7 +45,7 @@ import os
 import platform
 import time
 import uuid
-from collections.abc import Callable
+from contextlib import suppress
 from typing import Any
 
 import httpx
@@ -258,20 +258,6 @@ def _remove_agent_container_if_present(deployment_name: str) -> None:
                 pass
 
 
-def _run_cleanup_steps(*steps: Callable[[], None]) -> None:
-    """Run each teardown step, isolating failures so all steps always execute.
-
-    A raise in one step (e.g. a deployment-delete timeout) must not skip the
-    remaining cleanup (container removal, agent delete), which would leak
-    resources.
-    """
-    for step in steps:
-        try:
-            step()
-        except Exception:
-            pass
-
-
 def test_docker_agent_deploys_and_invokes_through_gateway(
     sdk: NeMoPlatform, workspace: str, agent_deployment_image: str
 ) -> None:
@@ -334,9 +320,13 @@ def test_docker_agent_deploys_and_invokes_through_gateway(
         content = response["choices"][0]["message"]["content"]
         assert _TEST_AGENT_RESPONSE in content, response
     finally:
-        _run_cleanup_steps(
-            lambda: _delete_deployment_if_exists(sdk, workspace=workspace, name=deployment_name),
-            lambda: _wait_for_deployment_deleted(sdk, workspace=workspace, name=deployment_name),
-            lambda: _remove_agent_container_if_present(deployment_name),
-            lambda: _delete_agent_if_exists(sdk, workspace=workspace, name=agent_name),
-        )
+        # Each step is isolated so a failure (e.g. a deployment-delete timeout)
+        # doesn't skip the remaining cleanup and leak resources.
+        with suppress(Exception):
+            _delete_deployment_if_exists(sdk, workspace=workspace, name=deployment_name)
+        with suppress(Exception):
+            _wait_for_deployment_deleted(sdk, workspace=workspace, name=deployment_name)
+        with suppress(Exception):
+            _remove_agent_container_if_present(deployment_name)
+        with suppress(Exception):
+            _delete_agent_if_exists(sdk, workspace=workspace, name=agent_name)

@@ -61,18 +61,8 @@ class E2EHarnessConfig(TypedDict, total=False):
     lifecycle: Literal["fresh", "reuse"]
     compose_project_prefix: str
     env: dict[str, str]
-    # Subprocess backend only. When set, the harness (a) binds the platform on all
-    # interfaces (``--host 0.0.0.0``) and (b) rewrites ``platform.base_url`` in the
-    # rendered config to ``http://<this host>:<the free port it chose>`` right
-    # before launch. The platform still runs as a normal local process, but the
-    # base URL it injects into container-mode agent deployments (docker/k8s) then
-    # points at a host reachable from *inside* those containers (e.g. the docker
-    # bridge ``172.17.0.1``) instead of a loopback the container can't reach.
-    # Binding all interfaces is required so the platform's own in-process clients,
-    # which also use ``NMP_BASE_URL``, can still reach it at that host. The runner
-    # seeds ``NMP_BASE_URL`` from the config ``platform.base_url`` host (paired
-    # with the real bind port), so the rewritten host takes effect instead of the
-    # bind-derived loopback default.
+    # Subprocess backend only; container-reachable host for platform.base_url (see
+    # _start_services_subprocess for how it's applied).
     container_base_url_host: str
 
 
