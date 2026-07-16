@@ -9,12 +9,12 @@ import nmp.customization_common.service.images as shared_images
 import pytest
 from nmp.automodel.config import AutomodelConfig
 from nmp.automodel.images import (
-    TASKS_IMAGE_NAME,
     TRAINING_IMAGE_NAME,
     get_automodel_qualified_image,
     get_tasks_image,
     get_training_image,
 )
+from nmp.customization_common.service.images import CUSTOMIZER_TASKS_IMAGE_NAME
 
 
 @pytest.fixture
@@ -31,9 +31,9 @@ def test_default_automodel_images_use_platform_registry(monkeypatch, platform_co
     tasks = get_tasks_image()
     training = get_training_image()
 
-    assert tasks == f"{platform_config.image_registry}/{TASKS_IMAGE_NAME}:{platform_config.image_tag}"
+    assert tasks == f"{platform_config.image_registry}/{CUSTOMIZER_TASKS_IMAGE_NAME}:{platform_config.image_tag}"
     assert training == f"{platform_config.image_registry}/{TRAINING_IMAGE_NAME}:{platform_config.image_tag}"
-    assert TASKS_IMAGE_NAME.count("/") == 0  # single repo segment, no nested paths
+    assert CUSTOMIZER_TASKS_IMAGE_NAME.count("/") == 0  # single repo segment, no nested paths
 
 
 def test_automodel_image_registry_override(monkeypatch, platform_config):
@@ -44,8 +44,8 @@ def test_automodel_image_registry_override(monkeypatch, platform_config):
     )
 
     assert (
-        get_automodel_qualified_image(TASKS_IMAGE_NAME)
-        == f"my-registry/other-registry/{TASKS_IMAGE_NAME}:{platform_config.image_tag}"
+        get_automodel_qualified_image(TRAINING_IMAGE_NAME)
+        == f"my-registry/other-registry/{TRAINING_IMAGE_NAME}:{platform_config.image_tag}"
     )
 
 
@@ -54,8 +54,8 @@ def test_automodel_full_image_override(monkeypatch, platform_config):
         automodel_images,
         "config",
         AutomodelConfig(
-            tasks_image="my-registry/nemo-platform-dev/nmp-automodel-tasks:dev",
+            tasks_image="my-registry/nemo-platform-dev/nmp-customizer-tasks:dev",
         ),
     )
 
-    assert get_tasks_image() == "my-registry/nemo-platform-dev/nmp-automodel-tasks:dev"
+    assert get_tasks_image() == "my-registry/nemo-platform-dev/nmp-customizer-tasks:dev"

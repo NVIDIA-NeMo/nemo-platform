@@ -4,8 +4,8 @@ description: ""
 ---
 <a id="nemo-ms-admin-setup-overview"></a>
 
-This section describes how to set up the NeMo Platform on your Kubernetes cluster using the NeMo Platform Helm Chart.
-With this chart, you can deploy the NeMo Platform as a full deployment or a subset of the APIs as you need.
+This section describes how to deploy NeMo Platform to a Kubernetes cluster using the NeMo Platform Helm chart.
+The chart is the supported path for self-managed clusters such as minikube, kind, EKS, AKS, GKE, OKE, OpenShift, and on-prem Kubernetes.
 
 This Platform Setup chapter is for the following personas.
 
@@ -16,11 +16,11 @@ This Platform Setup chapter is for the following personas.
 <a id="nemo-ms-about-parent-helm-chart"></a>
 ## NeMo Platform Helm Chart
 
-The [NeMo Platform Helm Chart](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo-microservices/helm-charts/nemo-platform) is an all-in-one Helm chart that bundles the complete NeMo Platform ecosystem and all required dependencies for full platform deployment.
+The NeMo Platform Helm chart is published in the `nvidia/nemo-platform` NGC org. The chart deploys the platform API, controllers, storage integration, and dependencies required for a full self-managed deployment.
 
-You can also customize the configuration of your installation by updating the `values.yaml` file. You can also use the pre-configured tags to install only specific microservices that you need.
+Customize the installation by updating a pinned `values.yaml` file for your target cluster. For chart assets and additional details, see the [NeMo Platform artifacts in NGC](https://catalog.ngc.nvidia.com/orgs/nvidia/nemo-platform).
 
-For the chart assets and additional details, refer to the [NeMo Platform Collection](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo-microservices/collections/nemo-microservices) page in the NVIDIA NGC Catalog.
+The install guide uses `NMP_HELM_CHART_VERSION` so every install and upgrade is tied to a specific chart version.
 
 ---
 
@@ -30,9 +30,9 @@ The following sections provide detailed instructions on how to deploy the NeMo P
 
 <Cards>
 
-<Card title="Install }" href="/documentation/self-managed-deployment/setup/helm/overview">
+<Card title="Install" href="/documentation/self-managed-deployment/setup/helm">
 
-Install the NeMo Platform using the chart on your Kubernetes cluster.
+Install NeMo Platform with Helm on a Kubernetes cluster.
 
 <small><span class="md-tag">cluster-admin</span></small>
 
@@ -50,7 +50,7 @@ Review and manage other cluster settings.
 
 <Card title="OpenTelemetry" href="/documentation/self-managed-deployment/setup/observability">
 
-Review and configure how NeMo Platform use Open Telemetry for observability.
+Review and configure how NeMo Platform uses OpenTelemetry for observability.
 
 </Card>
 <Card title="Milvus" href="/documentation/self-managed-deployment/setup/milvus">

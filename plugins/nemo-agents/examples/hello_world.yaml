@@ -24,3 +24,11 @@ workflow:
    verbose: true
    # Retry up to 3 times
    parse_agent_response_max_retries: 3
+
+general:
+   telemetry:
+      tracing:
+         nemo_trace:
+            _type: nemo_files
+            # workspace and agent_name are injected at deploy time
+            batch_size: 128

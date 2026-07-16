@@ -21,9 +21,7 @@ version = "0.0.0"
 dev = ["pytest>=8.3.4", "pytest-asyncio>=0.25.3", "pytest-mock>=3.14.0"]
 
 [project.scripts]
-nmp-automodel-file-io = "nmp.automodel.tasks.file_io:run"
 nmp-automodel-training = "nmp.automodel.tasks.training.__main__:run"
-nmp-automodel-model-entity = "nmp.automodel.tasks.model_entity.__main__:run"
 
 [build-system]
 requires = ["hatchling"]

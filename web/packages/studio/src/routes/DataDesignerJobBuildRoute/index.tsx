@@ -191,6 +191,7 @@ export const DataDesignerJobBuildRoute: FC = () => {
             modelGroups={modelGroups}
             isLoadingModels={isLoadingModels}
             onAddColumn={builder.handleAddColumn}
+            disabledColumnReasons={builder.disabledColumnReasons}
             onAddModel={builder.handleAddModel}
             onSelectModel={builder.selectModel}
           />

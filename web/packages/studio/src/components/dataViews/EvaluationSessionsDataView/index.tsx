@@ -151,7 +151,7 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
     accessor,
   }) => [
     accessor('test_case_id', {
-      header: 'Case',
+      header: 'Test case',
       enableSorting: false,
       size: 200,
       cell: ({ row }) => {

@@ -32,8 +32,6 @@ def get_percentage(current: int, total: int) -> int:
     if total <= 0:
         return 0
     if current > total or current < 0:
-        # Benign (see docstring) but worth a breadcrumb now that we no longer
-        # raise — the old hard error is what previously surfaced count drift.
         logger.debug("get_percentage clamping out-of-range progress: current=%s total=%s", current, total)
     current = max(0, min(current, total))
     return int((current / total) * 100)
@@ -94,8 +92,6 @@ class TqdmPerFileDownloadCallback(Callback):
             except ValueError:
                 relative_path = dest_full_path.name
 
-        # full_src_path looks like "workspace/fileset/relative/path/file.txt".
-        # Strip the prefix to look up the size by relative path.
         relative_file_path = full_src_path
         if full_src_path.startswith(self.fileset_path):
             relative_file_path = full_src_path[len(self.fileset_path) :].lstrip("/")
@@ -112,8 +108,6 @@ class TqdmPerFileDownloadCallback(Callback):
             },
         )
 
-        # set_size() rather than tqdm_kwargs["total"] so the SDK can also
-        # call set_size() from a Content-Length header without conflict.
         if file_size is not None:
             callback.set_size(file_size)
 
@@ -121,15 +115,7 @@ class TqdmPerFileDownloadCallback(Callback):
 
 
 class BaseProgressCallback(Callback):
-    """Base class for file upload/download progress callbacks.
-
-    Tracks file transfer progress and reports to the Jobs service.
-    Subclasses implement upload-vs-download behavior.
-
-    Thread Safety:
-        Uses ``threading.Lock`` to protect stats updates because
-        FilesetFileSystem transfers files concurrently.
-    """
+    """Base class for file upload/download progress callbacks."""
 
     progress_reporter: ProgressReporter
     fileset_name: str
@@ -167,13 +153,7 @@ class BaseProgressCallback(Callback):
 
 
 class BaseSingleFileCallback(Callback):
-    """Base class for per-file callbacks within a batch operation.
-
-    Uses the template-method pattern: ``close()`` runs the shared
-    state-update + progress-report sequence, while subclasses customize
-    via ``_get_phase``, ``_get_file_display_path``, ``_update_stats``,
-    ``_get_files_count``, and ``_build_status_details``.
-    """
+    """Base class for per-file callbacks within a batch operation."""
 
     parent: BaseProgressCallback
     source_path: str
@@ -234,7 +214,6 @@ class BaseSingleFileCallback(Callback):
 
         logger.debug(f"File transferred: {current_file} ({files_count}/{parent.total_files})")
 
-        # Report outside the lock — don't block other threads on the network call.
         parent.progress_reporter.update_progress(
             status=PlatformJobStatus.ACTIVE,
             status_details=self._build_status_details(files_count, total_bytes, current_file),
@@ -409,12 +388,7 @@ class SingleFileDownloadCallback(BaseSingleFileCallback):
 
 
 class CompositeCallback(Callback):
-    """A callback that delegates to multiple child callbacks.
-
-    Lets us combine console-side ``TqdmCallback`` and Jobs-service
-    ``File{Upload,Download}ProgressCallback`` into one callback object
-    passed to fsspec operations.
-    """
+    """A callback that delegates to multiple child callbacks."""
 
     def __init__(self, *callbacks: Callback, **kwargs: Any):
         super().__init__(**kwargs)

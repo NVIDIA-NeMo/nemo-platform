@@ -52,21 +52,34 @@ const STATIC_SORT_FIELD_MAP: Readonly<Record<string, string>> = {
 // Resolves a group's default_sort (a `sort`-param string like `-cost_usd.mean` or `-created_at`) to
 // the table's initial sort so the matching column header shows the sort on load. Entity columns map
 // by exact id; metric columns match on the family (any stat) since the column always sorts on `.mean`.
+// Maps one API sort field to its table column id: entity columns by exact id; metric columns by
+// family (any stat) since the column always sorts on `.mean`.
+const sortFieldToColumnId = (field: string): string | undefined => {
+  if (field === 'name' || field === 'created_at' || field === 'run_count') return field;
+  if (field.startsWith('cost_usd.')) return 'cost_usd';
+  if (field.startsWith('latency_ms.')) return 'latency_ms';
+  const evaluatorMatch = field.match(/^evaluators\.(.+)\.[^.]+$/);
+  if (evaluatorMatch) return `evaluator-${evaluatorMatch[1]}`;
+  return undefined;
+};
+
+// Seeds the table's (multi-column) initial sort from the group's default_sort — a comma-separated,
+// ordered list of API sort fields — so the column headers reflect the saved order on load.
 const seedSortFromDefault = (
   defaultSort: string | null | undefined
-): { id: string; desc: boolean } | undefined => {
+): { id: string; desc: boolean }[] | undefined => {
   if (!defaultSort) return undefined;
-  const desc = defaultSort.startsWith('-');
-  const field = desc ? defaultSort.slice(1) : defaultSort;
-  let id: string | undefined;
-  if (field === 'name' || field === 'created_at' || field === 'run_count') id = field;
-  else if (field.startsWith('cost_usd.')) id = 'cost_usd';
-  else if (field.startsWith('latency_ms.')) id = 'latency_ms';
-  else {
-    const evaluatorMatch = field.match(/^evaluators\.(.+)\.[^.]+$/);
-    if (evaluatorMatch) id = `evaluator-${evaluatorMatch[1]}`;
-  }
-  return id ? { id, desc } : undefined;
+  const entries = defaultSort
+    .split(',')
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .map((token) => {
+      const desc = token.startsWith('-');
+      const id = sortFieldToColumnId(desc ? token.slice(1) : token);
+      return id ? { id, desc } : undefined;
+    })
+    .filter((entry): entry is { id: string; desc: boolean } => entry !== undefined);
+  return entries.length ? entries : undefined;
 };
 
 // Maps a filter column id to its dotted API rollup-stat field (required by the backend parser).
@@ -79,21 +92,32 @@ const getEvaluationFilterField = (id: string): string | undefined => {
   return undefined;
 };
 
-const getEvaluationSortParam = (
-  sortingState: { id: string; desc: boolean }[]
-): ListEvaluationsSortParam | undefined => {
-  const [first] = sortingState;
-  // No column sort -> omit `sort`; the API then defaults to -created_at with pinned first.
-  if (!first) return undefined;
-  let field = STATIC_SORT_FIELD_MAP[first.id];
+// Resolves one sorting-state entry to its API sort field (with '-' prefix for descending), or
+// undefined when the column has no corresponding API sort field.
+const resolveEvaluationSortField = (entry: { id: string; desc: boolean }): string | undefined => {
+  let field = STATIC_SORT_FIELD_MAP[entry.id];
   if (!field) {
     // Evaluator columns use id `evaluator-<name>` so the API field can be derived without
     // a separate lookup into evaluatorNames (which would create a circular dependency).
-    const evaluatorMatch = first.id.match(/^evaluator-(.+)$/);
+    const evaluatorMatch = entry.id.match(/^evaluator-(.+)$/);
     if (evaluatorMatch) field = `evaluators.${evaluatorMatch[1]}.mean`;
   }
-  if (!field) return DEFAULT_SORT;
-  return `${first.desc ? '-' : ''}${field}` as ListEvaluationsSortParam;
+  if (!field) return undefined;
+  return `${entry.desc ? '-' : ''}${field}`;
+};
+
+// Emits the API `sort` param from the table's (multi-column) sorting state: a comma-separated,
+// ordered list of fields — the first sorted column dominates, matching the API's key precedence.
+const getEvaluationSortParam = (
+  sortingState: { id: string; desc: boolean }[]
+): ListEvaluationsSortParam | undefined => {
+  // No column sort -> omit `sort`; the API then defaults to -created_at with pinned first.
+  if (sortingState.length === 0) return undefined;
+  const fields = sortingState
+    .map(resolveEvaluationSortField)
+    .filter((field): field is string => field !== undefined);
+  if (fields.length === 0) return DEFAULT_SORT;
+  return fields.join(',') as ListEvaluationsSortParam;
 };
 
 interface ExperimentGroupDataViewProps {
@@ -132,6 +156,8 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
 
   const dataViewState = useStudioDataViewState<EvaluationFilter>({
     defaultSort,
+    // The evaluations leaderboard supports multi-column sort (shift-click) — score vs. cost etc.
+    multiSort: true,
     columnVisibility: { created_by: false, updated_at: false },
     // Keep the pin toggle reachable while horizontally scrolling this wide table.
     columnPinning: { left: ['pin'] },

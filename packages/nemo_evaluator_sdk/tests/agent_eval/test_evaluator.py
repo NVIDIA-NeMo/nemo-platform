@@ -41,7 +41,7 @@ from nemo_evaluator_sdk.values.results import AggregateScore
 
 
 def test_trial_from_sample_falls_back_to_reasoning_content() -> None:
-    task = AgentEvalTask(id="task-1", intent="Answer.", inputs={"prompt": "Q?"})
+    task = AgentEvalTask(id="task-1", intent="Answer.", inputs={"instruction": "Q?"})
     target = Model(name="reasoning-model", url="https://example/v1/chat/completions")
     response = {"choices": [{"message": {"content": None, "reasoning_content": "the reasoned answer"}}]}
 
@@ -56,7 +56,7 @@ def test_trial_from_sample_falls_back_to_reasoning_content() -> None:
 
 
 def test_trial_from_sample_fallback_trace_has_trace_kind() -> None:
-    task = AgentEvalTask(id="task-1", intent="Answer.", inputs={"prompt": "Q?"})
+    task = AgentEvalTask(id="task-1", intent="Answer.", inputs={"instruction": "Q?"})
     target = Model(name="target", url="https://example/v1/chat/completions")
 
     trial = _trial_from_sample(task, target, {"output_text": "answer"})
@@ -67,7 +67,7 @@ def test_trial_from_sample_fallback_trace_has_trace_kind() -> None:
 
 
 def test_trial_from_sample_preserves_typed_trace_and_canonical_metadata() -> None:
-    task = AgentEvalTask(id="task-1", intent="Answer.", inputs={"prompt": "Q?"})
+    task = AgentEvalTask(id="task-1", intent="Answer.", inputs={"instruction": "Q?"})
     target = Model(name="canonical-target", url="https://example/v1/chat/completions")
     typed_trace = {
         "schema_version": "ATIF-v1.7",
@@ -200,7 +200,7 @@ def _task(metric: Any | None = None, *, task_id: str = "task-1") -> AgentEvalTas
     return AgentEvalTask(
         id=task_id,
         intent="Answer a professional benchmark prompt.",
-        inputs={"prompt": "What is the answer?", "domain": "Finance MBA"},
+        inputs={"instruction": "What is the answer?", "domain": "Finance MBA"},
         metrics=[metric or _ConstantMetric()],
         metadata={"benchmark": "Example", "domain": "Finance MBA"},
     )
@@ -363,7 +363,9 @@ async def test_live_model_generation_with_mocked_inference() -> None:
 
 
 @pytest.mark.asyncio
-async def test_live_model_generation_uses_instruction_when_prompt_is_absent() -> None:
+async def test_live_model_generation_completions_endpoint_prompts_with_instruction() -> None:
+    # A bare /v1/completions endpoint uses the `{"prompt": ...}` request shape; the task instruction
+    # is rendered into that wire field (there is no chat `messages` wrapper).
     async def fake_model_inference(
         model: Model,
         request: dict[str, Any],
@@ -371,16 +373,17 @@ async def test_live_model_generation_uses_instruction_when_prompt_is_absent() ->
         **kwargs: Any,
     ) -> dict[str, Any]:
         del model, max_retries, kwargs
-        assert request["messages"][0]["content"] == "Use the task instruction."
-        return {"choices": [{"message": {"role": "assistant", "content": "Generated model answer"}}]}
+        assert request["prompt"] == "Use the task instruction."
+        assert "messages" not in request
+        return {"choices": [{"text": "Generated model answer"}]}
 
     task = AgentEvalTask(
         id="task-1",
-        intent="Fallback intent.",
+        intent="Answer the instruction.",
         inputs={"instruction": "Use the task instruction."},
         metrics=[_ConstantMetric()],
     )
-    model = Model(url="https://model.test/v1/chat/completions", name="target-model", format=ModelFormat.OPEN_AI)
+    model = Model(url="https://model.test/v1/completions", name="target-model", format=ModelFormat.OPEN_AI)
 
     await AgentEvaluator(inference_fn=fake_model_inference).run(
         tasks=[task],
@@ -395,7 +398,7 @@ async def test_metric_failure_records_failed_score_and_does_not_stop_other_metri
     other_task = AgentEvalTask(
         id="task-2",
         intent="Answer another prompt.",
-        inputs={"prompt": "Another question?"},
+        inputs={"instruction": "Another question?"},
         metrics=[_OtherMetric()],
     )
     trials = [
@@ -435,7 +438,7 @@ def test_summary_reports_coverage_and_merges_views_into_scores() -> None:
     task = AgentEvalTask(
         id="task-1",
         intent="Answer a prompt.",
-        inputs={"prompt": "Question?"},
+        inputs={"instruction": "Question?"},
         metrics=[_ConstantMetric(), _OtherMetric()],
         views={
             "outcome_correctness": SemanticView(
@@ -471,7 +474,10 @@ async def test_live_agent_generation_preserves_trace_evidence_for_metrics() -> N
         **kwargs: Any,
     ) -> dict[str, Any]:
         del agent, kwargs
-        assert request["messages"][0]["content"] == "What is the answer?"
+        # A generic HTTP agent receives the task row directly — no chat/completions wrapper — so its
+        # `body` template can reference task inputs such as `{{ instruction }}`.
+        assert "messages" not in request
+        assert request["instruction"] == "What is the answer?"
         return {
             "choices": [{"message": {"role": "assistant", "content": "Generated agent answer"}}],
             "trajectory": [{"tool": "search", "line": 3}],
@@ -481,7 +487,7 @@ async def test_live_agent_generation_preserves_trace_evidence_for_metrics() -> N
         url="https://agent.test",
         name="target-agent",
         format=AgentFormat.GENERIC,
-        body={"input": "{{ messages[-1].content }}"},
+        body={"input": "{{ instruction }}"},
         response_path="$.answer",
     )
     result = await AgentEvaluator(inference_fn=fake_agent_inference).run(
@@ -627,7 +633,7 @@ async def test_default_agent_invocation_receives_run_context_and_evidence_dir(tm
     )
     agent = NemoAgentToolkitAgent(url="https://agent.test", name="target-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
     prompt_template = {
-        "input_message": "{{ item.prompt }}",
+        "input_message": "{{ item.instruction }}",
         "conversation_id": ("{{ agent_eval.run_id }}-{{ agent_eval.task_id }}-{{ agent_eval.invocation_id }}"),
     }
 
@@ -794,7 +800,7 @@ async def test_run_rejects_tasks_without_trials() -> None:
     other_task = AgentEvalTask(
         id="task-2",
         intent="Answer another prompt.",
-        inputs={"prompt": "Another question?"},
+        inputs={"instruction": "Another question?"},
         metrics=[_OtherMetric()],
     )
 

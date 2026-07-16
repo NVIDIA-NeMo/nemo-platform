@@ -40,19 +40,21 @@ You can override the default values for the NeMo Platform chart to make it compa
 2. **Install** with your custom values and the OpenShift overrides (order matters; later files override earlier). Complete the [Prerequisites](/documentation/self-managed-deployment/setup/helm/prerequisites) and follow [Install](/documentation/self-managed-deployment/setup/helm/install), using the provided OpenShift values file.
 
  ```sh
- helm upgrade --install --namespace <namespace-to-install-nemo-microservices> \
- nemo-platform nmp/nemo-platform \
- -f values.yaml \
- -f openshift-values.yaml
+ helm upgrade --install "$NMP_HELM_RELEASE" nemo-platform/nemo-platform \
+   --version "$NMP_HELM_CHART_VERSION" \
+   --namespace "$NMP_NAMESPACE" \
+   --create-namespace \
+   -f values.yaml \
+   -f openshift-values.yaml
  ```
 
 ## Ingress
 
 You can expose the API using the following methods:
 
-- **Kubernetes Ingress** — supported by OpenShift’s default IngressController; set `ingress.enabled: true` and `ingress.defaultHost` as in [Ingress](/documentation/self-managed-deployment/setup/helm/ingress).
-- **Gateway API HTTPRoute** — optional; configure `httpRoute` in values. See [Gateway API HTTPRoute](/documentation/self-managed-deployment/setup/helm/ingress#gateway-api-httproute).
-- **OpenShift Route** — enable the chart’s Route and set an optional hostname. See [OpenShift Route](/documentation/self-managed-deployment/setup/helm/ingress#openshift-route) for steps.
+- **Kubernetes Ingress** - supported by OpenShift's default IngressController; set `ingress.enabled: true` and `ingress.defaultHost` as in [Ingress](/documentation/self-managed-deployment/setup/helm/ingress).
+- **Gateway API HTTPRoute** - optional; configure `httpRoute` in values. See [Gateway API HTTPRoute](/documentation/self-managed-deployment/setup/helm/ingress#gateway-api-httproute).
+- **OpenShift Route** - enable the chart's Route and set an optional hostname. See [OpenShift Route](/documentation/self-managed-deployment/setup/helm/ingress#openshift-route) for steps.
 
 ## Troubleshooting
 
@@ -62,5 +64,8 @@ If you see "unable to validate against any security context constraint" or "cont
 If you want to validate your values are being applied correctly, you can use the `helm template` command to see the rendered templates.
 
 ```sh
-helm template nemo-platform nmp/nemo-platform -f values.yaml -f openshift-values.yaml
+helm template "$NMP_HELM_RELEASE" nemo-platform/nemo-platform \
+  --version "$NMP_HELM_CHART_VERSION" \
+  -f values.yaml \
+  -f openshift-values.yaml
 ```

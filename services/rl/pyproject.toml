@@ -30,8 +30,6 @@ integrations = [
 [project.scripts]
 # Container entrypoints. Names match the automodel/unsloth pattern for parity.
 nmp-rl-training = "nmp.rl.tasks.training.__main__:main"
-nmp-rl-file-io = "nmp.rl.tasks.file_io.run:run"
-nmp-rl-model-entity = "nmp.rl.tasks.model_entity.__main__:run"
 
 [build-system]
 requires = ["hatchling"]

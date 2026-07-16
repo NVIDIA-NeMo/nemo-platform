@@ -30,11 +30,8 @@ vi.mock('../../components/DataView/internal', () => ({
       if (options?.pagination) {
         mockPaginationState = { ...options.pagination };
       }
-      if (options?.sorting) {
-        mockSortingState = [options.sorting];
-      } else {
-        mockSortingState = [];
-      }
+      // Mirror the real useSortingState: the initial sort is always an ordered array.
+      mockSortingState = options?.sorting ?? [];
       if (options?.searchBar) {
         mockSearchBarState = options.searchBar;
       }
@@ -205,13 +202,34 @@ describe('useStudioDataViewState', () => {
       expect(result.current.sorting.state).toEqual([{ id: 'name', desc: false }]);
     });
 
+    it('parses an ordered multi-field sort from the URL when multiSort is enabled', () => {
+      const wrapper = createWrapper(['/?sort=-cost_usd.mean,name']);
+
+      const { result } = renderHook(() => useStudioDataViewState({ multiSort: true }), { wrapper });
+
+      expect(result.current.sorting.state).toEqual([
+        { id: 'cost_usd.mean', desc: true },
+        { id: 'name', desc: false },
+      ]);
+    });
+
+    it('reads only the first field when multiSort is disabled (single-sort default)', () => {
+      // A multi-field URL must be truncated to its first field in single-sort mode, not parsed as
+      // one malformed comma-joined id.
+      const wrapper = createWrapper(['/?sort=-cost_usd.mean,name']);
+
+      const { result } = renderHook(() => useStudioDataViewState(), { wrapper });
+
+      expect(result.current.sorting.state).toEqual([{ id: 'cost_usd.mean', desc: true }]);
+    });
+
     it('should use defaultSort when URL has no sort param', () => {
       const wrapper = createWrapper(['/']);
 
       const { result } = renderHook(
         () =>
           useStudioDataViewState({
-            defaultSort: { id: 'updated_at', desc: true },
+            defaultSort: [{ id: 'updated_at', desc: true }],
           }),
         { wrapper }
       );
@@ -225,7 +243,7 @@ describe('useStudioDataViewState', () => {
       const { result } = renderHook(
         () =>
           useStudioDataViewState({
-            defaultSort: { id: 'name', desc: false },
+            defaultSort: [{ id: 'name', desc: false }],
           }),
         { wrapper }
       );
@@ -239,7 +257,7 @@ describe('useStudioDataViewState', () => {
       const { result } = renderHook(
         () =>
           useStudioDataViewState({
-            defaultSort: { id: 'created_at', desc: true },
+            defaultSort: [{ id: 'created_at', desc: true }],
           }),
         { wrapper }
       );
@@ -352,7 +370,7 @@ describe('useStudioDataViewState', () => {
       const { rerender } = renderHook(
         () =>
           useStudioDataViewState({
-            defaultSort: { id: 'created_at', desc: true },
+            defaultSort: [{ id: 'created_at', desc: true }],
           }),
         { wrapper }
       );
@@ -489,7 +507,7 @@ describe('useStudioDataViewState', () => {
       const { result } = renderHook(
         () =>
           useStudioDataViewState({
-            defaultSort: { id: 'created_at', desc: true },
+            defaultSort: [{ id: 'created_at', desc: true }],
           }),
         { wrapper }
       );

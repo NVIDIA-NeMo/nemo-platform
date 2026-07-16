@@ -18,6 +18,11 @@ const matchesQuery = (option: ColumnTypeOption, query: string): boolean =>
 export interface AddColumnPaletteProps {
   /** Called with the chosen column type when an option is activated. */
   onAddColumn?: (selection: AddColumnSelection) => void;
+  /**
+   * Disabled reasons keyed by column type. An option whose column type has an entry renders as a
+   * disabled card with the reason as its tooltip — e.g. `{ 'seed-dataset': 'Only one…' }`.
+   */
+  disabledReasons?: Partial<Record<string, string>>;
   className?: string;
 }
 
@@ -30,7 +35,11 @@ export interface AddColumnPaletteProps {
  * presentational: wire {@link AddColumnPaletteProps.onAddColumn} to append a column to
  * the recipe.
  */
-export const AddColumnPalette: FC<AddColumnPaletteProps> = ({ onAddColumn, className }) => {
+export const AddColumnPalette: FC<AddColumnPaletteProps> = ({
+  onAddColumn,
+  disabledReasons,
+  className,
+}) => {
   const [search, setSearch] = useState('');
 
   const handleSelect = (selection: AddColumnSelection) => onAddColumn?.(selection);
@@ -76,6 +85,7 @@ export const AddColumnPalette: FC<AddColumnPaletteProps> = ({ onAddColumn, class
               group={group}
               options={options}
               onSelect={handleSelect}
+              disabledReasons={disabledReasons}
             />
           ))
         )}

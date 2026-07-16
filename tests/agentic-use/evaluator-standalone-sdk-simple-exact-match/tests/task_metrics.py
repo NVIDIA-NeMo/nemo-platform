@@ -5,6 +5,7 @@
 
 import asyncio
 import contextlib
+import difflib
 import io
 import subprocess
 from pathlib import Path
@@ -12,7 +13,7 @@ from pathlib import Path
 from evaluator_agent_eval.task_config import load_agentic_use_task_config
 from evaluator_agent_eval.task_metric_utils import contains_all, run_python_file, score_checks
 from nemo_evaluator_sdk import Evaluator, ExactMatchMetric
-from nemo_evaluator_sdk.values.results import MetricResult, MetricScore
+from nemo_evaluator_sdk.values.protocol import MetricDiagnostic, MetricOutput, MetricResult
 
 
 class ExactMatchEvaluationMetric:
@@ -55,12 +56,25 @@ class ExactMatchEvaluationMetric:
                 summary_matches,
             ]
         )
+        diagnostics: list[MetricDiagnostic] = []
+        if code_ran and not summary_matches:
+            diagnostics.append(
+                MetricDiagnostic(
+                    message="summary mismatch",
+                    details={
+                        "expected": expected_summary,
+                        "actual": actual_summary,
+                        "diff": _summary_diff(expected_summary, actual_summary),
+                    },
+                )
+            )
         return MetricResult(
-            scores=[
-                MetricScore(name="task_success", value=float(task_success)),
-                MetricScore(name="verification_score", value=verification_score),
-                MetricScore(name="output_schema_valid", value=float(output_schema_valid)),
-            ]
+            outputs=[
+                MetricOutput(name="task_success", value=float(task_success)),
+                MetricOutput(name="verification_score", value=verification_score),
+                MetricOutput(name="output_schema_valid", value=float(output_schema_valid)),
+            ],
+            diagnostics=diagnostics,
         )
 
 
@@ -128,6 +142,18 @@ def _repo_root(path: Path | None) -> Path:
 
 def _normalize_summary(text: str) -> str:
     return text.strip().replace("\r\n", "\n")
+
+
+def _summary_diff(expected: str, actual: str) -> str:
+    return "\n".join(
+        difflib.unified_diff(
+            _normalize_summary(expected).splitlines(),
+            _normalize_summary(actual).splitlines(),
+            fromfile="expected",
+            tofile="actual",
+            lineterm="",
+        )
+    )
 
 
 def _required_terms(item: dict) -> list[str]:

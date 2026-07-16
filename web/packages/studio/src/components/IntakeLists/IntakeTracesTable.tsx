@@ -66,7 +66,7 @@ const SeededIntakeTracesTable: FC<
   const requestWorkspace = workspace ?? '';
 
   const dataViewState = useStudioDataViewState({
-    defaultSort: { id: 'started_at', desc: true },
+    defaultSort: [{ id: 'started_at', desc: true }],
   });
 
   // The seeded started_at default doesn't count as user filtering: an empty

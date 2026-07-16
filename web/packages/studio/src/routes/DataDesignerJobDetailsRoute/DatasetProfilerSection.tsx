@@ -1,8 +1,18 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { LogViewer } from '@nemo/common/src/components/LogViewer';
 import { PlatformJobTerminalStatuses } from '@nemo/common/src/constants/query';
-import { Flex, Grid, ProgressBar, Skeleton, Stack, Text } from '@nvidia/foundations-react-core';
+import { useJobLogs } from '@nemo/common/src/hooks/useJobLogs';
+import {
+  Card,
+  Flex,
+  Grid,
+  ProgressBar,
+  Skeleton,
+  Stack,
+  Text,
+} from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/Empty';
 import { ColumnProfileCard } from '@studio/routes/DataDesignerJobDetailsRoute/ColumnProfileCard';
 import {
@@ -30,17 +40,24 @@ export const DatasetProfilerSection: FC = () => {
     { enabled: isTerminal }
   );
 
-  // Job still running: the profiler hasn't produced an analysis result yet.
-  if (!isTerminal) {
-    return <Empty title="The dataset profile will appear here once the job completes." />;
-  }
+  const { data: logs, isLoading: isLogsLoading } = useJobLogs({
+    workspace,
+    name: jobName,
+    jobStatus: job?.status,
+    enabled: isTerminal,
+  });
 
-  if (isError) {
+  const CardWrapper: FC<{ children: React.ReactNode }> = ({ children }) => (
+    <Card className="w-full h-full">{children}</Card>
+  );
+
+  if (!isTerminal) {
     return (
-      <Empty
-        title="Failed to load dataset profile"
-        description="The profiler analysis could not be loaded for this job."
-      />
+      <CardWrapper>
+        <Flex className="self-center justify-self-center" gap="2">
+          <Empty title="The dataset profile will appear here once the job completes." />
+        </Flex>
+      </CardWrapper>
     );
   }
 
@@ -54,8 +71,30 @@ export const DatasetProfilerSection: FC = () => {
     );
   }
 
-  if (!hasAnalysis) {
-    return <Empty title="No dataset profile was generated for this job." />;
+  if (isError || !hasAnalysis) {
+    return (
+      <CardWrapper>
+        <Stack gap="density-2xl" className="overflow-hidden">
+          <Empty
+            title={
+              isError
+                ? 'Failed to load dataset profile'
+                : 'No dataset profile was generated for this job.'
+            }
+            description={
+              isError
+                ? 'The profiler analysis could not be loaded for this job. Review the job logs below for details.'
+                : 'Review the job logs below for details.'
+            }
+          />
+          <LogViewer
+            logs={logs}
+            isLoading={isLogsLoading}
+            downloadFilename={`data-designer-${jobName}-logs.txt`}
+          />
+        </Stack>
+      </CardWrapper>
+    );
   }
 
   const columns = analysis?.column_statistics ?? [];

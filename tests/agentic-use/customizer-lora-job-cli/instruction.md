@@ -87,7 +87,7 @@ The task is complete when:
 
 ## Notes
 
-- LoRA/SFT training uses the **automodel** contributor (`nmp-automodel-training` / `nmp-automodel-tasks` images), not the legacy customizer automodel path
+- LoRA/SFT training uses the **automodel** contributor (`nmp-automodel-training` / `nmp-customizer-tasks` images), not the legacy customizer automodel path
 - Model reference format: `workspace/model-entity-name` (e.g., `lora-training-workspace/smollm-135m`)
 - Dataset reference format in job JSON: `workspace/fileset-name` inside `dataset.training`
 - Jobs may take a few minutes depending on dataset size and GPU availability

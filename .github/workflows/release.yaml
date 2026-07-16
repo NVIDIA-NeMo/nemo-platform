@@ -49,9 +49,9 @@ on:
       container-ids:
         description: >-
           Custom only. Comma-separated container IDs.
-          Allowed: nmp-api, nmp-cpu-tasks, nmp-automodel-tasks,
-          nmp-automodel-training, nmp-unsloth-training, auditor-tasks,
-          safe-synthesizer-tasks.
+          Allowed: nmp-api, nmp-cpu-tasks, nmp-customizer-tasks,
+          nmp-automodel-training, nmp-unsloth-training, nmp-rl-training,
+          auditor-tasks, safe-synthesizer-tasks.
         required: false
         type: string
         default: ""
@@ -60,6 +60,11 @@ on:
         required: false
         type: boolean
         default: false
+      helm-version:
+        description: "Optional exact Helm chart version override for stable Helm-only releases."
+        required: false
+        type: string
+        default: ""
       update-ngc-metadata:
         description: "Synchronize NGC metadata from the this branch."
         required: false
@@ -112,9 +117,10 @@ env:
     [
       {"id":"nmp-api","target":"nmp-api-docker"},
       {"id":"nmp-cpu-tasks","target":"nmp-cpu-tasks-docker"},
-      {"id":"nmp-automodel-tasks","target":"nmp-automodel-tasks-docker"},
+      {"id":"nmp-customizer-tasks","target":"nmp-customizer-tasks"},
       {"id":"nmp-automodel-training","target":"nmp-automodel-training-docker"},
       {"id":"nmp-unsloth-training","target":"nmp-unsloth-training"},
+      {"id":"nmp-rl-training","target":"nmp-rl-training"},
       {"id":"auditor-tasks","target":"auditor-tasks-docker"},
       {"id":"safe-synthesizer-tasks","target":"safe-synthesizer-tasks-docker"}
     ]
@@ -143,11 +149,13 @@ jobs:
       release_label: ${{ steps.plan.outputs.release_label }}
       nightly_timestamp: ${{ steps.plan.outputs.nightly_timestamp }}
       wheel_version: ${{ steps.wheel-version.outputs.wheel_version }}
+      helm_version: ${{ steps.helm-version.outputs.helm_version }}
       wheel_ids: ${{ steps.plan.outputs.wheel_ids }}
       container_ids: ${{ steps.plan.outputs.container_ids }}
       has_wheels: ${{ steps.plan.outputs.has_wheels }}
       has_containers: ${{ steps.plan.outputs.has_containers }}
       include_helm: ${{ steps.plan.outputs.include_helm }}
+      helm_version_override: ${{ steps.plan.outputs.helm_version_override }}
       update_ngc_metadata: ${{ steps.plan.outputs.update_ngc_metadata }}
       send_notifications: ${{ steps.plan.outputs.send_notifications }}
       dry_run: ${{ steps.plan.outputs.dry_run }}
@@ -166,6 +174,14 @@ jobs:
             const allContainers = JSON.parse(process.env.RELEASE_CONTAINERS_JSON);
             const allWheelIds = allWheels.map((wheel) => wheel.id);
             const allContainerIds = allContainers.map((container) => container.id);
+            const semverCorePattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+            // ECMA-compatible SemVer 2.0.0 pattern from https://semver.org/.
+            const semverPattern = new RegExp(
+              "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)"
+              + "(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)"
+              + "(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
+              + "(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+            );
             const inputs = context.payload.inputs ?? {};
             const isManual = context.eventName === "workflow_dispatch";
             const releaseType = isManual ? inputs["release-type"] : "nightly";
@@ -173,6 +189,7 @@ jobs:
             const updateNgcMetadata = isManual && inputs["update-ngc-metadata"] === "true";
             const sendNotifications = inputs["send-notifications"] !== "false";
             const dryRun = isManual && inputs["dry-run"] === "true";
+            const helmVersionOverride = isManual ? (inputs["helm-version"] ?? "").trim() : "";
 
             let sourceSha = isManual ? (inputs["source-sha"] ?? "").trim() : context.sha;
             const version = releaseType === "stable" ? (inputs.version ?? "").trim() : "";
@@ -181,7 +198,7 @@ jobs:
               if (!/^[0-9a-f]{40}$/i.test(sourceSha)) {
                 throw new Error("Stable releases require an exact 40-character source SHA.");
               }
-              if (!/^\d+\.\d+\.\d+$/.test(version)) {
+              if (!semverCorePattern.test(version)) {
                 throw new Error("Stable releases require a MAJOR.MINOR.PATCH version.");
               }
             } else {
@@ -271,6 +288,20 @@ jobs:
             const wheelIds = wheels.map((wheel) => wheel.id);
             const containerIds = containers.map((container) => container.id);
 
+            if (helmVersionOverride) {
+              if (
+                releaseType !== "stable"
+                || !includeHelm
+                || wheelIds.length > 0
+                || containerIds.length > 0
+              ) {
+                throw new Error("helm-version can only be used for stable Helm-only releases.");
+              }
+              if (!semverPattern.test(helmVersionOverride)) {
+                throw new Error("helm-version must be a SemVer chart version.");
+              }
+            }
+
             const nightlyTimestamp = releaseType === "nightly"
               ? new Date().toISOString().replace(/\D/g, "").slice(0, 14)
               : "";
@@ -291,6 +322,7 @@ jobs:
             core.setOutput("has_wheels", String(wheelIds.length > 0));
             core.setOutput("has_containers", String(containerIds.length > 0));
             core.setOutput("include_helm", String(includeHelm));
+            core.setOutput("helm_version_override", helmVersionOverride);
             core.setOutput("update_ngc_metadata", String(updateNgcMetadata));
             core.setOutput("send_notifications", String(sendNotifications));
             core.setOutput("dry_run", String(dryRun));
@@ -446,6 +478,58 @@ jobs:
           fi
           wheel_version="$(python3 .github/scripts/stamp_sdk_version.py "${args[@]}")"
           echo "wheel_version=${wheel_version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Resolve Helm version
+        id: helm-version
+        if: steps.plan.outputs.include_helm == 'true'
+        shell: bash
+        env:
+          HELM_CHART: ${{ env.RELEASE_HELM_PATH }}
+          RELEASE_TYPE: ${{ steps.plan.outputs.release_type }}
+          RELEASE_VERSION: ${{ steps.plan.outputs.version }}
+          NIGHTLY_TIMESTAMP: ${{ steps.plan.outputs.nightly_timestamp }}
+          HELM_VERSION_OVERRIDE: ${{ steps.plan.outputs.helm_version_override }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${HELM_VERSION_OVERRIDE}" ]]; then
+            helm_version="${HELM_VERSION_OVERRIDE}"
+          elif [[ "${RELEASE_TYPE}" == "nightly" ]]; then
+            # Nightlies align to the release core from the latest release or
+            # RC tag. Build-metadata chart fixes use helm-version instead.
+            base_version="$(
+              git tag --merged HEAD --list \
+                | awk '
+                  /^[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$/ {
+                    sub(/-rc[0-9]+$/, "")
+                    print
+                  }
+                ' \
+                | sort -V -u \
+                | tail -n 1
+            )"
+            if [[ -z "${base_version}" ]]; then
+              base_version="$(
+                awk '
+                  $1 == "version:" {
+                    version = $2
+                    gsub(/^["'\''"]|["'\''"]$/, "", version)
+                    print version
+                    exit
+                  }
+                ' "${HELM_CHART}/Chart.yaml"
+              )"
+            fi
+            if [[ -z "${base_version}" ]]; then
+              echo "Unable to resolve Helm chart base version for nightly release." >&2
+              exit 1
+            fi
+            helm_version="${base_version}-nightly-${NIGHTLY_TIMESTAMP}"
+          else
+            helm_version="${RELEASE_VERSION}"
+          fi
+
+          echo "helm_version=${helm_version}" >> "${GITHUB_OUTPUT}"
 
   notify-start:
     # Start alerts intentionally run for dry runs so the webhook can be tested.
@@ -666,9 +750,8 @@ jobs:
           NIGHTLY_IMAGE_REGISTRY: ${{ env.RELEASE_NIGHTLY_CONTAINER_REGISTRY }}
           STABLE_IMAGE_REGISTRY: ${{ env.RELEASE_HELM_REGISTRY }}
           RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
-          RELEASE_VERSION: ${{ needs.plan-release.outputs.version }}
           RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
-          NIGHTLY_TIMESTAMP: ${{ needs.plan-release.outputs.nightly_timestamp }}
+          HELM_VERSION: ${{ needs.plan-release.outputs.helm_version }}
         run: |
           set -euo pipefail
 
@@ -680,16 +763,13 @@ jobs:
           helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
           helm dependency build "${chart_dir}"
 
-          chart_version="$(yq -r '.version' "${chart_dir}/Chart.yaml")"
           if [[ "${RELEASE_TYPE}" == "nightly" ]]; then
-            chart_version="${chart_version}-nightly-${NIGHTLY_TIMESTAMP}"
             release_registry="${NIGHTLY_IMAGE_REGISTRY}"
           else
-            # TODO: Decide whether stable chart versions should track the platform
-            # release version or remain independently managed in Chart.yaml.
-            chart_version="${RELEASE_VERSION}"
             release_registry="${STABLE_IMAGE_REGISTRY}"
           fi
+
+          chart_version="${HELM_VERSION}"
 
           yq -i ".platformConfig.platform.image_registry = \"${release_registry}\"" "${chart_dir}/values.yaml"
           yq -i ".api.image.repository = \"${release_registry}/nmp-api\"" "${chart_dir}/values.yaml"

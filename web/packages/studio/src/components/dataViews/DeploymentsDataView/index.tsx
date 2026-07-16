@@ -50,7 +50,7 @@ export const DeploymentsDataView: FC<DeploymentsDataViewProps> = ({
   attributes,
 }) => {
   const dataViewState = useStudioDataViewState({
-    defaultSort: { id: 'created_at', desc: true },
+    defaultSort: [{ id: 'created_at', desc: true }],
   });
 
   const resetFilters = useCallback(() => {

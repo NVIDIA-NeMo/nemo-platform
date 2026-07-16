@@ -606,14 +606,19 @@ def discover_harbor_tasks(dataset_path: str | Path) -> list[AgentEvalTask]:
         task_name = config.get("task", {}).get("name", task_dir.name)
         instruction_path = task_dir / "instruction.md"
         try:
-            intent = instruction_path.read_text(encoding="utf-8").strip() if instruction_path.is_file() else task_name
+            instruction = (
+                instruction_path.read_text(encoding="utf-8").strip() if instruction_path.is_file() else task_name
+            )
         except (OSError, UnicodeDecodeError) as exc:
             raise ValueError(f"unreadable Harbor instruction at {instruction_path}: {exc}") from exc
         tasks.append(
             AgentEvalTask(
                 id=task_name,
-                intent=intent,
-                inputs={"instruction": intent},
+                # `intent` is human-facing metadata, never shown to the agent; the task name is the
+                # only human label Harbor's task.toml provides. The instruction the agent acts on
+                # lives in `inputs["instruction"]`.
+                intent=task_name,
+                inputs={"instruction": instruction},
                 metrics=[HarborRewardMetric()],
                 metadata={"harbor_dataset_path": str(dataset_path), "harbor_task_dir": str(task_dir)},
             )

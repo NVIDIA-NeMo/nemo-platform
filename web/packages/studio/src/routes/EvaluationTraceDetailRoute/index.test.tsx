@@ -25,18 +25,18 @@ const renderTraceDetail = () =>
 describe('EvaluationTraceDetailRoute', () => {
   it('renders the trace detail content', async () => {
     renderTraceDetail();
-    expect(await screen.findByText('Trace Answer customer policy question')).toBeInTheDocument();
+    expect(await screen.findByText('Test case: case-0042')).toBeInTheDocument();
   });
 
   it('renders the evaluation context panel', async () => {
     renderTraceDetail();
-    await screen.findByText('Trace Answer customer policy question');
+    await screen.findByText('Test case: case-0042');
     expect(screen.getByText('Evaluation Context')).toBeInTheDocument();
   });
 
   it('does not render an Intake link in the page content', async () => {
     renderTraceDetail();
-    await screen.findByText('Trace Answer customer policy question');
+    await screen.findByText('Test case: case-0042');
     // "Intake" should not appear anywhere in the rendered page content
     // (breadcrumbs are rendered by WorkspaceLayout, absent from unit tests, but the
     // page body itself should have no Intake references)

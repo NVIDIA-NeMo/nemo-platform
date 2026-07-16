@@ -504,7 +504,7 @@ class NemoPlatformConfig(ServiceConfig):
     )
     image_registry: str = Field(
         default="my-registry",
-        description="Docker registry for NeMo Platform images (e.g., 'nvcr.io/nvidia/nemo-microservices').",
+        description="Docker registry for NeMo Platform images (e.g., 'nvcr.io/nvidia/nemo-platform').",
     )
     image_tag: str = Field(
         default="local",

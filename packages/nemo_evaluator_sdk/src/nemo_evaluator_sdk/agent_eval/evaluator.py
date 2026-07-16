@@ -48,7 +48,15 @@ from nemo_evaluator_sdk.execution.samples import build_metric_input
 from nemo_evaluator_sdk.inference import InferenceFn
 from nemo_evaluator_sdk.metrics.protocol import Metric, validate_metric_result
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
-from nemo_evaluator_sdk.values import Agent, AgentBase, Model, RunConfig, RunConfigOnline, RunConfigOnlineModel
+from nemo_evaluator_sdk.values import (
+    Agent,
+    AgentBase,
+    GenericAgent,
+    Model,
+    RunConfig,
+    RunConfigOnline,
+    RunConfigOnlineModel,
+)
 from nemo_evaluator_sdk.values.evidence import (
     EVIDENCE_FORMAT_JSON,
     EVIDENCE_TRACE,
@@ -621,20 +629,25 @@ def _resolve_live_params(
     return RunConfigOnline(**params.model_dump(mode="python"))
 
 
-def _default_prompt_template(target: Model | Agent) -> dict[str, Any]:
+def _default_prompt_template(target: Model | Agent) -> dict[str, Any] | str:
+    # Every default renders against the single canonical task input, ``instruction`` (see
+    # ``AgentEvalTask.agent_prompt``); no other input key is special.
+    if isinstance(target, GenericAgent):
+        # A generic HTTP agent defines its own request entirely through its `body` template, which
+        # renders against the task inputs (e.g. `{{ instruction }}`). Pass the task row through
+        # unchanged so `body` — not a chat/completions assumption — shapes the payload. See
+        # `_resolve_http_agent_invocation`, which renders `body` against this request.
+        return "{{ item }}"
     if isinstance(target, Model) and _is_completions_endpoint(target.url):
-        return {"prompt": "{{item.prompt}}"}
-    return {"messages": [{"role": "user", "content": "{{item.prompt}}"}]}
+        return {"prompt": "{{item.instruction}}"}
+    return {"messages": [{"role": "user", "content": "{{item.instruction}}"}]}
 
 
 def _task_row(task: AgentEvalTask) -> dict[str, Any]:
-    # `prompt` is what the target under evaluation is prompted with (via the `{{item.prompt}}`
-    # template): a dataset `prompt` column or the agent `instruction`.
-    return {
-        **task.inputs,
-        "task_id": task.id,
-        "prompt": task.inputs.get("prompt") or task.inputs.get("instruction"),
-    }
+    # The task inputs verbatim, plus the task id. `instruction` is the single canonical input the
+    # target is prompted with (see `AgentEvalTask.agent_prompt` and `_default_prompt_template`); no
+    # input key is synthesized or aliased here.
+    return {**task.inputs, "task_id": task.id}
 
 
 def _metric_row(task: AgentEvalTask, trial: AgentEvalTrial) -> dict[str, Any]:

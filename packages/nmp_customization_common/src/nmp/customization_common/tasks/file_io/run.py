@@ -5,21 +5,24 @@
 
 Handles file operations between NeMo Platform Files Service and the job's shared PVC.
 
-The task reads configuration and performs:
-- Downloads: If config.download is non-empty, download files from FileSets to local paths
-- Uploads: If config.upload is non-empty, upload files from local paths to FileSets
+Each backend's compiler sets ``--service-source`` and ``--service-name`` via
+``FILE_IO_TASK_COMMAND`` in that backend's ``images.py`` (the job step passes
+these flags; do not hardcode one backend when documenting or invoking locally):
 
-Usage:
+- automodel: ``--service-source automodel --service-name customizer``
+- unsloth: ``--service-source unsloth --service-name unsloth``
+- rl: ``--service-source rl --service-name rl``
+
+Usage (example — match the backend you are exercising)::
+
     export NEMO_JOB_STEP_CONFIG_FILE_PATH=<path to job_step_config.json>
-    python -m nmp.automodel.tasks.file_io
+    python -m nmp.customization_common.tasks.file_io --service-source automodel --service-name customizer
 """
 
 import logging
 from pathlib import Path
 
 import httpx
-
-# https://docs.nvidia.com/nemo/microservices/latest/pysdk/index.html#handling-errors
 from nemo_platform import (
     APIConnectionError,
     APITimeoutError,
@@ -38,14 +41,6 @@ from nemo_platform_plugin.client.errors import (
 from nemo_platform_plugin.client.types import RetryPolicy
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest, UpdateFilesetRequest
-from nmp.automodel.app.constants import SERVICE_NAME
-from nmp.automodel.tasks.file_io.callbacks import (
-    CompositeCallback,
-    FileDownloadProgressCallback,
-    FileUploadProgressCallback,
-    TqdmPerFileDownloadCallback,
-    TqdmPerFileUploadCallback,
-)
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.common.sdk_factory import get_task_sdk
 from nmp.customization_common.schemas.file_io import (
@@ -60,6 +55,13 @@ from nmp.customization_common.schemas.file_io import (
     UploadStats,
 )
 from nmp.customization_common.service.context import NMPJobContext
+from nmp.customization_common.tasks.file_io.callbacks import (
+    CompositeCallback,
+    FileDownloadProgressCallback,
+    FileUploadProgressCallback,
+    TqdmPerFileDownloadCallback,
+    TqdmPerFileUploadCallback,
+)
 from nmp.customization_common.tasks.file_io_progress_reporter import JobsServiceProgressReporter, ProgressReporter
 from nmp.customization_common.tasks.file_io_utils import (
     filesystem_sdk_error_handler,
@@ -75,53 +77,40 @@ logger = logging.getLogger(__name__)
 CREATE_FILESET_TIMEOUT = 10.0
 LIST_FILES_TIMEOUT = httpx.Timeout(10.0, connect=10.0)
 
-# Timeout configurations for FilesetFileSystem operations.
-# These are passed via sdk.with_options(timeout=...) and control the httpx client.
-# httpx.Timeout(read=...) is the max wait for a single chunk (16MB by default), NOT total transfer time.
-# nemo-platform/src/nemo_platform/filesets/filesystem/filesystem.py > blocksize = 16 * 1024 * 1024  # 16MB
-# It's a socket-level timeout. Each individual socket read has its own timeout window.
-# SDK defaults httpx.Timeout(timeout=60, connect=5.0) nemo-platform/src/nemo_platform/_constants.py
-DOWNLOAD_TIMEOUT = httpx.Timeout(30.0, read=5 * 60)  # 30s connect/pool, 5min per-chunk read
-UPLOAD_TIMEOUT = httpx.Timeout(30.0, write=10 * 60, read=5 * 60)  # 30s connect/pool, 10min write, 5min read
+DOWNLOAD_TIMEOUT = httpx.Timeout(30.0, read=5 * 60)
+UPLOAD_TIMEOUT = httpx.Timeout(30.0, write=10 * 60, read=5 * 60)
 
-# Retry configuration
 MAX_RETRIES = 3
 INITIAL_BACKOFF_SECONDS = 1.0
 MAX_BACKOFF_SECONDS = 30.0
 
-# Transient exceptions that should trigger retries for filesystem operations.
-# FilesetFileSystem uses httpx under the hood, so we retry on httpx transient errors
-# in addition to SDK-level transient errors.
 TRANSIENT_FILESYSTEM_EXCEPTIONS = (
     httpx.TimeoutException,
     httpx.ConnectError,
     httpx.ReadTimeout,
-    # Connection dropped mid-transfer (CDN/proxy closed the socket before the
-    # full body arrived). Common on large multi-GB model shards; safe to retry.
     httpx.RemoteProtocolError,
     httpx.ReadError,
 )
 
 
 class FileIORunner:
+    """Runner for file I/O operations against the Files service."""
+
     def __init__(
         self,
         sdk: NeMoPlatform,
         progress_reporter: ProgressReporter,
         job_ctx: NMPJobContext,
+        *,
+        service_source: str,
     ):
         self.sdk = sdk
         self.progress_reporter = progress_reporter
         self.job_ctx = job_ctx
+        self.service_source = service_source
 
-    def list_fileset_files(
-        self,
-        fileset: FileSetRef,
-    ) -> list[FilesetFile]:
-        """List files in a FileSet.
-
-        Returns list of file info dicts with 'path' and 'size' keys.
-        """
+    def list_fileset_files(self, fileset: FileSetRef) -> list[FilesetFile]:
+        """List files in a FileSet. Returns a list of ``FilesetFile`` objects."""
         try:
             with sdk_error_handler(FileDownloadError, f"list files in fileset {fileset}", passthrough=(NotFoundError,)):
                 response = self.sdk.with_options(timeout=LIST_FILES_TIMEOUT).files.list(
@@ -135,78 +124,36 @@ class FileIORunner:
                 f"FileSet {fileset!s} not found. Please ensure the FileSet exists and contains the expected files.",
             ) from e
 
-    def download_fileset(
-        self,
-        fileset: FileSetRef,
-        dest_dir: Path,
-    ) -> DownloadStats:
-        """Download all files from a FileSet to a destination directory.
-
-        Uses FilesetFileSystem.get() with recursive=True for efficient batch downloads.
-        Progress is tracked via two callbacks combined in a CompositeCallback:
-        - TqdmPerFileDownloadCallback: Creates a separate console progress bar per file (shows bytes)
-        - FileDownloadProgressCallback: Reports progress to Jobs service after each file
-
-        Args:
-            fileset: The source FileSet reference.
-            dest_dir: The destination directory path.
-
-        Returns:
-            DownloadStats with files_downloaded, total_bytes, and failed_files counts.
-
-        Raises:
-            FileDownloadError: If the download fails.
-
-        """
-        stats = DownloadStats()
+    def download_fileset(self, fileset: FileSetRef, dest_dir: Path) -> DownloadStats:
+        """Download all files from a FileSet to a destination directory."""
         fileset_name = str(fileset)
 
-        # List files in the fileset to get total count and size
         files = self.list_fileset_files(fileset)
 
         if not files:
             logger.warning(f"FileSet {fileset_name} contains no files")
-            return stats
+            return DownloadStats()
 
         total_files = len(files)
         total_size = sum(f.size for f in files)
 
-        # Ensure destination directory exists
         dest_dir.mkdir(parents=True, exist_ok=True)
 
-        # Build file sizes mapping for progress bar display
-        # Maps relative file paths to their sizes in bytes
         file_sizes = {f.path.lstrip("/"): f.size for f in files}
-
-        # Create callbacks:
-        # 1. TqdmPerFileDownloadCallback for console progress - creates a separate progress bar per file
-        tqdm_callback = TqdmPerFileDownloadCallback(
-            dest_path=dest_dir,
-            fileset_path=fileset_name,
-            file_sizes=file_sizes,
-        )
-
-        # 2. FileDownloadProgressCallback for Jobs service reporting
-        jobs_callback = FileDownloadProgressCallback(
-            progress_reporter=self.progress_reporter,
-            fileset_name=fileset_name,
-            total_files=total_files,
-            total_size=total_size,
-            stats=stats,
-        )
-
-        # Combine both callbacks into a composite that delegates to both
-        composite_callback = CompositeCallback(tqdm_callback, jobs_callback)
 
         with filesystem_sdk_error_handler(
             FileDownloadError,
             f"download from '{fileset_name}' to '{dest_dir}'",
         ):
-            self._download_with_retry(
+            stats = self._download_with_retry(
                 fileset_name=fileset.name,
                 fileset_workspace=fileset.workspace,
                 dest_dir=str(dest_dir),
-                callback=composite_callback,
+                fileset_display_name=fileset_name,
+                dest_path=dest_dir,
+                file_sizes=file_sizes,
+                total_files=total_files,
+                total_size=total_size,
             )
 
         logger.info(f"Download complete: {stats.files_downloaded} files, {stats.total_bytes} bytes")
@@ -224,67 +171,44 @@ class FileIORunner:
         fileset_name: str,
         fileset_workspace: str | None,
         dest_dir: str,
-        callback: CompositeCallback,
-    ) -> None:
+        fileset_display_name: str,
+        dest_path: Path,
+        file_sizes: dict[str, int],
+        total_files: int,
+        total_size: int,
+    ) -> DownloadStats:
         """Internal method with retry logic for downloading from FilesetFileSystem."""
+        stats = DownloadStats()
+        tqdm_callback = TqdmPerFileDownloadCallback(
+            dest_path=dest_path,
+            fileset_path=fileset_display_name,
+            file_sizes=file_sizes,
+        )
+        jobs_callback = FileDownloadProgressCallback(
+            progress_reporter=self.progress_reporter,
+            fileset_name=fileset_display_name,
+            total_files=total_files,
+            total_size=total_size,
+            stats=stats,
+        )
+        composite_callback = CompositeCallback(tqdm_callback, jobs_callback)
+
         self.sdk.with_options(timeout=DOWNLOAD_TIMEOUT).files.download(
             fileset=fileset_name,
             workspace=fileset_workspace,
             local_path=dest_dir,
-            callback=callback,
+            callback=composite_callback,
         )
+        return stats
 
-    def upload_fileset(
-        self,
-        fileset: FileSetRef,
-        src_path: Path,
-    ) -> UploadStats:
-        """Upload all files from a source path (file or directory) to a FileSet.
-
-        Uses FilesetFileSystem.put() with recursive=True for efficient batch uploads.
-        Progress is tracked via two callbacks combined in a CompositeCallback:
-        - TqdmPerFileCallback: Creates a separate console progress bar per file (shows bytes)
-        - FileUploadProgressCallback: Reports progress to Jobs service after each file
-
-        Args:
-            fileset: The target FileSet reference.
-            src_path: The source path, can be a single file or a directory.
-            progress_reporter: Progress reporter for status updates.
-
-        Returns:
-            UploadStats with files_uploaded, total_bytes, and failed_files counts.
-
-        Raises:
-            FileUploadError: If the upload fails.
-
-        """
-        stats = UploadStats()
+    def upload_fileset(self, fileset: FileSetRef, src_path: Path) -> UploadStats:
+        """Upload all files from a source path (file or directory) to a FileSet."""
         fileset_name = str(fileset)
 
-        # Create callbacks:
-        # 1. TqdmPerFileCallback for console progress - creates a separate progress bar per file
-        tqdm_callback = TqdmPerFileUploadCallback(src_path=src_path)
-
-        # 2. FileUploadProgressCallback for Jobs service reporting
-        jobs_callback = FileUploadProgressCallback(
-            progress_reporter=self.progress_reporter,
-            src_path=src_path,
-            fileset_name=fileset_name,
-            stats=stats,
-        )
-
-        # Combine both callbacks into a composite that delegates to both
-        composite_callback = CompositeCallback(tqdm_callback, jobs_callback)
-
-        # Build local and remote paths for upload
-        # remote_path is relative within the fileset (e.g., "" for root, "filename" for single file)
         if src_path.is_dir():
-            # Add trailing slash to source to copy directory CONTENTS (not the directory itself)
-            # This follows rsync/scp convention: "dir/" copies contents, "dir" copies the directory
             local_path = f"{src_path}/"
-            remote_path = ""  # Upload to fileset root
+            remote_path = ""
         else:
-            # Single file: upload to fileset root with same filename
             local_path = str(src_path)
             remote_path = src_path.name
 
@@ -292,12 +216,13 @@ class FileIORunner:
             FileUploadError,
             f"upload from '{src_path}' to '{fileset_name}'",
         ):
-            self._upload_with_retry(
+            stats = self._upload_with_retry(
                 local_path=local_path,
                 remote_path=remote_path,
                 fileset_name=fileset.name,
                 fileset_workspace=fileset.workspace,
-                callback=composite_callback,
+                fileset_display_name=fileset_name,
+                src_path=src_path,
             )
 
         logger.info(f"Upload complete: {stats.files_uploaded} files, {stats.total_bytes} bytes")
@@ -316,82 +241,34 @@ class FileIORunner:
         remote_path: str,
         fileset_name: str,
         fileset_workspace: str | None,
-        callback: CompositeCallback,
-    ) -> None:
+        fileset_display_name: str,
+        src_path: Path,
+    ) -> UploadStats:
         """Internal method with retry logic for uploading to FilesetFileSystem."""
+        stats = UploadStats()
+        tqdm_callback = TqdmPerFileUploadCallback(src_path=src_path)
+        jobs_callback = FileUploadProgressCallback(
+            progress_reporter=self.progress_reporter,
+            src_path=src_path,
+            fileset_name=fileset_display_name,
+            stats=stats,
+        )
+        composite_callback = CompositeCallback(tqdm_callback, jobs_callback)
+
         self.sdk.with_options(timeout=UPLOAD_TIMEOUT).files.upload(
             local_path=local_path,
             remote_path=remote_path,
             fileset=fileset_name,
             workspace=fileset_workspace,
-            callback=callback,
+            callback=composite_callback,
         )
-
-    def run_download(self, downloads: list[DownloadItem]) -> None:
-        """Execute download operations.
-
-        Downloads files from FileSets to job storage based on downloads list.
-        """
-        if not downloads:
-            logger.info("No downloads configured, skipping download operation")
-            return
-
-        storage_path = validate_storage_path(self.job_ctx.storage_path)
-
-        logger.info(f"Starting download operation: {len(downloads)} fileset(s) to download")
-
-        # Report task started
-        self.progress_reporter.update_progress(
-            status=PlatformJobStatus.ACTIVE,
-            status_details={
-                "phase": TaskPhase.DOWNLOADING,
-                "total_filesets": len(downloads),
-                "completed_filesets": 0,
-            },
-        )
-
-        total_stats = DownloadStats()
-
-        for idx, item in enumerate(downloads):
-            fileset = item.src
-            # Validate destination path to prevent path traversal attacks
-            dest_dir = validate_safe_path(storage_path, item.dest)
-
-            logger.info(f"[{idx + 1}/{len(downloads)}] Downloading from {fileset!s} to {dest_dir}")
-
-            self.progress_reporter.update_progress(
-                status=PlatformJobStatus.ACTIVE,
-                status_details={
-                    "phase": TaskPhase.DOWNLOADING,
-                    "total_filesets": len(downloads),
-                    "completed_filesets": idx,
-                    "current_fileset": f"{fileset!s}",
-                },
-            )
-
-            stats = self.download_fileset(
-                fileset,
-                dest_dir,
-            )
-            total_stats.files_downloaded += stats.files_downloaded
-            total_stats.total_bytes += stats.total_bytes
-
-            logger.info(f"FileSet download complete: {stats.files_downloaded} files, {stats.total_bytes} bytes")
-
-        logger.info(
-            f"All downloads complete: {total_stats.files_downloaded} files, {total_stats.total_bytes} bytes total",
-        )
+        return stats
 
     def create_fileset(self, fileset: FileSetRef, metadata: dict | None = None) -> None:
-        """Create a FileSet. Skip if it already exists.
-
-        Uses retry logic for transient errors and converts SDK exceptions to FileUploadError.
-        """
-        # sdk_error_handler wraps the retry to convert exceptions after all retries exhaust
+        """Create a FileSet. Skip if it already exists."""
         with sdk_error_handler(FileUploadError, f"create fileset {fileset}", passthrough=(ConflictError,)):
             self._create_fileset_with_retry(fileset, metadata)
 
-    # we don't use sdk retry because it would retry on ConflictError which is expected and would be wasteful
     @retry(
         stop=stop_after_attempt(MAX_RETRIES),
         wait=wait_exponential(multiplier=2, min=INITIAL_BACKOFF_SECONDS, max=MAX_BACKOFF_SECONDS),
@@ -415,7 +292,7 @@ class FileIORunner:
         try:
             body_kwargs: dict = {
                 "name": fileset.name,
-                "custom_fields": {"service_source": "automodel"},
+                "custom_fields": {"service_source": self.service_source},
             }
             if metadata is not None:
                 body_kwargs["metadata"] = metadata
@@ -434,17 +311,58 @@ class FileIORunner:
                 except Exception as e:
                     logger.warning(
                         f"Could not patch metadata on existing fileset {workspace}/{fileset.name}: {e}. "
-                        "Upload will continue; model-spec may lack tool_calling/chat_template from source."
+                        "Upload will continue; downstream consumers may lack the latest metadata.",
                     )
 
+    def run_download(self, downloads: list[DownloadItem]) -> None:
+        """Execute download operations."""
+        if not downloads:
+            logger.info("No downloads configured, skipping download operation")
+            return
+
+        storage_path = validate_storage_path(self.job_ctx.storage_path)
+
+        logger.info(f"Starting download operation: {len(downloads)} fileset(s) to download")
+
+        self.progress_reporter.update_progress(
+            status=PlatformJobStatus.ACTIVE,
+            status_details={
+                "phase": TaskPhase.DOWNLOADING,
+                "total_filesets": len(downloads),
+                "completed_filesets": 0,
+            },
+        )
+
+        total_stats = DownloadStats()
+
+        for idx, item in enumerate(downloads):
+            fileset = item.src
+            dest_dir = validate_safe_path(storage_path, item.dest)
+
+            logger.info(f"[{idx + 1}/{len(downloads)}] Downloading from {fileset!s} to {dest_dir}")
+
+            self.progress_reporter.update_progress(
+                status=PlatformJobStatus.ACTIVE,
+                status_details={
+                    "phase": TaskPhase.DOWNLOADING,
+                    "total_filesets": len(downloads),
+                    "completed_filesets": idx,
+                    "current_fileset": f"{fileset!s}",
+                },
+            )
+
+            stats = self.download_fileset(fileset, dest_dir)
+            total_stats.files_downloaded += stats.files_downloaded
+            total_stats.total_bytes += stats.total_bytes
+
+            logger.info(f"FileSet download complete: {stats.files_downloaded} files, {stats.total_bytes} bytes")
+
+        logger.info(
+            f"All downloads complete: {total_stats.files_downloaded} files, {total_stats.total_bytes} bytes total",
+        )
+
     def run_upload(self, uploads: list[UploadItem]) -> None:
-        """Execute upload operations.
-
-        Uploads files from job storage to FileSets based on uploads list.
-
-        Args:
-            uploads: List of upload items to process.
-        """
+        """Execute upload operations."""
         if not uploads:
             logger.info("No uploads configured, skipping upload operation")
             return
@@ -453,7 +371,6 @@ class FileIORunner:
 
         logger.info(f"Starting upload operation: {len(uploads)} fileset(s) to upload")
 
-        # Report task started
         self.progress_reporter.update_progress(
             status=PlatformJobStatus.ACTIVE,
             status_details={
@@ -469,13 +386,13 @@ class FileIORunner:
             if item.dest.workspace is None:
                 item.dest.workspace = self.job_ctx.workspace
             fileset = item.dest
-            # Validate source path to prevent path traversal attacks
             src_path = validate_safe_path(storage_path, item.src)
             if not src_path.exists():
                 raise FileUploadError(f"Source path does not exist: {src_path}. Ensure the source path exists.")
             if not src_path.is_dir() and not src_path.is_file():
                 raise FileUploadError(
-                    f"Source path is not a file or directory: {src_path}. Ensure the source path is a file or directory.",
+                    f"Source path is not a file or directory: {src_path}. "
+                    "Ensure the source path is a file or directory.",
                 )
 
             logger.info(f"[{idx + 1}/{len(uploads)}] Uploading from {src_path} to {fileset!s}")
@@ -492,10 +409,7 @@ class FileIORunner:
 
             self.create_fileset(fileset, metadata=item.metadata)
 
-            stats = self.upload_fileset(
-                fileset,
-                src_path,
-            )
+            stats = self.upload_fileset(fileset, src_path)
             total_stats.files_uploaded += stats.files_uploaded
             total_stats.total_bytes += stats.total_bytes
 
@@ -504,31 +418,28 @@ class FileIORunner:
         logger.info(f"All uploads complete: {total_stats.files_uploaded} files, {total_stats.total_bytes} bytes total")
 
 
-def run(sdk: NeMoPlatform | None = None, job_ctx: NMPJobContext | None = None) -> int:
-    """Execute the file I/O task.
-
-    Processes downloads and uploads based on the configuration.
-
-    Args:
-        sdk: Optional SDK instance for dependency injection (for testing).
-            If None, creates one via get_task_sdk().
-        job_ctx: Optional job context for dependency injection (for testing).
-            If None, creates one via NMPJobContext.from_env().
-
-    Returns:
-        Exit code (0 for success, non-zero for failure).
-
-    """
+def run(
+    sdk: NeMoPlatform | None = None,
+    job_ctx: NMPJobContext | None = None,
+    *,
+    service_source: str,
+    service_name: str,
+) -> int:
+    """Execute the file I/O task."""
     job_ctx = job_ctx or NMPJobContext.from_env()
     validate_storage_path(job_ctx.storage_path)
 
     sdk_owned = sdk is None
     progress_reporter: ProgressReporter | None = None
     try:
-        sdk = sdk or get_task_sdk(SERVICE_NAME)
-        # Initialize progress reporter (no-op if Jobs URL not configured)
+        sdk = sdk or get_task_sdk(service_name)
         progress_reporter = JobsServiceProgressReporter.create_progress_reporter(sdk, job_ctx)
-        runner = FileIORunner(sdk=sdk, progress_reporter=progress_reporter, job_ctx=job_ctx)
+        runner = FileIORunner(
+            sdk=sdk,
+            progress_reporter=progress_reporter,
+            job_ctx=job_ctx,
+            service_source=service_source,
+        )
 
         config = get_config(job_ctx.config_path)
 
@@ -536,13 +447,9 @@ def run(sdk: NeMoPlatform | None = None, job_ctx: NMPJobContext | None = None) -
         logger.info(f"Config: {config.model_dump_json(indent=2)}")
         logger.info(f"NeMo Platform service URL: {sdk.base_url}")
 
-        # Execute uploads if configured
         runner.run_upload(config.upload)
-
-        # Execute downloads if configured
         runner.run_download(config.download)
 
-        # Report overall completion
         progress_reporter.update_progress(
             status=PlatformJobStatus.COMPLETED,
             status_details={"phase": TaskPhase.COMPLETED, "message": "File I/O task completed successfully"},
@@ -565,7 +472,6 @@ def run(sdk: NeMoPlatform | None = None, job_ctx: NMPJobContext | None = None) -
                 error_details={"message": str(e), "type": type(e).__name__},
             )
         return 1
-
     except Exception as e:
         logger.exception(f"File I/O task failed: {e}")
         if progress_reporter:
@@ -574,7 +480,6 @@ def run(sdk: NeMoPlatform | None = None, job_ctx: NMPJobContext | None = None) -
                 error_details={"message": str(e), "type": type(e).__name__},
             )
         return 1
-
     finally:
         if sdk_owned and sdk is not None:
             sdk.close()

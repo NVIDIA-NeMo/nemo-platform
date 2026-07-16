@@ -20,15 +20,34 @@ function jsonReplacer(_key: string, value: unknown): unknown {
 function serializeParquetRow(row: unknown): string {
   return JSON.stringify(row, jsonReplacer);
 }
-// Cap text-file preview at 512 KB. Enough to show meaningful JSONL content
-// while preventing OOM crashes on multi-GB external dataset shards. Text files larger
-// than this are fetched with a Range request, so callers that write content back must not
-// overwrite the source (the loaded rows are only a prefix of the file).
+
+/**
+ * Parse a Content-Length header into a byte count, accepting only a strict
+ * non-negative integer. Returns null for missing, malformed (`123garbage`),
+ * negative (`-1`), or otherwise non-numeric values so the fail-closed editor
+ * cap treats an untrustworthy size as unknown rather than letting a partially
+ * numeric value (which `parseInt` would happily coerce) slip through.
+ */
+function parseContentLength(contentLength: unknown): number | null {
+  if (typeof contentLength !== 'string' || !/^\d+$/.test(contentLength)) {
+    return null;
+  }
+  const size = Number(contentLength);
+  return Number.isSafeInteger(size) ? size : null;
+}
 export const FILE_PREVIEW_MAX_BYTES = 512 * 1024;
+
+export const EDITOR_MAX_BYTES = 8 * 1024 * 1024;
 
 interface UseDatasetFileContentParams extends Required<EntityIdentifier> {
   path: string;
   range?: [number, number];
+  /**
+   * Load the entire file (no preview cap) so its content can be safely edited and written
+   * back. Refuses files larger than {@link EDITOR_MAX_BYTES}. Ignored when `range` is set.
+   * @defaultValue false — callers get the size-capped preview.
+   */
+  fullContent?: boolean;
 }
 
 export type UseDatasetFilesOptions = Omit<UseQueryOptions<string, Error>, 'queryFn' | 'queryKey'> &
@@ -39,12 +58,14 @@ export const datasetFileContentQueryOptions = ({
   name,
   path,
   range,
+  fullContent,
 }: UseDatasetFileContentParams) =>
   queryOptions<string, Error>({
     staleTime: Infinity, // We should prevent refetching full files (costly) unless directly invalidated
     queryKey: [
       ...getDatasetFileContentQueryKey(workspace!, name, path),
       ...(range ? range.map((bound) => String(bound)) : []),
+      ...(fullContent ? ['full'] : []),
     ],
     queryFn: async () => {
       if (isBinaryExtension(path)) {
@@ -57,23 +78,23 @@ export const datasetFileContentQueryOptions = ({
         encodeURIComponent(path)
       );
 
-      // HEAD the file to confirm it exists and read Content-Length for conditional ranging.
-      // Prepend PLATFORM_BASE_URL so axios resolves the correct host (the relative
-      // path alone resolves against window.location, which differs in tests and
-      // may differ in deployed environments with a custom base path).
       let fileSize: number | null = null;
       try {
         const headResponse = await axios.head(`${PLATFORM_BASE_URL}${fileUrl}`);
-        const contentLength = headResponse.headers['content-length'];
-        fileSize = contentLength ? parseInt(String(contentLength), 10) : null;
+        fileSize = parseContentLength(headResponse.headers['content-length']);
       } catch {
         throw new Error('Unable to find base file.');
+      }
+
+      if (fullContent && range === undefined) {
+        if (fileSize === null || Number.isNaN(fileSize) || fileSize > EDITOR_MAX_BYTES) {
+          throw new Error('File is too large to edit in the browser.');
+        }
       }
 
       if (path.endsWith('parquet')) {
         try {
           let data: string = '';
-          // Use SDK so the request includes auth (Bearer token). asyncBufferFromUrl does a raw fetch with no credentials → 401.
           const blob = await filesDownloadFile(workspace!, name, path);
           if (!blob) throw new Error('Invalid response while downloading parquet file');
           const buffer = await blob.arrayBuffer();
@@ -97,7 +118,10 @@ export const datasetFileContentQueryOptions = ({
         const start = range ? range[0] : 0;
         const end = range ? range[1] : FILE_PREVIEW_MAX_BYTES - 1;
         const isSizeCappedPreview =
-          range === undefined && fileSize !== null && fileSize > FILE_PREVIEW_MAX_BYTES;
+          !fullContent &&
+          range === undefined &&
+          fileSize !== null &&
+          fileSize > FILE_PREVIEW_MAX_BYTES;
         const needsRange = range !== undefined || isSizeCappedPreview;
         const blob = await customFetch<Blob>({
           url: fileUrl,
@@ -120,10 +144,11 @@ export const useDatasetFileContent = ({
   name,
   path,
   range,
+  fullContent,
   ...options
 }: UseDatasetFilesOptions) => {
   return useQuery({
-    ...datasetFileContentQueryOptions({ workspace, name, path, range }),
+    ...datasetFileContentQueryOptions({ workspace, name, path, range, fullContent }),
     enabled: Boolean(workspace && name && path),
     ...options,
   });
@@ -134,10 +159,11 @@ export const useDatasetFileContentSuspense = ({
   name,
   path,
   range,
+  fullContent,
   ...options
 }: UseDatasetFilesOptions) => {
   return useSuspenseQuery({
-    ...datasetFileContentQueryOptions({ workspace, name, path, range }),
+    ...datasetFileContentQueryOptions({ workspace, name, path, range, fullContent }),
     ...options,
   });
 };

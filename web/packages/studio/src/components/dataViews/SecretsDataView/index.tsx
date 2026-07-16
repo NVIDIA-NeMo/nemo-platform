@@ -51,7 +51,7 @@ export const SecretsDataView: FC<SecretsDataViewProps> = ({
   const toast = useToast();
 
   const dataViewState = useStudioDataViewState({
-    defaultSort: { id: 'created_at', desc: true },
+    defaultSort: [{ id: 'created_at', desc: true }],
   });
 
   const [modalSecret, setModalSecret] = useState<PlatformSecretResponse>();

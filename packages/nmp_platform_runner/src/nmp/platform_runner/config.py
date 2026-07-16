@@ -9,6 +9,7 @@ import os
 from collections.abc import Callable, MutableMapping
 from dataclasses import dataclass, field
 from importlib.resources import files
+from urllib.parse import urlparse
 
 from nmp.common.config import (
     NMP_CONFIG_FILE_PATH_ENV_VAR,
@@ -153,6 +154,25 @@ def apply_run_environment(
     Uses ``setdefault`` for NMP_BASE_URL / NMP_SERVICE_HOST / NMP_SERVICE_PORT
     so that values pre-set by Helm / k8s (deployed mode) are never overwritten.
     In standalone mode these variables are absent, so setdefault fills them in.
+
+    Precedence for NMP_BASE_URL: an externally-provided value (Helm / k8s) wins,
+    then the scheme + host of an explicit ``platform.base_url`` from the config
+    file combined with the actual bind port, then a value derived entirely from
+    the bind host/port. Seeding from the config file lets operators set a base
+    URL reachable from inside deployed agent containers (e.g. the Docker bridge
+    address) via config alone; without this the bind-derived loopback default
+    would silently shadow the configured value.
+
+    Only the scheme and host of the configured ``platform.base_url`` are
+    honored — its port is replaced with the port the server actually binds. A
+    config that hardcodes ``:8080`` must not point internal clients (and the
+    embedded PDP) at 8080 when the platform is launched on another port (which
+    the e2e harness always does, and any ``nemo services run --port`` differing
+    from 8080 does); doing so leaves internal HTTP clients unable to reach the
+    server and the platform never becomes ready. The configured host is run
+    through the same wildcard -> loopback normalization as the bind host, so a
+    config like ``http://0.0.0.0:8080`` (the bundled ``local.yaml`` default)
+    still yields a connectable internal base URL.
     """
     if env is None:
         env = os.environ
@@ -160,9 +180,15 @@ def apply_run_environment(
     connect_host = _connect_host_for_internal_clients(config.host)
     effective_host = env.setdefault("NMP_SERVICE_HOST", connect_host)
     effective_port = env.setdefault("NMP_SERVICE_PORT", str(config.port))
-    normalized = effective_host.strip("[]")
-    url_host = f"[{normalized}]" if ":" in normalized else normalized
-    base_url = env.setdefault("NMP_BASE_URL", f"http://{url_host}:{effective_port}")
+    config_base_url_parts = _config_file_base_url_parts(config.config_path)
+    if config_base_url_parts is not None:
+        scheme, config_host = config_base_url_parts
+        host_for_url = _bracket_ipv6(_connect_host_for_internal_clients(config_host))
+        default_base_url = f"{scheme}://{host_for_url}:{effective_port}"
+    else:
+        host_for_url = _bracket_ipv6(effective_host)
+        default_base_url = f"http://{host_for_url}:{effective_port}"
+    base_url = env.setdefault("NMP_BASE_URL", default_base_url)
     # Embedded PDP is served from the same platform process; keep the auth client
     # origin aligned with NMP_BASE_URL when services run on a non-default port.
     env.setdefault("NMP_AUTH_POLICY_DECISION_POINT_BASE_URL", base_url)
@@ -179,6 +205,44 @@ def _set_or_clear_env(env: MutableMapping[str, str], name: str, values: set[str]
         env.pop(name, None)
 
 
+def _config_file_base_url_parts(config_path: str) -> tuple[str, str] | None:
+    """Return the (scheme, host) of an explicit ``platform.base_url`` from config.
+
+    Reads the raw YAML rather than the merged config object so a value present
+    in the file can be told apart from the schema default (the merged config
+    always carries ``base_url``). Returns the URL scheme (defaulting to
+    ``"http"`` when the config omits one) and the host component, or ``None``
+    when the file is missing, unreadable, does not set ``platform.base_url``, or
+    the value has no parseable host.
+
+    The host is returned unbracketed (as ``urlparse`` yields it) so callers can
+    normalize it (e.g. wildcard -> loopback) before composing the final URL.
+    Only the scheme and host are returned — callers pair them with the actual
+    bind port, so a config that hardcodes a port (e.g. ``:8080``) does not point
+    internal clients at the wrong port when the platform runs on a different one.
+    """
+    try:
+        global_settings = Configuration.get_global_settings_from_file(config_path)
+    except (OSError, ValueError):
+        return None
+    platform_settings = global_settings.get("platform")
+    if not isinstance(platform_settings, dict):
+        return None
+    base_url = platform_settings.get("base_url")
+    if not isinstance(base_url, str) or not base_url:
+        return None
+    try:
+        parsed = urlparse(base_url)
+    except ValueError:
+        # Malformed value (e.g. an unterminated bracketed IPv6 like
+        # ``http://[::1``). Fall back to the bind-derived default rather than
+        # aborting startup — a bad config value should fail soft here.
+        return None
+    if not parsed.hostname:
+        return None
+    return parsed.scheme or "http", parsed.hostname
+
+
 def _connect_host_for_internal_clients(host: str) -> str:
     """Translate a bind-address into a connectable address.
 
@@ -192,3 +256,14 @@ def _connect_host_for_internal_clients(host: str) -> str:
     if stripped in _IPV6_WILDCARDS:
         return _IPV6_LOOPBACK
     return stripped
+
+
+def _bracket_ipv6(host: str) -> str:
+    """Bracket an IPv6 literal so it can be composed into ``<host>:<port>``.
+
+    Accepts an already-stripped host (no surrounding brackets) and wraps it in
+    ``[...]`` when it is an IPv6 literal (contains ``:``); returns other hosts
+    unchanged.
+    """
+    stripped = host.strip("[]")
+    return f"[{stripped}]" if ":" in stripped else stripped

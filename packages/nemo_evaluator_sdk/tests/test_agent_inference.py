@@ -22,6 +22,7 @@ from nemo_evaluator_sdk.agent_inference import (
     _make_nat_agent_request,
     _parse_sse_frame,
     _persist_stream_evidence,
+    _resolve_http_agent_invocation,
     invoke_agent,
     make_agent_inference_request,
 )
@@ -239,6 +240,49 @@ class TestAgentValidation:
             trajectory_path="$.steps",
         )
         assert agent.trajectory_path == "$.steps"
+
+
+# ============================================================================
+# Resolution: _resolve_http_agent_invocation (generic agent payloads)
+# ============================================================================
+
+
+class TestResolveGenericAgentPayload:
+    def test_body_renders_against_task_inputs(self):
+        """A generic agent's payload comes entirely from its `body`, rendered against the task
+        inputs — no chat/completions wrapper is assumed."""
+        agent = GenericAgent(
+            url="http://agent.test/invoke",
+            name="gen",
+            format=AgentFormat.GENERIC,
+            body={"query": "{{ instruction }}", "task": "{{ task_id }}"},
+            response_path="$.answer",
+        )
+
+        invocation = _resolve_http_agent_invocation(
+            agent,
+            {"instruction": "What is the capital of France?", "task_id": "capital-france"},
+        )
+
+        assert invocation.payload == {"query": "What is the capital of France?", "task": "capital-france"}
+        assert invocation.endpoint == "http://agent.test/invoke"
+
+    def test_body_can_reference_arbitrary_input_fields(self):
+        """Any field in the task inputs is available to the body template, not just a fixed set."""
+        agent = GenericAgent(
+            url="http://agent.test/invoke",
+            name="gen",
+            format=AgentFormat.GENERIC,
+            body={"prompt": "{{ instruction }}", "context": "{{ domain }}"},
+            response_path="$.answer",
+        )
+
+        invocation = _resolve_http_agent_invocation(
+            agent,
+            {"instruction": "Summarize the filing.", "domain": "finance"},
+        )
+
+        assert invocation.payload == {"prompt": "Summarize the filing.", "context": "finance"}
 
 
 # ============================================================================

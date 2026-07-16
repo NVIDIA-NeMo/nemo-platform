@@ -37,9 +37,11 @@ class ExperimentGroupRequest(BaseModel):
     default_sort: str = Field(
         default="-created_at",
         description=(
-            "Default sort for this group's evaluations list, as a `sort`-param string (leading '-' = "
-            "descending); defaults to '-created_at'. Accepts any field the evaluations list `sort` "
-            "param does; clients apply it as the list `sort` param."
+            "Default sort for this group's evaluations list, as a `sort`-param string: a comma-separated, "
+            "ordered list of fields where the first is the primary sort and the rest break ties (leading "
+            "'-' on a field = descending), e.g. '-evaluators.reward.mean,cost_usd.mean'. Defaults to "
+            "'-created_at'. Accepts any field the evaluations list `sort` param does; clients apply it as "
+            "the list `sort` param."
         ),
     )
 

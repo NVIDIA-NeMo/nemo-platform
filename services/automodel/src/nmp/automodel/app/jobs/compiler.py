@@ -37,7 +37,12 @@ from nmp.automodel.app.jobs.training.compiler import (
 )
 from nmp.automodel.config import config
 from nmp.automodel.entities.values import FinetuningType
-from nmp.automodel.images import AUTOMODEL_PYTHON_ENTRYPOINT, get_tasks_image
+from nmp.automodel.images import (
+    AUTOMODEL_PYTHON_ENTRYPOINT,
+    FILE_IO_TASK_COMMAND,
+    MODEL_ENTITY_TASK_COMMAND,
+    get_tasks_image,
+)
 from nmp.common.auth import AuthClient, auth_client_context
 from nmp.common.entities.utils import parse_entity_ref
 from nmp.common.jobs.constants import DEFAULT_JOB_STORAGE_PATH, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
@@ -452,7 +457,7 @@ async def platform_job_config_compiler(
                 container=ContainerSpec(
                     image=get_tasks_image(),
                     entrypoint=AUTOMODEL_PYTHON_ENTRYPOINT,
-                    command=["-m", "nmp.automodel.tasks.file_io"],
+                    command=FILE_IO_TASK_COMMAND,
                 ),
                 resources=cpu_resources,
             ),
@@ -474,7 +479,7 @@ async def platform_job_config_compiler(
                 container=ContainerSpec(
                     image=get_tasks_image(),
                     entrypoint=AUTOMODEL_PYTHON_ENTRYPOINT,
-                    command=["-m", "nmp.automodel.tasks.file_io"],
+                    command=FILE_IO_TASK_COMMAND,
                 ),
                 resources=cpu_resources,
             ),
@@ -489,7 +494,7 @@ async def platform_job_config_compiler(
                 container=ContainerSpec(
                     image=get_tasks_image(),
                     entrypoint=AUTOMODEL_PYTHON_ENTRYPOINT,
-                    command=["-m", "nmp.automodel.tasks.model_entity"],
+                    command=MODEL_ENTITY_TASK_COMMAND,
                 ),
                 resources=cpu_resources,
             ),

@@ -42,7 +42,7 @@ export const DataDesignerJobsDataView: FC = () => {
   const workspace = useWorkspaceFromPath();
 
   const dataViewState = useStudioDataViewState({
-    defaultSort: { id: 'created_at', desc: true },
+    defaultSort: [{ id: 'created_at', desc: true }],
     columnVisibility: { updated_at: false },
   });
 

@@ -109,7 +109,7 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
   const [deleteState, setDeleteState] = useState<DeleteState>(null);
 
   const dataViewState = useStudioDataViewState({
-    defaultSort: { id: 'created_at', desc: true },
+    defaultSort: [{ id: 'created_at', desc: true }],
     columnPinning: {
       right: ['row-actions'],
     },

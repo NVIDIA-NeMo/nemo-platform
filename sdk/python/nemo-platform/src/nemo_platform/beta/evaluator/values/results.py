@@ -12,7 +12,7 @@ from typing import Any, Literal, Self
 import pyarrow as pa
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_serializer
 
-from nemo_platform.beta.evaluator.values.protocol import MetricOutput, MetricResult
+from nemo_platform.beta.evaluator.values.protocol import MetricDiagnostic, MetricOutput, MetricResult
 
 ResultView = Literal["rows", "aggregate"]
 AggregateFieldName = Literal[
@@ -363,6 +363,10 @@ class RowScore(BaseModel):
         default=None,
         description="Full row-level error text keyed by metric for summary rendering.",
     )
+    metric_diagnostics: dict[str, list[MetricDiagnostic]] | None = Field(
+        default=None,
+        description="Optional row-level diagnostic findings keyed by metric used for debugging.",
+    )
 
     @property
     def error(self) -> str | None:
@@ -420,6 +424,22 @@ class SampleResult(BaseModel):
 def row_error_text(row_score: RowScore) -> str | None:
     """Return the human-facing row error text."""
     return row_score.error
+
+
+def diagnostics_records(row_score: RowScore) -> dict[str, str]:
+    """Return JSON-encoded diagnostic columns for a row, keyed by ``diagnostics.<metric>``.
+
+    Diagnostics are rendered as compact JSON strings so tabular exports stay
+    flat regardless of the (metric-defined) diagnostic shape. Returns an empty
+    mapping when the row carries no diagnostics.
+    """
+    if not row_score.metric_diagnostics:
+        return {}
+
+    return {
+        f"diagnostics.{metric_key}": json.dumps(serialize_value(diagnostics), sort_keys=True)
+        for metric_key, diagnostics in row_score.metric_diagnostics.items()
+    }
 
 
 def _row_has_scores(row_score: RowScore) -> bool:
@@ -545,6 +565,9 @@ def format_error_details(
             if error_text := row_error_text(row_score):
                 parts.append(error_text)
 
+        for column, diagnostics_json in diagnostics_records(row_score).items():
+            parts.append(f"{column}: {diagnostics_json}")
+
     if len(shown_rows) < len(failed_rows):
         parts.extend(["", f"... {len(failed_rows) - len(shown_rows)} more failed rows omitted"])
 
@@ -588,6 +611,8 @@ class EvaluationResult(BaseModel):
                 for metric_scores in row_score.metrics.values():
                     for output in metric_scores:
                         record[f"output.{output.name}"] = serialize_value(output.value)
+                for column, diagnostics_json in diagnostics_records(row_score).items():
+                    record[column] = diagnostics_json
                 records.append(record)
             return records
 

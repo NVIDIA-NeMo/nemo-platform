@@ -19,6 +19,7 @@ COPY packages/models packages/models
 COPY packages/nmp_common packages/nmp_common
 COPY packages/nmp_customization_common packages/nmp_customization_common
 COPY packages/nemo_platform_plugin packages/nemo_platform_plugin
+COPY plugins/nemo-deployments plugins/nemo-deployments
 COPY sdk/python/nemo-platform sdk/python/nemo-platform
 COPY services/automodel services/automodel
 COPY services/core/models services/core/models

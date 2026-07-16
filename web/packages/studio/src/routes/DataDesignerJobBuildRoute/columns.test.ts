@@ -345,6 +345,82 @@ describe('sampler-showcase template', () => {
   });
 });
 
+describe('seed-dataset columns', () => {
+  it('hoists the fileset source to seed_config and does NOT emit a seed column', () => {
+    const columns = [
+      column('a', 'seed', 'seed-dataset', {
+        fileset_ref: 'default/my-fileset',
+        file_path: 'data.parquet',
+        sampling_strategy: 'shuffle',
+        available_columns: 'question,answer',
+      }),
+      column('b', 'graded', 'llm-text', {
+        prompt: 'Grade {{ answer }}',
+        model_alias: 'default',
+      }),
+    ];
+
+    const config = buildDataDesignerConfig(columns);
+    expect(config.columns).toEqual([
+      {
+        name: 'graded',
+        column_type: 'llm-text',
+        prompt: 'Grade {{ answer }}',
+        model_alias: 'default',
+      },
+    ]);
+    expect(config.seed_config).toEqual({
+      source: { seed_type: 'nmp', path: 'default/my-fileset#data.parquet' },
+      sampling_strategy: 'shuffle',
+    });
+  });
+
+  it('omits sampling strategy when unset', () => {
+    const columns = [
+      column('a', 'seed', 'seed-dataset', {
+        fileset_ref: 'default/my-fileset',
+        file_path: 'data.parquet',
+      }),
+    ];
+
+    expect(buildDataDesignerConfig(columns).seed_config).toEqual({
+      source: { seed_type: 'nmp', path: 'default/my-fileset#data.parquet' },
+    });
+  });
+
+  it('omits seed_config until both a fileset and a file are picked', () => {
+    const noFile = [column('a', 'seed', 'seed-dataset', { fileset_ref: 'default/my-fileset' })];
+    expect(buildDataDesignerConfig(noFile).seed_config).toBeUndefined();
+
+    const none = [column('b', 'seed', 'seed-dataset', {})];
+    expect(buildDataDesignerConfig(none).seed_config).toBeUndefined();
+  });
+
+  it('requires a fileset and a file before submit', () => {
+    const errors = validateColumns([column('a', 'seed', 'seed-dataset', {})]);
+    expect(errors).toContainEqual(expect.stringContaining('Fileset is required'));
+    expect(errors).toContainEqual(expect.stringContaining('File is required'));
+  });
+
+  it('exposes the seed file columns as referenceable outputs and draws edges from the seed node', () => {
+    const columns = [
+      column('a', 'seed', 'seed-dataset', {
+        fileset_ref: 'default/my-fileset',
+        file_path: 'data.parquet',
+        available_columns: 'question, answer',
+      }),
+      column('b', 'graded', 'llm-text', {
+        prompt: 'Grade the {{ answer }} to {{ question }}',
+        model_alias: 'default',
+      }),
+    ];
+
+    const { nodes, edges } = buildGraph(columns);
+    expect(nodes.find((n) => n.id === 'a')?.data.tags).toEqual(['{{question}}', '{{answer}}']);
+    expect(edges).toEqual([{ source: 'a', target: 'b' }]);
+  });
+});
+
 describe('llm-judge columns', () => {
   const scores =
     '[{ "name": "Quality", "description": "Overall answer quality.", "options": { "1": "Very poor", "5": "Excellent" } }]';

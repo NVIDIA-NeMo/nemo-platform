@@ -50,6 +50,7 @@ from nmp.customization_common.schemas.file_io import (
 )
 from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig
 from nmp.customization_common.service.platform_client import fetch_model_entity
+from nmp.customization_common.tasks.file_io_metadata import build_output_metadata
 from nmp.rl.app.constants import (
     BASE_LOG_DIR_ENVVAR,
     DEFAULT_DATASET_PATH,
@@ -66,7 +67,13 @@ from nmp.rl.app.jobs.training.schemas import (
 )
 from nmp.rl.config import config
 from nmp.rl.entities.values import FinetuningType, TrainingType
-from nmp.rl.images import RL_PYTHON_ENTRYPOINT, get_tasks_image, get_training_image
+from nmp.rl.images import (
+    FILE_IO_TASK_COMMAND,
+    MODEL_ENTITY_TASK_COMMAND,
+    RL_PYTHON_ENTRYPOINT,
+    get_tasks_image,
+    get_training_image,
+)
 from nmp.rl.schemas import DPOTraining, RlJobOutput
 
 logger = logging.getLogger(__name__)
@@ -114,9 +121,19 @@ def _build_download_config(job_spec: RlJobOutput, me: ModelEntity, *, workspace:
     )
 
 
-def _build_upload_config(output_fileset_name: str) -> FileIOTaskConfig:
+def _build_upload_config(job_spec: RlJobOutput) -> FileIOTaskConfig:
     return FileIOTaskConfig(
-        upload=[UploadItem(src=DEFAULT_OUTPUT_MODEL_PATH, dest=FileSetRef(workspace=None, name=output_fileset_name))],
+        upload=[
+            UploadItem(
+                src=DEFAULT_OUTPUT_MODEL_PATH,
+                dest=FileSetRef(workspace=None, name=job_spec.output.fileset),
+                metadata=build_output_metadata(
+                    model=job_spec.model,
+                    finetuning_type=FinetuningType.ALL_WEIGHTS.value,
+                    output_type=str(job_spec.output.type),
+                ),
+            ),
+        ],
     )
 
 
@@ -332,7 +349,9 @@ async def platform_job_config_compiler(
     base_env = _base_environment()
 
     def _cpu_task_step(
-        name: str, command: str, task_config: FileIOTaskConfig | ModelEntityTaskConfig
+        name: str,
+        command: list[str],
+        task_config: FileIOTaskConfig | ModelEntityTaskConfig,
     ) -> PlatformJobStep:
         return PlatformJobStep(
             name=name,
@@ -341,7 +360,7 @@ async def platform_job_config_compiler(
                 container=ContainerSpec(
                     image=get_tasks_image(),
                     entrypoint=RL_PYTHON_ENTRYPOINT,
-                    command=["-m", command],
+                    command=command,
                 ),
                 resources=cpu_resources,
             ),
@@ -352,14 +371,14 @@ async def platform_job_config_compiler(
     steps: list[PlatformJobStep] = [
         _cpu_task_step(
             "model-and-dataset-download",
-            "nmp.rl.tasks.file_io",
+            FILE_IO_TASK_COMMAND,
             _build_download_config(job_spec, me, workspace=workspace),
         ),
         _build_training_step(job_spec, base_env, trust_remote_code=trust_remote_code, profile=profile),
-        _cpu_task_step("model-upload", "nmp.rl.tasks.file_io", _build_upload_config(job_spec.output.fileset)),
+        _cpu_task_step("model-upload", FILE_IO_TASK_COMMAND, _build_upload_config(job_spec)),
         _cpu_task_step(
             "model-entity-creation",
-            "nmp.rl.tasks.model_entity",
+            MODEL_ENTITY_TASK_COMMAND,
             _build_model_entity_config(workspace, job_spec, trust_remote_code=trust_remote_code),
         ),
     ]

@@ -4,24 +4,38 @@
 """Docker image resolution for nmp-rl job steps.
 
 Unlike unsloth (single image), nmp-rl follows the automodel split: a heavy
-``nmp-rl-training`` image (NGC + NeMo-RL + Ray) for the GPU training step and a
-lighter ``nmp-rl-tasks`` image for the CPU file_io / model_entity steps. Both
-build on ``nmp-rl-base``. Override via ``NMP_RL_TRAINING_IMAGE`` /
-``NMP_RL_TASKS_IMAGE``.
+``nmp-rl-training`` image for the GPU training step and the shared
+``nmp-customizer-tasks`` image for CPU file_io / model_entity steps.
 """
 
 from __future__ import annotations
 
-from nmp.customization_common.service.images import resolve_qualified_image
+from nmp.customization_common.service.images import (
+    CUSTOMIZER_PYTHON_ENTRYPOINT,
+    get_customizer_tasks_image,
+    resolve_qualified_image,
+)
 from nmp.rl.config import config
 
 BASE_IMAGE_NAME = "nmp-rl-base"
-TASKS_IMAGE_NAME = "nmp-rl-tasks"
 TRAINING_IMAGE_NAME = "nmp-rl-training"
 
-# Must match ENTRYPOINT in Dockerfile.nmp-rl-{tasks,training}. Job specs set this
-# explicitly: Docker API create() replaces the image entrypoint when passed [].
-RL_PYTHON_ENTRYPOINT = ["/opt/venv/bin/python"]
+RL_PYTHON_ENTRYPOINT = CUSTOMIZER_PYTHON_ENTRYPOINT
+
+FILE_IO_TASK_COMMAND = [
+    "-m",
+    "nmp.customization_common.tasks.file_io",
+    "--service-source",
+    "rl",
+    "--service-name",
+    "rl",
+]
+MODEL_ENTITY_TASK_COMMAND = [
+    "-m",
+    "nmp.customization_common.tasks.model_entity",
+    "--service-name",
+    "rl",
+]
 
 
 def get_rl_qualified_image(name: str, override: str | None = None) -> str:
@@ -30,8 +44,8 @@ def get_rl_qualified_image(name: str, override: str | None = None) -> str:
 
 
 def get_tasks_image() -> str:
-    """CPU task steps (file_io, model_entity) — lighter image, no NeMo-RL/vLLM."""
-    return get_rl_qualified_image(TASKS_IMAGE_NAME, config.tasks_image)
+    """CPU task steps (file_io, model_entity) — shared ``nmp-customizer-tasks`` image."""
+    return get_customizer_tasks_image(backend_override=config.tasks_image, image_registry=config.image_registry)
 
 
 def get_training_image() -> str:

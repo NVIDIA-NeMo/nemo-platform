@@ -6,95 +6,339 @@ description: ""
 
 <Tip>
 
-Note: This setup is the full enterprise platform, meant for advanced use. If you're just getting started, check out [setting up a local instance of the platform](/documentation/get-started) instead — it's faster and easier to explore the basics.
+This setup deploys the full platform to Kubernetes. If you are just getting started on a workstation, use [the local setup guide](/documentation/get-started) first.
 
 </Tip>
 
-To deploy the NeMo Platform, follow these steps after completing the [Prerequisites](/documentation/self-managed-deployment/setup/helm/prerequisites).
+Complete [Prerequisites](/documentation/self-managed-deployment/setup/helm/prerequisites) before installing the chart.
 
-1. Add the NeMo Platform Helm Chart to your local Helm repositories.
+## Set install variables
 
- ```sh
- helm repo add nmp https://helm.ngc.nvidia.com/nvidia/nemo-microservices \
- --username='$oauthtoken' \
- --password=$NGC_API_KEY
- ```
- ```sh
- helm repo update
- ```
-
-2. Review the default values in the [NeMo Platform Helm Chart reference](/documentation/self-managed-deployment/helm/helm-reference). To override the default values, create a custom values file. Review the following while creating your custom values file.
-
- - To configure an external database, see [Database Setup](/documentation/self-managed-deployment/setup/helm/database-setup).
- - To configure persistent volumes for jobs and files storage, see [Persistent Volumes](/documentation/self-managed-deployment/setup/helm/persistent-volumes).
- - To configure file storage options, see [File Storage](/documentation/self-managed-deployment/setup/helm/file-storage).
- - To configure ingress, see [Ingress](/documentation/self-managed-deployment/setup/helm/ingress).
- - To configure multi-node networking, see [Multi-Node Networking](/documentation/self-managed-deployment/setup/helm/multinode-networking).
- - To configure OpenShift-compatible security context overrides, see [OpenShift](/documentation/self-managed-deployment/setup/helm/open-shift).
-
-3. Install the Volcano scheduler before installing the chart. This is required for customization jobs that leverage multiple nodes.
-
- ```sh
-
- kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/v1.9.0/installer/volcano-development.yaml
-
- ```
-
- After applying, wait for the Volcano admission webhook to finish initializing before proceeding. The webhook registers immediately with `failurePolicy: Fail`, but TLS certificate generation runs asynchronously. If you proceed before the webhook is ready, all pod creation — including the NeMo Platform Helm install — will fail with a certificate error.
-
- ```sh
- kubectl wait --for=condition=complete job/volcano-admission-init -n volcano-system --timeout=120s
- kubectl rollout status deployment/volcano-admission -n volcano-system
- ```
-
- 
-4. Install the chart using your `values.yaml` file:
-
- ```sh
- helm install nemo-platform nmp/nemo-platform -f values.yaml
- ```
-
- The installation process takes approximately 10 minutes for image downloads, container startup, and communication establishment. The time it takes might vary depending on the speed of your network connection.
- Pods might appear in pending or restarting states during the installation process.
-
-5. Verify the pod status:
-
- ```sh
- kubectl get pods
- ```
-
-For Red Hat OpenShift, use OpenShift-compatible security context overrides so pods satisfy the restricted SCC. See [OpenShift](/documentation/self-managed-deployment/setup/helm/open-shift).
-
-<a id="upgrade-helm-chart"></a>
-To upgrade the deployment with new configurations, use the following command:
+Use a pinned chart version for every install and upgrade. For a stable release, use the chart version from the release notes or NGC Catalog. For nightly GHCR charts, the release workflow uses the latest stable SemVer release tag and appends a nightly timestamp, falling back to `k8s/helm/Chart.yaml` if no release tag is available.
 
 ```sh
-helm upgrade nemo-platform nmp/nemo-platform -f values.yaml
+export NMP_NAMESPACE=nemo-platform
+export NMP_HELM_RELEASE=nemo-platform
+export NMP_HELM_CHART_VERSION=<chart-version>
+export NGC_API_KEY=<your-ngc-api-key>
 ```
 
-<a id="uninstall-platform"></a>
-To uninstall the deployment, use the following command:
+Create the namespace if you have not already created it:
 
 ```sh
-helm uninstall nemo-platform
+kubectl create namespace "$NMP_NAMESPACE"
+```
+
+## Fetch the chart
+
+<Tabs>
+
+<Tab title="Stable NGC">
+
+Add the NeMo Platform Helm repository and inspect the values for the pinned stable chart version:
+
+```sh
+helm repo add nemo-platform https://helm.ngc.nvidia.com/nvidia/nemo-platform \
+  --username '$oauthtoken' \
+  --password "$NGC_API_KEY"
+
+helm repo update nemo-platform
+helm show values nemo-platform/nemo-platform \
+  --version "$NMP_HELM_CHART_VERSION" > values.yaml
+```
+
+</Tab>
+<Tab title="Direct archive">
+
+If you prefer to fetch the chart archive directly, use the same version variable:
+
+```sh
+helm pull "https://helm.ngc.nvidia.com/nvidia/nemo-platform/charts/nemo-platform-${NMP_HELM_CHART_VERSION}.tgz" \
+  --username '$oauthtoken' \
+  --password "$NGC_API_KEY"
+
+helm show values "./nemo-platform-${NMP_HELM_CHART_VERSION}.tgz" > values.yaml
+```
+
+</Tab>
+<Tab title="Nightly GHCR">
+
+NeMo Platform also publishes nightly Helm charts to GitHub Container Registry for testing before a stable NGC release. The package is available at [nemo-platform/nemo-platform](https://github.com/NVIDIA-NeMo/nemo-platform/pkgs/container/nemo-platform%2Fnemo-platform), and the Helm OCI reference is:
+
+```sh
+export NMP_HELM_CHART_REF=oci://ghcr.io/nvidia-nemo/nemo-platform/nemo-platform
+```
+
+Nightly chart versions use the latest released SemVer tag plus a timestamp, for example `<latest-release-version>-nightly-YYYYMMDDHHMMSS`.
+
+If Helm cannot pull from GHCR anonymously, log in with a GitHub token that can read the package:
+
+```sh
+echo "$GITHUB_TOKEN" | helm registry login ghcr.io \
+  --username <github-username> \
+  --password-stdin
+```
+
+Inspect the values for the nightly chart:
+
+```sh
+helm show values "$NMP_HELM_CHART_REF" \
+  --version "$NMP_HELM_CHART_VERSION" > values.yaml
+```
+
+</Tab>
+
+</Tabs>
+
+## Configure values
+
+At minimum, make sure the chart can use the image pull secret and NGC API secret from [Prerequisites](/documentation/self-managed-deployment/setup/helm/prerequisites):
+
+```yaml
+existingSecret: ngc-api
+
+imagePullSecrets:
+  - name: nvcrimagepullsecret
+```
+
+Review the [NeMo Platform Helm Chart reference](/documentation/self-managed-deployment/helm/helm-reference) before installing. The most common cluster-specific settings are:
+
+| Cluster type | What to configure |
+| --- | --- |
+| `minikube` or `kind` | Use for single-node smoke testing. Provide a StorageClass or static PersistentVolume that can satisfy the chart's shared PVC. Use port-forwarding or a local ingress addon to reach the API. |
+| EKS | Use an RWX storage backend such as Amazon EFS for `core.storage`, a PostgreSQL-ready StorageClass such as `gp3` for embedded PostgreSQL, and IRSA or Kubernetes secrets for S3 credentials if you store files in S3. |
+| AKS, GKE, OKE, or on-prem | Provide an RWX-capable StorageClass for shared jobs storage, configure an ingress or Gateway API route, and install the GPU and network operators required by your node pool. |
+| OpenShift | Add the OpenShift security context overrides from [OpenShift](/documentation/self-managed-deployment/setup/helm/openshift). |
+
+### Local single-node clusters
+
+For `minikube` or `kind`, the default StorageClass often does not satisfy a `ReadWriteMany` claim. For a single-node QA smoke test, create a static hostPath PV and a matching StorageClass:
+
+```sh
+cat <<EOF | kubectl apply -f -
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nemo-local-rwx
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nemo-platform-local-rwx
+spec:
+  capacity:
+    storage: 200Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: nemo-local-rwx
+  hostPath:
+    path: /var/lib/nemo-platform
+EOF
+```
+
+Add the StorageClass to `values.yaml`:
+
+```yaml
+core:
+  storage:
+    storageClass: nemo-local-rwx
+    accessModes:
+      - ReadWriteMany
+    size: 200Gi
+```
+
+For local API access without ingress, use port-forwarding after the release is ready:
+
+```sh
+kubectl -n "$NMP_NAMESPACE" port-forward svc/nemo-platform-api 8080:8080
+```
+
+### EKS example
+
+For EKS, use a ReadWriteMany-capable StorageClass for jobs storage. The example below assumes an EFS CSI StorageClass named `efs-sc` and an EBS CSI StorageClass named `gp3`:
+
+```yaml
+core:
+  storage:
+    storageClass: efs-sc
+    accessModes:
+      - ReadWriteMany
+    size: 200Gi
+
+postgresql:
+  persistence:
+    storageClass: gp3
+    size: 20Gi
+```
+
+If you store Files service data in S3, configure the file storage backend and make AWS credentials available through IRSA or another boto3-supported credential source:
+
+```yaml
+platformConfig:
+  files:
+    default_storage_config:
+      type: s3
+      bucket: my-nemo-platform-bucket
+      region: us-east-1
+      use_sdk_auth: true
+```
+
+For multi-node GPU jobs on EKS, also configure EFA networking in [Multinode Networking](/documentation/self-managed-deployment/setup/helm/multinode-networking).
+
+## Install Volcano
+
+Install the Volcano scheduler before installing the chart. This is required for customization jobs that leverage multiple nodes.
+
+```sh
+kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/v1.9.0/installer/volcano-development.yaml
+kubectl wait --for=condition=complete job/volcano-admission-init -n volcano-system --timeout=120s
+kubectl rollout status deployment/volcano-admission -n volcano-system
+```
+
+After applying Volcano, wait for the admission webhook to finish initializing before proceeding. The webhook registers immediately with `failurePolicy: Fail`, but TLS certificate generation runs asynchronously. If you proceed before the webhook is ready, pod creation can fail with certificate errors.
+
+## Install the chart
+
+Install from the NGC Helm repository:
+
+```sh
+helm upgrade --install "$NMP_HELM_RELEASE" nemo-platform/nemo-platform \
+  --version "$NMP_HELM_CHART_VERSION" \
+  --namespace "$NMP_NAMESPACE" \
+  --create-namespace \
+  -f values.yaml \
+  --wait \
+  --timeout 20m
+```
+
+To install a nightly chart from GHCR, use the OCI reference:
+
+```sh
+helm upgrade --install "$NMP_HELM_RELEASE" "$NMP_HELM_CHART_REF" \
+  --version "$NMP_HELM_CHART_VERSION" \
+  --namespace "$NMP_NAMESPACE" \
+  --create-namespace \
+  -f values.yaml \
+  --wait \
+  --timeout 20m
+```
+
+If you pulled the chart archive directly, install from the archive:
+
+```sh
+helm upgrade --install "$NMP_HELM_RELEASE" "./nemo-platform-${NMP_HELM_CHART_VERSION}.tgz" \
+  --namespace "$NMP_NAMESPACE" \
+  --create-namespace \
+  -f values.yaml \
+  --wait \
+  --timeout 20m
+```
+
+The installation process can take approximately 10 minutes for image downloads, container startup, and service readiness. Pods might appear in pending or restarting states while dependencies initialize.
+
+## Verify the deployment
+
+Check the release and pod status:
+
+```sh
+helm status "$NMP_HELM_RELEASE" -n "$NMP_NAMESPACE"
+kubectl get pods -n "$NMP_NAMESPACE"
+```
+
+Wait for the API deployment to become available:
+
+```sh
+kubectl rollout status deployment/nemo-platform-api -n "$NMP_NAMESPACE" --timeout=10m
+```
+
+For a local smoke test, port-forward the API service and call the readiness endpoint:
+
+```sh
+kubectl -n "$NMP_NAMESPACE" port-forward svc/nemo-platform-api 8080:8080 &
+NMP_PORT_FORWARD_PID=$!
+trap 'kill "$NMP_PORT_FORWARD_PID" 2>/dev/null || true' EXIT
+
+for attempt in $(seq 1 30); do
+  if curl -sf http://localhost:8080/health/ready; then
+    break
+  fi
+
+  if ! kill -0 "$NMP_PORT_FORWARD_PID" 2>/dev/null; then
+    echo "Port-forward process exited before the API became ready." >&2
+    wait "$NMP_PORT_FORWARD_PID"
+    exit 1
+  fi
+
+  if [ "$attempt" -eq 30 ]; then
+    echo "API did not become ready at http://localhost:8080/health/ready." >&2
+    exit 1
+  fi
+
+  sleep 2
+done
+```
+
+Leave the shell open while running CLI commands through the forwarded port. The trap stops the port-forward when the shell exits; to stop it earlier, run `kill "$NMP_PORT_FORWARD_PID"`.
+
+Configure the CLI to use the deployed API:
+
+```sh
+nemo config set --base-url http://localhost:8080
+nemo workspaces list
+```
+
+## Upgrade the chart
+
+Update `NMP_HELM_CHART_VERSION`, review the release notes for required values changes, and run:
+
+```sh
+helm repo update nemo-platform
+
+helm upgrade "$NMP_HELM_RELEASE" nemo-platform/nemo-platform \
+  --version "$NMP_HELM_CHART_VERSION" \
+  --namespace "$NMP_NAMESPACE" \
+  -f values.yaml \
+  --wait \
+  --timeout 20m
+```
+
+For a release installed from GHCR with `NMP_HELM_CHART_REF`, use the Helm OCI reference:
+
+```sh
+helm upgrade "$NMP_HELM_RELEASE" "$NMP_HELM_CHART_REF" \
+  --version "$NMP_HELM_CHART_VERSION" \
+  --namespace "$NMP_NAMESPACE" \
+  -f values.yaml \
+  --wait \
+  --timeout 20m
+```
+
+## Uninstall the platform
+
+To uninstall the Helm release:
+
+```sh
+helm uninstall "$NMP_HELM_RELEASE" -n "$NMP_NAMESPACE"
 ```
 
 <Note>
 
-`helm uninstall` intentionally does **not** remove all resources:
+`helm uninstall` intentionally does not remove all resources.
 
 </Note>
-    - **PVCs** are preserved to prevent accidental data loss. Delete them manually if no longer needed.
-    - **CRDs** are not removed by Helm design ([upstream issue](https://github.com/helm/helm/issues/4840)) to avoid destroying custom resources across the cluster.
-    - **Completed jobs, secrets, and the namespace** may also remain.
-If you need a complete teardown (e.g., for CI/CD pipelines or reinstalling in the same namespace), run the following after `helm uninstall`:
+
+- PVCs are preserved to prevent accidental data loss. Delete them manually if no longer needed.
+- CRDs are not removed by Helm design ([upstream issue](https://github.com/helm/helm/issues/4840)) to avoid destroying custom resources across the cluster.
+- Completed jobs, secrets, and the namespace may also remain.
+
+If you need a complete teardown for CI/CD pipelines or reinstalling in the same namespace, delete the namespace after `helm uninstall` and inventory CRDs before deleting any cluster-wide API definitions:
 
 ```sh
-# Delete the namespace — removes all namespace-scoped resources (pods, PVCs, jobs, secrets, etc.)
-kubectl delete namespace <namespace>
-
-# Then delete custom resources as needed, though generally this is not required
-kubectl delete crd <crd_name>
+kubectl delete namespace "$NMP_NAMESPACE"
+kubectl get crd -o custom-columns=NAME:.metadata.name,API_GROUP:.spec.group
 ```
 
 <Warning>
@@ -128,8 +372,8 @@ Verify the webhook is accepting requests before retrying your Helm install:
 
 ```sh
 until kubectl run volcano-webhook-test --image=busybox --restart=Never --dry-run=server -o yaml 2>/dev/null; do
- echo "Volcano webhook not ready yet, waiting..."
- sleep 5
+  echo "Volcano webhook not ready yet, waiting..."
+  sleep 5
 done
 kubectl delete pod volcano-webhook-test --ignore-not-found=true
 ```

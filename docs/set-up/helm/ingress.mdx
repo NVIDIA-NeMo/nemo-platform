@@ -6,7 +6,7 @@ description: ""
 
 The NeMo Platform Helm chart can expose the API service externally using **Kubernetes Ingress**, the **Gateway API HTTPRoute**, or on OpenShift an **OpenShift Route**. Choose one based on your cluster.
 
-**Prerequisites:** Complete [Prerequisites](/documentation/self-managed-deployment/setup/helm/prerequisites) and [Install](/documentation/self-managed-deployment/setup/helm/install) (or [OpenShift](/documentation/self-managed-deployment/setup/helm/open-shift)) so the platform is installed. Ensure your cluster has an [Ingress](https://kubernetes.io/docs/concepts/services-networking/ingress/) controller (e.g. Traefik, OpenShift IngressController) or a [Gateway API](https://gateway-api.sigs.k8s.io/) Gateway configured.
+**Prerequisites:** Complete [Prerequisites](/documentation/self-managed-deployment/setup/helm/prerequisites) and [Install](/documentation/self-managed-deployment/setup/helm/install) (or [OpenShift](/documentation/self-managed-deployment/setup/helm/openshift)) so the platform is installed. Ensure your cluster has an [Ingress](https://kubernetes.io/docs/concepts/services-networking/ingress/) controller (e.g. Traefik, OpenShift IngressController) or a [Gateway API](https://gateway-api.sigs.k8s.io/) Gateway configured.
 
 ## Kubernetes Ingress
 
@@ -93,8 +93,8 @@ For all options (`targetPort`, `annotations`, `labels`), see the [NeMo Platform 
 
 ## Related
 
-- [Install](/documentation/self-managed-deployment/setup/helm/install) — Install steps and upgrade commands
-- [OpenShift](/documentation/self-managed-deployment/setup/helm/open-shift) — OpenShift: security context, and optional Route (`openshiftRoute.enabled`), Ingress, or HTTPRoute
+- [Install](/documentation/self-managed-deployment/setup/helm/install) - Install steps and upgrade commands
+- [OpenShift](/documentation/self-managed-deployment/setup/helm/openshift) - OpenShift: security context, and optional Route (`openshiftRoute.enabled`), Ingress, or HTTPRoute
 
 ## Cloud Provider Specific Ingress
 
@@ -156,4 +156,3 @@ On GKE, use the built-in [GCE Ingress controller](https://cloud.google.com/kuber
  ```
 
 3. Install or upgrade with your values file. To verify, check that a load balancer was provisioned with `kubectl get ingress -n <namespace>`.
-

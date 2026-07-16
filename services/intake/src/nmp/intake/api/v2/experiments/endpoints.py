@@ -392,25 +392,24 @@ async def list_evaluations(
     sort: str | None = Query(
         default=None,
         description=(
-            "Field to sort by; prefix with '-' for descending. Sort by an evaluation attribute "
-            "(name, created_at, updated_at, pinned_at) or by an aggregate metric: run_count, "
-            "cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>, where <stat> is one of "
-            "mean, median, p90, p95, p99, sum, count. When omitted, defaults to -created_at with pinned "
-            "evaluations first."
+            "Comma-separated list of fields to sort by, applied in order (the first field dominates); "
+            "prefix any field with '-' for descending — e.g. '-evaluators.reward.mean,cost_usd.mean'. "
+            "Each field is an evaluation attribute (name, created_at, updated_at, pinned_at) or an "
+            "aggregate metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>, "
+            "where <stat> is one of mean, median, p90, p95, p99, sum, count. When omitted, defaults to "
+            "-created_at with pinned evaluations first."
         ),
     ),
 ) -> Page[EvaluationResponse]:
     validate_list_query_params(request)
     _apply_is_deleted_filter(parsed)
     _apply_is_pinned_filter(parsed)
-    # When omitted, fall back to -created_at with pinned evaluations floated to the top.
+    # `sort` is a comma-separated list of fields, each optionally '-'-prefixed for descending, applied
+    # in order (the first field dominates) — e.g. `-evaluators.reward.mean,cost_usd.mean`. When omitted,
+    # fall back to -created_at with pinned evaluations floated to the top.
     if sort is not None:
-        descending = sort.startswith("-")
-        sort_field = sort[1:] if descending else sort
-        _validate_sort_field(sort_field)
-        sort_keys = [(sort_field, descending)]
+        sort_keys, explicit_metric_sort = _parse_sort_keys(sort)
         pinned_first = False
-        explicit_metric_sort = sort_field not in _ENTITY_SORT_FIELDS
     else:
         sort_keys = [("created_at", True)]
         pinned_first = True
@@ -999,6 +998,33 @@ def _validate_sort_field(field: str) -> None:
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported sort field: {field}")
 
 
+def _parse_sort_keys(sort: str) -> tuple[list[tuple[str, bool]], bool]:
+    """Parse the comma-separated ``sort`` param into an ordered list of ``(field, descending)`` keys.
+
+    Each field may be '-'-prefixed for descending; the keys are applied in order (the first field
+    dominates). Returns the keys plus whether *any* key is a rollup metric — a metric-backed sort
+    requires hydrated rollups, so this drives the 503-if-unavailable guard. Raises 400 if a field is
+    unsupported or the list is empty.
+    """
+    sort_keys: list[tuple[str, bool]] = []
+    explicit_metric_sort = False
+    for token in sort.split(","):
+        field_token = token.strip()
+        if not field_token:
+            continue
+        descending = field_token.startswith("-")
+        sort_field = field_token[1:] if descending else field_token
+        _validate_sort_field(sort_field)
+        sort_keys.append((sort_field, descending))
+        explicit_metric_sort = explicit_metric_sort or sort_field not in _ENTITY_SORT_FIELDS
+    if not sort_keys:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The 'sort' parameter must contain at least one field.",
+        )
+    return sort_keys, explicit_metric_sort
+
+
 def _is_metric_field(field: str) -> bool:
     """True if `field` is *intended* as a rollup metric (by head), valid path or not.
 
@@ -1116,15 +1142,25 @@ def _evaluation_sort_value(response: EvaluationResponse, field: str) -> Any:
 
 
 def _validate_default_sort(default_sort: str | None) -> None:
-    """Reject a default sort whose field the evaluations list can't sort by.
+    """Reject a default sort whose field(s) the evaluations list can't sort by.
 
-    The value is a ``sort``-param string (optional leading '-' for descending), e.g. ``-cost_usd.mean``;
-    the field must satisfy the same rule as the list ``sort`` query param.
+    The value is a ``sort``-param string — a comma-separated list of fields, each with an optional
+    leading '-' for descending (e.g. ``-evaluators.reward.mean,cost_usd.mean``); every field must
+    satisfy the same rule as the list ``sort`` query param.
     """
     if default_sort is None:
         return
-    field = default_sort[1:] if default_sort.startswith("-") else default_sort
-    _validate_sort_field(field)
+    fields = [token.strip() for token in default_sort.split(",") if token.strip()]
+    if not fields:
+        # An empty or all-blank string (``""``, ``","``) is not a usable sort; reject it here rather
+        # than persist a value the list ``sort`` param would later 400 on.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The 'default_sort' parameter must contain at least one field.",
+        )
+    for field_token in fields:
+        field = field_token[1:] if field_token.startswith("-") else field_token
+        _validate_sort_field(field)
 
 
 def _sort_evaluations(

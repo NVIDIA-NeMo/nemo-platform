@@ -313,10 +313,10 @@ group "nmp-automodel-gpu-wheels" {
 group "nmp-automodel" {
   targets = [
     "nmp-automodel-base-builder",
-    "nmp-automodel-tasks-docker",
     "nmp-automodel-training-docker",
-    "nmp-automodel-tasks-smoke-test",
     "nmp-automodel-training-smoke-test",
+    "nmp-customizer-tasks",
+    "nmp-customizer-tasks-smoke-test",
   ]
 }
 
@@ -329,9 +329,59 @@ group "nmp-unsloth" {
 group "nmp-rl" {
   targets = [
     "nmp-rl-base-builder",
-    "nmp-rl-tasks",
     "nmp-rl-training",
+    "nmp-customizer-tasks",
   ]
+}
+
+group "nmp-customizer" {
+  targets = [
+    "nmp-customizer-tasks",
+    "nmp-customizer-tasks-smoke-test",
+  ]
+}
+
+# Pruned workspace slice for nmp-customizer-tasks (keep in sync with
+# docker/customizer/pyproject.workspace.toml + Dockerfile.platform-workspace members).
+target "customizer-platform-workspace" {
+  target     = "platform-workspace"
+  context    = "."
+  dockerfile = "docker/customizer/Dockerfile.platform-workspace"
+  output     = ["type=cacheonly"]
+  platforms  = get_platforms()
+}
+
+target "nmp-customizer-tasks" {
+  target     = "runtime"
+  context    = "."
+  dockerfile = "docker/Dockerfile.nmp-customizer-tasks"
+  contexts = {
+    platform-workspace       = "target:customizer-platform-workspace"
+    causal-conv1d-wheel-src  = causal_conv1d_wheel_context()
+    mamba-ssm-wheel-src      = mamba_ssm_wheel_context()
+  }
+  cache-to   = maybe_registry_cache_to("nmp-customizer-tasks")
+  cache-from = maybe_registry_cache_from("nmp-customizer-tasks")
+  tags       = sha_and_maybe_latest_tags("nmp-customizer-tasks")
+  output     = image_output()
+  platforms  = get_platforms()
+}
+
+target "nmp-customizer-tasks-smoke-test" {
+  target     = "smoke-test"
+  context    = "."
+  dockerfile = "docker/Dockerfile.nmp-customizer-tasks"
+  contexts = {
+    platform-workspace       = "target:customizer-platform-workspace"
+    causal-conv1d-wheel-src  = causal_conv1d_wheel_context()
+    mamba-ssm-wheel-src      = mamba_ssm_wheel_context()
+  }
+  args = {
+    SMOKE_MARKER = "smoke_nmp_customizer_tasks"
+  }
+  cache-from = maybe_registry_cache_from("nmp-customizer-tasks")
+  output     = ["type=cacheonly"]
+  platforms  = get_platforms()
 }
 
 # Pruned workspace slice for nmp-rl images (keep in sync with
@@ -368,21 +418,6 @@ target "nmp-rl-training" {
   cache-to   = maybe_registry_cache_to("nmp-rl-training")
   cache-from = maybe_registry_cache_from("nmp-rl-training")
   tags       = sha_and_maybe_latest_tags("nmp-rl-training")
-  output     = image_output()
-  platforms  = get_platforms()
-}
-
-# Lighter CPU image for the file_io / model_entity steps (no NeMo-RL/Ray).
-target "nmp-rl-tasks" {
-  target     = "runtime"
-  context    = "."
-  dockerfile = "docker/Dockerfile.nmp-rl-tasks"
-  contexts = {
-    platform-workspace = "target:rl-platform-workspace"
-  }
-  cache-to   = maybe_registry_cache_to("nmp-rl-tasks")
-  cache-from = maybe_registry_cache_from("nmp-rl-tasks")
-  tags       = sha_and_maybe_latest_tags("nmp-rl-tasks")
   output     = image_output()
   platforms  = get_platforms()
 }
@@ -797,21 +832,6 @@ target "nmp-automodel-base-builder" {
   platforms = get_platforms()
 }
 
-target "nmp-automodel-tasks-docker" {
-  target     = "runtime"
-  context    = "."
-  dockerfile = "docker/automodel/Dockerfile.nmp-automodel-tasks"
-  contexts = {
-    platform-workspace = "target:automodel-platform-workspace"
-    nmp-automodel-base = automodel_base_context()
-  }
-  cache-to   = maybe_registry_cache_to("nmp-automodel-tasks")
-  cache-from = maybe_registry_cache_from("nmp-automodel-tasks")
-  tags       = sha_and_maybe_latest_tags("nmp-automodel-tasks")
-  output     = image_output()
-  platforms = get_platforms()
-}
-
 target "nmp-automodel-training-docker" {
   target     = "runtime"
   context    = "."
@@ -825,22 +845,6 @@ target "nmp-automodel-training-docker" {
   tags       = sha_and_maybe_latest_tags("nmp-automodel-training")
   output     = image_output()
   platforms = get_platforms()
-}
-
-target "nmp-automodel-tasks-smoke-test" {
-  target     = "smoke-test"
-  context    = "."
-  dockerfile = "docker/automodel/Dockerfile.nmp-automodel-tasks"
-  contexts = {
-    platform-workspace = "target:automodel-platform-workspace"
-    nmp-automodel-base = automodel_base_context()
-  }
-  args = {
-    SMOKE_MARKER       = "smoke_nmp_automodel_tasks"
-  }
-  cache-from = maybe_registry_cache_from("nmp-automodel-tasks")
-  output     = ["type=cacheonly"]
-  platforms  = get_platforms()
 }
 
 target "nmp-automodel-training-smoke-test" {

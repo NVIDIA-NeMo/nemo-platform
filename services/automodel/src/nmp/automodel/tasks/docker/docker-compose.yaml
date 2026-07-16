@@ -5,17 +5,17 @@
 #   docker compose up
 #
 #   # Run with custom command
-#   docker compose run --rm file-io run task --task nmp.automodel.tasks.file_io
+#   docker compose run --rm file-io -m nmp.customization_common.tasks.file_io --service-source automodel --service-name customizer
 #
 # Prerequisites:
 #   - Build the image first (from Platform repo root):
-#       docker buildx bake -f docker-bake.hcl nmp-automodel-tasks-docker
+#       docker buildx bake -f docker-bake.hcl nmp-customizer-tasks
 #   - Have NeMo Platform running at http://localhost:8080
 #   - Create sample_config.json (or use the one provided)
 
 services:
   file-io:
-    image: ${FILE_IO_IMAGE:-my-registry/nemo-platform-dev/nmp-automodel-tasks:local}
+    image: ${FILE_IO_IMAGE:-my-registry/nemo-platform-dev/nmp-customizer-tasks:local}
     container_name: file-io-task
 
     # Mount config file and storage directory
@@ -43,9 +43,15 @@ services:
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
-    # Default command - run the file_io task
-    # Note: ENTRYPOINT is already "nemo-platform", so command should NOT include it
-    command: ["run", "task", "--task", "nmp.automodel.tasks.file_io"]
+    # Default command - run the shared file_io task for automodel
+    # Note: ENTRYPOINT is already "/opt/venv/bin/python"
+    command:
+      - "-m"
+      - "nmp.customization_common.tasks.file_io"
+      - "--service-source"
+      - "automodel"
+      - "--service-name"
+      - "customizer"
 
     # For macOS/Windows Docker Desktop - allows reaching host services
     extra_hosts:

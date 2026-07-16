@@ -3,10 +3,12 @@
 
 """Experiment group default sort: string storage/validation and the sort helper.
 
-``default_sort`` is a single ``sort``-param string (e.g. ``-cost_usd.mean`` or ``-created_at``) stored
-on the group — any field the evaluations list can sort by. The client reads it and applies it as the
-list ``sort`` param; the list endpoint itself never consults it. The ``_sort_evaluations`` helper
-remains multi-key capable (pinned-first + tiebreaks), so its unit tests still exercise lists.
+``default_sort`` is a ``sort``-param string stored on the group: a comma-separated, ordered list of
+fields (e.g. ``-evaluators.reward.mean,cost_usd.mean`` or ``-created_at``) where the first is the
+primary sort and the rest break ties — any field the evaluations list can sort by. The client reads it
+and applies it as the list ``sort`` param; the list endpoint itself never consults it. The
+``_sort_evaluations`` helper is multi-key capable (pinned-first + tiebreaks), matching the multi-field
+default.
 """
 
 from datetime import datetime, timezone
@@ -85,13 +87,29 @@ def test_validate_default_sort_accepts_any_sortable_field() -> None:
         "-latency_ms.p95",
         "run_count",
         "-evaluators.harbor.verifier.mean",
+        # Multi-field: a comma-separated, ordered list where each token is independently validated.
+        "-evaluators.reward.mean,cost_usd.mean",
+        "cost_usd.mean,latency_ms.mean,-created_at",
+        " -cost_usd.mean , latency_ms.mean ",  # surrounding whitespace tolerated
     ):
         _validate_default_sort(value)
     _validate_default_sort(None)  # absent default sort is fine
 
 
 def test_validate_default_sort_rejects_unsortable_fields() -> None:
-    for value in ("bogus", "-description", "cost_usd.bogus", "evaluators.reward"):
+    for value in (
+        "bogus",
+        "-description",
+        "cost_usd.bogus",
+        "evaluators.reward",
+        # A single bad token anywhere in a multi-field list fails the whole value.
+        "cost_usd.mean,bogus",
+        "-evaluators.reward.mean,cost_usd.bogus",
+        # An empty or all-blank value is not a usable sort and must be rejected, not silently accepted.
+        "",
+        ",",
+        "  ,  ",
+    ):
         with pytest.raises(HTTPException) as exc:
             _validate_default_sort(value)
         assert exc.value.status_code == 400
@@ -137,7 +155,9 @@ def test_create_group_defaults_sort_to_created_at(client: TestClient) -> None:
 
 
 def test_create_group_with_default_sort_round_trips(client: TestClient) -> None:
-    for i, value in enumerate(("-cost_usd.mean", "-created_at")):
+    for i, value in enumerate(
+        ("-cost_usd.mean", "-created_at", "-evaluators.reward.mean,cost_usd.mean"),
+    ):
         resp = client.post(GROUPS, json={"name": f"g-sort-{i}", "default_sort": value})
         assert resp.status_code == 201, resp.text
         assert resp.json()["default_sort"] == value

@@ -3,15 +3,9 @@
 
 """Model entity task entry point.
 
-Handles creating model entities in the Models service after customization completes.
-
-The task reads configuration and creates a Model Entity that references the
-uploaded model artifacts in the Files service. When ``deployment_config`` is set
-on the task config, the task also launches an inference deployment.
-
 Usage:
     export NEMO_JOB_STEP_CONFIG_FILE_PATH=<path to job_step_config.json>
-    python -m nmp.rl.tasks.model_entity
+    python -m nmp.customization_common.tasks.model_entity --service-name customizer
 """
 
 import json
@@ -47,14 +41,12 @@ from nmp.customization_common.schemas.model_entity import (
     ModelEntityCreationError,
     ModelEntityTaskConfig,
 )
+from nmp.customization_common.schemas.values import FinetuningType
 from nmp.customization_common.service.context import NMPJobContext
-from nmp.rl.app.constants import SERVICE_NAME
-from nmp.rl.entities.values import FinetuningType
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
-# Retry configuration.
 MAX_RETRIES = 3
 INITIAL_BACKOFF_SECONDS = 1.0
 MAX_BACKOFF_SECONDS = 30.0
@@ -64,6 +56,15 @@ ACTIVE_DEPLOYMENT_STATUSES = frozenset({"CREATED", "PENDING", "READY"})
 SPEC_POLL_INTERVAL_SECONDS = 10
 SPEC_POLL_TIMEOUT_SECONDS = 600
 
+TRANSIENT_RETRYABLE_EXCEPTIONS = (
+    InternalServerError,
+    APITimeoutError,
+    APIConnectionError,
+    ClientInternalServerError,
+    httpx.TimeoutException,
+    httpx.ConnectError,
+)
+
 
 def get_config(config_path: Path) -> ModelEntityTaskConfig:
     """Load and validate the model_entity step config from disk."""
@@ -72,11 +73,7 @@ def get_config(config_path: Path) -> ModelEntityTaskConfig:
 
 
 def sanitize_name(prefix: str, name: str) -> str:
-    """Build a deployment-safe name from a free-form model name.
-
-    Must match the API's ``{'pattern': '^[a-z](?!.*--)[a-z0-9\\-@.+_]{1,62}(?<!-)$'}``.
-    Backend appends ``-v1`` to names, so we cap before that.
-    """
+    """Build a deployment-safe name from a free-form model name."""
     sanitized = re.sub(r"[^a-z0-9@.+_-]", "-", name.lower())
     sanitized = re.sub(r"-+", "-", sanitized).strip("-")
     return f"{prefix}-{sanitized}"[:59].rstrip("-")
@@ -90,15 +87,7 @@ class ModelEntityRunner:
         self.job_ctx = job_ctx
 
     def _wait_for_spec(self, workspace: str, name: str) -> ModelEntity:
-        """Poll until the model_spec task has populated the model's spec.
-
-        The spec must be populated before creating a deployment because the
-        inference service relies on ``spec.family`` and ``spec.base_num_parameters``
-        to select the correct NIM profile.
-
-        Raises:
-            ModelEntityCreationError: If the spec is not populated within the timeout.
-        """
+        """Poll until the model_spec task has populated the model's spec."""
         logger.info(f"Waiting for model_spec to populate spec on {workspace}/{name}")
         start = time.monotonic()
 
@@ -106,12 +95,21 @@ class ModelEntityRunner:
             try:
                 target = self.sdk.models.retrieve(name=name, workspace=workspace)
                 spec = target.spec
-                # Deployment/NIM profile selection needs both spec.family and
-                # spec.base_num_parameters; a partially-populated spec isn't enough.
-                if spec and getattr(spec, "family", None) and getattr(spec, "base_num_parameters", None) is not None:
-                    logger.info(f"Spec populated on {workspace}/{name}")
-                    return target
-            except (APIConnectionError, APITimeoutError, InternalServerError) as e:
+                if spec is not None:
+                    family = getattr(spec, "family", None)
+                    base_num_parameters = getattr(spec, "base_num_parameters", None)
+                    if family and base_num_parameters is not None:
+                        logger.info(f"Spec populated on {workspace}/{name}")
+                        return target
+                    raise ModelEntityCreationError(
+                        f"Model spec on {workspace}/{name} is missing required fields: "
+                        "family and base_num_parameters must be set (typically by the "
+                        "platform model_spec task). Verify the model checkpoint is valid "
+                        "and in a supported format."
+                    )
+            except ModelEntityCreationError:
+                raise
+            except TRANSIENT_RETRYABLE_EXCEPTIONS as e:
                 logger.warning(f"Transient error polling spec for {workspace}/{name}: {e}")
             time.sleep(SPEC_POLL_INTERVAL_SECONDS)
 
@@ -129,8 +127,6 @@ class ModelEntityRunner:
         elif len(parts) == 2 and all(parts):
             me_workspace, me_name = parts[0], parts[1]
         else:
-            # Reject anything that isn't exactly 'name' or 'workspace/name' (e.g.
-            # 'a/b/c', '/b', 'a/') instead of silently dropping extra segments.
             raise ModelEntityCreationError(
                 f"Invalid model entity reference '{model_entity}': expected 'name' or 'workspace/name'."
             )
@@ -145,22 +141,11 @@ class ModelEntityRunner:
     @retry(
         stop=stop_after_attempt(MAX_RETRIES),
         wait=wait_exponential(multiplier=2, min=INITIAL_BACKOFF_SECONDS, max=MAX_BACKOFF_SECONDS),
-        retry=retry_if_exception_type((InternalServerError, APITimeoutError, APIConnectionError)),
+        retry=retry_if_exception_type(TRANSIENT_RETRYABLE_EXCEPTIONS),
         reraise=True,
     )
     def create_model_entity(self, config: ModelEntityTaskConfig) -> tuple[dict, ModelEntity]:
-        """Create a model entity in the Models service.
-
-        Returns:
-            Tuple of (result dict, deploy target). For LoRA the deploy target is the
-            *base* model entity; for SFT it is the newly created output model entity.
-
-        Raises:
-            ModelEntityCreationError: If creation fails.
-        """
-        # The output entity is created in the workspace declared on the config
-        # (the "workspace of the model entity to create" contract), not the
-        # ambient job workspace — the two can differ for cross-workspace jobs.
+        """Create a model entity in the Models service."""
         output_workspace = config.workspace
         logger.info(f"Creating model entity: {output_workspace}/{config.name}")
 
@@ -173,14 +158,7 @@ class ModelEntityRunner:
                 workspace=fileset_workspace, name=config.fileset.name
             )
             logger.info(f"Fileset validation successful: {fileset_workspace}/{config.fileset.name}")
-        except (
-            InternalServerError,
-            APITimeoutError,
-            APIConnectionError,
-            ClientInternalServerError,
-            httpx.TimeoutException,
-            httpx.ConnectError,
-        ):
+        except TRANSIENT_RETRYABLE_EXCEPTIONS:
             raise
         except Exception as e:
             logger.error(f"Fileset validation failed: {fileset_workspace}/{config.fileset.name}")
@@ -202,7 +180,7 @@ class ModelEntityRunner:
         fileset_ref: str,
     ) -> tuple[dict, ModelEntity]:
         """Create or update a LoRA adapter on ``base_me``. Returns (result, base_me)."""
-        assert config.peft is not None  # type narrowing — caller already checked
+        assert config.peft is not None
         try:
             output_me = self.sdk.models.adapters.create(
                 model_name=base_me.name,
@@ -237,7 +215,7 @@ class ModelEntityRunner:
                     f"for base model {base_me.workspace}/{base_me.name}"
                 )
                 return output_me.model_dump(), base_me
-            except (InternalServerError, APITimeoutError, APIConnectionError):
+            except TRANSIENT_RETRYABLE_EXCEPTIONS:
                 raise
             except Exception as update_error:
                 logger.exception(
@@ -264,8 +242,6 @@ class ModelEntityRunner:
             "description": config.description,
             "fileset": fileset_ref,
             "finetuning_type": ft_type,
-            # Honor the task config's flag (resolved by the compiler from the base
-            # model entity) rather than re-reading it off a freshly fetched entity.
             "trust_remote_code": config.trust_remote_code,
         }
         if config.base_model:
@@ -286,7 +262,7 @@ class ModelEntityRunner:
                 )
                 logger.info(f"Successfully updated model entity: {output_me.workspace}/{output_me.name}")
                 return output_me.model_dump(), output_me
-            except (InternalServerError, APITimeoutError, APIConnectionError):
+            except TRANSIENT_RETRYABLE_EXCEPTIONS:
                 raise
             except Exception as update_error:
                 logger.exception(f"Failed to update existing model entity: {update_error}")
@@ -298,17 +274,11 @@ class ModelEntityRunner:
             raise ModelEntityCreationError(f"Failed to create model entity: {e}") from e
 
     def launch_model(self, config: ModelEntityTaskConfig, me: ModelEntity) -> None:
-        """Deploy a model entity after creation.
-
-        For LoRA jobs, ``me`` should be the base model entity.
-        For SFT jobs, ``me`` should be the output model entity.
-        """
+        """Deploy a model entity after creation."""
         dc = config.deployment_config
         if dc is None:
             return
 
-        # LORA_MERGED produces a full-weight model, so it's deployed like SFT and
-        # is intentionally excluded from the LoRA-only checks below.
         is_lora = config.peft is not None and config.peft.type == FinetuningType.LORA
         if is_lora and self._has_active_deployment(me):
             return
@@ -403,9 +373,6 @@ class ModelEntityRunner:
 
     def _create_deployment(self, deployment_config: ModelDeploymentConfig, me: ModelEntity) -> None:
         """Create a deployment from the given ``ModelDeploymentConfig``."""
-        # Log identifiers only: the full ModelDeploymentConfig embeds
-        # executor_config.additional_envs (deployment secrets), which would
-        # otherwise become durable in the job logs.
         logger.info(f"Using deployment config: {deployment_config.workspace}/{deployment_config.name}")
 
         if not me.spec:
@@ -435,30 +402,22 @@ class ModelEntityRunner:
         )
 
 
-def run(sdk: NeMoPlatform | None = None, job_ctx: NMPJobContext | None = None) -> int:
-    """Execute the model entity creation task.
-
-    Args:
-        sdk: Optional SDK instance for dependency injection (for testing).
-            If None, creates one via get_task_sdk().
-        job_ctx: Optional job context for dependency injection (for testing).
-            If None, creates one via NMPJobContext.from_env().
-
-    Returns:
-        Exit code (0 for success, non-zero for failure).
-    """
+def run(
+    sdk: NeMoPlatform | None = None,
+    job_ctx: NMPJobContext | None = None,
+    *,
+    service_name: str,
+) -> int:
+    """Execute the model entity creation task."""
     job_ctx = job_ctx or NMPJobContext.from_env()
 
     sdk_owned = sdk is None
     try:
-        sdk = sdk or get_task_sdk(SERVICE_NAME).with_options(workspace=job_ctx.workspace)
+        sdk = sdk or get_task_sdk(service_name).with_options(workspace=job_ctx.workspace)
         runner = ModelEntityRunner(sdk=sdk, job_ctx=job_ctx)
 
         config = get_config(job_ctx.config_path)
 
-        # Log only a non-sensitive summary. The full job context carries service
-        # URLs/identifiers and the config's deployment_config.additional_envs can
-        # carry deployment secrets, so neither is dumped wholesale.
         logger.info(
             "Starting model entity task: job_id=%s, name=%s, workspace=%s, fileset=%s/%s, deployment_configured=%s",
             job_ctx.job_id,

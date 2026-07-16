@@ -138,6 +138,7 @@ Read NeMo Platform documentation.
 
 Examples:
 nemo docs get-started/setup
+nemo docs set-up/helm/install
 nemo docs --list
 nemo docs cli/configuration""",
         name="docs",

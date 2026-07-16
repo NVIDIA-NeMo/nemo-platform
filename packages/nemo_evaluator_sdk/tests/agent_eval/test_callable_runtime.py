@@ -11,7 +11,7 @@ from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrialStatus, AgentOutp
 
 
 def _task(task_id: str) -> AgentEvalTask:
-    return AgentEvalTask(id=task_id, intent="Answer.", inputs={"prompt": f"q-{task_id}"})
+    return AgentEvalTask(id=task_id, intent="Answer.", inputs={"instruction": f"q-{task_id}"})
 
 
 @pytest.mark.asyncio

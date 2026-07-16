@@ -15,6 +15,13 @@ llms:
     temperature: 0.0
     max_tokens: 1024
 
+general:
+  telemetry:
+    tracing:
+      nemo_files_trace:
+        _type: nemo_files
+        # workspace and agent_name are injected at deploy time
+
 workflow:
   _type: react_agent
   tool_names: [clock]

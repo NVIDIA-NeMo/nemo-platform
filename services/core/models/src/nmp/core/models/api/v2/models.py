@@ -279,7 +279,7 @@ async def start_update_model_spec_job(model_entity: ModelEntity):
                     # host subprocess backend when subprocess/default is registered.
                     profile="gpu",
                     container=ContainerSpec(
-                        image=get_qualified_image("nmp-automodel-tasks"),
+                        image=get_qualified_image("nmp-customizer-tasks"),
                         entrypoint=["/opt/venv/bin/python"],
                         command=["-m", "nmp.core.models.tasks.model_spec"],
                     ),

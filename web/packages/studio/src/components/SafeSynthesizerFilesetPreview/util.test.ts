@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { parseFilesetUrl } from '@nemo/common/src/components/DatasetFileSelect/utils';
-import { parseCSV, parseFileContent } from '@studio/components/SafeSynthesizerFilesetPreview/util';
+import {
+  parseCSVTable,
+  parseFileContent,
+} from '@studio/components/SafeSynthesizerFilesetPreview/util';
 
 vi.mock('papaparse', () => ({
   default: {
@@ -39,7 +42,7 @@ describe('SafeSynthesizerDatasetPreview utils', () => {
 
       mockPapaParse.mockImplementation(vi.fn().mockReturnValue(mockParsedData));
 
-      const result = parseCSV(mockCsvContent);
+      const result = parseCSVTable(mockCsvContent);
 
       expect(mockPapaParse).toHaveBeenCalledWith(mockCsvContent, { header: true });
       expect(result.columns).toEqual([
@@ -71,7 +74,7 @@ describe('SafeSynthesizerDatasetPreview utils', () => {
 
       mockPapaParse.mockImplementation(vi.fn().mockReturnValue(mockParsedData));
 
-      const result = parseCSV('id,name\ncustom-id,John');
+      const result = parseCSVTable('id,name\ncustom-id,John');
 
       expect(result.rows[0].id).toBe('custom-id');
     });
@@ -92,7 +95,7 @@ describe('SafeSynthesizerDatasetPreview utils', () => {
 
       mockPapaParse.mockImplementation(vi.fn().mockReturnValue(mockParsedData));
 
-      const result = parseCSV('name\nJohn\nJane');
+      const result = parseCSVTable('name\nJohn\nJane');
 
       expect(result.rows[0].id).toBe('0');
       expect(result.rows[1].id).toBe('1');
@@ -114,7 +117,7 @@ describe('SafeSynthesizerDatasetPreview utils', () => {
 
       mockPapaParse.mockImplementation(vi.fn().mockReturnValue(mockParsedData));
 
-      const result = parseCSV('name,age,city\nJohn,,');
+      const result = parseCSVTable('name,age,city\nJohn,,');
 
       expect(result.rows[0].cells[1].children).toBe('');
       expect(result.rows[0].cells[2].children).toBe('');

@@ -107,7 +107,7 @@ export interface IntakeSpansTableProps {
   slotEndPortalTargetId?: string;
   fixedFilter?: SpanFilter;
   mode?: ListSpansMode;
-  defaultSort?: { id: string; desc: boolean };
+  defaultSort?: { id: string; desc: boolean }[];
   defaultPageSize?: number;
   showTraceColumn?: boolean;
   showHierarchy?: boolean;
@@ -140,7 +140,7 @@ const SeededIntakeSpansTable: FC<
   slotEndPortalTargetId,
   fixedFilter,
   mode = 'summary',
-  defaultSort = { id: 'started_at', desc: true },
+  defaultSort = [{ id: 'started_at', desc: true }],
   defaultPageSize,
   showTraceColumn = true,
   showHierarchy = false,

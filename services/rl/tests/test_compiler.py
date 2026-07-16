@@ -198,12 +198,31 @@ async def test_compiler_emits_four_steps(monkeypatch: pytest.MonkeyPatch, mock_s
     names = [s["name"] for s in steps]
     assert names == ["model-and-dataset-download", "dpo-training", "model-upload", "model-entity-creation"]
 
-    # CPU task steps share the lighter tasks image; the GPU step uses the training image.
-    assert "nmp-rl-tasks" in _container(steps[0])["image"]
+    # CPU task steps share the lighter customizer-tasks image; the GPU step uses the training image.
+    assert "nmp-customizer-tasks" in _container(steps[0])["image"]
     assert "nmp-rl-training" in _container(steps[1])["image"]
-    assert "nmp-rl-tasks" in _container(steps[2])["image"]
-    assert _container(steps[0])["command"] == ["-m", "nmp.rl.tasks.file_io"]
-    assert _container(steps[3])["command"] == ["-m", "nmp.rl.tasks.model_entity"]
+    assert "nmp-customizer-tasks" in _container(steps[2])["image"]
+    assert _container(steps[0])["command"] == [
+        "-m",
+        "nmp.customization_common.tasks.file_io",
+        "--service-source",
+        "rl",
+        "--service-name",
+        "rl",
+    ]
+    assert _container(steps[3])["command"] == [
+        "-m",
+        "nmp.customization_common.tasks.model_entity",
+        "--service-name",
+        "rl",
+    ]
+
+    upload_meta = steps[2]["config"]["upload"][0]["metadata"]
+    assert upload_meta == {
+        "model": "default/base-model",
+        "finetuning_type": "all_weights",
+        "output_type": "model",
+    }
 
 
 @pytest.mark.asyncio

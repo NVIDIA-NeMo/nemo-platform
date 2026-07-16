@@ -40,7 +40,7 @@ class K8sNimOperatorConfig(BaseModel):
         description=(
             "Image name (without registry/tag) for the LoRA adapters sidecar container. "
             "Registry and tag are taken from the platform config (NMP_IMAGE_REGISTRY / NMP_IMAGE_TAG). "
-            "Override to 'nmp-automodel-tasks' for local dev when that image is already available "
+            "Override to 'nmp-customizer-tasks' for local dev when that image is already available "
             "but nmp-api is not."
         ),
     )
@@ -49,7 +49,7 @@ class K8sNimOperatorConfig(BaseModel):
         description=(
             "Kubernetes container command (entrypoint) for the LoRA sidecar. "
             "Default uses the nmp-platform-runner entrypoint present in nmp-api. "
-            "When using nmp-automodel-tasks set to ['python'] and set lora_sidecar_args to "
+            "When using nmp-customizer-tasks set to ['python'] and set lora_sidecar_args to "
             "['-m', 'nmp.core.models.sidecars.adapters.main']."
         ),
     )
@@ -58,7 +58,7 @@ class K8sNimOperatorConfig(BaseModel):
         description=(
             "Kubernetes container args for the LoRA sidecar (appended after lora_sidecar_command). "
             "Leave empty for nmp-api. "
-            "Set to ['-m', 'nmp.core.models.sidecars.adapters.main'] when using nmp-automodel-tasks."
+            "Set to ['-m', 'nmp.core.models.sidecars.adapters.main'] when using nmp-customizer-tasks."
         ),
     )
 
