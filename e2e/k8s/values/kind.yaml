@@ -33,3 +33,22 @@ platformConfig:
       backends:
         nim_operator:
           enabled: false
+  # Wire a nemo-deployments k8s executor so deployment_mode=k8s agent
+  # deployments (test_nemo_agents_k8s.py) run as real Deployment+Service
+  # workloads in the release namespace. The nmp-core controller ServiceAccount
+  # Role already grants apps/deployments, services, configmaps, and pods (see
+  # k8s/helm/templates/core/controller-role.yaml). default_namespace matches the
+  # Helm release namespace so the agent lands beside the platform and the
+  # in-cluster Inference Gateway URL injected into the pod is reachable.
+  agents:
+    deployments:
+      k8s_executor: kind-k8s
+      container_port: 8000
+  deployments:
+    default_executor: kind-k8s
+    executors:
+      - name: kind-k8s
+        backend: k8s
+        config:
+          # Omit kubeconfig_path -> in-cluster ServiceAccount auth.
+          default_namespace: nemo-platform
