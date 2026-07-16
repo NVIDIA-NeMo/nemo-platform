@@ -370,8 +370,12 @@ def test_merged_profiles():
                 ),
             ),
         ),
-        *get_default_executor_profiles_for_runtime(runtime=Runtime.DOCKER, defaults=DefaultExecutionProfileConfig())[
-            2:
+        *[
+            p
+            for p in get_default_executor_profiles_for_runtime(
+                runtime=Runtime.DOCKER, defaults=DefaultExecutionProfileConfig()
+            )
+            if p.provider == "subprocess"
         ],
     ]
 
