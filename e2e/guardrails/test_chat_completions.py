@@ -1,12 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""E2E tests for the Guardrails plugin on chat completions.
+"""E2E tests for chat completions with the Guardrails plugin.
 
-These tests verify that the ``nemo-guardrails`` inference middleware works
+These tests verify that the Guardrails IGW middleware works
 through the real platform subprocess, exercising content-safety input and
-output rails on non-streaming and streaming Inference Gateway chat-completion
-routes.
+output rails on non-streaming and streaming chat-completion routes.
 
 Mock provider mode is enabled by the NMP_INFERENCE_GATEWAY_MOCK_PROVIDER_PREFIX
 env var set in e2e/conftest.py. Tests use ``add_mock_provider()`` from

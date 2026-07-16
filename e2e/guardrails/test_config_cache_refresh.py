@@ -1,15 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""E2E tests for real IGW background cache refresh of Guardrails configs.
+"""E2E tests for the background cache refresh of Guardrail configs.
 
-These are the real-subprocess counterpart to the plugin's own
-``test_middleware_config_caching.py`` integration tests, which manually call
-``harness.refresh_caches()`` because their harness has no background
-controller loop. Here we let IGW's real background cache-refresh task pick up
-a GuardrailConfig update or delete for a guarded VirtualModel that
-is already warm, polling until the change takes effect within a bounded
-timeout.
+The IGW background cache-refresh task picks up GuardrailConfig updates and deletes
+for guarded VirtualModels. These tests validate the Guardrails plugin behavior
+after GuardrailConfig changes are picked up in the background.
 """
 
 import time
@@ -31,20 +27,24 @@ from e2e.guardrails.utils import (
     unique_name,
 )
 
+# Timeout while waiting for the background cache refresh to pick up changes
 CACHE_REFRESH_TIMEOUT_SECONDS = 30.0
+# Interval between cache refresh polling attempts
 CACHE_REFRESH_POLL_INTERVAL_SECONDS = 1.0
+
+# The injection detection flow is used to validate the GuardrailConfig change
+# is reflected in the response.
 INJECTION_DETECTION_FLOW = "injection detection"
+# The request body fields we use to log the activated rails in the response.
 LOG_ACTIVATED_RAILS = {"guardrails": {"options": {"log": {"activated_rails": True}}}}
 
 
 def _yara_output_config(*, match_word: str) -> dict[str, Any]:
     """An output-rail injection-detection config with one custom YARA rule.
 
-    Whether a request is blocked depends only on whether ``match_word``
-    appears (case-insensitively) in the fixed backend response, so flipping
-    ``match_word`` between config versions is enough to prove which config
-    version a request actually ran against. No external model call is needed,
-    which keeps the cache-refresh assertion isolated from mock-model timing.
+    This rule blocks responses that contain the `match_word` in the message content.
+    For testing purposes, since we mock responses, we can modify the rule to
+    verify if a config change is reflected in the subsequent request.
     """
     return {
         "rails": {
@@ -123,7 +123,7 @@ def test_config_update_reflected_after_real_background_refresh(
     workspace: str,
 ) -> None:
     """Updating a referenced GuardrailConfig should change rail behavior once IGW's
-    real background cache refresh (not a manually-forced one) re-resolves the VM.
+    background refresh re-resolves the VM.
     """
     virtual_model_name, backend_model_ref, config_name = _setup_backend_and_vm(sdk, workspace)
     try:
@@ -175,7 +175,7 @@ def test_config_delete_blocks_requests_after_real_background_refresh(
     workspace: str,
 ) -> None:
     """Deleting a referenced GuardrailConfig should fail the VM closed (503) once
-    IGW's real background cache refresh notices the config is gone.
+    IGW's real background cache refresh picks up the config deletion.
     """
     virtual_model_name, backend_model_ref, config_name = _setup_backend_and_vm(sdk, workspace)
     try:

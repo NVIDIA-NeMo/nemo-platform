@@ -1,22 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""E2E smoke tests for non-content-safety Guardrails rail types.
-
-``test_chat_completions.py`` and ``test_checks.py`` only ever exercise a
-content-safety rail through the real platform subprocess. Every other rail
-type (topic control, self-check, injection detection, multimodal/vision,
-content-safety-reasoning, parallel rails) is otherwise only covered by the
-plugin's own integration tests, which run against ``IGWLoopbackHarness`` /
-``IGWPluginHarness`` — a lighter-weight harness with no real subprocess, no
-real HTTP/SDK round trip, and no real background cache refresh.
-
-These tests are intentionally lean: one block/allow case per rail type, not
-the full behavior matrix the integration suite already owns. Their job is to
-catch schema or serialization drift between the SDK-generated
-``GuardrailConfig`` types and the real API for configs shaped differently
-than content safety (extra ``rails.config`` blocks, multiple ``models``
-entries, ``messages``-style prompts, etc.).
+"""E2E tests for chat completions with the Guardrails plugin using different
+rail types. These tests are intentionally lighter than the more comprehensive
+integration tests, which cover a broader set of use cases.
 """
 
 from typing import Any
@@ -36,8 +23,7 @@ from e2e.guardrails.utils import (
     unique_name,
 )
 
-# Requests activated-rails logging so tests can assert on the specific flow
-# that fired, not just the overall blocked/allowed outcome.
+# The request body fields we use to log the activated rails in the response.
 LOG_ACTIVATED_RAILS = {"guardrails": {"options": {"log": {"activated_rails": True}}}}
 
 
@@ -86,8 +72,6 @@ def _topic_control_config(*, topic_control_model_ref: str) -> dict[str, Any]:
         "rails": {"input": {"flows": [TOPIC_CONTROL_FLOW]}},
         "prompts": [
             {
-                # The prompt `task` uses underscores (`topic_safety_check_input`), unlike
-                # the `rails.flows` entry above, which uses the space-separated flow name.
                 "task": "topic_safety_check_input $model=topic_control",
                 "content": TOPIC_CONTROL_INPUT_PROMPT_TEMPLATE,
                 "max_tokens": 50,
@@ -161,12 +145,6 @@ SELF_CHECK_OUTPUT_PROMPT_TEMPLATE = (
 
 
 def _self_check_config() -> dict[str, Any]:
-    # No `models` entry for the "main" type, and no `parameters.base_url` on
-    # either prompt's task: per the plugin's own
-    # `test_resolver_fills_main_base_url` integration test, an unqualified
-    # rail LLM resolves to the *calling VirtualModel's own backend model* at
-    # request time, not a separately configured rail model. So self-check
-    # calls land on the same backend mock as the real generation call.
     return {
         "rails": {
             "input": {"flows": [SELF_CHECK_INPUT_FLOW]},
@@ -483,7 +461,6 @@ def _content_safety_reasoning_config(*, model_ref: str) -> dict[str, Any]:
         },
         "prompts": [
             {
-                # The prompt `task` uses underscores, unlike the space-separated flow name above.
                 "task": "content_safety_check_input $model=content_safety_reasoning",
                 "content": (
                     f"{REASONING_PROMPT_INTRO}\n\n"
