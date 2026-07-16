@@ -41,6 +41,7 @@ const cacheFile = path.join(cacheDir, "probe.pyc");
 fs.mkdirSync(cacheDir, {recursive: true});
 fs.writeFileSync(cacheFile, "fake bytecode");
 fs.writeFileSync(finalOutput, "fake codex answer");
+fs.symlinkSync("/etc/passwd", path.join(workspace, "host-link"));
 fs.chmodSync(cacheFile, 0o000);
 fs.chmodSync(cacheDir, 0o000);
 fs.chmodSync(finalOutput, 0o000);
@@ -77,18 +78,21 @@ def _fake_codex_task(task_id: str, *, exit_code: int | None = None) -> AgentEval
     )
 
 
-def _assert_tree_host_readable(root: Path) -> None:
+def _assert_tree_host_private(root: Path) -> None:
     assert root.is_dir()
-    for path in root.rglob("*"):
+    for path in (root, *root.rglob("*")):
         if path.is_symlink():
             continue
-        mode = stat.S_IMODE(path.stat().st_mode)
+        path_stat = path.stat()
+        mode = stat.S_IMODE(path_stat.st_mode)
+        assert path_stat.st_uid == os.getuid(), f"artifact is not owned by the host user: {path}"
+        assert mode & 0o077 == 0, f"artifact is accessible to group or other users: {path} ({mode:o})"
         if path.is_dir():
-            assert mode & 0o555 == 0o555, f"directory is not traversable by the host: {path} ({mode:o})"
-            assert os.access(path, os.R_OK | os.X_OK)
+            assert mode & 0o700 == 0o700, f"directory is not accessible to the host user: {path} ({mode:o})"
+            assert os.access(path, os.R_OK | os.W_OK | os.X_OK)
         elif path.is_file():
-            assert mode & 0o444 == 0o444, f"file is not host-readable: {path} ({mode:o})"
-            assert os.access(path, os.R_OK)
+            assert mode & 0o600 == 0o600, f"file is not readable and writable by the host user: {path} ({mode:o})"
+            assert os.access(path, os.R_OK | os.W_OK)
             path.read_bytes()
 
 
@@ -114,13 +118,17 @@ async def test_codex_docker_normalizes_concurrent_workspace_and_evidence_trees(t
         assert trial.output.output_text == "fake codex answer"
         assert trial.evidence is not None
         workspace = await trial.evidence.filesystem("workspace")
-        verifier = await workspace.run_verifier(["true"])
+        verifier = await workspace.run_verifier(["test", "!", "-e", "host-link"])
         assert verifier.ok
 
         evidence_dir = Path(trial.output.metadata["evidence_dir"])
-        _assert_tree_host_readable(evidence_dir / "workspace")
-        _assert_tree_host_readable(evidence_dir)
-        shutil.copytree(evidence_dir, tmp_path / "copies" / trial.task_id)
+        _assert_tree_host_private(evidence_dir / "workspace")
+        _assert_tree_host_private(evidence_dir)
+        copy = tmp_path / "copies" / trial.task_id
+        shutil.copytree(evidence_dir, copy, symlinks=True)
+        assert (copy / "workspace" / "host-link").is_symlink()
+
+    assert stat.S_IMODE(work_root.stat().st_mode) == 0o700
 
 
 async def test_codex_docker_preserves_failure_status_after_permission_normalization(tmp_path: Path) -> None:
@@ -139,7 +147,8 @@ async def test_codex_docker_preserves_failure_status_after_permission_normalizat
     assert trial.status == "failed"
     assert trial.metadata["agent_ok"] is False
     assert "status 23" in trial.metadata["error"]
+    assert "permission_cleanup_error" not in trial.metadata
     evidence_dir = work_root / "000000-failure"
-    _assert_tree_host_readable(evidence_dir / "workspace")
-    _assert_tree_host_readable(evidence_dir)
+    _assert_tree_host_private(evidence_dir / "workspace")
+    _assert_tree_host_private(evidence_dir)
     assert (evidence_dir / "final_output.txt").read_text(encoding="utf-8") == "fake codex answer"

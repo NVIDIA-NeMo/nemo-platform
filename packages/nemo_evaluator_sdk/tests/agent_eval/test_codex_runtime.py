@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+import os
+import stat
 import threading
 from collections.abc import Mapping
 from pathlib import Path
@@ -120,6 +122,12 @@ async def test_codex_cli_agent_runtime_uses_local_codex_command_and_writes_evide
             return b'{"type":"event"}\n', b""
 
     async def fake_process_factory(*command: str, **kwargs: Any) -> FakeProcess:
+        evidence_dir = Path(command[command.index("--output-last-message") + 1]).parent
+        assert stat.S_IMODE(evidence_dir.parent.stat().st_mode) == 0o700
+        assert stat.S_IMODE(evidence_dir.stat().st_mode) == 0o700
+        assert stat.S_IMODE((evidence_dir / "workspace").stat().st_mode) == 0o700
+        assert stat.S_IMODE((evidence_dir / "task.json").stat().st_mode) == 0o600
+        assert stat.S_IMODE((evidence_dir / "prompt.txt").stat().st_mode) == 0o600
         commands.append((command, kwargs))
         return FakeProcess(command)
 
@@ -149,6 +157,8 @@ async def test_codex_cli_agent_runtime_uses_local_codex_command_and_writes_evide
         tmp_path / "codex" / "000000-task-1" / "workspace"
     )
     assert (tmp_path / "codex" / "000000-task-1" / "stdout.jsonl").read_text(encoding="utf-8") == '{"type":"event"}\n'
+    assert (tmp_path / "codex" / "000000-task-1" / "stdout.jsonl").stat().st_mode & 0o777 == 0o600
+    assert (tmp_path / "codex" / "000000-task-1" / "stderr.txt").stat().st_mode & 0o777 == 0o600
 
 
 @pytest.mark.asyncio
@@ -208,6 +218,10 @@ async def test_codex_docker_cli_agent_runtime_runs_codex_in_container_and_writes
             evidence_mount = self.command[self.command.index(f"{auth_path.resolve()}:/root/.codex/auth.json:ro") + 4]
             evidence_dir = Path(evidence_mount.split(":/evidence", maxsplit=1)[0])
             (evidence_dir / "final_output.txt").write_text("docker codex answer", encoding="utf-8")
+            for directory, _subdirectories, filenames in os.walk(evidence_dir):
+                Path(directory).chmod(0o700)
+                for filename in filenames:
+                    (Path(directory) / filename).chmod(0o600)
             return b'{"type":"event"}\n', b""
 
     async def fake_process_factory(*command: str, **kwargs: Any) -> FakeProcess:
@@ -215,8 +229,6 @@ async def test_codex_docker_cli_agent_runtime_runs_codex_in_container_and_writes
         return FakeProcess(command)
 
     monkeypatch.setattr(codex_runtime.shutil, "which", lambda value: f"/bin/{value}")
-    monkeypatch.setattr(codex_runtime.os, "getuid", lambda: 1234)
-    monkeypatch.setattr(codex_runtime.os, "getgid", lambda: 5678)
     runtime = codex_runtime.CodexDockerCliAgentRuntime(
         model="gpt-5.4",
         work_root=tmp_path / "codex-docker",
@@ -237,11 +249,14 @@ async def test_codex_docker_cli_agent_runtime_runs_codex_in_container_and_writes
     assert f"npx -y {codex_runtime.DEFAULT_CODEX_DOCKER_CLI_PACKAGE} exec" in command[-1]
     assert "--sandbox danger-full-access" in command[-1]
     assert "--model gpt-5.4" in command[-1]
+    assert "host_owner=\"$(stat -c '%u:%g' /evidence 2>/dev/null)\" || true" in command[-1]
+    assert command[-1].index("host_owner=") < command[-1].index("npx -y")
     assert "codex_status=$?" in command[-1]
-    assert "chown -R 1234:5678 /workspace /evidence 2>/dev/null || true" in command[-1]
-    assert "chmod -R u+rwX,go+rX /workspace /evidence" in command[-1]
+    assert 'chown -R "$host_owner" /workspace /evidence 2>/dev/null || true' in command[-1]
+    assert "chmod -R u+rwX,go-rwx /workspace /evidence" in command[-1]
     assert 'if [ "$codex_status" -ne 0 ]; then exit "$codex_status"; fi' in command[-1]
     assert 'exit "$permissions_status"' in command[-1]
+    assert command[-1].index('if [ "$codex_status"') < command[-1].index('exit "$permissions_status"')
     assert kwargs["stdin"] == codex_runtime.subprocess.PIPE
     assert trials[0].status == "completed"
     assert trials[0].output is not None
@@ -293,6 +308,7 @@ async def test_codex_cli_agent_runtime_kills_process_on_timeout(
     assert trials[0].status == "failed"
     assert trials[0].output is None
     assert trials[0].metadata["error_type"] == "TimeoutError"
+    assert (tmp_path / "codex" / "000000-task-timeout" / "error.json").stat().st_mode & 0o777 == 0o600
 
 
 @pytest.mark.asyncio
@@ -322,6 +338,194 @@ async def test_codex_cli_agent_runtime_falls_back_to_stdout_and_persists_final_o
     assert trials[0].output.output_text == "stdout fallback\n"
     final_output = tmp_path / "codex" / "000000-task-2" / "final_output.txt"
     assert final_output.read_text(encoding="utf-8") == "stdout fallback\n"
+    assert final_output.stat().st_mode & 0o777 == 0o600
+
+
+def test_private_directory_creation_repairs_modes_and_rejects_unsafe_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    private_dir = tmp_path / "private"
+    private_dir.mkdir(mode=0o755)
+
+    codex_runtime._ensure_private_directory(private_dir)
+
+    assert stat.S_IMODE(private_dir.stat().st_mode) == 0o700
+
+    symlink = tmp_path / "symlink"
+    symlink.symlink_to(private_dir, target_is_directory=True)
+    with pytest.raises(OSError):
+        codex_runtime._ensure_private_directory(symlink)
+
+    not_a_directory = tmp_path / "file"
+    not_a_directory.touch()
+    with pytest.raises(FileExistsError):
+        codex_runtime._ensure_private_directory(not_a_directory)
+
+    different_uid = os.getuid() + 1
+    monkeypatch.setattr(codex_runtime.os, "getuid", lambda: different_uid)
+    with pytest.raises(PermissionError, match="not owned"):
+        codex_runtime._ensure_private_directory(private_dir)
+
+
+def test_private_text_write_is_owner_only_atomic_and_replaces_symlinks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    external = tmp_path / "external.txt"
+    external.write_text("external", encoding="utf-8")
+    target = tmp_path / "artifact.txt"
+    target.symlink_to(external)
+    original_replace = codex_runtime.os.replace
+
+    def checked_replace(source: str | Path, destination: str | Path) -> None:
+        assert stat.S_IMODE(Path(source).stat().st_mode) == 0o600
+        original_replace(source, destination)
+
+    monkeypatch.setattr(codex_runtime.os, "replace", checked_replace)
+
+    codex_runtime._write_private_text(target, "private")
+
+    assert not target.is_symlink()
+    assert target.read_text(encoding="utf-8") == "private"
+    assert external.read_text(encoding="utf-8") == "external"
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+
+
+def test_private_text_write_cleans_temporary_file_on_replace_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "artifact.txt"
+
+    def fail_replace(source: str | Path, destination: str | Path) -> None:
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(codex_runtime.os, "replace", fail_replace)
+
+    with pytest.raises(OSError, match="replace failed"):
+        codex_runtime._write_private_text(target, "private")
+
+    assert list(tmp_path.glob(".artifact.txt.*.tmp")) == []
+
+
+def test_private_tree_validation_is_root_inclusive_and_does_not_follow_symlinks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "evidence"
+    root.mkdir(mode=0o700)
+    nested = root / "nested"
+    nested.mkdir(mode=0o700)
+    regular = nested / "regular.txt"
+    regular.write_text("ok", encoding="utf-8")
+    regular.chmod(0o600)
+    executable = nested / "script.sh"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    executable.chmod(0o700)
+    (nested / "host-link").symlink_to("/etc/passwd")
+
+    codex_runtime._validate_private_tree(root)
+
+    regular.chmod(0o640)
+    with pytest.raises(PermissionError, match="group or other"):
+        codex_runtime._validate_private_tree(root)
+    regular.chmod(0o400)
+    with pytest.raises(PermissionError, match="owner-readable and writable"):
+        codex_runtime._validate_private_tree(root)
+    regular.chmod(0o600)
+    root.chmod(0o750)
+    with pytest.raises(PermissionError, match="group or other"):
+        codex_runtime._validate_private_tree(root)
+    root.chmod(0o700)
+    different_uid = os.getuid() + 1
+    monkeypatch.setattr(codex_runtime.os, "getuid", lambda: different_uid)
+    with pytest.raises(PermissionError, match="not owned"):
+        codex_runtime._validate_private_tree(root)
+
+
+@pytest.mark.asyncio
+async def test_codex_success_fails_when_permission_postcondition_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text("{}", encoding="utf-8")
+
+    class FakeProcess:
+        returncode = 0
+
+        async def communicate(self, input: bytes) -> tuple[bytes, bytes]:
+            return b"", b""
+
+    async def fake_process_factory(*command: str, **kwargs: Any) -> FakeProcess:
+        return FakeProcess()
+
+    monkeypatch.setattr(codex_runtime.shutil, "which", lambda value: f"/bin/{value}")
+    runtime = codex_runtime.CodexDockerCliAgentRuntime(
+        work_root=tmp_path / "codex-docker",
+        auth_path=auth_path,
+        process_factory=fake_process_factory,
+    )
+
+    def fail_validation(evidence_dir: Path) -> None:
+        raise PermissionError("unsafe evidence")
+
+    monkeypatch.setattr(runtime, "_validate_artifact_permissions", fail_validation)
+    task = AgentEvalTask(id="success", intent="Succeed.", inputs={"instruction": "succeed"})
+
+    (trial,) = await runtime.run_tasks([task])
+
+    assert trial.status == "failed"
+    assert trial.metadata["error_type"] == "PermissionError"
+    assert "unsafe evidence" in trial.metadata["permission_cleanup_error"]
+
+
+@pytest.mark.asyncio
+async def test_codex_failure_preserves_status_and_reports_permission_cleanup_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text("{}", encoding="utf-8")
+
+    class FakeProcess:
+        returncode = 23
+
+        async def communicate(self, input: bytes) -> tuple[bytes, bytes]:
+            return b"", b"codex failed"
+
+    async def fake_process_factory(*command: str, **kwargs: Any) -> FakeProcess:
+        return FakeProcess()
+
+    monkeypatch.setattr(codex_runtime.shutil, "which", lambda value: f"/bin/{value}")
+    runtime = codex_runtime.CodexDockerCliAgentRuntime(
+        work_root=tmp_path / "codex-docker",
+        auth_path=auth_path,
+        process_factory=fake_process_factory,
+    )
+
+    def fail_validation(evidence_dir: Path) -> None:
+        raise PermissionError("unsafe evidence")
+
+    monkeypatch.setattr(runtime, "_validate_artifact_permissions", fail_validation)
+    task = AgentEvalTask(id="failure", intent="Fail.", inputs={"instruction": "fail"})
+
+    (trial,) = await runtime.run_tasks([task])
+
+    assert trial.status == "failed"
+    assert "status 23" in trial.metadata["error"]
+    assert "unsafe evidence" in trial.metadata["permission_cleanup_error"]
+
+
+def test_failed_trial_survives_inaccessible_error_artifact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    task = AgentEvalTask(id="failure", intent="Fail.", inputs={"instruction": "fail"})
+
+    def fail_write(path: Path, content: str) -> None:
+        raise PermissionError("inaccessible")
+
+    monkeypatch.setattr(codex_runtime, "_write_private_text", fail_write)
+
+    trial = codex_runtime._failed_codex_trial(task, tmp_path / "missing", RuntimeError("original"))
+
+    assert trial.status == "failed"
+    assert trial.evidence is None
+    assert trial.metadata["error"] == "original"
+    assert "inaccessible" in trial.metadata["error_artifact_error"]
 
 
 @pytest.mark.asyncio
