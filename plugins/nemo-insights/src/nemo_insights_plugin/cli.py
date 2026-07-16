@@ -152,11 +152,16 @@ async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
         analysis.profile_output.parent.mkdir(parents=True, exist_ok=True)
         typer.echo(f"Insights file: {analysis.profile_output}", err=True)
     try:
+        try:
+            client = make_client(analysis.base_url)
+        except (RuntimeError, ValueError) as exc:
+            raise ClientConstructionError(str(exc)) from None
         return await run_analyst(
             agent=analysis.agent,
             agent_spec=analysis.agent_spec,
             workspace=analysis.workspace,
             base_url=analysis.base_url,
+            client=client,
             insights_output=analysis.insights_output,
             verbose=verbose,
         )

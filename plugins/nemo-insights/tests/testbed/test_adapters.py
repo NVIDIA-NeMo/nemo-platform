@@ -43,6 +43,64 @@ def _intake_subject(**overrides) -> Subject:
     return Subject(name="nvq", type="intake", config=config)
 
 
+def _basic_intake_subject(**overrides) -> Subject:
+    config = {
+        "agent": "glamr",
+        "workspace": "default",
+        "base_url": "https://agenthub.aire.nvidia.com",
+        "auth": "basic",
+        "auth_user_env": "GLAMR_INTAKE_USER",
+        "auth_password_env": "GLAMR_INTAKE_PASSWORD",
+        **overrides,
+    }
+    return Subject(name="glamr", type="intake", config=config)
+
+
+def test_intake_check_basic_auth_reports_missing_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GLAMR_INTAKE_USER", raising=False)
+    monkeypatch.delenv("GLAMR_INTAKE_PASSWORD", raising=False)
+
+    missing = IntakeAdapter(_basic_intake_subject()).check()
+
+    assert any("GLAMR_INTAKE_USER" in item for item in missing)
+    assert any("GLAMR_INTAKE_PASSWORD" in item for item in missing)
+
+
+async def test_intake_analyze_basic_auth_injects_built_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("GLAMR_INTAKE_USER", "intake")
+    monkeypatch.setenv("GLAMR_INTAKE_PASSWORD", "secret")
+    sentinel = object()
+    built: dict[str, object] = {}
+    calls: dict[str, object] = {}
+
+    def fake_builder(**kwargs: object) -> object:
+        built.update(kwargs)
+        return sentinel
+
+    async def fake_run_analyst(**kwargs: object) -> str:
+        calls.update(kwargs)
+        return "REPORT"
+
+    monkeypatch.setattr("testbed.adapters.build_basic_auth_intake_client", fake_builder)
+    monkeypatch.setattr("testbed.adapters.run_analyst", fake_run_analyst)
+
+    report = await IntakeAdapter(_basic_intake_subject()).analyze(
+        record=None,
+        since=None,
+        verbose=False,
+        out_path=tmp_path / "insights.json",
+    )
+
+    assert report == "REPORT"
+    assert calls["client"] is sentinel
+    assert built == {
+        "base_url": "https://agenthub.aire.nvidia.com",
+        "username": "intake",
+        "password": "secret",
+        "real_prefix": "/api/intake/",
+    }
+
+
 def test_build_adapter_returns_intake():
     assert isinstance(build_adapter(_intake_subject()), IntakeAdapter)
 
@@ -54,12 +112,14 @@ def test_build_adapter_unknown_type_exits():
 
 async def test_intake_analyze_calls_run_analyst(monkeypatch, tmp_path: Path):
     calls: dict[str, object] = {}
+    built_client = object()
 
     async def fake_run_analyst(**kwargs):
         calls.update(kwargs)
         return "REPORT"
 
     monkeypatch.setattr("testbed.adapters.run_analyst", fake_run_analyst)
+    monkeypatch.setattr("testbed.adapters.make_client", lambda base_url: built_client)
     out = tmp_path / "insights.json"
     report = await build_adapter(_intake_subject()).analyze(record=None, since=None, verbose=True, out_path=out)
     assert report == "REPORT"
@@ -67,6 +127,7 @@ async def test_intake_analyze_calls_run_analyst(monkeypatch, tmp_path: Path):
     assert calls["workspace"] == "w"
     assert calls["base_url"] == "u"
     assert calls["agent_spec"] is None
+    assert calls["client"] is built_client
 
 
 async def test_intake_analyze_missing_keys_exits(tmp_path: Path):
@@ -235,6 +296,7 @@ async def test_benchmark_produce_records_run_without_analyzing(monkeypatch, tmp_
         return "SHOULD-NOT-RUN"
 
     monkeypatch.setattr("testbed.adapters.run_analyst", fake_run_analyst)
+    monkeypatch.setattr("testbed.adapters.make_client", lambda base_url: object())
 
     cfg = {**_CFG, "tau2_data_dir": str(tmp_path), "tau2_bin": "tau2"}
     record = await BenchmarkAdapter(Subject("tau2-airline", "benchmark", cfg)).produce()
@@ -272,7 +334,7 @@ async def test_benchmark_analyze_uses_record(monkeypatch, tmp_path):
     seen: dict[str, object] = {}
 
     async def fake_run_analyst(
-        *, agent, agent_spec, workspace, base_url, insights_output, verbose, since, evaluation_id
+        *, agent, agent_spec, workspace, base_url, client, insights_output, verbose, since, evaluation_id
     ):
         seen.update(
             agent=agent,
@@ -284,6 +346,7 @@ async def test_benchmark_analyze_uses_record(monkeypatch, tmp_path):
         return "REPORT-OK"
 
     monkeypatch.setattr("testbed.adapters.run_analyst", fake_run_analyst)
+    monkeypatch.setattr("testbed.adapters.make_client", lambda base_url: object())
 
     cfg = {**_CFG, "tau2_data_dir": str(tmp_path), "tau2_bin": "tau2"}
     record = {

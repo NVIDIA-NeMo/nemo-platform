@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 
 import httpx
-import nemo_insights_plugin.analyst.run as analyst_run
 import pytest
 import typer
 from nemo_insights_plugin import cli
@@ -46,6 +45,7 @@ def quiet_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
             workspace_ok=queryable,
         ),
     )
+    monkeypatch.setattr(cli, "make_client", lambda base_url: object())
 
 
 @pytest.fixture
@@ -504,7 +504,7 @@ def test_analyze_constructor_failure_warns_then_exits_cleanly(
         attempts += 1
         raise error_type("invalid\nremote client context")
 
-    monkeypatch.setattr(analyst_run, "make_client", fail_to_construct)
+    monkeypatch.setattr(cli, "make_client", fail_to_construct)
     monkeypatch.chdir(profile_tree)
 
     result = runner.invoke(app, ["analyze"])

@@ -21,7 +21,7 @@ from nemo_insights_plugin.analyst.observability import (
     setup_analyst_observability,
 )
 from nemo_insights_plugin.analyst.result import AnalystResult
-from nemo_insights_plugin.client import make_client
+from nemo_platform import AsyncNeMoPlatform
 from pydantic_ai import Agent, UsageLimits
 from pydantic_ai.messages import TextPart, ToolCallPart, ToolReturnPart
 
@@ -40,6 +40,7 @@ async def run_analyst(
     agent_spec: str | None,
     workspace: str,
     base_url: str | None,
+    client: AsyncNeMoPlatform,
     insights_output: str | Path | None = None,
     verbose: bool = False,
     since: datetime | None = None,
@@ -55,22 +56,19 @@ async def run_analyst(
         agent_spec: Optional markdown spec content for the agent under test.
         workspace: Platform workspace.
         base_url: Platform base URL. ``None`` uses the active platform context.
+        client: Platform client to use. This function closes it before returning.
         insights_output: Optional local YAML output path for Insight writes.
         verbose: Whether to stream model/tool events to stderr.
         since: Optional incremental lower bound enforced on trace/span reads.
         evaluation_id: Optional run scope; AND-pinned onto every span read.
     """
-    try:
-        client = make_client(base_url)
-    except (RuntimeError, ValueError) as exc:
-        raise ClientConstructionError(str(exc)) from None
     observability = None
     insights_output_path = str(insights_output) if insights_output else None
-    backend = make_analyst_backend(
-        client=client,
-        insights_output=insights_output_path,
-    )
     try:
+        backend = make_analyst_backend(
+            client=client,
+            insights_output=insights_output_path,
+        )
         deps = AnalystDeps(
             agent=agent,
             workspace=workspace,
