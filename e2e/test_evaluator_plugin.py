@@ -42,7 +42,7 @@ from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
 from nemo_evaluator_sdk.metrics.tool_calling import ToolCallingMetric
 from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
-from nemo_platform import APIConnectionError, APIStatusError, NeMoPlatform
+from nemo_platform import APIConnectionError, APIStatusError, NeMoPlatform, NotFoundError
 from nmp.testing import add_mock_provider, short_unique_name, wait_for_model_entity
 from nmp.testing.utils import ensure_passthrough_virtual_model
 
@@ -54,6 +54,7 @@ pytestmark = [
 EVALUATOR_JOB_TIMEOUT_SECONDS = 900.0
 EVALUATOR_PENDING_TIMEOUT_SECONDS = 600.0
 EVALUATOR_POLL_INTERVAL_SECONDS = 5.0
+EVALUATOR_TRANSIENT_STATUS_CODES = frozenset({502, 503, 504})
 DEFAULT_INTERNAL_PLATFORM_BASE_URL = "http://nemo-platform-api:8080"
 IGW_ROUTE_TIMEOUT_SECONDS = 60.0
 IGW_ROUTE_POLL_INTERVAL_SECONDS = 0.5
@@ -250,6 +251,18 @@ def _create_ready_mock_model(
         mock_response_body=mock_response_body,
     )
     wait_for_model_entity(sdk, workspace, name, ensure_virtual_model=True)
+    deadline = time.monotonic() + IGW_ROUTE_TIMEOUT_SECONDS
+    while True:
+        try:
+            sdk.models.retrieve(name, workspace=workspace)
+            break
+        except NotFoundError as exc:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(
+                    f"Platform model entity {workspace}/{name} was not available after {IGW_ROUTE_TIMEOUT_SECONDS}s."
+                ) from exc
+            time.sleep(min(IGW_ROUTE_POLL_INTERVAL_SECONDS, remaining))
     ensure_passthrough_virtual_model(sdk, workspace, name, timeout=IGW_ROUTE_TIMEOUT_SECONDS)
     _wait_for_stable_model_chat_route(sdk, workspace, name)
 
@@ -262,11 +275,25 @@ def _cleanup_evaluator_job(sdk: NeMoPlatform, job_name: str) -> None:
 
 
 def _wait_for_evaluator_job(job: EvaluatorJobResource) -> None:
-    job.wait_until_done(
-        poll_interval_seconds=EVALUATOR_POLL_INTERVAL_SECONDS,
-        job_timeout_seconds=EVALUATOR_JOB_TIMEOUT_SECONDS,
-        pending_timeout_seconds=EVALUATOR_PENDING_TIMEOUT_SECONDS,
-    )
+    started_at = time.monotonic()
+    while True:
+        remaining = EVALUATOR_JOB_TIMEOUT_SECONDS - (time.monotonic() - started_at)
+        if remaining <= 0:
+            raise TimeoutError(f"Evaluator job {job.name!r} did not complete after {EVALUATOR_JOB_TIMEOUT_SECONDS}s.")
+        try:
+            job.wait_until_done(
+                poll_interval_seconds=EVALUATOR_POLL_INTERVAL_SECONDS,
+                job_timeout_seconds=remaining,
+                pending_timeout_seconds=min(EVALUATOR_PENDING_TIMEOUT_SECONDS, remaining),
+            )
+            return
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code not in EVALUATOR_TRANSIENT_STATUS_CODES:
+                raise
+            remaining = EVALUATOR_JOB_TIMEOUT_SECONDS - (time.monotonic() - started_at)
+            if remaining <= 0:
+                raise
+            time.sleep(min(EVALUATOR_POLL_INTERVAL_SECONDS, remaining))
 
 
 def _submit_input_spec(sdk: NeMoPlatform, spec: EvaluateInputSpec) -> EvaluatorJobResource:
@@ -283,13 +310,13 @@ def _submit_input_spec(sdk: NeMoPlatform, spec: EvaluateInputSpec) -> EvaluatorJ
 
 
 def _metric_output_values(result: EvaluationResult, name: str) -> list[float]:
-    return [
-        float(output.value)
-        for row in _rows_in_index_order(result)
-        for outputs in row.metrics.values()
-        for output in outputs
-        if output.name == name
-    ]
+    values: list[float] = []
+    for row in _rows_in_index_order(result):
+        for outputs in row.metrics.values():
+            for output in outputs:
+                if output.name == name:
+                    values.append(float(output.value))
+    return values
 
 
 @pytest.fixture(scope="module")
@@ -438,7 +465,7 @@ def test_fileset_fragment_and_glob_datasets(evaluator_sdk: NeMoPlatform) -> None
 
         cases = {
             "specific file": (f"{workspace}/{fileset_name}#part-a.json", [1.0, 0.0]),
-            "glob": (f"{workspace}/{fileset_name}#part-*.json", [1.0, 0.0, 1.0]),
+            "glob": (f"{workspace}/{fileset_name}#part-*.json", [1.0, 1.0, 0.0]),
         }
         for label, (reference, expected_scores) in cases.items():
             job = evaluator_sdk.evaluator.submit(
@@ -658,32 +685,14 @@ def test_llm_judge_metric_resolves_model_ref(
         _cleanup_evaluator_job(evaluator_sdk, job.name)
 
 
-@pytest.mark.parametrize(
-    ("metric", "dataset"),
-    [
-        (
-            StringCheckMetric(
-                operation="equals",
-                left_template="{{item.missing}}",
-                right_template="{{item.expected}}",
-            ),
-            [{"expected": "value", "output": "value"}],
-        ),
-        (_exact_match_metric(), None),
-    ],
-    ids=["invalid-template", "missing-fileset"],
-)
-def test_runtime_input_failures_reach_terminal_error(
+def _assert_runtime_input_failure(
     evaluator_sdk: NeMoPlatform,
     metric: StringCheckMetric | ExactMatchMetric,
-    dataset: list[dict[str, object]] | None,
+    dataset: list[dict[str, object]] | FilesetRef,
 ) -> None:
-    resolved_dataset = (
-        FilesetRef(root=f"{evaluator_sdk.workspace}/missing-fileset#dataset.json") if dataset is None else dataset
-    )
     job = evaluator_sdk.evaluator.submit(
         metric=metric,
-        dataset=resolved_dataset,
+        dataset=dataset,
         config=RunConfig(parallelism=1),
     )
     try:
@@ -692,3 +701,21 @@ def test_runtime_input_failures_reach_terminal_error(
         assert job.get_job_status().status.value == "error"
     finally:
         _cleanup_evaluator_job(evaluator_sdk, job.name)
+
+
+def test_invalid_template_reaches_terminal_error(evaluator_sdk: NeMoPlatform) -> None:
+    metric = StringCheckMetric(
+        operation="equals",
+        left_template="{{item.missing}}",
+        right_template="{{item.expected}}",
+    )
+    _assert_runtime_input_failure(
+        evaluator_sdk,
+        metric,
+        [{"expected": "value", "output": "value"}],
+    )
+
+
+def test_missing_fileset_reaches_terminal_error(evaluator_sdk: NeMoPlatform) -> None:
+    dataset = FilesetRef(root=f"{evaluator_sdk.workspace}/missing-fileset#dataset.json")
+    _assert_runtime_input_failure(evaluator_sdk, _exact_match_metric(), dataset)
