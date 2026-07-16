@@ -15,6 +15,52 @@ import pytest
 import yaml
 from testbed import cli
 
+_REAL_LOAD_REGISTRY = cli.load_registry
+_REAL_LOCK_REF = cli.release.lock_ref
+
+
+@pytest.fixture(autouse=True)
+def isolate_checked_in_insights(monkeypatch, tmp_path):
+    from testbed.registry import Subject
+
+    def load_registry_with_test_intake(path):
+        subjects = dict(_REAL_LOAD_REGISTRY(path))
+        subjects["nvq"] = Subject(
+            "nvq",
+            "intake",
+            {
+                "agent": "content-dedup",
+                "workspace": "nvq",
+                "base_url": "https://nemo-platform-freeplay.dev.aire.nvidia.com",
+            },
+        )
+        return subjects
+
+    def lock_ref_with_test_intake(path, subject):
+        return "state-v7" if subject == "nvq" else _REAL_LOCK_REF(path, subject)
+
+    helpers = {
+        "check_in": getattr(cli, "_check_in_insights", None),
+        "write_manifest": getattr(cli, "_write_insights_manifest", None),
+    }
+    monkeypatch.setattr(cli, "load_registry", load_registry_with_test_intake)
+    monkeypatch.setattr(cli.release, "lock_ref", lock_ref_with_test_intake)
+    monkeypatch.setattr(cli, "INSIGHTS_DIR", tmp_path / "checked-in-insights", raising=False)
+    if helpers["check_in"] is not None:
+        monkeypatch.setattr(
+            cli,
+            "_check_in_insights",
+            lambda subject_name, _source: cli.INSIGHTS_DIR / f"{subject_name}.yaml",
+        )
+    if helpers["write_manifest"] is not None:
+        monkeypatch.setattr(
+            cli,
+            "_write_insights_manifest",
+            lambda *_args, **_kwargs: cli.INSIGHTS_DIR / "manifest.yaml",
+        )
+    return helpers
+
+
 # --------------------------------------------------------------------------- #
 # bundle fixtures: real tar.zst files, kind-switched exactly like production
 # --------------------------------------------------------------------------- #
@@ -170,6 +216,493 @@ def test_analyze_live_happy_path(monkeypatch, tmp_path, capsys):
     out = capsys.readouterr().out
     assert "REPORT-OK" in out
     assert "Insights written" in out
+
+
+def test_analyze_checks_in_insights_with_spdx_and_provenance_by_default(
+    monkeypatch,
+    tmp_path,
+    isolate_checked_in_insights,
+):
+    runtime = tmp_path / "tmp"
+    checked_in = tmp_path / "insights"
+    monkeypatch.setenv("INFERENCE_API_KEY", "sk-test")
+    monkeypatch.setattr(cli, "TMP", runtime)
+    monkeypatch.setattr(cli, "INSIGHTS_DIR", checked_in)
+    if isolate_checked_in_insights["check_in"] is not None:
+        monkeypatch.setattr(cli, "_check_in_insights", isolate_checked_in_insights["check_in"])
+    if isolate_checked_in_insights["write_manifest"] is not None:
+        monkeypatch.setattr(cli, "_write_insights_manifest", isolate_checked_in_insights["write_manifest"])
+    monkeypatch.setattr(cli, "_analyst_sha256", lambda: "analyst-digest", raising=False)
+    monkeypatch.setattr(sys, "argv", ["testbed", "analyze", "nvq", "--live"])
+
+    async def fake_analyze(self, *, record, since, verbose, out_path):
+        out_path.write_text("insights: []\n", encoding="utf-8")
+        return "REPORT-OK"
+
+    monkeypatch.setattr("testbed.adapters.IntakeAdapter.analyze", fake_analyze)
+    cli.main()
+
+    contents = (
+        "# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. "
+        "All rights reserved.\n"
+        "# SPDX-License-Identifier: Apache-2.0\n"
+        "insights: []\n"
+    )
+    assert (checked_in / "nvq.yaml").read_text(encoding="utf-8") == contents
+    manifest = yaml.safe_load((checked_in / "manifest.yaml").read_text(encoding="utf-8"))
+    assert manifest == {
+        "snapshots": {
+            "nvq": {
+                "analyst_sha256": "analyst-digest",
+                "insights_sha256": hashlib.sha256(contents.encode()).hexdigest(),
+                "state": "live",
+            }
+        }
+    }
+
+
+def test_analyze_checks_in_insights_and_merges_existing_manifest(
+    monkeypatch,
+    tmp_path,
+    isolate_checked_in_insights,
+):
+    runtime = tmp_path / "tmp"
+    checked_in = tmp_path / "insights"
+    checked_in.mkdir()
+    prior = {
+        "analyst_sha256": "old-analyst",
+        "insights_sha256": "old-insights",
+        "state": "state-v1",
+    }
+    (checked_in / "manifest.yaml").write_text(
+        yaml.safe_dump({"snapshots": {"other": prior}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("INFERENCE_API_KEY", "sk-test")
+    monkeypatch.setattr(cli, "TMP", runtime)
+    monkeypatch.setattr(cli, "INSIGHTS_DIR", checked_in)
+    if isolate_checked_in_insights["check_in"] is not None:
+        monkeypatch.setattr(cli, "_check_in_insights", isolate_checked_in_insights["check_in"])
+    if isolate_checked_in_insights["write_manifest"] is not None:
+        monkeypatch.setattr(cli, "_write_insights_manifest", isolate_checked_in_insights["write_manifest"])
+    monkeypatch.setattr(cli, "_analyst_sha256", lambda: "new-analyst", raising=False)
+    monkeypatch.setattr(sys, "argv", ["testbed", "analyze", "nvq", "--live"])
+
+    async def fake_analyze(self, *, record, since, verbose, out_path):
+        out_path.write_text("insights: []\n", encoding="utf-8")
+        return "REPORT-OK"
+
+    monkeypatch.setattr("testbed.adapters.IntakeAdapter.analyze", fake_analyze)
+    cli.main()
+
+    snapshots = yaml.safe_load((checked_in / "manifest.yaml").read_text(encoding="utf-8"))["snapshots"]
+    assert snapshots["other"] == prior
+    assert snapshots["nvq"]["state"] == "live"
+
+
+def test_analyze_checks_in_insights_requires_source_output(
+    monkeypatch,
+    tmp_path,
+    isolate_checked_in_insights,
+):
+    monkeypatch.setenv("INFERENCE_API_KEY", "sk-test")
+    monkeypatch.setattr(cli, "TMP", tmp_path / "tmp")
+    monkeypatch.setattr(cli, "INSIGHTS_DIR", tmp_path / "insights")
+    if isolate_checked_in_insights["check_in"] is not None:
+        monkeypatch.setattr(cli, "_check_in_insights", isolate_checked_in_insights["check_in"])
+    if isolate_checked_in_insights["write_manifest"] is not None:
+        monkeypatch.setattr(cli, "_write_insights_manifest", isolate_checked_in_insights["write_manifest"])
+    monkeypatch.setattr(sys, "argv", ["testbed", "analyze", "nvq", "--live"])
+
+    async def fake_analyze(self, *, record, since, verbose, out_path):
+        return "REPORT-OK"
+
+    monkeypatch.setattr("testbed.adapters.IntakeAdapter.analyze", fake_analyze)
+
+    with pytest.raises(SystemExit, match="Analyst did not write"):
+        cli.main()
+
+
+def test_analyze_no_check_in_leaves_checked_in_files_untouched(monkeypatch, tmp_path):
+    runtime = tmp_path / "tmp"
+    checked_in = tmp_path / "insights"
+    checked_in.mkdir()
+    checked_path = checked_in / "nvq.yaml"
+    manifest_path = checked_in / "manifest.yaml"
+    checked_path.write_text("old insights\n", encoding="utf-8")
+    manifest_path.write_text("old manifest\n", encoding="utf-8")
+    monkeypatch.setenv("INFERENCE_API_KEY", "sk-test")
+    monkeypatch.setattr(cli, "TMP", runtime)
+    monkeypatch.setattr(cli, "INSIGHTS_DIR", checked_in)
+    monkeypatch.setattr(sys, "argv", ["testbed", "analyze", "nvq", "--live", "--no-check-in"])
+
+    async def fake_analyze(self, *, record, since, verbose, out_path):
+        out_path.write_text("insights: []\n", encoding="utf-8")
+        return "REPORT-OK"
+
+    monkeypatch.setattr("testbed.adapters.IntakeAdapter.analyze", fake_analyze)
+    cli.main()
+
+    assert (runtime / "insights_nvq.yaml").read_text(encoding="utf-8") == "insights: []\n"
+    assert checked_path.read_text(encoding="utf-8") == "old insights\n"
+    assert manifest_path.read_text(encoding="utf-8") == "old manifest\n"
+
+
+def test_analyst_hash_tracks_platform_source_and_exact_lock_entries(tmp_path):
+    analyst_root = tmp_path / "analyst"
+    analyst_root.mkdir()
+    source = analyst_root / "agent.py"
+    source.write_text("VALUE = 1\n", encoding="utf-8")
+    lockfile = tmp_path / "uv.lock"
+
+    def write_lock(*, plugin_version: str = "1", ignored_version: str = "1") -> None:
+        lockfile.write_text(
+            f"""
+version = 1
+
+[[package]]
+name = "unrelated"
+version = "{ignored_version}"
+
+[[package]]
+name = "pydantic-ai-slim"
+version = "3"
+
+[[package]]
+name = "nemo-insights-plugin"
+version = "{plugin_version}"
+
+[[package]]
+name = "pydantic-ai-harness"
+version = "2"
+""",
+            encoding="utf-8",
+        )
+
+    write_lock()
+    initial = cli._analyst_sha256(analyst_root, lockfile)
+    write_lock(ignored_version="changed")
+    assert cli._analyst_sha256(analyst_root, lockfile) == initial
+
+    write_lock(plugin_version="changed", ignored_version="changed")
+    dependency_changed = cli._analyst_sha256(analyst_root, lockfile)
+    assert dependency_changed != initial
+
+    source.write_text("VALUE = 2\n", encoding="utf-8")
+    assert cli._analyst_sha256(analyst_root, lockfile) != dependency_changed
+    assert cli.ANALYST_DEPENDENCIES == frozenset(
+        {
+            "nemo-insights-plugin",
+            "pydantic-ai-harness",
+            "pydantic-ai-slim",
+        }
+    )
+    assert "nemo-oo" not in cli.ANALYST_DEPENDENCIES
+
+
+def test_analyst_hash_defaults_to_platform_paths():
+    assert cli.ANALYST_ROOT == cli.HERE.parent / "src" / "nemo_insights_plugin" / "analyst"
+    assert cli.ANALYST_LOCKFILE == cli.HERE.parents[2] / "uv.lock"
+
+
+def _analyze_all_subjects():
+    from testbed.registry import Subject
+
+    return {
+        "zeta": Subject("zeta", "intake", {"workspace": "z"}),
+        "alpha": Subject("alpha", "benchmark", {"workspace": "a"}),
+        "producer": Subject("producer", "harbor", {"workspace": "p"}),
+    }
+
+
+def _checked_in_bytes(directory: Path) -> dict[str, bytes]:
+    return {
+        path.relative_to(directory).as_posix(): path.read_bytes() for path in directory.rglob("*") if path.is_file()
+    }
+
+
+def test_analyze_all_runs_every_pinned_analyzable_subject_in_sorted_order(
+    monkeypatch,
+    tmp_path,
+):
+    runtime = tmp_path / "tmp"
+    calls: list[list[str]] = []
+    monkeypatch.setattr(cli, "TMP", runtime)
+    monkeypatch.setattr(cli, "load_registry", lambda _path: _analyze_all_subjects())
+    monkeypatch.setattr(cli.release, "lock_ref", lambda _path, name: f"state-{name}")
+
+    def fake_run(command, *, check):
+        calls.append(command)
+        name = command[command.index("analyze") + 1]
+        runtime.mkdir(parents=True, exist_ok=True)
+        (runtime / f"insights_{name}.yaml").write_text(f"insights: [{name}]\n", encoding="utf-8")
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "testbed",
+            "analyze",
+            "all",
+            "--no-check-in",
+            "--base",
+            "http://platform",
+            "--platform-root",
+            "/platform/root",
+            "--summary-md",
+            "/tmp/summary.md",
+            "--verbose",
+        ],
+    )
+
+    cli.main()
+
+    assert calls == [
+        [
+            sys.executable,
+            "-m",
+            "testbed",
+            "analyze",
+            "alpha",
+            "--no-check-in",
+            "--base",
+            "http://platform",
+            "--platform-root",
+            "/platform/root",
+            "--summary-md",
+            "/tmp/summary.md",
+            "--verbose",
+        ],
+        [
+            sys.executable,
+            "-m",
+            "testbed",
+            "analyze",
+            "zeta",
+            "--no-check-in",
+            "--base",
+            "http://platform",
+            "--platform-root",
+            "/platform/root",
+            "--summary-md",
+            "/tmp/summary.md",
+            "--verbose",
+        ],
+    ]
+
+
+def test_analyze_all_validates_every_pin_before_subprocess_execution(monkeypatch):
+    calls: list[list[str]] = []
+    monkeypatch.setattr(cli, "load_registry", lambda _path: _analyze_all_subjects())
+    monkeypatch.setattr(cli.release, "lock_ref", lambda _path, name: None if name == "zeta" else "state-v1")
+    monkeypatch.setattr(cli.subprocess, "run", lambda command, *, check: calls.append(command))
+    monkeypatch.setattr(sys, "argv", ["testbed", "analyze", "all"])
+
+    with pytest.raises(SystemExit, match="missing: zeta"):
+        cli.main()
+
+    assert calls == []
+
+
+def test_analyze_all_child_failure_leaves_checked_in_directory_unchanged(
+    monkeypatch,
+    tmp_path,
+):
+    runtime = tmp_path / "tmp"
+    checked_in = tmp_path / "insights"
+    checked_in.mkdir()
+    (checked_in / "alpha.yaml").write_text("old alpha\n", encoding="utf-8")
+    (checked_in / "stale.yaml").write_text("old stale\n", encoding="utf-8")
+    (checked_in / "manifest.yaml").write_text("old manifest\n", encoding="utf-8")
+    before = _checked_in_bytes(checked_in)
+    monkeypatch.setattr(cli, "TMP", runtime)
+    monkeypatch.setattr(cli, "INSIGHTS_DIR", checked_in)
+    monkeypatch.setattr(cli, "load_registry", lambda _path: _analyze_all_subjects())
+    monkeypatch.setattr(cli.release, "lock_ref", lambda _path, name: f"state-{name}")
+
+    def fake_run(command, *, check):
+        name = command[command.index("analyze") + 1]
+        if name == "zeta":
+            raise subprocess.CalledProcessError(7, command)
+        runtime.mkdir(parents=True, exist_ok=True)
+        (runtime / f"insights_{name}.yaml").write_text("new alpha\n", encoding="utf-8")
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(sys, "argv", ["testbed", "analyze", "all"])
+
+    with pytest.raises(SystemExit, match="zeta failed with exit code 7"):
+        cli.main()
+
+    assert _checked_in_bytes(checked_in) == before
+
+
+def test_analyze_all_missing_child_output_leaves_checked_in_directory_unchanged(
+    monkeypatch,
+    tmp_path,
+):
+    runtime = tmp_path / "tmp"
+    checked_in = tmp_path / "insights"
+    checked_in.mkdir()
+    (checked_in / "alpha.yaml").write_text("old alpha\n", encoding="utf-8")
+    (checked_in / "manifest.yaml").write_text("old manifest\n", encoding="utf-8")
+    before = _checked_in_bytes(checked_in)
+    monkeypatch.setattr(cli, "TMP", runtime)
+    monkeypatch.setattr(cli, "INSIGHTS_DIR", checked_in)
+    monkeypatch.setattr(cli, "load_registry", lambda _path: _analyze_all_subjects())
+    monkeypatch.setattr(cli.release, "lock_ref", lambda _path, name: f"state-{name}")
+
+    def fake_run(command, *, check):
+        name = command[command.index("analyze") + 1]
+        if name == "alpha":
+            runtime.mkdir(parents=True, exist_ok=True)
+            (runtime / "insights_alpha.yaml").write_text("new alpha\n", encoding="utf-8")
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(sys, "argv", ["testbed", "analyze", "all"])
+
+    with pytest.raises(SystemExit, match="without Insights output for: zeta"):
+        cli.main()
+
+    assert _checked_in_bytes(checked_in) == before
+
+
+def test_analyze_all_top_level_no_check_in_skips_promotion(monkeypatch, tmp_path):
+    runtime = tmp_path / "tmp"
+    checked_in = tmp_path / "insights"
+    checked_in.mkdir()
+    (checked_in / "alpha.yaml").write_text("old alpha\n", encoding="utf-8")
+    (checked_in / "manifest.yaml").write_text("old manifest\n", encoding="utf-8")
+    before = _checked_in_bytes(checked_in)
+    monkeypatch.setattr(cli, "TMP", runtime)
+    monkeypatch.setattr(cli, "INSIGHTS_DIR", checked_in)
+    monkeypatch.setattr(cli, "load_registry", lambda _path: _analyze_all_subjects())
+    monkeypatch.setattr(cli.release, "lock_ref", lambda _path, name: f"state-{name}")
+
+    def fake_run(command, *, check):
+        name = command[command.index("analyze") + 1]
+        runtime.mkdir(parents=True, exist_ok=True)
+        (runtime / f"insights_{name}.yaml").write_text(f"new {name}\n", encoding="utf-8")
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(sys, "argv", ["testbed", "analyze", "all", "--no-check-in"])
+
+    cli.main()
+
+    assert _checked_in_bytes(checked_in) == before
+
+
+def test_analyze_all_successfully_swaps_complete_set_and_removes_stale_yaml(
+    monkeypatch,
+    tmp_path,
+    isolate_checked_in_insights,
+):
+    runtime = tmp_path / "tmp"
+    checked_in = tmp_path / "insights"
+    checked_in.mkdir()
+    (checked_in / "alpha.yaml").write_text("old alpha\n", encoding="utf-8")
+    (checked_in / "stale.yaml").write_text("old stale\n", encoding="utf-8")
+    (checked_in / "manifest.yaml").write_text("old manifest\n", encoding="utf-8")
+    monkeypatch.setattr(cli, "TMP", runtime)
+    monkeypatch.setattr(cli, "INSIGHTS_DIR", checked_in)
+    monkeypatch.setattr(cli, "load_registry", lambda _path: _analyze_all_subjects())
+    monkeypatch.setattr(cli.release, "lock_ref", lambda _path, name: f"state-{name}")
+    monkeypatch.setattr(cli, "_check_in_insights", isolate_checked_in_insights["check_in"])
+    monkeypatch.setattr(cli, "_write_insights_manifest", isolate_checked_in_insights["write_manifest"])
+    monkeypatch.setattr(cli, "_analyst_sha256", lambda: "analyst-digest")
+
+    def fake_run(command, *, check):
+        name = command[command.index("analyze") + 1]
+        runtime.mkdir(parents=True, exist_ok=True)
+        (runtime / f"insights_{name}.yaml").write_text(f"insights: [{name}]\n", encoding="utf-8")
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(sys, "argv", ["testbed", "analyze", "all"])
+
+    cli.main()
+
+    assert {path.name for path in checked_in.glob("*.yaml")} == {
+        "alpha.yaml",
+        "zeta.yaml",
+        "manifest.yaml",
+    }
+    snapshots = yaml.safe_load((checked_in / "manifest.yaml").read_text(encoding="utf-8"))["snapshots"]
+    assert snapshots == {
+        "alpha": {
+            "analyst_sha256": "analyst-digest",
+            "insights_sha256": hashlib.sha256((checked_in / "alpha.yaml").read_bytes()).hexdigest(),
+            "state": "state-alpha",
+        },
+        "zeta": {
+            "analyst_sha256": "analyst-digest",
+            "insights_sha256": hashlib.sha256((checked_in / "zeta.yaml").read_bytes()).hexdigest(),
+            "state": "state-zeta",
+        },
+    }
+
+
+def test_analyze_all_swap_failure_rolls_back_old_directory(
+    monkeypatch,
+    tmp_path,
+    isolate_checked_in_insights,
+):
+    runtime = tmp_path / "tmp"
+    checked_in = tmp_path / "insights"
+    checked_in.mkdir()
+    (checked_in / "alpha.yaml").write_text("old alpha\n", encoding="utf-8")
+    (checked_in / "manifest.yaml").write_text("old manifest\n", encoding="utf-8")
+    before = _checked_in_bytes(checked_in)
+    monkeypatch.setattr(cli, "TMP", runtime)
+    monkeypatch.setattr(cli, "INSIGHTS_DIR", checked_in)
+    monkeypatch.setattr(cli, "load_registry", lambda _path: _analyze_all_subjects())
+    monkeypatch.setattr(cli.release, "lock_ref", lambda _path, name: f"state-{name}")
+    monkeypatch.setattr(cli, "_check_in_insights", isolate_checked_in_insights["check_in"])
+    monkeypatch.setattr(cli, "_write_insights_manifest", isolate_checked_in_insights["write_manifest"])
+    monkeypatch.setattr(cli, "_analyst_sha256", lambda: "analyst-digest")
+
+    def fake_run(command, *, check):
+        name = command[command.index("analyze") + 1]
+        runtime.mkdir(parents=True, exist_ok=True)
+        (runtime / f"insights_{name}.yaml").write_text(f"insights: [{name}]\n", encoding="utf-8")
+
+    real_replace = cli.os.replace
+
+    def fail_staging_swap(source, destination):
+        source_path = Path(source)
+        if source_path.is_dir() and source_path.name.startswith(".insights.staging-"):
+            raise OSError("simulated swap failure")
+        real_replace(source, destination)
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(cli.os, "replace", fail_staging_swap)
+    monkeypatch.setattr(sys, "argv", ["testbed", "analyze", "all"])
+
+    with pytest.raises(OSError, match="simulated swap failure"):
+        cli.main()
+
+    assert _checked_in_bytes(checked_in) == before
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        ["--live"],
+        ["--state", "state-v1"],
+        ["--since", "1d"],
+        ["--set", "seed=1"],
+        ["--update-insights"],
+    ],
+)
+def test_analyze_all_rejects_incompatible_flags_before_execution(monkeypatch, flags):
+    calls: list[list[str]] = []
+    monkeypatch.setattr(cli, "load_registry", lambda _path: _analyze_all_subjects())
+    monkeypatch.setattr(cli.subprocess, "run", lambda command, *, check: calls.append(command))
+    monkeypatch.setattr(sys, "argv", ["testbed", "analyze", "all", *flags])
+
+    with pytest.raises(SystemExit, match="cannot be combined"):
+        cli.main()
+
+    assert calls == []
 
 
 def test_missing_registry_exits(monkeypatch, tmp_path):

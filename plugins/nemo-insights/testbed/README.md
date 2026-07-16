@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # testbed — insights analyst test runner (maintainer tooling)
 
 Runs the Insights analyst against registered **subjects** and emits Insights. Think
@@ -6,19 +9,31 @@ it is not the product CLI and is not shipped in the wheel.
 
 ```bash
 uv run python -m testbed analyze tau2-airline         # reproducible default: restore the pinned state locally, then analyze
+uv run python -m testbed analyze all                  # refresh every pinned benchmark/intake baseline transactionally
 uv run python -m testbed list
 uv run python -m testbed doctor                       # fresh clone? run this first
 uv run python -m testbed run tau2-airline             # produce: tau2 -> ingest -> record the run (expensive, once)
 uv run python -m testbed analyze tau2-airline --live  # analyze the recorded run's live traces (no restore)
-uv run python -m testbed analyze nvq --live           # intake: analyze existing live traces
+uv run python -m testbed analyze glamr --live         # intake: analyze existing live traces
 uv run python -m testbed snapshot tau2-airline        # export the subject's workspaces (read API) into a portable bundle
-uv run python -m testbed restore --state state-v7     # re-ingest a state bundle into fixture workspaces (additive, idempotent)
+uv run python -m testbed restore --state state-v10    # re-ingest a state bundle into fixture workspaces (additive, idempotent)
 uv run python -m testbed restore --state state-vN --into WORKSPACE
 ```
 
 Bare `analyze <subject>` is a fully reproducible run: pinned data (the subject's
 `state.lock` entry) restored onto the local platform, analyzed with fresh
-insights (no prior seed). Every deviation is one explicit flag:
+insights (no prior seed), and atomically copied to
+`testbed/insights/<subject>.yaml` for review and check-in. The per-subject
+manifest update preserves every other subject.
+
+`analyze all` validates every benchmark/intake pin before starting, runs the
+subjects in sorted order with child `--no-check-in`, and stages the complete
+YAML set plus manifest in a sibling directory. It promotes that directory with
+a backup/swap only after every child wrote output. A child failure, missing
+output, manifest failure, or failed swap leaves the old checked-in directory
+unchanged; a successful swap removes stale YAMLs.
+
+Every deviation is one explicit flag:
 
 - `--state <state-vN|FILE>` — another published state, or a local bundle file
   (mutually exclusive with `--live`).
@@ -28,6 +43,9 @@ insights (no prior seed). Every deviation is one explicit flag:
 - `--update-insights` — run against the existing local insights (prod-like update flow:
   updates them and adds new ones); default is a fresh start with priors moved to backup.
   Valid in every mode.
+- `--no-check-in` — leave generated YAML only in `testbed/tmp/`. On
+  `analyze all`, every child still runs and is validated, but the final
+  promotion is skipped.
 - `--base URL` — the one platform flag, on every platform-touching command.
   Fixture targets (restore, roundtrip, pinned/`--state` analyze) default to
   `http://localhost:8080`; live targets (`run`, `analyze --live`, snapshot's
@@ -38,6 +56,15 @@ insights (no prior seed). Every deviation is one explicit flag:
   `true`/`false`, so `--set include_rewards=false` is really false; keys new
   to the stanza stay strings. If you keep reaching for it, move the value
   into `testbeds.toml`. `--set` applies after `--base`, so `--set base_url=…` wins when both are given.
+
+Each `testbed/insights/manifest.yaml` snapshot records:
+
+- `state` — the exact subject pin or explicit/live source label.
+- `analyst_sha256` — the Platform Analyst source under
+  `plugins/nemo-insights/src/nemo_insights_plugin/analyst`, plus canonical
+  root `uv.lock` entries for exactly `nemo-insights-plugin`,
+  `pydantic-ai-harness`, and `pydantic-ai-slim`.
+- `insights_sha256` — the checked-in YAML bytes after the SPDX header is added.
 
 `run` produces traces and records the run to `testbed/tmp/<subject>.run.json`;
 `analyze --live` then analyzes it — for a `benchmark` it re-uses the last recorded
@@ -74,6 +101,9 @@ only to the Platform repository cannot access the default internal fixture
 home. Platform CI uses the least-privilege `TESTBED_STATE_GH_READ_TOKEN`
 secret; automated publishing remains in the canonical fixture repository so
 two repositories cannot race to mint the same version.
+This Platform repository owns the subject registry, state pins, and checked-in
+Insights; the canonical NeMo Optimizer repository owns fixture assets and
+guarded publishing.
 
 Which file do I touch?
 
@@ -106,8 +136,8 @@ or a 30d default — in that order; the effective bound is always printed.)
 **Publish a verified candidate from a maintainer machine:**
 
 ```bash
-uv run python -m testbed snapshot nvq -o testbed/tmp/nvq.tar.zst
-uv run python -m testbed publish testbed/tmp/nvq.tar.zst --base http://localhost:8080 --reason "why this exists"
+uv run python -m testbed snapshot glamr -o testbed/tmp/glamr.tar.zst
+uv run python -m testbed publish testbed/tmp/glamr.tar.zst --base http://localhost:8080 --reason "why this exists"
 ```
 
 `snapshot` drains the subject's workspaces (benchmark subjects: realistic +
@@ -117,9 +147,9 @@ first (re-ingest into scratch workspaces → re-export → doc diff), or pass
 `--no-verify` only after separately confirming the guard passed (for example,
 by checking that the CI `produce` job's round-trip step was green before using
 its downloaded candidate artifact).
-Then pin it: add `nvq = "state-vN"` under `[subjects]` in `testbed/state.lock`.
+Then pin it: add `glamr = "state-vN"` under `[subjects]` in `testbed/state.lock`.
 
-**Restore without analyzing:** `uv run python -m testbed restore (FILE | --state state-v7) [--base URL]`.
+**Restore without analyzing:** `uv run python -m testbed restore (FILE | --state state-v10) [--base URL]`.
 To restore a one-workspace bundle directly into a named workspace, use
 `uv run python -m testbed restore --state state-vN --into WORKSPACE`. `--into`
 accepts only one-workspace bundles and requires a fresh, empty target
@@ -179,10 +209,13 @@ written to `testbed/tmp/insights_<name>.yaml`.
 On startup the CLI auto-loads `testbed/.env` (gitignored) as `KEY=VALUE` lines. Keep
 **only secrets/endpoints** there — `INFERENCE_API_KEY` (analyst) and
 `OPENAI_API_KEY`/`OPENAI_API_BASE` (the proxy litellm uses for the benchmark sim LLMs).
+GLAMR live analysis additionally reads `GLAMR_INTAKE_USER` and
+`GLAMR_INTAKE_PASSWORD` from `.env`; `testbeds.toml` stores only those
+environment-variable names, never their credential values.
 Real shell environment variables override the file. Everything non-secret (paths, models,
 ports, run sizes) lives in the subject's `testbeds.toml` stanza.
 
-## Benchmark prereqs (tau2-airline / tau2-retail)
+## Benchmark prereqs (tau2-airline / tau2-retail / tau2-telecom)
 
 Clone tau2-bench as a sibling of this repo and install it once:
 
@@ -192,7 +225,8 @@ cd tau2-bench && uv sync          # Python 3.12+; installs the `tau2` CLI into .
 uv run tau2 check-data            # verify the shipped domain data
 ```
 
-The `[tau2-airline]` and `[tau2-retail]` stanzas then need (all non-secret, committed):
+The `[tau2-airline]`, `[tau2-retail]`, and `[tau2-telecom]` stanzas then need
+(all non-secret, committed):
 - `tau2_repo` — the checkout above; relative to this repo's root (`../tau2-bench`, the
   sibling default) or absolute. Both the CLI (`<repo>/.venv/bin/tau2`) and the data dir
   (`<repo>/data`) are derived from it (`tau2_bin`/`tau2_data_dir` override if needed).
@@ -208,6 +242,9 @@ uv run python -m testbed analyze tau2-airline --live
 
 uv run python -m testbed run tau2-retail
 uv run python -m testbed analyze tau2-retail --live
+
+uv run python -m testbed run tau2-telecom
+uv run python -m testbed analyze tau2-telecom --live
 ```
 
 ## CI (`.github/workflows/insights-testbed.yml`)
@@ -338,8 +375,8 @@ Restores are additive re-ingests into `<ws>-<ref>` fixture workspaces, so a
 bundle never perturbs anything else on the target platform; ClickHouse's TTL
 merges are stopped on every CI stack start so restored spans don't age out
 mid-run. `testbed/state.lock` pins, per subject (`[subjects]` table), the
-version `analyze` uses by default (currently `tau2-airline = "state-v6"`, the
-first API-export bundle, and `nvq = "state-v7"`) — a subject without an entry
+version `analyze` uses by default (including all three Tau2 domains, GLAMR,
+and the `nemo-oo-airline` corpus) — a subject without an entry
 hard-errors rather than falling back to latest. Bump a subject's line
 deliberately after a mint you want as its new shared baseline, or override
 per-run with the dispatch `state` input (applies to every subject in the run;

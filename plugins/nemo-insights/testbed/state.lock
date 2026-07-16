@@ -1,6 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Analyze-mode CI reads each subject's pinned state from here (one PR = one
 # state per subject). A missing entry fails loudly — add the subject after
 # minting its fixture, or pass --state <state-vN> explicitly.
 [subjects]
 tau2-airline = "state-v6"
-nvq = "state-v7"
+tau2-retail = "state-v10"
+tau2-telecom = "state-v10"
+glamr = "state-v8"
+nemo-oo-airline = "state-v9"
