@@ -20,6 +20,7 @@ from pydantic import ValidationError
 
 def _example_yaml_config() -> dict:
     return {
+        "config_format": "nemo-agents-spec-v1",
         "name": "test-agent",
         "description": "Test agent config",
         "default_harness": "hermes",
@@ -86,6 +87,7 @@ class TestAgentConfig:
     def test_example_yaml_config_validates(self) -> None:
         config = AgentConfig.model_validate(_example_yaml_config())
 
+        assert config.config_format == "nemo-agents-spec-v1"
         assert config.name == "test-agent"
         assert config.default_harness == "hermes"
         assert config.harnesses["hermes"].model is not None
@@ -101,6 +103,7 @@ class TestAgentConfig:
     def test_defaults_fill_optional_sections(self) -> None:
         config = AgentConfig.model_validate(
             {
+                "config_format": "nemo-agents-spec-v1",
                 "name": "minimal-agent",
                 "default_harness": "codex",
                 "harnesses": {"codex": {"kind": "codex"}},
@@ -119,6 +122,7 @@ class TestAgentConfig:
         with pytest.raises(ValidationError, match="default_harness must reference one of harnesses: codex"):
             AgentConfig.model_validate(
                 {
+                    "config_format": "nemo-agents-spec-v1",
                     "name": "bad-agent",
                     "default_harness": "hermes",
                     "harnesses": {"codex": {"kind": "codex"}},
@@ -130,6 +134,13 @@ class TestAgentConfig:
         payload["unexpected"] = "value"
 
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+            AgentConfig.model_validate(payload)
+
+    def test_config_format_must_match_platform_spec_version(self) -> None:
+        payload = _example_yaml_config()
+        payload["config_format"] = "nat-workflow-v1"
+
+        with pytest.raises(ValidationError, match="Input should be 'nemo-agents-spec-v1'"):
             AgentConfig.model_validate(payload)
 
     def test_unknown_nested_fields_rejected_outside_settings(self) -> None:

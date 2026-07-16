@@ -52,6 +52,7 @@ def fake_nemo_fabric(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _example_yaml_config() -> dict[str, Any]:
     return {
+        "config_format": "nemo-agents-spec-v1",
         "name": "example-agent",
         "description": "Example Agent",
         "default_harness": "hermes",

@@ -1,3 +1,4 @@
+config_format: nemo-agents-spec-v1
 name: test-agent
 description: Test agent config
 

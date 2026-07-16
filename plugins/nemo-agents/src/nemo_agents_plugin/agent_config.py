@@ -13,7 +13,7 @@ the RFC122 contract lands.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 import yaml
 from nemo_agents_plugin.entities import AGENT_CONFIG_FILENAME
@@ -67,6 +67,7 @@ class AgentConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    config_format: Literal["nemo-agents-spec-v1"]
     name: str
     description: str = ""
     default_harness: str

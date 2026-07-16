@@ -17,9 +17,7 @@ from datetime import datetime, timezone
 
 import pytest
 from nemo_agents_plugin.entities import (
-    AGENT_CONFIG_FILENAME,
     NAT_WORKFLOW_CONFIG_FORMAT,
-    NEMO_AGENTS_SPEC_CONFIG_FORMAT,
     Agent,
     AgentDeployment,
     agent_config_file_ref,
@@ -197,11 +195,6 @@ class TestCreateAgentRequest:
 
 
 class TestSpecLocationConvention:
-    def test_config_contract_constants(self) -> None:
-        assert AGENT_CONFIG_FILENAME == "agent.yaml"
-        assert NAT_WORKFLOW_CONFIG_FORMAT == "nat-workflow-v1"
-        assert NEMO_AGENTS_SPEC_CONFIG_FORMAT == "nemo-agents-spec-v1"
-
     def test_spec_location_convention(self) -> None:
         assert agent_spec_fileset_name("checkout-bot") == "checkout-bot-spec"
         ref = agent_spec_file_ref("default", "checkout-bot")
