@@ -279,7 +279,7 @@ def _collect_section_yaml(key: str, config_class: Any, values: dict[str, Any], i
     if doc:
         lines.append(doc)
         lines.append("")
-    lines.append("```yaml")
+    lines.append("```yaml wordWrap")
     lines.extend(_emit_section_yaml_with_comments(key, values, info_tree))
     lines.append("```")
     lines.append("")

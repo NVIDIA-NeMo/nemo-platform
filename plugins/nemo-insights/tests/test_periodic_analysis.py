@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 import httpx
 import pytest
 from nemo_insights_plugin.analyst.analyst_backend import (
+    LocalAnalystBackend,
     RemoteAnalystBackend,
     _merge_eval_filter,
     _merge_since_filter,
@@ -92,6 +93,33 @@ async def test_remote_persist_validates_updates_without_trace_refs() -> None:
 
     assert "- skipped (insight not found): missing-insight" in report
     assert "- updated: missing-insight" not in report
+
+
+def test_local_backend_reads_and_writes_insights_file_with_explicit_utf8(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    read_calls: list[dict[str, object]] = []
+    write_calls: list[dict[str, object]] = []
+    original_read_text = Path.read_text
+    original_write_text = Path.write_text
+
+    def spy_read_text(self: Path, *args: object, **kwargs: object) -> str:
+        read_calls.append(kwargs)
+        return original_read_text(self, *args, **kwargs)
+
+    def spy_write_text(self: Path, *args: object, **kwargs: object) -> int:
+        write_calls.append(kwargs)
+        return original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", spy_read_text)
+    monkeypatch.setattr(Path, "write_text", spy_write_text)
+
+    backend = LocalAnalystBackend(client=SimpleNamespace(), path=tmp_path / "insights.yaml")  # type: ignore[arg-type]
+    backend._write_records([])
+    backend._read_records()
+
+    assert write_calls[-1].get("encoding") == "utf-8"
+    assert read_calls[-1].get("encoding") == "utf-8"
 
 
 def test_merge_eval_filter_pins_evaluation_id() -> None:

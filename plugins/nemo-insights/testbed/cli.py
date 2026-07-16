@@ -22,9 +22,11 @@ target; run/snapshot/`analyze --live` source, replacing the stanza base_url).
 
 Export bundles (`kind: testbed-export`) restore by re-ingesting through the real
 APIs into fixture-scoped workspaces (`<ws>-<ref>` for published refs,
-`<ws>-<sha256[:8]>` for local files) — additive and idempotent, never touching
-existing data. Legacy tar bundles (state-v1..v5) are restorable only from a
-pre-migration checkout; see testbed/README.md.
+`<ws>-<sha256[:8]>` for local files) — additive, idempotent, and healing.
+`restore --into WORKSPACE` is the direct alternative: it requires a fresh,
+empty target and is not idempotent into a populated workspace. Legacy tar
+bundles (state-v1..v5) are restorable only from a pre-migration checkout; see
+testbed/README.md.
 
 This drives the analyst (`nemo insights analyze`) against registered subjects; it is not
 the product CLI and is not shipped in the wheel.
@@ -212,6 +214,7 @@ def _restore_export_bundle(
     platform_root: str | None,
     tmp_dir: Path,
     backup_dir: Path | None = None,
+    into: str | None = None,
 ) -> tuple[dict, dict[str, str], list[str]]:
     """Re-ingest an export bundle into fixture workspaces.
 
@@ -219,13 +222,15 @@ def _restore_export_bundle(
     run-record files the bundle left in ``tmp_dir`` (callers use it to refuse
     analyzing a subject the bundle carries no run record for).
 
-    Additive + idempotent (``reingest.ingest_bundle`` guards on per-collection counts and
-    warns on stale bundles) — no destructive ceremony. The catalog inversion is
-    loaded up front so a missing nemo-platform checkout fails before any
-    extraction or network I/O. The bundle's ``tmp/`` run records are copied
-    beside the local ones (clobbered locals are backed up into *backup_dir*,
-    the caller's per-invocation destination); insights never travel in
-    bundles, so nothing else lands in ``tmp_dir``.
+    The default fixture-scoped path is additive, idempotent, and healing
+    (``reingest.ingest_bundle`` guards on per-collection counts). Direct
+    ``--into`` restores require a fresh, empty target and are not idempotent
+    into populated workspaces. Both warn on stale bundles. The catalog
+    inversion is loaded up front so a missing nemo-platform checkout fails
+    before any extraction or network I/O. The bundle's ``tmp/`` run records
+    are copied beside the local ones (clobbered locals are backed up into
+    *backup_dir*, the caller's per-invocation destination); insights never
+    travel in bundles, so nothing else lands in ``tmp_dir``.
     """
     catalog = reingest.load_catalog(reingest.resolve_platform_root(platform_root))
     TMP.mkdir(parents=True, exist_ok=True)
@@ -233,13 +238,18 @@ def _restore_export_bundle(
         subprocess.run(["tar", "--zstd", "-xf", str(bundle), "-C", tmp], check=True)
         state = Path(tmp) / "state"
         manifest = json.loads((state / "manifest.json").read_text(encoding="utf-8"))
-        workspace_map = reingest.fixture_workspace_map(manifest["workspaces"], suffix)
+        workspace_map = (
+            reingest.explicit_workspace_map(manifest["workspaces"], into)
+            if into is not None
+            else reingest.fixture_workspace_map(manifest["workspaces"], suffix)
+        )
         outcome = reingest.ingest_bundle(
             base_url,
             state / "export",
             manifest,
             workspace_map=workspace_map,
             catalog=catalog,
+            require_empty=into is not None,
         )
         # seed_records must run inside this `with` block: it copies the bundle's
         # records out of state/tmp (under the tempdir) before teardown.
@@ -529,6 +539,14 @@ def main() -> None:
         "Pins are per-subject: for the pinned state, use `analyze <subject>` instead.",
     )
     p_res.add_argument(
+        "--into",
+        default=None,
+        metavar="WORKSPACE",
+        help="Restore a single-workspace bundle directly into this workspace instead of the "
+        "fixture-scoped <ws>-<ref> default. Requires a fresh, empty target and is "
+        "not idempotent into a populated workspace.",
+    )
+    p_res.add_argument(
         "--base",
         default=None,
         help=f"Target platform URL for the re-ingest (default: {LOCAL_URL}).",
@@ -687,12 +705,16 @@ def main() -> None:
                 f"restore: {bundle_path.name} is a legacy tar bundle (state-v1..v5) — "
                 "restorable only from a pre-migration checkout; see testbed/README.md"
             )
+        if args.into is not None:
+            # Validate the direct target before catalog loading, extraction, or network I/O.
+            reingest.explicit_workspace_map(manifest["workspaces"], args.into)
         _restore_export_bundle(
             bundle_path,
             base_url=args.base or LOCAL_URL,
             suffix=suffix,
             platform_root=args.platform_root,
             tmp_dir=TMP,
+            into=args.into,
         )
         return
 

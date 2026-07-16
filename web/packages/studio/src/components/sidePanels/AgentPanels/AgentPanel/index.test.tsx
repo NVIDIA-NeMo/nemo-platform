@@ -79,8 +79,8 @@ describe('AgentPanel', () => {
       renderPanel(MOCK_AGENT_WITH_DEPLOYMENTS);
 
       expect(
-        await screen.findByText('meta-llama-3-1-70b-instruct', {}, { timeout: 5000 })
-      ).toBeInTheDocument();
+        await screen.findAllByText('meta-llama-3-1-70b-instruct', {}, { timeout: 5000 })
+      ).toHaveLength(2);
     });
 
     it('renders a non-empty description when present', async () => {

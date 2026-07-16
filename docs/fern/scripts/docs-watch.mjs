@@ -7,16 +7,20 @@ import { utimes } from "node:fs/promises";
 import { constants } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { syncHelmDocs } from "./sync-helm-docs.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const fernDir = path.resolve(scriptDir, "..");
 const docsRoot = path.resolve(fernDir, "..");
+const repoRoot = path.resolve(docsRoot, "..");
+const helmDir = path.join(repoRoot, "k8s", "helm");
 const reloadTrigger = path.join(fernDir, "docs.yml");
 const reloadDebounceMs = 150;
 const ignoredPrefix = "fern/";
 const openapiInputPrefix = "fern/openapi/";
 const publicOpenapiPath = "fern/openapi/openapi.public.yaml";
 const filterOpenapiScriptPath = "fern/scripts/filter-public-openapi.mjs";
+const helmWatchFiles = new Set(["values.yaml", "README.md"]);
 
 let debounceTimer = null;
 let pendingReloadRequiresOpenapi = false;
@@ -90,8 +94,13 @@ function prepareOpenapi() {
   }
 }
 
+function prepareHelm() {
+  syncHelmDocs();
+}
+
 function spawnFernDev() {
   prepareOpenapi();
+  prepareHelm();
   return spawn("npx", ["-y", "fern-api@latest", "docs", "dev"], {
     cwd: fernDir,
     stdio: "inherit",
@@ -117,8 +126,29 @@ watcher.on("error", (error) => {
   log(`watcher error: ${error.message}`);
 });
 
+const helmWatcher = watch(helmDir, (_eventType, filename) => {
+  if (!filename || !helmWatchFiles.has(filename.toString())) {
+    return;
+  }
+  log(`helm source changed (${filename}), regenerating helm docs`);
+  try {
+    prepareHelm();
+  } catch (error) {
+    log(`failed to regenerate helm docs: ${error.message}`);
+    return;
+  }
+  touchReloadTrigger(`k8s/helm/${filename}`).catch((error) => {
+    log(`failed to trigger reload after helm change: ${error.message}`);
+  });
+});
+
+helmWatcher.on("error", (error) => {
+  log(`helm watcher error: ${error.message}`);
+});
+
 function closeWatcher() {
   watcher.close();
+  helmWatcher.close();
 }
 
 function signalExitCode(signal) {
