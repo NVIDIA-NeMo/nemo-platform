@@ -1,22 +1,18 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
+import { ControlledTextArea } from '@nemo/common/src/components/form/ControlledTextArea';
+import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { SamplerType } from '@nemo/sdk/generated/data-designer/schema';
 import {
   Banner,
   Button,
   Flex,
   FormField,
-  SelectContent,
-  SelectItem,
-  SelectListbox,
-  SelectRoot,
-  SelectTrigger,
   Stack,
   Switch,
   Text,
-  TextArea,
-  TextInput,
 } from '@nvidia/foundations-react-core';
 import { ICON_COLOR_CLASS } from '@studio/components/AddColumnPalette/constants';
 import { SeedDatasetConfig } from '@studio/components/ColumnConfigPanel/SeedDatasetConfig';
@@ -36,77 +32,72 @@ interface FieldControlProps {
   field: ColumnField;
 }
 
-/** A field-level RHF subscription; editing it leaves the route, list, and other fields alone. */
-const FieldControl: FC<FieldControlProps> = ({ columnIndex, field }) => {
+interface SwitchFieldControlProps extends FieldControlProps {
+  fieldPath: `columns.${number}.values.${string}`;
+}
+
+const SwitchFieldControl: FC<SwitchFieldControlProps> = ({ field, fieldPath }) => {
   const { control } = useFormContext<JobBuilderFormValues>();
   const { field: formField } = useController({
     control,
-    name: `columns.${columnIndex}.values.${field.key}`,
+    name: fieldPath,
   });
   const value = formField.value ?? '';
 
-  const controlElement = () => {
-    switch (field.kind) {
-      case 'textarea':
-        return (
-          <TextArea
-            value={value}
-            onValueChange={formField.onChange}
-            placeholder={field.placeholder}
-            resizeable="auto"
-          />
-        );
-      case 'select':
-        return (
-          <SelectRoot value={value || undefined} onValueChange={formField.onChange}>
-            <SelectTrigger className="w-full" placeholder="Select…" />
-            <SelectContent className="w-(--radix-popper-anchor-width)">
-              <SelectListbox>
-                {field.options?.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectListbox>
-            </SelectContent>
-          </SelectRoot>
-        );
-      case 'number':
-        return (
-          <TextInput
-            value={value}
-            onValueChange={formField.onChange}
-            placeholder={field.placeholder}
-            attributes={{ Input: { type: 'number', inputMode: 'decimal' } }}
-          />
-        );
-      default:
-        return (
-          <TextInput
-            value={value}
-            onValueChange={formField.onChange}
-            placeholder={field.placeholder}
-          />
-        );
-    }
-  };
-
-  if (field.kind === 'switch') {
-    return (
-      <FormField slotLabel={field.label} slotInfo={field.helperText}>
-        <Switch
-          checked={value === 'true'}
-          onCheckedChange={(checked) => formField.onChange(checked ? 'true' : 'false')}
-        />
-      </FormField>
-    );
-  }
-
   return (
-    <FormField slotLabel={field.label} required={field.required} slotInfo={field.helperText}>
-      {controlElement()}
+    <FormField slotLabel={field.label} slotInfo={field.helperText}>
+      <Switch
+        checked={value === 'true'}
+        onCheckedChange={(checked) => formField.onChange(checked ? 'true' : 'false')}
+      />
     </FormField>
   );
+};
+
+/** A field-level RHF subscription; editing it leaves the route, list, and other fields alone. */
+const FieldControl: FC<FieldControlProps> = ({ columnIndex, field }) => {
+  const fieldPath = `columns.${columnIndex}.values.${field.key}` as const;
+  const useControllerProps = { name: fieldPath };
+  const formFieldProps = { slotInfo: field.helperText };
+
+  switch (field.kind) {
+    case 'textarea':
+      return (
+        <ControlledTextArea
+          label={field.label}
+          required={field.required}
+          useControllerProps={useControllerProps}
+          formFieldProps={formFieldProps}
+          placeholder={field.placeholder}
+          resizeable="auto"
+        />
+      );
+    case 'select':
+      return (
+        <ControlledSelect
+          items={
+            field.options?.map((option) => ({ children: option.label, value: option.value })) ?? []
+          }
+          useControllerProps={useControllerProps}
+          formFieldProps={{ ...formFieldProps, slotLabel: field.label, required: field.required }}
+          placeholder="Select…"
+        />
+      );
+    case 'switch':
+      return <SwitchFieldControl field={field} fieldPath={fieldPath} columnIndex={columnIndex} />;
+    default:
+      return (
+        <ControlledTextInput
+          label={field.label}
+          required={field.required}
+          useControllerProps={useControllerProps}
+          formFieldProps={formFieldProps}
+          placeholder={field.placeholder}
+          type={field.kind === 'number' ? 'text' : undefined}
+          attributes={field.kind === 'number' ? { Input: { inputMode: 'decimal' } } : undefined}
+        />
+      );
+  }
 };
 
 interface ColumnNameControlProps {
@@ -115,31 +106,29 @@ interface ColumnNameControlProps {
 
 const ColumnNameControl: FC<ColumnNameControlProps> = ({ columnIndex }) => {
   const { control, getValues } = useFormContext<JobBuilderFormValues>();
-  const { field } = useController({ control, name: `columns.${columnIndex}.name` });
+  const namePath = `columns.${columnIndex}.name` as const;
   const columnCount = getValues('columns').length;
+  const value = useWatch({ control, name: namePath }) ?? '';
   const names = useWatch({
     control,
     name: Array.from({ length: columnCount }, (_, index) => `columns.${index}.name` as const),
   });
   const takenNames = new Set(names.filter((name, index) => index !== columnIndex && Boolean(name)));
-  const value = field.value ?? '';
   const nameError = validateColumnName(value, takenNames);
 
   return (
-    <FormField
-      slotLabel="Column name"
+    <ControlledTextInput
+      label="Column name"
       required
-      slotInfo="Other columns reference this via {{ name }}."
-      status={value && nameError ? 'error' : undefined}
-      slotError={value ? (nameError ?? undefined) : undefined}
-    >
-      <TextInput
-        value={value}
-        onValueChange={field.onChange}
-        placeholder="e.g. topic"
-        attributes={{ Input: { 'aria-label': 'Column name' } }}
-      />
-    </FormField>
+      useControllerProps={{ name: namePath }}
+      formFieldProps={{
+        slotInfo: 'Other columns reference this via {{ name }}.',
+        status: value && nameError ? 'error' : undefined,
+        slotError: value ? (nameError ?? undefined) : undefined,
+      }}
+      placeholder="e.g. topic"
+      aria-label="Column name"
+    />
   );
 };
 

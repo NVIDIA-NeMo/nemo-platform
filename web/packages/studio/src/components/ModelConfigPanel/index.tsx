@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
+import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { ModelSelectV2 } from '@nemo/common/src/components/ModelSelectV2/ModelSelectV2';
 import type { ModelSelection } from '@nemo/common/src/components/ModelSelectV2/types';
 import type { InferenceParams } from '@nemo/sdk/generated/platform/schema';
-import { Button, Flex, FormField, Stack, Text, TextInput } from '@nvidia/foundations-react-core';
+import { Button, Flex, FormField, Stack, Text } from '@nvidia/foundations-react-core';
 import { CardIconBadge } from '@studio/components/common/SelectableCard';
 import {
   providerForModel,
@@ -15,6 +16,8 @@ import type { JobBuilderFormValues } from '@studio/routes/DataDesignerJobBuildRo
 import { Cpu, Trash2, X } from 'lucide-react';
 import type { FC } from 'react';
 import { useController, useFormContext, useWatch } from 'react-hook-form';
+
+const EMPTY_INFERENCE_PARAMS: Partial<InferenceParams> = {};
 
 export interface ModelConfigPanelProps {
   modelId: string;
@@ -32,9 +35,9 @@ export const ModelConfigPanel: FC<ModelConfigPanelProps> = ({
   onRemove,
   onClose,
 }) => {
-  const { control, getValues, setValue } = useFormContext<JobBuilderFormValues>();
+  const { control, getValues } = useFormContext<JobBuilderFormValues>();
   const modelIndex = getValues('models').findIndex((model) => model.id === modelId);
-  const { field: aliasField } = useController({ control, name: `models.${modelIndex}.alias` });
+  const aliasPath = `models.${modelIndex}.alias` as const;
   const { field: modelField } = useController({ control, name: `models.${modelIndex}.model` });
   const { field: providerField } = useController({
     control,
@@ -49,7 +52,7 @@ export const ModelConfigPanel: FC<ModelConfigPanelProps> = ({
     control,
     name: Array.from({ length: modelCount }, (_, index) => `models.${index}.alias` as const),
   });
-  const alias = aliasField.value ?? '';
+  const alias = useWatch({ control, name: aliasPath }) ?? '';
   const aliasError = validateModelAlias(
     alias,
     new Set(aliases.filter((value, index) => index !== modelIndex && Boolean(value)))
@@ -97,20 +100,18 @@ export const ModelConfigPanel: FC<ModelConfigPanelProps> = ({
       </Flex>
 
       <Stack gap="density-lg" padding="density-lg" className="min-h-0 flex-1 overflow-y-auto">
-        <FormField
-          slotLabel="Alias"
+        <ControlledTextInput
+          label="Alias"
           required
-          slotInfo="LLM columns reference this model via their model alias."
-          status={alias && aliasError ? 'error' : undefined}
-          slotError={alias ? (aliasError ?? undefined) : undefined}
-        >
-          <TextInput
-            value={alias}
-            onValueChange={aliasField.onChange}
-            placeholder="e.g. default"
-            attributes={{ Input: { 'aria-label': 'Model alias' } }}
-          />
-        </FormField>
+          useControllerProps={{ name: aliasPath }}
+          formFieldProps={{
+            slotInfo: 'LLM columns reference this model via their model alias.',
+            status: alias && aliasError ? 'error' : undefined,
+            slotError: alias ? (aliasError ?? undefined) : undefined,
+          }}
+          placeholder="e.g. default"
+          aria-label="Model alias"
+        />
 
         <FormField slotLabel="Model" required slotInfo="Model and inference parameters.">
           <ModelSelectV2
@@ -122,10 +123,8 @@ export const ModelConfigPanel: FC<ModelConfigPanelProps> = ({
             showParams
             fullWidth
             dropdownSide="bottom"
-            inferenceParams={inferenceParamsField.value ?? {}}
-            onInferenceParamsChange={(params: Partial<InferenceParams>) =>
-              setValue(`models.${modelIndex}.inferenceParams`, params)
-            }
+            inferenceParams={inferenceParamsField.value ?? EMPTY_INFERENCE_PARAMS}
+            onInferenceParamsChange={inferenceParamsField.onChange}
             aria-label="Model selector"
           />
         </FormField>

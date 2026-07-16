@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
-import { Flex, FormField, Select, Tag, Text } from '@nvidia/foundations-react-core';
+import { Flex, FormField, Tag, Text } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import {
@@ -17,7 +18,7 @@ import type { JobBuilderFormValues } from '@studio/routes/DataDesignerJobBuildRo
 import { FilesetSearchableSelect } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/FilesetSearchableSelect';
 import { getContentColumns, getFileExtension } from '@studio/util/files';
 import { type FC, useEffect, useMemo, useRef } from 'react';
-import { useController, useFormContext, useWatch } from 'react-hook-form';
+import { useFormContext, useWatch } from 'react-hook-form';
 
 export interface SeedDatasetConfigProps {
   columnIndex: number;
@@ -43,11 +44,8 @@ export const SeedDatasetConfig: FC<SeedDatasetConfigProps> = ({ columnIndex }) =
     `columns.${columnIndex}.values.${SEED_SAMPLING_STRATEGY_KEY}` as const;
   const availableColumnsPath =
     `columns.${columnIndex}.values.${SEED_AVAILABLE_COLUMNS_KEY}` as const;
-  const { field: filePathField } = useController({ control, name: filePathPath });
-  const { field: samplingStrategyField } = useController({ control, name: samplingStrategyPath });
   const filesetRef = useWatch({ control, name: filesetRefPath }) ?? '';
-  const filePath = filePathField.value ?? '';
-  const samplingStrategy = samplingStrategyField.value ?? '';
+  const filePath = useWatch({ control, name: filePathPath }) ?? '';
   const availableColumnsValue = useWatch({
     control,
     name: availableColumnsPath,
@@ -98,11 +96,6 @@ export const SeedDatasetConfig: FC<SeedDatasetConfigProps> = ({ columnIndex }) =
     }
   }, [availableColumns, availableColumnsPath, availableColumnsValue, setValue]);
 
-  const samplingItems = SAMPLING_STRATEGY_OPTIONS.map((option) => ({
-    children: option.label,
-    value: option.value,
-  }));
-
   return (
     <>
       <FilesetSearchableSelect
@@ -115,29 +108,25 @@ export const SeedDatasetConfig: FC<SeedDatasetConfigProps> = ({ columnIndex }) =
         triggerPlaceholder="Select a fileset"
       />
 
-      <FormField
-        slotLabel="File"
-        required
-        slotInfo="The file within the fileset to read rows from."
-      >
-        <Select
-          aria-label="Seed file"
-          disabled={!filesetRef}
-          items={fileItems}
-          value={filePath || undefined}
-          onValueChange={(value) => {
-            filePathField.onChange(value ?? '');
-            setValue(availableColumnsPath, '');
-          }}
-          placeholder={
-            !filesetRef
-              ? 'Select a fileset first'
-              : isLoadingFiles
-                ? 'Loading files…'
-                : 'Select a file'
-          }
-        />
-      </FormField>
+      <ControlledSelect
+        aria-label="Seed file"
+        disabled={!filesetRef}
+        items={fileItems}
+        useControllerProps={{ name: filePathPath }}
+        formFieldProps={{
+          slotLabel: 'File',
+          required: true,
+          slotInfo: 'The file within the fileset to read rows from.',
+        }}
+        onChange={() => setValue(availableColumnsPath, '')}
+        placeholder={
+          !filesetRef
+            ? 'Select a fileset first'
+            : isLoadingFiles
+              ? 'Loading files…'
+              : 'Select a file'
+        }
+      />
 
       {filePath && (
         <FormField
@@ -168,18 +157,19 @@ export const SeedDatasetConfig: FC<SeedDatasetConfigProps> = ({ columnIndex }) =
         </FormField>
       )}
 
-      <FormField
-        slotLabel="Sampling strategy"
-        slotInfo="How rows are read from the seed dataset. Defaults to ordered."
-      >
-        <Select
-          aria-label="Sampling strategy"
-          items={samplingItems}
-          value={samplingStrategy || undefined}
-          onValueChange={(value) => samplingStrategyField.onChange(value ?? '')}
-          placeholder="Ordered"
-        />
-      </FormField>
+      <ControlledSelect
+        aria-label="Sampling strategy"
+        items={SAMPLING_STRATEGY_OPTIONS.map((option) => ({
+          children: option.label,
+          value: option.value,
+        }))}
+        useControllerProps={{ name: samplingStrategyPath }}
+        formFieldProps={{
+          slotLabel: 'Sampling strategy',
+          slotInfo: 'How rows are read from the seed dataset. Defaults to ordered.',
+        }}
+        placeholder="Ordered"
+      />
     </>
   );
 };
