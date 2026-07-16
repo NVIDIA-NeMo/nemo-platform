@@ -18,12 +18,6 @@ from typing import Any, NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# Inlined from nmp.common.entities.constants.NAME_PATTERN — types.py must not
-# import nmp_common. The lookaround assertions require the python-re engine
-# (see the request models below), which pydantic's default Rust engine rejects.
-NAME_PATTERN = r"^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$"
-
-
 # ---------------------------------------------------------------------------
 # Response types
 # ---------------------------------------------------------------------------
@@ -70,30 +64,29 @@ class EntityCreateInput(BaseModel):
     ``workspace`` and ``entity_type`` come from the URL path.
     """
 
+    # Name format is validated server-side (the entities service returns 422 on a
+    # bad name). The client DTO stays permissive so an invalid name surfaces as the
+    # server's 422, not a client-side pydantic error that a caller would see as a 500.
     name: str | None = Field(
         default=None,
-        description="Entity name (optional — auto-generated if not provided)",
-        pattern=NAME_PATTERN,
+        description="Entity name (optional, auto-generated if not provided)",
     )
     parent: str | None = Field(default=None, description="Parent entity ID for nested entities")
     project: str | None = Field(default=None, description="The name of the project associated with this entity")
     data: dict[str, Any] = Field(description="Entity-specific data (opaque to the entity store)")
 
-    model_config = ConfigDict(regex_engine="python-re")
-
 
 class EntityUpdate(BaseModel):
     """Request body for updating an entity."""
 
-    new_name: str | None = Field(default=None, description="Updated entity name (optional)", pattern=NAME_PATTERN)
+    # Name format is validated server-side; see EntityCreateInput.name.
+    new_name: str | None = Field(default=None, description="Updated entity name (optional)")
     project: str | None = Field(default=None, description="The name of the project associated with this entity")
     data: dict[str, Any] = Field(description="Updated entity-specific data")
     expected_db_version: int | None = Field(
         default=None,
         description="Optional database version for optimistic locking. Update only succeeds if the version matches.",
     )
-
-    model_config = ConfigDict(regex_engine="python-re")
 
 
 # ---------------------------------------------------------------------------

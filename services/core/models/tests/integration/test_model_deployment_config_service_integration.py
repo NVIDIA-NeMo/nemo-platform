@@ -4,7 +4,7 @@
 """Integration tests for ModelDeploymentConfig service with in-memory EntityClient."""
 
 import pytest
-from nemo_platform import NotFoundError
+from nemo_platform_plugin.client.errors import NotFoundError
 from nmp.common.api.common import Page
 from nmp.common.entities.client import EntityClient
 from nmp.core.models.api.service.model_deployment_config_service import ModelDeploymentConfigService
