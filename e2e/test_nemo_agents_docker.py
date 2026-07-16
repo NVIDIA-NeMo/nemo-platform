@@ -275,7 +275,7 @@ def _run_cleanup_steps(*steps: Callable[[], None]) -> None:
 def test_docker_agent_deploys_and_invokes_through_gateway(
     sdk: NeMoPlatform, workspace: str, agent_deployment_image: str
 ) -> None:
-    """Deploy the calculator-agent image as a docker container and invoke it.
+    """Deploy an agent as a docker container from the nmp-api image and invoke it.
 
     Asserts the deployment reaches ``running`` with the container-mode endpoint
     shape (empty scalar ``endpoint``, populated ``endpoints``), then invokes
