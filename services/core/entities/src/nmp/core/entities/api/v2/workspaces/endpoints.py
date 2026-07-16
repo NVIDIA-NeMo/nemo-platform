@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, status
 from nmp.common.api.common import Page, PaginationData
-from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
+from nmp.common.api.filter import ComparisonOperation, FilterOperator
 from nmp.common.auth.models import Principal
 from nmp.core.entities.api.dependencies import AuthClientDep, EntityRepository, WorkspaceRepository
 from nmp.core.entities.api.v2.schemas import DeleteResponse, GenericSortField
@@ -91,21 +91,12 @@ async def _count_active_admins(
     Returns:
         Number of active Admin role bindings
     """
-    # Build filter for Admin role bindings in this workspace
-    admin_filter = LogicalOperation(
-        operator=FilterOperator.AND,
-        operations=[
-            ComparisonOperation(
-                operator=FilterOperator.EQ,
-                field="data.workspace",
-                value=workspace,
-            ),
-            ComparisonOperation(
-                operator=FilterOperator.EQ,
-                field="data.role",
-                value="Admin",
-            ),
-        ],
+    # Role bindings are scoped by the entity workspace. Older seeded bindings do
+    # not carry a duplicate data.workspace field, so do not filter on it.
+    admin_filter = ComparisonOperation(
+        operator=FilterOperator.EQ,
+        field="data.role",
+        value="Admin",
     )
 
     bindings, _ = await entity_repository.list_entities(
@@ -505,14 +496,6 @@ async def list_workspace_members(
             detail=f"Workspace '{workspace}' not found",
         )
 
-    # Build filter for this workspace's role bindings
-    # Filter by workspace in the data field
-    workspace_filter = ComparisonOperation(
-        operator=FilterOperator.EQ,
-        field="data.workspace",
-        value=workspace,
-    )
-
     # Get all role bindings for this workspace
     all_bindings = []
     page = 1
@@ -521,7 +504,6 @@ async def list_workspace_members(
         bindings, total = await entity_repository.list_entities(
             workspace=workspace,
             entity_type=ROLE_BINDING_ENTITY_TYPE,
-            filter_op=workspace_filter,
             page=page,
             page_size=page_size,
         )
@@ -544,7 +526,9 @@ async def list_workspace_members(
                 "granted_at": binding.data.get("granted_at"),
                 "granted_by": binding.data.get("granted_by"),
             }
-        members_dict[principal]["roles"].append(binding.data.get("role"))
+        role = binding.data.get("role")
+        if role not in members_dict[principal]["roles"]:
+            members_dict[principal]["roles"].append(role)
         # Keep the earliest granted_at date
         binding_granted_at = binding.data.get("granted_at")
         if binding_granted_at and (
@@ -707,21 +691,13 @@ async def update_workspace_member(
     granted_by = auth_client.principal.id if auth_client.principal.id else "system"
     now = datetime.now(timezone.utc)
 
-    # Build filter for this principal's role bindings in this workspace
-    principal_filter = LogicalOperation(
-        operator=FilterOperator.AND,
-        operations=[
-            ComparisonOperation(
-                operator=FilterOperator.EQ,
-                field="data.principal",
-                value=principal_id,
-            ),
-            ComparisonOperation(
-                operator=FilterOperator.EQ,
-                field="data.workspace",
-                value=workspace,
-            ),
-        ],
+    # Role bindings are already scoped to the workspace by the entity workspace.
+    # Seeded role bindings predate data.workspace, so filtering on data.workspace
+    # would miss active seeded bindings and leave PDP authorization stale.
+    principal_filter = ComparisonOperation(
+        operator=FilterOperator.EQ,
+        field="data.principal",
+        value=principal_id,
     )
 
     # Get current role bindings for this principal
@@ -878,21 +854,13 @@ async def remove_workspace_member(
             detail=f"Workspace '{workspace}' not found",
         )
 
-    # Build filter for this principal's role bindings in this workspace
-    principal_filter = LogicalOperation(
-        operator=FilterOperator.AND,
-        operations=[
-            ComparisonOperation(
-                operator=FilterOperator.EQ,
-                field="data.principal",
-                value=principal_id,
-            ),
-            ComparisonOperation(
-                operator=FilterOperator.EQ,
-                field="data.workspace",
-                value=workspace,
-            ),
-        ],
+    # Role bindings are already scoped to the workspace by the entity workspace.
+    # Seeded role bindings predate data.workspace, so filtering on data.workspace
+    # would miss active seeded bindings.
+    principal_filter = ComparisonOperation(
+        operator=FilterOperator.EQ,
+        field="data.principal",
+        value=principal_id,
     )
 
     # Get all role bindings for this principal in this workspace

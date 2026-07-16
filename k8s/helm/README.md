@@ -3,6 +3,7 @@
 ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square)
 
 Documentation can be found at: https://docs.nvidia.com/nemo-platform.
+For deployment instructions, see https://docs.nvidia.com/nemo-platform/documentation/self-managed-deployment/setup.
 
 ## Platform Secrets Encryption Key
 
