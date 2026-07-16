@@ -25,8 +25,10 @@ __all__ = ["TraceRetrieveParams"]
 class TraceRetrieveParams(TypedDict, total=False):
     workspace: str
 
-    mode: Literal["summary", "detailed"]
-    """
-    Use summary for root-span trace fields only, or detailed to include token, cost,
-    and span-count rollups.
+    mode: Literal["summary", "preview", "detailed"]
+    """Response mode.
+
+    summary returns root-span fields without payloads or rollups; preview adds
+    token, cost, and span-count rollups plus 300-character input/output previews;
+    detailed returns rollups and full payloads.
     """

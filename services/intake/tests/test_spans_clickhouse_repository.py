@@ -149,7 +149,8 @@ async def test_list_spans_detailed_reads_full_payloads():
         mode="detailed",
     )
 
-    assert "input, output" in client.queries[1]
+    assert "input AS input" in client.queries[1]
+    assert "output AS output" in client.queries[1]
     assert "substringUTF8(input" not in client.queries[1]
     assert "payload_char_limit" not in client.parameters[1]
 

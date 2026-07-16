@@ -30,11 +30,11 @@ class SessionListParams(TypedDict, total=False):
     filter: EvaluationSessionFilterParam
     """Filter sessions by test_case_id and status."""
 
-    mode: Literal["summary", "detailed"]
-    """Response payload mode.
+    mode: Literal["summary", "preview", "detailed"]
+    """Response mode.
 
-    summary keeps the same session row fields but truncates root-span input to 1000
-    characters; detailed returns the full root-span input.
+    summary omits root-span input and output; preview includes both truncated to 300
+    characters; detailed returns full root-span payloads.
     """
 
     page: int

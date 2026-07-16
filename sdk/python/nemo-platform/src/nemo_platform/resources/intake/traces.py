@@ -66,7 +66,7 @@ class TracesResource(SyncAPIResource):
         id: str,
         *,
         workspace: str | None = None,
-        mode: Literal["summary", "detailed"] | Omit = omit,
+        mode: Literal["summary", "preview", "detailed"] | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -74,12 +74,14 @@ class TracesResource(SyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> Trace:
-        """
-        Get Trace
+        """Get Trace
 
         Args:
-          mode: Use summary for root-span trace fields only, or detailed to include token, cost,
-              and span-count rollups.
+          mode: Response mode.
+
+        summary returns root-span fields without payloads or rollups;
+              preview adds token, cost, and span-count rollups plus 300-character input/output
+              previews; detailed returns rollups and full payloads.
 
           extra_headers: Send extra headers
 
@@ -112,7 +114,7 @@ class TracesResource(SyncAPIResource):
         *,
         workspace: str | None = None,
         filter: TraceFilterParam | Omit = omit,
-        mode: Literal["summary", "detailed"] | Omit = omit,
+        mode: Literal["summary", "preview", "detailed"] | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
         sort: TraceSortField | Omit = omit,
@@ -131,8 +133,9 @@ class TracesResource(SyncAPIResource):
               started_at, evaluation_id (or its deprecated alias experiment_id), and
               test_case_id.
 
-          mode: Use summary for root-span trace fields only, or detailed to include token, cost,
-              and span-count rollups.
+          mode: Response mode. summary returns root-span fields without payloads or rollups;
+              preview adds token, cost, and span-count rollups plus 300-character input/output
+              previews; detailed returns rollups and full payloads.
 
           page: Page number.
 
@@ -198,7 +201,7 @@ class AsyncTracesResource(AsyncAPIResource):
         id: str,
         *,
         workspace: str | None = None,
-        mode: Literal["summary", "detailed"] | Omit = omit,
+        mode: Literal["summary", "preview", "detailed"] | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -206,12 +209,14 @@ class AsyncTracesResource(AsyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> Trace:
-        """
-        Get Trace
+        """Get Trace
 
         Args:
-          mode: Use summary for root-span trace fields only, or detailed to include token, cost,
-              and span-count rollups.
+          mode: Response mode.
+
+        summary returns root-span fields without payloads or rollups;
+              preview adds token, cost, and span-count rollups plus 300-character input/output
+              previews; detailed returns rollups and full payloads.
 
           extra_headers: Send extra headers
 
@@ -244,7 +249,7 @@ class AsyncTracesResource(AsyncAPIResource):
         *,
         workspace: str | None = None,
         filter: TraceFilterParam | Omit = omit,
-        mode: Literal["summary", "detailed"] | Omit = omit,
+        mode: Literal["summary", "preview", "detailed"] | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
         sort: TraceSortField | Omit = omit,
@@ -263,8 +268,9 @@ class AsyncTracesResource(AsyncAPIResource):
               started_at, evaluation_id (or its deprecated alias experiment_id), and
               test_case_id.
 
-          mode: Use summary for root-span trace fields only, or detailed to include token, cost,
-              and span-count rollups.
+          mode: Response mode. summary returns root-span fields without payloads or rollups;
+              preview adds token, cost, and span-count rollups plus 300-character input/output
+              previews; detailed returns rollups and full payloads.
 
           page: Page number.
 
