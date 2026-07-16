@@ -360,7 +360,7 @@ def build_trace_requests(
     def _reject_oversized(otlp: dict, doc: dict) -> None:
         size = build_trace_request([otlp]).ByteSize()
         if size > max_bytes:
-            raise ValueError(f"span {doc.get('span_id')}: OTLP body exceeds {max_bytes} bytes ({size})")
+            raise RuntimeError(f"span {doc.get('span_id')}: OTLP body exceeds {max_bytes} bytes ({size})")
 
     for doc in docs:
         otlp = doc_to_otlp(doc, catalog)

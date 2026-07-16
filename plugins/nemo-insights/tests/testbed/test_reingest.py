@@ -223,7 +223,7 @@ def test_build_trace_requests_respects_span_count_limit(monkeypatch):
 
 def test_build_trace_requests_rejects_oversized_single_span():
     huge = {**AGENT_DOC, "raw_attributes": json.dumps({"payload": "x" * (5 * 1024 * 1024)})}
-    with pytest.raises(ValueError, match="exceeds"):
+    with pytest.raises(RuntimeError, match="exceeds"):
         reingest.build_trace_requests([huge], CATALOG)
 
 
@@ -253,7 +253,7 @@ def test_ingest_bundle_oversized_span_raises_before_post(tmp_path, quiet_platfor
     quiet_platform["span_counts"] = [0]
     quiet_platform["annotation_counts"] = [0]
     quiet_platform["result_counts"] = [0]
-    with pytest.raises(ValueError, match="exceeds"):
+    with pytest.raises(RuntimeError, match="exceeds"):
         reingest.ingest_bundle(
             "http://x",
             export_dir,
