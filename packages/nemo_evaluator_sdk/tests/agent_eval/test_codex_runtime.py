@@ -215,6 +215,8 @@ async def test_codex_docker_cli_agent_runtime_runs_codex_in_container_and_writes
         return FakeProcess(command)
 
     monkeypatch.setattr(codex_runtime.shutil, "which", lambda value: f"/bin/{value}")
+    monkeypatch.setattr(codex_runtime.os, "getuid", lambda: 1234)
+    monkeypatch.setattr(codex_runtime.os, "getgid", lambda: 5678)
     runtime = codex_runtime.CodexDockerCliAgentRuntime(
         model="gpt-5.4",
         work_root=tmp_path / "codex-docker",
@@ -227,6 +229,7 @@ async def test_codex_docker_cli_agent_runtime_runs_codex_in_container_and_writes
 
     command, kwargs = commands[0]
     assert command[:4] == ("docker", "run", "--rm", "-i")
+    assert command[command.index("-e") + 1] == "PYTHONDONTWRITEBYTECODE=1"
     assert f"{auth_path.resolve()}:/root/.codex/auth.json:ro" in command
     assert f"{(tmp_path / 'codex-docker' / '000000-task-1' / 'workspace').resolve()}:/workspace" in command
     assert f"{(tmp_path / 'codex-docker' / '000000-task-1').resolve()}:/evidence" in command
@@ -234,6 +237,11 @@ async def test_codex_docker_cli_agent_runtime_runs_codex_in_container_and_writes
     assert f"npx -y {codex_runtime.DEFAULT_CODEX_DOCKER_CLI_PACKAGE} exec" in command[-1]
     assert "--sandbox danger-full-access" in command[-1]
     assert "--model gpt-5.4" in command[-1]
+    assert "codex_status=$?" in command[-1]
+    assert "chown -R 1234:5678 /workspace /evidence 2>/dev/null || true" in command[-1]
+    assert "chmod -R u+rwX,go+rX /workspace /evidence" in command[-1]
+    assert 'if [ "$codex_status" -ne 0 ]; then exit "$codex_status"; fi' in command[-1]
+    assert 'exit "$permissions_status"' in command[-1]
     assert kwargs["stdin"] == codex_runtime.subprocess.PIPE
     assert trials[0].status == "completed"
     assert trials[0].output is not None

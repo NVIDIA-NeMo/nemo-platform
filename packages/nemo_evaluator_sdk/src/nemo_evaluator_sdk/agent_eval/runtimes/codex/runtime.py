@@ -289,11 +289,26 @@ class CodexDockerCliAgentRuntime(CodexCliAgentRuntime):
         if self._model is not None:
             inner_command.extend(["--model", self._model])
         inner_command.append("-")
+        # Codex intentionally runs as root: the container mounts its auth under /root and coding tasks
+        # may need to install tools. Repair the bind-mounted trees before Docker returns so the host can
+        # score and persist every artifact the agent created. Keep the Codex failure authoritative; only
+        # surface the chmod status when Codex itself succeeded.
+        shell_command = (
+            f"{shlex.join(inner_command)}; "
+            "codex_status=$?; "
+            f"chown -R {os.getuid()}:{os.getgid()} /workspace /evidence 2>/dev/null || true; "
+            "chmod -R u+rwX,go+rX /workspace /evidence; "
+            "permissions_status=$?; "
+            'if [ "$codex_status" -ne 0 ]; then exit "$codex_status"; fi; '
+            'exit "$permissions_status"'
+        )
         return [
             self._docker_bin,
             "run",
             "--rm",
             "-i",
+            "-e",
+            "PYTHONDONTWRITEBYTECODE=1",
             "-v",
             f"{self._auth_path.resolve()}:/root/.codex/auth.json:ro",
             "-v",
@@ -303,7 +318,7 @@ class CodexDockerCliAgentRuntime(CodexCliAgentRuntime):
             self._image,
             "sh",
             "-lc",
-            shlex.join(inner_command),
+            shell_command,
         ]
 
 
