@@ -3,6 +3,8 @@
 
 """Codex-backed agent-eval runtimes."""
 
+# ruff: noqa: I001, T201 - the vendored SDK mirror uses different import-order and print settings.
+
 from __future__ import annotations
 
 import asyncio
