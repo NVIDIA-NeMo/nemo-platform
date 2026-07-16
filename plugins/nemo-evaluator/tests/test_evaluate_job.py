@@ -11,6 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Literal, cast
 
+import httpx
 import nemo_evaluator.cli as evaluator_cli
 import pytest
 from nemo_evaluator.cli import EvaluatorPluginCLI
@@ -57,6 +58,7 @@ from nemo_evaluator_sdk.values import (
 )
 from nemo_evaluator_sdk.values.models import ModelRef
 from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
+from nemo_platform import NotFoundError
 from nemo_platform.types.jobs.platform_job_spec import PlatformJobSpec
 from nemo_platform_plugin.commands import add_job_commands
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
@@ -612,6 +614,22 @@ async def test_platform_model_resolver_resolves_model_ref_through_sdk() -> None:
     assert model.name == "judge"
     assert model.url == "https://igw.example.test/v1/chat/completions"
     assert model.host_url == "http://nim.example.test:8000"
+
+
+async def test_platform_model_resolver_rejects_missing_model_ref(mocker: MockerFixture) -> None:
+    sdk = _FakeSDK()
+    response = httpx.Response(
+        404,
+        request=httpx.Request("GET", "https://nmp.test/apis/models/v2/workspaces/default/models/missing"),
+    )
+    mocker.patch.object(
+        sdk.models,
+        "retrieve",
+        side_effect=NotFoundError("Model not found", response=response, body=None),
+    )
+
+    with pytest.raises(ValueError, match="Model reference 'default/missing' not found"):
+        await PlatformModelResolver(sdk).resolve_model(ModelRef(root="default/missing"))
 
 
 def test_parse_required_workspace_name_rejects_extra_separator() -> None:
