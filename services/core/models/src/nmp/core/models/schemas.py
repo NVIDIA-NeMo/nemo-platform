@@ -8,6 +8,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from jinja2 import Environment
 from jinja2 import nodes as jinja_nodes
+from nemo_platform_plugin.inference_middleware import BackendFormat
 from nmp.common.auth import AuthContext
 from nmp.common.entities import Filter, constants
 from nmp.common.entities.utils import get_random_id
@@ -85,13 +86,13 @@ class FinetuningType(str, Enum):
     GRPO = "grpo"
 
 
-class BackendFormat(str, Enum):
-    """Inference backend API wire formats."""
-
-    OPENAI_CHAT = "OPENAI_CHAT"
-    ANTHROPIC_MESSAGES = "ANTHROPIC_MESSAGES"
-
-
+# ``BackendFormat`` is the inference backend wire format (OPENAI_CHAT /
+# ANTHROPIC_MESSAGES). It is owned by ``nemo_platform_plugin.inference_middleware``
+# — the shared, lower-level package that IGW and the middleware plugins already
+# treat as canonical — and re-exported here so callers of this module (entities,
+# controllers) keep importing it from ``nmp.core.models.schemas`` unchanged. A
+# second local definition would collide with the plugin's in the merged
+# ``platform`` OpenAPI spec.
 class MoEConfig(BaseModel):
     """Mixture of Experts configuration."""
 
