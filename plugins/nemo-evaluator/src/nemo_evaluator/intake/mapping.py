@@ -35,9 +35,9 @@ from typing import Literal
 
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
+from nemo_platform.types.intake.evaluation_context_param import EvaluationContextParam
 from nemo_platform.types.intake.evaluator_result_create_params import EvaluatorResultCreateParams
 from nemo_platform.types.intake.evaluator_result_data_type import EvaluatorResultDataType
-from nemo_platform.types.intake.evaluation_context_param import EvaluationContextParam
 from nemo_platform.types.intake.ingest.atif_agent_param import AtifAgentParam
 from nemo_platform.types.intake.ingest.atif_create_params import AtifCreateParams
 from nemo_platform.types.intake.ingest.atif_final_metrics_param import AtifFinalMetricsParam
