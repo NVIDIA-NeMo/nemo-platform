@@ -42,7 +42,8 @@ from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
 from nemo_evaluator_sdk.metrics.tool_calling import ToolCallingMetric
 from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
-from nemo_platform import APIConnectionError, APIStatusError, NeMoPlatform, NotFoundError
+from nemo_platform import APIConnectionError, APIStatusError, NeMoPlatform
+from nemo_platform.types.inference import ModelProvider
 from nmp.testing import add_mock_provider, short_unique_name, wait_for_model_entity
 from nmp.testing.utils import ensure_passthrough_virtual_model
 
@@ -96,10 +97,10 @@ def _add_mock_provider_or_skip(
     workspace: str,
     name: str,
     mock_response_body: dict[str, object],
-) -> None:
+) -> ModelProvider:
     """Create an IGW mock provider or skip when the deployment does not support one."""
     try:
-        add_mock_provider(
+        return add_mock_provider(
             sdk,
             workspace=workspace,
             name=name,
@@ -244,25 +245,20 @@ def _create_ready_mock_model(
     mock_response_body: dict[str, object],
 ) -> None:
     """Create a mock model and wait until its model-entity route is stable."""
-    _add_mock_provider_or_skip(
+    provider = _add_mock_provider_or_skip(
         sdk,
         workspace=workspace,
         name=name,
         mock_response_body=mock_response_body,
     )
+    sdk.models.create(
+        workspace=workspace,
+        name=name,
+        backend_format="OPENAI_CHAT",
+        model_providers=[f"{workspace}/{provider.name}"],
+        exist_ok=True,
+    )
     wait_for_model_entity(sdk, workspace, name, ensure_virtual_model=True)
-    deadline = time.monotonic() + IGW_ROUTE_TIMEOUT_SECONDS
-    while True:
-        try:
-            sdk.models.retrieve(name, workspace=workspace)
-            break
-        except NotFoundError as exc:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise TimeoutError(
-                    f"Platform model entity {workspace}/{name} was not available after {IGW_ROUTE_TIMEOUT_SECONDS}s."
-                ) from exc
-            time.sleep(min(IGW_ROUTE_POLL_INTERVAL_SECONDS, remaining))
     ensure_passthrough_virtual_model(sdk, workspace, name, timeout=IGW_ROUTE_TIMEOUT_SECONDS)
     _wait_for_stable_model_chat_route(sdk, workspace, name)
 
