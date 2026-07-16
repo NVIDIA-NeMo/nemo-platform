@@ -346,7 +346,11 @@ def test_subprocess_execution_profile_defaults_provider_to_subprocess():
 def test_default_profiles_exclude_subprocess_for_kubernetes_runtime():
     profiles = get_default_executor_profiles_for_runtime(Runtime.KUBERNETES, DefaultExecutionProfileConfig())
 
-    assert ("subprocess", "default", "subprocess") not in [(p.provider, p.profile, p.backend) for p in profiles]
+    profile_keys = [(p.provider, p.profile, p.backend) for p in profiles]
+
+    assert ("cpu", "gpu", "kubernetes_job") in profile_keys
+    assert ("gpu", "gpu", "kubernetes_job") in profile_keys
+    assert ("subprocess", "default", "subprocess") not in profile_keys
 
 
 def test_merged_profiles():
@@ -371,7 +375,7 @@ def test_merged_profiles():
         ],
     ]
 
-    assert len(default_executors) == 4
+    assert len(default_executors) == 6
     # Assert that the storage config is set correctly
     for executor in default_executors:
         if hasattr(executor.config, "storage"):
@@ -398,7 +402,7 @@ def test_merged_profiles():
 
     merged = merge_executor_profiles(custom_executor_profiles, default_executors)
 
-    assert len(merged) == 5
+    assert len(merged) == 7
 
     cpu_default = next((p for p in merged if p.provider == "cpu" and p.profile == "default"), None)
     assert cpu_default is not None

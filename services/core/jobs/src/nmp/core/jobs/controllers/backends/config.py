@@ -84,6 +84,20 @@ def get_default_executor_profiles_for_runtime(
                     backend="kubernetes_job",
                     config=defaults.kubernetes_job,
                 ),
+                # Customizer uses the gpu profile for both CPU preparation and
+                # GPU training steps. The provider selects the requested resources.
+                KubernetesJobExecutionProfile(
+                    provider="cpu",
+                    profile="gpu",
+                    backend="kubernetes_job",
+                    config=defaults.kubernetes_job,
+                ),
+                KubernetesJobExecutionProfile(
+                    provider="gpu",
+                    profile="gpu",
+                    backend="kubernetes_job",
+                    config=defaults.kubernetes_job,
+                ),
                 VolcanoJobExecutionProfile(
                     provider="gpu_distributed",
                     profile="default",
