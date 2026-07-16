@@ -179,6 +179,9 @@ class BaseRAGASMetric(MetricBase):
                 "base_url": judge_model.url.replace("/completions", "").replace("/chat", ""),
                 "api_key": initial_api_key,
             }
+            if judge_model.default_headers:
+                # Forward runtime headers (e.g. caller identity) or the judge call drops them.
+                self._llm_model["default_headers"] = dict(judge_model.default_headers)
 
         embeddings_model = getattr(self, "embeddings_model", None)
         if isinstance(embeddings_model, Model):
@@ -198,6 +201,8 @@ class BaseRAGASMetric(MetricBase):
                 "api_key": initial_api_key,
                 "truncate": self._inference_params.get("truncate", "NONE"),
             }
+            if embeddings_model.default_headers:
+                self._embed_params["default_headers"] = dict(embeddings_model.default_headers)
 
     async def resolve_models(self, model_resolver: ModelResolver) -> None:
         """Resolve RAGAS model references before the metric is used for evaluation."""
@@ -296,9 +301,12 @@ class BaseRAGASMetric(MetricBase):
         if not self._llm_model:
             return None
 
-        chat_params: dict[str, Any] = {**self._llm_model}
+        chat_params: dict[str, Any] = {}
         if self._inference_params:
             chat_params.update(self._inference_params)
+        # Applied last: transport/auth from the resolved model must win over inference params,
+        # else a request could redirect the judge call (SSRF) or replace the forwarded identity.
+        chat_params.update(self._llm_model)
 
         # Filter out None values
         chat_params = {k: v for k, v in chat_params.items() if v is not None}

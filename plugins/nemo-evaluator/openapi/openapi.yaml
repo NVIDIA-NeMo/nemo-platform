@@ -45,6 +45,89 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/evaluate/jobs/schema:
+    get:
+      tags:
+      - Evaluator Plugin Catalog Routes
+      summary: Get Evaluate Job Input Schema
+      description: Return the JSON schema for the evaluate job input spec (the `explain`
+        payload).
+      operationId: get_evaluate_job_schema_apis_evaluator_v2_evaluate_jobs_schema_get
+      responses:
+        '200':
+          description: JSON schema for the evaluate job input spec
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Get Evaluate Job Schema Apis Evaluator V2 Evaluate
+                  Jobs Schema Get
+  /apis/evaluator/v2/evaluate/schema:
+    get:
+      tags:
+      - Evaluator Plugin Catalog Routes
+      summary: Get Synchronous Evaluate Request Schema
+      description: Return the JSON schema for the synchronous `POST .../evaluate`
+        request body.
+      operationId: get_evaluate_sync_schema_apis_evaluator_v2_evaluate_schema_get
+      responses:
+        '200':
+          description: JSON schema for the synchronous evaluate request body
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Get Evaluate Sync Schema Apis Evaluator V2 Evaluate
+                  Schema Get
+  /apis/evaluator/v2/metric-types:
+    get:
+      tags:
+      - Evaluator Plugin Catalog Routes
+      summary: List Metric Types
+      description: List the built-in evaluator metric types (the same catalog the
+        CLI prints).
+      operationId: list_metric_types_apis_evaluator_v2_metric_types_get
+      responses:
+        '200':
+          description: Available built-in metric types and their descriptions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricTypeList'
+  /apis/evaluator/v2/metric-types/{metric_type}:
+    get:
+      tags:
+      - Evaluator Plugin Catalog Routes
+      summary: Get Metric Type Schema
+      description: Return the JSON schema for one built-in metric type.
+      operationId: get_metric_type_schema_apis_evaluator_v2_metric_types__metric_type__get
+      parameters:
+      - name: metric_type
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Metric Type
+      responses:
+        '200':
+          description: JSON schema for a single metric type
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Get Metric Type Schema Apis Evaluator V2 Metric Types  Metric
+                  Type  Get
+        '404':
+          description: Unknown metric type
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/evaluator/v2/workspaces/{workspace}/agent-eval-results:
     get:
       tags:
@@ -679,6 +762,55 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/evaluate:
+    post:
+      tags:
+      - Evaluator Plugin Synchronous Evaluate Route
+      summary: Evaluate Synchronously
+      description: Run a bounded offline evaluation in-process and return the result.
+      operationId: evaluate_sync_apis_evaluator_v2_workspaces__workspace__evaluate_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluateSyncRequest'
+      responses:
+        '200':
+          description: The inline evaluation result (aggregate and row scores)
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/EvaluationResult'
+                - $ref: '#/components/schemas/BenchmarkEvaluationResult'
+                title: Response Evaluate Sync Apis Evaluator V2 Workspaces  Workspace  Evaluate
+                  Post
+        '422':
+          description: Invalid request or unsupported metric/model
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluateSyncError'
+        '503':
+          description: Synchronous evaluation capacity is full
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluateSyncError'
+        '504':
+          description: Evaluation exceeded the synchronous time limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluateSyncError'
   /apis/evaluator/v2/workspaces/{workspace}/evaluate/jobs:
     post:
       tags:
@@ -2385,6 +2517,27 @@ components:
       - scores
       title: AggregatedMetricResult
       description: Result of aggregating metric scores with full statistics.
+    BenchmarkEvaluationResult:
+      properties:
+        row_scores:
+          items:
+            $ref: '#/components/schemas/RowScore'
+          type: array
+          title: Row Scores
+        aggregate_scores:
+          $ref: '#/components/schemas/AggregatedMetricResult'
+        per_metric:
+          additionalProperties:
+            $ref: '#/components/schemas/EvaluationResult'
+          type: object
+          title: Per Metric
+      type: object
+      required:
+      - row_scores
+      - aggregate_scores
+      - per_metric
+      title: BenchmarkEvaluationResult
+      description: Unified benchmark evaluation result.
     BundledMetricOutputSpec:
       properties:
         name:
@@ -2913,6 +3066,77 @@ components:
       title: EvaluateSpec
       description: Canonical SDK evaluation spec with platform model and metric references
         resolved.
+    EvaluateSyncError:
+      properties:
+        detail:
+          type: string
+          title: Detail
+          description: Human-readable, actionable description of why the request failed.
+      type: object
+      required:
+      - detail
+      title: EvaluateSyncError
+      description: Error body for the synchronous evaluate route (422/503/504).
+    EvaluateSyncRequest:
+      properties:
+        metrics:
+          items:
+            $ref: '#/components/schemas/MetricInline'
+          type: array
+          maxItems: 10
+          minItems: 1
+          title: Metrics
+          description: Inline metrics to evaluate.
+        dataset:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          maxItems: 10
+          minItems: 1
+          title: Dataset
+          description: Inline dataset rows to evaluate.
+        params:
+          allOf:
+          - $ref: '#/components/schemas/RunConfig'
+          description: Optional offline execution parameters.
+        field_mapping:
+          allOf:
+          - $ref: '#/components/schemas/FieldMapping'
+          description: Optional mapping from canonical evaluator fields to dataset
+            columns.
+      additionalProperties: false
+      type: object
+      required:
+      - metrics
+      - dataset
+      title: EvaluateSyncRequest
+      description: 'Bounded offline evaluation request: inline metrics over inline
+        rows, models by ModelRef.
+
+
+        See the handler for the inputs it rejects (online targets, inline models,
+        secrets, cloudpickle,
+
+        network metrics).'
+    EvaluationResult:
+      properties:
+        row_scores:
+          items:
+            $ref: '#/components/schemas/RowScore'
+          type: array
+          title: Row Scores
+          description: Row-level scores.
+        aggregate_scores:
+          allOf:
+          - $ref: '#/components/schemas/AggregatedMetricResult'
+          description: Aggregate score statistics.
+      type: object
+      required:
+      - row_scores
+      - aggregate_scores
+      title: EvaluationResult
+      description: Result object returned by SDK offline evaluation.
     EvidenceDescriptor:
       anyOf:
       - required:
@@ -3478,6 +3702,20 @@ components:
       type: object
       title: MetricMetadata
       description: User-facing metadata captured with a bundled metric.
+    MetricOutput:
+      properties:
+        name:
+          type: string
+          title: Name
+        value:
+          title: Value
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - value
+      title: MetricOutput
+      description: One named value emitted by a metric.
     MetricRef:
       type: string
       pattern: ^[\w\-.]+(/[\w\-.]+)?$
@@ -3495,6 +3733,35 @@ components:
       - -updated_at
       title: MetricSort
       description: Sort fields for metric queries.
+    MetricTypeEntry:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Metric type name, as accepted in metric definitions.
+        description:
+          type: string
+          title: Description
+          description: Human-readable description of the metric type.
+      type: object
+      required:
+      - name
+      - description
+      title: MetricTypeEntry
+      description: One built-in metric type in the catalog.
+    MetricTypeList:
+      properties:
+        metric_types:
+          items:
+            $ref: '#/components/schemas/MetricTypeEntry'
+          type: array
+          title: Metric Types
+          description: Available built-in metric types.
+      type: object
+      required:
+      - metric_types
+      title: MetricTypeList
+      description: Catalog of built-in metric types.
     MetricsPage:
       properties:
         data:
@@ -4088,6 +4355,53 @@ components:
       - -updated_at
       title: ResultSort
       description: Sort fields for result queries (``-`` prefix sorts descending).
+    RowScore:
+      properties:
+        row_index:
+          title: Row Index
+          description: Stable row position used for result alignment.
+          type: integer
+          minimum: 0.0
+        item:
+          additionalProperties: true
+          type: object
+          title: Item
+          description: Input item metadata for the evaluated row.
+        sample:
+          additionalProperties: true
+          type: object
+          title: Sample
+          description: Sample output payload for the evaluated row.
+        metrics:
+          additionalProperties:
+            items:
+              $ref: '#/components/schemas/MetricOutput'
+            type: array
+          type: object
+          title: Metrics
+          description: Metric-level row outputs by metric key.
+        requests:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Requests
+          description: Request details captured during evaluation.
+        metric_errors:
+          title: Metric Errors
+          description: Full row-level error text keyed by metric for summary rendering.
+          additionalProperties:
+            type: string
+          type: object
+      additionalProperties: true
+      type: object
+      required:
+      - item
+      - sample
+      - metrics
+      - requests
+      title: RowScore
+      description: Normalized row-level score payload for metric/benchmark job results.
     RubricScoreStat:
       properties:
         label:

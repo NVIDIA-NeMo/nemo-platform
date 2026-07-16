@@ -11,7 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Literal, cast
 
-import nemo_evaluator.cli as evaluator_cli
+import nemo_evaluator.metric_catalog as evaluator_metric_catalog
 import pytest
 from nemo_evaluator.cli import EvaluatorPluginCLI
 from nemo_evaluator.filesets import FilesetRef
@@ -25,6 +25,7 @@ from nemo_evaluator.jobs.evaluate import (
     EvaluateInputSpec,
     EvaluateJob,
     EvaluateSpec,
+    to_runtime_bundle,
 )
 from nemo_evaluator.resolvers import PlatformModelResolver, _parse_required_workspace_name
 from nemo_evaluator.shared.metric_bundles.bundles import (
@@ -38,7 +39,7 @@ from nemo_evaluator.shared.metric_bundles.bundles import (
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator.tasks.evaluate import main as evaluate_task_main
 from nemo_evaluator.tasks.runner import SDK_INITIALIZATION_EXIT_CODE
-from nemo_evaluator_sdk.enums import AgentFormat
+from nemo_evaluator_sdk.enums import AgentFormat, ModelFormat
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.f1 import F1Metric
 from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric
@@ -170,7 +171,7 @@ def _generated_llm_as_judge_spec() -> dict[str, Any]:
                         url="https://integrate.api.nvidia.com/v1/chat/completions",
                         name="nvidia/nemotron-3-super-120b-a12b",
                         api_key_secret=SecretRef(root="NVIDIA_API_KEY"),
-                        format="nim",
+                        format=ModelFormat.NVIDIA_NIM,
                     ),
                     scores=[
                         RangeScore(
@@ -555,7 +556,7 @@ def test_cli_metric_types_rejects_duplicate_metric_type_keys(mocker: MockerFixtu
         type: Literal["duplicate-metric"] = "duplicate-metric"
 
     mocker.patch.object(
-        evaluator_cli,
+        evaluator_metric_catalog,
         "_unwrap_metric_model_classes",
         return_value=[FirstMetric, SecondMetric],
     )
@@ -564,7 +565,7 @@ def test_cli_metric_types_rejects_duplicate_metric_type_keys(mocker: MockerFixtu
         ValueError,
         match="Duplicate metric type 'duplicate-metric' mapped to both FirstMetric and SecondMetric",
     ):
-        evaluator_cli._metric_type_models()
+        evaluator_metric_catalog.metric_type_models()
 
 
 def test_cli_metric_types_reports_json_schema_for_named_metric_types() -> None:
@@ -727,7 +728,7 @@ async def test_evaluate_job_to_spec_resolves_bundled_metric_model_refs_before_co
         is_local=False,
     )
     assert isinstance(canonical, EvaluateSpec)
-    canonical_metric = unbundle_metric(canonical.metrics[0])
+    canonical_metric = unbundle_metric(to_runtime_bundle(canonical.metrics[0]))
     assert isinstance(canonical_metric, LLMJudgeMetric)
     assert isinstance(canonical_metric.model, Model)
     assert canonical_metric.model.name == "judge"
@@ -781,7 +782,7 @@ async def test_evaluate_job_to_spec_preserves_metric_without_model_refs() -> Non
     )
 
     assert isinstance(canonical, EvaluateSpec)
-    metric = unbundle_metric(canonical.metrics[0])
+    metric = unbundle_metric(to_runtime_bundle(canonical.metrics[0]))
     assert isinstance(metric, LLMJudgeMetric)
     assert metric.prompt_template is None
 
