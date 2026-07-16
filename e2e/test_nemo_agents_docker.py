@@ -13,34 +13,39 @@ What it proves — the container-mode chain end to end::
       -> mock provider short-circuit (no real upstream / no API key)
       -> response back through the gateway
 
-How it stays hermetic and CI-friendly:
+How it runs, and where:
 
-- The agent image is built locally from the ``calculator-agent`` example
-  package (real NAT deps), so the container is a faithful NAT runtime image, but
-  the agent itself is registered with a deterministic single-LLM
-  ``chat_completion`` workflow. A mock LLM cannot actually drive a multi-call
-  ReAct loop, so we assert the exact mocked completion round-trips rather than a
-  computed answer.
-- The LLM is served by the e2e mock inference provider, so no ``NVIDIA_API_KEY``
-  or network egress to a real model is required.
-- The platform runs as a normal local process (subprocess harness backend). The
-  ``container_base_url_host`` harness option makes the harness (a) bind the
-  platform on all interfaces (``--host 0.0.0.0``) and (b) rewrite
-  ``platform.base_url`` to the docker bridge address with the port it actually
-  bound. The runner then seeds ``NMP_BASE_URL`` from that host, so the Inference
-  Gateway URL injected into the agent container points at a host reachable from
-  *inside* that container (the bridge), while the platform's own in-process
-  clients — which also use ``NMP_BASE_URL`` — can still reach it because the
-  server listens on all interfaces. (The runner seeds ``NMP_BASE_URL`` from the
-  config ``platform.base_url`` host paired with the actual bind port.)
+- The deployed agent runs from the platform's own ``nmp-api`` image, which
+  already ships the NAT runtime (``nvidia-nat-core`` / ``nvidia-nat-langchain``,
+  via ``nemo-agents-plugin``) — so ``nat`` is on ``PATH`` and the
+  ``chat_completion`` workflow / ``openai`` LLM the agent uses resolve. The
+  deployments docker executor overrides the image entrypoint with
+  ``nat start fastapi``, so the image's own entrypoint is irrelevant. No
+  agent-specific image is built.
+- The image is supplied prebuilt via ``NMP_E2E_IMAGE_REGISTRY`` /
+  ``NMP_E2E_IMAGE_TAG`` (the existing e2e convention). Its dedicated CI job
+  (``python-e2e-image-test``) builds/pulls ``nmp-api`` and sets these; the
+  ``needs_nmp_api_image`` marker skips the test everywhere they are unset (the
+  plain subprocess e2e job, the kind cluster job, and local runs without them).
+- The agent is registered with a deterministic single-LLM ``chat_completion``
+  workflow served by the e2e mock inference provider, so no ``NVIDIA_API_KEY``
+  or model egress is needed; we assert the exact mocked completion round-trips.
+- The platform runs as a normal local process (subprocess harness). The
+  ``container_base_url_host`` harness option makes the harness bind the platform
+  on all interfaces (``--host 0.0.0.0``) and rewrite ``platform.base_url`` to the
+  docker bridge address; the runner seeds ``NMP_BASE_URL`` from that host paired
+  with the actual bind port, so the Inference Gateway URL injected into the agent
+  container is reachable from *inside* the container while the platform's own
+  in-process clients still reach it. This requires the Linux docker bridge, which
+  is reachable from both the container and the host process; Docker Desktop's
+  host alias is not host-resolvable, so the module skips on non-Linux.
 """
 
+import os
 import platform
-import subprocess
 import time
 import uuid
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -52,28 +57,30 @@ from nmp.testing import MockProviderResponse, add_mock_provider
 # address is reachable both from inside a container AND by the platform process
 # itself (it is a local host interface). That dual reachability is required:
 # platform.base_url is used both as the Inference Gateway URL injected into the
-# agent container *and* by the platform's own in-process service clients. On
-# Docker Desktop (macOS/Windows) the container-facing host alias
-# (host.docker.internal) is not resolvable by the host platform process, so this
-# scenario only works on Linux; the module skips elsewhere.
+# agent container *and* by the platform's own in-process service clients.
 _DOCKER_BRIDGE_HOST = "172.17.0.1"
 
-# Runs the platform as a local process, but wired with a docker deployments
-# executor (see the config). ``container_base_url_host`` tells the harness to
-# advertise the docker bridge address as platform.base_url so the deployed agent
-# container can reach the Inference Gateway.
+# Platform image name to deploy the agent from. The nmp-api image already ships
+# the NAT runtime and the agent components (see module docstring), so it doubles
+# as the agent runtime image. Registry and tag come from NMP_E2E_IMAGE_REGISTRY /
+# NMP_E2E_IMAGE_TAG (the existing e2e image convention).
+_AGENT_IMAGE_NAME = "nmp-api"
+
+# Runs the platform as a local process wired with a docker deployments executor
+# (see the config), and deploys the agent as a real docker container.
 #
 # Markers:
+# - ``needs_nmp_api_image``: skips unless NMP_E2E_IMAGE_REGISTRY + NMP_E2E_IMAGE_TAG
+#   are set (its dedicated CI job builds/pulls nmp-api and sets them). This also
+#   keeps the test out of the plain subprocess e2e job and the kind cluster job.
 # - ``subprocess_only``: this test drives its own subprocess-harness platform
 #   configured with a docker deployments executor. It must NOT run against an
 #   external cluster (``NMP_BASE_URL`` set, e.g. the Kind CPU e2e job), where the
 #   deployed Helm platform has no docker executor and the module's own
-#   ``e2e_config``/harness are ignored — the docker-mode deploy would fail with
-#   "No executor specified and no default_executor configured."
-# - ``docker``: self-skips when no Docker daemon is reachable.
+#   ``e2e_config``/harness are ignored.
 pytestmark = [
+    pytest.mark.needs_nmp_api_image,
     pytest.mark.subprocess_only,
-    pytest.mark.docker,
     pytest.mark.skipif(
         platform.system() != "Linux",
         reason="Docker-mode agent deployment e2e requires a Linux docker bridge reachable by both the "
@@ -85,29 +92,7 @@ pytestmark = [
     ),
 ]
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-_CALCULATOR_EXAMPLE = _REPO_ROOT / "plugins/nemo-agents/examples/calculator-agent"
-
-# Base image for the agent runtime build. A slim Python is all that's needed —
-# the NAT runtime and its version come from the example package's dependencies.
-# Kept as a variable rather than hardcoded inline; there is no shared repo-level
-# base-image constant to reuse (the nemo agents packager's default is a heavier
-# nvcr.io NVIDIA base gated behind the `container` extra, not appropriate here).
-_AGENT_IMAGE_BASE = "python:3.11-slim"
-
-# A locally-built image tag (never pushed to a registry — the executor is
-# configured with pull_images=false so the local image is used as-is).
-_AGENT_IMAGE = "nmp-e2e-calculator-agent:local"
-
-# Upper bound for the agent image build so a hung `docker build` fails fast with
-# a clear error instead of blocking until the CI job-level timeout.
-_IMAGE_BUILD_TIMEOUT_SECONDS = 600
-
 _TEST_AGENT_RESPONSE = "The answer to your question is 42."
-
-# The NAT server inside the container binds this port (must match
-# agents.deployments.container_port in the config).
-_CONTAINER_PORT = 8000
 
 
 def _unique_name(prefix: str) -> str:
@@ -234,52 +219,19 @@ def _wait_for_deployment_running(
 
 
 @pytest.fixture(scope="session")
-def calculator_agent_image() -> str:
-    """Build a NAT runtime image for the calculator agent example.
+def agent_deployment_image() -> str:
+    """Return the prebuilt platform image ref to deploy the agent from.
 
-    A slim python base with the calculator example package installed, so ``nat``
-    is on the PATH and the agent's components resolve. The NAT runtime
-    (nvidia-nat-core / nvidia-nat-langchain) is pulled in transitively via the
-    example package's own dependencies, so the version stays defined in one
-    place — the example's pyproject.toml — with nothing to keep in sync here.
-    Built with the host Docker daemon; tagged locally and never pushed (the
-    executor uses pull_images=false).
-
-    The fixed-tag image is always rebuilt from the current checkout — reusing a
-    pre-existing tag could run stale calculator/NAT code and let the test pass
-    without exercising the code under test.
+    Composed from the e2e image convention (``NMP_E2E_IMAGE_REGISTRY`` /
+    ``NMP_E2E_IMAGE_TAG``) as ``{registry}/nmp-api:{tag}``. The nmp-api image
+    already ships the NAT runtime and agent components, so no agent-specific
+    image is built here. The ``needs_nmp_api_image`` marker guarantees both env
+    vars are set before this test runs; assert defensively.
     """
-    dockerfile = "\n".join(
-        [
-            f"FROM {_AGENT_IMAGE_BASE}",
-            "RUN apt-get update"
-            " && apt-get install -y --no-install-recommends curl ca-certificates"
-            " && rm -rf /var/lib/apt/lists/*",
-            "COPY calculator-agent /opt/calculator-agent",
-            "RUN pip install --no-cache-dir /opt/calculator-agent",
-            "",
-        ]
-    )
-
-    import shutil
-    import tempfile
-
-    with tempfile.TemporaryDirectory(prefix="nmp-e2e-agent-build-") as build_dir:
-        build_path = Path(build_dir)
-        shutil.copytree(_CALCULATOR_EXAMPLE, build_path / "calculator-agent")
-        (build_path / "Dockerfile").write_text(dockerfile)
-        # The docker SDK's build stream is awkward to surface on failure; shell
-        # out so the full build log lands in the test output on error.
-        proc = subprocess.run(
-            ["docker", "build", "-t", _AGENT_IMAGE, str(build_path)],
-            capture_output=True,
-            text=True,
-            timeout=_IMAGE_BUILD_TIMEOUT_SECONDS,
-        )
-        if proc.returncode != 0:
-            pytest.fail(f"Failed to build calculator agent image:\n{proc.stdout}\n{proc.stderr}")
-
-    return _AGENT_IMAGE
+    registry = os.environ.get("NMP_E2E_IMAGE_REGISTRY")
+    tag = os.environ.get("NMP_E2E_IMAGE_TAG")
+    assert registry and tag, "needs_nmp_api_image marker should have skipped when registry/tag are unset"
+    return f"{registry.rstrip('/')}/{_AGENT_IMAGE_NAME}:{tag}"
 
 
 def _remove_agent_container_if_present(deployment_name: str) -> None:
@@ -321,7 +273,7 @@ def _run_cleanup_steps(*steps: Callable[[], None]) -> None:
 
 
 def test_docker_agent_deploys_and_invokes_through_gateway(
-    sdk: NeMoPlatform, workspace: str, calculator_agent_image: str
+    sdk: NeMoPlatform, workspace: str, agent_deployment_image: str
 ) -> None:
     """Deploy the calculator-agent image as a docker container and invoke it.
 
@@ -358,7 +310,7 @@ def test_docker_agent_deploys_and_invokes_through_gateway(
             agent=agent_name,
             name=deployment_name,
             deployment_mode="docker",
-            image=calculator_agent_image,
+            image=agent_deployment_image,
         )
         assert created["deployment_mode"] == "docker"
 

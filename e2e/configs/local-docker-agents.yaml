@@ -45,8 +45,9 @@ deployments:
     - name: local-docker
       backend: docker
       config:
-        # The agent image is built locally by the test, not pulled from a
-        # registry, so disable the pre-run pull.
+        # The agent runs from the prebuilt nmp-api image, already present in the
+        # local Docker daemon (pulled by the test's CI job), so disable the
+        # per-run pull and use the image as-is.
         pull_images: false
         port_range_start: 9000
         port_range_end: 9100

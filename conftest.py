@@ -300,23 +300,6 @@ def _e2e_features_enabled(config: pytest.Config) -> set[str]:
     return features
 
 
-def _docker_daemon_available() -> bool:
-    """Return True when a Docker daemon is reachable (cached for the session)."""
-    global _DOCKER_AVAILABLE
-    if _DOCKER_AVAILABLE is None:
-        try:
-            import docker
-
-            docker.from_env().ping()
-            _DOCKER_AVAILABLE = True
-        except Exception:
-            _DOCKER_AVAILABLE = False
-    return _DOCKER_AVAILABLE
-
-
-_DOCKER_AVAILABLE: bool | None = None
-
-
 def pytest_runtest_setup(item):
     """
     Run before each test to check if it should be skipped based on command-line options.
@@ -333,9 +316,9 @@ def pytest_runtest_setup(item):
     if "container_only" in [marker.name for marker in item.iter_markers()]:
         if not os.environ.get("NMP_BASE_URL"):
             skip_test("Skipping container-only test (requires NMP_BASE_URL)")
-    if "docker" in [marker.name for marker in item.iter_markers()]:
-        if not _docker_daemon_available():
-            skip_test("Skipping docker test (no reachable Docker daemon)")
+    if "needs_nmp_api_image" in [marker.name for marker in item.iter_markers()]:
+        if not (os.environ.get("NMP_E2E_IMAGE_REGISTRY") and os.environ.get("NMP_E2E_IMAGE_TAG")):
+            skip_test("Skipping nmp-api-image test (set NMP_E2E_IMAGE_REGISTRY and NMP_E2E_IMAGE_TAG)")
     if "requires_gpu" in [marker.name for marker in item.iter_markers()]:
         if "gpu" not in _e2e_features_enabled(item.config):
             skip_test("Skipping GPU container e2e (pass --feature gpu)")
