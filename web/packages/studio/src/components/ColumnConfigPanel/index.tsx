@@ -2,18 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
+import { ControlledSwitch } from '@nemo/common/src/components/form/ControlledSwitch';
 import { ControlledTextArea } from '@nemo/common/src/components/form/ControlledTextArea';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { SamplerType } from '@nemo/sdk/generated/data-designer/schema';
-import {
-  Banner,
-  Button,
-  Flex,
-  FormField,
-  Stack,
-  Switch,
-  Text,
-} from '@nvidia/foundations-react-core';
+import { Banner, Button, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { ICON_COLOR_CLASS } from '@studio/components/AddColumnPalette/constants';
 import { SeedDatasetConfig } from '@studio/components/ColumnConfigPanel/SeedDatasetConfig';
 import { CardIconBadge } from '@studio/components/common/SelectableCard';
@@ -25,34 +18,12 @@ import {
 import type { JobBuilderFormValues } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
 import { Trash2, X } from 'lucide-react';
 import type { FC } from 'react';
-import { useController, useFormContext, useWatch } from 'react-hook-form';
+import { useFormContext, useWatch } from 'react-hook-form';
 
 interface FieldControlProps {
   columnIndex: number;
   field: ColumnField;
 }
-
-interface SwitchFieldControlProps extends FieldControlProps {
-  fieldPath: `columns.${number}.values.${string}`;
-}
-
-const SwitchFieldControl: FC<SwitchFieldControlProps> = ({ field, fieldPath }) => {
-  const { control } = useFormContext<JobBuilderFormValues>();
-  const { field: formField } = useController({
-    control,
-    name: fieldPath,
-  });
-  const value = formField.value ?? '';
-
-  return (
-    <FormField slotLabel={field.label} slotInfo={field.helperText}>
-      <Switch
-        checked={value === 'true'}
-        onCheckedChange={(checked) => formField.onChange(checked ? 'true' : 'false')}
-      />
-    </FormField>
-  );
-};
 
 /** A field-level RHF subscription; editing it leaves the route, list, and other fields alone. */
 const FieldControl: FC<FieldControlProps> = ({ columnIndex, field }) => {
@@ -84,7 +55,14 @@ const FieldControl: FC<FieldControlProps> = ({ columnIndex, field }) => {
         />
       );
     case 'switch':
-      return <SwitchFieldControl field={field} fieldPath={fieldPath} columnIndex={columnIndex} />;
+      return (
+        <ControlledSwitch
+          useControllerProps={useControllerProps}
+          formFieldProps={{ ...formFieldProps, slotLabel: field.label }}
+          toChecked={(value) => value === 'true'}
+          toFormValue={(checked) => (checked ? 'true' : 'false')}
+        />
+      );
     default:
       return (
         <ControlledTextInput
