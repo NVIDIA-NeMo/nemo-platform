@@ -15,9 +15,17 @@ from datetime import datetime
 from typing import Any
 
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
-from nmp.intake.spans.domain import SpanStatus
+from nmp.intake.spans.domain import IntakeResponseMode, SpanStatus
 from nmp.intake.spans.span_attribute_catalog import COST_SCALE, SpanAttributeField, spec_for_field
-from nmp.intake.spans.storage import float_or_none, int_or_none, normalize_span_status, result_rows, str_or_none
+from nmp.intake.spans.storage import (
+    float_or_none,
+    int_or_none,
+    normalize_span_status,
+    result_rows,
+    str_or_none,
+    text_query_parameters,
+    text_select_for_mode,
+)
 from nmp.intake.spans.trace_repository import current_spans_sql
 
 
@@ -36,6 +44,7 @@ class EvaluationSessionRow:
     latency_ms: float | None
     status: SpanStatus
     input: str | None
+    output: str | None
     input_tokens: int | None
     output_tokens: int | None
     cached_tokens: int | None
@@ -62,11 +71,8 @@ class EvaluationSessionRepository:
         test_case_id: str | None = None,
         page: int,
         page_size: int,
-        input_char_limit: int | None = None,
+        mode: IntakeResponseMode,
     ) -> EvaluationSessionPage:
-        if input_char_limit is not None and input_char_limit < 1:
-            raise ValueError("input_char_limit must be positive when set")
-
         trace_index_table = self._client.table("trace_index")
         spans_table = self._client.table("spans")
         evaluator_results_table = self._client.table("evaluator_results")
@@ -100,16 +106,15 @@ class EvaluationSessionRepository:
             spans_table=spans_table,
             evaluator_results_table=evaluator_results_table,
             scoped_filter_sql=scoped_filter_sql,
-            input_char_limit=input_char_limit,
+            mode=mode,
         )
         list_parameters = {
             **base_parameters,
             **scoped_filter_parameters,
+            **text_query_parameters(mode),
             "limit": page_size,
             "offset": offset,
         }
-        if input_char_limit is not None:
-            list_parameters["input_char_limit"] = input_char_limit
         list_result = await self._client.query(
             list_sql,
             parameters=list_parameters,
@@ -134,8 +139,7 @@ def _scoped_sessions_sql(
     trace_index_table: str,
     *,
     scoped_filter_sql: str,
-    input_char_limit: int | None = None,
-    include_input: bool = True,
+    mode: IntakeResponseMode,
 ) -> str:
     select_columns = [
         "workspace",
@@ -149,12 +153,12 @@ def _scoped_sessions_sql(
         "latency_ms",
         "root_status AS root_span_status",
     ]
-    if include_input:
-        select_columns.append(
-            "root_input AS input"
-            if input_char_limit is None
-            else "substringUTF8(root_input, 1, %(input_char_limit)s) AS input"
+    select_columns.extend(
+        (
+            text_select_for_mode("root_input", alias="input", mode=mode),
+            text_select_for_mode("root_output", alias="output", mode=mode),
         )
+    )
     select_sql = ",\n            ".join(select_columns)
     return f"""
         SELECT
@@ -177,7 +181,7 @@ def _count_sql(
     scoped_sessions_sql = _scoped_sessions_sql(
         trace_index_table,
         scoped_filter_sql=scoped_filter_sql,
-        include_input=False,
+        mode="summary",
     )
     return f"""
         SELECT count()
@@ -193,12 +197,12 @@ def _list_sql(
     spans_table: str,
     evaluator_results_table: str,
     scoped_filter_sql: str,
-    input_char_limit: int | None = None,
+    mode: IntakeResponseMode,
 ) -> str:
     scoped_sessions_sql = _scoped_sessions_sql(
         trace_index_table,
         scoped_filter_sql=scoped_filter_sql,
-        input_char_limit=input_char_limit,
+        mode=mode,
     )
     return f"""
         WITH
@@ -217,7 +221,8 @@ def _list_sql(
                 end_time,
                 latency_ms,
                 root_span_status,
-                input
+                input,
+                output
             FROM scoped_sessions
             ORDER BY start_time ASC, root_span_id ASC
             LIMIT %(limit)s OFFSET %(offset)s
@@ -286,6 +291,7 @@ def _list_sql(
             sessions.latency_ms AS latency_ms,
             sessions.root_span_status AS root_span_status,
             sessions.input AS input,
+            sessions.output AS output,
             metrics.input_tokens AS input_tokens,
             metrics.output_tokens AS output_tokens,
             metrics.cached_tokens AS cached_tokens,
@@ -329,6 +335,7 @@ def _row(record: dict[str, Any]) -> EvaluationSessionRow:
         latency_ms=float_or_none(record["latency_ms"]),
         status=normalize_span_status(record["root_span_status"]),
         input=str_or_none(record["input"]),
+        output=str_or_none(record["output"]),
         input_tokens=int_or_none(record["input_tokens"]),
         output_tokens=int_or_none(record["output_tokens"]),
         cached_tokens=int_or_none(record["cached_tokens"]),

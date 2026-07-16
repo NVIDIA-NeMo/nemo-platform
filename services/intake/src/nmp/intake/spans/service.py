@@ -12,6 +12,7 @@ from nmp.intake.spans.domain import (
     AnnotationListFilter,
     EvaluatorResult,
     EvaluatorResultListFilter,
+    IntakeResponseMode,
     IntakeSpan,
     IntakeTrace,
     SpanGroup,
@@ -78,8 +79,15 @@ class IntakeSpansService:
         page: int,
         page_size: int,
         sort: str,
+        mode: IntakeResponseMode,
     ) -> PaginatedResult[IntakeSpan]:
-        return await self._spans.list_spans(filters=filters, page=page, page_size=page_size, sort=sort)
+        return await self._spans.list_spans(
+            filters=filters,
+            page=page,
+            page_size=page_size,
+            sort=sort,
+            mode=mode,
+        )
 
     async def list_span_groups(
         self,

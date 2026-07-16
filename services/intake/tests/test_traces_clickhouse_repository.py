@@ -74,6 +74,31 @@ async def test_summary_mode_reads_root_spans_without_metric_aggregates():
     assert "sumIf" not in client.queries[1]
     assert "groupUniqArrayIf" not in client.queries[1]
     assert "span_versions" not in client.queries[1]
+    assert "trace_roots.root_input" not in client.queries[1]
+    assert "trace_roots.root_output" not in client.queries[1]
+    assert "'' AS input" in client.queries[1]
+    assert "'' AS output" in client.queries[1]
+    assert "payload_char_limit" not in client.parameters[1]
+
+
+@pytest.mark.asyncio
+async def test_preview_mode_bounds_payloads_and_adds_trace_aggregate_block():
+    client = _Client()
+    repository = _repository(client)
+
+    await repository.list_traces(
+        filters=TraceListFilter(workspace="workspace-a"),
+        page=1,
+        page_size=10,
+        sort="started_at",
+        mode="preview",
+    )
+
+    assert "substringUTF8(trace_roots.root_input, 1, %(payload_char_limit)s)" in client.queries[1]
+    assert "substringUTF8(trace_roots.root_output, 1, %(payload_char_limit)s)" in client.queries[1]
+    assert client.parameters[1]["payload_char_limit"] == 300
+    assert "sumIf" in client.queries[1]
+    assert "count() AS span_count" in client.queries[1]
 
 
 @pytest.mark.asyncio
@@ -102,6 +127,10 @@ async def test_detailed_mode_adds_trace_aggregate_block():
     assert "sumIf" in client.queries[1]
     assert "groupUniqArrayIf" in client.queries[1]
     assert "count() AS span_count" in client.queries[1]
+    assert "trace_roots.root_input AS input" in client.queries[1]
+    assert "trace_roots.root_output AS output" in client.queries[1]
+    assert "substringUTF8(trace_roots.root_input" not in client.queries[1]
+    assert "payload_char_limit" not in client.parameters[1]
 
 
 @pytest.mark.asyncio
@@ -126,8 +155,8 @@ async def test_list_traces_maps_detailed_row():
     assert trace.session_id == "session-a"
     assert trace.root_span_id == "span-root"
     assert trace.name == "root"
-    assert trace.input is None
-    assert trace.output is None
+    assert trace.input == "root input"
+    assert trace.output == "root output"
     assert trace.duration_ms == 2500
     assert trace.project == "project-a"
     assert trace.evaluation_id == "experiment-a"
@@ -162,6 +191,8 @@ async def test_summary_mode_maps_no_aggregate_fields():
 
     trace = result.data[0]
     assert trace.status.value == "error"
+    assert trace.input is None
+    assert trace.output is None
     assert trace.input_tokens is None
     assert trace.total_tokens is None
     assert trace.cost_usd is None
@@ -224,6 +255,8 @@ def _trace_row(
         "source_format": "otel",
         "root_span_id": "span-root",
         "name": "root",
+        "input": "root input" if detailed else "",
+        "output": "root output" if detailed else "",
         "project": "project-a",
         "evaluation_id": "experiment-a",
         "test_case_id": "case-a",

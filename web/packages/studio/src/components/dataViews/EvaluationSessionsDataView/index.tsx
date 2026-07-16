@@ -25,6 +25,7 @@ import type {
 } from '@nemo/sdk/generated/platform/schema';
 import { Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/EvaluationSessionsDataView/Empty';
+import { IntakePayloadPreviewCell } from '@studio/components/IntakeLists/IntakePayloadPreviewCell';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getEvaluationTraceDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
@@ -62,7 +63,7 @@ const listEvaluationSessionsWithModeFallback = async (
   try {
     return await listEvaluationSessions(workspace, evaluationName, params, signal);
   } catch (error) {
-    if (params.mode !== 'summary' || !isUnsupportedModeError(error)) {
+    if (params.mode !== 'preview' || !isUnsupportedModeError(error)) {
       throw error;
     }
     const fallbackParams = { ...params };
@@ -86,7 +87,7 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
     () => ({
       page,
       page_size: pageSize,
-      mode: 'summary',
+      mode: 'preview',
       filter: {
         ...dataViewState.apiFilter.filter,
         ...(dataViewState.debouncedSearchBar && {
@@ -168,11 +169,13 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
       header: 'Input',
       enableSorting: false,
       size: 400,
-      cell: ({ row }) => {
-        const value = row.original.input;
-        if (!value) return <Text>-</Text>;
-        return <Text className="cursor-default line-clamp-2">{value}</Text>;
-      },
+      cell: ({ row }) => <IntakePayloadPreviewCell value={row.original.input} emptyValue="-" />,
+    }),
+    accessor('output', {
+      header: 'Output',
+      enableSorting: false,
+      size: 400,
+      cell: ({ row }) => <IntakePayloadPreviewCell value={row.original.output} emptyValue="-" />,
     }),
     accessor('started_at', {
       header: 'Started at',

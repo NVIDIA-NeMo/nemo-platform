@@ -12,7 +12,15 @@ from nmp.common.api.common import PaginatedResult
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import IntakeTrace, TraceListFilter, TraceMode
 from nmp.intake.spans.span_attribute_catalog import COST_SCALE, SpanAttributeField, spec_for_field
-from nmp.intake.spans.storage import float_or_none, int_or_none, make_pagination, normalize_span_status, result_rows
+from nmp.intake.spans.storage import (
+    float_or_none,
+    int_or_none,
+    make_pagination,
+    normalize_span_status,
+    result_rows,
+    text_query_parameters,
+    text_select_for_mode,
+)
 
 TRACE_SORT_COLUMNS = {
     "started_at": "started_at",
@@ -35,6 +43,8 @@ TRACE_COLUMNS = [
     "source_format",
     "root_span_id",
     "name",
+    "input",
+    "output",
     "project",
     "evaluation_id",
     "test_case_id",
@@ -89,18 +99,27 @@ class TraceRepository:
     ) -> PaginatedResult[IntakeTrace]:
         trace_index_table = self._client.table("trace_index")
         spans_table = self._client.table("spans")
-        trace_index_sql, parameters = _trace_index_sql(trace_index_table, filters)
+        count_trace_index_sql, parameters = _trace_index_sql(
+            trace_index_table,
+            filters,
+            mode="summary",
+        )
 
         total_result = await self._client.query(
             f"""
             SELECT count()
-            FROM ({trace_index_sql}) AS traces
+            FROM ({count_trace_index_sql}) AS traces
             """,
             parameters=parameters,
         )
         total_results = int(total_result.result_rows[0][0])
 
         offset = (page - 1) * page_size
+        trace_index_sql, row_parameters = _trace_index_sql(
+            trace_index_table,
+            filters,
+            mode=mode,
+        )
         rows_sql, rows_parameters = _trace_rows_sql(
             trace_index_sql=trace_index_sql,
             spans_table=spans_table,
@@ -109,7 +128,12 @@ class TraceRepository:
         )
         rows_result = await self._client.query(
             rows_sql,
-            parameters={**parameters, **rows_parameters, "limit": page_size, "offset": offset},
+            parameters={
+                **row_parameters,
+                **rows_parameters,
+                "limit": page_size,
+                "offset": offset,
+            },
         )
         rows = result_rows(rows_result)
         traces = [_row_to_trace(row) for row in rows]
@@ -151,7 +175,7 @@ def _trace_rows_sql(
             ORDER BY {_order_by(sort, table_alias="traces")}
         """
         return query, {}
-    if mode == "detailed":
+    if mode in {"preview", "detailed"}:
         aggregates_sql, parameters = _trace_aggregates_sql(spans_table)
         query = f"""
             WITH
@@ -195,6 +219,8 @@ def _trace_select_columns(*, include_aggregates: bool) -> str:
         "traces.source_format AS source_format",
         "traces.root_span_id AS root_span_id",
         "traces.name AS name",
+        "traces.input AS input",
+        "traces.output AS output",
         "traces.project AS project",
         "traces.evaluation_id AS evaluation_id",
         "traces.test_case_id AS test_case_id",
@@ -207,10 +233,20 @@ def _trace_select_columns(*, include_aggregates: bool) -> str:
     return ",\n            ".join(columns)
 
 
-def _trace_index_sql(table: str, filters: TraceListFilter) -> tuple[str, dict[str, Any]]:
+def _trace_index_sql(
+    table: str,
+    filters: TraceListFilter,
+    *,
+    mode: TraceMode,
+) -> tuple[str, dict[str, Any]]:
     where_sql, parameters = _trace_index_where(filters, qualifier="trace_roots")
-    # Trace responses do not expose root payloads; including those wide text
-    # columns here forces ClickHouse to scan them before pagination.
+    parameters.update(text_query_parameters(mode))
+    payload_columns = ",\n            ".join(
+        (
+            text_select_for_mode("trace_roots.root_input", alias="input", mode=mode),
+            text_select_for_mode("trace_roots.root_output", alias="output", mode=mode),
+        )
+    )
     query = f"""
         SELECT
             trace_roots.trace_id AS id,
@@ -219,6 +255,7 @@ def _trace_index_sql(table: str, filters: TraceListFilter) -> tuple[str, dict[st
             trace_roots.source_format AS source_format,
             nullIf(trace_roots.root_span_id, '') AS root_span_id,
             nullIf(trace_roots.root_name, '') AS name,
+            {payload_columns},
             nullIf(trace_roots.project, '') AS project,
             nullIf(trace_roots.evaluation_id, '') AS evaluation_id,
             nullIf(trace_roots.test_case_id, '') AS test_case_id,

@@ -78,6 +78,8 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
     assert trace["workspace"] == "default"
     assert trace["root_span_id"] == "0000000000000001"
     assert trace["name"] == "root-agent"
+    assert trace["input"] == '{"task":"solve"}'
+    assert trace["output"] == '{"answer":"done"}'
     assert trace["status"] == "success"
     assert trace["input_tokens"] == 420
     assert trace["output_tokens"] == 310
@@ -96,8 +98,6 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
     assert "experiment_id" not in trace
     assert "test_case_id" not in trace
     assert "source_format" not in trace
-    assert "input" not in trace
-    assert "output" not in trace
     assert "project" not in trace
     assert "models" not in trace
 
@@ -123,6 +123,18 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
     assert "input_tokens" not in summary_trace
     assert "cost_usd" not in summary_trace
     assert "span_count" not in summary_trace
+    assert "input" not in summary_trace
+    assert "output" not in summary_trace
+
+    preview_response = client.get(
+        "/apis/intake/v2/workspaces/default/traces",
+        params={"filter[session_id]": "trace-session", "mode": "preview", "page_size": 20},
+    )
+    assert preview_response.status_code == 200, preview_response.text
+    preview_trace = preview_response.json()["data"][0]
+    assert preview_trace["input"] == '{"task":"solve"}'
+    assert preview_trace["output"] == '{"answer":"done"}'
+    assert preview_trace["span_count"] == 2
 
 
 def test_traces_read_picks_earliest_root_when_trace_has_multiple_roots(client: TestClient, make_otlp_request):

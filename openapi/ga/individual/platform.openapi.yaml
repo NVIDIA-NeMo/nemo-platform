@@ -3674,16 +3674,17 @@ paths:
         schema:
           enum:
           - summary
+          - preview
           - detailed
           type: string
-          description: Response payload mode. summary keeps the same session row fields
-            but truncates root-span input to 1000 characters; detailed returns the
-            full root-span input.
+          description: Response mode. summary omits root-span input and output; preview
+            includes both truncated to 300 characters; detailed returns full root-span
+            payloads.
           default: detailed
           title: Mode
-        description: Response payload mode. summary keeps the same session row fields
-          but truncates root-span input to 1000 characters; detailed returns the full
-          root-span input.
+        description: Response mode. summary omits root-span input and output; preview
+          includes both truncated to 300 characters; detailed returns full root-span
+          payloads.
       - in: query
         name: filter
         style: deepObject
@@ -4192,10 +4193,17 @@ paths:
         schema:
           enum:
           - summary
+          - preview
           - detailed
           type: string
+          description: Response mode. summary omits payloads and raw attributes; preview
+            includes input and output truncated to 300 characters; detailed returns
+            full payloads and raw attributes.
           default: detailed
           title: Mode
+        description: Response mode. summary omits payloads and raw attributes; preview
+          includes input and output truncated to 300 characters; detailed returns
+          full payloads and raw attributes.
       - in: query
         name: filter
         style: deepObject
@@ -4416,14 +4424,17 @@ paths:
         schema:
           enum:
           - summary
+          - preview
           - detailed
           type: string
-          description: Use summary for root-span trace fields only, or detailed to
-            include token, cost, and span-count rollups.
+          description: Response mode. summary returns root-span fields without payloads
+            or rollups; preview adds token, cost, and span-count rollups plus 300-character
+            input/output previews; detailed returns rollups and full payloads.
           default: detailed
           title: Mode
-        description: Use summary for root-span trace fields only, or detailed to include
-          token, cost, and span-count rollups.
+        description: Response mode. summary returns root-span fields without payloads
+          or rollups; preview adds token, cost, and span-count rollups plus 300-character
+          input/output previews; detailed returns rollups and full payloads.
       - in: query
         name: filter
         style: deepObject
@@ -4472,14 +4483,17 @@ paths:
         schema:
           enum:
           - summary
+          - preview
           - detailed
           type: string
-          description: Use summary for root-span trace fields only, or detailed to
-            include token, cost, and span-count rollups.
+          description: Response mode. summary returns root-span fields without payloads
+            or rollups; preview adds token, cost, and span-count rollups plus 300-character
+            input/output previews; detailed returns rollups and full payloads.
           default: detailed
           title: Mode
-        description: Use summary for root-span trace fields only, or detailed to include
-          token, cost, and span-count rollups.
+        description: Response mode. summary returns root-span fields without payloads
+          or rollups; preview adds token, cost, and span-count rollups plus 300-character
+          input/output previews; detailed returns rollups and full payloads.
       responses:
         '200':
           description: Successful Response
@@ -10540,8 +10554,13 @@ components:
           description: 'Root-span status: success, error, cancelled, or unknown.'
         input:
           title: Input
-          description: Root-span input text. In summary mode this is truncated to
-            1000 characters.
+          description: Root-span input text. Omitted in summary mode and truncated
+            to 300 characters in preview mode.
+          type: string
+        output:
+          title: Output
+          description: Root-span output text. Omitted in summary mode and truncated
+            to 300 characters in preview mode.
           type: string
         input_tokens:
           title: Input Tokens
@@ -17294,8 +17313,8 @@ components:
           type: string
         error_message:
           title: Error Message
-          description: Normalized error message. In summary mode this is truncated
-            to 1000 characters.
+          description: Normalized error message. In summary and preview modes this
+            is truncated to 1000 characters.
           type: string
         provider:
           title: Provider
@@ -17352,9 +17371,13 @@ components:
           title: Cost Details
         input:
           title: Input
+          description: Span input text. Omitted in summary mode and truncated to 300
+            characters in preview mode.
           type: string
         output:
           title: Output
+          description: Span output text. Omitted in summary mode and truncated to
+            300 characters in preview mode.
           type: string
         raw_attributes:
           title: Raw Attributes
@@ -17909,6 +17932,16 @@ components:
           title: Workspace
         name:
           title: Name
+          type: string
+        input:
+          title: Input
+          description: Root-span input text. Omitted in summary mode and truncated
+            to 300 characters in preview mode.
+          type: string
+        output:
+          title: Output
+          description: Root-span output text. Omitted in summary mode and truncated
+            to 300 characters in preview mode.
           type: string
         evaluation_context:
           $ref: '#/components/schemas/EvaluationContext'

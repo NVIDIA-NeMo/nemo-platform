@@ -31,6 +31,8 @@ const mockSession = {
   started_at: '2025-01-01T00:00:00Z',
   status: 'success',
   test_case_id: 'case-1',
+  input: 'Session input',
+  output: 'Session output',
 };
 
 const mockSessionsPage = {
@@ -89,23 +91,25 @@ describe('EvaluationSessionsDataView', () => {
     // The Tooltip renders both a trigger and a hidden popover — getAllByText handles both.
     const matches = await screen.findAllByText('case-1');
     expect(matches.length).toBeGreaterThan(0);
+    expect(screen.getByText('Session input')).toBeInTheDocument();
+    expect(screen.getByText('Session output')).toBeInTheDocument();
   });
 
-  it('requests experiment sessions in summary mode', async () => {
+  it('requests experiment sessions in preview mode', async () => {
     renderDataView();
 
     await screen.findAllByText('case-1');
 
-    await waitFor(() => expect(sessionRequestModes).toContain('summary'));
+    await waitFor(() => expect(sessionRequestModes).toContain('preview'));
     expect(sessionRequestModes).not.toContain('detailed');
   });
 
-  it('falls back without mode when the backend rejects the summary query parameter', async () => {
+  it('falls back without mode when the backend rejects the preview query parameter', async () => {
     server.use(
       http.get(SESSIONS_URL, ({ request }) => {
         const mode = new URL(request.url).searchParams.get('mode');
         sessionRequestModes.push(mode);
-        if (mode === 'summary') {
+        if (mode === 'preview') {
           return HttpResponse.json(
             { detail: 'Unsupported query parameter(s): mode' },
             { status: 400 }
@@ -119,7 +123,7 @@ describe('EvaluationSessionsDataView', () => {
 
     await screen.findAllByText('case-1');
 
-    await waitFor(() => expect(sessionRequestModes).toEqual(['summary', null]));
+    await waitFor(() => expect(sessionRequestModes).toEqual(['preview', null]));
   });
 
   it('navigates to the experiment trace route when a row is clicked', async () => {

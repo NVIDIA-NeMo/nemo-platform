@@ -26,7 +26,6 @@ from nmp.common.api.utils import generate_openapi_extra_params
 from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError
 from nmp.common.service.dependencies import get_entity_client
 from nmp.intake.api.v2.experiments.schemas import (
-    EVALUATION_SESSION_SUMMARY_INPUT_CHAR_LIMIT,
     EvaluationFilter,
     EvaluationRequest,
     EvaluationResponse,
@@ -667,12 +666,12 @@ async def list_evaluation_sessions(
     mode: EvaluationSessionMode = Query(
         default="detailed",
         description=(
-            "Response payload mode. summary keeps the same session row fields but truncates root-span input "
-            "to 1000 characters; detailed returns the full root-span input."
+            "Response mode. summary omits root-span input and output; preview includes both truncated to "
+            "300 characters; detailed returns full root-span payloads."
         ),
     ),
 ) -> Page[EvaluationSessionResponse]:
-    validate_list_query_params(request)
+    validate_list_query_params(request, additional_params={"mode"})
     evaluation = await _get_or_404(
         entity_client,
         Evaluation,
@@ -703,7 +702,7 @@ async def list_evaluation_sessions(
             test_case_id=test_case_id,
             page=page,
             page_size=page_size,
-            input_char_limit=EVALUATION_SESSION_SUMMARY_INPUT_CHAR_LIMIT if mode == "summary" else None,
+            mode=mode,
         )
     except Exception as exc:
         # Sessions are the response payload (not enrichment), so we can't silently degrade like
@@ -718,7 +717,7 @@ async def list_evaluation_sessions(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Telemetry store unavailable.",
         ) from exc
-    data = [EvaluationSessionResponse.from_row(row) for row in result.rows]
+    data = [EvaluationSessionResponse.from_row(row, mode=mode) for row in result.rows]
     return Page(
         data=data,
         pagination=make_pagination(

@@ -10,16 +10,20 @@ Response models are standalone: they translate from the stored entity via
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal, Self
+from typing import Annotated, Self
 
 from nmp.common.entities.values import DatetimeFilter, Filter, NumberFilter, map_entity_field
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup
-from nmp.intake.spans.domain import SpanStatus
+from nmp.intake.spans.domain import (
+    INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT,
+    IntakeResponseMode,
+    SpanStatus,
+)
 from nmp.intake.spans.evaluation_session_repository import EvaluationSessionRow
+from nmp.intake.spans.storage import text_for_mode
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, computed_field, model_validator
 
-EvaluationSessionMode = Literal["summary", "detailed"]
-EVALUATION_SESSION_SUMMARY_INPUT_CHAR_LIMIT = 1000
+EvaluationSessionMode = IntakeResponseMode
 
 
 class ExperimentGroupRequest(BaseModel):
@@ -341,8 +345,15 @@ class EvaluationSessionResponse(BaseModel):
     input: str | None = Field(
         default=None,
         description=(
-            "Root-span input text. In summary mode this is truncated to "
-            f"{EVALUATION_SESSION_SUMMARY_INPUT_CHAR_LIMIT} characters."
+            f"Root-span input text. Omitted in summary mode and truncated to {INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT} "
+            "characters in preview mode."
+        ),
+    )
+    output: str | None = Field(
+        default=None,
+        description=(
+            f"Root-span output text. Omitted in summary mode and truncated to {INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT} "
+            "characters in preview mode."
         ),
     )
 
@@ -360,7 +371,12 @@ class EvaluationSessionResponse(BaseModel):
     )
 
     @classmethod
-    def from_row(cls, row: EvaluationSessionRow) -> EvaluationSessionResponse:
+    def from_row(
+        cls,
+        row: EvaluationSessionRow,
+        *,
+        mode: EvaluationSessionMode = "detailed",
+    ) -> EvaluationSessionResponse:
         return cls(
             workspace=row.workspace,
             evaluation_name=row.evaluation_name,
@@ -372,7 +388,8 @@ class EvaluationSessionResponse(BaseModel):
             ended_at=row.ended_at,
             latency_ms=row.latency_ms,
             status=row.status,
-            input=row.input,
+            input=text_for_mode(row.input, mode=mode),
+            output=text_for_mode(row.output, mode=mode),
             input_tokens=row.input_tokens,
             output_tokens=row.output_tokens,
             cached_tokens=row.cached_tokens,

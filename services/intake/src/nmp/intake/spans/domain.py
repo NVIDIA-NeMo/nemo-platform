@@ -99,7 +99,9 @@ class TraceListFilter(BaseModel):
     test_case_id: str | None = None
 
 
-TraceMode = Literal["summary", "detailed"]
+IntakeResponseMode = Literal["summary", "preview", "detailed"]
+TraceMode = IntakeResponseMode
+INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT = 300
 
 
 class IntakeTrace(BaseModel):
