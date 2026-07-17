@@ -108,14 +108,9 @@ async def openai_get_models(
     """
     This endpoint aggregates all routable VirtualModels and returns them in
     OpenAI's list models format. Each model ID is the VirtualModel identifier
-    in format workspace/name.
-
-    VirtualModels are the routable targets for inference: the platform's provider
-    reconciler auto-creates an implicit ``autoprovisioned`` VirtualModel for every
-    served model entity, and operators can create custom VirtualModels (Switchyard
-    routing, plugin chains, LoRA escape-hatches, etc.). Listing VirtualModels keeps
-    this catalog in agreement with the ``/v1/chat/completions`` proxy path, which
-    also resolves against the VirtualModel cache.
+    in format workspace/name. This includes both autoprovisioned VirtualModels
+    (one per served model entity) and custom VirtualModels, keeping the catalog
+    in agreement with the inference proxy, which also resolves VirtualModels.
     """
     all_oai_models: list[OpenAIModelResp] = []
 
@@ -140,12 +135,9 @@ async def openai_get_model(
     """
     Retrieve information about a specific OpenAI-compatible model.
     Workspace is always taken from the URL path; name may be the VirtualModel
-    name or workspace/name (workspace prefix is ignored).
-
-    Resolves against the VirtualModel cache so this route agrees with both the
-    ``/v1/models`` list route and the ``/v1/chat/completions`` proxy path: any
-    VirtualModel that can serve inference is discoverable here, including custom
-    (e.g. Switchyard) VirtualModels.
+    name or workspace/name (workspace prefix is ignored). Resolves against
+    routable VirtualModels, including custom ones, so this route agrees with
+    the list route and the inference proxy.
     """
     model_name = name.removeprefix(f"{workspace}/")
 
