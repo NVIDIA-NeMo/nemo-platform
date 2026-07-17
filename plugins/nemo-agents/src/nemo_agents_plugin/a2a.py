@@ -84,7 +84,7 @@ async def fetch_agent_card(base_url: str) -> dict[str, Any]:
     # Log the specific reason but never surface it: distinct errors would give the
     # caller an SSRF oracle for probing internal hosts/ports.
     last_error = "no agent card found"
-    async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT_S, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT_S, follow_redirects=False) as client:
         for path in AGENT_CARD_PATHS:
             url = _card_url(base, path)
             try:
@@ -202,7 +202,7 @@ async def send_a2a_message(endpoint: str, text: str) -> str:
         },
     }
     try:
-        async with httpx.AsyncClient(timeout=_MESSAGE_TIMEOUT_S, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=_MESSAGE_TIMEOUT_S, follow_redirects=False) as client:
             async with client.stream("POST", endpoint, json=payload, headers={"Accept": "application/json"}) as resp:
                 if resp.status_code != 200:
                     raise A2AMessageError(f"agent returned HTTP {resp.status_code}")
@@ -262,7 +262,7 @@ async def stream_a2a_message(endpoint: str, text: str) -> AsyncIterator[str]:
         },
     }
     try:
-        async with httpx.AsyncClient(timeout=_MESSAGE_TIMEOUT_S, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=_MESSAGE_TIMEOUT_S, follow_redirects=False) as client:
             async with client.stream("POST", endpoint, json=payload, headers={"Accept": "text/event-stream"}) as resp:
                 if resp.status_code != 200:
                     raise A2AMessageError(f"agent returned HTTP {resp.status_code}")

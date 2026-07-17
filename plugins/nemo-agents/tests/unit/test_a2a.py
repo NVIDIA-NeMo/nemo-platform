@@ -71,6 +71,33 @@ async def test_non_card_json_rejected() -> None:
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_fetch_does_not_follow_redirects() -> None:
+    respx.get("http://host:10000/.well-known/agent-card.json").mock(
+        return_value=httpx.Response(302, headers={"location": "http://169.254.169.254/"})
+    )
+    respx.get("http://host:10000/.well-known/agent.json").mock(
+        return_value=httpx.Response(302, headers={"location": "http://169.254.169.254/"})
+    )
+    internal = respx.get("http://169.254.169.254/").mock(return_value=httpx.Response(200, json=CARD))
+    with pytest.raises(AgentCardError):
+        await fetch_agent_card("http://host:10000")
+    assert not internal.called
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_send_message_does_not_follow_redirects() -> None:
+    respx.post("http://host:10000/").mock(
+        return_value=httpx.Response(302, headers={"location": "http://169.254.169.254/"})
+    )
+    internal = respx.post("http://169.254.169.254/").mock(return_value=httpx.Response(200, json={"result": {}}))
+    with pytest.raises(A2AMessageError):
+        await send_a2a_message("http://host:10000/", "hi")
+    assert not internal.called
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_probe_reachable_true_on_200() -> None:
     respx.get("http://host:10000/.well-known/agent-card.json").mock(return_value=httpx.Response(200, json=CARD))
     assert await probe_agent_reachable("http://host:10000") is True

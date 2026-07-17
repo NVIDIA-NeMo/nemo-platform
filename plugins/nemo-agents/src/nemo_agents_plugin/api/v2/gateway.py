@@ -98,7 +98,8 @@ async def _serve_agent_proxy(
     except NemoEntityNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found in workspace '{workspace}'.") from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.exception("Failed to look up agent '%s'", name)
+        raise HTTPException(status_code=500, detail="Failed to look up agent.") from exc
 
     if is_external_agent(agent):
         return await _serve_external_agent(name, trailing_uri, request, agent)
@@ -172,7 +173,8 @@ async def _serve_deployment_proxy(
             status_code=404, detail=f"Deployment '{name}' not found in workspace '{workspace}'."
         ) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.exception("Failed to look up deployment '%s'", name)
+        raise HTTPException(status_code=500, detail="Failed to look up deployment.") from exc
 
     if not _is_deployment_routable(dep):
         raise HTTPException(
@@ -244,7 +246,8 @@ async def _resolve_agent_endpoint(name: str, workspace: str, entity_client: Nemo
     try:
         result = await entity_client.list(AgentDeployment, workspace=workspace)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.exception("Failed to list deployments for agent '%s'", name)
+        raise HTTPException(status_code=500, detail="Failed to list deployments.") from exc
 
     running = [d for d in result.data if d.agent == name and _is_deployment_routable(d)]
     if not running:
@@ -514,7 +517,8 @@ async def external_agent_chat_completions(
     except NemoEntityNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found in workspace '{workspace}'.") from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.exception("Failed to look up agent '%s'", name)
+        raise HTTPException(status_code=500, detail="Failed to look up agent.") from exc
 
     if not is_external_agent(agent):
         raise HTTPException(

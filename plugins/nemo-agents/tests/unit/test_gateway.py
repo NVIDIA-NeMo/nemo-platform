@@ -208,6 +208,18 @@ class TestProxyByDeploymentName:
 
         assert resp.status_code == 502
 
+    def test_entity_lookup_failure_is_sanitized(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.get = AsyncMock(side_effect=RuntimeError("db dsn postgres://secret@host"))
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+            json={},
+        )
+
+        assert resp.status_code == 500
+        assert "secret" not in resp.text
+        assert "Failed to look up deployment." in resp.text
+
     def test_4xx_from_agent_passed_through(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         """4xx client errors from the agent are transparent pass-through."""
         dep = _make_deployment(status="running", endpoint="http://localhost:9001")
