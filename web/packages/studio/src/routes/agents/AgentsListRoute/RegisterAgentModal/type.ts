@@ -4,30 +4,11 @@
 import type { FormModalProps } from '@nemo/common/src/components/FormModal';
 import { z } from 'zod';
 
-export const registerAgentFormSchema = z
-  .object({
-    mode: z.enum(['url', 'config']),
-    name: z.string().min(1, 'Name is required'),
-    description: z.string().optional(),
-    url: z.string().optional(),
-    configText: z.string().optional(),
-  })
-  .superRefine((v, ctx) => {
-    if (v.mode === 'url' && !v.url?.trim()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['url'],
-        message: 'Endpoint URL is required',
-      });
-    }
-    if (v.mode === 'config' && !v.configText?.trim()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['configText'],
-        message: 'Config is required',
-      });
-    }
-  });
+export const registerAgentFormSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  description: z.string().optional(),
+  url: z.string().trim().min(1, 'Endpoint URL is required'),
+});
 
 export type RegisterAgentFormData = z.infer<typeof registerAgentFormSchema>;
 

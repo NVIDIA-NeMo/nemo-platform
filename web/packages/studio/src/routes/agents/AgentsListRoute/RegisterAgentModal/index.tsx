@@ -2,15 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ControlledTextArea } from '@nemo/common/src/components/form/ControlledTextArea';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getAgentsListAgentsQueryKey, useAgentsCreateAgent } from '@nemo/sdk/generated/agents/api';
-import { Anchor, Block, SegmentedControl, Text } from '@nvidia/foundations-react-core';
-import { parseAgentConfig } from '@studio/api/agents/parseAgentConfig';
+import { Block, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
-import { LINK_DOCS_AGENTS } from '@studio/constants/links';
 import {
   registerAgentFormSchema,
   type RegisterAgentFormData,
@@ -19,27 +16,16 @@ import {
 import { getAgentDetailRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { type FC, useState } from 'react';
-import { type SubmitHandler, useForm, useWatch } from 'react-hook-form';
+import { type SubmitHandler, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 
-const DEFAULT_VALUES: RegisterAgentFormData = {
-  mode: 'url',
-  name: '',
-  description: '',
-  url: '',
-  configText: '',
-};
-
-const MODE_ITEMS = [
-  { value: 'url', children: 'Connect running agent' },
-  { value: 'config', children: 'Paste config' },
-];
+const DEFAULT_VALUES: RegisterAgentFormData = { name: '', description: '', url: '' };
 
 export const RegisterAgentModal: FC<RegisterAgentModalProps> = ({ open, onClose, workspace }) => {
   const toast = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [parseError, setParseError] = useState<string | undefined>(undefined);
+  const [submitError, setSubmitError] = useState<string | undefined>(undefined);
 
   const {
     mutateAsync: createAgent,
@@ -69,42 +55,31 @@ export const RegisterAgentModal: FC<RegisterAgentModalProps> = ({ open, onClose,
     mode: 'onChange',
   });
 
-  const mode = useWatch({ control, name: 'mode' });
-
   const resetAndClose = () => {
     resetMutation();
-    setParseError(undefined);
+    setSubmitError(undefined);
     resetForm(DEFAULT_VALUES);
     onClose();
   };
 
   const onSubmit: SubmitHandler<RegisterAgentFormData> = async (formData) => {
-    setParseError(undefined);
-    const description = formData.description?.trim() || '';
-
-    let data: Parameters<typeof createAgent>[0]['data'];
-    if (formData.mode === 'url') {
-      data = { name: formData.name.trim(), description, url: formData.url?.trim() };
-    } else {
-      let config: Record<string, unknown>;
-      try {
-        config = parseAgentConfig(formData.configText ?? '');
-      } catch (err) {
-        setParseError((err as Error).message);
-        return;
-      }
-      data = { name: formData.name.trim(), description, config };
-    }
-
+    setSubmitError(undefined);
     try {
-      await createAgent({ workspace, data });
+      await createAgent({
+        workspace,
+        data: {
+          name: formData.name.trim(),
+          description: formData.description?.trim() || '',
+          url: formData.url.trim(),
+        },
+      });
     } catch {
       // surfaced via errorText
     }
   };
 
   const errorMessage =
-    parseError ??
+    submitError ??
     (createError ? getErrorMessage(createError as Error, 'Failed to register agent') : undefined);
 
   return (
@@ -118,15 +93,6 @@ export const RegisterAgentModal: FC<RegisterAgentModalProps> = ({ open, onClose,
       loading={isPending}
       errorText={errorMessage}
     >
-      <SegmentedControl
-        className="w-full!"
-        value={mode}
-        items={MODE_ITEMS}
-        onValueChange={(v) =>
-          resetForm({ ...DEFAULT_VALUES, mode: v as RegisterAgentFormData['mode'] })
-        }
-      />
-
       <ControlledTextInput
         useControllerProps={{ control, name: 'name' }}
         label="Name"
@@ -140,41 +106,23 @@ export const RegisterAgentModal: FC<RegisterAgentModalProps> = ({ open, onClose,
         placeholder="Optional"
         formFieldProps={{ slotError: errors.description?.message }}
       />
-
-      {mode === 'url' ? (
-        <ControlledTextInput
-          useControllerProps={{ control, name: 'url' }}
-          label="Agent endpoint URL"
-          required
-          placeholder="http://localhost:10000"
-          formFieldProps={{
-            slotError: errors.url?.message,
-            slotHelp: (
-              <Block>
-                <Text kind="body/regular/xs" color="secondary">
-                  Points at a NAT agent already running (A2A). NeMo Platform fetches its agent card
-                  and does not run it.
-                </Text>
-              </Block>
-            ),
-          }}
-        />
-      ) : (
-        <ControlledTextArea
-          useControllerProps={{ control, name: 'configText' }}
-          label="NAT workflow config (YAML)"
-          rows={12}
-          placeholder={'workflow:\n  _type: react_agent\n  ...'}
-          formFieldProps={{
-            slotError: errors.configText?.message,
-            slotHelp: (
-              <Anchor href={LINK_DOCS_AGENTS} target="_blank" rel="noopener noreferrer">
-                How to structure a NAT workflow config
-              </Anchor>
-            ),
-          }}
-        />
-      )}
+      <ControlledTextInput
+        useControllerProps={{ control, name: 'url' }}
+        label="Agent endpoint URL"
+        required
+        placeholder="http://localhost:10000"
+        formFieldProps={{
+          slotError: errors.url?.message,
+          slotHelp: (
+            <Block>
+              <Text kind="body/regular/xs" color="secondary">
+                Points at a NAT agent already running (A2A). NeMo Platform fetches its agent card
+                and does not run it.
+              </Text>
+            </Block>
+          ),
+        }}
+      />
     </FormModal>
   );
 };

@@ -383,7 +383,7 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
             renderEmptyState: () => (
               <TableEmptyState
                 header="No agents yet"
-                emptyMessage="Register an existing NAT agent by pasting its workflow config, or spin up a ready-made example to explore the platform."
+                emptyMessage="Register an existing NAT agent by its endpoint URL, or spin up a ready-made example to explore the platform."
                 icon={<HatGlasses className="m-0 size-24" />}
                 actions={
                   <Flex gap="density-md" align="center">
