@@ -109,9 +109,11 @@ describe('CombinedAgentsTable', () => {
       renderTable();
 
       expect(
-        await screen.findByText('No Agents Found', undefined, { timeout: XL_SELECTOR_TIMEOUT })
+        await screen.findByText('No agents yet', undefined, { timeout: XL_SELECTOR_TIMEOUT })
       ).toBeInTheDocument();
-      expect(screen.getByText('No agents have been created yet.')).toBeInTheDocument();
+      expect(
+        screen.getByText(/Register an existing NAT agent by its endpoint URL/)
+      ).toBeInTheDocument();
     });
   });
 

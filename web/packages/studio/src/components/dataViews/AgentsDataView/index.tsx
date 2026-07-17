@@ -25,14 +25,15 @@ import {
 } from '@nemo/sdk/generated/agents/api';
 import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
 import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema/AgentDeployment';
-import { Button, Divider, Flex, Text } from '@nvidia/foundations-react-core';
+import { Badge, Button, Divider, Flex, Text } from '@nvidia/foundations-react-core';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { MODEL_COMPARE_ENABLED } from '@studio/constants/environment';
-import { LINK_DOCS_STUDIO } from '@studio/constants/links';
+import { LINK_DOCS_AGENTS } from '@studio/constants/links';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getModelCompareRoute } from '@studio/routes/utils';
+import { isExternalAgent } from '@studio/util/agents';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
 import { HatGlasses, Trash, X } from 'lucide-react';
 import { ComponentProps, FC, useEffect, useMemo, useState } from 'react';
@@ -73,6 +74,8 @@ export type AgentTableRow = {
   description?: string;
   config?: AgentConfig;
   config_format?: string;
+  source?: string;
+  endpoint?: string;
   created_at?: string;
   models: string[];
   deploymentsStatus: string;
@@ -92,6 +95,8 @@ export interface CombinedAgentsTableProps {
   onCreateDeployment?: (agentName: string) => void;
   onCloneAgent?: (agent: AgentTableRow) => void;
   onAgentsLoaded?: (agents: Agent[]) => void;
+  onRegisterAgent?: () => void;
+  onCreateExampleAgent?: () => void;
   canTestModels?: boolean;
 }
 
@@ -100,6 +105,8 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
   onCreateDeployment,
   onCloneAgent,
   onAgentsLoaded,
+  onRegisterAgent,
+  onCreateExampleAgent,
   canTestModels = MODEL_COMPARE_ENABLED,
 }) => {
   const workspace = useWorkspaceFromPath();
@@ -169,6 +176,8 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
         description: agent.description,
         config,
         config_format: agent.config_format,
+        source: agent.source,
+        endpoint: agent.endpoint,
         created_at: agent.created_at,
         models: getAgentModelNames(config),
         deploymentsStatus,
@@ -248,6 +257,12 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
     accessor('name', {
       header: 'Name',
       enableSorting: true,
+      cell: ({ row }) => (
+        <Flex align="center" gap="2">
+          <Text>{row.original.name}</Text>
+          {isExternalAgent(row.original) && <Badge kind="outline">External</Badge>}
+        </Flex>
+      ),
     }),
     accessor('description', {
       header: 'Description',
@@ -283,35 +298,43 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
     rowActionsColumn({
       size: ROW_ACTIONS_COLUMN_SIZE,
       enableResizing: false,
-      rowActions: (row: AgentTableRow) => [
-        {
-          children: 'Deploy',
-          onSelect: () => onCreateDeployment?.(row.name),
-        },
-        ...(canTestModels
-          ? [
+      rowActions: (row: AgentTableRow) => {
+        // External agents run outside NeMo Platform — deploy/test/clone don't apply.
+        const managedActions = isExternalAgent(row)
+          ? []
+          : [
               {
-                children: 'Test models',
-                onSelect: () => {
-                  const target = getModelCompareRoute(workspace);
-                  const model = row.models[0];
-                  const urn = model ? `${row.workspace}/${model}` : null;
-                  navigate(urn ? `${target}?model=${encodeURIComponent(urn)}` : target);
-                },
+                children: 'Deploy',
+                onSelect: () => onCreateDeployment?.(row.name),
               },
-            ]
-          : []),
-        {
-          children: 'Clone',
-          onSelect: () => onCloneAgent?.(row),
-        },
-        { kind: 'divider' as const },
-        {
-          children: 'Delete',
-          danger: true,
-          onSelect: () => setDeleteState({ kind: 'agent', item: row }),
-        },
-      ],
+              ...(canTestModels
+                ? [
+                    {
+                      children: 'Test models',
+                      onSelect: () => {
+                        const target = getModelCompareRoute(workspace);
+                        const model = row.models[0];
+                        const urn = model ? `${row.workspace}/${model}` : null;
+                        navigate(urn ? `${target}?model=${encodeURIComponent(urn)}` : target);
+                      },
+                    },
+                  ]
+                : []),
+              {
+                children: 'Clone',
+                onSelect: () => onCloneAgent?.(row),
+              },
+              { kind: 'divider' as const },
+            ];
+        return [
+          ...managedActions,
+          {
+            children: 'Delete',
+            danger: true,
+            onSelect: () => setDeleteState({ kind: 'agent', item: row }),
+          },
+        ];
+      },
     }),
   ];
 
@@ -359,10 +382,24 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
           DataViewTableContent: {
             renderEmptyState: () => (
               <TableEmptyState
-                header="No Agents Found"
-                emptyMessage="No agents have been created yet."
+                header="No agents yet"
+                emptyMessage="Register an existing NAT agent by its endpoint URL, or spin up a ready-made example to explore the platform."
                 icon={<HatGlasses className="m-0 size-24" />}
-                actions={<DocumentationButton href={LINK_DOCS_STUDIO} />}
+                actions={
+                  <Flex gap="density-md" align="center">
+                    {onRegisterAgent && (
+                      <Button kind="secondary" onClick={onRegisterAgent}>
+                        Register Existing Agent
+                      </Button>
+                    )}
+                    {onCreateExampleAgent && (
+                      <Button color="brand" onClick={onCreateExampleAgent}>
+                        Create Example Agent
+                      </Button>
+                    )}
+                    <DocumentationButton href={LINK_DOCS_AGENTS} />
+                  </Flex>
+                }
               />
             ),
           },

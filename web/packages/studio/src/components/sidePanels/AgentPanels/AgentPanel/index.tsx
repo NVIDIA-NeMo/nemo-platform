@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema/AgentDeployment';
-import { Block, SegmentedControl, SidePanel, Stack, Text } from '@nvidia/foundations-react-core';
-import type { AgentConfig } from '@studio/components/dataViews/AgentsDataView';
-import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
+import { Block, SegmentedControl, SidePanel } from '@nvidia/foundations-react-core';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { AgentDetailsContent } from '@studio/components/sidePanels/AgentPanels/AgentPanel/AgentDetailsContent';
+import { AgentWorkflowContent } from '@studio/components/sidePanels/AgentPanels/AgentPanel/AgentWorkflowContent';
 import { ChatPlaygroundContent } from '@studio/components/sidePanels/AgentPanels/AgentPanel/ChatPlaygroundContent';
 import { DeploymentLogsView } from '@studio/components/sidePanels/AgentPanels/AgentPanel/DeploymentLogsView';
+import { ExternalAgentNotice } from '@studio/components/sidePanels/AgentPanels/AgentPanel/ExternalAgentNotice';
 import type { AgentPanelTab } from '@studio/components/sidePanels/AgentPanels/AgentPanel/types';
 import { useAgentPanel } from '@studio/components/sidePanels/AgentPanels/AgentPanel/useAgentPanel';
 import { deriveWalkthroughStep } from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthrough';
@@ -19,6 +19,7 @@ import {
 } from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthroughStorage';
 import { CreateDeploymentModal } from '@studio/routes/agents/AgentDeploymentsListRoute/CreateDeploymentModal';
 import { SubmitEvaluationModal } from '@studio/routes/agents/AgentEvaluationsRoute/components/SubmitEvaluationModal';
+import { isExternalAgent } from '@studio/util/agents';
 import { type ComponentProps, type FC, useEffect, useMemo, useRef, useState } from 'react';
 
 export type { AgentPanelTab };
@@ -61,6 +62,7 @@ export const AgentPanel: FC<AgentPanelProps> = ({
   const tabItems = useMemo(
     () => [
       { value: 'agent-details', children: 'Details' },
+      { value: 'agent-workflow', children: 'Workflow' },
       { value: 'chat-playground', children: 'Chat Playground' },
       { value: 'deployment-logs', children: 'Logs' },
     ],
@@ -74,6 +76,7 @@ export const AgentPanel: FC<AgentPanelProps> = ({
   useEffect(() => {
     setSelectedDeploymentName(undefined);
     setWalkthroughDismissed(false);
+    // Start the walkthrough only for the agent it was queued for (just created).
     setWalkthroughActive(!!agentName && isAgentWalkthroughPending(agentName));
   }, [agentName]);
 
@@ -108,12 +111,16 @@ export const AgentPanel: FC<AgentPanelProps> = ({
     onTabChange?.('chat-playground');
   };
 
-  const agentModelNames = getAgentModelNames(agent?.config as AgentConfig | undefined);
-
   let content: React.ReactNode;
 
   if (selectedTab === 'deployment-logs') {
-    content = <DeploymentLogsView workspace={workspace} deployments={agentDeployments} />;
+    content = isExternalAgent(agent) ? (
+      <ExternalAgentNotice detail="There is no NeMo deployment to read logs from. Logs are available on the host where the agent runs." />
+    ) : (
+      <DeploymentLogsView workspace={workspace} deployments={agentDeployments} />
+    );
+  } else if (selectedTab === 'agent-workflow') {
+    content = <AgentWorkflowContent agent={agent} />;
   } else if (selectedTab === 'chat-playground') {
     content = (
       <ChatPlaygroundContent
@@ -123,6 +130,7 @@ export const AgentPanel: FC<AgentPanelProps> = ({
         healthyDeployments={healthyDeployments}
         isDeploymentsLoading={isDeploymentsLoading}
         isDeploying={isDeploying}
+        isExternal={isExternalAgent(agent)}
         chatAreaRef={chatAreaRef}
         onSelectDeployment={(v) => setSelectedDeploymentName(v)}
         onDeploy={() => setCreateDeploymentOpen(true)}
@@ -153,16 +161,7 @@ export const AgentPanel: FC<AgentPanelProps> = ({
       <SidePanel
         open={open}
         onOpenChange={onOpenChange}
-        slotHeading={
-          <Stack gap="1">
-            <Text kind="inherit">{agentName}</Text>
-            {agentModelNames.length > 0 && (
-              <Text kind="body/regular/sm" className="text-secondary">
-                {agentModelNames.join(', ')}
-              </Text>
-            )}
-          </Stack>
-        }
+        slotHeading={agentName}
         bordered
         modal
         className="[&.nv-side-panel-content]:w-full [&.nv-side-panel-content]:max-w-[50vw] [&_.nv-side-panel-main]:gap-4 [&_.nv-side-panel-main]:p-0"

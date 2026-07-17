@@ -15,6 +15,7 @@ interface ChatPlaygroundContentProps {
   healthyDeployments: AgentDeployment[];
   isDeploymentsLoading: boolean;
   isDeploying: boolean;
+  isExternal?: boolean;
   chatAreaRef: RefObject<HTMLDivElement | null>;
   onSelectDeployment: (name: string) => void;
   onDeploy: () => void;
@@ -27,6 +28,7 @@ export const ChatPlaygroundContent: FC<ChatPlaygroundContentProps> = ({
   healthyDeployments,
   isDeploymentsLoading,
   isDeploying,
+  isExternal,
   chatAreaRef,
   onSelectDeployment,
   onDeploy,
@@ -43,6 +45,28 @@ export const ChatPlaygroundContent: FC<ChatPlaygroundContentProps> = ({
   );
   const noHealthyDeployments = !isDeploymentsLoading && healthyDeployments.length === 0;
 
+  // External agents run outside NeMo Platform: there's no NMP deployment. Chat
+  // is bridged to the agent's A2A endpoint by the gateway's external-chat route,
+  // which speaks OpenAI chat/completions on `.../agents/{name}/chat/completions`.
+  if (isExternal) {
+    return (
+      <div ref={chatAreaRef} className="flex flex-col h-full min-h-0">
+        <Block className="flex-1 min-h-0" padding="4">
+          <ModelChat
+            model={agentName ?? ''}
+            workspace={workspace}
+            baseURL={
+              agentName
+                ? `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/${workspace}/agents/${agentName}`
+                : undefined
+            }
+            disabled={!agentName}
+          />
+        </Block>
+      </div>
+    );
+  }
+
   return (
     <div ref={chatAreaRef} className="flex flex-col h-full min-h-0">
       {!noHealthyDeployments && healthyDeployments.length > 1 && (
@@ -54,7 +78,7 @@ export const ChatPlaygroundContent: FC<ChatPlaygroundContentProps> = ({
           />
         </Block>
       )}
-      {noHealthyDeployments && (
+      {noHealthyDeployments ? (
         <Block padding="4" className="shrink-0">
           <NoHealthyDeploymentsBanner
             agentName={agentName}
@@ -62,19 +86,20 @@ export const ChatPlaygroundContent: FC<ChatPlaygroundContentProps> = ({
             onDeploy={onDeploy}
           />
         </Block>
+      ) : (
+        <Block className="flex-1 min-h-0" padding="4">
+          <ModelChat
+            model={chatDeployment?.name ?? agentName ?? ''}
+            workspace={workspace}
+            baseURL={
+              chatDeployment
+                ? `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/${workspace}/deployments/${chatDeployment.name}/-/v1`
+                : undefined
+            }
+            disabled={isDeploymentsLoading || !chatDeployment}
+          />
+        </Block>
       )}
-      <Block className="flex-1 min-h-0" padding="4">
-        <ModelChat
-          model={chatDeployment?.name ?? agentName ?? ''}
-          workspace={workspace}
-          baseURL={
-            chatDeployment
-              ? `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/${workspace}/deployments/${chatDeployment.name}/-/v1`
-              : undefined
-          }
-          disabled={isDeploymentsLoading || noHealthyDeployments || !chatDeployment}
-        />
-      </Block>
     </div>
   );
 };

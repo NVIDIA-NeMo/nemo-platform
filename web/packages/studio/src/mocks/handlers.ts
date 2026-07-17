@@ -622,6 +622,39 @@ export const handlers = [
       });
     }
   ),
+  http.get(
+    `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/agents/:name`,
+    ({ params }) => {
+      const name = String(params['name']);
+      if (name !== 'react-agent' && name !== 'react-agent2') {
+        return new HttpResponse(null, { status: 404 });
+      }
+      return HttpResponse.json({
+        name,
+        workspace: params['workspace'],
+        description: name === 'react-agent2' ? 'Second react agent' : '',
+        source: 'managed',
+        config: {
+          functions: { wiki: { _type: 'wiki_search' }, clock: { _type: 'current_datetime' } },
+          llms: {
+            llm: {
+              _type: 'openai',
+              api_key: 'not-used',
+              model_name: 'meta-llama-3-1-70b-instruct',
+              temperature: 0,
+            },
+          },
+          workflow: {
+            _type: 'react_agent',
+            tool_names: ['wiki', 'clock'],
+            llm_name: 'llm',
+          },
+        },
+        config_format: 'nat-workflow-v1',
+        created_at: '2026-04-20T10:00:00Z',
+      });
+    }
+  ),
   http.delete(
     `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/agents/:name`,
     () => new HttpResponse(null, { status: 204 })

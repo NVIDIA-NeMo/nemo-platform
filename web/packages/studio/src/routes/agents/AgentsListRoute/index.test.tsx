@@ -48,7 +48,9 @@ const renderList = () =>
   });
 
 const openModal = async (user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> => {
-  await user.click(await screen.findByRole('button', { name: 'Create Example Agent' }));
+  // The empty state repeats the header CTA, so there can be two identical
+  // buttons; click the header one (rendered first).
+  await user.click((await screen.findAllByRole('button', { name: 'Create Example Agent' }))[0]);
   const dialog = await screen.findByRole('dialog');
   await within(dialog).findByRole('combobox', { name: 'Model' });
   return dialog;
