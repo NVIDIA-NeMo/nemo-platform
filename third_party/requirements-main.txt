@@ -26,7 +26,6 @@
     #   nemo-automodel-plugin
     #   nemo-customizer-plugin
     #   nemo-data-designer-plugin
-    #   nemo-deployments-plugin
     #   nemo-guardrails-plugin
     #   nemo-rl-plugin
     #   nemo-safe-synthesizer-plugin
@@ -56,6 +55,7 @@
     #   nmp-common
     #   nmp-customization-common
     #   nmp-inference-gateway
+    #   nmp-models
     #   nmp-platform
     #   nmp-platform-runner
     #   nmp-rl
@@ -121,6 +121,7 @@
 -e ./sdk/python/nemo-platform ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via
     #   models
+    #   nemo-deployments-plugin
     #   nemo-evaluator-plugin
     #   nemo-platform
     #   nemo-platform-ext
@@ -283,9 +284,9 @@ annotated-types==0.7.0 ; (platform_machine == 'arm64' and sys_platform == 'darwi
     --hash=sha256:1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53 \
     --hash=sha256:aff07c09a53a08bc8cfccb9c85b05f1aa9a2a6f23728d790723543408344ce89
     # via pydantic
-anthropic==0.101.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:1116a6a87c55757e0fbe3e1ba40804fbd04de7963601a6dd6b539a889f18de3e \
-    --hash=sha256:cc3cc6576989471e2aa9132258034ad0ff0d8fe500b04ac499e4e46ed68c5ed0
+anthropic==0.116.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:5fc248fbb9fe03ef686f8a774f81586bca31a043260aab88b387ea3660f4a396 \
+    --hash=sha256:6c0a7698e8d652455da3499978279bb2588c7264d0a35be3666009a4258c8256
     # via
     #   nemo-agents-plugin
     #   nemo-platform-plugin
@@ -526,31 +527,31 @@ colorlog==6.10.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     --hash=sha256:2d7e8348291948af66122cff006c9f8da6255d224e7cf8e37d8de2df3bad8c9c \
     --hash=sha256:eb4ae5cb65fe7fec7773c2306061a8e63e02efc2c72eba9d27b0fa23c94f1321
     # via optuna
-cryptography==46.0.7 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:04959522f938493042d595a736e7dbdff6eb6cc2339c11465b3ff89343b65f65 \
-    --hash=sha256:128c5edfe5e5938b86b03941e94fac9ee793a94452ad1365c9fc3f4f62216832 \
-    --hash=sha256:1d25aee46d0c6f1a501adcddb2d2fee4b979381346a78558ed13e50aa8a59067 \
-    --hash=sha256:35719dc79d4730d30f1c2b6474bd6acda36ae2dfae1e3c16f2051f215df33ce0 \
-    --hash=sha256:3986ac1dee6def53797289999eabe84798ad7817f3e97779b5061a95b0ee4968 \
-    --hash=sha256:420b1e4109cc95f0e5700eed79908cef9268265c773d3a66f7af1eef53d409ef \
-    --hash=sha256:42a1e5f98abb6391717978baf9f90dc28a743b7d9be7f0751a6f56a75d14065b \
-    --hash=sha256:462ad5cb1c148a22b2e3bcc5ad52504dff325d17daf5df8d88c17dda1f75f2a4 \
-    --hash=sha256:5ad9ef796328c5e3c4ceed237a183f5d41d21150f972455a9d926593a1dcb308 \
-    --hash=sha256:5d1c02a14ceb9148cc7816249f64f623fbfee39e8c03b3650d842ad3f34d637e \
-    --hash=sha256:5e51be372b26ef4ba3de3c167cd3d1022934bc838ae9eaad7e644986d2a3d163 \
-    --hash=sha256:73510b83623e080a2c35c62c15298096e2a5dc8d51c3b4e1740211839d0dea77 \
-    --hash=sha256:7bbc6ccf49d05ac8f7d7b5e2e2c33830d4fe2061def88210a126d130d7f71a85 \
-    --hash=sha256:84d4cced91f0f159a7ddacad249cc077e63195c36aac40b4150e7a57e84fffe7 \
-    --hash=sha256:8a469028a86f12eb7d2fe97162d0634026d92a21f3ae0ac87ed1c4a447886c83 \
-    --hash=sha256:91bbcb08347344f810cbe49065914fe048949648f6bd5c2519f34619142bbe85 \
-    --hash=sha256:a1529d614f44b863a7b480c6d000fe93b59acee9c82ffa027cfadc77521a9f5e \
-    --hash=sha256:abad9dac36cbf55de6eb49badd4016806b3165d396f64925bf2999bcb67837ba \
-    --hash=sha256:b36a4695e29fe69215d75960b22577197aca3f7a25b9cf9d165dcfe9d80bc325 \
-    --hash=sha256:d02c738dacda7dc2a74d1b2b3177042009d5cab7c7079db74afc19e56ca1b455 \
-    --hash=sha256:d3b99c535a9de0adced13d159c5a9cf65c325601aa30f4be08afd680643e9c15 \
-    --hash=sha256:e4cfd68c5f3e0bfdad0d38e023239b96a2fe84146481852dffbcca442c245aa5 \
-    --hash=sha256:ea42cbe97209df307fdc3b155f1b6fa2577c0defa8f1f7d3be7d31d189108ad4 \
-    --hash=sha256:fc9ab8856ae6cf7c9358430e49b368f3108f050031442eaeb6b9d87e4dcf4e4f
+cryptography==48.0.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:08a597acce1ff37f347400087776599e2348a3a8bc53b44120e463cd274efe4a \
+    --hash=sha256:0ee6ea481db1ab889cba043ec1eda17bb9c1ea79db6722f779c3667f9f70322f \
+    --hash=sha256:266f4ee051abb2f725b74ef8072b521ce1feacf685a3364fa6a6b45548db791a \
+    --hash=sha256:2c37f2461406063b417837f5f3daab668652acd82423efcd7f0a9f04be972de1 \
+    --hash=sha256:32143b24adb918f078134e1e230f1eb8cc04886b92c28b5f0041aaf3e5699225 \
+    --hash=sha256:33842cf0888951cef5bc7ac724ab844a42044c1727b967b7f8997289a0464f92 \
+    --hash=sha256:3752f2dbc8f07a30aad2932c986cea495b03bb554887828225da104f732852b6 \
+    --hash=sha256:3e4a1a3232eef2e6c732827d5722db29a0cc8b27af2a4d865b094cf954be9ca1 \
+    --hash=sha256:48fe40804d4caa2288f24e70ca8c64c42dd826da0ad7e4f1b41b2128d679e6c8 \
+    --hash=sha256:4ab0a343c807bbcd90c971cd1ecf072937cd01847a9e002bef88fb47ac6be577 \
+    --hash=sha256:4fdc69f8e4316bcf0c8c8ec1f26f285d12e8142d88d96c876a59a03be3f6ae67 \
+    --hash=sha256:66fd0771e7b9c6dcd44cf1120690d2338d16d72795cf40cae2786a39eba65429 \
+    --hash=sha256:735824ec41b7f74a7c45fb1591349333e4c696cb6c044e5f46356e560143e4cd \
+    --hash=sha256:7e234ac052af99f2700826a5c29ea99d9c1b1f80341cde62d11c8154dc8e0bd9 \
+    --hash=sha256:86be3b1b0b6bf09482fb50a979c508d2950ed95f5621ec77f4e385962006b83a \
+    --hash=sha256:86fe77abb1bd87afb251d4d02ada7ecf53a32cee9b67d976abb2e45a13297475 \
+    --hash=sha256:88c852a0ae366e262e5a1744b685e6a433dc8788dd2a277e418bf4904203609d \
+    --hash=sha256:92a46e1d638daa264ba2971c0b0489c9409787943efae4d60ffda3d091ef832c \
+    --hash=sha256:9bd3f92d76217892b15df84ca256c2c113d386fdda7a7d8691aeeced976507c6 \
+    --hash=sha256:b74ca3b8e5ecdd833bf6a002ca41b4793bb27fb8f1c06ffaf2643c9e9140e31b \
+    --hash=sha256:eb86ce1af36fe65041b6db9a8bb064ee621a7e5fded0f80d475ec243477cd242 \
+    --hash=sha256:f0d27a5696721ef7a672b8c810f6aded391058e0b9486e63e6d93baf765da691 \
+    --hash=sha256:f2ceef93cb096aa3c4cc4b5c94ca6131f9196d28c64d6111533402a9b2054d41 \
+    --hash=sha256:fe0180af5bf9236518a087e35bf2d9a347d5f5f51e63c579d683ddff424e3d46
     # via
     #   authlib
     #   data-designer-engine
@@ -635,6 +636,7 @@ docker==7.1.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (p
     --hash=sha256:ad8c70e6e3f8926cb8a92619b832b4ea5299e2831c14284663184e200546fa6c \
     --hash=sha256:c96b93b7f0a746f9e77d325bcfb87422a3d8bd4f03136ae8a85b37f1898d5fc0
     # via
+    #   nemo-deployments-plugin
     #   nemo-platform-ext
     #   nemo-platform-sdk
     #   ngcsdk
@@ -790,9 +792,9 @@ fastuuid==0.14.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     --hash=sha256:cb9a030f609194b679e1660f7e32733b7a0f332d519c5d5a6a0a580991290022 \
     --hash=sha256:d23ef06f9e67163be38cece704170486715b177f6baae338110983f99a72c070
     # via litellm
-filelock==3.25.2 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:b64ece2b38f4ca29dd3e810287aa8c48182bbecd1ae6e9ae126c9b35f1382694 \
-    --hash=sha256:ca8afb0da15f229774c9ad1b455ed96e85a81373065fb10446672f64444ddf70
+filelock==3.29.7 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:5b481979797ae69e72f0b389d89a80bdd585c260c5b3f1fb9c0a5ba9bb3f195d \
+    --hash=sha256:987db6f789a3a2a59f55081801b2b3697cb97e2a736b5f1a9e99b559285fbc51
     # via
     #   datasets
     #   huggingface-hub
@@ -1188,6 +1190,7 @@ kubernetes==35.0.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') 
     --hash=sha256:39e2b33b46e5834ef6c3985ebfe2047ab39135d41de51ce7641a7ca5b372a13d \
     --hash=sha256:3d00d344944239821458b9efd484d6df9f011da367ecb155dadf9513f05f09ee
     # via
+    #   nemo-deployments-plugin
     #   nmp-common
     #   nmp-jobs
     #   nmp-models
@@ -1636,7 +1639,9 @@ nvidia-nat-eval==1.8.0 ; (platform_machine == 'arm64' and sys_platform == 'darwi
     #   nvidia-nat-langchain
 nvidia-nat-langchain==1.8.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:8120ad2b972ce2d90fae1e7f95b3daf6b463310e0105fc330896bfb069a5d403
-    # via nemo-agents-plugin
+    # via
+    #   nemo-agents-example-calculator
+    #   nemo-agents-plugin
 nvidia-nat-opentelemetry==1.8.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:2ef2de28a1d07029126ae1c13ff39b9dd61a6985e43199e6fe80968b465b1eec
     # via nvidia-nat-langchain
@@ -1988,9 +1993,9 @@ pkginfo==1.12.1.2 ; (platform_machine == 'arm64' and sys_platform == 'darwin') o
     --hash=sha256:5cd957824ac36f140260964eba3c6be6442a8359b8c48f4adf90210f33a04b7b \
     --hash=sha256:c783ac885519cab2c34927ccfa6bf64b5a704d7c69afaea583dd9b7afe969343
     # via nvidia-nat-core
-platformdirs==4.9.4 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:1ec356301b7dc906d83f371c8f487070e99d3ccf9e501686456394622a01a934 \
-    --hash=sha256:68a9a4619a666ea6439f2ff250c12a853cd1cbd5158d258bd824a7df6be2f868
+platformdirs==4.10.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:31e761a6a0ca04faf7353ea759bdba55652be214725111e5aac52dfa29d4bef7 \
+    --hash=sha256:fb516cdb12eb0d857d0cd85a7c57cea4d060bee4578d6cf5a14dfdf8cbf8784a
     # via
     #   fastmcp
     #   nvidia-nat-core
@@ -2726,9 +2731,9 @@ sniffio==1.3.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (
     #   nemo-platform-sdk
     #   openai
     #   pyleak
-soupsieve==2.8.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:3267f1eeea4251fb42728b6dfb746edc9acaffc4a45b27e19450b676586e8349 \
-    --hash=sha256:ed64f2ba4eebeab06cc4962affce381647455978ffc1e36bb79a545b91f45a95
+soupsieve==2.8.4 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:e121fd02e975c695e4e9e8774a5ee35d74714b59307868dcc5319ad2d9e3328e \
+    --hash=sha256:e7e6b0769c8f51ed59acab6e994b00621096cfb1c640a7509295987388fbaf65
     # via beautifulsoup4
 sqlalchemy==2.0.48 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:07edba08061bc277bfdc772dd2a1a43978f5a45994dd3ede26391b405c15221e \
@@ -2999,9 +3004,9 @@ typing-inspection==0.4.2 ; (platform_machine == 'arm64' and sys_platform == 'dar
     #   mcp
     #   pydantic
     #   pydantic-settings
-tzdata==2025.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:06a47e5700f3081aab02b2e513160914ff0694bce9947d6b76ebd6bf57cfc5d1 \
-    --hash=sha256:de39c2ca5dc7b0344f2eba86f49d614019d29f060fc4ebc8a417896a620b56a7
+tzdata==2026.2 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:9173fde7d80d9018e02a662e168e5a2d04f87c41ea174b139fbef642eda62d10 \
+    --hash=sha256:bbe9af844f658da81a5f95019480da3a89415801f6cc966806612cc7169bffe7
     # via pandas
 tzlocal==5.3.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:cceffc7edecefea1f595541dbd6e990cb1ea3d19bf01b2809f362a03dd7921fd \

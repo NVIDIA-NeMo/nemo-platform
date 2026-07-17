@@ -4,7 +4,7 @@
 """Audit job — runs garak against a target using inline config + target.
 
 ``nemo auditor audit run --spec-file spec.yaml`` shells out to a pre-installed
-garak interpreter (default ``~/.auditor/.venv/bin/python``, overridable via
+garak interpreter (default ``/app/.garak_venv/bin/python``, overridable via
 ``NEMO_AUDITOR_GARAK_PYTHON``).
 
 The probe spec is expanded into individual per-probe YAML configs tracked
@@ -486,7 +486,11 @@ class AuditJob(NemoJob):
                     logger.error("Partial aggregation failed during SIGTERM: %s", exc)
                 sys.exit(0)
 
-            signal.signal(signal.SIGTERM, _on_sigterm)
+            try:
+                signal.signal(signal.SIGTERM, _on_sigterm)
+            except ValueError:
+                # Only supported by jobs scheduler.
+                pass
 
             if not running_dir.exists():
                 # First run: write per-probe configs and resolve target options.
