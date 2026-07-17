@@ -2355,8 +2355,8 @@ components:
           additionalProperties: true
           type: object
           title: Config
-          description: Agent config dict interpreted according to config_format.
-            Empty for external agents.
+          description: Agent config dict interpreted according to config_format. Empty
+            for external agents.
         config_format:
           type: string
           title: Config Format
@@ -2434,9 +2434,9 @@ components:
       title: Agent
       description: "An agent definition \u2014 stores agent config and metadata.\n\
         \nEntity type: ``agent``\nPrimary lookup: by ``name`` within a ``workspace``.\n\
-        \nThe agent's spec files live at the locations returned by\n:func:`agent_spec_file_ref`\
-        \ and :func:`agent_config_file_ref` \u2014 they\nare **not** stored on the\
-        \ entity because the paths are fully derivable\nfrom ``(workspace, name)``."
+        \nSpec files live at :func:`agent_spec_file_ref` / :func:`agent_config_file_ref`;\n\
+        the paths aren't stored on the entity since they derive from ``(workspace,\
+        \ name)``."
     AgentDeployment:
       properties:
         name:
@@ -2884,13 +2884,10 @@ components:
       description: 'A routable network endpoint for a deployment.
 
 
-        Mirrors ``nemo_deployments_plugin.types.Endpoint`` so container-mode
+        Mirrors ``nemo_deployments_plugin.types.Endpoint`` so the agents plugin need
+        not
 
-        deployments can carry the address the deployments-plugin ``Deployment``
-
-        projected without the agents plugin depending on that plugin at the
-
-        entity-schema layer.'
+        depend on the deployments plugin at the entity-schema layer.'
     EvaluateAgentSpec:
       properties:
         agent:
