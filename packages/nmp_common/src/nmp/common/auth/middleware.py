@@ -573,7 +573,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             - 500 Internal Server Error: For unexpected PDP errors
             - Response from downstream: If authorized
         """
-        if headers_dict is None:
+        if not headers_dict:
             headers_dict = dict(request.headers)
 
         principal, error_response = self._principal_from_headers(headers_dict)
