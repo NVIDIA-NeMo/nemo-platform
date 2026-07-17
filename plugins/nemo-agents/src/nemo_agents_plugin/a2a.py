@@ -12,6 +12,8 @@ run. See https://github.com/nvidia/nemo-agent-toolkit A2A server docs.
 
 from __future__ import annotations
 
+import json
+from collections.abc import AsyncIterator
 from typing import Any
 from urllib.parse import urljoin
 from uuid import uuid4
@@ -154,3 +156,67 @@ async def send_a2a_message(endpoint: str, text: str) -> str:
         raise A2AMessageError(f"agent error: {msg}")
 
     return extract_message_text(data.get("result") if isinstance(data, dict) else None)
+
+
+def extract_stream_delta(result: Any) -> str:
+    """Extract the text delta from a single A2A ``message/stream`` event result.
+
+    Streaming events are Messages (``parts``), artifact updates (``artifact.parts``),
+    or status updates (skipped — usually just lifecycle state). Returns "" for
+    events carrying no text.
+    """
+    if not isinstance(result, dict):
+        return ""
+    artifact = result.get("artifact")
+    if isinstance(artifact, dict):
+        return "".join(_collect_text_parts(artifact.get("parts")))
+    if result.get("kind") == "message" or "parts" in result:
+        return "".join(_collect_text_parts(result.get("parts")))
+    return ""
+
+
+async def stream_a2a_message(endpoint: str, text: str) -> AsyncIterator[str]:
+    """Stream an external A2A agent's reply via ``message/stream``, yielding text deltas.
+
+    Speaks A2A JSON-RPC over SSE. Agents that stream tokens (artifact-update
+    deltas) yield incrementally; agents that buffer (e.g. NAT react_agent) yield
+    a single final chunk. Raises :class:`A2AMessageError` on transport/JSON-RPC
+    failure before the first token; mid-stream transport drops end the iterator.
+    """
+    payload = {
+        "jsonrpc": "2.0",
+        "id": uuid4().hex,
+        "method": "message/stream",
+        "params": {
+            "message": {
+                "role": "user",
+                "parts": [{"kind": "text", "text": text}],
+                "messageId": uuid4().hex,
+                "kind": "message",
+            }
+        },
+    }
+    try:
+        async with httpx.AsyncClient(timeout=_MESSAGE_TIMEOUT_S, follow_redirects=True) as client:
+            async with client.stream("POST", endpoint, json=payload, headers={"Accept": "text/event-stream"}) as resp:
+                if resp.status_code != 200:
+                    raise A2AMessageError(f"agent returned HTTP {resp.status_code}")
+                async for line in resp.aiter_lines():
+                    line = line.strip()
+                    if not line or line.startswith(":"):  # keepalive / comment
+                        continue
+                    if not line.startswith("data:"):
+                        continue
+                    try:
+                        data = json.loads(line[len("data:") :].strip())
+                    except ValueError:
+                        continue
+                    if isinstance(data, dict) and data.get("error"):
+                        err = data["error"]
+                        msg = err.get("message") if isinstance(err, dict) else str(err)
+                        raise A2AMessageError(f"agent error: {msg}")
+                    delta = extract_stream_delta(data.get("result") if isinstance(data, dict) else None)
+                    if delta:
+                        yield delta
+    except httpx.HTTPError as exc:
+        raise A2AMessageError(f"could not reach agent at {endpoint} ({exc.__class__.__name__})") from exc

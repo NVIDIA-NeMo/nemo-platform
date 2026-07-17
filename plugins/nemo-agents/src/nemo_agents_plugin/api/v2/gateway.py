@@ -35,7 +35,7 @@ from uuid import uuid4
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-from nemo_agents_plugin.a2a import A2AMessageError, send_a2a_message
+from nemo_agents_plugin.a2a import A2AMessageError, send_a2a_message, stream_a2a_message
 from nemo_agents_plugin.api.v2._perms import GatewayPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.authz import scope
@@ -484,22 +484,39 @@ def _openai_completion(text: str, model: str) -> dict[str, Any]:
     }
 
 
-async def _openai_sse(text: str, model: str) -> AsyncIterator[bytes]:
+def _openai_chunk(completion_id: str, created: int, model: str, delta: dict[str, Any], finish: str | None) -> bytes:
+    payload = {
+        "id": completion_id,
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model,
+        "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
+    }
+    return f"data: {json.dumps(payload)}\n\n".encode()
+
+
+async def _stream_openai_from_a2a(endpoint: str, text: str, model: str) -> AsyncIterator[bytes]:
+    """Stream an external agent's A2A reply as OpenAI chat.completion.chunk SSE.
+
+    Forwards each A2A text delta as a content chunk. A mid-stream error is
+    surfaced as content (the HTTP status is already 200 once streaming starts),
+    so the user sees it in the chat rather than a silent stall.
+    """
     created = int(time.time())
     completion_id = f"chatcmpl-{uuid4().hex}"
-
-    def _chunk(delta: dict[str, Any], finish: str | None) -> bytes:
-        payload = {
-            "id": completion_id,
-            "object": "chat.completion.chunk",
-            "created": created,
-            "model": model,
-            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
-        }
-        return f"data: {json.dumps(payload)}\n\n".encode()
-
-    yield _chunk({"role": "assistant", "content": text}, None)
-    yield _chunk({}, "stop")
+    role_sent = False
+    try:
+        async for delta in stream_a2a_message(endpoint, text):
+            payload = {"content": delta} if role_sent else {"role": "assistant", "content": delta}
+            role_sent = True
+            yield _openai_chunk(completion_id, created, model, payload, None)
+        if not role_sent:
+            yield _openai_chunk(completion_id, created, model, {"role": "assistant", "content": ""}, None)
+    except A2AMessageError as exc:
+        note = f"[external agent error: {exc}]"
+        payload = {"content": f"\n{note}"} if role_sent else {"role": "assistant", "content": note}
+        yield _openai_chunk(completion_id, created, model, payload, None)
+    yield _openai_chunk(completion_id, created, model, {}, "stop")
     yield b"data: [DONE]\n\n"
 
 
@@ -541,14 +558,18 @@ async def external_agent_chat_completions(
     if not text:
         raise HTTPException(status_code=400, detail="Request has no user message to send.")
 
+    model = body.get("model") or name
+
+    # Streaming: forward A2A deltas as they arrive (message/stream), so the UI
+    # shows progress instead of freezing until the agent finishes.
+    if body.get("stream"):
+        return StreamingResponse(_stream_openai_from_a2a(a2a_endpoint, text, model), media_type="text/event-stream")
+
+    # Non-streaming: single message/send, returned as one OpenAI completion.
     try:
         reply = await send_a2a_message(a2a_endpoint, text)
     except A2AMessageError as exc:
         raise HTTPException(status_code=502, detail=f"External agent chat failed: {exc}") from exc
-
-    model = body.get("model") or name
-    if body.get("stream"):
-        return StreamingResponse(_openai_sse(reply, model), media_type="text/event-stream")
     return JSONResponse(_openai_completion(reply, model))
 
 

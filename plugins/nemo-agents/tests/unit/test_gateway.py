@@ -648,11 +648,16 @@ class TestExternalAgentChat:
         assert body["object"] == "chat.completion"
         assert body["choices"][0]["message"]["content"] == "42 degrees"
 
-    def test_stream_returns_sse(
+    def test_stream_forwards_a2a_deltas_as_sse(
         self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
-        monkeypatch.setattr(gateway_module, "send_a2a_message", AsyncMock(return_value="sunny"))
+
+        async def fake_stream(endpoint: str, text: str):
+            for delta in ["sun", "ny ", "24C"]:
+                yield delta
+
+        monkeypatch.setattr(gateway_module, "stream_a2a_message", fake_stream)
 
         resp = client.post(
             self._URL,
@@ -661,7 +666,31 @@ class TestExternalAgentChat:
 
         assert resp.status_code == 200
         assert resp.headers["content-type"].startswith("text/event-stream")
-        assert "sunny" in resp.text
+        assert '"content": "sun"' in resp.text
+        assert '"content": "24C"' in resp.text
+        assert '"finish_reason": "stop"' in resp.text
+        assert "[DONE]" in resp.text
+
+    def test_stream_mid_error_surfaced_as_content(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nemo_agents_plugin.a2a import A2AMessageError
+
+        mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+
+        async def boom(endpoint: str, text: str):
+            raise A2AMessageError("upstream gone")
+            yield  # pragma: no cover - makes this an async generator
+
+        monkeypatch.setattr(gateway_module, "stream_a2a_message", boom)
+
+        resp = client.post(
+            self._URL,
+            json={"stream": True, "messages": [{"role": "user", "content": "hi"}]},
+        )
+
+        assert resp.status_code == 200
+        assert "external agent error" in resp.text
         assert "[DONE]" in resp.text
 
     def test_forwards_latest_user_text(

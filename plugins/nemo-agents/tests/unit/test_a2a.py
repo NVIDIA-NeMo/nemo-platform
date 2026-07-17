@@ -14,8 +14,10 @@ from nemo_agents_plugin.a2a import (
     A2AMessageError,
     AgentCardError,
     extract_message_text,
+    extract_stream_delta,
     fetch_agent_card,
     send_a2a_message,
+    stream_a2a_message,
 )
 
 CARD = {"name": "Calculator Agent", "description": "does math", "skills": [{"id": "add", "name": "add"}]}
@@ -126,3 +128,44 @@ async def test_send_message_transport_error_raises() -> None:
     respx.post("http://host:10000/").mock(side_effect=httpx.ConnectError("refused"))
     with pytest.raises(A2AMessageError, match="could not reach"):
         await send_a2a_message("http://host:10000/", "hi")
+
+
+class TestExtractStreamDelta:
+    def test_message_event(self) -> None:
+        assert extract_stream_delta({"kind": "message", "parts": [{"kind": "text", "text": "hi"}]}) == "hi"
+
+    def test_artifact_update_event(self) -> None:
+        event = {"kind": "artifact-update", "artifact": {"parts": [{"kind": "text", "text": "tok"}]}}
+        assert extract_stream_delta(event) == "tok"
+
+    def test_status_update_and_empty_yield_nothing(self) -> None:
+        assert extract_stream_delta({"kind": "status-update", "status": {"state": "working"}}) == ""
+        assert extract_stream_delta(None) == ""
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_stream_message_yields_deltas() -> None:
+    sse = (
+        ": ping\n\n"
+        'data: {"jsonrpc":"2.0","id":"1","result":{"kind":"artifact-update",'
+        '"artifact":{"parts":[{"kind":"text","text":"2 + 2"}]}}}\n\n'
+        'data: {"jsonrpc":"2.0","id":"1","result":{"kind":"message",'
+        '"parts":[{"kind":"text","text":" = 4"}]}}\n\n'
+    )
+    respx.post("http://host:10000/").mock(
+        return_value=httpx.Response(200, text=sse, headers={"content-type": "text/event-stream"})
+    )
+    deltas = [d async for d in stream_a2a_message("http://host:10000/", "what is 2+2?")]
+    assert deltas == ["2 + 2", " = 4"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_stream_jsonrpc_error_raises() -> None:
+    sse = 'data: {"jsonrpc":"2.0","id":"1","error":{"code":-32000,"message":"kaboom"}}\n\n'
+    respx.post("http://host:10000/").mock(
+        return_value=httpx.Response(200, text=sse, headers={"content-type": "text/event-stream"})
+    )
+    with pytest.raises(A2AMessageError, match="kaboom"):
+        _ = [d async for d in stream_a2a_message("http://host:10000/", "hi")]
