@@ -50,7 +50,7 @@ def isolate_checked_in_insights(monkeypatch, tmp_path):
         monkeypatch.setattr(
             cli,
             "_check_in_insights",
-            lambda subject_name, _source: cli.INSIGHTS_DIR / f"{subject_name}.yaml",
+            lambda subject_name, _source, *, directory=None: (directory or cli.INSIGHTS_DIR) / f"{subject_name}.yaml",
         )
     if helpers["write_manifest"] is not None:
         monkeypatch.setattr(
@@ -278,6 +278,7 @@ def test_analyze_checks_in_insights_and_merges_existing_manifest(
         yaml.safe_dump({"snapshots": {"other": prior}}),
         encoding="utf-8",
     )
+    (checked_in / "other.yaml").write_text("prior insights\n", encoding="utf-8")
     monkeypatch.setenv("INFERENCE_API_KEY", "sk-test")
     monkeypatch.setattr(cli, "TMP", runtime)
     monkeypatch.setattr(cli, "INSIGHTS_DIR", checked_in)
@@ -298,6 +299,34 @@ def test_analyze_checks_in_insights_and_merges_existing_manifest(
     snapshots = yaml.safe_load((checked_in / "manifest.yaml").read_text(encoding="utf-8"))["snapshots"]
     assert snapshots["other"] == prior
     assert snapshots["nvq"]["state"] == "live"
+    assert (checked_in / "other.yaml").read_text(encoding="utf-8") == "prior insights\n"
+
+
+def test_check_in_single_insights_manifest_failure_leaves_directory_unchanged(
+    monkeypatch,
+    tmp_path,
+    isolate_checked_in_insights,
+):
+    checked_in = tmp_path / "insights"
+    checked_in.mkdir()
+    (checked_in / "nvq.yaml").write_text("old insights\n", encoding="utf-8")
+    (checked_in / "other.yaml").write_text("other insights\n", encoding="utf-8")
+    (checked_in / "manifest.yaml").write_text("old manifest\n", encoding="utf-8")
+    before = _checked_in_bytes(checked_in)
+    source = tmp_path / "new-insights.yaml"
+    source.write_text("insights: []\n", encoding="utf-8")
+    monkeypatch.setattr(cli, "INSIGHTS_DIR", checked_in)
+    monkeypatch.setattr(cli, "_check_in_insights", isolate_checked_in_insights["check_in"])
+
+    def fail_manifest(*_args, **_kwargs):
+        raise RuntimeError("manifest failed")
+
+    monkeypatch.setattr(cli, "_write_insights_manifest", fail_manifest)
+
+    with pytest.raises(RuntimeError, match="manifest failed"):
+        cli._check_in_single_insights("nvq", source, "live")
+
+    assert _checked_in_bytes(checked_in) == before
 
 
 def test_analyze_checks_in_insights_requires_source_output(
@@ -348,61 +377,105 @@ def test_analyze_no_check_in_leaves_checked_in_files_untouched(monkeypatch, tmp_
     assert manifest_path.read_text(encoding="utf-8") == "old manifest\n"
 
 
-def test_analyst_hash_tracks_platform_source_and_exact_lock_entries(tmp_path):
-    analyst_root = tmp_path / "analyst"
-    analyst_root.mkdir()
-    source = analyst_root / "agent.py"
-    source.write_text("VALUE = 1\n", encoding="utf-8")
-    lockfile = tmp_path / "uv.lock"
-
-    def write_lock(*, plugin_version: str = "1", ignored_version: str = "1") -> None:
-        lockfile.write_text(
-            f"""
+def _write_analyst_lock(
+    path: Path,
+    *,
+    unrelated_version: str = "1",
+    transitive_version: str = "1",
+    anthropic_version: str = "1",
+) -> None:
+    path.write_text(
+        f"""
 version = 1
 
 [[package]]
 name = "unrelated"
-version = "{ignored_version}"
+version = "{unrelated_version}"
+
+[[package]]
+name = "nemo-insights-plugin"
+version = "1"
+dependencies = [
+    {{ name = "pydantic-ai-harness" }},
+    {{ name = "pydantic-ai-slim", extra = ["anthropic"] }},
+]
+
+[[package]]
+name = "pydantic-ai-harness"
+version = "2"
+dependencies = [{{ name = "transitive" }}]
 
 [[package]]
 name = "pydantic-ai-slim"
 version = "3"
 
-[[package]]
-name = "nemo-insights-plugin"
-version = "{plugin_version}"
+[package.optional-dependencies]
+anthropic = [{{ name = "anthropic" }}]
 
 [[package]]
-name = "pydantic-ai-harness"
-version = "2"
+name = "transitive"
+version = "{transitive_version}"
+
+[[package]]
+name = "anthropic"
+version = "{anthropic_version}"
 """,
-            encoding="utf-8",
-        )
-
-    write_lock()
-    initial = cli._analyst_sha256(analyst_root, lockfile)
-    write_lock(ignored_version="changed")
-    assert cli._analyst_sha256(analyst_root, lockfile) == initial
-
-    write_lock(plugin_version="changed", ignored_version="changed")
-    dependency_changed = cli._analyst_sha256(analyst_root, lockfile)
-    assert dependency_changed != initial
-
-    source.write_text("VALUE = 2\n", encoding="utf-8")
-    assert cli._analyst_sha256(analyst_root, lockfile) != dependency_changed
-    assert cli.ANALYST_DEPENDENCIES == frozenset(
-        {
-            "nemo-insights-plugin",
-            "pydantic-ai-harness",
-            "pydantic-ai-slim",
-        }
+        encoding="utf-8",
     )
-    assert "nemo-oo" not in cli.ANALYST_DEPENDENCIES
+
+
+def test_analyst_hash_tracks_complete_plugin_source(tmp_path):
+    plugin_root = tmp_path / "nemo_insights_plugin"
+    analyst_root = plugin_root / "analyst"
+    analyst_root.mkdir(parents=True)
+    (analyst_root / "agent.py").write_text("AGENT = 1\n", encoding="utf-8")
+    entities = plugin_root / "entities.py"
+    schema = plugin_root / "schema.py"
+    entities.write_text("ENTITY = 1\n", encoding="utf-8")
+    schema.write_text("SCHEMA = 1\n", encoding="utf-8")
+    lockfile = tmp_path / "uv.lock"
+    _write_analyst_lock(lockfile)
+
+    initial = cli._analyst_sha256(plugin_root, lockfile)
+    entities.write_text("ENTITY = 2\n", encoding="utf-8")
+    assert cli._analyst_sha256(plugin_root, lockfile) != initial
+
+    entities.write_text("ENTITY = 1\n", encoding="utf-8")
+    schema.write_text("SCHEMA = 2\n", encoding="utf-8")
+    assert cli._analyst_sha256(plugin_root, lockfile) != initial
+
+
+def test_analyst_hash_tracks_resolved_dependency_closure(tmp_path):
+    plugin_root = tmp_path / "nemo_insights_plugin"
+    plugin_root.mkdir()
+    (plugin_root / "agent.py").write_text("VALUE = 1\n", encoding="utf-8")
+    lockfile = tmp_path / "uv.lock"
+    _write_analyst_lock(lockfile)
+    initial = cli._analyst_sha256(plugin_root, lockfile)
+
+    _write_analyst_lock(lockfile, unrelated_version="changed")
+    assert cli._analyst_sha256(plugin_root, lockfile) == initial
+
+    _write_analyst_lock(lockfile, unrelated_version="changed", transitive_version="changed")
+    transitive_changed = cli._analyst_sha256(plugin_root, lockfile)
+    assert transitive_changed != initial
+
+    _write_analyst_lock(
+        lockfile,
+        unrelated_version="changed",
+        transitive_version="changed",
+        anthropic_version="changed",
+    )
+    assert cli._analyst_sha256(plugin_root, lockfile) != transitive_changed
 
 
 def test_analyst_hash_defaults_to_platform_paths():
-    assert cli.ANALYST_ROOT == cli.HERE.parent / "src" / "nemo_insights_plugin" / "analyst"
+    assert cli.ANALYST_SOURCE_ROOT == cli.HERE.parent / "src" / "nemo_insights_plugin"
     assert cli.ANALYST_LOCKFILE == cli.HERE.parents[2] / "uv.lock"
+
+
+def test_analyst_hash_resolves_platform_lock():
+    assert re.fullmatch(r"[0-9a-f]{64}", cli._analyst_sha256())
 
 
 def _analyze_all_subjects():

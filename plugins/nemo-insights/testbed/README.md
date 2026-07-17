@@ -60,10 +60,9 @@ Every deviation is one explicit flag:
 Each `testbed/insights/manifest.yaml` snapshot records:
 
 - `state` — the exact subject pin or explicit/live source label.
-- `analyst_sha256` — the Platform Analyst source under
-  `plugins/nemo-insights/src/nemo_insights_plugin/analyst`, plus canonical
-  root `uv.lock` entries for exactly `nemo-insights-plugin`,
-  `pydantic-ai-harness`, and `pydantic-ai-slim`.
+- `analyst_sha256` — all Python source under
+  `plugins/nemo-insights/src/nemo_insights_plugin`, plus the canonical resolved
+  dependency closure rooted at `nemo-insights-plugin` in the root `uv.lock`.
 - `insights_sha256` — the checked-in YAML bytes after the SPDX header is added.
 
 `run` produces traces and records the run to `testbed/tmp/<subject>.run.json`;

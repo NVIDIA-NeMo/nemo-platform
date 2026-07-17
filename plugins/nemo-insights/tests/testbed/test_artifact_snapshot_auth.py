@@ -40,7 +40,7 @@ def test_snapshot_basic_auth_client_uses_named_credentials_and_normalized_prefix
 
     monkeypatch.setattr(artifact, "build_basic_auth_intake_client", fake_builder)
 
-    client = artifact._basic_auth_intake_client_for([_glamr_subject()], "https://snapshot.example")
+    client = artifact._basic_auth_intake_client_for(_glamr_subject(), "https://snapshot.example")
 
     assert client is sentinel
     assert built == {
@@ -68,7 +68,7 @@ def test_snapshot_basic_auth_client_exits_for_missing_credential(
     monkeypatch.delenv(missing_env)
 
     with pytest.raises(SystemExit, match=f"glamr.*{credential}.*{missing_env}"):
-        artifact._basic_auth_intake_client_for([_glamr_subject()], "https://snapshot.example")
+        artifact._basic_auth_intake_client_for(_glamr_subject(), "https://snapshot.example")
 
 
 def test_snapshot_non_basic_subject_does_not_build_authenticated_client(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -80,7 +80,7 @@ def test_snapshot_non_basic_subject_does_not_build_authenticated_client(monkeypa
 
     assert (
         artifact._basic_auth_intake_client_for(
-            [Subject("plain", "intake", {"workspace": "default", "base_url": "https://snapshot.example"})],
+            Subject("plain", "intake", {"workspace": "default", "base_url": "https://snapshot.example"}),
             "https://snapshot.example",
         )
         is None
@@ -93,7 +93,7 @@ def test_snapshot_setup_failure_does_not_construct_authenticated_client(
 ) -> None:
     constructed = False
 
-    def fake_client(subjects: list[Subject], source_url: str) -> object:
+    def fake_client(subject: Subject, source_url: str) -> object:
         nonlocal constructed
         constructed = True
         return object()
@@ -110,34 +110,99 @@ def test_snapshot_setup_failure_does_not_construct_authenticated_client(
     assert not constructed
 
 
-def test_snapshot_export_passes_authenticated_client(
+def test_snapshot_export_scopes_authentication_to_each_subject(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    sentinel = object()
-    seen: dict[str, object] = {}
-    monkeypatch.setattr(artifact, "_basic_auth_intake_client_for", lambda subjects, source_url: sentinel)
-    monkeypatch.setattr(artifact, "fetch_platform_info", lambda source_url: None)
+    monkeypatch.setenv("GLAMR_INTAKE_USER", "glamr-user")
+    monkeypatch.setenv("GLAMR_INTAKE_PASSWORD", "glamr-secret")
+    monkeypatch.setenv("OTHER_INTAKE_USER", "other-user")
+    monkeypatch.setenv("OTHER_INTAKE_PASSWORD", "other-secret")
+    source_url = "https://snapshot.example"
+    other = Subject(
+        "other",
+        "intake",
+        {
+            "workspace": "other-workspace",
+            "base_url": source_url,
+            "auth": "basic",
+            "intake_path_prefix": "/other/intake",
+            "auth_user_env": "OTHER_INTAKE_USER",
+            "auth_password_env": "OTHER_INTAKE_PASSWORD",
+        },
+    )
+    plain = Subject("plain", "intake", {"workspace": "plain-workspace", "base_url": source_url})
+    duplicate_workspace = Subject("duplicate", "intake", {"workspace": "plain-workspace", "base_url": source_url})
+    built: list[tuple[dict[str, object], object]] = []
+    exports: list[tuple[list[str], object | None]] = []
+    manifest_stats: dict[str, object] = {}
 
-    def fake_export(base_url: str, workspaces: list[str], out_dir: Path, *, since: object, client: object) -> dict:
-        seen.update(base_url=base_url, workspaces=workspaces, client=client)
-        for workspace in workspaces:
-            ws_dir = out_dir / "export" / workspace
-            ws_dir.mkdir(parents=True)
-            for name in ("spans.jsonl", "annotations.jsonl", "evaluator_results.jsonl"):
-                (ws_dir / name).write_text("", encoding="utf-8")
+    def fake_builder(**kwargs: object) -> object:
+        client = object()
+        built.append((kwargs, client))
+        return client
+
+    def fake_export(
+        base_url: str,
+        workspaces: list[str],
+        out_dir: Path,
+        *,
+        since: object,
+        client: object | None,
+    ) -> dict:
+        exports.append((workspaces, client))
         return {
             "workspaces": {
                 workspace: {"spans": 0, "annotations": 0, "evaluator_results": 0} for workspace in workspaces
             },
-            "min_start_time": None,
-            "max_start_time": None,
+            "min_start_time": f"2026-07-0{len(exports)}T00:00:00+00:00",
+            "max_start_time": f"2026-07-0{len(exports)}T01:00:00+00:00",
         }
 
+    def fake_manifest(
+        subjects: list[str],
+        records: list[Path],
+        stats: dict,
+        *,
+        source_url: str,
+        platform_info: dict | None,
+        env: object,
+    ) -> dict:
+        manifest_stats.update(stats)
+        return {}
+
+    monkeypatch.setattr(artifact, "build_basic_auth_intake_client", fake_builder)
     monkeypatch.setattr(artifact.export, "export_workspaces", fake_export)
-    tmp_dir = tmp_path / "tmp"
-    tmp_dir.mkdir()
+    monkeypatch.setattr(artifact, "build_export_manifest", fake_manifest)
+    monkeypatch.setattr(artifact, "fetch_platform_info", lambda base_url: None)
+    monkeypatch.setattr(artifact.subprocess, "run", lambda *args, **kwargs: None)
 
-    artifact.snapshot_export([_glamr_subject()], tmp_path / "snapshot.tar.zst", tmp_dir, since=None)
+    artifact.snapshot_export(
+        [_glamr_subject(base_url=source_url), other, plain, duplicate_workspace],
+        tmp_path / "snapshot.tar.zst",
+        tmp_path / "tmp",
+        since=None,
+    )
 
-    assert seen["client"] is sentinel
+    assert [kwargs for kwargs, _ in built] == [
+        {
+            "base_url": source_url,
+            "username": "glamr-user",
+            "password": "glamr-secret",
+            "real_prefix": "/glamr/intake/",
+        },
+        {
+            "base_url": source_url,
+            "username": "other-user",
+            "password": "other-secret",
+            "real_prefix": "/other/intake/",
+        },
+    ]
+    assert exports == [
+        (["default"], built[0][1]),
+        (["other-workspace"], built[1][1]),
+        (["plain-workspace"], None),
+    ]
+    assert set(manifest_stats["workspaces"]) == {"default", "other-workspace", "plain-workspace"}
+    assert manifest_stats["min_start_time"] == "2026-07-01T00:00:00+00:00"
+    assert manifest_stats["max_start_time"] == "2026-07-03T01:00:00+00:00"

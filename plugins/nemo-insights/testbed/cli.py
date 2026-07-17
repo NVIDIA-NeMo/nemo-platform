@@ -61,21 +61,15 @@ HERE = Path(__file__).parent
 REGISTRY_PATH = HERE / "testbeds.toml"
 TMP = HERE / "tmp"
 INSIGHTS_DIR = HERE / "insights"
-ANALYST_ROOT = HERE.parent / "src" / "nemo_insights_plugin" / "analyst"
+ANALYST_SOURCE_ROOT = HERE.parent / "src" / "nemo_insights_plugin"
 ANALYST_LOCKFILE = HERE.parents[2] / "uv.lock"
+ANALYST_LOCK_ROOT = "nemo-insights-plugin"
 ENV_PATH = HERE / ".env"
 LOCAL_URL = artifact.LOCAL_URL  # the local NeMo Platform (the default restore/analyze target)
 _REMOTE_AUTH_KEYS = ("auth", "intake_path_prefix", "auth_user_env", "auth_password_env")
 INSIGHTS_SPDX_HEADER = (
     "# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.\n"
     "# SPDX-License-Identifier: Apache-2.0\n"
-)
-ANALYST_DEPENDENCIES = frozenset(
-    {
-        "nemo-insights-plugin",
-        "pydantic-ai-harness",
-        "pydantic-ai-slim",
-    }
 )
 
 
@@ -151,11 +145,43 @@ def _check_in_insights(
     return destination
 
 
+def _resolved_lock_entries(lockfile: dict, lockfile_path: Path) -> list[str]:
+    """Return deterministic lock entries in the Analyst plugin's dependency closure."""
+    packages_by_name: dict[str, list[dict]] = {}
+    for package in lockfile.get("package", []):
+        packages_by_name.setdefault(str(package["name"]), []).append(package)
+
+    pending = [{"name": ANALYST_LOCK_ROOT}]
+    visited: set[tuple[str, tuple[str, ...]]] = set()
+    selected: set[str] = set()
+    while pending:
+        dependency = pending.pop()
+        name = str(dependency["name"])
+        extras = tuple(sorted(str(extra) for extra in dependency.get("extra", [])))
+        request = (name, extras)
+        if request in visited:
+            continue
+        visited.add(request)
+        packages = packages_by_name.get(name)
+        if not packages:
+            raise ValueError(f"{lockfile_path} is missing Analyst dependency: {name}")
+        for package in packages:
+            optional = package.get("optional-dependencies", {})
+            entry = {key: value for key, value in package.items() if key not in {"metadata", "optional-dependencies"}}
+            if extras:
+                entry["selected-optional-dependencies"] = {extra: optional.get(extra, []) for extra in extras}
+            selected.add(json.dumps(entry, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+            pending.extend(package.get("dependencies", []))
+            for extra in extras:
+                pending.extend(optional.get(extra, []))
+    return sorted(selected)
+
+
 def _analyst_sha256(
-    root: Path = ANALYST_ROOT,
+    root: Path = ANALYST_SOURCE_ROOT,
     lockfile_path: Path = ANALYST_LOCKFILE,
 ) -> str:
-    """Fingerprint Platform Analyst source and its resolved direct dependencies."""
+    """Fingerprint Insights plugin source and the resolved Analyst dependency closure."""
     digest = hashlib.sha256()
     for path in sorted(root.rglob("*.py")):
         digest.update(path.relative_to(root).as_posix().encode())
@@ -164,16 +190,7 @@ def _analyst_sha256(
         digest.update(b"\0")
 
     lockfile = tomllib.loads(lockfile_path.read_text(encoding="utf-8"))
-    packages = {
-        str(package["name"]): package
-        for package in lockfile.get("package", [])
-        if package.get("name") in ANALYST_DEPENDENCIES
-    }
-    missing = sorted(ANALYST_DEPENDENCIES - packages.keys())
-    if missing:
-        raise ValueError(f"{lockfile_path} is missing Analyst dependencies: {', '.join(missing)}")
-    for name in sorted(ANALYST_DEPENDENCIES):
-        canonical = json.dumps(packages[name], sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    for canonical in _resolved_lock_entries(lockfile, lockfile_path):
         digest.update(b"dependency\0")
         digest.update(canonical.encode())
         digest.update(b"\0")
@@ -247,6 +264,27 @@ def _swap_insights_directory(staged: Path) -> None:
             shutil.rmtree(backup)
         except OSError as exc:
             print(f"warning: promoted checked-in Insights but could not remove backup {backup}: {exc}")
+
+
+def _check_in_single_insights(subject_name: str, source: Path, state: str) -> tuple[Path, Path]:
+    """Transactionally update one Insight and its manifest entry."""
+    INSIGHTS_DIR.parent.mkdir(parents=True, exist_ok=True)
+    staged = Path(
+        tempfile.mkdtemp(
+            prefix=f".{INSIGHTS_DIR.name}.staging-",
+            dir=INSIGHTS_DIR.parent,
+        )
+    )
+    try:
+        if INSIGHTS_DIR.is_dir():
+            shutil.copytree(INSIGHTS_DIR, staged, dirs_exist_ok=True)
+        _check_in_insights(subject_name, source, directory=staged)
+        _write_insights_manifest({subject_name: state}, merge=True, directory=staged)
+        _swap_insights_directory(staged)
+    finally:
+        if staged.exists():
+            shutil.rmtree(staged)
+    return INSIGHTS_DIR / f"{subject_name}.yaml", INSIGHTS_DIR / "manifest.yaml"
 
 
 def _analyze_all(args: argparse.Namespace, subjects: dict[str, Subject]) -> None:
@@ -1112,9 +1150,9 @@ def main() -> None:
     print(report)
     print(f"\n✓ Insights written to {out}")
     if not args.no_check_in:
-        checked_in = _check_in_insights(args.name, out)
+        checked_in, manifest_path = _check_in_single_insights(args.name, out, label)
         print(f"✓ Checked in to {checked_in}")
-        print(f"✓ Recorded provenance in {_write_insights_manifest({args.name: label}, merge=True)}")
+        print(f"✓ Recorded provenance in {manifest_path}")
     if args.summary_md:
         with Path(args.summary_md).open("a", encoding="utf-8") as fh:
             fh.write(render_summary_md(out, args.name))
