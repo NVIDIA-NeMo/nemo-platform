@@ -693,9 +693,23 @@ class TestExternalAgentChat:
         assert "external agent error" in resp.text
         assert "[DONE]" in resp.text
 
-    def test_forwards_latest_user_text(
+    def test_single_turn_forwards_verbatim(
         self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+        send = AsyncMock(return_value="ok")
+        monkeypatch.setattr(gateway_module, "send_a2a_message", send)
+
+        client.post(self._URL, json={"messages": [{"role": "user", "content": "just this"}]})
+
+        assert send.await_args is not None
+        assert send.await_args.args[1] == "just this"
+
+    def test_multi_turn_folds_history_into_transcript(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # NAT's A2A executor is message-only, so prior turns are folded into the
+        # message rather than threaded via contextId.
         mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
         send = AsyncMock(return_value="ok")
         monkeypatch.setattr(gateway_module, "send_a2a_message", send)
@@ -711,9 +725,11 @@ class TestExternalAgentChat:
             },
         )
 
-        send.assert_awaited_once()
         assert send.await_args is not None
-        assert send.await_args.args[1] == "second"
+        sent = send.await_args.args[1]
+        assert "User: first" in sent
+        assert "Assistant: reply" in sent
+        assert "User: second" in sent
 
     def test_managed_agent_returns_400(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))

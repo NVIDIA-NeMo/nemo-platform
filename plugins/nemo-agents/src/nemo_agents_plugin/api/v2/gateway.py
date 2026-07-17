@@ -451,28 +451,43 @@ async def _proxy(
 # client asked to stream). Managed agents keep using the deployment proxy above.
 
 
-def _latest_user_text(messages: Any) -> str:
-    """Return the text of the last user message in an OpenAI messages array.
+def _message_text(message: Any) -> str:
+    """Extract text from one OpenAI message (``content`` may be str or parts)."""
+    if not isinstance(message, dict):
+        return ""
+    content = message.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(part["text"] for part in content if isinstance(part, dict) and isinstance(part.get("text"), str))
+    return ""
 
-    ``content`` may be a plain string or an array of content parts; join text parts.
+
+def _conversation_prompt(messages: Any) -> str:
+    """Build a single A2A message that carries the conversation so far.
+
+    NAT's A2A executor is message-only (no server-side ``contextId`` memory), so
+    multi-turn context can't be threaded via the protocol — the client (OpenAI
+    chat) sends the full history each turn, and we fold prior user/assistant
+    turns into a transcript ahead of the latest user message. A single turn is
+    sent verbatim so simple agents aren't handed a transcript wrapper.
     """
     if not isinstance(messages, list):
         return ""
-    for message in reversed(messages):
-        if not isinstance(message, dict) or message.get("role") != "user":
-            continue
-        content = message.get("content")
-        if isinstance(content, str):
-            return content
-        if isinstance(content, list):
-            parts: list[str] = []
-            for part in content:
-                if isinstance(part, dict):
-                    text = part.get("text")
-                    if isinstance(text, str):
-                        parts.append(text)
-            return "".join(parts)
-    return ""
+    turns = [
+        (m.get("role"), _message_text(m))
+        for m in messages
+        if isinstance(m, dict) and m.get("role") in ("user", "assistant")
+    ]
+    turns = [(role, text) for role, text in turns if text]
+    if not turns:
+        return ""
+    if len(turns) == 1:
+        return turns[0][1]
+
+    *prior, (_, latest) = turns
+    transcript = "\n".join(f"{'User' if role == 'user' else 'Assistant'}: {text}" for role, text in prior)
+    return f"Continue this conversation.\n\n{transcript}\n\nUser: {latest}"
 
 
 def _openai_completion(text: str, model: str) -> dict[str, Any]:
@@ -603,7 +618,7 @@ async def _read_json_object(request: Request) -> dict[str, Any]:
 
 async def _external_openai_chat(name: str, endpoint: str, body: dict[str, Any]) -> StreamingResponse | JSONResponse:
     """Translate an OpenAI chat/completions body to A2A and return OpenAI shape."""
-    text = _latest_user_text(body.get("messages"))
+    text = _conversation_prompt(body.get("messages"))
     if not text:
         raise HTTPException(status_code=400, detail="Request has no user message to send.")
 
