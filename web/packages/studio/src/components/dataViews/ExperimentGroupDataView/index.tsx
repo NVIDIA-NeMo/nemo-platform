@@ -19,6 +19,7 @@ import type {
   ExperimentGroupResponse,
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
+import { ChangesetBadge } from '@studio/components/ChangesetBadge';
 import { Empty } from '@studio/components/dataViews/ExperimentGroupDataView/Empty';
 import { MeanValueTooltipCell } from '@studio/components/dataViews/ExperimentGroupDataView/MeanValueTooltipCell';
 import {
@@ -27,7 +28,10 @@ import {
   useExperimentGroupEvaluations,
 } from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupEvaluations';
 import { useSortErrorRecovery } from '@studio/components/dataViews/ExperimentGroupDataView/useSortErrorRecovery';
-import { deriveEvaluatorNames } from '@studio/components/dataViews/ExperimentGroupDataView/util';
+import {
+  deriveEvaluatorNames,
+  formatEvaluatorScore,
+} from '@studio/components/dataViews/ExperimentGroupDataView/util';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getEvaluationDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
@@ -125,16 +129,6 @@ interface ExperimentGroupDataViewProps {
    * render — the sorting state is initialized once and not reactive. */
   group: ExperimentGroupResponse;
 }
-
-/**
- * Formats an evaluator's mean score for display. Scores in the normalized 0–1 range read
- * best as percentages; values outside that range are on a different scale (e.g. a 1–5 or
- * 1–10 rubric), so they're shown as a raw number rather than a misleading percentage.
- */
-const formatEvaluatorScore = (mean: number | null | undefined): string => {
-  if (mean == null || !Number.isFinite(mean)) return '-';
-  return mean >= 0 && mean <= 1 ? `${(mean * 100).toFixed(1)}%` : mean.toFixed(3);
-};
 
 /** Lists the experiments that belong to a single experiment group. */
 export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ group }) => {
@@ -293,6 +287,16 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
           );
         },
       }),
+      accessor('source_link', {
+        header: 'Source',
+        enableSorting: false,
+        size: 140,
+        cell: ({ row }) => {
+          const { source_link } = row.original;
+          if (!source_link) return <Text>-</Text>;
+          return <ChangesetBadge href={source_link} />;
+        },
+      }),
       accessor((original) => original.agent_names?.join(', '), {
         id: 'agent_names',
         header: 'Agent Names',
@@ -378,7 +382,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
                 runCount={row.original.run_count}
                 countsMissingAsZero
               >
-                {formatEvaluatorScore(score?.mean)}
+                {formatEvaluatorScore(score?.mean, '-')}
               </MeanValueTooltipCell>
             );
           },

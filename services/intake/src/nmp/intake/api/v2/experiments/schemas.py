@@ -253,6 +253,10 @@ class ExperimentGroupFilter(Filter):
     """Filter for listing ExperimentGroups."""
 
     name: str | None = Field(default=None, description="Filter groups by name.")
+    insight_id: str | None = Field(
+        default=None,
+        description="Filter groups by the id of the insight that seeded them.",
+    )
     is_deleted: bool | None = Field(
         default=None,
         description="When true, returns only soft-deleted groups. Omit (or false) to see only live groups.",

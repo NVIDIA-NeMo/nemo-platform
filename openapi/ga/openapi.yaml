@@ -4055,8 +4055,9 @@ paths:
         explode: true
         schema:
           $ref: '#/components/schemas/ExperimentGroupFilter'
-        description: 'Filter experiment groups by name, or by a metadata key/value:
-          filter[metadata.<key>]=<value>.'
+        description: Filter experiment groups by name, insight_id, is_deleted, or
+          a metadata key/value (filter[metadata.<key>]=<value>). Pass is_deleted=true
+          to return only soft-deleted groups; omit to see only live ones.
       responses:
         '200':
           description: Successful Response
@@ -11120,6 +11121,10 @@ components:
         name:
           description: Filter groups by name.
           title: Name
+          type: string
+        insight_id:
+          description: Filter groups by the id of the insight that seeded them.
+          title: Insight Id
           type: string
         is_deleted:
           description: When true, returns only soft-deleted groups. Omit (or false)

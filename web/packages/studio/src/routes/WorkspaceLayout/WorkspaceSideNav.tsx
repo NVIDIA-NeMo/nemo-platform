@@ -19,6 +19,7 @@ import {
   INTAKE_ENABLED,
   JOBS_ENABLED,
   MODEL_COMPARE_ENABLED,
+  OPTIMIZER_ENABLED,
   SAFE_SYNTHESIZER_ENABLED,
   SETTINGS_ENABLED,
 } from '@studio/constants/environment';
@@ -31,6 +32,7 @@ import {
   getAgentOptimizationsRoute,
   getDataDesignerJobListRoute,
   getModelCompareRoute,
+  getOptimizerRoute,
   getEvaluationResultsRoute,
   getExperimentRoute,
   getGuardrailsRoute,
@@ -62,6 +64,7 @@ import {
   Lightbulb,
   Activity,
   FlaskConical,
+  Gauge,
   Waypoints,
 } from 'lucide-react';
 import { useMemo } from 'react';
@@ -187,6 +190,16 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
         ]
       : [];
 
+    const optimizerNav = OPTIMIZER_ENABLED
+      ? [
+          {
+            id: 'optimizer',
+            slotIcon: <Gauge className={iconColorClass} />,
+            slotLabel: 'Insights',
+            href: getOptimizerRoute(workspace),
+          },
+        ]
+      : [];
     const virtualModelsNav = [
       {
         id: 'virtual-models',
@@ -237,11 +250,11 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
     return [
       ...dashboardNav,
       ...modelCompareNav,
-      ...(agentsNav.length > 0
+      ...(agentsNav.length > 0 || optimizerNav.length > 0
         ? [
             {
               group: 'Agents',
-              items: agentsNav,
+              items: [...agentsNav, ...optimizerNav],
             },
           ]
         : []),

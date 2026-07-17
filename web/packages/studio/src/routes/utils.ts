@@ -21,6 +21,7 @@ import {
   JOBS_ENABLED,
   MEMBERS_ENABLED,
   MODEL_COMPARE_ENABLED,
+  OPTIMIZER_ENABLED,
   SAFE_SYNTHESIZER_ENABLED,
   SECRETS_ENABLED,
   SETTINGS_ENABLED,
@@ -97,6 +98,9 @@ export const gateDeploymentsRoutes = (routes: RouteObject | RouteObject[]) =>
 
 export const gateModelCompareRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(MODEL_COMPARE_ENABLED, routes);
+
+export const gateOptimizerRoutes = (routes: RouteObject | RouteObject[]) =>
+  gateRoutes(OPTIMIZER_ENABLED, routes);
 
 type WorkspacePathParams = {
   workspace: string;
@@ -365,6 +369,14 @@ export const getSecretsRoute = (workspace: string) => {
 
 export const getGuardrailsRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.guardrails, { workspace });
+};
+
+export const getOptimizerRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.optimizer, { workspace });
+};
+
+export const getOptimizerInsightRoute = (workspace: string, insightId: string) => {
+  return generatePath(ROUTES.workspace.optimizerInsight, { workspace, insightId });
 };
 
 export const getGuardrailDetailRoute = (workspace: string, guardrailConfigName: string) => {

@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useGetEvaluation } from '@nemo/sdk/generated/platform/api';
-import { Badge, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
+import { useGetEvaluation, useGetExperimentGroup } from '@nemo/sdk/generated/platform/api';
+import { Badge, Card, Flex, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { EvaluationSessionsDataView } from '@studio/components/dataViews/EvaluationSessionsDataView';
+import { OriginatingInsightLink } from '@studio/components/OriginatingInsightLink';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -19,7 +20,13 @@ export const EvaluationDetailRoute: FC = () => {
     ROUTE_PARAMS.experimentGroupName,
     ROUTE_PARAMS.evaluationName,
   ]);
-  const { data: experiment } = useGetEvaluation(workspace, evaluationName);
+  const { data: evaluation } = useGetEvaluation(workspace, evaluationName);
+  // Evaluations reach their originating insight through the owning group's insight_id.
+  const { data: experimentGroup } = useGetExperimentGroup(workspace, experimentGroupName);
+  const insightId = experimentGroup?.insight_id;
+  // Show the originating-insight card (artwork + description) instead of the header description when
+  // this evaluation's group was seeded from an insight; otherwise fall back to the header description.
+  const showInsightCard = Boolean(insightId && evaluation?.description);
 
   useBreadcrumbs({
     items: [
@@ -38,15 +45,26 @@ export const EvaluationDetailRoute: FC = () => {
         <PageHeader
           className="p-0"
           slotHeading={evaluationName}
-          slotDescription={experiment?.description || undefined}
+          slotDescription={showInsightCard ? undefined : evaluation?.description || undefined}
         />
         <EvaluationDetailMetrics evaluationName={evaluationName} />
+        {showInsightCard ? (
+          <Card className="!h-fit">
+            <Flex className="items-start gap-density-md">
+              {insightId ? <OriginatingInsightLink insightId={insightId} /> : null}
+              <Stack className="min-w-0 flex-1 gap-density-md">
+                <Text kind="label/bold/lg">Insight description</Text>
+                <Text kind="body/regular/md">{evaluation?.description}</Text>
+              </Stack>
+            </Flex>
+          </Card>
+        ) : null}
         <div className="flex flex-col gap-4 border-t border-base pt-4">
           <div className="flex items-center gap-3">
             <Text kind="title/sm">Test cases</Text>
-            {experiment?.run_count !== undefined && (
+            {evaluation?.run_count !== undefined && (
               <Badge color="gray" kind="solid" className="text-sm">
-                {experiment.run_count}
+                {evaluation.run_count}
               </Badge>
             )}
           </div>

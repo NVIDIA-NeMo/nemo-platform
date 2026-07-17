@@ -38,6 +38,7 @@ export const ROUTE_PARAMS = {
   /** Benchmark entity name segment under evaluation/benchmarks/:name */
   benchmarkName: 'benchmarkName',
   experimentGroupName: 'experimentGroupName',
+  insightId: 'insightId',
   evaluationName: 'evaluationName',
   guardrailConfigName: 'guardrailConfigName',
 } as const;
@@ -110,6 +111,8 @@ export const ROUTES = {
     dataDesignerJobNewLegacy: `/workspaces/:${P.workspace}/data-designer/new/legacy`,
     secrets: `/workspaces/:${P.workspace}/secrets`,
     guardrails: `/workspaces/:${P.workspace}/guardrails`,
+    optimizer: `/workspaces/:${P.workspace}/optimizer`,
+    optimizerInsight: `/workspaces/:${P.workspace}/optimizer/:${P.insightId}`,
     guardrailDetail: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}`,
     settings: `/workspaces/:${P.workspace}/settings`,
     /** Workspace members and role-based access (Entities role bindings) */
