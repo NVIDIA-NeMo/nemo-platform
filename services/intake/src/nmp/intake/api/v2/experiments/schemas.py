@@ -10,7 +10,7 @@ Response models are standalone: they translate from the stored entity via
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Any, Self
+from typing import Annotated, Self
 
 from nmp.common.entities.values import DatetimeFilter, Filter, NumberFilter, map_entity_field
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup
@@ -57,16 +57,19 @@ class EvaluationRequest(BaseModel):
 
     name: str = Field(description="Producer-supplied, workspace-unique evaluation id.")
     experiment_ids: list[str] = Field(
-        min_length=1,
+        default_factory=list,
         description=(
-            "Entity ids of the ExperimentGroups this Evaluation belongs to (>=1). Each group must "
-            "already exist. An Evaluation always belongs to at least one group."
+            "Entity ids of the ExperimentGroups this Evaluation belongs to (>=1). Preferred; each group "
+            "must already exist. When omitted, the deprecated experiment_group_id is used instead."
         ),
     )
     experiment_group_id: str | None = Field(
         default=None,
         deprecated=True,
-        description="Deprecated single-group alias; provide experiment_ids instead.",
+        description=(
+            "Deprecated single-group field; provide experiment_ids instead. Coalesced into experiment_ids "
+            "when experiment_ids is omitted."
+        ),
     )
     dataset_name: str = Field(description="Producer-supplied dataset name.")
     dataset_version: str | None = Field(default=None, description="Producer-supplied dataset version.")
@@ -88,17 +91,22 @@ class EvaluationRequest(BaseModel):
         description="Human- or agent-authored explanation of the evaluation's outcome (e.g. why it was killed).",
     )
 
-    @model_validator(mode="before")
-    @classmethod
-    def _coalesce_group_membership(cls, data: Any) -> Any:
-        """Coalesce the deprecated single ``experiment_group_id`` into ``experiment_ids`` (>=1).
+    @model_validator(mode="after")
+    def _resolve_group_membership(self) -> Self:
+        """Require >=1 group. Coalesce the deprecated ``experiment_group_id`` into ``experiment_ids``
+        when the latter is omitted; reject a request that supplies neither.
 
-        A legacy client sending only ``experiment_group_id`` still validates; ``experiment_ids`` wins
-        when both are given.
+        Read the deprecated value via ``__dict__`` to avoid tripping its deprecation warning per request.
         """
-        if isinstance(data, dict) and not data.get("experiment_ids") and data.get("experiment_group_id"):
-            return {**data, "experiment_ids": [data["experiment_group_id"]]}
-        return data
+        if not self.experiment_ids:
+            group_id = self.__dict__.get("experiment_group_id")
+            if group_id:
+                self.experiment_ids = [group_id]
+        if not self.experiment_ids:
+            raise ValueError(
+                "An evaluation must belong to at least one group: provide experiment_ids or experiment_group_id."
+            )
+        return self
 
     @model_validator(mode="after")
     def _coalesce_deprecated_parent(self) -> Self:
