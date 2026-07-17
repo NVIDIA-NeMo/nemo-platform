@@ -11,6 +11,7 @@ import httpx
 import pytest
 import respx
 from nemo_agents_plugin.a2a import (
+    _ALLOW_PRIVATE_HOSTS_ENV,
     A2AMessageError,
     AgentCardError,
     extract_message_text,
@@ -22,6 +23,12 @@ from nemo_agents_plugin.a2a import (
 )
 
 CARD = {"name": "Calculator Agent", "description": "does math", "skills": [{"id": "add", "name": "add"}]}
+
+
+@pytest.fixture(autouse=True)
+def _allow_private_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bypass the SSRF egress guard so behavioral tests can use mock hosts."""
+    monkeypatch.setenv(_ALLOW_PRIVATE_HOSTS_ENV, "1")
 
 
 @pytest.mark.asyncio
@@ -225,3 +232,47 @@ async def test_stream_caps_newlineless_body(monkeypatch: pytest.MonkeyPatch) -> 
     )
     with pytest.raises(A2AMessageError, match="size limit"):
         _ = [d async for d in stream_a2a_message("http://host:10000/", "hi")]
+
+
+def _resolve_to(ip: str):
+    def _fake(host, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        return [(2, 1, 6, "", (ip, 0))]
+
+    return _fake
+
+
+class TestSsrfGuard:
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_fetch_blocks_private_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv(_ALLOW_PRIVATE_HOSTS_ENV, raising=False)
+        monkeypatch.setattr("socket.getaddrinfo", _resolve_to("169.254.169.254"))
+        route = respx.get("http://evil/.well-known/agent-card.json").mock(return_value=httpx.Response(200, json=CARD))
+        with pytest.raises(AgentCardError):
+            await fetch_agent_card("http://evil")
+        assert not route.called
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_send_blocks_loopback(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv(_ALLOW_PRIVATE_HOSTS_ENV, raising=False)
+        monkeypatch.setattr("socket.getaddrinfo", _resolve_to("127.0.0.1"))
+        route = respx.post("http://evil/").mock(return_value=httpx.Response(200, json={"result": {}}))
+        with pytest.raises(A2AMessageError):
+            await send_a2a_message("http://evil/", "hi")
+        assert not route.called
+
+    @pytest.mark.asyncio
+    async def test_probe_blocks_private_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv(_ALLOW_PRIVATE_HOSTS_ENV, raising=False)
+        monkeypatch.setattr("socket.getaddrinfo", _resolve_to("10.0.0.5"))
+        assert await probe_agent_reachable("http://evil") is False
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_public_host_allowed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv(_ALLOW_PRIVATE_HOSTS_ENV, raising=False)
+        monkeypatch.setattr("socket.getaddrinfo", _resolve_to("93.184.216.34"))
+        respx.get("http://public/.well-known/agent-card.json").mock(return_value=httpx.Response(200, json=CARD))
+        card = await fetch_agent_card("http://public")
+        assert card["name"] == "Calculator Agent"

@@ -18,6 +18,7 @@ from nemo_agents_plugin.api.v2._perms import AgentPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.authz import scope
 from nemo_agents_plugin.entities import Agent, AgentDeployment, is_external_agent
+from nemo_agents_plugin.log_utils import scrub
 from nemo_agents_plugin.schema import (
     AgentFilter,
     AgentPage,
@@ -87,7 +88,7 @@ async def create_agent(
             detail=f"Agent '{body.name}' already exists in workspace '{workspace}'.",
         ) from exc
     except Exception as exc:
-        logger.exception("Failed to create agent '%s'", body.name)
+        logger.exception("Failed to create agent '%s'", scrub(body.name))
         raise HTTPException(status_code=500, detail="Failed to create agent.") from exc
     return saved
 
@@ -129,7 +130,7 @@ async def refresh_external_agent(
     try:
         saved = await entity_client.update(agent)
     except Exception as exc:
-        logger.exception("Failed to refresh external agent '%s'", name)
+        logger.exception("Failed to refresh external agent '%s'", scrub(name))
         raise HTTPException(status_code=500, detail="Failed to refresh external agent.") from exc
     return saved
 
@@ -176,7 +177,7 @@ async def list_agents(
             filter_obj=filter_dict or None,
         )
     except Exception as exc:
-        logger.exception("Failed to list agents in workspace '%s'", workspace)
+        logger.exception("Failed to list agents in workspace '%s'", scrub(workspace))
         raise HTTPException(status_code=500, detail="Failed to list agents.") from exc
 
     pagination = PaginationData.model_validate(result.pagination.model_dump()) if result.pagination else None
@@ -208,7 +209,7 @@ async def get_agent(
             detail=f"Agent '{name}' not found in workspace '{workspace}'.",
         ) from exc
     except Exception as exc:
-        logger.exception("Failed to get agent '%s'", name)
+        logger.exception("Failed to get agent '%s'", scrub(name))
         raise HTTPException(status_code=500, detail="Failed to get agent.") from exc
     return agent
 
@@ -234,7 +235,7 @@ async def delete_agent(
     try:
         result = await entity_client.list(AgentDeployment, workspace=workspace)
     except Exception as exc:
-        logger.exception("Failed to list deployments before deleting agent '%s'", name)
+        logger.exception("Failed to list deployments before deleting agent '%s'", scrub(name))
         raise HTTPException(status_code=500, detail="Failed to check deployments.") from exc
 
     blocking = [d for d in result.data if d.agent == name and d.status in _BLOCKING_STATUSES]
@@ -256,5 +257,5 @@ async def delete_agent(
             detail=f"Agent '{name}' not found in workspace '{workspace}'.",
         ) from exc
     except Exception as exc:
-        logger.exception("Failed to delete agent '%s'", name)
+        logger.exception("Failed to delete agent '%s'", scrub(name))
         raise HTTPException(status_code=500, detail="Failed to delete agent.") from exc

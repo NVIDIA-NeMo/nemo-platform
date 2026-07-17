@@ -32,6 +32,7 @@ from nemo_agents_plugin.entities import (
     is_container_deployment_mode,
     is_external_agent,
 )
+from nemo_agents_plugin.log_utils import scrub
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 
@@ -98,7 +99,7 @@ async def _serve_agent_proxy(
     except NemoEntityNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found in workspace '{workspace}'.") from exc
     except Exception as exc:
-        logger.exception("Failed to look up agent '%s'", name)
+        logger.exception("Failed to look up agent '%s'", scrub(name))
         raise HTTPException(status_code=500, detail="Failed to look up agent.") from exc
 
     if is_external_agent(agent):
@@ -173,7 +174,7 @@ async def _serve_deployment_proxy(
             status_code=404, detail=f"Deployment '{name}' not found in workspace '{workspace}'."
         ) from exc
     except Exception as exc:
-        logger.exception("Failed to look up deployment '%s'", name)
+        logger.exception("Failed to look up deployment '%s'", scrub(name))
         raise HTTPException(status_code=500, detail="Failed to look up deployment.") from exc
 
     if not _is_deployment_routable(dep):
@@ -246,7 +247,7 @@ async def _resolve_agent_endpoint(name: str, workspace: str, entity_client: Nemo
     try:
         result = await entity_client.list(AgentDeployment, workspace=workspace)
     except Exception as exc:
-        logger.exception("Failed to list deployments for agent '%s'", name)
+        logger.exception("Failed to list deployments for agent '%s'", scrub(name))
         raise HTTPException(status_code=500, detail="Failed to list deployments.") from exc
 
     running = [d for d in result.data if d.agent == name and _is_deployment_routable(d)]
@@ -481,7 +482,10 @@ async def _stream_openai_from_a2a(
             yield _openai_chunk(completion_id, created, model, payload, None)
     except A2AMessageError as exc:
         logger.warning(
-            "External agent '%s' chat stream failed mid-stream (%s): %s", name, _endpoint_host(endpoint), exc
+            "External agent '%s' chat stream failed mid-stream (%s): %s",
+            scrub(name),
+            _endpoint_host(endpoint),
+            scrub(exc),
         )
         note = f"[external agent error: {exc}]"
         payload = {"content": f"\n{note}"} if role_sent else {"role": "assistant", "content": note}
@@ -517,7 +521,7 @@ async def external_agent_chat_completions(
     except NemoEntityNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found in workspace '{workspace}'.") from exc
     except Exception as exc:
-        logger.exception("Failed to look up agent '%s'", name)
+        logger.exception("Failed to look up agent '%s'", scrub(name))
         raise HTTPException(status_code=500, detail="Failed to look up agent.") from exc
 
     if not is_external_agent(agent):
@@ -580,7 +584,9 @@ async def _external_openai_chat(
         except StopAsyncIteration:
             first, has_first = "", False
         except A2AMessageError as exc:
-            logger.warning("External agent '%s' chat stream failed (%s): %s", name, _endpoint_host(endpoint), exc)
+            logger.warning(
+                "External agent '%s' chat stream failed (%s): %s", scrub(name), _endpoint_host(endpoint), scrub(exc)
+            )
             raise HTTPException(status_code=502, detail=f"External agent chat failed: {exc}") from exc
         return StreamingResponse(
             _stream_openai_from_a2a(agen, first, has_first, model, name, endpoint),
@@ -591,7 +597,7 @@ async def _external_openai_chat(
     try:
         reply = await send_a2a_message(endpoint, text)
     except A2AMessageError as exc:
-        logger.warning("External agent '%s' chat failed (%s): %s", name, _endpoint_host(endpoint), exc)
+        logger.warning("External agent '%s' chat failed (%s): %s", scrub(name), _endpoint_host(endpoint), scrub(exc))
         raise HTTPException(status_code=502, detail=f"External agent chat failed: {exc}") from exc
     if wants_stream:
         return StreamingResponse(_single_chunk_sse(reply, model), media_type="text/event-stream")
@@ -611,7 +617,9 @@ async def _serve_external_generate_full(name: str, endpoint: str, request: Reque
     try:
         reply = await send_a2a_message(endpoint, question)
     except A2AMessageError as exc:
-        logger.warning("External agent '%s' generate failed (%s): %s", name, _endpoint_host(endpoint), exc)
+        logger.warning(
+            "External agent '%s' generate failed (%s): %s", scrub(name), _endpoint_host(endpoint), scrub(exc)
+        )
         raise HTTPException(status_code=502, detail=f"External agent generate failed: {exc}") from exc
     return StreamingResponse(_generate_full_stream(reply), media_type="text/event-stream")
 

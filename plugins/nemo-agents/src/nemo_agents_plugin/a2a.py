@@ -12,17 +12,28 @@ run. See https://github.com/nvidia/nemo-agent-toolkit A2A server docs.
 
 from __future__ import annotations
 
+import asyncio
 import codecs
+import ipaddress
 import json
 import logging
+import os
+import socket
 from collections.abc import AsyncIterator
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 from uuid import uuid4
 
 import httpx
+from nemo_agents_plugin.log_utils import scrub
 
 logger = logging.getLogger(__name__)
+
+# External-agent URLs are user-supplied, so the backend fetching them is an SSRF sink.
+# By default reject any host that resolves to a private/loopback/link-local/reserved
+# address (e.g. cloud metadata at 169.254.169.254); set this env var to allow them,
+# which is needed for local dev where agents run on localhost.
+_ALLOW_PRIVATE_HOSTS_ENV = "NEMO_AGENTS_ALLOW_PRIVATE_AGENT_HOSTS"
 
 # Well-known paths that expose an A2A agent card. The spec moved from
 # ``agent.json`` to ``agent-card.json``; try the current name first.
@@ -50,6 +61,38 @@ class AgentCardError(Exception):
 
 class A2AMessageError(Exception):
     """Raised when a ``message/send`` call to an external agent fails."""
+
+
+class AgentHostNotAllowed(A2AMessageError):
+    """Raised when an agent URL resolves to a disallowed (e.g. private/loopback) address."""
+
+
+def _address_disallowed(ip_text: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(ip_text)
+    except ValueError:
+        return True
+    return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified
+
+
+async def _ensure_host_allowed(url: str) -> None:
+    """Reject *url* whose host resolves to a private/loopback/link-local address.
+
+    The SSRF guard for external-agent URLs. Bypassed by ``_ALLOW_PRIVATE_HOSTS_ENV``
+    for local dev. Never surfaces the resolved address to the caller.
+    """
+    if os.environ.get(_ALLOW_PRIVATE_HOSTS_ENV):
+        return
+    host = urlparse(url).hostname
+    if not host:
+        raise AgentHostNotAllowed("agent endpoint has no host")
+    try:
+        infos = await asyncio.to_thread(socket.getaddrinfo, host, None, type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise AgentHostNotAllowed(f"could not resolve agent host ({exc.__class__.__name__})") from exc
+    if any(_address_disallowed(str(info[4][0])) for info in infos):
+        logger.warning("Blocked external-agent host %s: resolves to a disallowed address", _endpoint_host(url))
+        raise AgentHostNotAllowed("agent host resolves to a disallowed address")
 
 
 async def _read_capped(response: httpx.Response, cap: int) -> bytes:
@@ -80,6 +123,10 @@ async def fetch_agent_card(base_url: str) -> dict[str, Any]:
     base = base_url.strip()
     if not base.startswith(("http://", "https://")):
         raise AgentCardError("Endpoint must be an http(s) URL.")
+    try:
+        await _ensure_host_allowed(base)
+    except AgentHostNotAllowed as exc:
+        raise AgentCardError("Could not fetch a valid A2A agent card from the provided URL.") from exc
 
     # Log the specific reason but never surface it: distinct errors would give the
     # caller an SSRF oracle for probing internal hosts/ports.
@@ -110,14 +157,12 @@ async def fetch_agent_card(base_url: str) -> dict[str, Any]:
                 continue
             return card
 
-    logger.info("Agent card fetch failed for %s: %s", _endpoint_host(base), last_error)
+    logger.info("Agent card fetch failed for %s: %s", _endpoint_host(base), scrub(last_error))
     raise AgentCardError("Could not fetch a valid A2A agent card from the provided URL.")
 
 
 def _endpoint_host(url: str) -> str:
     """Host of *url* for logging — avoid echoing the full URL back anywhere."""
-    from urllib.parse import urlparse
-
     try:
         return urlparse(url).hostname or "unknown"
     except ValueError:
@@ -132,6 +177,10 @@ async def probe_agent_reachable(base_url: str) -> bool:
     """
     base = base_url.strip()
     if not base.startswith(("http://", "https://")):
+        return False
+    try:
+        await _ensure_host_allowed(base)
+    except AgentHostNotAllowed:
         return False
     try:
         async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT_S) as client:
@@ -188,6 +237,7 @@ async def send_a2a_message(endpoint: str, text: str) -> str:
     :class:`A2AMessageError` on transport failure, a JSON-RPC error, or a
     non-JSON response.
     """
+    await _ensure_host_allowed(endpoint)
     payload = {
         "jsonrpc": "2.0",
         "id": uuid4().hex,
@@ -248,6 +298,7 @@ async def stream_a2a_message(endpoint: str, text: str) -> AsyncIterator[str]:
     a single final chunk. Raises :class:`A2AMessageError` on transport/JSON-RPC
     failure before the first token; mid-stream transport drops end the iterator.
     """
+    await _ensure_host_allowed(endpoint)
     payload = {
         "jsonrpc": "2.0",
         "id": uuid4().hex,
