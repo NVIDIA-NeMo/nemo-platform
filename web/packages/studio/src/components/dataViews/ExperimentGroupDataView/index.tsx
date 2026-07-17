@@ -19,6 +19,7 @@ import type {
   ExperimentGroupResponse,
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
+import { AddToGroupModal } from '@studio/components/dataViews/ExperimentGroupDataView/AddToGroupModal';
 import { Empty } from '@studio/components/dataViews/ExperimentGroupDataView/Empty';
 import { MeanValueTooltipCell } from '@studio/components/dataViews/ExperimentGroupDataView/MeanValueTooltipCell';
 import {
@@ -32,8 +33,8 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getEvaluationDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
-import { Columns3, Pin } from 'lucide-react';
-import { type ComponentProps, type FC, useCallback, useEffect, useMemo } from 'react';
+import { Columns3, FolderPlus, Pin } from 'lucide-react';
+import { type ComponentProps, type FC, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export type { EvaluationRow };
@@ -144,6 +145,9 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
   const experimentGroupName = group.name;
   const experimentGroupId = group.id;
 
+  // The evaluation whose "Add to group" modal is open, or null when the modal is closed.
+  const [addToGroupRow, setAddToGroupRow] = useState<EvaluationRow | null>(null);
+
   // Persist column order to localStorage, keyed by experiment group ID.
   const [savedColumnOrder, saveColumnOrder] = useLocalStorage<string[]>(
     `nemo-studio:experiment-group-columns:${experimentGroupId}`,
@@ -228,41 +232,58 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
     ({ accessor, display }) => [
       display({
         id: 'pin',
-        header: () => <span className="sr-only">Pinned</span>,
+        header: () => <span className="sr-only">Row actions</span>,
         enableSorting: false,
         enableHiding: false,
         enableResizing: false,
-        size: 48,
-        minSize: 48,
-        maxSize: 48,
+        size: 88,
+        minSize: 88,
+        maxSize: 88,
         meta: { alignment: 'center', _isPrebuiltColumn: true, _isSizeInitialized: true },
         cell: ({ row }) => {
           const { pinned_at } = row.original;
           const isPinned = pinned_at != null;
           return (
-            <Tooltip
-              slotContent={
-                <Text kind="body/regular/sm">
-                  {isPinned ? 'Unpin for all users' : 'Pin for all users'}
-                </Text>
-              }
-              className={tooltipClassName}
-              side="right"
-            >
-              <Button
-                kind="tertiary"
-                color="neutral"
-                size="small"
-                aria-label={isPinned ? 'Unpin evaluation' : 'Pin evaluation'}
-                aria-pressed={isPinned}
-                onClick={() => togglePin(row.original)}
+            <div className="flex items-center gap-1">
+              <Tooltip
+                slotContent={
+                  <Text kind="body/regular/sm">
+                    {isPinned ? 'Unpin for all users' : 'Pin for all users'}
+                  </Text>
+                }
+                className={tooltipClassName}
+                side="right"
               >
-                <Pin
-                  className={isPinned ? 'text-brand' : 'text-secondary'}
-                  {...(isPinned ? { fill: 'currentColor' } : {})}
-                />
-              </Button>
-            </Tooltip>
+                <Button
+                  kind="tertiary"
+                  color="neutral"
+                  size="small"
+                  aria-label={isPinned ? 'Unpin evaluation' : 'Pin evaluation'}
+                  aria-pressed={isPinned}
+                  onClick={() => togglePin(row.original)}
+                >
+                  <Pin
+                    className={isPinned ? 'text-brand' : 'text-secondary'}
+                    {...(isPinned ? { fill: 'currentColor' } : {})}
+                  />
+                </Button>
+              </Tooltip>
+              <Tooltip
+                slotContent={<Text kind="body/regular/sm">Add to group</Text>}
+                className={tooltipClassName}
+                side="right"
+              >
+                <Button
+                  kind="tertiary"
+                  color="neutral"
+                  size="small"
+                  aria-label="Add evaluation to group"
+                  onClick={() => setAddToGroupRow(row.original)}
+                >
+                  <FolderPlus className="text-secondary" />
+                </Button>
+              </Tooltip>
+            </div>
           );
         },
       }),
@@ -462,41 +483,52 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
   }
 
   return (
-    <StudioDataView
-      dataViewState={dataViewState}
-      makeColumns={makeColumns}
-      searchField="name"
-      onRowClick={(row) =>
-        navigate(getEvaluationDetailRoute(workspace, experimentGroupName, row.name))
-      }
-      toolbarSlotEnd={
-        <EditColumnsMenu
-          kind="secondary"
-          showChevron={false}
-          // EditColumnsMenu exposes no width control for its dropdown, so this zero-height
-          // spacer sets a min width on the menu (which sizes to its widest child).
-          slotContent={<div aria-hidden className="h-0 w-[230px]" />}
-        >
-          <>
-            <Columns3 />
-            <span className="hide-mobile">Columns</span>
-          </>
-        </EditColumnsMenu>
-      }
-      attributes={{
-        DataViewRoot: {
-          data: orderedData,
-          totalCount,
-          requestStatus: isLoading ? 'loading' : undefined,
-        },
-        DataViewTableContent: {
-          enableColumnReordering: true,
-          renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
-            hasFiltersApplied || hasSearchApplied ? null : (
-              <Empty experimentGroupName={experimentGroupName} />
-            ),
-        },
-      }}
-    />
+    <>
+      <StudioDataView
+        dataViewState={dataViewState}
+        makeColumns={makeColumns}
+        searchField="name"
+        onRowClick={(row) =>
+          navigate(getEvaluationDetailRoute(workspace, experimentGroupName, row.name))
+        }
+        toolbarSlotEnd={
+          <EditColumnsMenu
+            kind="secondary"
+            showChevron={false}
+            // EditColumnsMenu exposes no width control for its dropdown, so this zero-height
+            // spacer sets a min width on the menu (which sizes to its widest child).
+            slotContent={<div aria-hidden className="h-0 w-[230px]" />}
+          >
+            <>
+              <Columns3 />
+              <span className="hide-mobile">Columns</span>
+            </>
+          </EditColumnsMenu>
+        }
+        attributes={{
+          DataViewRoot: {
+            data: orderedData,
+            totalCount,
+            requestStatus: isLoading ? 'loading' : undefined,
+          },
+          DataViewTableContent: {
+            enableColumnReordering: true,
+            renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
+              hasFiltersApplied || hasSearchApplied ? null : (
+                <Empty experimentGroupName={experimentGroupName} />
+              ),
+          },
+        }}
+      />
+      {addToGroupRow && (
+        <AddToGroupModal
+          open
+          onClose={() => setAddToGroupRow(null)}
+          workspace={workspace}
+          evaluation={addToGroupRow}
+          currentExperimentGroupId={experimentGroupId}
+        />
+      )}
+    </>
   );
 };
