@@ -493,6 +493,20 @@ def test_sync_resource_gets_existing_job_resource() -> None:
     )
 
 
+def test_sync_resource_propagates_missing_job_response() -> None:
+    platform = _SyncPlatform()
+    platform._client.get.return_value = httpx.Response(
+        404,
+        request=httpx.Request("GET", "http://test:8000/apis/evaluator/v2/workspaces/ws/evaluate/jobs/missing"),
+    )
+    resource = Evaluator(cast(NeMoPlatform, platform))
+
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        resource.get_job_resource("missing", workspace="ws")
+
+    assert exc_info.value.response.status_code == 404
+
+
 def test_sync_resource_url_encodes_reserved_chars_in_job_name() -> None:
     """Reserved URL characters in ``job_name`` must be percent-encoded so the path stays unambiguous."""
     platform = _SyncPlatform()

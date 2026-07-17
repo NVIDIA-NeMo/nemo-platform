@@ -7,13 +7,16 @@ Bundles live as assets named state-v<N>.tar.zst on the `testbed-state` release.
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
 import tomllib
+from collections.abc import Mapping
 from pathlib import Path
 
 RELEASE_TAG = "testbed-state"
+DEFAULT_STATE_REPO = "NVIDIA-dev/NeMo-Optimizer"
 _ASSET = re.compile(r"^state-v(\d+)\.tar\.zst$")
 
 
@@ -66,16 +69,48 @@ def _gh(*args: str) -> str:
         raise
 
 
+def state_repo(env: Mapping[str, str] | None = None) -> str:
+    """Return the explicit GitHub repository that owns testbed state assets."""
+    values = os.environ if env is None else env
+    return values.get("TESTBED_STATE_REPO", DEFAULT_STATE_REPO)
+
+
+def _release_gh(*args: str) -> str:
+    """Run a release command against the configured fixture repository."""
+    return _gh("release", *args, "--repo", state_repo())
+
+
+def _release_repo_accessible() -> None:
+    """Verify release-read access before interpreting a missing release."""
+    _gh("api", f"repos/{state_repo()}/releases?per_page=1")
+
+
+def _release_missing(error: subprocess.CalledProcessError) -> bool:
+    return (error.stderr or "").strip().lower() == "release not found"
+
+
+def _release_exists() -> bool:
+    _release_repo_accessible()
+    try:
+        _release_gh("view", RELEASE_TAG)
+    except subprocess.CalledProcessError as error:
+        if _release_missing(error):
+            return False
+        raise
+    return True
+
+
 def _release_asset_names() -> list[str]:
     """Fetch the list of asset names from the testbed-state release.
 
     Returns an empty list if the release does not exist (404).
     Raises on other failures (outages, auth errors, etc.).
     """
+    _release_repo_accessible()
     try:
-        out = _gh("release", "view", RELEASE_TAG, "--json", "assets")
-    except subprocess.CalledProcessError as e:
-        if "not found" in (e.stderr or "").lower():
+        out = _release_gh("view", RELEASE_TAG, "--json", "assets")
+    except subprocess.CalledProcessError as error:
+        if _release_missing(error):
             return []
         raise
     return [a["name"] for a in json.loads(out).get("assets", [])]
@@ -127,5 +162,5 @@ def download_ref(ref: str, dest_dir: Path) -> Path:
         print(f"using cached {ref}.tar.zst")
         return dest
     dest_dir.mkdir(parents=True, exist_ok=True)
-    _gh("release", "download", RELEASE_TAG, "--pattern", f"{ref}.tar.zst", "--dir", str(dest_dir), "--clobber")
+    _release_gh("download", RELEASE_TAG, "--pattern", f"{ref}.tar.zst", "--dir", str(dest_dir), "--clobber")
     return dest

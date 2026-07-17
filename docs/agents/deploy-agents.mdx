@@ -342,6 +342,30 @@ Kubernetes.
 
 </Note>
 
+#### Docker mode on Linux
+
+Docker Desktop (macOS/Windows) handles this automatically. On **Linux**, where
+`host.docker.internal` does not resolve inside containers, point the platform at
+the Docker bridge address (`172.17.0.1` by default) instead, or `nemo agents
+invoke` fails with `openai.APIConnectionError`.
+
+Set both in `config.yaml`, then start the platform bound to all interfaces:
+
+```yaml
+platform:
+  base_url: http://172.17.0.1:8080
+agents:
+  deployments:
+    gateway_url_override: http://172.17.0.1:8080
+```
+
+```bash
+uv run nemo services run --host 0.0.0.0 --port 8080
+```
+
+If your Docker bridge uses a non-default subnet, substitute its gateway address
+(`docker network inspect bridge --format '{{ (index .IPAM.Config 0).Gateway }}'`).
+
 ---
 
 ## Inspect a Deployment

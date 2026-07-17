@@ -111,6 +111,7 @@ def stub_reingest(monkeypatch):
                 "manifest": manifest,
                 "workspace_map": dict(workspace_map),
                 "catalog": catalog,
+                "require_empty": kw.get("require_empty", False),
             }
         )
         return {
@@ -919,6 +920,45 @@ def test_analyze_second_restore_reports_skip(monkeypatch, tmp_path, capsys, stub
 # --------------------------------------------------------------------------- #
 # restore: export bundles re-ingest (additive); legacy tars exit with a pointer
 # --------------------------------------------------------------------------- #
+
+
+def test_restore_into_uses_exact_target(monkeypatch, tmp_path, stub_reingest) -> None:
+    bundle = _make_export_bundle(tmp_path / "state.tar.zst", workspaces=("source-workspace",))
+    monkeypatch.setattr(sys, "argv", ["testbed", "restore", str(bundle), "--into", "stable-workspace"])
+
+    cli.main()
+
+    call = stub_reingest["ingest"][0]
+    assert call["workspace_map"] == {"source-workspace": "stable-workspace"}
+    assert call["require_empty"] is True
+
+
+def test_restore_into_rejects_invalid_target_before_catalog_or_ingest(
+    monkeypatch,
+    tmp_path,
+    stub_reingest,
+) -> None:
+    bundle = _make_export_bundle(tmp_path / "state.tar.zst", workspaces=("source-workspace",))
+    monkeypatch.setattr(sys, "argv", ["testbed", "restore", str(bundle), "--into", "INVALID!"])
+
+    with pytest.raises(SystemExit, match="platform naming rule"):
+        cli.main()
+
+    assert stub_reingest["platform_root"] == []
+    assert stub_reingest["catalog_root"] == []
+    assert stub_reingest["ingest"] == []
+
+
+def test_restore_into_help_states_fresh_target_contract(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(sys, "argv", ["testbed", "restore", "--help"])
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+
+    assert exc.value.code == 0
+    output = " ".join(capsys.readouterr().out.split())
+    assert "fresh, empty target" in output
+    assert "not idempotent" in output
 
 
 def test_restore_export_bundle_reingests_with_digest_suffix(monkeypatch, tmp_path, capsys, stub_reingest):

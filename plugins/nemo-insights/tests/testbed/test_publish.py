@@ -14,6 +14,7 @@ import pytest
 from testbed import cli, publish, release
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+PLATFORM_ROOT = REPO_ROOT.parents[1]
 
 MANIFEST = {
     "kind": "testbed-export",
@@ -159,7 +160,19 @@ def test_publish_mints_next_ref_uploads_and_prepends_row(fake_gh, tmp_path, monk
     assert ref == "state-v7"
     assert (tmp_path / "state-v7.tar.zst").is_file()  # candidate copied to the ref name
     uploads = [c for c in fake_gh["calls"] if c[:2] == ("release", "upload")]
-    assert uploads == [("release", "upload", release.RELEASE_TAG, str(tmp_path / "state-v7.tar.zst"), "--clobber")]
+    assert uploads == [
+        (
+            "release",
+            "upload",
+            release.RELEASE_TAG,
+            str(tmp_path / "state-v7.tar.zst"),
+            "--repo",
+            release.DEFAULT_STATE_REPO,
+        )
+    ]
+    assert all(
+        call[-2:] == ("--repo", release.DEFAULT_STATE_REPO) for call in fake_gh["calls"] if call[:1] == ("release",)
+    )
     # new row lands right under the header separator, above the old row
     assert fake_gh["body"].index("state-v7") < fake_gh["body"].index("| state-v6 |")
     assert "laptop (ada)" in fake_gh["body"]
@@ -170,7 +183,7 @@ def test_publish_mints_next_ref_uploads_and_prepends_row(fake_gh, tmp_path, monk
 def test_publish_creates_release_when_missing(fake_gh, tmp_path, monkeypatch):
     def view_fails(*args):
         if args[:2] == ("release", "view") and "--json" not in args:
-            raise subprocess.CalledProcessError(1, ["gh", *args], stderr="not found")
+            raise subprocess.CalledProcessError(1, ["gh", *args], stderr="release not found")
         return original_gh(*args)
 
     original_gh = release._gh
@@ -180,11 +193,33 @@ def test_publish_creates_release_when_missing(fake_gh, tmp_path, monkeypatch):
     assert len(creates) == 1 and release.RELEASE_TAG in creates[0]
 
 
+def test_publish_does_not_create_release_after_auth_failure(fake_gh, tmp_path, monkeypatch):
+    original_gh = release._gh
+
+    def view_fails(*args):
+        if args[:2] == ("release", "view") and "--json" not in args:
+            raise subprocess.CalledProcessError(1, ["gh", *args], stderr="HTTP 403: Resource not accessible\n")
+        return original_gh(*args)
+
+    monkeypatch.setattr(release, "_gh", view_fails)
+    with pytest.raises(subprocess.CalledProcessError):
+        publish.publish(_make_bundle(tmp_path / "c.tar.zst"), reason="", env={})
+    assert not any(call[:2] == ("release", "create") for call in fake_gh["calls"])
+    assert not any(call[:2] == ("release", "upload") for call in fake_gh["calls"])
+
+
 def test_publish_writes_github_output_only_when_env_set(fake_gh, tmp_path):
     out_file = tmp_path / "gh_output"
     publish.publish(_make_bundle(tmp_path / "a.tar.zst"), reason="", env={"GITHUB_OUTPUT": str(out_file)})
     assert out_file.read_text(encoding="utf-8") == "state_ref=state-v7\n"
     publish.publish(_make_bundle(tmp_path / "b.tar.zst"), reason="", env={})  # no env -> nothing written
+
+
+def test_publish_reason_falls_back_to_candidate_manifest(fake_gh, tmp_path):
+    manifest = {**MANIFEST, "reason": "captured during produce"}
+    publish.publish(_make_bundle(tmp_path / "candidate.tar.zst", manifest=manifest), reason=None, env={})
+
+    assert "captured during produce" in fake_gh["body"]
 
 
 def test_publish_rejects_non_export_bundles(fake_gh, tmp_path):
@@ -320,3 +355,12 @@ def test_cli_publish_base_and_no_verify_conflict(fake_gh, tmp_path, monkeypatch,
         cli.main()
     assert exc.value.code == 2  # argparse mutual-exclusion error
     assert all(c[:2] != ("release", "upload") for c in fake_gh["calls"])
+
+
+def test_workflow_protects_all_secrets_and_exports_state_repository():
+    workflow = (PLATFORM_ROOT / ".github" / "workflows" / "insights-testbed.yml").read_text(encoding="utf-8")
+    produce_job, analyze_job = workflow.split("\n  produce:\n", 1)[1].split("\n  analyze:\n", 1)
+
+    assert "    environment: insights-testbed\n" in produce_job
+    assert "    environment: insights-testbed\n" in analyze_job
+    assert "TESTBED_STATE_REPO: ${{ vars.TESTBED_STATE_REPO || 'NVIDIA-dev/NeMo-Optimizer' }}" in workflow

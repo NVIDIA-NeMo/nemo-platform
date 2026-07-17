@@ -473,12 +473,14 @@ class LocalAnalystBackend(AnalystBackend):
     def _read_records(self) -> list[dict]:
         if not self.path.exists():
             return []
-        raw = yaml.safe_load(self.path.read_text()) or {}
+        raw = yaml.safe_load(self.path.read_text(encoding="utf-8")) or {}
         return list(raw.get("insights", []))
 
     def _write_records(self, records: list[dict]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(yaml.safe_dump({"insights": records}, sort_keys=False, allow_unicode=True))
+        self.path.write_text(
+            yaml.safe_dump({"insights": records}, sort_keys=False, allow_unicode=True), encoding="utf-8"
+        )
 
     async def persist_result(self, *, workspace: str, agent: str, result: AnalystResult) -> str:
         records = self._read_records()

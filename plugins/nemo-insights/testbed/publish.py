@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 """Mint the next state ref, upload a candidate bundle, and update the fixture catalog.
 
-Laptop-first: ``uv run python -m testbed publish FILE --reason "why"`` works
-from any machine with ``gh`` auth'd against the repo; the CI produce job runs
-the same command. The catalog's "Minted by" column records the GitHub Actions
-run when ``GITHUB_RUN_ID``/``GITHUB_REPOSITORY`` are set, else
-``laptop (<user>)``; the "Contents" column comes from the bundle's own
-manifest (subjects + per-collection doc counts), so the catalog can never
-disagree with what the asset actually holds.
+``uv run python -m testbed publish FILE --reason "why"`` works from a
+maintainer machine with ``gh`` access to the fixture repository. The catalog's
+"Minted by" column records the GitHub Actions run when
+``GITHUB_RUN_ID``/``GITHUB_REPOSITORY`` are set, else ``laptop (<user>)``; the
+"Contents" column comes from the bundle's own manifest (subjects +
+per-collection doc counts), so the catalog can never disagree with what the
+asset actually holds.
 """
 
 import getpass
@@ -105,46 +105,44 @@ def insert_catalog_row(body: str, row: str) -> str:
 
 
 def _ensure_release() -> None:
-    try:
-        release._gh("release", "view", RELEASE_TAG)
-    except subprocess.CalledProcessError:
-        release._gh(
-            "release",
-            "create",
-            RELEASE_TAG,
-            "--title",
-            "Testbed state fixtures",
-            "--notes",
-            "Immutable testbed state fixtures. Do not delete assets.",
-            "--latest=false",
-        )
+    if release._release_exists():
+        return
+    release._release_gh(
+        "create",
+        RELEASE_TAG,
+        "--title",
+        "Testbed state fixtures",
+        "--notes",
+        "Immutable testbed state fixtures. Do not delete assets.",
+        "--latest=false",
+    )
 
 
 def publish(candidate: Path, *, reason: str | None, env: Mapping[str, str] | None = None) -> str:
     """Mint the next ref, upload the bundle, then edit the release notes with its catalog row.
 
-    ``reason=None`` falls back to the ``REASON`` env var. Returns the minted
-    ref; when ``GITHUB_OUTPUT`` is set (CI), also writes ``state_ref=<ref>``.
+    ``reason=None`` falls back to the ``REASON`` env var, then the candidate
+    manifest. Returns the minted ref; when ``GITHUB_OUTPUT`` is set, also
+    writes ``state_ref=<ref>``.
 
     A failure between the upload and the notes edit leaves an orphaned asset
     with no catalog row; recover by deleting the asset or hand-adding the
     row — a retry mints the next ref, not the orphaned one.
     """
     env = os.environ if env is None else env
-    if reason is None:
-        reason = env.get("REASON", "")
     manifest = read_manifest(candidate)
+    if reason is None:
+        reason = env.get("REASON") or str(manifest.get("reason") or "")
     ref = release.next_ref(release.latest_ref(release._release_asset_names()))
     tarball = candidate.parent / f"{ref}.tar.zst"
     shutil.copy2(candidate, tarball)
     _ensure_release()
-    # --clobber: a retry after a partial upload overwrites the broken asset
-    # instead of erroring (next_ref never collides with a *completed* publish —
-    # its ref would already be in the asset list).
-    release._gh("release", "upload", RELEASE_TAG, str(tarball), "--clobber")
-    body = json.loads(release._gh("release", "view", RELEASE_TAG, "--json", "body"))["body"]
+    # State refs are immutable: a concurrent publisher must fail on collision,
+    # never replace the asset that won the race.
+    release._release_gh("upload", RELEASE_TAG, str(tarball))
+    body = json.loads(release._release_gh("view", RELEASE_TAG, "--json", "body"))["body"]
     row = catalog_row(ref, manifest, reason=reason, env=env)
-    release._gh("release", "edit", RELEASE_TAG, "--notes", insert_catalog_row(body, row))
+    release._release_gh("edit", RELEASE_TAG, "--notes", insert_catalog_row(body, row))
     if env.get("GITHUB_OUTPUT"):
         with open(env["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
             fh.write(f"state_ref={ref}\n")

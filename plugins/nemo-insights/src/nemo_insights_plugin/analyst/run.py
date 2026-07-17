@@ -30,6 +30,10 @@ from pydantic_ai.messages import TextPart, ToolCallPart, ToolReturnPart
 _VERBOSE_TRUNCATE = 2000
 
 
+class ClientConstructionError(Exception):
+    """The analyst's NeMo Platform client could not be constructed."""
+
+
 async def run_analyst(
     *,
     agent: str,
@@ -56,7 +60,10 @@ async def run_analyst(
         since: Optional incremental lower bound enforced on trace/span reads.
         evaluation_id: Optional run scope; AND-pinned onto every span read.
     """
-    client = make_client(base_url)
+    try:
+        client = make_client(base_url)
+    except (RuntimeError, ValueError) as exc:
+        raise ClientConstructionError(str(exc)) from None
     observability = None
     insights_output_path = str(insights_output) if insights_output else None
     backend = make_analyst_backend(

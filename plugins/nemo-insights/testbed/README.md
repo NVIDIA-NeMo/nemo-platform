@@ -13,6 +13,7 @@ uv run python -m testbed analyze tau2-airline --live  # analyze the recorded run
 uv run python -m testbed analyze nvq --live           # intake: analyze existing live traces
 uv run python -m testbed snapshot tau2-airline        # export the subject's workspaces (read API) into a portable bundle
 uv run python -m testbed restore --state state-v7     # re-ingest a state bundle into fixture workspaces (additive, idempotent)
+uv run python -m testbed restore --state state-vN --into WORKSPACE
 ```
 
 Bare `analyze <subject>` is a fully reproducible run: pinned data (the subject's
@@ -65,6 +66,15 @@ base_url recorded at `run` time, so set `--base` on `run`.)
 Immutable per-subject fixtures on the `testbed-state` GitHub release, pinned in
 `testbed/state.lock` — analyst changes get measured against fixed data.
 
+The assets currently live in `NVIDIA-dev/NeMo-Optimizer`. Release operations
+target that repository explicitly; set `TESTBED_STATE_REPO=owner/repository` to
+use another fixture home. The `gh` token must be able to read that repository
+for restore/analyze and write releases there for local publish. A token scoped
+only to the Platform repository cannot access the default internal fixture
+home. Platform CI uses the least-privilege `TESTBED_STATE_GH_READ_TOKEN`
+secret; automated publishing remains in the canonical fixture repository so
+two repositories cannot race to mint the same version.
+
 Which file do I touch?
 
 | Surface              | Owns                                          |
@@ -93,7 +103,7 @@ API's 30-day default lookback. (`--live` skips the restore entirely and
 analyzes the platform's live traces, with `since` from `--since`, the stanza,
 or a 30d default — in that order; the effective bound is always printed.)
 
-**Mint a new fixture (laptop or CI):**
+**Publish a verified candidate from a maintainer machine:**
 
 ```bash
 uv run python -m testbed snapshot nvq -o testbed/tmp/nvq.tar.zst
@@ -104,16 +114,27 @@ uv run python -m testbed publish testbed/tmp/nvq.tar.zst --base http://localhost
 `-oracle` twin) into JSONL + manifest — no ClickHouse, no Docker. `publish`
 refuses to mint unverified: `--base` runs the round-trip fidelity guard there
 first (re-ingest into scratch workspaces → re-export → doc diff), or pass
-`--no-verify` to skip out loud (CI does; its guard runs as a separate step).
+`--no-verify` only after separately confirming the guard passed (for example,
+by checking that the CI `produce` job's round-trip step was green before using
+its downloaded candidate artifact).
 Then pin it: add `nvq = "state-vN"` under `[subjects]` in `testbed/state.lock`.
 
 **Restore without analyzing:** `uv run python -m testbed restore (FILE | --state state-v7) [--base URL]`.
+To restore a one-workspace bundle directly into a named workspace, use
+`uv run python -m testbed restore --state state-vN --into WORKSPACE`. `--into`
+accepts only one-workspace bundles and requires a fresh, empty target
+workspace. The default restore remains fixture-scoped and idempotent.
 
 What restore touches:
 
-- **Platform: additive only.** Ingests into `<ws>-<ref>` (`<ws>-<sha256[:8]>`
-  for local files); never writes into existing workspaces. Per-collection
-  guard: counts match → skip, empty → ingest, anything else → hard error.
+- **Platform, default fixture restore:** additive, idempotent, and healing.
+  Ingests into `<ws>-<ref>` (`<ws>-<sha256[:8]>` for local files).
+  Per-collection guard: counts match → skip, empty → ingest, supported
+  interrupted states → heal, anything else → hard error.
+- **Platform, direct `--into` restore:** writes to the exact named workspace
+  only after proving all three collections are empty. It is fresh-target-only,
+  and rerunning into the now-populated workspace fails rather than acting
+  idempotently.
 - **Local `testbed/tmp`: run records seeded.** The bundle's run records
   replace yours — clobbered files are moved to `testbed/tmp/backup-<timestamp>/`
   first, and only the bundle's own subjects' files are ever touched. Bundles
@@ -189,17 +210,17 @@ uv run python -m testbed run tau2-retail
 uv run python -m testbed analyze tau2-retail --live
 ```
 
-## CI (`.github/workflows/testbed-insights.yml`)
+## CI (`.github/workflows/insights-testbed.yml`)
 
 CI runs the testbed against a **self-contained platform inside the job**
 (ClickHouse + `auth,entities,intake` from a `nemo-platform` checkout) — the
 freeplay remote is not reachable from GitHub-hosted runners. The workflow's
 steps are thin wrappers over the same CLI you run locally (`testbed restore`
-/ `analyze` / `snapshot` / `roundtrip` / `publish`); the shared
+/ `analyze` / `snapshot` / `roundtrip`); the shared
 helpers live in `testbed/eval/` (stdlib-only `plan.py`/`prep.py`/
 `run_subjects.py` run on the bare runner before `uv sync`). Dispatch inputs
 mirror the CLI flags 1:1 (`mode`, `subjects`, `state`, `num_tasks`,
-`num_trials`, `publish_state`, `reason`). Three modes, all validated **green
+`num_trials`, `reason`). Three modes, all validated **green
 on real GitHub Actions** (branch `testbed-ci-insights`; API-export pipeline:
 stack-check
 [run 28880210091](https://github.com/NVIDIA-dev/NeMo-Optimizer/actions/runs/28880210091),
@@ -207,30 +228,33 @@ analyze vs `state-v6`
 [run 28880474684](https://github.com/NVIDIA-dev/NeMo-Optimizer/actions/runs/28880474684)
 (966 spans re-ingested into `<ws>-state-v6` fixtures), produce smoke ×2 tasks
 [run 28881101719](https://github.com/NVIDIA-dev/NeMo-Optimizer/actions/runs/28881101719)
-— round-trip guard green in CI, candidate uploaded, publish skipped on the
-validation trigger):
+— round-trip guard green in CI and candidate uploaded for inspection):
+
+Configure the `insights-testbed` GitHub environment with required reviewers
+and self-review prevention. Store `NVIDIA_INFERENCE_KEY`,
+`NVIDIA_INFERENCE_URL`, and `TESTBED_STATE_GH_READ_TOKEN` exclusively as
+secrets in that environment; do not retain repository- or organization-level
+copies that PR workflow edits could access without approval. Set the
+`TESTBED_STATE_REPO` repository variable when fixtures live outside the
+default `NVIDIA-dev/NeMo-Optimizer` repository.
 
 - `stack-check` — bring the stack up, verify `/ping` + `/health/ready`, exit.
   Cheap CI doctor.
 - `produce` — **explicit dispatch only** (hard-gated to `workflow_dispatch`): a
-  human mints a new fixture when there's a reason — tau2-bench update, agent/sim
-  config change, staleness refresh. Never runs from PRs or any automatic
-  trigger. Fixtures mint from the fresh in-job stack (no base restore):
+  human generates a candidate when there's a reason — tau2-bench update,
+  agent/sim config change, staleness refresh. Never runs from PRs or any
+  automatic trigger. Candidates come from the fresh in-job stack (no base restore):
   `run_subjects.py` runs the subjects (`subjects=tau2-airline,...`,
   override size with `num_tasks=`/`num_trials=`; analyze retries absorb
   post-sim rate-limit heat) with `--base http://localhost:8080`, then
   `testbed snapshot` exports an **unminted candidate bundle** that is always
   uploaded as workflow artifact `state-candidate-<run_id>-<attempt>` (even on
-  failure — failed runs never mint a version, they just leave their candidate
-  for inspection; there are no `-failed` refs), and `testbed roundtrip` proves
-  the candidate re-ingests with full read-API fidelity. Only on success does
-  `testbed publish` (`--no-verify`: the guard ran as its own step) mint the
-  next `state-v<N>` — it resolves the next free version at publish time,
-  uploads the asset to the `testbed-state` release, and prepends a row to the
-  **fixture catalog** in the release notes (version, contents, the `reason`
-  input, minted-by). The same `testbed publish` runs from a laptop (that is how
-  `state-v6` was minted). Serialized via a `testbed-state-produce` concurrency
-  group so bundles never race.
+  failure), and `testbed roundtrip` proves the candidate re-ingests with full
+  read-API fidelity. While the fixture release remains in NeMo Optimizer, this
+  workflow stops at the candidate artifact; the canonical repository remains
+  the only automated publisher. A maintainer can download the candidate and
+  run `testbed publish` locally only after inspecting it and confirming that
+  the workflow's round-trip step passed.
 - `analyze` — `testbed analyze "$SUBJECT" ${STATE:+--state "$STATE"}
   --summary-md "$GITHUB_STEP_SUMMARY"`: an empty `state` input means bare
   analyze — each subject's own pin under `[subjects]` in `testbed/state.lock`
@@ -253,23 +277,23 @@ States are per-produce-dispatch compositions, so subjects pin different
 versions — each under `[subjects]` in `testbed/state.lock`; a subject with no
 entry errors (add its line after minting a fixture). Lock-bump PRs edit the
 subject's line; bump on `main` to advance that subject's shared baseline after
-a `produce` run. The dispatch `state` input still overrides the lock for
-**all** subjects in that run.
+the produced candidate is verified and manually published. The dispatch
+`state` input still overrides the lock for **all** subjects in that run.
 
 ### Dispatching a run
 
 `workflow_dispatch` (and `gh workflow run`) only becomes available once the
 workflow file has landed on the repository's **default branch** — a GitHub
 registration requirement (dispatching from a feature branch 404s). After the
-merge, verify with `gh workflow run testbed-insights.yml -f mode=stack-check`,
+merge, verify with `gh workflow run insights-testbed.yml -f mode=stack-check`,
 then:
 
 ```bash
-gh workflow run testbed-insights.yml -f mode=stack-check
-gh workflow run testbed-insights.yml -f mode=produce -f subjects=tau2-airline -f num_tasks=2 \
-  -f reason="2-task smoke after tau2-bench bump"   # reason lands in the release's fixture catalog
-gh workflow run testbed-insights.yml -f mode=analyze                    # each subject's state.lock pin
-gh workflow run testbed-insights.yml -f mode=analyze -f state=state-v6  # explicit override, all subjects
+gh workflow run insights-testbed.yml -f mode=stack-check
+gh workflow run insights-testbed.yml -f mode=produce -f subjects=tau2-airline -f num_tasks=2 \
+  -f reason="2-task smoke after tau2-bench bump"   # retained when the candidate is published
+gh workflow run insights-testbed.yml -f mode=analyze                    # each subject's state.lock pin
+gh workflow run insights-testbed.yml -f mode=analyze -f state=state-v6  # explicit override, all subjects
 ```
 
 ### Pre-merge checklist: validating workflow changes from a branch
@@ -282,8 +306,8 @@ from the feature branch with a **temporary push trigger** before merge:
    `inputs.x`, falling back on push events to a repo variable
    (`gh variable set TESTBED_X --body ...`) — every arm marked `# TEMPORARY`.
    produce's dispatch-only event gate needs a temporary
-   `|| github.event_name == 'push'` arm; leave the publish step
-   dispatch-gated so a validation run can never mint.
+   `|| github.event_name == 'push'` arm. The Platform workflow has no publish
+   step, so validation runs cannot mint fixture refs.
 2. Drive rounds by setting the variables (e.g. `gh variable set TESTBED_MODE
    --body produce`) plus a trivial trigger commit; watch `gh run list` /
    `gh run view --log-failed` (runs take 5–20 min).
@@ -321,7 +345,9 @@ deliberately after a mint you want as its new shared baseline, or override
 per-run with the dispatch `state` input (applies to every subject in the run;
 locally: `analyze <subject> --state state-vN`).
 
-Secrets: the workflow uses Actions secrets `NVIDIA_INFERENCE_KEY` and
-`NVIDIA_INFERENCE_URL`, exposing them under the `INFERENCE_API_KEY` and
-OpenAI-compatible environment names expected by the analyst and litellm/tau2.
-The analyst and tau2 sim LLMs need no VPN and work on public runners.
+Secrets: the workflow uses `TESTBED_STATE_GH_READ_TOKEN`, a least-privilege
+GitHub App/PAT credential with release-read access to `TESTBED_STATE_REPO`,
+plus `NVIDIA_INFERENCE_KEY` and `NVIDIA_INFERENCE_URL`. The latter are exposed
+under the `INFERENCE_API_KEY` and OpenAI-compatible environment names expected
+by the analyst and litellm/tau2. The analyst and tau2 sim LLMs need no VPN and
+work on public runners.
