@@ -12,6 +12,7 @@ run. See https://github.com/nvidia/nemo-agent-toolkit A2A server docs.
 
 from __future__ import annotations
 
+import codecs
 import json
 import logging
 from collections.abc import AsyncIterator
@@ -52,12 +53,7 @@ class A2AMessageError(Exception):
 
 
 async def _read_capped(response: httpx.Response, cap: int) -> bytes:
-    """Read a streamed response body, aborting once *cap* bytes are exceeded.
-
-    Reads incrementally (unlike ``response.content``, which buffers the whole
-    decoded body first) so an oversized/compressed body can't exhaust memory
-    before the size check runs.
-    """
+    """Read a streamed response body incrementally, aborting once *cap* bytes are exceeded."""
     chunks: list[bytes] = []
     total = 0
     async for chunk in response.aiter_bytes():
@@ -85,9 +81,8 @@ async def fetch_agent_card(base_url: str) -> dict[str, Any]:
     if not base.startswith(("http://", "https://")):
         raise AgentCardError("Endpoint must be an http(s) URL.")
 
-    # Track the specific reason for logging, but never surface it to the caller:
-    # distinct "could not reach" vs "HTTP 401" vs "not JSON" messages would let a
-    # caller probe which internal hosts/ports exist (an SSRF oracle).
+    # Log the specific reason but never surface it: distinct errors would give the
+    # caller an SSRF oracle for probing internal hosts/ports.
     last_error = "no agent card found"
     async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT_S, follow_redirects=True) as client:
         for path in AGENT_CARD_PATHS:
@@ -142,11 +137,13 @@ async def probe_agent_reachable(base_url: str) -> bool:
         async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT_S) as client:
             for path in AGENT_CARD_PATHS:
                 try:
-                    resp = await client.get(_card_url(base, path))
+                    # Stream so we only wait for the status line — never read the
+                    # (potentially unbounded / slow-drip) body for a liveness check.
+                    async with client.stream("GET", _card_url(base, path)) as resp:
+                        if resp.status_code == 200:
+                            return True
                 except httpx.HTTPError:
                     continue
-                if resp.status_code == 200:
-                    return True
     except httpx.HTTPError:
         return False
     return False
@@ -269,17 +266,17 @@ async def stream_a2a_message(endpoint: str, text: str) -> AsyncIterator[str]:
             async with client.stream("POST", endpoint, json=payload, headers={"Accept": "text/event-stream"}) as resp:
                 if resp.status_code != 200:
                     raise A2AMessageError(f"agent returned HTTP {resp.status_code}")
-                # Cap raw bytes, not aiter_lines() output: aiter_lines buffers a
-                # line internally until a newline, so a newline-less body would
-                # grow unbounded before any per-line check. Split lines ourselves
-                # from a byte-capped buffer instead.
+                # Cap raw bytes and split lines ourselves: aiter_lines() would buffer a
+                # newline-less body unbounded before any per-line check runs.
                 total = 0
                 buffer = ""
+                # Incremental decoder keeps a partial multi-byte char across chunk boundaries.
+                decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
                 async for chunk in resp.aiter_bytes():
                     total += len(chunk)
                     if total > _MAX_MESSAGE_BYTES:
                         raise A2AMessageError("agent stream exceeded the size limit")
-                    buffer += chunk.decode("utf-8", errors="replace")
+                    buffer += decoder.decode(chunk)
                     while "\n" in buffer:
                         line, buffer = buffer.split("\n", 1)
                         line = line.strip()

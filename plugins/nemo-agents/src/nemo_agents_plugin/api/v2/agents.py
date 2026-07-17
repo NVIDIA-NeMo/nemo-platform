@@ -29,9 +29,7 @@ from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
 from nemo_platform_plugin.schema import PaginationData
 
-# Deployment statuses that block agent deletion.
-# "failed" and "deleting" are excluded — they are terminal/in-cleanup and
-# do not represent an actively running process the user needs to clean up first.
+# Statuses that block agent deletion; "failed"/"deleting" are terminal/in-cleanup, so excluded.
 _BLOCKING_STATUSES = frozenset({"pending", "starting", "running"})
 
 logger = logging.getLogger(__name__)

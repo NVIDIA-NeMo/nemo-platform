@@ -622,13 +622,13 @@ class TestContainerModeByAgentName:
 # ---------------------------------------------------------------------------
 
 
-def _make_external_agent(name: str = "ext", url: str = "http://host:10000") -> Agent:
+def _make_external_agent(name: str = "ext", url: str = "http://host:10000", card: dict | None = None) -> Agent:
     return Agent(
         name=name,
         workspace="default",
         source="external",
         endpoint=url,
-        card={"url": url, "name": "Ext Agent"},
+        card=card if card is not None else {"url": url, "name": "Ext Agent"},
     )
 
 
@@ -671,9 +671,11 @@ class TestExternalAgentChat:
         assert '"finish_reason": "stop"' in resp.text
         assert "[DONE]" in resp.text
 
-    def test_stream_mid_error_surfaced_as_content(
+    def test_stream_early_error_returns_502(
         self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # A failure before the first token is primed, so it becomes a real 502 —
+        # not a 200 whose body is an error string.
         from nemo_agents_plugin.a2a import A2AMessageError
 
         mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
@@ -689,8 +691,50 @@ class TestExternalAgentChat:
             json={"stream": True, "messages": [{"role": "user", "content": "hi"}]},
         )
 
+        assert resp.status_code == 502
+
+    def test_stream_mid_error_ends_without_stop(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A failure after the first token can't change the 200 status; it's
+        # surfaced as content and the stream ends WITHOUT a normal stop finish.
+        from nemo_agents_plugin.a2a import A2AMessageError
+
+        mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+
+        async def one_then_boom(endpoint: str, text: str):
+            yield "partial"
+            raise A2AMessageError("dropped")
+
+        monkeypatch.setattr(gateway_module, "stream_a2a_message", one_then_boom)
+
+        resp = client.post(
+            self._URL,
+            json={"stream": True, "messages": [{"role": "user", "content": "hi"}]},
+        )
+
         assert resp.status_code == 200
+        assert "partial" in resp.text
         assert "external agent error" in resp.text
+        assert '"finish_reason": "stop"' not in resp.text
+
+    def test_streaming_disabled_card_uses_send(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Card disables streaming → a streaming request is served via a single
+        # message/send wrapped as one SSE chunk (not message/stream).
+        agent = _make_external_agent(card={"url": "http://host:10000", "capabilities": {"streaming": False}})
+        mock_entity_client.get = AsyncMock(return_value=agent)
+        monkeypatch.setattr(gateway_module, "send_a2a_message", AsyncMock(return_value="full reply"))
+
+        resp = client.post(
+            self._URL,
+            json={"stream": True, "messages": [{"role": "user", "content": "hi"}]},
+        )
+
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/event-stream")
+        assert '"content": "full reply"' in resp.text
         assert "[DONE]" in resp.text
 
     def test_single_turn_forwards_verbatim(
@@ -730,6 +774,28 @@ class TestExternalAgentChat:
         assert "User: first" in sent
         assert "Assistant: reply" in sent
         assert "User: second" in sent
+
+    def test_system_message_preserved_and_anchored_on_last_user(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+        send = AsyncMock(return_value="ok")
+        monkeypatch.setattr(gateway_module, "send_a2a_message", send)
+
+        client.post(
+            self._URL,
+            json={
+                "messages": [
+                    {"role": "system", "content": "be terse"},
+                    {"role": "user", "content": "hello"},
+                ]
+            },
+        )
+
+        assert send.await_args is not None
+        sent = send.await_args.args[1]
+        assert "System: be terse" in sent
+        assert sent.rstrip().endswith("User: hello")
 
     def test_managed_agent_returns_400(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))

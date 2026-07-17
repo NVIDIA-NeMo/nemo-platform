@@ -3,15 +3,10 @@
 
 """Deployment lifecycle routes — create/list/get/delete AgentDeployment entities.
 
-Creating a deployment:
-1. Validates the referenced Agent exists.
-2. Deep-copies the agent config and injects the inference-gateway URL.
-3. Creates an ``AgentDeployment`` entity with ``status: "pending"``.
-4. Returns immediately — the :class:`~nemo_agents_plugin.runner.controller.AgentDeploymentController`
-   picks up the pending deployment on the next reconcile cycle.
-
-Deleting a deployment marks it ``deleting``; the controller terminates the
-process and removes the entity.
+Create validates the agent, injects the inference-gateway URL into a copy of its
+config, and saves an ``AgentDeployment`` in ``pending``; delete marks it ``deleting``.
+The :class:`~nemo_agents_plugin.runner.controller.AgentDeploymentController` reconciles
+both on its next cycle.
 """
 
 from __future__ import annotations
@@ -63,7 +58,6 @@ async def create_deployment(
     The deployment starts in ``pending`` state and is picked up by the
     deployment controller on its next reconcile cycle.
     """
-    # 1. Validate the referenced agent exists
     try:
         agent = await entity_client.get(Agent, name=body.agent, workspace=workspace)
     except NemoEntityNotFoundError as exc:
@@ -75,23 +69,19 @@ async def create_deployment(
         logger.exception("Failed to look up agent '%s'", body.agent)
         raise HTTPException(status_code=500, detail="Failed to look up agent.") from exc
 
-    # External agents run outside NeMo Platform; there is nothing for the
-    # platform to deploy. Reject rather than spawn a doomed empty-config process.
+    # External agents run outside NeMo Platform — nothing to deploy.
     if is_external_agent(agent):
         raise HTTPException(
             status_code=400,
             detail=f"Agent '{body.agent}' is external and runs outside NeMo Platform; it cannot be deployed.",
         )
 
-    # 2. Build deployment name (auto-generate if not provided)
     deployment_name = body.name or f"{body.agent}-{secrets.token_hex(4)}"
 
-    # 3. Deep-copy config and inject IGW URL, telemetry fields, and default model.
     resolved_config = inject_gateway_url(agent.config, workspace)
     resolved_config = inject_default_model(resolved_config)
     inject_nemo_trace_fields(resolved_config, workspace=workspace, agent_name=body.agent)
 
-    # 4. Create the entity with status "pending"
     deployment = AgentDeployment(
         name=deployment_name,
         workspace=workspace,

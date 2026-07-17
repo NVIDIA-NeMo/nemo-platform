@@ -3,23 +3,10 @@
 
 """Agent gateway proxy routes.
 
-Two proxy routes:
-
-``/v2/workspaces/{workspace}/agents/{name}/-/{trailing_uri}``
-    Proxy by **agent name** — gateway resolves the active deployment and
-    forwards the request.  This is the primary user-facing path, analogous to
-    how IGW routes by model name.
-
-``/v2/workspaces/{workspace}/deployments/{name}/-/{trailing_uri}``
-    Proxy by **deployment name** — for direct targeting of a specific
-    deployment (e.g. A/B testing).
-
-The ``/-/`` separator prevents URL conflicts with the CRUD routes
-(``/agents/{name}`` and ``/deployments/{name}``).  This mirrors the pattern
-used by the Inference Gateway.
-
-Streaming and SSE are supported: the response is streamed back to the client
-chunk by chunk.  ``text/event-stream`` responses bypass buffering.
+Proxy by **agent name** (``/agents/{name}/-/{trailing_uri}``) resolves the active
+deployment; proxy by **deployment name** (``/deployments/{name}/-/...``) targets one
+directly. The ``/-/`` separator avoids conflicts with the CRUD routes. Responses are
+streamed chunk by chunk; ``text/event-stream`` bypasses buffering.
 """
 
 from __future__ import annotations
@@ -52,11 +39,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# HTTP methods forwarded through the proxy, split by authorization scope. Read-like methods
-# require only agents:read; mutating methods require agents:write. This mirrors the Inference
-# Gateway's proxy precedent (its GET proxy is scoped inference:read), so a read-scoped token is
-# not denied on read-only proxy calls. Both groups still require the same agents.gateway.invoke
-# permission.
+# Forwarded methods split by scope: read-like need agents:read, mutating need agents:write.
+# Both still require the agents.gateway.invoke permission.
 _PROXY_READ_METHODS = ["GET", "HEAD", "OPTIONS"]
 _PROXY_WRITE_METHODS = ["POST", "PUT", "PATCH", "DELETE"]
 
@@ -77,37 +61,11 @@ _HOP_BY_HOP = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Endpoint resolution — subprocess vs. container mode
-# ---------------------------------------------------------------------------
-#
-# STOP-GAP: these two helpers are the *only* place the gateway learns where an
-# agent lives. For subprocess deployments that is the loopback
-# ``AgentDeployment.endpoint`` the agents plugin bakes in at spawn. For container
-# deployments (docker/k8s) the real address (k8s Service DNS, docker host:port)
-# is known only to the deployments plugin and projected onto ``endpoints`` by the
-# agents controller. The rest of the proxy (streaming, SSE, header stripping, the
-# SSRF origin guard in ``_proxy``) is mode-agnostic and untouched.
-#
-# POSSIBLE FUTURE DIRECTION: one option being considered is folding agent routing
-# into the Inference Gateway (so IGW also serves as the agents gateway). If that
-# direction is taken, this bespoke proxy — including ``_get_deployment_endpoint`` /
-# ``_is_deployment_routable`` and the container branch below — would likely retire.
-# That re-architecture is not committed to here; this stop-gap stands on its own.
-
-# Container modes (docker/k8s) resolve their address from the projected ``endpoints``
-# rather than the loopback ``endpoint``. The agents controller maps the deployments-plugin
-# Deployment.status (READY/...) onto the agents-local status, so a routable container
-# deployment reads as "running" — the same value subprocess uses.
-
-
+# These two helpers are the only place the gateway learns where an agent lives:
+# subprocess deployments use the loopback ``endpoint``; container modes (docker/k8s)
+# use the routable address the agents controller projects onto ``endpoints``.
 def _get_deployment_endpoint(dep: AgentDeployment) -> str | None:
-    """Return the address to proxy to for *dep*, or ``None`` if none is available yet.
-
-    - **subprocess** → the loopback ``endpoint`` the agents plugin allocates at spawn.
-    - **docker/k8s** → the first http(s) URL from ``endpoints``, which the agents
-      controller projects from the deployments-plugin ``Deployment``.
-    """
+    """Return the address to proxy to for *dep*, or ``None`` if none is available yet."""
     if is_container_deployment_mode(dep.deployment_mode):
         for ep in dep.endpoints:
             if ep.protocol in ("http", "https") and ep.url:
@@ -117,12 +75,7 @@ def _get_deployment_endpoint(dep: AgentDeployment) -> str | None:
 
 
 def _is_deployment_routable(dep: AgentDeployment) -> bool:
-    """Return ``True`` if *dep* is currently up and has a resolvable endpoint.
-
-    A deployment is routable when its status is ``running`` (for container modes,
-    the controller projects the deployments-plugin READY status onto ``running``)
-    and an endpoint can be resolved for its mode.
-    """
+    """Return ``True`` if *dep* is ``running`` and has a resolvable endpoint."""
     return dep.status == "running" and _get_deployment_endpoint(dep) is not None
 
 
@@ -283,14 +236,11 @@ async def proxy_by_deployment_name_write(
 
 
 async def _resolve_agent_endpoint(name: str, workspace: str, entity_client: NemoEntitiesClient) -> str:
-    """Find the endpoint of the first running deployment for the given agent."""
-    try:
-        await entity_client.get(Agent, name=name, workspace=workspace)
-    except NemoEntityNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found in workspace '{workspace}'.") from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    """Find the endpoint of the first running deployment for the given agent.
 
+    The agent's existence is already validated by the caller (``_serve_agent_proxy``),
+    so this only lists deployments — no second entity fetch.
+    """
     try:
         result = await entity_client.list(AgentDeployment, workspace=workspace)
     except Exception as exc:
@@ -318,21 +268,10 @@ async def _proxy(
 ) -> StreamingResponse:
     """Forward *request* to ``{endpoint}/{trailing_uri}`` and stream the response.
 
-    Error handling policy:
-    - **4xx** from the agent: transparent pass-through (client error, agent's response).
-    - **5xx** from the agent: translated to **502 Bad Gateway** (upstream fault).
-    - **Connection failure** (httpx.RequestError): 502 Bad Gateway.
-
-    All responses are streamed, including SSE (``text/event-stream``).
-    ``content-length`` is stripped from forwarded headers because chunked
-    transfer encoding makes the original value invalid.
+    Agent 5xx and connection failures become 502; 4xx pass through. SSE is
+    supported; ``content-length`` is stripped since chunked encoding invalidates it.
     """
-    # The SSRF guard below is origin-relative, not a host allow-list: it only
-    # rejects a trailing_uri that escapes the *resolved* endpoint's origin. That
-    # means it works unchanged for container-mode targets — a k8s in-cluster
-    # Service DNS name (``<svc>.<ns>.svc.cluster.local:<port>``) or a docker
-    # host:port — exactly as it does for subprocess loopback, as long as the
-    # resolved endpoint is a well-formed ``scheme://netloc`` (checked next).
+    # SSRF guard: reject any trailing_uri that escapes the resolved endpoint's origin.
     endpoint_parsed = urlparse(endpoint)
     if not endpoint_parsed.scheme or not endpoint_parsed.netloc:
         raise HTTPException(status_code=500, detail="Deployment endpoint is misconfigured.")
@@ -350,11 +289,8 @@ async def _proxy(
 
     body = await request.body()
 
-    # We need the upstream response headers before we can construct StreamingResponse
-    # (to forward content-type, etc.).  Use a two-phase approach:
-    # 1. Open the stream and capture headers — this triggers the HTTP round-trip.
-    # 2. Prime the generator with one __anext__() call so headers are populated.
-    # 3. Wrap in _buffered() to re-yield the primed chunk before continuing the stream.
+    # Headers are needed before constructing StreamingResponse, so prime one chunk
+    # up front and _buffered() re-yields it before continuing the stream.
     response_headers: dict[str, str] = {}
     status_code_holder: list[int] = [200]
 
@@ -376,9 +312,7 @@ async def _proxy(
                 for k, v in response.headers.items():
                     if k.lower() not in _HOP_BY_HOP:
                         response_headers[k] = v
-                # Translate agent 5xx responses into 502 Bad Gateway.
-                # aread() consumes the full body before raising so the connection
-                # is cleanly closed rather than reset mid-stream.
+                # Agent 5xx → 502; aread() drains the body so the connection closes cleanly.
                 if response.status_code >= 500:
                     error_body = await response.aread()
                     raise HTTPException(
@@ -411,14 +345,8 @@ async def _proxy(
 
     content_type = response_headers.get("content-type", "application/json")
 
-    # NAT's ChatResponse.from_string() defaults model to "unknown-model" when
-    # the agent wrapper doesn't supply one (the wrapper code lives in
-    # nvidia-nat-core and doesn't have access to the platform entity name).
-    # For non-streaming JSON responses, patch the model field to the
-    # agent/deployment name the client addressed.  This is a gateway-level
-    # workaround; the proper upstream fix belongs in nvidia-nat-core's
-    # NemoAgentWrapperFunction.convert_to_chat_response where the LLM's
-    # response_metadata carries the real model name.
+    # NAT defaults model to "unknown-model" when the wrapper can't see the platform
+    # entity name; patch non-streaming JSON responses to the addressed agent/deployment.
     if model_name and not content_type.startswith("text/event-stream"):
         async for remaining in stream_gen:
             chunks.append(remaining)
@@ -440,17 +368,8 @@ async def _proxy(
     )
 
 
-# ---------------------------------------------------------------------------
-# External agent chat — OpenAI chat/completions <-> A2A message/send bridge
-# ---------------------------------------------------------------------------
-#
-# External agents run outside NeMo Platform and speak A2A JSON-RPC, not the
-# OpenAI chat API the Studio chat playground uses. This route accepts an
-# OpenAI chat/completions request, forwards the latest user turn to the agent
-# via ``message/send``, and returns the reply in OpenAI shape (SSE when the
-# client asked to stream). Managed agents keep using the deployment proxy above.
-
-
+# External agents speak A2A JSON-RPC, not OpenAI chat. These helpers bridge an
+# OpenAI chat/completions request to ``message/send`` and back to OpenAI shape.
 def _message_text(message: Any) -> str:
     """Extract text from one OpenAI message (``content`` may be str or parts)."""
     if not isinstance(message, dict):
@@ -466,27 +385,28 @@ def _message_text(message: Any) -> str:
 def _conversation_prompt(messages: Any) -> str:
     """Build a single A2A message that carries the conversation so far.
 
-    NAT's A2A executor is message-only (no server-side ``contextId`` memory), so
-    multi-turn context can't be threaded via the protocol — the client (OpenAI
-    chat) sends the full history each turn, and we fold prior user/assistant
-    turns into a transcript ahead of the latest user message. A single turn is
-    sent verbatim so simple agents aren't handed a transcript wrapper.
+    NAT's A2A executor is message-only, so prior turns are folded into a transcript
+    ahead of the latest user message. A single turn is sent verbatim.
     """
     if not isinstance(messages, list):
         return ""
     turns = [
         (m.get("role"), _message_text(m))
         for m in messages
-        if isinstance(m, dict) and m.get("role") in ("user", "assistant")
+        if isinstance(m, dict) and m.get("role") in ("system", "user", "assistant")
     ]
     turns = [(role, text) for role, text in turns if text]
-    if not turns:
+    # Anchor on the last user turn; everything before it becomes the transcript.
+    last_user = next((i for i in range(len(turns) - 1, -1, -1) if turns[i][0] == "user"), None)
+    if last_user is None:
         return ""
-    if len(turns) == 1:
-        return turns[0][1]
+    latest = turns[last_user][1]
+    prior = turns[:last_user]
+    if not prior:
+        return latest
 
-    *prior, (_, latest) = turns
-    transcript = "\n".join(f"{'User' if role == 'user' else 'Assistant'}: {text}" for role, text in prior)
+    labels = {"system": "System", "user": "User", "assistant": "Assistant"}
+    transcript = "\n".join(f"{labels.get(str(role), 'User')}: {text}" for role, text in prior)
     return f"Continue this conversation.\n\n{transcript}\n\nUser: {latest}"
 
 
@@ -517,27 +437,56 @@ def _openai_chunk(completion_id: str, created: int, model: str, delta: dict[str,
     return f"data: {json.dumps(payload)}\n\n".encode()
 
 
-async def _stream_openai_from_a2a(endpoint: str, text: str, model: str) -> AsyncIterator[bytes]:
-    """Stream an external agent's A2A reply as OpenAI chat.completion.chunk SSE.
+def _card_supports_streaming(agent: Agent) -> bool:
+    """False only when the card explicitly disables streaming; default True."""
+    caps = (agent.card or {}).get("capabilities")
+    return not (isinstance(caps, dict) and caps.get("streaming") is False)
 
-    Forwards each A2A text delta as a content chunk. A mid-stream error is
-    surfaced as content (the HTTP status is already 200 once streaming starts),
-    so the user sees it in the chat rather than a silent stall.
+
+async def _single_chunk_sse(text: str, model: str) -> AsyncIterator[bytes]:
+    """Wrap a complete (non-streamed) reply as one OpenAI SSE completion."""
+    created = int(time.time())
+    completion_id = f"chatcmpl-{uuid4().hex}"
+    yield _openai_chunk(completion_id, created, model, {"role": "assistant", "content": text}, None)
+    yield _openai_chunk(completion_id, created, model, {}, "stop")
+    yield b"data: [DONE]\n\n"
+
+
+async def _stream_openai_from_a2a(
+    agen: AsyncIterator[str],
+    first: str,
+    has_first: bool,
+    model: str,
+    name: str,
+    endpoint: str,
+) -> AsyncIterator[bytes]:
+    """Stream a *primed* A2A reply as OpenAI chat.completion.chunk SSE.
+
+    Status is already 200, so a mid-stream failure ends the stream without a
+    normal ``stop`` finish to mark it abnormal.
     """
     created = int(time.time())
     completion_id = f"chatcmpl-{uuid4().hex}"
     role_sent = False
+    if has_first:
+        yield _openai_chunk(completion_id, created, model, {"role": "assistant", "content": first}, None)
+        role_sent = True
     try:
-        async for delta in stream_a2a_message(endpoint, text):
+        async for delta in agen:
             payload = {"content": delta} if role_sent else {"role": "assistant", "content": delta}
             role_sent = True
             yield _openai_chunk(completion_id, created, model, payload, None)
-        if not role_sent:
-            yield _openai_chunk(completion_id, created, model, {"role": "assistant", "content": ""}, None)
     except A2AMessageError as exc:
+        logger.warning(
+            "External agent '%s' chat stream failed mid-stream (%s): %s", name, _endpoint_host(endpoint), exc
+        )
         note = f"[external agent error: {exc}]"
         payload = {"content": f"\n{note}"} if role_sent else {"role": "assistant", "content": note}
         yield _openai_chunk(completion_id, created, model, payload, None)
+        yield b"data: [DONE]\n\n"  # no ``stop`` finish — signals abnormal termination
+        return
+    if not role_sent:
+        yield _openai_chunk(completion_id, created, model, {"role": "assistant", "content": ""}, None)
     yield _openai_chunk(completion_id, created, model, {}, "stop")
     yield b"data: [DONE]\n\n"
 
@@ -575,19 +524,11 @@ async def external_agent_chat_completions(
 
     endpoint = _external_a2a_endpoint(agent, name)
     body = await _read_json_object(request)
-    return await _external_openai_chat(name, endpoint, body)
+    return await _external_openai_chat(name, endpoint, body, _card_supports_streaming(agent))
 
 
-# ---------------------------------------------------------------------------
-# External agent bridge — OpenAI chat/completions and NAT /generate <-> A2A
-# ---------------------------------------------------------------------------
-#
-# External agents have no deployment, so requests addressed to the agent-name
-# proxy (``/agents/{name}/-/...``) land in :func:`_serve_external_agent`. Two
-# invocation shapes are bridged to A2A: OpenAI ``chat/completions`` (Studio, the
-# CLI ``nemo agents invoke``, and the SDK) and NAT ``generate/full`` (``nat eval``).
-
-
+# External agents have no deployment, so agent-name proxy requests land in
+# _serve_external_agent, which bridges OpenAI chat/completions and NAT generate to A2A.
 def _endpoint_host(url: str) -> str:
     """Host of *url* for logging — never the full URL (may carry embedded creds)."""
     try:
@@ -616,25 +557,40 @@ async def _read_json_object(request: Request) -> dict[str, Any]:
     return body if isinstance(body, dict) else {}
 
 
-async def _external_openai_chat(name: str, endpoint: str, body: dict[str, Any]) -> StreamingResponse | JSONResponse:
+async def _external_openai_chat(
+    name: str, endpoint: str, body: dict[str, Any], supports_streaming: bool
+) -> StreamingResponse | JSONResponse:
     """Translate an OpenAI chat/completions body to A2A and return OpenAI shape."""
     text = _conversation_prompt(body.get("messages"))
     if not text:
         raise HTTPException(status_code=400, detail="Request has no user message to send.")
 
     model = body.get("model") or name
+    wants_stream = bool(body.get("stream"))
 
-    # Streaming: forward A2A deltas as they arrive (message/stream), so the UI
-    # shows progress instead of freezing until the agent finishes.
-    if body.get("stream"):
-        return StreamingResponse(_stream_openai_from_a2a(endpoint, text, model), media_type="text/event-stream")
+    if wants_stream and supports_streaming:
+        # Prime the first delta before returning so an early failure is a 502, not a 200.
+        agen = stream_a2a_message(endpoint, text)
+        try:
+            first, has_first = await anext(agen), True
+        except StopAsyncIteration:
+            first, has_first = "", False
+        except A2AMessageError as exc:
+            logger.warning("External agent '%s' chat stream failed (%s): %s", name, _endpoint_host(endpoint), exc)
+            raise HTTPException(status_code=502, detail=f"External agent chat failed: {exc}") from exc
+        return StreamingResponse(
+            _stream_openai_from_a2a(agen, first, has_first, model, name, endpoint),
+            media_type="text/event-stream",
+        )
 
-    # Non-streaming: single message/send, returned as one OpenAI completion.
+    # Non-streaming (or streaming-disabled card): one message/send, returned as JSON or one SSE chunk.
     try:
         reply = await send_a2a_message(endpoint, text)
     except A2AMessageError as exc:
         logger.warning("External agent '%s' chat failed (%s): %s", name, _endpoint_host(endpoint), exc)
         raise HTTPException(status_code=502, detail=f"External agent chat failed: {exc}") from exc
+    if wants_stream:
+        return StreamingResponse(_single_chunk_sse(reply, model), media_type="text/event-stream")
     return JSONResponse(_openai_completion(reply, model))
 
 
@@ -667,7 +623,8 @@ async def _serve_external_agent(
     """
     endpoint = _external_a2a_endpoint(agent, name)
     if trailing_uri.endswith("chat/completions"):
-        return await _external_openai_chat(name, endpoint, await _read_json_object(request))
+        body = await _read_json_object(request)
+        return await _external_openai_chat(name, endpoint, body, _card_supports_streaming(agent))
     if trailing_uri.startswith("generate"):
         return await _serve_external_generate_full(name, endpoint, request)
     raise HTTPException(

@@ -43,10 +43,8 @@ def is_container_deployment_mode(mode: str) -> bool:
 class Endpoint(BaseModel):
     """A routable network endpoint for a deployment.
 
-    Mirrors ``nemo_deployments_plugin.types.Endpoint`` so container-mode
-    deployments can carry the address the deployments-plugin ``Deployment``
-    projected without the agents plugin depending on that plugin at the
-    entity-schema layer.
+    Mirrors ``nemo_deployments_plugin.types.Endpoint`` so the agents plugin need not
+    depend on the deployments plugin at the entity-schema layer.
     """
 
     name: str
@@ -54,29 +52,9 @@ class Endpoint(BaseModel):
     protocol: Literal["http", "https", "grpc", "tcp"] = "http"
 
 
-# ---------------------------------------------------------------------------
-# Canonical spec storage convention
-# ---------------------------------------------------------------------------
-#
-# Each agent has exactly one spec fileset, named by convention. The fileset can
-# hold both the human-readable agent spec and the machine-readable agent config.
-# We do **not** store these locations on the agent - they are fully derivable
-# from the agent's workspace and name. Consumers should call the file-ref
-# helpers below rather than reconstructing refs inline.
-#
-# Layout:
-#   - Fileset (entity ref):  ``{workspace}/{agent-name}-spec``
-#   - Human-readable spec:   ``AGENT-SPEC.md`` (industry-standard name)
-#   - Machine-readable cfg:  ``agent.yaml``
-#   - Spec file ref:         ``{workspace}/{agent-name}-spec#AGENT-SPEC.md``
-#   - Config file ref:       ``{workspace}/{agent-name}-spec#agent.yaml``
-#   - Local cache root:      ``agents/{agent-name}-spec/``
-#
-# This is intentionally **not** an Optional field on the Agent. The
-# relationship is 1:1 and convention-bound; carrying a stored ref would
-# duplicate state with no resilience benefit (rename of either entity
-# orphans both representations equally).
-
+# Each agent has one spec fileset (``{workspace}/{name}-spec``) holding the human spec
+# and the machine config. Locations are derivable from (workspace, name), so they aren't
+# stored on the agent; call the file-ref helpers below rather than rebuilding refs inline.
 AGENT_SPEC_FILENAME = "AGENT-SPEC.md"
 """Canonical filename inside the agent's spec fileset."""
 
@@ -107,24 +85,12 @@ def agent_spec_local_path(agent_name: str, root: str | Path = AGENT_SPEC_LOCAL_R
 
 
 def agent_spec_file_ref(workspace: str, agent_name: str) -> FilesetRef:
-    """Return the canonical file ref ``workspace/<name>-spec#AGENT-SPEC.md``.
-
-    Use this anywhere downstream code needs to point at an agent's spec -
-    do not reconstruct the path inline. If the layout ever changes (e.g.
-    moving to a per-agent bundle fileset holding multiple artifacts), this
-    is the only function that needs to update.
-    """
+    """Return the canonical file ref ``workspace/<name>-spec#AGENT-SPEC.md``."""
     return FilesetRef(f"{workspace}/{agent_spec_fileset_name(agent_name)}#{AGENT_SPEC_FILENAME}")
 
 
 def agent_config_file_ref(workspace: str, agent_name: str) -> FilesetRef:
-    """Return the canonical file ref ``workspace/<name>-spec#agent.yaml``.
-
-    Use this anywhere downstream code needs to point at an agent's config -
-    do not reconstruct the path inline. If the layout ever changes (e.g.
-    moving to a per-agent bundle fileset holding multiple artifacts), this
-    is the only function that needs to update.
-    """
+    """Return the canonical file ref ``workspace/<name>-spec#agent.yaml``."""
     return FilesetRef(f"{workspace}/{agent_spec_fileset_name(agent_name)}#{AGENT_CONFIG_FILENAME}")
 
 
@@ -136,10 +102,8 @@ class Agent(NemoEntity, entity_type="agent"):
     Entity type: ``agent``
     Primary lookup: by ``name`` within a ``workspace``.
 
-    The agent's spec files live at the locations returned by
-    :func:`agent_spec_file_ref` and :func:`agent_config_file_ref` — they
-    are **not** stored on the entity because the paths are fully derivable
-    from ``(workspace, name)``.
+    Spec files live at :func:`agent_spec_file_ref` / :func:`agent_config_file_ref`;
+    the paths aren't stored on the entity since they derive from ``(workspace, name)``.
     """
 
     description: str = Field(default="", description="Human-readable description of the agent.")
@@ -179,12 +143,7 @@ class Agent(NemoEntity, entity_type="agent"):
 
 
 def is_external_agent(agent: Agent) -> bool:
-    """Return True when *agent* runs outside NeMo Platform (``source == 'external'``).
-
-    The single predicate for the managed/external branch — mirrors
-    :func:`is_container_deployment_mode` so consumers don't reimplement the
-    string comparison inline.
-    """
+    """Return True when *agent* runs outside NeMo Platform (``source == 'external'``)."""
     return agent.source == "external"
 
 
