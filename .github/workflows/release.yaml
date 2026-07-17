@@ -1158,6 +1158,8 @@ jobs:
           WHEEL_CATALOG: ${{ env.RELEASE_WHEELS_JSON }}
           WHEEL_VERSION: ${{ needs.plan-release.outputs.wheel_version }}
           CONTAINER_IDS: ${{ needs.plan-release.outputs.container_ids }}
+          RELEASE_NIGHTLY_CONTAINER_REGISTRY: ${{ env.RELEASE_NIGHTLY_CONTAINER_REGISTRY }}
+          RELEASE_STABLE_CONTAINER_REGISTRY: ${{ env.RELEASE_STABLE_CONTAINER_REGISTRY }}
           INCLUDE_HELM: ${{ needs.plan-release.outputs.include_helm }}
           CHART_VERSION: ${{ needs.stage-helm.outputs.chart_version }}
           NIGHTLY_WHEEL_INDEX: ${{ env.RELEASE_NIGHTLY_WHEEL_INDEX }}
@@ -1214,12 +1216,14 @@ jobs:
               }
               if (containerIds.length > 0) {
                 lines.push("*:docker_: Containers published:*");
+                lines.push("```");
+                const containerRegistry = releaseType === "stable"
+                  ? process.env.RELEASE_STABLE_CONTAINER_REGISTRY
+                  : process.env.RELEASE_NIGHTLY_CONTAINER_REGISTRY;
                 for (const containerId of containerIds) {
-                  const container = releaseType === "stable"
-                    ? `<${process.env.NGC_CATALOG_BASE}/containers/${containerId}|${containerId}>`
-                    : containerId;
-                  lines.push(`- ${container}: ${process.env.RELEASE_LABEL}`);
+                  lines.push(`${containerRegistry}/${containerId}:${process.env.RELEASE_LABEL}`);
                 }
+                lines.push("```");
               }
               if (process.env.INCLUDE_HELM === "true") {
                 const chart = releaseType === "stable"
