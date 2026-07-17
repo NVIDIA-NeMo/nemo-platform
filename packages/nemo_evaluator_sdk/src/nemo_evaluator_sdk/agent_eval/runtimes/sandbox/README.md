@@ -24,6 +24,12 @@ we write the providers ourselves regardless. See AALGO-321 for the full analysis
 - [`providers/docker.py`](providers/docker.py) — `DockerSandboxProvider`: one persistent container
   per sandbox (`docker run -d` keep-alive), `docker exec`, `docker cp`, `docker rm -f`. Single `_run`
   chokepoint (mocked in unit tests).
+- [`providers/compose.py`](providers/compose.py) — `DockerComposeSandboxProvider`: one exclusive,
+  caller-described Docker Compose project. It accepts ordered Compose files, profiles, an exact service
+  topology, and an optional teardown hook. It runs existing images by default (`build=False`);
+  source builds must be requested explicitly by the worker that owns the provisioned workspace.
+  Project exclusivity uses a nonblocking POSIX `fcntl` lock; unsupported platforms fail before
+  startup rather than running without cross-process ownership protection.
 
 ## Isolation note
 
@@ -42,4 +48,9 @@ NVIDIA OpenShell (once it exposes a programmatic file-I/O API; CLI/SSH-only toda
 - `tests/agent_eval/test_sandbox_docker_provider.py` — hermetic; asserts the exact `docker` argv.
 - `tests/agent_eval/test_sandbox_api.py` — facade lifecycle over a fake provider.
 - `tests/agent_eval/test_sandbox_docker_provider_live.py` — real `docker`; skipped without a daemon.
+- `tests/agent_eval/test_sandbox_compose_provider.py` — hermetic Compose lifecycle and command tests.
+
+- `tests/agent_eval/test_sandbox_compose_provider_live.py` — real image-first/build/profile Compose
+  flows; skipped without a Compose-capable daemon.
+
 - `tests/agent_eval/test_fabric_container_runtime.py` — evidence-contract mapping over a fake provider.
