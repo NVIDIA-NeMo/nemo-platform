@@ -10,6 +10,7 @@ import {
   Legend,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   TooltipProps,
@@ -28,6 +29,7 @@ interface Props {
 
 interface ChartDataPoint {
   step: number;
+  epoch?: number;
   trainLoss?: number;
   valLoss?: number;
   trainLossInterpolated?: boolean;
@@ -92,6 +94,7 @@ export function TrainValidationLossLineChart({
       if (point.step !== undefined) {
         dataMap.set(point.step, {
           step: point.step,
+          epoch: point.epoch,
           trainLoss: point.value,
           trainLossInterpolated: false,
         });
@@ -104,9 +107,11 @@ export function TrainValidationLossLineChart({
         if (existing) {
           existing.valLoss = point.value;
           existing.valLossInterpolated = false;
+          existing.epoch = existing.epoch ?? point.epoch;
         } else {
           dataMap.set(point.step, {
             step: point.step,
+            epoch: point.epoch,
             valLoss: point.value,
             valLossInterpolated: false,
           });
@@ -141,6 +146,21 @@ export function TrainValidationLossLineChart({
 
   const hasTrainData = useMemo(() => chartData.some((d) => d.trainLoss !== undefined), [chartData]);
   const hasValData = useMemo(() => chartData.some((d) => d.valLoss !== undefined), [chartData]);
+
+  // Steps at which a new epoch begins (skipping the first epoch's start), used to draw boundaries.
+  const epochBoundaries = useMemo(() => {
+    const boundaries: { step: number; epoch: number }[] = [];
+    let previousEpoch: number | undefined;
+    for (const point of chartData) {
+      if (point.epoch !== undefined && point.epoch !== previousEpoch) {
+        if (previousEpoch !== undefined) {
+          boundaries.push({ step: point.step, epoch: point.epoch });
+        }
+        previousEpoch = point.epoch;
+      }
+    }
+    return boundaries;
+  }, [chartData]);
 
   if (chartData.length === 0) {
     return <Empty title="No training data available" />;
@@ -177,6 +197,20 @@ export function TrainValidationLossLineChart({
             </Text>
           )}
         />
+        {epochBoundaries.map((boundary) => (
+          <ReferenceLine
+            key={`epoch-${boundary.epoch}`}
+            x={boundary.step}
+            stroke="var(--border-color-base)"
+            strokeDasharray="4 4"
+            label={{
+              value: `Epoch ${boundary.epoch}`,
+              position: 'insideTopRight',
+              fontSize: 11,
+              fill: 'var(--text-color-placeholder)',
+            }}
+          />
+        ))}
         {hasTrainData && (
           <Line
             type="monotone"
@@ -215,7 +249,10 @@ function CustomTooltip({ active, payload, label }: TooltipProps<number, string>)
       gap="2"
       className="bg-component-tooltip border border-component-tooltip shadow-sm rounded-lg p-3"
     >
-      <Text kind="label/semibold/md">Step {label}</Text>
+      <Text kind="label/semibold/md">
+        Step {label}
+        {dataPoint?.epoch !== undefined ? ` • Epoch ${dataPoint.epoch}` : ''}
+      </Text>
       <Stack gap="1">
         <Text kind="body/regular/sm" className="text-accent-blue">
           Training Loss:{' '}

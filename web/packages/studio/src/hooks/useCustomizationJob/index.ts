@@ -8,7 +8,7 @@ import {
   type CustomizationBackend,
   type CustomizationJob,
   type CustomizationJobSpec,
-} from '@nemo/sdk/vendored/customizer/schema';
+} from '@studio/util/customizationBackend';
 import type { UseQueryOptions } from '@tanstack/react-query';
 
 /**

@@ -15,7 +15,7 @@ import userEvent from '@testing-library/user-event';
 const mutateAutomodel = vi.fn();
 const mutateUnsloth = vi.fn();
 
-vi.mock('@nemo/sdk/vendored/customizer/api', () => ({
+vi.mock('@nemo/sdk/generated/customizer/api', () => ({
   useCustomizationCreateAutomodelJob: () => ({ mutateAsync: mutateAutomodel, isPending: false }),
   useCustomizationCreateUnslothJob: () => ({ mutateAsync: mutateUnsloth, isPending: false }),
 }));

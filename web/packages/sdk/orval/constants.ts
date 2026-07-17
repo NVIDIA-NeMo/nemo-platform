@@ -25,6 +25,12 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
     apiEnvKeys: ['VITE_PLATFORM_BASE_URL'],
     zod: true,
   },
+  customizer: {
+    path: 'customizer',
+    url: `../../../../plugins/nemo-customizer/openapi/openapi.yaml`,
+    apiEnvKeys: ['VITE_PLATFORM_BASE_URL'],
+    zod: true,
+  },
   'data-designer': {
     path: 'data-designer',
     url: `../../../../plugins/nemo-data-designer/openapi/openapi.yaml`,

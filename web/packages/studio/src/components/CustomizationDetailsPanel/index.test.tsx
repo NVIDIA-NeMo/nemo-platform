@@ -57,6 +57,31 @@ describe('CustomizationDetailsPanel', () => {
     expect(screen.getByRole('button', { name: 'View Job Configuration' })).toBeInTheDocument();
   });
 
+  it('surfaces the live per-step telemetry from status_details', async () => {
+    render(
+      <TestProviders>
+        <CustomizationDetailsPanel
+          customizationJobName={customizationJob1.name!}
+          workspace={customizationJob1.workspace}
+        />
+      </TestProviders>
+    );
+    await waitForElementToBeRemoved(() => screen.queryByText('Loading...'), {
+      timeout: XL_SELECTOR_TIMEOUT,
+    });
+
+    // customizationJob1 carries step/max_steps, scalar losses, lr, grad_norm and a checkpoint path.
+    expect(await screen.findByText('Step')).toBeInTheDocument();
+    expect(screen.getByText('10 / 10')).toBeInTheDocument();
+    expect(screen.getByText('Current Training Loss')).toBeInTheDocument();
+    expect(screen.getByText('Learning Rate')).toBeInTheDocument();
+    expect(screen.getByText((5e-6).toExponential(2))).toBeInTheDocument();
+    expect(screen.getByText('Gradient Norm')).toBeInTheDocument();
+    expect(screen.getByText('1.2345')).toBeInTheDocument();
+    expect(screen.getByText('Latest Checkpoint')).toBeInTheDocument();
+    expect(screen.getByText('default/output-fileset/checkpoints/step-10')).toBeInTheDocument();
+  });
+
   it('should show status logs when clicking the accordion trigger', async () => {
     server.use(
       http.get<never, never, PlatformJobLogPage>(

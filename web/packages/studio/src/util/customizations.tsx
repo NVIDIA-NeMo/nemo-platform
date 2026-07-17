@@ -3,13 +3,14 @@
 
 import { formatFinetuningType } from '@nemo/common/src/utils/formatters';
 import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
+import { Badge } from '@nvidia/foundations-react-core';
+import type { CustomizationTrainingTelemetry } from '@studio/types/customization';
 import {
   isAutomodelJob,
   isUnslothJob,
   type CustomizationJob,
   type CustomizationJobStatusDetails,
-} from '@nemo/sdk/vendored/customizer/schema';
-import { Badge } from '@nvidia/foundations-react-core';
+} from '@studio/util/customizationBackend';
 import { getTextWithCount } from '@studio/util/strings';
 import { Circle /* TODO: replace with a proper icon (was Circle) */, Gpu } from 'lucide-react';
 import { ReactNode } from 'react';
@@ -115,7 +116,7 @@ export const getTrainingBatchSize = (customizationJob?: CustomizationJob): numbe
     return customizationJob.spec.batch.global_batch_size ?? 0;
   }
   if (isUnslothJob(customizationJob)) {
-    return customizationJob.spec.batch.per_device_train_batch_size ?? 0;
+    return customizationJob.spec.batch?.per_device_train_batch_size ?? 0;
   }
   return 0;
 };
@@ -162,6 +163,54 @@ export const getCustomizationTrainingProgress = (customization: CustomizationJob
   return `${epoch ?? 0}/${epochs ?? '?'} (${Math.floor(Number(percentageDone) || 0)}%)`;
 };
 
+const asFiniteNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+
+const asNonEmptyString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.length > 0 ? value : undefined;
+
+/**
+ * Read the live per-step training telemetry the backend streams into `status_details`. The wire type
+ * is `Record<string, unknown>`, so every field is defensively coerced and omitted when absent.
+ */
+export const getTrainingTelemetry = (
+  job: CustomizationJob | null | undefined
+): CustomizationTrainingTelemetry => {
+  const details = job?.status_details;
+  if (!details) return {};
+  return {
+    phase: asNonEmptyString(details.phase),
+    step: asFiniteNumber(details.step),
+    maxSteps: asFiniteNumber(details.max_steps),
+    numEpochs: asFiniteNumber(details.num_epochs),
+    epoch: asFiniteNumber(details.epoch),
+    trainLoss: asFiniteNumber(details.train_loss),
+    valLoss: asFiniteNumber(details.val_loss),
+    learningRate: asFiniteNumber(details.lr),
+    gradNorm: asFiniteNumber(details.grad_norm),
+    checkpointPath: asNonEmptyString(details.checkpoint_path),
+  };
+};
+
+const TRAINING_PHASE_LABELS: Record<string, string> = {
+  compiling_config: 'Compiling Config',
+  automodel_recipe_setup: 'Recipe Setup',
+  training: 'Training',
+  validation: 'Validation',
+  checkpoint_saved: 'Checkpoint Saved',
+  epoch_end: 'Epoch End',
+  processing_checkpoint: 'Processing Checkpoint',
+  completed: 'Completed',
+};
+
+/** Human-readable label for a backend training `phase`, title-casing unrecognized values. */
+export const formatTrainingPhase = (phase: string): string =>
+  TRAINING_PHASE_LABELS[phase] ??
+  phase
+    .split('_')
+    .map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1) : word))
+    .join(' ');
+
 const badge = (key: string, icon: ReactNode, label: string): ReactNode => (
   <Badge key={key} color="gray" kind="solid">
     {icon}
@@ -179,12 +228,12 @@ export const getTrainingOptionBadges = (job: CustomizationJob | null | undefined
   if (isAutomodelJob(job)) {
     const p = job.spec.parallelism;
     const badges: ReactNode[] = [
-      badge('num_gpus_per_node', <Gpu />, getTextWithCount('GPU', p.num_gpus_per_node)),
-      badge('num_nodes', <Circle />, getTextWithCount('Node', p.num_nodes)),
+      badge('num_gpus_per_node', <Gpu />, getTextWithCount('GPU', p.num_gpus_per_node ?? 0)),
+      badge('num_nodes', <Circle />, getTextWithCount('Node', p.num_nodes ?? 0)),
       badge(
         'tensor_parallel_size',
         <Gpu />,
-        getTextWithCount('Tensor Parallel', p.tensor_parallel_size)
+        getTextWithCount('Tensor Parallel', p.tensor_parallel_size ?? 0)
       ),
     ];
     if (p.sequence_parallel) {
@@ -194,7 +243,7 @@ export const getTrainingOptionBadges = (job: CustomizationJob | null | undefined
   }
 
   if (isUnslothJob(job)) {
-    const { gpus, precision } = job.spec.hardware;
+    const { gpus, precision } = job.spec.hardware ?? {};
     const badges: ReactNode[] = [];
     if (gpus) {
       const gpuCount = gpus.split(',').filter(Boolean).length;
