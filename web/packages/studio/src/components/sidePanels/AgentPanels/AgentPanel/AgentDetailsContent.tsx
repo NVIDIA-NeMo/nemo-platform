@@ -24,6 +24,7 @@ import { NoHealthyDeploymentsBanner } from '@studio/components/sidePanels/AgentP
 import type { WalkthroughStep } from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthrough';
 import type { AgentEvalJob } from '@studio/routes/agents/AgentEvaluationsRoute/api';
 import { getAgentEvaluationDetailRoute, getAgentEvaluationsListRoute } from '@studio/routes/utils';
+import { isExternalAgent } from '@studio/util/agents';
 import type { FC, RefObject } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -58,7 +59,7 @@ export const AgentDetailsContent: FC<AgentDetailsContentProps> = ({
   onSwitchToChat,
   onDeleteDeployment,
 }) => {
-  const isExternal = agent?.source === 'external';
+  const isExternal = isExternalAgent(agent);
   return (
     <Stack className="overflow-auto">
       <Block padding="4">

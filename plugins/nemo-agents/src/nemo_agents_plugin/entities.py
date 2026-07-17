@@ -152,6 +152,16 @@ class Agent(NemoEntity, entity_type="agent"):
     )
 
 
+def is_external_agent(agent: Agent) -> bool:
+    """Return True when *agent* runs outside NeMo Platform (``source == 'external'``).
+
+    The single predicate for the managed/external branch — mirrors
+    :func:`is_container_deployment_mode` so consumers don't reimplement the
+    string comparison inline.
+    """
+    return agent.source == "external"
+
+
 class AgentDeployment(NemoEntity, entity_type="agent_deployment"):
     """A running (or pending) deployment of an Agent.
 

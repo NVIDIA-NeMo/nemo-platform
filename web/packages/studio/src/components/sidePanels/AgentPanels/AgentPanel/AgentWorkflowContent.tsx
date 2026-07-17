@@ -7,6 +7,7 @@ import type { AgentConfig } from '@studio/components/dataViews/AgentsDataView';
 import { redactSecrets } from '@studio/components/sidePanels/AgentPanels/AgentPanel/redactSecrets';
 import { summarizeAgentCard } from '@studio/components/sidePanels/AgentPanels/AgentPanel/summarizeAgentCard';
 import { summarizeAgentWorkflow } from '@studio/components/sidePanels/AgentPanels/AgentPanel/summarizeAgentWorkflow';
+import { isExternalAgent } from '@studio/util/agents';
 import { Globe, Workflow, Wrench } from 'lucide-react';
 import type { FC } from 'react';
 import YAML from 'yaml';
@@ -16,7 +17,7 @@ interface AgentWorkflowContentProps {
 }
 
 export const AgentWorkflowContent: FC<AgentWorkflowContentProps> = ({ agent }) => {
-  if (agent?.source === 'external') {
+  if (agent && isExternalAgent(agent)) {
     return <ExternalAgentWorkflow agent={agent} />;
   }
 

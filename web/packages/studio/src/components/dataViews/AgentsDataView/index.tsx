@@ -33,6 +33,7 @@ import { MODEL_COMPARE_ENABLED } from '@studio/constants/environment';
 import { LINK_DOCS_AGENTS } from '@studio/constants/links';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getModelCompareRoute } from '@studio/routes/utils';
+import { isExternalAgent } from '@studio/util/agents';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
 import { HatGlasses, Trash, X } from 'lucide-react';
 import { ComponentProps, FC, useEffect, useMemo, useState } from 'react';
@@ -259,7 +260,7 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
       cell: ({ row }) => (
         <Flex align="center" gap="2">
           <Text>{row.original.name}</Text>
-          {row.original.source === 'external' && <Badge kind="outline">External</Badge>}
+          {isExternalAgent(row.original) && <Badge kind="outline">External</Badge>}
         </Flex>
       ),
     }),
@@ -299,33 +300,32 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
       enableResizing: false,
       rowActions: (row: AgentTableRow) => {
         // External agents run outside NeMo Platform — deploy/test/clone don't apply.
-        const managedActions =
-          row.source === 'external'
-            ? []
-            : [
-                {
-                  children: 'Deploy',
-                  onSelect: () => onCreateDeployment?.(row.name),
-                },
-                ...(canTestModels
-                  ? [
-                      {
-                        children: 'Test models',
-                        onSelect: () => {
-                          const target = getModelCompareRoute(workspace);
-                          const model = row.models[0];
-                          const urn = model ? `${row.workspace}/${model}` : null;
-                          navigate(urn ? `${target}?model=${encodeURIComponent(urn)}` : target);
-                        },
+        const managedActions = isExternalAgent(row)
+          ? []
+          : [
+              {
+                children: 'Deploy',
+                onSelect: () => onCreateDeployment?.(row.name),
+              },
+              ...(canTestModels
+                ? [
+                    {
+                      children: 'Test models',
+                      onSelect: () => {
+                        const target = getModelCompareRoute(workspace);
+                        const model = row.models[0];
+                        const urn = model ? `${row.workspace}/${model}` : null;
+                        navigate(urn ? `${target}?model=${encodeURIComponent(urn)}` : target);
                       },
-                    ]
-                  : []),
-                {
-                  children: 'Clone',
-                  onSelect: () => onCloneAgent?.(row),
-                },
-                { kind: 'divider' as const },
-              ];
+                    },
+                  ]
+                : []),
+              {
+                children: 'Clone',
+                onSelect: () => onCloneAgent?.(row),
+              },
+              { kind: 'divider' as const },
+            ];
         return [
           ...managedActions,
           {

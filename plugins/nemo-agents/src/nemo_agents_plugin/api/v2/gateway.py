@@ -39,7 +39,12 @@ from nemo_agents_plugin.a2a import A2AMessageError, send_a2a_message, stream_a2a
 from nemo_agents_plugin.api.v2._perms import GatewayPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.authz import scope
-from nemo_agents_plugin.entities import Agent, AgentDeployment, is_container_deployment_mode
+from nemo_agents_plugin.entities import (
+    Agent,
+    AgentDeployment,
+    is_container_deployment_mode,
+    is_external_agent,
+)
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 
@@ -142,7 +147,7 @@ async def _serve_agent_proxy(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    if agent.source == "external":
+    if is_external_agent(agent):
         return await _serve_external_agent(name, trailing_uri, request, agent)
 
     endpoint = await _resolve_agent_endpoint(name, workspace, entity_client)
@@ -547,7 +552,7 @@ async def external_agent_chat_completions(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    if agent.source != "external":
+    if not is_external_agent(agent):
         raise HTTPException(
             status_code=400,
             detail=f"Agent '{name}' is managed; chat through its deployment, not this endpoint.",

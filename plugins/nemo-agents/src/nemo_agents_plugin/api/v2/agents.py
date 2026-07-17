@@ -17,7 +17,7 @@ from nemo_agents_plugin.a2a import AgentCardError, fetch_agent_card, probe_agent
 from nemo_agents_plugin.api.v2._perms import AgentPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.authz import scope
-from nemo_agents_plugin.entities import Agent, AgentDeployment
+from nemo_agents_plugin.entities import Agent, AgentDeployment, is_external_agent
 from nemo_agents_plugin.schema import (
     AgentFilter,
     AgentPage,
@@ -100,7 +100,7 @@ async def _get_external_agent(name: str, workspace: str, entity_client: NemoEnti
         agent = await entity_client.get(Agent, name=name, workspace=workspace)
     except NemoEntityNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found in workspace '{workspace}'.") from exc
-    if agent.source != "external":
+    if not is_external_agent(agent):
         raise HTTPException(status_code=400, detail=f"Agent '{name}' is not an external agent.")
     return agent
 
