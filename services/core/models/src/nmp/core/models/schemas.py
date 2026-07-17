@@ -86,13 +86,6 @@ class FinetuningType(str, Enum):
     GRPO = "grpo"
 
 
-# ``BackendFormat`` is the inference backend wire format (OPENAI_CHAT /
-# ANTHROPIC_MESSAGES). It is owned by ``nemo_platform_plugin.inference_middleware``
-# — the shared, lower-level package that IGW and the middleware plugins already
-# treat as canonical — and re-exported here so callers of this module (entities,
-# controllers) keep importing it from ``nmp.core.models.schemas`` unchanged. A
-# second local definition would collide with the plugin's in the merged
-# ``platform`` OpenAPI spec.
 class MoEConfig(BaseModel):
     """Mixture of Experts configuration."""
 

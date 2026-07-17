@@ -30,7 +30,15 @@ class RlSchema(NamespacedModel):
     backend's same-named model in the merged ``/apis/customization`` spec.
     ``extra='forbid'`` is inherited from the base. Defined here (with the
     canonical schemas) and re-imported by the plugin's submitter-facing module so
-    both prefix identically."""
+    both prefix identically.
+
+    Inheriting the base also applies ``extra='forbid'`` uniformly across *all* RL
+    models, including the canonical/output ones (``RlJobOutput`` and
+    ``OutputResponse``) that previously used pydantic's default ``extra='ignore'``.
+    This tightening is intentional: it matches the automodel and unsloth backends,
+    whose ``*JobOutput`` models already forbid extras and are rehydrated via the
+    same ``model_validate(spec.model_dump())`` path (see
+    ``nemo_rl_plugin.jobs.jobs.compile``) without carrying foreign fields."""
 
     __schema_namespace__ = "Rl"
 

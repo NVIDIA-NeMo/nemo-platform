@@ -96,3 +96,28 @@ def test_plain_namespaced_model_without_namespace_is_unprefixed():
 
     assert Bare.__name__ == "Bare"
     assert Bare.model_json_schema()["title"] == "Bare"
+
+
+def test_subclass_with_own_model_config_still_inherits_extra_forbid():
+    """A subclass that declares its OWN ``model_config`` must still inherit
+    ``extra='forbid'`` from the base.
+
+    ``RlJobInput``, ``_TrainingBase`` and ``RlJobOutput`` each set
+    ``ConfigDict(protected_namespaces=())`` and rely on pydantic *merging* (not
+    replacing) the base config to keep rejecting unknown fields. If that ever
+    regressed, ``additionalProperties: false`` would silently vanish from those
+    request bodies and this suite would still pass without this guard.
+    """
+    from pydantic import ConfigDict
+
+    class WithOwnConfig(AutomodelSchema):
+        model_config = ConfigDict(protected_namespaces=())
+
+        value: int = 0
+
+    # Subclass's own key applied *and* the base's ``extra='forbid'`` preserved.
+    assert WithOwnConfig.model_config.get("protected_namespaces") == ()
+    assert WithOwnConfig.model_config.get("extra") == "forbid"
+    assert WithOwnConfig.model_json_schema()["additionalProperties"] is False
+    with pytest.raises(ValidationError):
+        WithOwnConfig.model_validate({"value": 1, "bogus": 2})
