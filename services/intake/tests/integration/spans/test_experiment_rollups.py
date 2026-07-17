@@ -107,7 +107,7 @@ def test_evaluation_response_hydrates_clickhouse_rollups(client: TestClient) -> 
 def test_evaluation_rollups_aggregate_per_test_case_before_pooling(client: TestClient) -> None:
     # Unbalanced k: test case A has 1 attempt, test case B has 3. Test-case-weighting counts each test case once, so the
     # heavily-retried test case can't dominate. Pooling all 4 attempts would give score mean 0.75; the
-    # correct two-level rollup (per-test-case pass@1, then across test cases) is 0.5.
+    # correct two-level rollup (average per test case, then across test cases) is 0.5.
     evaluation_id = "rollup-k-exp"
     group_id = _ensure_group(client)
     created = client.post(

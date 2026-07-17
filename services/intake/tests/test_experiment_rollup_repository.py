@@ -141,7 +141,7 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
     assert "AND (workspace, session_id) IN (" in client.queries[1]
     assert "sessions.session_id = results.session_id" in client.queries[1]
     # Scores are reduced to one value per (session, evaluator), then averaged per test case before the
-    # distribution rollup, so the mean is test-case-weighted (pass@1) and count tracks test cases.
+    # distribution rollup, so the mean is test-case-weighted and count tracks test cases.
     assert (
         "GROUP BY sessions.evaluation_id, sessions.session_id, sessions.test_case_id, results.name" in client.queries[1]
     )
