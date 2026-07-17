@@ -238,7 +238,7 @@ def _build_model_entity_config(
 
     # Only forward the user-supplied deployment_config from the job spec.
     # tool_call_config from the *source* model entity's spec is propagated
-    # separately via fileset metadata (see _build_output_fileset_metadata),
+    # separately via fileset metadata (see build_output_fileset_metadata_from_model_entity),
     # so we intentionally do not merge it here.
     deployment_config: str | ModelEntityDeploymentParameters | None = None
     if isinstance(job_spec.deployment_config, str):
