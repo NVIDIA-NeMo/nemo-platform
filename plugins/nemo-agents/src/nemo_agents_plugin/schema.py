@@ -21,6 +21,7 @@ Naming conventions:
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlparse
 
 from nemo_agents_plugin.entities import Agent, AgentDeployment, DeploymentMode, DeploymentStatus
 from nemo_platform_plugin.schema import NemoFilter, NemoListResponse
@@ -60,6 +61,9 @@ class CreateAgentRequest(BaseModel):
         if self.url:
             if self.config is not None:
                 raise ValueError("Provide either 'config' (managed agent) or 'url' (external agent), not both.")
+            parsed = urlparse(self.url.strip())
+            if parsed.scheme not in ("http", "https") or not parsed.hostname:
+                raise ValueError("'url' must be a valid http(s) URL, e.g. http://host:10000.")
         elif self.config is None:
             raise ValueError("'config' is required for a managed agent, or provide 'url' to register an external one.")
         return self

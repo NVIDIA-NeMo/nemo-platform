@@ -13,12 +13,15 @@ run. See https://github.com/nvidia/nemo-agent-toolkit A2A server docs.
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 from urllib.parse import urljoin
 from uuid import uuid4
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 # Well-known paths that expose an A2A agent card. The spec moved from
 # ``agent.json`` to ``agent-card.json``; try the current name first.
@@ -32,6 +35,10 @@ _FETCH_TIMEOUT_S = 10.0
 # Agents can take a while to answer; allow more headroom than card discovery.
 _MESSAGE_TIMEOUT_S = 120.0
 
+# Cap message/stream bodies too — replies are larger than cards but still bounded,
+# so one hostile endpoint can't OOM the shared gateway worker.
+_MAX_MESSAGE_BYTES = 8 * 1024 * 1024
+
 
 class AgentCardError(Exception):
     """Raised when an external agent's card can't be fetched or parsed."""
@@ -39,6 +46,23 @@ class AgentCardError(Exception):
 
 class A2AMessageError(Exception):
     """Raised when a ``message/send`` call to an external agent fails."""
+
+
+async def _read_capped(response: httpx.Response, cap: int) -> bytes:
+    """Read a streamed response body, aborting once *cap* bytes are exceeded.
+
+    Reads incrementally (unlike ``response.content``, which buffers the whole
+    decoded body first) so an oversized/compressed body can't exhaust memory
+    before the size check runs.
+    """
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in response.aiter_bytes():
+        total += len(chunk)
+        if total > cap:
+            raise A2AMessageError("agent response exceeded the size limit")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _card_url(base_url: str, path: str) -> str:
@@ -58,31 +82,48 @@ async def fetch_agent_card(base_url: str) -> dict[str, Any]:
     if not base.startswith(("http://", "https://")):
         raise AgentCardError("Endpoint must be an http(s) URL.")
 
+    # Track the specific reason for logging, but never surface it to the caller:
+    # distinct "could not reach" vs "HTTP 401" vs "not JSON" messages would let a
+    # caller probe which internal hosts/ports exist (an SSRF oracle).
     last_error = "no agent card found"
     async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT_S, follow_redirects=True) as client:
         for path in AGENT_CARD_PATHS:
             url = _card_url(base, path)
             try:
-                resp = await client.get(url, headers={"Accept": "application/json"})
+                async with client.stream("GET", url, headers={"Accept": "application/json"}) as resp:
+                    if resp.status_code != 200:
+                        last_error = f"HTTP {resp.status_code} from {path}"
+                        continue
+                    try:
+                        raw = await _read_capped(resp, _MAX_CARD_BYTES)
+                    except A2AMessageError:
+                        last_error = "card response exceeded the size limit"
+                        continue
             except httpx.HTTPError as exc:
-                last_error = f"could not reach agent at {base} ({exc.__class__.__name__})"
+                last_error = f"transport error ({exc.__class__.__name__})"
                 continue
-            if resp.status_code != 200:
-                last_error = f"agent card request returned HTTP {resp.status_code}"
-                continue
-            if len(resp.content) > _MAX_CARD_BYTES:
-                raise AgentCardError("Agent card response is too large.")
             try:
-                card = resp.json()
+                card = json.loads(raw)
             except ValueError:
-                last_error = "agent card response was not valid JSON"
+                last_error = "card response was not valid JSON"
                 continue
             if not isinstance(card, dict) or not (card.get("name") or card.get("skills")):
                 last_error = "response did not look like an A2A agent card"
                 continue
             return card
 
-    raise AgentCardError(f"Could not fetch A2A agent card: {last_error}.")
+    logger.info("Agent card fetch failed for %s: %s", _endpoint_host(base), last_error)
+    raise AgentCardError("Could not fetch a valid A2A agent card from the provided URL.")
+
+
+def _endpoint_host(url: str) -> str:
+    """Host of *url* for logging — avoid echoing the full URL back anywhere."""
+    from urllib.parse import urlparse
+
+    try:
+        return urlparse(url).hostname or "unknown"
+    except ValueError:
+        return "unknown"
 
 
 def _collect_text_parts(parts: Any) -> list[str]:
@@ -139,14 +180,15 @@ async def send_a2a_message(endpoint: str, text: str) -> str:
     }
     try:
         async with httpx.AsyncClient(timeout=_MESSAGE_TIMEOUT_S, follow_redirects=True) as client:
-            resp = await client.post(endpoint, json=payload, headers={"Accept": "application/json"})
+            async with client.stream("POST", endpoint, json=payload, headers={"Accept": "application/json"}) as resp:
+                if resp.status_code != 200:
+                    raise A2AMessageError(f"agent returned HTTP {resp.status_code}")
+                raw = await _read_capped(resp, _MAX_MESSAGE_BYTES)
     except httpx.HTTPError as exc:
         raise A2AMessageError(f"could not reach agent at {endpoint} ({exc.__class__.__name__})") from exc
 
-    if resp.status_code != 200:
-        raise A2AMessageError(f"agent returned HTTP {resp.status_code}")
     try:
-        data = resp.json()
+        data = json.loads(raw)
     except ValueError as exc:
         raise A2AMessageError("agent response was not valid JSON") from exc
 
@@ -201,7 +243,11 @@ async def stream_a2a_message(endpoint: str, text: str) -> AsyncIterator[str]:
             async with client.stream("POST", endpoint, json=payload, headers={"Accept": "text/event-stream"}) as resp:
                 if resp.status_code != 200:
                     raise A2AMessageError(f"agent returned HTTP {resp.status_code}")
+                total = 0
                 async for line in resp.aiter_lines():
+                    total += len(line)
+                    if total > _MAX_MESSAGE_BYTES:
+                        raise A2AMessageError("agent stream exceeded the size limit")
                     line = line.strip()
                     if not line or line.startswith(":"):  # keepalive / comment
                         continue

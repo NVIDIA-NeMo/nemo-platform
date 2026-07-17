@@ -51,7 +51,7 @@ async def test_rejects_non_http_url() -> None:
 async def test_unreachable_raises() -> None:
     respx.get("http://host:10000/.well-known/agent-card.json").mock(side_effect=httpx.ConnectError("refused"))
     respx.get("http://host:10000/.well-known/agent.json").mock(side_effect=httpx.ConnectError("refused"))
-    with pytest.raises(AgentCardError, match="could not reach"):
+    with pytest.raises(AgentCardError, match="Could not fetch a valid A2A agent card"):
         await fetch_agent_card("http://host:10000")
 
 

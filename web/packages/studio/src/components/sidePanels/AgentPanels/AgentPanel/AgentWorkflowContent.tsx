@@ -4,6 +4,7 @@
 import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
 import { Accordion, Badge, Block, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import type { AgentConfig } from '@studio/components/dataViews/AgentsDataView';
+import { redactSecrets } from '@studio/components/sidePanels/AgentPanels/AgentPanel/redactSecrets';
 import { summarizeAgentCard } from '@studio/components/sidePanels/AgentPanels/AgentPanel/summarizeAgentCard';
 import { summarizeAgentWorkflow } from '@studio/components/sidePanels/AgentPanels/AgentPanel/summarizeAgentWorkflow';
 import { Globe, Workflow, Wrench } from 'lucide-react';
@@ -32,7 +33,7 @@ export const AgentWorkflowContent: FC<AgentWorkflowContentProps> = ({ agent }) =
 
   let yamlText = '';
   try {
-    yamlText = YAML.stringify(config);
+    yamlText = YAML.stringify(redactSecrets(config));
   } catch {
     yamlText = 'Unable to render config as YAML.';
   }
@@ -171,7 +172,7 @@ const ExternalAgentWorkflow: FC<{ agent: Agent }> = ({ agent }) => {
             slotContent: (
               <Block>
                 <pre className="font-mono text-xs whitespace-pre-wrap break-all max-h-96 overflow-auto bg-surface-subtle p-density-lg rounded leading-relaxed">
-                  {JSON.stringify(agent.card ?? {}, null, 2)}
+                  {JSON.stringify(redactSecrets(agent.card ?? {}), null, 2)}
                 </pre>
               </Block>
             ),

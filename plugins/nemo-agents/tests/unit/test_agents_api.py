@@ -282,6 +282,14 @@ class TestCreateExternalAgent:
         )
         assert resp.status_code == 422
 
+    @pytest.mark.parametrize("bad_url", ["http://[", "not-a-url", "ftp://host", "http://"])
+    def test_malformed_url_returns_422(self, client: TestClient, mock_entity_client: AsyncMock, bad_url: str) -> None:
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents",
+            json={"name": "ext", "url": bad_url},
+        )
+        assert resp.status_code == 422
+
 
 # ---------------------------------------------------------------------------
 # GET /agents — list (NemoListResponse envelope)

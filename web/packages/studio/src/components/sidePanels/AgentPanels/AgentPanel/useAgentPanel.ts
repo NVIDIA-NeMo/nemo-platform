@@ -6,7 +6,7 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
   getAgentsListDeploymentsQueryKey,
   useAgentsDeleteDeployment,
-  useAgentsListAgents,
+  useAgentsGetAgent,
   useAgentsListDeployments,
 } from '@nemo/sdk/generated/agents/api';
 import { RECENT_EVAL_LIMIT } from '@studio/components/sidePanels/AgentPanels/AgentPanel/constants';
@@ -28,7 +28,10 @@ export const useAgentPanel = ({
   const queryClient = useQueryClient();
   const toast = useToast();
 
-  const { data: agentsResponse } = useAgentsListAgents(workspace, undefined, {
+  // Fetch the specific agent directly — a list query only returns the first
+  // page, so an agent selected from a later table page would resolve to
+  // undefined and be mis-rendered as managed.
+  const { data: agent } = useAgentsGetAgent(workspace, agentName ?? '', {
     query: { enabled: !!agentName },
   });
 
@@ -54,7 +57,6 @@ export const useAgentPanel = ({
     }
   );
 
-  const agentsData = agentsResponse?.data;
   const deploymentsData = deploymentsResponse?.data;
 
   // Recent evaluations targeting this agent. The platform's job filter API
@@ -80,7 +82,6 @@ export const useAgentPanel = ({
     },
   });
 
-  const agent = agentName ? (agentsData ?? []).find((a) => a.name === agentName) : undefined;
   const agentDeployments = useMemo(
     () => (deploymentsData ?? []).filter((d) => d.agent === agentName),
     [deploymentsData, agentName]

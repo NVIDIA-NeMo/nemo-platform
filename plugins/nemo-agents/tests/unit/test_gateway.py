@@ -782,12 +782,28 @@ class TestExternalAgentGenerate:
 
         assert resp.status_code == 400
 
-    def test_non_generate_path_returns_400(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+    def test_chat_completions_via_proxy_bridges_to_a2a(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The CLI `nemo agents invoke` and SDK POST /-/v1/chat/completions — the
+        # external branch must bridge that (OpenAI chat), not just generate.
         mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+        monkeypatch.setattr(gateway_module, "send_a2a_message", AsyncMock(return_value="4"))
 
         resp = client.post(
             "/apis/agents/v2/workspaces/default/agents/ext/-/v1/chat/completions",
-            json={"input_message": "hi"},
+            json={"messages": [{"role": "user", "content": "2+2?"}]},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["choices"][0]["message"]["content"] == "4"
+
+    def test_unsupported_path_returns_400(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents/ext/-/health",
+            json={},
         )
 
         assert resp.status_code == 400
