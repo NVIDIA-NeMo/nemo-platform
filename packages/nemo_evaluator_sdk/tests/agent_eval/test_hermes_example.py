@@ -152,6 +152,52 @@ def test_translator_rejects_missing_or_incomplete_completion(frames: list[SseFra
         hermes.HermesStreamTranslator()(frames, context=context)
 
 
+def test_translator_builds_steps_from_completed_response_messages() -> None:
+    frames = [
+        SseFrame(
+            channel="data",
+            payload={
+                "type": "response.completed",
+                "response": {
+                    "id": "resp-test",
+                    "status": "completed",
+                    "model": "hermes-agent",
+                    "output": [
+                        {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "First message."}],
+                        },
+                        {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "Final message."}],
+                        },
+                    ],
+                    "usage": {"input_tokens": 10, "output_tokens": 4},
+                },
+            },
+            raw="data: {}",
+        )
+    ]
+    context = AgentStreamTranslationContext(
+        agent_name="hermes-agent",
+        endpoint="http://hermes.test/v1/responses",
+        request_payload={"input": "Run two steps."},
+        output_text="Final message.",
+        invocation_id="invocation-1",
+    )
+
+    translation = hermes.HermesStreamTranslator()(frames, context=context)
+
+    assert translation.trajectory["steps"] == [
+        {"step_id": 1, "source": "user", "message": "Run two steps."},
+        {"step_id": 2, "source": "agent", "message": "First message."},
+        {"step_id": 3, "source": "agent", "message": "Final message."},
+    ]
+    assert translation.trajectory["final_metrics"]["total_steps"] == 3
+
+
 @pytest.mark.asyncio
 async def test_incomplete_stream_records_translation_error(monkeypatch: pytest.MonkeyPatch) -> None:
     incomplete = """\

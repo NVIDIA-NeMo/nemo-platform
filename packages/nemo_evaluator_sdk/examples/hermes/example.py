@@ -10,7 +10,7 @@ import logging
 import os
 from collections.abc import Sequence
 from functools import partial
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from nemo_evaluator_sdk import (
@@ -28,13 +28,15 @@ from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_inference import make_agent_inference_fn
+from nemo_evaluator_sdk.values.atif import Agent as AtifAgent
+from nemo_evaluator_sdk.values.atif import FinalMetrics, Step, Trajectory
 
 # This example assumes a Hermes agent is running locally on port 8642.
 # Update the URL to the Hermes agent if it is running on a different port or host.
 DEFAULT_HERMES_URL = "http://127.0.0.1:8642/v1/responses"
 EXPECTED_TEXT = "streaming works"
 # Export the key configured for the Hermes API server under this name.
-API_SERVER_KEY_ENV_NAME = "API_SERVER_KEY"
+HERMES_TOKEN_ENV_NAME = "HERMES_TOKEN"
 # Hermes documents how to configure the API server key here.
 HERMES_API_SERVER_DOCS_URL = (
     "https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server#1-enable-the-api-server"
@@ -56,6 +58,43 @@ class KeywordMatchMetric:
         answer = (input.candidate.output_text or "").casefold()
         score = 1.0 if expected and expected in answer else 0.0
         return MetricResult(outputs=[MetricOutput(name="score", value=score)])
+
+
+def _atif_steps(
+    response: dict[str, Any],
+    context: AgentStreamTranslationContext,
+) -> list[Step]:
+    input_message = context.request_payload.get("input")
+    if not isinstance(input_message, str) or not input_message:
+        raise ValueError("Hermes request did not contain input text")
+
+    messages: list[tuple[Literal["user", "agent"], str]] = [("user", input_message)]
+    output = response.get("output")
+    if isinstance(output, list):
+        for item in output:
+            if not isinstance(item, dict) or item.get("type") != "message" or item.get("role") != "assistant":
+                continue
+            content = item.get("content")
+            if not isinstance(content, list):
+                continue
+            text_parts = [
+                part["text"]
+                for part in content
+                if isinstance(part, dict)
+                and part.get("type") == "output_text"
+                and isinstance(part.get("text"), str)
+                and part["text"]
+            ]
+            if text_parts:
+                messages.append(("agent", "\n".join(text_parts)))
+
+    if len(messages) == 1:
+        raise ValueError("Hermes response.completed did not contain assistant output text")
+
+    return [
+        Step(step_id=step_id, source=source, message=message)
+        for step_id, (source, message) in enumerate(messages, start=1)
+    ]
 
 
 class HermesStreamTranslator:
@@ -88,47 +127,39 @@ class HermesStreamTranslator:
         if not isinstance(response_id, str) or not response_id:
             raise ValueError("Hermes response.completed did not contain a response id")
 
-        agent = {"name": context.agent_name}
-        if isinstance(response.get("model"), str):
-            agent["model_name"] = response["model"]
+        response_model = response.get("model")
+        agent = AtifAgent(
+            name=context.agent_name,
+            model_name=response_model if isinstance(response_model, str) else None,
+        )
+        steps = _atif_steps(response, context)
 
-        # ATIF-v1.7 schema: https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md
-        trajectory: dict[str, Any] = {
-            "schema_version": "ATIF-v1.7",
-            "session_id": response_id,
-            "trajectory_id": context.invocation_id,
-            "agent": agent,
-            "steps": [
-                {
-                    "step_id": 1,
-                    "source": "user",
-                    "message": str(context.request_payload.get("input", "")),
-                },
-                {
-                    "step_id": 2,
-                    "source": "agent",
-                    "message": context.output_text,
-                },
-            ],
-        }
-
+        final_metrics = None
         usage = response.get("usage")
         if isinstance(usage, dict):
-            trajectory["final_metrics"] = {
-                "total_prompt_tokens": usage.get("input_tokens"),
-                "total_completion_tokens": usage.get("output_tokens"),
-                "total_steps": 2,
-            }
+            final_metrics = FinalMetrics(
+                total_prompt_tokens=usage.get("input_tokens"),
+                total_completion_tokens=usage.get("output_tokens"),
+                total_steps=len(steps),
+            )
 
-        return AgentStreamTranslation(trajectory=trajectory)
+        trajectory = Trajectory(
+            schema_version="ATIF-v1.7",
+            session_id=response_id,
+            trajectory_id=context.invocation_id,
+            agent=agent,
+            steps=steps,
+            final_metrics=final_metrics,
+        )
+        return AgentStreamTranslation(trajectory=trajectory.model_dump(mode="python", exclude_none=True))
 
 
 def _require_api_server_key() -> None:
-    if os.getenv(API_SERVER_KEY_ENV_NAME):
+    if os.getenv(HERMES_TOKEN_ENV_NAME):
         return
     raise RuntimeError(
-        f"{API_SERVER_KEY_ENV_NAME} is not set. Export the Hermes API server key before running this example:\n"
-        f"  export {API_SERVER_KEY_ENV_NAME}=<your-api-server-key>\n"
+        f"{HERMES_TOKEN_ENV_NAME} is not set. Export the Hermes API server key before running this example:\n"
+        f"  export {HERMES_TOKEN_ENV_NAME}=<your-hermes-token>\n"
         f"See {HERMES_API_SERVER_DOCS_URL}"
     )
 
@@ -153,7 +184,7 @@ async def evaluate(
     task = AgentEvalTask(
         id="hermes-streaming",
         intent="Return the requested phrase over SSE.",
-        inputs={"instruction": f"Reply with exactly: {EXPECTED_TEXT}."},
+        inputs={"instruction": f"Reply with exactly: {EXPECTED_TEXT}"},
         reference={"expected": EXPECTED_TEXT},
         metrics=[KeywordMatchMetric()],
     )
@@ -161,7 +192,7 @@ async def evaluate(
     agent = GenericAgent(
         name="hermes-agent",
         url=agent_url or os.getenv("HERMES_AGENT_URL", DEFAULT_HERMES_URL),
-        api_key_secret=SecretRef(API_SERVER_KEY_ENV_NAME),
+        api_key_secret=SecretRef(HERMES_TOKEN_ENV_NAME),
         body={
             "model": "hermes-agent",
             "input": "{{ instruction }}",
