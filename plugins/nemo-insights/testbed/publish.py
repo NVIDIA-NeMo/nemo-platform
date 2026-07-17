@@ -137,9 +137,10 @@ def publish(candidate: Path, *, reason: str | None, env: Mapping[str, str] | Non
     tarball = candidate.parent / f"{ref}.tar.zst"
     shutil.copy2(candidate, tarball)
     _ensure_release()
-    # State refs are immutable: a concurrent publisher must fail on collision,
-    # never replace the asset that won the race.
-    release._release_gh("upload", RELEASE_TAG, str(tarball))
+    # --clobber: a retry after a partial upload overwrites the broken asset
+    # instead of erroring (next_ref never collides with a *completed* publish —
+    # its ref would already be in the asset list).
+    release._release_gh("upload", RELEASE_TAG, str(tarball), "--clobber")
     body = json.loads(release._release_gh("view", RELEASE_TAG, "--json", "body"))["body"]
     row = catalog_row(ref, manifest, reason=reason, env=env)
     release._release_gh("edit", RELEASE_TAG, "--notes", insert_catalog_row(body, row))

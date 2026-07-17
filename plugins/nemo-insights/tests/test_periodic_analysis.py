@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
+import yaml
 from nemo_insights_plugin.analyst.analyst_backend import (
     LocalAnalystBackend,
     RemoteAnalystBackend,
@@ -120,6 +121,19 @@ def test_local_backend_reads_and_writes_insights_file_with_explicit_utf8(
 
     assert write_calls[-1].get("encoding") == "utf-8"
     assert read_calls[-1].get("encoding") == "utf-8"
+
+
+def test_local_backend_write_preserves_other_top_level_keys(tmp_path: Path) -> None:
+    path = tmp_path / "insights.yaml"
+    path.write_text("metadata: retained\ninsights:\n- id: stale\n", encoding="utf-8")
+    backend = LocalAnalystBackend(client=SimpleNamespace(), path=path)  # type: ignore[arg-type]
+
+    backend._write_records([{"id": "insight-1"}])
+
+    assert yaml.safe_load(path.read_text(encoding="utf-8")) == {
+        "metadata": "retained",
+        "insights": [{"id": "insight-1"}],
+    }
 
 
 def test_merge_eval_filter_pins_evaluation_id() -> None:

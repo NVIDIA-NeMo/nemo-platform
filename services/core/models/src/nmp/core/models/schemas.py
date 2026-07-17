@@ -8,6 +8,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from jinja2 import Environment
 from jinja2 import nodes as jinja_nodes
+from nemo_platform_plugin.inference_middleware import BackendFormat
 from nmp.common.auth import AuthContext
 from nmp.common.entities import Filter, constants
 from nmp.common.entities.utils import get_random_id
@@ -83,13 +84,6 @@ class FinetuningType(str, Enum):
     KTO = "kto"
     RRHF = "rrhf"
     GRPO = "grpo"
-
-
-class BackendFormat(str, Enum):
-    """Inference backend API wire formats."""
-
-    OPENAI_CHAT = "OPENAI_CHAT"
-    ANTHROPIC_MESSAGES = "ANTHROPIC_MESSAGES"
 
 
 class MoEConfig(BaseModel):

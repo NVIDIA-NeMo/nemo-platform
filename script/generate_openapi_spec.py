@@ -466,7 +466,7 @@ def extract_plugin_specs_with_process_pool(plugins: List[PluginConfig]) -> None:
     print_green(f"All {len(plugins)} plugin(s) completed successfully!")
 
 
-def apply_schema_fixes(spec_files: List[str], apply_reorder: bool = True) -> None:
+def apply_schema_fixes(spec_files: List[str], apply_reorder: bool = True, strict_collisions: bool = False) -> None:
     """Apply schema fixes to a list of OpenAPI spec files."""
     print_green("=== Applying fixes to OpenAPI schemas ===")
     # Endpoints stripped from the public OpenAPI spec (not exposed in SDK).
@@ -517,7 +517,7 @@ def apply_schema_fixes(spec_files: List[str], apply_reorder: bool = True) -> Non
                 spec = fix_openai_streaming_endpoints(spec)
 
             # Apply the standard fix-schema logic
-            spec = tweak_spec(spec)
+            spec = tweak_spec(spec, strict_collisions=strict_collisions)
             spec = hoist_nested_defs(spec)
             spec = remove_unused_schemas(spec)
             spec = remove_invalid_components(spec)
@@ -747,7 +747,20 @@ def process_plugin_specs() -> None:
     # Reuse the platform schema-fix pipeline. Branches in apply_schema_fixes
     # gated on `"platform" in spec_file` are no-ops because plugin paths live
     # under plugins/<dir>/openapi/ — no false positives by inspection.
-    apply_schema_fixes(plugin_spec_files)
+    #
+    # A plugin opts into strict_collisions via
+    # [tool.nemo.openapi].strict_schema_collisions when its spec merges multiple
+    # sub-apps (e.g. nemo-customizer, which mounts every customization backend
+    # under /apis/customization): there, two backends defining a same-named
+    # model with differing content is always a bug, so fail the build loudly
+    # instead of silently shipping a wrong contract. Plugin specs are
+    # independent files, so processing the two groups separately is safe.
+    strict_spec_files = [p.output_path() for p in plugins if p.strict_schema_collisions]
+    lenient_spec_files = [p.output_path() for p in plugins if not p.strict_schema_collisions]
+    if lenient_spec_files:
+        apply_schema_fixes(lenient_spec_files)
+    if strict_spec_files:
+        apply_schema_fixes(strict_spec_files, strict_collisions=True)
     fix_ref_not_allowed_errors(plugin_spec_files)
     validate_final_specs(plugin_spec_files)
 

@@ -27,6 +27,7 @@ from nemo_insights_plugin.contracts.profile import (
 )
 from nemo_insights_plugin.preflight import (
     AnalysisProbes,
+    check_credentials,
     check_environment,
     check_profile,
     read_agent_spec,
@@ -62,6 +63,9 @@ def _load_profile_or_error(profile_path: Path | None) -> tuple[AnalysisProfile |
     except ProfileError as exc:
         if profile_path is not None:
             raise
+        loaded = load_env_file(found.parent / ".env")
+        if loaded:
+            typer.echo(f"Loaded .env from {found.parent / '.env'} ({len(loaded)} vars)", err=True)
         return None, str(exc)
     if profile_path is None:
         typer.echo(f"Using profile: {found} (agent: {profile.agent})", err=True)
@@ -97,16 +101,19 @@ def _resolve_analysis(
 ) -> _ResolvedAnalysis:
     profile, profile_error = _load_profile_or_error(profile_path)
     if profile_error is not None:
-        if agent is None or workspace is None:
+        if agent is None:
             raise ProfileError(profile_error)
         typer.echo(f"warning: ignoring discovered profile: {profile_error}", err=True)
 
-    resolved_agent = agent or (profile.agent if profile is not None else None)
+    resolved_agent = agent if agent is not None else (profile.agent if profile is not None else None)
     if resolved_agent is None:
         raise ProfileError(
             "No --agent given and no optimizer.yaml profile found. Pass --agent or run from a directory with a profile."
         )
-    resolved_workspace = workspace or (profile.workspace if profile is not None else DEFAULT_WORKSPACE)
+    if workspace is not None:
+        resolved_workspace = workspace
+    else:
+        resolved_workspace = profile.workspace if profile is not None else DEFAULT_WORKSPACE
 
     spec_path = agent_spec
     spec_error: str | None = None
@@ -138,15 +145,7 @@ def _resolve_analysis(
 
 async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
     checks = list(analysis.spec_checks)
-    checks.extend(
-        await check_environment(
-            agent=analysis.agent,
-            workspace=analysis.workspace,
-            base_url=analysis.base_url,
-            profile_dir=analysis.profile_dir,
-            probes=_PREFLIGHT_PROBES,
-        )
-    )
+    checks.extend(check_credentials(analysis.profile_dir, probes=_PREFLIGHT_PROBES))
     _preflight_or_exit(checks)
 
     if analysis.profile_output is not None:
@@ -170,7 +169,7 @@ async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
             err=True,
         )
         raise typer.Exit(1) from None
-    except (ClientConstructionError, NeMoPlatformError, httpx.HTTPError, OSError) as exc:
+    except (ClientConstructionError, NeMoPlatformError, httpx.HTTPError) as exc:
         detail = _one_line_error(exc).rstrip(".")
         typer.echo(
             f"Error: analysis failed: {detail}. Check --base-url/NMP_BASE_URL, "
@@ -309,16 +308,15 @@ class InsightsCLI(NemoCLI):
                 async def _flow() -> list[CheckResult]:
                     results = check_profile(profile, profile_error)
                     results.extend(spec_results)
-                    if profile is not None:
-                        results.extend(
-                            await check_environment(
-                                agent=profile.agent,
-                                workspace=profile.workspace,
-                                base_url=resolve_base_url(base_url),
-                                profile_dir=profile.profile_dir,
-                                probes=_PREFLIGHT_PROBES,
-                            )
+                    results.extend(
+                        await check_environment(
+                            agent=profile.agent if profile is not None else None,
+                            workspace=profile.workspace if profile is not None else None,
+                            base_url=resolve_base_url(base_url),
+                            profile_dir=profile.profile_dir if profile is not None else None,
+                            probes=_PREFLIGHT_PROBES,
                         )
+                    )
                     return results
 
                 results = asyncio.run(_flow())

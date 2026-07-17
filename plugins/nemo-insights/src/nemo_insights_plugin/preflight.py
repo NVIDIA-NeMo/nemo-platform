@@ -28,7 +28,7 @@ def _default_http_ok(base_url: str) -> bool:
             ).status_code
             < 500
         )
-    except (httpx.HTTPError, ValueError):
+    except (httpx.HTTPError, httpx.InvalidURL, ValueError):
         return False
 
 
@@ -153,15 +153,11 @@ def read_agent_spec(
     ]
 
 
-async def check_environment(
-    *,
-    agent: str,
-    workspace: str,
-    base_url: str,
+def check_credentials(
     profile_dir: Path | None,
     probes: AnalysisProbes | None = None,
 ) -> list[CheckResult]:
-    """Run credential and advisory platform checks without persisting state."""
+    """Check that the analyst's required inference credential is present."""
     active = probes or AnalysisProbes()
     env_path = profile_dir / ".env" if profile_dir is not None else None
     credential_hint = (
@@ -170,8 +166,6 @@ async def check_environment(
         else "export INFERENCE_API_KEY=<key>"
     )
     credential = bool(active.env.get("INFERENCE_API_KEY", "").strip())
-    reachable = active.http_ok(base_url)
-    queryable = await active.workspace_ok(base_url, workspace, agent)
     return [
         make_check_result(
             "INFERENCE_API_KEY",
@@ -181,7 +175,27 @@ async def check_environment(
             "INFERENCE_API_KEY set",
             "INFERENCE_API_KEY not set",
             hint=credential_hint,
-        ),
+        )
+    ]
+
+
+async def check_environment(
+    *,
+    agent: str | None,
+    workspace: str | None,
+    base_url: str,
+    profile_dir: Path | None,
+    probes: AnalysisProbes | None = None,
+) -> list[CheckResult]:
+    """Run credential and advisory platform checks without persisting state.
+
+    The workspace probe is profile-dependent and skipped when *agent* or
+    *workspace* is unknown; the credential and reachability checks always run.
+    """
+    active = probes or AnalysisProbes()
+    results = check_credentials(profile_dir, active)
+    reachable = active.http_ok(base_url)
+    results.append(
         make_check_result(
             "platform-reachable",
             "platform",
@@ -190,14 +204,19 @@ async def check_environment(
             f"{base_url} reachable",
             f"{base_url} unreachable",
             hint="check --base-url/NMP_BASE_URL and platform health",
-        ),
-        make_check_result(
-            "workspace-query",
-            "platform",
-            queryable,
-            "advisory",
-            f"workspace {workspace!r} can be queried for agent {agent!r}",
-            f"workspace {workspace!r} could not be queried for agent {agent!r}",
-            hint="check the workspace, authentication context, and Intake availability",
-        ),
-    ]
+        )
+    )
+    if agent is not None and workspace is not None:
+        queryable = await active.workspace_ok(base_url, workspace, agent)
+        results.append(
+            make_check_result(
+                "workspace-query",
+                "platform",
+                queryable,
+                "advisory",
+                f"workspace {workspace!r} can be queried for agent {agent!r}",
+                f"workspace {workspace!r} could not be queried for agent {agent!r}",
+                hint="check the workspace, authentication context, and Intake availability",
+            )
+        )
+    return results

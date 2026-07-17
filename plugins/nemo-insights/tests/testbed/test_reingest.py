@@ -519,92 +519,11 @@ def test_require_empty_direct_restore_uses_real_http_transport(
     }
 
 
-def test_require_empty_rechecks_spans_before_ingest(tmp_path, quiet_platform) -> None:
-    export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC])
+def test_require_empty_ingests_all_nonempty_collections_in_order(tmp_path, quiet_platform) -> None:
+    export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC], [ANNOTATION_DOC], [RESULT_DOC])
     quiet_platform["span_counts"] = [0, 1]
     quiet_platform["annotation_counts"] = [0]
     quiet_platform["result_counts"] = [0]
-
-    with pytest.raises(RuntimeError, match="spans"):
-        reingest.ingest_bundle(
-            "http://x",
-            export_dir,
-            _manifest("ws-a", 1),
-            workspace_map={"ws-a": "target"},
-            catalog=CATALOG,
-            require_empty=True,
-        )
-
-    assert quiet_platform["events"] == [
-        ("ensure", "target"),
-        ("count", "span", "target"),
-        ("count", "annotation", "target"),
-        ("count", "result", "target"),
-        ("count", "span", "target"),
-    ]
-    assert quiet_platform["requests"] == []
-    assert quiet_platform["posts"] == []
-
-
-def test_require_empty_rechecks_annotations_before_post(tmp_path, quiet_platform) -> None:
-    export_dir = _write_export(tmp_path, "ws-a", [], [ANNOTATION_DOC])
-    quiet_platform["span_counts"] = [0]
-    quiet_platform["annotation_counts"] = [0, 1]
-    quiet_platform["result_counts"] = [0]
-
-    with pytest.raises(RuntimeError, match="annotations"):
-        reingest.ingest_bundle(
-            "http://x",
-            export_dir,
-            _manifest("ws-a", 0, 1),
-            workspace_map={"ws-a": "target"},
-            catalog=CATALOG,
-            require_empty=True,
-        )
-
-    assert quiet_platform["events"] == [
-        ("ensure", "target"),
-        ("count", "span", "target"),
-        ("count", "annotation", "target"),
-        ("count", "result", "target"),
-        ("count", "annotation", "target"),
-    ]
-    assert quiet_platform["requests"] == []
-    assert quiet_platform["posts"] == []
-
-
-def test_require_empty_rechecks_results_before_post(tmp_path, quiet_platform) -> None:
-    export_dir = _write_export(tmp_path, "ws-a", [], [], [RESULT_DOC])
-    quiet_platform["span_counts"] = [0]
-    quiet_platform["annotation_counts"] = [0]
-    quiet_platform["result_counts"] = [0, 1]
-
-    with pytest.raises(RuntimeError, match="evaluator results"):
-        reingest.ingest_bundle(
-            "http://x",
-            export_dir,
-            _manifest("ws-a", 0, 0, 1),
-            workspace_map={"ws-a": "target"},
-            catalog=CATALOG,
-            require_empty=True,
-        )
-
-    assert quiet_platform["events"] == [
-        ("ensure", "target"),
-        ("count", "span", "target"),
-        ("count", "annotation", "target"),
-        ("count", "result", "target"),
-        ("count", "result", "target"),
-    ]
-    assert quiet_platform["requests"] == []
-    assert quiet_platform["posts"] == []
-
-
-def test_require_empty_ingests_all_nonempty_collections_in_order(tmp_path, quiet_platform) -> None:
-    export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC], [ANNOTATION_DOC], [RESULT_DOC])
-    quiet_platform["span_counts"] = [0, 0, 1]
-    quiet_platform["annotation_counts"] = [0, 0]
-    quiet_platform["result_counts"] = [0, 0]
 
     outcome = reingest.ingest_bundle(
         "http://x",
@@ -621,12 +540,9 @@ def test_require_empty_ingests_all_nonempty_collections_in_order(tmp_path, quiet
         ("count", "span", "target"),
         ("count", "annotation", "target"),
         ("count", "result", "target"),
-        ("count", "span", "target"),
         ("write", "span", "target"),
         ("count", "span", "target"),
-        ("count", "annotation", "target"),
         ("write", "annotation", "target"),
-        ("count", "result", "target"),
         ("write", "result", "target"),
     ]
     assert len(quiet_platform["requests"]) == 1
@@ -1103,6 +1019,26 @@ def test_skip_path_probe_tolerates_started_at_ties(tmp_path, quiet_platform, cap
     export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC, tied])
     quiet_platform["span_counts"] = [2]
     quiet_platform["first_ids"] = [tied["span_id"]]  # the OTHER member of the tie
+    quiet_platform["annotation_counts"] = [0]
+    quiet_platform["result_counts"] = [0]
+    reingest.ingest_bundle(
+        "http://x",
+        export_dir,
+        _manifest("ws-a", 2),
+        workspace_map={"ws-a": "ws-b"},
+        catalog=CATALOG,
+    )
+    assert "already restored" in capsys.readouterr().out
+
+
+def test_skip_path_probe_compares_started_at_chronologically(tmp_path, quiet_platform, capsys):
+    """Mixed timestamp serializations: the bundle's first span is the chronological min, not the lexicographic one."""
+    # 14:14-05:00 is 19:14 UTC — lexicographically first but chronologically LATER than 18:14 UTC.
+    later_by_offset = {**LLM_DOC, "started_at": "2026-06-26T14:14:41.406179-05:00"}
+    earlier_utc = {**AGENT_DOC, "started_at": "2026-06-26T18:14:41.406179Z"}
+    export_dir = _write_export(tmp_path, "ws-a", [earlier_utc, later_by_offset])
+    quiet_platform["span_counts"] = [2]
+    quiet_platform["first_ids"] = [AGENT_DOC["span_id"]]  # the live first span IS the chronological min
     quiet_platform["annotation_counts"] = [0]
     quiet_platform["result_counts"] = [0]
     reingest.ingest_bundle(

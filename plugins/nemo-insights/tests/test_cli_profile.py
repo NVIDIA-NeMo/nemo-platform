@@ -1,13 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import os
 from pathlib import Path
 
 import httpx
 import nemo_insights_plugin.analyst.run as analyst_run
 import pytest
 import typer
-from nemo_insights_plugin import cli, preflight
+from nemo_insights_plugin import cli
 from nemo_insights_plugin.contracts.profile import DEFAULT_BASE_URL
 from nemo_insights_plugin.preflight import AnalysisProbes
 from nemo_platform import NeMoPlatformError
@@ -317,15 +318,43 @@ def test_malformed_discovered_profile_warns_when_flags_are_complete(
     assert "Invalid profile" in result.output
 
 
-def test_malformed_discovered_profile_errors_without_explicit_workspace(
-    app: typer.Typer, tmp_path: Path, monkeypatch
-) -> None:
+def test_malformed_discovered_profile_warns_with_agent_only(app: typer.Typer, tmp_path: Path, monkeypatch) -> None:
     recorder = AnalystRecorder()
     monkeypatch.setattr(cli, "run_analyst", recorder)
     (tmp_path / "optimizer.yaml").write_text("agent: ''\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ["analyze", "--agent", "other"])
+
+    assert result.exit_code == 0, result.output
+    assert "warning:" in result.output
+    assert "Invalid profile" in result.output
+    assert recorder.kwargs is not None
+    assert recorder.kwargs["workspace"] == "default"
+
+
+def test_malformed_discovered_profile_still_loads_env_file(app: typer.Typer, tmp_path: Path, monkeypatch) -> None:
+    recorder = AnalystRecorder()
+    monkeypatch.setattr(cli, "run_analyst", recorder)
+    monkeypatch.delenv("INFERENCE_API_KEY", raising=False)
+    (tmp_path / "optimizer.yaml").write_text("agent: ''\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("INFERENCE_API_KEY=from-env-file\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["analyze", "--agent", "other"])
+
+    assert result.exit_code == 0, result.output
+    assert os.environ["INFERENCE_API_KEY"] == "from-env-file"
+    assert recorder.kwargs is not None
+
+
+def test_malformed_discovered_profile_errors_without_agent(app: typer.Typer, tmp_path: Path, monkeypatch) -> None:
+    recorder = AnalystRecorder()
+    monkeypatch.setattr(cli, "run_analyst", recorder)
+    (tmp_path / "optimizer.yaml").write_text("agent: ''\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["analyze", "--workspace", "other-ws"])
 
     assert result.exit_code != 0
     assert "Invalid profile" in result.output
@@ -379,18 +408,24 @@ def test_analyze_blocks_before_runner_when_preflight_fails(
     assert recorder.kwargs is None
 
 
-def test_analyze_prints_advisory_and_runs_analyst(
+def test_analyze_runs_only_the_credential_check(
     app: typer.Typer, profile_tree: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     recorder = AnalystRecorder()
+    probe_calls: list[str] = []
+
+    async def record_workspace_probe(base_url: str, workspace: str, agent: str) -> bool:
+        probe_calls.append("workspace")
+        return False
+
     monkeypatch.setattr(cli, "run_analyst", recorder)
     monkeypatch.setattr(
         cli,
         "_PREFLIGHT_PROBES",
         AnalysisProbes(
             env={"INFERENCE_API_KEY": "k"},
-            http_ok=lambda base_url: True,
-            workspace_ok=lambda base_url, workspace, agent: _not_queryable(),
+            http_ok=lambda base_url: probe_calls.append("http") or False,
+            workspace_ok=record_workspace_probe,
         ),
     )
     monkeypatch.chdir(profile_tree)
@@ -398,8 +433,8 @@ def test_analyze_prints_advisory_and_runs_analyst(
     result = runner.invoke(app, ["analyze"])
 
     assert result.exit_code == 0, result.output
-    assert "workspace 'flight-workspace' could not be queried" in result.stderr
     assert recorder.kwargs is not None
+    assert probe_calls == []
 
 
 @pytest.mark.parametrize(
@@ -407,7 +442,6 @@ def test_analyze_prints_advisory_and_runs_analyst(
     [
         NeMoPlatformError("Intake SDK failed"),
         httpx.ConnectError("Intake unavailable", request=httpx.Request("GET", "https://platform.example")),
-        OSError("could not read SDK configuration"),
     ],
 )
 def test_analyze_renders_expected_platform_failures_without_traceback(
@@ -420,21 +454,11 @@ def test_analyze_renders_expected_platform_failures_without_traceback(
         raise error
 
     monkeypatch.setattr(cli, "run_analyst", fail_analysis)
-    monkeypatch.setattr(
-        cli,
-        "_PREFLIGHT_PROBES",
-        AnalysisProbes(
-            env={"INFERENCE_API_KEY": "k"},
-            http_ok=lambda base_url: True,
-            workspace_ok=lambda base_url, workspace, agent: _not_queryable(),
-        ),
-    )
     monkeypatch.chdir(profile_tree)
 
     result = runner.invoke(app, ["analyze"])
 
     assert result.exit_code == 1
-    assert "workspace 'flight-workspace' could not be queried" in result.stderr
     error_lines = [line for line in result.stderr.splitlines() if line.startswith("Error:")]
     assert len(error_lines) == 1
     assert "analysis failed" in error_lines[0]
@@ -480,24 +504,13 @@ def test_analyze_constructor_failure_warns_then_exits_cleanly(
         attempts += 1
         raise error_type("invalid\nremote client context")
 
-    monkeypatch.setattr(preflight, "make_client", fail_to_construct)
     monkeypatch.setattr(analyst_run, "make_client", fail_to_construct)
-    monkeypatch.setattr(
-        cli,
-        "_PREFLIGHT_PROBES",
-        AnalysisProbes(
-            env={"INFERENCE_API_KEY": "k"},
-            http_ok=lambda base_url: True,
-            workspace_ok=preflight._default_workspace_ok,
-        ),
-    )
     monkeypatch.chdir(profile_tree)
 
     result = runner.invoke(app, ["analyze"])
 
-    assert attempts == 2
+    assert attempts == 1
     assert result.exit_code == 1
-    assert "workspace 'flight-workspace' could not be queried" in result.stderr
     error_lines = [line for line in result.stderr.splitlines() if line.startswith("Error:")]
     assert error_lines == [
         "Error: analysis failed: invalid remote client context. "
@@ -661,10 +674,6 @@ async def _queryable() -> bool:
     return True
 
 
-async def _not_queryable() -> bool:
-    return False
-
-
 def test_doctor_exits_nonzero_for_missing_profile(app: typer.Typer, tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
 
@@ -672,6 +681,36 @@ def test_doctor_exits_nonzero_for_missing_profile(app: typer.Typer, tmp_path: Pa
 
     assert result.exit_code == 1
     assert "no optimizer.yaml found" in result.output
+
+
+def test_doctor_missing_profile_still_runs_environment_checks(
+    app: typer.Typer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    http_urls: list[str] = []
+    workspace_urls: list[str] = []
+
+    async def record_workspace_probe(base_url: str, workspace: str, agent: str) -> bool:
+        workspace_urls.append(base_url)
+        return True
+
+    monkeypatch.setattr(
+        cli,
+        "_PREFLIGHT_PROBES",
+        AnalysisProbes(
+            env={},
+            http_ok=lambda base_url: http_urls.append(base_url) or True,
+            workspace_ok=record_workspace_probe,
+        ),
+    )
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["doctor", "--base-url", "https://flag.example"])
+
+    assert result.exit_code == 1
+    assert "no optimizer.yaml found" in result.output
+    assert "INFERENCE_API_KEY not set" in result.output
+    assert http_urls == ["https://flag.example"]
+    assert workspace_urls == []
 
 
 def test_doctor_reports_healthy_profile(app: typer.Typer, profile_tree: Path, monkeypatch) -> None:

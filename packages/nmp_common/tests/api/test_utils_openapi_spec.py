@@ -328,6 +328,93 @@ def test_tweak_spec_full_pipeline():
     assert result == expected
 
 
+def _collision_spec():
+    """Two distinct models sharing a class name across modules that normalize to
+    the same bare name with *differing* content."""
+    return {
+        "components": {
+            "schemas": {
+                "automodel__schema__TrainingSpec": {
+                    "type": "object",
+                    "properties": {"finetuning_type": {"type": "string"}},
+                },
+                "unsloth__schemas__TrainingSpec": {
+                    "type": "object",
+                    "properties": {"use_gradient_checkpointing": {"type": "string"}},
+                },
+            }
+        },
+        "paths": {
+            "/a": {
+                "post": {
+                    "requestBody": {
+                        "content": {"application/json": {"schema": {"$ref": REF + "automodel__schema__TrainingSpec"}}}
+                    }
+                }
+            }
+        },
+    }
+
+
+def test_tweak_spec_raises_on_collision_when_strict():
+    """With ``strict_collisions`` (plugin specs, e.g. the customization app) a
+    differing-content collision must fail the build loudly rather than silently
+    keeping one and mis-pointing the other's ``$ref``s."""
+    with pytest.raises(ValueError, match="schema name collision"):
+        tweak_spec(_collision_spec(), strict_collisions=True)
+
+
+def test_tweak_spec_warns_and_collapses_on_collision_by_default(caplog):
+    """Non-strict (platform/service specs) preserves legacy behaviour: warn and
+    keep the first-seen schema, so pre-existing platform collisions don't newly
+    break the build."""
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="nmp.common.api.utils"):
+        result = tweak_spec(_collision_spec())
+
+    assert "schema name collision" in caplog.text
+    schemas = result["components"]["schemas"]
+    assert set(schemas) == {"TrainingSpec"}
+    # First-seen (automodel) wins the collapse.
+    assert "finetuning_type" in schemas["TrainingSpec"]["properties"]
+    ref = result["paths"]["/a"]["post"]["requestBody"]["content"]["application/json"]["schema"]["$ref"]
+    assert ref == REF + "TrainingSpec"
+
+
+def test_tweak_spec_dedups_identical_content_module_qualified_collision():
+    """Two module-qualified keys with *identical* content dedup to one schema —
+    no raise (the fix must not over-trigger on genuinely-shared shapes)."""
+    spec = {
+        "components": {
+            "schemas": {
+                "pkg_a__schema__Shared": {
+                    "type": "object",
+                    "properties": {"value": {"type": "string"}},
+                },
+                "pkg_b__schema__Shared": {
+                    "type": "object",
+                    "properties": {"value": {"type": "string"}},
+                },
+            }
+        },
+        "paths": {
+            "/a": {
+                "post": {
+                    "requestBody": {
+                        "content": {"application/json": {"schema": {"$ref": REF + "pkg_a__schema__Shared"}}}
+                    }
+                }
+            }
+        },
+    }
+
+    result = tweak_spec(spec)
+    assert set(result["components"]["schemas"]) == {"Shared"}
+    ref = result["paths"]["/a"]["post"]["requestBody"]["content"]["application/json"]["schema"]["$ref"]
+    assert ref == REF + "Shared"
+
+
 def test_anyof_null_collapse_preserves_format_and_write_only():
     """Collapsing ``anyOf: [SecretStr, null]`` must keep ``format`` / ``writeOnly`` so
     SDK + docs treat the field as sensitive."""
