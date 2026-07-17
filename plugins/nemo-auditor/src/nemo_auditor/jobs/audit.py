@@ -488,28 +488,33 @@ class AuditJob(NemoJob):
 
             signal.signal(signal.SIGTERM, _on_sigterm)
 
-            if not todo_dir.exists():
+            if not running_dir.exists():
                 # First run: write per-probe configs and resolve target options.
+                #
+                # Everything in this if-block must be idempotent until the final
+                # mkdir of running_dir because it will be re-run if pause happens
+                # in the middle of initialization.
                 if spec.target.options:
                     rewritten_options = copy.deepcopy(spec.target.options)
                     _rewrite_options_uris(rewritten_options, sdk, async_sdk)
                     target_opts_path.write_text(json.dumps(rewritten_options))
 
-                for d in (todo_dir, running_dir, complete_dir, failed_dir, failed_logs_dir):
+                for d in (todo_dir, complete_dir, failed_dir, failed_logs_dir):
                     d.mkdir(parents=True, exist_ok=True)
 
                 _divide_and_write_confs(_garak_config_dict(spec.config), todo_dir)
+
+                running_dir.mkdir(parents=True, exist_ok=True)
             else:
                 # Resume: re-queue any probes interrupted mid-flight.
-                if running_dir.exists():
-                    for probe_dir in list(running_dir.iterdir()):
-                        if probe_dir.is_dir():
-                            probe_yaml = todo_dir / f"{probe_dir.name}.yaml"
-                            if not probe_yaml.exists():
-                                src = probe_dir / "config.yaml"
-                                if src.exists():
-                                    shutil.copy(src, probe_yaml)
-                            shutil.rmtree(probe_dir)
+                for probe_dir in list(running_dir.iterdir()):
+                    if probe_dir.is_dir():
+                        probe_yaml = todo_dir / f"{probe_dir.name}.yaml"
+                        if not probe_yaml.exists():
+                            src = probe_dir / "config.yaml"
+                            if src.exists():
+                                shutil.copy(src, probe_yaml)
+                        shutil.rmtree(probe_dir)
 
             env = _build_env(persistent)
             base_cmd = [
