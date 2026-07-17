@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { SAMPLE_EVAL_CONFIG_PATH } from '@studio/api/evaluation/eval-config-fileset';
 import { FilesetFileBlockingInput } from '@studio/components/agents/AgentBlockingInput/FilesetFileBlockingInput';
 import type { FilesetFileBlockingInputProps } from '@studio/components/agents/AgentBlockingInput/types';
 import { getStringValue } from '@studio/components/agents/AgentBlockingInput/utils';
-import { SAMPLE_EVAL_CONFIG_PATH } from '@studio/routes/agents/AgentSuggestionsRoute/constants';
 import { evalFilesetForAgent } from '@studio/routes/agents/AgentSuggestionsRoute/utils';
 import type { FC } from 'react';
 

@@ -1,0 +1,56 @@
+{
+  "dataset_file": "smaller_test.csv",
+  "prompt_template": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "{{ item.body }}"
+      }
+    ]
+  },
+  "metric": {
+    "bundle_kind": "metric-bundle",
+    "bundle_format_version": "v1",
+    "metric_type": "llm-judge",
+    "metadata": {
+      "description": null,
+      "labels": {}
+    },
+    "outputs": [
+      {
+        "name": "accuracy",
+        "description": null,
+        "value_json_schema": {
+          "description": "Continuous numeric metric value.",
+          "title": "ContinuousScore",
+          "type": "number"
+        }
+      }
+    ],
+    "secrets": {},
+    "payload": {
+      "kind": "inline",
+      "metric": {
+        "type": "llm-judge",
+        "prompt_template": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "You are scoring an email phishing classifier. Expected label: \"{{ item.label }}\". The agent response may contain reasoning; extract ONLY its final verdict (last clear \"phishing\" or \"benign\").\n\nAgent response:\n{{ sample.output_text }}\n\nRespond with JSON {\"accuracy\": <value>} where accuracy is 1 if the extracted verdict matches the expected label, else 0."
+            }
+          ]
+        },
+        "scores": [
+          {
+            "name": "accuracy",
+            "minimum": 0,
+            "maximum": 1
+          }
+        ],
+        "reasoning": {
+          "end_token": "</think>"
+        }
+      }
+    }
+  }
+}

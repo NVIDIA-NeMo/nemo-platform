@@ -52,6 +52,7 @@ export type UploadModalState = {
   datasetLabel?: string;
   /** Auto-select the first root-level accepted file on fileset selection. */
   autoSelectFirstAcceptable?: boolean;
+  showUpdatedAt?: boolean;
   errors: Record<string, string>;
 };
 

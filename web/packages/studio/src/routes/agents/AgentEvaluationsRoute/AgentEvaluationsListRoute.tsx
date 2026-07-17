@@ -17,10 +17,10 @@ import {
   Text,
   TextInput,
 } from '@nvidia/foundations-react-core';
+import { agentNameForJob, fetchAgentEvalJobs } from '@studio/api/evaluation/agent-evaluations';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { fetchAgentEvalJobs } from '@studio/routes/agents/AgentEvaluationsRoute/api';
 import { SubmitEvaluationModal } from '@studio/routes/agents/AgentEvaluationsRoute/components/SubmitEvaluationModal';
 import { getAgentEvaluationDetailRoute, getAgentsListRoute } from '@studio/routes/utils';
 import { useQuery } from '@tanstack/react-query';
@@ -88,9 +88,9 @@ export const AgentEvaluationsListRoute: FC = () => {
     const all = data ?? [];
     const search = agentSearch.trim().toLowerCase();
     const filtered = all.filter((job) => {
-      if (!matchesStatus(job.status, statusFilter)) return false;
+      if (!matchesStatus(job.status ?? '', statusFilter)) return false;
       if (search) {
-        const agent = (job.spec.agent ?? '').toLowerCase();
+        const agent = (agentNameForJob(job) ?? '').toLowerCase();
         const name = job.name.toLowerCase();
         if (!agent.includes(search) && !name.includes(search)) return false;
       }
@@ -99,14 +99,14 @@ export const AgentEvaluationsListRoute: FC = () => {
     const sorted = [...filtered].sort((a, b) => {
       switch (sortKey) {
         case 'created_asc':
-          return a.created_at.localeCompare(b.created_at);
+          return (a.created_at ?? '').localeCompare(b.created_at ?? '');
         case 'name_asc':
           return a.name.localeCompare(b.name);
         case 'name_desc':
           return b.name.localeCompare(a.name);
         case 'created_desc':
         default:
-          return b.created_at.localeCompare(a.created_at);
+          return (b.created_at ?? '').localeCompare(a.created_at ?? '');
       }
     });
     return sorted;
@@ -198,14 +198,9 @@ export const AgentEvaluationsListRoute: FC = () => {
                         {job.name}
                       </Text>
                       <Flex gap="density-md" wrap="wrap">
-                        {job.spec.agent && (
+                        {agentNameForJob(job) && (
                           <Badge kind="outline" color="gray">
-                            Agent: {job.spec.agent}
-                          </Badge>
-                        )}
-                        {job.spec.eval_config && (
-                          <Badge kind="outline" color="gray">
-                            Config: {job.spec.eval_config}
+                            Agent: {agentNameForJob(job)}
                           </Badge>
                         )}
                       </Flex>
@@ -215,7 +210,7 @@ export const AgentEvaluationsListRoute: FC = () => {
                         <StatusBadge status={job.status} />
                       </Block>
                       <Text kind="body/regular/sm" color="secondary">
-                        Created <RelativeTime datetime={job.created_at} />
+                        Created <RelativeTime datetime={job.created_at ?? ''} />
                       </Text>
                     </Stack>
                   </Flex>

@@ -16,12 +16,12 @@ import {
   StatusIndicator,
   Text,
 } from '@nvidia/foundations-react-core';
+import type { AgentEvalJob } from '@studio/api/evaluation/agent-evaluations';
 import type { AgentConfig } from '@studio/components/dataViews/AgentsDataView';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { deploymentStatusColor } from '@studio/components/sidePanels/AgentPanels/AgentPanel/helpers';
 import { NoHealthyDeploymentsBanner } from '@studio/components/sidePanels/AgentPanels/AgentPanel/NoHealthyDeploymentsBanner';
 import type { WalkthroughStep } from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthrough';
-import type { AgentEvalJob } from '@studio/routes/agents/AgentEvaluationsRoute/api';
 import { getAgentEvaluationDetailRoute, getAgentEvaluationsListRoute } from '@studio/routes/utils';
 import type { FC, RefObject } from 'react';
 import { Link } from 'react-router-dom';
@@ -209,7 +209,7 @@ export const AgentDetailsContent: FC<AgentDetailsContentProps> = ({
                           {job.name}
                         </Text>
                         <Text kind="body/regular/xs" color="secondary">
-                          <RelativeTime datetime={job.created_at} />
+                          <RelativeTime datetime={job.created_at ?? ''} />
                         </Text>
                       </Stack>
                       <StatusBadge status={job.status} />

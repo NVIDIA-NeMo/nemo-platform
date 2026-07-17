@@ -25,6 +25,7 @@ type InlineUploadPickerProps = Pick<
   | 'filesetPurpose'
   | 'datasetLabel'
   | 'autoSelectFirstAcceptable'
+  | 'showUpdatedAt'
 > & {
   /** Called once the picked / uploaded file is committed. */
   onSubmit: (data: SubmitUploadType) => void;
@@ -154,6 +155,7 @@ export const InlineUploadPicker: FC<InlineUploadPickerProps> = ({
   filesetPurpose,
   datasetLabel,
   autoSelectFirstAcceptable,
+  showUpdatedAt,
   onSubmit,
   addButtonText = 'Add file',
   autoCommit = false,
@@ -178,6 +180,7 @@ export const InlineUploadPicker: FC<InlineUploadPickerProps> = ({
       datasetLabel: datasetLabel ?? uploadModalInitialState.datasetLabel,
       autoSelectFirstAcceptable:
         autoSelectFirstAcceptable ?? uploadModalInitialState.autoSelectFirstAcceptable,
+      showUpdatedAt: showUpdatedAt ?? uploadModalInitialState.showUpdatedAt,
     }),
     [
       allowMultipleFileSelection,
@@ -188,6 +191,7 @@ export const InlineUploadPicker: FC<InlineUploadPickerProps> = ({
       filesetPurpose,
       datasetLabel,
       autoSelectFirstAcceptable,
+      showUpdatedAt,
     ]
   );
   return (

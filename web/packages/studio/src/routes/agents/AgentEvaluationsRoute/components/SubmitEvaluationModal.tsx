@@ -7,40 +7,36 @@ import { parseFilesetLocation } from '@nemo/common/src/components/DatasetFileSel
 import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal, type FormModalProps } from '@nemo/common/src/components/FormModal';
+import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { customFetch } from '@nemo/sdk/generated/fetchers/platform';
-import { filesCreateFileset } from '@nemo/sdk/generated/platform/api';
+import { useAgentsListAgents } from '@nemo/sdk/generated/agents/api';
+import type { AgentEvaluateJobRequest } from '@nemo/sdk/generated/evaluator/schema';
+import { filesDownloadFile } from '@nemo/sdk/generated/platform/api';
 import { SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
 import { fetchSampleText } from '@studio/api/agents/fetchSampleText';
-import { type Agent } from '@studio/components/dataViews/AgentsDataView';
-import { PLATFORM_BASE_URL } from '@studio/constants/environment';
-import {
-  DEFAULT_SAMPLE_AGENT_KEY,
-  SAMPLE_AGENTS,
-  sampleAgentKeyForAgentName,
-} from '@studio/constants/sampleAgents';
-import {
-  fetchAgentEvalJobs,
-  type AgentEvalJob,
-} from '@studio/routes/agents/AgentEvaluationsRoute/api';
-import {
-  buildSubmitSpec,
-  CREATE_NEW,
-  evalOutputDescription,
-  evaluateRequestBody,
-  generateEvalConfigName,
-  generateOutputFilesetName,
-  MODE_DEFAULT,
-  MODE_FILESET,
-  type SubmitSpec,
-} from '@studio/routes/agents/AgentEvaluationsRoute/components/submitEvaluationSpec';
+import { submitAgentEvalJob } from '@studio/api/evaluation/agent-evaluations';
 import {
   ensureEvalConfigFileset,
   type EvalSeedFile,
-} from '@studio/routes/agents/AgentSuggestionsRoute/api';
+} from '@studio/api/evaluation/eval-config-fileset';
+import { JudgeModelSelect } from '@studio/components/evaluation/JudgeModelSelect';
+import {
+  EVALUATION_SAMPLE_AGENTS,
+  evaluationSampleAgentKeyForAgentName,
+  getEvaluationSampleAgent,
+} from '@studio/constants/sampleAgents';
+import { useJudgeModels } from '@studio/hooks/evaluation/useJudgeModels';
+import {
+  bareName,
+  buildAgentEvalRequestBody,
+  generateEvalConfigName,
+  MODE_DEFAULT,
+  MODE_FILESET,
+  parseEvalConfig,
+} from '@studio/routes/agents/AgentEvaluationsRoute/components/submitEvaluationSpec';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { type FC, useEffect, useMemo, useRef } from 'react';
-import { type SubmitHandler, useForm, useWatch } from 'react-hook-form';
+import { type FC, useEffect, useRef, useState } from 'react';
+import { FormProvider, type SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 
 const EVAL_CONFIG_MODE_ITEMS = [
@@ -48,27 +44,30 @@ const EVAL_CONFIG_MODE_ITEMS = [
   { value: MODE_FILESET, children: 'Choose Fileset' },
 ];
 
-/** Strip an optional ``workspace/`` prefix so agent references compare by name. */
-const bareName = (value?: string | null): string | null => {
-  if (typeof value !== 'string' || value.length === 0) return null;
-  return value.includes('/') ? (value.split('/').pop() ?? null) : value;
-};
+/** Flat filename the reusable config is stored as inside its fileset. */
+const EVAL_CONFIG_FILENAME = 'eval-config.json';
 
-const submitEvaluationSchema = z
-  .object({
-    agent: z.string().min(1, 'Agent is required'),
-    // Existing eval-config fileset to reuse, or CREATE_NEW to make one.
-    evalConfig: z.string().min(1, 'Select or create an eval config'),
-    // Create-mode fields (only enforced when evalConfig === CREATE_NEW).
-    newName: z.string(),
-    mode: z.enum([MODE_DEFAULT, MODE_FILESET]),
-    exampleKey: z.string(),
-    datasetFile: z.string().nullable(),
-  })
-  .superRefine((data, ctx) => {
-    if (data.evalConfig !== CREATE_NEW) return;
+const submitEvaluationBaseSchema = z.object({
+  agent: z.string().min(1, 'Agent is required'),
+  judgeModel: z.string(),
+  mode: z.enum([MODE_DEFAULT, MODE_FILESET]),
+  exampleKey: z.string(),
+  newName: z.string(),
+  configFile: z.string().nullable(),
+});
+
+type SubmitEvaluationFormData = z.infer<typeof submitEvaluationBaseSchema>;
+
+const makeSubmitEvaluationSchema = (requiresJudgeModel: () => boolean) =>
+  submitEvaluationBaseSchema.superRefine((data, ctx) => {
+    if (requiresJudgeModel() && !data.judgeModel) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Judge model is required',
+        path: ['judgeModel'],
+      });
+    }
     if (data.mode === MODE_DEFAULT) {
-      // newName becomes the fileset name — enforce the platform naming rules.
       const name = data.newName.trim();
       if (!name) {
         ctx.addIssue({
@@ -84,39 +83,65 @@ const submitEvaluationSchema = z
         });
       }
     }
-    if (data.mode === MODE_FILESET && !parseFilesetLocation(data.datasetFile ?? '')?.objectPath) {
+    if (data.mode === MODE_FILESET && !parseFilesetLocation(data.configFile ?? '')?.objectPath) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Pick an eval YAML inside an existing fileset',
-        path: ['datasetFile'],
+        message: 'Pick an eval-config.json inside an existing fileset',
+        path: ['configFile'],
       });
     }
   });
 
-type SubmitEvaluationFormData = z.infer<typeof submitEvaluationSchema>;
-
 const makeDefaultValues = (agent?: string): SubmitEvaluationFormData => ({
   agent: agent ?? '',
-  // Default to create; existing configs are one click away in the dropdown.
-  evalConfig: CREATE_NEW,
-  newName: generateEvalConfigName(),
+  judgeModel: '',
   mode: MODE_DEFAULT,
-  // Auto-match the example to the agent it was created from (by name prefix),
-  // falling back to the first example for non-example agents.
-  exampleKey: sampleAgentKeyForAgentName(agent) ?? DEFAULT_SAMPLE_AGENT_KEY,
-  datasetFile: null,
+  exampleKey: evaluationSampleAgentKeyForAgentName(agent) ?? EVALUATION_SAMPLE_AGENTS[0]?.key ?? '',
+  newName: generateEvalConfigName(),
+  configFile: null,
 });
 
 interface SubmitEvaluationModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
-  /** Workspace to submit the eval into. Passed in (rather than resolved
-   *  from the URL) so the modal can render outside a workspace route — e.g.
-   *  inside an open ``AgentPanel`` test. */
   workspace: string;
   /** When provided, pre-fills + locks the agent selector. */
   agent?: string;
   /** Called after a successful submission with the new job's name. */
   onSubmitted?: (jobName: string) => void;
 }
+
+/** Reads the reusable eval-config.json for this submission: either the selected
+ *  example asset (seeded into a new fileset) or an existing fileset's file. */
+const loadEvalConfigText = async (
+  workspace: string,
+  formData: SubmitEvaluationFormData
+): Promise<string> => {
+  if (formData.mode === MODE_DEFAULT) {
+    const example = getEvaluationSampleAgent(formData.exampleKey);
+    const content = await fetchSampleText(example.evalConfigPath);
+    const files: EvalSeedFile[] = [
+      { path: EVAL_CONFIG_FILENAME, content, type: 'application/json' },
+    ];
+    await ensureEvalConfigFileset(
+      workspace,
+      formData.newName.trim(),
+      new AbortController().signal,
+      files,
+      'Agent Evaluation Config'
+    );
+    return content;
+  }
+  // Choose-fileset mode: read the picked eval-config.json out of its fileset.
+  const parsed = parseFilesetLocation(formData.configFile ?? '');
+  if (!parsed?.objectPath) throw new Error('No eval-config.json selected');
+  const blob = await filesDownloadFile(
+    workspace,
+    parsed.name,
+    parsed.objectPath,
+    new AbortController().signal
+  );
+  if (!blob) throw new Error('Failed to read the selected eval config');
+  return blob.text();
+};
 
 export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   open,
@@ -128,25 +153,75 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   const toast = useToast();
   const queryClient = useQueryClient();
 
-  const { data: agents = [], isLoading: isAgentsLoading } = useQuery({
-    queryKey: ['agents', workspace],
+  // Ref keeps isLlmJudge current for the zod schema getter at validation time.
+  const isLlmJudgeRef = useRef(false);
+  const [schema] = useState(() => makeSubmitEvaluationSchema(() => isLlmJudgeRef.current));
+
+  const { data: agentsResponse, isLoading: isAgentsLoading } = useAgentsListAgents(
+    workspace,
+    undefined,
+    { query: { enabled: open && !agentProp } }
+  );
+  const agents = agentsResponse?.data ?? [];
+
+  const methods = useForm<SubmitEvaluationFormData>({
+    resolver: zodResolver(schema),
+    defaultValues: makeDefaultValues(agentProp),
+    mode: 'onSubmit',
+    reValidateMode: 'onChange',
+  });
+  const {
+    control,
+    reset: resetForm,
+    setValue,
+    getValues,
+    handleSubmit,
+    setError,
+    clearErrors,
+    formState,
+  } = methods;
+  const { errors } = formState;
+
+  const mode = useWatch({ control, name: 'mode' });
+  const selectedAgent = useWatch({ control, name: 'agent' });
+  const exampleKey = useWatch({ control, name: 'exampleKey' });
+
+  // Fetch and parse the selected example config early to detect metric type and default model.
+  const { data: exampleConfig } = useQuery({
+    queryKey: ['eval-config-preview', exampleKey],
     queryFn: async () => {
-      const response = await fetch(
-        `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/${workspace}/agents`
-      );
-      if (!response.ok) throw new Error('Failed to fetch agents');
-      const json = (await response.json()) as { data: Agent[] };
-      return json.data;
+      const example = getEvaluationSampleAgent(exampleKey);
+      if (!example) return null;
+      const text = await fetchSampleText(example.evalConfigPath);
+      return parseEvalConfig(text);
     },
-    enabled: open && !agentProp,
+    enabled: open && mode === MODE_DEFAULT && !!exampleKey,
+    staleTime: Infinity,
   });
 
-  // Prior eval jobs — the source for the "existing eval config" dropdown.
-  const { data: jobs = [], isLoading: isJobsLoading } = useQuery({
-    queryKey: ['agent-eval-jobs', workspace],
-    queryFn: ({ signal }) => fetchAgentEvalJobs(workspace, signal),
-    enabled: open,
-  });
+  const isLlmJudge = mode === MODE_DEFAULT && exampleConfig?.metric.metric_type === 'llm-judge';
+  isLlmJudgeRef.current = isLlmJudge;
+
+  const defaultModelRef =
+    isLlmJudge && typeof exampleConfig?.metric.payload.metric.model === 'string'
+      ? exampleConfig.metric.payload.metric.model
+      : undefined;
+
+  // Fetch judge models eagerly so they're ready when isLlmJudge resolves.
+  const { data: judgeModels } = useJudgeModels({ enabled: open });
+
+  // Pre-populate judge model from the config's ModelRef when modal opens or data arrives.
+  // Uses getValues (not a reactive watch) to avoid re-running on every model change.
+  useEffect(() => {
+    if (!open || !isLlmJudge || !defaultModelRef || !judgeModels?.length) return;
+    if (getValues('judgeModel')) return;
+    const target = bareName(defaultModelRef);
+    const match = judgeModels.find((m) => m.name === target);
+    if (match) {
+      const urn = getURNFromNamedEntityRef(match);
+      if (urn) setValue('judgeModel', urn);
+    }
+  }, [open, isLlmJudge, defaultModelRef, judgeModels, getValues, setValue]);
 
   const {
     mutateAsync: submitEvaluation,
@@ -154,47 +229,22 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     isPending,
     reset: resetMutation,
   } = useMutation({
-    mutationFn: async (spec: SubmitSpec) => {
-      if (spec.seedSources) {
-        // Seed the selected example's eval assets into the new config fileset.
-        const files: EvalSeedFile[] = await Promise.all(
-          spec.seedSources.map(async (source) => ({
-            path: source.path,
-            content: await fetchSampleText(source.assetPath),
-            type: source.type,
-          }))
-        );
-        await ensureEvalConfigFileset(
-          workspace,
-          spec.evalConfigFileset,
-          new AbortController().signal,
-          files,
-          'Agent Evaluation Config'
-        );
-      }
-      // Pre-create the output fileset so it carries a description; the job's
-      // auto-create no-ops once it exists. Best-effort — never block submission.
-      const outputFileset = generateOutputFilesetName(spec.agent);
-      try {
-        await filesCreateFileset(workspace, {
-          name: outputFileset,
-          description: evalOutputDescription(spec),
-          purpose: 'generic',
-        });
-      } catch {
-        // Job still auto-creates the fileset (without a description).
-      }
-      const body = evaluateRequestBody(spec, outputFileset);
-      const res = await customFetch<{ name?: string }>({
-        url: `/apis/agents/v2/workspaces/${encodeURIComponent(workspace)}/jobs/evaluate`,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        data: body,
+    mutationFn: async (formData: SubmitEvaluationFormData) => {
+      const configText = await loadEvalConfigText(workspace, formData);
+      const config = parseEvalConfig(configText);
+      const filesetName =
+        formData.mode === MODE_DEFAULT
+          ? formData.newName.trim()
+          : (parseFilesetLocation(formData.configFile ?? '')?.name ?? undefined);
+      const body = buildAgentEvalRequestBody(config, {
+        workspace,
+        agent: formData.agent,
+        judgeModel: formData.judgeModel,
+        filesetName,
       });
-      if (!res?.name) {
-        throw new Error('Submission did not return a job name');
-      }
-      return res.name;
+      const created = await submitAgentEvalJob(workspace, body as AgentEvaluateJobRequest);
+      if (!created?.name) throw new Error('Submission did not return a job name');
+      return created.name;
     },
     onSuccess: (jobName) => {
       toast.success(`Evaluation "${jobName}" submitted`);
@@ -204,97 +254,25 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     },
   });
 
-  const {
-    control,
-    reset: resetForm,
-    setValue,
-    handleSubmit,
-    setError,
-    clearErrors,
-    formState: { errors },
-  } = useForm<SubmitEvaluationFormData>({
-    resolver: zodResolver(submitEvaluationSchema),
-    defaultValues: makeDefaultValues(agentProp),
-    disabled: isPending,
-    mode: 'onSubmit',
-    reValidateMode: 'onChange',
-  });
-
-  const evalConfig = useWatch({ control, name: 'evalConfig' });
-  const mode = useWatch({ control, name: 'mode' });
-  const selectedAgent = useWatch({ control, name: 'agent' });
-
-  // Existing eval configs for the agent: distinct config filesets from prior
-  // jobs, mapped to the YAML each ran.
-  const existingConfigs = useMemo(() => {
-    const map = new Map<string, string>();
-    const agentKey = bareName(selectedAgent);
-    if (!agentKey) return map;
-    for (const job of jobs as AgentEvalJob[]) {
-      if (bareName(job.spec.agent) !== agentKey) continue;
-      const fileset = job.spec.eval_config_fileset;
-      if (typeof fileset === 'string' && fileset.length > 0 && !map.has(fileset)) {
-        map.set(fileset, job.spec.eval_config ?? '');
-      }
-    }
-    return map;
-  }, [jobs, selectedAgent]);
-
-  const evalConfigItems = useMemo(
-    () => [
-      ...Array.from(existingConfigs.keys()).map((fileset) => ({
-        value: fileset,
-        children: fileset,
-      })),
-      { value: CREATE_NEW, children: '+ Create new eval config' },
-    ],
-    [existingConfigs]
-  );
-
-  // When the chosen agent maps to a known example, auto-select its eval config.
+  // Keep the example matched to the agent it was created from.
   useEffect(() => {
-    const matchedKey = sampleAgentKeyForAgentName(selectedAgent);
+    const matchedKey = evaluationSampleAgentKeyForAgentName(selectedAgent);
     if (matchedKey) setValue('exampleKey', matchedKey);
   }, [selectedAgent, setValue]);
 
-  // Preselect the latest existing config for the agent (else create). Ref-guarded
-  // to run once per agent so it doesn't override the user's later manual pick.
-  const autoSelectedAgentRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!open) {
-      autoSelectedAgentRef.current = null;
-      return;
-    }
-    if (isJobsLoading || !selectedAgent) return;
-    if (autoSelectedAgentRef.current === selectedAgent) return;
-    autoSelectedAgentRef.current = selectedAgent;
-    const latest = existingConfigs.keys().next().value;
-    setValue('evalConfig', latest ?? CREATE_NEW);
-  }, [open, isJobsLoading, selectedAgent, existingConfigs, setValue]);
-
-  useEffect(() => {
-    resetForm(makeDefaultValues(agentProp));
-  }, [agentProp, resetForm]);
-
-  useEffect(() => {
-    if (!open) {
-      resetForm(makeDefaultValues(agentProp));
-    }
+    if (!open) resetForm(makeDefaultValues(agentProp));
   }, [open, agentProp, resetForm]);
 
-  const reset = () => {
+  const resetAndClose = () => {
     resetMutation();
     resetForm(makeDefaultValues(agentProp));
-  };
-
-  const resetAndClose = () => {
-    reset();
     onClose();
   };
 
   const onSubmit: SubmitHandler<SubmitEvaluationFormData> = async (formData) => {
     try {
-      await submitEvaluation(buildSubmitSpec(formData, existingConfigs));
+      await submitEvaluation(formData);
     } catch {
       // Error rendered via errorText prop.
     }
@@ -306,8 +284,6 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       : submitError
         ? 'An error occurred'
         : undefined;
-
-  const isCreating = evalConfig === CREATE_NEW;
 
   return (
     <FormModal
@@ -321,99 +297,90 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       errorText={errorMessage}
       className="w-[690px]! max-w-[95vw]!"
     >
-      <Stack gap="density-xl">
-        {agentProp ? (
-          <Text kind="body/regular/sm" color="secondary">
-            Evaluating agent <Text kind="body/semibold/sm">{agentProp}</Text>
-          </Text>
-        ) : (
-          <ControlledSelect
-            useControllerProps={{ control, name: 'agent' }}
-            loading={isAgentsLoading}
-            items={agents.flatMap((agent) =>
-              agent.name ? [{ value: agent.name, children: agent.name }] : []
-            )}
-            formFieldProps={{
-              slotLabel: 'Agent',
-              slotError: errors.agent?.message,
-            }}
-          />
-        )}
-        {selectedAgent ? (
-          <Stack gap="density-xl">
-            <Text kind="label/bold/sm" color="secondary">
-              Eval Config
+      <FormProvider {...methods}>
+        <Stack gap="density-xl">
+          {agentProp ? (
+            <Text kind="body/regular/sm" color="secondary">
+              Evaluating agent <Text kind="body/semibold/sm">{agentProp}</Text>
             </Text>
+          ) : (
             <ControlledSelect
-              useControllerProps={{ control, name: 'evalConfig' }}
-              loading={isJobsLoading}
-              items={evalConfigItems}
-              formFieldProps={{
-                slotError: errors.evalConfig?.message,
-              }}
+              useControllerProps={{ control, name: 'agent' }}
+              loading={isAgentsLoading}
+              items={agents.flatMap((agent) =>
+                agent.name ? [{ value: agent.name, children: agent.name }] : []
+              )}
+              formFieldProps={{ slotLabel: 'Agent', slotError: errors.agent?.message }}
             />
-            {isCreating && (
-              <>
-                <SegmentedControl
-                  className="w-full [&_button]:flex-1"
-                  value={mode}
-                  onValueChange={(v) => {
-                    setValue('mode', v as typeof MODE_DEFAULT | typeof MODE_FILESET, {
-                      shouldValidate: false,
-                    });
-                    clearErrors('datasetFile');
-                  }}
-                  items={EVAL_CONFIG_MODE_ITEMS}
-                />
-                {mode === MODE_DEFAULT ? (
-                  <>
-                    <ControlledSelect
-                      useControllerProps={{ control, name: 'exampleKey' }}
-                      items={SAMPLE_AGENTS.map((example) => ({
-                        value: example.key,
-                        children: example.label,
-                      }))}
-                      formFieldProps={{
-                        slotLabel: 'Example',
-                        slotError: errors.exampleKey?.message,
-                      }}
+          )}
+
+          {selectedAgent ? (
+            <Stack gap="density-xl">
+              <Text kind="label/bold/sm" color="secondary">
+                Eval Config
+              </Text>
+              <SegmentedControl
+                className="w-full [&_button]:flex-1"
+                value={mode}
+                onValueChange={(v) => {
+                  setValue('mode', v as typeof MODE_DEFAULT | typeof MODE_FILESET, {
+                    shouldValidate: false,
+                  });
+                  clearErrors('configFile');
+                }}
+                items={EVAL_CONFIG_MODE_ITEMS}
+              />
+
+              {mode === MODE_DEFAULT ? (
+                <>
+                  <ControlledSelect
+                    useControllerProps={{ control, name: 'exampleKey' }}
+                    items={EVALUATION_SAMPLE_AGENTS.map((example) => ({
+                      value: example.key,
+                      children: example.label,
+                    }))}
+                    formFieldProps={{ slotLabel: 'Example', slotError: errors.exampleKey?.message }}
+                  />
+                  {isLlmJudge && (
+                    <JudgeModelSelect<SubmitEvaluationFormData>
+                      formFieldName="judgeModel"
+                      slotLabel="Judge Model"
                     />
-                    <ControlledTextInput
-                      useControllerProps={{ control, name: 'newName' }}
-                      selectOnFocus
-                      formFieldProps={{
-                        slotLabel: 'New Fileset Name',
-                        slotError: errors.newName?.message,
-                      }}
-                    />
-                  </>
-                ) : (
-                  <ControlledDatasetFileSelect
-                    useControllerProps={{
-                      control,
-                      name: 'datasetFile',
-                      rules: { required: 'Pick an eval YAML inside an existing fileset' },
-                    }}
-                    acceptedFileTypes={['.yml', '.yaml']}
-                    invalidFileMode="disable"
-                    setError={(error) => setError('datasetFile', error)}
-                    clearError={() => clearErrors('datasetFile')}
-                    workspace={workspace}
-                    inline
-                    autoCommit
-                    autoSelectFirstAcceptable
-                    filesetPurpose="generic"
-                    datasetLabel="Fileset"
+                  )}
+                  <ControlledTextInput
+                    useControllerProps={{ control, name: 'newName' }}
+                    selectOnFocus
                     formFieldProps={{
-                      slotError: errors.datasetFile?.message,
+                      slotLabel: 'New Fileset Name',
+                      slotError: errors.newName?.message,
                     }}
                   />
-                )}
-              </>
-            )}
-          </Stack>
-        ) : null}
-      </Stack>
+                </>
+              ) : (
+                <ControlledDatasetFileSelect
+                  useControllerProps={{
+                    control,
+                    name: 'configFile',
+                    rules: { required: 'Pick an eval-config.json inside an existing fileset' },
+                  }}
+                  acceptedFileTypes={['.json']}
+                  invalidFileMode="disable"
+                  setError={(error) => setError('configFile', error)}
+                  clearError={() => clearErrors('configFile')}
+                  workspace={workspace}
+                  inline
+                  autoCommit
+                  autoSelectFirstAcceptable
+                  showUpdatedAt
+                  filesetPurpose="generic"
+                  datasetLabel="Fileset"
+                  formFieldProps={{ slotError: errors.configFile?.message }}
+                />
+              )}
+            </Stack>
+          ) : null}
+        </Stack>
+      </FormProvider>
     </FormModal>
   );
 };

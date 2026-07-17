@@ -1,128 +1,146 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { parseFilesetLocation } from '@nemo/common/src/components/DatasetFileSelect/parseFilesetLocation';
 import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
-import { getSampleAgent } from '@studio/constants/sampleAgents';
-import { evalOutputFilesetFor } from '@studio/routes/agents/AgentSuggestionsRoute/utils';
+import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 
-export const MODE_DEFAULT = 'default';
-export const MODE_FILESET = 'fileset';
+// Assembles the `agent-evaluate/jobs` request from a reusable `eval-config.json`
+// (inline tasks + one shared inline metric) plus the submit-time selections
+// (agent target + judge model). See this route's AGENTS.md for the contract.
 
 /** Sentinel ``evalConfig`` value that switches the form into create mode. */
 export const CREATE_NEW = '__create_new__';
 
-/** Suggested name for a new eval config (e.g. "wise-blue"). */
+export const MODE_DEFAULT = 'default';
+export const MODE_FILESET = 'fileset';
+
+/** Suggested name for a new eval-config fileset (e.g. "wise-blue"). */
 export const generateEvalConfigName = (): string => generateDefaultName({ length: 2 });
 
-/** Form values the eval-submit modal collects. */
-export interface SubmitEvaluationFormValues {
+/** Default parallelism for a submitted eval (Studio default; the config value is a hint). */
+export const DEFAULT_MAX_CONCURRENT_TASKS = 1;
+
+// ---------------------------------------------------------------------------
+// eval-config.json shape (stored in a fileset, read at submit)
+// ---------------------------------------------------------------------------
+
+/** One inline metric bundle as stored in eval-config.json (no judge_model —
+ *  it is injected at submit). Kept loose: Studio does not re-validate the
+ *  built-in metric shape, it only injects the model and fans it onto tasks. */
+export interface InlineMetricBundle {
+  bundle_kind: string;
+  bundle_format_version: string;
+  metric_type: string;
+  metadata?: Record<string, unknown>;
+  outputs?: unknown[];
+  secrets?: Record<string, unknown>;
+  payload: {
+    kind: 'inline';
+    metric: Record<string, unknown> & { model?: unknown };
+  };
+}
+
+export interface EvalConfigTask {
+  id: string;
+  intent: string;
+  inputs?: { instruction?: string | null };
+  reference?: Record<string, unknown>;
+}
+
+/** The reusable eval config: inline tasks + one shared metric. */
+export interface EvalConfig {
+  tasks: EvalConfigTask[];
+  metric: InlineMetricBundle;
+  max_concurrent_tasks?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Submit-time selections + request assembly
+// ---------------------------------------------------------------------------
+
+export interface SubmitSelections {
+  workspace: string;
+  /** Agent (bare name) to evaluate; used to build the generic target. */
   agent: string;
-  /** Existing eval-config fileset to reuse, or CREATE_NEW to make one. */
-  evalConfig: string;
-  newName: string;
-  mode: typeof MODE_DEFAULT | typeof MODE_FILESET;
-  exampleKey: string;
-  datasetFile: string | null;
+  /** Judge model id from JudgeModelSelect (URN "workspace/name" or bare name). */
+  judgeModel: string;
+  /** Eval-config fileset name, stored as the job description for display in the detail view. */
+  filesetName?: string;
 }
 
-export interface EvalSeedSource {
-  /** Flat filename seeded into the fileset. */
-  path: string;
-  /** Public asset path fetched on demand for the file's content. */
-  assetPath: string;
-  type: string;
-}
+/** Strip an optional ``workspace/`` prefix, returning the bare model/agent name. */
+export const bareName = (value: string): string =>
+  value.includes('/') ? (value.split('/').pop() ?? value) : value;
 
-export interface SubmitSpec {
-  agent: string;
-  evalConfig: string;
-  evalConfigFileset: string;
-  /** Files to seed into ``evalConfigFileset`` before submitting. Omitted when
-   *  reusing an existing config. */
-  seedSources?: EvalSeedSource[];
-}
+/** The judge model endpoint (IGW OpenAI-compatible route), format ``nim``. */
+export const buildJudgeModel = (
+  workspace: string,
+  judgeModel: string
+): { url: string; name: string; format: 'nim' } => ({
+  url: `${PLATFORM_BASE_URL}/apis/inference-gateway/v2/workspaces/${encodeURIComponent(workspace)}/openai/-/v1`,
+  name: bareName(judgeModel),
+  format: 'nim',
+});
 
-export const contentTypeForFile = (name: string): string => {
-  if (name.endsWith('.json')) return 'application/json';
-  if (name.endsWith('.csv')) return 'text/csv';
-  return 'application/yaml';
+/** The generic agent target: the deployed agent's non-streaming ``/generate``. */
+export const buildAgentTarget = (workspace: string, agent: string) => ({
+  kind: 'agent' as const,
+  agent: {
+    format: 'generic' as const,
+    url: `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/${encodeURIComponent(workspace)}/agents/${encodeURIComponent(bareName(agent))}/-/generate`,
+    name: bareName(agent),
+    body: { input_message: '{{ instruction }}' },
+    response_path: '$.value',
+    stream: false,
+  },
+});
+
+/** Inject the judge model into a shared metric bundle (does not mutate input). */
+export const injectJudgeModel = (
+  metric: InlineMetricBundle,
+  judgeModel: ReturnType<typeof buildJudgeModel>
+): InlineMetricBundle => ({
+  ...metric,
+  payload: {
+    ...metric.payload,
+    metric: { ...metric.payload.metric, model: judgeModel },
+  },
+});
+
+/** Fan the shared metric (with judge injected) onto every task. */
+export const fanMetricOntoTasks = (
+  config: EvalConfig,
+  judgeModel: ReturnType<typeof buildJudgeModel>
+): Array<EvalConfigTask & { metrics: InlineMetricBundle[] }> => {
+  const metric = injectJudgeModel(config.metric, judgeModel);
+  return config.tasks.map((task) => ({ ...task, metrics: [metric] }));
 };
 
-/** Basename of a public asset path — the flat name it's seeded as in the fileset. */
-export const fileNameOf = (path: string): string => path.slice(path.lastIndexOf('/') + 1);
-
-/** Builds the eval-job spec from the form (reuse existing config, pick a
- *  fileset YAML, or seed an example into a new fileset). */
-export const buildSubmitSpec = (
-  formData: SubmitEvaluationFormValues,
-  existingConfigs: Map<string, string>
-): SubmitSpec => {
-  if (formData.evalConfig !== CREATE_NEW) {
-    return {
-      agent: formData.agent,
-      evalConfig: existingConfigs.get(formData.evalConfig) ?? '',
-      evalConfigFileset: formData.evalConfig,
-    };
-  }
-  if (formData.mode === MODE_FILESET) {
-    // datasetFile is validated by the schema refine before we get here.
-    const parsed = parseFilesetLocation(formData.datasetFile!)!;
-    return {
-      agent: formData.agent,
-      evalConfig: parsed.objectPath,
-      evalConfigFileset: parsed.name,
-    };
-  }
-  const example = getSampleAgent(formData.exampleKey);
-  // Namespace the config per example so switching examples doesn't reuse the
-  // first-seeded config.
-  const evalConfigName = `${example.key}-${fileNameOf(example.evalConfigPath)}`;
+/** Build the full ``agent-evaluate/jobs`` POST body from a config + selections. */
+export const buildAgentEvalRequestBody = (config: EvalConfig, selections: SubmitSelections) => {
+  const judge = buildJudgeModel(selections.workspace, selections.judgeModel);
   return {
-    agent: formData.agent,
-    evalConfig: evalConfigName,
-    evalConfigFileset: formData.newName.trim(),
-    seedSources: [
-      {
-        path: evalConfigName,
-        assetPath: example.evalConfigPath,
-        type: contentTypeForFile(example.evalConfigPath),
-      },
-      {
-        path: fileNameOf(example.evalDataPath),
-        assetPath: example.evalDataPath,
-        type: contentTypeForFile(example.evalDataPath),
-      },
-    ],
+    ...(selections.filesetName ? { description: selections.filesetName } : {}),
+    spec: {
+      tasks: fanMetricOntoTasks(config, judge),
+      target: buildAgentTarget(selections.workspace, selections.agent),
+      max_concurrent_tasks: config.max_concurrent_tasks ?? DEFAULT_MAX_CONCURRENT_TASKS,
+    },
   };
 };
 
-const OUTPUT_SUFFIX_LENGTH = 5;
-const OUTPUT_SUFFIX_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
-
-/** Random 5-char suffix so re-runs don't 409 on an existing output fileset. */
-const randomSuffix = (): string => {
-  const bytes = new Uint8Array(OUTPUT_SUFFIX_LENGTH);
-  crypto.getRandomValues(bytes);
-  let out = '';
-  for (const b of bytes) out += OUTPUT_SUFFIX_ALPHABET[b % OUTPUT_SUFFIX_ALPHABET.length];
-  return out;
+/** Parse an eval-config.json blob, validating the minimal required shape. */
+export const parseEvalConfig = (text: string): EvalConfig => {
+  const parsed = JSON.parse(text) as Partial<EvalConfig>;
+  if (!Array.isArray(parsed.tasks) || parsed.tasks.length === 0) {
+    throw new Error('eval-config.json must contain a non-empty "tasks" array');
+  }
+  if (!parsed.metric || typeof parsed.metric !== 'object') {
+    throw new Error('eval-config.json must contain a "metric"');
+  }
+  return {
+    tasks: parsed.tasks,
+    metric: parsed.metric,
+    max_concurrent_tasks: parsed.max_concurrent_tasks,
+  };
 };
-
-/** Fresh per-run output fileset name (``<agent>-eval-out-<random>``). */
-export const generateOutputFilesetName = (agent: string): string =>
-  `${evalOutputFilesetFor(agent)}-${randomSuffix()}`;
-
-/** Description stamped on the eval output fileset. */
-export const evalOutputDescription = (spec: SubmitSpec): string =>
-  `Agent Evaluation output, agent: ${spec.agent}, config: ${spec.evalConfigFileset}`;
-
-/** POST body for ``/jobs/evaluate``. */
-export const evaluateRequestBody = (spec: SubmitSpec, output: string) => ({
-  spec: {
-    agent: spec.agent,
-    eval_config: spec.evalConfig,
-    eval_config_fileset: spec.evalConfigFileset,
-    output,
-  },
-});
