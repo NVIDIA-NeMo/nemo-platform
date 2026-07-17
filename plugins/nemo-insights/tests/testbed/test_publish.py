@@ -366,3 +366,4 @@ def test_workflow_protects_all_secrets_and_exports_state_repository():
     assert "    environment: insights-testbed\n" in produce_job
     assert "    environment: insights-testbed\n" in analyze_job
     assert "TESTBED_STATE_REPO: ${{ vars.TESTBED_STATE_REPO || 'NVIDIA-dev/NeMo-Optimizer' }}" in workflow
+    assert 'testbed analyze "$SUBJECT" ${STATE:+--state "$STATE"} --no-check-in ' in analyze_job

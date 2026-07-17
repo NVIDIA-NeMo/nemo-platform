@@ -216,7 +216,7 @@ jobs:
         # Empty STATE = bare analyze = the subject's state.lock pin (the
         # reproducible default); a non-empty ref overrides it via --state.
         run: |
-          uv run --project ../.. python -m testbed analyze "$SUBJECT" ${STATE:+--state "$STATE"} --summary-md "$GITHUB_STEP_SUMMARY"
+          uv run --project ../.. python -m testbed analyze "$SUBJECT" ${STATE:+--state "$STATE"} --no-check-in --summary-md "$GITHUB_STEP_SUMMARY"
           cat "testbed/tmp/insights_${SUBJECT}.yaml"
       - name: Upload insights
         if: always()

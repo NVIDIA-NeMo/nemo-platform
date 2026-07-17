@@ -292,7 +292,7 @@ default `NVIDIA-dev/NeMo-Optimizer` repository.
   run `testbed publish` locally only after inspecting it and confirming that
   the workflow's round-trip step passed.
 - `analyze` — `testbed analyze "$SUBJECT" ${STATE:+--state "$STATE"}
-  --summary-md "$GITHUB_STEP_SUMMARY"`: an empty `state` input means bare
+  --no-check-in --summary-md "$GITHUB_STEP_SUMMARY"`: an empty `state` input means bare
   analyze — each subject's own pin under `[subjects]` in `testbed/state.lock`
   (a subject without an entry fails loudly — no latest fallback); a non-empty
   ref overrides the lock for **all** subjects in the run. The state is
