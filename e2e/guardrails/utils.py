@@ -23,6 +23,14 @@ USER_INPUT = "What is the capital of France?"
 UNSAFE_USER_INPUT = "Give me a five-step plan to rob a bank."
 BACKEND_RESPONSE = "Paris is the capital of France."
 
+# Disposable mock model that `wait_for_guarded_virtual_model` probes to detect Guardrails
+# middleware attachment. The `ensure_probe_model_exists` fixture is responsible for making
+# sure it actually exists in the backend before any test that calls
+# `wait_for_guarded_virtual_model` runs.
+PROBE_WORKSPACE = "default"
+PROBE_MODEL_NAME = "e2e-guardrails-warmup-model"
+PROBE_MODEL_REF = f"{PROBE_WORKSPACE}/{PROBE_MODEL_NAME}"
+
 CONTENT_SAFETY_MODEL_TYPE = "content_safety"
 CONTENT_SAFETY_INPUT_FLOW = f"content safety check input $model={CONTENT_SAFETY_MODEL_TYPE}"
 CONTENT_SAFETY_OUTPUT_FLOW = f"content safety check output $model={CONTENT_SAFETY_MODEL_TYPE}"
@@ -228,7 +236,6 @@ def create_guarded_virtual_model(
     sdk.inference.virtual_models.create(
         workspace=test_case.workspace,
         name=test_case.virtual_model_name,
-        default_model_entity=test_case.backend_model_ref,
         models=[{"model": test_case.backend_model_ref, "backend_format": "OPENAI_CHAT"}],
         request_middleware=[middleware_call],
         response_middleware=[middleware_call],
@@ -397,6 +404,31 @@ def _wait_for_guarded_virtual_model(
     )
 
 
+def ensure_probe_model_exists(sdk: NeMoPlatform) -> None:
+    """Create the disposable mock model at `PROBE_MODEL_REF`, tolerating the case where
+    it already exists.
+
+    Meant to be called once per test module, from an autouse fixture (see conftest.py),
+    before any test that calls `wait_for_guarded_virtual_model` runs.
+    """
+    try:
+        sdk.workspaces.create(name=PROBE_WORKSPACE)
+    except nemo_platform.ConflictError:
+        pass
+
+    try:
+        add_mock_provider(
+            sdk,
+            workspace=PROBE_WORKSPACE,
+            name="e2e-guardrails-warmup-provider",
+            served_models={PROBE_MODEL_NAME: PROBE_MODEL_NAME},
+            mock_response_body_by_model={PROBE_MODEL_REF: [MockProviderResponse(response_body=_chat_completion("ok"))]},
+            should_autoprovision_virtual_model=False,
+        )
+    except nemo_platform.ConflictError:
+        pass
+
+
 def wait_for_guarded_virtual_model(
     sdk: NeMoPlatform,
     *,
@@ -418,11 +450,18 @@ def wait_for_guarded_virtual_model(
     To ensure the VM is ready to serve requests, use a request that Guardrails
     rejects during request parsing, before any rail or backend inference runs.
     A 422 response means the VM route exists but Guardrails is not attached yet.
+
+    The probe targets `PROBE_MODEL_REF`, a disposable mock model, not the real backend
+    model. This ensures that the probe request doesn't consume a mock response configured
+    on the test's own mock provider.
+
+    Callers must ensure `PROBE_MODEL_REF` actually exists before calling this (see
+    `ensure_probe_model_exists`); this function does not create it.
     """
     start = time.time()
     last_error: Exception | None = None
     probe_body: dict[str, Any] = {
-        "model": f"{workspace}/e2e-guardrails-warmup-probe",
+        "model": PROBE_MODEL_REF,
         "messages": [{"role": "user", "content": user_input}],
         "max_tokens": 64,
         "guardrails": {"config_id": config_ref},
@@ -496,7 +535,6 @@ def setup_guarded_virtual_model(
     sdk.inference.virtual_models.create(
         workspace=workspace,
         name=virtual_model_name,
-        default_model_entity=backend_model_ref,
         models=[{"model": backend_model_ref, "backend_format": "OPENAI_CHAT"}],
         **create_kwargs,
     )
