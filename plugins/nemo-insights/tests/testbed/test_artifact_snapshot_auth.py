@@ -87,6 +87,29 @@ def test_snapshot_non_basic_subject_does_not_build_authenticated_client(monkeypa
     )
 
 
+def test_snapshot_setup_failure_does_not_construct_authenticated_client(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    constructed = False
+
+    def fake_client(subjects: list[Subject], source_url: str) -> object:
+        nonlocal constructed
+        constructed = True
+        return object()
+
+    def fail_pick_records(tmp_dir: Path, names: list[str]) -> list[Path]:
+        raise RuntimeError("setup failed")
+
+    monkeypatch.setattr(artifact, "_basic_auth_intake_client_for", fake_client)
+    monkeypatch.setattr(artifact, "pick_records", fail_pick_records)
+
+    with pytest.raises(RuntimeError, match="setup failed"):
+        artifact.snapshot_export([_glamr_subject()], tmp_path / "snapshot.tar.zst", tmp_path / "tmp", since=None)
+
+    assert not constructed
+
+
 def test_snapshot_export_passes_authenticated_client(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

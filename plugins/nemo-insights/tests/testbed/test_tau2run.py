@@ -148,6 +148,17 @@ def test_read_policy_main_policy_fallback_flat_and_nested(tmp_path):
     assert read_policy(tmp_path, "telecom-both") == "PRIMARY"
 
 
+def test_read_policy_nested_layout_precedes_flat_filename_priority(tmp_path):
+    nested = tmp_path / "tau2" / "domains" / "telecom"
+    nested.mkdir(parents=True)
+    (nested / "main_policy.md").write_text("NESTED MAIN")
+    flat = tmp_path / "domains" / "telecom"
+    flat.mkdir(parents=True)
+    (flat / "policy.md").write_text("FLAT POLICY")
+
+    assert read_policy(tmp_path, "telecom") == "NESTED MAIN"
+
+
 def test_resolve_paths_from_repo_absolute():
     tau2_bin, data_dir = resolve_paths({"tau2_repo": "/r"}, repo_root=Path("/root"))
     assert tau2_bin == str(Path("/r") / ".venv" / "bin" / "tau2")

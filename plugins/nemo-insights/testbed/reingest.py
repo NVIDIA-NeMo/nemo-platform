@@ -747,6 +747,8 @@ def ingest_bundle(
             healing = expected_spans > 0 and not ingest_spans
             if ingest_spans:
                 print(f"ingesting {len(spans)} spans into {target}")
+                # Materialize every request before posting: higher memory use buys up-front
+                # validation (including oversized spans) and prevents a partial restore.
                 trace_requests = build_trace_requests(spans, catalog)
                 for request in trace_requests:
                     export_trace_request(base_url, target, request, client=client)

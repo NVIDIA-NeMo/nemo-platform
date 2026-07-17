@@ -266,6 +266,11 @@ def _analyze_all(args: argparse.Namespace, subjects: dict[str, Subject]) -> None
         )
     pins = {name: pin for name, pin in resolved_pins.items() if pin is not None}
 
+    stale_outputs = [f"insights_{name}.yaml" for name in names if (TMP / f"insights_{name}.yaml").is_file()]
+    if stale_outputs:
+        backup_dir = artifact.backup_records(TMP, stale_outputs)
+        print(f"analyze all: moved prior runtime Insights to {backup_dir}: {', '.join(stale_outputs)}")
+
     for name in names:
         command = [sys.executable, "-m", "testbed", "analyze", name, "--no-check-in"]
         if args.base is not None:

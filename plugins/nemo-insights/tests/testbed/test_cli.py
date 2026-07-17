@@ -567,6 +567,43 @@ def test_analyze_all_missing_child_output_leaves_checked_in_directory_unchanged(
     assert _checked_in_bytes(checked_in) == before
 
 
+def test_analyze_all_stale_output_cannot_mask_missing_child_output(
+    monkeypatch,
+    tmp_path,
+    isolate_checked_in_insights,
+):
+    runtime = tmp_path / "tmp"
+    runtime.mkdir()
+    stale = runtime / "insights_zeta.yaml"
+    stale.write_text("stale zeta\n", encoding="utf-8")
+    checked_in = tmp_path / "insights"
+    checked_in.mkdir()
+    (checked_in / "alpha.yaml").write_text("old alpha\n", encoding="utf-8")
+    (checked_in / "manifest.yaml").write_text("old manifest\n", encoding="utf-8")
+    before = _checked_in_bytes(checked_in)
+    monkeypatch.setattr(cli, "TMP", runtime)
+    monkeypatch.setattr(cli, "INSIGHTS_DIR", checked_in)
+    monkeypatch.setattr(cli, "load_registry", lambda _path: _analyze_all_subjects())
+    monkeypatch.setattr(cli.release, "lock_ref", lambda _path, name: f"state-{name}")
+    monkeypatch.setattr(cli, "_check_in_insights", isolate_checked_in_insights["check_in"])
+    monkeypatch.setattr(cli, "_write_insights_manifest", isolate_checked_in_insights["write_manifest"])
+
+    def fake_run(command, *, check):
+        name = command[command.index("analyze") + 1]
+        if name == "alpha":
+            (runtime / "insights_alpha.yaml").write_text("new alpha\n", encoding="utf-8")
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(sys, "argv", ["testbed", "analyze", "all"])
+
+    with pytest.raises(SystemExit, match="without Insights output for: zeta"):
+        cli.main()
+
+    assert _checked_in_bytes(checked_in) == before
+    (backup,) = runtime.glob("backup-*")
+    assert (backup / stale.name).read_text(encoding="utf-8") == "stale zeta\n"
+
+
 def test_analyze_all_top_level_no_check_in_skips_promotion(monkeypatch, tmp_path):
     runtime = tmp_path / "tmp"
     checked_in = tmp_path / "insights"

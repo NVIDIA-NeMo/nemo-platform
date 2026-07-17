@@ -213,6 +213,17 @@ def test_build_trace_requests_respects_serialized_size(monkeypatch):
         assert len(request.resource_spans[0].scope_spans[0].spans) >= 1
 
 
+def test_build_trace_requests_accepts_exact_serialized_size_limit():
+    one_span_size = reingest.build_trace_request([reingest.doc_to_otlp(AGENT_DOC, CATALOG)]).ByteSize()
+
+    requests = reingest.build_trace_requests([AGENT_DOC], CATALOG, max_bytes=one_span_size)
+
+    assert len(requests) == 1
+    assert requests[0].ByteSize() == one_span_size
+    with pytest.raises(RuntimeError, match=rf"exceeds {one_span_size - 1} bytes"):
+        reingest.build_trace_requests([AGENT_DOC], CATALOG, max_bytes=one_span_size - 1)
+
+
 def test_build_trace_requests_respects_span_count_limit(monkeypatch):
     monkeypatch.setattr(reingest, "OTLP_REQUEST_MAX_SPANS", 2)
     docs = [{**AGENT_DOC, "span_id": f"{i:016x}"} for i in range(5)]

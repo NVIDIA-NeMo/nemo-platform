@@ -234,13 +234,13 @@ def snapshot_export(
             "snapshot them separately or pass --base URL"
         )
     source_url = urls.pop()
-    client = _basic_auth_intake_client_for(subjects, source_url)
     records = pick_records(tmp_dir, [s.name for s in subjects])
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=tmp_dir) as tmp:
         state = Path(tmp) / "state"
         (state / "tmp").mkdir(parents=True)
+        client = _basic_auth_intake_client_for(subjects, source_url)
         stats = export.export_workspaces(source_url, workspaces, state, since=since, client=client)
         for rec in records:
             shutil.copy2(rec, state / "tmp" / rec.name)
