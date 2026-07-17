@@ -164,7 +164,7 @@ async def fetch_agent_card(base_url: str) -> dict[str, Any]:
 def _endpoint_host(url: str) -> str:
     """Host of *url* for logging — avoid echoing the full URL back anywhere."""
     try:
-        return urlparse(url).hostname or "unknown"
+        return scrub(urlparse(url).hostname or "unknown")
     except ValueError:
         return "unknown"
 
