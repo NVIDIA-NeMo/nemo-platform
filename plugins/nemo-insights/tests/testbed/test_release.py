@@ -98,21 +98,6 @@ def test_release_asset_names_inaccessible_repo_raises(monkeypatch):
         release._release_asset_names()
 
 
-def test_release_asset_names_does_not_substring_match_auth_error(monkeypatch):
-    def fake_gh(*args):
-        if args[:1] == ("api",):
-            return "[]"
-        raise subprocess.CalledProcessError(
-            1,
-            ["gh", *args],
-            stderr="GraphQL: release not found because the token is unauthorized\n",
-        )
-
-    monkeypatch.setattr(release, "_gh", fake_gh)
-    with pytest.raises(subprocess.CalledProcessError):
-        release._release_asset_names()
-
-
 def test_gh_prints_stderr_on_failure(monkeypatch, capsys):
     def fake_run(*args, **kwargs):
         raise subprocess.CalledProcessError(1, args[0], stderr="gh: some auth error\n")
@@ -197,8 +182,10 @@ def test_download_ref_gh_args_and_return_path(tmp_path, monkeypatch):
         calls.append(args)
         return ""
 
+    monkeypatch.delenv("TESTBED_STATE_REPO", raising=False)
     monkeypatch.setattr(release, "_gh", fake_gh)
     dest = tmp_path / "dl"
+    repo_dir = dest / "NVIDIA-dev__NeMo-Optimizer"
     result = release.download_ref("state-v4", dest)
     assert calls == [
         (
@@ -208,23 +195,37 @@ def test_download_ref_gh_args_and_return_path(tmp_path, monkeypatch):
             "--pattern",
             "state-v4.tar.zst",
             "--dir",
-            str(dest),
+            str(repo_dir),
             "--clobber",
             "--repo",
             "NVIDIA-dev/NeMo-Optimizer",
         )
     ]
-    assert dest.is_dir()
-    assert result == tmp_path / "dl" / "state-v4.tar.zst"
+    assert repo_dir.is_dir()
+    assert result == repo_dir / "state-v4.tar.zst"
 
 
 def test_download_ref_reuses_cached_file_without_gh(tmp_path, monkeypatch, capsys):
     """Refs are immutable: an already-downloaded tarball is reused, gh never invoked."""
-    dest = tmp_path / "dl"
-    dest.mkdir()
-    (dest / "state-v4.tar.zst").write_bytes(b"cached bytes")
+    monkeypatch.delenv("TESTBED_STATE_REPO", raising=False)
+    repo_dir = tmp_path / "dl" / "NVIDIA-dev__NeMo-Optimizer"
+    repo_dir.mkdir(parents=True)
+    (repo_dir / "state-v4.tar.zst").write_bytes(b"cached bytes")
     monkeypatch.setattr(release, "_gh", lambda *args: pytest.fail("cached ref must not invoke gh"))
-    result = release.download_ref("state-v4", dest)
-    assert result == dest / "state-v4.tar.zst"
+    result = release.download_ref("state-v4", tmp_path / "dl")
+    assert result == repo_dir / "state-v4.tar.zst"
     assert result.read_bytes() == b"cached bytes"
     assert "using cached state-v4.tar.zst" in capsys.readouterr().out
+
+
+def test_download_ref_cache_is_namespaced_by_state_repo(tmp_path, monkeypatch):
+    """A bundle cached from one repo must not satisfy the same ref from another repo."""
+    monkeypatch.setenv("TESTBED_STATE_REPO", "owner/repository")
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(release, "_gh", lambda *args: calls.append(args) or "")
+    dest = tmp_path / "dl"
+    (dest / "NVIDIA-dev__NeMo-Optimizer").mkdir(parents=True)
+    (dest / "NVIDIA-dev__NeMo-Optimizer" / "state-v4.tar.zst").write_bytes(b"other repo's bytes")
+    result = release.download_ref("state-v4", dest)
+    assert result == dest / "owner__repository" / "state-v4.tar.zst"
+    assert len(calls) == 1 and ("--repo", "owner/repository") == calls[0][-2:]

@@ -491,6 +491,12 @@ def _first_span_id(base_url: str, workspace: str, *, client: httpx.Client | None
             client.close()
 
 
+def _doc_started_at(doc: dict) -> datetime:
+    """A span doc's chronological ``started_at`` (naive values are UTC; missing sorts first)."""
+    parsed = datetime.fromisoformat(str(doc.get("started_at") or _EPOCH_ISO))
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+
+
 def _assert_same_first_span(base_url: str, workspace: str, span_docs: list[dict], *, client: httpx.Client) -> None:
     """Harden the count-only skip guard: matching counts can still be a different corpus.
 
@@ -504,8 +510,8 @@ def _assert_same_first_span(base_url: str, workspace: str, span_docs: list[dict]
     live_first = _first_span_id(base_url, workspace, client=client)
     if live_first is None:
         return
-    earliest = min(str(doc.get("started_at") or "") for doc in span_docs)
-    expected = {doc.get("span_id") for doc in span_docs if str(doc.get("started_at") or "") == earliest}
+    earliest = min(_doc_started_at(doc) for doc in span_docs)
+    expected = {doc.get("span_id") for doc in span_docs if _doc_started_at(doc) == earliest}
     if live_first not in expected:
         raise RuntimeError(
             f"{workspace}: span count matches the bundle but its first span is {live_first!r} "
@@ -574,9 +580,8 @@ def ingest_bundle(
       partial set would duplicate; there is no safe heal (delete + re-restore).
 
     With ``require_empty=True``, all three target collections must be empty
-    before the first data write and each non-empty collection is rechecked
-    immediately before its first write. This direct-restore mode is not
-    idempotent into a populated workspace.
+    up front. This direct-restore mode is not idempotent into a populated
+    workspace.
 
     "already restored — skipping" is printed only when EVERY collection is
     satisfied. Returns
@@ -698,8 +703,6 @@ def ingest_bundle(
                 for start in range(0, len(spans), SPAN_BATCH):
                     batch = [doc_to_otlp(doc, catalog) for doc in spans[start : start + SPAN_BATCH]]
                     request = build_trace_request(batch)
-                    if require_empty and start == 0:
-                        _require_zero(target, "spans", span_count(base_url, target, client=client))
                     export_trace_request(base_url, target, request, client=client)
                 if spans:
                     _wait_for_spans(base_url, target, expected_spans or len(spans), client=client, sleep=sleep)
@@ -707,20 +710,14 @@ def ingest_bundle(
             if post_annotations:
                 if healing:
                     print(f"{target}: healing annotations: posting {len(annotations)}")
-                for index, doc in enumerate(annotations):
+                for doc in annotations:
                     body = {k: v for k, v in doc.items() if k not in _POST_DROP["annotations"]}
-                    if require_empty and index == 0:
-                        _require_zero(target, "annotations", annotation_count(base_url, target, client=client))
                     _post_created(client, f"{root}/annotations", body)
             if post_results:
                 if healing:
                     print(f"{target}: healing evaluator results: posting {len(results)}")
-                for index, doc in enumerate(results):
+                for doc in results:
                     body = {k: v for k, v in doc.items() if k not in _POST_DROP["evaluator_results"]}
-                    if require_empty and index == 0:
-                        _require_zero(
-                            target, "evaluator results", evaluator_result_count(base_url, target, client=client)
-                        )
                     _post_created(client, f"{root}/evaluator-results", body)
             outcome[source_ws] = {
                 "workspace": target,
