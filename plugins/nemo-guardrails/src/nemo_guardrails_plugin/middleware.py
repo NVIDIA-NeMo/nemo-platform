@@ -363,6 +363,14 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
             error_msg="Failed to run input rails",
         )
 
+        # Store the generation_response in plugin state so it can be used by the response middleware
+        # to build the `guardrails_data` for the input and output rails. Store this *before* the
+        # blocked check below: IGW's response middleware chain runs unconditionally, even over the
+        # canned refusal an ImmediateResponse injects here, so process_response needs this rail's
+        # result regardless of whether it blocked.
+        logger.debug("Storing process_request GenerationResponse for %s", provenance.label)
+        plugin_state.set(STATE_KEY_INPUT_GENERATION_RESPONSE, generation_response)
+
         if is_blocked_generation_response(generation_response):
             return build_immediate_response(
                 response_body=build_blocked_immediate_response_body(
@@ -372,11 +380,6 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
                     user_log_options,
                 )
             )
-
-        # Store the generation_response in plugin state so it can be used by the response middleware
-        # to build the `guardrails_data` for the input and output rails.
-        logger.debug("Storing process_request GenerationResponse for %s", provenance.label)
-        plugin_state.set(STATE_KEY_INPUT_GENERATION_RESPONSE, generation_response)
 
         # If this request does not contain a response middleware call, we need to inject the input rails'
         # `guardrails_data` into the response body. IGW's proxy handles merging `response_body_annotations`
