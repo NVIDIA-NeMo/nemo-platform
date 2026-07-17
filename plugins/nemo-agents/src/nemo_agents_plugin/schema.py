@@ -31,7 +31,7 @@ from nemo_agents_plugin.entities import (
     DeploymentStatus,
 )
 from nemo_platform_plugin.schema import NemoFilter, NemoListResponse
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ---------------------------------------------------------------------------
 # Request bodies — plain BaseModel, named by convention
@@ -46,6 +46,8 @@ class CreateAgentRequest(BaseModel):
     a NAT agent already running elsewhere, whose A2A card the platform fetches
     at creation). Provide exactly one of ``config`` or ``url``.
     """
+
+    model_config = ConfigDict(json_schema_extra={"oneOf": [{"required": ["config"]}, {"required": ["url"]}]})
 
     name: str = Field(description="Unique agent name within the workspace.")
     description: str = Field(

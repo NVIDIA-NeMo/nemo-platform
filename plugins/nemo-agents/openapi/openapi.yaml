@@ -2755,6 +2755,11 @@ components:
       - -updated_at
       title: AnalyzeJobsSortField
     CreateAgentRequest:
+      oneOf:
+      - required:
+        - config
+      - required:
+        - url
       properties:
         name:
           type: string

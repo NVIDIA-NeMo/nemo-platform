@@ -125,7 +125,7 @@ class TestAgentDeploymentEntity:
 
     def test_invalid_status_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            AgentDeployment(name="dep", workspace="default", status="unknown")
+            AgentDeployment.model_validate({"name": "dep", "workspace": "default", "status": "unknown"})
 
     def test_data_fields_include_deployment_fields(self) -> None:
         d = AgentDeployment(
@@ -187,6 +187,12 @@ class TestCreateAgentRequest:
     def test_custom_format(self) -> None:
         req = CreateAgentRequest(name="x", config={}, config_format="custom-v2")
         assert req.config_format == "custom-v2"
+
+    def test_schema_encodes_config_xor_url(self) -> None:
+        assert CreateAgentRequest.model_json_schema()["oneOf"] == [
+            {"required": ["config"]},
+            {"required": ["url"]},
+        ]
 
 
 # ---------------------------------------------------------------------------
