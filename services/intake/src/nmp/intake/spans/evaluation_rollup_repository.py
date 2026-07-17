@@ -187,10 +187,9 @@ def _stat_columns(value_expr: str, *, prefix: str = "", guarded: bool = False) -
 def _score_rollups_sql(*, trace_index_table: str, evaluator_results_table: str, evaluation_names_sql: str) -> str:
     # Two-level rollup. Each run (session) contributes one score per evaluator, so first reduce the
     # per-span evaluator_results rows to one per-(session, evaluator) value; then average those per test
-    # case (pass@1 = mean over a test case's k attempts); then take the distribution across test cases.
-    # The mean is test-case-weighted (each test case counts once regardless of k) and `count` is the
-    # number of test cases. Sessions with no test_case_id aren't attributable to a test case, so they're
-    # dropped here.
+    # case; then take the distribution across test cases. The mean is test-case-weighted (each test case
+    # counts once regardless of k) and `count` is the number of test cases. Sessions with no test_case_id
+    # aren't attributable to a test case, so they're dropped here.
     return f"""
         WITH
         scoped_sessions AS (
