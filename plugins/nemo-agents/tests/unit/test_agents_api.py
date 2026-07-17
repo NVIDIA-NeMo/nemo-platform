@@ -496,3 +496,70 @@ class TestDeleteAgent:
         resp = client.delete("/apis/agents/v2/workspaces/default/agents/calc")
 
         assert resp.status_code == 500
+
+
+def _make_external(name: str = "ext", url: str = "http://host:10000") -> Agent:
+    a = Agent(name=name, workspace="default", source="external", endpoint=url, card={"name": "old"})
+    a._id = f"agent-{name}-id"
+    return a
+
+
+class TestRefreshExternalAgent:
+    _URL = "/apis/agents/v2/workspaces/default/agents/ext/refresh"
+
+    def test_refresh_updates_card(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_external())
+        monkeypatch.setattr(agents_router_module, "fetch_agent_card", AsyncMock(return_value={"name": "new"}))
+        mock_entity_client.update = AsyncMock(side_effect=lambda a: a)
+
+        resp = client.post(self._URL)
+
+        assert resp.status_code == 200
+        assert resp.json()["card"]["name"] == "new"
+
+    def test_refresh_managed_returns_400(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
+        resp = client.post("/apis/agents/v2/workspaces/default/agents/calc/refresh")
+        assert resp.status_code == 400
+
+    def test_refresh_not_found_returns_404(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.get = AsyncMock(side_effect=NemoEntityNotFoundError("nope"))
+        resp = client.post(self._URL)
+        assert resp.status_code == 404
+
+    def test_refresh_unreachable_returns_502(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nemo_agents_plugin.a2a import AgentCardError
+
+        mock_entity_client.get = AsyncMock(return_value=_make_external())
+        monkeypatch.setattr(agents_router_module, "fetch_agent_card", AsyncMock(side_effect=AgentCardError("down")))
+        resp = client.post(self._URL)
+        assert resp.status_code == 502
+
+
+class TestExternalAgentReachability:
+    _URL = "/apis/agents/v2/workspaces/default/agents/ext/reachability"
+
+    @pytest.mark.parametrize("reachable", [True, False])
+    def test_reachability(
+        self,
+        client: TestClient,
+        mock_entity_client: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+        reachable: bool,
+    ) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_external())
+        monkeypatch.setattr(agents_router_module, "probe_agent_reachable", AsyncMock(return_value=reachable))
+
+        resp = client.get(self._URL)
+
+        assert resp.status_code == 200
+        assert resp.json()["reachable"] is reachable
+
+    def test_reachability_managed_returns_400(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
+        resp = client.get("/apis/agents/v2/workspaces/default/agents/calc/reachability")
+        assert resp.status_code == 400

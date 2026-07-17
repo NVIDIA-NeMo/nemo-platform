@@ -35,6 +35,9 @@ _FETCH_TIMEOUT_S = 10.0
 # Agents can take a while to answer; allow more headroom than card discovery.
 _MESSAGE_TIMEOUT_S = 120.0
 
+# Liveness probe is a quick "is the well-known path answering" check.
+_PROBE_TIMEOUT_S = 5.0
+
 # Cap message/stream bodies too — replies are larger than cards but still bounded,
 # so one hostile endpoint can't OOM the shared gateway worker.
 _MAX_MESSAGE_BYTES = 8 * 1024 * 1024
@@ -124,6 +127,29 @@ def _endpoint_host(url: str) -> str:
         return urlparse(url).hostname or "unknown"
     except ValueError:
         return "unknown"
+
+
+async def probe_agent_reachable(base_url: str) -> bool:
+    """Cheap liveness check: does the agent's well-known card path answer 200?
+
+    Short timeout, no redirects, no body parsing — just a reachability signal for
+    the UI. Never raises; returns False on any failure.
+    """
+    base = base_url.strip()
+    if not base.startswith(("http://", "https://")):
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT_S) as client:
+            for path in AGENT_CARD_PATHS:
+                try:
+                    resp = await client.get(_card_url(base, path))
+                except httpx.HTTPError:
+                    continue
+                if resp.status_code == 200:
+                    return True
+    except httpx.HTTPError:
+        return False
+    return False
 
 
 def _collect_text_parts(parts: Any) -> list[str]:

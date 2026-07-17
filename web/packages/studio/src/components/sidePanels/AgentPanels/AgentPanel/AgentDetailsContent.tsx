@@ -18,6 +18,7 @@ import {
 } from '@nvidia/foundations-react-core';
 import type { AgentConfig } from '@studio/components/dataViews/AgentsDataView';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
+import { ExternalAgentStatus } from '@studio/components/sidePanels/AgentPanels/AgentPanel/ExternalAgentStatus';
 import { deploymentStatusColor } from '@studio/components/sidePanels/AgentPanels/AgentPanel/helpers';
 import { NoHealthyDeploymentsBanner } from '@studio/components/sidePanels/AgentPanels/AgentPanel/NoHealthyDeploymentsBanner';
 import type { WalkthroughStep } from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthrough';
@@ -92,11 +93,14 @@ export const AgentDetailsContent: FC<AgentDetailsContentProps> = ({
               </div>
             )}
           </Flex>
-          {isExternal && (
-            <Text kind="body/regular/sm" color="secondary">
-              Runs outside NeMo Platform. Deploy is unavailable; evaluation runs against the agent's
-              endpoint.
-            </Text>
+          {isExternal && agentName && (
+            <Stack gap="2">
+              <ExternalAgentStatus workspace={workspace} agentName={agentName} />
+              <Text kind="body/regular/sm" color="secondary">
+                Runs outside NeMo Platform. Deploy is unavailable; evaluation runs against the
+                agent's endpoint.
+              </Text>
+            </Stack>
           )}
         </Stack>
       </Block>

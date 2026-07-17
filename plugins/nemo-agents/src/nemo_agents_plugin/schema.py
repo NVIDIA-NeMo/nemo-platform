@@ -69,6 +69,12 @@ class CreateAgentRequest(BaseModel):
         return self
 
 
+class AgentReachability(BaseModel):
+    """Response for ``GET /v2/workspaces/{workspace}/agents/{name}/reachability``."""
+
+    reachable: bool = Field(description="Whether the external agent's endpoint answered a liveness probe.")
+
+
 class CreateDeploymentRequest(BaseModel):
     """Request body for ``POST /v2/workspaces/{workspace}/deployments``."""
 

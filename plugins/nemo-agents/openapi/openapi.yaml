@@ -158,6 +158,77 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/agents/{name}/reachability:
+    get:
+      tags:
+      - Agents
+      summary: External Agent Reachability
+      description: Liveness probe for an external agent's endpoint (for a health badge).
+      operationId: external_agent_reachability_apis_agents_v2_workspaces__workspace__agents__name__reachability_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentReachability'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/agents/{name}/refresh:
+    post:
+      tags:
+      - Agents
+      summary: Refresh External Agent
+      description: 'Re-fetch an external agent''s A2A card and update the stored copy.
+
+
+        The card is captured once at registration; this refreshes it (e.g. after the
+
+        agent''s skills change). Returns 502 if the agent can''t be reached.'
+      operationId: refresh_external_agent_apis_agents_v2_workspaces__workspace__agents__name__refresh_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/agents/v2/workspaces/{workspace}/deployments:
     post:
       tags:
@@ -2503,6 +2574,17 @@ components:
         \ ``agent_deployment``\nLifecycle: pending \u2192 starting \u2192 running\
         \ | failed.\nThe :class:`~nemo_agents_plugin.runner.controller.AgentDeploymentController`\n\
         drives state transitions by reconciling this entity against the\n:class:`~nemo_agents_plugin.runner.backend.RunnerBackend`."
+    AgentReachability:
+      properties:
+        reachable:
+          type: boolean
+          title: Reachable
+          description: Whether the external agent's endpoint answered a liveness probe.
+      type: object
+      required:
+      - reachable
+      title: AgentReachability
+      description: Response for ``GET /v2/workspaces/{workspace}/agents/{name}/reachability``.
     AnalyzeBatchConfig:
       properties:
         batch:

@@ -16,6 +16,7 @@ from nemo_agents_plugin.a2a import (
     extract_message_text,
     extract_stream_delta,
     fetch_agent_card,
+    probe_agent_reachable,
     send_a2a_message,
     stream_a2a_message,
 )
@@ -66,6 +67,22 @@ async def test_non_card_json_rejected() -> None:
     )
     with pytest.raises(AgentCardError):
         await fetch_agent_card("http://host:10000")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_probe_reachable_true_on_200() -> None:
+    respx.get("http://host:10000/.well-known/agent-card.json").mock(return_value=httpx.Response(200, json=CARD))
+    assert await probe_agent_reachable("http://host:10000") is True
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_probe_reachable_false_on_non_200_and_unreachable() -> None:
+    respx.get("http://down:1/.well-known/agent-card.json").mock(return_value=httpx.Response(503))
+    respx.get("http://down:1/.well-known/agent.json").mock(side_effect=httpx.ConnectError("refused"))
+    assert await probe_agent_reachable("http://down:1") is False
+    assert await probe_agent_reachable("ftp://nope") is False
 
 
 class TestExtractMessageText:
