@@ -15,13 +15,6 @@ const AgentsListRoute =
       default: m.AgentsListRoute,
     }))
   );
-const AgentOptimizationsRoute =
-  AGENTS_ENABLED &&
-  lazy(() =>
-    import('@studio/routes/agents/AgentSuggestionsRoute').then((m) => ({
-      default: m.AgentOptimizationsRoute,
-    }))
-  );
 const AgentMonitorRoute =
   AGENTS_ENABLED &&
   lazy(() =>
@@ -49,11 +42,6 @@ export const agentRoutes: RouteObject[] = agentsRoutes([
     path: ROUTES.workspace.agentsList,
     element: AgentsListRoute ? <AgentsListRoute /> : null,
     errorElement: <ErrorPanel title="Agents" />,
-  },
-  {
-    path: ROUTES.workspace.agentOptimizations,
-    element: AgentOptimizationsRoute ? <AgentOptimizationsRoute /> : null,
-    errorElement: <ErrorPanel title="Optimizations" />,
   },
   {
     path: ROUTES.workspace.agentMonitor,
