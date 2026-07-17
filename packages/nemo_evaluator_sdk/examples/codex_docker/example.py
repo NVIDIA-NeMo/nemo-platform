@@ -27,7 +27,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import stat
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -150,14 +149,11 @@ async def main() -> None:
 
     workspace = await trial.evidence.filesystem("workspace")
     artifact = workspace.path(ARTIFACT_PATH)
-    artifact_stat = artifact.stat()
     scores = {f"{score.metric_type}.{output.name}": output.value for score in result.scores for output in score.outputs}
 
     print(f"response: {trial.output.output_text}")
     print(f"artifact: {artifact}")
     print(f"artifact contents: {artifact.read_text(encoding='utf-8').strip()}")
-    print(f"artifact uid: {artifact_stat.st_uid} (host uid: {os.getuid()})")
-    print(f"artifact mode: {stat.S_IMODE(artifact_stat.st_mode):04o}")
     print(f"workspace_artifact.output_matches: {scores['workspace_artifact.output_matches']}")
     print(f"workspace_artifact.artifact_matches: {scores['workspace_artifact.artifact_matches']}")
     print(f"run bundle: {result.output_dir}")
