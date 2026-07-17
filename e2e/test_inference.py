@@ -248,7 +248,7 @@ def test_model_list_via_openai_route(sdk: NeMoPlatform, workspace: str):
     models = sdk.inference.gateway.openai.v1.models.list(workspace=workspace)
     model_ids = [m.id for m in models.data]
     # The autoprovisioned VirtualModel should appear (as workspace/entity_name)
-    assert any(entity_name in mid for mid in model_ids)
+    assert f"{workspace}/{entity_name}" in model_ids
 
 
 # ---------------------------------------------------------------------------

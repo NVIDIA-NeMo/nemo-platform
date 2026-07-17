@@ -87,8 +87,13 @@ def test_list_models_empty_cache(app: FastAPI, client: TestClient):
 
 
 def test_list_models_with_single_provider(client: TestClient):
-    """Test listing models with a single autoprovisioned VM in cache."""
-    response = client.get("/v2/workspaces/default/openai/-/v1/models")
+    """Test listing models with a single autoprovisioned VM in cache.
+
+    The default fixture serves ``e2e-test/meta_llama-3.2-1b-instruct``, so the
+    autoprovisioned VM lives in the ``e2e-test`` workspace; the list is
+    workspace-scoped, so query that workspace.
+    """
+    response = client.get("/v2/workspaces/e2e-test/openai/-/v1/models")
     assert response.status_code == 200
 
     data = response.json()
@@ -108,7 +113,7 @@ def test_list_models_lists_virtual_models(app: FastAPI, client: TestClient):
     vm_cache.rebuild([_custom_vm("ns1", "model-a")])
     app.dependency_overrides[global_virtual_model_cache] = lambda: vm_cache
 
-    response = client.get("/v2/workspaces/default/openai/-/v1/models")
+    response = client.get("/v2/workspaces/ns1/openai/-/v1/models")
     assert response.status_code == 200
 
     data = response.json()
@@ -116,6 +121,29 @@ def test_list_models_lists_virtual_models(app: FastAPI, client: TestClient):
     assert len(data["data"]) == 1
     assert data["data"][0]["id"] == "ns1/model-a"
     assert data["data"][0]["owned_by"] == "ns1"
+
+
+def test_list_models_is_workspace_scoped(app: FastAPI, client: TestClient):
+    """The list endpoint only returns VirtualModels in the request's workspace.
+
+    Foreign-workspace VirtualModels must not leak into another workspace's catalog.
+    """
+
+    vm_cache = VirtualModelCache()
+    vm_cache.rebuild(
+        [
+            _custom_vm("ns1", "model-a"),
+            _custom_vm("ns2", "model-b"),
+        ]
+    )
+    app.dependency_overrides[global_virtual_model_cache] = lambda: vm_cache
+
+    response = client.get("/v2/workspaces/ns1/openai/-/v1/models")
+    assert response.status_code == 200
+
+    ids = {model["id"] for model in response.json()["data"]}
+    assert ids == {"ns1/model-a"}
+    assert "ns2/model-b" not in ids
 
 
 def test_list_models_includes_custom_switchyard_vm(app: FastAPI, client: TestClient):

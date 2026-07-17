@@ -71,11 +71,12 @@ def list_models(
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
 ) -> None:
-    """This endpoint aggregates all routable VirtualModels and returns them in OpenAI's
-    list models format. Each model ID is the VirtualModel identifier in format
-    workspace/name. This includes both autoprovisioned VirtualModels (one per served
-    model entity) and custom VirtualModels, keeping the catalog in agreement with
-    the inference proxy, which also resolves VirtualModels."""
+    """This endpoint lists the routable VirtualModels in the requested workspace and
+    returns them in OpenAI's list models format. Each model ID is the VirtualModel
+    identifier in format workspace/name. This includes both autoprovisioned
+    VirtualModels (one per served model entity) and custom VirtualModels, keeping
+    the catalog in agreement with the inference proxy, which also resolves
+    VirtualModels scoped to the request workspace."""
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
 

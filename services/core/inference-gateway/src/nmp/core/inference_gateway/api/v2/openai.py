@@ -106,15 +106,20 @@ async def openai_get_models(
     virtual_model_cache: Annotated[VirtualModelCache, Depends(global_virtual_model_cache)],
 ) -> OpenAIListModelsResp:
     """
-    This endpoint aggregates all routable VirtualModels and returns them in
-    OpenAI's list models format. Each model ID is the VirtualModel identifier
-    in format workspace/name. This includes both autoprovisioned VirtualModels
-    (one per served model entity) and custom VirtualModels, keeping the catalog
-    in agreement with the inference proxy, which also resolves VirtualModels.
+    This endpoint lists the routable VirtualModels in the requested workspace and
+    returns them in OpenAI's list models format. Each model ID is the VirtualModel
+    identifier in format workspace/name. This includes both autoprovisioned
+    VirtualModels (one per served model entity) and custom VirtualModels, keeping
+    the catalog in agreement with the inference proxy, which also resolves
+    VirtualModels scoped to the request workspace.
     """
+    validate_entity_name(workspace, field_name="workspace")
+
     all_oai_models: list[OpenAIModelResp] = []
 
     for (vm_workspace, vm_name), _ in virtual_model_cache.virtual_model_map.items():
+        if vm_workspace != workspace:
+            continue
         all_oai_models.append(OpenAIModelResp(id=f"{vm_workspace}/{vm_name}", owned_by=vm_workspace))
 
     return OpenAIListModelsResp(data=all_oai_models)

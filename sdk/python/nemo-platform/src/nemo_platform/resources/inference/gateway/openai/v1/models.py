@@ -68,11 +68,12 @@ class ModelsResource(SyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> OpenAIListModelsResp:
         """
-        This endpoint aggregates all routable VirtualModels and returns them in OpenAI's
-        list models format. Each model ID is the VirtualModel identifier in format
-        workspace/name. This includes both autoprovisioned VirtualModels (one per served
-        model entity) and custom VirtualModels, keeping the catalog in agreement with
-        the inference proxy, which also resolves VirtualModels.
+        This endpoint lists the routable VirtualModels in the requested workspace and
+        returns them in OpenAI's list models format. Each model ID is the VirtualModel
+        identifier in format workspace/name. This includes both autoprovisioned
+        VirtualModels (one per served model entity) and custom VirtualModels, keeping
+        the catalog in agreement with the inference proxy, which also resolves
+        VirtualModels scoped to the request workspace.
 
         Args:
           extra_headers: Send extra headers
@@ -175,11 +176,12 @@ class AsyncModelsResource(AsyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> OpenAIListModelsResp:
         """
-        This endpoint aggregates all routable VirtualModels and returns them in OpenAI's
-        list models format. Each model ID is the VirtualModel identifier in format
-        workspace/name. This includes both autoprovisioned VirtualModels (one per served
-        model entity) and custom VirtualModels, keeping the catalog in agreement with
-        the inference proxy, which also resolves VirtualModels.
+        This endpoint lists the routable VirtualModels in the requested workspace and
+        returns them in OpenAI's list models format. Each model ID is the VirtualModel
+        identifier in format workspace/name. This includes both autoprovisioned
+        VirtualModels (one per served model entity) and custom VirtualModels, keeping
+        the catalog in agreement with the inference proxy, which also resolves
+        VirtualModels scoped to the request workspace.
 
         Args:
           extra_headers: Send extra headers

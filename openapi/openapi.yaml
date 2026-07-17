@@ -2365,16 +2365,18 @@ paths:
       tags:
       - Inference Gateway
       summary: OpenAI List Models
-      description: 'This endpoint aggregates all routable VirtualModels and returns
-        them in
+      description: 'This endpoint lists the routable VirtualModels in the requested
+        workspace and
 
-        OpenAI''s list models format. Each model ID is the VirtualModel identifier
+        returns them in OpenAI''s list models format. Each model ID is the VirtualModel
 
-        in format workspace/name. This includes both autoprovisioned VirtualModels
+        identifier in format workspace/name. This includes both autoprovisioned
 
-        (one per served model entity) and custom VirtualModels, keeping the catalog
+        VirtualModels (one per served model entity) and custom VirtualModels, keeping
 
-        in agreement with the inference proxy, which also resolves VirtualModels.'
+        the catalog in agreement with the inference proxy, which also resolves
+
+        VirtualModels scoped to the request workspace.'
       operationId: openai_proxy_list_models
       parameters:
       - name: workspace
