@@ -283,14 +283,11 @@ async def proxy_by_deployment_name_write(
 
 
 async def _resolve_agent_endpoint(name: str, workspace: str, entity_client: NemoEntitiesClient) -> str:
-    """Find the endpoint of the first running deployment for the given agent."""
-    try:
-        await entity_client.get(Agent, name=name, workspace=workspace)
-    except NemoEntityNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found in workspace '{workspace}'.") from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    """Find the endpoint of the first running deployment for the given agent.
 
+    The agent's existence is already validated by the caller (``_serve_agent_proxy``),
+    so this only lists deployments — no second entity fetch.
+    """
     try:
         result = await entity_client.list(AgentDeployment, workspace=workspace)
     except Exception as exc:
@@ -477,16 +474,21 @@ def _conversation_prompt(messages: Any) -> str:
     turns = [
         (m.get("role"), _message_text(m))
         for m in messages
-        if isinstance(m, dict) and m.get("role") in ("user", "assistant")
+        if isinstance(m, dict) and m.get("role") in ("system", "user", "assistant")
     ]
     turns = [(role, text) for role, text in turns if text]
-    if not turns:
+    # Anchor on the last user message (the turn being answered); everything before
+    # it — including system/developer instructions — becomes the transcript.
+    last_user = next((i for i in range(len(turns) - 1, -1, -1) if turns[i][0] == "user"), None)
+    if last_user is None:
         return ""
-    if len(turns) == 1:
-        return turns[0][1]
+    latest = turns[last_user][1]
+    prior = turns[:last_user]
+    if not prior:
+        return latest
 
-    *prior, (_, latest) = turns
-    transcript = "\n".join(f"{'User' if role == 'user' else 'Assistant'}: {text}" for role, text in prior)
+    labels = {"system": "System", "user": "User", "assistant": "Assistant"}
+    transcript = "\n".join(f"{labels.get(str(role), 'User')}: {text}" for role, text in prior)
     return f"Continue this conversation.\n\n{transcript}\n\nUser: {latest}"
 
 
@@ -517,27 +519,58 @@ def _openai_chunk(completion_id: str, created: int, model: str, delta: dict[str,
     return f"data: {json.dumps(payload)}\n\n".encode()
 
 
-async def _stream_openai_from_a2a(endpoint: str, text: str, model: str) -> AsyncIterator[bytes]:
-    """Stream an external agent's A2A reply as OpenAI chat.completion.chunk SSE.
+def _card_supports_streaming(agent: Agent) -> bool:
+    """False only when the card explicitly disables streaming; default True."""
+    caps = (agent.card or {}).get("capabilities")
+    return not (isinstance(caps, dict) and caps.get("streaming") is False)
 
-    Forwards each A2A text delta as a content chunk. A mid-stream error is
-    surfaced as content (the HTTP status is already 200 once streaming starts),
-    so the user sees it in the chat rather than a silent stall.
+
+async def _single_chunk_sse(text: str, model: str) -> AsyncIterator[bytes]:
+    """Wrap a complete (non-streamed) reply as one OpenAI SSE completion."""
+    created = int(time.time())
+    completion_id = f"chatcmpl-{uuid4().hex}"
+    yield _openai_chunk(completion_id, created, model, {"role": "assistant", "content": text}, None)
+    yield _openai_chunk(completion_id, created, model, {}, "stop")
+    yield b"data: [DONE]\n\n"
+
+
+async def _stream_openai_from_a2a(
+    agen: AsyncIterator[str],
+    first: str,
+    has_first: bool,
+    model: str,
+    name: str,
+    endpoint: str,
+) -> AsyncIterator[bytes]:
+    """Stream a *primed* A2A reply as OpenAI chat.completion.chunk SSE.
+
+    The first delta is pulled by the caller so a failure before it returns 502;
+    here the status is already 200, so a mid-stream failure is logged and ends
+    the stream WITHOUT a normal ``stop`` finish, so the client/monitoring can
+    tell it from a real completion.
     """
     created = int(time.time())
     completion_id = f"chatcmpl-{uuid4().hex}"
     role_sent = False
+    if has_first:
+        yield _openai_chunk(completion_id, created, model, {"role": "assistant", "content": first}, None)
+        role_sent = True
     try:
-        async for delta in stream_a2a_message(endpoint, text):
+        async for delta in agen:
             payload = {"content": delta} if role_sent else {"role": "assistant", "content": delta}
             role_sent = True
             yield _openai_chunk(completion_id, created, model, payload, None)
-        if not role_sent:
-            yield _openai_chunk(completion_id, created, model, {"role": "assistant", "content": ""}, None)
     except A2AMessageError as exc:
+        logger.warning(
+            "External agent '%s' chat stream failed mid-stream (%s): %s", name, _endpoint_host(endpoint), exc
+        )
         note = f"[external agent error: {exc}]"
         payload = {"content": f"\n{note}"} if role_sent else {"role": "assistant", "content": note}
         yield _openai_chunk(completion_id, created, model, payload, None)
+        yield b"data: [DONE]\n\n"  # no ``stop`` finish — signals abnormal termination
+        return
+    if not role_sent:
+        yield _openai_chunk(completion_id, created, model, {"role": "assistant", "content": ""}, None)
     yield _openai_chunk(completion_id, created, model, {}, "stop")
     yield b"data: [DONE]\n\n"
 
@@ -575,7 +608,7 @@ async def external_agent_chat_completions(
 
     endpoint = _external_a2a_endpoint(agent, name)
     body = await _read_json_object(request)
-    return await _external_openai_chat(name, endpoint, body)
+    return await _external_openai_chat(name, endpoint, body, _card_supports_streaming(agent))
 
 
 # ---------------------------------------------------------------------------
@@ -616,25 +649,43 @@ async def _read_json_object(request: Request) -> dict[str, Any]:
     return body if isinstance(body, dict) else {}
 
 
-async def _external_openai_chat(name: str, endpoint: str, body: dict[str, Any]) -> StreamingResponse | JSONResponse:
+async def _external_openai_chat(
+    name: str, endpoint: str, body: dict[str, Any], supports_streaming: bool
+) -> StreamingResponse | JSONResponse:
     """Translate an OpenAI chat/completions body to A2A and return OpenAI shape."""
     text = _conversation_prompt(body.get("messages"))
     if not text:
         raise HTTPException(status_code=400, detail="Request has no user message to send.")
 
     model = body.get("model") or name
+    wants_stream = bool(body.get("stream"))
 
-    # Streaming: forward A2A deltas as they arrive (message/stream), so the UI
-    # shows progress instead of freezing until the agent finishes.
-    if body.get("stream"):
-        return StreamingResponse(_stream_openai_from_a2a(endpoint, text, model), media_type="text/event-stream")
+    if wants_stream and supports_streaming:
+        # Prime the stream: pull the first delta before returning the response so
+        # a failure before any token becomes a 502, not a 200 whose body is an
+        # error string masquerading as the answer.
+        agen = stream_a2a_message(endpoint, text)
+        try:
+            first, has_first = await anext(agen), True
+        except StopAsyncIteration:
+            first, has_first = "", False
+        except A2AMessageError as exc:
+            logger.warning("External agent '%s' chat stream failed (%s): %s", name, _endpoint_host(endpoint), exc)
+            raise HTTPException(status_code=502, detail=f"External agent chat failed: {exc}") from exc
+        return StreamingResponse(
+            _stream_openai_from_a2a(agen, first, has_first, model, name, endpoint),
+            media_type="text/event-stream",
+        )
 
-    # Non-streaming: single message/send, returned as one OpenAI completion.
+    # Non-streaming request, or an agent whose card disables streaming: a single
+    # message/send (errors -> 502 up front), returned as JSON or one SSE chunk.
     try:
         reply = await send_a2a_message(endpoint, text)
     except A2AMessageError as exc:
         logger.warning("External agent '%s' chat failed (%s): %s", name, _endpoint_host(endpoint), exc)
         raise HTTPException(status_code=502, detail=f"External agent chat failed: {exc}") from exc
+    if wants_stream:
+        return StreamingResponse(_single_chunk_sse(reply, model), media_type="text/event-stream")
     return JSONResponse(_openai_completion(reply, model))
 
 
@@ -667,7 +718,8 @@ async def _serve_external_agent(
     """
     endpoint = _external_a2a_endpoint(agent, name)
     if trailing_uri.endswith("chat/completions"):
-        return await _external_openai_chat(name, endpoint, await _read_json_object(request))
+        body = await _read_json_object(request)
+        return await _external_openai_chat(name, endpoint, body, _card_supports_streaming(agent))
     if trailing_uri.startswith("generate"):
         return await _serve_external_generate_full(name, endpoint, request)
     raise HTTPException(

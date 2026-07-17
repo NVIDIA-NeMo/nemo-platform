@@ -12,6 +12,7 @@ run. See https://github.com/nvidia/nemo-agent-toolkit A2A server docs.
 
 from __future__ import annotations
 
+import codecs
 import json
 import logging
 from collections.abc import AsyncIterator
@@ -142,11 +143,13 @@ async def probe_agent_reachable(base_url: str) -> bool:
         async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT_S) as client:
             for path in AGENT_CARD_PATHS:
                 try:
-                    resp = await client.get(_card_url(base, path))
+                    # Stream so we only wait for the status line — never read the
+                    # (potentially unbounded / slow-drip) body for a liveness check.
+                    async with client.stream("GET", _card_url(base, path)) as resp:
+                        if resp.status_code == 200:
+                            return True
                 except httpx.HTTPError:
                     continue
-                if resp.status_code == 200:
-                    return True
     except httpx.HTTPError:
         return False
     return False
@@ -275,11 +278,15 @@ async def stream_a2a_message(endpoint: str, text: str) -> AsyncIterator[str]:
                 # from a byte-capped buffer instead.
                 total = 0
                 buffer = ""
+                # Incremental decoder holds a partial multi-byte char across chunk
+                # boundaries, so a UTF-8 sequence split by the network doesn't
+                # decode to a replacement char.
+                decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
                 async for chunk in resp.aiter_bytes():
                     total += len(chunk)
                     if total > _MAX_MESSAGE_BYTES:
                         raise A2AMessageError("agent stream exceeded the size limit")
-                    buffer += chunk.decode("utf-8", errors="replace")
+                    buffer += decoder.decode(chunk)
                     while "\n" in buffer:
                         line, buffer = buffer.split("\n", 1)
                         line = line.strip()
