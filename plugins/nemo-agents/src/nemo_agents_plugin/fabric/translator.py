@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from typing import Any
 
-import nemo_fabric as fabric
+# CI type-checks this plugin via ty extra-paths without installing nemo-agents deps.
+import nemo_fabric as fabric  # ty: ignore[unresolved-import]
 from nemo_agents_plugin.agent_config import AgentConfig, HarnessConfig, ModelConfig
 
 HARNESS_ADAPTER_IDS = {
