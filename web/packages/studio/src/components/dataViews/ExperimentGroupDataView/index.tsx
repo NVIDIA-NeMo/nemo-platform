@@ -376,6 +376,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
                 label={title}
                 count={score?.count}
                 runCount={row.original.run_count}
+                countsMissingAsZero
               >
                 {formatEvaluatorScore(score?.mean)}
               </MeanValueTooltipCell>

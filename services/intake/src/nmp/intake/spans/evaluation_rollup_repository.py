@@ -118,7 +118,7 @@ def _evaluation_id_parameters(evaluation_ids: list[str]) -> tuple[str, dict[str,
 
 def _scoped_sessions_sql(trace_index_table: str, evaluation_names_sql: str) -> str:
     return f"""
-        SELECT workspace, evaluation_id, session_id, test_case_id, latency_ms
+        SELECT workspace, evaluation_id, session_id, test_case_id, latency_ms, root_status
         FROM {trace_index_table} FINAL
         WHERE workspace = %(workspace)s
             AND is_deleted = 0
@@ -185,19 +185,26 @@ def _stat_columns(value_expr: str, *, prefix: str = "", guarded: bool = False) -
 
 
 def _score_rollups_sql(*, trace_index_table: str, evaluator_results_table: str, evaluation_names_sql: str) -> str:
-    # Two-level rollup. Each run (session) contributes one score per evaluator, so first reduce the
+    # Three-level rollup. Each run (session) contributes one score per evaluator, so first reduce the
     # per-span evaluator_results rows to one per-(session, evaluator) value; then average those per test
     # case; then take the distribution across test cases. The mean is test-case-weighted (each test case
     # counts once regardless of k) and `count` is the number of test cases. Sessions with no test_case_id
     # aren't attributable to a test case, so they're dropped here.
+    #
+    # Fixed denominator for missing scores (ASE-616): a session that ERRORED but recorded no score for an
+    # evaluator counts as 0 (a real failed attempt), so it isn't silently dropped from the mean. A session
+    # that SUCCEEDED with no score is left out — the evaluator simply wasn't run on it, and counting it as
+    # 0 would wrongly penalize partial-coverage evaluators. An errored session that DID record a score keeps
+    # it (it lands in session_evaluator_scores and is excluded from the 0 branch by the LEFT ANTI JOIN).
     return f"""
         WITH
         scoped_sessions AS (
             {_scoped_sessions_sql(trace_index_table, evaluation_names_sql)}
         ),
-        session_scores AS (
+        session_evaluator_scores AS (
             SELECT
                 sessions.evaluation_id AS evaluation_id,
+                sessions.session_id AS session_id,
                 sessions.test_case_id AS test_case_key,
                 results.name AS evaluator_name,
                 avg(results.value) AS value
@@ -217,6 +224,29 @@ def _score_rollups_sql(*, trace_index_table: str, evaluator_results_table: str, 
                 AND sessions.session_id = results.session_id
             WHERE sessions.test_case_id != ''
             GROUP BY sessions.evaluation_id, sessions.session_id, sessions.test_case_id, results.name
+        ),
+        evaluators AS (
+            SELECT DISTINCT evaluation_id, evaluator_name
+            FROM session_evaluator_scores
+        ),
+        session_scores AS (
+            SELECT test_case_key, evaluation_id, evaluator_name, value
+            FROM session_evaluator_scores
+            UNION ALL
+            SELECT
+                sessions.test_case_id AS test_case_key,
+                sessions.evaluation_id AS evaluation_id,
+                evaluators.evaluator_name AS evaluator_name,
+                0 AS value
+            FROM scoped_sessions AS sessions
+            INNER JOIN evaluators
+                ON evaluators.evaluation_id = sessions.evaluation_id
+            LEFT ANTI JOIN session_evaluator_scores AS scored
+                ON scored.evaluation_id = sessions.evaluation_id
+                AND scored.session_id = sessions.session_id
+                AND scored.evaluator_name = evaluators.evaluator_name
+            WHERE sessions.root_status = 'error'
+                AND sessions.test_case_id != ''
         ),
         test_case_scores AS (
             SELECT
