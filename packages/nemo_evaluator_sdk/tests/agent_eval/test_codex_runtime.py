@@ -461,16 +461,70 @@ def test_private_text_write_cleans_temporary_file_on_replace_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     target = tmp_path / "artifact.txt"
+    explicitly_closed: list[int] = []
+    original_close = codex_runtime.os.close
 
     def fail_replace(source: str | Path, destination: str | Path) -> None:
         raise OSError("replace failed")
 
+    def track_close(descriptor: int) -> None:
+        explicitly_closed.append(descriptor)
+        original_close(descriptor)
+
     monkeypatch.setattr(codex_runtime.os, "replace", fail_replace)
+    monkeypatch.setattr(codex_runtime.os, "close", track_close)
 
     with pytest.raises(OSError, match="replace failed"):
         codex_runtime._write_private_text(target, "private")
 
+    assert explicitly_closed == []
     assert list(tmp_path.glob(".artifact.txt.*.tmp")) == []
+
+
+def test_private_text_write_closes_descriptor_when_fdopen_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "artifact.txt"
+    explicitly_closed: list[int] = []
+    original_close = codex_runtime.os.close
+
+    def fail_fdopen(descriptor: int, mode: str, *, encoding: str) -> None:
+        raise OSError("fdopen failed")
+
+    def track_close(descriptor: int) -> None:
+        explicitly_closed.append(descriptor)
+        original_close(descriptor)
+
+    monkeypatch.setattr(codex_runtime.os, "fdopen", fail_fdopen)
+    monkeypatch.setattr(codex_runtime.os, "close", track_close)
+
+    with pytest.raises(OSError, match="fdopen failed"):
+        codex_runtime._write_private_text(target, "private")
+
+    assert len(explicitly_closed) == 1
+    assert list(tmp_path.glob(".artifact.txt.*.tmp")) == []
+
+
+@pytest.mark.asyncio
+async def test_setup_failure_does_not_write_error_through_untrusted_evidence_symlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work_root = tmp_path / "codex"
+    work_root.mkdir(mode=0o700)
+    external = tmp_path / "external"
+    external.mkdir()
+    evidence_dir = work_root / "000000-task-symlink"
+    evidence_dir.symlink_to(external, target_is_directory=True)
+    monkeypatch.setattr(codex_runtime.shutil, "which", lambda value: f"/bin/{value}")
+    runtime = codex_runtime.CodexCliAgentRuntime(work_root=work_root)
+    task = AgentEvalTask(id="task-symlink", intent="Answer.", inputs={"instruction": "Q?"})
+
+    trial = (await runtime.run_tasks([task]))[0]
+
+    assert trial.status == "failed"
+    assert trial.output is None
+    assert trial.evidence is None
+    assert not (external / "error.json").exists()
 
 
 def test_private_tree_validation_is_root_inclusive_and_does_not_follow_symlinks(

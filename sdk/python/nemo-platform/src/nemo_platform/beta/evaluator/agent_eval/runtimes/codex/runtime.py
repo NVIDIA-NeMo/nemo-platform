@@ -105,7 +105,9 @@ class CodexCliAgentRuntime:
             _ensure_private_directory(evidence_dir)
             _ensure_private_directory(workspace_dir)
         except Exception as exc:
-            return _failed_codex_trial(task, evidence_dir, exc, runtime_name=self._runtime_name)
+            # The path that failed setup is not safe to use for artifact persistence. In particular,
+            # writing through a rejected evidence-directory symlink would escape the private tree.
+            return _failed_codex_trial(task, None, exc, runtime_name=self._runtime_name)
 
         prompt_path = evidence_dir / "prompt.txt"
         task_path = evidence_dir / "task.json"
@@ -466,25 +468,28 @@ def print_codex_agent_models(*, codex_bin: str = "codex") -> None:
 
 def _failed_codex_trial(
     task: AgentEvalTask,
-    evidence_dir: Path,
+    evidence_dir: Path | None,
     exc: Exception,
     *,
     runtime_name: str = "codex_cli",
     permission_cleanup_error: str | None = None,
     artifact_persistence_error: str | None = None,
 ) -> AgentEvalTrial:
-    error_path = evidence_dir / "error.json"
     evidence: CandidateEvidence | None = None
     error_artifact_error: str | None = None
-    try:
-        _write_private_text(error_path, json.dumps({"error_type": exc.__class__.__name__, "error": str(exc)}) + "\n")
-    except Exception as artifact_exc:
-        error_artifact_error = f"{artifact_exc.__class__.__name__}: {artifact_exc}"
-    else:
-        evidence = CandidateEvidence(
-            descriptors={"error": EvidenceDescriptor(kind="error", format="json", ref=str(error_path))},
-            metadata={"runtime": runtime_name, "agent": "codex"},
-        )
+    if evidence_dir is not None:
+        error_path = evidence_dir / "error.json"
+        try:
+            _write_private_text(
+                error_path, json.dumps({"error_type": exc.__class__.__name__, "error": str(exc)}) + "\n"
+            )
+        except Exception as artifact_exc:
+            error_artifact_error = f"{artifact_exc.__class__.__name__}: {artifact_exc}"
+        else:
+            evidence = CandidateEvidence(
+                descriptors={"error": EvidenceDescriptor(kind="error", format="json", ref=str(error_path))},
+                metadata={"runtime": runtime_name, "agent": "codex"},
+            )
 
     metadata: dict[str, Any] = {
         "runtime": runtime_name,
@@ -528,12 +533,15 @@ def _write_private_text(path: Path, content: str) -> None:
     temporary_path = Path(temporary_name)
     try:
         os.fchmod(descriptor, 0o600)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as temporary_file:
+        temporary_file = os.fdopen(descriptor, "w", encoding="utf-8")
+        descriptor = -1
+        with temporary_file:
             temporary_file.write(content)
         os.replace(temporary_path, path)
     finally:
-        with contextlib.suppress(OSError):
-            os.close(descriptor)
+        if descriptor != -1:
+            with contextlib.suppress(OSError):
+                os.close(descriptor)
         temporary_path.unlink(missing_ok=True)
 
 
