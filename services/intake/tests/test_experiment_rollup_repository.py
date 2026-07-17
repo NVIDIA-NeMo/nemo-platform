@@ -131,7 +131,7 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
     assert len(client.queries) == 3
     assert "FROM trace_index FINAL" in client.queries[0]
     assert "count() AS run_count" in client.queries[0]
-    assert "uniqExact(" in client.queries[0]
+    assert "uniqExactIf(test_case_id, test_case_id != '')" in client.queries[0]
     assert "AS test_case_count" in client.queries[0]
     assert "evaluation_id IN (%(evaluation_id_0)s)" in client.queries[0]
     assert "ORDER BY root_started_at ASC, root_span_id ASC" in client.queries[0]
@@ -146,7 +146,7 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
         "GROUP BY sessions.evaluation_id, sessions.session_id, sessions.test_case_id, results.name" in client.queries[1]
     )
     assert "test_case_scores AS" in client.queries[1]
-    assert "concat('t:', sessions.test_case_id)" in client.queries[1]
+    assert "WHERE sessions.test_case_id != ''" in client.queries[1]
     assert "test_case_metrics AS" in client.queries[2]
     assert "current_session_spans AS" in client.queries[2]
     assert "(span_versions.workspace, span_versions.session_id) IN" in client.queries[2]

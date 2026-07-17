@@ -128,17 +128,10 @@ def _scoped_sessions_sql(trace_index_table: str, evaluation_names_sql: str) -> s
     """
 
 
-def _test_case_key_sql(sessions_alias: str = "") -> str:
-    """Per-test-case grouping key for the two-level rollup: the test case (``test_case_id``) when set,
-    else the individual attempt (``session_id``) so unlabeled runs pool per-attempt exactly like a flat
-    rollup. Namespaced so a ``test_case_id`` can never collide with a ``session_id``. Counting the
-    distinct values of this key over an evaluation's sessions gives ``test_case_count``.
-    """
-    prefix = f"{sessions_alias}." if sessions_alias else ""
-    return f"if({prefix}test_case_id != '', concat('t:', {prefix}test_case_id), concat('s:', {prefix}session_id))"
-
-
 def _run_counts_sql(trace_index_table: str, evaluation_names_sql: str) -> str:
+    # run_count is every ingested session; test_case_count is the distinct test cases those sessions
+    # belong to. Sessions with no test_case_id aren't attributable to a test case, so they don't count
+    # toward test_case_count (and are excluded from the test-case-weighted rollups below).
     return f"""
         WITH scoped_sessions AS (
             {_scoped_sessions_sql(trace_index_table, evaluation_names_sql)}
@@ -146,7 +139,7 @@ def _run_counts_sql(trace_index_table: str, evaluation_names_sql: str) -> str:
         SELECT
             evaluation_id,
             count() AS run_count,
-            uniqExact({_test_case_key_sql()}) AS test_case_count
+            uniqExactIf(test_case_id, test_case_id != '') AS test_case_count
         FROM scoped_sessions
         GROUP BY evaluation_id
         ORDER BY evaluation_id ASC
@@ -193,10 +186,11 @@ def _stat_columns(value_expr: str, *, prefix: str = "", guarded: bool = False) -
 
 def _score_rollups_sql(*, trace_index_table: str, evaluator_results_table: str, evaluation_names_sql: str) -> str:
     # Two-level rollup. Each run (session) contributes one score per evaluator, so first reduce the
-    # per-span evaluator_results rows to one per-(session, evaluator) value; then average those per
-    # test case (pass@1 = mean over a test case's k attempts); then take the distribution across test cases. The mean
-    # is test-case-weighted (each test case counts once regardless of k), and `count` is the number of test cases.
-    test_case_key = _test_case_key_sql("sessions")
+    # per-span evaluator_results rows to one per-(session, evaluator) value; then average those per test
+    # case (pass@1 = mean over a test case's k attempts); then take the distribution across test cases.
+    # The mean is test-case-weighted (each test case counts once regardless of k) and `count` is the
+    # number of test cases. Sessions with no test_case_id aren't attributable to a test case, so they're
+    # dropped here.
     return f"""
         WITH
         scoped_sessions AS (
@@ -205,7 +199,7 @@ def _score_rollups_sql(*, trace_index_table: str, evaluator_results_table: str, 
         session_scores AS (
             SELECT
                 sessions.evaluation_id AS evaluation_id,
-                {test_case_key} AS test_case_key,
+                sessions.test_case_id AS test_case_key,
                 results.name AS evaluator_name,
                 avg(results.value) AS value
             FROM scoped_sessions AS sessions
@@ -222,6 +216,7 @@ def _score_rollups_sql(*, trace_index_table: str, evaluator_results_table: str, 
             ) AS results
                 ON sessions.workspace = results.workspace
                 AND sessions.session_id = results.session_id
+            WHERE sessions.test_case_id != ''
             GROUP BY sessions.evaluation_id, sessions.session_id, sessions.test_case_id, results.name
         ),
         test_case_scores AS (
@@ -244,10 +239,10 @@ def _score_rollups_sql(*, trace_index_table: str, evaluator_results_table: str, 
 
 
 def _metric_rollups_sql(*, trace_index_table: str, spans_table: str, evaluation_names_sql: str) -> str:
-    # Two-level rollup: per-attempt cost/latency, then averaged per test case (avg per attempt — the number
-    # must not scale with k), then the distribution across test cases (test-case-weighted). Attempts with no
-    # cost/latency are excluded from a test case's average rather than counted as zero.
-    test_case_key = _test_case_key_sql("sessions")
+    # Two-level rollup: per-attempt cost/latency, then averaged per test case (avg per attempt — the
+    # number must not scale with k), then the distribution across test cases (test-case-weighted).
+    # Attempts with no cost/latency are excluded from a test case's average rather than counted as zero;
+    # sessions with no test_case_id aren't attributable to a test case, so they're dropped.
     return f"""
         WITH
         scoped_sessions AS (
@@ -267,7 +262,7 @@ def _metric_rollups_sql(*, trace_index_table: str, spans_table: str, evaluation_
         session_costs AS (
             SELECT
                 sessions.evaluation_id AS evaluation_id,
-                {test_case_key} AS test_case_key,
+                sessions.test_case_id AS test_case_key,
                 sessions.latency_ms AS latency_ms,
                 if(
                     countIf(has(mapKeys(spans.attributes_number), %(cost_key)s)) = 0,
@@ -297,6 +292,7 @@ def _metric_rollups_sql(*, trace_index_table: str, spans_table: str, evaluation_
                 ON sessions.workspace = spans.workspace
                 AND sessions.session_id = spans.session_id
                 AND spans.is_deleted = 0
+            WHERE sessions.test_case_id != ''
             GROUP BY sessions.evaluation_id, sessions.session_id, sessions.test_case_id, sessions.latency_ms
         ),
         test_case_metrics AS (

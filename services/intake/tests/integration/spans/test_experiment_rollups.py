@@ -167,9 +167,10 @@ def test_evaluation_rollups_aggregate_per_test_case_before_pooling(client: TestC
     assert latency["count"] == 2
 
 
-def test_evaluation_rollups_without_test_case_id_pool_per_attempt(client: TestClient) -> None:
-    # No test_case_id -> each attempt is its own test case, so the rollup pools per attempt exactly like a
-    # flat aggregate (count = attempts, not collapsed into a single empty-string bucket).
+def test_evaluation_rollups_exclude_sessions_without_test_case_id(client: TestClient) -> None:
+    # Sessions with no test_case_id aren't attributable to a test case, so they're dropped from the
+    # test-case-weighted rollup: no scores/cost/latency and test_case_count 0, though run_count still
+    # reflects that the runs were ingested.
     evaluation_id = "rollup-no-test-case-exp"
     group_id = _ensure_group(client)
     created = client.post(
@@ -205,10 +206,11 @@ def test_evaluation_rollups_without_test_case_id_pool_per_attempt(client: TestCl
         assert response.status_code == 201, response.text
 
     evaluation = client.get(f"{EVALUATIONS}/{evaluation_id}").json()
-    assert evaluation["test_case_count"] == 2  # 2 blank attempts each stand alone as their own case
-    score = evaluation["aggregate_scores"]["reward"]
-    assert score["mean"] == pytest.approx(0.5)
-    assert score["count"] == 2  # per attempt, not collapsed to a single bucket
+    assert evaluation["run_count"] == 2  # the runs were ingested
+    assert evaluation["test_case_count"] == 0  # but none are attributable to a test case
+    assert not evaluation.get("aggregate_scores")  # excluded from the test-case-weighted score rollup
+    assert evaluation.get("cost_usd") is None
+    assert evaluation.get("latency_ms") is None
 
 
 def test_atif_ingest_rejects_deleted_evaluation(client: TestClient) -> None:
