@@ -33,7 +33,7 @@ interface MeanValueTooltipCellProps {
   count: number | null | undefined;
   runCount: number | null | undefined;
   /** When true, note that errored runs with no score are counted as 0 (score metrics only). */
-  countsMissingAsZero?: boolean;
+  readonly countsMissingAsZero?: boolean;
   children: ReactNode;
 }
 

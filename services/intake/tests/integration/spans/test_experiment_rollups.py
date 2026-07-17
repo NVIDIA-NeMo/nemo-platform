@@ -306,8 +306,9 @@ def test_deprecated_evaluation_context_hydrates_evaluation_rollups(client: TestC
 
 
 def test_evaluation_rollups_count_errored_missing_scores_as_zero(client: TestClient) -> None:
-    # ASE-616 fixed denominator: an errored run with no score counts as 0; a successful run with no
-    # score is excluded (the evaluator simply wasn't run on it), so it doesn't dilute the mean.
+    # ASE-616 fixed denominator: an errored run with no score counts as 0; an errored run that did record
+    # a score keeps that score (not zeroed); a successful run with no score is excluded (the evaluator
+    # simply wasn't run on it), so it doesn't dilute the mean.
     evaluation_id = "rollup-missing-zero"
     group_id = _ensure_group(client)
     created = client.post(
@@ -326,6 +327,7 @@ def test_evaluation_rollups_count_errored_missing_scores_as_zero(client: TestCli
     seeds: list[tuple[str, str, float | None, bool]] = [
         ("run-ok", "case-ok", 1.0, False),  # scored -> 1.0
         ("run-err", "case-err", None, True),  # errored + no score -> counts as 0
+        ("run-err-scored", "case-err-scored", 0.8, True),  # errored + scored -> keeps 0.8 (not zeroed)
         ("run-skip", "case-skip", None, False),  # succeeded + no score -> excluded from the denominator
     ]
     for index, (run_id, test_case_id, score, errored) in enumerate(seeds):
@@ -346,14 +348,15 @@ def test_evaluation_rollups_count_errored_missing_scores_as_zero(client: TestCli
         assert response.status_code == 201, response.text
 
     evaluation = client.get(f"{EVALUATIONS}/{evaluation_id}").json()
-    assert evaluation["run_count"] == 3
+    assert evaluation["run_count"] == 4
 
     reward = evaluation["aggregate_scores"]["reward"]
-    # Denominator is the 2 test cases that were attempted-to-be-scored (ok + errored); the
-    # succeeded-but-unscored case is excluded. mean = avg(1.0, 0.0) = 0.5.
-    assert reward["count"] == 2
-    assert reward["sum"] == pytest.approx(1.0)
-    assert reward["mean"] == pytest.approx(0.5)
+    # Denominator is the 3 test cases that were attempted-to-be-scored (ok, errored, errored-scored); the
+    # succeeded-but-unscored case is excluded. The errored-but-scored case keeps its recorded 0.8 rather
+    # than being replaced/supplemented with 0, so mean = avg(1.0, 0.0, 0.8) = 0.6.
+    assert reward["count"] == 3
+    assert reward["sum"] == pytest.approx(1.8)
+    assert reward["mean"] == pytest.approx(0.6)
 
 
 def _atif_body(
