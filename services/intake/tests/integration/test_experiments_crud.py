@@ -569,3 +569,51 @@ def test_delete_group_reference_counted_cascade(client: TestClient) -> None:
 
     in_b = client.get(EVALUATIONS, params={"filter[experiment_group_id]": group_b["id"]})
     assert any(e["name"] == "rc-shared" for e in in_b.json()["data"])
+
+
+def test_add_evaluation_to_group(client: TestClient) -> None:
+    """POST .../groups/{id} adds a membership (idempotent) and the run appears on that board."""
+    group_a = client.post(GROUPS, json={"name": "add-a"}).json()
+    group_b = client.post(GROUPS, json={"name": "add-b"}).json()
+    client.post(EVALUATIONS, json=_evaluation_body(name="add-eval", experiment_group_id=group_a["id"]))
+
+    added = client.post(f"{EVALUATIONS}/add-eval/groups/{group_b['id']}")
+    assert added.status_code == 200, added.text
+    assert set(added.json()["experiment_ids"]) == {group_a["id"], group_b["id"]}
+
+    again = client.post(f"{EVALUATIONS}/add-eval/groups/{group_b['id']}")  # idempotent
+    assert set(again.json()["experiment_ids"]) == {group_a["id"], group_b["id"]}
+
+    in_b = client.get(EVALUATIONS, params={"filter[experiment_group_id]": group_b["id"]})
+    assert any(e["name"] == "add-eval" for e in in_b.json()["data"])
+
+
+def test_add_evaluation_to_unknown_group_rejected(client: TestClient) -> None:
+    group = client.post(GROUPS, json={"name": "add-known"}).json()
+    client.post(EVALUATIONS, json=_evaluation_body(name="add-eval-2", experiment_group_id=group["id"]))
+    resp = client.post(f"{EVALUATIONS}/add-eval-2/groups/experiment_group-nope")
+    assert resp.status_code == 400, resp.text
+
+
+def test_remove_evaluation_from_group(client: TestClient) -> None:
+    group_a = client.post(GROUPS, json={"name": "rm-a"}).json()
+    group_b = client.post(GROUPS, json={"name": "rm-b"}).json()
+    body = _evaluation_body(name="rm-eval", experiment_group_id="placeholder")
+    body.pop("experiment_group_id")
+    body["experiment_ids"] = [group_a["id"], group_b["id"]]
+    client.post(EVALUATIONS, json=body)
+
+    removed = client.delete(f"{EVALUATIONS}/rm-eval/groups/{group_a['id']}")
+    assert removed.status_code == 200, removed.text
+    assert removed.json()["experiment_ids"] == [group_b["id"]]
+
+    in_a = client.get(EVALUATIONS, params={"filter[experiment_group_id]": group_a["id"]})
+    assert all(e["name"] != "rm-eval" for e in in_a.json()["data"])
+
+
+def test_remove_evaluation_from_last_group_rejected(client: TestClient) -> None:
+    group = client.post(GROUPS, json={"name": "rm-last"}).json()
+    client.post(EVALUATIONS, json=_evaluation_body(name="rm-last-eval", experiment_group_id=group["id"]))
+    resp = client.delete(f"{EVALUATIONS}/rm-last-eval/groups/{group['id']}")
+    assert resp.status_code == 409, resp.text
+    assert client.get(f"{EVALUATIONS}/rm-last-eval").status_code == 200  # still there
