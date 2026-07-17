@@ -412,8 +412,9 @@ target "nmp-rl-training" {
   context    = "."
   dockerfile = "docker/Dockerfile.nmp-rl-training"
   contexts = {
-    platform-workspace = "target:rl-platform-workspace"
-    nmp-rl-base        = "target:nmp-rl-base-builder"
+    platform-workspace     = "target:rl-platform-workspace"
+    nmp-rl-base            = "target:nmp-rl-base-builder"
+    ffmpeg-vlm-wheel-image = ffmpeg_vlm_wheel_context()
   }
   cache-to   = maybe_registry_cache_to("nmp-rl-training")
   cache-from = maybe_registry_cache_from("nmp-rl-training")

@@ -186,6 +186,7 @@ def get_platform_sdk(
     internal: bool = False,
     http_client: httpx.Client | None = None,
     on_behalf_of: str | Principal | None = None,
+    base_url: str | None = None,
 ) -> NeMoPlatform:
     """
     Returns an instance of the NeMoPlatform SDK configured with the platform's base URL.
@@ -199,13 +200,14 @@ def get_platform_sdk(
                  Use this for controllers and background tasks that make internal API calls.
         http_client: Optional sync HTTP client to use for requests.
         on_behalf_of: Optional principal ID to use for on-behalf-of authorization.
+        base_url: Optional platform base URL. Defaults to configured platform base URL.
 
     Returns:
         Configured NeMoPlatform SDK instance.
     """
     headers = _get_default_headers(as_service, internal, on_behalf_of)
     sdk = NeMoPlatform(
-        base_url=_base_url_from_config(),
+        base_url=base_url or _base_url_from_config(),
         http_client=http_client or shared_sync_http_client(),
         default_headers=headers if headers else None,
     )
@@ -273,6 +275,7 @@ def get_async_platform_sdk(
     internal: bool = False,
     http_client: Optional[httpx.AsyncClient] = None,
     on_behalf_of: Optional[str | Principal] = None,
+    base_url: str | None = None,
 ) -> AsyncNeMoPlatform:
     """
     Returns an instance of the AsyncNeMoPlatform SDK configured with the platform's base URL.
@@ -287,6 +290,7 @@ def get_async_platform_sdk(
         http_client: Optional HTTP client to use for requests. Used for test injection
                     via DependencyProvider. See architecture/docs/http-client-injection.md.
         on_behalf_of: Optional principal ID to use for on-behalf-of authorization.
+        base_url: Optional platform base URL. Defaults to configured platform base URL.
     Returns:
         Configured AsyncNeMoPlatform SDK instance.
     """
@@ -297,7 +301,7 @@ def get_async_platform_sdk(
     effective_client = http_client or _test_http_client or shared_async_http_client()
 
     sdk = AsyncNeMoPlatform(
-        base_url=_base_url_from_config(),
+        base_url=base_url or _base_url_from_config(),
         http_client=effective_client,
         default_headers=headers if headers else None,
     )
@@ -430,12 +434,14 @@ class PlatformSDKProvider:
         internal: bool = False,
         http_client: httpx.Client | None = None,
         on_behalf_of: str | Principal | None = None,
+        base_url: str | None = None,
     ) -> NeMoPlatform:
         return get_platform_sdk(
             as_service=as_service,
             internal=internal,
             http_client=http_client,
             on_behalf_of=on_behalf_of,
+            base_url=base_url,
         )
 
     def get_async_platform_sdk(
@@ -444,5 +450,11 @@ class PlatformSDKProvider:
         as_service: str | None = None,
         internal: bool = False,
         on_behalf_of: str | Principal | None = None,
+        base_url: str | None = None,
     ) -> AsyncNeMoPlatform:
-        return get_async_platform_sdk(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
+        return get_async_platform_sdk(
+            as_service=as_service,
+            internal=internal,
+            on_behalf_of=on_behalf_of,
+            base_url=base_url,
+        )
