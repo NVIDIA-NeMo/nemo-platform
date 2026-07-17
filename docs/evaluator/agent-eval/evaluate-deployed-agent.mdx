@@ -119,7 +119,8 @@ frames. An application-owned stream translator can turn those frames into an ATI
 changing the shared HTTP transport.
 
 The [complete Hermes example](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/packages/nemo_evaluator_sdk/examples/hermes/example.py)
-defines `HermesStreamTranslator` and scores whether the deployed agent returns `streaming works`:
+defines `HermesStreamTranslator`, which implements the [AgentStreamTranslator](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/packages/nemo_evaluator_sdk/src/nemo_evaluator_sdk/agent_stream_translation.py)
+protocol, and scores whether the deployed agent returns the requested phrase `streaming works`:
 
 ```python
 from functools import partial
