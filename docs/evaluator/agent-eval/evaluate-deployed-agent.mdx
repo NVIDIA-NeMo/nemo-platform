@@ -70,7 +70,7 @@ class _AgentHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def log_message(self, *args: object) -> None:
+    def log_message(self, format: str, *args: object) -> None:
         return  # keep the demo output quiet
 ```
 
@@ -80,17 +80,22 @@ With an agent target and no inference function supplied, `run()` generates answe
 calls to the agent's `url`.
 
 ```python
+import asyncio
+
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig
 
-result = await AgentEvaluator().run(
-    tasks=make_tasks(),                 # from the quickstart
-    target=agent,
-    config=AgentEvalRunConfig(parallelism=2),
-)
+async def run_evaluation() -> None:
+    result = await AgentEvaluator().run(
+        tasks=make_tasks(),                 # from the quickstart
+        target=agent,
+        config=AgentEvalRunConfig(parallelism=2),
+    )
 
-for aggregate in result.summary.scores.scores:
-    print(f"{aggregate.name}: {aggregate.mean}")
+    for aggregate in result.summary.scores.scores:
+        print(f"{aggregate.name}: {aggregate.mean}")
+
+asyncio.run(run_evaluation())
 ```
 
 ## Point at your real agent
@@ -104,6 +109,54 @@ To evaluate your own deployed agent, change three things and drop the local serv
 Add `api_key_secret="MY_AGENT_TOKEN"` if it needs auth (an env var for a local run, a platform secret for a job). If your agent is a **NeMo Agent Toolkit**
 workflow, use `NemoAgentToolkitAgent` instead of `GenericAgent` — it targets a NAT endpoint's fixed
 protocol, so you don't hand-write a `body` template.
+
+## Streaming SSE agents
+
+Set `stream=True` when the endpoint returns JSON Server-Sent Events. The evaluator applies
+`response_path` to every `data:` payload and keeps the last matching value as the candidate output.
+The raw evidence retains `event:` lines, but only payload fields such as `data:` become parsed stream
+frames. An application-owned stream translator can turn those frames into an ATIF trajectory without
+changing the shared HTTP transport.
+
+The [complete Hermes example](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/packages/nemo_evaluator_sdk/examples/hermes/example.py)
+defines `HermesStreamTranslator` and scores whether the deployed agent returns `streaming works`:
+
+```python
+from functools import partial
+
+from nemo_evaluator_sdk import GenericAgent, SecretRef
+from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
+from nemo_evaluator_sdk.agent_inference import make_agent_inference_fn
+
+agent = GenericAgent(
+    name="hermes-agent",
+    url="http://127.0.0.1:8642/v1/responses",
+    api_key_secret=SecretRef("API_SERVER_KEY"),
+    body={
+        "model": "hermes-agent",
+        "input": "{{ instruction }}",
+        "stream": True,
+        "store": False,
+    },
+    response_path="$..text",
+    stream=True,
+)
+
+evaluator = AgentEvaluator(
+    agent_inference_fn_factory=partial(
+        make_agent_inference_fn,
+        # Copy HermesStreamTranslator from the complete example linked above.
+        stream_translator=HermesStreamTranslator(),
+        capture_evidence=True,
+    ),
+    default_headers={"Accept": "text/event-stream"},
+)
+```
+
+The SDK sends the bearer token from `API_SERVER_KEY` env variable, preserves the raw stream as evidence, and
+passes the extracted output text to the task's metrics. The Hermes translator reads the terminal
+`response.completed` payload, validates completion, and records user/agent steps plus token usage in
+ATIF-v1.7.
 
 ## Full script
 
@@ -157,14 +210,14 @@ class _AgentHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def log_message(self, *args: object) -> None:
+    def log_message(self, format: str, *args: object) -> None:
         return
 
 
 async def main() -> None:
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), _AgentHandler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    host, port = httpd.server_address
+    host, port = httpd.server_address[0], httpd.server_address[1]
 
     agent = GenericAgent(
         name="my-http-agent",
@@ -185,7 +238,8 @@ async def main() -> None:
     for aggregate in result.summary.scores.scores:
         print(f"{aggregate.name}: {aggregate.mean}")
     for trial in result.trials:
-        print(f"  {trial.task_id}: {trial.output.output_text!r}")
+        output_text = trial.output.output_text if trial.output else None
+        print(f"  {trial.task_id}: {output_text!r}")
 
 
 asyncio.run(main())
