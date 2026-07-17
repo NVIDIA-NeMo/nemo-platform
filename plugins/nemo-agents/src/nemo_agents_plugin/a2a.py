@@ -243,26 +243,34 @@ async def stream_a2a_message(endpoint: str, text: str) -> AsyncIterator[str]:
             async with client.stream("POST", endpoint, json=payload, headers={"Accept": "text/event-stream"}) as resp:
                 if resp.status_code != 200:
                     raise A2AMessageError(f"agent returned HTTP {resp.status_code}")
+                # Cap raw bytes, not aiter_lines() output: aiter_lines buffers a
+                # line internally until a newline, so a newline-less body would
+                # grow unbounded before any per-line check. Split lines ourselves
+                # from a byte-capped buffer instead.
                 total = 0
-                async for line in resp.aiter_lines():
-                    total += len(line)
+                buffer = ""
+                async for chunk in resp.aiter_bytes():
+                    total += len(chunk)
                     if total > _MAX_MESSAGE_BYTES:
                         raise A2AMessageError("agent stream exceeded the size limit")
-                    line = line.strip()
-                    if not line or line.startswith(":"):  # keepalive / comment
-                        continue
-                    if not line.startswith("data:"):
-                        continue
-                    try:
-                        data = json.loads(line[len("data:") :].strip())
-                    except ValueError:
-                        continue
-                    if isinstance(data, dict) and data.get("error"):
-                        err = data["error"]
-                        msg = err.get("message") if isinstance(err, dict) else str(err)
-                        raise A2AMessageError(f"agent error: {msg}")
-                    delta = extract_stream_delta(data.get("result") if isinstance(data, dict) else None)
-                    if delta:
-                        yield delta
+                    buffer += chunk.decode("utf-8", errors="replace")
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
+                        line = line.strip()
+                        if not line or line.startswith(":"):  # keepalive / comment
+                            continue
+                        if not line.startswith("data:"):
+                            continue
+                        try:
+                            data = json.loads(line[len("data:") :].strip())
+                        except ValueError:
+                            continue
+                        if isinstance(data, dict) and data.get("error"):
+                            err = data["error"]
+                            msg = err.get("message") if isinstance(err, dict) else str(err)
+                            raise A2AMessageError(f"agent error: {msg}")
+                        delta = extract_stream_delta(data.get("result") if isinstance(data, dict) else None)
+                        if delta:
+                            yield delta
     except httpx.HTTPError as exc:
         raise A2AMessageError(f"could not reach agent at {endpoint} ({exc.__class__.__name__})") from exc

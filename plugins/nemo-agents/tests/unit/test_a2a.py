@@ -169,3 +169,15 @@ async def test_stream_jsonrpc_error_raises() -> None:
     )
     with pytest.raises(A2AMessageError, match="kaboom"):
         _ = [d async for d in stream_a2a_message("http://host:10000/", "hi")]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_stream_caps_newlineless_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A newline-less body must trip the byte cap rather than buffer unbounded.
+    monkeypatch.setattr("nemo_agents_plugin.a2a._MAX_MESSAGE_BYTES", 1024)
+    respx.post("http://host:10000/").mock(
+        return_value=httpx.Response(200, text="x" * 5000, headers={"content-type": "text/event-stream"})
+    )
+    with pytest.raises(A2AMessageError, match="size limit"):
+        _ = [d async for d in stream_a2a_message("http://host:10000/", "hi")]
