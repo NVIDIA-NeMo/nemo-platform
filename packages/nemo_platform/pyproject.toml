@@ -236,6 +236,8 @@ nemo-agents-plugin = [
   "boto3>=1.40.46,<1.40.62",
   "botocore>=1.40.46,<1.40.62",
   "httpx>=0.27",
+  "nemo-fabric>=0.1.0a20260717,<0.2.0",
+  "nemo-fabric-runtime>=0.1.0a20260717,<0.2.0; sys_platform == 'linux'",
   "pyyaml>=6.0",
   "anthropic>=0.88.0",
   "rich>=13.7.1",

@@ -7,14 +7,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import nemo_fabric as fabric
 from nemo_agents_plugin.agent_config import AgentConfig, HarnessConfig, ModelConfig
-from nemo_fabric import (
-    EnvironmentConfig as FabricEnvironmentConfig,
-    FabricConfig,
-    HarnessConfig as FabricHarnessConfig,
-    MetadataConfig,
-    ModelConfig as FabricModelConfig,
-)
 
 HARNESS_ADAPTER_IDS = {
     "claude": "nvidia.fabric.claude",
@@ -28,22 +22,22 @@ class FabricTranslationError(ValueError):
     """Raised when Platform agent config cannot be translated to Fabric config."""
 
 
-def translate_agent_config(config: AgentConfig, harness_name: str | None = None) -> FabricConfig:
+def translate_agent_config(config: AgentConfig, harness_name: str | None = None) -> fabric.FabricConfig:
     """Translate Platform-owned agent config into a typed in-memory FabricConfig."""
     selected_harness_name, harness = _select_harness(config, harness_name)
     model = _resolve_model(config, selected_harness_name, harness)
 
-    fabric_config = FabricConfig(
-        metadata=MetadataConfig(name=config.name, description=config.description or None),
-        harness=FabricHarnessConfig(
+    fabric_config = fabric.FabricConfig(
+        metadata=fabric.MetadataConfig(name=config.name, description=config.description or None),
+        harness=fabric.HarnessConfig(
             adapter_id=_adapter_id_for_harness(harness),
             resolution="preinstalled",
             settings=harness.settings,
         ),
         models={
-            "default": FabricModelConfig(**_model_payload(model)),
+            "default": fabric.ModelConfig(**_model_payload(model)),
         },
-        environment=FabricEnvironmentConfig(
+        environment=fabric.EnvironmentConfig(
             provider=config.environment.provider,
             workspace=config.environment.workspace,
             artifacts=config.environment.artifacts,

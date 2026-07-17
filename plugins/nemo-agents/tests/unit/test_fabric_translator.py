@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import copy
+from types import SimpleNamespace
 from typing import Any
 
 import nemo_agents_plugin.fabric.translator as translator
@@ -39,11 +40,17 @@ class _FakeFabricConfig(_FabricObject):
 
 @pytest.fixture()
 def fake_fabric_models(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(translator, "FabricEnvironmentConfig", _FabricObject)
-    monkeypatch.setattr(translator, "FabricConfig", _FakeFabricConfig)
-    monkeypatch.setattr(translator, "FabricHarnessConfig", _FabricObject)
-    monkeypatch.setattr(translator, "MetadataConfig", _FabricObject)
-    monkeypatch.setattr(translator, "FabricModelConfig", _FabricObject)
+    monkeypatch.setattr(
+        translator,
+        "fabric",
+        SimpleNamespace(
+            EnvironmentConfig=_FabricObject,
+            FabricConfig=_FakeFabricConfig,
+            HarnessConfig=_FabricObject,
+            MetadataConfig=_FabricObject,
+            ModelConfig=_FabricObject,
+        ),
+    )
 
 
 def _example_yaml_config() -> dict[str, Any]:

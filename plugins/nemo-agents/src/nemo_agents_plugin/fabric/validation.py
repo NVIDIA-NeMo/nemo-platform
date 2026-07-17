@@ -6,11 +6,15 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from nemo_agents_plugin.agent_config import AgentConfig
+from nemo_agents_plugin.fabric.translator import FabricTranslationError, translate_agent_config
 from nemo_fabric import Fabric, FabricConfigError
+from pydantic import ValidationError
 
 FABRIC_VALIDATION_TIMEOUT_SECONDS = 60.0
 
@@ -19,6 +23,16 @@ FABRIC_VALIDATION_TIMEOUT_SECONDS = 60.0
 class FabricValidationResult:
     """Result of Fabric planning and preflight validation."""
 
+    plan: Any
+    doctor_report: Any
+
+
+@dataclass(frozen=True, slots=True)
+class PlatformFabricValidationResult:
+    """Result of Platform config translation and Fabric validation."""
+
+    agent_config: AgentConfig
+    fabric_config: Any
     plan: Any
     doctor_report: Any
 
@@ -35,6 +49,30 @@ class FabricPreflightError(FabricValidationError):
         self.failed_checks = failed_checks
         details = "; ".join(failed_checks)
         super().__init__(f"Fabric preflight failed with status {status!r}: {details}")
+
+
+async def validate_platform_agent_config(
+    config: AgentConfig | Mapping[str, Any],
+    *,
+    base_dir: Path | str,
+    harness_name: str | None = None,
+    fabric: Any | None = None,
+) -> PlatformFabricValidationResult:
+    """Translate and validate a Platform-owned agent config with Fabric."""
+
+    agent_config = _coerce_agent_config(config)
+    try:
+        fabric_config = translate_agent_config(agent_config, harness_name=harness_name)
+    except FabricTranslationError as error:
+        raise FabricValidationError(f"Fabric config translation failed: {error}") from error
+
+    validation_result = await validate_fabric_config(fabric_config, base_dir=base_dir, fabric=fabric)
+    return PlatformFabricValidationResult(
+        agent_config=agent_config,
+        fabric_config=fabric_config,
+        plan=validation_result.plan,
+        doctor_report=validation_result.doctor_report,
+    )
 
 
 async def validate_fabric_config(
@@ -68,6 +106,16 @@ async def validate_fabric_config(
 
     _ensure_doctor_passed(_to_mapping(doctor_report))
     return FabricValidationResult(plan=plan, doctor_report=doctor_report)
+
+
+def _coerce_agent_config(config: AgentConfig | Mapping[str, Any]) -> AgentConfig:
+    if isinstance(config, AgentConfig):
+        return config
+
+    try:
+        return AgentConfig.model_validate(config)
+    except ValidationError as error:
+        raise FabricValidationError(f"Invalid Platform agent config: {error}") from error
 
 
 def _ensure_doctor_passed(report: dict[str, Any]) -> None:
