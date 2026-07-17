@@ -95,15 +95,12 @@ export const LLMJudgeInput: FC = () => {
               slotError={fieldState.error?.message}
               status={fieldState.error && 'error'}
             >
-              {({ status, ...args }) => (
-                <TextArea
-                  status={status}
-                  value={field.value || ''}
-                  placeholder="Enter the system message for the LLM judge..."
-                  resizeable="manual"
-                  attributes={{ TextAreaElement: args }}
-                />
-              )}
+              <TextArea
+                status={fieldState.error ? 'error' : undefined}
+                value={field.value || ''}
+                placeholder="Enter the system message for the LLM judge..."
+                resizeable="manual"
+              />
             </FormField>
           )}
         />
@@ -117,16 +114,13 @@ export const LLMJudgeInput: FC = () => {
               slotError={fieldState.error?.message}
               status={fieldState.error && 'error'}
             >
-              {({ status, ...args }) => (
-                <TextArea
-                  status={status}
-                  value={field.value || ''}
-                  placeholder="Enter the user message template for the LLM judge..."
-                  resizeable="manual"
-                  rows={4}
-                  attributes={{ TextAreaElement: args }}
-                />
-              )}
+              <TextArea
+                status={fieldState.error ? 'error' : undefined}
+                value={field.value || ''}
+                placeholder="Enter the user message template for the LLM judge..."
+                resizeable="manual"
+                rows={4}
+              />
             </FormField>
           )}
         />
@@ -145,21 +139,19 @@ export const LLMJudgeInput: FC = () => {
                 status={fieldState.error && 'error'}
                 className="w-fit min-w-[140px]"
               >
-                {({ ...args }) => (
-                  <SelectRoot
-                    value={(field.value || 'integer') as LLMJudgeScoreType}
-                    onValueChange={field.onChange}
-                  >
-                    <SelectTrigger placeholder="Select score type" {...args} />
-                    <SelectContent>
-                      {LLM_JUDGE_SCORE_TYPES.map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {type}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </SelectRoot>
-                )}
+                <SelectRoot
+                  value={(field.value || 'integer') as LLMJudgeScoreType}
+                  onValueChange={field.onChange}
+                >
+                  <SelectTrigger placeholder="Select score type" />
+                  <SelectContent>
+                    {LLM_JUDGE_SCORE_TYPES.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </SelectRoot>
               </FormField>
             )}
           />
@@ -175,14 +167,11 @@ export const LLMJudgeInput: FC = () => {
                 status={fieldState.error && 'error'}
                 className="flex-1"
               >
-                {({ status, ...args }) => (
-                  <TextInput
-                    status={status}
-                    value={field.value || ''}
-                    placeholder="SIMILARITY: (\\d*)"
-                    attributes={{ Input: args }}
-                  />
-                )}
+                <TextInput
+                  status={fieldState.error ? 'error' : undefined}
+                  value={field.value || ''}
+                  placeholder="SIMILARITY: (\\d*)"
+                />
               </FormField>
             )}
           />
