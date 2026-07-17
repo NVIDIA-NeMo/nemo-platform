@@ -3552,6 +3552,102 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/groups/{group_id}:
+    post:
+      tags:
+      - Evaluations
+      summary: Add Evaluation To Group
+      description: 'Add an evaluation to an ExperimentGroup so it appears on that
+        group''s board.
+
+
+        Curates an existing run into another comparison group (e.g. an all-benchmarks
+        view). The group
+
+        must exist and be live. Idempotent: adding a group the evaluation already
+        belongs to is a no-op.'
+      operationId: add_evaluation_to_group_apis_intake_v2_workspaces__workspace__evaluations__name__groups__group_id__post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Group Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResponse'
+        '400':
+          description: Experiment group does not exist or is deleted
+        '404':
+          description: Evaluation not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Evaluations
+      summary: Remove Evaluation From Group
+      description: "Remove an evaluation from an ExperimentGroup.\n\nPreserves the\
+        \ >=1-group invariant: removing the evaluation's *last* group is rejected\
+        \ with 409 \u2014\ndelete the evaluation instead. Idempotent: removing a group\
+        \ the evaluation isn't in is a no-op."
+      operationId: remove_evaluation_from_group_apis_intake_v2_workspaces__workspace__evaluations__name__groups__group_id__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Group Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResponse'
+        '404':
+          description: Evaluation not found
+        '409':
+          description: Cannot remove the evaluation from its only group
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/pin:
     post:
       tags:
@@ -10301,11 +10397,20 @@ components:
           type: string
           title: Name
           description: Producer-supplied, workspace-unique evaluation id.
+        experiment_ids:
+          items:
+            type: string
+          type: array
+          title: Experiment Ids
+          description: Entity ids of the ExperimentGroups this Evaluation belongs
+            to (>=1). Preferred; each group must already exist. When omitted, the
+            deprecated experiment_group_id is used instead.
         experiment_group_id:
-          type: string
           title: Experiment Group Id
-          description: "Entity id of the owning ExperimentGroup. Required \u2014 the\
-            \ group must already exist."
+          description: Deprecated single-group field; provide experiment_ids instead.
+            Coalesced into experiment_ids when experiment_ids is omitted.
+          deprecated: true
+          type: string
         dataset_name:
           type: string
           title: Dataset Name
@@ -10353,7 +10458,6 @@ components:
       type: object
       required:
       - name
-      - experiment_group_id
       - dataset_name
       title: EvaluationRequest
       description: Request body for creating an Evaluation.
@@ -10368,11 +10472,13 @@ components:
         workspace:
           type: string
           title: Workspace
-        experiment_group_id:
-          type: string
-          title: Experiment Group Id
-          description: Entity id of the owning ExperimentGroup. Required for every
-            Evaluation.
+        experiment_ids:
+          items:
+            type: string
+          type: array
+          title: Experiment Ids
+          description: Entity ids of the ExperimentGroups this Evaluation belongs
+            to (>=1).
         dataset_name:
           type: string
           title: Dataset Name
@@ -10466,14 +10572,22 @@ components:
           deprecated: true
           readOnly: true
           type: string
+        experiment_group_id:
+          type: string
+          title: Experiment Group Id
+          description: Deprecated single-group alias; the first of experiment_ids.
+            Use experiment_ids.
+          deprecated: true
+          readOnly: true
       type: object
       required:
       - id
       - name
       - workspace
-      - experiment_group_id
+      - experiment_ids
       - dataset_name
       - parent_experiment_id
+      - experiment_group_id
       title: EvaluationResponse
       description: Evaluation as served by the API, including ClickHouse-hydrated
         rollups.
