@@ -23,9 +23,9 @@ const aggregateMetricTooltip = (
     testCases === attempts
       ? `Mean ${label} over ${getTextWithCount('test case', testCases)}.`
       : `Mean ${label} over ${getTextWithCount('test case', testCases)} — each test case averaged over its attempts.`;
-  // Scores use a fixed denominator: an errored run that produced no score counts as 0, so it's
-  // included above rather than dropped. Measurement metrics (cost, latency) instead omit missing values.
-  return countsMissingAsZero ? `${base} Errored runs with no score count as 0.` : base;
+  // Scores use a fixed denominator: a run that produced no score counts as 0, so it's included above
+  // rather than dropped. Measurement metrics (cost, latency) instead omit missing values.
+  return countsMissingAsZero ? `${base} Runs with no score count as 0.` : base;
 };
 
 interface MeanValueTooltipCellProps {

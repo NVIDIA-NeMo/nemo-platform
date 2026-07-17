@@ -305,10 +305,9 @@ def test_deprecated_evaluation_context_hydrates_evaluation_rollups(client: TestC
     assert evaluation["aggregate_scores"]["reward"]["mean"] == pytest.approx(1.0)
 
 
-def test_evaluation_rollups_count_errored_missing_scores_as_zero(client: TestClient) -> None:
-    # ASE-616 fixed denominator: an errored run with no score counts as 0; an errored run that did record
-    # a score keeps that score (not zeroed); a successful run with no score is excluded (the evaluator
-    # simply wasn't run on it), so it doesn't dilute the mean.
+def test_evaluation_rollups_count_missing_scores_as_zero(client: TestClient) -> None:
+    # ASE-616 fixed denominator: a run with no score counts as 0 regardless of whether it errored; a run
+    # that did record a score keeps it. So every attempted test case lands in the denominator.
     evaluation_id = "rollup-missing-zero"
     group_id = _ensure_group(client)
     created = client.post(
@@ -323,12 +322,13 @@ def test_evaluation_rollups_count_errored_missing_scores_as_zero(client: TestCli
     assert created.status_code == 201, created.text
 
     started_at = datetime.now(timezone.utc).replace(microsecond=0)
-    # (run_id, test_case_id, score, errored)
+    # (run_id, test_case_id, score, errored) — error state is irrelevant to scoring; it's varied only to
+    # show an errored and a successful unscored run both count as 0.
     seeds: list[tuple[str, str, float | None, bool]] = [
         ("run-ok", "case-ok", 1.0, False),  # scored -> 1.0
-        ("run-err", "case-err", None, True),  # errored + no score -> counts as 0
+        ("run-err", "case-err", None, True),  # errored + no score -> 0
+        ("run-skip", "case-skip", None, False),  # succeeded + no score -> 0 (still counts)
         ("run-err-scored", "case-err-scored", 0.8, True),  # errored + scored -> keeps 0.8 (not zeroed)
-        ("run-skip", "case-skip", None, False),  # succeeded + no score -> excluded from the denominator
     ]
     for index, (run_id, test_case_id, score, errored) in enumerate(seeds):
         response = client.post(
@@ -351,12 +351,11 @@ def test_evaluation_rollups_count_errored_missing_scores_as_zero(client: TestCli
     assert evaluation["run_count"] == 4
 
     reward = evaluation["aggregate_scores"]["reward"]
-    # Denominator is the 3 test cases that were attempted-to-be-scored (ok, errored, errored-scored); the
-    # succeeded-but-unscored case is excluded. The errored-but-scored case keeps its recorded 0.8 rather
-    # than being replaced/supplemented with 0, so mean = avg(1.0, 0.0, 0.8) = 0.6.
-    assert reward["count"] == 3
+    # All 4 test cases are in the denominator: the two unscored runs (errored and successful) count as 0,
+    # and the errored-but-scored run keeps its 0.8. mean = avg(1.0, 0.0, 0.0, 0.8) = 0.45.
+    assert reward["count"] == 4
     assert reward["sum"] == pytest.approx(1.8)
-    assert reward["mean"] == pytest.approx(0.6)
+    assert reward["mean"] == pytest.approx(0.45)
 
 
 def _atif_body(

@@ -118,7 +118,7 @@ def _evaluation_id_parameters(evaluation_ids: list[str]) -> tuple[str, dict[str,
 
 def _scoped_sessions_sql(trace_index_table: str, evaluation_names_sql: str) -> str:
     return f"""
-        SELECT workspace, evaluation_id, session_id, test_case_id, latency_ms, root_status
+        SELECT workspace, evaluation_id, session_id, test_case_id, latency_ms
         FROM {trace_index_table} FINAL
         WHERE workspace = %(workspace)s
             AND is_deleted = 0
@@ -185,26 +185,19 @@ def _stat_columns(value_expr: str, *, prefix: str = "", guarded: bool = False) -
 
 
 def _score_rollups_sql(*, trace_index_table: str, evaluator_results_table: str, evaluation_names_sql: str) -> str:
-    # Three-level rollup. Each run (session) contributes one score per evaluator, so first reduce the
+    # Two-level rollup. Each run (session) contributes one score per evaluator, so first reduce the
     # per-span evaluator_results rows to one per-(session, evaluator) value; then average those per test
     # case; then take the distribution across test cases. The mean is test-case-weighted (each test case
     # counts once regardless of k) and `count` is the number of test cases. Sessions with no test_case_id
     # aren't attributable to a test case, so they're dropped here.
-    #
-    # Fixed denominator for missing scores (ASE-616): a session that ERRORED but recorded no score for an
-    # evaluator counts as 0 (a real failed attempt), so it isn't silently dropped from the mean. A session
-    # that SUCCEEDED with no score is left out — the evaluator simply wasn't run on it, and counting it as
-    # 0 would wrongly penalize partial-coverage evaluators. An errored session that DID record a score keeps
-    # it (it lands in session_evaluator_scores and is excluded from the 0 branch by the LEFT ANTI JOIN).
     return f"""
         WITH
         scoped_sessions AS (
             {_scoped_sessions_sql(trace_index_table, evaluation_names_sql)}
         ),
-        session_evaluator_scores AS (
+        session_scores AS (
             SELECT
                 sessions.evaluation_id AS evaluation_id,
-                sessions.session_id AS session_id,
                 sessions.test_case_id AS test_case_key,
                 results.name AS evaluator_name,
                 avg(results.value) AS value
@@ -225,37 +218,37 @@ def _score_rollups_sql(*, trace_index_table: str, evaluator_results_table: str, 
             WHERE sessions.test_case_id != ''
             GROUP BY sessions.evaluation_id, sessions.session_id, sessions.test_case_id, results.name
         ),
-        evaluators AS (
-            SELECT DISTINCT evaluation_id, evaluator_name
-            FROM session_evaluator_scores
-        ),
-        session_scores AS (
-            SELECT test_case_key, evaluation_id, evaluator_name, value
-            FROM session_evaluator_scores
-            UNION ALL
-            SELECT
-                sessions.test_case_id AS test_case_key,
-                sessions.evaluation_id AS evaluation_id,
-                evaluators.evaluator_name AS evaluator_name,
-                0 AS value
-            FROM scoped_sessions AS sessions
-            INNER JOIN evaluators
-                ON evaluators.evaluation_id = sessions.evaluation_id
-            LEFT ANTI JOIN session_evaluator_scores AS scored
-                ON scored.evaluation_id = sessions.evaluation_id
-                AND scored.session_id = sessions.session_id
-                AND scored.evaluator_name = evaluators.evaluator_name
-            WHERE sessions.root_status = 'error'
-                AND sessions.test_case_id != ''
-        ),
-        test_case_scores AS (
+        test_case_sessions AS (
             SELECT
                 evaluation_id,
-                test_case_key,
-                evaluator_name,
-                avg(value) AS value
+                test_case_id AS test_case_key,
+                count(DISTINCT session_id) AS session_count
+            FROM scoped_sessions
+            WHERE test_case_id != ''
+            GROUP BY evaluation_id, test_case_id
+        ),
+        evaluators AS (
+            SELECT DISTINCT evaluation_id, evaluator_name
             FROM session_scores
-            GROUP BY evaluation_id, test_case_key, evaluator_name
+        ),
+        test_case_scores AS (
+            -- Every (test case, evaluator) pair, so a test case with no recorded score for an evaluator
+            -- (e.g. all its sessions errored) still contributes a 0. Sum the recorded scores and divide
+            -- by the test case's session count, so unscored sessions are implicit zeros in the denominator.
+            SELECT
+                test_cases.evaluation_id AS evaluation_id,
+                test_cases.test_case_key AS test_case_key,
+                evaluators.evaluator_name AS evaluator_name,
+                -- coalesce so a test case with zero recorded scores is 0 (not NULL), so it stays in the mean
+                coalesce(sum(scores.value), 0) / test_cases.session_count AS value
+            FROM test_case_sessions AS test_cases
+            INNER JOIN evaluators ON evaluators.evaluation_id = test_cases.evaluation_id
+            LEFT JOIN session_scores AS scores
+                ON scores.evaluation_id = test_cases.evaluation_id
+                AND scores.test_case_key = test_cases.test_case_key
+                AND scores.evaluator_name = evaluators.evaluator_name
+            GROUP BY
+                test_cases.evaluation_id, test_cases.test_case_key, evaluators.evaluator_name, test_cases.session_count
         )
         SELECT
             evaluation_id,
