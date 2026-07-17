@@ -8,10 +8,8 @@ from __future__ import annotations
 import asyncio
 import threading
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
-import nemo_agents_plugin.fabric.translator as translator
 import nemo_agents_plugin.fabric.validation as validation
 import pytest
 from nemo_agents_plugin.agent_config import AgentConfig
@@ -33,29 +31,6 @@ class _FakeDoctorReport:
 
     def to_mapping(self) -> dict[str, Any]:
         return self._mapping
-
-
-class _FabricObject:
-    def __init__(self, **kwargs: Any) -> None:
-        for key, value in kwargs.items():
-            setattr(self, key, value)
-
-
-class _FakeFabricConfig(_FabricObject):
-    def enable_relay(
-        self,
-        *,
-        project: str | None = None,
-        output_dir: str | None = None,
-        observability: dict[str, Any] | None = None,
-    ) -> "_FakeFabricConfig":
-        self.telemetry = _FabricObject(providers={"relay": {}})
-        self.relay = _FabricObject(
-            project=project,
-            output_dir=output_dir,
-            observability=observability,
-        )
-        return self
 
 
 class _FakeFabric:
@@ -102,22 +77,7 @@ def fake_fabric_client(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture()
-def fake_fabric_models(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        translator,
-        "fabric",
-        SimpleNamespace(
-            EnvironmentConfig=_FabricObject,
-            FabricConfig=_FakeFabricConfig,
-            HarnessConfig=_FabricObject,
-            MetadataConfig=_FabricObject,
-            ModelConfig=_FabricObject,
-        ),
-    )
-
-
-@pytest.fixture()
-def fake_fabric_stack(fake_fabric_client: None, fake_fabric_models: None) -> None:
+def fake_fabric_stack(fake_fabric_client: None) -> None:
     pass
 
 
@@ -248,8 +208,8 @@ class TestValidatePlatformAgentConfig:
         assert result.agent_config.name == "example-agent"
         assert result.fabric_config.metadata.name == "example-agent"
         assert result.fabric_config.harness.adapter_id == "nvidia.fabric.hermes"
-        assert result.plan == {"plan": "ok"}
-        assert result.doctor_report is doctor_report
+        assert result.fabric_validation_result.plan == {"plan": "ok"}
+        assert result.fabric_validation_result.doctor_report is doctor_report
         assert fabric.plan_calls == [{"fabric_config": result.fabric_config, "base_dir": Path("/tmp/agent")}]
         assert fabric.doctor_calls == [{"fabric_config": result.fabric_config, "base_dir": Path("/tmp/agent")}]
 

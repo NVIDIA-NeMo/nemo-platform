@@ -13,9 +13,7 @@ from typing import Any
 
 from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.fabric.translator import FabricTranslationError, translate_agent_config
-
-# Fabric is a plugin dependency but may be absent from ty's lint environment.
-from nemo_fabric import Fabric, FabricConfigError  # ty: ignore[unresolved-import]
+from nemo_fabric import Fabric, FabricConfig, FabricConfigError
 from pydantic import ValidationError
 
 FABRIC_VALIDATION_TIMEOUT_SECONDS = 60.0
@@ -34,9 +32,8 @@ class PlatformFabricValidationResult:
     """Result of Platform config translation and Fabric validation."""
 
     agent_config: AgentConfig
-    fabric_config: Any
-    plan: Any
-    doctor_report: Any
+    fabric_config: FabricConfig
+    fabric_validation_result: FabricValidationResult
 
 
 class FabricValidationError(ValueError):
@@ -72,13 +69,12 @@ async def validate_platform_agent_config(
     return PlatformFabricValidationResult(
         agent_config=agent_config,
         fabric_config=fabric_config,
-        plan=validation_result.plan,
-        doctor_report=validation_result.doctor_report,
+        fabric_validation_result=validation_result,
     )
 
 
 async def validate_fabric_config(
-    fabric_config: Any,
+    fabric_config: FabricConfig,
     *,
     base_dir: Path | str,
     fabric: Any | None = None,
