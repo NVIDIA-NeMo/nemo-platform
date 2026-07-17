@@ -6,10 +6,11 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from nemo_fabric import Fabric, FabricConfigError
 
 FABRIC_VALIDATION_TIMEOUT_SECONDS = 60.0
 
@@ -45,11 +46,9 @@ async def validate_fabric_config(
     """Run Fabric plan and doctor for a translated FabricConfig.
 
     This validates the selected harness and environment without invoking the
-    agent. The Fabric SDK import is intentionally local so NAT-backed paths do
-    not require Fabric to be installed.
+    agent. Fabric is a required dependency of the ``nemo-agents`` plugin.
     """
 
-    Fabric, FabricConfigError = _fabric_validation_types()
     fabric_client = fabric or Fabric()
 
     try:
@@ -69,17 +68,6 @@ async def validate_fabric_config(
 
     _ensure_doctor_passed(_to_mapping(doctor_report))
     return FabricValidationResult(plan=plan, doctor_report=doctor_report)
-
-
-def _fabric_validation_types() -> tuple[type, type[Exception]]:
-    # TODO(AIRCORE-896): Keep this import lazy until Fabric SDK/runtime wheels
-    # are available to the repo resolver and can be added as plugin dependencies.
-    try:
-        nemo_fabric = importlib.import_module("nemo_fabric")
-    except ImportError as error:
-        raise FabricValidationError("NeMo Fabric SDK is required to plan and preflight FabricConfig.") from error
-
-    return getattr(nemo_fabric, "Fabric"), getattr(nemo_fabric, "FabricConfigError")
 
 
 def _ensure_doctor_passed(report: dict[str, Any]) -> None:

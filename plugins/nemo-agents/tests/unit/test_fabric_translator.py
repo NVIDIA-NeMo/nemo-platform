@@ -6,11 +6,9 @@
 from __future__ import annotations
 
 import copy
-import importlib
-import sys
-import types
 from typing import Any
 
+import nemo_agents_plugin.fabric.translator as translator
 import pytest
 from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.fabric.translator import FabricTranslationError, translate_agent_config
@@ -40,14 +38,12 @@ class _FakeFabricConfig(_FabricObject):
 
 
 @pytest.fixture()
-def fake_nemo_fabric(monkeypatch: pytest.MonkeyPatch) -> None:
-    module = types.ModuleType("nemo_fabric")
-    setattr(module, "EnvironmentConfig", _FabricObject)
-    setattr(module, "FabricConfig", _FakeFabricConfig)
-    setattr(module, "HarnessConfig", _FabricObject)
-    setattr(module, "MetadataConfig", _FabricObject)
-    setattr(module, "ModelConfig", _FabricObject)
-    monkeypatch.setitem(sys.modules, "nemo_fabric", module)
+def fake_fabric_models(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(translator, "FabricEnvironmentConfig", _FabricObject)
+    monkeypatch.setattr(translator, "FabricConfig", _FakeFabricConfig)
+    monkeypatch.setattr(translator, "FabricHarnessConfig", _FabricObject)
+    monkeypatch.setattr(translator, "MetadataConfig", _FabricObject)
+    monkeypatch.setattr(translator, "FabricModelConfig", _FabricObject)
 
 
 def _example_yaml_config() -> dict[str, Any]:
@@ -107,7 +103,7 @@ def _example_yaml_config() -> dict[str, Any]:
 
 
 class TestTranslateAgentConfig:
-    def test_translates_default_harness(self, fake_nemo_fabric: None) -> None:
+    def test_translates_default_harness(self, fake_fabric_models: None) -> None:
         config = AgentConfig.model_validate(_example_yaml_config())
 
         fabric_config = translate_agent_config(config)
@@ -124,7 +120,7 @@ class TestTranslateAgentConfig:
         assert fabric_config.environment.artifacts == "./artifacts"
         assert not hasattr(fabric_config, "relay")
 
-    def test_selected_harness_uses_default_model(self, fake_nemo_fabric: None) -> None:
+    def test_selected_harness_uses_default_model(self, fake_fabric_models: None) -> None:
         config = AgentConfig.model_validate(_example_yaml_config())
 
         fabric_config = translate_agent_config(config, harness_name="codex")
@@ -145,7 +141,7 @@ class TestTranslateAgentConfig:
     )
     def test_supported_harness_kinds_translate_to_adapter_ids(
         self,
-        fake_nemo_fabric: None,
+        fake_fabric_models: None,
         kind: str,
         adapter_id: str,
     ) -> None:
@@ -158,13 +154,13 @@ class TestTranslateAgentConfig:
 
         assert fabric_config.harness.adapter_id == adapter_id
 
-    def test_unknown_selected_harness_rejected(self, fake_nemo_fabric: None) -> None:
+    def test_unknown_selected_harness_rejected(self, fake_fabric_models: None) -> None:
         config = AgentConfig.model_validate(_example_yaml_config())
 
         with pytest.raises(FabricTranslationError, match="Unknown configured harness 'claude'"):
             translate_agent_config(config, harness_name="claude")
 
-    def test_unsupported_harness_kind_rejected(self, fake_nemo_fabric: None) -> None:
+    def test_unsupported_harness_kind_rejected(self, fake_fabric_models: None) -> None:
         payload = _example_yaml_config()
         payload["harnesses"]["custom"] = {"kind": "custom"}
         payload["default_harness"] = "custom"
@@ -173,7 +169,7 @@ class TestTranslateAgentConfig:
         with pytest.raises(FabricTranslationError, match="Unsupported harness kind 'custom'"):
             translate_agent_config(config)
 
-    def test_missing_model_rejected(self, fake_nemo_fabric: None) -> None:
+    def test_missing_model_rejected(self, fake_fabric_models: None) -> None:
         payload = _example_yaml_config()
         payload["models"] = {}
         payload["default_harness"] = "codex"
@@ -182,7 +178,7 @@ class TestTranslateAgentConfig:
         with pytest.raises(FabricTranslationError, match="no models.default is configured"):
             translate_agent_config(config)
 
-    def test_relay_telemetry_uses_latest_fabric_shape(self, fake_nemo_fabric: None) -> None:
+    def test_relay_telemetry_uses_latest_fabric_shape(self, fake_fabric_models: None) -> None:
         payload = copy.deepcopy(_example_yaml_config())
         payload["telemetry"]["enabled"] = True
         config = AgentConfig.model_validate(payload)
@@ -208,18 +204,3 @@ class TestTranslateAgentConfig:
                 "output_directory": "./artifacts/relay",
             },
         }
-
-    def test_missing_fabric_dependency_reports_actionable_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        real_import_module = importlib.import_module
-
-        def fake_import_module(name: str, package: str | None = None) -> Any:
-            if name == "nemo_fabric":
-                raise ImportError("No module named 'nemo_fabric'")
-            return real_import_module(name, package)
-
-        monkeypatch.delitem(sys.modules, "nemo_fabric", raising=False)
-        monkeypatch.setattr(importlib, "import_module", fake_import_module)
-        config = AgentConfig.model_validate(_example_yaml_config())
-
-        with pytest.raises(FabricTranslationError, match="NeMo Fabric SDK is required"):
-            translate_agent_config(config)
