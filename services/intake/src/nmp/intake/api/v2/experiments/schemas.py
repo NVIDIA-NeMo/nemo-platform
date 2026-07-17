@@ -10,7 +10,7 @@ Response models are standalone: they translate from the stored entity via
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Self
+from typing import Annotated, Any, Self
 
 from nmp.common.entities.values import DatetimeFilter, Filter, NumberFilter, map_entity_field
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup
@@ -56,8 +56,17 @@ class EvaluationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(description="Producer-supplied, workspace-unique evaluation id.")
-    experiment_group_id: str = Field(
-        description="Entity id of the owning ExperimentGroup. Required — the group must already exist.",
+    experiment_ids: list[str] = Field(
+        min_length=1,
+        description=(
+            "Entity ids of the ExperimentGroups this Evaluation belongs to (>=1). Each group must "
+            "already exist. An Evaluation always belongs to at least one group."
+        ),
+    )
+    experiment_group_id: str | None = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated single-group alias; provide experiment_ids instead.",
     )
     dataset_name: str = Field(description="Producer-supplied dataset name.")
     dataset_version: str | None = Field(default=None, description="Producer-supplied dataset version.")
@@ -78,6 +87,18 @@ class EvaluationRequest(BaseModel):
         default=None,
         description="Human- or agent-authored explanation of the evaluation's outcome (e.g. why it was killed).",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coalesce_group_membership(cls, data: Any) -> Any:
+        """Coalesce the deprecated single ``experiment_group_id`` into ``experiment_ids`` (>=1).
+
+        A legacy client sending only ``experiment_group_id`` still validates; ``experiment_ids`` wins
+        when both are given.
+        """
+        if isinstance(data, dict) and not data.get("experiment_ids") and data.get("experiment_group_id"):
+            return {**data, "experiment_ids": [data["experiment_group_id"]]}
+        return data
 
     @model_validator(mode="after")
     def _coalesce_deprecated_parent(self) -> Self:
@@ -149,8 +170,8 @@ class EvaluationResponse(BaseModel):
     id: str
     name: str
     workspace: str
-    experiment_group_id: str = Field(
-        description="Entity id of the owning ExperimentGroup. Required for every Evaluation.",
+    experiment_ids: list[str] = Field(
+        description="Entity ids of the ExperimentGroups this Evaluation belongs to (>=1).",
     )
     dataset_name: str
     dataset_version: str | None = None
@@ -200,13 +221,21 @@ class EvaluationResponse(BaseModel):
     def parent_experiment_id(self) -> str | None:
         return self.parent_evaluation_id
 
+    @computed_field(  # type: ignore[prop-decorator]
+        deprecated=True,
+        description="Deprecated single-group alias; the first of experiment_ids. Use experiment_ids.",
+    )
+    @property
+    def experiment_group_id(self) -> str:
+        return self.experiment_ids[0]
+
     @classmethod
     def from_entity(cls, entity: Experiment) -> EvaluationResponse:
         return cls(
             id=entity.id,
             name=entity.name,
             workspace=entity.workspace,
-            experiment_group_id=entity.experiment_group_id,
+            experiment_ids=entity.experiment_ids,
             dataset_name=entity.dataset_name,
             dataset_version=entity.dataset_version,
             source_link=entity.source_link,

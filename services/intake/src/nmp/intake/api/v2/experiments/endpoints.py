@@ -282,21 +282,16 @@ async def delete_experiment_group(
     )
     _reject_if_deleted(group, workspace=workspace, name=name, label="Experiment group")
 
-    # Cascade is sequential — one update per child. Linear in group size, fine for now. If
-    # groups routinely hold more than a few hundred evaluations, add a bulk update endpoint on
-    # the entity store rather than parallelizing here (gather hides partial-failure state
-    # without removing the per-row API contract).
-    #
-    # Each ``_soft_delete`` renames the row and flips ``is_deleted=True``, which drops it out of
-    # the live filter — so re-fetching page 1 keeps returning the next batch until nothing is
-    # left. No fixed cap on group size.
-    #
-    # ``data.experiment_group_id`` is the entity-store field name; the URL filter dep auto-
-    # prefixes ``data.`` but manually-constructed ComparisonOperations don't get that translation.
+    # Reference-counted cascade, sequential — one update per member. Linear in group size, fine for
+    # now. A member whose *sole* membership was this group is soft-deleted; a member also in another
+    # group just drops this membership and survives there. Both outcomes remove the member from the
+    # live-membership filter below (soft-delete renames + flips is_deleted; membership removal drops
+    # the group id from experiment_ids and leaves no legacy scalar), so re-fetching page 1 keeps
+    # returning the next unprocessed batch until nothing is left. No fixed cap on group size.
     live_children_filter = LogicalOperation(
         operator=FilterOperator.AND,
         operations=[
-            ComparisonOperation(operator=FilterOperator.EQ, field="data.experiment_group_id", value=group.id),
+            _group_membership_filter(group.id),
             LogicalOperation(
                 operator=FilterOperator.NOT,
                 operations=[
@@ -316,7 +311,14 @@ async def delete_experiment_group(
         if not page.data:
             break
         for child in page.data:
-            await _soft_delete(entity_client, child)
+            remaining = [gid for gid in child.experiment_ids if gid != group.id]
+            if remaining:
+                # Shared with another group — drop only this membership; the member lives on there.
+                child.experiment_ids = remaining
+                await entity_client.update(child)
+            else:
+                # This group was the member's sole membership — cascade the delete.
+                await _soft_delete(entity_client, child)
     await _soft_delete(entity_client, group)
 
 
@@ -332,12 +334,12 @@ async def create_evaluation(
     body: EvaluationRequest,
     entity_client: EntityClientDep,
 ) -> EvaluationResponse:
-    await _validate_group_exists(entity_client, group_id=body.experiment_group_id)
+    await _validate_groups_exist(entity_client, group_ids=body.experiment_ids)
     await _validate_parent_evaluation_exists(entity_client, parent_evaluation_id=body.parent_evaluation_id)
     entity = Evaluation(
         workspace=workspace,
         name=body.name,
-        experiment_group_id=body.experiment_group_id,
+        experiment_ids=body.experiment_ids,
         dataset_name=body.dataset_name,
         dataset_version=body.dataset_version,
         source_link=body.source_link,
@@ -418,6 +420,9 @@ async def list_evaluations(
     # the metric ones are applied in memory after hydration. parsed (the full user filter) is left
     # intact so the response still echoes it.
     entity_operation, metric_predicates = _extract_metric_predicates(parsed.operation)
+    # Translate the exposed `experiment_group_id` filter into a membership match over `experiment_ids`
+    # (plus the legacy scalar), so listing a group returns every evaluation that belongs to it.
+    entity_operation = _rewrite_group_filter(entity_operation)
     # Compute-on-read: fetch the whole (entity-filtered) group, hydrate every rollup, then filter, sort,
     # and paginate in memory so a single request can sort/filter by a ClickHouse metric that lives
     # outside the entity store. Bounded to hundreds of evaluations per group (see _MAX_GROUP_EVALUATIONS).
@@ -531,8 +536,9 @@ async def update_evaluation(
         label="Evaluation",
     )
     _reject_if_deleted(existing, workspace=workspace, name=name, label="Evaluation")
-    if body.experiment_group_id != existing.experiment_group_id:
-        await _validate_group_exists(entity_client, group_id=body.experiment_group_id)
+    new_group_ids = [gid for gid in body.experiment_ids if gid not in existing.experiment_ids]
+    if new_group_ids:
+        await _validate_groups_exist(entity_client, group_ids=new_group_ids)
     await _validate_parent_evaluation_exists(entity_client, parent_evaluation_id=body.parent_evaluation_id)
 
     changed = [f for f in _IMMUTABLE_EVALUATION_FIELDS if getattr(body, f) != getattr(existing, f)]
@@ -545,7 +551,7 @@ async def update_evaluation(
             ),
         )
 
-    existing.experiment_group_id = body.experiment_group_id
+    existing.experiment_ids = body.experiment_ids
     existing.source_link = body.source_link
     existing.metadata = body.metadata
     existing.description = body.description
@@ -815,7 +821,7 @@ async def _count_live_evaluations_in_group(entity_client: EntityClient, *, works
         filter_operation=LogicalOperation(
             operator=FilterOperator.AND,
             operations=[
-                ComparisonOperation(operator=FilterOperator.EQ, field="data.experiment_group_id", value=group_id),
+                _group_membership_filter(group_id),
                 LogicalOperation(
                     operator=FilterOperator.NOT,
                     operations=[
@@ -853,7 +859,10 @@ async def _count_live_evaluations_by_group(
     filter_operation = LogicalOperation(
         operator=FilterOperator.AND,
         operations=[
-            ComparisonOperation(operator=FilterOperator.IN, field="data.experiment_group_id", value=list(group_ids)),
+            LogicalOperation(
+                operator=FilterOperator.OR,
+                operations=[_group_membership_filter(gid) for gid in dict.fromkeys(group_ids)],
+            ),
             LogicalOperation(
                 operator=FilterOperator.NOT,
                 operations=[
@@ -870,8 +879,11 @@ async def _count_live_evaluations_by_group(
             page=page,
             page_size=page_size,
         )
+        # An evaluation may belong to several of the requested groups; count it once per membership.
         for evaluation in result.data:
-            counts[evaluation.experiment_group_id] = counts.get(evaluation.experiment_group_id, 0) + 1
+            for gid in evaluation.experiment_ids:
+                if gid in counts:
+                    counts[gid] += 1
         if page >= result.pagination.total_pages:
             break
         page += 1
@@ -905,6 +917,50 @@ async def _validate_group_exists(entity_client: EntityClient, *, group_id: str) 
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"ExperimentGroup '{group_id}' has been deleted and can no longer accept new Evaluations.",
         )
+
+
+async def _validate_groups_exist(entity_client: EntityClient, *, group_ids: list[str]) -> None:
+    """Reject with 400 if any referenced ExperimentGroup doesn't exist or is deleted (deduped)."""
+    for group_id in dict.fromkeys(group_ids):
+        await _validate_group_exists(entity_client, group_id=group_id)
+
+
+def _group_membership_filter(group_id: str) -> LogicalOperation:
+    """Match evaluations that belong to ``group_id`` across both membership representations.
+
+    New rows store membership as the ``experiment_ids`` list (matched with ``$contains``); legacy
+    rows that predate many-to-many still store a scalar ``experiment_group_id`` and are matched by
+    equality until they are next rewritten. The OR keeps un-migrated rows queryable, no migration.
+    """
+    return LogicalOperation(
+        operator=FilterOperator.OR,
+        operations=[
+            ComparisonOperation(operator=FilterOperator.CONTAINS, field="data.experiment_ids", value=group_id),
+            ComparisonOperation(operator=FilterOperator.EQ, field="data.experiment_group_id", value=group_id),
+        ],
+    )
+
+
+def _rewrite_group_filter(operation: FilterOperation | None) -> FilterOperation | None:
+    """Rewrite an ``experiment_group_id`` equality in a parsed filter into a membership match.
+
+    The API still exposes an ``experiment_group_id`` filter param; with many-to-many membership it
+    means "belongs to this group", which spans the ``experiment_ids`` list and the legacy scalar.
+    """
+    if operation is None:
+        return None
+    if isinstance(operation, ComparisonOperation):
+        if operation.field == "data.experiment_group_id" and operation.operator == FilterOperator.EQ:
+            return _group_membership_filter(operation.value)
+        return operation
+    if isinstance(operation, LogicalOperation):
+        return LogicalOperation(
+            operator=operation.operator,
+            operations=[
+                rewritten for op in operation.operations if (rewritten := _rewrite_group_filter(op)) is not None
+            ],
+        )
+    return operation
 
 
 def _apply_is_deleted_filter(parsed: ParsedFilter) -> None:

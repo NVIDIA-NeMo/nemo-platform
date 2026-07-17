@@ -517,3 +517,55 @@ def test_sort_by_pinned_at_most_recent_first(client: TestClient) -> None:
     assert pinned_asc.status_code == 200, pinned_asc.text
     names_asc = [e["name"] for e in pinned_asc.json()["data"]]
     assert names_asc.index("exp-old-pin") < names_asc.index("exp-new-pin")
+
+
+def test_evaluation_belongs_to_multiple_groups(client: TestClient) -> None:
+    """An evaluation created with multiple experiment_ids appears in each group's leaderboard."""
+    group_a = client.post(GROUPS, json={"name": "multi-a"}).json()
+    group_b = client.post(GROUPS, json={"name": "multi-b"}).json()
+    body = _evaluation_body(name="multi-member", experiment_group_id="placeholder")
+    body.pop("experiment_group_id")
+    body["experiment_ids"] = [group_a["id"], group_b["id"]]
+
+    created = client.post(EVALUATIONS, json=body)
+    assert created.status_code == 201, created.text
+    assert set(created.json()["experiment_ids"]) == {group_a["id"], group_b["id"]}
+    # Deprecated single-group alias still resolves (to the first membership).
+    assert created.json()["experiment_group_id"] == group_a["id"]
+
+    for gid in (group_a["id"], group_b["id"]):
+        listed = client.get(EVALUATIONS, params={"filter[experiment_group_id]": gid})
+        assert listed.status_code == 200, listed.text
+        assert any(e["name"] == "multi-member" for e in listed.json()["data"])
+
+
+def test_evaluation_create_rejects_empty_experiment_ids(client: TestClient) -> None:
+    """The >=1-group invariant: an empty experiment_ids list is rejected."""
+    body = _evaluation_body(name="no-groups", experiment_group_id="placeholder")
+    body.pop("experiment_group_id")
+    body["experiment_ids"] = []
+    resp = client.post(EVALUATIONS, json=body)
+    assert resp.status_code == 422, resp.text
+
+
+def test_delete_group_reference_counted_cascade(client: TestClient) -> None:
+    """Deleting a group deletes only its sole-membership members; shared members survive elsewhere."""
+    group_a = client.post(GROUPS, json={"name": "rc-a"}).json()
+    group_b = client.post(GROUPS, json={"name": "rc-b"}).json()
+
+    shared = _evaluation_body(name="rc-shared", experiment_group_id="placeholder")
+    shared.pop("experiment_group_id")
+    shared["experiment_ids"] = [group_a["id"], group_b["id"]]
+    client.post(EVALUATIONS, json=shared)
+    client.post(EVALUATIONS, json=_evaluation_body(name="rc-sole", experiment_group_id=group_a["id"]))
+
+    assert client.delete(f"{GROUPS}/rc-a").status_code == 204
+
+    # Sole member gone; shared member survives, now only in group b.
+    assert client.get(f"{EVALUATIONS}/rc-sole").status_code == 404
+    survivor = client.get(f"{EVALUATIONS}/rc-shared")
+    assert survivor.status_code == 200, survivor.text
+    assert survivor.json()["experiment_ids"] == [group_b["id"]]
+
+    in_b = client.get(EVALUATIONS, params={"filter[experiment_group_id]": group_b["id"]})
+    assert any(e["name"] == "rc-shared" for e in in_b.json()["data"])
