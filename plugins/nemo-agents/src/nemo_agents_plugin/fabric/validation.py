@@ -13,7 +13,8 @@ from typing import Any
 
 from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.fabric.translator import FabricTranslationError, translate_agent_config
-from nemo_fabric import Fabric, FabricConfigError
+# Fabric is a plugin dependency but may be absent from ty's lint environment.
+from nemo_fabric import Fabric, FabricConfigError  # ty: ignore[unresolved-import]
 from pydantic import ValidationError
 
 FABRIC_VALIDATION_TIMEOUT_SECONDS = 60.0
