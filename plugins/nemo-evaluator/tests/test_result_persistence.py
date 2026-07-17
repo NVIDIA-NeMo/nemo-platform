@@ -34,7 +34,8 @@ from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.values import Agent, GenericAgent, Model
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult, EvaluationResult
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform_plugin.entities import EntityBase
+from nemo_platform_plugin.entities import EntityBase, EntityClient
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
 from pytest_mock import MockerFixture
@@ -42,6 +43,17 @@ from pytest_mock import MockerFixture
 # An opaque stand-in for the async task SDK: every test that reaches the save path patches
 # `_entity_client`, so the value is never used as a real client — only its presence matters.
 _ASYNC_SDK = cast(AsyncNeMoPlatform, object())
+
+
+def test_entity_client_adapts_async_sdk(mocker: MockerFixture) -> None:
+    typed_client = cast(AsyncEntitiesClient, object())
+    wrapped_client = cast(EntityClient, object())
+    adapter = mocker.patch.object(result_persistence, "client_from_platform", return_value=typed_client)
+    constructor = mocker.patch.object(result_persistence, "EntityClient", return_value=wrapped_client)
+
+    assert result_persistence._entity_client(_ASYNC_SDK) is wrapped_client
+    adapter.assert_called_once_with(_ASYNC_SDK, AsyncEntitiesClient)
+    constructor.assert_called_once_with(typed_client)
 
 
 def _model() -> Model:
@@ -167,7 +179,9 @@ def test_persist_agent_eval_result_builds_entity_and_saves(tmp_path: Path, mocke
     assert entity.name == "job-1"
     assert entity.job_id == "job-1"
     assert entity.workspace == "dev"
-    assert (entity.target_kind, entity.target_name, entity.target_url) == ("codex", "gpt-5.5", None)
+    assert entity.target_kind == "codex"
+    assert entity.target_name == "gpt-5.5"
+    assert entity.target_url is None
     assert entity.bundle_ref == "fileset://dev/agent-eval-results#b"
 
 

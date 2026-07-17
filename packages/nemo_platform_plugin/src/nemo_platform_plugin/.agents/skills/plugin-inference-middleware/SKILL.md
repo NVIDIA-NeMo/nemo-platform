@@ -32,6 +32,8 @@ from nemo_platform_plugin.inference_middleware import (
     InferenceMiddlewareError,
     InferenceMiddlewareUnavailableError,
 )
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntitiesClient
 from nmp.common.sdk_factory import get_async_platform_sdk
 from pydantic import BaseModel
@@ -52,10 +54,10 @@ class MyMiddleware(NemoInferenceMiddleware):
     # ── Lifecycle ──────────────────────────────────────────────────────
     async def on_startup(self) -> None:
         # Build an entity client from the platform SDK so get_middleware_config
-        # can fetch stored config entities. NemoEntitiesClient requires an
-        # AsyncEntitiesResource; obtain it via get_async_platform_sdk.
+        # can fetch stored config entities.
         sdk = get_async_platform_sdk(as_service="nemo-my-plugin", internal=True)
-        self._entity_client = NemoEntitiesClient(sdk.entities)
+        typed_client = client_from_platform(sdk, AsyncEntitiesClient)
+        self._entity_client = NemoEntitiesClient(typed_client)
 
         entities = self.list_model_entities_for_workspace()  # cache available here
         ...
@@ -148,6 +150,7 @@ It must match the `entity_type` of your config `NemoEntity` subclass.
 versioning or sharing.
 
 **Use `config_id`** when:
+
 - Multiple VirtualModels share the same config
 - Operators update config independently of VirtualModels
 - Auto-propagation is needed — IGW re-resolves on every polling cycle when the
@@ -240,7 +243,7 @@ non-streaming responses, if non-`None`, it is canonical — mutate it instead of
 Use this response contract:
 
 | Goal | How |
-|---|---|
+| --- | --- |
 | Mutate an existing payload field (e.g. redact PII in `choices[0].message.content`) | Mutate `typed_body` when available, or `result` when no typed view exists |
 | Add a new field to the response body (e.g. `guardrails`) | Write to `response_body_annotations` |
 | Modify HTTP response headers | Mutate `headers` |
@@ -256,6 +259,7 @@ return response
 Request middleware can also annotate the eventual backend response, even though
 the `InferenceResponse` object does not exist yet. Put those annotations in
 `ctx.response_body_annotations` as a staging area:
+
 ```python
 async def process_request(self, ctx, request, middleware_config):
     ctx.response_body_annotations["guardrails_data"] = {
@@ -280,7 +284,7 @@ them into the returned SSE chunks yet.
 ## RequestResult return values
 
 | Return | Effect |
-|---|---|
+| --- | --- |
 | `InferenceRequest` | IGW resolves `request.body["model"]` to a provider and proxies |
 | `ImmediateResponse(data=...)` | Skip proxy; `data` is passed to response middleware |
 | Raise `InferenceMiddlewareError(msg, status_code=N)` | HTTP N error to caller |
@@ -323,7 +327,7 @@ with patch("nemo_platform_plugin.entity_client.NemoEntitiesClient", return_value
 `plugins/example-plugin/` contains a complete working example:
 
 | File | Contents |
-|---|---|
+| --- | --- |
 | `middleware_config.py` | `ExampleMiddlewareConfig(NemoEntity)` — stored config entity |
 | `middleware.py` | `ExampleInferenceMiddleware` — full implementation with both config styles |
 | `middleware_service.py` | CRUD router for the config entity |
@@ -334,7 +338,7 @@ with patch("nemo_platform_plugin.entity_client.NemoEntitiesClient", return_value
 ## Common mistakes
 
 | Mistake | Fix |
-|---|---|
+| --- | --- |
 | Calling `get_model_entity()` before `on_startup()` | Cache is only available after `_inject_cache()` |
 | Returning `None` from `process_request` | Always return the `InferenceRequest` or an `ImmediateResponse` |
 | Using old signature `process_request(self, request_body, request_headers, ...)` | Correct signature: `process_request(self, ctx, request, middleware_config)` |

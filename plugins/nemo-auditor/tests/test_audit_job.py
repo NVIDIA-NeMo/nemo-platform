@@ -11,6 +11,7 @@ import json
 import signal
 import subprocess
 from pathlib import Path
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -36,6 +37,7 @@ from nemo_auditor.jobs.audit import (
     _garak_config_dict,
     _rewrite_options_uris,
 )
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
@@ -1099,14 +1101,17 @@ class TestAuditInputSpec:
 
 def _run_to_spec(input_spec: AuditInputSpec, *, workspace: str, entity_client) -> AuditSpec:
     """Sync wrapper around the async classmethod for use in synchronous tests."""
-    return asyncio.run(
-        AuditJob.to_spec(
-            input_spec,
-            workspace=workspace,
-            entity_client=entity_client,
-            async_sdk=None,
-            is_local=True,
-        )
+    return cast(
+        AuditSpec,
+        asyncio.run(
+            AuditJob.to_spec(
+                input_spec,
+                workspace=workspace,
+                entity_client=entity_client,
+                async_sdk=None,
+                is_local=True,
+            )
+        ),
     )
 
 
@@ -1192,7 +1197,9 @@ class TestToSpec:
         assert out.target is resolved_tgt
         # Only one entity-client call: target.
         client.get.assert_awaited_once()
-        assert client.get.await_args.args[0] is AuditTargetEntity
+        await_args = client.get.await_args
+        assert await_args is not None
+        assert await_args.args[0] is AuditTargetEntity
 
     def test_not_found_wraps_in_runtimeerror_with_kind_and_path(self) -> None:
         client = AsyncMock()
@@ -1216,32 +1223,36 @@ class TestToSpec:
                 entity_client=client,
             )
 
-    def test_falls_back_to_async_sdk_entities_when_client_is_none(self) -> None:
-        """Local-mode scheduler passes ``entity_client=None``; we wrap async_sdk.entities."""
+    def test_falls_back_to_async_sdk_when_client_is_none(self) -> None:
+        """Local-mode scheduler adapts its async SDK to the typed entities client."""
         resolved_cfg = _make_config(name="from-sdk")
         resolved_tgt = _make_target(name="from-sdk")
+        async_sdk = MagicMock(entities=MagicMock())
+        typed_client = MagicMock()
 
-        # Wrap an EntityClient mock so the inner client.get is awaited.
-        sdk_entities = MagicMock()
-        async_sdk = MagicMock(entities=sdk_entities)
-
-        with patch("nemo_auditor.jobs.audit.NemoEntitiesClient") as mock_cls:
+        with (
+            patch("nemo_auditor.jobs.audit.client_from_platform", return_value=typed_client) as mock_adapter,
+            patch("nemo_auditor.jobs.audit.NemoEntitiesClient") as mock_cls,
+        ):
             client = AsyncMock()
             client.get = AsyncMock(side_effect=[resolved_cfg, resolved_tgt])
             mock_cls.return_value = client
 
-            out = asyncio.run(
-                AuditJob.to_spec(
-                    AuditInputSpec(config="cfg", target="tgt"),
-                    workspace="default",
-                    entity_client=None,
-                    async_sdk=async_sdk,
-                    is_local=True,
-                )
+            out = cast(
+                AuditSpec,
+                asyncio.run(
+                    AuditJob.to_spec(
+                        AuditInputSpec(config="cfg", target="tgt"),
+                        workspace="default",
+                        entity_client=None,
+                        async_sdk=async_sdk,
+                        is_local=True,
+                    )
+                ),
             )
 
-        # NemoEntitiesClient was constructed from async_sdk.entities exactly once.
-        mock_cls.assert_called_once_with(sdk_entities)
+        mock_adapter.assert_called_once_with(async_sdk, AsyncEntitiesClient)
+        mock_cls.assert_called_once_with(typed_client)
         assert out.config is resolved_cfg
         assert out.target is resolved_tgt
 

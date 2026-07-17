@@ -14,6 +14,7 @@ from nemo_deployments_plugin.backends.registry import ExecutorRegistry
 from nemo_deployments_plugin.config import ControllerConfig
 from nemo_deployments_plugin.controller import DeploymentsController, _orphan_protected_ids
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig, Prerequisite, StatusEvent
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntityConflictError
 
 
@@ -77,9 +78,14 @@ async def test_controller_swallows_conflict_on_deployment() -> None:
 
 
 @pytest.mark.asyncio
-@patch("nemo_platform_plugin.sdk_provider.get_async_platform_sdk")
+@patch("nemo_deployments_plugin.controller.client_from_platform")
+@patch("nemo_deployments_plugin.controller.get_async_platform_sdk")
 @patch("nemo_deployments_plugin.config.DeploymentsConfig.get")
-async def test_controller_on_startup(mock_config_get: AsyncMock, mock_sdk: AsyncMock) -> None:
+async def test_controller_on_startup(
+    mock_config_get: AsyncMock,
+    mock_sdk: AsyncMock,
+    mock_adapter: AsyncMock,
+) -> None:
     from nemo_deployments_plugin.config import DeploymentsConfig
 
     mock_config_get.return_value = DeploymentsConfig()
@@ -88,6 +94,7 @@ async def test_controller_on_startup(mock_config_get: AsyncMock, mock_sdk: Async
     ctrl = DeploymentsController()
     await ctrl.on_startup()
 
+    mock_adapter.assert_called_once_with(mock_sdk.return_value, AsyncEntitiesClient)
     assert ctrl._entities is not None
     assert ctrl._registry is not None
     assert ctrl.interval_seconds == 5.0
@@ -101,7 +108,7 @@ async def test_controller_unhealthy_after_list_failure() -> None:
 
     deployments = await ctrl._list_deployments()
     assert deployments == []
-    assert ctrl.is_healthy is False
+    assert not ctrl.is_healthy
 
 
 @pytest.mark.asyncio
@@ -111,13 +118,13 @@ async def test_controller_unhealthy_when_deployments_fail_volumes_ok() -> None:
     ctrl._entities.list.side_effect = RuntimeError("deployments down")
 
     await ctrl._list_deployments()
-    assert ctrl._deployments_list_ok is False
+    assert not ctrl._deployments_list_ok
 
     ctrl._entities.list.side_effect = None
     ctrl._entities.list.return_value = list_response([])
     await ctrl._list_volumes()
-    assert ctrl._volumes_list_ok is True
-    assert ctrl.is_healthy is False
+    assert ctrl._volumes_list_ok
+    assert not ctrl.is_healthy
 
 
 @pytest.mark.asyncio
@@ -263,8 +270,9 @@ async def test_controller_fetches_terminal_prerequisite_for_dag() -> None:
     mock_entities.get.assert_awaited()
     call_args = mock_dep_reconciler.reconcile_one.await_args
     by_name = call_args.kwargs["deployments_by_name"]
-    assert ("default", "puller") in by_name
-    assert by_name[("default", "puller")].status == "SUCCEEDED"
+    puller_key = ("default", "puller")
+    assert puller_key in by_name
+    assert by_name[puller_key].status == "SUCCEEDED"
 
 
 @pytest.mark.asyncio
@@ -311,8 +319,9 @@ async def test_controller_fetches_prerequisite_by_deployment_name() -> None:
 
     call_args = mock_dep_reconciler.reconcile_one.await_args
     by_name = call_args.kwargs["deployments_by_name"]
-    assert ("default", "puller-run-1") in by_name
-    assert by_name[("default", "puller-run-1")].name == "puller-run-1"
+    puller_key = ("default", "puller-run-1")
+    assert puller_key in by_name
+    assert by_name[puller_key].name == "puller-run-1"
 
 
 @pytest.mark.asyncio

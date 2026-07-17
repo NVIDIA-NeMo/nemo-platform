@@ -17,9 +17,10 @@ from nemo_insights_plugin.entities import AnalysisConfig, AnalysisRunStatus
 from nemo_insights_plugin.jobs.analyze import AnalyzeJob, AnalyzeSpec
 from nemo_insights_plugin.schedule import is_due
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.resources.entities import AsyncEntitiesResource
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.config import get_nemo_config
 from nemo_platform_plugin.controller import NemoController
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import (
     NemoEntitiesClient,
     NemoEntityConflictError,
@@ -89,7 +90,7 @@ class InsightsAnalysisController(NemoController):
         """Initialise service-principal SDK and entity client."""
         self._config = get_nemo_config(InsightsConfig)
         self._sdk = get_async_platform_sdk(as_service="insights", internal=True)
-        self._entities = NemoEntitiesClient(AsyncEntitiesResource(self._sdk))
+        self._entities = NemoEntitiesClient(client_from_platform(self._sdk, AsyncEntitiesClient))
         logger.info("InsightsAnalysisController started.")
 
     async def on_shutdown(self) -> None:

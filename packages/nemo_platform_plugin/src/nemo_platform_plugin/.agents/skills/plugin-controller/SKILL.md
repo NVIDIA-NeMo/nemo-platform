@@ -59,7 +59,8 @@ class MyController(NemoController):
 
     async def on_startup(self) -> None:
         from nmp.common.sdk_factory import get_async_platform_sdk
-        from nemo_platform.resources.entities import AsyncEntitiesResource
+        from nemo_platform_plugin.client.adapter import client_from_platform
+        from nemo_platform_plugin.entities.client import AsyncEntitiesClient
         from nemo_platform_plugin.entity_client import NemoEntitiesClient
         from .config import MyPluginConfig
 
@@ -67,7 +68,8 @@ class MyController(NemoController):
         self._interval_seconds = float(config.controller_interval)
 
         sdk = get_async_platform_sdk(as_service="my-plugin", internal=True)
-        self._entities = NemoEntitiesClient(AsyncEntitiesResource(sdk))
+        typed_client = client_from_platform(sdk, AsyncEntitiesClient)
+        self._entities = NemoEntitiesClient(typed_client)
 
     @property
     def entities(self) -> NemoEntitiesClient:
@@ -152,16 +154,17 @@ This decoupling means the service returns fast and the controller handles all as
 
 ## Building a Service-Principal Entity Client
 
-Full 3-line pattern used in `on_startup()`:
+Full pattern used in `on_startup()`:
 
 ```python
 from nmp.common.sdk_factory import get_async_platform_sdk
-from nemo_platform.resources.entities import AsyncEntitiesResource
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntitiesClient
 
 sdk = get_async_platform_sdk(as_service="my-plugin", internal=True)
-entities_api = AsyncEntitiesResource(sdk)
-self._entities = NemoEntitiesClient(entities_api)
+typed_client = client_from_platform(sdk, AsyncEntitiesClient)
+self._entities = NemoEntitiesClient(typed_client)
 ```
 
 `as_service="my-plugin"` sets `X-NMP-Principal-Id: service:my-plugin` on all outgoing requests. Service principals have elevated permissions for cross-workspace listing.
@@ -299,14 +302,16 @@ class DeploymentController(NemoController):
 
     async def on_startup(self) -> None:
         from nmp.common.sdk_factory import get_async_platform_sdk
-        from nemo_platform.resources.entities import AsyncEntitiesResource
+        from nemo_platform_plugin.client.adapter import client_from_platform
+        from nemo_platform_plugin.entities.client import AsyncEntitiesClient
         from nemo_platform_plugin.entity_client import NemoEntitiesClient
         from nemo_my_plugin.config import MyPluginConfig
 
         config = MyPluginConfig.get()
         self._interval_seconds = float(config.controller.interval_seconds)
         sdk = get_async_platform_sdk(as_service="my-deployment", internal=True)
-        self._entities = NemoEntitiesClient(AsyncEntitiesResource(sdk))
+        typed_client = client_from_platform(sdk, AsyncEntitiesClient)
+        self._entities = NemoEntitiesClient(typed_client)
 
     async def on_shutdown(self) -> None:
         logger.info("DeploymentController shutting down.")

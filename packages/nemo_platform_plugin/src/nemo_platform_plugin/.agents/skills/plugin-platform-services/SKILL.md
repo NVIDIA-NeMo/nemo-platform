@@ -61,11 +61,12 @@ from nemo_platform_plugin.entity_client import NemoEntitiesClient, get_entity_cl
 
 # Background/controller scope: build manually
 from nmp.common.sdk_factory import get_async_platform_sdk
-from nemo_platform.resources.entities import AsyncEntitiesResource
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nmp.common.entities.client import EntityClient
 
 sdk = get_async_platform_sdk(as_service="my-plugin", internal=True)
-entity_client = EntityClient(AsyncEntitiesResource(sdk))
+entity_client = EntityClient(client_from_platform(sdk, AsyncEntitiesClient))
 ```
 
 ## Jobs Service

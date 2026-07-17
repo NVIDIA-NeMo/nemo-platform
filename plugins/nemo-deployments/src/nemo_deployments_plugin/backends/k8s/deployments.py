@@ -320,6 +320,7 @@ async def create_deployment(
                 _rollback_partial_create(deployment_created=deployment_created, delete_configmap=configmap_written)
                 return deployment
 
+            delete_configmap_on_service_failure = deployment_created and configmap_written
             try:
                 core_v1.create_namespaced_service(
                     namespace=namespace,
@@ -336,13 +337,13 @@ async def create_deployment(
                     if not resource_labels_match(existing_service, identity_labels):
                         _rollback_partial_create(
                             deployment_created=deployment_created,
-                            delete_configmap=deployment_created and configmap_written,
+                            delete_configmap=delete_configmap_on_service_failure,
                         )
                         raise
                     return deployment
                 _rollback_partial_create(
                     deployment_created=deployment_created,
-                    delete_configmap=deployment_created and configmap_written,
+                    delete_configmap=delete_configmap_on_service_failure,
                 )
                 raise
             return deployment

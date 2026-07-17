@@ -42,9 +42,10 @@ from nemo_deployments_plugin.entities import (
     Probe,
     VolumeMount,
 )
-from nemo_platform.resources.entities import AsyncEntitiesResource
 from nemo_platform_plugin.auth import platform_auth_enabled
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.config import LOOPBACK_ADDRESSES
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 
@@ -333,7 +334,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
     def _entity_client(self) -> NemoEntitiesClient:
         if self._entities is None:
             sdk = get_async_platform_sdk(as_service="agents", internal=True)
-            self._entities = NemoEntitiesClient(AsyncEntitiesResource(sdk))
+            self._entities = NemoEntitiesClient(client_from_platform(sdk, AsyncEntitiesClient))
         return self._entities
 
     async def create_deployment(

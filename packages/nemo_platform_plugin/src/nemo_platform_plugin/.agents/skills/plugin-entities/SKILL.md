@@ -20,6 +20,7 @@ class Widget(NemoEntity, entity_type="example_widget"):
 `entity_type` is **required** on every concrete subclass. It must be snake_case and plugin-scoped (e.g., `"my_plugin_widget"` not `"widget"`). Omitting it raises `TypeError` at class-definition time.
 
 Inherited fields from `EntityBase` (no need to declare):
+
 - `name: str` — human-readable name within workspace
 - `workspace: str` — workspace identifier (required, validated against `ID_PATTERN`)
 - `project: str | None` — optional project association
@@ -177,11 +178,12 @@ For controllers and background tasks where FastAPI's `Depends()` is not availabl
 
 ```python
 from nmp.common.sdk_factory import get_async_platform_sdk
-from nemo_platform.resources.entities import AsyncEntitiesResource
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nmp.common.entities.client import EntityClient
 
 sdk = get_async_platform_sdk(as_service="my-plugin", internal=True)
-entity_client = EntityClient(AsyncEntitiesResource(sdk))
+entity_client = EntityClient(client_from_platform(sdk, AsyncEntitiesClient))
 ```
 
 `internal=True` adds headers that suppress the access log flood from controller polling every few seconds. Always use `internal=True` for background/controller clients.
