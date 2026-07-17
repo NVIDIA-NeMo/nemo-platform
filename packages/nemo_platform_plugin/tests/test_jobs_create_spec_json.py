@@ -9,7 +9,7 @@ import base64
 import json
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from fastapi import FastAPI
 from nemo_platform_plugin.dependencies import get_entity_client, get_sdk_client
