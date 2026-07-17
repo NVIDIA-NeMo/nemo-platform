@@ -84,7 +84,7 @@ export const FilesetCard: FC<FilesetCardProps> = ({
     </Stack>
   );
   if (!hasReadme) {
-    return metaPanels;
+    return <div data-testid="fileset-card">{metaPanels}</div>;
   }
 
   return (
