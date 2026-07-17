@@ -178,6 +178,26 @@ class SQLAlchemyFilterRepository(FilterRepository):
             return self._cast_json_to_text(column).not_in([str(v) for v in values])
         return column.not_in(values)
 
+    def contains(self, field: str, value: Any) -> Any:
+        """Array membership: true when the JSON array at ``field`` contains scalar ``value``.
+
+        Portable across SQLite (JSON) and PostgreSQL (JSONB) without a dialect branch: the
+        array element serializes as a quote-delimited token (e.g. ``"g1"``) in both backends'
+        text rendering, so we match that token in the serialized array text. Quoting makes it
+        collision-safe against prefixes (``"g1"`` does not match ``["g10"]``). ``value`` is
+        coerced to text and LIKE wildcards are escaped, so only exact elements match.
+
+        Intended for array-valued JSON fields (e.g. ``data.experiment_ids``); values are
+        assumed to be JSON scalars without embedded double quotes (entity ids qualify).
+        """
+        column, is_json = self._get_column(field)
+        if not is_json:
+            raise ValueError(f"$contains requires a JSON array field, got non-JSON field '{field}'")
+        needle = str(value)
+        for ch in ("\\", "%", "_"):
+            needle = needle.replace(ch, f"\\{ch}")
+        return cast(column, String).like(f'%"{needle}"%', escape="\\")
+
     def and_op(self, operations: List[Any]) -> Any:
         """Logical AND."""
         return and_(*operations)
