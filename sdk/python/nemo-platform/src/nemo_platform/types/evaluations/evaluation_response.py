@@ -89,6 +89,14 @@ class EvaluationResponse(BaseModel):
 
     status: Optional[str] = None
 
+    test_case_count: Optional[int] = None
+    """Number of distinct test cases in the evaluation, i.e.
+
+    distinct test_case_id values (sessions with no test_case_id each count as their
+    own). A test case run k times counts once; the rollup metrics are averaged per
+    test case before pooling across test cases.
+    """
+
     updated_at: Optional[datetime] = None
 
     if not PYDANTIC_V1:
