@@ -1,13 +1,13 @@
+# Agent Evaluation Architecture
 
-## GenericAgent streaming with optional translation
+## GenericAgent and NemoAgentToolkitAgent evaluation paths
+
 The central mental model is:
 
-> Hermes and a generic application both use `GenericAgent` and become the same
-> internal HTTP invocation. Hermes adds domain-specific
-> interpretation through a translator; the transport remains shared.
-
-The shared normalizer also supports `NemoAgentToolkitAgent` plus
-`NatAgentConfig`; the examples configure Hermes as a `GenericAgent`.
+> `GenericAgent` and `NemoAgentToolkitAgent` have different public
+> configurations, but both normalize into the same internal HTTP invocation.
+> Hermes demonstrates how a streaming `GenericAgent` can add domain-specific
+> interpretation through a translator while keeping the transport shared.
 
 ### 1. Complete architecture flow
 
@@ -45,12 +45,22 @@ flowchart TB
         G6 -. optional override .-> G5
     end
 
+    subgraph NAT["NeMo Agent Toolkit evaluation"]
+        NT0["Load NAT workflow tasks"]
+        NT1["NemoAgentToolkitAgent<br/>format = nemo_agent_toolkit"]
+        NT2["Optional NatAgentConfig<br/>endpoint, request mode,<br/>query params, response_path"]
+        NT3["AgentEvaluator<br/>default factory"]
+
+        NT0 --> NT1 --> NT2 --> NT3
+    end
+
     %% ─────────────────────────────
     %% EVALUATOR ORCHESTRATION
     %% ─────────────────────────────
 
     HM6 --> E0
     G5 --> E0
+    NT3 --> E0
 
     subgraph EVALUATOR["Shared AgentEvaluator orchestration"]
         E0["run_sync → run"]
@@ -244,16 +254,19 @@ flowchart TB
 
     A12 --> HMO["Hermes evaluation writes reports"]
     A12 --> GO["Generic application consumes<br/>scores, trials and evidence"]
+    A12 --> NTO["NAT application consumes<br/>scores, trials and evidence"]
     A12 -. explicit optional consumer .-> INTAKE["publish_to_intake result<br/>does not rerun the agent"]
 
     classDef hermes fill:#fde68a,stroke:#b45309,color:#111827;
     classDef generic fill:#bfdbfe,stroke:#1d4ed8,color:#111827;
+    classDef nat fill:#cffafe,stroke:#0e7490,color:#111827;
     classDef shared fill:#dcfce7,stroke:#15803d,color:#111827;
     classDef evidence fill:#f3e8ff,stroke:#7e22ce,color:#111827;
     classDef output fill:#fee2e2,stroke:#b91c1c,color:#111827;
 
     class HM0,HM1,HM2,HM3,HM4,HM5,HM6,HMT0,HMT1,HMT2,HMT3,HMT4,HMT5,HMT6,HMO hermes;
     class G0,G1,G2,G3,G4,G5,G6,GO generic;
+    class NT0,NT1,NT2,NT3,NTO nat;
     class E0,E1,E2,E3,E4,E5,E6,E7,E8,E9,E10,E11,E12,S0,S1,S2,N0,N1,N2,N3,N4,N5,N6,N7,N8,N9,N9A,H10,H11,H12,H13,H14,H15,H16,H17,H18 shared;
     class T0,T1,T2,T3,T4,T5,T6,T7,T8,T9,T10 evidence;
     class A0,A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,INTAKE output;
@@ -286,6 +299,10 @@ sequenceDiagram
         Caller->>Caller: Configure Responses body and response_path=$..text
         Caller->>Caller: Set stream=true and configure HermesStreamTranslator
         Caller->>AE: run_sync(tasks, generic target, config)
+    else NeMo Agent Toolkit workflow
+        Caller->>Caller: Construct NemoAgentToolkitAgent
+        Caller->>Caller: Optionally override NatAgentConfig
+        Caller->>AE: run_sync(tasks, NAT target, config)
     else Generic application
         Caller->>Caller: Construct GenericAgent
         Caller->>Caller: Select stream=false or stream=true
@@ -306,7 +323,7 @@ sequenceDiagram
         else Hermes configured factory
             AE->>F: factory(AgentInferenceContext)
             F-->>AE: partial(invoke_agent, translator, capture=true)
-        else Generic default factory
+        else Shared default factory
             AE->>F: make_agent_inference_fn(context)
             F-->>AE: partial(invoke_agent, capture=false)
         end
@@ -401,6 +418,8 @@ sequenceDiagram
             Caller->>OUT: publish_to_intake(existing result)
             Note over Caller,OUT: Publishing consumes the result.<br/>It does not invoke Hermes again.
         end
+    else NeMo Agent Toolkit workflow
+        Caller->>Caller: Display, export, or compare scores
     else Generic application
         Caller->>Caller: Display, export, or compare scores
     end
@@ -509,21 +528,28 @@ evaluator = AgentEvaluator(
 )
 ```
 
+A NeMo Agent Toolkit workflow uses its fixed request and JSON SSE response
+protocol, so it does not define a generic `body`, `response_path`, or `stream`
+field. `NatAgentConfig` can override the NAT defaults when needed:
+
+```python
+target = NemoAgentToolkitAgent(
+    url="http://127.0.0.1:8000",
+    name="nat-agent",
+)
+
+evaluator = AgentEvaluator()
+```
+
 For blocking JSON, the generic application only changes `stream=False`.
 
 ### 5. What belongs where
 
-| Layer | Hermes | Generic application | Shared SDK |
-|---|---|---|---|
-| Public target | `GenericAgent` | `GenericAgent` | Discriminated `Agent` union |
-| Request defaults | Responses `body`, URL, JSONPaths | `body`, URL, JSONPaths | Normalization |
-| Transport | JSON SSE | JSON or JSON SSE | One HTTP engine |
-| Domain interpretation | `HermesStreamTranslator` | Usually none; optional custom translator | Generic translator protocol |
-| Evidence | ATIF, token usage, raw stream | Raw stream and optional trajectory | Capture and persistence |
-| Evaluation | `KeywordMatchMetric` | Application metrics | Trial creation, scoring, summary |
-
-The design deliberately separates three questions:
-
-1. **What target is this?** Public discriminator model.
-2. **How do I communicate with it?** Shared HTTP engine.
-3. **What do its proprietary stream events mean?** Optional application translator.
+| Layer | Hermes | Generic application | NeMo Agent Toolkit | Shared SDK |
+| --- | --- | --- | --- | --- |
+| Public target | `GenericAgent` | `GenericAgent` | `NemoAgentToolkitAgent` | Discriminated `Agent` union |
+| Request defaults | Responses `body`, URL, JSONPaths | `body`, URL, JSONPaths | `NatAgentConfig` | Normalization |
+| Transport | JSON SSE | JSON or JSON SSE | JSON SSE | One HTTP engine |
+| Domain interpretation | `HermesStreamTranslator` | Usually none; optional custom translator | NAT response path; optional custom translator | Generic translator protocol |
+| Evidence | ATIF, token usage, raw stream | Raw stream and optional trajectory | Raw stream and optional translated ATIF | Capture and persistence |
+| Evaluation | `KeywordMatchMetric` | Application metrics | Application metrics | Trial creation, scoring, summary |
