@@ -390,7 +390,6 @@ def _wait_for_guarded_virtual_model(
         sdk,
         workspace=test_case.workspace,
         virtual_model_name=test_case.virtual_model_name,
-        backend_model_ref=test_case.backend_model_ref,
         config_ref=test_case.config_ref,
         user_input=test_case.user_input,
         timeout=timeout,
@@ -403,7 +402,6 @@ def wait_for_guarded_virtual_model(
     *,
     workspace: str,
     virtual_model_name: str,
-    backend_model_ref: str,
     config_ref: str,
     user_input: str = USER_INPUT,
     timeout: float = 60,
@@ -414,7 +412,8 @@ def wait_for_guarded_virtual_model(
     E2E runs against a separate IGW process. Creating the VM persists the entity,
     but the VM is not usable with middleware until IGW's background cache refresh
     loads it into VirtualModelCache and resolves its Guardrails config into the
-    middleware registry.
+    middleware registry. These two caches refresh independently, so there's a
+    window where the VM route resolves but its middleware doesn't.
 
     To ensure the VM is ready to serve requests, use a request that Guardrails
     rejects during request parsing, before any rail or backend inference runs.
@@ -423,7 +422,7 @@ def wait_for_guarded_virtual_model(
     start = time.time()
     last_error: Exception | None = None
     probe_body: dict[str, Any] = {
-        "model": backend_model_ref,
+        "model": f"{workspace}/e2e-guardrails-warmup-probe",
         "messages": [{"role": "user", "content": user_input}],
         "max_tokens": 64,
         "guardrails": {"config_id": config_ref},
@@ -505,7 +504,6 @@ def setup_guarded_virtual_model(
         sdk,
         workspace=workspace,
         virtual_model_name=virtual_model_name,
-        backend_model_ref=backend_model_ref,
         config_ref=config_ref,
         user_input=user_input,
     )
