@@ -154,7 +154,7 @@ class HermesStreamTranslator:
         return AgentStreamTranslation(trajectory=trajectory.model_dump(mode="python", exclude_none=True))
 
 
-def _require_api_server_key() -> None:
+def _require_hermes_token() -> None:
     if os.getenv(HERMES_TOKEN_ENV_NAME):
         return
     raise RuntimeError(
@@ -170,7 +170,7 @@ async def evaluate(
     client: httpx.AsyncClient | None = None,
 ) -> AgentEvalResult:
     """Run the Hermes streaming evaluation."""
-    _require_api_server_key()
+    _require_hermes_token()
     evaluator = AgentEvaluator(
         agent_inference_fn_factory=partial(
             make_agent_inference_fn,
@@ -184,7 +184,7 @@ async def evaluate(
     task = AgentEvalTask(
         id="hermes-streaming",
         intent="Return the requested phrase over SSE.",
-        inputs={"instruction": f"Reply with exactly: {EXPECTED_TEXT}"},
+        inputs={"instruction": f"Reply with exactly: {EXPECTED_TEXT}."},
         reference={"expected": EXPECTED_TEXT},
         metrics=[KeywordMatchMetric()],
     )

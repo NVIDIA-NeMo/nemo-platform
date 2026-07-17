@@ -56,7 +56,7 @@ async def test_hermes_evaluation_replays_responses_sse(monkeypatch: pytest.Monke
             headers={"content-type": "text/event-stream"},
         )
 
-    monkeypatch.setenv("API_SERVER_KEY", "test-token")
+    monkeypatch.setenv(hermes.HERMES_TOKEN_ENV_NAME, "test-token")
     async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
         result = await hermes.evaluate(agent_url="http://hermes.test/v1/responses", client=client)
 
@@ -204,7 +204,7 @@ async def test_incomplete_stream_records_translation_error(monkeypatch: pytest.M
 event: response.output_text.done
 data: {"type":"response.output_text.done","text":"streaming works"}
 """
-    monkeypatch.setenv("API_SERVER_KEY", "test-token")
+    monkeypatch.setenv(hermes.HERMES_TOKEN_ENV_NAME, "test-token")
     transport = httpx.MockTransport(
         lambda request: httpx.Response(200, content=incomplete, headers={"content-type": "text/event-stream"})
     )
@@ -221,7 +221,7 @@ data: {"type":"response.output_text.done","text":"streaming works"}
 
 
 @pytest.mark.asyncio
-async def test_missing_api_server_key_fails_before_request(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_missing_hermes_token_fails_before_request(monkeypatch: pytest.MonkeyPatch) -> None:
     request_count = 0
 
     def handle(request: httpx.Request) -> httpx.Response:
@@ -229,12 +229,12 @@ async def test_missing_api_server_key_fails_before_request(monkeypatch: pytest.M
         request_count += 1
         return httpx.Response(500, request=request)
 
-    monkeypatch.delenv(hermes.API_SERVER_KEY_ENV_NAME, raising=False)
+    monkeypatch.delenv(hermes.HERMES_TOKEN_ENV_NAME, raising=False)
     async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
         with pytest.raises(RuntimeError) as exc_info:
             await hermes.evaluate(agent_url="http://hermes.test/v1/responses", client=client)
 
     message = str(exc_info.value)
     assert request_count == 0
-    assert "export API_SERVER_KEY=<your-api-server-key>" in message
+    assert "export HERMES_TOKEN=<your-hermes-token>" in message
     assert hermes.HERMES_API_SERVER_DOCS_URL in message

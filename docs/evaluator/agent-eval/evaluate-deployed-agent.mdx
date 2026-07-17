@@ -131,7 +131,7 @@ from nemo_evaluator_sdk.agent_inference import make_agent_inference_fn
 agent = GenericAgent(
     name="hermes-agent",
     url="http://127.0.0.1:8642/v1/responses",
-    api_key_secret=SecretRef("API_SERVER_KEY"),
+    api_key_secret=SecretRef("HERMES_TOKEN"),
     body={
         "model": "hermes-agent",
         "input": "{{ instruction }}",
@@ -153,7 +153,7 @@ evaluator = AgentEvaluator(
 )
 ```
 
-The SDK sends the bearer token from `API_SERVER_KEY` env variable, preserves the raw stream as evidence, and
+The SDK sends the bearer token from the `HERMES_TOKEN` environment variable, preserves the raw stream as evidence, and
 passes the extracted output text to the task's metrics. The Hermes translator reads the terminal
 `response.completed` payload, validates completion, and records user/agent steps plus token usage in
 ATIF-v1.7.

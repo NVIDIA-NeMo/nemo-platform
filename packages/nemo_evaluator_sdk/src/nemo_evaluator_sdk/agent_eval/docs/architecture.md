@@ -468,7 +468,7 @@ Hermes supplies domain knowledge through a translator while using a
 target = GenericAgent(
     url="http://127.0.0.1:8642/v1/responses",
     name="hermes-agent",
-    api_key_secret=SecretRef("API_SERVER_KEY"),
+    api_key_secret=SecretRef("HERMES_TOKEN"),
     body={
         "model": "hermes-agent",
         "input": "{{ instruction }}",
