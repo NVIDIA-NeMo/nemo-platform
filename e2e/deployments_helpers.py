@@ -425,15 +425,23 @@ def run_volume_deployment_round_trip(
 ) -> None:
     """Prove a volume is provisioned, mounted, written to, and read back.
 
-    1. Create a Volume and wait for it to reconcile out of PENDING (BOUND on
-       docker / eagerly-bound storage; may stay PENDING on lazy-binding k8s
-       storage classes until first consumed — both are acceptable pre-mount).
+    1. Create a Volume and wait for it to reconcile to BOUND.
     2. Deploy a one-shot job whose DeploymentConfig mounts the volume, writes a
        sentinel file, then reads it back and asserts the content. If the mount
        did not work the ``grep`` fails and the container exits non-zero, so the
        deployment lands FAILED and the wait-for-SUCCEEDED fails the test.
     3. Delete the deployment, then the volume (deletion is blocked by referencing
        configs, so the config is dropped first in teardown).
+
+    Backend portability: this requires the volume to reach BOUND *before* the
+    mounting deployment starts, because ``DeploymentReconciler`` gates deployment
+    create on all mounted volumes being BOUND (see ``volume_mounts_ready``). That
+    holds on eagerly-binding storage (the docker backend binds immediately; k8s
+    ``Immediate``-binding StorageClasses likewise). It does **not** hold on
+    ``WaitForFirstConsumer`` storage (e.g. kind's default ``local-path``), where
+    the PVC only binds once a consumer pod is scheduled — a chicken-and-egg with
+    the reconciler's gate. This helper is therefore used by the docker module
+    only; see ``test_nemo_deployments_k8s.py`` for why the k8s module omits it.
     """
     config_name = unique_name("vol-cfg")
     volume_name = unique_name("vol")
@@ -450,13 +458,14 @@ def run_volume_deployment_round_trip(
         backend_config=volume_backend_config,
     )
 
-    # A freshly-created volume must at least leave the initial state; lazy-binding
-    # k8s storage classes keep it PENDING until first mount, so accept either.
+    # The reconciler gates the mounting deployment on the volume being BOUND, and
+    # this helper only runs on eagerly-binding backends (docker), so require BOUND
+    # up front rather than tolerating a lingering PENDING.
     wait_for_volume_status(
         sdk,
         workspace=workspace,
         name=volume_name,
-        target_statuses=("BOUND", "PENDING"),
+        target_statuses=("BOUND",),
         timeout_seconds=120,
     )
 

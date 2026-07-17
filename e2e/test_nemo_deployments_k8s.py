@@ -4,19 +4,32 @@
 """E2E tests for the nemo-deployments plugin on Kubernetes.
 
 The Kubernetes counterpart to ``test_nemo_deployments_docker.py``: it drives the
-deployments plugin's own public API (DeploymentConfig / Deployment / Volume) and
-asserts the reconcile controller turns those entities into real Kubernetes
-workloads — a Deployment+Service for the long-lived nginx service, a Job for the
-one-shot alpine workloads, and a PVC for the volume round-trip. The
-backend-agnostic scenario cores are shared with the docker variant via
-``e2e.deployments_helpers``; this module owns only the k8s-specific wiring.
+deployments plugin's own public API (DeploymentConfig / Deployment) and asserts
+the reconcile controller turns those entities into real Kubernetes workloads — a
+Deployment+Service for the long-lived nginx service and a Job for the one-shot
+alpine workload. The backend-agnostic scenario cores are shared with the docker
+variant via ``e2e.deployments_helpers``; this module owns only the k8s-specific
+wiring.
 
 What it proves — the deployments reconcile chain end to end, on Kubernetes::
 
-    sdk._client POST /apis/deployments/v2/...   (config / volume / deployment)
+    sdk._client POST /apis/deployments/v2/...   (config / deployment)
       -> deployments reconcile controller
-      -> k8s executor creates the Deployment+Service / Job / PVC
-      -> Deployment.status converges (READY for the service, SUCCEEDED for jobs)
+      -> k8s executor creates the Deployment+Service / Job
+      -> Deployment.status converges (READY for the service, SUCCEEDED for the job)
+
+No volume round-trip here (unlike the docker module). The reconciler gates a
+deployment's create on every mounted Volume already being ``BOUND`` (see
+``volume_mounts_ready``), but kind's default ``local-path`` StorageClass — which
+the Kind CPU e2e job uses — binds ``WaitForFirstConsumer``: the PVC only binds
+once a consuming pod is scheduled, and that pod is never created while the
+deployment is gated. That chicken-and-egg only resolves on ``Immediate``-binding
+storage (common outside kind, e.g. most cloud block-storage classes), so a
+mounted-volume e2e is not portable to the kind CI environment. This mirrors the
+existing k8s reconcile integration test, which deliberately omits a PVC mount for
+the same reason (see ``plugins/nemo-deployments/tests/integration/test_reconcile_k8s.py``).
+The docker module covers the full provision -> mount -> write -> read-back
+round-trip, where volumes bind eagerly.
 
 How it runs, and where:
 
@@ -36,8 +49,8 @@ How it runs, and where:
   ``POSTGRES_IMAGE`` / ``BUSYBOX_IMAGE`` install knobs.
 - The workloads land in the executor's namespace (the Helm release namespace,
   beside the platform), reachable in-cluster.
-- Pod scheduling, PVC binding, and (internet) image pulls can take longer than
-  the local docker path, so the scenario cores are given a wider timeout.
+- Pod scheduling and (internet) image pulls can take longer than the local
+  docker path, so the scenario cores are given a wider timeout.
 """
 
 from __future__ import annotations
@@ -48,11 +61,10 @@ from nemo_platform import NeMoPlatform
 from e2e.deployments_helpers import (
     run_job_deployment_lifecycle,
     run_service_deployment_lifecycle,
-    run_volume_deployment_round_trip,
 )
 
-# Pod scheduling + PVC binding + image pulls in a fresh cluster take longer than
-# a local docker container start.
+# Pod scheduling + image pulls in a fresh cluster take longer than a local docker
+# container start.
 _K8S_TIMEOUT_SECONDS = 420
 
 pytestmark = [pytest.mark.container_only]
@@ -71,16 +83,6 @@ def test_k8s_service_deployment_reaches_ready(sdk: NeMoPlatform, workspace: str)
 def test_k8s_job_deployment_reaches_succeeded(sdk: NeMoPlatform, workspace: str) -> None:
     """A restart_policy=Never alpine job reconciles to a k8s Job that completes (SUCCEEDED)."""
     run_job_deployment_lifecycle(
-        sdk,
-        workspace=workspace,
-        backend_key="k8s",
-        running_timeout_seconds=_K8S_TIMEOUT_SECONDS,
-    )
-
-
-def test_k8s_volume_is_provisioned_mounted_and_readable(sdk: NeMoPlatform, workspace: str) -> None:
-    """A PVC is provisioned, mounted into a Job, written to, and read back."""
-    run_volume_deployment_round_trip(
         sdk,
         workspace=workspace,
         backend_key="k8s",
