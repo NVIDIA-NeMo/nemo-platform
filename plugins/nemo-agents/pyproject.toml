@@ -19,9 +19,6 @@ dependencies = [
     # TODO(AIRCORE-897): Move this to a stable Fabric version before release once available.
     # TODO(AIRCORE-897): Add the `relay` extra once nemo-evaluator-sdk's nemo-relay pin allows >=0.5.
     "nemo-fabric>=0.1.0a20260717,<0.2.0",
-    # Fabric runtime wheels are currently published for Linux only; macOS devs
-    # can build/install the native runtime from the NeMo-Fabric repo if needed.
-    "nemo-fabric-runtime>=0.1.0a20260717,<0.2.0; sys_platform == 'linux'",
     "pyyaml>=6.0",
     # improvement/ subpackage — agent-improvement workflow (POC).
     "anthropic>=0.88.0",

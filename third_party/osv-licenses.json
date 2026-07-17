@@ -2109,16 +2109,6 @@
         },
         {
           "package": {
-            "name": "nemo-fabric-runtime",
-            "version": "0.1.0a20260717",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
             "name": "nemo-relay",
             "version": "0.4.0",
             "ecosystem": "PyPI"
@@ -5692,7 +5682,7 @@
     },
     {
       "name": "Apache-2.0",
-      "count": 82
+      "count": 81
     },
     {
       "name": "non-standard",
