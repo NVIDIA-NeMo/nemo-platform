@@ -3,6 +3,12 @@ packages:
   # exclude packages that are inside test directories
   - '!**/test/**'
 
+# https://pnpm.io/settings#overrides
+overrides:
+  '@codemirror/view': 6.43.1
+  'brace-expansion@1.1.15': 1.1.16
+  'shell-quote@1.8.4': 1.9.0
+
 # https://pnpm.io/catalogs
 catalog:
   '@mui/x-charts': ^7.28.0
