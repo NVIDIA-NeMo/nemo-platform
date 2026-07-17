@@ -1162,9 +1162,6 @@ jobs:
           RELEASE_STABLE_CONTAINER_REGISTRY: ${{ env.RELEASE_STABLE_CONTAINER_REGISTRY }}
           INCLUDE_HELM: ${{ needs.plan-release.outputs.include_helm }}
           CHART_VERSION: ${{ needs.stage-helm.outputs.chart_version }}
-          NIGHTLY_WHEEL_INDEX: ${{ env.RELEASE_NIGHTLY_WHEEL_INDEX }}
-          STABLE_WHEEL_INDEX: ${{ env.RELEASE_STABLE_WHEEL_INDEX }}
-          NGC_CATALOG_BASE: ${{ env.RELEASE_NGC_CATALOG_BASE }}
           POLL_RESULT: ${{ needs.poll-final-release.result }}
           GITHUB_RELEASE_RESULT: ${{ needs.create-github-release.result }}
           DEPLOYMENT_RESULT: ${{ needs.signal-deployment.result }}
@@ -1203,16 +1200,12 @@ jobs:
               lines.push("", "*Artifacts published:*");
               if (wheelIds.length > 0) {
                 lines.push("*:python: Wheels published:*");
+                lines.push("```");
                 for (const wheelId of wheelIds) {
                   const wheel = wheelCatalog.find((candidate) => candidate.id === wheelId);
-                  const wheelIndex = releaseType === "nightly"
-                    ? process.env.NIGHTLY_WHEEL_INDEX
-                    : process.env.STABLE_WHEEL_INDEX;
-                  const wheelUrl = releaseType === "nightly"
-                    ? `${wheelIndex}/${wheel.package}/`
-                    : `${wheelIndex.replace(/\/simple$/, "/project")}/${wheel.package}/${process.env.WHEEL_VERSION}/`;
-                  lines.push(`- <${wheelUrl}|${wheel.package}: ${process.env.WHEEL_VERSION}>`);
+                  lines.push(`${wheel.package}==${process.env.WHEEL_VERSION}`);
                 }
+                lines.push("```");
               }
               if (containerIds.length > 0) {
                 lines.push("*:docker_: Containers published:*");
@@ -1226,11 +1219,10 @@ jobs:
                 lines.push("```");
               }
               if (process.env.INCLUDE_HELM === "true") {
-                const chart = releaseType === "stable"
-                  ? `<${process.env.NGC_CATALOG_BASE}/helm-charts/nemo-platform|nemo-platform>`
-                  : "nemo-platform";
                 lines.push("*:helm: Helm chart published:*");
-                lines.push(`- ${chart}: ${process.env.CHART_VERSION}`);
+                lines.push("```");
+                lines.push(`nemo-platform:${process.env.CHART_VERSION}`);
+                lines.push("```");
               }
             } else {
               lines.push(
