@@ -1160,6 +1160,8 @@ jobs:
           CONTAINER_IDS: ${{ needs.plan-release.outputs.container_ids }}
           RELEASE_NIGHTLY_CONTAINER_REGISTRY: ${{ env.RELEASE_NIGHTLY_CONTAINER_REGISTRY }}
           RELEASE_STABLE_CONTAINER_REGISTRY: ${{ env.RELEASE_STABLE_CONTAINER_REGISTRY }}
+          RELEASE_NIGHTLY_HELM_OCI_REGISTRY: ${{ env.RELEASE_NIGHTLY_HELM_OCI_REGISTRY }}
+          RELEASE_STABLE_HELM_REPOSITORY: ${{ env.RELEASE_STABLE_HELM_REPOSITORY }}
           INCLUDE_HELM: ${{ needs.plan-release.outputs.include_helm }}
           CHART_VERSION: ${{ needs.stage-helm.outputs.chart_version }}
           POLL_RESULT: ${{ needs.poll-final-release.result }}
@@ -1221,7 +1223,10 @@ jobs:
               if (process.env.INCLUDE_HELM === "true") {
                 lines.push("*:helm: Helm chart published:*");
                 lines.push("```");
-                lines.push(`nemo-platform:${process.env.CHART_VERSION}`);
+                const helmInstall = releaseType === "stable"
+                  ? `helm install nemo-platform nemo-platform --repo ${process.env.RELEASE_STABLE_HELM_REPOSITORY} --version ${process.env.CHART_VERSION}`
+                  : `helm install nemo-platform ${process.env.RELEASE_NIGHTLY_HELM_OCI_REGISTRY}/nemo-platform --version ${process.env.CHART_VERSION}`;
+                lines.push(helmInstall);
                 lines.push("```");
               }
             } else {
