@@ -19,6 +19,12 @@ from pydantic import BaseModel, Field
 
 DeploymentStatus = Literal["pending", "starting", "running", "failed", "deleting"]
 
+# Where an agent's runtime lives. ``managed`` agents are run by NeMo Platform
+# (config compiled to a ``nat serve`` deployment). ``external`` agents run
+# outside the platform; NMP only holds a pointer (``endpoint``) plus the A2A
+# agent card fetched at registration time — it never spawns them.
+AgentSource = Literal["managed", "external"]
+
 # Runtime backend for an AgentDeployment. ``subprocess`` (the default) runs the
 # agent as a local ``nat serve`` process reachable on a loopback ``endpoint``.
 # ``docker``/``k8s`` run the agent as a durable container deployment via the
@@ -139,7 +145,7 @@ class Agent(NemoEntity, entity_type="agent"):
     description: str = Field(default="", description="Human-readable description of the agent.")
     config: dict[str, Any] = Field(
         default_factory=dict,
-        description="Agent config dict interpreted according to config_format.",
+        description="Agent config dict interpreted according to config_format. Empty for external agents.",
     )
     config_format: str = Field(
         default=NAT_WORKFLOW_CONFIG_FORMAT,
@@ -149,6 +155,37 @@ class Agent(NemoEntity, entity_type="agent"):
             "`nemo-agents-spec-v1` identifies the Platform-owned agent.yaml spec format."
         ),
     )
+    source: AgentSource = Field(
+        default="managed",
+        description=(
+            "'managed' (default) agents are deployed and run by NeMo Platform. "
+            "'external' agents run outside the platform; NMP holds only a pointer to them."
+        ),
+    )
+    endpoint: str = Field(
+        default="",
+        description=(
+            "Base URL of an external agent (e.g. http://host:10000). Empty for managed "
+            "agents, whose runtime address lives on the AgentDeployment instead."
+        ),
+    )
+    card: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "A2A agent card fetched from an external agent at registration "
+            "(name, description, skills). Empty for managed agents."
+        ),
+    )
+
+
+def is_external_agent(agent: Agent) -> bool:
+    """Return True when *agent* runs outside NeMo Platform (``source == 'external'``).
+
+    The single predicate for the managed/external branch — mirrors
+    :func:`is_container_deployment_mode` so consumers don't reimplement the
+    string comparison inline.
+    """
+    return agent.source == "external"
 
 
 class AgentDeployment(NemoEntity, entity_type="agent_deployment"):

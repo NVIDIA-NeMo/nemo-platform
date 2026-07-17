@@ -21,6 +21,7 @@ Naming conventions:
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlparse
 
 from nemo_agents_plugin.entities import (
     NAT_WORKFLOW_CONFIG_FORMAT,
@@ -30,7 +31,7 @@ from nemo_agents_plugin.entities import (
     DeploymentStatus,
 )
 from nemo_platform_plugin.schema import NemoFilter, NemoListResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # ---------------------------------------------------------------------------
 # Request bodies — plain BaseModel, named by convention
@@ -38,12 +39,46 @@ from pydantic import BaseModel, Field
 
 
 class CreateAgentRequest(BaseModel):
-    """Request body for ``POST /v2/workspaces/{workspace}/agents``."""
+    """Request body for ``POST /v2/workspaces/{workspace}/agents``.
+
+    Creates either a **managed** agent (supply ``config`` — a NAT workflow the
+    platform will run) or an **external** agent (supply ``url`` — a pointer to
+    a NAT agent already running elsewhere, whose A2A card the platform fetches
+    at creation). Provide exactly one of ``config`` or ``url``.
+    """
 
     name: str = Field(description="Unique agent name within the workspace.")
-    description: str = Field(default="", description="Human-readable description.")
-    config: dict[str, Any] = Field(description="Agent config dict interpreted according to config_format.")
+    description: str = Field(
+        default="",
+        description="Human-readable description. For external agents, falls back to the agent card's description.",
+    )
+    config: dict[str, Any] | None = Field(
+        default=None,
+        description="NAT workflow config dict. Required for a managed agent; omit for external.",
+    )
     config_format: str = Field(default=NAT_WORKFLOW_CONFIG_FORMAT, description="Config format identifier.")
+    url: str | None = Field(
+        default=None,
+        description="Base URL of a running external agent (e.g. http://host:10000). Provide instead of config.",
+    )
+
+    @model_validator(mode="after")
+    def _require_config_xor_url(self) -> CreateAgentRequest:
+        if self.url:
+            if self.config is not None:
+                raise ValueError("Provide either 'config' (managed agent) or 'url' (external agent), not both.")
+            parsed = urlparse(self.url.strip())
+            if parsed.scheme not in ("http", "https") or not parsed.hostname:
+                raise ValueError("'url' must be a valid http(s) URL, e.g. http://host:10000.")
+        elif self.config is None:
+            raise ValueError("'config' is required for a managed agent, or provide 'url' to register an external one.")
+        return self
+
+
+class AgentReachability(BaseModel):
+    """Response for ``GET /v2/workspaces/{workspace}/agents/{name}/reachability``."""
+
+    reachable: bool = Field(description="Whether the external agent's endpoint answered a liveness probe.")
 
 
 class CreateDeploymentRequest(BaseModel):

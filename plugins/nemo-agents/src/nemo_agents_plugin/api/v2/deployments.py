@@ -23,7 +23,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from nemo_agents_plugin.api.v2._perms import DeploymentPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.authz import scope
-from nemo_agents_plugin.entities import Agent, AgentDeployment, is_container_deployment_mode
+from nemo_agents_plugin.entities import (
+    Agent,
+    AgentDeployment,
+    is_container_deployment_mode,
+    is_external_agent,
+)
 from nemo_agents_plugin.schema import (
     CreateDeploymentRequest,
     DeploymentFilter,
@@ -69,6 +74,14 @@ async def create_deployment(
     except Exception as exc:
         logger.exception("Failed to look up agent '%s'", body.agent)
         raise HTTPException(status_code=500, detail="Failed to look up agent.") from exc
+
+    # External agents run outside NeMo Platform; there is nothing for the
+    # platform to deploy. Reject rather than spawn a doomed empty-config process.
+    if is_external_agent(agent):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Agent '{body.agent}' is external and runs outside NeMo Platform; it cannot be deployed.",
+        )
 
     # 2. Build deployment name (auto-generate if not provided)
     deployment_name = body.name or f"{body.agent}-{secrets.token_hex(4)}"

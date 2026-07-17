@@ -615,3 +615,211 @@ class TestContainerModeByAgentName:
         )
 
         assert resp.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# External agent chat — OpenAI chat/completions <-> A2A message/send bridge
+# ---------------------------------------------------------------------------
+
+
+def _make_external_agent(name: str = "ext", url: str = "http://host:10000") -> Agent:
+    return Agent(
+        name=name,
+        workspace="default",
+        source="external",
+        endpoint=url,
+        card={"url": url, "name": "Ext Agent"},
+    )
+
+
+class TestExternalAgentChat:
+    _URL = "/apis/agents/v2/workspaces/default/agents/ext/chat/completions"
+
+    def test_non_stream_returns_openai_completion(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+        monkeypatch.setattr(gateway_module, "send_a2a_message", AsyncMock(return_value="42 degrees"))
+
+        resp = client.post(self._URL, json={"messages": [{"role": "user", "content": "temp?"}]})
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["object"] == "chat.completion"
+        assert body["choices"][0]["message"]["content"] == "42 degrees"
+
+    def test_stream_forwards_a2a_deltas_as_sse(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+
+        async def fake_stream(endpoint: str, text: str):
+            for delta in ["sun", "ny ", "24C"]:
+                yield delta
+
+        monkeypatch.setattr(gateway_module, "stream_a2a_message", fake_stream)
+
+        resp = client.post(
+            self._URL,
+            json={"stream": True, "messages": [{"role": "user", "content": "weather?"}]},
+        )
+
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/event-stream")
+        assert '"content": "sun"' in resp.text
+        assert '"content": "24C"' in resp.text
+        assert '"finish_reason": "stop"' in resp.text
+        assert "[DONE]" in resp.text
+
+    def test_stream_mid_error_surfaced_as_content(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nemo_agents_plugin.a2a import A2AMessageError
+
+        mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+
+        async def boom(endpoint: str, text: str):
+            raise A2AMessageError("upstream gone")
+            yield  # pragma: no cover - makes this an async generator
+
+        monkeypatch.setattr(gateway_module, "stream_a2a_message", boom)
+
+        resp = client.post(
+            self._URL,
+            json={"stream": True, "messages": [{"role": "user", "content": "hi"}]},
+        )
+
+        assert resp.status_code == 200
+        assert "external agent error" in resp.text
+        assert "[DONE]" in resp.text
+
+    def test_single_turn_forwards_verbatim(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+        send = AsyncMock(return_value="ok")
+        monkeypatch.setattr(gateway_module, "send_a2a_message", send)
+
+        client.post(self._URL, json={"messages": [{"role": "user", "content": "just this"}]})
+
+        assert send.await_args is not None
+        assert send.await_args.args[1] == "just this"
+
+    def test_multi_turn_folds_history_into_transcript(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # NAT's A2A executor is message-only, so prior turns are folded into the
+        # message rather than threaded via contextId.
+        mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+        send = AsyncMock(return_value="ok")
+        monkeypatch.setattr(gateway_module, "send_a2a_message", send)
+
+        client.post(
+            self._URL,
+            json={
+                "messages": [
+                    {"role": "user", "content": "first"},
+                    {"role": "assistant", "content": "reply"},
+                    {"role": "user", "content": "second"},
+                ]
+            },
+        )
+
+        assert send.await_args is not None
+        sent = send.await_args.args[1]
+        assert "User: first" in sent
+        assert "Assistant: reply" in sent
+        assert "User: second" in sent
+
+    def test_managed_agent_returns_400(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents/calc/chat/completions",
+            json={"messages": [{"role": "user", "content": "hi"}]},
+        )
+
+        assert resp.status_code == 400
+
+    def test_agent_not_found_returns_404(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.get = AsyncMock(side_effect=NemoEntityNotFoundError("nope"))
+
+        resp = client.post(self._URL, json={"messages": [{"role": "user", "content": "hi"}]})
+
+        assert resp.status_code == 404
+
+    def test_no_user_message_returns_400(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+
+        resp = client.post(self._URL, json={"messages": [{"role": "system", "content": "x"}]})
+
+        assert resp.status_code == 400
+
+    def test_a2a_failure_returns_502(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nemo_agents_plugin.a2a import A2AMessageError
+
+        mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+        monkeypatch.setattr(gateway_module, "send_a2a_message", AsyncMock(side_effect=A2AMessageError("boom")))
+
+        resp = client.post(self._URL, json={"messages": [{"role": "user", "content": "hi"}]})
+
+        assert resp.status_code == 502
+
+
+class TestExternalAgentGenerate:
+    """nat eval hits .../agents/{name}/-/generate/full -> A2A bridge for external agents."""
+
+    _URL = "/apis/agents/v2/workspaces/default/agents/ext/-/generate/full"
+
+    def test_generate_full_bridges_to_a2a(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+        send = AsyncMock(return_value="156")
+        monkeypatch.setattr(gateway_module, "send_a2a_message", send)
+
+        resp = client.post(self._URL, json={"input_message": "What is 12 * 13?"})
+
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/event-stream")
+        assert '"value": "156"' in resp.text
+        assert send.await_args is not None
+        assert send.await_args.args[1] == "What is 12 * 13?"
+
+    def test_missing_input_message_returns_400(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+        monkeypatch.setattr(gateway_module, "send_a2a_message", AsyncMock(return_value="x"))
+
+        resp = client.post(self._URL, json={"nope": "x"})
+
+        assert resp.status_code == 400
+
+    def test_chat_completions_via_proxy_bridges_to_a2a(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The CLI `nemo agents invoke` and SDK POST /-/v1/chat/completions — the
+        # external branch must bridge that (OpenAI chat), not just generate.
+        mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+        monkeypatch.setattr(gateway_module, "send_a2a_message", AsyncMock(return_value="4"))
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents/ext/-/v1/chat/completions",
+            json={"messages": [{"role": "user", "content": "2+2?"}]},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["choices"][0]["message"]["content"] == "4"
+
+    def test_unsupported_path_returns_400(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents/ext/-/health",
+            json={},
+        )
+
+        assert resp.status_code == 400

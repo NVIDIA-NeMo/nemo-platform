@@ -27,16 +27,24 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import AsyncIterator
+import time
+from typing import Any, AsyncIterator
 from urllib.parse import urljoin, urlparse, urlunparse
+from uuid import uuid4
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+from nemo_agents_plugin.a2a import A2AMessageError, send_a2a_message, stream_a2a_message
 from nemo_agents_plugin.api.v2._perms import GatewayPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.authz import scope
-from nemo_agents_plugin.entities import Agent, AgentDeployment, is_container_deployment_mode
+from nemo_agents_plugin.entities import (
+    Agent,
+    AgentDeployment,
+    is_container_deployment_mode,
+    is_external_agent,
+)
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 
@@ -124,12 +132,24 @@ async def _serve_agent_proxy(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient,
-) -> StreamingResponse:
-    """Find the first ``running`` deployment for the named agent and forward the request to it.
+) -> StreamingResponse | JSONResponse:
+    """Forward a request addressed by agent name to the agent behind it.
 
-    Returns ``503`` if no running deployment is found. Shared by the read/write route handlers,
-    which differ only in their authorization scope (``agents:read`` vs ``agents:write``).
+    Managed agents proxy to their first ``running`` deployment (``503`` if none).
+    External agents have no deployment; their chat/completions and NAT ``generate``
+    traffic is bridged to A2A instead. Shared by the read/write route handlers,
+    which differ only in authorization scope.
     """
+    try:
+        agent = await entity_client.get(Agent, name=name, workspace=workspace)
+    except NemoEntityNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found in workspace '{workspace}'.") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    if is_external_agent(agent):
+        return await _serve_external_agent(name, trailing_uri, request, agent)
+
     endpoint = await _resolve_agent_endpoint(name, workspace, entity_client)
     return await _proxy(request, endpoint, trailing_uri, model_name=name)
 
@@ -139,6 +159,7 @@ async def _serve_agent_proxy(
     methods=_PROXY_READ_METHODS,
     tags=["Agent Gateway"],
     include_in_schema=False,
+    response_model=None,
 )
 @scope.read
 @path_rule(
@@ -151,7 +172,7 @@ async def proxy_by_agent_name_read(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
-) -> StreamingResponse:
+) -> StreamingResponse | JSONResponse:
     """Read-scoped (GET/HEAD/OPTIONS) proxy to the active deployment for *agent name*."""
     return await _serve_agent_proxy(workspace, name, trailing_uri, request, entity_client)
 
@@ -161,6 +182,7 @@ async def proxy_by_agent_name_read(
     methods=_PROXY_WRITE_METHODS,
     tags=["Agent Gateway"],
     include_in_schema=False,
+    response_model=None,
 )
 @scope.write
 @path_rule(
@@ -173,7 +195,7 @@ async def proxy_by_agent_name_write(
     trailing_uri: str,
     request: Request,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
-) -> StreamingResponse:
+) -> StreamingResponse | JSONResponse:
     """Write-scoped (POST/PUT/PATCH/DELETE) proxy to the active deployment for *agent name*."""
     return await _serve_agent_proxy(workspace, name, trailing_uri, request, entity_client)
 
@@ -415,4 +437,243 @@ async def _proxy(
         status_code=status_code_holder[0],
         headers={k: v for k, v in response_headers.items() if k.lower() != "content-length"},
         media_type=content_type,
+    )
+
+
+# ---------------------------------------------------------------------------
+# External agent chat — OpenAI chat/completions <-> A2A message/send bridge
+# ---------------------------------------------------------------------------
+#
+# External agents run outside NeMo Platform and speak A2A JSON-RPC, not the
+# OpenAI chat API the Studio chat playground uses. This route accepts an
+# OpenAI chat/completions request, forwards the latest user turn to the agent
+# via ``message/send``, and returns the reply in OpenAI shape (SSE when the
+# client asked to stream). Managed agents keep using the deployment proxy above.
+
+
+def _message_text(message: Any) -> str:
+    """Extract text from one OpenAI message (``content`` may be str or parts)."""
+    if not isinstance(message, dict):
+        return ""
+    content = message.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(part["text"] for part in content if isinstance(part, dict) and isinstance(part.get("text"), str))
+    return ""
+
+
+def _conversation_prompt(messages: Any) -> str:
+    """Build a single A2A message that carries the conversation so far.
+
+    NAT's A2A executor is message-only (no server-side ``contextId`` memory), so
+    multi-turn context can't be threaded via the protocol — the client (OpenAI
+    chat) sends the full history each turn, and we fold prior user/assistant
+    turns into a transcript ahead of the latest user message. A single turn is
+    sent verbatim so simple agents aren't handed a transcript wrapper.
+    """
+    if not isinstance(messages, list):
+        return ""
+    turns = [
+        (m.get("role"), _message_text(m))
+        for m in messages
+        if isinstance(m, dict) and m.get("role") in ("user", "assistant")
+    ]
+    turns = [(role, text) for role, text in turns if text]
+    if not turns:
+        return ""
+    if len(turns) == 1:
+        return turns[0][1]
+
+    *prior, (_, latest) = turns
+    transcript = "\n".join(f"{'User' if role == 'user' else 'Assistant'}: {text}" for role, text in prior)
+    return f"Continue this conversation.\n\n{transcript}\n\nUser: {latest}"
+
+
+def _openai_completion(text: str, model: str) -> dict[str, Any]:
+    return {
+        "id": f"chatcmpl-{uuid4().hex}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": text},
+                "finish_reason": "stop",
+            }
+        ],
+    }
+
+
+def _openai_chunk(completion_id: str, created: int, model: str, delta: dict[str, Any], finish: str | None) -> bytes:
+    payload = {
+        "id": completion_id,
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model,
+        "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
+    }
+    return f"data: {json.dumps(payload)}\n\n".encode()
+
+
+async def _stream_openai_from_a2a(endpoint: str, text: str, model: str) -> AsyncIterator[bytes]:
+    """Stream an external agent's A2A reply as OpenAI chat.completion.chunk SSE.
+
+    Forwards each A2A text delta as a content chunk. A mid-stream error is
+    surfaced as content (the HTTP status is already 200 once streaming starts),
+    so the user sees it in the chat rather than a silent stall.
+    """
+    created = int(time.time())
+    completion_id = f"chatcmpl-{uuid4().hex}"
+    role_sent = False
+    try:
+        async for delta in stream_a2a_message(endpoint, text):
+            payload = {"content": delta} if role_sent else {"role": "assistant", "content": delta}
+            role_sent = True
+            yield _openai_chunk(completion_id, created, model, payload, None)
+        if not role_sent:
+            yield _openai_chunk(completion_id, created, model, {"role": "assistant", "content": ""}, None)
+    except A2AMessageError as exc:
+        note = f"[external agent error: {exc}]"
+        payload = {"content": f"\n{note}"} if role_sent else {"role": "assistant", "content": note}
+        yield _openai_chunk(completion_id, created, model, payload, None)
+    yield _openai_chunk(completion_id, created, model, {}, "stop")
+    yield b"data: [DONE]\n\n"
+
+
+@router.post(
+    "/agents/{name}/chat/completions",
+    tags=["Agent Gateway"],
+    include_in_schema=False,
+    response_model=None,
+)
+@scope.write
+@path_rule(
+    callers=[CallerKind.PRINCIPAL],
+    permissions=[GatewayPerms.INVOKE],
+)
+async def external_agent_chat_completions(
+    workspace: str,
+    name: str,
+    request: Request,
+    entity_client: NemoEntitiesClient = Depends(get_entity_client),
+) -> StreamingResponse | JSONResponse:
+    """Bridge an OpenAI chat/completions call to an external agent's A2A endpoint."""
+    try:
+        agent = await entity_client.get(Agent, name=name, workspace=workspace)
+    except NemoEntityNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found in workspace '{workspace}'.") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    if not is_external_agent(agent):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Agent '{name}' is managed; chat through its deployment, not this endpoint.",
+        )
+
+    endpoint = _external_a2a_endpoint(agent, name)
+    body = await _read_json_object(request)
+    return await _external_openai_chat(name, endpoint, body)
+
+
+# ---------------------------------------------------------------------------
+# External agent bridge — OpenAI chat/completions and NAT /generate <-> A2A
+# ---------------------------------------------------------------------------
+#
+# External agents have no deployment, so requests addressed to the agent-name
+# proxy (``/agents/{name}/-/...``) land in :func:`_serve_external_agent`. Two
+# invocation shapes are bridged to A2A: OpenAI ``chat/completions`` (Studio, the
+# CLI ``nemo agents invoke``, and the SDK) and NAT ``generate/full`` (``nat eval``).
+
+
+def _endpoint_host(url: str) -> str:
+    """Host of *url* for logging — never the full URL (may carry embedded creds)."""
+    try:
+        return urlparse(url).hostname or "unknown"
+    except ValueError:
+        return "unknown"
+
+
+def _external_a2a_endpoint(agent: Agent, name: str) -> str:
+    """Return the vetted URL to reach an external agent.
+
+    Always the registered ``endpoint`` — never the card's self-reported ``url``,
+    which is remote-controlled content and would let a registered agent redirect
+    all subsequent traffic to an arbitrary (e.g. internal) host.
+    """
+    if not agent.endpoint:
+        raise HTTPException(status_code=400, detail=f"External agent '{name}' has no endpoint.")
+    return agent.endpoint
+
+
+async def _read_json_object(request: Request) -> dict[str, Any]:
+    try:
+        body = await request.json()
+    except Exception:
+        return {}
+    return body if isinstance(body, dict) else {}
+
+
+async def _external_openai_chat(name: str, endpoint: str, body: dict[str, Any]) -> StreamingResponse | JSONResponse:
+    """Translate an OpenAI chat/completions body to A2A and return OpenAI shape."""
+    text = _conversation_prompt(body.get("messages"))
+    if not text:
+        raise HTTPException(status_code=400, detail="Request has no user message to send.")
+
+    model = body.get("model") or name
+
+    # Streaming: forward A2A deltas as they arrive (message/stream), so the UI
+    # shows progress instead of freezing until the agent finishes.
+    if body.get("stream"):
+        return StreamingResponse(_stream_openai_from_a2a(endpoint, text, model), media_type="text/event-stream")
+
+    # Non-streaming: single message/send, returned as one OpenAI completion.
+    try:
+        reply = await send_a2a_message(endpoint, text)
+    except A2AMessageError as exc:
+        logger.warning("External agent '%s' chat failed (%s): %s", name, _endpoint_host(endpoint), exc)
+        raise HTTPException(status_code=502, detail=f"External agent chat failed: {exc}") from exc
+    return JSONResponse(_openai_completion(reply, model))
+
+
+async def _generate_full_stream(text: str) -> AsyncIterator[bytes]:
+    # nat eval joins the ``value`` fields of every ``data:`` line; one line is enough.
+    yield f"data: {json.dumps({'value': text})}\n\n".encode()
+
+
+async def _serve_external_generate_full(name: str, endpoint: str, request: Request) -> StreamingResponse:
+    body = await _read_json_object(request)
+    question = body.get("input_message")
+    if not isinstance(question, str) or not question:
+        raise HTTPException(status_code=400, detail="Request has no 'input_message' to send.")
+    try:
+        reply = await send_a2a_message(endpoint, question)
+    except A2AMessageError as exc:
+        logger.warning("External agent '%s' generate failed (%s): %s", name, _endpoint_host(endpoint), exc)
+        raise HTTPException(status_code=502, detail=f"External agent generate failed: {exc}") from exc
+    return StreamingResponse(_generate_full_stream(reply), media_type="text/event-stream")
+
+
+async def _serve_external_agent(
+    name: str, trailing_uri: str, request: Request, agent: Agent
+) -> StreamingResponse | JSONResponse:
+    """Bridge an agent-name proxy request for an external agent to A2A.
+
+    ``chat/completions`` (Studio / CLI invoke / SDK) → OpenAI↔A2A translation;
+    ``generate`` (nat eval) → NAT-generate↔A2A translation. Anything else 400s —
+    external agents have no deployment to proxy arbitrary paths to.
+    """
+    endpoint = _external_a2a_endpoint(agent, name)
+    if trailing_uri.endswith("chat/completions"):
+        return await _external_openai_chat(name, endpoint, await _read_json_object(request))
+    if trailing_uri.startswith("generate"):
+        return await _serve_external_generate_full(name, endpoint, request)
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f"External agent '{name}' supports chat/completions and generate only; "
+            f"'{trailing_uri}' is not available (the agent runs outside NeMo Platform)."
+        ),
     )

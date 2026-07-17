@@ -194,6 +194,104 @@ class TestCreateAgent:
 
 
 # ---------------------------------------------------------------------------
+# POST /agents with `url` — create an external agent (pointer to a running one)
+# ---------------------------------------------------------------------------
+
+
+_CARD = {"name": "Ext Agent", "description": "runs elsewhere", "skills": [{"id": "s1", "name": "s1"}]}
+
+
+class TestCreateExternalAgent:
+    def test_url_payload_fetches_card_and_creates_external_agent(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(agents_router_module, "fetch_agent_card", AsyncMock(return_value=_CARD))
+        mock_entity_client.create = AsyncMock(side_effect=lambda a: a)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents",
+            json={"name": "ext", "url": "http://host:10000"},
+        )
+
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["source"] == "external"
+        assert body["endpoint"] == "http://host:10000"
+        assert body["card"]["name"] == "Ext Agent"
+        # Description falls back to the card when not supplied.
+        assert body["description"] == "runs elsewhere"
+
+    def test_explicit_description_overrides_card(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(agents_router_module, "fetch_agent_card", AsyncMock(return_value=_CARD))
+        mock_entity_client.create = AsyncMock(side_effect=lambda a: a)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents",
+            json={"name": "ext", "url": "http://host:10000", "description": "mine"},
+        )
+
+        assert resp.status_code == 201
+        assert resp.json()["description"] == "mine"
+
+    def test_unreachable_card_returns_502(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nemo_agents_plugin.a2a import AgentCardError
+
+        monkeypatch.setattr(
+            agents_router_module,
+            "fetch_agent_card",
+            AsyncMock(side_effect=AgentCardError("could not reach agent")),
+        )
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents",
+            json={"name": "ext", "url": "http://host:10000"},
+        )
+
+        assert resp.status_code == 502
+        assert "could not reach" in resp.json()["detail"]
+        mock_entity_client.create.assert_not_called()
+
+    def test_conflict_returns_409(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(agents_router_module, "fetch_agent_card", AsyncMock(return_value=_CARD))
+        mock_entity_client.create = AsyncMock(side_effect=NemoEntityConflictError("already exists"))
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents",
+            json={"name": "ext", "url": "http://host:10000"},
+        )
+
+        assert resp.status_code == 409
+
+    def test_both_config_and_url_returns_422(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents",
+            json={"name": "ext", "url": "http://host:10000", "config": {"workflow": {}}},
+        )
+        assert resp.status_code == 422
+
+    def test_neither_config_nor_url_returns_422(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents",
+            json={"name": "ext"},
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.parametrize("bad_url", ["http://[", "not-a-url", "ftp://host", "http://"])
+    def test_malformed_url_returns_422(self, client: TestClient, mock_entity_client: AsyncMock, bad_url: str) -> None:
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents",
+            json={"name": "ext", "url": bad_url},
+        )
+        assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
 # GET /agents — list (NemoListResponse envelope)
 # ---------------------------------------------------------------------------
 
@@ -398,3 +496,70 @@ class TestDeleteAgent:
         resp = client.delete("/apis/agents/v2/workspaces/default/agents/calc")
 
         assert resp.status_code == 500
+
+
+def _make_external(name: str = "ext", url: str = "http://host:10000") -> Agent:
+    a = Agent(name=name, workspace="default", source="external", endpoint=url, card={"name": "old"})
+    a._id = f"agent-{name}-id"
+    return a
+
+
+class TestRefreshExternalAgent:
+    _URL = "/apis/agents/v2/workspaces/default/agents/ext/refresh"
+
+    def test_refresh_updates_card(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_external())
+        monkeypatch.setattr(agents_router_module, "fetch_agent_card", AsyncMock(return_value={"name": "new"}))
+        mock_entity_client.update = AsyncMock(side_effect=lambda a: a)
+
+        resp = client.post(self._URL)
+
+        assert resp.status_code == 200
+        assert resp.json()["card"]["name"] == "new"
+
+    def test_refresh_managed_returns_400(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
+        resp = client.post("/apis/agents/v2/workspaces/default/agents/calc/refresh")
+        assert resp.status_code == 400
+
+    def test_refresh_not_found_returns_404(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.get = AsyncMock(side_effect=NemoEntityNotFoundError("nope"))
+        resp = client.post(self._URL)
+        assert resp.status_code == 404
+
+    def test_refresh_unreachable_returns_502(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nemo_agents_plugin.a2a import AgentCardError
+
+        mock_entity_client.get = AsyncMock(return_value=_make_external())
+        monkeypatch.setattr(agents_router_module, "fetch_agent_card", AsyncMock(side_effect=AgentCardError("down")))
+        resp = client.post(self._URL)
+        assert resp.status_code == 502
+
+
+class TestExternalAgentReachability:
+    _URL = "/apis/agents/v2/workspaces/default/agents/ext/reachability"
+
+    @pytest.mark.parametrize("reachable", [True, False])
+    def test_reachability(
+        self,
+        client: TestClient,
+        mock_entity_client: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+        reachable: bool,
+    ) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_external())
+        monkeypatch.setattr(agents_router_module, "probe_agent_reachable", AsyncMock(return_value=reachable))
+
+        resp = client.get(self._URL)
+
+        assert resp.status_code == 200
+        assert resp.json()["reachable"] is reachable
+
+    def test_reachability_managed_returns_400(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
+        resp = client.get("/apis/agents/v2/workspaces/default/agents/calc/reachability")
+        assert resp.status_code == 400

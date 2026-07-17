@@ -8,7 +8,11 @@ paths:
       tags:
       - Agents
       summary: Create Agent
-      description: Create a new agent from a NAT workflow config.
+      description: "Create an agent.\n\nManaged (``config`` supplied): stores the\
+        \ NAT workflow the platform will run.\nExternal (``url`` supplied): fetches\
+        \ the running agent's A2A card and stores\na pointer \u2014 the platform never\
+        \ runs it. ``CreateAgentRequest`` enforces that\nexactly one of ``config``/``url``\
+        \ is present."
       operationId: create_agent_apis_agents_v2_workspaces__workspace__agents_post
       parameters:
       - name: workspace
@@ -148,6 +152,77 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/agents/{name}/reachability:
+    get:
+      tags:
+      - Agents
+      summary: External Agent Reachability
+      description: Liveness probe for an external agent's endpoint (for a health badge).
+      operationId: external_agent_reachability_apis_agents_v2_workspaces__workspace__agents__name__reachability_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentReachability'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/agents/{name}/refresh:
+    post:
+      tags:
+      - Agents
+      summary: Refresh External Agent
+      description: 'Re-fetch an external agent''s A2A card and update the stored copy.
+
+
+        The card is captured once at registration; this refreshes it (e.g. after the
+
+        agent''s skills change). Returns 502 if the agent can''t be reached.'
+      operationId: refresh_external_agent_apis_agents_v2_workspaces__workspace__agents__name__refresh_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
         '422':
           description: Validation Error
           content:
@@ -2281,6 +2356,7 @@ components:
           type: object
           title: Config
           description: Agent config dict interpreted according to config_format.
+            Empty for external agents.
         config_format:
           type: string
           title: Config Format
@@ -2288,6 +2364,29 @@ components:
             `nat-workflow-v1` is the default legacy NAT workflow format; `nemo-agents-spec-v1`
             identifies the Platform-owned agent.yaml spec format.
           default: nat-workflow-v1
+        source:
+          type: string
+          enum:
+          - managed
+          - external
+          title: Source
+          description: '''managed'' (default) agents are deployed and run by NeMo
+            Platform. ''external'' agents run outside the platform; NMP holds only
+            a pointer to them.'
+          default: managed
+        endpoint:
+          type: string
+          title: Endpoint
+          description: Base URL of an external agent (e.g. http://host:10000). Empty
+            for managed agents, whose runtime address lives on the AgentDeployment
+            instead.
+          default: ''
+        card:
+          additionalProperties: true
+          type: object
+          title: Card
+          description: A2A agent card fetched from an external agent at registration
+            (name, description, skills). Empty for managed agents.
         id:
           type: string
           title: Id
@@ -2475,6 +2574,17 @@ components:
         \ ``agent_deployment``\nLifecycle: pending \u2192 starting \u2192 running\
         \ | failed.\nThe :class:`~nemo_agents_plugin.runner.controller.AgentDeploymentController`\n\
         drives state transitions by reconciling this entity against the\n:class:`~nemo_agents_plugin.runner.backend.RunnerBackend`."
+    AgentReachability:
+      properties:
+        reachable:
+          type: boolean
+          title: Reachable
+          description: Whether the external agent's endpoint answered a liveness probe.
+      type: object
+      required:
+      - reachable
+      title: AgentReachability
+      description: Response for ``GET /v2/workspaces/{workspace}/agents/{name}/reachability``.
     AnalyzeBatchConfig:
       properties:
         batch:
@@ -2653,24 +2763,34 @@ components:
         description:
           type: string
           title: Description
-          description: Human-readable description.
+          description: Human-readable description. For external agents, falls back
+            to the agent card's description.
           default: ''
         config:
+          title: Config
+          description: NAT workflow config dict. Required for a managed agent; omit
+            for external.
           additionalProperties: true
           type: object
-          title: Config
-          description: Agent config dict interpreted according to config_format.
         config_format:
           type: string
           title: Config Format
           description: Config format identifier.
           default: nat-workflow-v1
+        url:
+          title: Url
+          description: Base URL of a running external agent (e.g. http://host:10000).
+            Provide instead of config.
+          type: string
       type: object
       required:
       - name
-      - config
       title: CreateAgentRequest
-      description: Request body for ``POST /v2/workspaces/{workspace}/agents``.
+      description: "Request body for ``POST /v2/workspaces/{workspace}/agents``.\n\
+        \nCreates either a **managed** agent (supply ``config`` \u2014 a NAT workflow\
+        \ the\nplatform will run) or an **external** agent (supply ``url`` \u2014\
+        \ a pointer to\na NAT agent already running elsewhere, whose A2A card the\
+        \ platform fetches\nat creation). Provide exactly one of ``config`` or ``url``."
     CreateDeploymentRequest:
       properties:
         agent:
