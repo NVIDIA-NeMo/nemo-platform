@@ -34,7 +34,7 @@ from nemo_evaluator_sdk.agent_inference import make_agent_inference_fn
 DEFAULT_HERMES_URL = "http://127.0.0.1:8642/v1/responses"
 EXPECTED_TEXT = "streaming works"
 # Export the key configured for the Hermes API server under this name.
-HERMES_TOKEN_ENV_NAME = "HERMES_TOKEN"
+API_SERVER_KEY_ENV_NAME = "API_SERVER_KEY"
 # Hermes documents how to configure the API server key here.
 HERMES_API_SERVER_DOCS_URL = (
     "https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server#1-enable-the-api-server"
@@ -124,11 +124,11 @@ class HermesStreamTranslator:
 
 
 def _require_api_server_key() -> None:
-    if os.getenv(HERMES_TOKEN_ENV_NAME):
+    if os.getenv(API_SERVER_KEY_ENV_NAME):
         return
     raise RuntimeError(
-        f"{HERMES_TOKEN_ENV_NAME} is not set. Export the Hermes API server key before running this example:\n"
-        f"  export {HERMES_TOKEN_ENV_NAME}=<your-api-server-key>\n"
+        f"{API_SERVER_KEY_ENV_NAME} is not set. Export the Hermes API server key before running this example:\n"
+        f"  export {API_SERVER_KEY_ENV_NAME}=<your-api-server-key>\n"
         f"See {HERMES_API_SERVER_DOCS_URL}"
     )
 
@@ -161,7 +161,7 @@ async def evaluate(
     agent = GenericAgent(
         name="hermes-agent",
         url=agent_url or os.getenv("HERMES_AGENT_URL", DEFAULT_HERMES_URL),
-        api_key_secret=SecretRef(HERMES_TOKEN_ENV_NAME),
+        api_key_secret=SecretRef(API_SERVER_KEY_ENV_NAME),
         body={
             "model": "hermes-agent",
             "input": "{{ instruction }}",
