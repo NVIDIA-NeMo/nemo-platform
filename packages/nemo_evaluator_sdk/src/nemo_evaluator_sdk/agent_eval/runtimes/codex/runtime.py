@@ -196,11 +196,7 @@ class CodexCliAgentRuntime:
             )
 
         try:
-            if final_output_path.exists():
-                output_text = final_output_path.read_text(encoding="utf-8")
-            else:
-                output_text = stdout_text
-                _write_private_text(final_output_path, output_text)
+            output_text = _read_private_final_output(final_output_path, fallback=stdout_text)
         except Exception as exc:
             return _failed_codex_trial(task, evidence_dir, exc, runtime_name=self._runtime_name)
         return AgentEvalTrial(
@@ -541,6 +537,28 @@ def _write_private_text(path: Path, content: str) -> None:
         temporary_path.unlink(missing_ok=True)
 
 
+def _read_private_final_output(path: Path, *, fallback: str) -> str:
+    """Read a regular agent-created final output without following it, then republish it privately."""
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        _write_private_text(path, fallback)
+        return fallback
+
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise PermissionError(f"final output is not a regular file: {path}")
+        with os.fdopen(descriptor, "r", encoding="utf-8") as output_file:
+            descriptor = -1
+            output_text = output_file.read()
+    finally:
+        if descriptor != -1:
+            os.close(descriptor)
+
+    _write_private_text(path, output_text)
+    return output_text
+
+
 def _validate_private_tree(root: Path) -> None:
     """Require a host-owned, owner-only tree without following agent-created symlinks."""
     expected_uid = os.getuid()
@@ -561,8 +579,11 @@ def _validate_private_tree(root: Path) -> None:
                 raise PermissionError(f"directory is not owner-readable, writable, and traversable: {path} ({mode:o})")
             with os.scandir(path) as entries:
                 pending.extend(Path(entry.path) for entry in entries)
-        elif mode & 0o600 != 0o600:
-            raise PermissionError(f"file is not owner-readable and writable: {path} ({mode:o})")
+        elif stat.S_ISREG(path_stat.st_mode):
+            if mode & 0o600 != 0o600:
+                raise PermissionError(f"file is not owner-readable and writable: {path} ({mode:o})")
+        else:
+            raise PermissionError(f"artifact is not a regular file or directory: {path}")
 
 
 async def _terminate_process(process: Any | None) -> None:

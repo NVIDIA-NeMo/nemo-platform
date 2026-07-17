@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import asyncio
 import json
 import os
 import stat
@@ -156,6 +157,9 @@ async def test_codex_cli_agent_runtime_uses_local_codex_command_and_writes_evide
     assert trials[0].evidence.require("workspace", kind="filesystem").ref == str(
         tmp_path / "codex" / "000000-task-1" / "workspace"
     )
+    final_output = tmp_path / "codex" / "000000-task-1" / "final_output.txt"
+    assert final_output.read_text(encoding="utf-8") == "codex answer"
+    assert final_output.stat().st_mode & 0o777 == 0o600
     assert (tmp_path / "codex" / "000000-task-1" / "stdout.jsonl").read_text(encoding="utf-8") == '{"type":"event"}\n'
     assert (tmp_path / "codex" / "000000-task-1" / "stdout.jsonl").stat().st_mode & 0o777 == 0o600
     assert (tmp_path / "codex" / "000000-task-1" / "stderr.txt").stat().st_mode & 0o777 == 0o600
@@ -341,6 +345,69 @@ async def test_codex_cli_agent_runtime_falls_back_to_stdout_and_persists_final_o
     assert final_output.stat().st_mode & 0o777 == 0o600
 
 
+@pytest.mark.asyncio
+async def test_codex_cli_agent_runtime_rejects_agent_created_final_output_symlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    external = tmp_path / "external.txt"
+    external.write_text("secret", encoding="utf-8")
+
+    class FakeProcess:
+        returncode = 0
+
+        def __init__(self, command: tuple[str, ...]) -> None:
+            self.command = command
+
+        async def communicate(self, input: bytes) -> tuple[bytes, bytes]:
+            final_output_path = Path(self.command[self.command.index("--output-last-message") + 1])
+            final_output_path.symlink_to(external)
+            return b"stdout fallback\n", b""
+
+    async def fake_process_factory(*command: str, **kwargs: Any) -> FakeProcess:
+        return FakeProcess(command)
+
+    monkeypatch.setattr(codex_runtime.shutil, "which", lambda value: f"/bin/{value}")
+    runtime = codex_runtime.CodexCliAgentRuntime(work_root=tmp_path / "codex", process_factory=fake_process_factory)
+    task = AgentEvalTask(id="task-symlink", intent="Answer.", inputs={"instruction": "Q?"})
+
+    trials = await runtime.run_tasks([task])
+
+    assert trials[0].status == "failed"
+    assert trials[0].output is None
+    assert trials[0].metadata["error_type"] == "OSError"
+    assert external.read_text(encoding="utf-8") == "secret"
+
+
+@pytest.mark.asyncio
+async def test_codex_cli_agent_runtime_rejects_agent_created_final_output_fifo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class FakeProcess:
+        returncode = 0
+
+        def __init__(self, command: tuple[str, ...]) -> None:
+            self.command = command
+
+        async def communicate(self, input: bytes) -> tuple[bytes, bytes]:
+            final_output_path = Path(self.command[self.command.index("--output-last-message") + 1])
+            os.mkfifo(final_output_path, 0o600)
+            final_output_path.chmod(0o600)
+            return b"stdout fallback\n", b""
+
+    async def fake_process_factory(*command: str, **kwargs: Any) -> FakeProcess:
+        return FakeProcess(command)
+
+    monkeypatch.setattr(codex_runtime.shutil, "which", lambda value: f"/bin/{value}")
+    runtime = codex_runtime.CodexCliAgentRuntime(work_root=tmp_path / "codex", process_factory=fake_process_factory)
+    task = AgentEvalTask(id="task-fifo", intent="Answer.", inputs={"instruction": "Q?"})
+
+    trials = await asyncio.wait_for(runtime.run_tasks([task]), timeout=5)
+
+    assert trials[0].status == "failed"
+    assert trials[0].output is None
+    assert trials[0].metadata["error_type"] == "PermissionError"
+
+
 def test_private_directory_creation_repairs_modes_and_rejects_unsafe_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -437,6 +504,17 @@ def test_private_tree_validation_is_root_inclusive_and_does_not_follow_symlinks(
     different_uid = os.getuid() + 1
     monkeypatch.setattr(codex_runtime.os, "getuid", lambda: different_uid)
     with pytest.raises(PermissionError, match="not owned"):
+        codex_runtime._validate_private_tree(root)
+
+
+def test_private_tree_validation_rejects_special_files(tmp_path: Path) -> None:
+    root = tmp_path / "evidence"
+    root.mkdir(mode=0o700)
+    fifo = root / "agent.fifo"
+    os.mkfifo(fifo, 0o600)
+    fifo.chmod(0o600)
+
+    with pytest.raises(PermissionError, match="not a regular file or directory"):
         codex_runtime._validate_private_tree(root)
 
 
