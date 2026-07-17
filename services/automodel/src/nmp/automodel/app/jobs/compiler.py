@@ -53,7 +53,6 @@ from nmp.customization_common.schemas.file_io import (
     FileSetRef,
     UploadItem,
 )
-from nmp.customization_common.tasks.file_io_metadata import build_output_fileset_metadata_from_model_entity
 from nmp.customization_common.schemas.model_entity import (
     DeploymentParameters as ModelEntityDeploymentParameters,
 )
@@ -64,6 +63,7 @@ from nmp.customization_common.schemas.model_entity import (
     PEFTConfig as ModelEntityPEFTConfig,
 )
 from nmp.customization_common.service.platform_client import fetch_model_entity
+from nmp.customization_common.tasks.file_io_metadata import build_output_fileset_metadata_from_model_entity
 
 logger = logging.getLogger(__name__)
 
