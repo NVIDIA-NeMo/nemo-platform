@@ -252,6 +252,31 @@ def test_fixture_has_no_errors(fixture_result):
     assert report.errors == []
 
 
+def test_middleware_flagged_as_feature_needing_a_home():
+    # NASSE is NAT middleware; it maps to Relay, not carried by the transpiler.
+    config = _config(middleware={"nasse": {"_type": "nasse_guard"}})
+    report = T.Report()
+    T.transpile(config, report)
+    assert any(f.startswith("middleware:") and "Relay" in f for f in report.features)
+
+
+def test_default_name_from_filename_when_no_wrapper():
+    # A plain react_agent (no reasoning wrapper) should take the input filename, not "react-agent".
+    config = _config(workflow={"_type": "react_agent", "tool_names": [], "llm_name": "m"})
+    report = T.Report()
+    fabric = T.transpile(config, report, default_name="scout")
+    assert fabric["metadata"]["name"] == "scout"
+
+
+def test_analyze_renders_composition(fixture_result):
+    fabric, report = fixture_result
+    analysis = T.render_analysis(fabric, report)
+    assert "# NAT agent analysis: research_orchestrator" in analysis
+    assert "math_agent" in analysis and "tool_calling_agent" in analysis
+    assert "mcp_math" in analysis
+    assert "4 agent(s)" in analysis
+
+
 def test_custom_top_level_agent_type_is_reported_not_crash():
     # Real blueprints (e.g. AI-Q) use custom registered _types, not stock archetypes.
     config = _config(workflow={"_type": "chat_deepresearcher_agent", "enable_clarifier": True})

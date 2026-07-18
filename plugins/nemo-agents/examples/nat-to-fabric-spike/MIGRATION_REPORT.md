@@ -22,6 +22,9 @@
 ## Errors (must resolve)
 - None.
 
+## Features not carried (need a Fabric, Platform, or Relay home)
+- None.
+
 ## Notes
 - Unwrapped reasoning_agent onto 'research_orchestrator' as the main Deep Agent.
 - Main agent 'react_agent' had no explicit system_prompt; its default lives in NAT Python and must be resolved via WorkflowBuilder.

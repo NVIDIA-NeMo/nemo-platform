@@ -49,9 +49,21 @@ Validation is a self-contained structural check of the Fabric contract. For full
 python3 transpile.py --schema /path/to/nemo-fabric/schemas/agent.schema.json
 ```
 
+## Analyze mode
+
+The same introspection also runs read-only. `--analyze` skips the Fabric emission and writes `ANALYSIS.md`: the agent's composition tree, models, tools, and anything that would need work to move. It's the low-friction on-ramp: install NeMo Platform, hand it a NAT workflow, and it tells you what your agent does and how it's composed, with no migration commitment.
+
+```bash
+python3 transpile.py --analyze                      # writes ANALYSIS.md
+python3 transpile.py --in path/to/agent.yml --analyze
+```
+
+The migration report and the analysis both call out NAT features this transpiler does not carry (a top-level `middleware:` section such as NASSE maps to NeMo Relay; `memory`, `retrievers`, and similar need a Fabric or Platform equivalent). Those aren't dropped silently; they're listed as work that needs a home.
+
 ## Run
 
 ```bash
 pip install pyyaml            # jsonschema optional, only for --schema
 python3 transpile.py          # reads nat_agent/config.yml, writes fabric/agent.yaml + MIGRATION_REPORT.md
+python3 transpile.py --analyze   # read-only analysis -> ANALYSIS.md
 ```

@@ -49,6 +49,18 @@ MCP_TYPES = {"mcp_client", "per_user_mcp_client"}
 ENV_REF = re.compile(r"\$\{(\w+)(?::[-=]?[^}]*)?\}")
 RESOLVE = "[RESOLVE]"
 
+# NAT top-level sections this transpiler does not carry; each needs a home elsewhere.
+UNMAPPED_SECTIONS = ["middleware", "memory", "retrievers", "embedders", "object_stores", "ttc_strategies", "optimizer"]
+FEATURE_HINTS = {
+    "middleware": "NAT middleware (e.g. NASSE) maps to NeMo Relay",
+    "memory": "needs a Fabric or Platform memory equivalent",
+    "retrievers": "needs a retrieval equivalent (Platform or an MCP server)",
+    "embedders": "map to Fabric models or a retrieval service",
+    "object_stores": "needs a Platform storage equivalent",
+    "ttc_strategies": "test-time-compute strategies need a Fabric or Relay equivalent",
+    "optimizer": "config optimization is a separate Platform or Fabric concern",
+}
+
 
 class Report:
     """Collects human-facing findings emitted alongside the config."""
@@ -59,7 +71,10 @@ class Report:
         self.auth_gaps: list[str] = []
         self.builtins: set[str] = set()
         self.errors: list[str] = []
+        self.features: list[str] = []
         self.notes: list[str] = []
+        self.main_tools: list[str] = []
+        self.agent_types: dict[str, str] = {}  # agent name -> NAT _type, for analysis
 
 
 def child_refs(entry: dict) -> list[str]:
@@ -165,12 +180,17 @@ def mcp_server_to_fabric(name: str, group: dict, auth_block: dict, report: Repor
     return fabric
 
 
-def transpile(config: dict, report: Report, name_override: str | None = None) -> dict:
+def transpile(config: dict, report: Report, name_override: str | None = None, default_name: str | None = None) -> dict:
     llms = config.get("llms", {})
     functions = config.get("functions", {})
     groups = config.get("function_groups", {})
     auth_block = config.get("authentication", {})
     workflow = config["workflow"]
+
+    # NAT sections this transpiler does not carry; each needs a home in Fabric/Platform/Relay.
+    for section in UNMAPPED_SECTIONS:
+        if config.get(section):
+            report.features.append(f"{section}: {FEATURE_HINTS.get(section, 'needs a Fabric or Platform equivalent')}")
 
     # MCP auth providers carry env-var URLs and redirect URIs the user must set.
     for provider in auth_block.values():
@@ -244,6 +264,7 @@ def transpile(config: dict, report: Report, name_override: str | None = None) ->
             continue  # cycle or shared sub-agent; emit once
         seen_agents.add(ref)
         agent_entry = functions[ref]
+        report.agent_types[ref] = agent_entry.get("_type", "")
         leaf, children = leaf_and_children(agent_entry)
         sub: dict = {"name": ref, "description": agent_entry.get("description", f"{ref} sub-agent"), "tools": leaf}
         if children:
@@ -284,11 +305,14 @@ def transpile(config: dict, report: Report, name_override: str | None = None) ->
     if subagents:
         harness_settings["deepagents"] = {"subagents": subagents}
 
-    agent_name = name_override or main_key or entry["_type"].replace("_", "-")
+    agent_name = name_override or main_key or default_name or entry["_type"].replace("_", "-")
     description = f"Migrated from a NAT {workflow['_type']}"
     if main_key:
         description += f" wrapping {entry['_type']} '{main_key}'"
     description += "."
+
+    report.main_tools = main_tools
+    report.agent_types[agent_name] = entry.get("_type", "")
 
     fabric: dict = {
         "schema_version": "fabric.agent/v1alpha1",
@@ -341,8 +365,69 @@ def render_report(report: Report) -> str:
     lines += ["", "## Errors (must resolve)"]
     lines += [f"- {err}" for err in report.errors] or ["- None."]
 
+    lines += ["", "## Features not carried (need a Fabric, Platform, or Relay home)"]
+    lines += [f"- {feat}" for feat in report.features] or ["- None."]
+
     lines += ["", "## Notes"]
     lines += [f"- {note}" for note in report.notes] or ["- None."]
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_analysis(fabric: dict, report: Report) -> str:
+    """Read-only "what this NAT agent is and how it's composed" report.
+
+    Same introspection as the transpile pass, without emitting a Fabric config. This
+    is the analyzer surface: install NeMo Platform, hand it a NAT workflow, and it
+    tells you the agent's topology, models, tools, and what would need work to move.
+    """
+    meta = fabric["metadata"]
+    name = meta["name"]
+    settings = fabric["harness"]["settings"]
+    subagents = settings.get("deepagents", {}).get("subagents", [])
+    models = fabric.get("models", {})
+    servers = fabric.get("mcp", {}).get("servers", {})
+
+    lines = [f"# NAT agent analysis: {name}", "", meta.get("description", ""), ""]
+
+    lines += ["## Composition", ""]
+    lines.append(f"- **{name}** ({report.agent_types.get(name, '?')}, main agent)")
+    for tool in report.main_tools:
+        lines.append(f"  - tool: {tool}")
+    for sub in subagents:
+        lines.append(f"  - **{sub['name']}** ({report.agent_types.get(sub['name'], '?')}, sub-agent)")
+        for tool in sub.get("tools", []):
+            lines.append(f"    - tool: {tool}")
+        for delegate in sub.get("delegates_to", []):
+            lines.append(f"    - delegates to: {delegate}")
+
+    lines += ["", "## Models", ""]
+    for alias, model in models.items():
+        lines.append(f"- `{alias}`: {model.get('provider')} / {model.get('model')}")
+
+    lines += ["", "## Tools", ""]
+    if servers:
+        lines.append("MCP servers:")
+        lines += [f"- `{sname}` ({spec.get('transport')})" for sname, spec in servers.items()]
+    if report.builtins:
+        lines.append("NAT builtins (would need an MCP equivalent to run under Deep Agents):")
+        lines += [f"- `{b}`" for b in sorted(report.builtins)]
+    if not servers and not report.builtins:
+        lines.append("- No tools resolved.")
+
+    if report.features:
+        lines += ["", "## Features needing another home", ""]
+        lines += [f"- {feat}" for feat in report.features]
+    if report.errors:
+        lines += ["", "## Unresolved (custom types or missing refs)", ""]
+        lines += [f"- {err}" for err in report.errors]
+
+    lines += ["", "## Summary", ""]
+    lines.append(
+        f"{1 + len(subagents)} agent(s), {len(servers)} MCP server(s), {len(report.builtins)} NAT "
+        f"builtin(s), {len(report.features)} feature(s) needing another home, {len(report.errors)} "
+        f"unresolved item(s)."
+    )
     lines.append("")
     return "\n".join(lines)
 
@@ -402,11 +487,23 @@ def main() -> int:
         default="",
         help="Optional path to a local NeMo-Fabric schemas/agent.schema.json for full JSON Schema validation.",
     )
+    parser.add_argument("--analyze", dest="analyze", action="store_true", help="Analyze the NAT agent and write ANALYSIS.md instead of emitting a Fabric config.")
+    parser.add_argument("--analyze-out", dest="analyze_out", default=str(here / "ANALYSIS.md"))
     args = parser.parse_args()
 
     config = yaml.safe_load(Path(args.src).read_text())
     report = Report()
-    fabric = transpile(config, report, name_override=args.name)
+    fabric = transpile(config, report, name_override=args.name, default_name=Path(args.src).stem)
+
+    if args.analyze:
+        apath = Path(args.analyze_out)
+        apath.parent.mkdir(parents=True, exist_ok=True)
+        apath.write_text(render_analysis(fabric, report))
+        print(f"Wrote {apath}")
+        print(f"Agents: {1 + len(fabric['harness']['settings'].get('deepagents', {}).get('subagents', []))}")
+        print(f"MCP servers: {len(fabric.get('mcp', {}).get('servers', {}))}")
+        print(f"Builtins: {len(report.builtins)}  Features needing another home: {len(report.features)}  Unresolved: {len(report.errors)}")
+        return 0
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
