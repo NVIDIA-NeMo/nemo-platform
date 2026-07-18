@@ -7,13 +7,13 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from nmp.common.api import ParsedFilter, make_filter_dep
-from nmp.common.api.common import Page, PaginationData
+from nmp.common.api.common import DeleteResponse, Page, PaginationData
 from nmp.common.api.utils import generate_openapi_extra_params
 from nmp.common.entities import EntityClient, EntityConflictError, EntityNotFoundError
 from nmp.common.service.dependencies import get_entity_client
 from nmp.guardrails.api.dependencies import ConfigRegistryDep, RailsRegistryDep
 from nmp.guardrails.api.v2.configs.schemas import GuardrailConfigFilter, GuardrailConfigInput, GuardrailConfigUpdate
-from nmp.guardrails.app.common.common import DeleteResponse, GenericSortField
+from nmp.guardrails.app.common.common import GuardrailConfigSortField
 from nmp.guardrails.app.utils.config_utils import enrich_config_with_data, invalidate_and_reload_config_cache
 from nmp.guardrails.entities import GuardrailConfig
 
@@ -36,7 +36,7 @@ async def list_guardrail_configs(
     entities_client: EntityClient = Depends(get_entity_client),
     page: int = Query(default=1, description="Page number."),
     page_size: int = Query(default=10, description="Page size."),
-    sort: GenericSortField = Query(
+    sort: GuardrailConfigSortField = Query(
         default="created_at",
         description="""The field to sort by. To sort in decreasing order, use `-` in front of the field name.""",
     ),

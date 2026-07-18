@@ -414,7 +414,7 @@ paths:
         required: false
         schema:
           allOf:
-          - $ref: '#/components/schemas/GenericSortField'
+          - $ref: '#/components/schemas/WorkspaceSortField'
           description: Sort field
           default: -created_at
         description: Sort field
@@ -566,7 +566,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DeleteResponse'
+                $ref: '#/components/schemas/EntityDeleteResponse'
         '422':
           description: Validation Error
           content:
@@ -899,7 +899,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DeleteResponse'
+                $ref: '#/components/schemas/EntityDeleteResponse'
         '422':
           description: Validation Error
           content:
@@ -1100,7 +1100,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DeleteResponse'
+                $ref: '#/components/schemas/EntityDeleteResponse'
         '422':
           description: Validation Error
           content:
@@ -1359,7 +1359,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DeleteResponse'
+                $ref: '#/components/schemas/EntityDeleteResponse'
         '422':
           description: Validation Error
           content:
@@ -2002,7 +2002,7 @@ paths:
         required: false
         schema:
           allOf:
-          - $ref: '#/components/schemas/GenericSortField'
+          - $ref: '#/components/schemas/GuardrailConfigSortField'
           description: The field to sort by. To sort in decreasing order, use `-`
             in front of the field name.
           default: created_at
@@ -10383,6 +10383,26 @@ components:
         Name is optional - if not provided, it will be auto-generated.
 
         Workspace and entity_type come from the URL path parameters.'
+    EntityDeleteResponse:
+      properties:
+        message:
+          type: string
+          title: Message
+          default: Resource deleted successfully
+        id:
+          type: string
+          title: Id
+          description: ID of the deleted resource
+        deleted_count:
+          type: integer
+          title: Deleted Count
+          description: Number of items deleted
+          default: 1
+      type: object
+      required:
+      - id
+      title: EntityDeleteResponse
+      description: Response for successful delete operations.
     EntityUpdate:
       properties:
         new_name:
@@ -12300,6 +12320,12 @@ components:
       - name
       title: GuardrailConfigInput
       description: Input schema for creating a guardrail config.
+    GuardrailConfigSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      title: GuardrailConfigSortField
     GuardrailConfigUpdate:
       properties:
         description:
@@ -19626,6 +19652,15 @@ components:
       - roles
       title: WorkspaceMemberUpdate
       description: Schema for updating a workspace member's roles.
+    WorkspaceSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: WorkspaceSortField
+      description: Fields available for sorting workspace results.
     WorkspaceUpdate:
       properties:
         description:

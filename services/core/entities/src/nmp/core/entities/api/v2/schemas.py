@@ -8,7 +8,7 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 
-class GenericSortField(StrEnum):
+class WorkspaceSortField(StrEnum):
     """Fields available for sorting workspace results."""
 
     CREATED_AT_ASC = "created_at"
@@ -17,7 +17,7 @@ class GenericSortField(StrEnum):
     UPDATED_AT_DESC = "-updated_at"
 
 
-class DeleteResponse(BaseModel):
+class EntityDeleteResponse(BaseModel):
     """Response for successful delete operations."""
 
     message: str = Field(default="Resource deleted successfully")

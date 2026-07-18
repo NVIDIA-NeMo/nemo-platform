@@ -24,7 +24,7 @@ from nmp.core.entities.api.v2.projects.schemas import (
     ProjectSortField,
     ProjectUpdate,
 )
-from nmp.core.entities.api.v2.schemas import DeleteResponse
+from nmp.core.entities.api.v2.schemas import EntityDeleteResponse
 from nmp.core.entities.app.repository.exceptions import (
     EntityNotFoundError,
     EntityVersionConflictError,
@@ -255,7 +255,7 @@ async def update_project(
 
 @router.delete(
     "/v2/workspaces/{workspace}/projects/{name}",
-    response_model=DeleteResponse,
+    response_model=EntityDeleteResponse,
     tags=[API_TAG],
     summary="Delete project",
     description=textwrap.dedent("""
@@ -271,7 +271,7 @@ async def delete_project(
     workspace: str,
     name: str,
     repository: EntityRepository,
-) -> DeleteResponse:
+) -> EntityDeleteResponse:
     """Delete project."""
     try:
         deleted_count = await repository.delete_entity_by_name(
@@ -284,7 +284,7 @@ async def delete_project(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Project '{name}' not found in workspace '{workspace}'",
             )
-        return DeleteResponse(
+        return EntityDeleteResponse(
             id=f"{workspace}/{name}",
             message="Project deleted successfully",
             deleted_count=deleted_count,

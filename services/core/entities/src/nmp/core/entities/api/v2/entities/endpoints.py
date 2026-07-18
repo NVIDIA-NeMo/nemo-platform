@@ -31,7 +31,7 @@ from nmp.core.entities.api.dependencies import (
     WorkspaceRepository,
 )
 from nmp.core.entities.api.v2.entities.schemas import EntityCreateInput, EntityUpdate
-from nmp.core.entities.api.v2.schemas import DeleteResponse
+from nmp.core.entities.api.v2.schemas import EntityDeleteResponse
 from nmp.core.entities.api.v2.utils import (
     ROLE_BINDING_ENTITY_TYPE,
     add_workspace_filtering,
@@ -561,7 +561,7 @@ async def update_entity_by_name(
 
 @router.delete(
     "/v2/workspaces/{workspace}/entities/{entity_type}/{name}",
-    response_model=DeleteResponse,
+    response_model=EntityDeleteResponse,
     tags=[API_TAG],
     summary="Delete entity by name",
     description=textwrap.dedent("""
@@ -581,7 +581,7 @@ async def delete_entity_by_name(
     workspace_repository: WorkspaceRepository,
     auth_client: AuthClientDep,
     parent: str | None = Query(default=None, description="Parent entity ID for nested entities"),
-) -> DeleteResponse:
+) -> EntityDeleteResponse:
     """Delete entity by name."""
     # Check if workspace is being deleted (404 for user requests)
     await validate_workspace_not_deleting(workspace_repository, auth_client, workspace)
@@ -601,7 +601,7 @@ async def delete_entity_by_name(
     )
     if deleted_count == 0:
         raise HTTPException(status_code=404, detail="Entity not found")
-    return DeleteResponse(id=f"{workspace}/{entity_type}/{name}", deleted_count=deleted_count)
+    return EntityDeleteResponse(id=f"{workspace}/{entity_type}/{name}", deleted_count=deleted_count)
 
 
 @router.get(
