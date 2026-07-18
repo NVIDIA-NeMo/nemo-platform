@@ -15,33 +15,20 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from __future__ import annotations
+from typing import Optional
 
-from typing_extensions import TypedDict
+from ..._models import BaseModel
 
-from .guardrail_config_sort_field import GuardrailConfigSortField
-from .guardrail_config_filter_param import GuardrailConfigFilterParam
-
-__all__ = ["ConfigListParams"]
+__all__ = ["EntityDeleteResponse"]
 
 
-class ConfigListParams(TypedDict, total=False):
-    workspace: str
+class EntityDeleteResponse(BaseModel):
+    """Response for successful delete operations."""
 
-    filter: GuardrailConfigFilterParam
-    """
-    Filter guardrail configs by name, description, project, created_at, and
-    updated_at.
-    """
+    id: str
+    """ID of the deleted resource"""
 
-    page: int
-    """Page number."""
+    deleted_count: Optional[int] = None
+    """Number of items deleted"""
 
-    page_size: int
-    """Page size."""
-
-    sort: GuardrailConfigSortField
-    """The field to sort by.
-
-    To sort in decreasing order, use `-` in front of the field name.
-    """
+    message: Optional[str] = None

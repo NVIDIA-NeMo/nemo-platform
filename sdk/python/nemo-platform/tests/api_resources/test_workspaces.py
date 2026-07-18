@@ -25,7 +25,7 @@ import pytest
 from tests.utils import assert_matches_type
 from nemo_platform import NeMoPlatform, AsyncNeMoPlatform
 from nemo_platform.pagination import SyncDefaultPagination, AsyncDefaultPagination
-from nemo_platform.types.shared import DeleteResponse
+from nemo_platform.types.shared import EntityDeleteResponse
 from nemo_platform.types.workspaces import (
     Workspace,
 )
@@ -218,7 +218,7 @@ class TestWorkspaces:
         workspace = client.workspaces.delete(
             "name",
         )
-        assert_matches_type(DeleteResponse, workspace, path=["response"])
+        assert_matches_type(EntityDeleteResponse, workspace, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
@@ -230,7 +230,7 @@ class TestWorkspaces:
         assert response.is_closed is True
         assert response.http_request.headers.get("X-Stainless-Lang") == "python"
         workspace = response.parse()
-        assert_matches_type(DeleteResponse, workspace, path=["response"])
+        assert_matches_type(EntityDeleteResponse, workspace, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
@@ -242,7 +242,7 @@ class TestWorkspaces:
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
 
             workspace = response.parse()
-            assert_matches_type(DeleteResponse, workspace, path=["response"])
+            assert_matches_type(EntityDeleteResponse, workspace, path=["response"])
 
         assert cast(Any, response.is_closed) is True
 
@@ -442,7 +442,7 @@ class TestAsyncWorkspaces:
         workspace = await async_client.workspaces.delete(
             "name",
         )
-        assert_matches_type(DeleteResponse, workspace, path=["response"])
+        assert_matches_type(EntityDeleteResponse, workspace, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
@@ -454,7 +454,7 @@ class TestAsyncWorkspaces:
         assert response.is_closed is True
         assert response.http_request.headers.get("X-Stainless-Lang") == "python"
         workspace = await response.parse()
-        assert_matches_type(DeleteResponse, workspace, path=["response"])
+        assert_matches_type(EntityDeleteResponse, workspace, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
@@ -466,7 +466,7 @@ class TestAsyncWorkspaces:
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
 
             workspace = await response.parse()
-            assert_matches_type(DeleteResponse, workspace, path=["response"])
+            assert_matches_type(EntityDeleteResponse, workspace, path=["response"])
 
         assert cast(Any, response.is_closed) is True
 

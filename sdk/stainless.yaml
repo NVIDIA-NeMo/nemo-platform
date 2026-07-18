@@ -368,6 +368,7 @@ resources:
         models:
           guardrail_config_filter: GuardrailConfigFilter
           guardrail_config_param: GuardrailConfigInput
+          guardrail_config_sort_field: GuardrailConfigSortField
           guardrail_config_update: GuardrailConfigUpdate
           guardrail_configs_page: GuardrailConfigsPage
         methods:
@@ -648,6 +649,7 @@ resources:
     models:
       workspace: Workspace
       workspace_param: WorkspaceInput
+      workspace_sort_field: WorkspaceSortField
       workspace_update: WorkspaceUpdate
       workspaces_page: WorkspacesPage
     methods:
@@ -751,6 +753,7 @@ resources:
       workload_token_exchange_error_response: WorkloadTokenExchangeErrorResponse
       json_web_key: JsonWebKey
       json_web_key_set_response: JsonWebKeySetResponse
+      entity_delete_response: EntityDeleteResponse
   iam:
     standalone_api: true
     subresources:

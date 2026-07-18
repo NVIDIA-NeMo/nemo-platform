@@ -25,7 +25,7 @@ import pytest
 from tests.utils import assert_matches_type
 from nemo_platform import NeMoPlatform, AsyncNeMoPlatform
 from nemo_platform.pagination import SyncDefaultPagination, AsyncDefaultPagination
-from nemo_platform.types.shared import DeleteResponse
+from nemo_platform.types.shared import EntityDeleteResponse
 from nemo_platform.types.projects import (
     Project,
 )
@@ -267,7 +267,7 @@ class TestProjects:
             name="name",
             workspace="workspace",
         )
-        assert_matches_type(DeleteResponse, project, path=["response"])
+        assert_matches_type(EntityDeleteResponse, project, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
@@ -280,7 +280,7 @@ class TestProjects:
         assert response.is_closed is True
         assert response.http_request.headers.get("X-Stainless-Lang") == "python"
         project = response.parse()
-        assert_matches_type(DeleteResponse, project, path=["response"])
+        assert_matches_type(EntityDeleteResponse, project, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
@@ -293,7 +293,7 @@ class TestProjects:
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
 
             project = response.parse()
-            assert_matches_type(DeleteResponse, project, path=["response"])
+            assert_matches_type(EntityDeleteResponse, project, path=["response"])
 
         assert cast(Any, response.is_closed) is True
 
@@ -549,7 +549,7 @@ class TestAsyncProjects:
             name="name",
             workspace="workspace",
         )
-        assert_matches_type(DeleteResponse, project, path=["response"])
+        assert_matches_type(EntityDeleteResponse, project, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
@@ -562,7 +562,7 @@ class TestAsyncProjects:
         assert response.is_closed is True
         assert response.http_request.headers.get("X-Stainless-Lang") == "python"
         project = await response.parse()
-        assert_matches_type(DeleteResponse, project, path=["response"])
+        assert_matches_type(EntityDeleteResponse, project, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
@@ -575,7 +575,7 @@ class TestAsyncProjects:
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
 
             project = await response.parse()
-            assert_matches_type(DeleteResponse, project, path=["response"])
+            assert_matches_type(EntityDeleteResponse, project, path=["response"])
 
         assert cast(Any, response.is_closed) is True
 

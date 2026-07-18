@@ -23,6 +23,7 @@ from .workspace_member import WorkspaceMember as WorkspaceMember
 from .member_create_params import MemberCreateParams as MemberCreateParams
 from .member_delete_params import MemberDeleteParams as MemberDeleteParams
 from .member_update_params import MemberUpdateParams as MemberUpdateParams
+from .workspace_sort_field import WorkspaceSortField as WorkspaceSortField
 from .workspace_list_params import WorkspaceListParams as WorkspaceListParams
 from .workspace_create_params import WorkspaceCreateParams as WorkspaceCreateParams
 from .workspace_update_params import WorkspaceUpdateParams as WorkspaceUpdateParams

@@ -10,7 +10,7 @@ from typing import Any, ClassVar, Dict, Generic, List, Optional, Protocol, Set, 
 
 from nemo_platform import ConflictError, NotFoundError, UnprocessableEntityError, omit
 from nemo_platform.resources.entities import AsyncEntitiesResource
-from nemo_platform.types import DeleteResponse
+from nemo_platform.types import EntityDeleteResponse
 from nemo_platform.types.entities import Entity
 from nemo_platform_plugin.filter_ops import FilterOperation
 from pydantic import BaseModel, Field, PrivateAttr, TypeAdapter, computed_field
@@ -238,8 +238,8 @@ class EntityClientProtocol(Protocol[EntityT]):
     async def update(self, entity: EntityT, *, original_name: str | None = None) -> EntityT: ...
     async def delete(
         self, entity_type: EntityTypeLike, name: str, *, workspace: Optional[str] = None
-    ) -> DeleteResponse: ...
-    async def delete_by_id(self, entity_type: EntityTypeLike, entity_id: str) -> DeleteResponse: ...
+    ) -> EntityDeleteResponse: ...
+    async def delete_by_id(self, entity_type: EntityTypeLike, entity_id: str) -> EntityDeleteResponse: ...
     async def save(self, entity: EntityT) -> EntityT: ...
     async def add(self, entity: EntityT) -> EntityT: ...
     async def get_by_field(
@@ -633,7 +633,7 @@ class EntityClient:
         *,
         workspace: Optional[str] = None,
         parent: Optional[str] = None,
-    ) -> DeleteResponse:
+    ) -> EntityDeleteResponse:
         """Delete an entity by name.
 
         Supports workspace-qualified names like "prod/my-model".
@@ -665,7 +665,7 @@ class EntityClient:
         self,
         entity_type: EntityTypeLike,
         entity_id: str,
-    ) -> DeleteResponse:
+    ) -> EntityDeleteResponse:
         """Delete an entity by ID.
 
         First retrieves the entity to get its workspace and name, then deletes by name.

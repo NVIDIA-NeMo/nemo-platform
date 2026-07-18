@@ -15,33 +15,8 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from __future__ import annotations
+from typing_extensions import Literal, TypeAlias
 
-from typing_extensions import TypedDict
+__all__ = ["WorkspaceSortField"]
 
-from .guardrail_config_sort_field import GuardrailConfigSortField
-from .guardrail_config_filter_param import GuardrailConfigFilterParam
-
-__all__ = ["ConfigListParams"]
-
-
-class ConfigListParams(TypedDict, total=False):
-    workspace: str
-
-    filter: GuardrailConfigFilterParam
-    """
-    Filter guardrail configs by name, description, project, created_at, and
-    updated_at.
-    """
-
-    page: int
-    """Page number."""
-
-    page_size: int
-    """Page size."""
-
-    sort: GuardrailConfigSortField
-    """The field to sort by.
-
-    To sort in decreasing order, use `-` in front of the field name.
-    """
+WorkspaceSortField: TypeAlias = Literal["created_at", "-created_at", "updated_at", "-updated_at"]
