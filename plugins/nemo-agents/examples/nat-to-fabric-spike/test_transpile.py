@@ -250,3 +250,12 @@ def test_structural_check_rejects_bad_mcp_server(fixture_result):
 def test_fixture_has_no_errors(fixture_result):
     _, report = fixture_result
     assert report.errors == []
+
+
+def test_custom_top_level_agent_type_is_reported_not_crash():
+    # Real blueprints (e.g. AI-Q) use custom registered _types, not stock archetypes.
+    config = _config(workflow={"_type": "chat_deepresearcher_agent", "enable_clarifier": True})
+    report = T.Report()
+    fabric = T.transpile(config, report)  # must not KeyError on the unknown _type
+    assert any("custom NAT type" in e for e in report.errors)
+    T.structural_check(fabric)  # still emits a valid skeleton

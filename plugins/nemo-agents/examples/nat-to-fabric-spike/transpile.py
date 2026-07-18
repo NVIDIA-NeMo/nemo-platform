@@ -63,8 +63,14 @@ class Report:
 
 
 def child_refs(entry: dict) -> list[str]:
-    """Return the names an agent entry points at, normalized to a list."""
-    field = AGENT_CHILD_FIELD[entry["_type"]]
+    """Return the names an agent entry points at, normalized to a list.
+
+    Returns [] for a custom/unknown _type (we don't know its child field). Callers
+    that need to flag custom types check AGENT_TYPES separately.
+    """
+    field = AGENT_CHILD_FIELD.get(entry.get("_type") or "")
+    if field is None:
+        return []
     value = entry.get(field)
     if value is None:
         return []
@@ -192,6 +198,13 @@ def transpile(config: dict, report: Report, name_override: str | None = None) ->
         main_key = wrapped
         report.notes.append(f"Unwrapped reasoning_agent onto '{wrapped}' as the main Deep Agent.")
         entry = functions[wrapped]
+
+    if entry.get("_type") not in AGENT_TYPES:
+        report.errors.append(
+            f"Top-level agent type '{entry.get('_type')}' is a custom NAT type, not a stock "
+            f"archetype. The spike maps stock agents; resolve custom registered types via NAT "
+            f"WorkflowBuilder before transpiling."
+        )
 
     used_groups: list[str] = []
 
