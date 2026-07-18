@@ -148,7 +148,7 @@ def _walk_spec(d: Dict, visitor: Callable[[str, Any, Dict], None]):
                     _walk_spec(item, visitor)
 
 
-def _normalize_refs_and_schema_keys(spec: Dict, *, strict_collisions: bool = False) -> Dict:
+def _normalize_refs_and_schema_keys(spec: Dict, *, strict_collisions: bool = True) -> Dict:
     """Normalize all ``$ref`` values and schema dictionary keys.
 
     Schema keys are renamed first so that ``$ref`` values can be rewritten
@@ -157,13 +157,12 @@ def _normalize_refs_and_schema_keys(spec: Dict, *, strict_collisions: bool = Fal
 
     When the content *differs*, two distinct Pydantic models are fighting over
     one schema name, and keeping one silently makes the other's ``$ref``\\ s point
-    at the wrong contract.  With ``strict_collisions`` this raises ``ValueError``
-    so the build fails loudly — used for self-contained plugin specs (e.g. the
-    merged ``/apis/customization`` app, where each backend must namespace its
-    own models).  Without it (the default, used for the platform/service specs)
-    it logs a warning and keeps the first-seen schema, preserving legacy
-    behaviour: the platform spec carries pre-existing such collisions that
-    predate this gate and are tracked separately.
+    at the wrong contract.  ``strict_collisions`` (the default) raises
+    ``ValueError`` so the build fails loudly rather than shipping a wrong
+    contract in the generated SDK.  Pass ``strict_collisions=False`` to opt a
+    spec out — it then logs a warning and keeps the first-seen schema (legacy
+    warn-and-collapse), for a spec that must tolerate a known pre-existing
+    collision.
     """
     schemas = spec["components"]["schemas"]
 
@@ -189,9 +188,11 @@ def _normalize_refs_and_schema_keys(spec: Dict, *, strict_collisions: bool = Fal
         if len(reps) > 1:
             message = (
                 f"OpenAPI schema name collision: {sorted(old_keys)} all normalize to "
-                f"'{target}' with differing content. Two distinct Pydantic models share "
-                f"a class name across modules — namespace them (e.g. via a per-backend "
-                f"NamespacedModel base) so they emit distinct schema names."
+                f"'{target}' with differing content. Two distinct Pydantic models share a "
+                f"class name across modules; give them distinct names — rename or dedupe the "
+                f"models, or namespace them (e.g. via a per-backend NamespacedModel base) — so "
+                f"they emit distinct schema names. A spec that must tolerate the collision can "
+                f"opt out with strict_collisions=False."
             )
             if strict_collisions:
                 raise ValueError(message)
@@ -355,7 +356,7 @@ def _sort_schemas(spec: Dict) -> Dict:
     return spec
 
 
-def tweak_spec(spec: Dict, *, strict_collisions: bool = False) -> Dict:
+def tweak_spec(spec: Dict, *, strict_collisions: bool = True) -> Dict:
     _walk_spec(spec, _anyof_null_visitor)
     spec = _normalize_refs_and_schema_keys(spec, strict_collisions=strict_collisions)
     spec = _split_input_output_schemas(spec)

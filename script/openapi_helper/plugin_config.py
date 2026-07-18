@@ -22,12 +22,11 @@ class PluginConfig:
     env_vars: Optional[Dict[str, str]] = None
     factory_override: Optional[str] = None  # "module:callable" escape hatch
     data_designer_plugin_allowlist: Optional[List[str]] = None
-    # Opt in when the plugin's spec merges multiple sub-apps into one (e.g.
-    # nemo-customizer mounts every customization backend under
-    # /apis/customization). Then two backends defining a same-named model with
-    # differing content is always a real bug, and spec generation should fail
-    # loudly instead of silently collapsing them. Off => warn-and-collapse.
-    strict_schema_collisions: bool = False
+    # Schema-name collisions fail spec generation by default. Set to false to
+    # opt a plugin out (warn-and-collapse) if its spec must tolerate a known
+    # pre-existing collision — collapsing silently ships a wrong contract, so
+    # opting out should be rare and deliberate.
+    strict_schema_collisions: bool = True
 
     @classmethod
     def from_pyproject(cls, pyproject_path: Path) -> Optional["PluginConfig"]:
@@ -55,7 +54,7 @@ class PluginConfig:
             raise ValueError(
                 f"plugin '{plugin_dir}': [tool.nemo.openapi].data_designer_plugin_allowlist must be a list of strings"
             )
-        strict_schema_collisions = opts.get("strict_schema_collisions", False)
+        strict_schema_collisions = opts.get("strict_schema_collisions", True)
         if not isinstance(strict_schema_collisions, bool):
             raise ValueError(f"plugin '{plugin_dir}': [tool.nemo.openapi].strict_schema_collisions must be a boolean")
 
