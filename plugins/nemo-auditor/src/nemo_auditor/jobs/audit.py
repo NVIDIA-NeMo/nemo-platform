@@ -303,10 +303,15 @@ def _aggregate_reports(
 
     hitlog_pattern = str(persistent / "complete" / "*" / "garak" / report_dir_name / f"{report_prefix}.hitlog.jsonl")
     agg_hitlog = agg_dir / f"{report_prefix}.hitlog.jsonl"
-    with agg_hitlog.open("wb") as out_fd:
+    agg_hitlog_tmp = agg_dir / f"{report_prefix}.hitlog.jsonl.tmp"
+    with agg_hitlog_tmp.open("wb") as out_fd:
         for hitlog_path in glob.glob(hitlog_pattern):
             with open(hitlog_path, "rb") as in_fd:
                 shutil.copyfileobj(in_fd, out_fd)
+    if agg_hitlog_tmp.stat().st_size > 0:
+        shutil.move(str(agg_hitlog_tmp), str(agg_hitlog))
+    else:
+        agg_hitlog_tmp.unlink()
 
     return True
 
