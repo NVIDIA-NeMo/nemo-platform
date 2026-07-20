@@ -19,7 +19,6 @@ from __future__ import annotations
 
 from .project import Project as Project
 from .projects_page import ProjectsPage as ProjectsPage
-from .project_sort_field import ProjectSortField as ProjectSortField
 from .project_list_params import ProjectListParams as ProjectListParams
 from .project_create_params import ProjectCreateParams as ProjectCreateParams
 from .project_update_params import ProjectUpdateParams as ProjectUpdateParams
