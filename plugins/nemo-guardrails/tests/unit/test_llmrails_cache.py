@@ -25,6 +25,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from nemo_guardrails_plugin.llmrails_cache import (
+    MAIN_MODEL_REQUEST_PLACEHOLDER,
     PROVENANCE_HISTORY_LEN,
     EntityGuardrailConfigSource,
     InlineGuardrailConfigSource,
@@ -34,8 +35,8 @@ from nemo_guardrails_plugin.llmrails_cache import (
     Provenance,
     StabilizedRailsConfigCache,
     StableRailsConfig,
+    _fill_main_model_placeholder,
     _is_missing_model_name_error,
-    _is_stub_main_entry,
     _resolve_model_target,
     extract_output_rails_streaming_config,
     provenance_of,
@@ -503,18 +504,30 @@ class TestStabilizeMainModelTemplate:
             stabilize(rails, _resolve_target)
 
 
-class TestStabilizeStubMainStripping:
-    """Stub ``main`` entries — ``{"type": "main", ...}`` with no model
-    name in any location — are dropped at the platform→library boundary
-    so the upstream ``Model.model_must_be_none_empty`` validator (in
-    nemoguardrails 0.21.0+) doesn't fail otherwise-valid configs. Under
-    the IGW Plugin architecture, IGW owns main-LLM routing per request,
-    so these entries carry no information once stored.
-    """
+class TestStabilizeNamelessMainTemplate:
+    """A ``main`` entry with no ``model`` name is still kept as
+    ``main_model_template`` after stabilization, not dropped."""
 
-    def test_stub_main_with_no_model_field_is_dropped(self) -> None:
-        """``{"type": "main", "engine": "nim"}`` with no ``model`` field
-        must stabilize cleanly. This is the user-visible bug the strip fixes."""
+    def test_nameless_main_with_base_url_is_kept_as_template(self) -> None:
+        """The regression case: a ``main`` entry with no ``model`` but a
+        populated ``parameters`` must survive as ``main_model_template`` instead
+        of being dropped (which would silently discard the ``base_url``)."""
+        rails = _platform_rails(
+            models=[
+                {"type": "main", "engine": "nim", "parameters": {"base_url": "https://rails.example.com"}},
+                {"type": "content_safety", "engine": "nim", "model": "default/safety"},
+            ]
+        )
+        stable = stabilize(rails, _resolve_target)
+        assert stable.main_model_template is not None
+        assert stable.main_model_template.engine == "nim"
+        assert stable.main_model_template.parameters["base_url"] == "https://rails.example.com"
+        assert {m.type for m in stable.rails.models} == {"content_safety"}
+
+    def test_nameless_main_with_no_content_is_still_kept_as_template(self) -> None:
+        """Even a fully empty ``{"type": "main", "engine": "nim"}`` becomes
+        a template (not ``None``) — harmless, since :func:`rails.build_main_llm`
+        falls back to the same defaults either way."""
         rails = _platform_rails(
             models=[
                 {"type": "main", "engine": "nim"},
@@ -522,7 +535,8 @@ class TestStabilizeStubMainStripping:
             ]
         )
         stable = stabilize(rails, _resolve_target)
-        assert stable.main_model_template is None
+        assert stable.main_model_template is not None
+        assert stable.main_model_template.engine == "nim"
         assert {m.type for m in stable.rails.models} == {"content_safety"}
 
     @pytest.mark.parametrize(
@@ -530,55 +544,25 @@ class TestStabilizeStubMainStripping:
         [None, "", "   "],
         ids=["none", "empty_string", "whitespace_only"],
     )
-    def test_stub_main_with_empty_model_field_is_dropped(self, model_value: str | None) -> None:
+    def test_nameless_main_wire_shapes_are_all_kept(self, model_value: str | None) -> None:
         """Pin the equivalence of all "missing model name" wire shapes:
         absent, explicit None, empty string, whitespace-only string. All
-        four should drop without erroring."""
+        four must get a placeholder filled in and stabilize without
+        erroring."""
         rails = _platform_rails(
             models=[{"type": "main", "engine": "nim", "model": model_value}],
         )
         stable = stabilize(rails, _resolve_target)
-        assert stable.main_model_template is None
+        assert stable.main_model_template is not None
         assert stable.rails.models == []
 
-    @pytest.mark.parametrize(
-        "params",
-        [
-            {},
-            {"model": ""},
-            {"model_name": ""},
-            {"model": None, "model_name": None},
-        ],
-        ids=[
-            "empty_params",
-            "empty_model_in_params",
-            "empty_model_name_in_params",
-            "explicit_none_in_params",
-        ],
-    )
-    def test_stub_main_with_empty_parameters_is_dropped(self, params: dict[str, Any]) -> None:
-        """``parameters.model`` and ``parameters.model_name`` are upstream's
-        alternate locations for the model name. A main entry where every
-        location is empty/missing is still a stub and gets dropped."""
-        rails = _platform_rails(
-            models=[{"type": "main", "engine": "nim", "parameters": params}],
-        )
-        stable = stabilize(rails, _resolve_target)
-        assert stable.main_model_template is None
-        assert stable.rails.models == []
-
-    def test_named_main_in_parameters_survives_filter(self) -> None:
-        """A main entry whose model name lives in ``parameters.model_name``
-        is *not* a stub. The upstream pre-validator lifts it into the
-        ``model`` field; we keep it as ``main_model_template``.
-        """
+    def test_top_level_model_is_the_only_recognized_name_location(self) -> None:
+        """Only the top-level ``model`` field counts as "named". A ``main``
+        entry naming its model via ``model:`` directly passes through
+        unchanged and keeps that name."""
         rails = _platform_rails(
             models=[
-                {
-                    "type": "main",
-                    "engine": "nim",
-                    "parameters": {"model_name": "ws/llama"},
-                }
+                {"type": "main", "engine": "nim", "model": "ws/llama"},
             ]
         )
         stable = stabilize(rails, _resolve_target)
@@ -586,9 +570,10 @@ class TestStabilizeStubMainStripping:
         assert stable.main_model_template.engine == "nim"
         assert stable.main_model_template.model == "ws/llama"
 
-    def test_stub_main_alongside_named_main_keeps_named(self) -> None:
-        """Mixed config: stub main + named main. Stub gets dropped before
-        duplicate-detection, so the named main flows through normally."""
+    def test_nameless_main_alongside_named_main_raises(self) -> None:
+        """Two ``main`` entries — nameless or not — still trip the
+        at-most-one-main invariant; filling in a placeholder doesn't change
+        duplicate detection."""
         rails = _platform_rails(
             models=[
                 {"type": "main", "engine": "nim"},
@@ -596,67 +581,41 @@ class TestStabilizeStubMainStripping:
                 {"type": "content_safety", "engine": "nim", "model": "default/safety"},
             ]
         )
-        stable = stabilize(rails, _resolve_target)
-        assert stable.main_model_template is not None
-        assert stable.main_model_template.engine == "openai"
-        assert stable.main_model_template.model == "ws/llama"
-        assert {m.type for m in stable.rails.models} == {"content_safety"}
+        with pytest.raises(ValueError, match="at most one 'main' model"):
+            stabilize(rails, _resolve_target)
 
-    def test_dropped_stub_preserves_content_hash(self) -> None:
-        """The strip is observationally invisible to cache identity:
-        a config with a stub main hashes the same as the same config
-        without the stub. Cross-source determinism depends on this — two
-        callers that supplied the same task-LLM config but differed only
-        in whether they kept a stub main entry must share a pool.
+    def test_nameless_main_never_affects_content_hash(self) -> None:
+        """``main`` entries are pulled out of the hashed model list
+        regardless of whether they name a model, so two configs that
+        differ only in a nameless ``main`` entry's presence must share a
+        cache key.
         """
-        with_stub = _platform_rails(
+        with_nameless_main = _platform_rails(
             models=[
-                {"type": "main", "engine": "nim"},
+                {"type": "main", "engine": "nim", "parameters": {"base_url": "https://rails.example.com"}},
                 {"type": "content_safety", "engine": "nim", "model": "default/safety"},
             ]
         )
         without_main = _platform_rails(models=[{"type": "content_safety", "engine": "nim", "model": "default/safety"}])
         assert (
-            stabilize(with_stub, _resolve_target).content_hash == stabilize(without_main, _resolve_target).content_hash
+            stabilize(with_nameless_main, _resolve_target).content_hash
+            == stabilize(without_main, _resolve_target).content_hash
         )
 
-    def test_dropped_stub_emits_info_log(self, caplog: pytest.LogCaptureFixture) -> None:
-        """The drop is silent in error semantics but visible in logs so
-        operators investigating "why did my main model not engage?" find
-        a one-line breadcrumb pointing at the IGW contract."""
-        rails = _platform_rails(
-            models=[
-                {"type": "main", "engine": "nim"},
-                {"type": "content_safety", "engine": "nim", "model": "default/safety"},
-            ]
-        )
-        with caplog.at_level("INFO", logger="nemo_guardrails_plugin.llmrails_cache"):
-            stabilize(rails, _resolve_target)
-        infos = [r for r in caplog.records if r.levelname == "INFO"]
-        assert any("stub 'main' model" in r.getMessage() for r in infos)
+    def test_fill_placeholder_only_touches_nameless_main_entries(self) -> None:
+        """:func:`_fill_main_model_placeholder` passes non-``main`` entries
+        and already-named ``main`` entries through unchanged, and only
+        fills in a model on genuinely nameless ``main`` entries."""
+        content_safety = {"type": "content_safety", "engine": "nim"}
+        named_main = {"type": "main", "engine": "nim", "model": "ws/llama"}
+        nameless_main = {"type": "main", "engine": "nim"}
 
-    def test_no_log_when_no_stub_present(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Don't emit the stub-drop log on configs that had no stubs to begin with."""
-        rails = _platform_rails(models=[{"type": "content_safety", "engine": "nim", "model": "default/safety"}])
-        with caplog.at_level("INFO", logger="nemo_guardrails_plugin.llmrails_cache"):
-            stabilize(rails, _resolve_target)
-        assert not any("stub 'main' model" in r.getMessage() for r in caplog.records)
-
-    def test_predicate_treats_non_string_model_as_non_stub(self) -> None:
-        """Type mismatches (``{"model": 123}``) are *not* stubs — we let
-        the upstream type validator emit a precise error rather than
-        silently swallow the typo. Tested at the predicate level because
-        the platform-side wire schema (``Model.model: str | None``) would
-        reject this before ``stabilize`` runs in production."""
-        assert _is_stub_main_entry({"type": "main", "model": 123}) is False
-        assert _is_stub_main_entry({"type": "main", "parameters": {"model_name": 42}}) is False
-
-    def test_predicate_only_matches_main_type(self) -> None:
-        """Empty-name entries on non-main types are *not* stubs — they
-        should surface as validation errors via the upstream Model
-        validator, not be silently dropped."""
-        assert _is_stub_main_entry({"type": "content_safety", "engine": "nim"}) is False
-        assert _is_stub_main_entry({"type": "embeddings", "model": ""}) is False
+        assert _fill_main_model_placeholder(content_safety) == content_safety
+        assert _fill_main_model_placeholder(named_main) == named_main
+        assert _fill_main_model_placeholder(nameless_main) == {
+            **nameless_main,
+            "model": MAIN_MODEL_REQUEST_PLACEHOLDER,
+        }
 
 
 class TestStabilizeMissingModelNameWrapping:
@@ -665,10 +624,10 @@ class TestStabilizeMissingModelNameWrapping:
     message with an IGW-aware diagnostic so the 400 reaching the client
     tells the user what's actually wrong.
 
-    The stub filter catches all current-known main-stub shapes, so this
-    wrap rarely fires in practice. It exists to keep the user-facing
-    error message accurate across upstream version changes that might
-    surface missing-model-name errors through different code paths.
+    ``main`` entries always get a placeholder filled in before validation
+    (see :func:`_fill_main_model_placeholder`), so in practice this only
+    fires for non-``main`` entries (content-safety, topic-control, etc.)
+    that genuinely omit ``model``.
     """
 
     def test_recognizes_missing_model_name_error(self) -> None:
