@@ -1,0 +1,275 @@
+workloadTokenSigningKey:
+  create: true
+  secretName: &workloadTokenSigningKeySecretName nemo-workload-token-signing-key
+  key: private-key.pem
+  mountPath: &workloadTokenSigningKeyMountPath /etc/nmp/workload-token
+  privateKeyPem: ""
+
+workloadTokenTls:
+  create: true
+  secretName: &workloadTokenTlsSecretName nemo-platform-envoy-tls
+  durationDays: 365
+  mountPath: &workloadTokenTlsMountPath /etc/nmp/workload-token-tls
+  caBundleMountPath: &workloadTokenTlsCaBundleMountPath /etc/nmp/workload-token-ca
+  caBundleFile: &workloadTokenTlsCaBundleFile /etc/nmp/workload-token-ca/ca.crt
+  # Additional DNS SANs. Envoy Service DNS SANs are generated from the configured Envoy service name/namespace.
+  dnsNames:
+    - localhost
+  ipAddresses:
+    - 127.0.0.1
+
+blueprintApplyJob:
+  enabled: true
+  image:
+    tag: "2026.5.4"
+    pullPolicy: IfNotPresent
+  activeDeadlineSeconds: 600
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 300
+  podSecurityContext: {}
+  securityContext: {}
+  resources: {}
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+
+sharedPostgresql:
+  enabled: true
+  serviceName: shared-postgresql
+  postgresqlVersion: "18.4"
+  imageRepository: docker.io/library/postgres
+  imageTag: "18.4"
+  imagePullPolicy: IfNotPresent
+  postgresPassword: postgres
+  service:
+    port: 5432
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: ""
+  serviceAccount:
+    create: true
+    automount: false
+    annotations: {}
+    name: ""
+  podSecurityContext: {}
+  securityContext: {}
+  resources: {}
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+  authentik:
+    database: authentik
+    username: authentik
+  nemo:
+    database: nemoplatform
+    username: nemo
+    password: nemo
+
+authentik:
+  fullnameOverride: authentik
+  global:
+    env:
+      - name: AUTHENTIK_BOOTSTRAP_PASSWORD
+        value: authentik-admin
+      - name: AUTHENTIK_BOOTSTRAP_TOKEN
+        value: bootstrap-token-dev
+      - name: AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD
+        value: workload-identity-dev-only
+      - name: AUTHENTIK_POSTGRESQL__PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: shared-postgresql
+            key: authentik-password
+  authentik:
+    secret_key: authentik-demo-secret-key
+    postgresql:
+      host: shared-postgresql
+      name: authentik
+      user: authentik
+      port: 5432
+    error_reporting:
+      enabled: false
+  blueprints:
+    configMaps:
+      - authentik-nemo-blueprint
+  postgresql:
+    enabled: false
+
+nemo-platform:
+  fullnameOverride: nemo-platform
+  existingSecret: ""
+  ngcAPIKey: demo-ngc-api-key
+  authentikPublicGateway:
+    scheme: https
+    host: 127.0.0.1
+    port: 18081
+  k8s-nim-operator:
+    enabled: false
+  rbac:
+    k8sNimOperatorEnabled: false
+    volcanoEnabled: false
+  postgresql:
+    enabled: false
+  externalDatabase:
+    host: shared-postgresql
+    port: 5432
+    user: nemo
+    database: nemoplatform
+    existingSecret: shared-postgresql-nemo
+    existingSecretPasswordKey: password
+  core:
+    controller:
+      env:
+        NMP_PLATFORM_URL: "https://nemo-platform-envoy.$(POD_NAMESPACE).svc.cluster.local:8080"
+        NMP_AUTH_URL: "https://nemo-platform-envoy.$(POD_NAMESPACE).svc.cluster.local:8080"
+    storage:
+      accessModes:
+        - ReadWriteOnce
+  api:
+    serviceAccount:
+      create: true
+      name: nemo
+    extraVolumes:
+      - name: workload-token-signing-key
+        secret:
+          secretName: *workloadTokenSigningKeySecretName
+    extraVolumeMounts:
+      - name: workload-token-signing-key
+        mountPath: *workloadTokenSigningKeyMountPath
+        readOnly: true
+  authentikEnvoy:
+    serviceName: &authentikServiceName authentik-server
+    servicePort: &authentikServicePort 80
+  envoyProxy:
+    enabled: true
+    replicaCount: 1
+    serviceNamespace: ""
+    image:
+      repository: envoyproxy/envoy
+      tag: v1.37.0
+      digest: sha256:f91c972d5c99bc133233a079b5663b903e7d56b3b0b0216398924f7b80d09e47
+    serviceAccount:
+      create: true
+      automount: false
+    podSecurityContext:
+      fsGroup: 65532
+      fsGroupChangePolicy: OnRootMismatch
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65532
+      runAsGroup: 65532
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
+      seccompProfile:
+        type: RuntimeDefault
+    extraVolumeMounts:
+      - name: tmp
+        mountPath: /tmp
+      - name: workload-token-tls
+        mountPath: *workloadTokenTlsMountPath
+        readOnly: true
+    extraVolumes:
+      - name: tmp
+        emptyDir: {}
+      - name: workload-token-tls
+        secret:
+          secretName: *workloadTokenTlsSecretName
+    configOverride: '{{ include "nemo-platform-authentik.envoyConfig" . }}'
+  platformConfig:
+    auth:
+      enabled: true
+      allow_unsigned_jwt: false
+      policy_decision_point_provider: embedded
+      policy_decision_point_base_url: "http://127.0.0.1:8080"
+      policy_data_refresh_interval: 2
+      bundle_cache_seconds: 15
+      admin_email: "admin@example.com"
+      oidc:
+        enabled: true
+        issuer: '{{ include "nemo-platform-authentik.serviceUrl" (dict "root" . "serviceName" "authentik-server" "scheme" "http") }}/application/o/nemo-cli/'
+        additional_issuers:
+          - '{{ include "nemo-platform-authentik.serviceUrl" (dict "root" . "serviceName" "authentik-server" "scheme" "http") }}/application/o/nemo/'
+          - '{{ include "nemo-platform-authentik.publicGatewayUrl" . }}/application/o/nemo-cli/'
+          - '{{ include "nemo-platform-authentik.publicGatewayUrl" . }}/application/o/nemo/'
+        client_id: "nemo-platform-cli"
+        token_endpoint: '{{ include "nemo-platform-authentik.publicGatewayUrl" . }}/application/o/token/'
+        device_authorization_endpoint: '{{ include "nemo-platform-authentik.publicGatewayUrl" . }}/application/o/device/'
+        workload_token_exchange_enabled: true
+        workload_client_id: "nemo-platform-workload"
+        workload_audience: "nemo-platform"
+        workload_scope: "openid email groups"
+        workload_token_issuer: '{{ include "nemo-platform-authentik.serviceUrl" (dict "root" . "serviceName" "nemo-platform-envoy" "namespace" .Values.envoyProxy.serviceNamespace "scheme" "https" "port" 8080) }}/apis/auth'
+        workload_token_endpoint: '{{ include "nemo-platform-authentik.serviceUrl" (dict "root" . "serviceName" "nemo-platform-envoy" "namespace" .Values.envoyProxy.serviceNamespace "scheme" "https" "port" 8080) }}/apis/auth/token'
+        workload_token_key_id: "nemo-workload-exchange"
+        workload_token_private_key_file: "/etc/nmp/workload-token/private-key.pem"
+        workload_kubernetes_token_review_enabled: true
+        subject_claim: "sub"
+        email_claim: "email"
+        groups_claim: "groups"
+        default_scopes: "openid email offline_access groups"
+    jobs:
+      executor_defaults:
+        kubernetes_job:
+          env:
+            SSL_CERT_FILE: *workloadTokenTlsCaBundleFile
+            REQUESTS_CA_BUNDLE: *workloadTokenTlsCaBundleFile
+          storage:
+            additional_volumes:
+              - name: workload-token-tls-ca
+                secret:
+                  secret_name: *workloadTokenTlsSecretName
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+            additional_volume_mounts:
+              - name: workload-token-tls-ca
+                mount_path: *workloadTokenTlsCaBundleMountPath
+                read_only: true
+      executors:
+        - provider: cpu
+          profile: workload
+          backend: kubernetes_job
+          config:
+            launcher_image: '{{ include "nmp-core.image" . }}'
+            env:
+              SSL_CERT_FILE: *workloadTokenTlsCaBundleFile
+              REQUESTS_CA_BUNDLE: *workloadTokenTlsCaBundleFile
+            storage:
+              additional_volumes:
+                - name: workload-token-tls-ca
+                  secret:
+                    secret_name: *workloadTokenTlsSecretName
+                    items:
+                      - key: ca.crt
+                        path: ca.crt
+              additional_volume_mounts:
+                - name: workload-token-tls-ca
+                  mount_path: *workloadTokenTlsCaBundleMountPath
+                  read_only: true
+            workload_identity_token_audience: "nemo-platform-workload"
+            workload_identity_token_expiration_seconds: 600
+    models:
+      controller:
+        backends:
+          none:
+            enabled: true
+          nim_operator:
+            enabled: false
+
+integration:
+  nemoPlatform:
+    apiServiceAccountName: nemo
+    apiServiceName: nemo-platform-api
+    apiServicePort: 8080
+    envoyServiceName: nemo-platform-envoy
+    envoyServicePort: 8080
+  authentik:
+    serviceName: *authentikServiceName
+    servicePort: *authentikServicePort
+    workloadAudience: nemo-platform
+    cliAudience: nemo-platform-cli
+    workloadClientAudience: nemo-platform-workload

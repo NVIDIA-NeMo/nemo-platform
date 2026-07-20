@@ -47,10 +47,11 @@ class EntityClient(_PluginEntityClient):
         """
         from nemo_platform.resources.entities import AsyncEntitiesResource
         from nmp.common.observability import MARK_INTERNAL_REQUEST_HEADERS
+        from nmp.common.sdk_factory import with_options_preserving_request_router
 
         underlying_sdk = self.entities_api._client
         headers: dict[str, str] = {"X-NMP-Principal-Id": f"service:{service_name}"}
         if internal:
             headers.update(MARK_INTERNAL_REQUEST_HEADERS)
-        service_sdk = underlying_sdk.with_options(set_default_headers=headers)
+        service_sdk = with_options_preserving_request_router(underlying_sdk, set_default_headers=headers)
         return EntityClient(AsyncEntitiesResource(service_sdk))

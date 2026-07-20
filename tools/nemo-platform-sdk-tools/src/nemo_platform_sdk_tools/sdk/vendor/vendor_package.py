@@ -31,6 +31,22 @@ GENERATED_BUNDLE_TABLE_COMMENT = "# Generated from [tool.bundle-package]; do not
 GENERATED_BUNDLE_GROUP_COMMENT = "# Generated from [tool.bundle-package]; do not edit by hand."
 GENERATED_PROJECT_COMMENTS = {GENERATED_BUNDLE_GROUP_COMMENT, GENERATED_BUNDLE_TABLE_COMMENT}
 VALID_BUNDLE_INHERIT_VALUES = {"entry-points", "optional-dependencies", "scripts"}
+GENERATED_EMPTY_INIT_HEADER = """# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
 
 
 def _setup_logging() -> None:
@@ -65,7 +81,11 @@ class ResourceReplacement(BaseModel):
 
 _CLIENT_CLASS_NAMES = ("NeMoPlatform", "AsyncNeMoPlatform")
 _CLIENT_METHOD_NAMES = ("__init__", "__getattr__")
+_CLIENT_HELPER_FUNCTION_NAMES = ("_should_bootstrap_config",)
 _CLIENT_INIT_REQUIRED_IMPORTS: dict[str, tuple[str, ...]] = {
+    "nemo_platform._base_client": ("DefaultAsyncHttpxClient", "DefaultHttpxClient"),
+    "nemo_platform.client.tls": ("client_verify_from_env",),
+    "nemo_platform_plugin.client.constants": ("WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR",),
     "pathlib": ("Path",),
 }
 
@@ -115,6 +135,49 @@ class _ClientMethodReplacer(cst.CSTTransformer):
 
         self.replaced_classes.add(class_name)
         return updated_node.with_changes(body=updated_node.body.with_changes(body=body_items))
+
+
+def _collect_client_helper_functions(source_module: cst.Module) -> dict[str, cst.FunctionDef]:
+    helpers: dict[str, cst.FunctionDef] = {}
+    for statement in source_module.body:
+        if isinstance(statement, cst.FunctionDef) and statement.name.value in _CLIENT_HELPER_FUNCTION_NAMES:
+            helpers[statement.name.value] = statement
+    return helpers
+
+
+def _find_client_helper_insertion_index(module: cst.Module) -> int:
+    for index, statement in enumerate(module.body):
+        if not isinstance(statement, cst.SimpleStatementLine):
+            continue
+        for body_statement in statement.body:
+            if not isinstance(body_statement, cst.Assign):
+                continue
+            for target in body_statement.targets:
+                if isinstance(target.target, cst.Name) and target.target.value == "__all__":
+                    return index + 1
+
+    return _find_import_insertion_index(module)
+
+
+def _with_client_helper_functions(
+    target_module: cst.Module,
+    helper_functions: dict[str, cst.FunctionDef],
+) -> cst.Module:
+    if not helper_functions:
+        return target_module
+
+    helper_names = set(helper_functions)
+    body_without_stale_helpers = [
+        statement
+        for statement in target_module.body
+        if not (isinstance(statement, cst.FunctionDef) and statement.name.value in helper_names)
+    ]
+    target_module = target_module.with_changes(body=body_without_stale_helpers)
+
+    helpers = [helper_functions[name] for name in _CLIENT_HELPER_FUNCTION_NAMES if name in helper_functions]
+    insert_at = _find_client_helper_insertion_index(target_module)
+    body = list(target_module.body)
+    return target_module.with_changes(body=body[:insert_at] + helpers + body[insert_at:])
 
 
 def _module_name_from_expr(module_expr: cst.BaseExpression | None) -> str | None:
@@ -1379,6 +1442,13 @@ def _get_transitive_source_module_name(dependency_name: str) -> str:
 
 def _copy_included_paths(source_path: Path, destination_path: Path, included_paths: list[str]) -> None:
     """Copy included paths from source to destination, handling glob patterns."""
+
+    def copy_file(source_file: Path, dest_file: Path) -> None:
+        if source_file.name == "__init__.py" and source_file.read_text(encoding="utf-8") == "":
+            dest_file.write_text(GENERATED_EMPTY_INIT_HEADER, encoding="utf-8")
+        else:
+            shutil.copy(source_file, dest_file)
+
     for pattern in included_paths:
         pattern = str(pattern)
         pattern_path = source_path / pattern
@@ -1388,7 +1458,7 @@ def _copy_included_paths(source_path: Path, destination_path: Path, included_pat
             dest_file = destination_path / relative_file
             dest_file.parent.mkdir(parents=True, exist_ok=True)
             logger.debug(f"Copying {relative_file}")
-            shutil.copy(pattern_path, dest_file)
+            copy_file(pattern_path, dest_file)
         elif pattern_path.is_dir():
             # If it's a directory, find all Python files in it
             for py_file in pattern_path.rglob("*.py"):
@@ -1396,7 +1466,7 @@ def _copy_included_paths(source_path: Path, destination_path: Path, included_pat
                 dest_file = destination_path / relative_file
                 dest_file.parent.mkdir(parents=True, exist_ok=True)
                 logger.debug(f"Copying {relative_file}")
-                shutil.copy(py_file, dest_file)
+                copy_file(py_file, dest_file)
         else:
             # Treat as glob pattern
             for matched_file in source_path.glob(pattern):
@@ -1405,7 +1475,7 @@ def _copy_included_paths(source_path: Path, destination_path: Path, included_pat
                     dest_file = destination_path / relative_file
                     dest_file.parent.mkdir(parents=True, exist_ok=True)
                     logger.debug(f"Copying {relative_file}")
-                    shutil.copy(matched_file, dest_file)
+                    copy_file(matched_file, dest_file)
                 elif matched_file.is_dir():
                     # If glob matches a directory, find all Python files in it
                     for py_file in matched_file.rglob("*.py"):
@@ -1413,7 +1483,7 @@ def _copy_included_paths(source_path: Path, destination_path: Path, included_pat
                         dest_file = destination_path / relative_file
                         dest_file.parent.mkdir(parents=True, exist_ok=True)
                         logger.debug(f"Copying {relative_file}")
-                        shutil.copy(py_file, dest_file)
+                        copy_file(py_file, dest_file)
 
 
 def _build_and_validate_package_path(
@@ -1596,7 +1666,7 @@ def _create_init_files(target_path: Path) -> None:
     # Create __init__.py in the target directory itself
     init_file = target_path / "__init__.py"
     if not init_file.exists():
-        init_file.touch()
+        init_file.write_text(GENERATED_EMPTY_INIT_HEADER, encoding="utf-8")
         logger.debug(f"Created {init_file.relative_to(target_path.parent.parent.parent)}")
 
     # Create __init__.py in all subdirectories
@@ -1604,7 +1674,7 @@ def _create_init_files(target_path: Path) -> None:
         if subdir.is_dir():
             init_file = subdir / "__init__.py"
             if not init_file.exists():
-                init_file.touch()
+                init_file.write_text(GENERATED_EMPTY_INIT_HEADER, encoding="utf-8")
                 logger.debug(f"Created {init_file.relative_to(target_path.parent.parent.parent)}")
 
 
@@ -1998,6 +2068,7 @@ def _replace_client_methods(
     source_tree = cst.parse_module(source_content).visit(ImportRewriter(source_module, target_module))
     collector = _ClientMethodCollector()
     source_tree.visit(collector)
+    helper_functions = _collect_client_helper_functions(source_tree)
 
     if not collector.class_methods:
         logger.warning(f"No NeMo client methods found in {source_path}, skipping.")
@@ -2005,6 +2076,7 @@ def _replace_client_methods(
 
     target_tree = cst.parse_module(target_content)
     target_tree = _ensure_required_client_init_imports(target_tree)
+    target_tree = _with_client_helper_functions(target_tree, helper_functions)
     replacer = _ClientMethodReplacer(collector.class_methods)
     modified_tree = target_tree.visit(replacer)
     modified_content = modified_tree.code

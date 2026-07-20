@@ -60,6 +60,17 @@ def test_build_and_validate_target_paths_supports_top_level_targets(tmp_path: Pa
     assert nested_path == sdk_path / "src/nemo_platform/services/runner"
 
 
+def test_copy_included_paths_preserves_generated_header_for_empty_init(tmp_path: Path) -> None:
+    source_path = tmp_path / "source"
+    destination_path = tmp_path / "destination"
+    source_path.mkdir()
+    (source_path / "__init__.py").write_text("", encoding="utf-8")
+
+    vendor_package._copy_included_paths(source_path, destination_path, ["**/*.py"])
+
+    assert (destination_path / "__init__.py").read_text(encoding="utf-8") == vendor_package.GENERATED_EMPTY_INIT_HEADER
+
+
 def test_update_dependencies_of_sdk_pyproject_merges_optional_dependency_groups(tmp_path: Path, monkeypatch) -> None:
     """SDK client extension deps are written to the SDK pyproject."""
     sdk_path = tmp_path / "sdk/python/nemo-platform"
@@ -744,6 +755,10 @@ def test_replace_client_methods_updates_init_and_getattr(tmp_path: Path) -> None
 from typing import Any
 
 
+def _should_bootstrap_config(config_path: object | None = None) -> bool:
+    return False
+
+
 class NeMoPlatform:
     def __init__(self) -> None:
         self.value = 1
@@ -762,9 +777,14 @@ from pathlib import Path
 from typing import Any
 
 
+def _should_bootstrap_config(config_path: Path | None = None) -> bool:
+    return config_path is not None
+
+
 class NeMoPlatform:
     def __init__(self, config_path: Path | None = None) -> None:
         self.config_path = config_path
+        self.should_bootstrap = _should_bootstrap_config(config_path)
 
     def __getattr__(self, name: str) -> Any:
         return name
@@ -773,6 +793,7 @@ class NeMoPlatform:
 class AsyncNeMoPlatform:
     def __init__(self, config_path: Path | None = None) -> None:
         self.config_path = config_path
+        self.should_bootstrap = _should_bootstrap_config(config_path)
 
     def __getattr__(self, name: str) -> Any:
         return name
@@ -791,7 +812,14 @@ class AsyncNeMoPlatform:
     updated = client_path.read_text(encoding="utf-8")
 
     assert "from pathlib import Path" in updated
+    assert "from nemo_platform._base_client import DefaultAsyncHttpxClient, DefaultHttpxClient" in updated
+    assert "from nemo_platform.client.tls import client_verify_from_env" in updated
+    assert "from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR" in updated
+    assert "def _should_bootstrap_config(config_path: Path | None = None) -> bool:" in updated
+    assert "return config_path is not None" in updated
+    assert "return False" not in updated
     assert "def __init__(self, config_path: Path | None = None) -> None:" in updated
+    assert updated.count("self.should_bootstrap = _should_bootstrap_config(config_path)") == 2
     assert updated.count("def __getattr__(self, name: str) -> Any:") == 2
     assert "self.value = 1" not in updated
     assert "self.value = 2" not in updated

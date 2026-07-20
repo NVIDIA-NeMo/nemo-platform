@@ -26,6 +26,7 @@ from nemo_platform_ext.auth.device_flow import (
     authenticate_with_password_grant,
     refresh_access_token,
 )
+from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
 
 
 class TestDeviceCodeResponse:
@@ -136,6 +137,30 @@ class TestDeviceFlow:
                 },
                 timeout=30.0,
             )
+
+    @pytest.mark.asyncio
+    async def test_start_device_authorization_uses_nemo_scoped_ca_bundle(self, device_flow, monkeypatch):
+        mock_response_data = {
+            "device_code": "device_code_123",
+            "user_code": "ABC-123",
+            "verification_uri": "https://sso.example.com/device",
+            "expires_in": 1800,
+        }
+        monkeypatch.setenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, "/tmp/nemo-ca.pem")
+
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_response = MagicMock()
+            mock_response.raise_for_status = MagicMock()
+            mock_response.json.return_value = mock_response_data
+            mock_client.post.return_value = mock_response
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+            mock_client_class.return_value = mock_client
+
+            await device_flow.start_device_authorization()
+
+            mock_client_class.assert_called_once_with(verify="/tmp/nemo-ca.pem")
 
     @pytest.mark.asyncio
     async def test_start_device_authorization_default_interval(self, device_flow):
@@ -402,6 +427,32 @@ class TestPasswordGrant:
                 },
                 timeout=30.0,
             )
+
+    def test_authenticate_with_password_grant_uses_nemo_scoped_ca_bundle(self, monkeypatch):
+        monkeypatch.setenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, "/tmp/nemo-ca.pem")
+
+        with patch("httpx.Client") as mock_client_class:
+            mock_client = MagicMock()
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "access_token": "access_123",
+                "token_type": "Bearer",
+                "expires_in": 3600,
+            }
+            mock_client.post.return_value = mock_response
+            mock_client.__enter__.return_value = mock_client
+            mock_client.__exit__.return_value = None
+            mock_client_class.return_value = mock_client
+
+            authenticate_with_password_grant(
+                token_endpoint="https://idp/token",
+                client_id="client-id",
+                username="user",
+                password="secret",
+            )
+
+            mock_client_class.assert_called_once_with(verify="/tmp/nemo-ca.pem")
 
     def test_authenticate_with_password_grant_failure(self):
         with patch("httpx.Client") as mock_client_class:

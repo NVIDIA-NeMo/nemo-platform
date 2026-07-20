@@ -20,8 +20,13 @@ paths:
         \ CLI)\n  - `userinfo_endpoint`: UserInfo endpoint\n  - `client_id`: OAuth\
         \ client ID to use\n  - `default_scopes`: OAuth scopes to request during authentication\n\
         \  - `scope_prefix`: Prefix to prepend to custom scopes (those with ':' or\
-        \ '.default')"
-      operationId: get_auth_discovery_apis_auth_discovery_get
+        \ '.default')\n  - `workload_token_exchange_enabled`: Whether SDK workload\
+        \ identity token exchange is enabled\n  - `workload_client_id`: OAuth client\
+        \ ID to use for workload identity token exchange\n  - `workload_token_endpoint`:\
+        \ Token endpoint to use only for workload identity token exchange\n  - `workload_audience`:\
+        \ RFC 8693 audience for exchanged workload tokens\n  - `workload_scope`: OAuth\
+        \ scopes for exchanged workload tokens"
+      operationId: get_auth_discovery_endpoint_apis_auth_discovery_get
       responses:
         '200':
           description: Successful Response
@@ -29,6 +34,89 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthDiscoveryResponse'
+  /apis/auth/jwks:
+    get:
+      tags:
+      - Workload Identity
+      summary: Workload identity token exchange JWKS
+      description: Return the public signing key for workload identity access tokens
+        minted by the NeMo auth service.
+      operationId: jwks_apis_auth_jwks_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonWebKeySetResponse'
+  /apis/auth/token:
+    post:
+      tags:
+      - Workload Identity
+      summary: Exchange a workload identity subject token
+      description: Exchange a configured workload identity subject token for a NeMo
+        Platform access token.
+      operationId: token_exchange_apis_auth_token_post
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              properties:
+                grant_type:
+                  type: string
+                  enum:
+                  - urn:ietf:params:oauth:grant-type:token-exchange
+                  description: OAuth 2.0 token exchange grant type.
+                client_id:
+                  type: string
+                  description: Workload token exchange OAuth client ID.
+                subject_token:
+                  type: string
+                  description: JWT subject token to exchange.
+                subject_token_type:
+                  type: string
+                  enum:
+                  - urn:ietf:params:oauth:token-type:jwt
+                  description: Token type identifier for the subject token.
+                requested_token_type:
+                  type: string
+                  enum:
+                  - urn:ietf:params:oauth:token-type:access_token
+                  description: Requested token type identifier for the issued token.
+                  default: urn:ietf:params:oauth:token-type:access_token
+                audience:
+                  type: string
+                  description: Requested audience for the issued access token.
+                scope:
+                  type: string
+                  description: Space-separated scopes requested for the issued access
+                    token.
+              type: object
+              required:
+              - grant_type
+              - client_id
+              - subject_token
+              - subject_token_type
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkloadTokenExchangeResponse'
+        '400':
+          description: RFC 8693 token exchange error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkloadTokenExchangeErrorResponse'
+        '401':
+          description: OAuth 2.0 invalid_client error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkloadTokenExchangeErrorResponse'
   /apis/auth/v2/iam/role-bindings:
     get:
       tags:
@@ -9979,6 +10067,10 @@ components:
           allOf:
           - $ref: '#/components/schemas/DockerJobNetworkConfig'
           description: Docker networking configuration
+        workload_identity:
+          allOf:
+          - $ref: '#/components/schemas/DockerWorkloadIdentityConfig'
+          description: Docker workload identity subject-token issuer configuration.
       type: object
       title: DockerJobExecutionProfileConfig
       description: Configuration for Docker Job execution profile.
@@ -10048,6 +10140,60 @@ components:
       - volume_name
       - mount_path
       title: DockerVolumeMount
+    DockerWorkloadIdentityConfig:
+      properties:
+        enabled:
+          title: Enabled
+          description: Enable Docker workload identity token-file injection. Defaults
+            to auth.oidc.workload_token_exchange_enabled.
+          type: boolean
+        token_endpoint:
+          title: Token Endpoint
+          description: OAuth token endpoint used by the Docker demo issuer. Defaults
+            to auth.oidc.token_endpoint.
+          type: string
+        client_id:
+          title: Client Id
+          description: OAuth client ID used by the Docker demo issuer. Defaults to
+            auth.oidc.workload_client_id or auth.oidc.client_id.
+          type: string
+        client_secret:
+          format: password
+          title: Client Secret
+          description: OAuth client secret for the Docker demo issuer.
+          writeOnly: true
+          type: string
+        username:
+          title: Username
+          description: Username for the Docker demo issuer password grant.
+          type: string
+        password_env_var:
+          type: string
+          title: Password Env Var
+          description: Controller environment variable that contains the Docker demo
+            issuer password grant shared secret.
+          default: AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD
+        scope:
+          title: Scope
+          description: OAuth scope for the Docker demo issuer.
+          type: string
+        subject_token_ttl_seconds:
+          type: integer
+          minimum: 1.0
+          title: Subject Token Ttl Seconds
+          description: Fallback subject-token lifetime when the Docker demo issuer
+            response omits expires_in.
+        refresh_margin_seconds:
+          type: integer
+          minimum: 0.0
+          title: Refresh Margin Seconds
+          description: Seconds before subject-token expiry when the Docker refresher
+            issues a replacement token.
+          default: 60
+      additionalProperties: false
+      type: object
+      title: DockerWorkloadIdentityConfig
+      description: Docker-only subject token issuer configuration for workload identity.
     E2EJobExecutionProfile:
       properties:
         provider:
@@ -12591,6 +12737,25 @@ components:
             these variables.
       type: object
       title: JobExecutionProfileConfig
+    JsonWebKey:
+      properties: {}
+      additionalProperties: true
+      type: object
+      title: JsonWebKey
+      description: JSON Web Key object.
+    JsonWebKeySetResponse:
+      properties:
+        keys:
+          items:
+            $ref: '#/components/schemas/JsonWebKey'
+          type: array
+          title: Keys
+          description: Public signing keys in the JWKS document.
+      type: object
+      required:
+      - keys
+      title: JsonWebKeySetResponse
+      description: JSON Web Key Set document.
     K8sNIMOperatorConfig:
       properties:
         resources:
@@ -12630,6 +12795,31 @@ components:
         These fields provide typed access to commonly-used NIMService Spec fields
 
         and are applied before override_config in the compilation precedence.'
+    KubernetesConfigMapVolume:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: ConfigMap name to mount
+        default_mode:
+          title: Default Mode
+          description: Optional default file mode
+          type: integer
+        optional:
+          title: Optional
+          description: Whether the ConfigMap is optional
+          type: boolean
+        items:
+          items:
+            $ref: '#/components/schemas/KubernetesKeyToPath'
+          type: array
+          title: Items
+          description: Optional ConfigMap keys to project
+      type: object
+      required:
+      - name
+      title: KubernetesConfigMapVolume
+      description: Kubernetes ConfigMap volume definition.
     KubernetesEmptyDirVolume:
       properties:
         medium:
@@ -12787,6 +12977,18 @@ components:
           title: Launcher Image
           description: Container image that contains the jobs-launcher binary.
           default: nvcr.io/nvidia/nemo-microservices/jobs-launcher:latest
+        workload_identity_token_expiration_seconds:
+          type: integer
+          minimum: 600.0
+          title: Workload Identity Token Expiration Seconds
+          description: Requested expirationSeconds for the projected service account
+            token used as the workload identity subject token.
+          default: 600
+        workload_identity_token_audience:
+          title: Workload Identity Token Audience
+          description: Audience for the projected service account token. Defaults
+            to auth.oidc.workload_client_id, auth.oidc.client_id, then 'nemo-platform'.
+          type: string
       type: object
       title: KubernetesJobExecutionProfileConfig
       description: Configuration for Kubernetes execution environment.
@@ -12817,6 +13019,26 @@ components:
       type: object
       title: KubernetesJobStorageConfig
       description: Configuration for persistent storage in Kubernetes jobs.
+    KubernetesKeyToPath:
+      properties:
+        key:
+          type: string
+          title: Key
+          description: Source key to project from the volume source
+        path:
+          type: string
+          title: Path
+          description: Relative file path to write the key to
+        mode:
+          title: Mode
+          description: Optional file mode for this key
+          type: integer
+      type: object
+      required:
+      - key
+      - path
+      title: KubernetesKeyToPath
+      description: Kubernetes volume key-to-path mapping.
     KubernetesObjectMetadata:
       properties:
         labels:
@@ -12847,7 +13069,57 @@ components:
       - claim_name
       title: KubernetesPersistentVolumeClaim
       description: Kubernetes Persistent Volume Claim definition.
+    KubernetesSecretVolume:
+      properties:
+        secret_name:
+          type: string
+          title: Secret Name
+          description: Secret name to mount
+        default_mode:
+          title: Default Mode
+          description: Optional default file mode
+          type: integer
+        optional:
+          title: Optional
+          description: Whether the Secret is optional
+          type: boolean
+        items:
+          items:
+            $ref: '#/components/schemas/KubernetesKeyToPath'
+          type: array
+          title: Items
+          description: Optional Secret keys to project
+      type: object
+      required:
+      - secret_name
+      title: KubernetesSecretVolume
+      description: Kubernetes Secret volume definition.
     KubernetesVolume:
+      oneOf:
+      - properties:
+          persistent_volume_claim:
+            not:
+              type: 'null'
+        required:
+        - persistent_volume_claim
+      - properties:
+          empty_dir:
+            not:
+              type: 'null'
+        required:
+        - empty_dir
+      - properties:
+          secret:
+            not:
+              type: 'null'
+        required:
+        - secret
+      - properties:
+          config_map:
+            not:
+              type: 'null'
+        required:
+        - config_map
       properties:
         name:
           type: string
@@ -12861,11 +13133,19 @@ components:
           allOf:
           - $ref: '#/components/schemas/KubernetesEmptyDirVolume'
           description: EmptyDir Volume configuration
+        secret:
+          allOf:
+          - $ref: '#/components/schemas/KubernetesSecretVolume'
+          description: Secret Volume configuration
+        config_map:
+          allOf:
+          - $ref: '#/components/schemas/KubernetesConfigMapVolume'
+          description: ConfigMap Volume configuration
       type: object
       required:
       - name
       title: KubernetesVolume
-      description: Kubernetes Volume definition.
+      description: Kubernetes Volume definition with secret and config_map support.
     KubernetesVolumeMount:
       properties:
         name:
@@ -14758,6 +15038,22 @@ components:
           default: openid profile email offline_access
         scope_prefix:
           title: Scope Prefix
+          type: string
+        workload_token_exchange_enabled:
+          type: boolean
+          title: Workload Token Exchange Enabled
+          default: false
+        workload_client_id:
+          title: Workload Client Id
+          type: string
+        workload_token_endpoint:
+          title: Workload Token Endpoint
+          type: string
+        workload_audience:
+          title: Workload Audience
+          type: string
+        workload_scope:
+          title: Workload Scope
           type: string
       type: object
       required:
@@ -19078,6 +19374,18 @@ components:
           title: Launcher Image
           description: Container image that contains the jobs-launcher binary.
           default: nvcr.io/nvidia/nemo-microservices/jobs-launcher:latest
+        workload_identity_token_expiration_seconds:
+          type: integer
+          minimum: 600.0
+          title: Workload Identity Token Expiration Seconds
+          description: Requested expirationSeconds for the projected service account
+            token used as the workload identity subject token.
+          default: 600
+        workload_identity_token_audience:
+          title: Workload Identity Token Audience
+          description: Audience for the projected service account token. Defaults
+            to auth.oidc.workload_client_id, auth.oidc.client_id, then 'nemo-platform'.
+          type: string
         queue:
           type: string
           title: Queue
@@ -19104,6 +19412,58 @@ components:
       type: object
       title: VolcanoJobExecutionProfileConfig
       description: Configuration for Volcano Job Execution Profile
+    WorkloadTokenExchangeErrorResponse:
+      properties:
+        error:
+          type: string
+          title: Error
+          description: OAuth 2.0 or RFC 8693 token exchange error code, such as invalid_client,
+            invalid_request, invalid_grant, invalid_scope, or invalid_target.
+        error_description:
+          title: Error Description
+          description: Human-readable ASCII text providing additional information
+            about the error.
+          type: string
+        error_uri:
+          title: Error Uri
+          description: URI identifying a human-readable web page with information
+            about the error.
+          type: string
+      type: object
+      required:
+      - error
+      title: WorkloadTokenExchangeErrorResponse
+      description: RFC 8693 token exchange error response.
+    WorkloadTokenExchangeResponse:
+      properties:
+        access_token:
+          type: string
+          title: Access Token
+          description: JWT access token minted for the workload identity.
+        issued_token_type:
+          type: string
+          title: Issued Token Type
+          description: Token type identifier for the issued token.
+        token_type:
+          type: string
+          title: Token Type
+          description: OAuth token type used in Authorization headers.
+        expires_in:
+          type: integer
+          title: Expires In
+          description: Lifetime of the access token in seconds.
+        scope:
+          title: Scope
+          description: Space-separated scopes granted to the access token.
+          type: string
+      type: object
+      required:
+      - access_token
+      - issued_token_type
+      - token_type
+      - expires_in
+      title: WorkloadTokenExchangeResponse
+      description: RFC 8693 token exchange response for workload identity access tokens.
     Workspace:
       properties:
         id:

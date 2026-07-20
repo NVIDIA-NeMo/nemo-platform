@@ -40,3 +40,13 @@ class OidcDiscoveryResponse(BaseModel):
     token_endpoint: Optional[str] = None
 
     userinfo_endpoint: Optional[str] = None
+
+    workload_audience: Optional[str] = None
+
+    workload_client_id: Optional[str] = None
+
+    workload_scope: Optional[str] = None
+
+    workload_token_endpoint: Optional[str] = None
+
+    workload_token_exchange_enabled: Optional[bool] = None

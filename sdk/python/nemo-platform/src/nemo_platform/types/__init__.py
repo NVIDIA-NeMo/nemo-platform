@@ -20,6 +20,7 @@ from __future__ import annotations
 from .shared import (
     ModelSpec as ModelSpec,
     MoEConfig as MoEConfig,
+    JsonWebKey as JsonWebKey,
     PromptData as PromptData,
     AuthContext as AuthContext,
     MambaConfig as MambaConfig,
@@ -45,6 +46,7 @@ from .shared import (
     FilesetMetadataParam as FilesetMetadataParam,
     ModelMetadataContent as ModelMetadataContent,
     AuthDiscoveryResponse as AuthDiscoveryResponse,
+    JsonWebKeySetResponse as JsonWebKeySetResponse,
     OidcDiscoveryResponse as OidcDiscoveryResponse,
     DatasetMetadataContent as DatasetMetadataContent,
     PlatformJobResultResponse as PlatformJobResultResponse,
@@ -53,4 +55,6 @@ from .shared import (
     PlatformJobListResultResponse as PlatformJobListResultResponse,
     PlatformJobStepStatusResponse as PlatformJobStepStatusResponse,
     PlatformJobTaskStatusResponse as PlatformJobTaskStatusResponse,
+    WorkloadTokenExchangeResponse as WorkloadTokenExchangeResponse,
+    WorkloadTokenExchangeErrorResponse as WorkloadTokenExchangeErrorResponse,
 )

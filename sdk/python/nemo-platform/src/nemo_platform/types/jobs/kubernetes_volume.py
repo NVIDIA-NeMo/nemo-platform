@@ -15,23 +15,80 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Optional
+from typing import Union, Optional
+from typing_extensions import TypeAlias
 
 from ..._models import BaseModel
+from .kubernetes_secret_volume import KubernetesSecretVolume
 from .kubernetes_empty_dir_volume import KubernetesEmptyDirVolume
+from .kubernetes_config_map_volume import KubernetesConfigMapVolume
 from .kubernetes_persistent_volume_claim import KubernetesPersistentVolumeClaim
 
-__all__ = ["KubernetesVolume"]
+__all__ = ["KubernetesVolume", "UnionMember0", "UnionMember1", "UnionMember2", "UnionMember3"]
 
 
-class KubernetesVolume(BaseModel):
-    """Kubernetes Volume definition."""
+class UnionMember0(BaseModel):
+    persistent_volume_claim: object
 
-    name: str
-    """Volume Name"""
+    config_map: Optional[KubernetesConfigMapVolume] = None
+    """Kubernetes ConfigMap volume definition."""
 
     empty_dir: Optional[KubernetesEmptyDirVolume] = None
     """Kubernetes EmptyDir Volume definition."""
 
+    name: Optional[str] = None
+    """Volume Name"""
+
+    secret: Optional[KubernetesSecretVolume] = None
+    """Kubernetes Secret volume definition."""
+
+
+class UnionMember1(BaseModel):
+    empty_dir: object
+
+    config_map: Optional[KubernetesConfigMapVolume] = None
+    """Kubernetes ConfigMap volume definition."""
+
+    name: Optional[str] = None
+    """Volume Name"""
+
     persistent_volume_claim: Optional[KubernetesPersistentVolumeClaim] = None
     """Kubernetes Persistent Volume Claim definition."""
+
+    secret: Optional[KubernetesSecretVolume] = None
+    """Kubernetes Secret volume definition."""
+
+
+class UnionMember2(BaseModel):
+    secret: object
+
+    config_map: Optional[KubernetesConfigMapVolume] = None
+    """Kubernetes ConfigMap volume definition."""
+
+    empty_dir: Optional[KubernetesEmptyDirVolume] = None
+    """Kubernetes EmptyDir Volume definition."""
+
+    name: Optional[str] = None
+    """Volume Name"""
+
+    persistent_volume_claim: Optional[KubernetesPersistentVolumeClaim] = None
+    """Kubernetes Persistent Volume Claim definition."""
+
+
+class UnionMember3(BaseModel):
+    config_map: object
+
+    empty_dir: Optional[KubernetesEmptyDirVolume] = None
+    """Kubernetes EmptyDir Volume definition."""
+
+    name: Optional[str] = None
+    """Volume Name"""
+
+    persistent_volume_claim: Optional[KubernetesPersistentVolumeClaim] = None
+    """Kubernetes Persistent Volume Claim definition."""
+
+    secret: Optional[KubernetesSecretVolume] = None
+    """Kubernetes Secret volume definition."""
+
+
+KubernetesVolume: TypeAlias = Union[UnionMember0, UnionMember1, UnionMember2, UnionMember3]

@@ -1,0 +1,86 @@
+{{- if .Values.blueprintApplyJob.enabled }}
+{{- $authentikValues := index .Values "authentik" | default dict -}}
+{{- $authentikConfig := index $authentikValues "authentik" | default dict -}}
+{{- $globalValues := index $authentikValues "global" | default dict -}}
+{{- $globalImage := index $globalValues "image" | default dict -}}
+{{- $workerValues := index $authentikValues "worker" | default dict -}}
+{{- $workerImage := index $workerValues "image" | default dict -}}
+{{- $existingSecret := index $authentikConfig "existingSecret" | default dict -}}
+{{- $repository := coalesce (index $workerImage "repository") (index $globalImage "repository") "ghcr.io/goauthentik/server" -}}
+{{- $tag := coalesce (index $workerImage "tag") (index $globalImage "tag") .Values.blueprintApplyJob.image.tag -}}
+{{- $digest := coalesce (index $workerImage "digest") (index $globalImage "digest") -}}
+{{- $pullPolicy := coalesce (index $workerImage "pullPolicy") (index $globalImage "pullPolicy") .Values.blueprintApplyJob.image.pullPolicy -}}
+{{- $secretName := coalesce (index $existingSecret "secretName") (index $authentikValues "fullnameOverride") "authentik" -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-authentik-blueprint" .Release.Name | trunc 63 | trimSuffix "-" }}
+  namespace: {{ include "nemo-platform-authentik.namespace" . }}
+  labels:
+    app.kubernetes.io/component: authentik-blueprint-apply
+    {{- include "nemo-platform-authentik.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  activeDeadlineSeconds: {{ .Values.blueprintApplyJob.activeDeadlineSeconds }}
+  backoffLimit: {{ .Values.blueprintApplyJob.backoffLimit }}
+  ttlSecondsAfterFinished: {{ .Values.blueprintApplyJob.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: authentik-blueprint-apply
+        {{- include "nemo-platform-authentik.selectorLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      {{- with .Values.blueprintApplyJob.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: apply-blueprint
+          image: "{{ $repository }}:{{ $tag }}{{- if $digest }}@{{ $digest }}{{- end }}"
+          imagePullPolicy: {{ $pullPolicy }}
+          command:
+            - ak
+          args:
+            - apply_blueprint
+            - /blueprints/mounted/cm-authentik-nemo-blueprint/nemo.yaml
+          {{- with (index $globalValues "env") }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ $secretName }}
+          volumeMounts:
+            - name: authentik-nemo-blueprint
+              mountPath: /blueprints/mounted/cm-authentik-nemo-blueprint
+              readOnly: true
+          {{- with .Values.blueprintApplyJob.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.blueprintApplyJob.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: authentik-nemo-blueprint
+          configMap:
+            name: authentik-nemo-blueprint
+      {{- with .Values.blueprintApplyJob.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.blueprintApplyJob.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.blueprintApplyJob.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

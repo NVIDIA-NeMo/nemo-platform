@@ -5,6 +5,7 @@ version: 1
 metadata:
   name: nemo-platform-oidc
   labels:
+    blueprints.goauthentik.io/instantiate: "true"
     blueprints.goauthentik.io/description: "NeMo Platform OIDC provider + demo workload identity"
 
 entries:
@@ -28,6 +29,10 @@ entries:
       client_type: confidential
       client_id: nemo-platform
       client_secret: nemo-platform-secret-dev
+      grant_types:
+        - authorization_code
+        - refresh_token
+        - password
       sub_mode: user_username
       include_claims_in_id_token: true
       redirect_uris: []
@@ -51,8 +56,17 @@ entries:
       name: nemo-platform-cli
       client_type: public
       client_id: nemo-platform-cli
+      grant_types:
+        - authorization_code
+        - refresh_token
+        - password
+        - urn:ietf:params:oauth:grant-type:device_code
       sub_mode: user_username
       include_claims_in_id_token: true
+      # Local demo only: keep CLI access tokens short so refresh-token renewal
+      # is easy to observe. Use a longer value such as "hours=1" outside this
+      # refresh demonstration.
+      access_token_validity: "minutes=2"
       redirect_uris: []
       authorization_flow:
         !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
@@ -64,6 +78,31 @@ entries:
         - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
         - !Find [authentik_providers_oauth2.scopemapping, [scope_name, email]]
         - !Find [authentik_providers_oauth2.scopemapping, [scope_name, offline_access]]
+        - !KeyOf nemo-groups-scope
+
+  - model: authentik_providers_oauth2.oauth2provider
+    id: nemo-workload-provider
+    identifiers:
+      name: nemo-platform-workload
+    attrs:
+      name: nemo-platform-workload
+      client_type: public
+      client_id: nemo-platform-workload
+      grant_types:
+        - password
+      sub_mode: user_username
+      include_claims_in_id_token: true
+      access_token_validity: "minutes=5"
+      redirect_uris: []
+      authorization_flow:
+        !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow:
+        !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      signing_key:
+        !Find [authentik_crypto.certificatekeypair, [name, "authentik Self-signed Certificate"]]
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, email]]
         - !KeyOf nemo-groups-scope
 
   - model: authentik_core.application
@@ -82,6 +121,14 @@ entries:
       slug: nemo-cli
       provider: !KeyOf nemo-cli-provider
 
+  - model: authentik_core.application
+    identifiers:
+      slug: nemo-workload
+    attrs:
+      name: NeMo Platform Workload Identity
+      slug: nemo-workload
+      provider: !KeyOf nemo-workload-provider
+
   - model: authentik_core.group
     id: group-nemo-admins
     identifiers:
@@ -96,6 +143,13 @@ entries:
     attrs:
       name: nemo-editors
 
+  - model: authentik_core.group
+    id: group-nemo-workloads
+    identifiers:
+      name: nemo-workloads
+    attrs:
+      name: nemo-workloads
+
   - model: authentik_core.user
     id: nemo-user
     identifiers:
@@ -108,16 +162,6 @@ entries:
       groups:
         - !KeyOf group-nemo-editors
 
-  - model: authentik_core.token
-    identifiers:
-      identifier: nemo-user-token
-    attrs:
-      identifier: nemo-user-token
-      intent: app_password
-      user: !KeyOf nemo-user
-      key: nemo-user-token-secret-dev
-      expiring: false
-
   - model: authentik_core.user
     id: svc-nemo
     identifiers:
@@ -128,7 +172,36 @@ entries:
       type: service_account
       path: service-accounts
       groups:
-        - !KeyOf group-nemo-editors
+        - !KeyOf group-nemo-workloads
+
+  # E2E TEST HARNESS ONLY. The setup identity lets automated auth-idp contract
+  # tests create temporary workspaces and grants after nemo-user app-passwords
+  # were removed. Do not use this as a production user, CLI, or workload auth
+  # pattern.
+  - model: authentik_core.user
+    id: nemo-setup
+    identifiers:
+      username: nemo-setup
+    attrs:
+      username: nemo-setup
+      name: "NeMo auth-idp e2e setup identity"
+      type: service_account
+      path: service-accounts
+      groups:
+        - !KeyOf group-nemo-admins
+
+  # E2E TEST HARNESS ONLY. This app-password must not be copied into production
+  # deployments; use browser/device login for users and workload token exchange
+  # for workloads.
+  - model: authentik_core.token
+    identifiers:
+      identifier: nemo-setup-token
+    attrs:
+      identifier: nemo-setup-token
+      intent: app_password
+      user: !KeyOf nemo-setup
+      key: nemo-setup-token-secret-dev
+      expiring: false
 
   - model: authentik_core.token
     identifiers:
@@ -137,7 +210,7 @@ entries:
       identifier: svc-nemo-token
       intent: app_password
       user: !KeyOf svc-nemo
-      key: svc-nemo-token-secret-dev
+      key: !Env AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD
       expiring: false
 
   - model: authentik_brands.brand

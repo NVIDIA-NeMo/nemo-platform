@@ -17,14 +17,24 @@ Usage::
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TypeVar, overload
 
+import httpx
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.types import RetryPolicy
 
 SyncT = TypeVar("SyncT", bound=NemoClient)
 AsyncT = TypeVar("AsyncT", bound=AsyncNemoClient)
+
+
+def _url_resolver_from_platform(platform: NeMoPlatform | AsyncNeMoPlatform) -> Callable[[str], str | httpx.URL]:
+    router = getattr(platform, "_nmp_request_router", None)
+    resolver = getattr(router, "resolve", None)
+    if resolver is not None:
+        return resolver
+    return platform._prepare_url
 
 
 @overload
@@ -52,6 +62,7 @@ def client_from_platform(
         headers = {k: v for k, v in platform._client.headers.items() if k.lower() not in _skip}  # type: ignore[union-attr]
 
     retry = RetryPolicy(max_retries=platform.max_retries)
+    url_resolver = _url_resolver_from_platform(platform)
     if isinstance(platform, AsyncNeMoPlatform):
         if not issubclass(client_cls, AsyncNemoClient):
             raise TypeError("AsyncNeMoPlatform requires an AsyncNemoClient class")
@@ -61,6 +72,7 @@ def client_from_platform(
             default_headers=headers or None,
             retry=retry,
             http_client=platform._client,
+            url_resolver=url_resolver,
         )
     if not issubclass(client_cls, NemoClient):
         raise TypeError("NeMoPlatform requires a NemoClient class")
@@ -70,4 +82,5 @@ def client_from_platform(
         default_headers=headers or None,
         retry=retry,
         http_client=platform._client,
+        url_resolver=url_resolver,
     )
