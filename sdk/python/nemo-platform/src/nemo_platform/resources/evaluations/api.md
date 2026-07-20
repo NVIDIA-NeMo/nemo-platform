@@ -39,3 +39,10 @@ from nemo_platform.types.evaluations import (
 Methods:
 
 - <code title="get /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/sessions">client.evaluations.sessions.<a href="./src/nemo_platform/resources/evaluations/sessions.py">list</a>(name, \*, workspace, \*\*<a href="src/nemo_platform/types/evaluations/session_list_params.py">params</a>) -> <a href="./src/nemo_platform/types/evaluations/evaluation_session_response.py">SyncDefaultPagination[EvaluationSessionResponse]</a></code>
+
+## Experiments
+
+Methods:
+
+- <code title="post /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/experiments/{experiment_id}">client.evaluations.experiments.<a href="./src/nemo_platform/resources/evaluations/experiments.py">reviewme_create</a>(experiment_id, \*, workspace, name) -> <a href="./src/nemo_platform/types/evaluations/evaluation_response.py">EvaluationResponse</a></code>
+- <code title="delete /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/experiments/{experiment_id}">client.evaluations.experiments.<a href="./src/nemo_platform/resources/evaluations/experiments.py">reviewme_delete</a>(experiment_id, \*, workspace, name) -> <a href="./src/nemo_platform/types/evaluations/evaluation_response.py">EvaluationResponse</a></code>

@@ -42,7 +42,6 @@ class TestEvaluations:
         evaluation = client.evaluations.create(
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             name="name",
         )
         assert_matches_type(EvaluationResponse, evaluation, path=["response"])
@@ -53,10 +52,11 @@ class TestEvaluations:
         evaluation = client.evaluations.create(
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             name="name",
             dataset_version="dataset_version",
             description="description",
+            experiment_group_id="experiment_group_id",
+            experiment_ids=["string"],
             metadata={"foo": "string"},
             parent_evaluation_id="parent_evaluation_id",
             parent_experiment_id="parent_experiment_id",
@@ -72,7 +72,6 @@ class TestEvaluations:
         response = client.evaluations.with_raw_response.create(
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             name="name",
         )
 
@@ -87,7 +86,6 @@ class TestEvaluations:
         with client.evaluations.with_streaming_response.create(
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             name="name",
         ) as response:
             assert not response.is_closed
@@ -105,7 +103,6 @@ class TestEvaluations:
             client.evaluations.with_raw_response.create(
                 workspace="",
                 dataset_name="dataset_name",
-                experiment_group_id="experiment_group_id",
                 name="name",
             )
 
@@ -168,7 +165,6 @@ class TestEvaluations:
             path_name="name",
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             body_name="name",
         )
         assert_matches_type(EvaluationResponse, evaluation, path=["response"])
@@ -180,10 +176,11 @@ class TestEvaluations:
             path_name="name",
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             body_name="name",
             dataset_version="dataset_version",
             description="description",
+            experiment_group_id="experiment_group_id",
+            experiment_ids=["string"],
             metadata={"foo": "string"},
             parent_evaluation_id="parent_evaluation_id",
             parent_experiment_id="parent_experiment_id",
@@ -200,7 +197,6 @@ class TestEvaluations:
             path_name="name",
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             body_name="name",
         )
 
@@ -216,7 +212,6 @@ class TestEvaluations:
             path_name="name",
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             body_name="name",
         ) as response:
             assert not response.is_closed
@@ -235,7 +230,6 @@ class TestEvaluations:
                 path_name="name",
                 workspace="",
                 dataset_name="dataset_name",
-                experiment_group_id="experiment_group_id",
                 body_name="name",
             )
 
@@ -244,7 +238,6 @@ class TestEvaluations:
                 path_name="",
                 workspace="workspace",
                 dataset_name="dataset_name",
-                experiment_group_id="experiment_group_id",
                 body_name="name",
             )
 
@@ -649,7 +642,6 @@ class TestAsyncEvaluations:
         evaluation = await async_client.evaluations.create(
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             name="name",
         )
         assert_matches_type(EvaluationResponse, evaluation, path=["response"])
@@ -660,10 +652,11 @@ class TestAsyncEvaluations:
         evaluation = await async_client.evaluations.create(
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             name="name",
             dataset_version="dataset_version",
             description="description",
+            experiment_group_id="experiment_group_id",
+            experiment_ids=["string"],
             metadata={"foo": "string"},
             parent_evaluation_id="parent_evaluation_id",
             parent_experiment_id="parent_experiment_id",
@@ -679,7 +672,6 @@ class TestAsyncEvaluations:
         response = await async_client.evaluations.with_raw_response.create(
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             name="name",
         )
 
@@ -694,7 +686,6 @@ class TestAsyncEvaluations:
         async with async_client.evaluations.with_streaming_response.create(
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             name="name",
         ) as response:
             assert not response.is_closed
@@ -712,7 +703,6 @@ class TestAsyncEvaluations:
             await async_client.evaluations.with_raw_response.create(
                 workspace="",
                 dataset_name="dataset_name",
-                experiment_group_id="experiment_group_id",
                 name="name",
             )
 
@@ -775,7 +765,6 @@ class TestAsyncEvaluations:
             path_name="name",
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             body_name="name",
         )
         assert_matches_type(EvaluationResponse, evaluation, path=["response"])
@@ -787,10 +776,11 @@ class TestAsyncEvaluations:
             path_name="name",
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             body_name="name",
             dataset_version="dataset_version",
             description="description",
+            experiment_group_id="experiment_group_id",
+            experiment_ids=["string"],
             metadata={"foo": "string"},
             parent_evaluation_id="parent_evaluation_id",
             parent_experiment_id="parent_experiment_id",
@@ -807,7 +797,6 @@ class TestAsyncEvaluations:
             path_name="name",
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             body_name="name",
         )
 
@@ -823,7 +812,6 @@ class TestAsyncEvaluations:
             path_name="name",
             workspace="workspace",
             dataset_name="dataset_name",
-            experiment_group_id="experiment_group_id",
             body_name="name",
         ) as response:
             assert not response.is_closed
@@ -842,7 +830,6 @@ class TestAsyncEvaluations:
                 path_name="name",
                 workspace="",
                 dataset_name="dataset_name",
-                experiment_group_id="experiment_group_id",
                 body_name="name",
             )
 
@@ -851,7 +838,6 @@ class TestAsyncEvaluations:
                 path_name="",
                 workspace="workspace",
                 dataset_name="dataset_name",
-                experiment_group_id="experiment_group_id",
                 body_name="name",
             )
 

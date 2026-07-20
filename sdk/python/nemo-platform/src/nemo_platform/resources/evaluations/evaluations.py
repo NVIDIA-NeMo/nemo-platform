@@ -21,7 +21,7 @@ from typing import Dict
 
 import httpx
 
-from ..._types import Body, Omit, Query, Headers, NoneType, NotGiven, omit, not_given
+from ..._types import Body, Omit, Query, Headers, NoneType, NotGiven, SequenceNotStr, omit, not_given
 from ..._utils import path_template, maybe_transform, async_maybe_transform
 from .sessions import (
     SessionsResource,
@@ -38,6 +38,14 @@ from ..._response import (
     to_streamed_response_wrapper,
     async_to_raw_response_wrapper,
     async_to_streamed_response_wrapper,
+)
+from .experiments import (
+    ExperimentsResource,
+    AsyncExperimentsResource,
+    ExperimentsResourceWithRawResponse,
+    AsyncExperimentsResourceWithRawResponse,
+    ExperimentsResourceWithStreamingResponse,
+    AsyncExperimentsResourceWithStreamingResponse,
 )
 from ...pagination import SyncDefaultPagination, AsyncDefaultPagination
 from ..._base_client import AsyncPaginator, make_request_options
@@ -57,6 +65,10 @@ class EvaluationsResource(SyncAPIResource):
     @cached_property
     def sessions(self) -> SessionsResource:
         return SessionsResource(self._client)
+
+    @cached_property
+    def experiments(self) -> ExperimentsResource:
+        return ExperimentsResource(self._client)
 
     @cached_property
     def with_raw_response(self) -> EvaluationsResourceWithRawResponse:
@@ -82,10 +94,11 @@ class EvaluationsResource(SyncAPIResource):
         *,
         workspace: str | None = None,
         dataset_name: str,
-        experiment_group_id: str,
         name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
+        experiment_group_id: str | Omit = omit,
+        experiment_ids: SequenceNotStr[str] | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         parent_evaluation_id: str | Omit = omit,
         parent_experiment_id: str | Omit = omit,
@@ -106,14 +119,18 @@ class EvaluationsResource(SyncAPIResource):
         Args:
           dataset_name: Producer-supplied dataset name.
 
-          experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
-              exist.
-
           name: Producer-supplied, workspace-unique evaluation id.
 
           dataset_version: Producer-supplied dataset version.
 
           description: Human-readable description.
+
+          experiment_group_id: Deprecated single-group field; provide experiment_ids instead. Coalesced into
+              experiment_ids when experiment_ids is omitted.
+
+          experiment_ids: Entity ids of the ExperimentGroups this Evaluation belongs to (>=1). Preferred;
+              each group must already exist. When omitted, the deprecated experiment_group_id
+              is used instead.
 
           metadata: Free-form producer metadata.
 
@@ -151,10 +168,11 @@ class EvaluationsResource(SyncAPIResource):
                 body=maybe_transform(
                     {
                         "dataset_name": dataset_name,
-                        "experiment_group_id": experiment_group_id,
                         "name": name,
                         "dataset_version": dataset_version,
                         "description": description,
+                        "experiment_group_id": experiment_group_id,
+                        "experiment_ids": experiment_ids,
                         "metadata": metadata,
                         "parent_evaluation_id": parent_evaluation_id,
                         "parent_experiment_id": parent_experiment_id,
@@ -218,10 +236,11 @@ class EvaluationsResource(SyncAPIResource):
         *,
         workspace: str | None = None,
         dataset_name: str,
-        experiment_group_id: str,
         body_name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
+        experiment_group_id: str | Omit = omit,
+        experiment_ids: SequenceNotStr[str] | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         parent_evaluation_id: str | Omit = omit,
         parent_experiment_id: str | Omit = omit,
@@ -241,14 +260,18 @@ class EvaluationsResource(SyncAPIResource):
         Args:
           dataset_name: Producer-supplied dataset name.
 
-          experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
-              exist.
-
           body_name: Producer-supplied, workspace-unique evaluation id.
 
           dataset_version: Producer-supplied dataset version.
 
           description: Human-readable description.
+
+          experiment_group_id: Deprecated single-group field; provide experiment_ids instead. Coalesced into
+              experiment_ids when experiment_ids is omitted.
+
+          experiment_ids: Entity ids of the ExperimentGroups this Evaluation belongs to (>=1). Preferred;
+              each group must already exist. When omitted, the deprecated experiment_group_id
+              is used instead.
 
           metadata: Free-form producer metadata.
 
@@ -287,10 +310,11 @@ class EvaluationsResource(SyncAPIResource):
             body=maybe_transform(
                 {
                     "dataset_name": dataset_name,
-                    "experiment_group_id": experiment_group_id,
                     "body_name": body_name,
                     "dataset_version": dataset_version,
                     "description": description,
+                    "experiment_group_id": experiment_group_id,
+                    "experiment_ids": experiment_ids,
                     "metadata": metadata,
                     "parent_evaluation_id": parent_evaluation_id,
                     "parent_experiment_id": parent_experiment_id,
@@ -510,6 +534,10 @@ class AsyncEvaluationsResource(AsyncAPIResource):
         return AsyncSessionsResource(self._client)
 
     @cached_property
+    def experiments(self) -> AsyncExperimentsResource:
+        return AsyncExperimentsResource(self._client)
+
+    @cached_property
     def with_raw_response(self) -> AsyncEvaluationsResourceWithRawResponse:
         """
         This property can be used as a prefix for any HTTP method call to return
@@ -533,10 +561,11 @@ class AsyncEvaluationsResource(AsyncAPIResource):
         *,
         workspace: str | None = None,
         dataset_name: str,
-        experiment_group_id: str,
         name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
+        experiment_group_id: str | Omit = omit,
+        experiment_ids: SequenceNotStr[str] | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         parent_evaluation_id: str | Omit = omit,
         parent_experiment_id: str | Omit = omit,
@@ -557,14 +586,18 @@ class AsyncEvaluationsResource(AsyncAPIResource):
         Args:
           dataset_name: Producer-supplied dataset name.
 
-          experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
-              exist.
-
           name: Producer-supplied, workspace-unique evaluation id.
 
           dataset_version: Producer-supplied dataset version.
 
           description: Human-readable description.
+
+          experiment_group_id: Deprecated single-group field; provide experiment_ids instead. Coalesced into
+              experiment_ids when experiment_ids is omitted.
+
+          experiment_ids: Entity ids of the ExperimentGroups this Evaluation belongs to (>=1). Preferred;
+              each group must already exist. When omitted, the deprecated experiment_group_id
+              is used instead.
 
           metadata: Free-form producer metadata.
 
@@ -602,10 +635,11 @@ class AsyncEvaluationsResource(AsyncAPIResource):
                 body=await async_maybe_transform(
                     {
                         "dataset_name": dataset_name,
-                        "experiment_group_id": experiment_group_id,
                         "name": name,
                         "dataset_version": dataset_version,
                         "description": description,
+                        "experiment_group_id": experiment_group_id,
+                        "experiment_ids": experiment_ids,
                         "metadata": metadata,
                         "parent_evaluation_id": parent_evaluation_id,
                         "parent_experiment_id": parent_experiment_id,
@@ -669,10 +703,11 @@ class AsyncEvaluationsResource(AsyncAPIResource):
         *,
         workspace: str | None = None,
         dataset_name: str,
-        experiment_group_id: str,
         body_name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
+        experiment_group_id: str | Omit = omit,
+        experiment_ids: SequenceNotStr[str] | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         parent_evaluation_id: str | Omit = omit,
         parent_experiment_id: str | Omit = omit,
@@ -692,14 +727,18 @@ class AsyncEvaluationsResource(AsyncAPIResource):
         Args:
           dataset_name: Producer-supplied dataset name.
 
-          experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
-              exist.
-
           body_name: Producer-supplied, workspace-unique evaluation id.
 
           dataset_version: Producer-supplied dataset version.
 
           description: Human-readable description.
+
+          experiment_group_id: Deprecated single-group field; provide experiment_ids instead. Coalesced into
+              experiment_ids when experiment_ids is omitted.
+
+          experiment_ids: Entity ids of the ExperimentGroups this Evaluation belongs to (>=1). Preferred;
+              each group must already exist. When omitted, the deprecated experiment_group_id
+              is used instead.
 
           metadata: Free-form producer metadata.
 
@@ -738,10 +777,11 @@ class AsyncEvaluationsResource(AsyncAPIResource):
             body=await async_maybe_transform(
                 {
                     "dataset_name": dataset_name,
-                    "experiment_group_id": experiment_group_id,
                     "body_name": body_name,
                     "dataset_version": dataset_version,
                     "description": description,
+                    "experiment_group_id": experiment_group_id,
+                    "experiment_ids": experiment_ids,
                     "metadata": metadata,
                     "parent_evaluation_id": parent_evaluation_id,
                     "parent_experiment_id": parent_experiment_id,
@@ -985,6 +1025,10 @@ class EvaluationsResourceWithRawResponse:
     def sessions(self) -> SessionsResourceWithRawResponse:
         return SessionsResourceWithRawResponse(self._evaluations.sessions)
 
+    @cached_property
+    def experiments(self) -> ExperimentsResourceWithRawResponse:
+        return ExperimentsResourceWithRawResponse(self._evaluations.experiments)
+
 
 class AsyncEvaluationsResourceWithRawResponse:
     def __init__(self, evaluations: AsyncEvaluationsResource) -> None:
@@ -1015,6 +1059,10 @@ class AsyncEvaluationsResourceWithRawResponse:
     @cached_property
     def sessions(self) -> AsyncSessionsResourceWithRawResponse:
         return AsyncSessionsResourceWithRawResponse(self._evaluations.sessions)
+
+    @cached_property
+    def experiments(self) -> AsyncExperimentsResourceWithRawResponse:
+        return AsyncExperimentsResourceWithRawResponse(self._evaluations.experiments)
 
 
 class EvaluationsResourceWithStreamingResponse:
@@ -1047,6 +1095,10 @@ class EvaluationsResourceWithStreamingResponse:
     def sessions(self) -> SessionsResourceWithStreamingResponse:
         return SessionsResourceWithStreamingResponse(self._evaluations.sessions)
 
+    @cached_property
+    def experiments(self) -> ExperimentsResourceWithStreamingResponse:
+        return ExperimentsResourceWithStreamingResponse(self._evaluations.experiments)
+
 
 class AsyncEvaluationsResourceWithStreamingResponse:
     def __init__(self, evaluations: AsyncEvaluationsResource) -> None:
@@ -1077,3 +1129,7 @@ class AsyncEvaluationsResourceWithStreamingResponse:
     @cached_property
     def sessions(self) -> AsyncSessionsResourceWithStreamingResponse:
         return AsyncSessionsResourceWithStreamingResponse(self._evaluations.sessions)
+
+    @cached_property
+    def experiments(self) -> AsyncExperimentsResourceWithStreamingResponse:
+        return AsyncExperimentsResourceWithStreamingResponse(self._evaluations.experiments)

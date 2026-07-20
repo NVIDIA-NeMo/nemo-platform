@@ -20,6 +20,8 @@ from __future__ import annotations
 from typing import Dict
 from typing_extensions import Required, TypedDict
 
+from ..._types import SequenceNotStr
+
 __all__ = ["EvaluationCreateParams"]
 
 
@@ -29,12 +31,6 @@ class EvaluationCreateParams(TypedDict, total=False):
     dataset_name: Required[str]
     """Producer-supplied dataset name."""
 
-    experiment_group_id: Required[str]
-    """Entity id of the owning ExperimentGroup.
-
-    Required — the group must already exist.
-    """
-
     name: Required[str]
     """Producer-supplied, workspace-unique evaluation id."""
 
@@ -43,6 +39,19 @@ class EvaluationCreateParams(TypedDict, total=False):
 
     description: str
     """Human-readable description."""
+
+    experiment_group_id: str
+    """Deprecated single-group field; provide experiment_ids instead.
+
+    Coalesced into experiment_ids when experiment_ids is omitted.
+    """
+
+    experiment_ids: SequenceNotStr[str]
+    """Entity ids of the ExperimentGroups this Evaluation belongs to (>=1).
+
+    Preferred; each group must already exist. When omitted, the deprecated
+    experiment_group_id is used instead.
+    """
 
     metadata: Dict[str, str]
     """Free-form producer metadata."""

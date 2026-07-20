@@ -6,12 +6,13 @@ import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schem
 import { AddToGroupModal } from '@studio/components/dataViews/ExperimentGroupDataView/AddToGroupModal';
 import type { EvaluationRow } from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupEvaluations';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // Hoisted mocks for the SDK hooks the modal calls.
-const { mockMutate, mockUseListExperimentGroups } = vi.hoisted(() => ({
-  mockMutate: vi.fn<(...args: unknown[]) => void>(),
+const { mockMutateAsync, mockCreateMutateAsync, mockUseListExperimentGroups } = vi.hoisted(() => ({
+  mockMutateAsync: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+  mockCreateMutateAsync: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   mockUseListExperimentGroups: vi.fn<() => { data: unknown; isLoading: boolean }>(),
 }));
 
@@ -22,7 +23,8 @@ vi.mock('@nemo/sdk/generated/platform/api', async () => {
   return {
     ...actual,
     useListExperimentGroups: () => mockUseListExperimentGroups(),
-    useAddEvaluationToGroup: () => ({ mutate: mockMutate, isPending: false }),
+    useAddEvaluationToExperiment: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
+    useCreateExperimentGroup: () => ({ mutateAsync: mockCreateMutateAsync, isPending: false }),
   };
 });
 
@@ -40,12 +42,12 @@ const GROUPS: ExperimentGroupResponse[] = [
   makeGroup('g3', 'Gamma benchmarks'),
 ];
 
-// The evaluation already belongs to g1, so g1 must be excluded from the picker.
-const EVALUATION = {
-  id: 'eval-1',
-  name: 'eval-1',
-  experiment_ids: ['g1'],
-} as unknown as EvaluationRow;
+const makeEvaluation = (name: string, experimentIds: string[]): EvaluationRow =>
+  ({ id: name, name, experiment_ids: experimentIds }) as unknown as EvaluationRow;
+
+// eval-1 is only in g1; eval-2 is in g1 and g2. So g1 (all members) is excluded, but g2 (only some
+// members) is still offered, as is g3 (no members).
+const EVALUATIONS = [makeEvaluation('eval-1', ['g1']), makeEvaluation('eval-2', ['g1', 'g2'])];
 
 function makeWrapper() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -56,24 +58,30 @@ function makeWrapper() {
   );
 }
 
-function renderModal() {
+function renderModal(evaluations: EvaluationRow[] = EVALUATIONS) {
   const Wrapper = makeWrapper();
-  return render(
+  const onSuccess = vi.fn();
+  const utils = render(
     <Wrapper>
       <AddToGroupModal
         open
         onClose={vi.fn()}
+        onSuccess={onSuccess}
         workspace="default"
-        evaluation={EVALUATION}
+        evaluations={evaluations}
         currentExperimentGroupId="current-group"
       />
     </Wrapper>
   );
+  return { ...utils, onSuccess };
 }
 
 describe('AddToGroupModal', () => {
   beforeEach(() => {
-    mockMutate.mockReset();
+    mockMutateAsync.mockReset();
+    mockMutateAsync.mockResolvedValue(undefined);
+    mockCreateMutateAsync.mockReset();
+    mockCreateMutateAsync.mockResolvedValue(makeGroup('g-new', 'Regression suite'));
     mockUseListExperimentGroups.mockReset();
     mockUseListExperimentGroups.mockReturnValue({
       data: { data: GROUPS },
@@ -81,43 +89,64 @@ describe('AddToGroupModal', () => {
     });
   });
 
-  it('lists selectable groups, excluding groups the evaluation already belongs to', () => {
+  it('offers "Create new group" plus only groups not every selected evaluation already belongs to', async () => {
+    const user = userEvent.setup();
     renderModal();
-    // g2 and g3 are offered; g1 (already a member) is not.
+    await user.click(screen.getByRole('combobox', { name: /experiment group/i }));
+    expect(await screen.findByRole('option', { name: /create new group/i })).toBeInTheDocument();
+    // g1: both evals are members -> excluded. g2: only eval-2 is a member -> still offered. g3: none.
     expect(screen.getByRole('option', { name: 'Beta benchmarks' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Gamma benchmarks' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Alpha benchmarks' })).not.toBeInTheDocument();
   });
 
-  it('filters the list by the search text (case-insensitive)', async () => {
+  it('adds every selected evaluation to the chosen group and clears the selection', async () => {
     const user = userEvent.setup();
-    renderModal();
-    await user.type(screen.getByRole('textbox', { name: /search groups/i }), 'gamma');
-    expect(screen.getByRole('option', { name: 'Gamma benchmarks' })).toBeInTheDocument();
-    expect(screen.queryByRole('option', { name: 'Beta benchmarks' })).not.toBeInTheDocument();
+    const { onSuccess } = renderModal();
+
+    await user.click(screen.getByRole('combobox', { name: /experiment group/i }));
+    await user.click(await screen.findByRole('option', { name: 'Gamma benchmarks' }));
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+
+    expect(mockCreateMutateAsync).not.toHaveBeenCalled();
+    expect(mockMutateAsync).toHaveBeenCalledTimes(2);
+    expect(mockMutateAsync).toHaveBeenCalledWith({ workspace: 'default', name: 'eval-1', experimentId: 'g3' });
+    expect(mockMutateAsync).toHaveBeenCalledWith({ workspace: 'default', name: 'eval-2', experimentId: 'g3' });
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
   });
 
-  it('calls the add hook with the evaluation name and selected group id on select', async () => {
+  it('creates a new group then adds every selected evaluation to it', async () => {
     const user = userEvent.setup();
-    renderModal();
-    await user.click(screen.getByRole('option', { name: 'Beta benchmarks' }));
-    expect(mockMutate).toHaveBeenCalledTimes(1);
-    expect(mockMutate).toHaveBeenCalledWith(
-      { workspace: 'default', name: 'eval-1', groupId: 'g2' },
-      expect.objectContaining({
-        onSuccess: expect.any(Function),
-        onError: expect.any(Function),
-      })
-    );
+    const { onSuccess } = renderModal();
+
+    await user.click(screen.getByRole('combobox', { name: /experiment group/i }));
+    await user.click(await screen.findByRole('option', { name: /create new group/i }));
+    await user.type(screen.getByRole('textbox', { name: /^name$/i }), 'regression-suite');
+    await user.click(screen.getByRole('button', { name: 'Create & add' }));
+
+    expect(mockCreateMutateAsync).toHaveBeenCalledWith({
+      workspace: 'default',
+      data: expect.objectContaining({ name: 'regression-suite' }),
+    });
+    // Added to the id returned by the create call.
+    expect(mockMutateAsync).toHaveBeenCalledTimes(2);
+    expect(mockMutateAsync).toHaveBeenCalledWith({ workspace: 'default', name: 'eval-1', experimentId: 'g-new' });
+    expect(mockMutateAsync).toHaveBeenCalledWith({ workspace: 'default', name: 'eval-2', experimentId: 'g-new' });
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
   });
 
-  it('shows an empty message when every group is already a member', () => {
+  it('still offers "Create new group" when every group already contains all selected evaluations', async () => {
+    const user = userEvent.setup();
     mockUseListExperimentGroups.mockReturnValue({
       data: { data: [makeGroup('g1', 'Alpha benchmarks')] },
       isLoading: false,
     });
-    renderModal();
-    expect(screen.getByText('No groups found.')).toBeInTheDocument();
-    expect(screen.queryByRole('option')).not.toBeInTheDocument();
+    renderModal([makeEvaluation('eval-1', ['g1']), makeEvaluation('eval-2', ['g1'])]);
+
+    const trigger = screen.getByRole('combobox', { name: /experiment group/i });
+    expect(trigger).toBeEnabled();
+    await user.click(trigger);
+    expect(await screen.findByRole('option', { name: /create new group/i })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Alpha benchmarks' })).not.toBeInTheDocument();
   });
 });

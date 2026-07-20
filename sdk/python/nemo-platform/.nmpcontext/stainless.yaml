@@ -939,3 +939,7 @@ resources:
           evaluation_session_responses_page: EvaluationSessionResponsesPage
         methods:
           list: get /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/sessions
+      experiments:
+        methods:
+          reviewme_create: post /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/experiments/{experiment_id}
+          reviewme_delete: delete /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/experiments/{experiment_id}

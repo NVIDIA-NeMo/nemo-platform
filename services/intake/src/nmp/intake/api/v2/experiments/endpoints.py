@@ -647,31 +647,32 @@ async def unpin_evaluation(
 
 
 @router.post(
-    "/v2/workspaces/{workspace}/evaluations/{name}/groups/{group_id}",
+    "/v2/workspaces/{workspace}/evaluations/{name}/experiments/{experiment_id}",
     response_model=EvaluationResponse,
     tags=[EVALUATIONS_TAG],
     responses={
-        400: {"description": "Experiment group does not exist or is deleted"},
+        400: {"description": "Experiment does not exist or is deleted"},
         404: {"description": "Evaluation not found"},
     },
 )
-async def add_evaluation_to_group(
+async def add_evaluation_to_experiment(
     workspace: str,
     name: str,
-    group_id: str,
+    experiment_id: str,
     entity_client: EntityClientDep,
     rollup_repository: EvaluationRollupRepositoryDep,
 ) -> EvaluationResponse:
-    """Add an evaluation to an ExperimentGroup so it appears on that group's board.
+    """Add an evaluation to an Experiment so it appears on that experiment's board.
 
-    Curates an existing run into another comparison group (e.g. an all-benchmarks view). The group
-    must exist and be live. Idempotent: adding a group the evaluation already belongs to is a no-op.
+    Curates an existing run into another comparison experiment (e.g. an all-benchmarks view). The
+    experiment must exist and be live. Idempotent: adding an experiment the evaluation already belongs
+    to is a no-op.
     """
     entity = await _get_or_404(entity_client, Evaluation, workspace=workspace, name=name, label="Evaluation")
     _reject_if_deleted(entity, workspace=workspace, name=name, label="Evaluation")
-    await _validate_group_exists(entity_client, group_id=group_id)
-    if group_id not in entity.experiment_ids:
-        entity.experiment_ids = [*entity.experiment_ids, group_id]
+    await _validate_group_exists(entity_client, group_id=experiment_id)
+    if experiment_id not in entity.experiment_ids:
+        entity.experiment_ids = [*entity.experiment_ids, experiment_id]
         entity = await entity_client.update(entity)
     response = EvaluationResponse.from_entity(entity)
     await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
@@ -679,36 +680,37 @@ async def add_evaluation_to_group(
 
 
 @router.delete(
-    "/v2/workspaces/{workspace}/evaluations/{name}/groups/{group_id}",
+    "/v2/workspaces/{workspace}/evaluations/{name}/experiments/{experiment_id}",
     response_model=EvaluationResponse,
     tags=[EVALUATIONS_TAG],
     responses={
         404: {"description": "Evaluation not found"},
-        409: {"description": "Cannot remove the evaluation from its only group"},
+        409: {"description": "Cannot remove the evaluation from its only experiment"},
     },
 )
-async def remove_evaluation_from_group(
+async def remove_evaluation_from_experiment(
     workspace: str,
     name: str,
-    group_id: str,
+    experiment_id: str,
     entity_client: EntityClientDep,
     rollup_repository: EvaluationRollupRepositoryDep,
 ) -> EvaluationResponse:
-    """Remove an evaluation from an ExperimentGroup.
+    """Remove an evaluation from an Experiment.
 
-    Preserves the >=1-group invariant: removing the evaluation's *last* group is rejected with 409 —
-    delete the evaluation instead. Idempotent: removing a group the evaluation isn't in is a no-op.
+    Preserves the >=1-experiment invariant: removing the evaluation's *last* experiment is rejected
+    with 409 — delete the evaluation instead. Idempotent: removing an experiment the evaluation isn't
+    in is a no-op.
     """
     entity = await _get_or_404(entity_client, Evaluation, workspace=workspace, name=name, label="Evaluation")
     _reject_if_deleted(entity, workspace=workspace, name=name, label="Evaluation")
-    if group_id in entity.experiment_ids:
-        remaining = [gid for gid in entity.experiment_ids if gid != group_id]
+    if experiment_id in entity.experiment_ids:
+        remaining = [gid for gid in entity.experiment_ids if gid != experiment_id]
         if not remaining:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
-                    f"Cannot remove Evaluation '{name}' from its only group '{group_id}'; an evaluation "
-                    "must belong to at least one group. Delete the evaluation instead."
+                    f"Cannot remove Evaluation '{name}' from its only experiment '{experiment_id}'; an "
+                    "evaluation must belong to at least one experiment. Delete the evaluation instead."
                 ),
             )
         entity.experiment_ids = remaining
