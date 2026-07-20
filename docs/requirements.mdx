@@ -2,9 +2,9 @@
 title: "Hardware and Software Requirements for NeMo Platform"
 description: ""
 ---
-This page lists the requirements for the OSS local-install path for NeMo Platform 0.2.0. For the full compatibility table, see the [Support Matrix](/documentation/reference/support-matrix).
+This page lists the requirements for the OSS local-install path and self-managed Kubernetes path for NeMo Platform 0.3.0. For the full compatibility table, see the [Support Matrix](/documentation/reference/support-matrix).
 
-The OSS 0.2.0 documentation is scoped to local setup with the Python package and `nemo setup`. Docker Compose, Helm, Kubernetes, and OpenShift deployment guides are not part of this release scope.
+The OSS 0.3.0 documentation covers local setup with the Python package and `nemo setup`, plus self-managed Kubernetes deployment with Helm. Docker Compose deployment guides are not part of this release scope.
 
 ## Local Setup Requirements
 
@@ -18,6 +18,16 @@ The OSS 0.2.0 documentation is scoped to local setup with the Python package and
 | Network | Outbound HTTPS access | Required for package installation and hosted model-provider APIs. |
 | Model provider | NVIDIA Build, OpenAI, Anthropic, Google Gemini, Ollama, or a custom OpenAI-compatible endpoint | `nemo setup` configures one provider as part of the setup flow. |
 | Browser | Current Chrome, Edge, Firefox, or Safari | Required for the Studio UI. |
+
+## Kubernetes Requirements
+
+| Component | Requirement | Notes |
+|-----------|-------------|-------|
+| Kubernetes | User-managed conformant cluster | You need permission to create namespaces, secrets, services, deployments, jobs, and persistent volumes. |
+| Helm | Helm 3 | Used to install and upgrade the NeMo Platform chart. |
+| kubectl | Version compatible with your cluster | Used for deployment verification, log collection, and local Kind workflows. |
+| Storage | Dynamic persistent volume provisioning | Required for platform state and job artifacts. |
+| Ingress or port forwarding | Cluster ingress controller or `kubectl port-forward` | Required to reach the API and Studio UI from your workstation. |
 
 ## GPU Requirements
 
