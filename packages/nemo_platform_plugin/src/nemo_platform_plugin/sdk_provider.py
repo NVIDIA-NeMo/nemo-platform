@@ -312,6 +312,7 @@ def _resolve_provider() -> SDKProvider:
                 logger.debug("Using SDK provider from entry-point %r", ep.name)
                 _cached_provider = obj
                 return obj
+            logger.warning("Entry-point %r loaded but does not satisfy SDKProvider; skipping", ep.name)
         except Exception:
             logger.warning("Failed to load SDK provider %r; skipping", ep.name, exc_info=True)
 

@@ -491,6 +491,10 @@ data-designer = "nemo_data_designer_plugin.cli.main:DataDesignerCLI"
 evaluator = "nemo_evaluator.cli:EvaluatorPluginCLI"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
+[project.entry-points."nemo.client_provider"]
+platform = "nmp.common.client_factory:PlatformNemoClientProvider"
+
+# Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.controllers"]
 agents-deployment = "nemo_agents_plugin.runner.controller:AgentDeploymentController"
 

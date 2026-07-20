@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -211,6 +212,15 @@ class _CustomProvider:
         return NeMoPlatform(base_url="http://custom:1234")
 
 
+class _FakeEntryPoint:
+    def __init__(self, name: str, obj: object) -> None:
+        self.name = name
+        self._obj = obj
+
+    def load(self) -> object:
+        return self._obj
+
+
 class TestProviderResolution:
     def setup_method(self):
         # Reset global state before each test.
@@ -248,6 +258,23 @@ class TestProviderResolution:
         with patch("nemo_platform_plugin.sdk_provider.entry_points", return_value=[]):
             sdk = get_task_sdk("x")
         assert sdk.base_url == "http://re-resolved:8080"
+
+    def test_entry_point_not_satisfying_protocol_is_skipped(self, monkeypatch, caplog):
+        # An EP that loads an object which is not an SDKProvider is skipped with a
+        # WARNING, and resolution falls back to the default provider rather than
+        # degrading silently.
+        monkeypatch.setenv("NMP_BASE_URL", "http://fallback:8080")
+        monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
+
+        class _NotAProvider:
+            pass
+
+        eps = [_FakeEntryPoint("platform", _NotAProvider())]
+        with patch("nemo_platform_plugin.sdk_provider.entry_points", return_value=eps):
+            with caplog.at_level(logging.WARNING):
+                sdk = get_task_sdk("test")
+        assert sdk.base_url == "http://fallback:8080"
+        assert any("does not satisfy SDKProvider" in r.message for r in caplog.records)
 
 
 # ---------------------------------------------------------------------------

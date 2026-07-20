@@ -1,14 +1,33 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""NemoClient factory for task containers and services.
+"""NemoClient factory for task containers and services — the plugin-side
+interface for building authenticated
+:class:`~nemo_platform_plugin.client.client.NemoClient` /
+:class:`~nemo_platform_plugin.client.client.AsyncNemoClient` handles.
 
-Builds :class:`~nemo_platform_plugin.client.client.NemoClient` /
-:class:`~nemo_platform_plugin.client.client.AsyncNemoClient` from
-environment variables (``NMP_BASE_URL``, ``NMP_PRINCIPAL``).
+This is the :class:`~nemo_platform_plugin.client.client.NemoClient` sibling of
+:mod:`nemo_platform_plugin.sdk_provider`.  Plugin authors call
+:func:`get_nemo_client` / :func:`get_async_nemo_client` here instead of
+importing from ``nmp.common``.  This keeps ``nemo-platform-plugin`` free of any
+``nmp-common`` dependency while still allowing the platform to register a richer
+provider (URL routing, shared HTTP clients, OTEL headers, workload identity,
+...) when ``nmp-common`` is installed.
 
-For user-facing / CLI usage, prefer ``NemoClient.from_config()`` which
-reads ``~/.config/nmp/config.yaml`` and wires up OIDC token refresh.
+Lookup order for the provider
+-----------------------------
+
+1. **Explicit override** — set via :func:`set_nemo_client_provider` (for tests).
+2. **Entry-point discovery** — scans the ``nemo.client_provider`` group.
+   When ``nmp-common`` is installed in the image (platform deployment), its
+   provider is picked up automatically.
+3. **Built-in default** — :class:`DefaultNemoClientProvider`, an env-var-based
+   implementation that reads ``NMP_BASE_URL`` and ``NMP_PRINCIPAL``.  Works for
+   local development and gateway-routed task containers.
+
+For user-facing / CLI usage, prefer ``NemoClient.from_config()`` which reads
+``~/.config/nmp/config.yaml`` and wires up OIDC token refresh / workload
+identity token exchange.
 """
 
 from __future__ import annotations
@@ -16,7 +35,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any
+from importlib.metadata import entry_points
+from typing import Any, Protocol, runtime_checkable
 
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 
@@ -26,7 +46,52 @@ _INTERNAL_REQUEST_HEADER = "X-NMP-Internal"
 _NMP_PRINCIPAL_ENVVAR = "NMP_PRINCIPAL"
 
 
+# ---------------------------------------------------------------------------
+# Protocol
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class NemoClientProvider(Protocol):
+    """Contract for building authenticated NemoClient handles.
+
+    Implementations live outside this module — the default is below;
+    ``nmp-common`` ships a richer one registered via entry-point.
+    """
+
+    def get_nemo_client(
+        self,
+        *,
+        as_service: str | None = None,
+        internal: bool = False,
+        on_behalf_of: str | None = None,
+        workspace: str | None = None,
+    ) -> NemoClient:
+        """Build a sync NemoClient for the current service context."""
+
+    def get_async_nemo_client(
+        self,
+        *,
+        as_service: str | None = None,
+        internal: bool = False,
+        on_behalf_of: str | None = None,
+        workspace: str | None = None,
+    ) -> AsyncNemoClient:
+        """Build an async NemoClient for the current service context."""
+
+
+# ---------------------------------------------------------------------------
+# Default provider (env-var based, zero nmp-common dependency)
+# ---------------------------------------------------------------------------
+
+
 def _read_principal_from_env() -> dict[str, Any] | None:
+    """Read and parse ``NMP_PRINCIPAL`` from the environment.
+
+    Returns ``None`` when the variable is absent or empty.  Raises
+    :class:`ValueError` on malformed JSON so task containers surface the same
+    error as ``nmp.common``.
+    """
     raw = os.environ.get(_NMP_PRINCIPAL_ENVVAR)
     if not raw:
         return None
@@ -69,6 +134,12 @@ def _build_headers(
                     headers["X-NMP-Principal-On-Behalf-Of-Groups"] = ",".join(principal["on_behalf_of_groups"])
 
     if on_behalf_of is not None:
+        # An explicit override wins over any on-behalf-of delegation carried by
+        # the env principal.  Drop the principal's stale sub-headers so we don't
+        # ship a mismatched delegated identity (correct id but wrong
+        # email/groups) -- mirrors nmp.common.sdk_factory._get_default_headers.
+        headers.pop("X-NMP-Principal-On-Behalf-Of-Email", None)
+        headers.pop("X-NMP-Principal-On-Behalf-Of-Groups", None)
         headers["X-NMP-Principal-On-Behalf-Of"] = on_behalf_of
 
     return headers
@@ -78,19 +149,121 @@ def _base_url() -> str:
     return os.environ.get("NMP_BASE_URL", "http://localhost:8080")
 
 
+class DefaultNemoClientProvider:
+    """Env-var-based provider that ships with the plugin package.
+
+    Reads ``NMP_BASE_URL`` (default ``http://localhost:8080``) and
+    ``NMP_PRINCIPAL`` — both are set by the jobs backend before launching task
+    containers.  No ``nmp-common`` imports, so it works standalone.
+    """
+
+    def get_nemo_client(
+        self,
+        *,
+        as_service: str | None = None,
+        internal: bool = False,
+        on_behalf_of: str | None = None,
+        workspace: str | None = None,
+    ) -> NemoClient:
+        headers = _build_headers(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
+        return NemoClient(base_url=_base_url(), workspace=workspace, default_headers=headers or None)
+
+    def get_async_nemo_client(
+        self,
+        *,
+        as_service: str | None = None,
+        internal: bool = False,
+        on_behalf_of: str | None = None,
+        workspace: str | None = None,
+    ) -> AsyncNemoClient:
+        headers = _build_headers(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
+        return AsyncNemoClient(base_url=_base_url(), workspace=workspace, default_headers=headers or None)
+
+
+# ---------------------------------------------------------------------------
+# Provider resolution
+# ---------------------------------------------------------------------------
+
+_cached_provider: NemoClientProvider | None = None
+
+
+def set_nemo_client_provider(provider: NemoClientProvider | None) -> None:
+    """Override the provider (primarily for tests).
+
+    Pass ``None`` to clear the override and fall back to entry-point discovery
+    on the next call.
+    """
+    global _cached_provider
+    _cached_provider = provider
+
+
+def _resolve_provider() -> NemoClientProvider:
+    """Resolve the provider once: explicit override → entry-point → default."""
+    global _cached_provider
+    if _cached_provider is not None:
+        return _cached_provider
+
+    # Scan entry-points.  nmp-common registers a provider; the nemo-platform
+    # bundle inherits the same entry-point, so deduplicate by name.
+    eps = {ep.name: ep for ep in entry_points(group="nemo.client_provider")}
+    if len(eps) > 1:
+        names = ", ".join(eps)
+        raise RuntimeError(
+            f"Multiple NemoClient providers registered under 'nemo.client_provider': {names}. "
+            "Only the platform (nmp-common) should register a provider."
+        )
+    for ep in eps.values():
+        try:
+            obj = ep.load()
+            if isinstance(obj, type):
+                obj = obj()
+            if isinstance(obj, NemoClientProvider):
+                logger.debug("Using NemoClient provider from entry-point %r", ep.name)
+                _cached_provider = obj
+                return obj
+            logger.warning("Entry-point %r loaded but does not satisfy NemoClientProvider; skipping", ep.name)
+        except Exception:
+            logger.warning("Failed to load NemoClient provider %r; skipping", ep.name, exc_info=True)
+
+    # Fall back to the built-in default.
+    logger.debug("No entry-point NemoClient provider found; using DefaultNemoClientProvider")
+    _cached_provider = DefaultNemoClientProvider()
+    return _cached_provider
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
 def get_nemo_client(
     *,
     as_service: str | None = None,
     internal: bool = False,
     on_behalf_of: str | None = None,
+    workspace: str | None = None,
 ) -> NemoClient:
     """Build a sync NemoClient for the current service context.
 
-    Reads ``NMP_BASE_URL`` (default ``http://localhost:8080``) and
-    ``NMP_PRINCIPAL`` from the environment.
+    Delegates to the resolved :class:`NemoClientProvider`.  Under the built-in
+    default this reads ``NMP_BASE_URL`` (default ``http://localhost:8080``) and
+    ``NMP_PRINCIPAL`` from the environment; under the platform provider it
+    additionally routes service URLs, reuses the shared HTTP client, and injects
+    OTEL headers.
+
+    Args:
+        as_service: If provided, authenticate as ``service:{as_service}``.
+            If ``None``, propagate the principal read from ``NMP_PRINCIPAL``.
+        internal: Mark requests as internal (service-to-service).
+        on_behalf_of: Principal ID to act on behalf of.
+        workspace: Default workspace used to fill ``{workspace}`` path params.
     """
-    headers = _build_headers(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
-    return NemoClient(base_url=_base_url(), default_headers=headers or None)
+    return _resolve_provider().get_nemo_client(
+        as_service=as_service,
+        internal=internal,
+        on_behalf_of=on_behalf_of,
+        workspace=workspace,
+    )
 
 
 def get_async_nemo_client(
@@ -98,11 +271,16 @@ def get_async_nemo_client(
     as_service: str | None = None,
     internal: bool = False,
     on_behalf_of: str | None = None,
+    workspace: str | None = None,
 ) -> AsyncNemoClient:
-    """Build an async NemoClient for the current service context.
+    """Async counterpart of :func:`get_nemo_client`.
 
-    Reads ``NMP_BASE_URL`` (default ``http://localhost:8080``) and
-    ``NMP_PRINCIPAL`` from the environment.
+    Used by middleware and controllers that run inside the platform service
+    process and need an async client.
     """
-    headers = _build_headers(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
-    return AsyncNemoClient(base_url=_base_url(), default_headers=headers or None)
+    return _resolve_provider().get_async_nemo_client(
+        as_service=as_service,
+        internal=internal,
+        on_behalf_of=on_behalf_of,
+        workspace=workspace,
+    )
