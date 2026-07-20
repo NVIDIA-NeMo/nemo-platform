@@ -60,8 +60,8 @@ class _VirtualModelFields(BaseModel):
         default_factory=list,
         description=(
             "Ordered list of middleware plugins applied before proxying to the backend. "
-            'Each entry is a MiddlewareCall with required "name" (plugin identifier) and '
-            '"config_type" fields, plus optional inline "config" or stored "config_id" configuration.'
+            'Each entry is a MiddlewareCall with a "name" (plugin identifier) and optional '
+            '"config_type" and "config_id" fields that reference a stored plugin configuration.'
         ),
     )
     response_middleware: list[MiddlewareCall] = Field(
@@ -90,7 +90,7 @@ class _VirtualModelFields(BaseModel):
 
 
 class CreateVirtualModelRequest(_VirtualModelFields):
-    """Request body for creating a VirtualModel."""
+    """Request body for creating a new VirtualModel."""
 
     name: str = Field(
         description="Name of the virtual model within the workspace. Must be unique per workspace.",
@@ -98,11 +98,13 @@ class CreateVirtualModelRequest(_VirtualModelFields):
 
 
 class UpdateVirtualModelRequest(_VirtualModelFields):
-    """Request body for partially updating a VirtualModel.
+    """Request body for partially updating an existing VirtualModel (PATCH).
 
-    Only explicitly set fields are serialized by the endpoint layer. Omitted
-    fields retain their current values, while explicit nulls clear nullable
-    fields.
+    Only fields present in the request body are updated.  Omitted fields
+    retain their current values.  ``model_fields_set`` is used in the handler
+    to distinguish an intentional ``[]`` (clear the list) from a missing field
+    (leave unchanged).  Set ``default_model_entity`` or ``override_proxy`` to
+    ``null`` explicitly to clear them.
     """
 
 
