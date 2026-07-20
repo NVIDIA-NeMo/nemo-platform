@@ -27,7 +27,7 @@ insights (no prior seed), and atomically copied to
 manifest update preserves every other subject.
 
 `analyze all` validates every benchmark/intake pin before starting, runs the
-subjects in sorted order with child `--no-check-in`, and stages the complete
+subjects in sorted order with child `--no-baseline-update`, and stages the complete
 YAML set plus manifest in a sibling directory. It promotes that directory with
 a backup/swap only after every child wrote output. A child failure, missing
 output, manifest failure, or failed swap leaves the old checked-in directory
@@ -43,7 +43,7 @@ Every deviation is one explicit flag:
 - `--update-insights` — run against the existing local insights (prod-like update flow:
   updates them and adds new ones); default is a fresh start with priors moved to backup.
   Valid in every mode.
-- `--no-check-in` — leave generated YAML only in `testbed/tmp/`. On
+- `--no-baseline-update` — leave generated YAML only in `testbed/tmp/`. On
   `analyze all`, every child still runs and is validated, but the final
   promotion is skipped.
 - `--base URL` — the one platform flag, on every platform-touching command.
@@ -292,7 +292,7 @@ default `NVIDIA-dev/NeMo-Optimizer` repository.
   run `testbed publish` locally only after inspecting it and confirming that
   the workflow's round-trip step passed.
 - `analyze` — `testbed analyze "$SUBJECT" ${STATE:+--state "$STATE"}
-  --no-check-in --summary-md "$GITHUB_STEP_SUMMARY"`: an empty `state` input means bare
+  --no-baseline-update --summary-md "$GITHUB_STEP_SUMMARY"`: an empty `state` input means bare
   analyze — each subject's own pin under `[subjects]` in `testbed/state.lock`
   (a subject without an entry fails loudly — no latest fallback); a non-empty
   ref overrides the lock for **all** subjects in the run. The state is

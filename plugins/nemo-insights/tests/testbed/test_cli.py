@@ -352,7 +352,7 @@ def test_analyze_checks_in_insights_requires_source_output(
         cli.main()
 
 
-def test_analyze_no_check_in_leaves_checked_in_files_untouched(monkeypatch, tmp_path):
+def test_analyze_no_baseline_update_leaves_checked_in_files_untouched(monkeypatch, tmp_path):
     runtime = tmp_path / "tmp"
     checked_in = tmp_path / "insights"
     checked_in.mkdir()
@@ -363,7 +363,7 @@ def test_analyze_no_check_in_leaves_checked_in_files_untouched(monkeypatch, tmp_
     monkeypatch.setenv("INFERENCE_API_KEY", "sk-test")
     monkeypatch.setattr(cli, "TMP", runtime)
     monkeypatch.setattr(cli, "INSIGHTS_DIR", checked_in)
-    monkeypatch.setattr(sys, "argv", ["testbed", "analyze", "nvq", "--live", "--no-check-in"])
+    monkeypatch.setattr(sys, "argv", ["testbed", "analyze", "nvq", "--live", "--no-baseline-update"])
 
     async def fake_analyze(self, *, record, since, verbose, out_path):
         out_path.write_text("insights: []\n", encoding="utf-8")
@@ -518,7 +518,7 @@ def test_analyze_all_runs_every_pinned_analyzable_subject_in_sorted_order(
             "testbed",
             "analyze",
             "all",
-            "--no-check-in",
+            "--no-baseline-update",
             "--base",
             "http://platform",
             "--platform-root",
@@ -538,7 +538,7 @@ def test_analyze_all_runs_every_pinned_analyzable_subject_in_sorted_order(
             "testbed",
             "analyze",
             "alpha",
-            "--no-check-in",
+            "--no-baseline-update",
             "--base",
             "http://platform",
             "--platform-root",
@@ -553,7 +553,7 @@ def test_analyze_all_runs_every_pinned_analyzable_subject_in_sorted_order(
             "testbed",
             "analyze",
             "zeta",
-            "--no-check-in",
+            "--no-baseline-update",
             "--base",
             "http://platform",
             "--platform-root",
@@ -677,7 +677,7 @@ def test_analyze_all_stale_output_cannot_mask_missing_child_output(
     assert (backup / stale.name).read_text(encoding="utf-8") == "stale zeta\n"
 
 
-def test_analyze_all_top_level_no_check_in_skips_promotion(monkeypatch, tmp_path):
+def test_analyze_all_top_level_no_baseline_update_skips_promotion(monkeypatch, tmp_path):
     runtime = tmp_path / "tmp"
     checked_in = tmp_path / "insights"
     checked_in.mkdir()
@@ -695,7 +695,7 @@ def test_analyze_all_top_level_no_check_in_skips_promotion(monkeypatch, tmp_path
         (runtime / f"insights_{name}.yaml").write_text(f"new {name}\n", encoding="utf-8")
 
     monkeypatch.setattr(cli.subprocess, "run", fake_run)
-    monkeypatch.setattr(sys, "argv", ["testbed", "analyze", "all", "--no-check-in"])
+    monkeypatch.setattr(sys, "argv", ["testbed", "analyze", "all", "--no-baseline-update"])
 
     cli.main()
 

@@ -310,7 +310,7 @@ def _analyze_all(args: argparse.Namespace, subjects: dict[str, Subject]) -> None
         print(f"analyze all: moved prior runtime Insights to {backup_dir}: {', '.join(stale_outputs)}")
 
     for name in names:
-        command = [sys.executable, "-m", "testbed", "analyze", name, "--no-check-in"]
+        command = [sys.executable, "-m", "testbed", "analyze", name, "--no-baseline-update"]
         if args.base is not None:
             command += ["--base", args.base]
         if args.platform_root is not None:
@@ -332,7 +332,7 @@ def _analyze_all(args: argparse.Namespace, subjects: dict[str, Subject]) -> None
             + ", ".join(missing_outputs)
             + "; no checked-in Insights were updated"
         )
-    if args.no_check_in:
+    if args.no_baseline_update:
         return
 
     INSIGHTS_DIR.parent.mkdir(parents=True, exist_ok=True)
@@ -746,7 +746,7 @@ def main() -> None:
         "default is a fresh start with priors moved to backup.",
     )
     p_ins.add_argument(
-        "--no-check-in",
+        "--no-baseline-update",
         action="store_true",
         help="leave the generated Insights only in testbed/tmp instead of updating testbed/insights.",
     )
@@ -1149,7 +1149,7 @@ def main() -> None:
     report = asyncio.run(adapter.analyze(record=record, since=since, verbose=args.verbose, out_path=out))
     print(report)
     print(f"\n✓ Insights written to {out}")
-    if not args.no_check_in:
+    if not args.no_baseline_update:
         checked_in, manifest_path = _check_in_single_insights(args.name, out, label)
         print(f"✓ Checked in to {checked_in}")
         print(f"✓ Recorded provenance in {manifest_path}")

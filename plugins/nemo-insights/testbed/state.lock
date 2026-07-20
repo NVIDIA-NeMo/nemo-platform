@@ -5,6 +5,7 @@
 # state per subject). A missing entry fails loudly — add the subject after
 # minting its fixture, or pass --state <state-vN> explicitly.
 [subjects]
+nvq = "state-v7"
 tau2-airline = "state-v6"
 tau2-retail = "state-v10"
 tau2-telecom = "state-v10"

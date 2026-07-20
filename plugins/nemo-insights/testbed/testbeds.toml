@@ -5,6 +5,11 @@
 # Top-level keys are shared defaults merged into every subject.
 base_url = "https://nemo-platform-freeplay.dev.aire.nvidia.com"
 
+[nvq]
+type = "intake"
+agent = "content-dedup"
+workspace = "nvq"
+
 [glamr]
 type = "intake"
 agent = "glamr"                                 # the main GLAMR agent (ux-agent); the only agent_name-tagged one
