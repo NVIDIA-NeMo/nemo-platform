@@ -72,6 +72,20 @@ ExperimentGroupSortField = Literal["-created_at", "created_at", "-updated_at", "
 # sort by a ClickHouse rollup metric, not just entity columns. `sort` is therefore a free string,
 # validated against these: an entity column, run_count, or a `<metric>.<stat>` rollup path.
 _ENTITY_SORT_FIELDS = frozenset({"name", "created_at", "updated_at", "pinned_at"})
+# Sessions are sorted in ClickHouse (ORDER BY before LIMIT/OFFSET) so sort composes
+# correctly with pagination. These are the allowed field names; each maps to an SQL
+# expression in the repository - see _list_sql in evaluation_session_repository.py.
+_SESSION_SORT_FIELDS = frozenset(
+    {
+        "test_case_id",
+        "started_at",
+        "ended_at",
+        "latency_ms",
+        "cost_total_usd",
+        "status",
+        "tokens",
+    }
+)
 _METRIC_STATS = frozenset({"sum", "mean", "median", "p90", "p95", "p99", "count"})
 # Per-group evaluation fetch bound for the in-memory merge. Groups are expected to hold at most
 # hundreds; a query that selects more than this is rejected rather than sorted on a partial set — the
@@ -670,8 +684,10 @@ async def list_evaluation_sessions(
             "300 characters; detailed returns full root-span payloads."
         ),
     ),
+    sort: str | None = Query(default=None, description="Comma-separated sort fields..."),
 ) -> Page[EvaluationSessionResponse]:
     validate_list_query_params(request, additional_params={"mode"})
+    sort_keys = _parse_session_sort_keys(sort) if sort is not None else None
     evaluation = await _get_or_404(
         entity_client,
         Evaluation,
@@ -703,6 +719,7 @@ async def list_evaluation_sessions(
             page=page,
             page_size=page_size,
             mode=mode,
+            sort_keys=sort_keys,
         )
     except Exception as exc:
         # Sessions are the response payload (not enrichment), so we can't silently degrade like
@@ -1022,6 +1039,30 @@ def _parse_sort_keys(sort: str) -> tuple[list[tuple[str, bool]], bool]:
             detail="The 'sort' parameter must contain at least one field.",
         )
     return sort_keys, explicit_metric_sort
+
+
+def _parse_session_sort_keys(sort: str) -> list[tuple[str, bool]]:
+    """Parse the comma-separated ``sort`` param into an ordered list of ``(field, descending)`` keys.
+
+    Each field may be '-'-prefixed for descending; the keys are applied in order (the first field
+    dominates). Returns the keys. Raises 400 if a field is unsupported or the list is empty.
+    """
+    sort_keys: list[tuple[str, bool]] = []
+    for token in sort.split(","):
+        field_token = token.strip()
+        if not field_token:
+            continue
+        descending = field_token.startswith("-")
+        sort_field = field_token[1:] if descending else field_token
+        if sort_field not in _SESSION_SORT_FIELDS:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported sort field: {sort_field}")
+        sort_keys.append((sort_field, descending))
+    if not sort_keys:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The 'sort' parameter must contain at least one field.",
+        )
+    return sort_keys
 
 
 def _is_metric_field(field: str) -> bool:
