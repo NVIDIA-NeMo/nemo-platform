@@ -137,6 +137,10 @@ navigation:
       path: ../../studio/monitor.mdx
     - page: Suggestions
       path: ../../studio/suggestions.mdx
+    - page: Guardrail Configs
+      path: ../../studio/guardrails.mdx
+    - page: Virtual Models
+      path: ../../studio/virtual-models.mdx
   - section: Models and Inference
     path: ../../run-inference/about.mdx
     contents:

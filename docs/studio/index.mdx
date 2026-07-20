@@ -39,6 +39,22 @@ Use **Agents \> Monitor** to inspect agent telemetry stored by the platform, inc
 
 For the full workflow, see [Studio Monitor](/documentation/studio/monitor).
 
+### Guardrails
+
+Use **Guardrails** to view NeMo Guardrails configurations for the current workspace. The list shows each config's name, attached task model count, and rail count. Select a row to open the detail page, which displays the full configuration payload as formatted JSON.
+
+Guardrail configurations are created through the `nemo guardrail` CLI or Guardrails API.
+
+For the full workflow, see [Studio Guardrail Configs](/documentation/studio/guardrails).
+
+### Virtual Models
+
+Use **Virtual Models** to inspect inference routes managed by the Inference Gateway. The list shows all user-created virtual models in the workspace — auto-provisioned passthrough routes are hidden. Select a row to open the details panel, which shows the default backend model when configured, and the ordered request, response, and post-response middleware pipelines attached to the route.
+
+Virtual models are created through the `nemo inference virtual-models` CLI or the Inference Gateway API.
+
+For the full workflow, see [Studio Virtual Models](/documentation/studio/virtual-models).
+
 ### Models
 
 Use **Models \> Base Models** to browse model entities available in the current workspace. Base models include models registered in the workspace and default platform models.
