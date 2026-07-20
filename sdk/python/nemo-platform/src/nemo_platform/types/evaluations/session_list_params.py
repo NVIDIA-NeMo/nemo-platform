@@ -44,4 +44,10 @@ class SessionListParams(TypedDict, total=False):
     """Page size."""
 
     sort: str
-    """Comma-separated sort fields..."""
+    """
+    Comma-separated list of fields to sort by, applied in order (the first field
+    dominates); prefix a field with '-' for descending — e.g.
+    '-cost_total_usd,latency_ms'. Fields: test_case_id, started_at, ended_at,
+    latency_ms, status, cost_total_usd, tokens. When omitted, sessions are ordered
+    by started_at ascending.
+    """
