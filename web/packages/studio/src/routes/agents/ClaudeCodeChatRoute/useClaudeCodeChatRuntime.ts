@@ -386,6 +386,10 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
     useState<AgentDecisionInputStatus>('pending');
   const [blocking, dispatchBlocking] = useReducer(blockingReducer, INITIAL_BLOCKING_STATE);
   const { activeDecision, activeInput, activePermission, decisionStatus, inputStatus } = blocking;
+  const sessionIdRef = useRef(sessionId);
+  const activeInputRef = useRef(activeInput);
+  sessionIdRef.current = sessionId;
+  activeInputRef.current = activeInput;
 
   const [navigationResolver, setNavigationResolver] = useState<
     ((decision: StudioNavigationDecision) => void) | null
@@ -445,6 +449,7 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
     // Only one run is active at a time (UI prevents concurrent submissions),
     // so no race between concurrent callers here.
     const nextSessionId = await createClaudeCodeSession();
+    sessionIdRef.current = nextSessionId;
     setSessionId(nextSessionId);
     onSessionIdChange?.(nextSessionId);
     return nextSessionId;
@@ -500,6 +505,7 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
       const suggestion = getStudioUiNavigationSuggestion(prompt, workspace);
       if (!suggestion) return 'continue';
 
+      activeInputRef.current = null;
       dispatchBlocking({ type: 'reset' });
       prepareForUserInput();
 
@@ -538,6 +544,7 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
       prepareForUserInput,
       isCurrentRun,
     }: CustomAssistantRunContext): Promise<CustomAssistantRunResult | void> => {
+      activeInputRef.current = null;
       dispatchBlocking({ type: 'reset' });
       clearStudioNavigationRequest();
       const activeSessionId = await ensureSessionId();
@@ -572,6 +579,9 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
             },
             onInputExpired: (requestId) => {
               if (signal.aborted || !isCurrentRun()) return;
+              if (activeInputRef.current?.requestId === requestId) {
+                activeInputRef.current = null;
+              }
               dispatchBlocking({ type: 'expire_input', requestId });
             },
             onDone: () => {
@@ -589,7 +599,10 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
           );
         }
       } finally {
-        if (isCurrentRun()) dispatchBlocking({ type: 'reset' });
+        if (isCurrentRun()) {
+          activeInputRef.current = null;
+          dispatchBlocking({ type: 'reset' });
+        }
       }
 
       return { status: doneReceived ? COMPLETE_STATUS : CANCELLED_STATUS };
@@ -629,6 +642,8 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
     }) => {
       if (!sessionId || !activeInput) return;
 
+      const resolvedSessionId = sessionId;
+      const resolvedRequestId = activeInput.requestId;
       const trimmedDisplayText = displayText?.trim();
       dispatchBlocking({ type: 'set_input_status', status: 'submitting' });
 
@@ -638,6 +653,12 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
           requestId: activeInput.requestId,
           decision,
         });
+        if (
+          sessionIdRef.current !== resolvedSessionId ||
+          activeInputRef.current?.requestId !== resolvedRequestId
+        ) {
+          return;
+        }
         if (!decision.skipped && decision.value) {
           const inputValue = decision.value;
           setArtifacts((current) =>
@@ -763,6 +784,8 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
   );
 
   const handleReset = useCallback(() => {
+    sessionIdRef.current = null;
+    activeInputRef.current = null;
     setSessionId(null);
     onSessionIdChange?.(null);
     setArtifacts(createWorkspaceArtifacts(undefined, workspace));
@@ -777,6 +800,8 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
       messages,
       sessionId: nextSessionId,
     }: LoadClaudeCodeSessionOptions) => {
+      sessionIdRef.current = nextSessionId;
+      activeInputRef.current = null;
       setSessionId(nextSessionId);
       onSessionIdChange?.(nextSessionId);
       setArtifacts(createWorkspaceArtifacts(nextArtifacts, workspace));

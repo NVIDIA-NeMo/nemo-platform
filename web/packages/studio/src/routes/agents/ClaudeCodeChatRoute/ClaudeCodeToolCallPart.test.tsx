@@ -162,7 +162,7 @@ describe('ClaudeCodeToolCallPart', () => {
       'Ran pwd'
     );
 
-    await user.click(screen.getByText(/View work/));
+    await user.click(screen.getByText('View work'));
 
     expect(disclosure).toHaveAttribute('open');
     expect(screen.getByRole('heading', { level: 2, name: 'Optimization report' })).toBeVisible();

@@ -61,5 +61,10 @@ describe('AssistantMessageContentTransition', () => {
         easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
       }
     );
+
+    animation.onfinish?.call(animation, {} as AnimationPlaybackEvent);
+    onResize([{ contentRect: { height: 80 } } as ResizeObserverEntry], {} as ResizeObserver);
+
+    expect(animate).toHaveBeenCalledTimes(1);
   });
 });

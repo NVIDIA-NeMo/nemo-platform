@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { type ReactNode, useEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useRef } from 'react';
 
 const COMPLETION_ANIMATION_DURATION_MS = 450;
 const MINIMUM_COLLAPSE_HEIGHT_PX = 8;
@@ -20,10 +20,15 @@ export const AssistantMessageContentTransition = ({
   const contentRef = useRef<HTMLDivElement>(null);
   const previousHeightRef = useRef<number | undefined>(undefined);
   const animationRef = useRef<Animation | undefined>(undefined);
-  const completedRef = useRef(completed);
+  const previousCompletedRef = useRef(completed);
+  const shouldAnimateCompletionRef = useRef(false);
   const enabledRef = useRef(enabled);
-  completedRef.current = completed;
   enabledRef.current = enabled;
+
+  useLayoutEffect(() => {
+    shouldAnimateCompletionRef.current = !previousCompletedRef.current && completed;
+    previousCompletedRef.current = completed;
+  }, [completed]);
 
   useEffect(() => {
     const content = contentRef.current;
@@ -35,11 +40,13 @@ export const AssistantMessageContentTransition = ({
       const previousHeight = previousHeightRef.current;
       const nextHeight = entry.contentRect.height;
       previousHeightRef.current = nextHeight;
+      const shouldAnimateCompletion = shouldAnimateCompletionRef.current;
+      shouldAnimateCompletionRef.current = false;
       const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
       if (
         !enabledRef.current ||
-        !completedRef.current ||
+        !shouldAnimateCompletion ||
         reduceMotion ||
         previousHeight === undefined ||
         previousHeight - nextHeight < MINIMUM_COLLAPSE_HEIGHT_PX ||
