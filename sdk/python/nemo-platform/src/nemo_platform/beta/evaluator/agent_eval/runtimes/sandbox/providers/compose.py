@@ -166,6 +166,9 @@ class _ComposeSession:
         session_id: Unique identifier used by the public sandbox handle.
         environment: Environment used for all commands in this lifecycle.
         lock: Exclusive project lock held until cleanup completes.
+        command_scope: Immutable Docker and Compose project settings for this lifecycle.
+        target_service: Service used for sandbox command execution and file transfer.
+        service_topology: Service roles used for lifecycle readiness checks.
         owns_project: Whether startup reached the point requiring Compose teardown.
         target_identity: Cached ``UID:GID`` of the target service runtime user.
     """
@@ -173,6 +176,9 @@ class _ComposeSession:
     session_id: str
     environment: dict[str, str]
     lock: _ComposeProjectLock
+    command_scope: _ComposeCommandScope
+    target_service: str
+    service_topology: ComposeServiceTopology
     owns_project: bool = False
     target_identity: str | None = None
 
@@ -221,13 +227,14 @@ class _ComposeCommandScope:
 
 
 class _ComposeCli:
-    """Command gateway for one dynamically configured Compose provider."""
+    """Command gateway for one lifecycle-aware Compose provider."""
 
     def __init__(self, scope: Callable[[], _ComposeCommandScope]) -> None:
-        """Bind command execution to a provider command-scope factory.
+        """Bind command execution to a provider command-scope resolver.
 
         Args:
-            scope: Zero-argument function returning the provider's current project settings.
+            scope: Zero-argument function returning active lifecycle settings, or the
+                provider's current settings when no lifecycle is active.
         """
         self._scope = scope
 
@@ -594,20 +601,32 @@ class DockerComposeSandboxProvider:
                 "DockerComposeSandboxProvider does not accept SandboxSpec.provider_options; "
                 "configure the provider through its constructor"
             )
-        missing_files = [path for path in self.compose_files if not path.is_file()]
+        command_scope = self._public_command_scope()
+        target_service = self.target_service
+        service_topology = self.service_topology
+        missing_files = [path for path in command_scope.compose_files if not path.is_file()]
         if missing_files:
             raise SandboxCreateError(f"Compose files do not exist: {missing_files}")
-        if not self.project_directory.is_dir():
-            raise SandboxCreateError(f"Compose project directory does not exist: {self.project_directory}")
+        if not command_scope.project_directory.is_dir():
+            raise SandboxCreateError(f"Compose project directory does not exist: {command_scope.project_directory}")
 
         environment = {**self.environment_defaults, **os.environ, **spec.env}
         for key, value in self.environment_defaults.items():
             if not environment.get(key):
                 environment[key] = value
+        try:
+            project_lock = _ComposeProjectLock.acquire(self.lock_path)
+        except SandboxCreateError:
+            raise
+        except OSError as exc:
+            raise SandboxCreateError(f"Could not acquire Compose project lock {self.lock_path}: {exc}") from exc
         session = _ComposeSession(
-            session_id=f"{self.project_name}:{self.target_service}:{uuid.uuid4().hex}",
+            session_id=f"{command_scope.project_name}:{target_service}:{uuid.uuid4().hex}",
             environment=environment,
-            lock=_ComposeProjectLock.acquire(self.lock_path),
+            lock=project_lock,
+            command_scope=command_scope,
+            target_service=target_service,
+            service_topology=service_topology,
         )
         self._session = session
         try:
@@ -624,7 +643,7 @@ class DockerComposeSandboxProvider:
                 self.pull_policy,
             ]
             build_mode = "build enabled" if self.build else "reusing existing images"
-            self._progress(f"Starting managed Compose project {self.project_name!r} ({build_mode})...")
+            self._progress(f"Starting managed Compose project {command_scope.project_name!r} ({build_mode})...")
             progress_log_path: Path | None = None
             if self.diagnostics_dir is not None:
                 self.diagnostics_dir.mkdir(parents=True, exist_ok=True)
@@ -647,11 +666,11 @@ class DockerComposeSandboxProvider:
                 raise SandboxCreateError(self._cli.failure_message("Compose startup failed", result, environment))
             await self._assert_ready(environment)
             self._progress(
-                f"Managed Compose project {self.project_name!r} ready in {time.monotonic() - startup_started_at:.1f}s."
+                f"Managed Compose project {command_scope.project_name!r} ready in "
+                f"{time.monotonic() - startup_started_at:.1f}s."
             )
         except BaseException as exc:
-            await self._capture_diagnostics(environment, reason="startup-failure")
-            cleanup_error = await self._shielded_cleanup(session)
+            cleanup_error = await self._shielded_cleanup(session, diagnostics_reason="startup-failure")
             if cleanup_error is not None:
                 exc.add_note(f"Compose cleanup also failed: {cleanup_error}")
             if isinstance(exc, asyncio.CancelledError):
@@ -696,7 +715,7 @@ class DockerComposeSandboxProvider:
             args.extend(["--workdir", cwd])
         for key, value in (env or {}).items():
             args.extend(["--env", f"{key}={value}"])
-        args.extend([self.target_service, "sh", "-lc", command])
+        args.extend([state.target_service, "sh", "-lc", command])
         result = await self._cli.run_compose(
             args,
             environment=state.environment,
@@ -807,7 +826,7 @@ class DockerComposeSandboxProvider:
             return SandboxStatus.UNKNOWN
         if not rows:
             return SandboxStatus.STOPPED
-        return SandboxStatus.RUNNING if _services_ready(rows, self.service_topology) is None else SandboxStatus.ERROR
+        return SandboxStatus.RUNNING if _services_ready(rows, state.service_topology) is None else SandboxStatus.ERROR
 
     async def close(self, handle: SandboxHandle) -> None:
         """Tear down the active project and release its ownership lock.
@@ -844,10 +863,21 @@ class DockerComposeSandboxProvider:
             raise error
 
     def _command_scope(self) -> _ComposeCommandScope:
+        """Return the active lifecycle scope or current public configuration.
+
+        Returns:
+            Frozen settings for the active lifecycle, or a fresh public-configuration
+            snapshot when the provider does not own a project.
+        """
+        if self._session is not None:
+            return self._session.command_scope
+        return self._public_command_scope()
+
+    def _public_command_scope(self) -> _ComposeCommandScope:
         """Snapshot the provider's current public command configuration.
 
         Returns:
-            Immutable settings used to construct one Docker or Compose command.
+            Immutable settings suitable for the next lifecycle.
         """
         return _ComposeCommandScope(
             docker_bin=self.docker_bin,
@@ -867,6 +897,9 @@ class DockerComposeSandboxProvider:
             SandboxCreateError: If the configuration is invalid, the project already has
                 containers, service roles differ, or a published host port is unavailable.
         """
+        session = self._session
+        command_scope = self._command_scope()
+        service_topology = session.service_topology if session is not None else self.service_topology
         config, existing = await asyncio.gather(
             self._cli.run_compose(
                 ["config", "--format", "json"],
@@ -887,7 +920,7 @@ class DockerComposeSandboxProvider:
             )
         if existing.stdout.strip():
             raise SandboxCreateError(
-                f"Managed Compose project {self.project_name!r} already has containers; "
+                f"Managed Compose project {command_scope.project_name!r} already has containers; "
                 "refusing to adopt or remove them"
             )
         try:
@@ -896,7 +929,7 @@ class DockerComposeSandboxProvider:
             active_services = frozenset(str(service) for service in services)
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
             raise SandboxCreateError(f"Could not inspect rendered Compose configuration: {exc}") from exc
-        expected_services = self.service_topology.active_services
+        expected_services = service_topology.active_services
         if active_services != expected_services:
             missing = sorted(expected_services - active_services)
             unexpected = sorted(active_services - expected_services)
@@ -927,8 +960,10 @@ class DockerComposeSandboxProvider:
         Raises:
             SandboxCreateError: If a long-running or one-shot service is not ready.
         """
+        session = self._session
+        service_topology = session.service_topology if session is not None else self.service_topology
         rows = await self._compose_ps(environment)
-        problem = _services_ready(rows, self.service_topology)
+        problem = _services_ready(rows, service_topology)
         if problem is not None:
             raise SandboxCreateError(problem)
 
@@ -1015,11 +1050,15 @@ class DockerComposeSandboxProvider:
     async def _shielded_cleanup(
         self,
         session: _ComposeSession,
+        *,
+        diagnostics_reason: str | None = None,
     ) -> ComposeCleanupError | None:
         """Finish project cleanup even when the calling task is cancelled.
 
         Args:
             session: Active lifecycle to clean up.
+            diagnostics_reason: Optional diagnostic label to capture inside the shield
+                before normal project cleanup starts.
 
         Returns:
             Cleanup error when teardown completes with failures; otherwise ``None``.
@@ -1027,7 +1066,14 @@ class DockerComposeSandboxProvider:
         Raises:
             asyncio.CancelledError: Re-raised after cleanup completes when the caller was cancelled.
         """
-        result, cancellation = await _run_shielded(self._cleanup_owned_project(session))
+
+        async def cleanup() -> ComposeCleanupError | None:
+            """Capture optional diagnostics, then tear down the owned project."""
+            if diagnostics_reason is not None:
+                await self._capture_diagnostics(session.environment, reason=diagnostics_reason)
+            return await self._cleanup_owned_project(session)
+
+        result, cancellation = await _run_shielded(cleanup())
         if cancellation is not None:
             if result is not None:
                 cancellation.add_note(f"Compose cleanup also failed: {result}")
@@ -1091,7 +1137,7 @@ class DockerComposeSandboxProvider:
             [
                 "--quiet",
                 "--filter",
-                f"label=com.docker.compose.project={self.project_name}",
+                f"label=com.docker.compose.project={self._command_scope().project_name}",
             ]
         )
         result = await self._cli.run_docker(
@@ -1109,22 +1155,21 @@ class DockerComposeSandboxProvider:
 
     async def _run_target_root(
         self,
+        session: _ComposeSession,
         command: Sequence[str],
-        *,
-        environment: Mapping[str, str],
     ) -> ComposeCommandResult:
         """Run a command as root in the configured target service.
 
         Args:
+            session: Active lifecycle identifying the target service and environment.
             command: Executable and arguments to append after the target service name.
-            environment: Complete environment forwarded to Docker Compose.
 
         Returns:
             Captured result for the privileged Compose exec command.
         """
         return await self._cli.run_compose(
-            ["exec", "--no-tty", "--user", "0", self.target_service, *command],
-            environment=environment,
+            ["exec", "--no-tty", "--user", "0", session.target_service, *command],
+            environment=session.environment,
             timeout=self.command_timeout_seconds,
         )
 
@@ -1154,11 +1199,13 @@ class DockerComposeSandboxProvider:
             Docker merges its contents directly into the prepared target directory.
         """
         state = self._state(handle)
-        remote_directory = target if directory else posixpath.dirname(target)
+        container_target = _absolute_container_path(target)
+        remote_directory = container_target if directory else posixpath.dirname(target)
         if remote_directory:
+            remote_directory = _absolute_container_path(remote_directory)
             prepared = await self._run_target_root(
+                state,
                 ["mkdir", "-p", "--", remote_directory],
-                environment=state.environment,
             )
             if not prepared.ok:
                 raise RuntimeError(
@@ -1170,17 +1217,17 @@ class DockerComposeSandboxProvider:
                 )
         copy_source = f"{source}{os.sep}." if directory else str(source)
         result = await self._cli.run_compose(
-            ["cp", copy_source, f"{self.target_service}:{target}"],
+            ["cp", copy_source, f"{state.target_service}:{container_target}"],
             environment=state.environment,
             timeout=self.command_timeout_seconds,
         )
         if not result.ok:
             raise RuntimeError(self._cli.failure_message("Compose upload failed", result, state.environment))
         if state.target_identity is None:
-            state.target_identity = await self._target_identity(state.environment)
+            state.target_identity = await self._target_identity(state)
         ownership = await self._run_target_root(
-            ["chown", "-R", state.target_identity, "--", target],
-            environment=state.environment,
+            state,
+            ["chown", "-R", state.target_identity, "--", container_target],
         )
         if not ownership.ok:
             raise RuntimeError(
@@ -1214,7 +1261,7 @@ class DockerComposeSandboxProvider:
             target.parent.mkdir(parents=True, exist_ok=True)
         copy_source = posixpath.join(source, ".") if directory else source
         result = await self._cli.run_compose(
-            ["cp", f"{self.target_service}:{copy_source}", str(target)],
+            ["cp", f"{state.target_service}:{copy_source}", str(target)],
             environment=state.environment,
             timeout=self.command_timeout_seconds,
         )
@@ -1264,11 +1311,11 @@ class DockerComposeSandboxProvider:
         except Exception:  # noqa: BLE001 - diagnostics must not mask lifecycle errors
             logger.exception("Could not capture Compose diagnostics")
 
-    async def _target_identity(self, environment: Mapping[str, str]) -> str:
+    async def _target_identity(self, session: _ComposeSession) -> str:
         """Read the runtime ``UID:GID`` of the target service user.
 
         Args:
-            environment: Environment forwarded to the Compose exec command.
+            session: Active lifecycle identifying the target service and command environment.
 
         Returns:
             Numeric identity formatted as ``UID:GID`` for ``chown``.
@@ -1280,18 +1327,22 @@ class DockerComposeSandboxProvider:
             [
                 "exec",
                 "--no-tty",
-                self.target_service,
+                session.target_service,
                 "sh",
                 "-lc",
                 'printf "%s:%s" "$(id -u)" "$(id -g)"',
             ],
-            environment=environment,
+            environment=session.environment,
             timeout=self.command_timeout_seconds,
         )
         identity = result.stdout.strip()
         if not result.ok or not re.fullmatch(r"\d+:\d+", identity):
             raise SandboxCreateError(
-                self._cli.failure_message("Could not determine target service identity", result, environment)
+                self._cli.failure_message(
+                    "Could not determine target service identity",
+                    result,
+                    session.environment,
+                )
             )
         return identity
 
@@ -1560,6 +1611,30 @@ async def _terminate_process_group(process: asyncio.subprocess.Process) -> None:
         await process.wait()
 
 
+def _absolute_container_path(path: str) -> str:
+    """Normalize a Docker container path against its root directory.
+
+    Docker copy commands interpret relative container paths from ``/``, while commands
+    executed in a container interpret them from the image or service working directory.
+    Normalizing once keeps preparation, copy, and ownership repair on the same target.
+
+    Args:
+        path: Absolute or root-relative POSIX container path.
+
+    Returns:
+        Normalized absolute POSIX path.
+
+    Raises:
+        ValueError: If ``path`` is empty.
+
+    Example:
+        ``work/output.txt`` becomes ``/work/output.txt``.
+    """
+    if not path:
+        raise ValueError("Container path cannot be empty")
+    return posixpath.normpath(f"/{path.lstrip('/')}")
+
+
 def _parse_json_rows(text: str) -> list[dict[str, Any]]:
     """Parse Compose JSON-array, JSON-object, or JSON-lines output.
 
@@ -1722,7 +1797,9 @@ def _services_ready(
     Returns:
         ``None`` when every role is ready; otherwise a concise failure description.
     """
-    services = {str(row.get("Service")): row for row in rows}
+    services: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        services.setdefault(str(row.get("Service")), []).append(row)
     missing = sorted(topology.active_services - services.keys())
     if missing:
         return f"Compose services missing after startup: {missing}"
@@ -1730,21 +1807,21 @@ def _services_ready(
     if unexpected:
         return f"Unexpected Compose services after startup: {unexpected}"
     for service in sorted(topology.long_running_services):
-        row = services[service]
-        if str(row.get("State", "")).casefold() != "running":
-            return f"Compose service {service!r} is not running: {row.get('State')}"
-        health = str(row.get("Health", "")).casefold()
-        if health and health != "healthy":
-            return f"Compose service {service!r} is not healthy: {row.get('Health')}"
+        for row in services[service]:
+            if str(row.get("State", "")).casefold() != "running":
+                return f"Compose service {service!r} is not running: {row.get('State')}"
+            health = str(row.get("Health", "")).casefold()
+            if health and health != "healthy":
+                return f"Compose service {service!r} is not healthy: {row.get('Health')}"
     for service in sorted(topology.one_shot_services):
-        row = services[service]
-        state = str(row.get("State", "")).casefold()
-        try:
-            exit_code = int(row.get("ExitCode", 1))
-        except (TypeError, ValueError):
-            exit_code = 1
-        if state != "exited" or exit_code != 0:
-            return f"Compose one-shot service {service!r} did not exit successfully"
+        for row in services[service]:
+            state = str(row.get("State", "")).casefold()
+            try:
+                exit_code = int(row.get("ExitCode", 1))
+            except (TypeError, ValueError):
+                exit_code = 1
+            if state != "exited" or exit_code != 0:
+                return f"Compose one-shot service {service!r} did not exit successfully"
     return None
 
 

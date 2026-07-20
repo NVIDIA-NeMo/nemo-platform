@@ -269,6 +269,42 @@ async def test_readiness_enforces_service_roles(
     assert any(_compose_suffix(argv)[:1] == ("down",) for argv, _, _ in runner.calls)
 
 
+@pytest.mark.parametrize("reverse_rows", [False, True])
+def test_readiness_checks_every_scaled_service_replica(reverse_rows: bool) -> None:
+    topology = ComposeServiceTopology(
+        target_service="agent",
+        long_running_services=frozenset({"agent"}),
+        one_shot_services=frozenset({"init"}),
+    )
+    healthy_agent = {"Service": "agent", "State": "running", "Health": "healthy"}
+    failed_agent = {"Service": "agent", "State": "exited", "Health": "", "ExitCode": 1}
+    successful_init = {"Service": "init", "State": "exited", "ExitCode": 0}
+    rows = [healthy_agent, failed_agent, successful_init]
+    if reverse_rows:
+        rows.reverse()
+
+    problem = compose._services_ready(rows, topology)
+
+    assert problem is not None
+    assert "agent" in problem
+    assert "not running" in problem
+
+
+def test_readiness_checks_every_scaled_one_shot_replica() -> None:
+    topology = ComposeServiceTopology(
+        target_service="agent",
+        long_running_services=frozenset({"agent"}),
+        one_shot_services=frozenset({"init"}),
+    )
+    rows = [
+        {"Service": "agent", "State": "running", "Health": "healthy"},
+        {"Service": "init", "State": "exited", "ExitCode": 0},
+        {"Service": "init", "State": "exited", "ExitCode": 1},
+    ]
+
+    assert compose._services_ready(rows, topology) == "Compose one-shot service 'init' did not exit successfully"
+
+
 async def test_provider_options_are_rejected(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -435,6 +471,41 @@ async def test_cancelled_close_finishes_down_then_restores_cancellation(
     assert any(_compose_suffix(argv)[:1] == ("down",) for argv, _, _ in runner.calls)
 
 
+async def test_cancelled_startup_diagnostics_finishes_cleanup_before_restoring_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = _Runner()
+    runner.up_failure = True
+    provider = _provider(tmp_path)
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def capture_diagnostics(
+        _environment: Mapping[str, str],
+        *,
+        reason: str,
+    ) -> None:
+        assert reason in {"startup-failure", "shutdown"}
+        entered.set()
+        await release.wait()
+
+    monkeypatch.setattr(compose, "_run_command", runner)
+    monkeypatch.setattr(provider, "_capture_diagnostics", capture_diagnostics)
+    create_task = asyncio.create_task(provider.create(SandboxSpec()))
+    await entered.wait()
+    create_task.cancel()
+    release.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await create_task
+
+    assert any(_compose_suffix(argv)[:1] == ("down",) for argv, _, _ in runner.calls)
+    assert provider._session is None
+    recovered_lock = compose._ComposeProjectLock.acquire(provider.lock_path)
+    recovered_lock.release()
+
+
 @pytest.mark.parametrize(("remove_volumes", "expected"), [(False, False), (True, True)])
 async def test_volume_removal_is_opt_in(
     monkeypatch: pytest.MonkeyPatch,
@@ -592,6 +663,62 @@ async def test_directory_transfers_copy_contents_into_prepared_targets(
     await provider.close(handle)
 
 
+async def test_relative_upload_targets_use_the_same_root_for_every_command(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = _Runner()
+    provider = _provider(tmp_path)
+    handle = await _create(monkeypatch, provider, runner)
+    source_file = tmp_path / "seed.txt"
+    source_file.write_text("seed", encoding="utf-8")
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    (source_dir / "nested.txt").write_text("nested", encoding="utf-8")
+
+    transfer_start = len(runner.calls)
+    await provider.upload_file(handle, source_file, "missing/parent/seed.txt")
+    await provider.upload_file(handle, source_file, "root-seed.txt")
+    await provider.upload_dir(handle, source_dir, "workspace")
+
+    suffixes = [
+        _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
+    ]
+    assert suffixes[:4] == [
+        ("exec", "--no-tty", "--user", "0", "agent", "mkdir", "-p", "--", "/missing/parent"),
+        ("cp", str(source_file), "agent:/missing/parent/seed.txt"),
+        ("exec", "--no-tty", "agent", "sh", "-lc", 'printf "%s:%s" "$(id -u)" "$(id -g)"'),
+        (
+            "exec",
+            "--no-tty",
+            "--user",
+            "0",
+            "agent",
+            "chown",
+            "-R",
+            "1001:1002",
+            "--",
+            "/missing/parent/seed.txt",
+        ),
+    ]
+    assert ("cp", str(source_file), "agent:/root-seed.txt") in suffixes
+    assert (
+        "exec",
+        "--no-tty",
+        "--user",
+        "0",
+        "agent",
+        "chown",
+        "-R",
+        "1001:1002",
+        "--",
+        "/root-seed.txt",
+    ) in suffixes
+    assert ("exec", "--no-tty", "--user", "0", "agent", "mkdir", "-p", "--", "/workspace") in suffixes
+    assert ("cp", f"{source_dir}{os.sep}.", "agent:/workspace") in suffixes
+    await provider.close(handle)
+
+
 @pytest.mark.parametrize(
     ("failure", "exception_type", "message"),
     [
@@ -666,6 +793,44 @@ async def test_stale_handle_cannot_alias_recreated_project(
         await provider.close(second)
 
 
+async def test_active_session_freezes_project_scope_and_target_topology(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = _Runner()
+    provider = _provider(tmp_path, project_name="original", profiles=("original-profile",))
+    handle = await _create(monkeypatch, provider, runner)
+    original_scope = provider._command_scope()
+    replacement_directory = tmp_path / "replacement"
+    replacement_directory.mkdir()
+    replacement_file = replacement_directory / "compose.yaml"
+    replacement_file.write_text("services: {}\n", encoding="utf-8")
+
+    provider.docker_bin = "replacement-docker"
+    provider.project_directory = replacement_directory
+    provider.compose_files = (replacement_file,)
+    provider.project_name = "replacement"
+    provider.profiles = ("replacement-profile",)
+    provider.target_service = "replacement-service"
+    provider.service_topology = ComposeServiceTopology(
+        target_service="replacement-service",
+        long_running_services=frozenset({"replacement-service"}),
+    )
+
+    assert provider._command_scope() == original_scope
+    assert await provider.status(handle) == SandboxStatus.RUNNING
+    await provider.exec(handle, "true")
+    await provider.close(handle)
+
+    compose_calls = [(argv, cwd) for argv, _, cwd in runner.calls if argv[:2] == ("docker", "compose")]
+    assert compose_calls
+    assert all(argv[argv.index("--project-name") + 1] == "original" for argv, _ in compose_calls)
+    assert all(argv[0] == "docker" and cwd == tmp_path for argv, cwd in compose_calls)
+    assert any(_compose_suffix(argv)[-4:] == ("agent", "sh", "-lc", "true") for argv, _ in compose_calls)
+    assert provider._command_scope().project_name == "replacement"
+    assert provider._command_scope().docker_bin == "replacement-docker"
+
+
 def test_project_lock_and_generated_names(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -697,6 +862,20 @@ def test_project_lock_and_generated_names(
     generated = _provider(tmp_path, lock_path=tmp_path / "other.lock")
     assert generated.project_name.startswith("nemo-eval-")
     assert generated.project_name != first.project_name
+
+
+async def test_create_wraps_lock_filesystem_errors(
+    tmp_path: Path,
+) -> None:
+    lock_directory = tmp_path / "lock-directory"
+    lock_directory.mkdir()
+    provider = _provider(tmp_path, lock_path=lock_directory)
+
+    with pytest.raises(SandboxCreateError, match="Could not acquire Compose project lock") as caught:
+        await provider.create(SandboxSpec())
+
+    assert isinstance(caught.value.__cause__, IsADirectoryError)
+    assert provider._session is None
 
 
 def test_project_lock_excludes_another_process(tmp_path: Path) -> None:

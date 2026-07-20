@@ -44,7 +44,7 @@ def _run(*argv: str, cwd: Path | None = None) -> None:
 def _build_fixture(context: Path, image: str, value: str) -> None:
     context.mkdir(parents=True, exist_ok=True)
     (context / "Dockerfile").write_text(
-        "FROM busybox:latest\nCOPY value.txt /value.txt\nRUN adduser -D -u 1001 app\nUSER app\n",
+        "FROM busybox:latest\nCOPY value.txt /value.txt\nRUN adduser -D -u 1001 app\nWORKDIR /home/app\nUSER app\n",
         encoding="utf-8",
     )
     (context / "value.txt").write_text(value, encoding="utf-8")
@@ -97,6 +97,13 @@ async def test_no_build_runs_prebuilt_image_without_source_context(tmp_path: Pat
             "echo -n '-modified' >> /home/app/missing/parent/seed.txt && cat /home/app/missing/parent/seed.txt",
         )
         assert modified.ok and modified.stdout == "seed-modified"
+
+        await provider.upload_file(handle, seed, "relative/missing/seed.txt")
+        relative_modified = await provider.exec(
+            handle,
+            "echo -n '-relative' >> /relative/missing/seed.txt && cat /relative/missing/seed.txt",
+        )
+        assert relative_modified.ok and relative_modified.stdout == "seed-relative"
 
         source_dir = tmp_path / "source-dir"
         source_dir.mkdir()
