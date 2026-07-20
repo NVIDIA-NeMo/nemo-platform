@@ -160,11 +160,11 @@ export const OptimizerInsightRoute: FC = () => {
   const changeStatus = (status: InsightStatus) =>
     updateInsight({ workspace, insightId, data: { status } });
 
-  // Opening an insight transitions it to `open` and shows a modal with the CLI
-  // command to run experiments; every other status change is applied directly.
+  // The "open" action only shows the modal with the CLI command to run experiments — it does not
+  // change the insight's status. The external agent transitions the insight to `open` when it
+  // actually creates experiments for it. Every other action applies its status change directly.
   const handleAction = (target: InsightStatus) => {
     if (target === 'open') {
-      changeStatus('open');
       setOpenModalOpen(true);
     } else {
       changeStatus(target);
