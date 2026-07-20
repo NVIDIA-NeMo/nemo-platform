@@ -3685,6 +3685,14 @@ paths:
         description: Response mode. summary omits root-span input and output; preview
           includes both truncated to 300 characters; detailed returns full root-span
           payloads.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          description: Comma-separated sort fields...
+          title: Sort
+          type: string
+        description: Comma-separated sort fields...
       - in: query
         name: filter
         style: deepObject
