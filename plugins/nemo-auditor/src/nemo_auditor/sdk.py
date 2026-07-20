@@ -9,6 +9,10 @@ Mounted on :class:`~nemo_platform.NeMoPlatform` as ``client.auditor`` via the
 - ``client.auditor.plugin_status()`` — service healthz check.
 - ``client.auditor.configs.{create,list,get,update,delete}`` — ``AuditConfig`` CRUD.
 - ``client.auditor.targets.{create,list,get,update,delete}`` — ``AuditTarget`` CRUD.
+- ``client.auditor.submit(config=..., target=..., workspace=...)`` — submit a K8s
+  audit job through the plugin's job endpoint and return the raw job dict.
+- ``client.auditor.list_jobs(workspace=...)`` — list submitted audit jobs.
+- ``client.auditor.get_job(job_name, workspace=...)`` — fetch a single audit job.
 - ``client.auditor.run(config=..., target=..., workspace=...)`` — in-process
   audit using :class:`~nemo_auditor.jobs.audit.AuditJob`. Mirrors the evaluator
   plugin's ``client.evaluator.run`` pattern: delegates to
@@ -60,6 +64,60 @@ class AuditorPluginResource:
         if self._targets is None:
             self._targets = _TargetResource(self)
         return self._targets
+
+    def submit(
+        self,
+        *,
+        config: AuditConfig | str,
+        target: AuditTarget | str,
+        workspace: str | None = None,
+        max_probe_retries: int = 0,
+        fail_job_on_retries_exhausted: bool = True,
+    ) -> dict:
+        """Submit an audit job to the K8s executor via the plugin job endpoint.
+
+        Returns the raw job dict (name, status, workspace, …). Use
+        ``sdk.jobs.get_status(name=result["name"], workspace=workspace)`` to poll
+        for completion, or pass the name to ``sdk.auditor.get_job()``.
+        """
+        ws = workspace or "default"
+        spec = AuditInputSpec(
+            config=config,
+            target=target,
+            max_probe_retries=max_probe_retries,
+            fail_job_on_retries_exhausted=fail_job_on_retries_exhausted,
+        )
+        response = self._http_client.post(
+            self._url(f"/v2/workspaces/{ws}/jobs/audit"),
+            json={"spec": spec.model_dump(mode="json")},
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def list_jobs(
+        self,
+        *,
+        workspace: str | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict:
+        """List audit jobs in the workspace with basic pagination."""
+        ws = workspace or "default"
+        response = self._http_client.get(
+            self._url(f"/v2/workspaces/{ws}/jobs/audit"),
+            params={"page": page, "page_size": page_size},
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_job(self, job_name: str, *, workspace: str | None = None) -> dict:
+        """Fetch a single audit job by name."""
+        ws = workspace or "default"
+        response = self._http_client.get(
+            self._url(f"/v2/workspaces/{ws}/jobs/audit/{job_name}"),
+        )
+        response.raise_for_status()
+        return response.json()
 
     def run(
         self,
@@ -132,6 +190,55 @@ class AsyncAuditorPluginResource:
         if self._targets is None:
             self._targets = _AsyncTargetResource(self)
         return self._targets
+
+    async def submit(
+        self,
+        *,
+        config: AuditConfig | str,
+        target: AuditTarget | str,
+        workspace: str | None = None,
+        max_probe_retries: int = 0,
+        fail_job_on_retries_exhausted: bool = True,
+    ) -> dict:
+        """Async twin of :meth:`AuditorPluginResource.submit`."""
+        ws = workspace or "default"
+        spec = AuditInputSpec(
+            config=config,
+            target=target,
+            max_probe_retries=max_probe_retries,
+            fail_job_on_retries_exhausted=fail_job_on_retries_exhausted,
+        )
+        response = await self._http_client.post(
+            self._url(f"/v2/workspaces/{ws}/jobs/audit"),
+            json={"spec": spec.model_dump(mode="json")},
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def list_jobs(
+        self,
+        *,
+        workspace: str | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict:
+        """Async twin of :meth:`AuditorPluginResource.list_jobs`."""
+        ws = workspace or "default"
+        response = await self._http_client.get(
+            self._url(f"/v2/workspaces/{ws}/jobs/audit"),
+            params={"page": page, "page_size": page_size},
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def get_job(self, job_name: str, *, workspace: str | None = None) -> dict:
+        """Async twin of :meth:`AuditorPluginResource.get_job`."""
+        ws = workspace or "default"
+        response = await self._http_client.get(
+            self._url(f"/v2/workspaces/{ws}/jobs/audit/{job_name}"),
+        )
+        response.raise_for_status()
+        return response.json()
 
     async def run(
         self,

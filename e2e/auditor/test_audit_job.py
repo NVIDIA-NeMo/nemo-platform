@@ -44,15 +44,6 @@ def _chat_completion(content: str = "I'm happy to help!") -> dict:
     }
 
 
-def _submit_audit_job(sdk: NeMoPlatform, workspace: str, auditor_url: str, spec: dict) -> str:
-    resp = sdk.auditor._http_client.post(
-        f"{auditor_url}/v2/workspaces/{workspace}/jobs/audit",
-        json={"spec": spec},
-    )
-    resp.raise_for_status()
-    return resp.json()["name"]
-
-
 def _wait_for_audit_job(sdk: NeMoPlatform, job_name: str, workspace: str) -> str:
     deadline = time.monotonic() + AUDIT_JOB_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
@@ -162,36 +153,34 @@ def test_audit_job_submit_blank_probe(
     sdk: NeMoPlatform,
     audit_workspace: str,
     mock_provider_name: str,
-    auditor_url: str,
 ) -> None:
     """Submit an inline audit job with test.Test probe and verify it reaches completed status."""
-    spec = {
-        "config": {
-            **minimal_audit_config(plugins={"probe_spec": "test.Test", "detector_spec": "auto"}),
-            "name": unique_name("inline-cfg"),
-            "workspace": audit_workspace,
-        },
-        "target": {
-            "name": unique_name("inline-tgt"),
-            "workspace": audit_workspace,
-            "type": "openai",
-            "model": mock_provider_name,
-            "options": {
-                "openai": {
-                    "OpenAICompatible": {
-                        "nmp_uri_spec": {
-                            "inference_gateway": {
-                                "workspace": audit_workspace,
-                                "provider": mock_provider_name,
-                            }
+    config = {
+        **minimal_audit_config(plugins={"probe_spec": "test.Test", "detector_spec": "auto"}),
+        "name": unique_name("inline-cfg"),
+        "workspace": audit_workspace,
+    }
+    target = {
+        "name": unique_name("inline-tgt"),
+        "workspace": audit_workspace,
+        "type": "openai",
+        "model": mock_provider_name,
+        "options": {
+            "openai": {
+                "OpenAICompatible": {
+                    "nmp_uri_spec": {
+                        "inference_gateway": {
+                            "workspace": audit_workspace,
+                            "provider": mock_provider_name,
                         }
                     }
                 }
-            },
+            }
         },
     }
 
-    job_name = _submit_audit_job(sdk, audit_workspace, auditor_url, spec)
+    job = sdk.auditor.submit(config=config, target=target, workspace=audit_workspace)
+    job_name = job["name"]
     try:
         final_status = _wait_for_audit_job(sdk, job_name, audit_workspace)
         assert final_status == "completed", (
@@ -207,15 +196,14 @@ def test_audit_job_submit_with_entity_refs(
     audit_workspace: str,
     audit_config_name: str,
     audit_target_name: str,
-    auditor_url: str,
 ) -> None:
     """Submit an audit job using stored entity name references and verify completion."""
-    spec = {
-        "config": f"{audit_workspace}/{audit_config_name}",
-        "target": f"{audit_workspace}/{audit_target_name}",
-    }
-
-    job_name = _submit_audit_job(sdk, audit_workspace, auditor_url, spec)
+    job = sdk.auditor.submit(
+        config=f"{audit_workspace}/{audit_config_name}",
+        target=f"{audit_workspace}/{audit_target_name}",
+        workspace=audit_workspace,
+    )
+    job_name = job["name"]
     try:
         final_status = _wait_for_audit_job(sdk, job_name, audit_workspace)
         assert final_status == "completed", (
@@ -230,20 +218,17 @@ def test_audit_job_appears_in_list(
     audit_workspace: str,
     audit_config_name: str,
     audit_target_name: str,
-    auditor_url: str,
 ) -> None:
-    """Submitted audit job appears in the jobs/audit list endpoint with its name."""
-    spec = {
-        "config": f"{audit_workspace}/{audit_config_name}",
-        "target": f"{audit_workspace}/{audit_target_name}",
-    }
-
-    job_name = _submit_audit_job(sdk, audit_workspace, auditor_url, spec)
+    """Submitted audit job appears in list_jobs() with its name."""
+    job = sdk.auditor.submit(
+        config=f"{audit_workspace}/{audit_config_name}",
+        target=f"{audit_workspace}/{audit_target_name}",
+        workspace=audit_workspace,
+    )
+    job_name = job["name"]
     try:
-        resp = sdk.auditor._http_client.get(f"{auditor_url}/v2/workspaces/{audit_workspace}/jobs/audit")
-        resp.raise_for_status()
-        jobs_data = resp.json()
-        job_names = [j["name"] for j in jobs_data.get("data", [])]
-        assert job_name in job_names, f"Submitted job {job_name!r} not found in jobs list: {job_names}"
+        jobs = sdk.auditor.list_jobs(workspace=audit_workspace)
+        job_names = [j["name"] for j in jobs.get("data", [])]
+        assert job_name in job_names, f"Submitted job {job_name!r} not found in list_jobs(): {job_names}"
     finally:
         _cleanup_audit_job(sdk, job_name, audit_workspace)
