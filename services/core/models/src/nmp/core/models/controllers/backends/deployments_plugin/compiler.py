@@ -62,6 +62,12 @@ from nmp.core.models.controllers.backends.vllm_compiler import (
 _WEIGHTS_MOUNT = "/model-store"
 _SCRATCH_MOUNT = "/scratch"
 _LORA_MOUNT = "/scratch/loras"
+# The adapters sidecar's `nemo services run` writes instance state under $XDG_STATE_HOME
+# (default ~/.local/state), but the pod runs it as the vLLM uid (2000), which does not own
+# the nmp-api image's $HOME (/home/nvs, uid 1000) -- so the default path is unwritable and
+# the sidecar crash-loops. Redirect it to the writable scratch volume, outside the
+# /scratch/loras subtree the adapters controller GCs.
+_LORA_SIDECAR_STATE_DIR = f"{_SCRATCH_MOUNT}/.nmp-state"
 _SCRATCH_VOLUME_SIZE = "1Gi"
 
 
@@ -145,6 +151,7 @@ def _lora_sidecar(
         "NMP_MODEL_ENTITY_WORKSPACE": entity_workspace,
         "NMP_MODEL_ENTITY_NAME": entity_name,
         "NMP_BASE_URL": platform.base_url,
+        "XDG_STATE_HOME": _LORA_SIDECAR_STATE_DIR,
     }
     if engine == ENGINE_VLLM:
         sidecar_env["VLLM_LORA_BASE_MODEL_OVERRIDE"] = MODEL_STORE_PATH
