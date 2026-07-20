@@ -62,8 +62,8 @@ class GenericSortField(StrEnum):
     """Sort options for entity-store-backed list endpoints.
 
     Members map to entity base columns (see ``BASE_FIELDS``), so any
-    entity-backed resource (filesets, guardrail configs, …) can share this
-    without advertising a sort it cannot honor. Prefix a field with ``-`` for
+    entity-backed resource (filesets, guardrail configs, workspaces, projects)
+    can share this without advertising a sort it cannot honor. Prefix a field with ``-`` for
     descending order.
     """
 

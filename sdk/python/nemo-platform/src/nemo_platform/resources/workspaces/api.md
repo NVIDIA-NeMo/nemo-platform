@@ -6,7 +6,6 @@ Types:
 from nemo_platform.types.workspaces import (
     Workspace,
     WorkspaceParam,
-    WorkspaceSortField,
     WorkspaceUpdate,
     WorkspacesPage,
 )

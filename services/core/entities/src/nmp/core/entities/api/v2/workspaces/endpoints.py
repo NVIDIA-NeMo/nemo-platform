@@ -24,11 +24,11 @@ import textwrap
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, status
-from nmp.common.api.common import Page, PaginationData
+from nmp.common.api.common import GenericSortField, Page, PaginationData
 from nmp.common.api.filter import ComparisonOperation, FilterOperator
 from nmp.common.auth.models import Principal
 from nmp.core.entities.api.dependencies import AuthClientDep, EntityRepository, WorkspaceRepository
-from nmp.core.entities.api.v2.schemas import EntityDeleteResponse, WorkspaceSortField
+from nmp.core.entities.api.v2.schemas import EntityDeleteResponse
 from nmp.core.entities.api.v2.utils import (
     ROLE_BINDING_ENTITY_TYPE,
     add_workspace_filtering,
@@ -286,7 +286,7 @@ async def list_workspaces(
     filter: FilterDep,
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(100, ge=1, le=1000, description="Items per page"),
-    sort: WorkspaceSortField = Query(WorkspaceSortField.CREATED_AT_DESC, description="Sort field"),
+    sort: GenericSortField = Query(GenericSortField.CREATED_AT_DESC, description="Sort field"),
 ) -> Page[Workspace]:
     """List workspaces accessible to the current principal."""
     # Get accessible workspaces for access control

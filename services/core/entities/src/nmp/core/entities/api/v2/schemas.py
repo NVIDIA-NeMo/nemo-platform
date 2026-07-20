@@ -3,18 +3,7 @@
 
 """Shared API Schemas for v2."""
 
-from enum import StrEnum
-
 from pydantic import BaseModel, Field
-
-
-class WorkspaceSortField(StrEnum):
-    """Fields available for sorting workspace results."""
-
-    CREATED_AT_ASC = "created_at"
-    CREATED_AT_DESC = "-created_at"
-    UPDATED_AT_ASC = "updated_at"
-    UPDATED_AT_DESC = "-updated_at"
 
 
 class EntityDeleteResponse(BaseModel):

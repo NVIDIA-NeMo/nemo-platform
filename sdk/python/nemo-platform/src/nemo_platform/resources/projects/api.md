@@ -3,13 +3,7 @@
 Types:
 
 ```python
-from nemo_platform.types.projects import (
-    Project,
-    ProjectParam,
-    ProjectSortField,
-    ProjectUpdate,
-    ProjectsPage,
-)
+from nemo_platform.types.projects import Project, ProjectParam, ProjectUpdate, ProjectsPage
 ```
 
 Methods:

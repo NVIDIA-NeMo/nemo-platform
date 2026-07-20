@@ -31,9 +31,9 @@ from ..._response import (
 )
 from ...pagination import SyncDefaultPagination, AsyncDefaultPagination
 from ..._base_client import AsyncPaginator, make_request_options
-from ...types.projects import ProjectSortField, project_list_params, project_create_params, project_update_params
+from ...types.projects import project_list_params, project_create_params, project_update_params
 from ...types.projects.project import Project
-from ...types.projects.project_sort_field import ProjectSortField
+from ...types.shared.generic_sort_field import GenericSortField
 from ...types.shared.entity_delete_response import EntityDeleteResponse
 from ..._exceptions import ConflictError
 
@@ -227,7 +227,7 @@ class ProjectsResource(SyncAPIResource):
         filter: str | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
-        sort: ProjectSortField | Omit = omit,
+        sort: GenericSortField | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -533,7 +533,7 @@ class AsyncProjectsResource(AsyncAPIResource):
         filter: str | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
-        sort: ProjectSortField | Omit = omit,
+        sort: GenericSortField | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,

@@ -414,7 +414,7 @@ paths:
         required: false
         schema:
           allOf:
-          - $ref: '#/components/schemas/WorkspaceSortField'
+          - $ref: '#/components/schemas/GenericSortField'
           description: Sort field
           default: -created_at
         description: Sort field
@@ -1199,7 +1199,7 @@ paths:
         required: false
         schema:
           allOf:
-          - $ref: '#/components/schemas/ProjectSortField'
+          - $ref: '#/components/schemas/GenericSortField'
           description: Sort field
           default: -created_at
         description: Sort field
@@ -12004,10 +12004,17 @@ components:
       - name
       - -name
       title: GenericSortField
-      description: "Sort options for entity-store-backed list endpoints.\n\nMembers\
-        \ map to entity base columns (see ``BASE_FIELDS``), so any\nentity-backed\
-        \ resource (filesets, guardrail configs, \u2026) can share this\nwithout advertising\
-        \ a sort it cannot honor. Prefix a field with ``-`` for\ndescending order."
+      description: 'Sort options for entity-store-backed list endpoints.
+
+
+        Members map to entity base columns (see ``BASE_FIELDS``), so any
+
+        entity-backed resource (filesets, guardrail configs, workspaces, projects)
+
+        can share this without advertising a sort it cannot honor. Prefix a field
+        with ``-`` for
+
+        descending order.'
     GuardrailCheckRequest:
       properties:
         model:
@@ -16516,17 +16523,6 @@ components:
       - name
       title: ProjectInput
       description: Schema for creating a new project.
-    ProjectSortField:
-      type: string
-      enum:
-      - created_at
-      - -created_at
-      - updated_at
-      - -updated_at
-      - name
-      - -name
-      title: ProjectSortField
-      description: Fields available for sorting project results.
     ProjectUpdate:
       properties:
         description:
@@ -19652,15 +19648,6 @@ components:
       - roles
       title: WorkspaceMemberUpdate
       description: Schema for updating a workspace member's roles.
-    WorkspaceSortField:
-      type: string
-      enum:
-      - created_at
-      - -created_at
-      - updated_at
-      - -updated_at
-      title: WorkspaceSortField
-      description: Fields available for sorting workspace results.
     WorkspaceUpdate:
       properties:
         description:

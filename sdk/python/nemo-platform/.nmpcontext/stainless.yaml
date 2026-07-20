@@ -648,7 +648,6 @@ resources:
     models:
       workspace: Workspace
       workspace_param: WorkspaceInput
-      workspace_sort_field: WorkspaceSortField
       workspace_update: WorkspaceUpdate
       workspaces_page: WorkspacesPage
     methods:
@@ -774,7 +773,6 @@ resources:
     models:
       project: Project
       project_param: ProjectInput
-      project_sort_field: ProjectSortField
       project_update: ProjectUpdate
       projects_page: ProjectsPage
     methods:

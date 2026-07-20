@@ -39,15 +39,10 @@ from ..._response import (
 )
 from ...pagination import SyncDefaultPagination, AsyncDefaultPagination
 from ..._base_client import AsyncPaginator, make_request_options
-from ...types.workspaces import (
-    WorkspaceSortField,
-    workspace_list_params,
-    workspace_create_params,
-    workspace_update_params,
-)
+from ...types.workspaces import workspace_list_params, workspace_create_params, workspace_update_params
 from ...types.workspaces.workspace import Workspace
+from ...types.shared.generic_sort_field import GenericSortField
 from ...types.shared.entity_delete_response import EntityDeleteResponse
-from ...types.workspaces.workspace_sort_field import WorkspaceSortField
 from ..._exceptions import ConflictError
 
 __all__ = ["WorkspacesResource", "AsyncWorkspacesResource"]
@@ -242,7 +237,7 @@ class WorkspacesResource(SyncAPIResource):
         filter: str | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
-        sort: WorkspaceSortField | Omit = omit,
+        sort: GenericSortField | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -552,7 +547,7 @@ class AsyncWorkspacesResource(AsyncAPIResource):
         filter: str | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
-        sort: WorkspaceSortField | Omit = omit,
+        sort: GenericSortField | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,

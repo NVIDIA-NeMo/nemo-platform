@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing_extensions import TypedDict
 
-from .workspace_sort_field import WorkspaceSortField
+from ..shared.generic_sort_field import GenericSortField
 
 __all__ = ["WorkspaceListParams"]
 
@@ -43,5 +43,5 @@ class WorkspaceListParams(TypedDict, total=False):
     page_size: int
     """Items per page"""
 
-    sort: WorkspaceSortField
+    sort: GenericSortField
     """Sort field"""
