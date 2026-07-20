@@ -38,12 +38,16 @@ export type AgentEvalAggregateScore = AggregateRangeScore | AggregateRubricScore
 /** Re-export so callers continue to import AgentEvalResult from this module. */
 export type { AgentEvalResult };
 
-/** The agent name a job evaluated, read from its target (spec.target.agent.name). */
+/** The agent name a job evaluated, read from its target (spec.target.agent.name).
+ *  Strips only this job's own ``workspace/`` prefix so the result compares equal to a
+ *  bare agent name; any other ``/`` in the name is left intact. */
 export const agentNameForJob = (job: AgentEvalJob): string | null => {
   const target = job.spec.target as { kind?: string; agent?: { name?: string } } | null | undefined;
   if (!target || target.kind !== 'agent') return null;
   const name = target.agent?.name;
-  return typeof name === 'string' && name.length > 0 ? name : null;
+  if (typeof name !== 'string' || name.length === 0) return null;
+  const prefix = job.workspace ? `${job.workspace}/` : '';
+  return prefix && name.startsWith(prefix) ? name.slice(prefix.length) : name;
 };
 
 export const fetchAgentEvalJobs = async (

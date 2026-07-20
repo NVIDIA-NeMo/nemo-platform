@@ -11,7 +11,7 @@ import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { useAgentsListAgents } from '@nemo/sdk/generated/agents/api';
 import type { AgentEvaluateJobRequest } from '@nemo/sdk/generated/evaluator/schema';
-import { filesDownloadFile } from '@nemo/sdk/generated/platform/api';
+import { filesDownloadFile, filesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
 import { SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
 import { fetchSampleText } from '@studio/api/agents/fetchSampleText';
 import { submitAgentEvalJob } from '@studio/api/evaluation/agent-evaluations';
@@ -112,6 +112,25 @@ interface SubmitEvaluationModalProps extends Pick<FormModalProps, 'open' | 'onCl
   onSubmitted?: (jobName: string) => void;
 }
 
+/** True when a fileset of this name already holds an eval-config.json. A "Create new"
+ *  submission must use a free name: ensureEvalConfigFileset never overwrites an existing
+ *  file, so a name collision would leave the fileset holding the old config while we submit
+ *  the new spec — the persisted yardstick and the evaluated spec would diverge. */
+const evalConfigFilesetExists = async (
+  workspace: string,
+  fileset: string,
+  signal: AbortSignal
+): Promise<boolean> => {
+  try {
+    const listing = await filesListFilesetFiles(workspace, fileset, undefined, signal);
+    return (listing?.data ?? []).some((f) => f.path === EVAL_CONFIG_FILENAME);
+  } catch (err) {
+    const e = err as { response?: { status?: number }; status?: number };
+    if (e?.response?.status === 404 || e?.status === 404) return false;
+    throw err;
+  }
+};
+
 /** Resolves the persisted yardstick spec for this submission. In "Use Example" mode
  *  it builds the spec from the sample template (fanning the metric onto every task with
  *  the picked judge baked in) and seeds it into a new fileset; in "Choose Fileset" mode
@@ -121,6 +140,11 @@ const loadPersistedSpec = async (
   formData: SubmitEvaluationFormData
 ): Promise<PersistedEvalSpec> => {
   if (formData.mode === MODE_DEFAULT) {
+    const signal = new AbortController().signal;
+    const name = formData.newName.trim();
+    if (await evalConfigFilesetExists(workspace, name, signal)) {
+      throw new Error(`A fileset named "${name}" already exists — choose a different name`);
+    }
     const example = getEvaluationSampleAgent(formData.exampleKey);
     const template = parseEvalConfig(await fetchSampleText(example.evalConfigPath));
     const spec = buildPersistedSpec(template, formData.judgeModel || null);
@@ -131,13 +155,7 @@ const loadPersistedSpec = async (
         type: 'application/json',
       },
     ];
-    await ensureEvalConfigFileset(
-      workspace,
-      formData.newName.trim(),
-      new AbortController().signal,
-      files,
-      'Agent Evaluation Config'
-    );
+    await ensureEvalConfigFileset(workspace, name, signal, files, 'Agent Evaluation Config');
     return spec;
   }
   // Choose-fileset mode: read the saved yardstick spec out of its fileset, as-is.
