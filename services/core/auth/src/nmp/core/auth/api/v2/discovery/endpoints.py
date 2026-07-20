@@ -7,8 +7,9 @@ import logging
 import time
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from nmp.common.config import get_auth_config
+from nmp.core.auth.api.v2.workload_token_exchange import workload_token_endpoint_url
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,11 @@ class OIDCDiscoveryResponse(BaseModel):
     client_id: str
     default_scopes: str = "openid profile email offline_access"
     scope_prefix: str | None = None
+    workload_token_exchange_enabled: bool = False
+    workload_client_id: str | None = None
+    workload_token_endpoint: str | None = None
+    workload_audience: str | None = None
+    workload_scope: str | None = None
 
 
 class AuthDiscoveryResponse(BaseModel):
@@ -111,9 +117,19 @@ need to authenticate with this NeMo Platform deployment.
   - `client_id`: OAuth client ID to use
   - `default_scopes`: OAuth scopes to request during authentication
   - `scope_prefix`: Prefix to prepend to custom scopes (those with ':' or '.default')
+  - `workload_token_exchange_enabled`: Whether SDK workload identity token exchange is enabled
+  - `workload_client_id`: OAuth client ID to use for workload identity token exchange
+  - `workload_token_endpoint`: Token endpoint to use only for workload identity token exchange
+  - `workload_audience`: RFC 8693 audience for exchanged workload tokens
+  - `workload_scope`: OAuth scopes for exchanged workload tokens
 """,
 )
-async def get_auth_discovery() -> AuthDiscoveryResponse:
+async def get_auth_discovery_endpoint(request: Request) -> AuthDiscoveryResponse:
+    """FastAPI route wrapper for auth configuration discovery."""
+    return await get_auth_discovery(request)
+
+
+async def get_auth_discovery(request: Request | None = None) -> AuthDiscoveryResponse:
     """Return auth configuration for CLI/SDK discovery.
 
     This endpoint is unauthenticated and returns the information
@@ -136,6 +152,14 @@ async def get_auth_discovery() -> AuthDiscoveryResponse:
             client_id=config.oidc.client_id,
             default_scopes=config.oidc.default_scopes,
             scope_prefix=config.oidc.scope_prefix,
+            workload_token_exchange_enabled=config.oidc.workload_token_exchange_enabled,
+            workload_client_id=config.oidc.workload_client_id,
+            workload_token_endpoint=(
+                config.oidc.workload_token_endpoint
+                or (workload_token_endpoint_url(request) if config.oidc.workload_token_exchange_enabled else None)
+            ),
+            workload_audience=config.oidc.workload_audience,
+            workload_scope=config.oidc.workload_scope,
         )
 
     return AuthDiscoveryResponse(

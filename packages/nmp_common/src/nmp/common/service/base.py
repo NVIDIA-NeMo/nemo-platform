@@ -145,12 +145,13 @@ class DependencyProvider:
         Uses the cached base SDK and applies per-request headers via .with_options()
         (lightweight — reuses the HTTP connection pool).
         """
+        from nmp.common.sdk_factory import with_options_preserving_request_router
         from nmp.common.service.headers import build_downstream_service_headers
 
         base_sdk = self.get_sdk_client()
         headers = build_downstream_service_headers(self._service_name)
 
-        return base_sdk.with_options(set_default_headers=headers)
+        return with_options_preserving_request_router(base_sdk, set_default_headers=headers)
 
     def get_platform_config(self) -> PlatformConfig:
         """Return the PlatformConfig (lazily initialized)."""

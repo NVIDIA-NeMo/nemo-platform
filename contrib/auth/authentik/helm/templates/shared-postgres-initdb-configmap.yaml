@@ -1,0 +1,30 @@
+{{- if .Values.sharedPostgresql.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.sharedPostgresql.serviceName }}-initdb
+  namespace: {{ include "nemo-platform-authentik.namespace" . }}
+  labels:
+    {{- include "nemo-platform-authentik.labels" . | nindent 4 }}
+    app.kubernetes.io/component: shared-postgresql
+data:
+  01-create-application-databases.sh: |-
+    set -euo pipefail
+
+    psql \
+      -v ON_ERROR_STOP=1 \
+      --username "${POSTGRES_USER}" \
+      --dbname "${POSTGRES_DB}" <<'EOSQL'
+    \set authentik_database `printf '%s' "$AUTHENTIK_DATABASE"`
+    \set authentik_username `printf '%s' "$AUTHENTIK_USERNAME"`
+    \set authentik_password `printf '%s' "$AUTHENTIK_PASSWORD"`
+    \set nemo_database `printf '%s' "$NEMO_DATABASE"`
+    \set nemo_username `printf '%s' "$NEMO_USERNAME"`
+    \set nemo_password `printf '%s' "$NEMO_PASSWORD"`
+
+    CREATE USER :"authentik_username" WITH PASSWORD :'authentik_password';
+    CREATE DATABASE :"authentik_database" OWNER :"authentik_username";
+    CREATE USER :"nemo_username" WITH PASSWORD :'nemo_password';
+    CREATE DATABASE :"nemo_database" OWNER :"nemo_username";
+    EOSQL
+{{- end }}

@@ -529,6 +529,10 @@ api:
   replicaCount: 1
   # -- Additional arguments to pass to the Platform API service
   extraArgs: []
+  # -- Additional volume mounts to add to the Platform API container.
+  extraVolumeMounts: []
+  # -- Additional volumes to add to the Platform API pod.
+  extraVolumes: []
   # -- Service account configuration for the API service.
   # @default -- This object has the following default values for the service account configuration.
   serviceAccount:
@@ -872,6 +876,8 @@ envoyProxy:
   image:
     repository: envoyproxy/envoy
     tag: v1.37.0
+    # -- Optional image digest. When set, the Envoy image renders as repository@digest.
+    digest: ""
     pullPolicy: IfNotPresent
 
   # -- Service account configuration for the Envoy service.
@@ -997,6 +1003,15 @@ envoyProxy:
   # -- Extra arguments to append to the envoy container command. Useful for passing server flags such as concurrency.
   # Example: ["--concurrency", "4"]
   extraArgs: []
+
+  # -- Full Envoy config override. When set, this replaces the chart's default passthrough Envoy config.
+  configOverride: ""
+
+  # -- Additional volume mounts to add to the Envoy container.
+  extraVolumeMounts: []
+
+  # -- Additional volumes to add to the Envoy pod.
+  extraVolumes: []
 
   # ServiceMonitor configuration for Prometheus Operator
   serviceMonitor:

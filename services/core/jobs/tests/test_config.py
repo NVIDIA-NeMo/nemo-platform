@@ -32,7 +32,7 @@ from nmp.core.jobs.controllers.backends.kubernetes import (
     KubernetesJobStorageConfig,
     VolcanoJobExecutionProfileConfig,
 )
-from nmp.core.jobs.controllers.backends.registry import BackendKey, BackendRegistry
+from nmp.core.jobs.controllers.backends.registry import BackendKey, BackendRegistry, backend_registry
 from nmp.core.jobs.controllers.backends.subprocess import (
     SubprocessJobExecutionProfile,
     SubprocessJobExecutionProfileConfig,
@@ -284,10 +284,61 @@ def test_kubernetes_job_service_account_name_from_executor_defaults():
     assert config.executor_defaults.kubernetes_job.storage.pvc_name == "test-pvc"
 
 
+def test_kubernetes_job_secret_volume_from_executor_defaults():
+    """executor_defaults.kubernetes_job.storage supports Secret volume mounts."""
+    global_settings = {
+        "jobs": {
+            "executor_defaults": {
+                "kubernetes_job": {
+                    "storage": {
+                        "additional_volumes": [
+                            {
+                                "name": "trust-bundle",
+                                "secret": {
+                                    "secret_name": "platform-ca",
+                                    "items": [{"key": "ca.crt", "path": "ca.crt"}],
+                                },
+                            }
+                        ],
+                        "additional_volume_mounts": [
+                            {
+                                "name": "trust-bundle",
+                                "mount_path": "/etc/nmp/ca",
+                                "read_only": True,
+                            }
+                        ],
+                    },
+                }
+            }
+        }
+    }
+    config = Configuration.global_settings_to_service_config(global_settings, JobsServiceConfig)
+
+    storage = config.executor_defaults.kubernetes_job.storage
+    assert storage.additional_volumes[0].secret is not None
+    assert storage.additional_volumes[0].secret.secret_name == "platform-ca"
+    assert storage.additional_volumes[0].secret.items[0].key == "ca.crt"
+    assert storage.additional_volume_mounts[0].mount_path == "/etc/nmp/ca"
+    assert storage.additional_volume_mounts[0].read_only is True
+
+
 def test_volcano_job_service_account_name_default():
     """VolcanoJobExecutionProfileConfig defaults service_account_name to 'default'."""
     config = VolcanoJobExecutionProfileConfig()
     assert config.service_account_name == "default"
+
+
+@pytest.mark.parametrize(
+    "config_cls",
+    [KubernetesJobExecutionProfileConfig, VolcanoJobExecutionProfileConfig],
+)
+def test_kubernetes_workload_identity_token_expiration_rejects_values_below_kubernetes_minimum(config_cls):
+    """Projected service account token expiration must honor Kubernetes' 600 second minimum."""
+    with pytest.raises(ValidationError) as exc_info:
+        config_cls(workload_identity_token_expiration_seconds=599)
+
+    assert "workload_identity_token_expiration_seconds" in str(exc_info.value)
+    assert "greater than or equal to 600" in str(exc_info.value)
 
 
 def test_job_execution_profile_config_rejects_reserved_env_vars():
@@ -348,9 +399,35 @@ def test_default_profiles_exclude_subprocess_for_kubernetes_runtime():
 
     profile_keys = [(p.provider, p.profile, p.backend) for p in profiles]
 
+    assert ("subprocess", "default", "subprocess") not in profile_keys
+    assert ("cpu", "default", "kubernetes_job") in profile_keys
+    assert ("gpu", "default", "kubernetes_job") in profile_keys
     assert ("cpu", "gpu", "kubernetes_job") in profile_keys
     assert ("gpu", "gpu", "kubernetes_job") in profile_keys
-    assert ("subprocess", "default", "subprocess") not in profile_keys
+    assert ("gpu_distributed", "default", "volcano_job") in profile_keys
+
+
+def test_merge_executor_profiles_can_override_default_volcano_with_kubernetes_job():
+    defaults = get_default_executor_profiles_for_runtime(Runtime.KUBERNETES, DefaultExecutionProfileConfig())
+    custom = [
+        KubernetesJobExecutionProfile(
+            provider="gpu_distributed",
+            profile="default",
+            backend="kubernetes_job",
+            config=KubernetesJobExecutionProfileConfig(namespace="authentik"),
+        )
+    ]
+
+    merged = merge_executor_profiles(custom, defaults)
+
+    profile = next(p for p in merged if p.provider == "gpu_distributed" and p.profile == "default")
+    assert profile.backend == "kubernetes_job"
+    assert type(profile.config) is KubernetesJobExecutionProfileConfig
+    assert profile.config.namespace == "authentik"
+
+
+def test_backend_registry_supports_gpu_distributed_kubernetes_job_override():
+    assert BackendKey("gpu_distributed", "kubernetes_job") in backend_registry
 
 
 def test_merged_profiles():
@@ -370,8 +447,12 @@ def test_merged_profiles():
                 ),
             ),
         ),
-        *get_default_executor_profiles_for_runtime(runtime=Runtime.DOCKER, defaults=DefaultExecutionProfileConfig())[
-            2:
+        *[
+            p
+            for p in get_default_executor_profiles_for_runtime(
+                runtime=Runtime.DOCKER, defaults=DefaultExecutionProfileConfig()
+            )
+            if p.provider == "subprocess"
         ],
     ]
 

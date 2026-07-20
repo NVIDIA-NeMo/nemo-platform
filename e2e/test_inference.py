@@ -231,7 +231,12 @@ def test_streaming_chat_completion(sdk: NeMoPlatform, workspace: str):
 
 
 def test_model_list_via_openai_route(sdk: NeMoPlatform, workspace: str):
-    """The OpenAI /v1/models endpoint lists models served by mock providers."""
+    """The OpenAI /v1/models endpoint lists routable VirtualModels.
+
+    Adding a mock provider creates a model entity, for which the reconciler
+    autoprovisions a VirtualModel of the same name — so it appears in the catalog
+    (as ``workspace/name``).
+    """
     entity_name = _unique_name("listable-model")
     add_mock_provider(
         sdk,
@@ -242,8 +247,8 @@ def test_model_list_via_openai_route(sdk: NeMoPlatform, workspace: str):
 
     models = sdk.inference.gateway.openai.v1.models.list(workspace=workspace)
     model_ids = [m.id for m in models.data]
-    # The model entity should appear (as workspace/entity_name)
-    assert any(entity_name in mid for mid in model_ids)
+    # The autoprovisioned VirtualModel should appear (as workspace/entity_name)
+    assert f"{workspace}/{entity_name}" in model_ids
 
 
 # ---------------------------------------------------------------------------

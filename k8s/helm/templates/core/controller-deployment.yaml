@@ -59,6 +59,10 @@ spec:
               value: /etc/nmp/config.yaml
             - name: NMP_BASE_URL
               value: {{ include "nemo-platform.internalBaseUrl" . | quote }}
+            {{- if include "nemo-platform.embeddedPdpEnabled" . }}
+            - name: NMP_AUTH_POLICY_DECISION_POINT_BASE_URL
+              value: {{ include "nemo-platform.internalBaseUrl" . | quote }}
+            {{- end }}
             - name: OTEL_SERVICE_NAME
               value: {{ include "nmp-core.controller-servicename" . }}
             {{- include "nemo-common.otel-env" (dict "root" $ "local" .Values) | indent 12 }}

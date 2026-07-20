@@ -23,11 +23,22 @@ from nemo_platform_plugin.client.config.models import (
     NoAuthUser,
     OAuthUser,
 )
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nemo_platform_plugin.client.oidc import (
+    ACCESS_TOKEN_TYPE,
+    JWT_TOKEN_TYPE,
+    TOKEN_EXCHANGE_GRANT_TYPE,
+    NMPOIDCConfig,
     OIDCTokenProvider,
     TokenSet,
+    WorkloadTokenExchangeError,
+    WorkloadTokenExchangeProvider,
+    discover_nmp_config,
     generate_unsigned_jwt,
+    refresh_token_grant,
+    token_exchange_grant,
 )
+from nemo_platform_plugin.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
 from nemo_platform_plugin.client_provider import (
     get_async_nemo_client,
     get_nemo_client,
@@ -179,6 +190,25 @@ def _make_jwt(exp: float | None = None, sub: str = "user") -> str:
 
 
 class TestOIDCTokenProvider:
+    def test_discover_nmp_config_uses_nemo_scoped_ca_bundle(self, monkeypatch):
+        monkeypatch.setenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, "/tmp/nemo-ca.pem")
+
+        with patch("nemo_platform_plugin.client.oidc.httpx.get") as mock_get:
+            mock_get.return_value = httpx.Response(
+                200,
+                json={"auth_enabled": False},
+                request=httpx.Request("GET", "https://nemo.example.com/apis/auth/discovery"),
+            )
+
+            result = discover_nmp_config("https://nemo.example.com")
+
+        assert result.auth_enabled is False
+        mock_get.assert_called_once_with(
+            "https://nemo.example.com/apis/auth/discovery",
+            timeout=10.0,
+            verify="/tmp/nemo-ca.pem",
+        )
+
     def test_returns_token_when_not_expired(self):
         token = _make_jwt(exp=time.time() + 3600)
         provider = OIDCTokenProvider(
@@ -256,6 +286,204 @@ class TestOIDCTokenProvider:
 
         # Should have recovered by reloading fresh tokens from the shared store
         assert result == fresh_token
+
+    def test_refresh_token_grant_uses_nemo_scoped_ca_bundle(self, monkeypatch):
+        monkeypatch.setenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, "/tmp/nemo-ca.pem")
+
+        with patch("nemo_platform_plugin.client.oidc.httpx.post") as mock_post:
+            mock_post.return_value = httpx.Response(200, json={"access_token": "new-access"})
+
+            result = refresh_token_grant(
+                token_endpoint="https://idp.example.com/token",
+                client_id="client",
+                refresh_token="refresh-token",
+            )
+
+        assert result == {"access_token": "new-access"}
+        assert mock_post.call_args.kwargs["verify"] == "/tmp/nemo-ca.pem"
+
+
+class TestWorkloadTokenExchangeProvider:
+    def test_token_exchange_grant_sends_rfc8693_request(self, monkeypatch):
+        monkeypatch.delenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, raising=False)
+
+        with patch("nemo_platform_plugin.client.oidc.httpx.post") as mock_post:
+            mock_post.return_value = httpx.Response(200, json={"access_token": "exchanged-token", "expires_in": 300})
+
+            token_data = token_exchange_grant(
+                token_endpoint="https://idp.example.com/token",
+                client_id="nemo-platform-workload",
+                subject_token="subject-token",
+                audience="nemo-platform",
+                scope="openid email groups",
+                timeout=5.0,
+            )
+
+        assert token_data["access_token"] == "exchanged-token"
+        mock_post.assert_called_once_with(
+            "https://idp.example.com/token",
+            data={
+                "grant_type": TOKEN_EXCHANGE_GRANT_TYPE,
+                "client_id": "nemo-platform-workload",
+                "subject_token": "subject-token",
+                "subject_token_type": JWT_TOKEN_TYPE,
+                "requested_token_type": ACCESS_TOKEN_TYPE,
+                "audience": "nemo-platform",
+                "scope": "openid email groups",
+            },
+            timeout=5.0,
+            verify=True,
+        )
+
+    def test_token_exchange_grant_uses_nemo_scoped_ca_bundle(self, monkeypatch):
+        monkeypatch.setenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, "/tmp/nemo-ca.pem")
+
+        with patch("nemo_platform_plugin.client.oidc.httpx.post") as mock_post:
+            mock_post.return_value = httpx.Response(200, json={"access_token": "exchanged-token", "expires_in": 300})
+
+            token_data = token_exchange_grant(
+                token_endpoint="https://idp.example.com/token",
+                client_id="nemo-platform-workload",
+                subject_token="subject-token",
+            )
+
+        assert token_data["access_token"] == "exchanged-token"
+        assert mock_post.call_args.kwargs["verify"] == "/tmp/nemo-ca.pem"
+
+    def test_token_exchange_grant_allows_http_loopback_endpoint(self):
+        with patch("nemo_platform_plugin.client.oidc.httpx.post") as mock_post:
+            mock_post.return_value = httpx.Response(200, json={"access_token": "exchanged-token", "expires_in": 300})
+
+            token_data = token_exchange_grant(
+                token_endpoint="http://localhost:8080/apis/auth/token",
+                client_id="nemo-platform-workload",
+                subject_token="subject-token",
+            )
+
+        assert token_data["access_token"] == "exchanged-token"
+
+    def test_token_exchange_grant_rejects_http_non_loopback_endpoint_when_allow_http_is_set(self):
+        with patch("nemo_platform_plugin.client.oidc.httpx.post") as mock_post:
+            with pytest.raises(ValueError, match="HTTPS"):
+                token_exchange_grant(
+                    token_endpoint="http://nemo-gateway:8080/apis/auth/token",
+                    client_id="nemo-platform-workload",
+                    subject_token="subject-token",
+                    allow_http=True,
+                )
+
+        mock_post.assert_not_called()
+
+    def test_token_exchange_grant_rejects_non_object_error_payload(self):
+        with patch("nemo_platform_plugin.client.oidc.httpx.post") as mock_post:
+            mock_post.return_value = httpx.Response(
+                400,
+                json=[],
+                headers={"content-type": "application/json"},
+            )
+
+            with pytest.raises(WorkloadTokenExchangeError, match="invalid_response - Token endpoint error response"):
+                token_exchange_grant(
+                    token_endpoint="https://idp.example.com/token",
+                    client_id="nemo-platform-workload",
+                    subject_token="bad-subject-token",
+                )
+
+    @pytest.mark.parametrize("payload", [[], {}, {"access_token": ""}, {"access_token": None}])
+    def test_token_exchange_grant_rejects_success_response_without_non_empty_access_token(self, payload):
+        with patch("nemo_platform_plugin.client.oidc.httpx.post") as mock_post:
+            mock_post.return_value = httpx.Response(200, json=payload)
+
+            with pytest.raises(WorkloadTokenExchangeError, match="invalid_response"):
+                token_exchange_grant(
+                    token_endpoint="https://idp.example.com/token",
+                    client_id="nemo-platform-workload",
+                    subject_token="subject-token",
+                )
+
+    def test_token_exchange_grant_rejects_non_json_success_response(self):
+        with patch("nemo_platform_plugin.client.oidc.httpx.post") as mock_post:
+            mock_post.return_value = httpx.Response(200, content=b"not-json")
+
+            with pytest.raises(WorkloadTokenExchangeError, match="Token endpoint response was not a JSON object"):
+                token_exchange_grant(
+                    token_endpoint="https://idp.example.com/token",
+                    client_id="nemo-platform-workload",
+                    subject_token="subject-token",
+                )
+
+    def test_provider_rejects_exchange_response_without_access_token(self, tmp_path):
+        subject_token_file = tmp_path / "token"
+        subject_token_file.write_text("subject-token", encoding="utf-8")
+        provider = WorkloadTokenExchangeProvider(
+            token_endpoint="https://idp.example.com/token",
+            client_id="nemo-platform-workload",
+            subject_token_file=subject_token_file,
+        )
+
+        with (
+            patch("nemo_platform_plugin.client.oidc.token_exchange_grant", return_value={}),
+            pytest.raises(WorkloadTokenExchangeError, match="non-empty access_token"),
+        ):
+            provider.get_access_token()
+
+    @pytest.mark.parametrize(
+        "expires_in",
+        [None, "300", True, float("nan"), float("inf"), 10**400],
+    )
+    def test_provider_rejects_exchange_response_without_usable_lifetime(self, tmp_path, expires_in):
+        subject_token_file = tmp_path / "token"
+        subject_token_file.write_text("subject-token", encoding="utf-8")
+        token_data = {"access_token": "opaque-access-token"}
+        if expires_in is not None:
+            token_data["expires_in"] = expires_in
+        provider = WorkloadTokenExchangeProvider(
+            token_endpoint="https://idp.example.com/token",
+            client_id="nemo-platform-workload",
+            subject_token_file=subject_token_file,
+        )
+
+        with (
+            patch("nemo_platform_plugin.client.oidc.token_exchange_grant", return_value=token_data),
+            pytest.raises(WorkloadTokenExchangeError, match="usable access_token lifetime"),
+        ):
+            provider.get_access_token()
+
+        assert provider.tokens is None
+
+    def test_provider_rejects_expired_exchange_response_and_retries_with_current_subject_token(self, tmp_path):
+        subject_token_file = tmp_path / "token"
+        subject_token_file.write_text("subject-token-one", encoding="utf-8")
+        expired_access_token = _make_jwt(exp=time.time() - 10)
+        fresh_access_token = _make_jwt(exp=time.time() + 3600)
+        provider = WorkloadTokenExchangeProvider(
+            token_endpoint="https://idp.example.com/token",
+            client_id="nemo-platform-workload",
+            subject_token_file=subject_token_file,
+            audience="nemo-platform",
+            scope="openid email groups",
+            refresh_margin_seconds=0,
+        )
+
+        with patch(
+            "nemo_platform_plugin.client.oidc.token_exchange_grant",
+            side_effect=[
+                {"access_token": expired_access_token},
+                {"access_token": fresh_access_token},
+            ],
+        ) as mock_exchange:
+            with pytest.raises(WorkloadTokenExchangeError, match="expired access_token"):
+                provider.get_access_token()
+
+            assert provider.tokens is None
+            subject_token_file.write_text("subject-token-two", encoding="utf-8")
+
+            assert provider.get_access_token() == fresh_access_token
+            assert mock_exchange.call_count == 2
+            assert mock_exchange.call_args_list[0].kwargs["subject_token"] == "subject-token-one"
+            assert mock_exchange.call_args_list[1].kwargs["subject_token"] == "subject-token-two"
+            assert mock_exchange.call_args_list[1].kwargs["audience"] == "nemo-platform"
+            assert mock_exchange.call_args_list[1].kwargs["scope"] == "openid email groups"
 
 
 # ---------------------------------------------------------------------------
@@ -394,6 +622,104 @@ class TestFromConfig:
         client = NemoClient.from_config(config_path=config_file)
         assert client.base_url == "http://localhost:9090"
         assert client._auth is None
+
+    @respx.mock
+    def test_from_config_with_workload_identity_token_file(self, tmp_path, monkeypatch):
+        subject_token_file = tmp_path / "workload-token"
+        subject_token_file.write_text("subject-token\n", encoding="utf-8")
+        exchanged_token = _make_jwt()
+        config_data = {
+            "current_context": "test",
+            "clusters": [{"name": "test-cluster", "base_url": "http://localhost:9090"}],
+            "users": [{"name": "test-user", "type": "no-auth"}],
+            "contexts": [{"name": "test", "cluster": "test-cluster", "user": "test-user"}],
+        }
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(yaml.safe_dump(config_data))
+        route = respx.get("http://localhost:9090/test").mock(return_value=httpx.Response(200, json={"ok": True}))
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+        monkeypatch.delenv("NMP_ACCESS_TOKEN", raising=False)
+
+        with (
+            patch("nemo_platform_plugin.client.oidc_factory._discover_oidc_client_settings") as mock_discover,
+            patch("nemo_platform_plugin.client.oidc.token_exchange_grant") as mock_exchange,
+        ):
+            mock_discover.return_value = NMPOIDCConfig(
+                auth_enabled=True,
+                client_id="nemo-platform-cli",
+                token_endpoint="https://idp.example.com/token",
+                workload_token_exchange_enabled=True,
+                workload_client_id="nemo-platform-workload",
+                workload_token_endpoint="https://workload-idp.example.com/token",
+                workload_audience="nemo-platform",
+                workload_scope="openid email groups",
+            )
+            mock_exchange.return_value = {"access_token": exchanged_token, "expires_in": 300}
+
+            client = NemoClient.from_config(config_path=config_file)
+
+            from nemo_platform_plugin.client.types import PreparedRequest
+
+            req = PreparedRequest(
+                method="GET",
+                path_template="/test",
+                path_params={},
+                content=None,
+                content_type=None,
+                response_type=None,
+            )
+            client.send(req)
+
+        assert route.calls[0].request.headers["Authorization"] == f"Bearer {exchanged_token}"
+        assert mock_exchange.call_args.kwargs["token_endpoint"] == "https://workload-idp.example.com/token"
+        assert mock_exchange.call_args.kwargs["client_id"] == "nemo-platform-workload"
+        assert mock_exchange.call_args.kwargs["subject_token"] == "subject-token"
+        assert mock_exchange.call_args.kwargs["audience"] == "nemo-platform"
+        assert mock_exchange.call_args.kwargs["scope"] == "openid email groups"
+        assert mock_exchange.call_args.kwargs["allow_http"] is False
+
+    def test_from_config_rejects_discovered_http_non_loopback_token_endpoint(self, tmp_path, monkeypatch):
+        subject_token_file = tmp_path / "workload-token"
+        subject_token_file.write_text("subject-token\n", encoding="utf-8")
+        config_data = {
+            "current_context": "test",
+            "clusters": [{"name": "test-cluster", "base_url": "http://localhost:9090"}],
+            "users": [{"name": "test-user", "type": "no-auth"}],
+            "contexts": [{"name": "test", "cluster": "test-cluster", "user": "test-user"}],
+        }
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(yaml.safe_dump(config_data))
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+        monkeypatch.delenv("NMP_ACCESS_TOKEN", raising=False)
+
+        with (
+            patch("nemo_platform_plugin.client.oidc_factory._discover_oidc_client_settings") as mock_discover,
+            patch("nemo_platform_plugin.client.oidc.httpx.post") as mock_post,
+        ):
+            mock_discover.return_value = NMPOIDCConfig(
+                auth_enabled=True,
+                client_id="nemo-platform-cli",
+                token_endpoint="https://idp.example.com/token",
+                workload_token_exchange_enabled=True,
+                workload_client_id="nemo-platform-workload",
+                workload_token_endpoint="http://idp.example.com/token",
+            )
+            client = NemoClient.from_config(config_path=config_file)
+
+            from nemo_platform_plugin.client.types import PreparedRequest
+
+            req = PreparedRequest(
+                method="GET",
+                path_template="/test",
+                path_params={},
+                content=None,
+                content_type=None,
+                response_type=None,
+            )
+            with pytest.raises(ValueError, match="HTTPS"):
+                client.send(req)
+
+        mock_post.assert_not_called()
 
     def test_from_config_selects_context(self, tmp_path):
         """from_config(context='staging') uses the staging context, not the default."""

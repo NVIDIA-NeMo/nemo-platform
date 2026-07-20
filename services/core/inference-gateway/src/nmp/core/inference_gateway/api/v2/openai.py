@@ -14,7 +14,6 @@ from nmp.core.inference_gateway.api.dependencies import (
     global_virtual_model_cache,
 )
 from nmp.core.inference_gateway.api.errors import (
-    raise_model_entity_not_found,
     raise_virtual_model_not_found,
 )
 from nmp.core.inference_gateway.api.middleware_registry import (
@@ -104,17 +103,24 @@ class OpenAIListModelsResp(BaseModel):
 )
 async def openai_get_models(
     workspace: str,
-    model_cache: Annotated[ModelCache, Depends(global_model_cache)],
+    virtual_model_cache: Annotated[VirtualModelCache, Depends(global_virtual_model_cache)],
 ) -> OpenAIListModelsResp:
     """
-    This endpoint aggregates models from all model entities and returns them
-    in OpenAI's list models format. Each model ID is the model entity identifier
-    in format workspace/model_entity_name.
+    This endpoint lists the routable VirtualModels in the requested workspace and
+    returns them in OpenAI's list models format. Each model ID is the VirtualModel
+    identifier in format workspace/name. This includes both autoprovisioned
+    VirtualModels (one per served model entity) and custom VirtualModels, keeping
+    the catalog in agreement with the inference proxy, which also resolves
+    VirtualModels scoped to the request workspace.
     """
+    validate_entity_name(workspace, field_name="workspace")
+
     all_oai_models: list[OpenAIModelResp] = []
 
-    for (entity_workspace, model_name), _ in model_cache.model_entity_info_map.items():
-        all_oai_models.append(OpenAIModelResp(id=f"{entity_workspace}/{model_name}", owned_by=entity_workspace))
+    for (vm_workspace, vm_name), _ in virtual_model_cache.virtual_model_map.items():
+        if vm_workspace != workspace:
+            continue
+        all_oai_models.append(OpenAIModelResp(id=f"{vm_workspace}/{vm_name}", owned_by=vm_workspace))
 
     return OpenAIListModelsResp(data=all_oai_models)
 
@@ -129,19 +135,21 @@ async def openai_get_models(
 async def openai_get_model(
     workspace: str,
     name: str,
-    model_cache: Annotated[ModelCache, Depends(global_model_cache)],
+    virtual_model_cache: Annotated[VirtualModelCache, Depends(global_virtual_model_cache)],
 ) -> OpenAIModelResp:
     """
     Retrieve information about a specific OpenAI-compatible model.
-    Workspace is always taken from the URL path; name may be model_entity_name
-    or workspace/model_entity_name (workspace prefix is ignored).
+    Workspace is always taken from the URL path; name may be the VirtualModel
+    name or workspace/name (workspace prefix is ignored). Resolves against
+    routable VirtualModels, including custom ones, so this route agrees with
+    the list route and the inference proxy.
     """
     model_name = name.removeprefix(f"{workspace}/")
 
     validate_entity_name(workspace, field_name="workspace")
     validate_model_entity_name(model_name, field_name="model")
-    if (workspace, model_name) not in model_cache.model_entity_info_map:
-        raise_model_entity_not_found(workspace, model_name)
+    if virtual_model_cache.get(workspace, model_name) is None:
+        raise_virtual_model_not_found(workspace, model_name)
 
     return OpenAIModelResp(
         id=f"{workspace}/{model_name}",

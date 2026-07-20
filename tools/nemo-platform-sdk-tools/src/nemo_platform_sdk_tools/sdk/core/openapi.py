@@ -12,6 +12,14 @@ from ruamel.yaml import YAML
 
 # https://www.stainless.com/docs/reference/diagnostics/#endpoint shows the supported HTTP methods, this is created explicitly to avoid HEAD endpoints as they are not supported by Stainless.
 SUPPORTED_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "query"}
+SDK_EXCLUDED_PATHS = {
+    # Auth bootstrap and utility endpoints do not follow the generated SDK's
+    # versioned resource path convention. They are used directly by client auth
+    # code instead of through generated resource methods.
+    "/apis/auth/discovery",
+    "/apis/auth/jwks",
+    "/apis/auth/token",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +136,9 @@ class OpenAPI:
 
         # Analyze paths
         for path, path_item in self._spec.get("paths", {}).items():
+            if _should_skip_sdk_endpoint(path):
+                continue
+
             for method, spec in path_item.items():
                 method_lower = method.lower()
                 if method_lower not in SUPPORTED_HTTP_METHODS:
@@ -199,10 +210,11 @@ class OpenAPI:
                     continue
                 if path.startswith("/v1/jobs"):
                     continue
-                # Skip discovery endpoints — they don't follow the
-                # versioned /v1/ or /v2/ path convention and are accessed
-                # directly by the CLI, not through the generated SDK.
-                if path.startswith("/apis/auth/discovery"):
+                if _should_skip_sdk_endpoint(path):
                     continue
 
                 yield OpenAPIEndpoint(method_lower, path)
+
+
+def _should_skip_sdk_endpoint(path: str) -> bool:
+    return path.lower() in SDK_EXCLUDED_PATHS

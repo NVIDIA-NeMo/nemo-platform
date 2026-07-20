@@ -16,6 +16,7 @@ import httpx
 from typing_extensions import Self
 
 from nemo_platform.auth.helpers import decode_jwt_claims
+from nemo_platform.client.tls import client_verify_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,12 @@ class TokenRefreshError(RuntimeError):
         self.error = error
         self.error_description = error_description
         super().__init__(f"Token refresh failed: {error} - {error_description}")
+
+
+def _validate_expires_in(expires_in: object) -> int | float | None:
+    if isinstance(expires_in, bool):
+        return None
+    return expires_in if isinstance(expires_in, int | float) else None
 
 
 def refresh_token_grant(
@@ -49,7 +56,7 @@ def refresh_token_grant(
     if scope:
         data["scope"] = scope
 
-    response = httpx.post(token_endpoint, data=data, timeout=timeout)
+    response = httpx.post(token_endpoint, data=data, timeout=timeout, verify=client_verify_from_env())
 
     if response.status_code != 200:
         error_data: dict[str, str] = {}
@@ -77,12 +84,16 @@ class TokenSet:
     def from_access_token(
         access_token: str,
         refresh_token: str | None = None,
+        expires_in: object = None,
     ) -> Self:
         """Create a TokenSet, extracting expiry from the JWT's `exp` claim."""
         expires_at = None
         claims = decode_jwt_claims(access_token)
         if claims:
             expires_at = claims.get("exp")
+        validated_expires_in = _validate_expires_in(expires_in)
+        if expires_at is None and validated_expires_in is not None:
+            expires_at = time.time() + float(validated_expires_in)
         return TokenSet(
             access_token=access_token,
             refresh_token=refresh_token,
@@ -223,7 +234,11 @@ class OIDCTokenProvider:
             # The IdP may rotate the refresh token.
             new_refresh_token = token_data.get("refresh_token", self.tokens.refresh_token)
 
-            self.tokens = TokenSet.from_access_token(new_access_token, new_refresh_token)
+            self.tokens = TokenSet.from_access_token(
+                new_access_token,
+                new_refresh_token,
+                expires_in=token_data.get("expires_in"),
+            )
             logger.debug("Access token refreshed successfully (expires_at=%s)", self.tokens.expires_at)
 
             if self.on_tokens_refreshed:

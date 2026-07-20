@@ -1,0 +1,149 @@
+{{- if .Values.sharedPostgresql.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Values.sharedPostgresql.serviceName }}
+  namespace: {{ include "nemo-platform-authentik.namespace" . }}
+  labels:
+    {{- include "nemo-platform-authentik.labels" . | nindent 4 }}
+    app.kubernetes.io/component: shared-postgresql
+spec:
+  serviceName: {{ .Values.sharedPostgresql.serviceName }}
+  replicas: 1
+  {{- if .Values.sharedPostgresql.persistence.enabled }}
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "nemo-platform-authentik.sharedPostgresql.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nemo-platform-authentik.labels" . | nindent 8 }}
+        app.kubernetes.io/component: shared-postgresql
+    spec:
+      serviceAccountName: {{ include "nemo-platform-authentik.sharedPostgresql.serviceAccountName" . }}
+      {{- with .Values.sharedPostgresql.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.sharedPostgresql.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.sharedPostgresql.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.sharedPostgresql.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: postgres
+          image: "{{ .Values.sharedPostgresql.imageRepository }}:{{ .Values.sharedPostgresql.imageTag }}"
+          imagePullPolicy: {{ .Values.sharedPostgresql.imagePullPolicy }}
+          {{- with .Values.sharedPostgresql.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_DB
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.sharedPostgresql.serviceName }}
+                  key: postgres-password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: AUTHENTIK_DATABASE
+              value: {{ .Values.sharedPostgresql.authentik.database | quote }}
+            - name: AUTHENTIK_USERNAME
+              value: {{ .Values.sharedPostgresql.authentik.username | quote }}
+            - name: AUTHENTIK_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.sharedPostgresql.serviceName }}
+                  key: authentik-password
+            - name: NEMO_DATABASE
+              value: {{ .Values.sharedPostgresql.nemo.database | quote }}
+            - name: NEMO_USERNAME
+              value: {{ .Values.sharedPostgresql.nemo.username | quote }}
+            - name: NEMO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.sharedPostgresql.serviceName }}
+                  key: nemo-password
+          ports:
+            - name: postgresql
+              containerPort: 5432
+              protocol: TCP
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - postgres
+                - -d
+                - postgres
+                - -h
+                - 127.0.0.1
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - postgres
+                - -d
+                - postgres
+                - -h
+                - 127.0.0.1
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: initdb
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+          {{- with .Values.sharedPostgresql.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: initdb
+          configMap:
+            name: {{ .Values.sharedPostgresql.serviceName }}-initdb
+        {{- if not .Values.sharedPostgresql.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+  {{- if .Values.sharedPostgresql.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "nemo-platform-authentik.labels" . | nindent 10 }}
+          app.kubernetes.io/component: shared-postgresql
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ .Values.sharedPostgresql.persistence.size | quote }}
+        {{- with .Values.sharedPostgresql.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+  {{- end }}
+{{- end }}

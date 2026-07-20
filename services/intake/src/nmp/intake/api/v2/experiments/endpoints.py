@@ -394,7 +394,8 @@ async def list_evaluations(
             "Comma-separated list of fields to sort by, applied in order (the first field dominates); "
             "prefix any field with '-' for descending — e.g. '-evaluators.reward.mean,cost_usd.mean'. "
             "Each field is an evaluation attribute (name, created_at, updated_at, pinned_at) or an "
-            "aggregate metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>, "
+            "aggregate metric: run_count, test_case_count, cost_usd.<stat>, latency_ms.<stat>, or "
+            "evaluators.<name>.<stat>, "
             "where <stat> is one of mean, median, p90, p95, p99, sum, count. When omitted, defaults to "
             "-created_at with pinned evaluations first."
         ),
@@ -977,8 +978,9 @@ class _MetricPredicate(NamedTuple):
 
 
 def _is_valid_metric_path(field: str) -> bool:
-    """True if `field` is a rollup-metric path: run_count, <metric>.<stat>, or evaluators.<name>.<stat>."""
-    if field == "run_count":
+    """True if `field` is a rollup-metric path: run_count, test_case_count, <metric>.<stat>, or
+    evaluators.<name>.<stat>."""
+    if field in ("run_count", "test_case_count"):
         return True
     head, _, rest = field.partition(".")
     if head in ("cost_usd", "latency_ms"):
@@ -1031,7 +1033,7 @@ def _is_metric_field(field: str) -> bool:
     extracted and rejected with a 400 rather than forwarded to the entity store. Entity fields (already
     translated to ``data.*`` by the filter dep) never match.
     """
-    return field == "run_count" or field.split(".", 1)[0] in _METRIC_NAMESPACES
+    return field in ("run_count", "test_case_count") or field.split(".", 1)[0] in _METRIC_NAMESPACES
 
 
 def _operation_references_metric(operation: FilterOperation | None) -> bool:
@@ -1130,6 +1132,8 @@ def _evaluation_sort_value(response: EvaluationResponse, field: str) -> Any:
         return getattr(response, field)
     if field == "run_count":
         return response.run_count
+    if field == "test_case_count":
+        return response.test_case_count
     head, _, rest = field.partition(".")
     if head == "cost_usd":
         return getattr(response.cost_usd, rest, None) if response.cost_usd is not None else None
@@ -1224,6 +1228,7 @@ def _apply_rollup(response: EvaluationResponse, rollup: EvaluationRollup) -> Non
     response.agent_versions = rollup.agent_versions
     response.aggregate_scores = {name: _aggregate(score) for name, score in rollup.evaluator_scores.items()} or None
     response.run_count = rollup.run_count
+    response.test_case_count = rollup.test_case_count
     response.cost_usd = _aggregate(rollup.cost_usd) if rollup.cost_usd is not None else None
     response.latency_ms = _aggregate(rollup.latency_ms) if rollup.latency_ms is not None else None
 

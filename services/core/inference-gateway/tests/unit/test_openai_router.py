@@ -30,14 +30,53 @@ from nmp.core.inference_gateway.api.model_cache import ModelCache, ModelEntityIn
 from nmp.core.inference_gateway.api.v2.openai import ParseOpenAIModelError, parse_igw_openai_model
 from nmp.core.inference_gateway.api.virtual_model_cache import VirtualModelCache
 
+
+def _autoprovisioned_vms_for_cache(model_cache: ModelCache) -> list[SDKVirtualModel]:
+    """Mirror conftest.autoprovisioned_vms_for_cache for tests that build a custom ModelCache.
+
+    Local copy because the unit tests directory has no ``__init__.py`` so the
+    conftest helper isn't importable.
+    """
+    return [
+        SDKVirtualModel(
+            id=f"{workspace}/{name}",
+            entity_id=f"{workspace}/{name}",
+            workspace=workspace,
+            name=name,
+            parent=workspace,
+            default_model_entity=f"{workspace}/{name}",
+            autoprovisioned=True,
+            created_at="2026-01-01T00:00:00Z",
+            updated_at="2026-01-01T00:00:00Z",
+        )
+        for (workspace, name) in model_cache.model_entity_info_map.keys()
+        if "&adapters/" not in name
+    ]
+
+
+def _custom_vm(workspace: str, name: str, default_model_entity: str | None = None) -> SDKVirtualModel:
+    """Build a non-autoprovisioned (operator/Switchyard-style) VirtualModel."""
+    return SDKVirtualModel(
+        id=f"{workspace}/{name}",
+        entity_id=f"{workspace}/{name}",
+        workspace=workspace,
+        name=name,
+        parent=workspace,
+        default_model_entity=default_model_entity,
+        autoprovisioned=False,
+        created_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+    )
+
+
 # OpenAI List Models Tests
 
 
 def test_list_models_empty_cache(app: FastAPI, client: TestClient):
-    """Test listing models when cache is empty."""
+    """Test listing models when the VirtualModel cache is empty."""
 
-    empty_cache = ModelCache()
-    app.dependency_overrides[global_model_cache] = lambda: empty_cache
+    empty_cache = VirtualModelCache()
+    app.dependency_overrides[global_virtual_model_cache] = lambda: empty_cache
 
     response = client.get("/v2/workspaces/default/openai/-/v1/models")
     assert response.status_code == 200
@@ -48,68 +87,99 @@ def test_list_models_empty_cache(app: FastAPI, client: TestClient):
 
 
 def test_list_models_with_single_provider(client: TestClient):
-    """Test listing models with a single provider in cache."""
-    response = client.get("/v2/workspaces/default/openai/-/v1/models")
+    """Test listing models with a single autoprovisioned VM in cache.
+
+    The default fixture serves ``e2e-test/meta_llama-3.2-1b-instruct``, so the
+    autoprovisioned VM lives in the ``e2e-test`` workspace; the list is
+    workspace-scoped, so query that workspace.
+    """
+    response = client.get("/v2/workspaces/e2e-test/openai/-/v1/models")
     assert response.status_code == 200
 
     data = response.json()
     assert data["object"] == "list"
-    # One model entity from default fixture, returns 2-part ID
+    # One autoprovisioned VM from default fixture, returns 2-part ID
     assert len(data["data"]) >= 1
-    # Verify IDs are workspace/model_entity_name (at least 2 parts; model_entity_name may contain / for LoRA)
+    # Verify IDs are workspace/name (at least 2 parts; name may contain / for LoRA)
     for model in data["data"]:
         parts = model["id"].split("/", 1)
-        assert len(parts) >= 2, f"Expected workspace/model_entity_name, got: {model['id']}"
+        assert len(parts) >= 2, f"Expected workspace/name, got: {model['id']}"
 
 
-def test_list_models_multiple_providers_same_entity(app: FastAPI, client: TestClient):
-    """Test listing models when multiple providers serve the same model entity."""
+def test_list_models_lists_virtual_models(app: FastAPI, client: TestClient):
+    """The list endpoint aggregates VirtualModels (not model entities)."""
 
-    cache = ModelCache()
-    # Add multiple providers serving the same model entity
-    provider1 = ModelProviderInfo(
-        model_provider=ModelProvider(
-            workspace="ns1",
-            name="provider1",
-            host_url="http://provider1.com",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-            served_models=[
-                ServedModelMapping(
-                    model_entity_id="ns1/model-a",
-                    served_model_name="model-a-v1",
-                )
-            ],
-        ),
+    vm_cache = VirtualModelCache()
+    vm_cache.rebuild([_custom_vm("ns1", "model-a")])
+    app.dependency_overrides[global_virtual_model_cache] = lambda: vm_cache
+
+    response = client.get("/v2/workspaces/ns1/openai/-/v1/models")
+    assert response.status_code == 200
+
+    data = response.json()
+    # VirtualModel listed once with a 2-part ID
+    assert len(data["data"]) == 1
+    assert data["data"][0]["id"] == "ns1/model-a"
+    assert data["data"][0]["owned_by"] == "ns1"
+
+
+def test_list_models_is_workspace_scoped(app: FastAPI, client: TestClient):
+    """The list endpoint only returns VirtualModels in the request's workspace.
+
+    Foreign-workspace VirtualModels must not leak into another workspace's catalog.
+    """
+
+    vm_cache = VirtualModelCache()
+    vm_cache.rebuild(
+        [
+            _custom_vm("ns1", "model-a"),
+            _custom_vm("ns2", "model-b"),
+        ]
     )
-    provider2 = ModelProviderInfo(
-        model_provider=ModelProvider(
-            workspace="ns1",
-            name="provider2",
-            host_url="http://provider2.com",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-            served_models=[
-                ServedModelMapping(
-                    model_entity_id="ns1/model-a",
-                    served_model_name="model-a-v2",
-                )
-            ],
-        ),
-    )
-    cache.update_model_info(provider1)
-    cache.update_model_info(provider2)
-    cache.rebuild_model_entity_map()
+    app.dependency_overrides[global_virtual_model_cache] = lambda: vm_cache
 
-    app.dependency_overrides[global_model_cache] = lambda: cache
+    response = client.get("/v2/workspaces/ns1/openai/-/v1/models")
+    assert response.status_code == 200
+
+    ids = {model["id"] for model in response.json()["data"]}
+    assert ids == {"ns1/model-a"}
+    assert "ns2/model-b" not in ids
+
+
+def test_list_models_includes_custom_switchyard_vm(app: FastAPI, client: TestClient):
+    """Regression: a custom (Switchyard-style) VirtualModel — one with no backing
+    model entity of the same name — must appear in the OpenAI ``/v1/models`` catalog.
+
+    Reproduces the reported gap where a routable VirtualModel served
+    ``/v1/chat/completions`` but was undiscoverable from ``/v1/models`` because the
+    list endpoint read model entities instead of VirtualModels.
+    """
+
+    vm_cache = VirtualModelCache()
+    vm_cache.rebuild([_custom_vm("default", "qa-agent-eval-swy-8238f441")])
+    app.dependency_overrides[global_virtual_model_cache] = lambda: vm_cache
 
     response = client.get("/v2/workspaces/default/openai/-/v1/models")
     assert response.status_code == 200
 
+    ids = {model["id"] for model in response.json()["data"]}
+    assert "default/qa-agent-eval-swy-8238f441" in ids
+
+
+def test_get_custom_switchyard_vm(app: FastAPI, client: TestClient):
+    """Regression: a custom (Switchyard-style) VirtualModel is retrievable via
+    ``GET /v1/models/{name}`` even though no model entity of that name exists."""
+
+    vm_cache = VirtualModelCache()
+    vm_cache.rebuild([_custom_vm("default", "qa-agent-eval-swy-8238f441")])
+    app.dependency_overrides[global_virtual_model_cache] = lambda: vm_cache
+
+    response = client.get("/v2/workspaces/default/openai/-/v1/models/qa-agent-eval-swy-8238f441")
+    assert response.status_code == 200
     data = response.json()
-    # Model entity should be listed once with 2-part ID (deduped by entity)
-    assert len(data["data"]) == 1
-    assert data["data"][0]["id"] == "ns1/model-a"
+    assert data["id"] == "default/qa-agent-eval-swy-8238f441"
+    assert data["owned_by"] == "default"
+    assert data["object"] == "model"
 
 
 # OpenAI Get Model Tests
@@ -139,7 +209,7 @@ def test_get_model_entity_not_found_single_segment(client: TestClient):
     """Test GET model with single-segment name (model only); lookup uses path workspace."""
     response = client.get("/v2/workspaces/default/openai/-/v1/models/nonexistent-entity")
     assert response.status_code == 404
-    assert "Model entity not found" in response.json()["detail"]
+    assert "No VirtualModel" in response.json()["detail"]
 
 
 def test_get_model_invalid_path_workspace_returns_422(client: TestClient):
@@ -150,23 +220,31 @@ def test_get_model_invalid_path_workspace_returns_422(client: TestClient):
 
 
 def test_get_model_entity_not_found_matching_workspace_prefix(client: TestClient):
-    """404 is raised when a path-workspace-prefixed name points at a missing entity."""
+    """404 is raised when a path-workspace-prefixed name points at a missing VirtualModel."""
     response = client.get("/v2/workspaces/default/openai/-/v1/models/default/nonexistent-entity")
     assert response.status_code == 404
-    assert "Model entity not found" in response.json()["detail"]
+    assert "No VirtualModel" in response.json()["detail"]
 
 
 def test_get_model_entity_exists_without_providers(app: FastAPI, client: TestClient):
-    """Test getting a model when entity exists in cache (even without providers)."""
+    """Test getting a model when an autoprovisioned VM exists (even without providers).
+
+    The GET route resolves against the VirtualModel cache, so an autoprovisioned VM
+    for an entity with no providers is still discoverable — provider resolution only
+    happens at proxy (inference) time.
+    """
 
     cache = ModelCache()
-    # Model entity exists in cache - get model should succeed
+    # Model entity exists in cache but has no providers (edge case)
     cache.model_entity_info_map[("ns1", "orphan-model")] = ModelEntityInfo(
         workspace="ns1",
         name="orphan-model",
         model_providers=[],
     )
     app.dependency_overrides[global_model_cache] = lambda: cache
+    vm_cache = VirtualModelCache()
+    vm_cache.rebuild(_autoprovisioned_vms_for_cache(cache))
+    app.dependency_overrides[global_virtual_model_cache] = lambda: vm_cache
 
     response = client.get("/v2/workspaces/ns1/openai/-/v1/models/orphan-model")
     assert response.status_code == 200
@@ -180,28 +258,13 @@ def test_get_model_lora_compound_name_in_path(app: FastAPI, client: TestClient):
 
     The URL contains two "/" characters after the base workspace prefix, so FastAPI delivers
     ``name="ws/base&adapters/ws/adder"`` to the handler. The handler must strip only the first
-    segment ("ws/") and look up the cache under ``(ws, "base&adapters/ws/adder")`` — matching the
-    key produced by ``ModelCache.rebuild_model_entity_map``'s ``split("/", 1)``.
+    segment ("ws/") and look up the VirtualModel cache under ``(ws, "base&adapters/ws/adder")``.
+    Operators associate composite LoRA ids with an explicit VirtualModel, so the VM cache is
+    the source of truth here.
     """
-    cache = ModelCache()
-    provider = ModelProviderInfo(
-        model_provider=ModelProvider(
-            workspace="ws",
-            name="nim-provider",
-            host_url="http://nim.example.com",
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-            served_models=[
-                ServedModelMapping(
-                    model_entity_id="ws/base&adapters/ws/adder",
-                    served_model_name="adder",
-                ),
-            ],
-        )
-    )
-    cache.update_model_info(provider)
-    cache.rebuild_model_entity_map()
-    app.dependency_overrides[global_model_cache] = lambda: cache
+    vm_cache = VirtualModelCache()
+    vm_cache.rebuild([_custom_vm("ws", "base&adapters/ws/adder")])
+    app.dependency_overrides[global_virtual_model_cache] = lambda: vm_cache
 
     response = client.get("/v2/workspaces/ws/openai/-/v1/models/ws/base&adapters/ws/adder")
     assert response.status_code == 200
@@ -212,26 +275,9 @@ def test_get_model_lora_compound_name_in_path(app: FastAPI, client: TestClient):
 
 def test_get_model_lora_compound_bare_name_in_path(app: FastAPI, client: TestClient):
     """Bare LoRA composite ``{base}&adapters/{ws}/{adapter}`` resolves via ``GET /v1/models/{name:path}``."""
-    cache = ModelCache()
-    cache.update_model_info(
-        ModelProviderInfo(
-            model_provider=ModelProvider(
-                workspace="ws",
-                name="nim-provider",
-                host_url="http://nim.example.com",
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
-                served_models=[
-                    ServedModelMapping(
-                        model_entity_id="ws/base&adapters/ws/adder",
-                        served_model_name="adder",
-                    ),
-                ],
-            )
-        )
-    )
-    cache.rebuild_model_entity_map()
-    app.dependency_overrides[global_model_cache] = lambda: cache
+    vm_cache = VirtualModelCache()
+    vm_cache.rebuild([_custom_vm("ws", "base&adapters/ws/adder")])
+    app.dependency_overrides[global_virtual_model_cache] = lambda: vm_cache
 
     response = client.get("/v2/workspaces/ws/openai/-/v1/models/base&adapters/ws/adder")
     assert response.status_code == 200
@@ -241,7 +287,7 @@ def test_get_model_lora_compound_bare_name_in_path(app: FastAPI, client: TestCli
 
 
 def test_get_model_success_with_custom_provider(app: FastAPI, client: TestClient):
-    """Test getting a model with a custom provider setup."""
+    """Test getting a model backed by a custom provider (via its autoprovisioned VM)."""
 
     cache = ModelCache()
     provider = ModelProviderInfo(
@@ -263,6 +309,9 @@ def test_get_model_success_with_custom_provider(app: FastAPI, client: TestClient
     cache.rebuild_model_entity_map()
 
     app.dependency_overrides[global_model_cache] = lambda: cache
+    vm_cache = VirtualModelCache()
+    vm_cache.rebuild(_autoprovisioned_vms_for_cache(cache))
+    app.dependency_overrides[global_virtual_model_cache] = lambda: vm_cache
 
     response = client.get("/v2/workspaces/ns1/openai/-/v1/models/my-model")
     assert response.status_code == 200
@@ -562,28 +611,12 @@ def test_get_model_cross_workspace_lora(app: FastAPI, client: TestClient):
 
     Complements the same-workspace tests at ``test_get_model_lora_compound_name_in_path``
     and ``test_get_model_lora_compound_bare_name_in_path``. The handler must strip
-    only the leading ``ws-a/`` segment and look up ``("ws-a", "base&adapters/ws-b/adapter")``.
+    only the leading ``ws-a/`` segment and look up ``("ws-a", "base&adapters/ws-b/adapter")``
+    in the VirtualModel cache.
     """
-    cache = ModelCache()
-    cache.update_model_info(
-        ModelProviderInfo(
-            model_provider=ModelProvider(
-                workspace="ws-a",
-                name="nim-provider",
-                host_url="http://nim.workspace-a.example.com",
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
-                served_models=[
-                    ServedModelMapping(
-                        model_entity_id="ws-a/base&adapters/ws-b/adapter",
-                        served_model_name="ws-b--adapter",
-                    ),
-                ],
-            )
-        )
-    )
-    cache.rebuild_model_entity_map()
-    app.dependency_overrides[global_model_cache] = lambda: cache
+    vm_cache = VirtualModelCache()
+    vm_cache.rebuild([_custom_vm("ws-a", "base&adapters/ws-b/adapter")])
+    app.dependency_overrides[global_virtual_model_cache] = lambda: vm_cache
 
     response = client.get("/v2/workspaces/ws-a/openai/-/v1/models/ws-a/base&adapters/ws-b/adapter")
     assert response.status_code == 200

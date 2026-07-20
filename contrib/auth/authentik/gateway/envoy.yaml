@@ -6,7 +6,17 @@ static_resources:
           address: 0.0.0.0
           port_value: 8080
       filter_chains:
-        - filters:
+        - transport_socket:
+            name: envoy.transport_sockets.tls
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+              common_tls_context:
+                tls_certificates:
+                  - certificate_chain:
+                      filename: /etc/envoy/tls/tls.crt
+                    private_key:
+                      filename: /etc/envoy/tls/tls.key
+          filters:
             - name: envoy.filters.network.http_connection_manager
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
@@ -21,27 +31,92 @@ static_resources:
                             prefix: "/.well-known/nemo-platform/"
                           route:
                             cluster: nemo
+                          request_headers_to_add:
+                            - header:
+                                key: x-forwarded-proto
+                                value: https
+                              append_action: OVERWRITE_IF_EXISTS_OR_ADD
                         - match:
                             prefix: "/apis/"
                           route:
                             cluster: nemo
+                          request_headers_to_add:
+                            - header:
+                                key: x-forwarded-proto
+                                value: https
+                              append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                        - match:
+                            path: "/health/gateway/ready"
+                          direct_response:
+                            status: 503
+                            body:
+                              inline_string: '{"status":"not_ready"}'
                         - match:
                             prefix: "/health/"
                           route:
                             cluster: nemo
+                          request_headers_to_add:
+                            - header:
+                                key: x-forwarded-proto
+                                value: https
+                              append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                        - match:
+                            path: "/status"
+                          route:
+                            cluster: nemo
+                          request_headers_to_add:
+                            - header:
+                                key: x-forwarded-proto
+                                value: https
+                              append_action: OVERWRITE_IF_EXISTS_OR_ADD
                         - match:
                             prefix: "/studio/"
                           route:
                             cluster: nemo
+                          request_headers_to_add:
+                            - header:
+                                key: x-forwarded-proto
+                                value: https
+                              append_action: OVERWRITE_IF_EXISTS_OR_ADD
                         - match:
                             prefix: "/"
                           route:
                             cluster: authentik
+                          request_headers_to_add:
+                            - header:
+                                key: x-forwarded-proto
+                                value: https
+                              append_action: OVERWRITE_IF_EXISTS_OR_ADD
                 http_filters:
                   - name: envoy.filters.http.lua
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
                       inline_code: |
+                        local function gateway_ready_http_call(request_handle, cluster, authority, path)
+                          local ok, response_headers = pcall(function()
+                            local headers, _ = request_handle:httpCall(
+                              cluster,
+                              {
+                                [":method"] = "GET",
+                                [":path"] = path,
+                                [":authority"] = authority
+                              },
+                              "",
+                              5000
+                            )
+                            return headers
+                          end)
+                          if not ok then
+                            return false, "error"
+                          end
+                          if response_headers == nil then
+                            return false, "missing"
+                          end
+
+                          local status = response_headers[":status"] or "missing"
+                          return status == "200", status
+                        end
+
                         function envoy_on_request(request_handle)
                           local headers = request_handle:headers()
                           headers:remove("x-nmp-principal-id")
@@ -50,6 +125,22 @@ static_resources:
                           headers:remove("x-nmp-principal-on-behalf-of")
                           headers:remove("x-nmp-principal-on-behalf-of-email")
                           headers:remove("x-nmp-principal-on-behalf-of-groups")
+
+                          if headers:get(":path") ~= "/health/gateway/ready" then
+                            return
+                          end
+
+                          local nemo_ready, nemo_status = gateway_ready_http_call(request_handle, "nemo", "nemo", "/health/ready")
+                          local authentik_ready, authentik_status = gateway_ready_http_call(request_handle, "authentik", "authentik-server", "/application/o/nemo/.well-known/openid-configuration")
+                          if nemo_ready and authentik_ready then
+                            request_handle:respond({[":status"] = "200", ["content-type"] = "application/json"}, '{"status":"ready"}')
+                            return
+                          end
+
+                          request_handle:respond(
+                            {[":status"] = "503", ["content-type"] = "application/json"},
+                            string.format('{"status":"not_ready","nemo":"%s","authentik":"%s"}', nemo_status, authentik_status)
+                          )
                         end
                   - name: envoy.filters.http.jwt_authn
                     typed_config:
@@ -59,6 +150,7 @@ static_resources:
                           audiences:
                             - "nemo-platform"
                             - "nemo-platform-cli"
+                            - "nemo-platform-workload"
                           remote_jwks:
                             http_uri:
                               uri: "http://authentik-server:9000/application/o/nemo/jwks/"
@@ -70,15 +162,38 @@ static_resources:
                               claim_name: "sub"
                             - header_name: "X-NMP-Principal-Groups"
                               claim_name: "groups"
+                        workload_exchange:
+                          audiences:
+                            - "nemo-platform"
+                          remote_jwks:
+                            http_uri:
+                              uri: "http://nemo:8080/apis/auth/jwks"
+                              cluster: nemo
+                              timeout: 5s
+                            cache_duration: 600s
+                          claim_to_headers:
+                            - header_name: "X-NMP-Principal-Id"
+                              claim_name: "sub"
+                            - header_name: "X-NMP-Principal-Groups"
+                              claim_name: "groups"
                       rules:
                         - match:
                             path: "/apis/auth/discovery"
                         - match:
+                            path: "/apis/auth/jwks"
+                        - match:
+                            path: "/apis/auth/token"
+                        - match:
                             prefix: "/health/"
+                        - match:
+                            path: "/status"
                         - match:
                             prefix: "/apis/"
                           requires:
-                            provider_name: "authentik_workload"
+                            requires_any:
+                              requirements:
+                                - provider_name: "authentik_workload"
+                                - provider_name: "workload_exchange"
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
