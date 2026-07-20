@@ -11,6 +11,7 @@ from nmp.core.models.controllers.backends.common import DeploymentConfigView
 from nmp.core.models.controllers.backends.deployments_plugin.compiler import compile_model_deployment
 from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
 from nmp.core.models.controllers.backends.deployments_plugin.resolve import ResolvedPluginDeployment
+from nmp.core.models.controllers.backends.vllm_compiler import MODEL_STORE_PATH
 
 
 def _resolved(engine: str, *, lora: bool = False, runtime: Runtime = Runtime.KUBERNETES) -> ResolvedPluginDeployment:
@@ -36,6 +37,64 @@ def test_vllm_weighted_chain_has_on_failure_puller_and_always_server() -> None:
     assert compiled.server_config.restart_policy == "Always"
     assert compiled.puller_prerequisite is True
     assert compiled.server_config.containers[0].volume_mounts[0].read_only is True
+
+
+def test_vllm_server_command_image_args_and_gpu() -> None:
+    resolved = _resolved("vllm")
+    resolved = ResolvedPluginDeployment(
+        deployment=resolved.deployment,
+        config=resolved.config,
+        model_entity=resolved.model_entity,
+        view=DeploymentConfigView(model_namespace="org", model_name="model", gpu=1),
+        weights_type=resolved.weights_type,
+        model_namespace=resolved.model_namespace,
+        model_name=resolved.model_name,
+        model_revision=resolved.model_revision,
+        files_hf_url=resolved.files_hf_url,
+        huggingface_model_puller=resolved.huggingface_model_puller,
+        runtime=resolved.runtime,
+    )
+    compiled = compile_model_deployment(resolved, DeploymentsPluginConfig())
+    server = compiled.server_config.containers[0]
+    assert server.command == ["vllm", "serve"]
+    assert server.args[0] == MODEL_STORE_PATH
+    assert server.image == "docker.io/vllm/vllm-openai:v0.22.1"
+    assert server.resources is not None
+    assert server.resources.limits["nvidia.com/gpu"] == "1"
+    assert compiled.puller_config is not None
+    puller = compiled.puller_config.containers[0]
+    puller_env = {item.name: item.value for item in puller.env}
+    assert puller_env["HF_ENDPOINT"] == resolved.files_hf_url
+    assert puller_env["HF_TOKEN"] == "service:models"
+    assert puller.resources is not None
+    assert puller.resources.limits["nvidia.com/gpu"] == "1"
+
+
+def test_nim_gpu_resources_without_override() -> None:
+    resolved = _resolved("nim")
+    resolved = ResolvedPluginDeployment(
+        deployment=resolved.deployment,
+        config=resolved.config,
+        model_entity=resolved.model_entity,
+        view=DeploymentConfigView(
+            model_namespace="org",
+            model_name="model",
+            gpu=1,
+            image_name="nvcr.io/nim/meta/llama-3.1-8b-instruct",
+            image_tag="1.8.5",
+        ),
+        weights_type=ModelWeightsType.BAKED_CONTAINER,
+        model_namespace=None,
+        model_name=None,
+        model_revision=None,
+        files_hf_url=resolved.files_hf_url,
+        huggingface_model_puller=resolved.huggingface_model_puller,
+        runtime=Runtime.KUBERNETES,
+    )
+    compiled = compile_model_deployment(resolved, DeploymentsPluginConfig())
+    server = compiled.server_config.containers[0]
+    assert server.resources is not None
+    assert server.resources.limits["nvidia.com/gpu"] == "1"
 
 
 def test_nim_weighted_chain_sets_model_path_env() -> None:

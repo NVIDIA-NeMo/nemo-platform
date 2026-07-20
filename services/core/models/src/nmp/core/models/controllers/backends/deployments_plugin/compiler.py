@@ -29,6 +29,7 @@ from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_
 from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
 from nmp.core.models.controllers.backends.deployments_plugin.naming import EntityNames, entity_names
 from nmp.core.models.controllers.backends.deployments_plugin.nim_compiler import (
+    apply_container_resources,
     apply_k8s_nim_operator_container_overrides,
     apply_nim_override_config,
     build_k8s_deployment_backend_config,
@@ -105,6 +106,20 @@ def _env(values: dict[str, str]) -> list[EnvVar]:
     return [EnvVar(name=name, value=value) for name, value in values.items()]
 
 
+def _apply_gpu_resources(container: Container, gpu: int) -> None:
+    """Map executor_config.gpu to nvidia.com/gpu requests and limits."""
+    if gpu < 1:
+        return
+    quantity = str(gpu)
+    apply_container_resources(
+        container,
+        {
+            "requests": {"nvidia.com/gpu": quantity},
+            "limits": {"nvidia.com/gpu": quantity},
+        },
+    )
+
+
 def _lora_sidecar(
     resolved: ResolvedPluginDeployment,
     *,
@@ -169,7 +184,7 @@ def compile_model_deployment(
             size=resolved.view.disk_size or config.default_pvc_size,
             backendConfig=VolumeBackendConfig(k8s=K8sVolumeConfig(storageClass=config.default_storage_class)),
         )
-        puller_env = {"HF_ENDPOINT": resolved.files_hf_url}
+        puller_env = {"HF_ENDPOINT": resolved.files_hf_url, "HF_TOKEN": "service:models"}
         puller_args = ["download", f"{resolved.model_namespace}/{resolved.model_name}", "--local-dir", _WEIGHTS_MOUNT]
         if resolved.model_revision:
             puller_args.extend(["--revision", resolved.model_revision])
@@ -181,6 +196,7 @@ def compile_model_deployment(
             env=_env(puller_env),
             volumeMounts=[VolumeMount(name=names.volume, mountPath=_WEIGHTS_MOUNT)],
         )
+        _apply_gpu_resources(puller, resolved.view.gpu)
         puller_config = DeploymentConfig(
             name=names.puller,
             workspace=resolved.deployment.workspace,
@@ -233,6 +249,7 @@ def compile_model_deployment(
     init_containers: list[Container] = list(tool_call_inits or [])
     server_config_containers: list[Container]
     readiness_probe = Probe(httpGet=HTTPGetAction(path=resolve_health_path(engine, resolved.view), port=8000))
+    vllm_command = ["vllm", "serve"] if engine == ENGINE_VLLM else None
     if needs_scratch:
         scratch_volume = Volume(
             name=names.scratch,
@@ -255,12 +272,14 @@ def compile_model_deployment(
         server = Container(
             name="server",
             image=_image(image_name, image_tag),
+            command=vllm_command or [],
             args=args,
             env=_env(env),
             ports=[ContainerPort(name="http", containerPort=8000)],
             volumeMounts=mounts,
             readinessProbe=readiness_probe,
         )
+        _apply_gpu_resources(server, resolved.view.gpu)
         if engine == ENGINE_NIM:
             apply_k8s_nim_operator_container_overrides(server, readiness_probe, resolved.view)
         if resolved.runtime == Runtime.DOCKER:
@@ -277,12 +296,14 @@ def compile_model_deployment(
         server = Container(
             name="server",
             image=_image(image_name, image_tag),
+            command=vllm_command or [],
             args=args,
             env=_env(env),
             ports=[ContainerPort(name="http", containerPort=8000)],
             volumeMounts=mounts,
             readinessProbe=readiness_probe,
         )
+        _apply_gpu_resources(server, resolved.view.gpu)
         if engine == ENGINE_NIM:
             apply_k8s_nim_operator_container_overrides(server, readiness_probe, resolved.view)
         server_config_containers = [server]

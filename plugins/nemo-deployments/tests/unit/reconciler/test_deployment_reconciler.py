@@ -701,6 +701,28 @@ async def test_volume_mount_gating(
         volumes_by_name={("default", "data"): vol},
     )
 
+    assert dep.status == "STARTING"
+    assert len(mock_backend.create_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_volume_mount_gating_waits_for_missing_volume(
+    deployment_reconciler: DeploymentReconciler,
+    mock_backend: MockDeploymentBackend,
+) -> None:
+    from nemo_deployments_plugin.entities import VolumeMount
+
+    dep = make_deployment()
+    cfg = make_deployment_config()
+    cfg.volume_mounts = [VolumeMount(name="data", mountPath="/data")]
+    deployment_reconciler.set_config_cache({("default", "cfg1"): cfg})
+
+    await deployment_reconciler.reconcile_one(
+        dep,
+        deployments_by_name={},
+        volumes_by_name={},
+    )
+
     assert dep.status == "PENDING"
     assert "volume" in dep.status_message.lower()
     assert mock_backend.create_calls == []
