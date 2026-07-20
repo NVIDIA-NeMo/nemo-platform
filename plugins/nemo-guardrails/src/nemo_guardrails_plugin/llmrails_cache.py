@@ -179,10 +179,20 @@ body's model, so this placeholder is to satisfy the schema validator.
 """
 
 
+def _has_nonempty_model_name(value: object) -> bool:
+    """``True`` when ``value`` is a non-empty (after strip) model name string."""
+    return isinstance(value, str) and bool(value.strip())
+
+
 def _fill_main_model_placeholder(model_config: dict[str, Any]) -> dict[str, Any]:
     """Given a model config from a GuardrailConfig, populates the ``model`` field with
     a placeholder value if the config represents the main model and doesn't already have
     a model name.
+
+    The upstream ``Model`` schema accepts a name in exactly one of three places:
+    top-level ``model``, ``parameters.model``, or ``parameters.model_name``. Filling a
+    placeholder when either parameters form is already set would trip the library's
+    dual-location validator, so those configs are left unchanged.
 
     This is required to satisfy the nemoguardrails library schema validator.
     We always populate the actual model name using the incoming request
@@ -190,8 +200,14 @@ def _fill_main_model_placeholder(model_config: dict[str, Any]) -> dict[str, Any]
     """
     if model_config.get("type") != MAIN_MODEL_TYPE:
         return model_config
-    model = model_config.get("model")
-    if model is not None and not (isinstance(model, str) and not model.strip()):
+    if _has_nonempty_model_name(model_config.get("model")):
+        return model_config
+
+    parameters = model_config.get("parameters")
+    if isinstance(parameters, dict) and (
+        _has_nonempty_model_name(parameters.get("model"))
+        or _has_nonempty_model_name(parameters.get("model_name"))
+    ):
         return model_config
 
     return {**model_config, "model": MAIN_MODEL_REQUEST_PLACEHOLDER}

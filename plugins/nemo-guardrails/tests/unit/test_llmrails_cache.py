@@ -556,15 +556,21 @@ class TestStabilizeNamelessMainTemplate:
         assert stable.main_model_template is not None
         assert stable.rails.models == []
 
-    def test_top_level_model_is_the_only_recognized_name_location(self) -> None:
-        """Only the top-level ``model`` field counts as "named". A ``main``
-        entry naming its model via ``model:`` directly passes through
-        unchanged and keeps that name."""
-        rails = _platform_rails(
-            models=[
-                {"type": "main", "engine": "nim", "model": "ws/llama"},
-            ]
-        )
+    @pytest.mark.parametrize(
+        "models",
+        [
+            [{"type": "main", "engine": "nim", "model": "ws/llama"}],
+            [{"type": "main", "engine": "nim", "parameters": {"model": "ws/llama"}}],
+            [{"type": "main", "engine": "nim", "parameters": {"model_name": "ws/llama"}}],
+        ],
+        ids=["top_level_model", "parameters_model", "parameters_model_name"],
+    )
+    def test_named_main_keeps_library_recognized_name(self, models: list[dict[str, Any]]) -> None:
+        """A ``main`` entry already named via any library-honoured location
+        (top-level ``model``, ``parameters.model``, or ``parameters.model_name``)
+        must not get a placeholder filled in — the upstream validator rejects
+        dual specification — and must keep that name after stabilize."""
+        rails = _platform_rails(models=models)
         stable = stabilize(rails, _resolve_target)
         assert stable.main_model_template is not None
         assert stable.main_model_template.engine == "nim"
@@ -604,14 +610,27 @@ class TestStabilizeNamelessMainTemplate:
 
     def test_fill_placeholder_only_touches_nameless_main_entries(self) -> None:
         """:func:`_fill_main_model_placeholder` passes non-``main`` entries
-        and already-named ``main`` entries through unchanged, and only
-        fills in a model on genuinely nameless ``main`` entries."""
+        and already-named ``main`` entries through unchanged (including names
+        under ``parameters.model`` / ``parameters.model_name``), and only fills
+        in a model on genuinely nameless ``main`` entries."""
         content_safety = {"type": "content_safety", "engine": "nim"}
         named_main = {"type": "main", "engine": "nim", "model": "ws/llama"}
+        named_via_parameters_model = {
+            "type": "main",
+            "engine": "nim",
+            "parameters": {"model": "ws/llama", "base_url": "https://rails.example.com"},
+        }
+        named_via_parameters_model_name = {
+            "type": "main",
+            "engine": "nim",
+            "parameters": {"model_name": "ws/llama"},
+        }
         nameless_main = {"type": "main", "engine": "nim"}
 
         assert _fill_main_model_placeholder(content_safety) == content_safety
         assert _fill_main_model_placeholder(named_main) == named_main
+        assert _fill_main_model_placeholder(named_via_parameters_model) == named_via_parameters_model
+        assert _fill_main_model_placeholder(named_via_parameters_model_name) == named_via_parameters_model_name
         assert _fill_main_model_placeholder(nameless_main) == {
             **nameless_main,
             "model": MAIN_MODEL_REQUEST_PLACEHOLDER,
