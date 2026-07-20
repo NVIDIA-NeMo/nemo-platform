@@ -8,8 +8,7 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from nemo_platform_plugin.iam.types import DeleteResponse
-from nmp.common.api.common import Page
+from nmp.common.api.common import DeleteResponse, Page
 from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params

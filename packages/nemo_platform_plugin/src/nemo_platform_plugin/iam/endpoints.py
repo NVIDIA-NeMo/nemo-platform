@@ -12,9 +12,9 @@ from nemo_platform_plugin.client.types import BinaryContent, Paginated
 from nemo_platform_plugin.iam.types import (
     AuthzRequest,
     AuthzResponse,
-    DeleteResponse,
     ListRoleBindingsQueryParams,
     RoleBinding,
+    RoleBindingDeleteResponse,
     RoleBindingInput,
     RolePropagationQueryParams,
 )
@@ -46,7 +46,7 @@ def get_role_binding(*, name: str) -> RoleBinding: ...
 @abstractmethod
 def revoke_role_binding(
     *, name: str, query_params: RolePropagationQueryParams = {"wait_role_propagation": True}
-) -> DeleteResponse: ...
+) -> RoleBindingDeleteResponse: ...
 
 
 @post("/apis/auth/v2/authz/{entrypoint}")

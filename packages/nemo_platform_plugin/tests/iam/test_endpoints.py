@@ -12,8 +12,8 @@ from nemo_platform_plugin.iam.types import (
     AuthzErrorResponse,
     AuthzRequest,
     AuthzResponse,
-    DeleteResponse,
     RoleBinding,
+    RoleBindingDeleteResponse,
     RoleBindingInput,
 )
 from pydantic import ValidationError
@@ -36,7 +36,7 @@ def test_role_binding_endpoint_contracts() -> None:
     assert fetched.response_type is RoleBinding
     assert revoked.method == "DELETE"
     assert revoked.query_params == {"wait_role_propagation": True}
-    assert revoked.response_type is DeleteResponse
+    assert revoked.response_type is RoleBindingDeleteResponse
 
 
 def test_list_role_bindings_uses_server_query_defaults() -> None:

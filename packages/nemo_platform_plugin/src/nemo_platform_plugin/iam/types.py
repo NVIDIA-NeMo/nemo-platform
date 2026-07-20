@@ -34,7 +34,7 @@ class RoleBinding(BaseModel):
     revoked_at: datetime | None
 
 
-class DeleteResponse(BaseModel):
+class RoleBindingDeleteResponse(BaseModel):
     message: str = Field(default="Resource deleted successfully.")
     id: str | None = Field(default=None, description="The ID of the deleted resource.")
     deleted_at: datetime | None = Field(default=None, description="The timestamp when the resource was deleted.")
