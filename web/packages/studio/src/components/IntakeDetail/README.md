@@ -87,7 +87,7 @@ flowchart TB
 | **Data**         | First summary page rendered as an always-open hierarchy        | First summary page, hierarchy in trigger |
 | **Lazy load**    | `useGetSpan` when a span is selected                           | `useGetSpan` only when a row is open     |
 
-The only detail route is `/intake/sessions/:sessionId`, with `traceId` and `spanId` query parameters for progressively deeper links. Session, trace, and span link builders all produce this route directly. The sidebar loads the session's first summary-only page of up to 1,000 spans, combines each trace with its spans and tree in a `SessionTrajectory`, and renders every available hierarchy open and non-collapsible. Selecting a span fetches its full payload for the detail body. Clicking **Session** clears trace/span selection. Direct trace/span links remain available when the span lies outside the summary page.
+The Intake detail route is `/intake/sessions/:sessionId`; the Evaluation detail route is `/experiment/:experimentGroupName/:evaluationName/sessions/:sessionId`. Both accept `traceId` and `spanId` query parameters for progressively deeper links and feed the same `SessionDetailView`. The sidebar loads the session's first summary-only page of up to 1,000 spans, combines each trace with its spans and tree in a `SessionTrajectory`, and renders every available hierarchy open and non-collapsible. Selecting a span fetches its full payload for the detail body. Clicking **Session** clears trace/span selection. Direct trace/span links remain available when the span lies outside the summary page.
 
 Annotations for the whole trace are fetched once (`useListAnnotations` filtered by `session_id`) so each row can show feedback sentiment and annotation counts without per-span queries.
 

@@ -335,7 +335,7 @@ export const getEvaluationSessionDetailRoute = (
     workspace,
     experimentGroupName: encodeURIComponent(experimentGroupName),
     evaluationName: encodeURIComponent(evaluationName),
-    sessionId,
+    sessionId: encodeURIComponent(sessionId),
   });
 };
 
@@ -463,7 +463,10 @@ export const getIntakeSpansRoute = (workspace: string) => {
 };
 
 export const getIntakeSessionRoute = (workspace: string, sessionId: string) => {
-  return generatePath(ROUTES.workspace.intakeSession, { workspace, sessionId });
+  return generatePath(ROUTES.workspace.intakeSession, {
+    workspace,
+    sessionId: encodeURIComponent(sessionId),
+  });
 };
 
 export const getIntakeSessionTraceRoute = (

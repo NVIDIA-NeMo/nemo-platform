@@ -7,6 +7,7 @@ import {
   getEvaluationMetricDetailsRoute,
   getEvaluationMetricRunRoute,
   getEvaluationMetricsRunRoute,
+  getEvaluationSessionDetailRoute,
   getIntakeSessionRoute,
   getIntakeSessionTraceRoute,
   getPromptTuningFormRoute,
@@ -162,5 +163,21 @@ describe('intake session detail routes', () => {
     expect(
       getIntakeSessionTraceRoute('my-workspace', 'session-1', 'trace-1', { spanId: 'span-1' })
     ).toBe('/workspaces/my-workspace/intake/sessions/session-1?traceId=trace-1&spanId=span-1');
+  });
+
+  it('encodes session IDs in Intake and Evaluation paths', () => {
+    expect(getIntakeSessionRoute('my-workspace', 'session / 1')).toBe(
+      '/workspaces/my-workspace/intake/sessions/session%20%2F%201'
+    );
+    expect(
+      getEvaluationSessionDetailRoute(
+        'my-workspace',
+        'experiment-group',
+        'evaluation',
+        'session / 1'
+      )
+    ).toBe(
+      '/workspaces/my-workspace/experiment/experiment-group/evaluation/sessions/session%20%2F%201'
+    );
   });
 });
