@@ -170,11 +170,27 @@ class TestHeadersAuth:
         assert client._default_headers["X-NMP-Principal-Id"] == "user@example.com"
         assert client._default_headers["X-NMP-Principal-Groups"] == "g1,g2"
 
-    def test_merges_otel_propagation_headers(self):
+    def test_merges_otel_propagation_headers_without_adding_internal_auth(self):
         with scoped_otel_headers({"traceparent": "00-trace-span-01", "X-NMP-Internal": "true"}):
             client = cf.get_nemo_client(as_service="svc")
         assert client._default_headers["traceparent"] == "00-trace-span-01"
         assert client._default_headers["X-NMP-Principal-Id"] == "service:svc"
+        assert "X-NMP-Internal" not in client._default_headers
+
+    def test_explicit_auth_headers_win_over_conflicting_otel_context(self):
+        with scoped_otel_headers(
+            {
+                "traceparent": "00-trace-span-01",
+                "x-nmp-principal-id": "attacker@example.com",
+                "X-NMP-Principal-Groups": "admins",
+                "x-NMP-Internal": "false",
+            }
+        ):
+            client = cf.get_async_nemo_client(as_service="evaluator", internal=True)
+        assert client._default_headers["traceparent"] == "00-trace-span-01"
+        assert client._default_headers["X-NMP-Principal-Id"] == "service:evaluator"
+        assert client._default_headers["X-NMP-Internal"] == "true"
+        assert all(name.lower() != "x-nmp-principal-groups" for name in client._default_headers)
 
     def test_no_headers_leaves_default_headers_none(self):
         # No service, no principal context, no OTEL, no internal → no default headers.

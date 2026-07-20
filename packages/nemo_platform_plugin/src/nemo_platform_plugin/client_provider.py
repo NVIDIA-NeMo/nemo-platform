@@ -204,28 +204,49 @@ def _resolve_provider() -> NemoClientProvider:
         return _cached_provider
 
     # Scan entry-points.  nmp-common registers a provider; the nemo-platform
-    # bundle inherits the same entry-point, so deduplicate by name.
-    eps = {ep.name: ep for ep in entry_points(group="nemo.client_provider")}
+    # bundle inherits the same entry-point, so identical registrations are
+    # legitimate duplicates.  A duplicate name pointing elsewhere is a
+    # conflicting registration and must not depend on metadata ordering.
+    eps = {}
+    for ep in sorted(
+        entry_points(group="nemo.client_provider"), key=lambda candidate: (candidate.name, candidate.value)
+    ):
+        existing = eps.get(ep.name)
+        if existing is not None and existing.value != ep.value:
+            targets = ", ".join(sorted((existing.value, ep.value)))
+            raise RuntimeError(
+                f"Conflicting NemoClient providers registered under 'nemo.client_provider' with name {ep.name!r}: "
+                f"{targets}. Provider names must resolve to a single target."
+            )
+        eps[ep.name] = ep
+
     if len(eps) > 1:
-        names = ", ".join(eps)
+        names = ", ".join(sorted(eps))
         raise RuntimeError(
             f"Multiple NemoClient providers registered under 'nemo.client_provider': {names}. "
             "Only the platform (nmp-common) should register a provider."
         )
-    for ep in eps.values():
+
+    if eps:
+        ep = next(iter(eps.values()))
         try:
             obj = ep.load()
             if isinstance(obj, type):
                 obj = obj()
-            if isinstance(obj, NemoClientProvider):
-                logger.debug("Using NemoClient provider from entry-point %r", ep.name)
-                _cached_provider = obj
-                return obj
-            logger.warning("Entry-point %r loaded but does not satisfy NemoClientProvider; skipping", ep.name)
-        except Exception:
-            logger.warning("Failed to load NemoClient provider %r; skipping", ep.name, exc_info=True)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to load or construct NemoClient provider {ep.name!r} from entry-point target {ep.value!r}."
+            ) from exc
+        if not isinstance(obj, NemoClientProvider):
+            raise RuntimeError(
+                f"NemoClient provider {ep.name!r} from entry-point target {ep.value!r} "
+                "does not satisfy NemoClientProvider."
+            )
+        logger.debug("Using NemoClient provider from entry-point %r", ep.name)
+        _cached_provider = obj
+        return obj
 
-    # Fall back to the built-in default.
+    # Fall back to the built-in default only when no provider is registered.
     logger.debug("No entry-point NemoClient provider found; using DefaultNemoClientProvider")
     _cached_provider = DefaultNemoClientProvider()
     return _cached_provider
