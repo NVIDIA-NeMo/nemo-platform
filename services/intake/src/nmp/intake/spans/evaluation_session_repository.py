@@ -28,6 +28,39 @@ from nmp.intake.spans.storage import (
 )
 from nmp.intake.spans.trace_repository import current_spans_sql
 
+# Sort fields that require a pre-pagination spans join to compute. These values live in the
+# `spans` table (not `trace_index`), so they don't exist until after the session_metrics join.
+# Sorting by them globally requires computing them for ALL sessions before LIMIT/OFFSET runs —
+# see `_pre_page_metrics_cte_sql` and the conditional in `_list_sql`.
+_PRE_METRICS_SORT_FIELDS = frozenset({"cost_total_usd", "tokens"})
+
+# Maps each API sort field to its SQL expression in the page_sessions CTE scope.
+# Simple fields come directly from trace_index via scoped_sessions (no join needed).
+# Pre-metrics fields reference the pre_page_metrics CTE, which is only present when
+# one of those fields is active — see _PRE_METRICS_SORT_FIELDS.
+_SORT_EXPR_PAGE: dict[str, str] = {
+    "started_at": "start_time",
+    "ended_at": "end_time",
+    "latency_ms": "latency_ms",
+    "status": "root_span_status",
+    "test_case_id": "test_case_id",
+    "cost_total_usd": "pm.cost_total_usd",
+    "tokens": "pm.total_tokens",
+}
+
+# Same mapping for the final SELECT's ORDER BY. At that point scoped_sessions columns
+# are behind the `sessions` alias, and cost/tokens come from the `metrics` CTE
+# (session_metrics, computed for just the page).
+_SORT_EXPR_FINAL: dict[str, str] = {
+    "started_at": "sessions.start_time",
+    "ended_at": "sessions.end_time",
+    "latency_ms": "sessions.latency_ms",
+    "status": "sessions.root_span_status",
+    "test_case_id": "sessions.test_case_id",
+    "cost_total_usd": "metrics.cost_total_usd",
+    "tokens": "(metrics.input_tokens + metrics.output_tokens)",
+}
+
 
 @dataclass(frozen=True)
 class EvaluationSessionRow:
@@ -72,6 +105,7 @@ class EvaluationSessionRepository:
         page: int,
         page_size: int,
         mode: IntakeResponseMode,
+        sort_keys: list[tuple[str, bool]] | None = None,
     ) -> EvaluationSessionPage:
         trace_index_table = self._client.table("trace_index")
         spans_table = self._client.table("spans")
@@ -107,6 +141,7 @@ class EvaluationSessionRepository:
             evaluator_results_table=evaluator_results_table,
             scoped_filter_sql=scoped_filter_sql,
             mode=mode,
+            sort_keys=sort_keys or [],
         )
         list_parameters = {
             **base_parameters,
@@ -191,6 +226,51 @@ def _count_sql(
     """
 
 
+def _build_order_by(sort_keys: list[tuple[str, bool]], expr_map: dict[str, str], tiebreaker: str) -> str:
+    """Build a comma-separated ORDER BY clause from an ordered list of (field, descending) pairs.
+
+    Each field is looked up in expr_map to get its SQL expression in the current query scope
+    (column names differ between page_sessions and the final SELECT — callers pass the right map).
+    NULLS LAST on every user key so missing values sort at the end rather than the front.
+    Always appends tiebreaker as the final stable sort key so pages are deterministic when the
+    user's keys produce ties.
+    """
+    parts = [f"{expr_map[field]} {'DESC' if desc else 'ASC'} NULLS LAST" for field, desc in sort_keys]
+    parts.append(tiebreaker)
+    return ", ".join(parts)
+
+
+def _pre_page_metrics_cte_sql(spans_table: str) -> str:
+    """CTE that computes cost and total tokens for EVERY session in scoped_sessions.
+
+    This is only inserted into the query when the user sorts by cost_total_usd or tokens.
+    Those values don't exist in trace_index — they're aggregated from spans. Computing them
+    here (before page_sessions applies LIMIT/OFFSET) makes the sort global: the ORDER BY in
+    page_sessions sees cost/token values for the full result set, not just the current page.
+    Without this, a cost sort would only reorder the rows already on the page, which is wrong.
+    """
+    all_scoped_spans = current_spans_sql(
+        spans_table,
+        extra_where_sql=(
+            "(span_versions.workspace, span_versions.session_id) IN (SELECT workspace, session_id FROM scoped_sessions)"
+        ),
+    )
+    return f"""
+        pre_page_metrics AS (
+            SELECT
+                s.workspace AS workspace,
+                s.session_id AS session_id,
+                {_guarded_sum_sql("cost_key", scale=COST_SCALE)} AS cost_total_usd,
+                ({_guarded_sum_sql("input_tokens_key")} + {_guarded_sum_sql("output_tokens_key")}) AS total_tokens
+            FROM scoped_sessions AS s
+            LEFT JOIN {all_scoped_spans} AS spans
+                ON s.workspace = spans.workspace
+                AND s.session_id = spans.session_id
+                AND spans.is_deleted = 0
+            GROUP BY s.workspace, s.session_id
+        ),"""
+
+
 def _list_sql(
     *,
     trace_index_table: str,
@@ -198,45 +278,79 @@ def _list_sql(
     evaluator_results_table: str,
     scoped_filter_sql: str,
     mode: IntakeResponseMode,
+    sort_keys: list[tuple[str, bool]],
 ) -> str:
     scoped_sessions_sql = _scoped_sessions_sql(
         trace_index_table,
         scoped_filter_sql=scoped_filter_sql,
         mode=mode,
     )
+
+    needs_pre_metrics = any(field in _PRE_METRICS_SORT_FIELDS for field, _ in sort_keys)
+
+    if needs_pre_metrics:
+        # A cost or tokens sort requires values that aren't in trace_index, so we must
+        # compute them for all sessions before paginating — see _pre_page_metrics_cte_sql.
+        # page_sessions joins against pre_page_metrics so its ORDER BY can reference pm.*
+        # without selecting those columns into page_sessions itself (downstream CTEs are unaffected).
+        pre_metrics_cte = _pre_page_metrics_cte_sql(spans_table)
+        page_sessions_from = (
+            "scoped_sessions AS s\n"
+            "            LEFT JOIN pre_page_metrics AS pm\n"
+            "                ON s.workspace = pm.workspace AND s.session_id = pm.session_id"
+        )
+        page_sessions_select = (
+            "s.workspace, s.evaluation_id, s.session_id, s.test_case_id, s.trace_id,\n"
+            "                s.root_span_id, s.start_time, s.end_time, s.latency_ms,\n"
+            "                s.root_span_status, s.input, s.output"
+        )
+        page_order_by = _build_order_by(sort_keys, _SORT_EXPR_PAGE, "s.root_span_id ASC")
+    else:
+        pre_metrics_cte = ""
+        page_sessions_from = "scoped_sessions"
+        page_sessions_select = (
+            "workspace, evaluation_id, session_id, test_case_id, trace_id,\n"
+            "                root_span_id, start_time, end_time, latency_ms,\n"
+            "                root_span_status, input, output"
+        )
+        # Empty sort_keys means no sort param was sent — preserve the original default order.
+        page_order_by = (
+            _build_order_by(sort_keys, _SORT_EXPR_PAGE, "root_span_id ASC")
+            if sort_keys
+            else "start_time ASC, root_span_id ASC"
+        )
+
+    # The final SELECT re-orders the already-paginated rows as they emerge from the CTE joins.
+    # ClickHouse does not guarantee CTE output order, so this ORDER BY must reflect the user's
+    # intent. Column names differ here because page_sessions is aliased as `sessions` and cost/
+    # tokens come from session_metrics aliased as `metrics`.
+    final_order_by = (
+        _build_order_by(sort_keys, _SORT_EXPR_FINAL, "sessions.root_span_id ASC")
+        if sort_keys
+        else "sessions.start_time ASC, sessions.root_span_id ASC"
+    )
+
+    current_page_spans = current_spans_sql(
+        spans_table,
+        extra_where_sql=(
+            "(span_versions.workspace, span_versions.session_id) IN (SELECT workspace, session_id FROM page_sessions)"
+        ),
+    )
+
     return f"""
         WITH
         scoped_sessions AS (
             {scoped_sessions_sql}
-        ),
+        ),{pre_metrics_cte}
         page_sessions AS (
             SELECT
-                workspace,
-                evaluation_id,
-                session_id,
-                test_case_id,
-                trace_id,
-                root_span_id,
-                start_time,
-                end_time,
-                latency_ms,
-                root_span_status,
-                input,
-                output
-            FROM scoped_sessions
-            ORDER BY start_time ASC, root_span_id ASC
+                {page_sessions_select}
+            FROM {page_sessions_from}
+            ORDER BY {page_order_by}
             LIMIT %(limit)s OFFSET %(offset)s
         ),
         current_page_spans AS (
-            {
-        current_spans_sql(
-            spans_table,
-            extra_where_sql=(
-                "(span_versions.workspace, span_versions.session_id) IN "
-                "(SELECT workspace, session_id FROM page_sessions)"
-            ),
-        )
-    }
+            {current_page_spans}
         ),
         session_metrics AS (
             SELECT
@@ -304,7 +418,7 @@ def _list_sql(
         LEFT JOIN session_scores AS scores
             ON sessions.workspace = scores.workspace
             AND sessions.session_id = scores.session_id
-        ORDER BY sessions.start_time ASC, sessions.root_span_id ASC
+        ORDER BY {final_order_by}
     """
 
 
