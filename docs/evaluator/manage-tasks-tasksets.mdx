@@ -1,0 +1,209 @@
+---
+title: "Manage Tasks & Tasksets"
+description: ""
+---
+<a id="eval-manage-tasks-tasksets"></a>
+
+A **task** is a stored, reusable definition of an agent-eval unit of work: an intent (what the agent
+should do), the inputs it receives, and the metrics that score it. A **taskset** is a named grouping
+of tasks. Both are first-class entities in the Evaluator plugin, addressed by `workspace/name` and
+managed through the `nemo_platform` SDK.
+
+Use stored tasks and tasksets when you want to define an evaluation unit once and reference it across
+runs, share it across a team, or assemble suites — rather than re-declaring the intent, inputs, and
+metrics inline every time.
+
+## Concepts
+
+| Concept | What it is | Members |
+|---------|------------|---------|
+| **Task** | A reusable agent-eval unit: `intent`, `inputs`, and the `metrics` that score it. | References the metrics that score it. |
+| **Taskset** | A flexible grouping of tasks with a description and metadata. | References member tasks by `workspace/name`. Membership is a **set** — order is not significant and duplicate references are rejected. |
+
+Both are addressed by `workspace/name`. Names are unique within a workspace, limited to 255
+characters, and must match `^[\w\-\.]+$`.
+
+<Note>
+Tasks and tasksets support **create, retrieve, list, and delete** — there is no update. To change a
+stored task or taskset, delete it and create a new one, or store a new version under a different
+name.
+</Note>
+
+## Initialize the SDK
+
+```python
+import os
+
+from nemo_platform import NeMoPlatform
+
+
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
+
+tasks = client.evaluator.tasks        # EvaluatorTasksResource
+tasksets = client.evaluator.tasksets  # EvaluatorTasksetsResource
+```
+
+## Manage Tasks
+
+A task scores its output with metrics. Store the metric first, then reference it from the task by
+`workspace/name`. See [Manage Metrics](/documentation/evaluate-models/metrics/manage-metrics) for the
+metric classes and options.
+
+```python
+from nemo_evaluator_sdk import ExactMatchMetric
+
+# Store a metric the task will reference.
+client.evaluator.metrics.create(
+    "answer-exact-match",
+    metric=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
+)
+```
+
+Send the task as a `TaskInput` (the authorable subset of a task) and address it by name on create.
+Reference the stored metric with a `MetricRef` (`workspace/name`, or a bare `name` resolved against
+the task's workspace). The service returns the stored `Task`.
+
+```python
+from nemo_evaluator.api.schemas import MetadataItem, MetricRef, TaskInput, TaskInputs
+
+task = TaskInput(
+    intent="Answer the user's geography question with the capital city.",
+    inputs=TaskInputs(instruction="What is the capital of France?"),
+    metrics=[MetricRef("default/answer-exact-match")],
+    metadata=[MetadataItem(key="suite", value="geography")],
+)
+
+stored = tasks.create("capital-of-france", task=task)
+print(stored.id, stored.metrics)
+```
+
+### `TaskInput` fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `intent` | `str` | Yes | Human-readable description of the desired agent behavior. |
+| `inputs` | `TaskInputs` | No | The task's recognized input fields. `instruction` is the agent's prompt; it falls back to `intent` when unset. |
+| `metrics` | `list[MetricRefOrInline]` | No | The metrics that score the task, as `MetricRef` references (`workspace/name`) to stored metrics. Pre-built inline metric bundles (`MetricInline`) are also accepted and are normalized to stored metrics on create. |
+| `views` | `dict[str, SemanticView]` | No | Optional reporting views mapping metric outputs into named semantic scores. |
+| `metadata` | `list[MetadataItem]` | No | Key/value annotations. Keys must be unique. |
+
+<Note>
+A stored task holds **metric references only**. Any inline metric bundle you pass on create is stored
+as a content-addressed *derived* metric, and the task record is normalized to reference it. This is
+why `stored.metrics` always comes back as a list of `MetricRef` references.
+</Note>
+
+### Retrieve, list, and delete
+
+```python
+# Retrieve one task by name
+task = tasks.retrieve("capital-of-france")
+
+# List tasks in the workspace (paginated)
+page = tasks.list(page=1, page_size=100, sort="-created_at")
+for item in page.data:
+    print(item.name, item.intent)
+
+# Delete a task
+tasks.delete("capital-of-france")
+```
+
+`sort` accepts `name`, `created_at`, or `updated_at`, each optionally prefixed with `-` for
+descending order.
+
+## Manage Tasksets
+
+A taskset references existing tasks by `workspace/name`. All referenced tasks must already exist when
+the taskset is created; a missing or duplicate reference is rejected.
+
+```python
+from nemo_evaluator.api.schemas import TaskRef, TasksetInput
+
+taskset = TasksetInput(
+    description="Geography questions for smoke-testing the agent.",
+    tasks=[
+        TaskRef("default/capital-of-france"),
+        TaskRef("default/capital-of-japan"),
+    ],
+)
+
+stored = tasksets.create("geography-suite", taskset=taskset)
+print(stored.tasks)
+```
+
+### `TasksetInput` fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `description` | `str` | No | Human-readable description of the grouping. |
+| `tasks` | `list[TaskRef]` | No | References to member tasks (`workspace/name`, or bare `name` within the same workspace). Set semantics — duplicates rejected. |
+| `metadata` | `list[MetadataItem]` | No | Key/value annotations. Keys must be unique. |
+
+### Retrieve, list, and delete
+
+```python
+taskset = tasksets.retrieve("geography-suite")
+
+page = tasksets.list(page=1, page_size=100, sort="name")
+for item in page.data:
+    print(item.name, len(item.tasks))
+
+tasksets.delete("geography-suite")
+```
+
+Deleting a taskset does not delete its member tasks — a taskset only holds references.
+
+## Async usage
+
+`AsyncNeMoPlatform` exposes the same surface; await each call.
+
+```python
+import asyncio
+
+from nemo_platform import AsyncNeMoPlatform
+
+
+async def main() -> None:
+    client = AsyncNeMoPlatform(base_url="http://localhost:8080", workspace="default")
+    page = await client.evaluator.tasks.list()
+    for item in page.data:
+        print(item.name)
+
+
+asyncio.run(main())
+```
+
+## Workspaces and projects
+
+Every method accepts an optional `workspace` argument that overrides the client's default workspace.
+On create, an optional `project` argument associates the task or taskset with a project. When you
+omit `workspace`, the client's configured workspace is used.
+
+## REST API
+
+The SDK resources are a thin client over the Evaluator plugin REST API, mounted under
+`/apis/evaluator/v2/workspaces/{workspace}`:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/tasks` | List tasks (paginated). |
+| `POST` | `/tasks/{name}` | Create a task. |
+| `GET` | `/tasks/{name}` | Retrieve a task. |
+| `DELETE` | `/tasks/{name}` | Delete a task. |
+| `GET` | `/tasksets` | List tasksets (paginated). |
+| `POST` | `/tasksets/{name}` | Create a taskset. |
+| `GET` | `/tasksets/{name}` | Retrieve a taskset. |
+| `DELETE` | `/tasksets/{name}` | Delete a taskset. |
+
+Creating a name that already exists returns `409`. An invalid metric reference (task) or a missing or
+duplicate task reference (taskset) returns `422`. Retrieving or deleting a name that does not exist
+returns `404`.
+
+## Related Topics
+
+- [Manage Metrics](/documentation/evaluate-models/metrics/manage-metrics) - Define and reuse the metrics that score a task
+- [SDK Resources](/documentation/evaluate-models/sdk-resources) - Run and submit evaluations through the Evaluator plugin
+- [Agent Evaluation](/documentation/evaluate-models/agent-eval) - How agent-eval tasks are executed and scored
