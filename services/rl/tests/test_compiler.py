@@ -12,9 +12,9 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.types.models.model_entity import ModelEntity
 from nemo_platform_plugin.integrations import IntegrationsSpec, MlflowIntegration, WandbIntegration
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
+from nemo_platform_plugin.models.types import ModelEntity
 from nmp.common.entities.utils import get_random_id
 from nmp.rl.app.jobs.compiler import (
     _build_training_step,

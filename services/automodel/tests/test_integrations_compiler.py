@@ -4,8 +4,8 @@
 from datetime import datetime
 
 import pytest
-from nemo_platform.types.models.model_entity import ModelEntity
 from nemo_platform_plugin.integrations import IntegrationsSpec
+from nemo_platform_plugin.models.types import ModelEntity
 from nmp.automodel.api.v2.jobs.schemas import (
     CustomizationJobOutput,
     LoRAParams,

@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.models.types import ModelEntity
 from nmp.automodel.adapter import automodel_spec_to_compiler_output
 from nmp.automodel.api.v2.jobs.schemas import CustomizationJobOutput, LoRAParams, OutputResponse, SFTTraining
 from nmp.automodel.app.jobs.compiler import _build_file_download_config
@@ -39,13 +39,7 @@ def _make_mock_model_entity(
 
 @pytest.fixture
 def mock_sdk():
-    sdk = Mock(spec=AsyncNeMoPlatform)
-    sdk.models = Mock()
-    sdk.models.retrieve = AsyncMock(
-        side_effect=lambda name, workspace, verbose=True: _make_mock_model_entity(workspace=workspace, name=name),
-    )
-    sdk.files = Mock()
-    return sdk
+    return Mock(spec=AsyncNeMoPlatform)
 
 
 def _make_job_output() -> CustomizationJobOutput:

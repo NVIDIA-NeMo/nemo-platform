@@ -9,12 +9,11 @@ handler / ``to_spec`` flow) to validate that the submitter's ``model`` and
 """
 
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform._exceptions import NotFoundError, PermissionDeniedError
-from nemo_platform.types.models import ModelEntity
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
-from nemo_platform_plugin.client.errors import PermissionDeniedError as ClientPermissionDeniedError
+from nemo_platform_plugin.client.errors import NotFoundError, PermissionDeniedError
 from nemo_platform_plugin.files.client import AsyncFilesClient
+from nemo_platform_plugin.models.client import AsyncModelsClient
+from nemo_platform_plugin.models.types import ModelEntity
 from nmp.common.entities.utils import parse_entity_ref
 from nmp.customization_common.schemas.file_io import FileSetRef
 
@@ -31,9 +30,9 @@ async def check_dataset_access(sdk: AsyncNeMoPlatform, dataset_uri: str, default
     files = client_from_platform(sdk, AsyncFilesClient)
     try:
         await files.get_fileset(workspace=workspace, name=ref.name)
-    except ClientPermissionDeniedError:
+    except PermissionDeniedError:
         raise PermissionError(f"Access denied to dataset fileset '{workspace}/{ref.name}'") from None
-    except ClientNotFoundError:
+    except NotFoundError:
         raise ValueError(
             f"Dataset fileset '{ref.name}' not found in workspace '{workspace}'. Verify the dataset exists."
         ) from None
@@ -46,8 +45,14 @@ async def fetch_model_entity(
 ) -> ModelEntity:
     """Retrieve a model entity by reference string."""
     resolved_ref = parse_entity_ref(model_ref, default_workspace)
+    models = client_from_platform(sdk, AsyncModelsClient)
     try:
-        return await sdk.models.retrieve(name=resolved_ref.name, workspace=resolved_ref.workspace, verbose=True)
+        response = await models.get_model(
+            name=resolved_ref.name,
+            workspace=resolved_ref.workspace,
+            query_params={"verbose": True},
+        )
+        return response.data()
     except PermissionDeniedError:
         raise PermissionError(f"Access denied to model '{resolved_ref.workspace}/{resolved_ref.name}'") from None
     except NotFoundError:

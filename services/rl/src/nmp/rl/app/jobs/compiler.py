@@ -22,7 +22,6 @@ from __future__ import annotations
 import logging
 
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.types.models.model_entity import ModelEntity
 from nemo_platform_plugin.integrations import IntegrationsSpec
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
@@ -37,6 +36,7 @@ from nemo_platform_plugin.jobs.api_factory import (
     ResourcesSpec,
 )
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
+from nemo_platform_plugin.models.types import ModelEntity
 from nmp.common.jobs.constants import DEFAULT_JOB_STORAGE_PATH, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nmp.customization_common.integrations import (
     collect_integration_secret_envs,

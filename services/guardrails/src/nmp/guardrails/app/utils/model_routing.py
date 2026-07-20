@@ -10,8 +10,10 @@ routing is handled by IGW.
 
 import logging
 
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.models.client import ModelsClient
 from nmp.common.sdk_factory import get_platform_sdk
-from nmp.guardrails.entities.values._private import RailsConfig
+from nmp.guardrails.entities.values._private import ModelParameters, RailsConfig
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +61,8 @@ def build_openai_gateway_url(model_entity_ref: str) -> str:
     # Use SDK helper to build IGW OpenAI-compatible URL
     # IGW handles routing the request to the correct Model Provider
     sdk = get_platform_sdk()
-    url = sdk.models.get_openai_route_base_url(workspace=workspace)
+    models = client_from_platform(sdk, ModelsClient)
+    url = models.get_openai_route_base_url(workspace=workspace)
 
     return url
 
@@ -90,14 +93,14 @@ def resolve_model_entity_references(rails_config: RailsConfig) -> RailsConfig:
 
         model_ref = model.model
         parsed = parse_model_entity_reference(model_ref)
-        if parsed:
+        if parsed and model_ref is not None:
             # Resolve to IGW OpenAI-compatible URL
             gateway_url = build_openai_gateway_url(model_ref)
 
             # Set `parameters.base_url`
-            if model.parameters is None:
-                model.parameters = {}
-            model.parameters["base_url"] = gateway_url
+            parameters = ModelParameters.model_validate(model.parameters or {})
+            parameters.base_url = gateway_url
+            model.parameters = parameters
 
             logger.debug(f"Resolved model '{model_ref}' to use Inference Gateway base URL: {gateway_url}")
 

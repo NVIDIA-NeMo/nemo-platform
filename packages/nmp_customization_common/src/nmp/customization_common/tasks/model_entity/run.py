@@ -14,27 +14,38 @@ import re
 import time
 from pathlib import Path
 
-import httpx
-from nemo_platform import (
-    APIConnectionError,
-    APITimeoutError,
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import (
     ConflictError,
     InternalServerError,
-    NeMoPlatform,
+    NemoTransportError,
     NotFoundError,
 )
-from nemo_platform.types.inference import (
-    ContainerExecutorConfigParam,
-    ModelDeploymentConfig,
-    ModelDeploymentConfigFilterParam,
-    ModelDeploymentConfigModelSpecParam,
-    ModelDeploymentFilterParam,
-)
-from nemo_platform.types.models import LoraParam, ModelEntity
-from nemo_platform.types.shared_params.tool_call_config import ToolCallConfig as ToolCallConfigParam
-from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.client.errors import InternalServerError as ClientInternalServerError
 from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.models.client import ModelsClient
+from nemo_platform_plugin.models.types import (
+    ContainerExecutorConfig,
+    CreateModelAdapterRequest,
+    CreateModelDeploymentConfigRequest,
+    CreateModelDeploymentRequest,
+    CreateModelEntityRequest,
+    Engine,
+    ListDeploymentConfigsQueryParams,
+    ListDeploymentsQueryParams,
+    Lora,
+    ModelDeploymentConfig,
+    ModelDeploymentConfigModelSpec,
+    ModelDeploymentStatus,
+    ModelEntity,
+    ToolCallConfig,
+    UpdateAdapterRequest,
+    UpdateModelDeploymentConfigRequest,
+    UpdateModelEntityRequest,
+)
+from nemo_platform_plugin.models.types import (
+    FinetuningType as ModelsFinetuningType,
+)
 from nmp.common.sdk_factory import get_task_sdk
 from nmp.customization_common.schemas.model_entity import (
     DeploymentParameters,
@@ -51,19 +62,14 @@ MAX_RETRIES = 3
 INITIAL_BACKOFF_SECONDS = 1.0
 MAX_BACKOFF_SECONDS = 30.0
 
-ACTIVE_DEPLOYMENT_STATUSES = frozenset({"CREATED", "PENDING", "READY"})
+ACTIVE_DEPLOYMENT_STATUSES = frozenset(
+    {ModelDeploymentStatus.CREATED, ModelDeploymentStatus.PENDING, ModelDeploymentStatus.READY}
+)
 
 SPEC_POLL_INTERVAL_SECONDS = 10
 SPEC_POLL_TIMEOUT_SECONDS = 600
 
-TRANSIENT_RETRYABLE_EXCEPTIONS = (
-    InternalServerError,
-    APITimeoutError,
-    APIConnectionError,
-    ClientInternalServerError,
-    httpx.TimeoutException,
-    httpx.ConnectError,
-)
+TRANSIENT_RETRYABLE_EXCEPTIONS = (InternalServerError, NemoTransportError)
 
 
 def get_config(config_path: Path) -> ModelEntityTaskConfig:
@@ -84,6 +90,7 @@ class ModelEntityRunner:
 
     def __init__(self, sdk: NeMoPlatform, job_ctx: NMPJobContext):
         self.sdk = sdk
+        self.models = client_from_platform(sdk, ModelsClient)
         self.job_ctx = job_ctx
 
     def _wait_for_spec(self, workspace: str, name: str) -> ModelEntity:
@@ -93,7 +100,7 @@ class ModelEntityRunner:
 
         while time.monotonic() - start < SPEC_POLL_TIMEOUT_SECONDS:
             try:
-                target = self.sdk.models.retrieve(name=name, workspace=workspace)
+                target = self.models.get_model(name=name, workspace=workspace).data()
                 spec = target.spec
                 if spec is not None:
                     family = getattr(spec, "family", None)
@@ -132,7 +139,7 @@ class ModelEntityRunner:
             )
 
         try:
-            me: ModelEntity = self.sdk.models.retrieve(name=me_name, workspace=me_workspace)
+            me = self.models.get_model(name=me_name, workspace=me_workspace).data()
         except NotFoundError as e:
             raise ModelEntityCreationError(f"Model entity {me_workspace}/{me_name} not found") from e
 
@@ -182,19 +189,21 @@ class ModelEntityRunner:
         """Create or update a LoRA adapter on ``base_me``. Returns (result, base_me)."""
         assert config.peft is not None
         try:
-            output_me = self.sdk.models.adapters.create(
+            output_me = self.models.create_model_adapter(
                 model_name=base_me.name,
                 workspace=base_me.workspace,
-                name=config.name,
-                description=config.description,
-                fileset=fileset_ref,
-                finetuning_type=config.peft.type.value,
-                lora_config=LoraParam(
-                    alpha=config.peft.alpha,
-                    rank=config.peft.rank,
+                body=CreateModelAdapterRequest(
+                    name=config.name,
+                    description=config.description,
+                    fileset=fileset_ref,
+                    finetuning_type=ModelsFinetuningType(config.peft.type.value),
+                    lora_config=Lora(
+                        alpha=config.peft.alpha,
+                        rank=config.peft.rank,
+                    ),
+                    enabled=True,
                 ),
-                enabled=True,
-            )
+            ).data()
             return output_me.model_dump(), base_me
         except ConflictError:
             logger.warning(
@@ -202,14 +211,16 @@ class ModelEntityRunner:
                 f"{base_me.workspace}/{base_me.name}, updating with new fileset"
             )
             try:
-                output_me = self.sdk.models.adapters.update(
+                output_me = self.models.update_model_adapter(
                     adapter=config.name,
                     model_name=base_me.name,
                     workspace=base_me.workspace,
-                    fileset=fileset_ref,
-                    description=config.description,
-                    enabled=True,
-                )
+                    body=UpdateAdapterRequest(
+                        fileset=fileset_ref,
+                        description=config.description,
+                        enabled=True,
+                    ),
+                ).data()
                 logger.info(
                     f"Successfully updated adapter: {base_me.workspace}/{config.name} "
                     f"for base model {base_me.workspace}/{base_me.name}"
@@ -237,29 +248,34 @@ class ModelEntityRunner:
         """Create or update a full / merged model entity. Returns (result, output_me)."""
         ft_type = config.peft.type.value if config.peft else FinetuningType.ALL_WEIGHTS.value
 
-        request_body: dict = {
-            "name": config.name,
-            "description": config.description,
-            "fileset": fileset_ref,
-            "finetuning_type": ft_type,
-            "trust_remote_code": config.trust_remote_code,
-        }
-        if config.base_model:
-            request_body["base_model"] = config.base_model
+        create_request = CreateModelEntityRequest(
+            name=config.name,
+            description=config.description,
+            fileset=fileset_ref,
+            finetuning_type=ModelsFinetuningType(ft_type),
+            trust_remote_code=config.trust_remote_code,
+            base_model=config.base_model,
+        )
 
         try:
-            output_me = self.sdk.models.create(workspace=workspace, **request_body)
+            output_me = self.models.create_model(workspace=workspace, body=create_request).data()
             logger.info(f"Successfully created model entity: {output_me.workspace}/{output_me.name}")
             return output_me.model_dump(), output_me
         except ConflictError:
             logger.warning(f"Model entity already exists: {workspace}/{config.name}, updating existing model")
             try:
-                update_body = {k: v for k, v in request_body.items() if k != "name"}
-                output_me = self.sdk.models.update(
+                update_request = UpdateModelEntityRequest(
+                    description=config.description,
+                    fileset=fileset_ref,
+                    finetuning_type=ModelsFinetuningType(ft_type),
+                    trust_remote_code=config.trust_remote_code,
+                    base_model=config.base_model,
+                )
+                output_me = self.models.update_model(
                     name=config.name,
                     workspace=workspace,
-                    **update_body,
-                )
+                    body=update_request,
+                ).data()
                 logger.info(f"Successfully updated model entity: {output_me.workspace}/{output_me.name}")
                 return output_me.model_dump(), output_me
             except TRANSIENT_RETRYABLE_EXCEPTIONS:
@@ -298,15 +314,22 @@ class ModelEntityRunner:
 
     def _has_active_deployment(self, me: ModelEntity) -> bool:
         """Check if the model entity already has an active deployment."""
-        deployment_configs = self.sdk.inference.deployment_configs.list(
+        config_query = ListDeploymentConfigsQueryParams(
+            filter=json.dumps({"model_entity_id": f"{me.workspace}/{me.name}"})
+        )
+        deployment_configs = self.models.list_deployment_configs(
             workspace=me.workspace,
-            filter=ModelDeploymentConfigFilterParam(model_entity_id=f"{me.workspace}/{me.name}"),
-        ).data
+            query_params=config_query,
+        ).items()
 
         for c in deployment_configs:
-            deployments = self.sdk.inference.deployments.list(
-                filter=ModelDeploymentFilterParam(config=c.name, workspace=me.workspace)
-            ).data
+            deployment_query = ListDeploymentsQueryParams(
+                filter=json.dumps({"config": c.name, "workspace": me.workspace})
+            )
+            deployments = self.models.list_deployments(
+                workspace=me.workspace,
+                query_params=deployment_query,
+            ).items()
             for d in deployments:
                 if d.status in ACTIVE_DEPLOYMENT_STATUSES:
                     logger.info(f"Active deployment (status={d.status}) exists for config {c.name}, skipping")
@@ -327,7 +350,7 @@ class ModelEntityRunner:
             )
 
         try:
-            return self.sdk.inference.deployment_configs.retrieve(workspace=workspace, name=name)
+            return self.models.get_deployment_config(workspace=workspace, name=name).data()
         except Exception as e:
             raise ModelEntityCreationError(
                 f"Failed to resolve deployment config '{config_ref}' in workspace '{workspace}': {e}"
@@ -335,12 +358,12 @@ class ModelEntityRunner:
 
     def _create_deployment_config(self, deploy_params: DeploymentParameters, me: ModelEntity) -> ModelDeploymentConfig:
         """Create (or update) a ``ModelDeploymentConfig`` from inline parameters."""
-        model_spec = ModelDeploymentConfigModelSpecParam(
+        model_spec = ModelDeploymentConfigModelSpec(
             model_name=me.name,
             model_namespace=me.workspace,
             lora_enabled=deploy_params.lora_enabled,
         )
-        executor_config = ContainerExecutorConfigParam(
+        executor_config = ContainerExecutorConfig(
             image_name=deploy_params.image_name,
             image_tag=deploy_params.image_tag,
             gpu=deploy_params.gpu,
@@ -348,28 +371,32 @@ class ModelEntityRunner:
         )
 
         if deploy_params.tool_call_config:
-            model_spec["tool_call_config"] = ToolCallConfigParam(
-                **deploy_params.tool_call_config.model_dump(exclude_none=True)
+            model_spec.tool_call_config = ToolCallConfig.model_validate(
+                deploy_params.tool_call_config.model_dump(exclude_none=True)
             )
 
         deployment_cfg_name = sanitize_name("sft-cfg", me.name)
         try:
-            return self.sdk.inference.deployment_configs.create(
+            return self.models.create_deployment_config(
                 workspace=me.workspace,
-                name=deployment_cfg_name,
-                engine="nim",
-                model_spec=model_spec,
-                executor_config=executor_config,
-            )
+                body=CreateModelDeploymentConfigRequest(
+                    name=deployment_cfg_name,
+                    engine=Engine.NIM,
+                    model_spec=model_spec,
+                    executor_config=executor_config,
+                ),
+            ).data()
         except ConflictError:
             logger.info(f"Deployment config {me.workspace}/{deployment_cfg_name} already exists, updating")
-            return self.sdk.inference.deployment_configs.update(
+            return self.models.update_deployment_config(
                 workspace=me.workspace,
                 name=deployment_cfg_name,
-                engine="nim",
-                model_spec=model_spec,
-                executor_config=executor_config,
-            )
+                body=UpdateModelDeploymentConfigRequest(
+                    engine=Engine.NIM,
+                    model_spec=model_spec,
+                    executor_config=executor_config,
+                ),
+            ).data()
 
     def _create_deployment(self, deployment_config: ModelDeploymentConfig, me: ModelEntity) -> None:
         """Create a deployment from the given ``ModelDeploymentConfig``."""
@@ -380,23 +407,25 @@ class ModelEntityRunner:
 
         deployment_name = sanitize_name("sft-deploy", me.name)
         try:
-            deployment = self.sdk.inference.deployments.create(
+            deployment = self.models.create_deployment(
                 workspace=deployment_config.workspace,
-                name=deployment_name,
-                config=deployment_config.name,
-            )
+                body=CreateModelDeploymentRequest(
+                    name=deployment_name,
+                    config=deployment_config.name,
+                ),
+            ).data()
             logger.info(f"Deployment created: {deployment.workspace}/{deployment.name}")
         except ConflictError:
             logger.info(f"Deployment {deployment_config.workspace}/{deployment_name} already exists")
-            deployment = self.sdk.inference.deployments.retrieve(
+            deployment = self.models.get_deployment(
                 workspace=deployment_config.workspace,
                 name=deployment_name,
-            )
+            ).data()
 
-        deployment_status = self.sdk.inference.deployments.retrieve(
+        deployment_status = self.models.get_deployment(
             workspace=deployment.workspace,
             name=deployment.name,
-        )
+        ).data()
         logger.info(
             f"Deployment {deployment_status.workspace}/{deployment_status.name} status: {deployment_status.status}"
         )

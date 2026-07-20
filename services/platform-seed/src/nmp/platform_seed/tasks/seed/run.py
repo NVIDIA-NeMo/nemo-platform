@@ -10,7 +10,11 @@ from dataclasses import dataclass, field
 
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform.resources.entities import AsyncEntitiesResource
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import ConflictError
 from nemo_platform_plugin.discovery import discover_seed_jobs
+from nemo_platform_plugin.models.client import AsyncModelsClient
+from nemo_platform_plugin.models.types import CreateModelProviderRequest
 from nmp.common.config import get_platform_config
 from nmp.common.entities import EntityClient
 from nmp.common.sdk_factory import get_async_platform_sdk
@@ -57,14 +61,15 @@ async def seed_auth(entity_client: EntityClient, config: PlatformSeedConfig) -> 
 
 async def seed_model_provider(sdk: AsyncNeMoPlatform) -> None:
     """Seed the default nvidia-build model provider. Idempotent."""
-    from nemo_platform import ConflictError
-
+    models = client_from_platform(sdk, AsyncModelsClient)
     try:
-        await sdk.inference.providers.create(
-            name="nvidia-build",
+        await models.create_provider(
             workspace="system",
-            host_url="https://integrate.api.nvidia.com",
-            api_key_secret_name="ngc-api-key",
+            body=CreateModelProviderRequest(
+                name="nvidia-build",
+                host_url="https://integrate.api.nvidia.com",
+                api_key_secret_name="ngc-api-key",
+            ),
         )
         logger.info("nvidia-build model provider created")
     except ConflictError:

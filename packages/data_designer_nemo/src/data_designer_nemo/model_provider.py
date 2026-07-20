@@ -10,15 +10,11 @@ from data_designer.engine.model_provider import ModelProvider as NDDModelProvide
 from data_designer.engine.model_provider import ModelProviderRegistry, resolve_model_provider_registry
 from data_designer_nemo.errors import NDDInternalError, NDDInvalidConfigError
 from data_designer_nemo.sdk_translation import sync_to_async_sdk
-from nemo_platform import (
-    APIConnectionError,
-    APITimeoutError,
-    AsyncNeMoPlatform,
-    NeMoPlatform,
-    NotFoundError,
-    PermissionDeniedError,
-)
-from nemo_platform.types.inference import ModelProvider as NMPModelProvider
+from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NemoTransportError, NotFoundError, PermissionDeniedError
+from nemo_platform_plugin.models.client import AsyncModelsClient, ModelsClient
+from nemo_platform_plugin.models.types import ModelProvider as NMPModelProvider
 
 logger = logging.getLogger(__name__)
 
@@ -183,9 +179,10 @@ class ModelProviderCollection:
         if nmp_provider is None:
             return
 
+        models = client_from_platform(self.sdk, AsyncModelsClient)
         ndd_provider = NDDModelProvider(
             name=user_supplied_provider_name,
-            endpoint=self.sdk.models.get_provider_route_openai_url(nmp_provider),
+            endpoint=models.get_provider_route_openai_url(nmp_provider),
             extra_headers={k: v for k, v in self.sdk.default_headers.items() if isinstance(v, str)},
         )
         providers = (ndd_provider, nmp_provider)
@@ -202,7 +199,7 @@ class ModelProviderCollection:
                 f"Cannot access provider {user_supplied_provider_name!r}. Check that it exists and you have access to it."
             )
             self.inaccessible_providers.add(user_supplied_provider_name)
-        except (APIConnectionError, APITimeoutError) as e:
+        except NemoTransportError as e:
             logger.debug(
                 "Error connecting while retrieving model provider",
                 extra={"provider_name": provider_name, "workspace": workspace},
@@ -265,14 +262,11 @@ async def make_model_provider_registry(
 
 
 def get_nmp_provider(sdk: NeMoPlatform, workspace: str, provider_name: str) -> NMPModelProvider:
-    return sdk.inference.providers.retrieve(
-        workspace=workspace,
-        name=provider_name,
-    )
+    models = client_from_platform(sdk, ModelsClient)
+    return models.get_provider(workspace=workspace, name=provider_name).data()
 
 
 async def get_nmp_provider_async(sdk: AsyncNeMoPlatform, workspace: str, provider_name: str) -> NMPModelProvider:
-    return await sdk.inference.providers.retrieve(
-        workspace=workspace,
-        name=provider_name,
-    )
+    models = client_from_platform(sdk, AsyncModelsClient)
+    response = await models.get_provider(workspace=workspace, name=provider_name)
+    return response.data()
