@@ -1,0 +1,19 @@
+{{- if .Values.sharedPostgresql.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.sharedPostgresql.serviceName }}
+  namespace: {{ include "nemo-platform-authentik.namespace" . }}
+  labels:
+    {{- include "nemo-platform-authentik.labels" . | nindent 4 }}
+    app.kubernetes.io/component: shared-postgresql
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgresql
+      port: {{ .Values.sharedPostgresql.service.port | int }}
+      targetPort: postgresql
+      protocol: TCP
+  selector:
+    {{- include "nemo-platform-authentik.sharedPostgresql.selectorLabels" . | nindent 4 }}
+{{- end }}

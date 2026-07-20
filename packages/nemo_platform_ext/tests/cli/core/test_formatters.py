@@ -293,6 +293,33 @@ def test_format_markdown_table_escapes_pipes():
     assert "test\\|with\\|pipes" in result
 
 
+def test_format_markdown_table_normalizes_newlines_and_short_separators():
+    """Markdown cells stay on one row and delimiter cells have at least three dashes."""
+    mock_response = Mock()
+    mock_response.data = [{"id": "1", "description": "first\r\nsecond\rthird\nfourth"}]
+
+    columns = [Column("id", "ID"), Column("description", "Description")]
+    result = format_markdown_table(mock_response, columns=columns)
+    lines = result.splitlines()
+
+    assert len(lines) == 3
+    assert "first<br>second<br>third<br>fourth" in lines[2]
+    assert lines[1].split("|")[1].strip() == "---"
+
+
+def test_format_markdown_table_truncates_before_escaping_multiline_pipes():
+    """Truncation preserves complete Markdown escapes in multiline cells containing pipes."""
+    mock_response = Mock()
+    mock_response.data = [{"description": "first|segment\nsecond|segment"}]
+
+    columns = [Column("description", "Description")]
+    result = format_markdown_table(mock_response, columns=columns, max_width=20)
+    lines = result.splitlines()
+
+    assert len(lines) == 3
+    assert "first\\|segment<br>sec..." in lines[2]
+
+
 def test_format_markdown_table_empty():
     """Test markdown table with empty data."""
     mock_response = Mock()

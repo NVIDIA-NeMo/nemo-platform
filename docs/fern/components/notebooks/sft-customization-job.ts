@@ -144,8 +144,8 @@ export default { cells: [
   },
   {
     "type": "markdown",
-    "source": "(ft-deploy-full-weight-model)=\n\n### 8. Deploy Fine-Tuned Model\n\nAfter training completes, deploy using the Deployment Management Service:",
-    "source_html": "<p>(ft-deploy-full-weight-model)=</p>\n<h3>8. Deploy Fine-Tuned Model</h3>\n<p>After training completes, deploy using the Deployment Management Service:</p>\n"
+    "source": "### 8. Deploy Fine-Tuned Model\n\nAfter training completes, deploy using the Deployment Management Service:",
+    "source_html": "<h3>8. Deploy Fine-Tuned Model</h3>\n<p>After training completes, deploy using the Deployment Management Service:</p>\n"
   },
   {
     "type": "code",

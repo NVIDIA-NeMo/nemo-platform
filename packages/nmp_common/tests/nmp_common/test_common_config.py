@@ -102,6 +102,19 @@ class TestPlatformConfig:
         assert url == common.get_host_url()
         assert config.get_service_url("entities") == "http://localhost:8080"  # not local, base_url
 
+    def test_get_service_url_local_overrides_gateway_base_url(self):
+        """Local services bypass the gateway even when base_url points at the gateway."""
+        config = PlatformConfig(
+            base_url="https://nemo-gateway:8080",
+            services="auth,jobs",
+            service_discovery={},
+        )
+        common = get_common_service_config()
+
+        assert config.get_service_url("auth") == common.get_host_url()
+        assert config.get_service_url("jobs") == common.get_host_url()
+        assert config.get_service_url("files") == "https://nemo-gateway:8080"
+
     def test_get_service_url_local_overrides_service_discovery(self):
         """When a service is both local and in service_discovery, prefer local URL (CommonServiceConfig)."""
         config = PlatformConfig(

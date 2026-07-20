@@ -3,12 +3,16 @@
 
 """Tests for pagination utilities."""
 
+import logging
 from unittest.mock import Mock
 
+import pytest
 from nemo_platform_ext.cli.core.pagination import (
     AllCursorPagesResponse,
     AllPagesResponse,
     PaginationType,
+    _fetch_all_pages_cursor,
+    _fetch_all_pages_page_number,
     fetch_all_pages,
 )
 
@@ -209,6 +213,30 @@ def test_fetch_all_pages_cursor_multiple_pages():
     assert len(result.data) == 3
 
 
+def test_page_number_progress_reports_current_page():
+    page1 = create_mock_page_response([{"id": 1}], page=1, total_pages=2)
+    page2 = create_mock_page_response([{"id": 2}], page=2, total_pages=2)
+    page1.iter_pages = Mock(return_value=iter([page1, page2]))
+    progress = Mock()
+
+    _fetch_all_pages_page_number(Mock(return_value=page1), progress, "task", (), {})
+
+    assert progress.update.call_args_list[-2].kwargs["description"] == "Fetching pages... (page 1/2)"
+    assert progress.update.call_args_list[-1].kwargs["description"] == "Fetching pages... (page 2/2)"
+
+
+def test_cursor_progress_reports_current_page():
+    page1 = create_mock_cursor_response([{"id": 1}], next_page="next")
+    page2 = create_mock_cursor_response([{"id": 2}], next_page=None)
+    page1.iter_pages = Mock(return_value=iter([page1, page2]))
+    progress = Mock()
+
+    _fetch_all_pages_cursor(Mock(return_value=page1), progress, "task", (), {})
+
+    assert progress.update.call_args_list[-2].kwargs["description"] == "Fetching pages... (page 1)"
+    assert progress.update.call_args_list[-1].kwargs["description"] == "Fetching pages... (page 2)"
+
+
 def test_fetch_all_pages_with_path_args():
     """Test fetch_all_pages passes path_args correctly."""
     page1 = create_mock_page_response([{"id": 1}], page=1, total_pages=1)
@@ -291,3 +319,39 @@ def test_fetch_all_pages_empty_response():
 
     assert isinstance(result, AllPagesResponse)
     assert len(result.data) == 0
+
+
+def test_fetch_all_pages_restores_root_logging_level():
+    """Fetching all pages must not permanently mutate process-wide logging."""
+    page1 = create_mock_page_response([{"id": 1}], page=1, total_pages=1)
+    page1.iter_pages = Mock(return_value=iter([page1]))
+    root_logger = logging.getLogger()
+    previous_level = root_logger.level
+    root_logger.setLevel(logging.WARNING)
+
+    try:
+        fetch_all_pages(Mock(return_value=page1), show_progress=False)
+        assert root_logger.level == logging.WARNING
+    finally:
+        root_logger.setLevel(previous_level)
+
+
+def test_fetch_all_pages_restores_root_logging_level_after_iteration_error():
+    """Logging is restored even when the SDK page iterator fails."""
+    page1 = create_mock_page_response([{"id": 1}], page=1, total_pages=2)
+
+    def broken_pages():
+        yield page1
+        raise RuntimeError("page fetch failed")
+
+    page1.iter_pages = broken_pages
+    root_logger = logging.getLogger()
+    previous_level = root_logger.level
+    root_logger.setLevel(logging.WARNING)
+
+    try:
+        with pytest.raises(RuntimeError, match="page fetch failed"):
+            fetch_all_pages(Mock(return_value=page1), show_progress=False)
+        assert root_logger.level == logging.WARNING
+    finally:
+        root_logger.setLevel(previous_level)

@@ -202,6 +202,79 @@ def test_iso_to_ns_treats_naive_as_utc():
 # --- build_trace_request ---
 
 
+def test_build_trace_requests_respects_serialized_size(monkeypatch):
+    """ByteSize() drives batching: a small limit splits spans across requests."""
+    monkeypatch.setattr(reingest, "OTLP_REQUEST_MAX_BYTES", 512)
+    docs = [{**AGENT_DOC, "span_id": f"{i:016x}"} for i in range(5)]
+    requests = reingest.build_trace_requests(docs, CATALOG)
+    assert len(requests) > 1
+    for request in requests:
+        assert request.ByteSize() <= 512
+        assert len(request.resource_spans[0].scope_spans[0].spans) >= 1
+
+
+def test_build_trace_requests_accepts_exact_serialized_size_limit():
+    one_span_size = reingest.build_trace_request([reingest.doc_to_otlp(AGENT_DOC, CATALOG)]).ByteSize()
+
+    requests = reingest.build_trace_requests([AGENT_DOC], CATALOG, max_bytes=one_span_size)
+
+    assert len(requests) == 1
+    assert requests[0].ByteSize() == one_span_size
+    with pytest.raises(RuntimeError, match=rf"exceeds {one_span_size - 1} bytes"):
+        reingest.build_trace_requests([AGENT_DOC], CATALOG, max_bytes=one_span_size - 1)
+
+
+def test_build_trace_requests_respects_span_count_limit(monkeypatch):
+    monkeypatch.setattr(reingest, "OTLP_REQUEST_MAX_SPANS", 2)
+    docs = [{**AGENT_DOC, "span_id": f"{i:016x}"} for i in range(5)]
+    requests = reingest.build_trace_requests(docs, CATALOG)
+    sizes = [len(req.resource_spans[0].scope_spans[0].spans) for req in requests]
+    assert sizes == [2, 2, 1]
+
+
+def test_build_trace_requests_rejects_oversized_single_span():
+    huge = {**AGENT_DOC, "raw_attributes": json.dumps({"payload": "x" * (5 * 1024 * 1024)})}
+    with pytest.raises(RuntimeError, match="exceeds"):
+        reingest.build_trace_requests([huge], CATALOG)
+
+
+def test_ingest_bundle_splits_on_serialized_size(tmp_path, quiet_platform, monkeypatch):
+    """Small byte limit forces multiple OTLP posts even when span count is low."""
+    monkeypatch.setattr(reingest, "OTLP_REQUEST_MAX_BYTES", 512)
+    docs = [{**AGENT_DOC, "span_id": f"{i:016x}"} for i in range(5)]
+    export_dir = _write_export(tmp_path, "ws-a", docs)
+    quiet_platform["span_counts"] = [0, 5]
+    quiet_platform["annotation_counts"] = [0]
+    quiet_platform["result_counts"] = [0]
+    reingest.ingest_bundle(
+        "http://x",
+        export_dir,
+        _manifest("ws-a", 5),
+        workspace_map={"ws-a": "ws-b"},
+        catalog=CATALOG,
+        sleep=lambda s: None,
+    )
+    assert len(quiet_platform["requests"]) > 1
+
+
+def test_ingest_bundle_oversized_span_raises_before_post(tmp_path, quiet_platform):
+    """One span above the byte limit must fail before the first export_trace_request call."""
+    huge = {**AGENT_DOC, "raw_attributes": json.dumps({"payload": "x" * (5 * 1024 * 1024)})}
+    export_dir = _write_export(tmp_path, "ws-a", [huge])
+    quiet_platform["span_counts"] = [0]
+    quiet_platform["annotation_counts"] = [0]
+    quiet_platform["result_counts"] = [0]
+    with pytest.raises(RuntimeError, match="exceeds"):
+        reingest.ingest_bundle(
+            "http://x",
+            export_dir,
+            _manifest("ws-a", 1),
+            workspace_map={"ws-a": "ws-b"},
+            catalog=CATALOG,
+        )
+    assert quiet_platform["requests"] == []
+
+
 def test_build_request_groups_by_scope_and_encodes_protocol_fields():
     spans = [reingest.doc_to_otlp(AGENT_DOC, CATALOG), reingest.doc_to_otlp(LLM_DOC, CATALOG)]
     spans.append({**spans[1], "span_id": "aabbccdd11223344", "scope": None, "status_error": True})
@@ -625,7 +698,7 @@ def test_ingest_bundle_zero_ingests_everything(tmp_path, quiet_platform):
 
 
 def test_ingest_bundle_batches_spans(tmp_path, quiet_platform, monkeypatch):
-    monkeypatch.setattr(reingest, "SPAN_BATCH", 2)
+    monkeypatch.setattr(reingest, "OTLP_REQUEST_MAX_SPANS", 2)
     export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC, LLM_DOC, {**LLM_DOC, "span_id": "aabbccdd11223344"}])
     quiet_platform["span_counts"] = [0, 3]
     quiet_platform["annotation_counts"] = [0]

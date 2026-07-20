@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,6 +11,7 @@ import pytest
 import yaml
 from nemo_platform.auth.helpers import decode_jwt_claims, generate_unsigned_jwt
 from nemo_platform.cli.app import app
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from typer.testing import CliRunner
 
 from ..utils import assert_exit_code
@@ -67,7 +69,12 @@ def _decode_jwt_noop(token: str) -> dict:
 
 @pytest.fixture
 def oauth_config_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    for env_key in ("NMP_ACCESS_TOKEN", "NEMO_WORKLOAD_TOKEN", "NEMO_WORKLOAD_TOKEN_FILE"):
+    for env_key in (
+        "NMP_ACCESS_TOKEN",
+        "NEMO_WORKLOAD_TOKEN",
+        "NEMO_WORKLOAD_TOKEN_FILE",
+        WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
+    ):
         monkeypatch.delenv(env_key, raising=False)
 
     config_data = {
@@ -158,7 +165,7 @@ def test_auth_logout_warns_when_runtime_token_override_remains(
 ) -> None:
     monkeypatch.setattr("nemo_platform.cli.commands.auth.discover_nmp_config", _discover_auth_enabled)
     monkeypatch.setenv(
-        "NEMO_WORKLOAD_TOKEN",
+        "NMP_ACCESS_TOKEN",
         generate_unsigned_jwt(
             principal_id="svc-nemo-ci",
             email="svc-nemo-ci@example.com",
@@ -170,7 +177,7 @@ def test_auth_logout_warns_when_runtime_token_override_remains(
 
     assert_exit_code(result, 0)
     assert "Logged out successfully" in result.output
-    assert "NEMO_WORKLOAD_TOKEN environment override is still active" in result.output
+    assert "NMP_ACCESS_TOKEN environment override is still active" in result.output
 
 
 def test_auth_logout_fails_if_credentials_remain(oauth_config_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -308,7 +315,7 @@ def test_auth_status_shows_warning_for_unsigned_token(oauth_config_file: Path, m
     assert "local/testing" in result.output
 
 
-def test_runtime_token_source_label_handles_unreadable_token_file(
+def test_runtime_token_source_label_ignores_workload_identity_token_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from nemo_platform.cli.commands.auth import _runtime_token_source_label
@@ -317,8 +324,26 @@ def test_runtime_token_source_label_handles_unreadable_token_file(
     monkeypatch.delenv("NMP_ACCESS_TOKEN", raising=False)
     monkeypatch.delenv("NEMO_WORKLOAD_TOKEN", raising=False)
     monkeypatch.setenv("NEMO_WORKLOAD_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(token_file))
 
-    assert _runtime_token_source_label() == "NEMO_WORKLOAD_TOKEN_FILE environment override could not be read"
+    assert _runtime_token_source_label() is None
+
+
+def test_runtime_token_source_label_returns_none_when_config_label_fails(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from nemo_platform.cli.commands.auth import _runtime_token_source_label
+
+    monkeypatch.setattr(
+        "nemo_platform.config.config.Config.runtime_access_token_source_label",
+        lambda: (_ for _ in ()).throw(ValueError("invalid runtime token")),
+    )
+
+    with caplog.at_level(logging.DEBUG, logger="nemo_platform.cli.commands.auth"):
+        assert _runtime_token_source_label() is None
+
+    assert "Failed to resolve runtime token override source label" in caplog.text
+    assert "invalid runtime token" in caplog.text
 
 
 def test_auth_status_shows_config_file_credential_source(
@@ -651,8 +676,8 @@ def test_auth_login_unsigned_token_uses_principal_id_when_provided(
 @dataclass
 class IsAuthDisabledCase:
     id: str
-    auth_enabled: bool | None  # None means the cluster is unreachable (raises)
-    expected: bool | None
+    auth_enabled: bool
+    expected: bool
 
 
 @pytest.mark.parametrize(
@@ -660,22 +685,31 @@ class IsAuthDisabledCase:
     [
         IsAuthDisabledCase(id="disabled", auth_enabled=False, expected=True),
         IsAuthDisabledCase(id="enabled", auth_enabled=True, expected=False),
-        IsAuthDisabledCase(id="unreachable", auth_enabled=None, expected=None),
     ],
     ids=lambda c: c.id,
 )
 def test_is_auth_disabled(monkeypatch: pytest.MonkeyPatch, case: IsAuthDisabledCase) -> None:
-    import httpx
-
     def mock_discover(url: str, timeout: float = 10.0) -> SimpleNamespace:
-        if case.auth_enabled is None:
-            raise httpx.ConnectError("Connection refused")
         return SimpleNamespace(auth_enabled=case.auth_enabled)
 
     monkeypatch.setattr("nemo_platform.cli.commands.auth.discover_nmp_config", mock_discover)
     from nemo_platform.cli.commands.auth import is_auth_disabled
 
     assert is_auth_disabled("http://localhost:8080") is case.expected
+
+
+def test_is_auth_disabled_raises_when_discovery_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+    from nemo_platform.auth.helpers import AuthError
+    from nemo_platform.cli.commands.auth import is_auth_disabled
+
+    def raise_connect_error(url: str, timeout: float = 10.0) -> SimpleNamespace:
+        raise httpx.ConnectError("Connection refused")
+
+    monkeypatch.setattr("nemo_platform.cli.commands.auth.discover_nmp_config", raise_connect_error)
+
+    with pytest.raises(AuthError, match="Failed to discover auth configuration: Connection refused"):
+        is_auth_disabled("http://localhost:8080")
 
 
 # ---------------------------------------------------------------------------
@@ -702,6 +736,31 @@ def test_auth_status_when_auth_disabled_does_not_show_token_details(
     assert "Refresh Token" not in result.output
 
 
+def test_auth_status_when_cluster_unreachable_shows_local_state(
+    oauth_config_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import httpx
+
+    def raise_connect_error(url: str, timeout: float = 10.0) -> SimpleNamespace:
+        raise httpx.ConnectError("Connection refused")
+
+    monkeypatch.setattr("nemo_platform.cli.commands.auth.discover_nmp_config", raise_connect_error)
+    result = runner.invoke(app, ["--context", "foo", "auth", "status"])
+    output = " ".join(result.output.split())
+
+    assert_exit_code(result, 0)
+    assert "Failed to discover auth configuration:" in output
+    assert "Connection refused" in output
+    assert "Auth Discovery" in result.output
+    assert "unavailable" in result.output
+    assert "Auth Type" in result.output
+    assert "oauth" in result.output
+    assert "Credential Source" in result.output
+    assert "config file" in result.output
+    assert "Refresh Token" in result.output
+    assert "foo-token" not in result.output
+
+
 # ---------------------------------------------------------------------------
 # auth logout when auth disabled
 # ---------------------------------------------------------------------------
@@ -719,7 +778,7 @@ def test_auth_logout_when_auth_disabled_shows_message_and_skips_credential_clear
     mock_write.assert_not_called()
 
 
-def test_auth_logout_when_cluster_unreachable_still_clears_credentials(
+def test_auth_logout_when_cluster_unreachable_clears_local_credentials(
     oauth_config_file: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import httpx
@@ -728,9 +787,23 @@ def test_auth_logout_when_cluster_unreachable_still_clears_credentials(
         raise httpx.ConnectError("Connection refused")
 
     monkeypatch.setattr("nemo_platform.cli.commands.auth.discover_nmp_config", raise_connect_error)
-    with patch("nemo_platform.config.config.Config.write") as mock_write:
-        result = runner.invoke(app, ["--context", "foo", "auth", "logout"])
+    result = runner.invoke(app, ["--context", "foo", "auth", "logout"])
+    output = " ".join(result.output.split())
 
     assert_exit_code(result, 0)
-    mock_write.assert_called_once()
-    assert mock_write.call_args.kwargs["context_name"] == "foo"
+    assert "Failed to discover auth configuration: Connection refused" in output
+    assert "continuing to clear local credentials" in output
+    assert "Logged out successfully" in result.output
+
+    with open(oauth_config_file) as f:
+        data = yaml.safe_load(f)
+
+    default_user = next(user for user in data["users"] if user["name"] == "default")
+    foo_user = next(user for user in data["users"] if user["name"] == "foo")
+
+    assert default_user["type"] == "oauth"
+    assert default_user["token"] == "default-token"
+    assert default_user["refresh_token"] == "default-refresh"
+    assert foo_user["type"] == "no-auth"
+    assert "token" not in foo_user
+    assert "refresh_token" not in foo_user

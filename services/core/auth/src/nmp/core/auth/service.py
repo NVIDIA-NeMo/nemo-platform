@@ -9,6 +9,7 @@ from typing import ClassVar, List, Optional
 
 from nmp.common.config import get_service_config
 from nmp.common.service import RouterConfig, Service
+from nmp.core.auth.api.v2 import workload_token_exchange
 from nmp.core.auth.api.v2.bundle import endpoints as bundle
 from nmp.core.auth.api.v2.discovery import endpoints as discovery
 from nmp.core.auth.api.v2.iam import endpoints as iam
@@ -37,6 +38,11 @@ class AuthService(Service[AuthServiceConfig]):
             RouterConfig(iam.router, tag="IAM", description="Identity and Access Management endpoints"),
             RouterConfig(bundle.router, tag="Bundle", description="OPA bundle endpoints"),
             RouterConfig(discovery.router, tag="Discovery", description="Platform configuration discovery endpoints"),
+            RouterConfig(
+                workload_token_exchange.router,
+                tag="Workload Identity",
+                description="Workload identity token exchange endpoints",
+            ),
         ]
 
         # Only register authz routes when auth is enabled and using embedded policy engine

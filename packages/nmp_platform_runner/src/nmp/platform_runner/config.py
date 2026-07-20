@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, MutableMapping
+from collections.abc import MutableMapping
 from dataclasses import dataclass, field
 from importlib.resources import files
 from urllib.parse import urlparse
@@ -19,6 +19,7 @@ from nmp.common.config import (
     Configuration,
 )
 from nmp.common.service import Service
+from nmp.platform_runner.loader import ControllerRunFunc
 from nmp.platform_runner.registry import (
     AVAILABLE_SIDECARS,
     get_available_controllers,
@@ -43,7 +44,7 @@ class ResolvedRunConfiguration:
     port: int
     config_path: str
     available_services: dict[str, str | Service] = field(default_factory=dict)
-    available_controllers: dict[str, str | Callable] = field(default_factory=dict)
+    available_controllers: dict[str, str | ControllerRunFunc] = field(default_factory=dict)
 
 
 def default_config_path() -> str:
@@ -189,8 +190,9 @@ def apply_run_environment(
         host_for_url = _bracket_ipv6(effective_host)
         default_base_url = f"http://{host_for_url}:{effective_port}"
     base_url = env.setdefault("NMP_BASE_URL", default_base_url)
-    # Embedded PDP is served from the same platform process; keep the auth client
-    # origin aligned with NMP_BASE_URL when services run on a non-default port.
+    # Embedded PDP is usually served from the same platform process, so its
+    # self-call origin must stay aligned with the resolved base URL. Deployed
+    # mode can still override this explicitly by pre-setting the env var.
     env.setdefault("NMP_AUTH_POLICY_DECISION_POINT_BASE_URL", base_url)
     _set_or_clear_env(env, NMP_SERVICES_ENV_VAR, config.services)
     _set_or_clear_env(env, NMP_CONTROLLERS_ENV_VAR, config.controllers)

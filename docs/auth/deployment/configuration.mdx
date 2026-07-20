@@ -82,6 +82,69 @@ NMP_AUTH_EMBEDDED_PDP_AUTO_BUILD_WASM=true
 
 Nested keys (e.g., OIDC) use double underscore: `NMP_AUTH_OIDC__ISSUER`, `NMP_AUTH_OIDC__CLIENT_ID`.
 
+## OIDC Workload Identity Exchange
+
+`auth.oidc` can also advertise SDK workload identity token exchange metadata:
+
+```yaml
+auth:
+ oidc:
+ enabled: true
+ token_endpoint: "https://idp.example.com/oauth/token"
+ workload_token_exchange_enabled: true
+ workload_client_id: "nemo-platform-workload"
+ workload_token_endpoint: "https://idp.example.com/oauth/token"
+ workload_audience: "nemo-platform"
+ workload_scope: "openid email groups"
+```
+
+When `NMP_WORKLOAD_IDENTITY_TOKEN_FILE` is present, the SDK reads the subject
+token from that file and sends an RFC 8693 exchange request using
+`subject_token`, fixed JWT subject/access-token token types, optional `audience`,
+and optional `scope`. `workload_token_endpoint` is optional; when it is unset,
+the SDK uses `token_endpoint`. This is useful when host CLI login and workload
+containers need different network-reachable IdP URLs.
+
+For Docker-backed job runtimes, the executor may also need a controller-side
+subject-token issuer. Configure only Docker-specific fields under the Docker
+executor profile:
+
+```yaml
+jobs:
+  executors:
+    - provider: cpu
+      profile: workload
+      backend: docker
+      config:
+        workload_identity:
+          token_endpoint: "https://idp.example.com/oauth/token"
+          client_id: "nemo-platform-workload"
+          username: "svc-nemo"
+          password_env_var: "WORKLOAD_IDENTITY_PASSWORD"
+          scope: "openid email groups"
+```
+
+The password value is read from the controller process environment using
+`password_env_var`. The config does not support an inline `password` field.
+
+For Kubernetes-backed job runtimes, the jobs backend can project a Kubernetes
+service account token into each workload pod for token exchange. The projected
+token expiration defaults to `600` seconds and must be at least `600` seconds.
+In platform configuration, set
+`jobs.executors[].config.workload_identity_token_expiration_seconds` on the
+Kubernetes job executor profile. For example, this changes the projected token
+lifetime from the 600-second default to one hour:
+
+```yaml
+jobs:
+  executors:
+    - provider: cpu
+      profile: workload
+      backend: kubernetes_job
+      config:
+        workload_identity_token_expiration_seconds: 3600
+```
+
 ## Example Configurations
 
 ### Quickstart / development (auth disabled)

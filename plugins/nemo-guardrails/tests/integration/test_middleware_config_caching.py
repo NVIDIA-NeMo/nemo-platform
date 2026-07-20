@@ -45,7 +45,6 @@ class TestMiddlewareConfigCaching:
                 {
                     "type": "main",
                     "engine": "nim",
-                    "model": "rail-main-placeholder",
                     "parameters": {"base_url": main_base_url},
                 }
             ],

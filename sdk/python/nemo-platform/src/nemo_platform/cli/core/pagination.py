@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import logging
 import typing
+from contextlib import contextmanager
 from enum import Enum
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
@@ -18,6 +19,18 @@ if typing.TYPE_CHECKING:
     from nemo_platform.pagination import SyncDefaultPagination, SyncLogsPagination
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _suppress_root_logging() -> Iterator[None]:
+    """Temporarily suppress noisy SDK pagination logs without leaking state."""
+    root_logger = logging.getLogger()
+    previous_level = root_logger.level
+    root_logger.setLevel(logging.CRITICAL)
+    try:
+        yield
+    finally:
+        root_logger.setLevel(previous_level)
 
 
 class PaginationType(str, Enum):
@@ -139,17 +152,16 @@ def _fetch_all_pages_page_number(
         progress.update(task, total=total_pages)
         total_pages_count = total_pages
 
-    # TODO: quiet logging context manager
-    logging.getLogger().setLevel(logging.CRITICAL)
-    for page in response.iter_pages():
-        page_num = page.pagination.page
+    with _suppress_root_logging():
+        for page in response.iter_pages():
+            page_num = page.pagination.page
 
-        for item in page.data:
-            all_items.append(item)
+            for item in page.data:
+                all_items.append(item)
 
-        progress.update(
-            task, completed=page_num, description=f"Fetching pages... (page {page_num + 1}/{total_pages_count})"
-        )
+            progress.update(
+                task, completed=page_num, description=f"Fetching pages... (page {page_num}/{total_pages_count})"
+            )
 
     return AllPagesResponse(
         data=all_items,
@@ -172,8 +184,6 @@ def _fetch_all_pages_cursor(
     This is used for endpoints with `logs_pagination` in the stainless config.
     """
     all_items: list[Any] = []
-    page_num = 1
-
     # Fetch the first page
     try:
         response = list_method(*path_args, **body_args)
@@ -181,15 +191,12 @@ def _fetch_all_pages_cursor(
         progress.stop()
         raise e
 
-    # TODO: quiet logging context manager
-    logging.getLogger().setLevel(logging.CRITICAL)
-    for page in response.iter_pages():
-        page_num += 1
+    with _suppress_root_logging():
+        for page_num, page in enumerate(response.iter_pages(), start=1):
+            for item in page.data:
+                all_items.append(item)
 
-        for item in page.data:
-            all_items.append(item)
-
-        progress.update(task, completed=page_num, description=f"Fetching pages... (page {page_num + 1})")
+            progress.update(task, completed=page_num, description=f"Fetching pages... (page {page_num})")
 
     return AllCursorPagesResponse(
         data=all_items,

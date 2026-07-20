@@ -9,6 +9,7 @@ from typing import ClassVar
 
 import pytest
 from nemo_platform_plugin.config import (
+    Configuration,
     NemoConfig,
     NemoPlatformConfig,
     PlatformConfig,
@@ -17,6 +18,8 @@ from nemo_platform_plugin.config import (
     get_nemo_config,
     get_nemo_platform_config,
     get_platform_config,
+    get_platform_config_class,
+    register_platform_config_class,
     set_nemo_config_override,
 )
 from pydantic import Field
@@ -243,6 +246,23 @@ def test_get_platform_config_is_callable() -> None:
     """get_platform_config() is callable and returns a PlatformConfig."""
     result = get_platform_config()
     assert isinstance(result, PlatformConfig)
+
+
+def test_register_platform_config_class_controls_platform_config_accessors() -> None:
+    """A registered platform config class is used by all platform config accessors."""
+
+    class _RegisteredPlatformConfig(NemoPlatformConfig):
+        registered_marker: str = "registered"
+
+    previous_platform_config_class = get_platform_config_class()
+    register_platform_config_class(_RegisteredPlatformConfig)
+    try:
+        assert isinstance(Configuration.get_platform_config(), _RegisteredPlatformConfig)
+        assert isinstance(get_platform_config(), _RegisteredPlatformConfig)
+        assert isinstance(NemoPlatformConfig.get(), _RegisteredPlatformConfig)
+        assert isinstance(_RegisteredPlatformConfig.get(), _RegisteredPlatformConfig)
+    finally:
+        register_platform_config_class(previous_platform_config_class)
 
 
 def test_get_nemo_platform_config_alias() -> None:

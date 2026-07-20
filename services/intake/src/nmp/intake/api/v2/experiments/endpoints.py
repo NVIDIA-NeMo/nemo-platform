@@ -51,7 +51,7 @@ from nmp.intake.spans.evaluation_rollup_repository import (
     EvaluationRollupRepository,
     ScoreRollup,
 )
-from nmp.intake.spans.evaluation_session_repository import EvaluationSessionRepository
+from nmp.intake.spans.evaluation_session_repository import EvaluationSessionRepository, MetricSortTooLargeError
 from nmp.intake.spans.storage import make_pagination
 
 logger = logging.getLogger(__name__)
@@ -72,6 +72,20 @@ ExperimentGroupSortField = Literal["-created_at", "created_at", "-updated_at", "
 # sort by a ClickHouse rollup metric, not just entity columns. `sort` is therefore a free string,
 # validated against these: an entity column, run_count, or a `<metric>.<stat>` rollup path.
 _ENTITY_SORT_FIELDS = frozenset({"name", "created_at", "updated_at", "pinned_at"})
+# Sessions are sorted in ClickHouse (ORDER BY before LIMIT/OFFSET) so sort composes
+# correctly with pagination. These are the allowed field names; each maps to an SQL
+# expression in the repository - see _list_sql in evaluation_session_repository.py.
+_SESSION_SORT_FIELDS = frozenset(
+    {
+        "test_case_id",
+        "started_at",
+        "ended_at",
+        "latency_ms",
+        "cost_total_usd",
+        "status",
+        "tokens",
+    }
+)
 _METRIC_STATS = frozenset({"sum", "mean", "median", "p90", "p95", "p99", "count"})
 # Per-group evaluation fetch bound for the in-memory merge. Groups are expected to hold at most
 # hundreds; a query that selects more than this is rejected rather than sorted on a partial set — the
@@ -644,10 +658,10 @@ async def unpin_evaluation(
 @router.get(
     "/v2/workspaces/{workspace}/evaluations/{name}/sessions",
     response_model=Page[EvaluationSessionResponse],
-    tags=[EVALUATIONS_TAG],
     responses={
-        400: {"description": "Invalid filter value"},
+        400: {"description": "Invalid filter value, unsupported sort field, or empty sort"},
         404: {"description": "Evaluation not found"},
+        413: {"description": "Too many sessions to sort by cost or tokens"},
         503: {"description": "ClickHouse unavailable"},
     },
     openapi_extra=generate_openapi_extra_params(
@@ -671,8 +685,18 @@ async def list_evaluation_sessions(
             "300 characters; detailed returns full root-span payloads."
         ),
     ),
+    sort: str | None = Query(
+        default=None,
+        description=(
+            "Comma-separated list of fields to sort by, applied in order (the first field dominates); "
+            "prefix a field with '-' for descending — e.g. '-cost_total_usd,latency_ms'. Fields: "
+            "test_case_id, started_at, ended_at, latency_ms, status, cost_total_usd, tokens. When omitted, "
+            "sessions are ordered by started_at ascending."
+        ),
+    ),
 ) -> Page[EvaluationSessionResponse]:
     validate_list_query_params(request, additional_params={"mode"})
+    sort_keys = _parse_session_sort_keys(sort) if sort is not None else None
     evaluation = await _get_or_404(
         entity_client,
         Evaluation,
@@ -704,7 +728,18 @@ async def list_evaluation_sessions(
             page=page,
             page_size=page_size,
             mode=mode,
+            sort_keys=sort_keys,
         )
+    except MetricSortTooLargeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                f"This query selects {exc.total} sessions, exceeding the maximum of "
+                f"{exc.limit} that can be sorted by cost or tokens in one request. "
+                "Narrow the result with a filter (e.g. filter[status]=success) or sort by a "
+                "different field (started_at, latency_ms, status, test_case_id)."
+            ),
+        ) from exc
     except Exception as exc:
         # Sessions are the response payload (not enrichment), so we can't silently degrade like
         # _hydrate_rollups does. Convert backend failures (ClickHouse connection drop, query
@@ -1024,6 +1059,30 @@ def _parse_sort_keys(sort: str) -> tuple[list[tuple[str, bool]], bool]:
             detail="The 'sort' parameter must contain at least one field.",
         )
     return sort_keys, explicit_metric_sort
+
+
+def _parse_session_sort_keys(sort: str) -> list[tuple[str, bool]]:
+    """Parse the comma-separated ``sort`` param into an ordered list of ``(field, descending)`` keys.
+
+    Each field may be '-'-prefixed for descending; the keys are applied in order (the first field
+    dominates). Returns the keys. Raises 400 if a field is unsupported or the list is empty.
+    """
+    sort_keys: list[tuple[str, bool]] = []
+    for token in sort.split(","):
+        field_token = token.strip()
+        if not field_token:
+            continue
+        descending = field_token.startswith("-")
+        sort_field = field_token[1:] if descending else field_token
+        if sort_field not in _SESSION_SORT_FIELDS:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported sort field: {sort_field}")
+        sort_keys.append((sort_field, descending))
+    if not sort_keys:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The 'sort' parameter must contain at least one field.",
+        )
+    return sort_keys
 
 
 def _is_metric_field(field: str) -> bool:
