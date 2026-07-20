@@ -8,7 +8,9 @@ from nmp.intake.spans.evaluation_session_repository import (
     _SORT_EXPR_PAGE,
     _build_order_by,
     _count_sql,
+    _hydrate_by_ids_sql,
     _list_sql,
+    _metric_sort_page_ids_sql,
 )
 
 # ---------------------------------------------------------------------------
@@ -112,44 +114,64 @@ def test_single_field_sort_status_asc() -> None:
 
 
 def test_multi_field_sort_applies_keys_in_order() -> None:
-    # Primary: cost DESC, tie-break: latency ASC (plus stable root_span_id).
-    query = _make_list_sql(mode="summary", sort_keys=[("cost_total_usd", True), ("latency_ms", False)])
-
-    # pre_page_metrics must be present because cost_total_usd requires it.
-    assert "pre_page_metrics AS (" in query
-    # page_sessions ORDER BY references pm. for cost, plain column for latency.
-    assert "pm.cost_total_usd DESC NULLS LAST, latency_ms ASC NULLS LAST, s.root_span_id ASC" in query
-    # Final SELECT ORDER BY uses metrics. for cost.
-    assert (
-        "metrics.cost_total_usd DESC NULLS LAST, sessions.latency_ms ASC NULLS LAST, sessions.root_span_id ASC" in query
+    # Primary: cost DESC, tie-break: latency ASC. Cost requires the two-query path.
+    ids_query = _metric_sort_page_ids_sql(
+        trace_index_table="trace_index",
+        spans_table="spans",
+        scoped_filter_sql="",
+        sort_keys=[("cost_total_usd", True), ("latency_ms", False)],
     )
+    # The ids query orders by pm. for cost, plain column for latency, s.root_span_id tiebreaker.
+    assert "pm.cost_total_usd DESC NULLS LAST, latency_ms ASC NULLS LAST, s.root_span_id ASC" in ids_query
+    # Hydrate query has no ORDER BY — caller sorts in Python.
+    hydrate_query = _hydrate_by_ids_sql(
+        trace_index_table="trace_index",
+        spans_table="spans",
+        evaluator_results_table="evaluator_results",
+        mode="summary",
+    )
+    assert "ORDER BY" not in hydrate_query
 
 
 # ---------------------------------------------------------------------------
-# Sort: cost_total_usd and tokens trigger pre_page_metrics CTE
+# Sort: cost_total_usd and tokens go through the two-query path
 # ---------------------------------------------------------------------------
 
 
-def test_cost_sort_injects_pre_page_metrics_cte() -> None:
-    query = _make_list_sql(mode="summary", sort_keys=[("cost_total_usd", True)])
+def test_cost_sort_uses_two_query_path() -> None:
+    ids_query = _metric_sort_page_ids_sql(
+        trace_index_table="trace_index",
+        spans_table="spans",
+        scoped_filter_sql="",
+        sort_keys=[("cost_total_usd", True)],
+    )
+    # pre_page_metrics must appear before the final SELECT so the ORDER BY can reference pm.
+    pre_pos = ids_query.index("pre_page_metrics AS (")
+    select_pos = ids_query.index("SELECT s.workspace, s.session_id")
+    assert pre_pos < select_pos
+    assert "LEFT JOIN pre_page_metrics AS pm" in ids_query
+    # Hydrate uses session_ids IN list, no pre_page_metrics.
+    hydrate_query = _hydrate_by_ids_sql(
+        trace_index_table="trace_index",
+        spans_table="spans",
+        evaluator_results_table="evaluator_results",
+        mode="summary",
+    )
+    assert "pre_page_metrics" not in hydrate_query
+    assert "session_id IN %(session_ids)s" in hydrate_query
 
-    # The CTE must appear before page_sessions so page_sessions can JOIN against it.
-    pre_pos = query.index("pre_page_metrics AS (")
-    page_pos = query.index("page_sessions AS (")
-    assert pre_pos < page_pos
 
-    # page_sessions must join scoped_sessions with pre_page_metrics.
-    assert "LEFT JOIN pre_page_metrics AS pm" in query
-
-
-def test_tokens_sort_injects_pre_page_metrics_cte() -> None:
-    query = _make_list_sql(mode="summary", sort_keys=[("tokens", False)])
-
-    assert "pre_page_metrics AS (" in query
-    assert "pm.total_tokens ASC NULLS LAST" in query
-    # Final SELECT uses the NULL-safe coalesce form so sessions with only input or only
-    # output tokens still sort by their partial usage instead of NULL-ing to the bottom.
-    assert "coalesce(metrics.input_tokens, 0) + coalesce(metrics.output_tokens, 0)" in query
+def test_tokens_sort_uses_two_query_path() -> None:
+    ids_query = _metric_sort_page_ids_sql(
+        trace_index_table="trace_index",
+        spans_table="spans",
+        scoped_filter_sql="",
+        sort_keys=[("tokens", False)],
+    )
+    assert "pre_page_metrics AS (" in ids_query
+    assert "pm.total_tokens ASC NULLS LAST" in ids_query
+    # NULL-safe coalesce in the pre_page_metrics total_tokens computation.
+    assert "coalesce" in ids_query
 
 
 # ---------------------------------------------------------------------------
