@@ -9,10 +9,13 @@
 # This is an imperative install — it does NOT touch uv.lock, and CI intentionally runs without it
 # (the `# ty: ignore[unresolved-import]` in agent_eval/runtimes/fabric/runtime.py covers the CI case).
 #
-# nemo-fabric and the nemo-relay gateway are private/native builds with no published wheel/binary in
-# our index, so they can't be locked dependencies yet (see
-# plugins/nemo-evaluator/docs/design/fabric-runner-integration.md, Tier 3). A live codex run also
-# needs the `codex` CLI + `codex login` auth.
+# On Linux you no longer need this script for the SDK: `nemo-fabric` now publishes wheels to PyPI and
+# is a locked, Linux-gated `fabric` extra on nemo-evaluator-sdk — install it with
+# `uv sync --extra fabric` (or `uv pip install "nemo-evaluator-sdk[fabric]"`). This script remains
+# the path for (a) macOS-native dev, where nemo-fabric-runtime has no wheel yet (manylinux only), and
+# (b) the `nemo-relay` GATEWAY BINARY, a Rust CLI that is NOT published to PyPI on any platform and is
+# still required for live ATIF trajectory capture. A live codex run also needs the `codex` CLI +
+# `codex login` auth. See plugins/nemo-evaluator/docs/design/fabric-runner-integration.md.
 #
 # Usage:
 #   script/dev-install-fabric.sh                 # NeMo-Fabric+NeMo-Relay under $HOME/workspace

@@ -30,7 +30,7 @@ dependencies = [
   "ragas==0.4.3",
   "langchain-openai>=1.3.5",
   "langchain-nvidia-ai-endpoints>=1.4.3,<2.0.0",
-  "nemo-relay>=0.4.0,<0.5.0",
+  "nemo-relay>=0.5.0,<0.7",
 ]
 version = "0.0.0"
 
@@ -53,6 +53,21 @@ harbor = [
 ]
 nemo-platform = [
   "nemo-platform-sdk",
+]
+# NeMo Fabric agent-eval runtime (FabricAgentRuntime / FabricContainerRuntime). Installs the
+# published Fabric SDK + adapters instead of a source build. Notes:
+#   * The native `nemo-fabric-runtime` wheel (which provides the `nemo_fabric` module) ships
+#     manylinux *and* macOS arm64 as of 0.1.0rc2, so the extra resolves on every environment in
+#     [tool.uv] environments and needs no platform marker. macOS-native dev can still use
+#     script/dev-install-fabric.sh to build Fabric from source; that script also cargo-installs the
+#     `nemo-relay` gateway binary (not published to PyPI) needed for live ATIF trajectory capture.
+#   * Fabric has not cut a final 0.1.0 yet, so the explicit prerelease in the specifier scopes uv's
+#     prerelease allowance to just this package (workspace prerelease = "if-necessary-or-explicit").
+#   * The `hermes` extra is intentionally omitted: hermes-agent pins `requests==2.33.0` exactly,
+#     which conflicts with the workspace's `requests>=2.33.1` floor (root pyproject.toml). Re-add it
+#     once hermes-agent loosens that pin. (hermes is Python<3.14-gated upstream regardless.)
+fabric = [
+  "nemo-fabric[claude,codex,deepagents,runtime]>=0.1.0rc2",
 ]
 
 [build-system]
