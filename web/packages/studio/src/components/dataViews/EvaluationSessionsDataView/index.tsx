@@ -86,9 +86,7 @@ const SESSION_SORT_FIELD_MAP: Readonly<Record<string, string>> = {
 
 // Converts the table's multi-column sorting state to the comma-separated `sort` API param.
 // Returns undefined when nothing is sorted so the endpoint uses its default order.
-const getSessionSortParam = (
-  sortingState: { id: string; desc: boolean }[]
-): string | undefined => {
+const getSessionSortParam = (sortingState: { id: string; desc: boolean }[]): string | undefined => {
   if (sortingState.length === 0) return undefined;
   const fields = sortingState
     .map(({ id, desc }) => {
