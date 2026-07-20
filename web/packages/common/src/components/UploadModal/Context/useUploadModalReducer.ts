@@ -107,6 +107,7 @@ export const uploadModalReducer = (
         allowMultipleFileSelection: state.allowMultipleFileSelection,
         invalidFileMode: state.invalidFileMode,
         allowNewDataset: state.allowNewDataset,
+        showUpdatedAt: state.showUpdatedAt,
       };
 
     case 'UPDATE_DATASET':

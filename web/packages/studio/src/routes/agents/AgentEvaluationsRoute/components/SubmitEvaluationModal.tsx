@@ -34,7 +34,7 @@ import {
   MODE_FILESET,
   parseEvalConfig,
 } from '@studio/routes/agents/AgentEvaluationsRoute/components/submitEvaluationSpec';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type FC, useEffect, useRef, useState } from 'react';
 import { FormProvider, type SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
@@ -197,6 +197,9 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     },
     enabled: open && mode === MODE_DEFAULT && !!exampleKey,
     staleTime: Infinity,
+    // Retain the prior example's parsed config while the next one loads so the
+    // judge picker stays mounted (all examples are llm-judge) — no flicker.
+    placeholderData: keepPreviousData,
   });
 
   const isLlmJudge = mode === MODE_DEFAULT && exampleConfig?.metric.metric_type === 'llm-judge';

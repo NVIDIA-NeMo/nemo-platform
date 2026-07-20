@@ -5,13 +5,21 @@ import {
   bareName,
   buildAgentEvalRequestBody,
   buildAgentTarget,
-  buildJudgeModel,
   type EvalConfig,
   fanMetricOntoTasks,
   injectJudgeModel,
   type InlineMetricBundle,
   parseEvalConfig,
 } from '@studio/routes/agents/AgentEvaluationsRoute/components/submitEvaluationSpec';
+
+/** A config whose metric already carries a baked-in judge ModelRef. */
+const configWithBakedJudge = (): EvalConfig => ({
+  ...config,
+  metric: {
+    ...metric,
+    payload: { kind: 'inline', metric: { ...metric.payload.metric, model: 'ws-a/baked-in' } },
+  },
+});
 
 const metric: InlineMetricBundle = {
   bundle_kind: 'metric-bundle',
@@ -46,15 +54,6 @@ describe('bareName', () => {
   });
 });
 
-describe('buildJudgeModel', () => {
-  it('builds an IGW openai endpoint with the bare model name + nim format', () => {
-    const judge = buildJudgeModel('ws-a', 'ws-a/nemotron-super');
-    expect(judge.name).toBe('nemotron-super');
-    expect(judge.format).toBe('nim');
-    expect(judge.url).toContain('/apis/inference-gateway/v2/workspaces/ws-a/openai/-/v1');
-  });
-});
-
 describe('buildAgentTarget', () => {
   it('targets the non-streaming /generate endpoint of the agent', () => {
     const target = buildAgentTarget('ws-a', 'support-bot');
@@ -69,23 +68,26 @@ describe('buildAgentTarget', () => {
 });
 
 describe('injectJudgeModel', () => {
-  it('injects the judge model without mutating the input', () => {
-    const judge = buildJudgeModel('ws-a', 'ws-a/j');
-    const out = injectJudgeModel(metric, judge);
-    expect(out.payload.metric.model).toEqual(judge);
+  it('sets the judge ModelRef string without mutating the input', () => {
+    const out = injectJudgeModel(metric, 'ws-a/nemotron-super');
+    expect(out.payload.metric.model).toBe('ws-a/nemotron-super');
     expect(metric.payload.metric.model).toBeUndefined();
   });
 });
 
 describe('fanMetricOntoTasks', () => {
   it('attaches the judge-injected metric to every task', () => {
-    const judge = buildJudgeModel('ws-a', 'ws-a/j');
-    const tasks = fanMetricOntoTasks(config, judge);
+    const tasks = fanMetricOntoTasks(config, 'ws-a/j');
     expect(tasks).toHaveLength(2);
     for (const t of tasks) {
       expect(t.metrics).toHaveLength(1);
-      expect((t.metrics[0].payload.metric.model as { name: string }).name).toBe('j');
+      expect(t.metrics[0].payload.metric.model).toBe('ws-a/j');
     }
+  });
+
+  it("keeps the config's own judge when none is supplied", () => {
+    const tasks = fanMetricOntoTasks(configWithBakedJudge(), null);
+    expect(tasks[0].metrics[0].payload.metric.model).toBe('ws-a/baked-in');
   });
 });
 
@@ -100,6 +102,16 @@ describe('buildAgentEvalRequestBody', () => {
     expect(body.spec.max_concurrent_tasks).toBe(2);
     expect(body.spec.target.agent.name).toBe('support-bot');
     expect(body.spec.tasks[0].metrics[0].metric_type).toBe('llm-judge');
+    expect(body.spec.tasks[0].metrics[0].payload.metric.model).toBe('ws-a/judge');
+  });
+
+  it("keeps the config's baked-in judge when no judge is selected (chosen fileset)", () => {
+    const body = buildAgentEvalRequestBody(configWithBakedJudge(), {
+      workspace: 'ws-a',
+      agent: 'a',
+      judgeModel: '',
+    });
+    expect(body.spec.tasks[0].metrics[0].payload.metric.model).toBe('ws-a/baked-in');
   });
 
   it('defaults max_concurrent_tasks when the config omits it', () => {
@@ -124,5 +136,11 @@ describe('parseEvalConfig', () => {
 
   it('rejects a config with no metric', () => {
     expect(() => parseEvalConfig(JSON.stringify({ tasks: config.tasks }))).toThrow(/metric/);
+  });
+
+  it('rejects a metric missing payload.metric', () => {
+    expect(() =>
+      parseEvalConfig(JSON.stringify({ tasks: config.tasks, metric: { metric_type: 'llm-judge' } }))
+    ).toThrow(/payload\.metric/);
   });
 });

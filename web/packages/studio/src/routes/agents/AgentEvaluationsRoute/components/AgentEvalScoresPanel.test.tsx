@@ -25,4 +25,32 @@ describe('AgentEvalScoresPanel', () => {
     expect(screen.getByText('4/5 scored · range 0.000–1.000')).toBeInTheDocument();
     expect(screen.getByText('0.750')).toBeInTheDocument();
   });
+
+  it('renders the rubric distribution and mode category for rubric scores', () => {
+    render(
+      <AgentEvalScoresPanel
+        scores={[
+          {
+            name: 'llm-judge.helpfulness',
+            count: 3,
+            nan_count: 0,
+            mean: 0.667,
+            score_type: 'rubric',
+            mode_category: 'partially_helpful',
+            rubric_distribution: [
+              { label: 'unhelpful', value: 0, count: 1 },
+              { label: 'partially_helpful', value: 0.5, count: 2 },
+              { label: 'helpful', value: 1, count: 0 },
+            ],
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText('Most frequent: partially_helpful')).toBeInTheDocument();
+    expect(screen.getByText('unhelpful: 1')).toBeInTheDocument();
+    expect(screen.getByText('partially_helpful: 2')).toBeInTheDocument();
+    expect(screen.getByText('helpful: 0')).toBeInTheDocument();
+    expect(screen.getByText('0.667')).toBeInTheDocument();
+  });
 });

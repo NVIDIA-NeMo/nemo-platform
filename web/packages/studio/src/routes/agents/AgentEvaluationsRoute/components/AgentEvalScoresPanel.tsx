@@ -23,7 +23,7 @@ export const AgentEvalScoresPanel: FC<AgentEvalScoresPanelProps> = ({ scores }) 
       {scores.map((s) => {
         const total = s.count + s.nan_count;
         return (
-          <Flex key={s.name} justify="between" align="center" gap="density-md" wrap="wrap">
+          <Flex key={s.name} justify="between" align="start" gap="density-md" wrap="wrap">
             <Stack gap="density-xs" className="min-w-0">
               <Text kind="body/semibold/md" className="truncate">
                 {s.name}
@@ -34,6 +34,22 @@ export const AgentEvalScoresPanel: FC<AgentEvalScoresPanelProps> = ({ scores }) 
                   ? ` · range ${formatScore(s.min)}–${formatScore(s.max)}`
                   : ''}
               </Text>
+              {s.score_type === 'rubric' && (
+                <Stack gap="density-xs">
+                  {s.mode_category ? (
+                    <Text kind="body/regular/sm" color="secondary">
+                      Most frequent: {s.mode_category}
+                    </Text>
+                  ) : null}
+                  <Flex gap="density-xs" wrap="wrap">
+                    {s.rubric_distribution.map((r) => (
+                      <Badge key={r.label} kind="outline" color="gray">
+                        {r.label}: {r.count ?? 0}
+                      </Badge>
+                    ))}
+                  </Flex>
+                </Stack>
+              )}
             </Stack>
             <Badge kind="solid" color={scoreColor(s.mean)}>
               {formatScore(s.mean)}

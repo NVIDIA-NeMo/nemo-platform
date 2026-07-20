@@ -62,7 +62,8 @@ export interface SubmitSelections {
   workspace: string;
   /** Agent (bare name) to evaluate; used to build the generic target. */
   agent: string;
-  /** Judge model id from JudgeModelSelect (URN "workspace/name" or bare name). */
+  /** Judge ModelRef ("workspace/name") from JudgeModelSelect, injected into the
+   *  metric. Empty in chosen-fileset mode, where the config's own judge is kept. */
   judgeModel: string;
   /** Eval-config fileset name, stored as the job description for display in the detail view. */
   filesetName?: string;
@@ -71,16 +72,6 @@ export interface SubmitSelections {
 /** Strip an optional ``workspace/`` prefix, returning the bare model/agent name. */
 export const bareName = (value: string): string =>
   value.includes('/') ? (value.split('/').pop() ?? value) : value;
-
-/** The judge model endpoint (IGW OpenAI-compatible route), format ``nim``. */
-export const buildJudgeModel = (
-  workspace: string,
-  judgeModel: string
-): { url: string; name: string; format: 'nim' } => ({
-  url: `${PLATFORM_BASE_URL}/apis/inference-gateway/v2/workspaces/${encodeURIComponent(workspace)}/openai/-/v1`,
-  name: bareName(judgeModel),
-  format: 'nim',
-});
 
 /** The generic agent target: the deployed agent's non-streaming ``/generate``. */
 export const buildAgentTarget = (workspace: string, agent: string) => ({
@@ -95,10 +86,11 @@ export const buildAgentTarget = (workspace: string, agent: string) => ({
   },
 });
 
-/** Inject the judge model into a shared metric bundle (does not mutate input). */
+/** Set the metric's judge model to a ``workspace/name`` ModelRef (resolved to a
+ *  reachable Model server-side). Does not mutate input. */
 export const injectJudgeModel = (
   metric: InlineMetricBundle,
-  judgeModel: ReturnType<typeof buildJudgeModel>
+  judgeModel: string
 ): InlineMetricBundle => ({
   ...metric,
   payload: {
@@ -107,27 +99,26 @@ export const injectJudgeModel = (
   },
 });
 
-/** Fan the shared metric (with judge injected) onto every task. */
+/** Fan the shared metric onto every task. A judge model is injected only when
+ *  one is supplied (the "Use Example" path); otherwise the config's own judge
+ *  ModelRef is kept as-is (chosen-fileset configs are self-contained). */
 export const fanMetricOntoTasks = (
   config: EvalConfig,
-  judgeModel: ReturnType<typeof buildJudgeModel>
+  judgeModel: string | null
 ): Array<EvalConfigTask & { metrics: InlineMetricBundle[] }> => {
-  const metric = injectJudgeModel(config.metric, judgeModel);
+  const metric = judgeModel ? injectJudgeModel(config.metric, judgeModel) : config.metric;
   return config.tasks.map((task) => ({ ...task, metrics: [metric] }));
 };
 
 /** Build the full ``agent-evaluate/jobs`` POST body from a config + selections. */
-export const buildAgentEvalRequestBody = (config: EvalConfig, selections: SubmitSelections) => {
-  const judge = buildJudgeModel(selections.workspace, selections.judgeModel);
-  return {
-    ...(selections.filesetName ? { description: selections.filesetName } : {}),
-    spec: {
-      tasks: fanMetricOntoTasks(config, judge),
-      target: buildAgentTarget(selections.workspace, selections.agent),
-      max_concurrent_tasks: config.max_concurrent_tasks ?? DEFAULT_MAX_CONCURRENT_TASKS,
-    },
-  };
-};
+export const buildAgentEvalRequestBody = (config: EvalConfig, selections: SubmitSelections) => ({
+  ...(selections.filesetName ? { description: selections.filesetName } : {}),
+  spec: {
+    tasks: fanMetricOntoTasks(config, selections.judgeModel || null),
+    target: buildAgentTarget(selections.workspace, selections.agent),
+    max_concurrent_tasks: config.max_concurrent_tasks ?? DEFAULT_MAX_CONCURRENT_TASKS,
+  },
+});
 
 /** Parse an eval-config.json blob, validating the minimal required shape. */
 export const parseEvalConfig = (text: string): EvalConfig => {
@@ -137,6 +128,18 @@ export const parseEvalConfig = (text: string): EvalConfig => {
   }
   if (!parsed.metric || typeof parsed.metric !== 'object') {
     throw new Error('eval-config.json must contain a "metric"');
+  }
+  // Guard the one shape the client dereferences (injection reads payload.metric)
+  // so a malformed bundle fails here, not with a TypeError at request build.
+  // Metric-type/bounds validity is the backend's job (bundle is otherwise loose).
+  const { payload } = parsed.metric;
+  if (
+    !payload ||
+    typeof payload !== 'object' ||
+    !payload.metric ||
+    typeof payload.metric !== 'object'
+  ) {
+    throw new Error('eval-config.json "metric" must contain a "payload.metric" object');
   }
   return {
     tasks: parsed.tasks,
