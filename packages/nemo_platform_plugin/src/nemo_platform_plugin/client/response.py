@@ -73,6 +73,10 @@ class NemoResponse(Generic[ResponseT]):
         resp.http_response    # full httpx.Response
 
         user = resp.data()    # raises on non-2xx, otherwise returns body
+
+    When several 2xx codes share one typed body (e.g. a delete that returns 202
+    Accepted for async teardown or 204 No Content when already gone, both typed
+    ``None``), inspect ``resp.http_response.status_code`` to tell them apart.
     """
 
     http_response: httpx.Response

@@ -10,6 +10,7 @@ from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.jobs.client import AsyncJobsClient
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
+from nemo_platform_plugin.models.client import AsyncModelsClient
 from nmp.common.api.filter import ComparisonOperation, FilterOperator
 from nmp.common.controller.controller import Controller
 from nmp.common.observability import start_span_with_ctx
@@ -156,13 +157,14 @@ class WorkspaceCleanup(Controller):
     async def _cleanup_deployments(self, workspace: Workspace) -> None:
         logger.info(f"Cleaning up deployments for workspace: {workspace.name}")
         try:
-            deployments_response = await self._nmp_sdk.inference.deployments.list(workspace=workspace.name)
-            deployments = [deployment async for deployment in deployments_response]
+            models_client = client_from_platform(self._nmp_sdk, AsyncModelsClient)
+            deployments_response = await models_client.list_deployments(workspace=workspace.name)
+            deployments = [deployment async for deployment in deployments_response.items()]
 
             for deployment in deployments:
                 try:
                     logger.info(f"Deleting deployment: {deployment.name}")
-                    await self._nmp_sdk.inference.deployments.delete(
+                    await models_client.delete_deployment(
                         name=deployment.name,
                         workspace=workspace.name,
                     )

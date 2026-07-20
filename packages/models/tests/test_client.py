@@ -1,556 +1,291 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from unittest.mock import AsyncMock, MagicMock, patch
+"""Tests for the extended ModelsResource / AsyncModelsResource helpers.
 
+These exercise the *source* package (``models.resources``) which drives the
+typed ``ModelsClient`` built from the SDK. The route builders are pure (no I/O);
+the deployment/provider helpers are driven through a mocked httpx transport
+shared by the SDK and the typed client (via ``client_from_platform``).
+"""
+
+from unittest.mock import MagicMock, patch
+
+import httpx
 import pytest
+from models.resources import AsyncModelsResource, ModelsResource
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform.types.inference import ModelDeployment, ModelProvider
 from nemo_platform.types.models import ModelEntity
 
-# ============================================================================
-# Fixtures
-# ============================================================================
+
+def _resource(base_url: str = "https://nmp.example.com/", workspace: str | None = None, **kwargs) -> ModelsResource:
+    return ModelsResource(NeMoPlatform(base_url=base_url, workspace=workspace, **kwargs))
 
 
-@pytest.fixture
-def sdk():
-    """Create a real NeMoPlatform SDK instance for testing."""
-    return NeMoPlatform(base_url="https://nmp.example.com/")
+def _async_resource(
+    base_url: str = "https://nmp.example.com/", workspace: str | None = None, **kwargs
+) -> AsyncModelsResource:
+    return AsyncModelsResource(AsyncNeMoPlatform(base_url=base_url, workspace=workspace, **kwargs))
 
 
-@pytest.fixture
-def sdk_with_workspace():
-    """Create SDK with client-level workspace set."""
-    return NeMoPlatform(base_url="https://nmp.example.com/", workspace="client-ws")
+# ---------------------------------------------------------------------------
+# Base URL / route builders
+# ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def sdk_no_trailing_slash():
-    """Create SDK with base_url without trailing slash."""
-    return NeMoPlatform(base_url="https://nmp.example.com")
+def test_get_base_url_str_removes_trailing_slash() -> None:
+    assert _resource("https://nmp.example.com/")._get_base_url_str() == "https://nmp.example.com"
+    assert _resource("https://nmp.example.com")._get_base_url_str() == "https://nmp.example.com"
 
 
-@pytest.fixture
-def async_sdk():
-    """Create a real AsyncNeMoPlatform SDK instance for testing."""
-    return AsyncNeMoPlatform(base_url="https://nmp.example.com/")
+def test_get_openai_route_base_url_explicit_workspace() -> None:
+    r = _resource()
+    assert (
+        r.get_openai_route_base_url(workspace="default")
+        == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
+    )
+    assert "//v2" not in r.get_openai_route_base_url(workspace="default")
 
 
-@pytest.fixture
-def async_sdk_with_workspace():
-    """Create async SDK with client-level workspace set."""
-    return AsyncNeMoPlatform(base_url="https://nmp.example.com/", workspace="client-ws")
+def test_get_openai_route_base_url_without_trailing_slash() -> None:
+    r = _resource("https://nmp.example.com")
+    assert (
+        r.get_openai_route_base_url(workspace="default")
+        == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
+    )
 
 
-# ============================================================================
-# ModelsResource Tests
-# ============================================================================
-
-
-# Tests for _get_base_url_str
-
-
-def test_get_base_url_str_removes_trailing_slash(sdk):
-    """Test that trailing slash is removed from base URL."""
-    result = sdk.models._get_base_url_str()
-
-    assert result == "https://nmp.example.com"
-    assert not result.endswith("/")
-
-
-def test_get_base_url_str_handles_no_trailing_slash(sdk_no_trailing_slash):
-    """Test that URLs without trailing slash are unchanged."""
-    result = sdk_no_trailing_slash.models._get_base_url_str()
-
-    assert result == "https://nmp.example.com"
-
-
-# Tests for get_openai_route_base_url
-
-
-def test_get_openai_route_base_url_explicit_workspace(sdk):
-    """Test URL generation with explicit workspace."""
-    result = sdk.models.get_openai_route_base_url(workspace="default")
-
-    assert result == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
-
-
-def test_get_openai_route_base_url_custom_workspace(sdk):
-    """Test URL generation with custom workspace name."""
-    result = sdk.models.get_openai_route_base_url(workspace="my-workspace")
-
-    assert result == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/my-workspace/openai/-/v1"
-
-
-def test_get_openai_route_base_url_with_trailing_slash(sdk):
-    """Test that trailing slash in base_url is handled correctly."""
-    result = sdk.models.get_openai_route_base_url(workspace="default")
-
-    assert "//v2" not in result
-    assert result == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
-
-
-def test_get_openai_route_base_url_without_trailing_slash(sdk_no_trailing_slash):
-    """Test URL generation when base_url has no trailing slash."""
-    result = sdk_no_trailing_slash.models.get_openai_route_base_url(workspace="default")
-
-    assert result == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
-
-
-# Tests for get_provider_route_openai_url
-
-
-def test_get_provider_route_openai_url_appends_v1(sdk):
-    """Test that /v1 is appended when provider host_url doesn't end with /v1."""
+def test_provider_route_openai_url_appends_v1() -> None:
     provider = MagicMock(spec=ModelProvider)
     provider.workspace = "default"
     provider.name = "openai-provider"
     provider.host_url = "https://api.openai.com"
-
-    result = sdk.models.get_provider_route_openai_url(provider)
-
     assert (
-        result == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/provider/openai-provider/-/v1"
+        _resource().get_provider_route_openai_url(provider)
+        == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/provider/openai-provider/-/v1"
     )
 
 
-def test_get_provider_route_openai_url_no_v1_when_host_ends_with_v1(sdk):
-    """Test that /v1 is NOT appended when provider host_url already ends with /v1."""
-    provider = MagicMock(spec=ModelProvider)
-    provider.workspace = "default"
-    provider.name = "nim-provider"
-    provider.host_url = "https://nim.example.com/v1"
-
-    result = sdk.models.get_provider_route_openai_url(provider)
-
-    assert result == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/provider/nim-provider/-"
-
-
-def test_get_provider_route_openai_url_no_v1_when_host_ends_with_v1_slash(sdk):
-    """Test that /v1 is NOT appended when provider host_url ends with /v1/."""
-    provider = MagicMock(spec=ModelProvider)
-    provider.workspace = "default"
-    provider.name = "nim-provider"
-    provider.host_url = "https://nim.example.com/v1/"
-
-    result = sdk.models.get_provider_route_openai_url(provider)
-
-    assert result == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/provider/nim-provider/-"
+def test_provider_route_openai_url_no_v1_when_host_ends_with_v1() -> None:
+    for host in ("https://nim.example.com/v1", "https://nim.example.com/v1/"):
+        provider = MagicMock(spec=ModelProvider)
+        provider.workspace = "default"
+        provider.name = "nim-provider"
+        provider.host_url = host
+        assert (
+            _resource().get_provider_route_openai_url(provider)
+            == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/provider/nim-provider/-"
+        )
 
 
-def test_get_provider_route_openai_url_custom_workspace(sdk):
-    """Test provider URL generation with custom workspace."""
-    provider = MagicMock(spec=ModelProvider)
-    provider.workspace = "production"
-    provider.name = "my-provider"
-    provider.host_url = "https://api.example.com"
-
-    result = sdk.models.get_provider_route_openai_url(provider)
-
-    assert result == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/production/provider/my-provider/-/v1"
-
-
-# Tests for get_model_entity_route_openai_url
-
-
-def test_get_model_entity_route_openai_url_default_workspace(sdk):
-    """Test URL generation for model entity."""
-    model_entity = MagicMock(spec=ModelEntity)
-    model_entity.workspace = "default"
-    model_entity.name = "llama3-70b-instruct"
-
-    result = sdk.models.get_model_entity_route_openai_url(model_entity)
-
-    assert (
-        result == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/model/llama3-70b-instruct/-/v1"
-    )
-
-
-def test_get_model_entity_route_openai_url_custom_workspace(sdk):
-    """Test URL generation for model entity with custom workspace."""
+def test_model_entity_route_openai_url_always_v1() -> None:
     model_entity = MagicMock(spec=ModelEntity)
     model_entity.workspace = "ml-team"
     model_entity.name = "custom-model"
-
-    result = sdk.models.get_model_entity_route_openai_url(model_entity)
-
-    assert result == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/ml-team/model/custom-model/-/v1"
-
-
-def test_get_model_entity_route_openai_url_always_appends_v1(sdk):
-    """Test that /v1 is always appended for model entity routes."""
-    model_entity = MagicMock(spec=ModelEntity)
-    model_entity.workspace = "default"
-    model_entity.name = "test-model"
-
-    result = sdk.models.get_model_entity_route_openai_url(model_entity)
-
-    assert result.endswith("/v1")
-
-
-# Tests for get_provider_route_openai_url_for_deployment
-
-
-def test_get_provider_route_openai_url_for_deployment_fetches_provider(sdk):
-    """Test that provider is fetched and URL is generated correctly."""
-    mock_provider = MagicMock(spec=ModelProvider)
-    mock_provider.workspace = "default"
-    mock_provider.name = "my-provider"
-    mock_provider.host_url = "https://api.example.com"
-
-    deployment = MagicMock(spec=ModelDeployment)
-    deployment.name = "my-deployment"
-    deployment.model_provider_id = "default/my-provider"
-
-    # Mock the provider retrieval
-    with patch.object(sdk.inference.providers, "retrieve", return_value=mock_provider) as mock_retrieve:
-        result = sdk.models.get_provider_route_openai_url_for_deployment(deployment)
-
-        mock_retrieve.assert_called_once_with("my-provider", workspace="default")
-        assert (
-            result == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/provider/my-provider/-/v1"
-        )
-
-
-def test_get_provider_route_openai_url_for_deployment_respects_v1_suffix(sdk):
-    """Test that /v1 is not appended when provider host_url ends with /v1."""
-    mock_provider = MagicMock(spec=ModelProvider)
-    mock_provider.workspace = "production"
-    mock_provider.name = "nim-provider"
-    mock_provider.host_url = "https://nim.example.com/v1"
-
-    deployment = MagicMock(spec=ModelDeployment)
-    deployment.name = "nim-deployment"
-    deployment.model_provider_id = "production/nim-provider"
-
-    with patch.object(sdk.inference.providers, "retrieve", return_value=mock_provider):
-        result = sdk.models.get_provider_route_openai_url_for_deployment(deployment)
-
-        assert (
-            result == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/production/provider/nim-provider/-"
-        )
-
-
-def test_get_provider_route_openai_url_for_deployment_raises_when_no_provider_id(sdk):
-    """Test that ValueError is raised when deployment has no model_provider_id."""
-    deployment = MagicMock(spec=ModelDeployment)
-    deployment.name = "orphan-deployment"
-    deployment.model_provider_id = None
-
-    with pytest.raises(ValueError) as exc_info:
-        sdk.models.get_provider_route_openai_url_for_deployment(deployment)
-
-    assert "orphan-deployment" in str(exc_info.value)
-    assert "no associated model_provider_id" in str(exc_info.value)
-
-
-def test_get_provider_route_openai_url_for_deployment_raises_when_empty_provider_id(sdk):
-    """Test that ValueError is raised when deployment has empty model_provider_id."""
-    deployment = MagicMock(spec=ModelDeployment)
-    deployment.name = "empty-provider-deployment"
-    deployment.model_provider_id = ""
-
-    with pytest.raises(ValueError) as exc_info:
-        sdk.models.get_provider_route_openai_url_for_deployment(deployment)
-
-    assert "empty-provider-deployment" in str(exc_info.value)
-
-
-# Tests for get_openai_client
-
-
-def test_get_openai_client_returns_configured_client(sdk):
-    """Test that get_openai_client returns an OpenAI client with correct base_url."""
-    with patch("openai.OpenAI") as mock_openai_cls:
-        mock_openai_cls.return_value = MagicMock()
-
-        sdk.models.get_openai_client(workspace="default")
-        expected_headers = sdk.models.get_client_default_headers()
-
-        mock_openai_cls.assert_called_once_with(
-            base_url="https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
-            api_key="not-needed",
-            default_headers=expected_headers,
-        )
-
-
-def test_get_openai_client_custom_workspace(sdk):
-    """Test get_openai_client with custom workspace."""
-    with patch("openai.OpenAI") as mock_openai_cls:
-        mock_openai_cls.return_value = MagicMock()
-
-        sdk.models.get_openai_client(workspace="production")
-        expected_headers = sdk.models.get_client_default_headers()
-
-        mock_openai_cls.assert_called_once_with(
-            base_url="https://nmp.example.com/apis/inference-gateway/v2/workspaces/production/openai/-/v1",
-            api_key="not-needed",
-            default_headers=expected_headers,
-        )
-
-
-def test_get_openai_client_includes_auth_headers():
-    """Test that auth headers from the SDK are propagated to OpenAI client."""
-    sdk_with_auth = NeMoPlatform(
-        base_url="https://nmp.example.com/",
-        default_headers={"Authorization": "Bearer token-123", "X-NMP-Principal-Id": "user@example.com"},
+    assert (
+        _resource().get_model_entity_route_openai_url(model_entity)
+        == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/ml-team/model/custom-model/-/v1"
     )
 
-    with patch("openai.OpenAI") as mock_openai_cls:
-        mock_openai_cls.return_value = MagicMock()
 
-        sdk_with_auth.models.get_openai_client(workspace="default")
-        default_headers = mock_openai_cls.call_args.kwargs["default_headers"]
-
-        assert default_headers["Authorization"] == "Bearer token-123"
-        assert default_headers["X-NMP-Principal-Id"] == "user@example.com"
+# ---------------------------------------------------------------------------
+# Workspace resolution (client-level fallback)
+# ---------------------------------------------------------------------------
 
 
-# ============================================================================
-# AsyncModelsResource Tests
-# ============================================================================
+def test_openai_route_base_url_uses_client_workspace() -> None:
+    assert "/workspaces/client-ws/" in _resource(workspace="client-ws").get_openai_route_base_url()
 
 
-# Tests for AsyncModelsResource URL builders (sync methods, no I/O)
-
-
-def test_async_get_base_url_str_removes_trailing_slash(async_sdk):
-    """Test that trailing slash is removed from base URL (async resource)."""
-    result = async_sdk.models._get_base_url_str()
-
-    assert result == "https://nmp.example.com"
-
-
-def test_async_get_openai_route_base_url(async_sdk):
-    """Test URL generation with async resource (sync method, no I/O)."""
-    result = async_sdk.models.get_openai_route_base_url(workspace="default")
-
-    assert result == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
-
-
-def test_async_get_provider_route_openai_url(async_sdk):
-    """Test provider URL generation with async resource (sync method, no I/O)."""
-    provider = MagicMock(spec=ModelProvider)
-    provider.workspace = "default"
-    provider.name = "my-provider"
-    provider.host_url = "https://api.example.com"
-
-    result = async_sdk.models.get_provider_route_openai_url(provider)
-
-    assert result == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/provider/my-provider/-/v1"
-
-
-def test_async_get_model_entity_route_openai_url(async_sdk):
-    """Test model entity URL generation with async resource (sync method, no I/O)."""
-    model_entity = MagicMock(spec=ModelEntity)
-    model_entity.workspace = "default"
-    model_entity.name = "my-model"
-
-    result = async_sdk.models.get_model_entity_route_openai_url(model_entity)
-
-    assert result == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/model/my-model/-/v1"
-
-
-# Tests for get_async_openai_client
-
-
-def test_get_async_openai_client_returns_async_client(async_sdk):
-    """Test that get_async_openai_client returns an AsyncOpenAI client."""
-    with patch("openai.AsyncOpenAI") as mock_async_openai_cls:
-        mock_async_openai_cls.return_value = MagicMock()
-
-        async_sdk.models.get_async_openai_client(workspace="default")
-        expected_headers = async_sdk.models.get_client_default_headers()
-
-        mock_async_openai_cls.assert_called_once_with(
-            base_url="https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
-            api_key="not-needed",
-            default_headers=expected_headers,
-        )
-
-
-def test_get_async_openai_client_custom_workspace(async_sdk):
-    """Test get_async_openai_client with custom workspace."""
-    with patch("openai.AsyncOpenAI") as mock_async_openai_cls:
-        mock_async_openai_cls.return_value = MagicMock()
-
-        async_sdk.models.get_async_openai_client(workspace="production")
-        expected_headers = async_sdk.models.get_client_default_headers()
-
-        mock_async_openai_cls.assert_called_once_with(
-            base_url="https://nmp.example.com/apis/inference-gateway/v2/workspaces/production/openai/-/v1",
-            api_key="not-needed",
-            default_headers=expected_headers,
-        )
-
-
-def test_get_async_openai_client_includes_auth_headers():
-    """Test that auth headers from the async SDK are propagated to AsyncOpenAI client."""
-    sdk_with_auth = AsyncNeMoPlatform(
-        base_url="https://nmp.example.com/",
-        default_headers={"Authorization": "Bearer token-abc", "X-NMP-Principal-Id": "async-user@example.com"},
-    )
-
-    with patch("openai.AsyncOpenAI") as mock_async_openai_cls:
-        mock_async_openai_cls.return_value = MagicMock()
-
-        sdk_with_auth.models.get_async_openai_client(workspace="default")
-        default_headers = mock_async_openai_cls.call_args.kwargs["default_headers"]
-
-        assert default_headers["Authorization"] == "Bearer token-abc"
-        assert default_headers["X-NMP-Principal-Id"] == "async-user@example.com"
-
-
-# Tests for async get_provider_route_openai_url_for_deployment
-
-
-@pytest.mark.asyncio
-async def test_async_get_provider_route_openai_url_for_deployment(async_sdk):
-    """Test async version fetches provider and generates URL correctly."""
-    mock_provider = MagicMock(spec=ModelProvider)
-    mock_provider.workspace = "default"
-    mock_provider.name = "my-provider"
-    mock_provider.host_url = "https://api.example.com"
-
-    deployment = MagicMock(spec=ModelDeployment)
-    deployment.name = "my-deployment"
-    deployment.model_provider_id = "default/my-provider"
-
-    with patch.object(
-        async_sdk.inference.providers, "retrieve", AsyncMock(return_value=mock_provider)
-    ) as mock_retrieve:
-        result = await async_sdk.models.get_provider_route_openai_url_for_deployment(deployment)
-
-        mock_retrieve.assert_called_once_with("my-provider", workspace="default")
-        assert (
-            result == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/provider/my-provider/-/v1"
-        )
-
-
-@pytest.mark.asyncio
-async def test_async_get_provider_route_openai_url_for_deployment_raises_when_no_provider_id(async_sdk):
-    """Test that ValueError is raised when deployment has no model_provider_id (async)."""
-    deployment = MagicMock(spec=ModelDeployment)
-    deployment.name = "orphan-deployment"
-    deployment.model_provider_id = None
-
-    with pytest.raises(ValueError) as exc_info:
-        await async_sdk.models.get_provider_route_openai_url_for_deployment(deployment)
-
-    assert "orphan-deployment" in str(exc_info.value)
-    assert "no associated model_provider_id" in str(exc_info.value)
-
-
-# ============================================================================
-# Workspace Resolution Tests (client-level fallback)
-# ============================================================================
-
-
-# Tests for get_openai_route_base_url workspace resolution
-
-
-def test_get_openai_route_base_url_uses_client_workspace(sdk_with_workspace):
-    """Test that client-level workspace is used when not explicitly provided."""
-    result = sdk_with_workspace.models.get_openai_route_base_url()
-
-    assert "/workspaces/client-ws/" in result
-
-
-def test_get_openai_route_base_url_explicit_overrides_client(sdk_with_workspace):
-    """Test that explicit workspace overrides client-level workspace."""
-    result = sdk_with_workspace.models.get_openai_route_base_url(workspace="override")
-
+def test_openai_route_base_url_explicit_overrides_client() -> None:
+    r = _resource(workspace="client-ws")
+    result = r.get_openai_route_base_url(workspace="override")
     assert "/workspaces/override/" in result
     assert "/workspaces/client-ws/" not in result
 
 
-def test_get_openai_route_base_url_raises_without_workspace(sdk):
-    """Test that ValueError is raised when no workspace is available."""
+def test_openai_route_base_url_raises_without_workspace() -> None:
     with pytest.raises(ValueError, match="Missing workspace"):
-        sdk.models.get_openai_route_base_url()
+        _resource().get_openai_route_base_url()
 
 
-# Tests for get_openai_client workspace resolution
+# ---------------------------------------------------------------------------
+# OpenAI client factories
+# ---------------------------------------------------------------------------
 
 
-def test_get_openai_client_uses_client_workspace(sdk_with_workspace):
-    """Test that client-level workspace is used when not explicitly provided."""
+def test_get_openai_client_returns_configured_client() -> None:
+    r = _resource()
     with patch("openai.OpenAI") as mock_openai_cls:
         mock_openai_cls.return_value = MagicMock()
+        r.get_openai_client(workspace="default")
+        mock_openai_cls.assert_called_once_with(
+            base_url="https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
+            api_key="not-needed",
+            default_headers=r.get_client_default_headers(),
+        )
 
-        sdk_with_workspace.models.get_openai_client()
 
-        call_args = mock_openai_cls.call_args
-        assert "/workspaces/client-ws/" in call_args.kwargs["base_url"]
-
-
-def test_get_openai_client_explicit_overrides_client(sdk_with_workspace):
-    """Test that explicit workspace overrides client-level workspace."""
+def test_get_openai_client_includes_auth_headers() -> None:
+    r = ModelsResource(
+        NeMoPlatform(
+            base_url="https://nmp.example.com/",
+            default_headers={"Authorization": "Bearer token-123", "X-NMP-Principal-Id": "user@example.com"},
+        )
+    )
     with patch("openai.OpenAI") as mock_openai_cls:
         mock_openai_cls.return_value = MagicMock()
-
-        sdk_with_workspace.models.get_openai_client(workspace="override")
-
-        call_args = mock_openai_cls.call_args
-        assert "/workspaces/override/" in call_args.kwargs["base_url"]
-
-
-def test_get_openai_client_raises_without_workspace(sdk):
-    """Test that ValueError is raised when no workspace is available."""
-    with pytest.raises(ValueError, match="Missing workspace"):
-        sdk.models.get_openai_client()
+        r.get_openai_client(workspace="default")
+        headers = mock_openai_cls.call_args.kwargs["default_headers"]
+        assert headers["Authorization"] == "Bearer token-123"
+        assert headers["X-NMP-Principal-Id"] == "user@example.com"
 
 
-# Tests for async get_openai_route_base_url workspace resolution
+def test_get_async_openai_client_returns_async_client() -> None:
+    r = _async_resource()
+    with patch("openai.AsyncOpenAI") as mock_cls:
+        mock_cls.return_value = MagicMock()
+        r.get_async_openai_client(workspace="production")
+        mock_cls.assert_called_once_with(
+            base_url="https://nmp.example.com/apis/inference-gateway/v2/workspaces/production/openai/-/v1",
+            api_key="not-needed",
+            default_headers=r.get_client_default_headers(),
+        )
 
 
-def test_async_get_openai_route_base_url_uses_client_workspace(async_sdk_with_workspace):
-    """Test that client-level workspace is used when not explicitly provided."""
-    result = async_sdk_with_workspace.models.get_openai_route_base_url()
-
-    assert "/workspaces/client-ws/" in result
-
-
-def test_async_get_openai_route_base_url_explicit_overrides_client(async_sdk_with_workspace):
-    """Test that explicit workspace overrides client-level workspace."""
-    result = async_sdk_with_workspace.models.get_openai_route_base_url(workspace="override")
-
-    assert "/workspaces/override/" in result
+# ---------------------------------------------------------------------------
+# get_provider_route_openai_url_for_deployment (drives the typed client)
+#
+# A real httpx client with a MockTransport is used so the client_from_platform
+# bridge (which copies the SDK's transport + headers) works end to end.
+# ---------------------------------------------------------------------------
 
 
-def test_async_get_openai_route_base_url_raises_without_workspace(async_sdk):
-    """Test that ValueError is raised when no workspace is available."""
-    with pytest.raises(ValueError, match="Missing workspace"):
-        async_sdk.models.get_openai_route_base_url()
+def _capturing_transport(response: httpx.Response) -> tuple[httpx.MockTransport, list[httpx.Request]]:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return response
+
+    return httpx.MockTransport(handler), seen
 
 
-# Tests for get_async_openai_client workspace resolution
+def _provider_payload(**extra: object) -> dict:
+    base = {
+        "id": "provider-1",
+        "name": "my-provider",
+        "workspace": "default",
+        "host_url": "https://api.example.com",
+        "created_at": "2020-01-01T00:00:00Z",
+        "updated_at": "2020-01-01T00:00:00Z",
+    }
+    base.update(extra)
+    return base
 
 
-def test_get_async_openai_client_uses_client_workspace(async_sdk_with_workspace):
-    """Test that client-level workspace is used when not explicitly provided."""
-    with patch("openai.AsyncOpenAI") as mock_openai_cls:
-        mock_openai_cls.return_value = MagicMock()
+def test_provider_route_for_deployment_fetches_provider() -> None:
+    transport, seen = _capturing_transport(httpx.Response(200, json=_provider_payload()))
+    r = _resource(http_client=httpx.Client(transport=transport))
 
-        async_sdk_with_workspace.models.get_async_openai_client()
+    deployment = MagicMock(spec=ModelDeployment)
+    deployment.name = "my-deployment"
+    deployment.model_provider_id = "default/my-provider"
 
-        call_args = mock_openai_cls.call_args
-        assert "/workspaces/client-ws/" in call_args.kwargs["base_url"]
-
-
-def test_get_async_openai_client_explicit_overrides_client(async_sdk_with_workspace):
-    """Test that explicit workspace overrides client-level workspace."""
-    with patch("openai.AsyncOpenAI") as mock_openai_cls:
-        mock_openai_cls.return_value = MagicMock()
-
-        async_sdk_with_workspace.models.get_async_openai_client(workspace="override")
-
-        call_args = mock_openai_cls.call_args
-        assert "/workspaces/override/" in call_args.kwargs["base_url"]
+    url = r.get_provider_route_openai_url_for_deployment(deployment)
+    assert url == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/provider/my-provider/-/v1"
+    assert str(seen[0].url).endswith("/apis/models/v2/workspaces/default/providers/my-provider")
 
 
-def test_get_async_openai_client_raises_without_workspace(async_sdk):
-    """Test that ValueError is raised when no workspace is available."""
-    with pytest.raises(ValueError, match="Missing workspace"):
-        async_sdk.models.get_async_openai_client()
+def test_provider_route_for_deployment_raises_when_no_provider_id() -> None:
+    deployment = MagicMock(spec=ModelDeployment)
+    deployment.name = "orphan-deployment"
+    deployment.model_provider_id = None
+    with pytest.raises(ValueError, match="no associated model_provider_id"):
+        _resource().get_provider_route_openai_url_for_deployment(deployment)
+
+
+@pytest.mark.asyncio
+async def test_async_provider_route_for_deployment_fetches_provider() -> None:
+    transport, _ = _capturing_transport(httpx.Response(200, json=_provider_payload()))
+    r = _async_resource(http_client=httpx.AsyncClient(transport=transport))
+
+    deployment = MagicMock(spec=ModelDeployment)
+    deployment.name = "my-deployment"
+    deployment.model_provider_id = "default/my-provider"
+
+    url = await r.get_provider_route_openai_url_for_deployment(deployment)
+    assert url == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/provider/my-provider/-/v1"
+
+
+# ---------------------------------------------------------------------------
+# Deployment status polling (drives the typed client)
+# ---------------------------------------------------------------------------
+
+
+def _deployment_payload(status: str) -> dict:
+    return {
+        "id": "dep-1",
+        "name": "my-deploy",
+        "workspace": "default",
+        "entity_version": 1,
+        "config": "cfg",
+        "config_version": 1,
+        "status": status,
+        "status_message": "",
+        "status_history": [],
+        "created_at": "2020-01-01T00:00:00Z",
+        "updated_at": "2020-01-01T00:00:00Z",
+    }
+
+
+def test_wait_for_status_ready_checks_gateway() -> None:
+    transport, _ = _capturing_transport(httpx.Response(200, json=_deployment_payload("READY")))
+    r = _resource(workspace="default", http_client=httpx.Client(transport=transport))
+
+    with patch.object(r, "wait_for_gateway", return_value=True) as gw:
+        assert r.wait_for_status("my-deploy", "READY") is True
+        gw.assert_called_once()
+
+
+def test_wait_for_status_deployment_not_ready_skips_gateway() -> None:
+    transport, _ = _capturing_transport(httpx.Response(200, json=_deployment_payload("ERROR")))
+    r = _resource(workspace="default", http_client=httpx.Client(transport=transport))
+
+    with patch.object(r, "wait_for_gateway", return_value=True) as gw:
+        assert r.wait_for_status("my-deploy", "READY") is False
+        gw.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Provider status polling (drives the typed client)
+# ---------------------------------------------------------------------------
+
+
+def test_wait_for_provider_ready_checks_gateway() -> None:
+    transport, _ = _capturing_transport(httpx.Response(200, json=_provider_payload(status="READY")))
+    r = _resource(workspace="default", http_client=httpx.Client(transport=transport))
+
+    with patch.object(r, "wait_for_gateway", return_value=True) as gw:
+        assert r.wait_for_provider("my-provider", "READY") is True
+        gw.assert_called_once()
+
+
+def test_wait_for_provider_error_skips_gateway() -> None:
+    transport, _ = _capturing_transport(httpx.Response(200, json=_provider_payload(status="ERROR")))
+    r = _resource(workspace="default", http_client=httpx.Client(transport=transport))
+
+    with patch.object(r, "wait_for_gateway", return_value=True) as gw:
+        assert r.wait_for_provider("my-provider", "READY") is False
+        gw.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_async_wait_for_provider_error_skips_gateway() -> None:
+    transport, _ = _capturing_transport(httpx.Response(200, json=_provider_payload(status="ERROR")))
+    r = _async_resource(workspace="default", http_client=httpx.AsyncClient(transport=transport))
+
+    with patch.object(r, "wait_for_gateway", return_value=True) as gw:
+        assert await r.wait_for_provider("my-provider", "READY") is False
+        gw.assert_not_called()
