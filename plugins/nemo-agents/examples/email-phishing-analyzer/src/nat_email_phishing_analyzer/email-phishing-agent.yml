@@ -28,8 +28,6 @@ llms:
     api_key: not-used
     model_name: ${NEMO_DEFAULT_MODEL}
     temperature: 0.0
-    # Nemotron Nano can spend more than 512 tokens reasoning before emitting
-    # the tool call; NAT treats that truncation as a workflow error.
     max_tokens: 1024
 
 workflow:

@@ -303,5 +303,4 @@ Shape (reference only):
 Results come from `GET .../eval-results/{name}` (note: `eval-results`, not `agent-eval-results`)
 and include percentiles + histogram. Gotcha: an agent target requires `params` typed exactly as
 `RunConfigOnline` (full shape) — a bare `{ "parallelism": N }` parses as plain `RunConfig` and
-the job 500s. A reference config for this path is kept at
-`public/sample-agents/email-phishing-analyzer/eval-config-dataset.json`.
+the job 500s.
