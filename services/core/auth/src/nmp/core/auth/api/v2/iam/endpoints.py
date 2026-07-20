@@ -246,4 +246,4 @@ async def revoke_role_binding(
         else:
             logger.warning(f"Timeout waiting for role '{obj.role}' to be revoked for {obj.principal}")
 
-    return DeleteResponse(id=obj.id, deleted_at=obj.revoked_at)
+    return DeleteResponse(id=obj.id)

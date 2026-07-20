@@ -21,4 +21,4 @@ from typing_extensions import Literal, TypeAlias
 
 __all__ = ["GenericSortField"]
 
-GenericSortField: TypeAlias = Literal["created_at", "-created_at", "name", "-name"]
+GenericSortField: TypeAlias = Literal["created_at", "-created_at", "updated_at", "-updated_at", "name", "-name"]
