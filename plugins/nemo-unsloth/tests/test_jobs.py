@@ -19,11 +19,13 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
+from nemo_platform_plugin.models.client import AsyncModelsClient
 from nemo_unsloth_plugin.jobs.jobs import UnslothJob
 from nemo_unsloth_plugin.schema import UnslothJobInput
 from nmp.unsloth.schemas import UnslothJobOutput
@@ -40,34 +42,42 @@ def _input_dict(**overrides: Any) -> dict[str, Any]:
 
 
 def _stub_async_sdk() -> SimpleNamespace:
-    """Async SDK used by ``to_spec`` (validates refs)."""
-    me = SimpleNamespace(
+    """Async SDK transport placeholder passed through the contributor API."""
+    return SimpleNamespace()
+
+
+def _mock_client_factory() -> Callable[[object, type[object]], MagicMock]:
+    """Build typed Models and Files clients for platform reference validation."""
+    model_entity = SimpleNamespace(
         name="base",
         workspace="default",
         spec=None,
         fileset="base-fs",
         trust_remote_code=False,
     )
-    return SimpleNamespace(
-        models=SimpleNamespace(retrieve=AsyncMock(return_value=me)),
-        files=SimpleNamespace(
-            filesets=SimpleNamespace(retrieve=AsyncMock(return_value=SimpleNamespace())),
-        ),
-    )
+    model_response = MagicMock()
+    model_response.data.return_value = model_entity
+    models = MagicMock()
+    models.get_model = AsyncMock(return_value=model_response)
 
+    files = MagicMock()
+    files.get_fileset = AsyncMock(return_value=MagicMock())
 
-def _mock_files_client() -> AsyncMock:
-    """Build a mock AsyncFilesClient for check_dataset_access."""
-    mock = AsyncMock()
-    mock.get_fileset.return_value = MagicMock()
-    return mock
+    def factory(_sdk: object, client_type: type[object]) -> MagicMock:
+        if client_type is AsyncModelsClient:
+            return models
+        if client_type is AsyncFilesClient:
+            return files
+        raise AssertionError(f"Unexpected client type: {client_type}")
+
+    return factory
 
 
 def _make_canonical(workspace: str = "default", **overrides: Any) -> UnslothJobOutput:
     spec = UnslothJobInput.model_validate(_input_dict(**overrides))
     with patch(
         "nmp.customization_common.service.platform_client.client_from_platform",
-        return_value=_mock_files_client(),
+        side_effect=_mock_client_factory(),
     ):
         return asyncio.run(
             UnslothJob.to_spec(

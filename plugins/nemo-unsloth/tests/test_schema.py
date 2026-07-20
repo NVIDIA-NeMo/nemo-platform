@@ -9,9 +9,12 @@ import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from nemo_platform_plugin.files.client import AsyncFilesClient
+from nemo_platform_plugin.models.client import AsyncModelsClient
 from nemo_unsloth_plugin.schema import (
     DatasetSpec,
     LoRAParams,
@@ -26,9 +29,14 @@ from nemo_unsloth_plugin.transform import transform_input_to_output
 from pydantic import ValidationError
 
 
-def _stub_sdk(*, is_embedding: bool = False) -> SimpleNamespace:
-    """Build a minimal async SDK that resolves model + dataset refs."""
-    spec = SimpleNamespace(is_embedding_model=is_embedding) if is_embedding else None
+def _stub_sdk() -> SimpleNamespace:
+    """Build the async SDK transport placeholder accepted by the contributor API."""
+    return SimpleNamespace()
+
+
+def _mock_client_factory(*, is_embedding: bool = False) -> Callable[[object, type[object]], MagicMock]:
+    """Build typed Models and Files clients for platform reference validation."""
+    spec = SimpleNamespace(is_embedding_model=True) if is_embedding else None
     model_entity = SimpleNamespace(
         name="m",
         workspace="default",
@@ -36,25 +44,28 @@ def _stub_sdk(*, is_embedding: bool = False) -> SimpleNamespace:
         fileset="m",
         trust_remote_code=False,
     )
-    return SimpleNamespace(
-        models=SimpleNamespace(retrieve=AsyncMock(return_value=model_entity)),
-        files=SimpleNamespace(
-            filesets=SimpleNamespace(retrieve=AsyncMock(return_value=SimpleNamespace())),
-        ),
-    )
+    model_response = MagicMock()
+    model_response.data.return_value = model_entity
+    models = MagicMock()
+    models.get_model = AsyncMock(return_value=model_response)
 
+    files = MagicMock()
+    files.get_fileset = AsyncMock(return_value=MagicMock())
 
-def _mock_files_client() -> AsyncMock:
-    """Build a mock AsyncFilesClient for check_dataset_access."""
-    mock = AsyncMock()
-    mock.get_fileset.return_value = MagicMock()
-    return mock
+    def factory(_sdk: object, client_type: type[object]) -> MagicMock:
+        if client_type is AsyncModelsClient:
+            return models
+        if client_type is AsyncFilesClient:
+            return files
+        raise AssertionError(f"Unexpected client type: {client_type}")
+
+    return factory
 
 
 def _run_transform(spec: UnslothJobInput) -> UnslothJobOutput:
     with patch(
         "nmp.customization_common.service.platform_client.client_from_platform",
-        return_value=_mock_files_client(),
+        side_effect=_mock_client_factory(),
     ):
         return asyncio.run(transform_input_to_output(spec, "default", _stub_sdk()))
 
@@ -234,12 +245,12 @@ class TestTransformOutput:
         assert out.output.save_method == "merged_4bit"
 
     def test_embedding_model_rejected(self) -> None:
-        sdk = _stub_sdk(is_embedding=True)
+        sdk = _stub_sdk()
         spec = UnslothJobInput.model_validate(_minimal_payload())
         with (
             patch(
                 "nmp.customization_common.service.platform_client.client_from_platform",
-                return_value=_mock_files_client(),
+                side_effect=_mock_client_factory(is_embedding=True),
             ),
             pytest.raises(ValueError, match="Embedding-model SFT"),
         ):
