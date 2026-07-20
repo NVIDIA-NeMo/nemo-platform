@@ -307,6 +307,19 @@ def test_format_markdown_table_normalizes_newlines_and_short_separators():
     assert lines[1].split("|")[1].strip() == "---"
 
 
+def test_format_markdown_table_truncates_before_escaping_multiline_pipes():
+    """Truncation preserves complete Markdown escapes in multiline cells containing pipes."""
+    mock_response = Mock()
+    mock_response.data = [{"description": "first|segment\nsecond|segment"}]
+
+    columns = [Column("description", "Description")]
+    result = format_markdown_table(mock_response, columns=columns, max_width=20)
+    lines = result.splitlines()
+
+    assert len(lines) == 3
+    assert "first\\|segment<br>sec..." in lines[2]
+
+
 def test_format_markdown_table_empty():
     """Test markdown table with empty data."""
     mock_response = Mock()
