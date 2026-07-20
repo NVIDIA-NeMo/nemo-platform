@@ -2,9 +2,13 @@
 title: "Hardware and Software Requirements for NeMo Platform"
 description: ""
 ---
-This page lists the requirements for the OSS local-install path and self-managed Kubernetes path for NeMo Platform 0.3.0. For the full compatibility table, see the [Support Matrix](/documentation/reference/support-matrix).
 
-The OSS 0.3.0 documentation covers local setup with the Python package and `nemo setup`, plus self-managed Kubernetes deployment with Helm. Docker Compose deployment guides are not part of this release scope.
+This page lists the requirements for the OSS local-install path and
+self-managed Kubernetes deployments. For the full compatibility table, see the
+[Support Matrix](/documentation/reference/support-matrix).
+
+For local setup, use the Python package and `nemo setup`. For self-managed
+clusters, use the NeMo Platform Helm chart on Kubernetes.
 
 ## Local Setup Requirements
 
@@ -19,15 +23,14 @@ The OSS 0.3.0 documentation covers local setup with the Python package and `nemo
 | Model provider | NVIDIA Build, OpenAI, Anthropic, Google Gemini, Ollama, or a custom OpenAI-compatible endpoint | `nemo setup` configures one provider as part of the setup flow. |
 | Browser | Current Chrome, Edge, Firefox, or Safari | Required for the Studio UI. |
 
-## Kubernetes Requirements
+## Self-Managed Kubernetes Requirements
 
 | Component | Requirement | Notes |
 |-----------|-------------|-------|
-| Kubernetes | User-managed conformant cluster | You need permission to create namespaces, secrets, services, deployments, jobs, and persistent volumes. |
-| Helm | Helm 3 | Used to install and upgrade the NeMo Platform chart. |
-| kubectl | Version compatible with your cluster | Used for deployment verification, log collection, and local Kind workflows. |
-| Storage | Dynamic persistent volume provisioning | Required for platform state and job artifacts. |
-| Ingress or port forwarding | Cluster ingress controller or `kubectl port-forward` | Required to reach the API and Studio UI from your workstation. |
+| Kubernetes | minikube, kind, EKS, AKS, GKE, OKE, OpenShift, or on-prem Kubernetes | Use a cluster with storage, networking, and image-pull access configured before installing the chart. |
+| Helm | Helm 3 | Required to install and upgrade the NeMo Platform chart. |
+| Storage | ReadWriteMany-capable persistent storage | Required for shared files and job storage in multi-pod deployments. |
+| Image access | NGC credentials and Kubernetes image pull secrets | Required to pull NeMo Platform container images. |
 
 ## GPU Requirements
 
