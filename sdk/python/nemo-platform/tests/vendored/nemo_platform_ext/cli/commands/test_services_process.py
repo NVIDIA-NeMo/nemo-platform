@@ -8,17 +8,21 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import psutil
 import pytest
+from nemo_platform.cli.commands.services import _process
 from nemo_platform.cli.commands.services._process import (
     ForegroundInstanceError,
     InstanceAlreadyRunningError,
     InstanceDescriptor,
     InstanceStillRunningError,
+    _base_state_dir,
+    _fallback_base_state_dir,
     _pid_alive,
     _snapshot_children,
     _sweep_orphans,
@@ -122,6 +126,105 @@ class TestInstanceDir:
         d1 = instance_dir("test-scope", base_dir=base_dir)
         d2 = instance_dir("test-scope", base_dir=base_dir)
         assert d1 == d2
+
+
+class TestBaseStateDir:
+    """Resolution + creation + unwritable-``$HOME`` fallback for the state dir."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_state_globals(self):
+        # _base_state_dir memoizes its resolved dir and compute_scope caches a
+        # prefix; reset both around every test so neither leaks between tests.
+        _process._resolved_base_dir = None
+        _process._scope_prefix_cache = None
+        yield
+        _process._resolved_base_dir = None
+        _process._scope_prefix_cache = None
+
+    def test_resolves_and_creates_under_preferred(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        base = _base_state_dir()
+        assert base == tmp_path / "nmp"
+        assert (base / "instances").is_dir()  # resolution creates the instances dir
+
+    def test_memoized_within_process(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        first = _base_state_dir()
+        # A later env change is ignored: the resolved dir is cached for the process.
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "other"))
+        assert _base_state_dir() == first
+
+    def test_falls_back_when_preferred_uncreatable(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Preferred points under a regular file, so mkdir raises NotADirectoryError
+        # (an OSError) for every uid -- root-proof, unlike a chmod-based block.
+        blocker = tmp_path / "not-a-dir"
+        blocker.write_text("x")
+        monkeypatch.setattr(_process, "_preferred_base_state_dir", lambda: blocker / "nmp")
+        fallback_root = tmp_path / "tmp"
+        fallback_root.mkdir()
+        monkeypatch.setattr(tempfile, "gettempdir", lambda: str(fallback_root))
+
+        base = _base_state_dir()
+        assert base == fallback_root / f"nmp-state-{os.getuid()}" / "nmp"
+        assert (base / "instances").is_dir()
+
+    def test_fallback_dir_is_owner_only(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The per-uid dir under shared /tmp must not be world-traversable/readable,
+        # or another user could read the descriptor (pid/port/config) and the log.
+        blocker = tmp_path / "not-a-dir"
+        blocker.write_text("x")
+        monkeypatch.setattr(_process, "_preferred_base_state_dir", lambda: blocker / "nmp")
+        fallback_root = tmp_path / "tmp"
+        fallback_root.mkdir()
+        monkeypatch.setattr(tempfile, "gettempdir", lambda: str(fallback_root))
+
+        _base_state_dir()
+        per_uid = fallback_root / f"nmp-state-{os.getuid()}"
+        assert os.stat(per_uid).st_mode & 0o777 == 0o700
+
+    def test_fallback_is_none_without_tempdir(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def _no_tempdir() -> str:
+            raise FileNotFoundError("No usable temporary directory found")
+
+        monkeypatch.setattr(tempfile, "gettempdir", _no_tempdir)
+        assert _fallback_base_state_dir() is None
+
+    def test_raises_when_no_location_writable(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        blocker = tmp_path / "not-a-dir"
+        blocker.write_text("x")
+        monkeypatch.setattr(_process, "_preferred_base_state_dir", lambda: blocker / "nmp")
+        monkeypatch.setattr(_process, "_fallback_base_state_dir", lambda: None)
+        with pytest.raises(OSError):
+            _base_state_dir()
+
+    @pytest.mark.skipif(os.getuid() == 0, reason="root bypasses the DAC write check this test relies on")
+    def test_unwritable_home_does_not_crash(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Regression for the LoRA-sidecar crash: ``nemo services run`` under a uid
+        that cannot write ``$HOME`` must fall back instead of raising PermissionError.
+
+        Faithfully reproduces the container condition -- ``$HOME`` exists but is not
+        writable by the running uid, ``~/.local`` is absent, and ``XDG_STATE_HOME``
+        is unset -- which crashed ``instance_dir`` at ``mkdir('$HOME/.local')``
+        before the fix.
+        """
+        fake_home = tmp_path / "home" / "nvs"
+        fake_home.mkdir(parents=True)
+        fallback_tmp = tmp_path / "tmp"
+        fallback_tmp.mkdir()
+
+        monkeypatch.setenv("HOME", str(fake_home))
+        monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+        monkeypatch.delenv("_NMP_STATE_DIR", raising=False)
+        monkeypatch.setattr(tempfile, "gettempdir", lambda: str(fallback_tmp))
+
+        os.chmod(fake_home, 0o500)  # r-x for owner only: cannot create
+        try:
+            d = instance_dir(compute_scope(port=8080))  # base_dir=None; must not raise
+            assert d.is_dir()
+            assert fake_home not in d.parents  # did NOT land under the unwritable HOME
+            assert d.is_relative_to(fallback_tmp)
+        finally:
+            os.chmod(fake_home, 0o700)  # owner-only access; sufficient for pytest cleanup
 
 
 # ---------------------------------------------------------------------------

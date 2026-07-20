@@ -61,11 +61,95 @@ def _pause(seconds: float) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _base_state_dir() -> Path:
+# Resolved once per process (see _base_state_dir) so reads and writes agree on one
+# directory and we don't re-probe the filesystem on every call.
+_resolved_base_dir: Path | None = None
+
+
+def _preferred_base_state_dir() -> Path:
+    """The XDG-preferred base dir: ``$XDG_STATE_HOME/nmp`` or ``~/.local/state/nmp``."""
     xdg = os.environ.get("XDG_STATE_HOME")
     if xdg:
         return Path(xdg) / "nmp"
     return Path.home() / ".local" / "state" / "nmp"
+
+
+def _fallback_base_state_dir() -> Path | None:
+    """Per-uid base dir under the system temp dir, or ``None`` when no temp dir is
+    usable (e.g. a locked-down container with a read-only ``/tmp`` and no writable
+    ``TMPDIR`` -- ``tempfile.gettempdir()`` raises there).
+
+    Namespaced by uid because ``/tmp`` is shared: distinct users on one host must
+    not collide on (or contend for ownership of) a single state dir. This is the
+    escape hatch for running the ``nemo`` entrypoint under a uid that does not own
+    ``$HOME`` -- e.g. a Kubernetes pod whose securityContext forces ``runAsUser``
+    onto an image whose baked ``$HOME`` belongs to a different uid.
+    """
+    try:
+        tmp = tempfile.gettempdir()
+    except OSError:
+        return None
+    return Path(tmp) / f"nmp-state-{os.getuid()}" / "nmp"
+
+
+def _restrict_state_dir(base: Path) -> None:
+    """Best-effort: make the per-uid temp fallback owner-only (0700).
+
+    The XDG/``$HOME`` location is already user-private, but the temp fallback sits in
+    a world-writable, shared ``/tmp``; without this the instance descriptor (which
+    names a pid, port, and config path) and the service log would be world-readable.
+    Best-effort: a pre-existing dir owned by another uid can't be chmod-ed -- that
+    case is a squat and is left to fail loudly on the subsequent write.
+    """
+    with contextlib.suppress(OSError):
+        os.chmod(base.parent, 0o700)  # the `nmp-state-<uid>` dir under the temp root
+
+
+def _base_state_dir() -> Path:
+    """Resolve (and create) the base dir for instance state (``<base>/instances/``).
+
+    Prefers ``$XDG_STATE_HOME``/``$HOME`` and falls back to a per-uid temp dir when
+    the preferred location cannot be written -- the arbitrary-uid case that made the
+    LoRA sidecar crash-loop (a pod whose securityContext runs the nmp-api image
+    under a uid that does not own its baked ``$HOME``). Selection is by an actual
+    ``mkdir`` of the ``instances`` dir rather than an advisory ``os.access`` probe,
+    so it is correct even where the two disagree (NFS root-squash, SELinux) and even
+    if the fallback itself is unwritable.
+
+    Memoized: the first call creates the directory and every later call in the
+    process -- writes (``acquire_lock``/``write_descriptor``) and reads
+    (``read_descriptor``/``list_instances``) alike -- returns the same one. Across
+    processes the result is stable as long as the preferred location's writability
+    does not change between invocations.
+    """
+    global _resolved_base_dir  # noqa: PLW0603
+    if _resolved_base_dir is not None:
+        return _resolved_base_dir
+
+    preferred = _preferred_base_state_dir()
+    first_error: OSError | None = None
+    for candidate in (preferred, _fallback_base_state_dir()):
+        if candidate is None:
+            continue
+        try:
+            (candidate / "instances").mkdir(parents=True, exist_ok=True)
+        except OSError as err:
+            first_error = first_error or err
+            continue
+        if candidate is not preferred:
+            _restrict_state_dir(candidate)
+            logger.warning(
+                "State directory %s is not writable; using %s instead. Set XDG_STATE_HOME "
+                "or _NMP_STATE_DIR to a writable path to control where instance state lives.",
+                preferred,
+                candidate,
+            )
+        _resolved_base_dir = candidate
+        return candidate
+
+    # Neither location could be created -- surface the preferred one's error so the
+    # message names a path the user can act on.
+    raise first_error or OSError(f"No writable location for instance state (tried {preferred})")
 
 
 def _instances_dir(*, base_dir: Path | None = None) -> Path:
