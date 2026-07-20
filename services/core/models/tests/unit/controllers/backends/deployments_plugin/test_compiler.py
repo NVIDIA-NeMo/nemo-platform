@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from nemo_platform.types.inference.k8s_nim_operator_config import K8sNIMOperatorConfig
 from nmp.common.config import Runtime
@@ -276,9 +276,17 @@ def test_generic_weightless_is_server_only() -> None:
 
 def test_lora_uses_native_sidecar_on_k8s_and_container_on_docker() -> None:
     config = DeploymentsPluginConfig()
-    with patch(
-        "nmp.core.models.controllers.backends.deployments_plugin.compiler.get_qualified_image",
-        return_value="registry/nmp-api:tag",
+    platform = MagicMock()
+    platform.base_url = "http://platform.example:8080"
+    with (
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.get_qualified_image",
+            return_value="registry/nmp-api:tag",
+        ),
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.get_platform_config",
+            return_value=platform,
+        ),
     ):
         k8s = compile_model_deployment(_resolved("vllm", lora=True), config)
         docker = compile_model_deployment(_resolved("vllm", lora=True, runtime=Runtime.DOCKER), config)
@@ -293,4 +301,6 @@ def test_lora_uses_native_sidecar_on_k8s_and_container_on_docker() -> None:
     env = {item.name: item.value for item in sidecar.env}
     assert env["NIM_PEFT_SOURCE"] == "/scratch/loras"
     assert env["VLLM_LORA_BASE_MODEL_OVERRIDE"] == "/model-store"
+    assert env["NMP_BASE_URL"] == "http://platform.example:8080"
+    assert env["VLLM_ENDPOINT"] == "http://127.0.0.1:8000"
     assert len(docker.server_config.containers) == 2

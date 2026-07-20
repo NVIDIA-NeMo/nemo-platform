@@ -22,6 +22,7 @@ from nemo_deployments_plugin.entities import (
     VolumeBackendConfig,
     VolumeMount,
 )
+from nemo_platform_plugin.config import get_platform_config
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.common.config import Runtime
 from nmp.core.models.app import ModelWeightsType
@@ -52,6 +53,7 @@ from nmp.core.models.controllers.backends.generic_compiler import (
 )
 from nmp.core.models.controllers.backends.vllm_compiler import (
     MODEL_STORE_PATH,
+    VLLM_SERVER_PORT,
     compile_vllm_args,
     compile_vllm_env_vars,
     resolve_vllm_image,
@@ -128,17 +130,26 @@ def _lora_sidecar(
     names: EntityNames,
     weighted: bool,
 ) -> Container:
-    """Build the adapters sidecar with the same env contract as existing backends."""
+    """Build the adapters sidecar with the same env contract as existing backends.
+
+    ``NMP_BASE_URL`` must point at the platform API (not the sidecar's own listen
+    address). ``nemo services run --sidecars adapters`` binds localhost:8080 inside
+    the sidecar, so an unset base URL makes the SDK call itself and 404.
+    """
     entity_workspace = resolved.model_entity.workspace if resolved.model_entity else resolved.deployment.workspace
     entity_name = resolved.model_entity.name if resolved.model_entity else resolved.deployment.name
+    platform = get_platform_config()
     sidecar_env = {
         "NIM_PEFT_SOURCE": _LORA_MOUNT,
         "NIM_PEFT_REFRESH_INTERVAL": str(config.peft_refresh_interval),
         "NMP_MODEL_ENTITY_WORKSPACE": entity_workspace,
         "NMP_MODEL_ENTITY_NAME": entity_name,
+        "NMP_BASE_URL": platform.base_url,
     }
     if engine == ENGINE_VLLM:
         sidecar_env["VLLM_LORA_BASE_MODEL_OVERRIDE"] = MODEL_STORE_PATH
+        # Native sidecar / pod-local network: talk to the sibling vLLM server.
+        sidecar_env["VLLM_ENDPOINT"] = f"http://127.0.0.1:{VLLM_SERVER_PORT}"
     mounts = [VolumeMount(name=names.scratch, mountPath=_SCRATCH_MOUNT)]
     if weighted:
         mounts.append(VolumeMount(name=names.volume, mountPath=_WEIGHTS_MOUNT, readOnly=True))
