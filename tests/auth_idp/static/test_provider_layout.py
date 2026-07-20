@@ -66,8 +66,21 @@ def test_authentik_compose_defaults_support_direct_docker_compose_start():
         "${AUTHENTIK_GATEWAY_TLS_DIR:-../.generated/gateway-tls}:/source/tls:ro"
         in compose["services"]["gateway-tls-init"]["volumes"]
     )
-    assert blueprint_mount in compose["services"]["authentik-server"]["volumes"]
-    assert blueprint_mount in compose["services"]["authentik-worker"]["volumes"]
+    assert blueprint_mount not in compose["services"]["authentik-server"]["volumes"]
+    assert blueprint_mount not in compose["services"]["authentik-worker"]["volumes"]
+    blueprint_init = compose["services"]["authentik-blueprint-init"]
+    assert blueprint_init["image"] == "ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2024.12}"
+    assert blueprint_init["environment"] == compose["x-authentik-env"]
+    assert blueprint_mount in blueprint_init["volumes"]
+    assert blueprint_init["depends_on"]["authentik-server"]["condition"] == "service_healthy"
+    assert blueprint_init["depends_on"]["authentik-worker"]["condition"] == "service_healthy"
+    assert blueprint_init["entrypoint"][:2] == ["sh", "-euc"]
+    blueprint_script = blueprint_init["entrypoint"][2]
+    assert "ak apply_blueprint /blueprints/custom/nemo.yaml" in blueprint_script
+    assert 'while [ "$$attempt" -le 30 ]' in blueprint_script
+    assert "attempt $$attempt/30" in blueprint_script
+    assert "attempt=$$((attempt + 1))" in blueprint_script
+    assert "sleep 2" in blueprint_script
     assert "./.generated/blueprints" not in compose_text
 
 
@@ -162,6 +175,7 @@ def test_authentik_compose_uses_https_gateway_for_workloads():
     nemo = compose["services"]["nemo"]
     gateway = compose["services"]["gateway"]
     gateway_tls_init = compose["services"]["gateway-tls-init"]
+    blueprint_init = compose["services"]["authentik-blueprint-init"]
 
     assert config["platform"]["base_url"] == "https://nemo-gateway:8080"
     assert config["auth"]["policy_decision_point_base_url"] == "http://127.0.0.1:8080"
@@ -188,7 +202,9 @@ def test_authentik_compose_uses_https_gateway_for_workloads():
     assert gateway["networks"]["nemo-internal"]["aliases"] == ["nemo-gateway"]
     assert gateway["networks"]["workload"]["aliases"] == ["nemo-gateway"]
     assert gateway["depends_on"]["gateway-tls-init"]["condition"] == "service_completed_successfully"
+    assert gateway["depends_on"]["authentik-blueprint-init"]["condition"] == "service_completed_successfully"
     assert "gateway-tls:/etc/envoy/tls:ro" in gateway["volumes"]
+    assert blueprint_init["networks"] == ["nemo-internal"]
     assert gateway_tls_init["image"] == (
         "docker.io/library/busybox:1.37.0@sha256:9532d8c39891ca2ecde4d30d7710e01fb739c87a8b9299685c63704296b16028"
     )
