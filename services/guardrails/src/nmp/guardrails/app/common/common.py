@@ -3,9 +3,7 @@
 
 """Common structures used across multiple API endpoints/schemas."""
 
-from datetime import datetime
-from enum import Enum, StrEnum
-from typing import Optional
+from enum import Enum
 
 from nmp.common.entities.values import Value
 from pydantic import BaseModel, Field
@@ -20,17 +18,6 @@ class URN(str):
     urn:nemo:models/meta/llama3-8b-instruct
     urn:nemo:models/meta/llama3-8b-instruct@v2
     """
-
-
-class GenericSortField(StrEnum):
-    CREATED_AT_ASC = "created_at"
-    CREATED_AT_DESC = "-created_at"
-
-
-class DeleteResponse(Value):
-    message: str = Field(default="Resource deleted successfully.")
-    id: Optional[str] = Field(default=None, description="The ID of the deleted resource.")
-    deleted_at: Optional[datetime] = Field(default=None, description="The timestamp when the resource was deleted.")
 
 
 class ErrorResponse(Value):

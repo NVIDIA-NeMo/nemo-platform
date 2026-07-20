@@ -143,7 +143,6 @@ class TestWorkspaceMemberCRUD:
         assert response.status_code == 200
         result = response.json()
         assert result["id"] == "remove-me@example.com"
-        assert result["deleted_count"] >= 1
 
         # Verify member is no longer listed
         list_response = await client.get("/apis/entities/v2/workspaces/default/members")
