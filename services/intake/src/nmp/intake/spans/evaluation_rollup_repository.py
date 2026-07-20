@@ -228,8 +228,30 @@ def _score_rollups_sql(*, trace_index_table: str, evaluator_results_table: str, 
             GROUP BY evaluation_id, test_case_id
         ),
         evaluators AS (
-            SELECT DISTINCT evaluation_id, evaluator_name
-            FROM session_scores
+            -- The distinct evaluators per evaluation, used below to give every test case a row per
+            -- evaluator. Derived directly from evaluator_results (mirroring session_scores' filters)
+            -- rather than `FROM session_scores`, because ClickHouse inlines and re-executes CTEs on
+            -- every reference: sourcing this from session_scores would run its full per-session
+            -- averaging pipeline a second time just to recover the evaluator names. Here we only need
+            -- the names, so we skip the GROUP BY avg.
+            SELECT DISTINCT
+                sessions.evaluation_id AS evaluation_id,
+                results.name AS evaluator_name
+            FROM scoped_sessions AS sessions
+            INNER JOIN (
+                SELECT workspace, session_id, name
+                FROM {evaluator_results_table} FINAL
+                WHERE workspace = %(workspace)s
+                    AND (workspace, session_id) IN (
+                        SELECT DISTINCT workspace, session_id
+                        FROM scoped_sessions
+                    )
+                    AND data_type IN ('NUMERIC', 'BOOLEAN')
+                    AND value IS NOT NULL
+            ) AS results
+                ON sessions.workspace = results.workspace
+                AND sessions.session_id = results.session_id
+            WHERE sessions.test_case_id != ''
         ),
         test_case_scores AS (
             -- Every (test case, evaluator) pair, so a test case with no recorded score for an evaluator
