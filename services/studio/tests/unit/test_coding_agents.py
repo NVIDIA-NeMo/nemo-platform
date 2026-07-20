@@ -794,8 +794,8 @@ def test_studio_link_destinations_cover_registered_workspace_routes():
         "index": "workspace",
         "inferenceProviders": "inference_providers",
         "intake": "intake",
+        "intakeSession": "intake_session",
         "intakeSpans": "intake_spans",
-        "intakeTrace": "intake_trace",
         "intakeTraces": "intake_traces",
         "jobDetail": "job",
         "jobs": "jobs",
@@ -1130,6 +1130,7 @@ def test_mcp_studio_link_returns_intake_span_markdown(monkeypatch: pytest.Monkey
                 "name": "studio_link",
                 "arguments": {
                     "destination": "intake_span",
+                    "session_id": "session 00",
                     "trace_id": "trace 01",
                     "span_id": "span 02",
                 },
@@ -1142,10 +1143,49 @@ def test_mcp_studio_link_returns_intake_span_markdown(monkeypatch: pytest.Monkey
     assert json.loads(result_text) == {
         "workspace": "default",
         "destination": "intake_span",
-        "path": "/workspaces/default/intake/traces/trace%2001?spanId=span%2002",
+        "path": "/workspaces/default/intake/sessions/session%2000?traceId=trace%2001&spanId=span%2002",
         "url": None,
-        "markdown": "[Span span 02](/workspaces/default/intake/traces/trace%2001?spanId=span%2002)",
+        "markdown": "[Span span 02](/workspaces/default/intake/sessions/session%2000?traceId=trace%2001&spanId=span%2002)",
     }
+
+
+@pytest.mark.parametrize(
+    ("destination", "arguments", "expected_path"),
+    [
+        (
+            "intake_session",
+            {"session_id": "session 00"},
+            "/workspaces/default/intake/sessions/session%2000",
+        ),
+        (
+            "intake_trace",
+            {"session_id": "session 00", "trace_id": "trace 01"},
+            "/workspaces/default/intake/sessions/session%2000?traceId=trace%2001",
+        ),
+    ],
+)
+def test_build_studio_link_result_returns_canonical_intake_session_paths(
+    destination: str,
+    arguments: dict[str, str],
+    expected_path: str,
+):
+    result = studio_links.build_studio_link_result(
+        "default",
+        None,
+        {"destination": destination, **arguments},
+    )
+
+    assert result["path"] == expected_path
+
+
+def test_build_studio_link_result_requires_session_for_intake_trace():
+    result = studio_links.build_studio_link_result(
+        "default",
+        None,
+        {"destination": "intake_trace", "trace_id": "trace 01"},
+    )
+
+    assert result == {"error": "session_id is required for Studio destination: intake_trace"}
 
 
 def test_mcp_studio_link_returns_started_evaluation_result_markdown(service_client: TestClient):

@@ -85,8 +85,10 @@ const STUDIO_LINK_PATH_TEMPLATES: Record<string, string> = {
   intake: '/workspaces/{workspace}/intake',
   intake_traces: '/workspaces/{workspace}/intake/traces',
   intake_spans: '/workspaces/{workspace}/intake/spans',
-  intake_trace: '/workspaces/{workspace}/intake/traces/{name}',
-  intake_span: '/workspaces/{workspace}/intake/traces/{trace_id}?spanId={span_id}',
+  intake_session: '/workspaces/{workspace}/intake/sessions/{session_id}',
+  intake_trace: '/workspaces/{workspace}/intake/sessions/{session_id}?traceId={trace_id}',
+  intake_span:
+    '/workspaces/{workspace}/intake/sessions/{session_id}?traceId={trace_id}&spanId={span_id}',
   data_designer: '/workspaces/{workspace}/data-designer',
   data_designer_new: '/workspaces/{workspace}/data-designer/new',
   data_designer_job: '/workspaces/{workspace}/data-designer/{name}',
@@ -126,10 +128,11 @@ const STUDIO_LINK_ARGUMENT_ALIASES = {
   ],
   experiment_name: ['experimentName', 'experiment_id', 'experimentId'],
   file_path: ['file', 'filePath', 'file_path_encoded', 'filePathEncoded', 'path'],
+  session_id: ['sessionId'],
   trace_id: ['traceId'],
   span_id: ['spanId', 'name'],
 } satisfies Record<
-  'name' | 'experiment_name' | 'file_path' | 'trace_id' | 'span_id',
+  'name' | 'experiment_name' | 'file_path' | 'session_id' | 'trace_id' | 'span_id',
   readonly string[]
 >;
 
@@ -216,6 +219,7 @@ const buildStudioLinkHrefFromInput = (
     'name',
     'experiment_name',
     'file_path',
+    'session_id',
     'trace_id',
     'span_id',
   ] as const) {
@@ -228,7 +232,7 @@ const buildStudioLinkHrefFromInput = (
   }
 
   return template.replace(
-    /\{(workspace|name|experiment_name|file_path|trace_id|span_id)\}/g,
+    /\{(workspace|name|experiment_name|file_path|session_id|trace_id|span_id)\}/g,
     (_match, key: string) => values[key] ?? ''
   );
 };

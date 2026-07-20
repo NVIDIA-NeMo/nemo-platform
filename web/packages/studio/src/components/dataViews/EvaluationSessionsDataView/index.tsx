@@ -27,7 +27,7 @@ import { Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/EvaluationSessionsDataView/Empty';
 import { IntakePayloadPreviewCell } from '@studio/components/IntakeLists/IntakePayloadPreviewCell';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { getEvaluationTraceDetailRoute } from '@studio/routes/utils';
+import { getEvaluationSessionTraceDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { keepPreviousData } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
@@ -268,10 +268,11 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
       onRowClick={(row) => {
         if (row.trace_id) {
           navigate(
-            getEvaluationTraceDetailRoute(
+            getEvaluationSessionTraceDetailRoute(
               workspace,
               experimentGroupName,
               evaluationName,
+              row.session_id,
               row.trace_id
             )
           );

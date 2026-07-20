@@ -3,47 +3,41 @@
 
 import { IntakeAccordion } from '@nemo/common/src/components/IntakeAccordion';
 import { useGetTrace } from '@nemo/sdk/generated/platform/api';
-import { PageHeader, Stack, StatusMessage, Text } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
+import type { Trace } from '@nemo/sdk/generated/platform/schema';
+import { Stack, StatusMessage, Text } from '@nvidia/foundations-react-core';
 import { KeyValueRows } from '@studio/components/IntakeDetail/IntakeComponents/KeyValueRows';
 import { RawJsonDebug } from '@studio/components/IntakeDetail/IntakeComponents/RawJsonDebug';
 import {
   buildEvaluationContextEntries,
   buildTraceSummaryEntries,
 } from '@studio/components/IntakeDetail/IntakeComponents/traceKeyValues';
-import { TraceSummaryHeader } from '@studio/components/IntakeDetail/TraceDetailSummaryHeader';
-import { TraceSpanAccordions } from '@studio/components/IntakeDetail/TraceSpanAccordions';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { NotFound } from '@studio/components/Layouts/NotFound';
-import {
-  type BreadcrumbsItemProps,
-  useBreadcrumbs,
-} from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { getIntakeTracesRoute } from '@studio/routes/utils';
+import { type BreadcrumbsItemProps, useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getTraceDisplayName } from '@studio/util/intakeTelemetry';
 import { CircleAlert } from 'lucide-react';
-import { type FC, useEffect, useMemo } from 'react';
+import { type FC, type ReactNode, useEffect, useMemo } from 'react';
 
 const TRACE_SUMMARY_SECTION = 'trace-summary';
 const EVALUATION_CONTEXT_SECTION = 'evaluation-context';
 
-interface IntakeTraceDetailViewProps {
+interface TraceDetailViewProps {
   workspace: string;
   traceId: string;
-  /** Leading breadcrumb items. Defaults to the Intake root when omitted. */
-  parentBreadcrumbs?: BreadcrumbsItemProps[];
-  /** When true, shows "Test case: <test_case_id>" as the header instead of "Trace <name>". Falls back to "Trace <name>" when test_case_id is absent. */
-  showTestCaseTitle?: boolean;
+  sessionId: string;
+  traceSummary?: Trace;
+  parentBreadcrumbs: BreadcrumbsItemProps[];
+  children: (trace: Trace) => ReactNode;
 }
 
-/**
- * Trace detail view: collapsible summary sections above hierarchical span accordions.
- */
-export const IntakeTraceDetailView: FC<IntakeTraceDetailViewProps> = ({
+/** Hydrates and renders the selected trace's metadata within a session detail page. */
+export const TraceDetailView: FC<TraceDetailViewProps> = ({
   workspace,
   traceId,
+  sessionId,
+  traceSummary,
   parentBreadcrumbs,
-  showTestCaseTitle,
+  children,
 }) => {
   const {
     data: trace,
@@ -53,24 +47,25 @@ export const IntakeTraceDetailView: FC<IntakeTraceDetailViewProps> = ({
     mode: 'detailed',
   });
 
+  // The session already owns enough trace data to keep its explorer mounted
+  // while the selected trace's full payload hydrates in the background.
+  const resolvedTrace = trace ?? traceSummary;
+
   const { setBreadcrumbs } = useBreadcrumbs();
-  const traceBreadcrumbLabel = trace ? getTraceDisplayName(trace) : traceId;
+  const traceBreadcrumbLabel = resolvedTrace ? getTraceDisplayName(resolvedTrace) : traceId;
 
   const summaryEntries = useMemo(
-    () => (trace ? buildTraceSummaryEntries(trace, { workspace }) : []),
-    [trace, workspace]
+    () => (resolvedTrace ? buildTraceSummaryEntries(resolvedTrace, { workspace }) : []),
+    [resolvedTrace, workspace]
   );
   const evaluationEntries = useMemo(
-    () => (trace ? buildEvaluationContextEntries(trace.evaluation_context) : []),
-    [trace]
+    () => (resolvedTrace ? buildEvaluationContextEntries(resolvedTrace.evaluation_context) : []),
+    [resolvedTrace]
   );
 
   useEffect(() => {
-    const parent = parentBreadcrumbs ?? [
-      { slotLabel: 'Intake', href: getIntakeTracesRoute(workspace) },
-    ];
-    setBreadcrumbs([...parent, { slotLabel: `Trace ${traceBreadcrumbLabel}` }]);
-  }, [setBreadcrumbs, traceBreadcrumbLabel, workspace, parentBreadcrumbs]);
+    setBreadcrumbs([...parentBreadcrumbs, { slotLabel: `Trace ${traceBreadcrumbLabel}` }]);
+  }, [parentBreadcrumbs, setBreadcrumbs, traceBreadcrumbLabel]);
 
   if (error?.response?.status === 404) {
     return (
@@ -81,11 +76,11 @@ export const IntakeTraceDetailView: FC<IntakeTraceDetailViewProps> = ({
     );
   }
 
-  if (isLoading) {
+  if (isLoading && !resolvedTrace) {
     return <Loading description="Loading trace..." />;
   }
 
-  if (error) {
+  if (error && !resolvedTrace) {
     return (
       <StatusMessage
         className="mx-auto mt-density-2xl"
@@ -97,51 +92,51 @@ export const IntakeTraceDetailView: FC<IntakeTraceDetailViewProps> = ({
     );
   }
 
-  if (!trace) {
+  if (!resolvedTrace) {
     return null;
   }
 
-  const title =
-    showTestCaseTitle && trace.experiment_context?.test_case_id
-      ? `Test case: ${trace.experiment_context.test_case_id}`
-      : `Trace ${getTraceDisplayName(trace)}`;
+  if (resolvedTrace.session_id !== sessionId) {
+    return (
+      <NotFound
+        subheader="Trace Not Found"
+        message="The trace does not belong to this session or you do not have permission to view it."
+      />
+    );
+  }
 
   return (
-    <AccessibleTitle title={title}>
-      <Stack gap="density-2xl" padding="density-2xl" className="h-full overflow-auto">
-        <PageHeader className="p-0" slotHeading={title} />
-        <TraceSummaryHeader trace={trace} />
-        <TraceSpanAccordions workspace={workspace} trace={trace} />
-        <IntakeAccordion
-          variant="section"
-          defaultValue={[]}
-          items={[
-            {
-              value: TRACE_SUMMARY_SECTION,
-              slotLabel: <Text kind="body/semibold/sm">Attributes</Text>,
-              slotContent: (
-                <Stack className="min-w-0">
-                  <KeyValueRows entries={summaryEntries} />
-                </Stack>
-              ),
-            },
-            ...(evaluationEntries.length > 0
-              ? [
-                  {
-                    value: EVALUATION_CONTEXT_SECTION,
-                    slotLabel: <Text kind="body/semibold/sm">Evaluation Context</Text>,
-                    slotContent: (
-                      <Stack className="min-w-0">
-                        <KeyValueRows entries={evaluationEntries} />
-                      </Stack>
-                    ),
-                  },
-                ]
-              : []),
-          ]}
-        />
-        <RawJsonDebug value={trace} />
-      </Stack>
-    </AccessibleTitle>
+    <>
+      {children(resolvedTrace)}
+      <IntakeAccordion
+        variant="section"
+        defaultValue={[]}
+        items={[
+          {
+            value: TRACE_SUMMARY_SECTION,
+            slotLabel: <Text kind="body/semibold/sm">Attributes</Text>,
+            slotContent: (
+              <Stack className="min-w-0">
+                <KeyValueRows entries={summaryEntries} />
+              </Stack>
+            ),
+          },
+          ...(evaluationEntries.length > 0
+            ? [
+                {
+                  value: EVALUATION_CONTEXT_SECTION,
+                  slotLabel: <Text kind="body/semibold/sm">Evaluation Context</Text>,
+                  slotContent: (
+                    <Stack className="min-w-0">
+                      <KeyValueRows entries={evaluationEntries} />
+                    </Stack>
+                  ),
+                },
+              ]
+            : []),
+        ]}
+      />
+      <RawJsonDebug value={resolvedTrace} />
+    </>
   );
 };

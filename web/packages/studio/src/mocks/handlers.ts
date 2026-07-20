@@ -24,6 +24,7 @@ import {
   createMockAnnotation,
   deleteMockAnnotation,
   mockAnnotationsPage,
+  mockSessionById,
   mockSpanById,
   mockSpansPage,
   mockTraceById,
@@ -474,8 +475,36 @@ export const handlers = [
   ),
 
   // Intake
-  http.get('*/apis/intake/v2/workspaces/:workspace/traces', () => {
-    return HttpResponse.json(mockTracesPage);
+  http.get('*/apis/intake/v2/workspaces/:workspace/sessions/:sessionId', ({ params }) => {
+    const session = mockSessionById(String(params['sessionId']));
+    return session ? HttpResponse.json(session) : new HttpResponse(null, { status: 404 });
+  }),
+  http.get('*/apis/intake/v2/workspaces/:workspace/traces', ({ request }) => {
+    const url = new URL(request.url);
+    const sessionId = url.searchParams.get('filter[session_id]');
+    const traceId = url.searchParams.get('filter[id]');
+    const sort = url.searchParams.get('sort');
+    const data = mockTracesPage.data
+      .filter(
+        (trace) =>
+          (!sessionId || trace.session_id === sessionId) && (!traceId || trace.id === traceId)
+      )
+      .sort((a, b) =>
+        sort === 'started_at'
+          ? Date.parse(a.started_at) - Date.parse(b.started_at)
+          : Date.parse(b.started_at) - Date.parse(a.started_at)
+      );
+    return HttpResponse.json({
+      ...mockTracesPage,
+      data,
+      pagination: {
+        ...mockTracesPage.pagination,
+        current_page_size: data.length,
+        total_results: data.length,
+        total_pages: data.length > 0 ? 1 : 0,
+      },
+      filter: sessionId ? { session_id: sessionId } : undefined,
+    });
   }),
   http.get('*/apis/intake/v2/workspaces/:workspace/traces/:traceId', ({ params }) => {
     const trace = mockTraceById(String(params['traceId']));
@@ -484,9 +513,11 @@ export const handlers = [
   http.get('*/apis/intake/v2/workspaces/:workspace/spans', ({ request }) => {
     const url = new URL(request.url);
     const traceId = url.searchParams.get('filter[trace_id]');
-    const data = traceId
-      ? mockSpansPage.data.filter((span) => span.trace_id === traceId)
-      : mockSpansPage.data;
+    const sessionId = url.searchParams.get('filter[session_id]');
+    const data = mockSpansPage.data.filter(
+      (span) =>
+        (!traceId || span.trace_id === traceId) && (!sessionId || span.session_id === sessionId)
+    );
 
     return HttpResponse.json({
       ...mockSpansPage,
@@ -497,7 +528,7 @@ export const handlers = [
         total_results: data.length,
         total_pages: data.length > 0 ? 1 : 0,
       },
-      filter: traceId ? { trace_id: traceId } : undefined,
+      filter: traceId || sessionId ? { trace_id: traceId, session_id: sessionId } : undefined,
     });
   }),
   http.get('*/apis/intake/v2/workspaces/:workspace/spans/:spanId', ({ params }) => {
@@ -507,6 +538,7 @@ export const handlers = [
   http.get('*/apis/intake/v2/workspaces/:workspace/annotations', ({ request }) => {
     const url = new URL(request.url);
     const spanId = url.searchParams.get('filter[span_id]') ?? undefined;
+    const sessionId = url.searchParams.get('filter[session_id]') ?? undefined;
     const parsedPage = Number(url.searchParams.get('page') ?? '1');
     const parsedPageSize = Number(url.searchParams.get('page_size') ?? '100');
     const page = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
@@ -514,6 +546,7 @@ export const handlers = [
     return HttpResponse.json(
       mockAnnotationsPage({
         spanId,
+        sessionId,
         page,
         pageSize,
       })

@@ -325,18 +325,37 @@ export const getEvaluationDetailRoute = (
   });
 };
 
-export const getEvaluationTraceDetailRoute = (
+export const getEvaluationSessionDetailRoute = (
   workspace: string,
   experimentGroupName: string,
   evaluationName: string,
-  traceId: string
+  sessionId: string
 ): string => {
-  return generatePath(ROUTES.workspace.evaluationTraceDetail, {
+  return generatePath(ROUTES.workspace.evaluationSessionDetail, {
     workspace,
     experimentGroupName: encodeURIComponent(experimentGroupName),
     evaluationName: encodeURIComponent(evaluationName),
-    traceId,
+    sessionId,
   });
+};
+
+export const getEvaluationSessionTraceDetailRoute = (
+  workspace: string,
+  experimentGroupName: string,
+  evaluationName: string,
+  sessionId: string,
+  traceId: string,
+  options?: { spanId?: string }
+): string => {
+  const path = getEvaluationSessionDetailRoute(
+    workspace,
+    experimentGroupName,
+    evaluationName,
+    sessionId
+  );
+  const searchParams = new URLSearchParams({ [QUERY_PARAMETERS.traceId]: traceId });
+  if (options?.spanId) searchParams.set(QUERY_PARAMETERS.spanId, options.spanId);
+  return `${path}?${searchParams.toString()}`;
 };
 
 export const getPromptTuningFormRoute = (workspace: string, options?: { model?: string }) => {
@@ -443,13 +462,19 @@ export const getIntakeSpansRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.intakeSpans, { workspace });
 };
 
-export const getIntakeTraceRoute = (workspace: string, traceId: string) => {
-  return generatePath(ROUTES.workspace.intakeTrace, { workspace, traceId });
+export const getIntakeSessionRoute = (workspace: string, sessionId: string) => {
+  return generatePath(ROUTES.workspace.intakeSession, { workspace, sessionId });
 };
 
-export const getIntakeTraceSpanRoute = (workspace: string, traceId: string, spanId: string) => {
-  const searchParams = new URLSearchParams({ [QUERY_PARAMETERS.spanId]: spanId });
-  return `${getIntakeTraceRoute(workspace, traceId)}?${searchParams.toString()}`;
+export const getIntakeSessionTraceRoute = (
+  workspace: string,
+  sessionId: string,
+  traceId: string,
+  options?: { spanId?: string }
+) => {
+  const searchParams = new URLSearchParams({ [QUERY_PARAMETERS.traceId]: traceId });
+  if (options?.spanId) searchParams.set(QUERY_PARAMETERS.spanId, options.spanId);
+  return `${getIntakeSessionRoute(workspace, sessionId)}?${searchParams.toString()}`;
 };
 
 export const getSafeSynthesizerRoute = (workspace: string) => {
