@@ -42,3 +42,6 @@ class SessionListParams(TypedDict, total=False):
 
     page_size: int
     """Page size."""
+
+    sort: str
+    """Comma-separated sort fields..."""
