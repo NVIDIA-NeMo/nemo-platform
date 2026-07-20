@@ -5,11 +5,14 @@ import {
   bareName,
   buildAgentEvalRequestBody,
   buildAgentTarget,
+  buildPersistedSpec,
   type EvalConfig,
   fanMetricOntoTasks,
   injectJudgeModel,
   type InlineMetricBundle,
   parseEvalConfig,
+  parsePersistedSpec,
+  type PersistedEvalSpec,
 } from '@studio/routes/agents/AgentEvaluationsRoute/components/submitEvaluationSpec';
 
 /** A config whose metric already carries a baked-in judge ModelRef. */
@@ -91,56 +94,103 @@ describe('fanMetricOntoTasks', () => {
   });
 });
 
+describe('buildPersistedSpec', () => {
+  it('fans the judge-injected metric onto every task', () => {
+    const spec = buildPersistedSpec(config, 'ws-a/judge');
+    expect(spec.tasks).toHaveLength(2);
+    for (const t of spec.tasks) {
+      expect(t.metrics).toHaveLength(1);
+      expect(t.metrics[0].payload.metric.model).toBe('ws-a/judge');
+    }
+    expect(spec.max_concurrent_tasks).toBe(2);
+  });
+
+  it("keeps the template metric's own model when no judge is supplied", () => {
+    const spec = buildPersistedSpec(configWithBakedJudge(), null);
+    expect(spec.tasks[0].metrics[0].payload.metric.model).toBe('ws-a/baked-in');
+  });
+
+  it('defaults max_concurrent_tasks when the template omits it', () => {
+    const spec = buildPersistedSpec({ tasks: config.tasks, metric }, 'ws-a/j');
+    expect(spec.max_concurrent_tasks).toBe(1);
+  });
+});
+
 describe('buildAgentEvalRequestBody', () => {
-  it('assembles a {spec:{tasks,target,max_concurrent_tasks}} body', () => {
-    const body = buildAgentEvalRequestBody(config, {
+  const persisted = (): PersistedEvalSpec => buildPersistedSpec(config, 'ws-a/judge');
+
+  it('assembles a {spec:{tasks,target,max_concurrent_tasks}} body and injects the target', () => {
+    const body = buildAgentEvalRequestBody(persisted(), {
       workspace: 'ws-a',
       agent: 'ws-a/support-bot',
-      judgeModel: 'ws-a/judge',
     });
     expect(body.spec.tasks).toHaveLength(2);
     expect(body.spec.max_concurrent_tasks).toBe(2);
     expect(body.spec.target.agent.name).toBe('support-bot');
     expect(body.spec.tasks[0].metrics[0].metric_type).toBe('llm-judge');
+    // Judge is already baked into the persisted spec; submit does not touch it.
     expect(body.spec.tasks[0].metrics[0].payload.metric.model).toBe('ws-a/judge');
   });
 
-  it("keeps the config's baked-in judge when no judge is selected (chosen fileset)", () => {
-    const body = buildAgentEvalRequestBody(configWithBakedJudge(), {
+  it('sets the fileset name as the job description when provided', () => {
+    const body = buildAgentEvalRequestBody(persisted(), {
       workspace: 'ws-a',
       agent: 'a',
-      judgeModel: '',
+      filesetName: 'wise-blue',
     });
-    expect(body.spec.tasks[0].metrics[0].payload.metric.model).toBe('ws-a/baked-in');
-  });
-
-  it('defaults max_concurrent_tasks when the config omits it', () => {
-    const body = buildAgentEvalRequestBody(
-      { tasks: config.tasks, metric },
-      { workspace: 'ws-a', agent: 'a', judgeModel: 'ws-a/j' }
-    );
-    expect(body.spec.max_concurrent_tasks).toBe(1);
+    expect(body.description).toBe('wise-blue');
   });
 });
 
 describe('parseEvalConfig', () => {
-  it('parses a valid config', () => {
+  it('parses a valid template', () => {
     const parsed = parseEvalConfig(JSON.stringify(config));
     expect(parsed.tasks).toHaveLength(2);
     expect(parsed.metric.metric_type).toBe('llm-judge');
   });
 
-  it('rejects a config with no tasks', () => {
+  it('rejects a template with no tasks', () => {
     expect(() => parseEvalConfig(JSON.stringify({ tasks: [], metric }))).toThrow(/tasks/);
   });
 
-  it('rejects a config with no metric', () => {
+  it('rejects a template with no metric', () => {
     expect(() => parseEvalConfig(JSON.stringify({ tasks: config.tasks }))).toThrow(/metric/);
   });
 
   it('rejects a metric missing payload.metric', () => {
     expect(() =>
       parseEvalConfig(JSON.stringify({ tasks: config.tasks, metric: { metric_type: 'llm-judge' } }))
+    ).toThrow(/payload\.metric/);
+  });
+});
+
+describe('parsePersistedSpec', () => {
+  const spec = (): PersistedEvalSpec => buildPersistedSpec(config, 'ws-a/judge');
+
+  it('parses a valid persisted spec round-tripped through JSON', () => {
+    const parsed = parsePersistedSpec(JSON.stringify(spec()));
+    expect(parsed.tasks).toHaveLength(2);
+    expect(parsed.tasks[0].metrics[0].payload.metric.model).toBe('ws-a/judge');
+    expect(parsed.max_concurrent_tasks).toBe(2);
+  });
+
+  it('rejects a spec with no tasks', () => {
+    expect(() => parsePersistedSpec(JSON.stringify({ tasks: [] }))).toThrow(/tasks/);
+  });
+
+  it('rejects a task with no metrics', () => {
+    expect(() =>
+      parsePersistedSpec(JSON.stringify({ tasks: [{ id: 'A', intent: 'x', metrics: [] }] }))
+    ).toThrow(/metrics/);
+  });
+
+  it('rejects a task metric missing payload.metric', () => {
+    expect(() =>
+      parsePersistedSpec(
+        JSON.stringify({
+          tasks: [{ id: 'A', intent: 'x', metrics: [{ metric_type: 'llm-judge' }] }],
+        })
+      )
     ).toThrow(/payload\.metric/);
   });
 });

@@ -29,10 +29,13 @@ import { useJudgeModels } from '@studio/hooks/evaluation/useJudgeModels';
 import {
   bareName,
   buildAgentEvalRequestBody,
+  buildPersistedSpec,
   generateEvalConfigName,
   MODE_DEFAULT,
   MODE_FILESET,
   parseEvalConfig,
+  parsePersistedSpec,
+  type PersistedEvalSpec,
 } from '@studio/routes/agents/AgentEvaluationsRoute/components/submitEvaluationSpec';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type FC, useEffect, useRef, useState } from 'react';
@@ -109,17 +112,24 @@ interface SubmitEvaluationModalProps extends Pick<FormModalProps, 'open' | 'onCl
   onSubmitted?: (jobName: string) => void;
 }
 
-/** Reads the reusable eval-config.json for this submission: either the selected
- *  example asset (seeded into a new fileset) or an existing fileset's file. */
-const loadEvalConfigText = async (
+/** Resolves the persisted yardstick spec for this submission. In "Use Example" mode
+ *  it builds the spec from the sample template (fanning the metric onto every task with
+ *  the picked judge baked in) and seeds it into a new fileset; in "Choose Fileset" mode
+ *  it reads the saved spec back verbatim (no re-fan, no judge re-pick). */
+const loadPersistedSpec = async (
   workspace: string,
   formData: SubmitEvaluationFormData
-): Promise<string> => {
+): Promise<PersistedEvalSpec> => {
   if (formData.mode === MODE_DEFAULT) {
     const example = getEvaluationSampleAgent(formData.exampleKey);
-    const content = await fetchSampleText(example.evalConfigPath);
+    const template = parseEvalConfig(await fetchSampleText(example.evalConfigPath));
+    const spec = buildPersistedSpec(template, formData.judgeModel || null);
     const files: EvalSeedFile[] = [
-      { path: EVAL_CONFIG_FILENAME, content, type: 'application/json' },
+      {
+        path: EVAL_CONFIG_FILENAME,
+        content: JSON.stringify(spec, null, 2),
+        type: 'application/json',
+      },
     ];
     await ensureEvalConfigFileset(
       workspace,
@@ -128,9 +138,9 @@ const loadEvalConfigText = async (
       files,
       'Agent Evaluation Config'
     );
-    return content;
+    return spec;
   }
-  // Choose-fileset mode: read the picked eval-config.json out of its fileset.
+  // Choose-fileset mode: read the saved yardstick spec out of its fileset, as-is.
   const parsed = parseFilesetLocation(formData.configFile ?? '');
   if (!parsed?.objectPath) throw new Error('No eval-config.json selected');
   const blob = await filesDownloadFile(
@@ -140,7 +150,7 @@ const loadEvalConfigText = async (
     new AbortController().signal
   );
   if (!blob) throw new Error('Failed to read the selected eval config');
-  return blob.text();
+  return parsePersistedSpec(await blob.text());
 };
 
 export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
@@ -233,16 +243,14 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     reset: resetMutation,
   } = useMutation({
     mutationFn: async (formData: SubmitEvaluationFormData) => {
-      const configText = await loadEvalConfigText(workspace, formData);
-      const config = parseEvalConfig(configText);
+      const spec = await loadPersistedSpec(workspace, formData);
       const filesetName =
         formData.mode === MODE_DEFAULT
           ? formData.newName.trim()
           : (parseFilesetLocation(formData.configFile ?? '')?.name ?? undefined);
-      const body = buildAgentEvalRequestBody(config, {
+      const body = buildAgentEvalRequestBody(spec, {
         workspace,
         agent: formData.agent,
-        judgeModel: formData.judgeModel,
         filesetName,
       });
       const created = await submitAgentEvalJob(workspace, body as AgentEvaluateJobRequest);

@@ -4,9 +4,12 @@
 import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 
-// Assembles the `agent-evaluate/jobs` request from a reusable `eval-config.json`
-// (inline tasks + one shared inline metric) plus the submit-time selections
-// (agent target + judge model). See this route's AGENTS.md for the contract.
+// Two shapes flow through here (see this route's AGENTS.md for the contract):
+//   - a *template* (`EvalConfig`): the sample's inline tasks + one shared inline metric,
+//     read only when creating a new config from an example.
+//   - a *persisted spec* (`PersistedEvalSpec`): the yardstick stored in the fileset —
+//     tasks that each carry the metric (judge baked in), no target. It is an
+//     `AgentEvalInputSpec` minus `target`; submit injects the per-run agent target.
 
 /** Sentinel ``evalConfig`` value that switches the form into create mode. */
 export const CREATE_NEW = '__create_new__';
@@ -47,10 +50,20 @@ export interface EvalConfigTask {
   reference?: Record<string, unknown>;
 }
 
-/** The reusable eval config: inline tasks + one shared metric. */
+/** The example template: inline tasks + one shared metric (metric not yet fanned). */
 export interface EvalConfig {
   tasks: EvalConfigTask[];
   metric: InlineMetricBundle;
+  max_concurrent_tasks?: number;
+}
+
+/** A task with the shared metric fanned onto it (judge baked in). */
+export type EvalSpecTask = EvalConfigTask & { metrics: InlineMetricBundle[] };
+
+/** The persisted yardstick stored in a fileset: tasks-with-metrics, no target.
+ *  An `AgentEvalInputSpec` minus `target` — submit injects the per-run agent. */
+export interface PersistedEvalSpec {
+  tasks: EvalSpecTask[];
   max_concurrent_tasks?: number;
 }
 
@@ -62,9 +75,6 @@ export interface SubmitSelections {
   workspace: string;
   /** Agent (bare name) to evaluate; used to build the generic target. */
   agent: string;
-  /** Judge ModelRef ("workspace/name") from JudgeModelSelect, injected into the
-   *  metric. Empty in chosen-fileset mode, where the config's own judge is kept. */
-  judgeModel: string;
   /** Eval-config fileset name, stored as the job description for display in the detail view. */
   filesetName?: string;
 }
@@ -100,27 +110,41 @@ export const injectJudgeModel = (
 });
 
 /** Fan the shared metric onto every task. A judge model is injected only when
- *  one is supplied (the "Use Example" path); otherwise the config's own judge
- *  ModelRef is kept as-is (chosen-fileset configs are self-contained). */
+ *  one is supplied; otherwise the template metric's own model is kept as-is. */
 export const fanMetricOntoTasks = (
   config: EvalConfig,
   judgeModel: string | null
-): Array<EvalConfigTask & { metrics: InlineMetricBundle[] }> => {
+): EvalSpecTask[] => {
   const metric = judgeModel ? injectJudgeModel(config.metric, judgeModel) : config.metric;
   return config.tasks.map((task) => ({ ...task, metrics: [metric] }));
 };
 
-/** Build the full ``agent-evaluate/jobs`` POST body from a config + selections. */
-export const buildAgentEvalRequestBody = (config: EvalConfig, selections: SubmitSelections) => ({
+/** Build the persisted yardstick from an example template: fan the shared metric
+ *  (judge baked in) onto every task. This is what gets stored in the fileset. */
+export const buildPersistedSpec = (
+  config: EvalConfig,
+  judgeModel: string | null
+): PersistedEvalSpec => ({
+  tasks: fanMetricOntoTasks(config, judgeModel),
+  max_concurrent_tasks: config.max_concurrent_tasks ?? DEFAULT_MAX_CONCURRENT_TASKS,
+});
+
+/** Build the ``agent-evaluate/jobs`` POST body from a persisted spec + selections.
+ *  The spec's tasks already carry their metrics (judge baked); submit only injects
+ *  the per-run agent target and wraps it as the job request. */
+export const buildAgentEvalRequestBody = (
+  spec: PersistedEvalSpec,
+  selections: SubmitSelections
+) => ({
   ...(selections.filesetName ? { description: selections.filesetName } : {}),
   spec: {
-    tasks: fanMetricOntoTasks(config, selections.judgeModel || null),
+    tasks: spec.tasks,
     target: buildAgentTarget(selections.workspace, selections.agent),
-    max_concurrent_tasks: config.max_concurrent_tasks ?? DEFAULT_MAX_CONCURRENT_TASKS,
+    max_concurrent_tasks: spec.max_concurrent_tasks ?? DEFAULT_MAX_CONCURRENT_TASKS,
   },
 });
 
-/** Parse an eval-config.json blob, validating the minimal required shape. */
+/** Parse an example template blob, validating the minimal required shape. */
 export const parseEvalConfig = (text: string): EvalConfig => {
   const parsed = JSON.parse(text) as Partial<EvalConfig>;
   if (!Array.isArray(parsed.tasks) || parsed.tasks.length === 0) {
@@ -146,4 +170,28 @@ export const parseEvalConfig = (text: string): EvalConfig => {
     metric: parsed.metric,
     max_concurrent_tasks: parsed.max_concurrent_tasks,
   };
+};
+
+/** Parse a persisted yardstick spec (the reuse path): tasks each carry their own
+ *  metrics, no top-level ``metric``. Submitted as-is with only a target injected. */
+export const parsePersistedSpec = (text: string): PersistedEvalSpec => {
+  const parsed = JSON.parse(text) as Partial<PersistedEvalSpec>;
+  if (!Array.isArray(parsed.tasks) || parsed.tasks.length === 0) {
+    throw new Error('eval-config.json must contain a non-empty "tasks" array');
+  }
+  for (const task of parsed.tasks) {
+    if (!Array.isArray(task.metrics) || task.metrics.length === 0) {
+      throw new Error('eval-config.json every task must contain a non-empty "metrics" array');
+    }
+    const payload = task.metrics[0]?.payload;
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      !payload.metric ||
+      typeof payload.metric !== 'object'
+    ) {
+      throw new Error('eval-config.json task metric must contain a "payload.metric" object');
+    }
+  }
+  return { tasks: parsed.tasks, max_concurrent_tasks: parsed.max_concurrent_tasks };
 };

@@ -33,7 +33,16 @@ nemo-evaluator has no "eval config" entity, so a reusable config is stored as an
 config (the `agent-evaluate` spec takes inline `tasks[]`; a Task/Taskset _reference_ is planned
 but not yet implemented, so large datasets are inlined for now).
 
-`eval-config.json` shape (shared-metric layout):
+Two shapes are involved:
+
+- **Example template** (`public/sample-agents/*/eval-config.json`): a shared-metric layout —
+  `tasks[]` (no per-task metrics) + one top-level `metric` (no judge_model). Read only when
+  creating a config from an example; never submitted directly.
+- **Persisted spec** (what a Fileset actually stores = the yardstick): an `AgentEvalInputSpec`
+  **minus `target`**. Every task carries its own `metrics[]` with the **judge model baked in**;
+  `max_concurrent_tasks` is baked. No agent target (that is per-run).
+
+Persisted `eval-config.json` shape (the yardstick):
 
 ```json
 {
@@ -42,24 +51,30 @@ but not yet implemented, so large datasets are inlined for now).
       "id": "Claim Your Free iPhone Now!",
       "intent": "Classify this email as phishing or benign",
       "inputs": { "instruction": "<email body>" },
-      "reference": { "label": "phishing" }
+      "reference": { "label": "phishing" },
+      "metrics": [
+        {
+          /* inline metric bundle — see Payloads; judge model baked into payload.metric.model */
+        }
+      ]
     }
   ],
-  "metric": {
-    /* one shared inline metric — see Payloads; NO judge_model */
-  },
   "max_concurrent_tasks": 1
 }
 ```
 
-**One-click reuse:** the user selects a Fileset **by name**. Studio reads its
-`eval-config.json`, **fans the shared `metric` onto each task**, injects the judge_model +
-agent target, and submits. Everything defining the eval (tasks, metric) lives in the config;
-only env/user-specific bits are injected at submit.
+**Create ("Use Example"):** Studio reads the example template, **fans the shared `metric` onto
+each task** and **injects the chosen judge model** (`buildPersistedSpec`), then writes that
+persisted spec into a new Fileset. The judge is now part of the stored yardstick.
 
-Injected by Studio **at submit** (never stored in the config): the agent **target**, the
-metric's **judge_model** (from JudgeModelSelect + the workspace IGW base), and
-**`max_concurrent_tasks`** (Studio default; the config value is a hint).
+**Reuse ("Choose Fileset"):** the user selects a Fileset **by name**. Studio reads its
+`eval-config.json` **as-is** (`parsePersistedSpec`) — no re-fan, no judge re-pick — so the
+yardstick (tasks + metric + judge) is identical across every run. Only the agent **target** is
+injected at submit; the whole is wrapped as `{ spec }` for the job request. The saved spec is
+also a valid `nemo evaluator agent-evaluate submit --spec-file` input once a `target` is added.
+
+Injected by Studio **at submit** (never stored in the config): the agent **target** only. The
+judge model and `max_concurrent_tasks` are part of the persisted yardstick.
 
 **`max_concurrent_tasks` defaults to `1` (serial).** This is a conservative default for local NAT
 deployments. NAT currently maps workflow failures, including output truncation, to `422`; a single
@@ -96,7 +111,7 @@ Submit body is wrapped: `{"spec": { ...AgentEvalInputSpec }}`.
 {
   "spec": {
     "tasks": [
-      /* each with metrics[] after Studio fans the shared metric on */
+      /* each carries metrics[] from the persisted spec (judge already baked) */
     ],
     "target": {
       "kind": "agent",
@@ -141,7 +156,7 @@ chat wrapper. `instruction` is the single canonical task input.
   "inputs": { "instruction": "<prompt sent to the agent>" },
   "reference": { "label": "phishing" },
   "metrics": [
-    /* inline metric bundle, fanned on at submit */
+    /* inline metric bundle, fanned on at config-create time (judge baked in) */
   ]
 }
 ```
@@ -173,9 +188,8 @@ truth, never shown to the agent.
     "kind": "inline",
     "metric": {
       "type": "llm-judge",
-      "model": {
-        /* judge_model — injected at submit */
-      },
+      "model": "workspace/name",
+      /* judge ModelRef string — baked into the persisted spec at config-create time */
       "prompt_template": {
         "messages": [
           {
