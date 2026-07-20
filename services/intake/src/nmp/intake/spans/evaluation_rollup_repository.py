@@ -185,11 +185,9 @@ def _stat_columns(value_expr: str, *, prefix: str = "", guarded: bool = False) -
 
 
 def _score_rollups_sql(*, trace_index_table: str, evaluator_results_table: str, evaluation_names_sql: str) -> str:
-    # Two-level rollup. Each run (session) contributes one score per evaluator, so first reduce the
-    # per-span evaluator_results rows to one per-(session, evaluator) value; then average those per test
-    # case; then take the distribution across test cases. The mean is test-case-weighted (each test case
-    # counts once regardless of k) and `count` is the number of test cases. Sessions with no test_case_id
-    # aren't attributable to a test case, so they're dropped here.
+    # Test-case-weighted rollup: reduce evaluator_results to one value per (session, evaluator), average
+    # per test case, then take the distribution across test cases (`count` is the test-case count).
+    # Sessions with no test_case_id can't be attributed to a test case and are dropped.
     return f"""
         WITH
         scoped_sessions AS (
@@ -228,12 +226,9 @@ def _score_rollups_sql(*, trace_index_table: str, evaluator_results_table: str, 
             GROUP BY evaluation_id, test_case_id
         ),
         evaluators AS (
-            -- The distinct evaluators per evaluation, used below to give every test case a row per
-            -- evaluator. Derived directly from evaluator_results (mirroring session_scores' filters)
-            -- rather than `FROM session_scores`, because ClickHouse inlines and re-executes CTEs on
-            -- every reference: sourcing this from session_scores would run its full per-session
-            -- averaging pipeline a second time just to recover the evaluator names. Here we only need
-            -- the names, so we skip the GROUP BY avg.
+            -- Distinct evaluators per evaluation, used to give every test case a row per evaluator below.
+            -- Read from evaluator_results, not `FROM session_scores`: ClickHouse re-executes a CTE on
+            -- every reference, so sourcing it here would re-run session_scores' averaging just for names.
             SELECT DISTINCT
                 sessions.evaluation_id AS evaluation_id,
                 results.name AS evaluator_name
@@ -254,14 +249,13 @@ def _score_rollups_sql(*, trace_index_table: str, evaluator_results_table: str, 
             WHERE sessions.test_case_id != ''
         ),
         test_case_scores AS (
-            -- Every (test case, evaluator) pair, so a test case with no recorded score for an evaluator
-            -- (e.g. all its sessions errored) still contributes a 0. Sum the recorded scores and divide
-            -- by the test case's session count, so unscored sessions are implicit zeros in the denominator.
+            -- Fixed denominator: sum a test case's recorded scores over its total session count, so
+            -- unscored sessions are implicit zeros. The (test case, evaluator) grid plus coalesce keeps a
+            -- fully-unscored test case in the mean as 0 rather than dropping it.
             SELECT
                 test_cases.evaluation_id AS evaluation_id,
                 test_cases.test_case_key AS test_case_key,
                 evaluators.evaluator_name AS evaluator_name,
-                -- coalesce so a test case with zero recorded scores is 0 (not NULL), so it stays in the mean
                 coalesce(sum(scores.value), 0) / test_cases.session_count AS value
             FROM test_case_sessions AS test_cases
             INNER JOIN evaluators ON evaluators.evaluation_id = test_cases.evaluation_id
