@@ -75,7 +75,11 @@ def _platform_headers(
     request scope).
     """
     headers = _get_default_headers(as_service, internal, on_behalf_of)
-    headers.update(get_otel_headers())
+    for name, value in get_otel_headers().items():
+        normalized_name = name.lower()
+        if normalized_name == "x-nmp-internal" or normalized_name.startswith("x-nmp-principal-"):
+            continue
+        headers[name] = value
     return headers
 
 

@@ -11,7 +11,6 @@ seam.  The rich platform provider (``nmp.common.client_factory``) is tested in
 from __future__ import annotations
 
 import json
-import logging
 from unittest.mock import patch
 
 import pytest
@@ -182,11 +181,22 @@ class TestDefaultNemoClientProvider:
 
 
 class _FakeEntryPoint:
-    def __init__(self, name: str, obj: object) -> None:
+    def __init__(
+        self,
+        name: str,
+        obj: object,
+        *,
+        value: str = "tests:_CustomProvider",
+        load_error: Exception | None = None,
+    ) -> None:
         self.name = name
+        self.value = value
         self._obj = obj
+        self._load_error = load_error
 
     def load(self) -> object:
+        if self._load_error is not None:
+            raise self._load_error
         return self._obj
 
 
@@ -232,35 +242,71 @@ class TestProviderResolution:
         with patch("nemo_platform_plugin.client_provider.entry_points", return_value=eps):
             assert get_nemo_client().base_url == "http://custom:1234"
 
-    def test_entry_point_not_satisfying_protocol_is_skipped(self, monkeypatch, caplog):
-        # An EP that loads an object which is not a NemoClientProvider is skipped
-        # with a WARNING, and resolution falls back to the default provider
-        # rather than degrading silently.
-        monkeypatch.setenv("NMP_BASE_URL", "http://fallback:8080")
-        monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
-
+    def test_entry_point_not_satisfying_protocol_raises(self):
         class _NotAProvider:
             pass
 
         eps = [_FakeEntryPoint("platform", _NotAProvider())]
         with patch("nemo_platform_plugin.client_provider.entry_points", return_value=eps):
-            with caplog.at_level(logging.WARNING):
-                client = get_nemo_client()
-        assert client.base_url == "http://fallback:8080"
-        assert any("does not satisfy NemoClientProvider" in r.message for r in caplog.records)
+            with pytest.raises(RuntimeError, match="does not satisfy NemoClientProvider"):
+                get_nemo_client()
+
+    def test_entry_point_load_exception_raises(self):
+        eps = [_FakeEntryPoint("platform", _CustomProvider, load_error=ImportError("missing provider"))]
+        with patch("nemo_platform_plugin.client_provider.entry_points", return_value=eps):
+            with pytest.raises(RuntimeError, match="Failed to load or construct NemoClient provider") as exc_info:
+                get_nemo_client()
+        assert isinstance(exc_info.value.__cause__, ImportError)
+
+    def test_entry_point_constructor_exception_raises(self):
+        class _BrokenProvider:
+            def __init__(self) -> None:
+                raise ValueError("invalid configuration")
+
+        eps = [_FakeEntryPoint("platform", _BrokenProvider, value="tests:_BrokenProvider")]
+        with patch("nemo_platform_plugin.client_provider.entry_points", return_value=eps):
+            with pytest.raises(RuntimeError, match="Failed to load or construct NemoClient provider") as exc_info:
+                get_nemo_client()
+        assert isinstance(exc_info.value.__cause__, ValueError)
+
+    def test_resolution_retries_after_entry_point_failure(self):
+        ep = _FakeEntryPoint("platform", _CustomProvider, load_error=ImportError("temporarily unavailable"))
+        with patch("nemo_platform_plugin.client_provider.entry_points", return_value=[ep]):
+            with pytest.raises(RuntimeError, match="Failed to load or construct NemoClient provider"):
+                get_nemo_client()
+            ep._load_error = None
+            assert get_nemo_client().base_url == "http://custom:1234"
 
     def test_multiple_named_providers_raise(self):
-        eps = [_FakeEntryPoint("platform", _CustomProvider), _FakeEntryPoint("other", _CustomProvider)]
+        eps = [
+            _FakeEntryPoint("platform", _CustomProvider, value="tests:_CustomProvider"),
+            _FakeEntryPoint("other", _CustomProvider, value="tests:_OtherProvider"),
+        ]
         with patch("nemo_platform_plugin.client_provider.entry_points", return_value=eps):
             with pytest.raises(RuntimeError, match="Multiple NemoClient providers"):
                 get_nemo_client()
 
-    def test_duplicate_named_providers_dedup(self, monkeypatch):
-        # The bundle re-registers the same named entry-point; dedup by name avoids a spurious error.
+    def test_duplicate_name_same_target_is_deduplicated(self, monkeypatch):
         monkeypatch.delenv("NMP_BASE_URL", raising=False)
-        eps = [_FakeEntryPoint("platform", _CustomProvider), _FakeEntryPoint("platform", _CustomProvider)]
+        eps = [
+            _FakeEntryPoint("platform", _CustomProvider, value="tests:_CustomProvider"),
+            _FakeEntryPoint("platform", _CustomProvider, value="tests:_CustomProvider"),
+        ]
         with patch("nemo_platform_plugin.client_provider.entry_points", return_value=eps):
             assert get_nemo_client().base_url == "http://custom:1234"
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_duplicate_name_different_targets_raises_deterministically(self, reverse):
+        eps = [
+            _FakeEntryPoint("platform", _CustomProvider, value="z_package:Provider"),
+            _FakeEntryPoint("platform", _CustomProvider, value="a_package:Provider"),
+        ]
+        if reverse:
+            eps.reverse()
+        with patch("nemo_platform_plugin.client_provider.entry_points", return_value=eps):
+            with pytest.raises(RuntimeError, match="Conflicting NemoClient providers") as exc_info:
+                get_nemo_client()
+        assert "a_package:Provider, z_package:Provider" in str(exc_info.value)
 
     def test_set_none_clears_and_re_resolves(self, monkeypatch):
         monkeypatch.setenv("NMP_BASE_URL", "http://re-resolved:8080")

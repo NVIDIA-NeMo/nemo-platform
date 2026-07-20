@@ -295,28 +295,46 @@ def _resolve_provider() -> SDKProvider:
         return _cached_provider
 
     # Scan entry-points.  nmp-common registers a provider; the nemo-platform
-    # bundle inherits the same entry-point, so deduplicate by name.
-    eps = {ep.name: ep for ep in entry_points(group="nemo.sdk_provider")}
+    # bundle inherits the same entry-point, so identical registrations are
+    # legitimate duplicates.  A duplicate name pointing elsewhere is a
+    # conflicting registration and must not depend on metadata ordering.
+    eps = {}
+    for ep in sorted(entry_points(group="nemo.sdk_provider"), key=lambda candidate: (candidate.name, candidate.value)):
+        existing = eps.get(ep.name)
+        if existing is not None and existing.value != ep.value:
+            targets = ", ".join(sorted((existing.value, ep.value)))
+            raise RuntimeError(
+                f"Conflicting SDK providers registered under 'nemo.sdk_provider' with name {ep.name!r}: "
+                f"{targets}. Provider names must resolve to a single target."
+            )
+        eps[ep.name] = ep
+
     if len(eps) > 1:
-        names = ", ".join(eps)
+        names = ", ".join(sorted(eps))
         raise RuntimeError(
             f"Multiple SDK providers registered under 'nemo.sdk_provider': {names}. "
             "Only the platform (nmp-common) should register a provider."
         )
-    for ep in eps.values():
+
+    if eps:
+        ep = next(iter(eps.values()))
         try:
             obj = ep.load()
             if isinstance(obj, type):
                 obj = obj()
-            if isinstance(obj, SDKProvider):
-                logger.debug("Using SDK provider from entry-point %r", ep.name)
-                _cached_provider = obj
-                return obj
-            logger.warning("Entry-point %r loaded but does not satisfy SDKProvider; skipping", ep.name)
-        except Exception:
-            logger.warning("Failed to load SDK provider %r; skipping", ep.name, exc_info=True)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to load or construct SDK provider {ep.name!r} from entry-point target {ep.value!r}."
+            ) from exc
+        if not isinstance(obj, SDKProvider):
+            raise RuntimeError(
+                f"SDK provider {ep.name!r} from entry-point target {ep.value!r} does not satisfy SDKProvider."
+            )
+        logger.debug("Using SDK provider from entry-point %r", ep.name)
+        _cached_provider = obj
+        return obj
 
-    # Fall back to the built-in default.
+    # Fall back to the built-in default only when no provider is registered.
     logger.debug("No entry-point SDK provider found; using DefaultSDKProvider")
     _cached_provider = DefaultSDKProvider()
     return _cached_provider
