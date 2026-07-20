@@ -3730,7 +3730,7 @@ paths:
   /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/sessions:
     get:
       tags:
-      - Evaluations
+      - Experiments
       summary: List Evaluation Sessions
       operationId: list_evaluation_sessions_apis_intake_v2_workspaces__workspace__evaluations__name__sessions_get
       parameters:
@@ -3784,6 +3784,22 @@ paths:
         description: Response mode. summary omits root-span input and output; preview
           includes both truncated to 300 characters; detailed returns full root-span
           payloads.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          description: "Comma-separated list of fields to sort by, applied in order\
+            \ (the first field dominates); prefix a field with '-' for descending\
+            \ \u2014 e.g. '-cost_total_usd,latency_ms'. Fields: test_case_id, started_at,\
+            \ ended_at, latency_ms, status, cost_total_usd, tokens. When omitted,\
+            \ sessions are ordered by started_at ascending."
+          title: Sort
+          type: string
+        description: "Comma-separated list of fields to sort by, applied in order\
+          \ (the first field dominates); prefix a field with '-' for descending \u2014\
+          \ e.g. '-cost_total_usd,latency_ms'. Fields: test_case_id, started_at, ended_at,\
+          \ latency_ms, status, cost_total_usd, tokens. When omitted, sessions are\
+          \ ordered by started_at ascending."
       - in: query
         name: filter
         style: deepObject
@@ -3800,9 +3816,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/EvaluationSessionResponsesPage'
         '400':
-          description: Invalid filter value
+          description: Invalid filter value, unsupported sort field, or empty sort
         '404':
           description: Evaluation not found
+        '413':
+          description: Too many sessions to sort by cost or tokens
         '503':
           description: ClickHouse unavailable
         '422':
