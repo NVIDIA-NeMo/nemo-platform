@@ -408,8 +408,6 @@ def generate_markdown(entries: list[tuple[str, Any]]) -> str:
     lines.append('title: "NeMo Platform configuration reference"')
     lines.append('description: ""')
     lines.append("---")
-    lines.append("(platform-config-reference)=")
-    lines.append("")
     lines.append("")
     lines.append(
         "This document describes the structure and defaults for the global config file for the NeMo Platform. "

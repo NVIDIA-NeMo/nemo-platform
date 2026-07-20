@@ -4,7 +4,7 @@ description: ""
 ---
 <a id="agents-plugins"></a>
 
-NeMo Platform 0.2.0 is extended through Python plugins and
+NeMo Platform 0.3.0 is extended through Python plugins and
 coding-agent skills. Plugins add runtime capabilities to the local platform.
 Skills teach your coding agent how to operate those capabilities on your behalf.
 
@@ -112,5 +112,6 @@ build the policy bundle rather than serve an unguarded endpoint. See
 [Plugin Authorization](/documentation/access-control/authorization/plugin-authorization)
 for the full pattern.
 
-Keep plugins local-first for OSS 0.2.0: avoid requiring a cluster,
-container runtime, or external control plane for the documented launch path.
+Keep plugins usable from the local OSS setup path: avoid requiring a cluster,
+container runtime, or external control plane unless that plugin explicitly
+documents a self-managed Kubernetes workflow.
