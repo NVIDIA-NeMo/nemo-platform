@@ -13,7 +13,10 @@ import {
 } from '@studio/components/IntakeDetail/IntakeComponents/traceKeyValues';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { NotFound } from '@studio/components/Layouts/NotFound';
-import { type BreadcrumbsItemProps, useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import {
+  type BreadcrumbsItemProps,
+  useBreadcrumbs,
+} from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getTraceDisplayName } from '@studio/util/intakeTelemetry';
 import { CircleAlert } from 'lucide-react';
 import { type FC, type ReactNode, useEffect, useMemo } from 'react';

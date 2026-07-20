@@ -274,9 +274,7 @@ describe('IntakeSessionDetailRoute', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId('location')).toHaveTextContent(
-        '?traceId=trace-agent-run-003'
-      );
+      expect(screen.getByTestId('location')).toHaveTextContent('?traceId=trace-agent-run-003');
     });
     expect(screen.queryByTestId('trace-trajectory-sidebar')).not.toBeInTheDocument();
     expect(await screen.findByText('Generate access-control guidance')).toBeInTheDocument();

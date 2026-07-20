@@ -88,14 +88,8 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({
   // manually toggling an accordion doesn't yank the viewport around.
   const scrollToActiveRef = useRef(false);
 
-  const {
-    trajectories,
-    spansLoaded,
-    spansError,
-    isSpansFetching,
-    spanPageSize,
-    spanTotal,
-  } = explorer;
+  const { trajectories, spansLoaded, spansError, isSpansFetching, spanPageSize, spanTotal } =
+    explorer;
   const spans =
     trajectories.find(({ trace: sessionTrace }) => sessionTrace.id === trace.id)?.spans ??
     EMPTY_SPANS;

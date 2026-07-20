@@ -114,12 +114,7 @@ export const SessionDetailView: FC<SessionDetailViewProps> = ({
       spanPageSize: SESSION_TRACES_PAGE_SIZE,
       spanTotal: sessionSpansResponse?.pagination?.total_results ?? 0,
     }),
-    [
-      isSessionSpansFetching,
-      sessionSpansError,
-      sessionSpansResponse,
-      trajectories,
-    ]
+    [isSessionSpansFetching, sessionSpansError, sessionSpansResponse, trajectories]
   );
   const testCaseId = traces.find((trace) => trace.evaluation_context?.test_case_id)
     ?.evaluation_context?.test_case_id;
