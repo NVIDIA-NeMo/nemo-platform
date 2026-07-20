@@ -6,7 +6,7 @@ Use **Virtual Models** in the NeMo Studio workspace sidebar to inspect inference
 
 ## Virtual Model List
 
-The Virtual Models table shows all user-created virtual models in the current workspace. Auto-provisioned passthrough routes are hidden. Select a row or choose **View** from the row actions menu to open the details panel.
+The Virtual Models table shows all user-created virtual models in the current workspace. Controller-managed passthrough routes are hidden. Select a row or choose **View** from the row actions menu to open the details panel.
 
 | Action | Where | Result |
 |--------|-------|--------|
@@ -29,8 +29,8 @@ Selecting a row opens a details panel with the full configuration of a single vi
 | Field | Description |
 |-------|-------------|
 | Created | When the virtual model was first created. |
-| Default model | The backend model entity that the Inference Gateway proxies requests to. |
-| Autoprovisioned | Whether the route was created automatically by the platform. Auto-provisioned models are hidden from the list. |
+| Default model | The backend model entity IGW routes requests to, if configured. When omitted, a request middleware plugin handles backend routing. |
+| Autoprovisioned | Whether the route is controller-managed. The Models controller deletes controller-managed virtual models once no ModelProvider serves the matching entity; setting this field manually opts the virtual model into that cleanup behavior. Controller-managed models are hidden from the list. |
 | Override proxy | An optional plugin-provided proxy identifier (format: `plugin-name.proxy-name`) that overrides the default IGW proxy, if set. |
 | Models | Backend model entries associated with this virtual model, displayed as `model (backend_format)`. |
 
