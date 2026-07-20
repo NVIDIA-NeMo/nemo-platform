@@ -162,7 +162,14 @@ async def test_platform_job_config_compiler_sft_lora(mock_sdk, monkeypatch):
         if hasattr(steps[0], "executor")
         else steps[0]["executor"]["container"]["command"]
     )
-    assert download_cmd[-1] == "nmp.automodel.tasks.file_io"
+    assert download_cmd == [
+        "-m",
+        "nmp.customization_common.tasks.file_io",
+        "--service-source",
+        "automodel",
+        "--service-name",
+        "customizer",
+    ]
     download_entrypoint = (
         steps[0].executor.container.entrypoint
         if hasattr(steps[0], "executor")

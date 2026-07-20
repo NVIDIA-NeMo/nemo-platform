@@ -24,9 +24,9 @@ that points callers at `nemo services run`.
 A handful of task container images and seed jobs invoke `nemo-platform run task`
 as their entrypoint:
 
-- `nmp-automodel-tasks` — used by the automodel file_io task
-  (`services/automodel/src/nmp/automodel/tasks/docker/docker-compose.yaml`
-  runs `nmp.automodel.tasks.file_io`).
+- `nmp-customizer-tasks` — shared CPU task image (`nmp.customization_common.tasks.file_io` /
+  `model_entity`, plus `model_spec` and the LoRA sidecar). Local compose example:
+  `services/automodel/src/nmp/automodel/tasks/docker/docker-compose.yaml`.
 - `services/platform-seed` — recommended invocation in its README is
   `nemo-platform run task --task nmp.platform_seed`.
 

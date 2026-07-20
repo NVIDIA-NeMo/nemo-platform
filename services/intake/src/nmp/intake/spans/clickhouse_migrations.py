@@ -246,13 +246,13 @@ def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) ->
 
     table = _table(settings, "trace_index")
     view = _table(settings, "trace_index_mv")
-    client.command(f"DROP TABLE IF EXISTS {_table(settings, 'experiment_sessions_mv')}")
-    client.command(f"DROP TABLE IF EXISTS {_table(settings, 'experiment_sessions')}")
+    client.command(f"DROP TABLE IF EXISTS {_table(settings, 'evaluation_sessions_mv')}")
+    client.command(f"DROP TABLE IF EXISTS {_table(settings, 'evaluation_sessions')}")
     client.command(f"DROP TABLE IF EXISTS {view}")
     client.command(f"DROP TABLE IF EXISTS {table}")
 
     project_key = spec_for_field(SpanAttributeField.PROJECT).bag_key
-    experiment_key = spec_for_field(SpanAttributeField.EVALUATION_ID).bag_key
+    evaluation_key = spec_for_field(SpanAttributeField.EVALUATION_ID).bag_key
     test_case_key = spec_for_field(SpanAttributeField.TEST_CASE_ID).bag_key
 
     # Note this is logically a single table. CH requires creating an underlying table and then a view that writes to that table.
@@ -271,7 +271,7 @@ def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) ->
             root_output String CODEC(ZSTD(3)),
 
             project String DEFAULT '',
-            experiment_id String DEFAULT '',
+            evaluation_id String DEFAULT '',
             test_case_id String DEFAULT '',
 
             root_started_at DateTime64(6) CODEC(Delta(8), ZSTD(1)),
@@ -283,7 +283,7 @@ def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) ->
 
             INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1,
             INDEX idx_session_id session_id TYPE bloom_filter(0.01) GRANULARITY 1,
-            INDEX idx_experiment_id experiment_id TYPE bloom_filter(0.01) GRANULARITY 1,
+            INDEX idx_evaluation_id evaluation_id TYPE bloom_filter(0.01) GRANULARITY 1,
             INDEX idx_test_case_id test_case_id TYPE bloom_filter(0.01) GRANULARITY 1,
             INDEX idx_root_status root_status TYPE set(4) GRANULARITY 4,
             INDEX idx_source_format source_format TYPE set(8) GRANULARITY 4
@@ -310,7 +310,7 @@ def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) ->
             input AS root_input,
             output AS root_output,
             attributes_string['{project_key}'] AS project,
-            attributes_string['{experiment_key}'] AS experiment_id,
+            attributes_string['{evaluation_key}'] AS evaluation_id,
             attributes_string['{test_case_key}'] AS test_case_id,
             start_time AS root_started_at,
             nullIf(end_time, toDateTime64(0, 6)) AS root_ended_at,
@@ -343,11 +343,17 @@ _MIGRATIONS: list[tuple[str, Callable[..., None]]] = [
     ("ch_evaluator_results_0002", _add_evaluator_results_skip_indexes),
     ("ch_trace_index_0003", _create_trace_index_schema),
     # NeMo-owned span attribute keys moved under the ``nemo.*`` namespace
-    # (e.g., ``experiment.id`` → ``nemo.experiment.id``). The trace_index MV's SELECT clause
+    # (e.g., ``evaluation.id`` → ``nemo.evaluation.id``). The trace_index MV's SELECT clause
     # resolves bag keys from the catalog at creation time, so any environment that already
     # applied 0003 has the old keys baked in. Re-running the schema function drops and
     # recreates the MV with the current catalog keys.
     ("ch_trace_index_0004_nemo_keys", _create_trace_index_schema),
+    # The trace_index column ``experiment_id`` was renamed to ``evaluation_id`` (column,
+    # ``idx_evaluation_id``, and the MV SELECT alias). Environments that already applied 0004 still
+    # have the old ``experiment_id`` column, while the read path now queries ``evaluation_id`` — so
+    # re-run the rebuild under a new key. The function drops and recreates trace_index with the new
+    # column and backfills losslessly from ``spans`` (the durable source of truth).
+    ("ch_trace_index_0005_evaluation_id", _create_trace_index_schema),
 ]
 CURRENT_SCHEMA_VERSION = _MIGRATIONS[-1][0]
 

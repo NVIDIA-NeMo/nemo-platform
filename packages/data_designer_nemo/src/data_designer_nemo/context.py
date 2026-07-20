@@ -4,8 +4,7 @@
 from typing import Protocol
 
 import data_designer.config as dd
-from data_designer.config.utils.constants import MANAGED_ASSETS_PATH
-from data_designer.engine.resources.person_reader import PersonReader, create_person_reader
+from data_designer.engine.resources.person_reader import PersonReader
 from data_designer.engine.resources.seed_reader import (
     AgentRolloutSeedReader,
     DataFrameSeedReader,
@@ -55,7 +54,7 @@ class DataDesignerContext(Protocol):
 
     def get_seed_readers(self) -> list[SeedReader]: ...
 
-    def get_person_reader(self) -> PersonReader: ...
+    def get_person_reader(self) -> PersonReader | None: ...
 
     async def get_model_providers(self, model_configs: list[dd.ModelConfig]) -> list[dd.ModelProvider]: ...
 
@@ -93,8 +92,10 @@ class LocalDataDesignerContext:
             FilesetFileSeedReader(self._sdk),
         ]
 
-    def get_person_reader(self) -> PersonReader:
-        return create_person_reader(str(MANAGED_ASSETS_PATH))
+    def get_person_reader(self) -> PersonReader | None:
+        # Returning None here means we pass None to the DataDesigner constructor
+        # and just use whatever the library configures internally by default.
+        return None
 
     async def get_model_providers(self, model_configs: list[dd.ModelConfig]) -> list[dd.ModelProvider]:
         if (
@@ -146,7 +147,7 @@ class RemoteDataDesignerContext:
             FilesetFileSeedReader(self._sdk),
         ]
 
-    def get_person_reader(self) -> PersonReader:
+    def get_person_reader(self) -> PersonReader | None:
         return FilesetsPersonReader(self._sdk)
 
     async def get_model_providers(self, model_configs: list[dd.ModelConfig]) -> list[dd.ModelProvider]:

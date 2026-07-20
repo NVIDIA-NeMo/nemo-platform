@@ -1,7 +1,6 @@
 platform:
   runtime: "none"
-  base_url: "http://0.0.0.0:8080"
-  loopback_address: "nemo-gateway"
+  base_url: "https://nemo-gateway:8080"
 
 service: {}
 
@@ -18,11 +17,23 @@ auth:
     issuer: "http://authentik-server:9000/application/o/nemo-cli/"
     additional_issuers:
       - "http://authentik-server:9000/application/o/nemo/"
-      - "http://127.0.0.1:18080/application/o/nemo-cli/"
-      - "http://127.0.0.1:18080/application/o/nemo/"
+      - "https://127.0.0.1:18080/application/o/nemo-cli/"
+      - "https://127.0.0.1:18080/application/o/nemo/"
     client_id: "nemo-platform-cli"
-    token_endpoint: "http://127.0.0.1:18080/application/o/token/"
-    device_authorization_endpoint: "http://127.0.0.1:18080/application/o/device/"
+    token_endpoint: "https://127.0.0.1:18080/application/o/token/"
+    device_authorization_endpoint: "https://127.0.0.1:18080/application/o/device/"
+    workload_token_exchange_enabled: true
+    workload_client_id: "nemo-platform-workload"
+    workload_audience: "nemo-platform"
+    workload_scope: "openid email groups"
+    workload_token_issuer: "https://nemo-gateway:8080/apis/auth"
+    workload_token_endpoint: "https://nemo-gateway:8080/apis/auth/token"
+    workload_token_private_key_file: "/var/run/secrets/nemo-platform/workload-token-signing/private-key.pem"
+    workload_subject_jwks_uri: "http://authentik-server:9000/application/o/nemo-workload/jwks/"
+    workload_subject_issuers:
+      - "http://authentik-server:9000/application/o/nemo-workload/"
+      - "https://nemo-gateway:8080/application/o/nemo-workload/"
+      - "https://127.0.0.1:18080/application/o/nemo-workload/"
     subject_claim: "sub"
     email_claim: "email"
     groups_claim: "groups"
@@ -39,6 +50,17 @@ jobs:
       config:
         cleanup_completed_jobs_immediately: false
         launcher_tool_path: /tools/jobs-launcher
+        env:
+          SSL_CERT_FILE: "/etc/nmp/gateway-tls/tls.crt"
+          REQUESTS_CA_BUNDLE: "/etc/nmp/gateway-tls/tls.crt"
+        storage:
+          additional_volume_mounts:
+            - volume_name: "authentik_gateway_tls"
+              mount_path: "/etc/nmp/gateway-tls"
+        workload_identity:
+          token_endpoint: "https://nemo-gateway:8080/application/o/token/"
+          username: "svc-nemo"
+          password_env_var: "AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD"
   executor_defaults:
     docker:
       cleanup_completed_jobs_immediately: false

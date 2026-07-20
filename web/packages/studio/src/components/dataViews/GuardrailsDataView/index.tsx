@@ -35,7 +35,7 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
   emptyStateActions,
 }) => {
   const dataViewState = useStudioDataViewState({
-    defaultSort: { id: 'created_at', desc: true },
+    defaultSort: [{ id: 'created_at', desc: true }],
   });
 
   const sortState = dataViewState.sorting.state[0];

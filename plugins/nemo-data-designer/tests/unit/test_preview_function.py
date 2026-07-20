@@ -4,13 +4,12 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from collections.abc import Callable
-from unittest.mock import AsyncMock
 
 import data_designer.config as dd
 import pytest
-from data_designer_nemo.context import DataDesignerContext, LocalDataDesignerContext
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nemo_data_designer_plugin.functions import preview as preview_module
@@ -37,41 +36,23 @@ def _config() -> dd.DataDesignerConfig:
     return builder.build()
 
 
-def _patch_preview_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Bypass real model-config extraction so the test config's incomplete
-    # ``ModelConfig`` (no provider) doesn't fail provider resolution. The
-    # call site lives inside ``data_designer_nemo.runnable.resolve_runnable_config``
-    # since the cross-call-site refactor.
-    from data_designer_nemo import runnable as runnable_module
-
-    monkeypatch.setattr(runnable_module, "get_model_configs", lambda config: [])
-
-
 @pytest.mark.asyncio
 async def test_preview_function_streams_worker_frames_and_done(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_preview_dependencies(monkeypatch)
 
     def fake_worker(
-        config_builder: dd.DataDesignerConfigBuilder,
-        dd_ctx: DataDesignerContext,
         send_frame: Callable[[BaseModel], None],
-        *args: object,
+        *args,
     ) -> None:
-        assert isinstance(dd_ctx, LocalDataDesignerContext)
         send_frame(LogFrame(level="info", message="generated"))
 
-    # Patch the symbol on ``preview_module`` (not ``_preview_worker``) because
-    # ``preview.py`` imports ``make_preview_dataset`` at module load time, so
-    # the local reference inside ``PreviewFunction.run`` does not pick up
-    # patches applied to ``_preview_worker.make_preview_dataset``.
-    monkeypatch.setattr(preview_module, "make_preview_dataset", fake_worker)
+    monkeypatch.setattr(preview_module, "_make_preview_dataset", fake_worker)
 
     frames = [
         frame
         async for frame in PreviewFunction().run(
             PreviewSpec(config=_config(), num_records=2),
             ctx=FunctionContext(workspace="team-a"),
-            async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
+            async_sdk=AsyncNeMoPlatform(base_url="http://testserver", workspace="default"),
             is_local=True,
         )
     ]
@@ -79,23 +60,56 @@ async def test_preview_function_streams_worker_frames_and_done(monkeypatch: pyte
     assert [frame.model_dump()["kind"] for frame in frames] == ["log", "done"]
 
 
+@pytest.mark.asyncio
+async def test_preview_function_runs_model_health_check_off_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    event_loop_thread = threading.current_thread()
+    check_models_thread: threading.Thread | None = None
+
+    class FakeDataDesigner:
+        def check_models(self, _config_builder: dd.DataDesignerConfigBuilder) -> None:
+            nonlocal check_models_thread
+            check_models_thread = threading.current_thread()
+
+    def fake_create_data_designer(*args, **kwargs) -> FakeDataDesigner:
+        return FakeDataDesigner()
+
+    def fake_worker(*args) -> None:
+        pass
+
+    monkeypatch.setattr(preview_module, "create_data_designer", fake_create_data_designer)
+    monkeypatch.setattr(preview_module, "_make_preview_dataset", fake_worker)
+
+    frames = [
+        frame
+        async for frame in PreviewFunction().run(
+            PreviewSpec(config=_config(), num_records=2),
+            ctx=FunctionContext(workspace="team-a"),
+            async_sdk=AsyncNeMoPlatform(base_url="http://testserver", workspace="default"),
+            is_local=True,
+        )
+    ]
+
+    assert [frame.model_dump()["kind"] for frame in frames] == ["done"]
+    assert check_models_thread is not None
+    assert check_models_thread is not event_loop_thread
+
+
 def test_preview_route_streams_ndjson_and_heartbeats(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_preview_dependencies(monkeypatch)
 
     def slow_worker(
-        config_builder: dd.DataDesignerConfigBuilder,
-        workspace: str,
         send_frame: Callable[[BaseModel], None],
-        *args: object,
+        *args,
     ) -> None:
         send_frame(LogFrame(level="info", message="started"))
         time.sleep(0.05)
-        send_frame(LogFrame(level="info", message=f"generated in {workspace}"))
+        send_frame(LogFrame(level="info", message="more work has been done"))
 
-    monkeypatch.setattr(preview_module, "make_preview_dataset", slow_worker)
+    monkeypatch.setattr(preview_module, "_make_preview_dataset", slow_worker)
 
     app = FastAPI()
-    app.dependency_overrides[get_sdk_client] = lambda: AsyncMock(spec=AsyncNeMoPlatform)
+    app.dependency_overrides[get_sdk_client] = lambda: AsyncNeMoPlatform(
+        base_url="http://testserver", workspace="default"
+    )
     app.include_router(
         add_function_routes(PreviewFunction, heartbeat_interval_seconds=0.01),
         prefix="/apis/data-designer/v2/workspaces/{workspace}",

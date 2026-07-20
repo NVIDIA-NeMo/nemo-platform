@@ -2,10 +2,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Seed local Intake with valid experiment telemetry and verify API rollups.
+"""Seed local Intake with valid evaluation telemetry and verify API rollups.
 
-A small, parameterized smoke test: seeds one experiment (attached to one group)
-and ingests sessions via ATIF, then polls the experiment read endpoint until the
+A small, parameterized smoke test: seeds one evaluation (attached to one group)
+and ingests sessions via ATIF, then polls the evaluation read endpoint until the
 ClickHouse-hydrated rollup converges. Useful for verifying the rollup pipeline
 at varying session counts.
 
@@ -26,7 +26,7 @@ import httpx
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8080"
 DEFAULT_WORKSPACE = "default"
-DEFAULT_EXPERIMENT = "rollup-smoke-exp"
+DEFAULT_EVALUATION = "rollup-smoke-exp"
 DEFAULT_GROUP = "rollup-smoke-group"
 DATASET_NAME = "rollup-smoke-dataset"
 AGENT_NAME = "sample-agent"
@@ -44,9 +44,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
     parser.add_argument("--workspace", default=DEFAULT_WORKSPACE)
-    parser.add_argument("--experiment", default=DEFAULT_EXPERIMENT)
+    parser.add_argument("--evaluation", default=DEFAULT_EVALUATION)
     parser.add_argument(
-        "--runs", type=int, help="Generate this many synthetic experiment runs instead of the smoke set."
+        "--runs", type=int, help="Generate this many synthetic evaluation runs instead of the smoke set."
     )
     parser.add_argument("--cases-per-run", type=int, default=1, help="Synthetic test cases per run when --runs is set.")
     args = parser.parse_args()
@@ -62,14 +62,14 @@ def main() -> None:
 
     with httpx.Client(timeout=10.0) as client:
         group_id = _upsert_group(client, base_url, args.workspace)
-        _upsert_experiment(client, base_url, args.workspace, args.experiment, group_id=group_id)
+        _upsert_evaluation(client, base_url, args.workspace, args.evaluation, group_id=group_id)
         started_at = datetime.now(timezone.utc).replace(microsecond=0)
         for index, (run_id, test_case_id, score, cost_usd, latency_ms) in enumerate(sample_rows):
             response = client.post(
                 _intake_url(base_url, args.workspace, "/ingest/atif"),
                 json=_atif_body(
                     started_at=started_at,
-                    experiment_id=args.experiment,
+                    evaluation_id=args.evaluation,
                     run_id=run_id,
                     test_case_id=test_case_id,
                     score=score,
@@ -83,15 +83,15 @@ def main() -> None:
                 print(f"seeded {index + 1} sessions")
 
         expected_session_count = len(sample_rows)
-        experiment = _wait_for_rollup(
+        evaluation = _wait_for_rollup(
             client,
             base_url,
             args.workspace,
-            args.experiment,
+            args.evaluation,
             expected_run_count=expected_session_count,
             expected_session_count=expected_session_count,
         )
-        print(json.dumps(experiment, indent=2, sort_keys=True))
+        print(json.dumps(evaluation, indent=2, sort_keys=True))
 
 
 def _preflight(base_url: str) -> None:
@@ -112,24 +112,24 @@ def _upsert_group(client: httpx.Client, base_url: str, workspace: str) -> str:
     return response.json()["id"]
 
 
-def _upsert_experiment(
+def _upsert_evaluation(
     client: httpx.Client,
     base_url: str,
     workspace: str,
-    experiment: str,
+    evaluation: str,
     *,
     group_id: str,
 ) -> None:
     body = {
-        "name": experiment,
+        "name": evaluation,
         "dataset_name": DATASET_NAME,
         "dataset_version": "v1",
         "experiment_group_id": group_id,
         "metadata": {"seeded_by": "services/intake/scripts/spans/seed_experiment_rollup_data.py"},
     }
-    response = client.post(_intake_url(base_url, workspace, "/experiments"), json=body)
+    response = client.post(_intake_url(base_url, workspace, "/evaluations"), json=body)
     if response.status_code == 409:
-        response = client.put(_intake_url(base_url, workspace, f"/experiments/{experiment}"), json=body)
+        response = client.put(_intake_url(base_url, workspace, f"/evaluations/{evaluation}"), json=body)
     response.raise_for_status()
 
 
@@ -137,12 +137,12 @@ def _wait_for_rollup(
     client: httpx.Client,
     base_url: str,
     workspace: str,
-    experiment: str,
+    evaluation: str,
     *,
     expected_run_count: int,
     expected_session_count: int,
 ) -> dict[str, Any]:
-    url = _intake_url(base_url, workspace, f"/experiments/{experiment}")
+    url = _intake_url(base_url, workspace, f"/evaluations/{evaluation}")
     last_response: httpx.Response | None = None
     for _ in range(20):
         response = client.get(url)
@@ -154,13 +154,13 @@ def _wait_for_rollup(
             return payload
         time.sleep(0.25)
     detail = last_response.text if last_response is not None else "<no response>"
-    raise SystemExit(f"Experiment rollup did not become visible at {url}: {detail}")
+    raise SystemExit(f"Evaluation rollup did not become visible at {url}: {detail}")
 
 
 def _atif_body(
     *,
     started_at: datetime,
-    experiment_id: str,
+    evaluation_id: str,
     run_id: str,
     test_case_id: str,
     score: float,
@@ -170,12 +170,12 @@ def _atif_body(
 ) -> dict[str, Any]:
     session_started_at = started_at + timedelta(seconds=offset_seconds)
     finished_at = session_started_at + timedelta(milliseconds=latency_ms)
-    session_id = f"{experiment_id}-{run_id}-{test_case_id}"
+    session_id = f"{evaluation_id}-{run_id}-{test_case_id}"
     return {
         "schema_version": "ATIF-v1.7",
         "session_id": session_id,
-        "experiment_context": {
-            "experiment_id": experiment_id,
+        "evaluation_context": {
+            "evaluation_id": evaluation_id,
             "test_case_id": test_case_id,
         },
         "extra": {

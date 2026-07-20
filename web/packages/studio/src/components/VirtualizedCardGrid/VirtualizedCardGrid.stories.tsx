@@ -214,7 +214,7 @@ export const DataViewIntegration: StoryObj = {
     const [loadedCount, setLoadedCount] = useState(PAGE_SIZE);
 
     const dataViewState = useStudioDataViewState({
-      defaultSort: { id: 'name', desc: false },
+      defaultSort: [{ id: 'name', desc: false }],
     });
 
     const items = ALL_MODELS.slice(0, loadedCount);

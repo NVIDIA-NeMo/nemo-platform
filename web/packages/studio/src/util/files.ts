@@ -3,6 +3,7 @@
 
 import { ContentType } from '@nemo/common/src/components/CodeEditor/constants';
 import { FileSystemDirectory, FileSystemNode } from '@studio/components/FilesTable/utils';
+import { parseCSVTable } from '@studio/components/SafeSynthesizerFilesetPreview/util';
 import { logger } from '@studio/util/logger';
 import { getTextWithCount, parseCSV } from '@studio/util/strings';
 
@@ -215,6 +216,16 @@ export const getContentSchema = (content?: string, opts?: ContentSchemaOptions) 
   }
 
   return ret;
+};
+
+export const getContentColumns = (content?: string, fileType?: string): string[] => {
+  if (!content) return [];
+  if (fileType?.includes('csv')) {
+    return parseCSVTable(content).columns.map((column) => column.children);
+  }
+  const { rows } = parseFileContent({ content, fileType });
+  const firstRow = rows[0];
+  return firstRow && typeof firstRow === 'object' ? Object.keys(firstRow) : [];
 };
 
 /**

@@ -118,14 +118,8 @@ vi.mock('@studio/routes/SafeSynthesizerJobReportRoute/components/ReportMenu', ()
 }));
 
 // Mock icons - use importOriginal to preserve other exports
-vi.mock('lucide-react', async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, unknown>;
-  return {
-    ...actual,
-    File: () => <svg data-testid="document-icon" />,
-    BadgeCheck: () => <svg data-testid="checkmark-badge-icon" />,
-    Lock: () => <svg data-testid="lock-closed-icon" />,
-  };
+vi.mock('lucide-react', async () => {
+  return (await import('@nemo/testing/mocks/lucide')).mockLucideReact(await import('react'));
 });
 
 const mockuseWorkspaceFromPath = vi.mocked(useWorkspaceFromPath);
@@ -308,9 +302,9 @@ describe('SafeSynthesizerJobReportRoute - Rendering', () => {
     expect(panelTitles[2]).toHaveTextContent('Data Privacy');
 
     // Verify icons are rendered
-    expect(screen.getByTestId('document-icon')).toBeInTheDocument();
-    expect(screen.getByTestId('checkmark-badge-icon')).toBeInTheDocument();
-    expect(screen.getByTestId('lock-closed-icon')).toBeInTheDocument();
+    expect(screen.getByTestId('file-icon')).toBeInTheDocument();
+    expect(screen.getByTestId('badge-check-icon')).toBeInTheDocument();
+    expect(screen.getByTestId('lock-icon')).toBeInTheDocument();
   });
 
   it('should pass correct props to OverviewPanel', () => {

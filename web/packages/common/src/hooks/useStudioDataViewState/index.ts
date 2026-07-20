@@ -33,15 +33,51 @@ export interface UseStudioDataViewStateOptions extends Omit<
   /** Default page size when not specified in URL. Defaults to 50. */
   defaultPageSize?: number;
   /**
-   * Default sorting when not specified in URL.
-   * Uses the same format as DataView's sorting state.
-   * Example: { id: 'created_at', desc: true } for descending by created_at.
+   * Default sorting when not specified in URL. Always an ordered list — a single-column default is
+   * just an array of one. Uses the same format as DataView's sorting state.
+   * Example: [{ id: 'created_at', desc: true }] for descending by created_at.
    */
-  defaultSort?: { id: string; desc: boolean };
+  defaultSort?: SortEntry[];
+  /**
+   * Enable multi-column sort. When true, the `sort` URL param and the sorting state round-trip an
+   * ordered, comma-separated list of fields (e.g. shift-click a second column header). Defaults to
+   * false — single-sort, exactly as before.
+   */
+  multiSort?: boolean;
   /** Maps a filter column id to the API key it's emitted under (id used as-is when absent). Also
    * accepts a function `(id) => key | undefined` for dynamic ids, e.g. `latency_ms`→`latency_ms.mean`. */
   filterFieldMap?: Record<string, string> | ((id: string) => string | undefined);
 }
+
+interface SortEntry {
+  id: string;
+  desc: boolean;
+}
+
+// Stable empty-sort reference so the no-default case doesn't churn `urlSorting`'s memo each render.
+const EMPTY_SORT: SortEntry[] = [];
+
+const sortEntryToString = (entry: SortEntry): string => (entry.desc ? `-${entry.id}` : entry.id);
+
+/** Encode sorting state to the URL `sort` value. Single-sort keeps only the primary column; multi-sort
+ * emits the full ordered, comma-separated list. Returns null for no sort. */
+const encodeSorting = (sortingState: SortEntry[], multiSort: boolean): string | null => {
+  const active = multiSort ? sortingState : sortingState.slice(0, 1);
+  return active.length ? active.map(sortEntryToString).join(',') : null;
+};
+
+/** Parse the URL `sort` value into ordered sort entries. Single-sort reads only the first field. */
+const decodeSorting = (sortParam: string | null, multiSort: boolean): SortEntry[] => {
+  if (!sortParam) return [];
+  // Always split on comma so a stray multi-field URL is parsed field-by-field; in single-sort mode
+  // keep only the first field rather than treating the whole comma string as one (malformed) id.
+  const tokens = sortParam
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const used = multiSort ? tokens : tokens.slice(0, 1);
+  return used.map((t) => ({ id: t.startsWith('-') ? t.slice(1) : t, desc: t.startsWith('-') }));
+};
 
 /**
  * API filter object exposed by the hook. The `filter` shape is parameterized by
@@ -111,6 +147,7 @@ export const useStudioDataViewState = <FilterType = Record<string, unknown>>(
     defaultPage = DEFAULT_PAGE,
     defaultPageSize = DEFAULT_PAGE_SIZE,
     defaultSort,
+    multiSort = false,
     filterFieldMap,
     ...dataViewOptions
   } = options ?? {};
@@ -129,22 +166,15 @@ export const useStudioDataViewState = <FilterType = Record<string, unknown>>(
 
   // Parse sort from URL, falling back to defaultSort
   const sortParam = searchParams.get('sort');
-  const urlSorting = useMemo(
-    () =>
-      sortParam
-        ? {
-            id: sortParam.startsWith('-') ? sortParam.slice(1) : sortParam,
-            desc: sortParam.startsWith('-'),
-          }
-        : defaultSort,
-    [sortParam, defaultSort]
-  );
+  const defaultSortEntries = defaultSort ?? EMPTY_SORT;
+  const urlSorting = useMemo(() => {
+    const decoded = decodeSorting(sortParam, multiSort);
+    return decoded.length ? decoded : defaultSortEntries;
+  }, [sortParam, defaultSortEntries, multiSort]);
 
   // Convert sorting object to URL string format
-  const defaultSortString = defaultSort
-    ? defaultSort.desc
-      ? `-${defaultSort.id}`
-      : defaultSort.id
+  const defaultSortString = defaultSortEntries.length
+    ? encodeSorting(defaultSortEntries, multiSort)
     : null;
 
   // Update URL params helper
@@ -318,22 +348,17 @@ export const useStudioDataViewState = <FilterType = Record<string, unknown>>(
   // Also resets pagination to page 1 when sorting changes (common UX pattern).
   useEffect(() => {
     const sortingState = dataViewState.sorting.state;
-    const currentSort = sortingState[0];
-    const prevSort = prevSortingRef.current[0];
+    // Compare via the encoded URL string: with multiSort=false this collapses to the primary column
+    // exactly as before; with multiSort=true it tracks the full ordered list.
+    const currentSortString = encodeSorting(sortingState, multiSort);
+    const prevSortString = encodeSorting(prevSortingRef.current, multiSort);
 
-    const dataViewSortChanged =
-      currentSort?.id !== prevSort?.id || currentSort?.desc !== prevSort?.desc;
+    const dataViewSortChanged = currentSortString !== prevSortString;
 
     if (dataViewSortChanged) {
       // DataView sorting changed → sync to URL
       prevSortingRef.current = [...sortingState];
-
-      const newSortString = currentSort
-        ? currentSort.desc
-          ? `-${currentSort.id}`
-          : currentSort.id
-        : null;
-      pendingSortRef.current = newSortString;
+      pendingSortRef.current = currentSortString;
 
       // Reset pagination to page 1 when sorting changes (common UX pattern)
       // Update both sort AND page in a single URL update to avoid race conditions
@@ -343,22 +368,18 @@ export const useStudioDataViewState = <FilterType = Record<string, unknown>>(
       if (needsPageReset) {
         prevPaginationRef.current = { pageIndex: 0, pageSize };
         pendingPageRef.current = 1;
-        updateUrlParams({ sort: newSortString, page: 1 });
+        updateUrlParams({ sort: currentSortString, page: 1 });
         dataViewState.pagination.set((prev: { pageIndex: number; pageSize: number }) => ({
           ...prev,
           pageIndex: 0,
         }));
       } else {
-        updateUrlParams({ sort: newSortString });
+        updateUrlParams({ sort: currentSortString });
       }
     } else {
       // Clear pending if URL has caught up
-      const currentUrlSortString = urlSorting
-        ? urlSorting.desc
-          ? `-${urlSorting.id}`
-          : urlSorting.id
-        : null;
-      if (pendingSortRef.current === currentUrlSortString) {
+      const urlSortString = encodeSorting(urlSorting, multiSort);
+      if (pendingSortRef.current === urlSortString) {
         pendingSortRef.current = undefined;
       }
 
@@ -368,26 +389,13 @@ export const useStudioDataViewState = <FilterType = Record<string, unknown>>(
         return;
       }
 
-      const urlSortId = urlSorting?.id;
-      const urlSortDesc = urlSorting?.desc ?? false;
-      const dataViewSortId = currentSort?.id;
-      const dataViewSortDesc = currentSort?.desc ?? false;
-
-      const urlDiffersFromDataView =
-        urlSortId !== dataViewSortId || urlSortDesc !== dataViewSortDesc;
-
-      if (urlDiffersFromDataView) {
+      if (urlSortString !== currentSortString) {
         // URL sorting changed externally → sync to DataView
-        if (urlSorting) {
-          prevSortingRef.current = [urlSorting];
-          dataViewState.sorting.set([urlSorting]);
-        } else {
-          prevSortingRef.current = [];
-          dataViewState.sorting.set([]);
-        }
+        prevSortingRef.current = [...urlSorting];
+        dataViewState.sorting.set([...urlSorting]);
       }
     }
-  }, [dataViewState.sorting, dataViewState.pagination, urlSorting, updateUrlParams]);
+  }, [dataViewState.sorting, dataViewState.pagination, urlSorting, updateUrlParams, multiSort]);
 
   // Debounced search bar and column filters for API queries
   const [debouncedSearchBar] = useDebounce(dataViewState.searchBar.state, DEFAULT_DEBOUNCE_MS);

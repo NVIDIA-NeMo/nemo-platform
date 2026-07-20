@@ -873,7 +873,8 @@ def job_route_factory(
             # the request body's ``spec`` is a plain dict on the wire. The
             # Stainless SDK serialized models implicitly — the typed client
             # validates the body first, so coerce to a dict here.
-            spec_dict = job_spec.model_dump() if isinstance(job_spec, BaseModel) else job_spec
+            # JSON mode so binary fields (e.g. cloudpickle blobs) serialize as base64, not raw bytes.
+            spec_dict = job_spec.model_dump(mode="json") if isinstance(job_spec, BaseModel) else job_spec
 
             # Only include optional fields when they have values — passing None
             # explicitly serializes differently than omitting (exclude_unset).

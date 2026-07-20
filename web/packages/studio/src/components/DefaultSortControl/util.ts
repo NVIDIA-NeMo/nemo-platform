@@ -35,3 +35,18 @@ export const parseSortString = (value: string): { field: string; desc: boolean }
 
 export const formatSortString = (field: string, desc: boolean): string =>
   `${desc ? '-' : ''}${field}`;
+
+/**
+ * Multi-field default sort: a comma-separated, ordered list of `sort`-param fields (the first field is
+ * the primary sort), e.g. `-evaluators.reward.mean,cost_usd.mean`. Parse/format keep the ordered list
+ * as widget state while storing/emitting the single comma-separated string.
+ */
+export const parseSortList = (value: string): { field: string; desc: boolean }[] =>
+  value
+    .split(',')
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .map(parseSortString);
+
+export const formatSortList = (entries: ReadonlyArray<{ field: string; desc: boolean }>): string =>
+  entries.map(({ field, desc }) => formatSortString(field, desc)).join(',');

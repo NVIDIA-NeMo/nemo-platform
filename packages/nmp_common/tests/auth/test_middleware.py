@@ -458,6 +458,23 @@ class TestHfEndpointAuth:
             if expected_status == 200:
                 mock_authorize.assert_called_once()
 
+    def test_hf_endpoint_authorizes_as_bearer_service_principal(self, auth_config_enabled):
+        """The PDP receives the service principal synthesized from the HF Bearer token."""
+        app = create_test_app(auth_config_enabled)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch.object(AuthClient, "authorize_request", autospec=True) as mock_authorize:
+            mock_authorize.return_value = MagicMock(allowed=True)
+
+            response = client.get(
+                "/apis/files/v2/hf/my-workspace/my-fileset/resolve/main/model.bin",
+                headers={"Authorization": "Bearer service:models"},
+            )
+
+        assert response.status_code == 200
+        auth_client = mock_authorize.call_args.args[0]
+        assert auth_client.principal.id == "service:models"
+
 
 class TestInternalServiceOnlyRoutes:
     """IAM role-bindings and nested Entities APIs require service principals."""

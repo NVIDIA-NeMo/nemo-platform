@@ -41,6 +41,7 @@ from nmp.customization_common.schemas.model_entity import (
 )
 from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig, PEFTConfig
 from nmp.customization_common.service.platform_client import fetch_model_entity
+from nmp.customization_common.tasks.file_io_metadata import build_output_fileset_metadata_from_model_entity
 from nmp.unsloth.app.constants import (
     DEFAULT_DATASET_PATH,
     DEFAULT_MODEL_PATH,
@@ -50,7 +51,12 @@ from nmp.unsloth.app.constants import (
 from nmp.unsloth.app.jobs.training.compiler import compile_training_step
 from nmp.unsloth.config import config
 from nmp.unsloth.entities.values import FinetuningType
-from nmp.unsloth.images import UNSLOTH_PYTHON_ENTRYPOINT, get_tasks_image
+from nmp.unsloth.images import (
+    FILE_IO_TASK_COMMAND,
+    MODEL_ENTITY_TASK_COMMAND,
+    UNSLOTH_PYTHON_ENTRYPOINT,
+    get_tasks_image,
+)
 from nmp.unsloth.schemas import UnslothJobOutput
 
 logger = logging.getLogger(__name__)
@@ -165,7 +171,7 @@ def _build_file_download_config(
     return FileIOTaskConfig(download=downloads)
 
 
-def _build_file_upload_config(output_fileset_name: str) -> FileIOTaskConfig:
+def _build_file_upload_config(job_spec: UnslothJobOutput, me: ModelEntity) -> FileIOTaskConfig:
     """Compile the upload step.
 
     ``workspace=None`` tells the file_io task to use the job's workspace
@@ -175,7 +181,8 @@ def _build_file_upload_config(output_fileset_name: str) -> FileIOTaskConfig:
         upload=[
             UploadItem(
                 src=DEFAULT_OUTPUT_MODEL_PATH,
-                dest=FileSetRef(workspace=None, name=output_fileset_name),
+                dest=FileSetRef(workspace=None, name=job_spec.output.fileset),
+                metadata=build_output_fileset_metadata_from_model_entity(me),
             ),
         ],
     )
@@ -230,7 +237,7 @@ async def platform_job_config_compiler(
 
     validation_dataset_path = _resolve_validation_dataset_path(job_spec, workspace=workspace)
     download_config = _build_file_download_config(job_spec, me, workspace=workspace)
-    upload_config = _build_file_upload_config(job_spec.output.fileset)
+    upload_config = _build_file_upload_config(job_spec, me)
     model_entity_config = _build_model_entity_config(
         workspace,
         job_spec,
@@ -245,7 +252,7 @@ async def platform_job_config_compiler(
                 container=ContainerSpec(
                     image=get_tasks_image(),
                     entrypoint=UNSLOTH_PYTHON_ENTRYPOINT,
-                    command=["-m", "nmp.unsloth.tasks.file_io"],
+                    command=FILE_IO_TASK_COMMAND,
                 ),
                 resources=cpu_resources,
             ),
@@ -265,7 +272,7 @@ async def platform_job_config_compiler(
                 container=ContainerSpec(
                     image=get_tasks_image(),
                     entrypoint=UNSLOTH_PYTHON_ENTRYPOINT,
-                    command=["-m", "nmp.unsloth.tasks.file_io"],
+                    command=FILE_IO_TASK_COMMAND,
                 ),
                 resources=cpu_resources,
             ),
@@ -279,7 +286,7 @@ async def platform_job_config_compiler(
                 container=ContainerSpec(
                     image=get_tasks_image(),
                     entrypoint=UNSLOTH_PYTHON_ENTRYPOINT,
-                    command=["-m", "nmp.unsloth.tasks.model_entity"],
+                    command=MODEL_ENTITY_TASK_COMMAND,
                 ),
                 resources=cpu_resources,
             ),

@@ -95,11 +95,13 @@ class TraceListFilter(BaseModel):
     status: SpanStatus | None = None
     started_at_gte: datetime | None = None
     started_at_lte: datetime | None = None
-    experiment_id: str | None = None
+    evaluation_id: str | None = None
     test_case_id: str | None = None
 
 
-TraceMode = Literal["summary", "detailed"]
+IntakeResponseMode = Literal["summary", "preview", "detailed"]
+TraceMode = IntakeResponseMode
+INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT = 300
 
 
 class IntakeTrace(BaseModel):
@@ -112,7 +114,7 @@ class IntakeTrace(BaseModel):
     input: str | None = None
     output: str | None = None
     project: str | None = None
-    experiment_id: str | None = None
+    evaluation_id: str | None = None
     test_case_id: str | None = None
     started_at: datetime
     ended_at: datetime | None = None
@@ -130,6 +132,24 @@ class IntakeTrace(BaseModel):
     providers: list[str] | None = None
     span_count: int | None = Field(default=None, ge=0)
     error_count: int | None = Field(default=None, ge=0)
+
+
+class IntakeSession(BaseModel):
+    id: str
+    workspace: str
+    started_at: datetime
+    ended_at: datetime | None = None
+    duration_ms: float | None = None
+    status: SpanStatus
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    cached_tokens: int | None = Field(default=None, ge=0)
+    total_tokens: int | None = Field(default=None, ge=0)
+    cost_usd: float | None = None
+    cost_input_usd: float | None = None
+    cost_output_usd: float | None = None
+    trace_count: int = Field(ge=0)
+    span_count: int = Field(ge=0)
 
 
 class EvaluatorResultDataType(StrEnum):

@@ -8,11 +8,13 @@ import os
 import subprocess
 import time
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TextIO
 
 import httpx
+from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
 
 ComposeLifecycle = Literal["fresh", "reuse"]
+_DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS = 60
 
 
 def _compose_env(env: dict[str, str] | None) -> dict[str, str]:
@@ -41,6 +43,18 @@ def _parse_compose_ps_json(output: str) -> list[dict[str, object]]:
     raise ValueError("docker compose ps did not return JSON objects")
 
 
+def _compose_exit_code(entry: dict[str, object]) -> int | None:
+    exit_code = entry.get("ExitCode")
+    if isinstance(exit_code, int):
+        return exit_code
+    if isinstance(exit_code, str) and exit_code:
+        try:
+            return int(exit_code)
+        except ValueError:
+            return None
+    return None
+
+
 def _compose_stack_readiness(entries: list[dict[str, object]], expected_services: set[str]) -> tuple[bool, list[str]]:
     entries_by_service = {
         str(entry.get("Service") or entry.get("Name")): entry
@@ -58,6 +72,8 @@ def _compose_stack_readiness(entries: list[dict[str, object]], expected_services
         if health:
             if health != "healthy":
                 not_ready.append(f"{service} (state={state or 'unknown'}, health={health})")
+        elif service.endswith("-init") and state == "exited" and _compose_exit_code(entry) == 0:
+            continue
         elif state != "running":
             not_ready.append(f"{service} (state={state or 'unknown'})")
     return not not_ready, not_ready
@@ -72,6 +88,7 @@ class DockerComposeE2EBackend:
         project_name: str,
         service_url: str,
         wait_url: str | None = None,
+        wait_urls: list[str] | None = None,
         env: dict[str, str] | None = None,
         lifecycle: ComposeLifecycle = "fresh",
         wait_timeout_seconds: int = 180,
@@ -80,7 +97,8 @@ class DockerComposeE2EBackend:
         self.config_path = config_path
         self.project_name = project_name
         self.service_url = service_url
-        self.wait_url = wait_url or service_url
+        self.wait_urls = wait_urls or [wait_url or service_url]
+        self.wait_url = self.wait_urls[0]
         self.env = {
             "NEMO_COMPOSE_CONFIG_PATH": str(config_path.resolve()),
             **(env or {}),
@@ -98,6 +116,9 @@ class DockerComposeE2EBackend:
             capture_output=capture_output,
             env=_compose_env(self.env),
         )
+
+    def exec(self, service: str, *command: str, capture_output: bool = False) -> subprocess.CompletedProcess[str]:
+        return self._run("exec", "-T", service, *command, capture_output=capture_output)
 
     def _services(self, *extra_args: str) -> set[str]:
         result = self._run(*extra_args, capture_output=True)
@@ -143,16 +164,29 @@ class DockerComposeE2EBackend:
         self._wait_ready()
 
     def _wait_ready(self) -> None:
+        verify = (
+            self.env.get(NMP_CLIENT_SSL_CERT_FILE_ENVVAR)
+            or self.env.get("REQUESTS_CA_BUNDLE")
+            or self.env.get("SSL_CERT_FILE")
+            or True
+        )
         deadline = time.monotonic() + self.wait_timeout_seconds
-        while time.monotonic() < deadline:
-            try:
-                response = httpx.get(self.wait_url, timeout=5)
-                if response.status_code == 200:
-                    return
-            except httpx.HTTPError:
-                pass
+        pending = list(dict.fromkeys(self.wait_urls))
+        last_results: dict[str, str] = {}
+        while time.monotonic() < deadline and pending:
+            for wait_url in list(pending):
+                try:
+                    response = httpx.get(wait_url, timeout=5, verify=verify)
+                    if response.status_code == 200:
+                        pending.remove(wait_url)
+                    else:
+                        last_results[wait_url] = f"HTTP {response.status_code}"
+                except httpx.HTTPError as exc:
+                    last_results[wait_url] = str(exc)
+            if not pending:
+                return
             time.sleep(2)
-        raise TimeoutError(f"compose backend did not become ready: {self.wait_url}")
+        raise TimeoutError(f"compose backend did not become ready: {pending}; last_results={last_results}")
 
     def stop(self) -> None:
         if self.lifecycle == "reuse":
@@ -161,9 +195,25 @@ class DockerComposeE2EBackend:
 
     def write_logs(self, log_path: Path) -> None:
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        args = _compose_base_args(self.compose_file, self.project_name)
-        args.extend(["logs", "--no-color", "--timestamps"])
         with log_path.open("w", encoding="utf-8") as log_file:
+            self._write_diagnostic_command(log_file, "docker compose config --services", ["config", "--services"])
+            self._write_diagnostic_command(
+                log_file,
+                "docker compose ps --all --format json",
+                ["ps", "--all", "--format", "json"],
+            )
+            self._write_diagnostic_command(log_file, "docker compose ps --all", ["ps", "--all"])
+            self._write_diagnostic_command(
+                log_file,
+                "docker compose logs --no-color --timestamps",
+                ["logs", "--no-color", "--timestamps"],
+            )
+
+    def _write_diagnostic_command(self, log_file: TextIO, title: str, extra_args: list[str]) -> None:
+        args = _compose_base_args(self.compose_file, self.project_name)
+        args.extend(extra_args)
+        log_file.write(f"\n===== {title} =====\n")
+        try:
             result = subprocess.run(
                 args,
                 check=False,
@@ -171,6 +221,9 @@ class DockerComposeE2EBackend:
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
                 env=_compose_env(self.env),
+                timeout=_DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS,
             )
-            if result.returncode != 0:
-                log_file.write(f"\n[docker compose logs exited with status {result.returncode}]\n")
+        except subprocess.TimeoutExpired:
+            log_file.write(f"\n[command timed out after {_DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS}s]\n")
+            return
+        log_file.write(f"\n[command exited with status {result.returncode}]\n")

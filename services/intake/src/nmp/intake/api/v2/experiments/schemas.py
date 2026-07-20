@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Request, response, and filter schemas for the Experiments API.
+"""Request, response, and filter schemas for the Evaluations API.
 
 Response models are standalone: they translate from the stored entity via
 ``from_entity`` and carry rollup fields hydrated from ClickHouse at read time.
@@ -10,16 +10,20 @@ Response models are standalone: they translate from the stored entity via
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Self
 
 from nmp.common.entities.values import DatetimeFilter, Filter, NumberFilter, map_entity_field
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup
-from nmp.intake.spans.domain import SpanStatus
-from nmp.intake.spans.experiment_session_repository import ExperimentSessionRow
-from pydantic import AnyUrl, BaseModel, ConfigDict, Field
+from nmp.intake.spans.domain import (
+    INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT,
+    IntakeResponseMode,
+    SpanStatus,
+)
+from nmp.intake.spans.evaluation_session_repository import EvaluationSessionRow
+from nmp.intake.spans.storage import text_for_mode
+from pydantic import AnyUrl, BaseModel, ConfigDict, Field, computed_field, model_validator
 
-ExperimentSessionMode = Literal["summary", "detailed"]
-EXPERIMENT_SESSION_SUMMARY_INPUT_CHAR_LIMIT = 1000
+EvaluationSessionMode = IntakeResponseMode
 
 
 class ExperimentGroupRequest(BaseModel):
@@ -37,36 +41,55 @@ class ExperimentGroupRequest(BaseModel):
     default_sort: str = Field(
         default="-created_at",
         description=(
-            "Default sort for this group's experiments list, as a `sort`-param string (leading '-' = "
-            "descending); defaults to '-created_at'. Accepts any field the experiments list `sort` "
-            "param does; clients apply it as the list `sort` param."
+            "Default sort for this group's evaluations list, as a `sort`-param string: a comma-separated, "
+            "ordered list of fields where the first is the primary sort and the rest break ties (leading "
+            "'-' on a field = descending), e.g. '-evaluators.reward.mean,cost_usd.mean'. Defaults to "
+            "'-created_at'. Accepts any field the evaluations list `sort` param does; clients apply it as "
+            "the list `sort` param."
         ),
     )
 
 
-class ExperimentRequest(BaseModel):
-    """Request body for creating an Experiment."""
+class EvaluationRequest(BaseModel):
+    """Request body for creating an Evaluation."""
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(description="Producer-supplied, workspace-unique experiment id.")
+    name: str = Field(description="Producer-supplied, workspace-unique evaluation id.")
     experiment_group_id: str = Field(
         description="Entity id of the owning ExperimentGroup. Required — the group must already exist.",
     )
     dataset_name: str = Field(description="Producer-supplied dataset name.")
     dataset_version: str | None = Field(default=None, description="Producer-supplied dataset version.")
-    source_link: AnyUrl | None = Field(default=None, description="Optional URL for the source experiment.")
+    source_link: AnyUrl | None = Field(default=None, description="Optional URL for the source evaluation.")
     metadata: dict[str, str] = Field(default_factory=dict, description="Free-form producer metadata.")
     description: str | None = Field(default=None, description="Human-readable description.")
+    parent_evaluation_id: str | None = Field(
+        default=None,
+        description="Entity id of the evaluation this one was derived from (e.g. a variant of a baseline), if any.",
+    )
     parent_experiment_id: str | None = Field(
         default=None,
-        description="Entity id of the experiment this one was derived from (e.g. a variant of a baseline), if any.",
+        deprecated=True,
+        description="Deprecated alias for parent_evaluation_id.",
     )
-    status: str | None = Field(default=None, description="Producer-defined lifecycle status of the experiment.")
+    status: str | None = Field(default=None, description="Producer-defined lifecycle status of the evaluation.")
     root_cause: str | None = Field(
         default=None,
-        description="Human- or agent-authored explanation of the experiment's outcome (e.g. why it was killed).",
+        description="Human- or agent-authored explanation of the evaluation's outcome (e.g. why it was killed).",
     )
+
+    @model_validator(mode="after")
+    def _coalesce_deprecated_parent(self) -> Self:
+        """Accept the deprecated ``parent_experiment_id`` alias; the canonical field wins if both are set.
+
+        Read the raw value via ``__dict__`` to avoid tripping the field's deprecation warning on
+        every request.
+        """
+        deprecated_parent = self.__dict__.get("parent_experiment_id")
+        if self.parent_evaluation_id is None and deprecated_parent is not None:
+            self.parent_evaluation_id = deprecated_parent
+        return self
 
 
 class ExperimentGroupResponse(BaseModel):
@@ -82,10 +105,15 @@ class ExperimentGroupResponse(BaseModel):
     default_sort: str
     created_at: datetime | None = None
     updated_at: datetime | None = None
-    experiment_count: int = Field(
+    evaluation_count: int = Field(
         default=0,
-        description="Number of live (non-soft-deleted) experiments in this group.",
+        description="Number of live (non-soft-deleted) evaluations in this group.",
     )
+
+    @computed_field(deprecated=True, description="Deprecated alias for evaluation_count.")  # type: ignore[prop-decorator]
+    @property
+    def experiment_count(self) -> int:
+        return self.evaluation_count
 
     @classmethod
     def from_entity(cls, entity: ExperimentGroup) -> ExperimentGroupResponse:
@@ -115,21 +143,21 @@ class EvaluatorAggregate(BaseModel):
     count: int = 0
 
 
-class ExperimentResponse(BaseModel):
-    """Experiment as served by the API, including ClickHouse-hydrated rollups."""
+class EvaluationResponse(BaseModel):
+    """Evaluation as served by the API, including ClickHouse-hydrated rollups."""
 
     id: str
     name: str
     workspace: str
     experiment_group_id: str = Field(
-        description="Entity id of the owning ExperimentGroup. Required for every Experiment.",
+        description="Entity id of the owning ExperimentGroup. Required for every Evaluation.",
     )
     dataset_name: str
     dataset_version: str | None = None
     source_link: AnyUrl | None = None
     metadata: dict[str, str] = Field(default_factory=dict)
     description: str | None = None
-    parent_experiment_id: str | None = None
+    parent_evaluation_id: str | None = None
     status: str | None = None
     root_cause: str | None = None
     created_at: datetime | None = None
@@ -137,8 +165,8 @@ class ExperimentResponse(BaseModel):
     pinned_at: datetime | None = Field(
         default=None,
         description=(
-            "Timestamp at which the experiment was pinned, or null if unpinned. "
-            "Managed via POST/DELETE /experiments/{name}/pin."
+            "Timestamp at which the evaluation was pinned, or null if unpinned. "
+            "Managed via POST/DELETE /evaluations/{name}/pin."
         ),
         json_schema_extra={"nullable": True},
     )
@@ -146,29 +174,42 @@ class ExperimentResponse(BaseModel):
     evaluator_names: list[str] = Field(default_factory=list)
     model_names: list[str] = Field(
         default_factory=list,
-        description="Distinct model names observed across ingested sessions for this experiment.",
+        description="Distinct model names observed across ingested sessions for this evaluation.",
         json_schema_extra={"uniqueItems": True},
     )
     agent_names: list[str] = Field(
         default_factory=list,
-        description="Distinct agent names observed across ingested sessions for this experiment.",
+        description="Distinct agent names observed across ingested sessions for this evaluation.",
         json_schema_extra={"uniqueItems": True},
     )
     agent_versions: list[str] = Field(
         default_factory=list,
-        description="Distinct agent versions observed across ingested sessions for this experiment.",
+        description="Distinct agent versions observed across ingested sessions for this evaluation.",
         json_schema_extra={"uniqueItems": True},
     )
     aggregate_scores: dict[str, EvaluatorAggregate] | None = None
     run_count: int = Field(
         default=0,
-        description="Number of distinct ingested experiment sessions; one session is treated as one run.",
+        description="Number of distinct ingested evaluation sessions; one session is treated as one run.",
+    )
+    test_case_count: int = Field(
+        default=0,
+        description=(
+            "Number of distinct test cases in the evaluation, i.e. distinct test_case_id values "
+            "(sessions with no test_case_id each count as their own). A test case run k times counts once; "
+            "the rollup metrics are averaged per test case before pooling across test cases."
+        ),
     )
     cost_usd: EvaluatorAggregate | None = None
     latency_ms: EvaluatorAggregate | None = None
 
+    @computed_field(deprecated=True, description="Deprecated alias for parent_evaluation_id.")  # type: ignore[prop-decorator]
+    @property
+    def parent_experiment_id(self) -> str | None:
+        return self.parent_evaluation_id
+
     @classmethod
-    def from_entity(cls, entity: Experiment) -> ExperimentResponse:
+    def from_entity(cls, entity: Experiment) -> EvaluationResponse:
         return cls(
             id=entity.id,
             name=entity.name,
@@ -179,7 +220,7 @@ class ExperimentResponse(BaseModel):
             source_link=entity.source_link,
             metadata=entity.metadata,
             description=entity.description,
-            parent_experiment_id=entity.parent_experiment_id,
+            parent_evaluation_id=entity.parent_experiment_id,
             status=entity.status,
             root_cause=entity.root_cause,
             created_at=entity.created_at,
@@ -193,7 +234,7 @@ class MetricStatFilters(BaseModel):
 
     Declaring each stat explicitly (rather than an open ``dict[str, NumberFilter]``) makes the valid
     stats visible in the OpenAPI schema, e.g. ``filter[cost_usd.mean][$lte]=0.5``. These stats must
-    stay in sync with the runtime sort/filter grammar (``_METRIC_STATS`` in the experiments
+    stay in sync with the runtime sort/filter grammar (``_METRIC_STATS`` in the evaluations
     endpoints); a unit test guards the parity.
     """
 
@@ -222,30 +263,30 @@ class ExperimentGroupFilter(Filter):
     )
 
 
-class ExperimentFilter(Filter):
-    """Filter for listing Experiments."""
+class EvaluationFilter(Filter):
+    """Filter for listing Evaluations."""
 
-    name: str | None = Field(default=None, description="Filter experiments by name.")
-    experiment_group_id: str | None = Field(default=None, description="Filter experiments by owning group id.")
-    dataset_name: str | None = Field(default=None, description="Filter experiments by dataset name.")
-    dataset_version: str | None = Field(default=None, description="Filter experiments by dataset version.")
-    created_by: str | None = Field(default=None, description="Filter experiments by the principal that created them.")
+    name: str | None = Field(default=None, description="Filter evaluations by name.")
+    experiment_group_id: str | None = Field(default=None, description="Filter evaluations by owning group id.")
+    dataset_name: str | None = Field(default=None, description="Filter evaluations by dataset name.")
+    dataset_version: str | None = Field(default=None, description="Filter evaluations by dataset version.")
+    created_by: str | None = Field(default=None, description="Filter evaluations by the principal that created them.")
     created_at: DatetimeFilter | None = Field(
         default=None,
-        description="Filter experiments by creation timestamp; supports `$gte` and `$lte` for ranges.",
+        description="Filter evaluations by creation timestamp; supports `$gte` and `$lte` for ranges.",
     )
     updated_at: DatetimeFilter | None = Field(
         default=None,
-        description="Filter experiments by last-updated timestamp; supports `$gte` and `$lte` for ranges.",
+        description="Filter evaluations by last-updated timestamp; supports `$gte` and `$lte` for ranges.",
     )
     is_deleted: bool | None = Field(
         default=None,
-        description=("When true, returns only soft-deleted experiments. Omit (or false) to see only live experiments."),
+        description=("When true, returns only soft-deleted evaluations. Omit (or false) to see only live evaluations."),
     )
     is_pinned: bool | None = Field(
         default=None,
         description=(
-            "When true, returns only pinned experiments. When false, returns only unpinned experiments. "
+            "When true, returns only pinned evaluations. When false, returns only unpinned evaluations. "
             "Omit to return both."
         ),
     )
@@ -272,8 +313,8 @@ class ExperimentFilter(Filter):
     )
 
 
-class ExperimentSessionFilter(Filter):
-    """Filter for listing ExperimentSessions."""
+class EvaluationSessionFilter(Filter):
+    """Filter for listing EvaluationSessions."""
 
     test_case_id: str | None = Field(default=None, description="Filter by producer-supplied test case id.")
     status: str | None = Field(
@@ -281,15 +322,21 @@ class ExperimentSessionFilter(Filter):
     )
 
 
-class ExperimentSessionResponse(BaseModel):
-    """One ingested session of an Experiment — a single test case execution.
+class EvaluationSessionResponse(BaseModel):
+    """One ingested session of an Evaluation — a single test case execution.
 
     Hydrated from ClickHouse at read time by reading root/session membership from
     ``trace_index`` and joining page-bounded span/evaluator rollups.
     """
 
     workspace: str
-    experiment_name: str
+    evaluation_name: str
+
+    @computed_field(deprecated=True, description="Deprecated alias for evaluation_name.")  # type: ignore[prop-decorator]
+    @property
+    def experiment_name(self) -> str:
+        return self.evaluation_name
+
     session_id: str
     test_case_id: str | None = Field(
         default=None,
@@ -306,8 +353,15 @@ class ExperimentSessionResponse(BaseModel):
     input: str | None = Field(
         default=None,
         description=(
-            "Root-span input text. In summary mode this is truncated to "
-            f"{EXPERIMENT_SESSION_SUMMARY_INPUT_CHAR_LIMIT} characters."
+            f"Root-span input text. Omitted in summary mode and truncated to {INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT} "
+            "characters in preview mode."
+        ),
+    )
+    output: str | None = Field(
+        default=None,
+        description=(
+            f"Root-span output text. Omitted in summary mode and truncated to {INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT} "
+            "characters in preview mode."
         ),
     )
 
@@ -325,10 +379,15 @@ class ExperimentSessionResponse(BaseModel):
     )
 
     @classmethod
-    def from_row(cls, row: ExperimentSessionRow) -> ExperimentSessionResponse:
+    def from_row(
+        cls,
+        row: EvaluationSessionRow,
+        *,
+        mode: EvaluationSessionMode = "detailed",
+    ) -> EvaluationSessionResponse:
         return cls(
             workspace=row.workspace,
-            experiment_name=row.experiment_name,
+            evaluation_name=row.evaluation_name,
             session_id=row.session_id,
             test_case_id=row.test_case_id,
             trace_id=row.trace_id,
@@ -337,7 +396,8 @@ class ExperimentSessionResponse(BaseModel):
             ended_at=row.ended_at,
             latency_ms=row.latency_ms,
             status=row.status,
-            input=row.input,
+            input=text_for_mode(row.input, mode=mode),
+            output=text_for_mode(row.output, mode=mode),
             input_tokens=row.input_tokens,
             output_tokens=row.output_tokens,
             cached_tokens=row.cached_tokens,

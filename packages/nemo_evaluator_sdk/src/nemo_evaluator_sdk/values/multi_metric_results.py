@@ -10,13 +10,14 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from nemo_evaluator_sdk.values.protocol import MetricOutput
+from nemo_evaluator_sdk.values.protocol import MetricDiagnostic, MetricOutput
 from nemo_evaluator_sdk.values.results import (
     AggregatedMetricResult,
     AggregateFieldName,
     EvaluationResult,
     ResultView,
     RowScore,
+    diagnostics_records,
     flatten_dict,
     format_error_details,
     format_table,
@@ -89,6 +90,13 @@ def _extract_metric_error(row_score: RowScore, expected_key: str) -> str | None:
     return row_score.error
 
 
+def _extract_metric_diagnostics(row_score: RowScore, expected_key: str) -> list[MetricDiagnostic] | None:
+    """Return diagnostics for ``expected_key``, or ``None`` if absent."""
+    if not row_score.metric_diagnostics:
+        return None
+    return row_score.metric_diagnostics.get(expected_key)
+
+
 def _row_identity(row_score: RowScore, fallback_index: int) -> int:
     """Resolve the stable row identity used when combining metric results.
 
@@ -126,6 +134,11 @@ def namespace_result(
             metrics={metric_key: _extract_metric_outputs(row_score, metric_key)},
             requests=row_score.requests,
             metric_errors={metric_key: error} if (error := _extract_metric_error(row_score, metric_key)) else None,
+            metric_diagnostics=(
+                {metric_key: diagnostics}
+                if (diagnostics := _extract_metric_diagnostics(row_score, metric_key))
+                else None
+            ),
         )
         for row_score in result.row_scores
     ]
@@ -179,6 +192,7 @@ def collapse_results(
         metrics: dict[str, list[MetricOutput]] = {}
         requests: list[dict[str, Any]] = []
         metric_errors: dict[str, str] = {}
+        metric_diagnostics: dict[str, list[MetricDiagnostic]] = {}
         for metric_key in ordered_keys:
             row_score = results_by_key[metric_key].row_scores[index]
             metrics[metric_key] = _extract_metric_outputs(row_score, metric_key)
@@ -187,6 +201,8 @@ def collapse_results(
                 metric_errors.update(row_score.metric_errors)
             elif row_score.error:
                 metric_errors[metric_key] = row_score.error
+            if diagnostics := _extract_metric_diagnostics(row_score, metric_key):
+                metric_diagnostics[metric_key] = diagnostics
         combined_rows.append(
             RowScore(
                 row_index=_row_identity(first_row, index),
@@ -195,6 +211,7 @@ def collapse_results(
                 metrics=metrics,
                 requests=requests,
                 metric_errors=metric_errors or None,
+                metric_diagnostics=metric_diagnostics or None,
             )
         )
 
@@ -254,6 +271,8 @@ class BenchmarkEvaluationResult(BaseModel):
                 for metric_key, metric_scores in row_score.metrics.items():
                     for output in metric_scores:
                         record[f"output.{metric_key}.{output.name}"] = serialize_value(output.value)
+                for column, diagnostics_json in diagnostics_records(row_score).items():
+                    record[column] = diagnostics_json
                 records.append(record)
             return records
 

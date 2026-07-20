@@ -28,14 +28,14 @@ Fine-tuning jobs run in container images published to NVIDIA NGC. For NeMo Platf
 
 | Image | Purpose |
 |-------|---------|
-| `nvcr.io/nvidia/nemo-platform/nmp-automodel-tasks:0.2.0` | Automodel file transfer and model entity task steps |
+| `nvcr.io/nvidia/nemo-platform/nmp-customizer-tasks:0.2.0` | Shared CPU task steps (file I/O, model entity, model spec) for all customization backends |
 | `nvcr.io/nvidia/nemo-platform/nmp-automodel-training:0.2.0` | Automodel GPU training step |
-| `nvcr.io/nvidia/nemo-platform/nmp-unsloth-training:0.2.0` | Unsloth training and task steps |
+| `nvcr.io/nvidia/nemo-platform/nmp-unsloth-training:0.2.0` | Unsloth GPU training step |
 
 These public images can be pulled directly from `nvcr.io`:
 
 ```bash
-docker pull nvcr.io/nvidia/nemo-platform/nmp-automodel-tasks:0.2.0
+docker pull nvcr.io/nvidia/nemo-platform/nmp-customizer-tasks:0.2.0
 docker pull nvcr.io/nvidia/nemo-platform/nmp-automodel-training:0.2.0
 docker pull nvcr.io/nvidia/nemo-platform/nmp-unsloth-training:0.2.0
 ```

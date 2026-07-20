@@ -199,11 +199,17 @@ class TestWorkspaceCRUDWithAuth:
     def test_workspace_create_can_be_restricted_by_rebinding_system_role(self, sdk: NeMoPlatform):
         """Operators can rebind system workspace creation access to specific principals."""
         creator_email = f"creator-{uuid.uuid4().hex[:8]}@example.com"
+        denied_email = f"denied-{uuid.uuid4().hex[:8]}@example.com"
         workspace_name = short_unique_name("restricted")
         seeded_wildcard_roles = ["Viewer", "WorkspaceCreator"]
 
         try:
             restrict_workspace_creation_to_named_users(sdk)
+            wait_for_workspace_create_authz(sdk, denied_email, expected=False)
+
+            with as_user(sdk, denied_email):
+                with pytest.raises(PermissionDeniedError):
+                    sdk.workspaces.create(name=short_unique_name("restricted-denied"))
 
             with as_service(sdk, "auth"):
                 sdk.workspaces.members.create(
@@ -225,6 +231,12 @@ class TestWorkspaceCRUDWithAuth:
             assert set(wildcard_member.roles) == {"Viewer"}
             assert creator_member is not None
             assert set(creator_member.roles) == {"Viewer", "WorkspaceCreator"}
+
+            wait_for_workspace_create_authz(sdk, denied_email, expected=False)
+
+            with as_user(sdk, denied_email):
+                with pytest.raises(PermissionDeniedError):
+                    sdk.workspaces.create(name=short_unique_name("restricted-still-denied"))
 
             with as_user(sdk, creator_email):
                 created = sdk.workspaces.create(name=workspace_name)

@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-from typing import ClassVar
+import json
+import tempfile
+from collections.abc import AsyncIterator, Callable
+from typing import Any, ClassVar, cast
 
 import anyio
 import anyio.from_thread
@@ -12,15 +14,23 @@ import anyio.to_thread
 import data_designer.config as dd
 from anyio.lowlevel import current_token
 from data_designer.config.utils.constants import DEFAULT_NUM_RECORDS
+from data_designer.config.utils.io_helpers import serialize_data
+from data_designer.errors import DataDesignerError
+from data_designer.interface.data_designer import DataDesigner
 from data_designer_nemo.context import create_data_designer_context
-from data_designer_nemo.errors import NDDInvalidConfigError, raise_if_errors
+from data_designer_nemo.errors import NDDInternalError, NDDInvalidConfigError, raise_if_errors
 from data_designer_nemo.fileset_file_seed_reader import workspace_cvar
 from data_designer_nemo.runnable import resolve_runnable_config
+from nemo_data_designer_plugin._data_designer import create_data_designer
 from nemo_data_designer_plugin.config import get_config
-from nemo_data_designer_plugin.functions._preview_worker import make_preview_dataset
+from nemo_data_designer_plugin.functions._preview_logs import forward_data_designer_logs
 from nemo_data_designer_plugin.functions._types import (
+    AnalysisFrame,
+    DatasetFrame,
+    DatasetMetadataFrame,
     LogFrame,
     PreviewSpec,
+    ProcessorOutputFrame,
 )
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.function import NemoFunction
@@ -49,7 +59,7 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
         num_records = _validate_and_get_num_records(spec.num_records, is_local)
 
         dd_ctx = create_data_designer_context(is_local, async_sdk, ctx.workspace)
-        errors, model_configs, model_providers = await resolve_runnable_config(dd_ctx, spec.config)
+        errors, _, model_providers = await resolve_runnable_config(dd_ctx, spec.config)
         raise_if_errors(errors)
 
         workspace_cvar.set(ctx.workspace)
@@ -66,38 +76,48 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
                 ) from None
 
         config_builder = dd.DataDesignerConfigBuilder.from_config(spec.config.to_dict())
+        with tempfile.TemporaryDirectory() as artifact_storage_tmpdir:
+            data_designer = create_data_designer(
+                artifact_path=artifact_storage_tmpdir,
+                model_providers=model_providers,
+                dd_ctx=dd_ctx,
+            )
 
-        async def _worker() -> None:
             try:
-                await anyio.to_thread.run_sync(
-                    make_preview_dataset,
-                    config_builder,
-                    dd_ctx,
-                    send_from_thread,
-                    spec,
-                    model_providers,
-                    model_configs,
-                    num_records,
-                )
-            except Exception as exc:
-                try:
-                    await send_stream.send(LogFrame(level="error", message=f"An error occurred: {exc}"))
-                    await send_stream.send(Error(message=str(exc), details={"type": type(exc).__name__}))
-                except (anyio.BrokenResourceError, anyio.ClosedResourceError):
-                    pass
-            finally:
-                await send_stream.aclose()
+                await anyio.to_thread.run_sync(data_designer.check_models, config_builder)
+            except DataDesignerError as e:
+                raise NDDInvalidConfigError(str(e))
+            except TimeoutError as e:
+                raise NDDInternalError(str(e))
 
-        completed_with_error = False
-        async with anyio.create_task_group() as tg:
-            tg.start_soon(_worker)
-            async with receive_stream:
-                async for frame in receive_stream:
-                    if isinstance(frame, Error):
-                        completed_with_error = True
-                    yield frame
-            if not completed_with_error:
-                yield Done()
+            async def _worker() -> None:
+                try:
+                    await anyio.to_thread.run_sync(
+                        _make_preview_dataset,
+                        send_from_thread,
+                        data_designer,
+                        config_builder,
+                        num_records,
+                    )
+                except Exception as exc:
+                    try:
+                        await send_stream.send(LogFrame(level="error", message=f"An error occurred: {exc}"))
+                        await send_stream.send(Error(message=str(exc), details={"type": type(exc).__name__}))
+                    except (anyio.BrokenResourceError, anyio.ClosedResourceError):
+                        pass
+                finally:
+                    await send_stream.aclose()
+
+            completed_with_error = False
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(_worker)
+                async with receive_stream:
+                    async for frame in receive_stream:
+                        if isinstance(frame, Error):
+                            completed_with_error = True
+                        yield frame
+                if not completed_with_error:
+                    yield Done()
 
 
 def _validate_and_get_num_records(requested_num_records: int | None, is_local: bool) -> int:
@@ -117,3 +137,42 @@ def _validate_and_get_num_records(requested_num_records: int | None, is_local: b
         num_records = requested_num_records
 
     return num_records
+
+
+def _make_preview_dataset(
+    send_frame: Callable[[BaseModel], None],
+    data_designer: DataDesigner,
+    config_builder: dd.DataDesignerConfigBuilder,
+    num_records: int,
+) -> None:
+    """
+    Synchronous function that runs on a worker thread under
+    :func:`anyio.to_thread.run_sync`. SDK calls bridge back to the API
+    process's event loop via :func:`anyio.from_thread.run` inside the
+    helpers. Sends frames back to the async context via the
+    ``send_frame`` callback.
+    """
+    with forward_data_designer_logs(send_frame):
+        preview_results = data_designer.preview(config_builder, num_records=num_records)
+
+    if (dataset_metadata := preview_results.dataset_metadata) is not None:
+        send_frame(DatasetMetadataFrame(metadata=dataset_metadata))
+
+    if (dataset := preview_results.dataset) is not None:
+        records = cast(list[dict[str, Any]], dataset.to_dict(orient="records"))
+        send_frame(DatasetFrame(records=_to_jsonable_records(records)))
+
+    for processor_name, processor_records in (preview_results.processor_artifacts or {}).items():
+        send_frame(
+            ProcessorOutputFrame(
+                processor_name=processor_name,
+                records=_to_jsonable_records(processor_records),
+            )
+        )
+
+    if (analysis := preview_results.analysis) is not None:
+        send_frame(AnalysisFrame(analysis=analysis))
+
+
+def _to_jsonable_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return cast(list[dict[str, Any]], json.loads(serialize_data(records)))

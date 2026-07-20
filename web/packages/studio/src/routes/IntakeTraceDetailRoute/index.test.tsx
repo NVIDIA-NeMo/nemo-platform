@@ -171,21 +171,21 @@ describe('IntakeTraceDetailRoute', () => {
     expect(detailSpanIds).not.toContain('span-root-001');
   });
 
-  it('renders experiment context only when present and filters spans to the trace', async () => {
+  it('renders evaluation context only when present and filters spans to the trace', async () => {
     renderTraceDetail('trace-agent-run-001');
 
     expect(await screen.findByText('Trace Answer customer policy question')).toBeInTheDocument();
-    expect(screen.getByText('Experiment Context')).toBeInTheDocument();
+    expect(screen.getByText('Evaluation Context')).toBeInTheDocument();
     expect(await screen.findByText('Generate final response')).toBeInTheDocument();
     expect(screen.queryByText('Retrieve deployment troubleshooting steps')).not.toBeInTheDocument();
   });
 
-  it('omits experiment context when the trace has none', async () => {
+  it('omits evaluation context when the trace has none', async () => {
     renderTraceDetail('trace-agent-run-002');
 
     expect(
       await screen.findByText('Trace Retrieve deployment troubleshooting steps')
     ).toBeInTheDocument();
-    expect(screen.queryByText('Experiment Context')).not.toBeInTheDocument();
+    expect(screen.queryByText('Evaluation Context')).not.toBeInTheDocument();
   });
 });

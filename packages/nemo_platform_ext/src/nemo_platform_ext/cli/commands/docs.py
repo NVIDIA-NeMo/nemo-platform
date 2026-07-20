@@ -84,7 +84,7 @@ def docs_command(
     path: Annotated[
         str | None,
         typer.Argument(
-            help="Path to a doc topic (e.g., get-started/setup). Omit to see available topics.",
+            help="Path to a doc topic (e.g., get-started/setup or set-up/helm/install). Omit to see available topics.",
         ),
     ] = None,
     list_topics: Annotated[
@@ -100,6 +100,7 @@ def docs_command(
 
     Examples:
     nemo docs get-started/setup
+    nemo docs set-up/helm/install
     nemo docs --list
     nemo docs cli/configuration
     """

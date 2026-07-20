@@ -4,6 +4,7 @@
 import { ContentType } from '@nemo/common/src/components/CodeEditor/constants';
 import {
   collectFolderPathsFromDatasetFiles,
+  getContentColumns,
   getContentSchema,
   getDatasetDisplayNameFromFilesUrl,
   getFileNameFromPath,
@@ -250,6 +251,36 @@ describe('resolveDatasetFilePath', () => {
 
   it('returns multi-segment paths unchanged when folder is empty string', () => {
     expect(resolveDatasetFilePath('a/b/c.txt', '')).toBe('a/b/c.txt');
+  });
+});
+
+describe('getContentColumns', () => {
+  it('reads CSV headers', () => {
+    expect(getContentColumns('question,answer,score\na,b,1\n', '.csv')).toEqual([
+      'question',
+      'answer',
+      'score',
+    ]);
+  });
+
+  it('reads CSV headers even when a later row is truncated (Range request)', () => {
+    // A body cut mid-row would make the all-or-nothing CSV parser return no rows; the header
+    // must still resolve since only the first row is parsed.
+    const truncated = 'question,answer\nhello,world\ntrunc';
+    expect(getContentColumns(truncated, '.csv')).toEqual(['question', 'answer']);
+  });
+
+  it('reads JSONL keys from the first row', () => {
+    expect(getContentColumns('{"a":1,"b":2}\n{"a":3,"b":4}\n', 'jsonl')).toEqual(['a', 'b']);
+  });
+
+  it('reads keys from a JSON array', () => {
+    expect(getContentColumns('[{"x":1,"y":2}]', '.json')).toEqual(['x', 'y']);
+  });
+
+  it('returns [] for empty or missing content', () => {
+    expect(getContentColumns(undefined, '.csv')).toEqual([]);
+    expect(getContentColumns('', 'jsonl')).toEqual([]);
   });
 });
 

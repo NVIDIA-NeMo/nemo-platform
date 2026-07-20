@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { DEFAULT_WORKSPACE } from '@nemo/common/src/models/constants';
 import {
   Button,
   Divider,
@@ -51,6 +52,7 @@ const SettingsSection: FC<SettingsSectionProps> = ({ label, body, action }) => (
 
 export const WorkspaceSettingsRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
+  const isDefaultWorkspace = workspace === DEFAULT_WORKSPACE;
   const navigate = useNavigate();
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -152,10 +154,15 @@ export const WorkspaceSettingsRoute: FC = () => {
             <Divider />
             <SettingsSection
               label="Delete Workspace"
-              body="Permanently delete your Workspace and all of its contents from NeMo Studio. Once deleted, it cannot be recovered."
+              body={
+                isDefaultWorkspace
+                  ? 'The default workspace cannot be deleted.'
+                  : 'Permanently delete your Workspace and all of its contents from NeMo Studio. Once deleted, it cannot be recovered.'
+              }
               action={
                 <Button
                   color="danger"
+                  disabled={isDefaultWorkspace}
                   onClick={() => setDeleteModalOpen(true)}
                   className="shrink-0"
                 >

@@ -1,53 +1,85 @@
 provider: authentik
 mode: compose-ci
-compose_file: docker-compose.yml
-gateway_base_url: http://127.0.0.1:18080
+compose_file: compose/docker-compose.yml
+gateway_base_url: https://127.0.0.1:18080
 issuer_url: http://authentik-server:9000/application/o/nemo/
-discovery_url: http://127.0.0.1:18080/application/o/nemo/.well-known/openid-configuration
+discovery_url: https://127.0.0.1:18080/application/o/nemo/.well-known/openid-configuration
 nemo_config: config/platform-compose-authentik.yaml
 principal_contract:
   subject_claim: sub
   groups_claim: groups
   external_machine_principals_use_service_prefix: false
   internal_service_prefix_reserved: "service:"
-human_identity:
+interactive_user_identity:
   username: nemo-user
+  password: nemo-user-password-dev
   expected_email: nemo-user@example.com
 workload_identity:
   principal_id: svc-nemo
   expected_groups:
-    - nemo-editors
+    - nemo-workloads
 workload_contract:
   audience: nemo-platform
   principal_claim: sub
   groups_claim: groups
   groups_format: comma_string
   token_env_vars:
-    - NEMO_WORKLOAD_TOKEN
-    - NEMO_WORKLOAD_TOKEN_FILE
+    - NMP_WORKLOAD_IDENTITY_TOKEN_FILE
   forwarded_headers:
     principal_id: X-NMP-Principal-Id
     principal_groups: X-NMP-Principal-Groups
 token_acquisition:
-  token_endpoint: http://127.0.0.1:18080/application/o/token/
-  human_grant:
+  token_endpoint: https://127.0.0.1:18080/application/o/token/
+  # E2E TEST HARNESS ONLY. This password grant gives auth-idp contract tests a
+  # setup principal for creating temporary workspaces and role grants. It is not
+  # a user login flow, not a workload identity flow, and must not be copied into
+  # production deployments.
+  e2e_setup_password_grant:
     grant_type: password
     client_id: nemo-platform
     client_secret: nemo-platform-secret-dev
-    username: nemo-user
-    password: nemo-user-token-secret-dev
-    scope: "openid profile email offline_access groups"
-  machine_grant:
+    username: nemo-setup
+    password: nemo-setup-token-secret-dev
+    scope: "openid email groups"
+  workload_provider_password_grant:
     grant_type: password
-    client_id: nemo-platform
-    client_secret: nemo-platform-secret-dev
+    client_id: nemo-platform-workload
     username: svc-nemo
-    password: svc-nemo-token-secret-dev
+    password_env_var: AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD
     scope: "openid email groups"
 healthchecks:
   - kind: http
-    url: http://127.0.0.1:18080/application/o/nemo/.well-known/openid-configuration
+    url: https://127.0.0.1:18080/application/o/nemo/.well-known/openid-configuration
 startup_timeouts:
   healthchecks_seconds: 600
   gateway_seconds: 30
   token_endpoint_seconds: 180
+test_runtimes:
+  - id: authentik-compose
+    backend: compose
+    command: compose
+    capabilities:
+      - gateway_discovery
+      - gateway_authn
+      - spoofed_header_rejection
+      - workload_provider_token
+      - workload_subject_token
+      - workload_token_exchange
+      - workspace_rbac
+      - workload_job
+      - device_flow
+      - docker_subject_token_refresh
+  - id: authentik-kubernetes
+    backend: kubernetes
+    command: k8s
+    capabilities:
+      - gateway_discovery
+      - gateway_authn
+      - spoofed_header_rejection
+      - workload_provider_token
+      - workload_subject_token
+      - workload_token_exchange
+      - workspace_rbac
+      - workload_job
+      - device_flow
+      - kubernetes_token_review

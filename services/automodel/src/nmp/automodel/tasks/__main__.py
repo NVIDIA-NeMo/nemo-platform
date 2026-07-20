@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Default entrypoint for the nmp-automodel-tasks image (help / task listing).
+"""Default entrypoint for the nmp-customizer-tasks image (help / task listing).
 
 Production job steps invoke a specific module directly, e.g.
-``python -m nmp.automodel.tasks.file_io``.
+``python -m nmp.customization_common.tasks.file_io --service-source automodel --service-name customizer``.
 """
 
 from __future__ import annotations
@@ -13,21 +13,39 @@ import argparse
 import sys
 
 _TASK_MODULES = (
-    ("file_io", "nmp.automodel.tasks.file_io", "Download/upload model and dataset files"),
-    ("model_entity", "nmp.automodel.tasks.model_entity", "Create output model entity"),
+    (
+        "file_io",
+        "nmp.customization_common.tasks.file_io",
+        "Download/upload model and dataset files (pass --service-source / --service-name)",
+    ),
+    (
+        "model_entity",
+        "nmp.customization_common.tasks.model_entity",
+        "Create output model entity (pass --service-name)",
+    ),
+    (
+        "model_spec",
+        "nmp.core.models.tasks.model_spec",
+        "Populate model entity spec from checkpoint metadata",
+    ),
+    (
+        "lora_sidecar",
+        "nmp.core.models.sidecars.adapters.main",
+        "LoRA adapter sidecar for NIM/vLLM deployments",
+    ),
 )
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m nmp.automodel.tasks",
-        description="NeMo Automodel CPU task image. The jobs compiler runs one module per step.",
+        description="NeMo customization CPU task image. The jobs compiler runs one module per step.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="Examples:\n"
         "  python -m nmp.automodel.tasks --help\n"
-        "  python -m nmp.automodel.tasks.file_io\n"
-        "  python -m nmp.automodel.tasks.model_entity\n\n"
-        "GPU training uses the nmp-automodel-training image:\n"
+        "  python -m nmp.customization_common.tasks.file_io --service-source automodel --service-name customizer\n"
+        "  python -m nmp.customization_common.tasks.model_entity --service-name customizer\n\n"
+        "GPU training uses backend-specific training images:\n"
         "  python -m nmp.automodel.tasks.training\n",
     )
     parser.add_argument(

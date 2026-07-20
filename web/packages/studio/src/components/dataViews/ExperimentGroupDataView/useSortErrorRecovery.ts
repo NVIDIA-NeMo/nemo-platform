@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { TanstackTable } from '@nemo/common/src/components/DataView/internal';
-import type { ListExperimentsQueryError } from '@nemo/sdk/generated/platform/api';
+import type { ListEvaluationsQueryError } from '@nemo/sdk/generated/platform/api';
 import { useEffect, useRef } from 'react';
 
 /** The table's sorting state — at most one active column for this single-sort table. */
@@ -26,7 +26,7 @@ const isSameSort = (a: SortingState, b: SortingState): boolean =>
   a[0]?.id === b[0]?.id && (a[0]?.desc ?? false) === (b[0]?.desc ?? false);
 
 export interface UseSortErrorRecoveryParams {
-  error: ListExperimentsQueryError | null;
+  error: ListEvaluationsQueryError | null;
   isSuccess: boolean;
   sortingState: SortingState;
   setSorting: (next: SortingState) => void;
@@ -60,7 +60,7 @@ export const useSortErrorRecovery = ({
   const isRecoverableSortError =
     message != null && !isSameSort(sortingState, lastGoodSortRef.current);
 
-  const handledErrorRef = useRef<ListExperimentsQueryError | null>(null);
+  const handledErrorRef = useRef<ListEvaluationsQueryError | null>(null);
   useEffect(() => {
     if (!error) {
       handledErrorRef.current = null;

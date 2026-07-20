@@ -13,7 +13,9 @@ import pytest
 from nemo_platform.auth.token_provider import (
     OIDCTokenProvider,
     TokenSet,
+    refresh_token_grant,
 )
+from nemo_platform.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
 
 
 def _make_jwt(claims: dict, header: dict | None = None) -> str:
@@ -38,6 +40,21 @@ class TestTokenSet:
     def test_from_access_token_no_exp_claim(self):
         token = _make_jwt({"sub": "user1"})
         ts = TokenSet.from_access_token(token)
+
+        assert ts.expires_at is None
+
+    @pytest.mark.parametrize("expires_in", [120, 120.5])
+    def test_from_access_token_uses_numeric_expires_in_when_no_exp_claim(self, expires_in):
+        token = _make_jwt({"sub": "user1"})
+        before = time.time()
+        ts = TokenSet.from_access_token(token, expires_in=expires_in)
+
+        assert ts.expires_at is not None
+        assert before + expires_in <= ts.expires_at <= time.time() + expires_in
+
+    def test_from_access_token_rejects_bool_expires_in(self):
+        token = _make_jwt({"sub": "user1"})
+        ts = TokenSet.from_access_token(token, expires_in=True)
 
         assert ts.expires_at is None
 
@@ -91,6 +108,23 @@ class TestOIDCTokenProvider:
         assert await provider.get_access_token_async() == token
 
     @patch("nemo_platform.auth.token_provider.httpx.post")
+    def test_refresh_token_grant_uses_nemo_scoped_ca_bundle(self, mock_post, monkeypatch):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"access_token": "new_access"}
+        mock_post.return_value = mock_response
+        monkeypatch.setenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, "/tmp/nemo-ca.pem")
+
+        result = refresh_token_grant(
+            token_endpoint="https://idp/token",
+            client_id="client",
+            refresh_token="refresh_abc",
+        )
+
+        assert result == {"access_token": "new_access"}
+        assert mock_post.call_args.kwargs["verify"] == "/tmp/nemo-ca.pem"
+
+    @patch("nemo_platform.auth.token_provider.httpx.post")
     def test_get_access_token_refreshes_when_expired(self, mock_post):
         old_token = _make_jwt({"exp": int(time.time()) - 100})
         new_token = _make_jwt({"exp": int(time.time()) + 3600})
@@ -120,6 +154,33 @@ class TestOIDCTokenProvider:
         assert call_kwargs[1]["data"]["grant_type"] == "refresh_token"
         assert call_kwargs[1]["data"]["client_id"] == "client"
         assert call_kwargs[1]["data"]["refresh_token"] == "old_refresh"
+
+    @patch("nemo_platform.auth.token_provider.httpx.post")
+    def test_get_access_token_refreshes_opaque_token_with_expires_in(self, mock_post):
+        old_token = _make_jwt({"exp": int(time.time()) - 100})
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "access_token": "opaque_access",
+            "expires_in": 120,
+        }
+        mock_post.return_value = mock_response
+
+        tokens = TokenSet.from_access_token(old_token, refresh_token="old_refresh")
+        provider = OIDCTokenProvider(
+            token_endpoint="https://idp/token",
+            client_id="client",
+            tokens=tokens,
+            refresh_margin_seconds=0,
+        )
+
+        before = time.time()
+        result = provider.get_access_token()
+
+        assert result == "opaque_access"
+        assert provider.tokens.expires_at is not None
+        assert before + 120 <= provider.tokens.expires_at <= time.time() + 120
 
     @patch("nemo_platform.auth.token_provider.httpx.post")
     def test_refresh_reloads_tokens_before_request(self, mock_post):

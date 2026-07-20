@@ -2,8 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import logging
+from typing import Any
 
-from nemoguardrails.llm.providers import register_chat_provider, register_llm_provider
+from nemoguardrails.integrations.langchain.llm_adapter import LangChainLLMAdapter
+from nemoguardrails.llm.providers import register_llm_provider, register_provider
+from nemoguardrails.types import LLMModel
 from nmp.guardrails.app.constants import NIM_CHAT, NIM_LLM
 from nmp.guardrails.app.llms.chat.nim import ChatNIM
 from nmp.guardrails.app.llms.completion.nim import NIM
@@ -11,10 +14,15 @@ from nmp.guardrails.app.llms.completion.nim import NIM
 log = logging.getLogger(__name__)
 
 
+def _init_nim_chat_model(*, model: str, **kwargs: Any) -> LLMModel:
+    """Create a NeMo Guardrails model backed by the platform's ChatNIM client."""
+    return LangChainLLMAdapter(ChatNIM(model=model, **kwargs))
+
+
 def register_providers():
     """Register Chat/LLM providers to NeMo Guardrails."""
 
-    register_chat_provider(NIM_CHAT, ChatNIM)
+    register_provider(NIM_CHAT, _init_nim_chat_model)
     register_llm_provider(NIM_LLM, NIM)
 
 

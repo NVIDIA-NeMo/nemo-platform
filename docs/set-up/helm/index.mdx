@@ -4,7 +4,9 @@ description: ""
 ---
 <a id="nemo-platform-setup"></a>
 
-The NeMo Platform is bundled in an all-in-one Helm chart that supports end-to-end microservice deployment. Use the following guides to build and manage a complete data flywheel with the NeMo Platform on your Kubernetes either on-prem or in the cloud.
+NeMo Platform is bundled in an all-in-one Helm chart for self-managed Kubernetes deployments. Use these guides to deploy the platform on local clusters such as minikube and kind, managed clusters such as EKS, AKS, GKE, and OKE, or on-prem Kubernetes.
+
+Start with [Prerequisites](/documentation/self-managed-deployment/setup/helm/prerequisites), then follow [Install](/documentation/self-managed-deployment/setup/helm/install). The install guide pins the chart with `NMP_HELM_CHART_VERSION` and uses the `nvidia/nemo-platform` NGC org for chart and image access.
 
 <Cards>
 
@@ -15,7 +17,7 @@ Review the prerequisites for installing the NeMo Platform Helm Chart.
 <small><span class="md-tag">cluster-admin</span></small>
 
 </Card>
-<Card title="Install }" href="/documentation/self-managed-deployment/setup/helm/install">
+<Card title="Install" href="/documentation/self-managed-deployment/setup/helm/install">
 
 Install the NeMo Platform using the Helm chart.
 
@@ -57,7 +59,7 @@ Configure high-performance east-west networking (EFA, InfiniBand, TCP-XO, SR-IOV
 <small><span class="md-tag">cluster-admin</span> <span class="md-tag">cloud</span></small>
 
 </Card>
-<Card title="OpenShift" href="/documentation/self-managed-deployment/setup/helm/open-shift">
+<Card title="OpenShift" href="/documentation/self-managed-deployment/setup/helm/openshift">
 
 Install with OpenShift-compatible configuration.
 

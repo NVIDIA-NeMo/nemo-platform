@@ -443,7 +443,10 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
                 PERSISTENT_JOB_STORAGE_PATH_ENVVAR: str(persistent_dir),
                 NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR: str(config_path),
                 "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": get_logs_endpoint_from_fileset(
-                    platform_config, step.workspace, step.fileset, loopback_address="localhost"
+                    platform_config,
+                    step.workspace,
+                    step.fileset,
+                    loopback_address="localhost",
                 ),
                 "OTEL_LOGS_EXPORTER": "otlp",
                 "OTEL_SERVICE_NAME": "nmp-job-task",

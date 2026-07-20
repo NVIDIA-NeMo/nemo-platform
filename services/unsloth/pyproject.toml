@@ -38,8 +38,6 @@ unsloth = ["unsloth[huggingface]"]
 [project.scripts]
 # Container entrypoints. Each script matches the automodel name pattern for parity.
 nmp-unsloth-training = "nmp.unsloth.tasks.training.__main__:main"
-nmp-unsloth-file-io = "nmp.unsloth.tasks.file_io.run:run"
-nmp-unsloth-model-entity = "nmp.unsloth.tasks.model_entity.__main__:run"
 
 [build-system]
 requires = ["hatchling"]

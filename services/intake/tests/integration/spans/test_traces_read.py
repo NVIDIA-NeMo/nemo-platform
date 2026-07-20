@@ -11,6 +11,8 @@ from fastapi.testclient import TestClient
 
 def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_request):
     base_ns = int(datetime.now(timezone.utc).replace(microsecond=0).timestamp() * 1_000_000_000)
+    input_text = "i" * 350
+    output_text = "o" * 350
     body = make_otlp_request(
         [
             {
@@ -27,8 +29,8 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
                     "deployment.environment.name": "prod",
                     "tag.tags": ["trace-read"],
                     "metadata": {"owner": "trace-test"},
-                    "input.value": '{"task":"solve"}',
-                    "output.value": '{"answer":"done"}',
+                    "input.value": input_text,
+                    "output.value": output_text,
                 },
             },
             {
@@ -65,7 +67,7 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
         "/apis/intake/v2/workspaces/default/traces",
         params={
             "filter[session_id]": "trace-session",
-            "filter[experiment_id]": "experiment-a",
+            "filter[evaluation_id]": "experiment-a",
             "page_size": 20,
         },
     )
@@ -78,6 +80,8 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
     assert trace["workspace"] == "default"
     assert trace["root_span_id"] == "0000000000000001"
     assert trace["name"] == "root-agent"
+    assert trace["input"] == input_text[:300]
+    assert trace["output"] == output_text[:300]
     assert trace["status"] == "success"
     assert trace["input_tokens"] == 420
     assert trace["output_tokens"] == 310
@@ -88,20 +92,22 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
     assert Decimal(str(trace["cost_output_usd"])) == Decimal("0.0037")
     assert trace["span_count"] == 2
     assert trace["error_count"] == 0
+    assert trace["evaluation_context"]["evaluation_id"] == "experiment-a"
+    assert trace["evaluation_context"]["test_case_id"] == "case-a"
     assert trace["experiment_context"]["experiment_id"] == "experiment-a"
     assert trace["experiment_context"]["test_case_id"] == "case-a"
-    assert "evaluation_context" not in trace
+    assert "evaluation_id" not in trace
     assert "experiment_id" not in trace
     assert "test_case_id" not in trace
     assert "source_format" not in trace
-    assert "input" not in trace
-    assert "output" not in trace
     assert "project" not in trace
     assert "models" not in trace
 
     get_response = client.get(f"/apis/intake/v2/workspaces/default/traces/{trace['id']}")
     assert get_response.status_code == 200, get_response.text
     assert get_response.json()["id"] == trace["id"]
+    assert get_response.json()["input"] == input_text
+    assert get_response.json()["output"] == output_text
 
     summary_response = client.get(
         "/apis/intake/v2/workspaces/default/traces",
@@ -111,14 +117,28 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
     summary_trace = summary_response.json()["data"][0]
     assert summary_trace["id"] == trace["id"]
     assert summary_trace["status"] == "success"
+    assert summary_trace["evaluation_context"]["evaluation_id"] == "experiment-a"
+    assert summary_trace["evaluation_context"]["test_case_id"] == "case-a"
     assert summary_trace["experiment_context"]["experiment_id"] == "experiment-a"
     assert summary_trace["experiment_context"]["test_case_id"] == "case-a"
-    assert "evaluation_context" not in summary_trace
+    assert "evaluation_id" not in summary_trace
     assert "experiment_id" not in summary_trace
     assert "test_case_id" not in summary_trace
     assert "input_tokens" not in summary_trace
     assert "cost_usd" not in summary_trace
     assert "span_count" not in summary_trace
+    assert "input" not in summary_trace
+    assert "output" not in summary_trace
+
+    preview_response = client.get(
+        "/apis/intake/v2/workspaces/default/traces",
+        params={"filter[session_id]": "trace-session", "mode": "preview", "page_size": 20},
+    )
+    assert preview_response.status_code == 200, preview_response.text
+    preview_trace = preview_response.json()["data"][0]
+    assert preview_trace["input"] == input_text[:300]
+    assert preview_trace["output"] == output_text[:300]
+    assert preview_trace["span_count"] == 2
 
 
 def test_traces_read_picks_earliest_root_when_trace_has_multiple_roots(client: TestClient, make_otlp_request):

@@ -229,6 +229,7 @@ def main(
     [green]Getting started:[/]
     - Browse documentation with [cyan]`nemo docs --list`[/]
     - Run local platform services with [cyan]`nemo services run --help`[/]
+    - Read the Kubernetes deployment guide with [cyan]`nemo docs set-up/helm/install`[/]
 
     [green]Examples:[/]
     nemo workspaces list --output-format markdown

@@ -847,7 +847,7 @@ def test_atif_trace_tokens_do_not_double_count_when_trajectory_and_steps_both_ca
 def _create_experiment(client: TestClient, name: str) -> str:
     group_id = _ensure_group(client)
     response = client.post(
-        "/apis/intake/v2/workspaces/default/experiments",
+        "/apis/intake/v2/workspaces/default/evaluations",
         json={
             "name": name,
             "experiment_group_id": group_id,
@@ -859,7 +859,7 @@ def _create_experiment(client: TestClient, name: str) -> str:
     if response.status_code == 201:
         return response.json()["name"]
 
-    existing = client.get(f"/apis/intake/v2/workspaces/default/experiments/{name}")
+    existing = client.get(f"/apis/intake/v2/workspaces/default/evaluations/{name}")
     assert existing.status_code == 200, existing.text
     return existing.json()["name"]
 

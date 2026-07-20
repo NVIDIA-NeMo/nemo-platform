@@ -20,7 +20,7 @@ from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from nemo_platform_plugin.jobs.docker import validate_gpu_available_for_docker
 from nmp.automodel.compile import platform_job_config_compiler
-from nmp.customization_common.contributor.jobs import BaseSubmitJob, require_docker_runtime
+from nmp.customization_common.contributor.jobs import BaseSubmitJob, require_container_runtime
 from pydantic import BaseModel
 
 
@@ -32,7 +32,7 @@ class AutomodelJob(BaseSubmitJob):
     job_collection_path: ClassVar[str | None] = "/automodel/jobs"
     input_spec_schema: ClassVar[type[BaseModel] | None] = AutomodelJobInput
     spec_schema: ClassVar[type[BaseModel] | None] = AutomodelJobOutput
-    docker_runtime_label: ClassVar[str] = "Automodel"
+    runtime_label: ClassVar[str] = "Automodel"
 
     @classmethod
     async def _transform(cls, job_input: BaseModel, workspace: str, async_sdk: AsyncNeMoPlatform) -> AutomodelJobOutput:
@@ -50,10 +50,12 @@ class AutomodelJob(BaseSubmitJob):
         options: dict | None = None,
     ) -> PlatformJobSpec:
         del entity_client, options
-        require_docker_runtime(cls.docker_runtime_label)
         canonical = (
             spec if isinstance(spec, AutomodelJobOutput) else AutomodelJobOutput.model_validate(spec.model_dump())
         )
+        # Multi-node jobs compile to a gpu_distributed (Volcano) executor, which
+        # only exists on Kubernetes; gate here so docker platforms fail fast.
+        require_container_runtime(cls.runtime_label, num_nodes=canonical.parallelism.num_nodes)
         canonical.validate_for_training()
 
         plugin_config = get_config()

@@ -10,6 +10,7 @@ nemo_platform.auth.helpers.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import Annotated, cast
 
@@ -37,17 +38,19 @@ app = create_typer_app(
     help="Manage authentication for NeMo Platform.",
 )
 
+logger = logging.getLogger(__name__)
 
-def is_auth_disabled(base_url: str, timeout: float = 3.0) -> bool | None:
+
+def is_auth_disabled(base_url: str, timeout: float = 3.0) -> bool:
     """Check whether authentication is disabled on the cluster.
 
     Returns:
-        True if auth is definitely disabled, False if enabled, None if unreachable.
+        True if auth is disabled, False if enabled.
     """
     try:
         return not discover_nmp_config(base_url, timeout=timeout).auth_enabled
-    except httpx.HTTPError:
-        return None
+    except httpx.HTTPError as exc:
+        raise AuthError(f"Failed to discover auth configuration: {exc}") from exc
 
 
 def _runtime_token_source_label() -> str | None:
@@ -57,7 +60,8 @@ def _runtime_token_source_label() -> str | None:
     try:
         return Config.runtime_access_token_source_label()
     except ValueError:
-        return "NEMO_WORKLOAD_TOKEN_FILE environment override could not be read"
+        logger.debug("Failed to resolve runtime token override source label", exc_info=True)
+        return None
 
 
 def ensure_valid_token(context: Context, refresh_buffer_seconds: int = 300) -> bool:
@@ -131,13 +135,13 @@ def ensure_valid_token(context: Context, refresh_buffer_seconds: int = 300) -> b
         )
         provider.force_refresh()
 
-        config_params = {
+        config_params: ConfigParams = {
             "access_token": provider.tokens.access_token,
         }
         if provider.tokens.refresh_token:
             config_params["refresh_token"] = provider.tokens.refresh_token
 
-        Config.write(config_params, context_name=context.context_name)  # type: ignore[arg-type]
+        Config.write(config_params, context_name=context.context_name)
         typer.echo("[Auto-refreshed expired token]", err=True)
 
         return True
@@ -282,7 +286,7 @@ def login(
     from nemo_platform.config.config import Config
 
     cli_context: CLIContext = ctx.obj
-    selected_context = cast(str | None, cli_context.overrides.get("current_context"))
+    selected_context = cli_context.overrides.get("current_context")
 
     if context_name is not None:
         selected_context = context_name
@@ -537,9 +541,13 @@ def logout(ctx: typer.Context) -> None:
     console = Console()
 
     base_url = str(context.cluster.base_url).rstrip("/")
-    if is_auth_disabled(base_url) is True:
-        console.print("[yellow]Authentication is disabled on this cluster — nothing to log out from.[/]")
-        return
+    try:
+        if is_auth_disabled(base_url) is True:
+            console.print("[yellow]Authentication is disabled on this cluster — nothing to log out from.[/]")
+            return
+    except AuthError as exc:
+        logger.debug("Failed to discover auth configuration during logout", exc_info=True)
+        console.print(f"[yellow]Warning:[/] {exc}; continuing to clear local credentials.")
 
     logout_params: ConfigParams = {"access_token": None, "refresh_token": None}
     updated_config = Config.write(logout_params, context_name=context.context_name)
@@ -699,10 +707,10 @@ def refresh(ctx: typer.Context) -> None:
         raise AuthError(f"Token refresh failed: {e}") from e
 
     # Save new tokens (refresh token may be rotated)
-    config_params = {"access_token": provider.tokens.access_token}
+    config_params: ConfigParams = {"access_token": provider.tokens.access_token}
     if provider.tokens.refresh_token:
         config_params["refresh_token"] = provider.tokens.refresh_token
-    Config.write(config_params, context_name=context.context_name)  # type: ignore[arg-type]
+    Config.write(config_params, context_name=context.context_name)
 
     # Show new token info
     claims = decode_jwt_claims(provider.tokens.access_token)
@@ -763,14 +771,21 @@ def status(ctx: typer.Context) -> None:
 
     # Check whether the cluster has auth enabled before showing token details.
     base_url = str(context.cluster.base_url).rstrip("/")
-    if is_auth_disabled(base_url) is True:
-        console.print()
-        console.print(f"[cyan]Cluster:[/] {base_url}")
-        console.print(f"[cyan]Context:[/] {context.context_name}")
-        console.print()
-        console.print("[green]Authentication is disabled on this cluster.[/]")
-        console.print("All API requests are accepted without credentials.")
-        return
+    auth_discovery_error: AuthError | None = None
+    try:
+        auth_disabled = is_auth_disabled(base_url)
+    except AuthError as exc:
+        logger.debug("Failed to discover auth configuration during status", exc_info=True)
+        auth_discovery_error = exc
+    else:
+        if auth_disabled is True:
+            console.print()
+            console.print(f"[cyan]Cluster:[/] {base_url}")
+            console.print(f"[cyan]Context:[/] {context.context_name}")
+            console.print()
+            console.print("[green]Authentication is disabled on this cluster.[/]")
+            console.print("All API requests are accepted without credentials.")
+            return
 
     table = Table(title="Authentication Status", show_header=False)
     table.add_column("Property", style="cyan")
@@ -779,6 +794,8 @@ def status(ctx: typer.Context) -> None:
     table.add_row("Cluster", str(context.cluster.base_url))
     table.add_row("Context", context.context_name)
     table.add_row("Config File", str(Config.get_default_config_path()))
+    if auth_discovery_error is not None:
+        table.add_row("Auth Discovery", f"[yellow]unavailable[/] ({auth_discovery_error})")
     runtime_token_source = _runtime_token_source_label()
 
     if context.user:

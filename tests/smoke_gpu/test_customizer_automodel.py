@@ -19,41 +19,29 @@ Two failure classes are caught at .so load time, before any GPU device is touche
 import pytest
 
 
-@pytest.mark.smoke_nmp_automodel_tasks
 @pytest.mark.smoke_nmp_automodel_training
 def test_torch_importable():
     import torch  # noqa: F401
 
 
-@pytest.mark.smoke_nmp_automodel_tasks
 @pytest.mark.smoke_nmp_automodel_training
 def test_transformers_importable():
     import transformers  # noqa: F401
 
 
-@pytest.mark.smoke_nmp_automodel_tasks
 @pytest.mark.smoke_nmp_automodel_training
 def test_mamba_ssm_importable():
     import mamba_ssm  # noqa: F401
 
 
-@pytest.mark.smoke_nmp_automodel_tasks
 @pytest.mark.smoke_nmp_automodel_training
 def test_causal_conv1d_importable():
     import causal_conv1d  # noqa: F401
 
 
-@pytest.mark.smoke_nmp_automodel_tasks
 @pytest.mark.smoke_nmp_automodel_training
 def test_bitsandbytes_importable():
     import bitsandbytes  # noqa: F401
-
-
-@pytest.mark.smoke_nmp_automodel_tasks
-def test_nmp_automodel_tasks_importable():
-    from nmp.automodel.tasks import file_io  # noqa: F401
-    from nmp.automodel.tasks.model_entity import __main__ as model_entity_main  # noqa: F401
-    from nmp.core.models.tasks.model_spec import __main__ as model_spec_main  # noqa: F401
 
 
 @pytest.mark.smoke_nmp_automodel_training

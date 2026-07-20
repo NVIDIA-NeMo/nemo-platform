@@ -139,7 +139,7 @@ async def test_publishes_trajectory_and_scores() -> None:
 
     assert len(client.atif_calls) == 1
     assert client.atif_calls[0]["session_id"] == "run-1:t-1"
-    assert client.atif_calls[0]["experiment_context"] == {"experiment_id": "exp-1", "test_case_id": "task-1"}
+    assert client.atif_calls[0]["evaluation_context"] == {"evaluation_id": "exp-1", "test_case_id": "task-1"}
     # 3 metric outputs across the two score records -> 3 evaluator-result rows.
     assert len(client.eval_calls) == 3
     assert {call["name"] for call in client.eval_calls} == {"accuracy.score", "accuracy.passed", "latency.p50"}

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ListExperimentsQueryError } from '@nemo/sdk/generated/platform/api';
+import type { ListEvaluationsQueryError } from '@nemo/sdk/generated/platform/api';
 import {
   SORT_ERROR_MESSAGES,
   type SortingState,
@@ -12,8 +12,8 @@ import { renderHook } from '@testing-library/react';
 
 const sort = (id: string, desc = false): SortingState => [{ id, desc }];
 // Minimal Axios-shaped error: the hook only reads `response.status`.
-const httpError = (status: number): ListExperimentsQueryError =>
-  ({ response: { status } }) as unknown as ListExperimentsQueryError;
+const httpError = (status: number): ListEvaluationsQueryError =>
+  ({ response: { status } }) as unknown as ListEvaluationsQueryError;
 
 const CREATED_AT = sort('created_at', true);
 const LATENCY = sort('latency_ms');

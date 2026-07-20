@@ -45,9 +45,9 @@ vi.mock('@nemo/common/src/components/Dial', () => ({
 }));
 
 // Mock brand assets icons
-vi.mock('lucide-react', () => ({
-  File: () => <svg data-testid="document-icon" />,
-}));
+vi.mock('lucide-react', async () => {
+  return (await import('@nemo/testing/mocks/lucide')).mockLucideReact(await import('react'));
+});
 
 // Mock the util constants
 vi.mock('@studio/routes/SafeSynthesizerJobRoute/util', () => ({
@@ -96,7 +96,7 @@ describe('ReportSummaryPanel', () => {
       });
 
       expect(screen.getByText('Report Summary')).toBeInTheDocument();
-      expect(screen.getByTestId('document-icon')).toBeInTheDocument();
+      expect(screen.getByTestId('file-icon')).toBeInTheDocument();
     });
 
     it('should render Quality (SQS) and Privacy (DPS) labels', () => {

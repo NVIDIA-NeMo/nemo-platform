@@ -7,6 +7,7 @@ import importlib.util
 from pathlib import Path
 from types import ModuleType
 
+import pytest
 from evaluator_agent_eval.artifacts import AgentArtifacts
 from evaluator_agent_eval.factory import build_evaluator_scoring_row, capture_agent_attempt
 from evaluator_agent_eval.runner import score_evaluator_rows
@@ -350,6 +351,61 @@ required_terms = ["packages/nemo_evaluator_sdk", "Evaluator", "run_sync", "Exact
 
     assert scores["task_success"] == [0.0]
     assert scores["output_schema_valid"] == [0.0]
+
+
+@pytest.mark.asyncio
+async def test_exact_match_metric_attaches_summary_diff_diagnostics(tmp_path: Path, agent_log_dir: Path):
+    task_dir = tmp_path / "task"
+    task_dir.mkdir()
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    (task_dir / "task.toml").write_text(
+        """
+version = "1.0"
+
+[evaluator.surface]
+constraint = "standalone_sdk"
+allowed = ["standalone_sdk"]
+forbidden = ["cli", "plugin_sdk", "legacy_service"]
+
+[evaluator.expected]
+required_terms = ["packages/nemo_evaluator_sdk", "Evaluator", "run_sync", "ExactMatchMetric", "2+2?", "Capital of France?", "0.5"]
+""".strip(),
+        encoding="utf-8",
+    )
+    (workspace_dir / "solution.py").write_text(
+        """
+from nemo_evaluator_sdk import Evaluator, ExactMatchMetric
+
+# Mentions run_sync / ExactMatchMetric but prints the wrong summary.
+print("not the expected summary")
+""".strip(),
+        encoding="utf-8",
+    )
+    module = _load_task_metrics("evaluator-standalone-sdk-simple-exact-match")
+    result = await module.ExactMatchEvaluationMetric().compute_scores(
+        {
+            "output_text": "packages/nemo_evaluator_sdk Evaluator run_sync ExactMatchMetric 2+2? Capital of France? 0.5",
+            "workspace_dir": str(workspace_dir),
+            "task_dir": str(task_dir),
+            "final_answer_extracted": True,
+        },
+        {},
+    )
+
+    assert [output.name for output in result.outputs] == [
+        "task_success",
+        "verification_score",
+        "output_schema_valid",
+    ]
+    assert result.outputs[2].value == 0.0
+    assert result.diagnostics
+    assert result.diagnostics[0].message == "summary mismatch"
+    assert result.diagnostics[0].details is not None
+    assert "expected" in result.diagnostics[0].details
+    assert result.diagnostics[0].details["actual"].strip() == "not the expected summary"
+    assert "--- expected" in result.diagnostics[0].details["diff"]
+    assert "+++ actual" in result.diagnostics[0].details["diff"]
 
 
 def _score_task_metric(

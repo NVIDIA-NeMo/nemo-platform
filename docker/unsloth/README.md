@@ -1,23 +1,19 @@
-# nmp-unsloth container image
+# nmp-unsloth container images
 
-Single image — `nmp-unsloth-training` — used for all four steps of an
-Unsloth customization job (file_io download, training, file_io upload,
-model_entity).
+Unsloth customization jobs use the shared CPU image for file_io / model_entity
+steps and a dedicated GPU image for training.
 
 | Image | Dockerfile | Role |
 |-------|------------|------|
-| `nmp-unsloth-training` | `Dockerfile.nmp-unsloth-training` | NGC PyTorch base + Unsloth ML stack + platform glue. ENTRYPOINT is `/opt/venv/bin/python`. |
+| `nmp-customizer-tasks` | `docker/Dockerfile.nmp-customizer-tasks` | Shared CPU steps (`file_io`, `model_entity`) |
+| `nmp-unsloth-training` | `docker/Dockerfile.nmp-unsloth-training` | NGC PyTorch base + Unsloth ML stack + platform glue. ENTRYPOINT is `/opt/venv/bin/python`. |
 
 Bake file: **`docker-bake.hcl`** at the Platform repo root (`context = "."`). Run all commands from the Platform repo root.
 
 Tags use the same bake variables as automodel (`IMAGE_REGISTRY`, `BAKE_TAG`; defaults in `docker-bake.hcl`):
 
 - Default: `${IMAGE_REGISTRY}/nmp-unsloth-training:${BAKE_TAG}` (e.g. `…/nmp-unsloth-training:local` with `--load`)
-
-Future-proofing: a leaner CPU image (`nmp-unsloth-tasks`) can be added
-later for the file_io / model_entity steps. The compiler already routes
-those steps through `get_tasks_image()`, which falls back to the training
-image when `NMP_UNSLOTH_TASKS_IMAGE` is not set.
+- CPU steps: `${IMAGE_REGISTRY}/nmp-customizer-tasks:${BAKE_TAG}` via `get_tasks_image()` (override with `NMP_CUSTOMIZER_TASKS_IMAGE` or `NMP_UNSLOTH_TASKS_IMAGE`)
 
 ---
 
@@ -57,11 +53,11 @@ docker buildx bake \
 
 The build pulls the NGC PyTorch base, then:
 
-1. `uv pip install unsloth --torch-backend=auto transformers==4.57.6 huggingface-hub==0.36.2` with
+1. `uv pip install unsloth --torch-backend=auto transformers==5.5.0 huggingface-hub==1.5.0` with
    `preserve_base_torch.txt` overrides so the NGC base's PyTorch + CUDA are not
    replaced. Unsloth's resolver still pulls `unsloth_zoo`, trl, peft,
    accelerate, datasets, bitsandbytes, and xformers. **transformers is pinned
-   explicitly** to `4.57.6` (override at build time via
+   explicitly** to `5.5.0` (override at build time via
    `--build-arg TRANSFORMERS_VERSION=...`).
 1b. bitsandbytes — compiled from source against the NGC CUDA 13.1 toolkit
     (PyPI wheels only ship through cuda130), replacing the wheel from step 1.
@@ -318,9 +314,9 @@ nemo files filesets delete qwen-unsloth-smoke-out -w default
   separate ML stack. If you need both backends on the same cluster, run
   both images side by side; jobs from each backend route to their own
   `nmp-{backend}-training` image via env-var overrides.
-- **transformers + huggingface-hub pins** — the training image pins `transformers==4.57.6`
-  and `huggingface-hub==0.36.2` in
-  `Dockerfile.nmp-unsloth-training` (compatible with unsloth's upstream
+- **transformers + huggingface-hub pins** — the training image pins `transformers==5.5.0`
+  and `huggingface-hub==1.5.0` in
+  `docker/Dockerfile.nmp-unsloth-training` (compatible with unsloth's upstream
   blocklists). Other HF deps (trl, peft, bitsandbytes, etc.) still come from
   unsloth's resolver. **PyTorch + CUDA** stay on the NGC base stack via
   `--system-site-packages` and `preserve_base_torch.txt` / `no_override_requirements.txt`

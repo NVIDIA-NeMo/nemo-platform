@@ -18,20 +18,38 @@ from __future__ import annotations
 from typing import Literal, Self
 
 from nemo_platform_plugin.integrations import IntegrationsSpec
+from nmp.customization_common.schema import NamespacedModel
 from nmp.customization_common.schemas.values import OutputNameType
 from nmp.rl.app.jobs.training.schemas import OptimizerType
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
 
 
-class ParallelismParams(BaseModel):
+class RlSchema(NamespacedModel):
+    """Backend base: every RL-owned model emits an ``Rl``-prefixed OpenAPI schema
+    name (``DPOTraining`` -> ``RlDPOTraining``), so it can't collide with another
+    backend's same-named model in the merged ``/apis/customization`` spec.
+    ``extra='forbid'`` is inherited from the base. Defined here (with the
+    canonical schemas) and re-imported by the plugin's submitter-facing module so
+    both prefix identically.
+
+    Inheriting the base also applies ``extra='forbid'`` uniformly across *all* RL
+    models, including the canonical/output ones (``RlJobOutput`` and
+    ``OutputResponse``) that previously used pydantic's default ``extra='ignore'``.
+    This tightening is intentional: it matches the automodel and unsloth backends,
+    whose ``*JobOutput`` models already forbid extras and are rehydrated via the
+    same ``model_validate(spec.model_dump())`` path (see
+    ``nemo_rl_plugin.jobs.jobs.compile``) without carrying foreign fields."""
+
+    __schema_namespace__ = "Rl"
+
+
+class ParallelismParams(RlSchema):
     """Distributed training parallelism configuration.
 
     Single-node multi-GPU uses ``num_nodes=1`` with ``num_gpus_per_node>1``;
     multi-node sets ``num_nodes>1`` and the compiler emits a distributed-GPU
     executor (see :mod:`nmp.rl.app.jobs.compiler`).
     """
-
-    model_config = ConfigDict(extra="forbid")
 
     num_gpus_per_node: int = Field(default=1, gt=0, description="Number of GPUs per node.")
     num_nodes: int = Field(default=1, gt=0, description="Number of nodes (>1 → multi-node Ray cluster).")
@@ -41,14 +59,16 @@ class ParallelismParams(BaseModel):
     sequence_parallel: bool = Field(default=False, description="Enable sequence parallelism.")
 
 
-class _TrainingBase(BaseModel):
+class _TrainingBase(RlSchema):
     """Common training configuration shared by all RL methods.
 
     Flat hyperparameters match the ML-practitioner mental model (HuggingFace
     ``TrainingArguments`` / TRL configs). Only parallelism is grouped.
     """
 
-    model_config = ConfigDict(protected_namespaces=(), extra="forbid")
+    # extra="forbid" inherited from RlSchema; protected_namespaces=() kept so the
+    # ``model``-adjacent fields don't trip pydantic's protected-namespace guard.
+    model_config = ConfigDict(protected_namespaces=())
 
     # --- Optimizer ---
     optimizer_type: OptimizerType | None = Field(
@@ -134,7 +154,7 @@ class DPOTraining(_TrainingBase):
 TrainingMethod = DPOTraining
 
 
-class _OutputBase(BaseModel):
+class _OutputBase(RlSchema):
     name: str = Field(
         max_length=255,
         description="Name of the output artifact. Used to identify it during deployment and inference.",
@@ -159,7 +179,7 @@ class OutputResponse(_OutputBase):
     )
 
 
-class RlJobOutput(BaseModel):
+class RlJobOutput(RlSchema):
     """Canonical NeMo-RL job spec (output of the plugin transform).
 
     The ``dataset`` fileset must contain ``training.jsonl`` and ``validation.jsonl``

@@ -129,7 +129,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
           {
             id: 'experiment',
             slotIcon: <Beaker className={iconColorClass} />,
-            slotLabel: 'Experiment',
+            slotLabel: 'Experiments',
             href: getExperimentRoute(workspace),
           },
         ]

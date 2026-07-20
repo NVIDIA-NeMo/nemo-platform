@@ -135,7 +135,7 @@ export const CustomModelsDataView: FC<CustomModelsDataViewProps> = ({
   const { mutateAsync: deleteAdapter } = useModelsDeleteModelAdapter();
 
   const dataViewState = useStudioDataViewState({
-    defaultSort: { id: 'created_at', desc: true },
+    defaultSort: [{ id: 'created_at', desc: true }],
     columnPinning: {
       left: ['row-expansion', 'row-selection'],
       right: ['row-actions'],

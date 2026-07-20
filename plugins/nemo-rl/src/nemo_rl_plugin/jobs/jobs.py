@@ -35,7 +35,7 @@ class RlJob(BaseSubmitJob):
     job_collection_path: ClassVar[str | None] = "/rl/jobs"
     input_spec_schema: ClassVar[type[BaseModel] | None] = RlJobInput
     spec_schema: ClassVar[type[BaseModel] | None] = RlJobOutput
-    docker_runtime_label: ClassVar[str] = "NeMo-RL"
+    runtime_label: ClassVar[str] = "NeMo-RL"
 
     @classmethod
     async def _transform(cls, job_input: BaseModel, workspace: str, async_sdk: AsyncNeMoPlatform) -> RlJobOutput:
@@ -61,7 +61,7 @@ class RlJob(BaseSubmitJob):
         (single-node ``gpu`` vs multi-node ``gpu_distributed``).
         """
         del entity_client, options
-        require_distributed_runtime(cls.docker_runtime_label)
+        require_distributed_runtime(cls.runtime_label)
         canonical = spec if isinstance(spec, RlJobOutput) else RlJobOutput.model_validate(spec.model_dump())
         canonical.validate_for_training()
 

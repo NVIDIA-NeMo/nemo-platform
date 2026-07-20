@@ -39,6 +39,10 @@ export interface SelectableCardProps {
   tags?: string[];
   /** Whether the card reads as selected (draws the strong border). */
   selected?: boolean;
+  /** When true, the card is non-interactive and muted; `onActivate` never fires. */
+  disabled?: boolean;
+  /** Tooltip explaining why the card is disabled (shown on hover when `disabled`). */
+  disabledReason?: string;
   /** Activation handler; fired on click and on keyboard Enter/Space. */
   onActivate?: () => void;
   className?: string;
@@ -62,14 +66,22 @@ export const SelectableCard: FC<SelectableCardProps> = ({
   description,
   tags,
   selected = false,
+  disabled = false,
+  disabledReason,
   onActivate,
   className,
 }) => (
   <button
     type="button"
-    onClick={onActivate}
+    onClick={disabled ? undefined : onActivate}
+    disabled={disabled}
     aria-pressed={selected}
-    className={`flex w-[240px] justify-between cursor-pointer flex-col items-start gap-1.5 rounded-md border bg-surface-raised px-2 py-1.5 text-left transition-colors hover:border-strong hover:bg-surface-hover focus-visible:border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-brand,#76b900) ${selected ? 'border-strong' : 'border-base'} ${className ?? ''}`}
+    title={disabled ? disabledReason : undefined}
+    className={`flex w-[240px] justify-between flex-col items-start gap-1.5 rounded-md border bg-surface-raised px-2 py-1.5 text-left transition-colors ${
+      disabled
+        ? 'cursor-not-allowed opacity-50 border-base'
+        : `cursor-pointer hover:border-strong hover:bg-surface-hover focus-visible:border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-brand,#76b900) ${selected ? 'border-strong' : 'border-base'}`
+    } ${className ?? ''}`}
   >
     <Stack gap="1.5">
       <Flex className="w-full items-center gap-2">

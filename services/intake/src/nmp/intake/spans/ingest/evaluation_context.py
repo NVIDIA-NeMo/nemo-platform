@@ -15,7 +15,7 @@ class EvaluationContext(BaseModel):
     metadata) keeps ingesting without error rather than being rejected.
     """
 
-    evaluation_id: str | None = Field(default=None, description="Name of an existing Experiment entity.")
+    evaluation_id: str | None = Field(default=None, description="Name of an existing Evaluation.")
     test_case_id: str | None = Field(default=None, description="Optional producer-supplied test case id.")
 
     model_config = ConfigDict(extra="ignore")

@@ -90,7 +90,13 @@ def list_spans(
         str | None, typer.Option("--filter.tool-name", rich_help_panel="Filter Options")
     ] = None,
     filter_trace_id: Annotated[str | None, typer.Option("--filter.trace-id", rich_help_panel="Filter Options")] = None,
-    mode: Annotated[Literal["summary", "detailed"] | None, typer.Option("--mode")] = None,
+    mode: Annotated[
+        Literal["summary", "preview", "detailed"] | None,
+        typer.Option(
+            "--mode",
+            help="Response mode. summary omits payloads and raw attributes; preview includes input and output truncated to 300 characters; detailed returns full payloads and raw attributes.",
+        ),
+    ] = None,
     page: Annotated[int | None, typer.Option("--page", help="Page number.")] = None,
     page_size: Annotated[int | None, typer.Option("--page-size", help="Page size.")] = None,
     sort: Annotated[Literal["started_at", "-started_at"] | None, typer.Option("--sort")] = None,

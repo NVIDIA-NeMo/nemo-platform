@@ -94,7 +94,7 @@ class CustomizationRouterService(NemoService):
                 router=router,
                 tag="Customization",
                 description="Customization router health.",
-                prefix="",
+                prefix="/v2",
             ),
         ]
 

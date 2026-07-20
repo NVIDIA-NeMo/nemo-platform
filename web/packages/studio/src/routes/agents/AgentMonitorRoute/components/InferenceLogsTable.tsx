@@ -53,7 +53,7 @@ export const InferenceLogsTable: FC<Props> = ({ runs, isFetching, error, onRetry
   // Keep the page short enough to fit alongside the cards + chart so the data
   // view's internal overflow scroll doesn't capture the page's wheel events.
   const dataViewState = useStudioDataViewState({
-    defaultSort: { id: 'startedAt', desc: true },
+    defaultSort: [{ id: 'startedAt', desc: true }],
     defaultPageSize: 10,
   });
 

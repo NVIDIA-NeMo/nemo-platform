@@ -2,22 +2,22 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Seed local Intake with a curated multi-group experiment dataset.
+"""Seed local Intake with a curated multi-group evaluation dataset.
 
 Designed for the Studio UI team to have realistic data while building out the
-Experiments surfaces. Seeds four experiment groups across multiple agents and
-datasets, with varied evaluator scores, costs, and latencies. Every experiment
+Evaluations surfaces. Seeds four experiment groups across multiple agents and
+datasets, with varied evaluator scores, costs, and latencies. Every evaluation
 is attached to a group; nothing is ungrouped.
 
 Behavior:
 
 * Re-running is safe. Groups that already exist by name are left alone — none
-  of their experiments, sessions, or rollups are touched.
-* ``--wipe-and-seed`` deletes **every** experiment group and experiment in the
+  of their evaluations, sessions, or rollups are touched.
+* ``--wipe-and-seed`` deletes **every** experiment group and evaluation in the
   workspace (including ones this script didn't create) and then seeds from
   scratch. Note: this only removes entity-store rows. ClickHouse session data
   (spans, evaluator_results) is not deletable via the public API, so prior
-  session telemetry tagged with a re-used ``experiment.id`` will still feed
+  session telemetry tagged with a re-used ``evaluation.id`` will still feed
   the rollup after re-seeding.
 
 Usage::
@@ -25,11 +25,11 @@ Usage::
     uv run services/intake/scripts/spans/seed_experiments_demo.py \\
         --base-url http://127.0.0.1:8000
 
-    # Wipe ALL experiment groups + experiments in the workspace, then re-seed:
+    # Wipe ALL experiment groups + evaluations in the workspace, then re-seed:
     uv run services/intake/scripts/spans/seed_experiments_demo.py \\
         --base-url http://127.0.0.1:8000 --wipe-and-seed
 
-For the parameterized smoke test that exercises one experiment + many sessions,
+For the parameterized smoke test that exercises one evaluation + many sessions,
 see ``seed_experiment_rollup_data.py`` in the same directory.
 """
 
@@ -54,14 +54,14 @@ DEFAULT_WORKSPACE = "default"
 
 
 @dataclass
-class ExperimentSpec:
+class EvaluationSpec:
     name: str
     description: str
     agent_name: str = "sample-agent"
     agent_version: str = "1.0.0"
     # Optional: sessions cycle through these instead of the scalar above, so a single
-    # experiment's rollup can surface multiple distinct agent names or versions (e.g.,
-    # an A/B between agent versions, or a comparison of agents within one experiment).
+    # evaluation's rollup can surface multiple distinct agent names or versions (e.g.,
+    # an A/B between agent versions, or a comparison of agents within one evaluation).
     agent_name_cycle: tuple[str, ...] | None = None
     agent_version_cycle: tuple[str, ...] | None = None
     model_name: str = "provider/sample-model"
@@ -86,7 +86,7 @@ class ExperimentSpec:
 class GroupSpec:
     name: str
     description: str
-    experiments: list[ExperimentSpec]
+    evaluations: list[EvaluationSpec]
 
 
 DEMO_GROUPS: list[GroupSpec] = [
@@ -94,8 +94,8 @@ DEMO_GROUPS: list[GroupSpec] = [
     GroupSpec(
         name="reranker-prompt-iteration",
         description="Iterating on the Support-Bench RAG agent's reranker and system prompt.",
-        experiments=[
-            ExperimentSpec(
+        evaluations=[
+            EvaluationSpec(
                 name="reranker-main-baseline",
                 description="Pre-reranker baseline on the production prompt.",
                 agent_name="codex-cli",
@@ -108,7 +108,7 @@ DEMO_GROUPS: list[GroupSpec] = [
                 cost_mean_usd=0.045,
                 latency_mean_ms=2800,
             ),
-            ExperimentSpec(
+            EvaluationSpec(
                 name="reranker-add-cross-encoder",
                 description="Add a cross-encoder reranker to the retrieval step.",
                 agent_name="codex-cli",
@@ -121,7 +121,7 @@ DEMO_GROUPS: list[GroupSpec] = [
                 cost_mean_usd=0.052,
                 latency_mean_ms=3100,
             ),
-            ExperimentSpec(
+            EvaluationSpec(
                 name="reranker-tightened-prompt",
                 description="Cross-encoder reranker + tightened system prompt.",
                 agent_name="codex-cli",
@@ -134,7 +134,7 @@ DEMO_GROUPS: list[GroupSpec] = [
                 cost_mean_usd=0.053,
                 latency_mean_ms=3000,
             ),
-            ExperimentSpec(
+            EvaluationSpec(
                 name="reranker-top-k-8",
                 description="Ablation: top_k = 8 instead of the default 4.",
                 agent_name="codex-cli",
@@ -147,7 +147,7 @@ DEMO_GROUPS: list[GroupSpec] = [
                 cost_mean_usd=0.075,
                 latency_mean_ms=4100,
             ),
-            ExperimentSpec(
+            EvaluationSpec(
                 name="reranker-no-reranker",
                 description="Ablation: prompt change without the reranker.",
                 agent_name="codex-cli",
@@ -160,12 +160,12 @@ DEMO_GROUPS: list[GroupSpec] = [
                 cost_mean_usd=0.038,
                 latency_mean_ms=2400,
             ),
-            ExperimentSpec(
+            EvaluationSpec(
                 name="reranker-5x-averaged",
                 description="Cross-encoder reranker, 5 trials per case, averaged for variance.",
                 agent_name="codex-cli",
                 agent_version="1.2.3",
-                # Trials ran across a minor version bump mid-experiment.
+                # Trials ran across a minor version bump mid-evaluation.
                 agent_version_cycle=("1.2.3", "1.2.4"),
                 model_name="openai/gpt-4o-mini",
                 dataset_name="support-bench",
@@ -182,8 +182,8 @@ DEMO_GROUPS: list[GroupSpec] = [
     GroupSpec(
         name="coding-agent-showdown",
         description="Comparing three coding agents on terminal-bench-2.",
-        experiments=[
-            ExperimentSpec(
+        evaluations=[
+            EvaluationSpec(
                 name="tb2-claude-code-opus",
                 description="claude-code @ 0.125 with opus.",
                 agent_name="claude-code",
@@ -196,7 +196,7 @@ DEMO_GROUPS: list[GroupSpec] = [
                 cost_mean_usd=0.42,
                 latency_mean_ms=8200,
             ),
-            ExperimentSpec(
+            EvaluationSpec(
                 name="tb2-codex-cli",
                 description="codex-cli @ 1.4 with gpt-4o.",
                 agent_name="codex-cli",
@@ -209,7 +209,7 @@ DEMO_GROUPS: list[GroupSpec] = [
                 cost_mean_usd=0.22,
                 latency_mean_ms=5400,
             ),
-            ExperimentSpec(
+            EvaluationSpec(
                 name="tb2-cursor-agent",
                 description="cursor-agent + cursor-cli mix @ 0.4 with claude-sonnet.",
                 agent_name="cursor-agent",
@@ -230,8 +230,8 @@ DEMO_GROUPS: list[GroupSpec] = [
     GroupSpec(
         name="cross-agent-cross-dataset-sweep",
         description="Two agents × two datasets to see where each agent shines.",
-        experiments=[
-            ExperimentSpec(
+        evaluations=[
+            EvaluationSpec(
                 name="claude-code-on-agentic-bench",
                 description="claude-code on agentic-bench (long-horizon).",
                 agent_name="claude-code",
@@ -244,7 +244,7 @@ DEMO_GROUPS: list[GroupSpec] = [
                 cost_mean_usd=0.55,
                 latency_mean_ms=12000,
             ),
-            ExperimentSpec(
+            EvaluationSpec(
                 name="claude-code-on-support",
                 description="claude-code on customer-support v2.",
                 agent_name="claude-code",
@@ -257,7 +257,7 @@ DEMO_GROUPS: list[GroupSpec] = [
                 cost_mean_usd=0.12,
                 latency_mean_ms=3100,
             ),
-            ExperimentSpec(
+            EvaluationSpec(
                 name="codex-cli-on-agentic-bench",
                 description="codex-cli on agentic-bench (long-horizon).",
                 agent_name="codex-cli",
@@ -270,7 +270,7 @@ DEMO_GROUPS: list[GroupSpec] = [
                 cost_mean_usd=0.31,
                 latency_mean_ms=8500,
             ),
-            ExperimentSpec(
+            EvaluationSpec(
                 name="codex-cli-on-support",
                 description="codex-cli on customer-support v2.",
                 agent_name="codex-cli",
@@ -289,8 +289,8 @@ DEMO_GROUPS: list[GroupSpec] = [
     GroupSpec(
         name="claude-model-size-sweep",
         description="Same agent + dataset, three claude model sizes.",
-        experiments=[
-            ExperimentSpec(
+        evaluations=[
+            EvaluationSpec(
                 name="tau-claude-haiku",
                 description="claude-code with claude-haiku-4-5.",
                 agent_name="claude-code",
@@ -303,7 +303,7 @@ DEMO_GROUPS: list[GroupSpec] = [
                 cost_mean_usd=0.02,
                 latency_mean_ms=1400,
             ),
-            ExperimentSpec(
+            EvaluationSpec(
                 name="tau-claude-sonnet",
                 description="claude-code with claude-sonnet-4-6.",
                 agent_name="claude-code",
@@ -316,7 +316,7 @@ DEMO_GROUPS: list[GroupSpec] = [
                 cost_mean_usd=0.11,
                 latency_mean_ms=3200,
             ),
-            ExperimentSpec(
+            EvaluationSpec(
                 name="tau-claude-opus",
                 description="claude-code with claude-opus-4-7.",
                 agent_name="claude-code",
@@ -347,7 +347,7 @@ def main() -> None:
         "--wipe-and-seed",
         action="store_true",
         help=(
-            "DELETE every experiment group + experiment in the workspace (including ones this "
+            "DELETE every experiment group + evaluation in the workspace (including ones this "
             "script didn't create), then re-seed. Destructive — use carefully."
         ),
     )
@@ -375,27 +375,27 @@ def seed(client: httpx.Client, base_url: str, workspace: str) -> None:
 
     groups_created = 0
     groups_skipped = 0
-    experiments_created = 0
+    evaluations_created = 0
     sessions_seeded = 0
 
     for group_spec in DEMO_GROUPS:
         group_id, created = _create_group_if_missing(client, base_url, workspace, group_spec)
         if not created or group_id is None:
-            print(f"\n[skip] group '{group_spec.name}' already exists; leaving it and its experiments alone")
+            print(f"\n[skip] group '{group_spec.name}' already exists; leaving it and its evaluations alone")
             groups_skipped += 1
             continue
         groups_created += 1
-        print(f"\n[group] {group_spec.name}  ({len(group_spec.experiments)} experiments)")
-        for exp_spec in group_spec.experiments:
-            print(f"  [experiment] {exp_spec.name}  n_sessions={exp_spec.n_sessions}")
-            _create_experiment(client, base_url, workspace, exp_spec, group_id=group_id)
+        print(f"\n[group] {group_spec.name}  ({len(group_spec.evaluations)} evaluations)")
+        for exp_spec in group_spec.evaluations:
+            print(f"  [evaluation] {exp_spec.name}  n_sessions={exp_spec.n_sessions}")
+            _create_evaluation(client, base_url, workspace, exp_spec, group_id=group_id)
             _seed_sessions(client, base_url, workspace, exp_spec, base_started_at)
-            experiments_created += 1
+            evaluations_created += 1
             sessions_seeded += exp_spec.n_sessions
 
     print(
         f"\n=== Done. groups: {groups_created} created, {groups_skipped} skipped. "
-        f"experiments: {experiments_created} created. sessions: {sessions_seeded} ingested. ==="
+        f"evaluations: {evaluations_created} created. sessions: {sessions_seeded} ingested. ==="
     )
 
 
@@ -412,20 +412,20 @@ def _create_group_if_missing(
     return response.json()["id"], True
 
 
-def _create_experiment(
+def _create_evaluation(
     client: httpx.Client,
     base_url: str,
     workspace: str,
-    spec: ExperimentSpec,
+    spec: EvaluationSpec,
     *,
     group_id: str,
 ) -> None:
-    """POST an experiment. Errors on conflict — callers must guarantee the experiment doesn't exist."""
-    response = client.post(_intake_url(base_url, workspace, "/experiments"), json=_experiment_body(spec, group_id))
+    """POST an evaluation. Errors on conflict — callers must guarantee the evaluation doesn't exist."""
+    response = client.post(_intake_url(base_url, workspace, "/evaluations"), json=_evaluation_body(spec, group_id))
     response.raise_for_status()
 
 
-def _experiment_body(spec: ExperimentSpec, group_id: str) -> dict[str, Any]:
+def _evaluation_body(spec: EvaluationSpec, group_id: str) -> dict[str, Any]:
     body: dict[str, Any] = {
         "name": spec.name,
         "dataset_name": spec.dataset_name,
@@ -447,11 +447,11 @@ def _seed_sessions(
     client: httpx.Client,
     base_url: str,
     workspace: str,
-    spec: ExperimentSpec,
+    spec: EvaluationSpec,
     base_started_at: datetime,
 ) -> None:
     """Ingest N sessions via ATIF + per-evaluator POST /evaluator-results."""
-    # Deterministic per-experiment so re-runs produce the same values.
+    # Deterministic per-evaluation so re-runs produce the same values.
     rng = random.Random(f"seed:{spec.name}")
 
     atif_url = _intake_url(base_url, workspace, "/ingest/atif")
@@ -478,7 +478,7 @@ def _seed_sessions(
         )
         atif_body = _demo_atif_body(
             base_started_at=base_started_at,
-            experiment_id=spec.name,
+            evaluation_id=spec.name,
             run_id=run_id,
             test_case_id=test_case_id,
             cost_usd=cost_usd,
@@ -518,7 +518,7 @@ def _seed_sessions(
 def _demo_atif_body(
     *,
     base_started_at: datetime,
-    experiment_id: str,
+    evaluation_id: str,
     run_id: str,
     test_case_id: str,
     cost_usd: float,
@@ -532,15 +532,15 @@ def _demo_atif_body(
 ) -> dict[str, Any]:
     session_started_at = base_started_at + timedelta(seconds=offset_seconds)
     finished_at = session_started_at + timedelta(milliseconds=latency_ms)
-    session_id = f"{experiment_id}-{run_id}-{test_case_id}"
+    session_id = f"{evaluation_id}-{run_id}-{test_case_id}"
     # `extra.verifier` carries the timing block (used by the rollup for session latency).
     # We omit `extra.verifier_result` so ATIF ingest doesn't auto-create a `harbor.verifier`
     # evaluator alongside our cleanly-named ones from POST /evaluator-results.
     return {
         "schema_version": "ATIF-v1.7",
         "session_id": session_id,
-        "experiment_context": {
-            "experiment_id": experiment_id,
+        "evaluation_context": {
+            "evaluation_id": evaluation_id,
             "test_case_id": test_case_id,
         },
         "extra": {
@@ -585,23 +585,23 @@ def _demo_atif_body(
 
 
 def _wipe_workspace(client: httpx.Client, base_url: str, workspace: str) -> None:
-    """Delete every experiment + experiment group in the workspace.
+    """Delete every evaluation + experiment group in the workspace.
 
     Iterates the existing list endpoints with pagination and DELETEs each row.
-    Experiments are deleted before groups so the group-level UI doesn't briefly
+    Evaluations are deleted before groups so the group-level UI doesn't briefly
     show empty groups. Only entity-store rows are removed; ClickHouse session
     data is untouched (no public API to delete it).
     """
-    print(f"=== --wipe-and-seed: deleting every experiment + group in workspace '{workspace}' ===")
-    deleted_experiments = 0
-    for name in _list_all_names(client, base_url, workspace, "/experiments"):
-        if _delete(client, base_url, workspace, f"/experiments/{name}"):
-            deleted_experiments += 1
+    print(f"=== --wipe-and-seed: deleting every evaluation + group in workspace '{workspace}' ===")
+    deleted_evaluations = 0
+    for name in _list_all_names(client, base_url, workspace, "/evaluations"):
+        if _delete(client, base_url, workspace, f"/evaluations/{name}"):
+            deleted_evaluations += 1
     deleted_groups = 0
     for name in _list_all_names(client, base_url, workspace, "/experiment-groups"):
         if _delete(client, base_url, workspace, f"/experiment-groups/{name}"):
             deleted_groups += 1
-    print(f"deleted {deleted_experiments} experiment(s) and {deleted_groups} group(s)\n")
+    print(f"deleted {deleted_evaluations} evaluation(s) and {deleted_groups} group(s)\n")
 
 
 def _list_all_names(client: httpx.Client, base_url: str, workspace: str, suffix: str) -> list[str]:

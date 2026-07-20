@@ -1,0 +1,146 @@
+---
+title: "Targets and Runners"
+description: "Reference for what an agent-eval run can point at — a Model, a deployed Agent over HTTP, or an AgentTaskRunner (a callable, Harbor, or your own) — with each target's key fields and when to use it."
+---
+
+`AgentEvaluator().run(target=...)` accepts one of three kinds of target. Whatever you pick, it produces
+**trials**, and trials are scored the same way — so the same tasks and metrics work against any target
+(see [Agent Evaluation](/documentation/evaluate-models/agent-eval) for the model).
+
+## At a glance
+
+| Target | What it is | Extra dependencies | How-to |
+|---|---|---|---|
+| `Model` | a chat/completions LLM endpoint | an inference endpoint + key | — |
+| `GenericAgent` | any HTTP JSON endpoint | none | [Evaluate a Deployed Agent](/documentation/evaluate-models/agent-eval/evaluate-deployed-agent) |
+| `NemoAgentToolkitAgent` | a NeMo Agent Toolkit endpoint | a running NAT workflow | [Evaluate a Deployed Agent](/documentation/evaluate-models/agent-eval/evaluate-deployed-agent) |
+| `CallableAgentTaskRunner` | an in-process async function | none | [Quickstart](/documentation/evaluate-models/agent-eval/quickstart) |
+| `HarborAgentTaskRunner` | a Harbor task suite | `harbor` + Docker | [Harbor Task Suite](/documentation/evaluate-models/agent-eval/harbor-runner) |
+| *your* `AgentTaskRunner` | anything that turns tasks into trials | up to you | *(this page)* |
+
+The union is `AgentEvalTarget = Model | Agent | AgentTaskRunner`, where `Agent = GenericAgent |
+NemoAgentToolkitAgent`.
+
+## `Model`
+
+A chat/completions endpoint evaluated directly on your tasks — a useful **baseline** (how well does a
+bare model do before you wrap it in an agent?). The evaluator prompts it with each task's
+`instruction`.
+
+| Field | Required | Notes |
+|---|---|---|
+| `url` | yes | endpoint URL (e.g. `.../v1/chat/completions` or `.../v1/completions`) |
+| `name` | yes | model identifier, stamped on trials |
+| `format` | no | `ModelFormat.NVIDIA_NIM` (default), `ModelFormat.OPEN_AI`, or `ModelFormat.LLAMA_STACK` — serialized as `nim` / `openai` / `llama_stack` |
+| `api_key_secret` | no | credential reference — `workspace/secret_name` or `secret_name` |
+
+```python
+from nemo_evaluator_sdk.enums import ModelFormat
+from nemo_evaluator_sdk.values import Model
+
+target = Model(url="https://integrate.api.nvidia.com/v1/chat/completions", name="meta/llama-3.1-8b-instruct",
+               format=ModelFormat.OPEN_AI, api_key_secret="NVIDIA_API_KEY")
+```
+
+For a local `run()`, `api_key_secret` names an **environment variable** in your process; for a submitted
+job it names a **platform secret** in the workspace.
+
+## `Agent` (HTTP)
+
+A deployed agent reachable over HTTP. Two variants, both authenticated with **`api_key_secret`** — the
+same credential reference `Model` uses: for a local `run()` it names an environment variable, for a
+submitted job a platform secret. Its value is sent as a bearer token on each request.
+
+### `GenericAgent`
+
+Any JSON endpoint. You define the request with a Jinja `body` (rendered against the task inputs) and
+pull the answer out with JSONPath. Full walkthrough:
+[Evaluate a Deployed Agent over HTTP](/documentation/evaluate-models/agent-eval/evaluate-deployed-agent).
+
+| Field | Required | Notes |
+|---|---|---|
+| `url` | yes | endpoint the evaluator POSTs to |
+| `name` | yes | agent identifier, stamped on trials |
+| `format` | no | `AgentFormat.GENERIC` (the default and only value) |
+| `body` | yes | Jinja template for the request payload, rendered against task inputs (e.g. `{{ instruction }}`) |
+| `response_path` | yes | JSONPath selecting the answer from the response |
+| `trajectory_path` | no | JSONPath selecting a trajectory to score |
+| `api_key_secret` | no | credential reference (env var locally, platform secret for a job); its value is sent as a bearer token |
+| `stream` | no | read JSON SSE `data:` frames instead of a single JSON body (default `false`) |
+
+### `NemoAgentToolkitAgent`
+
+A [NeMo Agent Toolkit](https://docs.nvidia.com/nemo/agent-toolkit/latest/index.html) endpoint. It
+speaks NAT's fixed request/response protocol, so you don't hand-write a `body` — point it at the
+workflow's URL.
+
+| Field | Required | Notes |
+|---|---|---|
+| `url` | yes | the NAT workflow endpoint |
+| `name` | yes | agent identifier, stamped on trials |
+| `format` | no | `AgentFormat.NEMO_AGENT_TOOLKIT` (the default and only value) |
+| `nat` | no | `NatAgentConfig` — endpoint / query-param / response-path overrides; defaults preserve `/generate/full` |
+| `api_key_secret` | no | credential reference (env var locally, platform secret for a job); its value is sent as a bearer token |
+
+## `AgentTaskRunner` (callable, Harbor, or your own)
+
+The most general target: anything implementing the one-method protocol.
+
+```python
+from collections.abc import Sequence
+
+from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
+
+
+class AgentTaskRunner:
+    async def run_tasks(
+        self, tasks: Sequence[AgentEvalTask], config: AgentEvalRunConfig | None = None
+    ) -> Sequence[AgentEvalTrial]: ...
+```
+
+The SDK ships two runners you'll usually reach for first:
+
+- **`CallableAgentTaskRunner`** wraps an `async def agent(task) -> str | AgentOutput | TrialDraft`. The
+  smallest possible target — no Docker, no HTTP. See the
+  [Quickstart](/documentation/evaluate-models/agent-eval/quickstart). Return a `TrialDraft` to attach
+  a trajectory or other evidence (see [Score by Component](/documentation/evaluate-models/agent-eval/score-by-component)).
+- **`HarborAgentTaskRunner`** runs a [Harbor](https://www.harborframework.com) task suite in Docker and
+  scores its verifier reward. See [Harbor Task Suite](/documentation/evaluate-models/agent-eval/harbor-runner).
+
+Write your own when your agent doesn't fit those — a bespoke harness, a queue, a replay of stored runs.
+Return one `AgentEvalTrial` per task; the evaluator scores them exactly like any other target:
+
+```python
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+
+
+class EchoRunner:
+    async def run_tasks(self, tasks, config=None):
+        return [
+            AgentEvalTrial(
+                id=f"{task.id}:trial",
+                task_id=task.id,
+                status=AgentEvalTrialStatus.COMPLETED,
+                output=AgentOutput(output_text=task.inputs["instruction"]),
+            )
+            for task in tasks
+        ]
+```
+
+## Choosing a target
+
+- Just trying the flow, or you already have the agent in Python → **`CallableAgentTaskRunner`**.
+- The agent is deployed behind HTTP → **`GenericAgent`** (any endpoint) or **`NemoAgentToolkitAgent`**
+  (a NAT workflow).
+- You want a model baseline, no agent → **`Model`**.
+- You have Harbor task datasets → **`HarborAgentTaskRunner`**.
+- None of the above fits → implement **`AgentTaskRunner`**.
+
+## Related
+
+<Cards>
+  <Card title="Agent Evaluation (concepts)" href="/documentation/evaluate-models/agent-eval" />
+  <Card title="Evaluate a Deployed Agent over HTTP" href="/documentation/evaluate-models/agent-eval/evaluate-deployed-agent" />
+  <Card title="Score by Component" href="/documentation/evaluate-models/agent-eval/score-by-component" />
+</Cards>

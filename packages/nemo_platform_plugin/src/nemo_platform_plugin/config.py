@@ -169,6 +169,7 @@ class ServiceConfig(ABC, EnvironmentFirstSettings):
 
 
 _T_config = TypeVar("_T_config", bound=ServiceConfig)
+_T_platform_config = TypeVar("_T_platform_config", bound="NemoPlatformConfig")
 
 
 def create_service_config_class(service_name: str) -> Type[ServiceConfig]:
@@ -208,6 +209,7 @@ class Configuration:
     """Singleton config loader from YAML files and environment variables."""
 
     _overrides: ClassVar[dict[Type[ServiceConfig], ServiceConfig]] = {}
+    _platform_config_class: ClassVar[Type["NemoPlatformConfig"] | None] = None
 
     @classmethod
     def set_override(cls, config: ServiceConfig) -> None:
@@ -284,8 +286,36 @@ class Configuration:
     @classmethod
     def get_service_config(cls, service_config: Type[_T_config]) -> _T_config:
         if service_config in cls._overrides:
-            return cls._overrides[service_config]  # type: ignore[return-value]
+            override = cls._overrides[service_config]
+            if not isinstance(override, service_config):
+                raise TypeError(f"Config override for {service_config.__name__} has type {type(override).__name__}")
+            return override
         return cls._get_cached_config(service_config)
+
+    @classmethod
+    def register_platform_config_class(cls, platform_config_class: Type[_T_platform_config]) -> None:
+        """Register the config class returned by get_platform_config().
+
+        Platform packages can use this to provide an extended platform config
+        without monkey-patching Configuration.
+        """
+        if not issubclass(platform_config_class, NemoPlatformConfig):
+            raise TypeError("platform_config_class must be a NemoPlatformConfig subclass")
+        if platform_config_class.global_settings_key() != "platform":
+            raise ValueError("platform_config_class must use global settings key 'platform'")
+        cls._platform_config_class = platform_config_class
+        cls.clear_cache()
+
+    @classmethod
+    def get_platform_config_class(cls) -> Type["NemoPlatformConfig"]:
+        """Return the currently registered platform config class."""
+        if cls._platform_config_class is None:
+            raise RuntimeError("No platform config class is registered.")
+        return cls._platform_config_class
+
+    @classmethod
+    def get_platform_config(cls) -> "NemoPlatformConfig":
+        return cls.get_service_config(cls.get_platform_config_class())
 
     @staticmethod
     def get_service_config_from_file(filename: str, service_config: Type[_T_config]) -> _T_config:
@@ -297,6 +327,16 @@ class Configuration:
 def get_service_config(service_config: Type[_T_config]) -> _T_config:
     """Convenience function for Configuration.get_service_config."""
     return Configuration.get_service_config(service_config)
+
+
+def register_platform_config_class(platform_config_class: Type[_T_platform_config]) -> None:
+    """Register the config class returned by get_platform_config()."""
+    Configuration.register_platform_config_class(platform_config_class)
+
+
+def get_platform_config_class() -> Type[NemoPlatformConfig]:
+    """Return the currently registered platform config class."""
+    return Configuration.get_platform_config_class()
 
 
 # ---------------------------------------------------------------------------
@@ -456,6 +496,15 @@ class NemoPlatformConfig(ServiceConfig):
 
     @classmethod
     def get(cls) -> NemoPlatformConfig:
+        """Return the active platform config.
+
+        ``NemoPlatformConfig`` itself is a public handle for the registered
+        platform config class. Platform packages may register a subclass with
+        extra behavior, so callers of the base class should receive that active
+        subclass. Calls on a concrete subclass still load that subclass directly.
+        """
+        if cls is NemoPlatformConfig:
+            return Configuration.get_platform_config()
         return Configuration.get_service_config(cls)
 
     services: str = internal_field(
@@ -504,7 +553,7 @@ class NemoPlatformConfig(ServiceConfig):
     )
     image_registry: str = Field(
         default="my-registry",
-        description="Docker registry for NeMo Platform images (e.g., 'nvcr.io/nvidia/nemo-microservices').",
+        description="Docker registry for NeMo Platform images (e.g., 'nvcr.io/nvidia/nemo-platform').",
     )
     image_tag: str = Field(
         default="local",
@@ -637,15 +686,15 @@ def get_nemo_platform_config() -> NemoPlatformConfig:
     return Configuration.get_platform_config()
 
 
-# Default implementation — subclasses (nmp-common) override this to return their extended PlatformConfig.
-Configuration.get_platform_config = classmethod(lambda cls: cls.get_service_config(NemoPlatformConfig))  # type: ignore[attr-defined]
+# Default implementation; platform packages can register an extended class.
+Configuration.register_platform_config_class(NemoPlatformConfig)
 
 # Aliases — nmp-common and services use PlatformConfig / get_platform_config
 PlatformConfig = NemoPlatformConfig
 get_platform_config = get_nemo_platform_config
 
 
-class CommonServiceConfig(create_service_config_class("service")):
+class CommonServiceConfig(create_service_config_class("service")):  # ty: ignore[unsupported-base]
     """Common configuration shared by all services.
 
     Reads from env vars with prefix ``NMP_SERVICE_`` and YAML key ``service``.
@@ -687,10 +736,12 @@ __all__ = [
     "get_nemo_config",
     "get_nemo_platform_config",
     "get_platform_config",
+    "get_platform_config_class",
     "get_service_config",
     "get_service_config_prefix",
     "internal_field",
     "nmp_user_data_dir",
+    "register_platform_config_class",
     "set_nemo_config_override",
 ]
 
@@ -836,7 +887,7 @@ class _NemoConfigMeta(ModelMetaclass):
 # ---------------------------------------------------------------------------
 
 
-class NemoConfig(EnvironmentFirstSettings, metaclass=_NemoConfigMeta):
+class NemoConfig(ServiceConfig, metaclass=_NemoConfigMeta):
     """Base class for plugin configuration.
 
     Subclasses declare :attr:`plugin_name` and :attr:`plugin_description` as

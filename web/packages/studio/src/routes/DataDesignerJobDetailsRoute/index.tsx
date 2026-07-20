@@ -24,6 +24,7 @@ import { JobDatasetEditorSection } from '@studio/routes/DataDesignerJobDetailsRo
 import { JobOutputFilesetSection } from '@studio/routes/DataDesignerJobDetailsRoute/JobOutputFilesetSection';
 import { useDataDesignerJobFromRoute } from '@studio/routes/DataDesignerJobDetailsRoute/useDataDesignerJobFromRoute';
 import { getDataDesignerJobListRoute } from '@studio/routes/utils';
+import { formatDateTime } from '@studio/util/date';
 import { ArrowLeft, FileJson } from 'lucide-react';
 import { useState, type FC } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -114,12 +115,12 @@ export const DataDesignerJobDetailsRoute: FC = () => {
           <Flex gap="density-lg" className="flex-wrap">
             {job.created_at && (
               <Text kind="body/regular/sm" className="text-muted">
-                Created: {new Date(job.created_at).toLocaleString()}
+                Created: {formatDateTime(job.created_at)}
               </Text>
             )}
             {job.updated_at && (
               <Text kind="body/regular/sm" className="text-muted">
-                Updated: {new Date(job.updated_at).toLocaleString()}
+                Updated: {formatDateTime(job.updated_at)}
               </Text>
             )}
           </Flex>

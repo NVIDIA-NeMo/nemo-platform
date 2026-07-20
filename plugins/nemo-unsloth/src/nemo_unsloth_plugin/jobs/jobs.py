@@ -20,7 +20,7 @@ from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from nemo_platform_plugin.jobs.docker import validate_gpu_available_for_docker
 from nemo_unsloth_plugin.schema import UnslothJobInput
 from nemo_unsloth_plugin.transform import transform_input_to_output
-from nmp.customization_common.contributor.jobs import BaseSubmitJob, require_docker_runtime
+from nmp.customization_common.contributor.jobs import BaseSubmitJob, require_container_runtime
 from nmp.unsloth.compile import platform_job_config_compiler
 from nmp.unsloth.config import config as unsloth_config
 from nmp.unsloth.schemas import UnslothJobOutput
@@ -35,7 +35,7 @@ class UnslothJob(BaseSubmitJob):
     job_collection_path: ClassVar[str | None] = "/unsloth/jobs"
     input_spec_schema: ClassVar[type[BaseModel] | None] = UnslothJobInput
     spec_schema: ClassVar[type[BaseModel] | None] = UnslothJobOutput
-    docker_runtime_label: ClassVar[str] = "Unsloth"
+    runtime_label: ClassVar[str] = "Unsloth"
 
     @classmethod
     async def _transform(cls, job_input: BaseModel, workspace: str, async_sdk: AsyncNeMoPlatform) -> UnslothJobOutput:
@@ -59,7 +59,7 @@ class UnslothJob(BaseSubmitJob):
         ``unsloth_config.default_training_execution_profile``.
         """
         del entity_client, options
-        require_docker_runtime(cls.docker_runtime_label)
+        require_container_runtime(cls.runtime_label)
         canonical = spec if isinstance(spec, UnslothJobOutput) else UnslothJobOutput.model_validate(spec.model_dump())
 
         execution_profile = profile or unsloth_config.default_training_execution_profile

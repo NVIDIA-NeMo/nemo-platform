@@ -57,9 +57,9 @@ async def test_harbor_runner_scores_through_agent_evaluator_and_adapts_legacy_pa
     _write_trial(job_dir, "noreward-task__ccc", "noreward-task", reward=None)
 
     tasks = [
-        AgentEvalTask(id="pass-task", intent="x", inputs={"prompt": "p"}, metrics=[HarborRewardMetric()]),
-        AgentEvalTask(id="fail-task", intent="y", inputs={"prompt": "q"}, metrics=[HarborRewardMetric()]),
-        AgentEvalTask(id="noreward-task", intent="z", inputs={"prompt": "r"}, metrics=[HarborRewardMetric()]),
+        AgentEvalTask(id="pass-task", intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()]),
+        AgentEvalTask(id="fail-task", intent="y", inputs={"instruction": "q"}, metrics=[HarborRewardMetric()]),
+        AgentEvalTask(id="noreward-task", intent="z", inputs={"instruction": "r"}, metrics=[HarborRewardMetric()]),
     ]
 
     # Direct adaptation: reward + tokens land on metadata, exception flips status to PARTIAL, evidence present.
@@ -100,7 +100,7 @@ def test_reward_with_no_matching_reward_key_is_partial_and_warns(tmp_path: Path,
     job_dir = tmp_path / "job"
     job_dir.mkdir()
     _write_trial(job_dir, "t__aaa", "t", reward=1.0)  # emitted under "reward"
-    tasks = [AgentEvalTask(id="t", intent="x", inputs={"prompt": "p"}, metrics=[HarborRewardMetric()])]
+    tasks = [AgentEvalTask(id="t", intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])]
 
     with caplog.at_level(logging.WARNING):
         trials = build_trials_from_job_dir(job_dir, tasks, reward_key="missing")
@@ -116,7 +116,10 @@ def test_task_discovery_and_taskset_loader_over_bundled_dataset() -> None:
     tasks = discover_harbor_tasks(_HELLO_WORLD_DATASET)
     assert [task.id for task in tasks] == ["harbor/hello-world"]
     task = tasks[0]
-    assert task.intent  # instruction.md content
+    # `intent` is the human-facing task name (metadata), NOT the instruction; the instruction the
+    # agent acts on comes from instruction.md and lives in inputs["instruction"].
+    assert task.intent == "harbor/hello-world"
+    assert task.inputs["instruction"] == 'Create a file called hello.txt with "Hello, world!" as the content.'
     assert [metric_type_name(metric) for metric in task.metrics] == ["harbor_reward"]
     # The dataset dir and task dir are stamped on the task so a native runner can
     # recover them without a separate dataset_path argument.
@@ -195,7 +198,7 @@ def test_multiple_attempts_map_to_one_trial_each(tmp_path: Path) -> None:
     job_dir.mkdir()
     _write_trial(job_dir, "t__aaa", "t", reward=1.0)
     _write_trial(job_dir, "t__bbb", "t", reward=0.0)
-    tasks = [AgentEvalTask(id="t", intent="x", inputs={"prompt": "p"}, metrics=[HarborRewardMetric()])]
+    tasks = [AgentEvalTask(id="t", intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])]
 
     trials = build_trials_from_job_dir(job_dir, tasks)
     assert [trial.task_id for trial in trials] == ["t", "t"]
@@ -207,7 +210,7 @@ def test_cache_is_attempt_and_success_aware(tmp_path: Path) -> None:
 
     job_dir = tmp_path / "job"
     job_dir.mkdir()
-    tasks = [AgentEvalTask(id="t", intent="x", inputs={"prompt": "p"}, metrics=[HarborRewardMetric()])]
+    tasks = [AgentEvalTask(id="t", intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])]
 
     # One completed attempt: enough for n_attempts=1, not for n_attempts=2.
     _write_trial(job_dir, "t__aaa", "t", reward=1.0)

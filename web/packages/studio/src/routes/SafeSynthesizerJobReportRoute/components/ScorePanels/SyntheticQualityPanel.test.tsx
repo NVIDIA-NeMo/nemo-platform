@@ -29,18 +29,8 @@ vi.mock('@nemo/common/src/components/Dial', () => ({
   ),
 }));
 
-// Mock brand assets icons - use forwardRef for icons used inside Tooltip triggers
 vi.mock('lucide-react', async () => {
-  const React = await import('react');
-  return {
-    CircleCheck: ({ className }: { className?: string }) => (
-      <svg data-testid="check-circle-icon" className={className} />
-    ),
-    Ban: () => <svg data-testid="cancel-icon" />,
-    Info: React.forwardRef<SVGSVGElement, { className?: string }>(({ className }, ref) => (
-      <svg ref={ref} data-testid="info-circle-icon" className={className} />
-    )),
-  };
+  return (await import('@nemo/testing/mocks/lucide')).mockLucideReact(await import('react'));
 });
 
 // Mock the ScrollTable component
@@ -344,8 +334,8 @@ describe('SyntheticQualityPanel', () => {
       );
 
       // Verify that both check and cancel icons are rendered
-      const checkIcons = screen.getAllByTestId('check-circle-icon');
-      const cancelIcons = screen.getAllByTestId('cancel-icon');
+      const checkIcons = screen.getAllByTestId('circle-check-icon');
+      const cancelIcons = screen.getAllByTestId('ban-icon');
 
       expect(checkIcons.length).toBeGreaterThan(0);
       expect(cancelIcons.length).toBeGreaterThan(0);

@@ -68,9 +68,12 @@ class ModelsResource(SyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> OpenAIListModelsResp:
         """
-        This endpoint aggregates models from all model entities and returns them in
-        OpenAI's list models format. Each model ID is the model entity identifier in
-        format workspace/model_entity_name.
+        This endpoint lists the routable VirtualModels in the requested workspace and
+        returns them in OpenAI's list models format. Each model ID is the VirtualModel
+        identifier in format workspace/name. This includes both autoprovisioned
+        VirtualModels (one per served model entity) and custom VirtualModels, keeping
+        the catalog in agreement with the inference proxy, which also resolves
+        VirtualModels scoped to the request workspace.
 
         Args:
           extra_headers: Send extra headers
@@ -108,8 +111,10 @@ class ModelsResource(SyncAPIResource):
         """Retrieve information about a specific OpenAI-compatible model.
 
         Workspace is
-        always taken from the URL path; name may be model_entity_name or
-        workspace/model_entity_name (workspace prefix is ignored).
+        always taken from the URL path; name may be the VirtualModel name or
+        workspace/name (workspace prefix is ignored). Resolves against routable
+        VirtualModels, including custom ones, so this route agrees with the list route
+        and the inference proxy.
 
         Args:
           extra_headers: Send extra headers
@@ -171,9 +176,12 @@ class AsyncModelsResource(AsyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> OpenAIListModelsResp:
         """
-        This endpoint aggregates models from all model entities and returns them in
-        OpenAI's list models format. Each model ID is the model entity identifier in
-        format workspace/model_entity_name.
+        This endpoint lists the routable VirtualModels in the requested workspace and
+        returns them in OpenAI's list models format. Each model ID is the VirtualModel
+        identifier in format workspace/name. This includes both autoprovisioned
+        VirtualModels (one per served model entity) and custom VirtualModels, keeping
+        the catalog in agreement with the inference proxy, which also resolves
+        VirtualModels scoped to the request workspace.
 
         Args:
           extra_headers: Send extra headers
@@ -211,8 +219,10 @@ class AsyncModelsResource(AsyncAPIResource):
         """Retrieve information about a specific OpenAI-compatible model.
 
         Workspace is
-        always taken from the URL path; name may be model_entity_name or
-        workspace/model_entity_name (workspace prefix is ignored).
+        always taken from the URL path; name may be the VirtualModel name or
+        workspace/name (workspace prefix is ignored). Resolves against routable
+        VirtualModels, including custom ones, so this route agrees with the list route
+        and the inference proxy.
 
         Args:
           extra_headers: Send extra headers

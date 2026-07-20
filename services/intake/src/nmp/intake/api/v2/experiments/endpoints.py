@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Create, list, get, and delete endpoints for Experiments and ExperimentGroups.
+"""Create, list, get, and delete endpoints for Evaluations and ExperimentGroups.
 
 Entity-store (Postgres) operations are wired directly onto ``EntityClient``,
 following the inline pattern used by the core services. PUT updates only the
-mutable fields; an Experiment's identity and the dataset/agent it ran against
+mutable fields; an Evaluation's identity and the dataset/agent it ran against
 are fixed. Rollup fields on read models are hydrated from ClickHouse.
 """
 
@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Any, Literal, NamedTuple, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.routing import APIRoute
 from nmp.common.api.common import Page, PaginationData
 from nmp.common.api.filter import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
@@ -25,28 +26,32 @@ from nmp.common.api.utils import generate_openapi_extra_params
 from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError
 from nmp.common.service.dependencies import get_entity_client
 from nmp.intake.api.v2.experiments.schemas import (
-    EXPERIMENT_SESSION_SUMMARY_INPUT_CHAR_LIMIT,
+    EvaluationFilter,
+    EvaluationRequest,
+    EvaluationResponse,
+    EvaluationSessionFilter,
+    EvaluationSessionMode,
+    EvaluationSessionResponse,
     EvaluatorAggregate,
-    ExperimentFilter,
     ExperimentGroupFilter,
     ExperimentGroupRequest,
     ExperimentGroupResponse,
-    ExperimentRequest,
-    ExperimentResponse,
-    ExperimentSessionFilter,
-    ExperimentSessionMode,
-    ExperimentSessionResponse,
 )
-from nmp.intake.entities.experiments import Experiment, ExperimentGroup
+
+# The API/Studio expose this as an "Evaluation", but it is still stored as the Experiment entity
+# (entity rename + data migration deferred — see entities/experiments.py). Alias it to the name this
+# layer uses; only the entity's own field names (e.g. parent_experiment_id) reference Experiment directly.
+from nmp.intake.entities.experiments import Experiment as Evaluation
+from nmp.intake.entities.experiments import ExperimentGroup
 from nmp.intake.spans.api.dependencies import require_workspace_access, validate_list_query_params
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import SpanStatus
-from nmp.intake.spans.experiment_rollup_repository import (
-    ExperimentRollup,
-    ExperimentRollupRepository,
+from nmp.intake.spans.evaluation_rollup_repository import (
+    EvaluationRollup,
+    EvaluationRollupRepository,
     ScoreRollup,
 )
-from nmp.intake.spans.experiment_session_repository import ExperimentSessionRepository
+from nmp.intake.spans.evaluation_session_repository import EvaluationSessionRepository
 from nmp.intake.spans.storage import make_pagination
 
 logger = logging.getLogger(__name__)
@@ -59,26 +64,26 @@ def _sanitize_for_log(value: str) -> str:
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 
 GROUPS_TAG = "Experiment Groups"
-EXPERIMENTS_TAG = "Experiments"
+EVALUATIONS_TAG = "Evaluations"
 
 ExperimentGroupSortField = Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"]
 
-# The experiments list is sorted in the application layer (compute-on-read) so a single request can
+# The evaluations list is sorted in the application layer (compute-on-read) so a single request can
 # sort by a ClickHouse rollup metric, not just entity columns. `sort` is therefore a free string,
 # validated against these: an entity column, run_count, or a `<metric>.<stat>` rollup path.
 _ENTITY_SORT_FIELDS = frozenset({"name", "created_at", "updated_at", "pinned_at"})
 _METRIC_STATS = frozenset({"sum", "mean", "median", "p90", "p95", "p99", "count"})
-# Per-group experiment fetch bound for the in-memory merge. Groups are expected to hold at most
+# Per-group evaluation fetch bound for the in-memory merge. Groups are expected to hold at most
 # hundreds; a query that selects more than this is rejected rather than sorted on a partial set — the
 # trigger to denormalize metrics into an entity-store-sortable column instead.
-_MAX_GROUP_EXPERIMENTS = 1000
+_MAX_GROUP_EVALUATIONS = 1000
 
-EntityT = TypeVar("EntityT", Experiment, ExperimentGroup)
+EntityT = TypeVar("EntityT", Evaluation, ExperimentGroup)
 
 EntityClientDep = Annotated[EntityClient, Depends(get_entity_client)]
 ExperimentGroupFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(ExperimentGroupFilter))]
-ExperimentFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(ExperimentFilter))]
-ExperimentSessionFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(ExperimentSessionFilter))]
+EvaluationFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(EvaluationFilter))]
+EvaluationSessionFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(EvaluationSessionFilter))]
 
 
 def _get_clickhouse_client(request: Request) -> ClickHouseSpanClient | None:
@@ -88,23 +93,23 @@ def _get_clickhouse_client(request: Request) -> ClickHouseSpanClient | None:
     return getattr(service, "clickhouse_client", None)
 
 
-def get_experiment_rollup_repository(request: Request) -> ExperimentRollupRepository | None:
-    # Rollups are enrichment only. Experiment entity reads should continue when
+def get_evaluation_rollup_repository(request: Request) -> EvaluationRollupRepository | None:
+    # Rollups are enrichment only. Evaluation entity reads should continue when
     # ClickHouse is disabled or temporarily unavailable.
     client = _get_clickhouse_client(request)
-    return ExperimentRollupRepository(client) if client is not None else None
+    return EvaluationRollupRepository(client) if client is not None else None
 
 
-ExperimentRollupRepositoryDep = Annotated[ExperimentRollupRepository | None, Depends(get_experiment_rollup_repository)]
+EvaluationRollupRepositoryDep = Annotated[EvaluationRollupRepository | None, Depends(get_evaluation_rollup_repository)]
 
 
-def get_experiment_session_repository(request: Request) -> ExperimentSessionRepository | None:
+def get_evaluation_session_repository(request: Request) -> EvaluationSessionRepository | None:
     client = _get_clickhouse_client(request)
-    return ExperimentSessionRepository(client) if client is not None else None
+    return EvaluationSessionRepository(client) if client is not None else None
 
 
-ExperimentSessionRepositoryDep = Annotated[
-    ExperimentSessionRepository | None, Depends(get_experiment_session_repository)
+EvaluationSessionRepositoryDep = Annotated[
+    EvaluationSessionRepository | None, Depends(get_evaluation_session_repository)
 ]
 
 
@@ -173,11 +178,11 @@ async def list_experiment_groups(
         page_size=page_size,
     )
     responses = [ExperimentGroupResponse.from_entity(e) for e in result.data]
-    counts = await _count_live_experiments_by_group(
+    counts = await _count_live_evaluations_by_group(
         entity_client, workspace=workspace, group_ids=[g.id for g in result.data]
     )
     for response in responses:
-        response.experiment_count = counts.get(response.id, 0)
+        response.evaluation_count = counts.get(response.id, 0)
     return Page(
         data=responses,
         pagination=PaginationData(**result.pagination.model_dump()),
@@ -206,7 +211,7 @@ async def get_experiment_group(
     )
     _reject_if_deleted(entity, workspace=workspace, name=name, label="Experiment group")
     response = ExperimentGroupResponse.from_entity(entity)
-    response.experiment_count = await _count_live_experiments_in_group(
+    response.evaluation_count = await _count_live_evaluations_in_group(
         entity_client, workspace=workspace, group_id=entity.id
     )
     return response
@@ -248,7 +253,7 @@ async def update_experiment_group(
     existing.default_sort = body.default_sort
     updated = await entity_client.update(existing)
     response = ExperimentGroupResponse.from_entity(updated)
-    response.experiment_count = await _count_live_experiments_in_group(
+    response.evaluation_count = await _count_live_evaluations_in_group(
         entity_client, workspace=workspace, group_id=updated.id
     )
     return response
@@ -267,7 +272,7 @@ async def delete_experiment_group(
 ) -> None:
     # Soft delete: flip ``is_deleted`` and rename the row so the original name is free for reuse.
     # The unique index on (workspace, entity_type, name) doesn't read into the JSON data column,
-    # so renaming on delete is what lets a new group/experiment claim the same name later.
+    # so renaming on delete is what lets a new group/evaluation claim the same name later.
     group = await _get_or_404(
         entity_client,
         ExperimentGroup,
@@ -278,7 +283,7 @@ async def delete_experiment_group(
     _reject_if_deleted(group, workspace=workspace, name=name, label="Experiment group")
 
     # Cascade is sequential — one update per child. Linear in group size, fine for now. If
-    # groups routinely hold more than a few hundred experiments, add a bulk update endpoint on
+    # groups routinely hold more than a few hundred evaluations, add a bulk update endpoint on
     # the entity store rather than parallelizing here (gather hides partial-failure state
     # without removing the per-row API contract).
     #
@@ -302,7 +307,7 @@ async def delete_experiment_group(
     )
     while True:
         page = await entity_client.list(
-            Experiment,
+            Evaluation,
             workspace=workspace,
             filter_operation=live_children_filter,
             page=1,
@@ -316,20 +321,20 @@ async def delete_experiment_group(
 
 
 @router.post(
-    "/v2/workspaces/{workspace}/experiments",
-    response_model=ExperimentResponse,
+    "/v2/workspaces/{workspace}/evaluations",
+    response_model=EvaluationResponse,
     status_code=status.HTTP_201_CREATED,
-    tags=[EXPERIMENTS_TAG],
-    responses={409: {"description": "Experiment already exists"}},
+    tags=[EVALUATIONS_TAG],
+    responses={409: {"description": "Evaluation already exists"}},
 )
-async def create_experiment(
+async def create_evaluation(
     workspace: str,
-    body: ExperimentRequest,
+    body: EvaluationRequest,
     entity_client: EntityClientDep,
-) -> ExperimentResponse:
+) -> EvaluationResponse:
     await _validate_group_exists(entity_client, group_id=body.experiment_group_id)
-    await _validate_parent_experiment_exists(entity_client, parent_experiment_id=body.parent_experiment_id)
-    entity = Experiment(
+    await _validate_parent_evaluation_exists(entity_client, parent_evaluation_id=body.parent_evaluation_id)
+    entity = Evaluation(
         workspace=workspace,
         name=body.name,
         experiment_group_id=body.experiment_group_id,
@@ -338,7 +343,7 @@ async def create_experiment(
         source_link=body.source_link,
         metadata=body.metadata,
         description=body.description,
-        parent_experiment_id=body.parent_experiment_id,
+        parent_experiment_id=body.parent_evaluation_id,
         status=body.status,
         root_cause=body.root_cause,
     )
@@ -347,26 +352,26 @@ async def create_experiment(
     except EntityConflictError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Experiment '{workspace}/{body.name}' already exists.",
+            detail=f"Evaluation '{workspace}/{body.name}' already exists.",
         ) from e
-    return ExperimentResponse.from_entity(created)
+    return EvaluationResponse.from_entity(created)
 
 
 @router.get(
-    "/v2/workspaces/{workspace}/experiments",
-    response_model=Page[ExperimentResponse],
-    tags=[EXPERIMENTS_TAG],
+    "/v2/workspaces/{workspace}/evaluations",
+    response_model=Page[EvaluationResponse],
+    tags=[EVALUATIONS_TAG],
     responses={
         400: {"description": "Unsupported sort or filter field"},
-        413: {"description": "Too many experiments selected to sort in one request"},
+        413: {"description": "Too many evaluations selected to sort in one request"},
         503: {"description": "Telemetry store unavailable for a metric-based sort or filter"},
     },
     openapi_extra=generate_openapi_extra_params(
-        filter_schema=ExperimentFilter,
+        filter_schema=EvaluationFilter,
         filter_description=(
-            "Filter experiments by name, experiment_group_id, "
+            "Filter evaluations by name, experiment_group_id, "
             "dataset_name, dataset_version, created_by, created_at, or updated_at. "
-            "Pass is_deleted=true to return only soft-deleted experiments; omit to see only live ones. "
+            "Pass is_deleted=true to return only soft-deleted evaluations; omit to see only live ones. "
             "Pass is_pinned=true (or false) to filter by pinned state; omit to return both. "
             "Filter by a metadata key/value: filter[metadata.<key>]=<value>. "
             "Filter by a rollup metric with numeric range operators ($gte/$lte/$gt/$lt/$eq): "
@@ -375,36 +380,36 @@ async def create_experiment(
         ),
     ),
 )
-async def list_experiments(
+async def list_evaluations(
     workspace: str,
     request: Request,
     entity_client: EntityClientDep,
-    rollup_repository: ExperimentRollupRepositoryDep,
-    parsed: ExperimentFilterDep,
+    rollup_repository: EvaluationRollupRepositoryDep,
+    parsed: EvaluationFilterDep,
     page: int = Query(default=1, ge=1, description="Page number."),
     page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
     sort: str | None = Query(
         default=None,
         description=(
-            "Field to sort by; prefix with '-' for descending. Sort by an experiment attribute "
-            "(name, created_at, updated_at, pinned_at) or by an aggregate metric: run_count, "
-            "cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>, where <stat> is one of "
-            "mean, median, p90, p95, p99, sum, count. When omitted, defaults to -created_at with pinned "
-            "experiments first."
+            "Comma-separated list of fields to sort by, applied in order (the first field dominates); "
+            "prefix any field with '-' for descending — e.g. '-evaluators.reward.mean,cost_usd.mean'. "
+            "Each field is an evaluation attribute (name, created_at, updated_at, pinned_at) or an "
+            "aggregate metric: run_count, test_case_count, cost_usd.<stat>, latency_ms.<stat>, or "
+            "evaluators.<name>.<stat>, "
+            "where <stat> is one of mean, median, p90, p95, p99, sum, count. When omitted, defaults to "
+            "-created_at with pinned evaluations first."
         ),
     ),
-) -> Page[ExperimentResponse]:
+) -> Page[EvaluationResponse]:
     validate_list_query_params(request)
     _apply_is_deleted_filter(parsed)
     _apply_is_pinned_filter(parsed)
-    # When omitted, fall back to -created_at with pinned experiments floated to the top.
+    # `sort` is a comma-separated list of fields, each optionally '-'-prefixed for descending, applied
+    # in order (the first field dominates) — e.g. `-evaluators.reward.mean,cost_usd.mean`. When omitted,
+    # fall back to -created_at with pinned evaluations floated to the top.
     if sort is not None:
-        descending = sort.startswith("-")
-        sort_field = sort[1:] if descending else sort
-        _validate_sort_field(sort_field)
-        sort_keys = [(sort_field, descending)]
+        sort_keys, explicit_metric_sort = _parse_sort_keys(sort)
         pinned_first = False
-        explicit_metric_sort = sort_field not in _ENTITY_SORT_FIELDS
     else:
         sort_keys = [("created_at", True)]
         pinned_first = True
@@ -416,31 +421,31 @@ async def list_experiments(
     entity_operation, metric_predicates = _extract_metric_predicates(parsed.operation)
     # Compute-on-read: fetch the whole (entity-filtered) group, hydrate every rollup, then filter, sort,
     # and paginate in memory so a single request can sort/filter by a ClickHouse metric that lives
-    # outside the entity store. Bounded to hundreds of experiments per group (see _MAX_GROUP_EXPERIMENTS).
+    # outside the entity store. Bounded to hundreds of evaluations per group (see _MAX_GROUP_EVALUATIONS).
     result = await entity_client.list(
-        Experiment,
+        Evaluation,
         workspace=workspace,
         filter_operation=entity_operation,
         page=1,
-        page_size=_MAX_GROUP_EXPERIMENTS,
+        page_size=_MAX_GROUP_EVALUATIONS,
     )
-    responses = [ExperimentResponse.from_entity(e) for e in result.data]
+    responses = [EvaluationResponse.from_entity(e) for e in result.data]
     total_selected = result.pagination.total_results
-    if total_selected > _MAX_GROUP_EXPERIMENTS:
+    if total_selected > _MAX_GROUP_EVALUATIONS:
         # The whole filtered set is sorted in memory; anything past the fetch cap can't be sorted, so a
         # returned page would be silently incomplete. Fail loudly and tell the caller how to scope the
         # query instead (or denormalize rollup metrics for entity-store sorting once groups grow this big).
         logger.warning(
-            "Experiment list selected %d experiments, over the %d-row in-memory sort cap; refusing "
+            "Evaluation list selected %d evaluations, over the %d-row in-memory sort cap; refusing "
             "to return a partially sorted result.",
             total_selected,
-            _MAX_GROUP_EXPERIMENTS,
+            _MAX_GROUP_EVALUATIONS,
         )
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=(
-                f"This query selects {total_selected} experiments, exceeding the maximum of "
-                f"{_MAX_GROUP_EXPERIMENTS} that can be sorted in one request. Narrow the result with a "
+                f"This query selects {total_selected} evaluations, exceeding the maximum of "
+                f"{_MAX_GROUP_EVALUATIONS} that can be sorted in one request. Narrow the result with a "
                 "filter (e.g. experiment_group_id)."
             ),
         )
@@ -455,11 +460,11 @@ async def list_experiments(
     if not hydrated and (explicit_metric_sort or metric_predicates):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Cannot sort or filter experiments by a rollup metric: the telemetry store is unavailable.",
+            detail="Cannot sort or filter evaluations by a rollup metric: the telemetry store is unavailable.",
         )
     if metric_predicates:
         responses = [r for r in responses if _matches_metric_predicates(r, metric_predicates)]
-    ordered = _sort_experiments(responses, keys=sort_keys, pinned_first=pinned_first)
+    ordered = _sort_evaluations(responses, keys=sort_keys, pinned_first=pinned_first)
     start = (page - 1) * page_size
     page_items = ordered[start : start + page_size]
     return Page(
@@ -473,71 +478,71 @@ async def list_experiments(
 
 
 @router.get(
-    "/v2/workspaces/{workspace}/experiments/{name}",
-    response_model=ExperimentResponse,
-    tags=[EXPERIMENTS_TAG],
-    responses={404: {"description": "Experiment not found"}},
+    "/v2/workspaces/{workspace}/evaluations/{name}",
+    response_model=EvaluationResponse,
+    tags=[EVALUATIONS_TAG],
+    responses={404: {"description": "Evaluation not found"}},
 )
-async def get_experiment(
+async def get_evaluation(
     workspace: str,
     name: str,
     entity_client: EntityClientDep,
-    rollup_repository: ExperimentRollupRepositoryDep,
-) -> ExperimentResponse:
+    rollup_repository: EvaluationRollupRepositoryDep,
+) -> EvaluationResponse:
     entity = await _get_or_404(
         entity_client,
-        Experiment,
+        Evaluation,
         workspace=workspace,
         name=name,
-        label="Experiment",
+        label="Evaluation",
     )
-    _reject_if_deleted(entity, workspace=workspace, name=name, label="Experiment")
-    response = ExperimentResponse.from_entity(entity)
+    _reject_if_deleted(entity, workspace=workspace, name=name, label="Evaluation")
+    response = EvaluationResponse.from_entity(entity)
     await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
     return response
 
 
 # Identity and the dataset it was run against are fixed for the life of an
-# Experiment (see the ingest invariants); changing them means it's a different
-# Experiment. PUT may only edit group membership, source link, description, metadata.
-_IMMUTABLE_EXPERIMENT_FIELDS = ("name", "dataset_name", "dataset_version")
+# Evaluation (see the ingest invariants); changing them means it's a different
+# Evaluation. PUT may only edit group membership, source link, description, metadata.
+_IMMUTABLE_EVALUATION_FIELDS = ("name", "dataset_name", "dataset_version")
 
 
 @router.put(
-    "/v2/workspaces/{workspace}/experiments/{name}",
-    response_model=ExperimentResponse,
-    tags=[EXPERIMENTS_TAG],
+    "/v2/workspaces/{workspace}/evaluations/{name}",
+    response_model=EvaluationResponse,
+    tags=[EVALUATIONS_TAG],
     responses={
-        404: {"description": "Experiment not found"},
+        404: {"description": "Evaluation not found"},
         409: {"description": "Attempt to change an immutable field"},
     },
 )
-async def update_experiment(
+async def update_evaluation(
     workspace: str,
     name: str,
-    body: ExperimentRequest,
+    body: EvaluationRequest,
     entity_client: EntityClientDep,
-    rollup_repository: ExperimentRollupRepositoryDep,
-) -> ExperimentResponse:
+    rollup_repository: EvaluationRollupRepositoryDep,
+) -> EvaluationResponse:
     existing = await _get_or_404(
         entity_client,
-        Experiment,
+        Evaluation,
         workspace=workspace,
         name=name,
-        label="Experiment",
+        label="Evaluation",
     )
-    _reject_if_deleted(existing, workspace=workspace, name=name, label="Experiment")
+    _reject_if_deleted(existing, workspace=workspace, name=name, label="Evaluation")
     if body.experiment_group_id != existing.experiment_group_id:
         await _validate_group_exists(entity_client, group_id=body.experiment_group_id)
-    await _validate_parent_experiment_exists(entity_client, parent_experiment_id=body.parent_experiment_id)
+    await _validate_parent_evaluation_exists(entity_client, parent_evaluation_id=body.parent_evaluation_id)
 
-    changed = [f for f in _IMMUTABLE_EXPERIMENT_FIELDS if getattr(body, f) != getattr(existing, f)]
+    changed = [f for f in _IMMUTABLE_EVALUATION_FIELDS if getattr(body, f) != getattr(existing, f)]
     if changed:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                f"Cannot change immutable field(s) {changed} on an existing experiment; "
-                "create a new experiment instead."
+                f"Cannot change immutable field(s) {changed} on an existing evaluation; "
+                "create a new evaluation instead."
             ),
         )
 
@@ -545,136 +550,137 @@ async def update_experiment(
     existing.source_link = body.source_link
     existing.metadata = body.metadata
     existing.description = body.description
-    existing.parent_experiment_id = body.parent_experiment_id
+    existing.parent_experiment_id = body.parent_evaluation_id
     existing.status = body.status
     existing.root_cause = body.root_cause
     updated = await entity_client.update(existing)
-    response = ExperimentResponse.from_entity(updated)
+    response = EvaluationResponse.from_entity(updated)
     await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
     return response
 
 
 @router.delete(
-    "/v2/workspaces/{workspace}/experiments/{name}",
+    "/v2/workspaces/{workspace}/evaluations/{name}",
     status_code=status.HTTP_204_NO_CONTENT,
-    tags=[EXPERIMENTS_TAG],
-    responses={404: {"description": "Experiment not found"}},
+    tags=[EVALUATIONS_TAG],
+    responses={404: {"description": "Evaluation not found"}},
 )
-async def delete_experiment(
+async def delete_evaluation(
     workspace: str,
     name: str,
     entity_client: EntityClientDep,
 ) -> None:
     entity = await _get_or_404(
         entity_client,
-        Experiment,
+        Evaluation,
         workspace=workspace,
         name=name,
-        label="Experiment",
+        label="Evaluation",
     )
-    _reject_if_deleted(entity, workspace=workspace, name=name, label="Experiment")
+    _reject_if_deleted(entity, workspace=workspace, name=name, label="Evaluation")
     await _soft_delete(entity_client, entity)
 
 
 @router.post(
-    "/v2/workspaces/{workspace}/experiments/{name}/pin",
-    response_model=ExperimentResponse,
-    tags=[EXPERIMENTS_TAG],
-    responses={404: {"description": "Experiment not found"}},
+    "/v2/workspaces/{workspace}/evaluations/{name}/pin",
+    response_model=EvaluationResponse,
+    tags=[EVALUATIONS_TAG],
+    responses={404: {"description": "Evaluation not found"}},
 )
-async def pin_experiment(
+async def pin_evaluation(
     workspace: str,
     name: str,
     entity_client: EntityClientDep,
-    rollup_repository: ExperimentRollupRepositoryDep,
-) -> ExperimentResponse:
-    """Pin an experiment to the top of the list (workspace-shared).
+    rollup_repository: EvaluationRollupRepositoryDep,
+) -> EvaluationResponse:
+    """Pin an evaluation to the top of the list (workspace-shared).
 
-    Re-pinning an already-pinned experiment refreshes ``pinned_at`` to the current timestamp,
+    Re-pinning an already-pinned evaluation refreshes ``pinned_at`` to the current timestamp,
     which is intentional (most-recently-pinned sorts first).
     """
     entity = await _get_or_404(
         entity_client,
-        Experiment,
+        Evaluation,
         workspace=workspace,
         name=name,
-        label="Experiment",
+        label="Evaluation",
     )
-    _reject_if_deleted(entity, workspace=workspace, name=name, label="Experiment")
+    _reject_if_deleted(entity, workspace=workspace, name=name, label="Evaluation")
     entity.pinned_at = datetime.now(timezone.utc)
     updated = await entity_client.update(entity)
-    response = ExperimentResponse.from_entity(updated)
+    response = EvaluationResponse.from_entity(updated)
     await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
     return response
 
 
 @router.delete(
-    "/v2/workspaces/{workspace}/experiments/{name}/pin",
-    response_model=ExperimentResponse,
-    tags=[EXPERIMENTS_TAG],
-    responses={404: {"description": "Experiment not found"}},
+    "/v2/workspaces/{workspace}/evaluations/{name}/pin",
+    response_model=EvaluationResponse,
+    tags=[EVALUATIONS_TAG],
+    responses={404: {"description": "Evaluation not found"}},
 )
-async def unpin_experiment(
+async def unpin_evaluation(
     workspace: str,
     name: str,
     entity_client: EntityClientDep,
-    rollup_repository: ExperimentRollupRepositoryDep,
-) -> ExperimentResponse:
-    """Unpin an experiment. Idempotent: unpinning an already-unpinned experiment is a no-op."""
+    rollup_repository: EvaluationRollupRepositoryDep,
+) -> EvaluationResponse:
+    """Unpin an evaluation. Idempotent: unpinning an already-unpinned evaluation is a no-op."""
     entity = await _get_or_404(
         entity_client,
-        Experiment,
+        Evaluation,
         workspace=workspace,
         name=name,
-        label="Experiment",
+        label="Evaluation",
     )
-    _reject_if_deleted(entity, workspace=workspace, name=name, label="Experiment")
+    _reject_if_deleted(entity, workspace=workspace, name=name, label="Evaluation")
     entity.pinned_at = None
     updated = await entity_client.update(entity)
-    response = ExperimentResponse.from_entity(updated)
+    response = EvaluationResponse.from_entity(updated)
     await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
     return response
 
 
 @router.get(
-    "/v2/workspaces/{workspace}/experiments/{name}/sessions",
-    response_model=Page[ExperimentSessionResponse],
-    tags=[EXPERIMENTS_TAG],
+    "/v2/workspaces/{workspace}/evaluations/{name}/sessions",
+    response_model=Page[EvaluationSessionResponse],
+    tags=[EVALUATIONS_TAG],
     responses={
-        404: {"description": "Experiment not found"},
+        400: {"description": "Invalid filter value"},
+        404: {"description": "Evaluation not found"},
         503: {"description": "ClickHouse unavailable"},
     },
     openapi_extra=generate_openapi_extra_params(
-        filter_schema=ExperimentSessionFilter,
+        filter_schema=EvaluationSessionFilter,
         filter_description="Filter sessions by test_case_id and status.",
     ),
 )
-async def list_experiment_sessions(
+async def list_evaluation_sessions(
     workspace: str,
     name: str,
     request: Request,
     entity_client: EntityClientDep,
-    session_repository: ExperimentSessionRepositoryDep,
-    parsed: ExperimentSessionFilterDep,
+    session_repository: EvaluationSessionRepositoryDep,
+    parsed: EvaluationSessionFilterDep,
     page: int = Query(default=1, ge=1, description="Page number."),
     page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
-    mode: ExperimentSessionMode = Query(
+    mode: EvaluationSessionMode = Query(
         default="detailed",
         description=(
-            "Response payload mode. summary keeps the same session row fields but truncates root-span input "
-            "to 1000 characters; detailed returns the full root-span input."
+            "Response mode. summary omits root-span input and output; preview includes both truncated to "
+            "300 characters; detailed returns full root-span payloads."
         ),
     ),
-) -> Page[ExperimentSessionResponse]:
-    validate_list_query_params(request)
-    experiment = await _get_or_404(
+) -> Page[EvaluationSessionResponse]:
+    validate_list_query_params(request, additional_params={"mode"})
+    evaluation = await _get_or_404(
         entity_client,
-        Experiment,
+        Evaluation,
         workspace=workspace,
         name=name,
-        label="Experiment",
+        label="Evaluation",
     )
-    _reject_if_deleted(experiment, workspace=workspace, name=name, label="Experiment")
+    _reject_if_deleted(evaluation, workspace=workspace, name=name, label="Evaluation")
     if session_repository is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -692,19 +698,19 @@ async def list_experiment_sessions(
     try:
         result = await session_repository.list_sessions(
             workspace=workspace,
-            experiment_name=name,
+            evaluation_name=name,
             status=status_filter,
             test_case_id=test_case_id,
             page=page,
             page_size=page_size,
-            input_char_limit=EXPERIMENT_SESSION_SUMMARY_INPUT_CHAR_LIMIT if mode == "summary" else None,
+            mode=mode,
         )
     except Exception as exc:
         # Sessions are the response payload (not enrichment), so we can't silently degrade like
         # _hydrate_rollups does. Convert backend failures (ClickHouse connection drop, query
         # timeout, etc.) to a deterministic 503 instead of letting them bubble as 500s.
         logger.exception(
-            "Per-session read failed for workspace=%s experiment=%s",
+            "Per-session read failed for workspace=%s evaluation=%s",
             _sanitize_for_log(workspace),
             _sanitize_for_log(name),
         )
@@ -712,7 +718,7 @@ async def list_experiment_sessions(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Telemetry store unavailable.",
         ) from exc
-    data = [ExperimentSessionResponse.from_row(row) for row in result.rows]
+    data = [EvaluationSessionResponse.from_row(row, mode=mode) for row in result.rows]
     return Page(
         data=data,
         pagination=make_pagination(
@@ -743,7 +749,7 @@ async def _get_or_404(
 
 
 def _reject_if_deleted(
-    entity: Experiment | ExperimentGroup,
+    entity: Evaluation | ExperimentGroup,
     *,
     workspace: str,
     name: str,
@@ -790,7 +796,7 @@ def _to_base36(value: int) -> str:
     return "".join(reversed(out))
 
 
-async def _soft_delete(entity_client: EntityClient, entity: Experiment | ExperimentGroup) -> None:
+async def _soft_delete(entity_client: EntityClient, entity: Evaluation | ExperimentGroup) -> None:
     """Flip ``is_deleted`` and rename the entity in a single update."""
     original_name = entity.name
     entity.is_deleted = True
@@ -798,14 +804,14 @@ async def _soft_delete(entity_client: EntityClient, entity: Experiment | Experim
     await entity_client.update(entity, original_name=original_name)
 
 
-async def _count_live_experiments_in_group(entity_client: EntityClient, *, workspace: str, group_id: str) -> int:
-    """Return the number of non-soft-deleted experiments in a single group.
+async def _count_live_evaluations_in_group(entity_client: EntityClient, *, workspace: str, group_id: str) -> int:
+    """Return the number of non-soft-deleted evaluations in a single group.
 
     Fetches via ``list(page_size=1)`` so the response carries only ``pagination.total_results``.
     Used by single-group endpoints (GET, PUT). List endpoints should use the bulk variant.
     """
     result = await entity_client.list(
-        Experiment,
+        Evaluation,
         workspace=workspace,
         filter_operation=LogicalOperation(
             operator=FilterOperator.AND,
@@ -825,25 +831,25 @@ async def _count_live_experiments_in_group(entity_client: EntityClient, *, works
     return result.pagination.total_results
 
 
-async def _count_live_experiments_by_group(
+async def _count_live_evaluations_by_group(
     entity_client: EntityClient, *, workspace: str, group_ids: list[str]
 ) -> dict[str, int]:
-    """Bulk-count non-soft-deleted experiments for many groups in one (paginated) query.
+    """Bulk-count non-soft-deleted evaluations for many groups in one (paginated) query.
 
     Issues a single ``IN``-filter list against the entity store and tallies per group_id
-    client-side. Replaces N parallel ``_count_live_experiments_in_group`` calls on the
+    client-side. Replaces N parallel ``_count_live_evaluations_in_group`` calls on the
     group-list endpoint so the request shape is 1-to-1 with the entity store rather than
     1-to-N (which is fragile under web-server concurrency).
 
     Returns a ``{group_id: count}`` map covering every requested group_id, with ``0`` for
-    groups that have no live experiments.
+    groups that have no live evaluations.
     """
     counts: dict[str, int] = {group_id: 0 for group_id in group_ids}
     if not group_ids:
         return counts
     page = 1
     # Aligned with ``EntityClient.list``'s max — paginates when a workspace's total live
-    # experiment count across the requested groups exceeds this.
+    # evaluation count across the requested groups exceeds this.
     page_size = 1000
     filter_operation = LogicalOperation(
         operator=FilterOperator.AND,
@@ -859,30 +865,30 @@ async def _count_live_experiments_by_group(
     )
     while True:
         result = await entity_client.list(
-            Experiment,
+            Evaluation,
             workspace=workspace,
             filter_operation=filter_operation,
             page=page,
             page_size=page_size,
         )
-        for experiment in result.data:
-            counts[experiment.experiment_group_id] = counts.get(experiment.experiment_group_id, 0) + 1
+        for evaluation in result.data:
+            counts[evaluation.experiment_group_id] = counts.get(evaluation.experiment_group_id, 0) + 1
         if page >= result.pagination.total_pages:
             break
         page += 1
     return counts
 
 
-async def _validate_parent_experiment_exists(entity_client: EntityClient, *, parent_experiment_id: str | None) -> None:
-    """Reject with 400 if ``parent_experiment_id`` is set but doesn't reference an existing experiment."""
-    if parent_experiment_id is None:
+async def _validate_parent_evaluation_exists(entity_client: EntityClient, *, parent_evaluation_id: str | None) -> None:
+    """Reject with 400 if ``parent_evaluation_id`` is set but doesn't reference an existing evaluation."""
+    if parent_evaluation_id is None:
         return
     try:
-        await entity_client.get_by_id(Experiment, entity_id=parent_experiment_id)
+        await entity_client.get_by_id(Evaluation, entity_id=parent_evaluation_id)
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"parent_experiment_id '{parent_experiment_id}' does not reference an existing experiment.",
+            detail=f"parent_evaluation_id '{parent_evaluation_id}' does not reference an existing evaluation.",
         ) from e
 
 
@@ -893,12 +899,12 @@ async def _validate_group_exists(entity_client: EntityClient, *, group_id: str) 
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(f"ExperimentGroup '{group_id}' must be created before an Experiment can reference it."),
+            detail=(f"ExperimentGroup '{group_id}' must be created before an Evaluation can reference it."),
         ) from e
     if group.is_deleted:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"ExperimentGroup '{group_id}' has been deleted and can no longer accept new Experiments.",
+            detail=f"ExperimentGroup '{group_id}' has been deleted and can no longer accept new Evaluations.",
         )
 
 
@@ -958,7 +964,7 @@ def _apply_is_pinned_filter(parsed: ParsedFilter) -> None:
 
 
 # Metric heads whose dotted sub-paths address a ClickHouse rollup (not an entity column). Declared as
-# self-mapping namespaces on ExperimentFilter so paths survive filter validation untranslated.
+# self-mapping namespaces on EvaluationFilter so paths survive filter validation untranslated.
 _METRIC_NAMESPACES = frozenset({"cost_usd", "latency_ms", "evaluators"})
 _NUMERIC_FILTER_OPERATORS = frozenset(
     {FilterOperator.GTE, FilterOperator.LTE, FilterOperator.GT, FilterOperator.LT, FilterOperator.EQ}
@@ -972,8 +978,9 @@ class _MetricPredicate(NamedTuple):
 
 
 def _is_valid_metric_path(field: str) -> bool:
-    """True if `field` is a rollup-metric path: run_count, <metric>.<stat>, or evaluators.<name>.<stat>."""
-    if field == "run_count":
+    """True if `field` is a rollup-metric path: run_count, test_case_count, <metric>.<stat>, or
+    evaluators.<name>.<stat>."""
+    if field in ("run_count", "test_case_count"):
         return True
     head, _, rest = field.partition(".")
     if head in ("cost_usd", "latency_ms"):
@@ -992,6 +999,33 @@ def _validate_sort_field(field: str) -> None:
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported sort field: {field}")
 
 
+def _parse_sort_keys(sort: str) -> tuple[list[tuple[str, bool]], bool]:
+    """Parse the comma-separated ``sort`` param into an ordered list of ``(field, descending)`` keys.
+
+    Each field may be '-'-prefixed for descending; the keys are applied in order (the first field
+    dominates). Returns the keys plus whether *any* key is a rollup metric — a metric-backed sort
+    requires hydrated rollups, so this drives the 503-if-unavailable guard. Raises 400 if a field is
+    unsupported or the list is empty.
+    """
+    sort_keys: list[tuple[str, bool]] = []
+    explicit_metric_sort = False
+    for token in sort.split(","):
+        field_token = token.strip()
+        if not field_token:
+            continue
+        descending = field_token.startswith("-")
+        sort_field = field_token[1:] if descending else field_token
+        _validate_sort_field(sort_field)
+        sort_keys.append((sort_field, descending))
+        explicit_metric_sort = explicit_metric_sort or sort_field not in _ENTITY_SORT_FIELDS
+    if not sort_keys:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The 'sort' parameter must contain at least one field.",
+        )
+    return sort_keys, explicit_metric_sort
+
+
 def _is_metric_field(field: str) -> bool:
     """True if `field` is *intended* as a rollup metric (by head), valid path or not.
 
@@ -999,7 +1033,7 @@ def _is_metric_field(field: str) -> bool:
     extracted and rejected with a 400 rather than forwarded to the entity store. Entity fields (already
     translated to ``data.*`` by the filter dep) never match.
     """
-    return field == "run_count" or field.split(".", 1)[0] in _METRIC_NAMESPACES
+    return field in ("run_count", "test_case_count") or field.split(".", 1)[0] in _METRIC_NAMESPACES
 
 
 def _operation_references_metric(operation: FilterOperation | None) -> bool:
@@ -1071,10 +1105,10 @@ def _extract_metric_predicates(
     return operation, []
 
 
-def _matches_metric_predicates(response: ExperimentResponse, predicates: list[_MetricPredicate]) -> bool:
+def _matches_metric_predicates(response: EvaluationResponse, predicates: list[_MetricPredicate]) -> bool:
     """True if the response satisfies every metric predicate. A missing metric never matches."""
     for predicate in predicates:
-        value = _experiment_sort_value(response, predicate.field)
+        value = _evaluation_sort_value(response, predicate.field)
         if value is None or not _compare_metric(value, predicate.operator, predicate.threshold):
             return False
     return True
@@ -1092,12 +1126,14 @@ def _compare_metric(value: float, operator: FilterOperator, threshold: float) ->
     return value == threshold  # EQ
 
 
-def _experiment_sort_value(response: ExperimentResponse, field: str) -> Any:
+def _evaluation_sort_value(response: EvaluationResponse, field: str) -> Any:
     """Value for `field` on a hydrated response, or None when the metric is absent (sorts last)."""
     if field in _ENTITY_SORT_FIELDS:
         return getattr(response, field)
     if field == "run_count":
         return response.run_count
+    if field == "test_case_count":
+        return response.test_case_count
     head, _, rest = field.partition(".")
     if head == "cost_usd":
         return getattr(response.cost_usd, rest, None) if response.cost_usd is not None else None
@@ -1109,34 +1145,44 @@ def _experiment_sort_value(response: ExperimentResponse, field: str) -> Any:
 
 
 def _validate_default_sort(default_sort: str | None) -> None:
-    """Reject a default sort whose field the experiments list can't sort by.
+    """Reject a default sort whose field(s) the evaluations list can't sort by.
 
-    The value is a ``sort``-param string (optional leading '-' for descending), e.g. ``-cost_usd.mean``;
-    the field must satisfy the same rule as the list ``sort`` query param.
+    The value is a ``sort``-param string — a comma-separated list of fields, each with an optional
+    leading '-' for descending (e.g. ``-evaluators.reward.mean,cost_usd.mean``); every field must
+    satisfy the same rule as the list ``sort`` query param.
     """
     if default_sort is None:
         return
-    field = default_sort[1:] if default_sort.startswith("-") else default_sort
-    _validate_sort_field(field)
+    fields = [token.strip() for token in default_sort.split(",") if token.strip()]
+    if not fields:
+        # An empty or all-blank string (``""``, ``","``) is not a usable sort; reject it here rather
+        # than persist a value the list ``sort`` param would later 400 on.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The 'default_sort' parameter must contain at least one field.",
+        )
+    for field_token in fields:
+        field = field_token[1:] if field_token.startswith("-") else field_token
+        _validate_sort_field(field)
 
 
-def _sort_experiments(
-    responses: list[ExperimentResponse],
+def _sort_evaluations(
+    responses: list[EvaluationResponse],
     *,
     keys: list[tuple[str, bool]],
     pinned_first: bool = False,
-) -> list[ExperimentResponse]:
+) -> list[EvaluationResponse]:
     """Sort by an ordered list of ``(field, descending)`` keys.
 
     Missing values sort last per key; ties break by name. Keys are applied from lowest to highest
     priority via successive stable sorts, so the first key dominates. With ``pinned_first``, pinned
-    experiments float to the top while preserving key order within the pinned and unpinned groups.
+    evaluations float to the top while preserving key order within the pinned and unpinned groups.
     """
     ordered = sorted(responses, key=lambda r: r.name)  # stable base tiebreak
     for field, descending in reversed(keys):
-        present = [r for r in ordered if _experiment_sort_value(r, field) is not None]
-        missing = [r for r in ordered if _experiment_sort_value(r, field) is None]
-        present.sort(key=lambda r, f=field: _experiment_sort_value(r, f), reverse=descending)
+        present = [r for r in ordered if _evaluation_sort_value(r, field) is not None]
+        missing = [r for r in ordered if _evaluation_sort_value(r, field) is None]
+        present.sort(key=lambda r, f=field: _evaluation_sort_value(r, f), reverse=descending)
         ordered = present + missing
     if pinned_first:
         # Stable: pinned (False sorts before True) float up, key order preserved within each group.
@@ -1147,8 +1193,8 @@ def _sort_experiments(
 async def _hydrate_rollups(
     *,
     workspace: str,
-    responses: list[ExperimentResponse],
-    rollup_repository: ExperimentRollupRepository | None,
+    responses: list[EvaluationResponse],
+    rollup_repository: EvaluationRollupRepository | None,
 ) -> bool:
     """Enrich responses with ClickHouse rollups in place.
 
@@ -1163,10 +1209,10 @@ async def _hydrate_rollups(
         return False
     try:
         rollups = await rollup_repository.get_rollups(
-            workspace=workspace, experiment_ids=[response.name for response in responses]
+            workspace=workspace, evaluation_ids=[response.name for response in responses]
         )
     except Exception:
-        logger.exception("Skipping experiment rollup hydration because ClickHouse is unavailable")
+        logger.exception("Skipping evaluation rollup hydration because ClickHouse is unavailable")
         return False
     for response in responses:
         rollup = rollups.get(response.name)
@@ -1175,13 +1221,14 @@ async def _hydrate_rollups(
     return True
 
 
-def _apply_rollup(response: ExperimentResponse, rollup: ExperimentRollup) -> None:
+def _apply_rollup(response: EvaluationResponse, rollup: EvaluationRollup) -> None:
     response.evaluator_names = rollup.evaluator_names
     response.model_names = rollup.model_names
     response.agent_names = rollup.agent_names
     response.agent_versions = rollup.agent_versions
     response.aggregate_scores = {name: _aggregate(score) for name, score in rollup.evaluator_scores.items()} or None
     response.run_count = rollup.run_count
+    response.test_case_count = rollup.test_case_count
     response.cost_usd = _aggregate(rollup.cost_usd) if rollup.cost_usd is not None else None
     response.latency_ms = _aggregate(rollup.latency_ms) if rollup.latency_ms is not None else None
 
@@ -1196,3 +1243,23 @@ def _aggregate(rollup: ScoreRollup) -> EvaluatorAggregate:
         p99=rollup.p99,
         count=rollup.count,
     )
+
+
+# ---------------------------------------------------------------------------
+# Backwards-compatible URL aliases (TEMPORARY — remove in a follow-up PR)
+#
+# The child endpoints moved from `/experiments` to `/evaluations`. Register the old
+# `/experiments...` paths as hidden aliases (``include_in_schema=False``) that point at the
+# same handlers, so existing callers keep working until they migrate to `/evaluations`.
+# ---------------------------------------------------------------------------
+for _legacy_route in list(router.routes):
+    if isinstance(_legacy_route, APIRoute) and "/evaluations" in _legacy_route.path:
+        router.add_api_route(
+            _legacy_route.path.replace("/evaluations", "/experiments", 1),
+            _legacy_route.endpoint,
+            methods=sorted(_legacy_route.methods),
+            response_model=_legacy_route.response_model,
+            status_code=_legacy_route.status_code,
+            include_in_schema=False,
+            name=f"{_legacy_route.name}_experiments_alias",
+        )

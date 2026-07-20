@@ -105,7 +105,13 @@ export const useJobBuilder = (
     if (id !== null) setSelectedId(null);
   };
 
+  const hasSeedColumn = columns.some((column) => column.option.columnType === 'seed-dataset');
+  const disabledColumnReasons = hasSeedColumn
+    ? { 'seed-dataset': 'Only one seed dataset is supported per recipe.' }
+    : undefined;
+
   const handleAddColumn = (selection: AddColumnSelection) => {
+    if (selection.columnType === 'seed-dataset' && hasSeedColumn) return;
     const option = findColumnOption(selection);
     if (!option) return;
     const id = `col-${nextId.current++}`;
@@ -162,6 +168,7 @@ export const useJobBuilder = (
     edges,
     takenNames,
     takenAliases,
+    disabledColumnReasons,
     selectColumn,
     selectModel,
     handleAddColumn,

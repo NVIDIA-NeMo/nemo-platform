@@ -18,7 +18,7 @@ class RlConfig(create_service_config_class("rl")):  # type: ignore[misc]
     image_registry: str | None = Field(
         default=None,
         description=(
-            "Registry host/path prefix for nmp-rl-tasks and nmp-rl-training. "
+            "Registry host/path prefix for nmp-customizer-tasks and nmp-rl-training. "
             "Override via NMP_RL_IMAGE_REGISTRY; defaults to the platform's image registry."
         ),
     )

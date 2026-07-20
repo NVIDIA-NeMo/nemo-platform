@@ -37,7 +37,12 @@ from nmp.automodel.app.jobs.training.compiler import (
 )
 from nmp.automodel.config import config
 from nmp.automodel.entities.values import FinetuningType
-from nmp.automodel.images import AUTOMODEL_PYTHON_ENTRYPOINT, get_tasks_image
+from nmp.automodel.images import (
+    AUTOMODEL_PYTHON_ENTRYPOINT,
+    FILE_IO_TASK_COMMAND,
+    MODEL_ENTITY_TASK_COMMAND,
+    get_tasks_image,
+)
 from nmp.common.auth import AuthClient, auth_client_context
 from nmp.common.entities.utils import parse_entity_ref
 from nmp.common.jobs.constants import DEFAULT_JOB_STORAGE_PATH, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
@@ -58,6 +63,7 @@ from nmp.customization_common.schemas.model_entity import (
     PEFTConfig as ModelEntityPEFTConfig,
 )
 from nmp.customization_common.service.platform_client import fetch_model_entity
+from nmp.customization_common.tasks.file_io_metadata import build_output_fileset_metadata_from_model_entity
 
 logger = logging.getLogger(__name__)
 
@@ -175,36 +181,6 @@ def _build_file_download_config(
     return FileIOTaskConfig(download=downloads)
 
 
-def _build_output_fileset_metadata(me: ModelEntity) -> dict | None:
-    """Build tool_calling metadata to propagate to the output fileset.
-
-    Extracts chat_template and tool_call_config from the source model entity's spec
-    so the model-spec-runner will apply them to the output model entity.
-
-    Returns:
-        A dict like {"tool_calling": {...}} suitable for fileset metadata, or None
-        if there is nothing to propagate.
-    """
-    if me.spec is None:
-        return None
-
-    tool_calling: dict = {}
-
-    if me.spec.chat_template:
-        tool_calling["chat_template"] = me.spec.chat_template
-
-    if me.spec.tool_call_config:
-        tcc = me.spec.tool_call_config
-        if tcc.tool_call_parser:
-            tool_calling["tool_call_parser"] = tcc.tool_call_parser
-        if tcc.tool_call_plugin:
-            tool_calling["tool_call_plugin"] = tcc.tool_call_plugin
-        if tcc.auto_tool_choice is not None:
-            tool_calling["auto_tool_choice"] = tcc.auto_tool_choice
-
-    return {"tool_calling": tool_calling} if tool_calling else None
-
-
 def _build_file_upload_config(
     output_fileset_name: str,
     fileset_metadata: dict | None = None,
@@ -262,7 +238,7 @@ def _build_model_entity_config(
 
     # Only forward the user-supplied deployment_config from the job spec.
     # tool_call_config from the *source* model entity's spec is propagated
-    # separately via fileset metadata (see _build_output_fileset_metadata),
+    # separately via fileset metadata (see build_output_fileset_metadata_from_model_entity),
     # so we intentionally do not merge it here.
     deployment_config: str | ModelEntityDeploymentParameters | None = None
     if isinstance(job_spec.deployment_config, str):
@@ -436,7 +412,7 @@ async def platform_job_config_compiler(
     # These are propagated to:
     #   1. The training step config (chat_template takes highest priority in template resolution)
     #   2. The output fileset metadata (so the model-spec-runner sets them on the output model)
-    fileset_metadata = _build_output_fileset_metadata(me)
+    fileset_metadata = build_output_fileset_metadata_from_model_entity(me)
     file_io_upload_config = _build_file_upload_config(transformed_spec.output.fileset, fileset_metadata)
 
     # Build model_entity config for creating the model entity
@@ -452,7 +428,7 @@ async def platform_job_config_compiler(
                 container=ContainerSpec(
                     image=get_tasks_image(),
                     entrypoint=AUTOMODEL_PYTHON_ENTRYPOINT,
-                    command=["-m", "nmp.automodel.tasks.file_io"],
+                    command=FILE_IO_TASK_COMMAND,
                 ),
                 resources=cpu_resources,
             ),
@@ -474,7 +450,7 @@ async def platform_job_config_compiler(
                 container=ContainerSpec(
                     image=get_tasks_image(),
                     entrypoint=AUTOMODEL_PYTHON_ENTRYPOINT,
-                    command=["-m", "nmp.automodel.tasks.file_io"],
+                    command=FILE_IO_TASK_COMMAND,
                 ),
                 resources=cpu_resources,
             ),
@@ -489,7 +465,7 @@ async def platform_job_config_compiler(
                 container=ContainerSpec(
                     image=get_tasks_image(),
                     entrypoint=AUTOMODEL_PYTHON_ENTRYPOINT,
-                    command=["-m", "nmp.automodel.tasks.model_entity"],
+                    command=MODEL_ENTITY_TASK_COMMAND,
                 ),
                 resources=cpu_resources,
             ),

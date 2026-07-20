@@ -14,6 +14,8 @@ interface ColumnTypeGroupSectionProps {
   group: ColumnTypeGroup;
   options: ColumnTypeOption[];
   onSelect: (selection: AddColumnSelection) => void;
+  /** Disabled reasons keyed by column type; a set entry disables that option's card. */
+  disabledReasons?: Partial<Record<string, string>>;
 }
 
 /** A labeled group heading (with a count) above its option cards. */
@@ -21,6 +23,7 @@ export const ColumnTypeGroupSection: FC<ColumnTypeGroupSectionProps> = ({
   group,
   options,
   onSelect,
+  disabledReasons,
 }) => (
   <Stack gap="1" className="w-full">
     <Flex align="center" gap="density-xs">
@@ -30,7 +33,12 @@ export const ColumnTypeGroupSection: FC<ColumnTypeGroupSectionProps> = ({
     </Flex>
     <Stack gap="1.5" className="w-full">
       {options.map((option) => (
-        <ColumnTypeCard key={option.id} option={option} onSelect={onSelect} />
+        <ColumnTypeCard
+          key={option.id}
+          option={option}
+          onSelect={onSelect}
+          disabledReason={option.columnType ? disabledReasons?.[option.columnType] : undefined}
+        />
       ))}
     </Stack>
   </Stack>

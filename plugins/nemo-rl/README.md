@@ -59,7 +59,7 @@ authoritative input shape; `nemo customization rl explain` prints it live.
 
 `submit` → `RlJobInput` → transform → `RlJobOutput` → compiled `PlatformJobSpec`:
 
-1. **download** — model fileset + preference dataset → PVC (CPU, `nmp-rl-tasks`)
+1. **download** — model fileset + preference dataset → PVC (CPU, `nmp-customizer-tasks`)
 2. **dpo-training** — Ray DPO step (GPU, `nmp-rl-training`); single-node `gpu` or
    multi-node `gpu_distributed` executor, selected by `parallelism.num_nodes`
 3. **upload** — trained checkpoint → output fileset (CPU)
@@ -72,4 +72,4 @@ authoritative input shape; `nemo customization rl explain` prints it live.
 - **Design:** [`docs/customizer/nemo-rl-dpo-plugin-design.md`](../../docs/customizer/nemo-rl-dpo-plugin-design.md).
 - **GPU e2e smoke test:** [`scripts/gpu-dpo-smoke/`](../../scripts/gpu-dpo-smoke).
 - **Images:** [`docker/Dockerfile.nmp-rl-base`](../../docker/Dockerfile.nmp-rl-base),
-  `Dockerfile.nmp-rl-training`, `Dockerfile.nmp-rl-tasks`.
+  `Dockerfile.nmp-rl-training`, `Dockerfile.nmp-customizer-tasks`.

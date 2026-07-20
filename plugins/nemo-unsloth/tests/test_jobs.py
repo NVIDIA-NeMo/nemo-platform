@@ -9,10 +9,10 @@ exercise ``train_sft`` from these tests — that lives in the
 
 - ``to_spec`` resolves output naming + fileset against a stub SDK.
 - ``compile`` delegates to the service-side compiler (we patch it out)
-  and returns the resulting ``PlatformJobSpec`` after the Docker
+  and returns the resulting ``PlatformJobSpec`` after the container
   runtime check.
-- The Docker runtime check fires when the platform isn't configured for
-  Docker.
+- The container runtime check fires when the platform has no usable
+  container runtime (neither Kubernetes nor Docker).
 """
 
 from __future__ import annotations
@@ -99,7 +99,7 @@ class TestCompile:
         )
 
         with (
-            patch("nemo_unsloth_plugin.jobs.jobs.require_docker_runtime"),
+            patch("nemo_unsloth_plugin.jobs.jobs.require_container_runtime"),
             patch(
                 "nemo_unsloth_plugin.jobs.jobs.platform_job_config_compiler",
                 new=AsyncMock(return_value=fake_spec),
@@ -132,7 +132,7 @@ class TestCompile:
     def test_compile_passes_caller_profile_override(self) -> None:
         canonical = _make_canonical()
         with (
-            patch("nemo_unsloth_plugin.jobs.jobs.require_docker_runtime"),
+            patch("nemo_unsloth_plugin.jobs.jobs.require_container_runtime"),
             patch(
                 "nemo_unsloth_plugin.jobs.jobs.platform_job_config_compiler",
                 new=AsyncMock(return_value=SimpleNamespace(steps=[])),
@@ -152,15 +152,15 @@ class TestCompile:
 
         assert compile_mock.await_args.kwargs["profile"] == "gpu_distributed"
 
-    def test_compile_rejects_non_docker_runtime(self) -> None:
+    def test_compile_rejects_runtime_without_container_support(self) -> None:
         canonical = _make_canonical()
-        # Force the runtime check to raise so we don't need a Docker daemon
+        # Force the runtime check to raise so we don't need a real runtime
         # in CI. The check is what runs first; the rest never executes.
         with patch(
-            "nemo_unsloth_plugin.jobs.jobs.require_docker_runtime",
-            side_effect=PlatformJobCompilationError("not docker"),
+            "nemo_unsloth_plugin.jobs.jobs.require_container_runtime",
+            side_effect=PlatformJobCompilationError("no container runtime"),
         ):
-            with pytest.raises(PlatformJobCompilationError, match="not docker"):
+            with pytest.raises(PlatformJobCompilationError, match="no container runtime"):
                 asyncio.run(
                     UnslothJob.compile(
                         workspace="default",

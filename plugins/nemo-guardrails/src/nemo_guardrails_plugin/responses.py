@@ -1,7 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import json
 import logging
+import re
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
@@ -15,11 +17,110 @@ from nemo_platform_plugin.inference_middleware import (
     InferenceResponse,
     ResponseResult,
 )
+from nemoguardrails.exceptions import LLMCallException
 from nemoguardrails.rails.llm.options import GenerationResponse
 
 logger = logging.getLogger(__name__)
 
 GUARDRAILS_DATA_FIELD = "guardrails_data"
+
+# Matches the "[<status>] <detail>" prefix langchain_nvidia_ai_endpoints prefixes
+# on every error it raises. The status represents the underlying status code
+# that we'd like to preserve when returning the error to the caller.
+_LANGCHAIN_ERROR_MESSAGE_PREFIX = re.compile(r"^\s*\[(\d{3})\]\s*(.*)", re.DOTALL)
+# Error codes embedded in the upstream error message that we surface to the caller.
+_HTTP_ERROR_STATUS_RANGE = range(400, 600)
+
+
+def extract_upstream_error(exc: BaseException) -> InferenceMiddlewareError | None:
+    """Recover a genuine upstream status code hidden inside a rail-task LLM call failure.
+
+    nemoguardrails wraps every rail-task LLM failure in the same generic
+    ``LLMCallException``, so our middleware's catch-all exception handler
+    would otherwise map all of them to a 503. This function unwraps the
+    exception and, if the provider library recorded a real upstream status,
+    propagates it as-is (4xx or 5xx) instead of masking it. If not found,
+    the plugin falls back to a 503.
+
+    Example, given this ``exc`` parameter::
+
+        exc = LLMCallException(
+            Exception('[400] At most 1 image(s) may be provided in one '
+                       'request.'),
+            detail="Error invoking LLM (model=..., provider=nvidia_ai_endpoints, endpoint=...)",
+        )
+
+    the return value is::
+
+        InferenceMiddlewareError(
+            "Error invoking LLM (model=..., provider=nvidia_ai_endpoints, endpoint=...): "
+            "At most 1 image(s) may be provided in one request.",
+            status_code=400,
+        )
+
+    Returns ``None`` if no status is found, so the caller's 503 fallback stands.
+    """
+    context: str | None = None
+    # `exc` is always this outer LLMCallException in practice. It never has a
+    # status of its own (see checks below), but its `.detail` (e.g. "Error
+    # invoking LLM (model=..., provider=..., endpoint=...)") stores which call
+    # failed, so it's kept as context. `candidate` becomes the wrapped
+    # exception the provider library actually raised.
+    candidate: BaseException = exc
+    if isinstance(exc, LLMCallException):
+        context = exc.detail
+        if isinstance(exc.inner_exception, BaseException):
+            candidate = exc.inner_exception
+
+    # Signal 1: a genuine `status_code` attribute, e.g. set by `openai.APIStatusError`.
+    status_code = getattr(candidate, "status_code", None)
+    if isinstance(status_code, int) and status_code in _HTTP_ERROR_STATUS_RANGE:
+        detail = getattr(candidate, "message", None) or str(candidate)
+        return InferenceMiddlewareError(f"{context}: {detail}" if context else detail, status_code=status_code)
+
+    # Signal 2: no structured status, so fall back to the "[<status>] ..."
+    # message prefix that's all `langchain_nvidia_ai_endpoints` leaves behind.
+    if match := _LANGCHAIN_ERROR_MESSAGE_PREFIX.match(str(candidate)):
+        status_code = int(match.group(1))
+        if status_code in _HTTP_ERROR_STATUS_RANGE:
+            detail = _sanitized_client_error_detail(match.group(2).strip()) or str(candidate)
+            return InferenceMiddlewareError(f"{context}: {detail}" if context else detail, status_code=status_code)
+
+    return None
+
+
+def _sanitized_client_error_detail(text: str) -> str:
+    """Strip the "Unknown Error {...}" placeholder langchain_nvidia_ai_endpoints
+    leaves in front of the real upstream JSON body.
+
+    For example, given this ``text`` parameter:
+
+        text = 'Unknown Error\\n{"message": "At most 1 image(s) may be provided in one request.", "code": 400}'
+
+    the return value is:
+
+        "At most 1 image(s) may be provided in one request."
+
+    For the detail, prefer a nested ``message``/``error``/``detail``/``title`` field
+    from that JSON. Falls back to ``text`` unchanged if it isn't valid JSON, or
+    has none of those fields.
+    """
+    brace_index = text.find("{")
+    if brace_index == -1:
+        return text  # no JSON body at all
+
+    try:
+        body = json.loads(text[brace_index:])
+    except json.JSONDecodeError:
+        return text  # looked like JSON, wasn't
+
+    # Attempt to extract the error detail from the JSON body
+    if isinstance(body, dict):
+        for key in ("message", "error", "detail", "title"):
+            if isinstance(value := body.get(key), str) and value:
+                return value
+
+    return text  # valid JSON, but none of the detail fields we look for
 
 
 def build_chat_completion_response_id() -> str:

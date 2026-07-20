@@ -31,13 +31,16 @@ class TraceListParams(TypedDict, total=False):
     filter: TraceFilterParam
     """
     Filter root-span-backed traces by id, session_id, root status, root span
-    started_at, experiment_id, and test_case_id.
+    started_at, evaluation_id (or its deprecated alias experiment_id), and
+    test_case_id.
     """
 
-    mode: Literal["summary", "detailed"]
-    """
-    Use summary for root-span trace fields only, or detailed to include token, cost,
-    and span-count rollups.
+    mode: Literal["summary", "preview", "detailed"]
+    """Response mode.
+
+    summary returns root-span fields without payloads or rollups; preview adds
+    token, cost, and span-count rollups plus 300-character input/output previews;
+    detailed returns rollups and full payloads.
     """
 
     page: int

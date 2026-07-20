@@ -7,6 +7,7 @@ Command-line interface for NeMo Platform.
 **Getting started:**
 - Browse documentation with **`nemo docs --list`**
 - Run local platform services with **`nemo services run --help`**
+- Read the Kubernetes deployment guide with **`nemo docs set-up/helm/install`**
 
 **Examples:**
 
@@ -593,6 +594,7 @@ Read NeMo Platform documentation.
 
 ```shell
 nemo docs get-started/setup
+nemo docs set-up/helm/install
 nemo docs --list
 nemo docs cli/configuration
 ```
@@ -605,7 +607,7 @@ nemo docs [OPTIONS] [PATH]
 
 **Arguments:**
 
-* `<PATH>`: Path to a doc topic (e.g., get-started/setup). Omit to see available topics.
+* `<PATH>`: Path to a doc topic (e.g., get-started/setup or set-up/helm/install). Omit to see available topics.
 
 **Options:**
 
@@ -2486,15 +2488,17 @@ nemo inference gateway openai v1 models [OPTIONS] COMMAND [ARGS]...
 **Commands:**
 
 * `get`: Retrieve information about a specific OpenAI-compatible...
-* `list`: This endpoint aggregates models from all model entities...
+* `list`: This endpoint lists the routable VirtualModels in the...
 
 **nemo inference gateway openai v1 models get**
 
 Retrieve information about a specific OpenAI-compatible model.
 
 Workspace is
-always taken from the URL path; name may be model_entity_name or
-workspace/model_entity_name (workspace prefix is ignored).
+always taken from the URL path; name may be the VirtualModel name or
+workspace/name (workspace prefix is ignored). Resolves against routable
+VirtualModels, including custom ones, so this route agrees with the list route
+and the inference proxy.
 
 **Usage:**
 
@@ -2520,9 +2524,12 @@ nemo inference gateway openai v1 models get [OPTIONS] NAME
 
 **nemo inference gateway openai v1 models list**
 
-This endpoint aggregates models from all model entities and returns them in
-OpenAI's list models format. Each model ID is the model entity identifier in
-format workspace/model_entity_name.
+This endpoint lists the routable VirtualModels in the requested workspace and
+returns them in OpenAI's list models format. Each model ID is the VirtualModel
+identifier in format workspace/name. This includes both autoprovisioned
+VirtualModels (one per served model entity) and custom VirtualModels, keeping
+the catalog in agreement with the inference proxy, which also resolves
+VirtualModels scoped to the request workspace.
 
 **Usage:**
 
@@ -2799,15 +2806,17 @@ nemo inference models [OPTIONS] COMMAND [ARGS]...
 **Commands:**
 
 * `get`: Retrieve information about a specific OpenAI-compatible...
-* `list`: This endpoint aggregates models from all model entities...
+* `list`: This endpoint lists the routable VirtualModels in the...
 
 ##### nemo inference models get
 
 Retrieve information about a specific OpenAI-compatible model.
 
 Workspace is
-always taken from the URL path; name may be model_entity_name or
-workspace/model_entity_name (workspace prefix is ignored).
+always taken from the URL path; name may be the VirtualModel name or
+workspace/name (workspace prefix is ignored). Resolves against routable
+VirtualModels, including custom ones, so this route agrees with the list route
+and the inference proxy.
 
 **Usage:**
 
@@ -2833,9 +2842,12 @@ nemo inference models get [OPTIONS] NAME
 
 ##### nemo inference models list
 
-This endpoint aggregates models from all model entities and returns them in
-OpenAI's list models format. Each model ID is the model entity identifier in
-format workspace/model_entity_name.
+This endpoint lists the routable VirtualModels in the requested workspace and
+returns them in OpenAI's list models format. Each model ID is the VirtualModel
+identifier in format workspace/name. This includes both autoprovisioned
+VirtualModels (one per served model entity) and custom VirtualModels, keeping
+the catalog in agreement with the inference proxy, which also resolves
+VirtualModels scoped to the request workspace.
 
 **Usage:**
 
@@ -3772,7 +3784,7 @@ nemo jobs list [OPTIONS]
 * `--workspace`
 * `--page <INTEGER>`: Page number.
 * `--page-size <INTEGER>`: Page size.
-* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: created_at, -created_at, updated_at, -updated_at]
+* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: created_at, -created_at, updated_at, -updated_at, source, -source]
 * `--all-pages`: Fetch all pages
 
 **Filter Options:**

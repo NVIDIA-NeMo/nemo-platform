@@ -40,3 +40,11 @@ workflow:
   # Use the LLM's native tool-calling API instead of NAT's text-mode ReAct regex
   # parser (see calculator-agent.yml for the rationale).
   use_native_tool_calling: true
+
+general:
+  telemetry:
+    tracing:
+      nemo_trace:
+        _type: nemo_files
+        # workspace and agent_name are injected at deploy time
+        batch_size: 128

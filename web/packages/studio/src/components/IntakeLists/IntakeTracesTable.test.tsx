@@ -9,7 +9,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 
 describe('IntakeTracesTable', () => {
-  it('loads trace rows in detailed mode for aggregate metrics', async () => {
+  it('loads trace rows in preview mode for bounded payloads and aggregate metrics', async () => {
     const requestedModes: Array<string | null> = [];
     server.use(
       http.get('*/apis/intake/v2/workspaces/:workspace/traces', ({ request }) => {
@@ -23,8 +23,15 @@ describe('IntakeTracesTable', () => {
     });
 
     await screen.findByText('Answer customer policy question');
+    expect(screen.getByText('Can I deploy this model in a private workspace?')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Yes. Use a private workspace and restrict access through workspace membership.'
+      )
+    ).toBeInTheDocument();
 
-    await waitFor(() => expect(requestedModes).toContain('detailed'));
+    await waitFor(() => expect(requestedModes).toContain('preview'));
+    expect(requestedModes).not.toContain('detailed');
     expect(requestedModes).not.toContain('summary');
   });
 

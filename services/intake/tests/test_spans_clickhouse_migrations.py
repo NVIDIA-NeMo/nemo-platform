@@ -61,13 +61,13 @@ def test_trace_index_schema_is_root_span_projection():
     assert "TO {table}" in ddl
     assert "INSERT INTO {table}" in source
     assert "WHERE external_parent_span_id = ''" in ddl
-    assert "attributes_string['{experiment_key}'] AS experiment_id" in ddl
+    assert "attributes_string['{evaluation_key}'] AS evaluation_id" in ddl
     assert "attributes_string['{test_case_key}'] AS test_case_id" in ddl
     assert "root_status LowCardinality(String)" in ddl
     assert "root_input String" in ddl
     assert "PRIMARY KEY (workspace, root_started_at)" in ddl
     assert "ORDER BY (workspace, root_started_at, trace_id, root_span_id)" in ddl
-    assert "INDEX idx_experiment_id experiment_id" in ddl
+    assert "INDEX idx_evaluation_id evaluation_id" in ddl
     assert "index_granularity = 256" in ddl
 
 

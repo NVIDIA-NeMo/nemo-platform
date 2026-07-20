@@ -25,12 +25,14 @@ router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Traces"
 TRACE_INDEX_FILTER_FIELDS = frozenset(
     {
-        "experiment_id",
+        "evaluation_id",
+        "experiment_id",  # deprecated alias for evaluation_id
         "test_case_id",
     }
 )
 TRACE_INDEX_FILTER_ALIASES = {
-    "experiment_id": "experiment_id",
+    "evaluation_id": "evaluation_id",
+    "experiment_id": "evaluation_id",  # deprecated alias resolves to the evaluation_id filter
     "test_case_id": "test_case_id",
 }
 
@@ -44,7 +46,7 @@ TRACE_INDEX_FILTER_ALIASES = {
         filter_schema=TraceFilter,
         filter_description=(
             "Filter root-span-backed traces by id, session_id, root status, root span started_at, "
-            "experiment_id, and test_case_id."
+            "evaluation_id (or its deprecated alias experiment_id), and test_case_id."
         ),
     ),
 )
@@ -56,8 +58,11 @@ async def list_traces(
     page_size: int = Query(default=10, ge=1, le=1000, description="Page size."),
     sort: TraceSortField = Query(default=TraceSortField.STARTED_AT_DESC),
     mode: TraceMode = Query(
-        default="detailed",
-        description="Use summary for root-span trace fields only, or detailed to include token, cost, and span-count rollups.",
+        default="preview",
+        description=(
+            "Response mode. summary returns root-span fields without payloads or rollups; preview adds token, cost, "
+            "and span-count rollups plus 300-character input/output previews; detailed returns rollups and full payloads."
+        ),
     ),
     parsed: ParsedFilter = Depends(make_filter_dep(TraceFilter)),
 ) -> Page[Trace]:
@@ -70,7 +75,7 @@ async def list_traces(
         sort=sort.value,
         mode=mode,
     )
-    traces = [Trace.from_domain(trace) for trace in result.data]
+    traces = [Trace.from_domain(trace, mode=mode) for trace in result.data]
     return Page[Trace](
         data=traces,
         pagination=result.pagination,
@@ -91,14 +96,17 @@ async def get_trace(
     service: SpansServiceDep,
     mode: TraceMode = Query(
         default="detailed",
-        description="Use summary for root-span trace fields only, or detailed to include token, cost, and span-count rollups.",
+        description=(
+            "Response mode. summary returns root-span fields without payloads or rollups; preview adds token, cost, "
+            "and span-count rollups plus 300-character input/output previews; detailed returns rollups and full payloads."
+        ),
     ),
 ) -> Trace:
     try:
         trace = await service.get_trace(workspace=workspace, trace_id=id, mode=mode)
     except TraceNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Trace {workspace}/{id} not found")
-    return Trace.from_domain(trace)
+    return Trace.from_domain(trace, mode=mode)
 
 
 def _trace_filter(workspace: str, parsed: ParsedFilter) -> TraceListFilter:

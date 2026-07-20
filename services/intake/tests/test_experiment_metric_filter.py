@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Metric filtering on the experiments list (Option A app-merge).
+"""Metric filtering on the evaluations list (Option A app-merge).
 
 Two layers: pure helpers (split/validate/match) and endpoint wiring. The shared ``client`` fixture
 overrides the rollup repository to ``None`` (ClickHouse unavailable), so a metric filter that passes
@@ -20,14 +20,14 @@ from nmp.intake.api.v2.experiments.endpoints import (
     _matches_metric_predicates,
     _operation_references_metric,
 )
-from nmp.intake.api.v2.experiments.schemas import EvaluatorAggregate, ExperimentResponse, MetricStatFilters
+from nmp.intake.api.v2.experiments.schemas import EvaluationResponse, EvaluatorAggregate, MetricStatFilters
 
-EXPERIMENTS = "/apis/intake/v2/workspaces/default/experiments"
+EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
 GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
 
 
-def _exp(name: str, *, run_count: int = 0, cost_mean: float | None = None) -> ExperimentResponse:
-    return ExperimentResponse(
+def _exp(name: str, *, run_count: int = 0, cost_mean: float | None = None) -> EvaluationResponse:
+    return EvaluationResponse(
         id=name,
         name=name,
         workspace="default",
@@ -155,11 +155,11 @@ def test_matches_predicates_excludes_missing_metric() -> None:
 # ----------------------------- endpoint wiring -----------------------------
 
 
-def _make_experiment(client: TestClient, name: str = "exp-1", group: str = "grp-1") -> None:
+def _make_evaluation(client: TestClient, name: str = "exp-1", group: str = "grp-1") -> None:
     group_resp = client.post(GROUPS, json={"name": group})
     assert group_resp.status_code == 201, group_resp.text
     exp_resp = client.post(
-        EXPERIMENTS,
+        EVALUATIONS,
         json={"name": name, "experiment_group_id": group_resp.json()["id"], "dataset_name": "ds"},
     )
     assert exp_resp.status_code == 201, exp_resp.text
@@ -169,28 +169,28 @@ def test_metric_filter_passes_validation_and_503s_without_rollups(client: TestCl
     # If the namespace declaration works, these paths get past field validation and reach the
     # metric-filter path, which 503s because the (mocked) rollup repository is None. Needs a non-empty
     # result set: an empty group has nothing to hydrate and correctly returns 200 empty.
-    _make_experiment(client)
+    _make_evaluation(client)
     for param in (
         {"filter[cost_usd.mean][gte]": "0.5"},
         {"filter[latency_ms.p95][lte]": "1000"},
         {"filter[evaluators.harbor.verifier.mean][gte]": "0.8"},
         {"filter[run_count][gte]": "5"},
     ):
-        response = client.get(EXPERIMENTS, params=param)
+        response = client.get(EVALUATIONS, params=param)
         assert response.status_code == 503, (param, response.text)
 
 
 def test_metric_filter_bad_stat_returns_400(client: TestClient) -> None:
-    response = client.get(EXPERIMENTS, params={"filter[cost_usd.bogus][gte]": "0.5"})
+    response = client.get(EVALUATIONS, params={"filter[cost_usd.bogus][gte]": "0.5"})
     assert response.status_code == 400, response.text
 
 
 def test_metric_filter_non_numeric_value_returns_400(client: TestClient) -> None:
-    response = client.get(EXPERIMENTS, params={"filter[cost_usd.mean][gte]": "abc"})
+    response = client.get(EVALUATIONS, params={"filter[cost_usd.mean][gte]": "abc"})
     assert response.status_code == 400, response.text
 
 
 def test_metric_filter_under_or_returns_400(client: TestClient) -> None:
     json_filter = '{"$or": [{"cost_usd.mean": {"$gte": 0.5}}, {"name": {"$eq": "x"}}]}'
-    response = client.get(EXPERIMENTS, params={"filter": json_filter})
+    response = client.get(EVALUATIONS, params={"filter": json_filter})
     assert response.status_code == 400, response.text

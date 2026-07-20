@@ -168,31 +168,12 @@ class _JobsResourceBase:
         self._platform = platform
         self._http_client = platform._client
 
-    def _healthz_url(self) -> str:
-        return url(
-            self._platform,
-            f"v2/workspaces/{{workspace}}/{self.backend}/healthz",
-            self._platform.workspace,
-        )
-
     def _new_record(self, payload: Any) -> JobRecord:
         return self.record_schema.model_validate(payload)
 
 
 class JobsResource(_JobsResourceBase):
     """Sync SDK namespace at ``client.customization.<backend>.jobs``."""
-
-    def plugin_status(self) -> dict[str, object]:
-        """Return contributor health from the customization service."""
-        response = self._http_client.get(
-            self._healthz_url(),
-            headers=platform_default_headers(self._platform),
-        )
-        response.raise_for_status()
-        payload = response.json()
-        if not isinstance(payload, dict):
-            raise TypeError(f"{self.backend} health response must be a JSON object.")
-        return {str(key): value for key, value in payload.items()}
 
     def create(
         self,
@@ -240,18 +221,6 @@ class JobsResource(_JobsResourceBase):
 
 class AsyncJobsResource(_JobsResourceBase):
     """Async SDK namespace at ``client.customization.<backend>.jobs``."""
-
-    async def plugin_status(self) -> dict[str, object]:
-        """Return contributor health from the customization service."""
-        response = await self._http_client.get(
-            self._healthz_url(),
-            headers=platform_default_headers(self._platform),
-        )
-        response.raise_for_status()
-        payload = response.json()
-        if not isinstance(payload, dict):
-            raise TypeError(f"{self.backend} health response must be a JSON object.")
-        return {str(key): value for key, value in payload.items()}
 
     async def create(
         self,

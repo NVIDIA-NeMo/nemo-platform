@@ -81,13 +81,13 @@ export const NavigationDrawer: FC<Props> = ({ items, bottomItems, collapsed = fa
 
   return (
     <Stack
-      className={`min-h-full transition-[width] duration-200 overflow-y-auto overflow-x-hidden ${collapsed ? 'w-12' : 'w-60'}`}
+      className={`h-[calc(100vh-var(--nv-app-bar-height))] transition-[width] duration-200 overflow-hidden ${collapsed ? 'w-12' : 'w-60'}`}
     >
-      <VerticalNavRoot className="flex-1 w-full ">
+      <VerticalNavRoot className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden">
         <VerticalNavList className="pt-2 w-max min-w-full">{renderGroups(groups)}</VerticalNavList>
       </VerticalNavRoot>
-      <VerticalNavRoot className="shrink-0 w-full">
-        <VerticalNavList className="w-max min-w-full pb-2">
+      <VerticalNavRoot className="shrink-0 h-auto! w-full">
+        <VerticalNavList className="h-auto! w-max min-w-full pb-2">
           {renderGroups(bottomGroups)}
         </VerticalNavList>
       </VerticalNavRoot>

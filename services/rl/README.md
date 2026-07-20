@@ -14,9 +14,9 @@ No HTTP server. The thin contributor layer lives in
   (download → DPO train → upload → model-entity). The training step's executor
   is chosen by `parallelism.num_nodes` (single-node `gpu` vs multi-node
   `gpu_distributed`).
-- `nmp.rl.tasks.*` — container entrypoints (`file_io`, `model_entity`,
-  `training`). The training task bootstraps a Ray cluster and runs the DPO
-  driver against the NeMo-RL library.
+- `nmp.rl.tasks.training` — GPU training entrypoint (bootstraps Ray and runs the DPO
+  driver). CPU `file_io` / `model_entity` steps run from the shared
+  `nmp-customizer-tasks` image (`nmp.customization_common.tasks.*`).
 
 ## Scope
 

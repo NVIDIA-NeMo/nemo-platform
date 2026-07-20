@@ -1,0 +1,8 @@
+# Block uv from installing or upgrading PyTorch wheels into the venv.
+# The NGC base image ships torch + CUDA; the venv uses --system-site-packages
+# to inherit that stack. Impossible markers (sys_platform == 'never') are the
+# same pattern as Automodel docker/common/uv-pytorch.toml and
+# docker/automodel/no_override_requirements.txt.
+torch; sys_platform == 'never'
+torchvision; sys_platform == 'never'
+torchaudio; sys_platform == 'never'

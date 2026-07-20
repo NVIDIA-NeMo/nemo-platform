@@ -3,14 +3,17 @@
 
 /**
  * Turns a dateString like "2024-02-29T02:27:13.509827", or a timestamp in milliseconds like 1721151036524,
- * into a formatted date string.
+ * into a formatted date string. Expects a UTC date string or normalizes input to UTC if a date string is provided without a timezone.
  *
  * If `includeDate` is true, it will include the date like "02/29/24 02:27:13 PM"
  * Otherwise, it will only include the time like "02:27:12 PM"
  */
 export function formatDateTime(dateValue: string | number, includeDate: boolean = true) {
-  const date = new Date(dateValue);
-  const userLocale = navigator.language; // Gets the browser's language setting
+  const tzRegex = /Z|[+-]\d{2}:\d{2}$/;
+  const normalized =
+    typeof dateValue === 'string' && !tzRegex.test(dateValue) ? dateValue + 'Z' : dateValue;
+  const date = new Date(normalized);
+  const userLocale = navigator.language;
 
   const options: Intl.DateTimeFormatOptions = {
     ...(includeDate && {

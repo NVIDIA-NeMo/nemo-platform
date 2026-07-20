@@ -15,7 +15,7 @@ import {
   Text,
 } from '@nvidia/foundations-react-core';
 import classNames from 'classnames';
-import { ArrowUp, Download } from 'lucide-react';
+import { ArrowUp, Download, WrapText } from 'lucide-react';
 import { FC, useMemo, useState } from 'react';
 
 const DEFAULT_ROW_COUNT = 30;
@@ -36,6 +36,7 @@ export const LogViewer: FC<LogViewerProps> = ({
   emptyMessage = 'No logs available yet',
 }) => {
   const [showAllLogs, setShowAllLogs] = useState(false);
+  const [wrapLines, setWrapLines] = useState(false);
   const tailLogs = logs?.slice(-rows) || [];
   const displayedLogs = showAllLogs ? logs : tailLogs;
   const logText = formatLogs(displayedLogs);
@@ -68,7 +69,7 @@ export const LogViewer: FC<LogViewerProps> = ({
   }
 
   return (
-    <Block className="relative overflow-hidden">
+    <Block className="relative w-full min-w-0 max-w-full overflow-hidden">
       {!showAllLogs && hasMoreLogs && (
         <Block className="absolute top-6 mt-[2px] left-px right-px z-10 py-5 text-center bg-[linear-gradient(to_bottom,var(--background-color-surface-sunken),transparent)]">
           <Tag color="gray" kind="solid" onClick={handleLoadMore}>
@@ -86,7 +87,15 @@ export const LogViewer: FC<LogViewerProps> = ({
         attributes={{
           CodeSnippetCode: {
             ref: codeScrollRef,
-            className: classNames({ '!overflow-y-hidden': !showAllLogs }),
+            className: classNames(
+              'min-w-0 max-w-full',
+              // Keep scroll on when wrapping: wrapped rows exceed the fixed height.
+              { '!overflow-y-hidden': !showAllLogs && !wrapLines },
+              {
+                'whitespace-pre-wrap [overflow-wrap:anywhere] [&_code]:whitespace-pre-wrap [&_pre]:whitespace-pre-wrap [&_pre]:[overflow-wrap:anywhere]':
+                  wrapLines,
+              }
+            ),
           },
         }}
         slotActions={
@@ -94,13 +103,22 @@ export const LogViewer: FC<LogViewerProps> = ({
             <Text kind="mono/md">
               {displayedLogs.length} {!showAllLogs && hasMoreLogs && `of ${logs.length}`} lines
             </Text>
-            {downloadFilename && (
-              <Flex gap="density-sm">
+            <Flex gap="0.25">
+              <Button
+                size="tiny"
+                kind={wrapLines ? 'secondary' : 'tertiary'}
+                aria-label="Wrap lines"
+                aria-pressed={wrapLines}
+                onClick={() => setWrapLines((prev) => !prev)}
+              >
+                <WrapText />
+              </Button>
+              {downloadFilename && (
                 <Button size="tiny" kind="tertiary" onClick={handleDownload}>
                   <Download />
                 </Button>
-              </Flex>
-            )}
+              )}
+            </Flex>
           </Flex>
         }
       />

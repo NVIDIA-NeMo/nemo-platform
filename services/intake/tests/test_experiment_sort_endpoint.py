@@ -1,69 +1,93 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Endpoint-level guards for the experiments list sort (rollups unavailable / bad field).
+"""Endpoint-level guards for the evaluations list sort (rollups unavailable / bad field).
 
-The shared ``client`` fixture overrides ``get_experiment_rollup_repository`` to return ``None``,
+The shared ``client`` fixture overrides ``get_evaluation_rollup_repository`` to return ``None``,
 which is exactly the "ClickHouse disabled / unavailable" condition. A metric-backed sort cannot be
 computed without rollups, so it must fail loudly rather than silently degrade to name order.
 """
 
 from fastapi.testclient import TestClient
 
-EXPERIMENTS = "/apis/intake/v2/workspaces/default/experiments"
+EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
 GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
 
 
-def _make_experiment(client: TestClient, name: str = "exp-1", group: str = "grp-1") -> None:
+def _make_evaluation(client: TestClient, name: str = "exp-1", group: str = "grp-1") -> None:
     group_resp = client.post(GROUPS, json={"name": group})
     assert group_resp.status_code == 201, group_resp.text
     exp_resp = client.post(
-        EXPERIMENTS,
+        EVALUATIONS,
         json={"name": name, "experiment_group_id": group_resp.json()["id"], "dataset_name": "ds"},
     )
     assert exp_resp.status_code == 201, exp_resp.text
 
 
 def test_metric_sort_returns_503_when_rollups_unavailable(client: TestClient) -> None:
-    _make_experiment(client)
-    response = client.get(EXPERIMENTS, params={"sort": "-cost_usd.mean"})
+    _make_evaluation(client)
+    response = client.get(EVALUATIONS, params={"sort": "-cost_usd.mean"})
     assert response.status_code == 503, response.text
 
 
 def test_run_count_sort_returns_503_when_rollups_unavailable(client: TestClient) -> None:
-    _make_experiment(client)
-    response = client.get(EXPERIMENTS, params={"sort": "run_count"})
+    _make_evaluation(client)
+    response = client.get(EVALUATIONS, params={"sort": "run_count"})
     assert response.status_code == 503, response.text
 
 
 def test_entity_sort_still_succeeds_without_rollups(client: TestClient) -> None:
-    _make_experiment(client)
+    _make_evaluation(client)
     for sort in ("name", "-created_at", "pinned_at"):
-        response = client.get(EXPERIMENTS, params={"sort": sort})
+        response = client.get(EVALUATIONS, params={"sort": sort})
         assert response.status_code == 200, response.text
 
 
 def test_unknown_sort_field_returns_400(client: TestClient) -> None:
-    response = client.get(EXPERIMENTS, params={"sort": "bogus.field"})
+    response = client.get(EVALUATIONS, params={"sort": "bogus.field"})
     assert response.status_code == 400, response.text
 
 
-def test_too_many_experiments_to_sort_returns_413(client: TestClient, monkeypatch) -> None:
+def test_multi_field_metric_sort_returns_503_when_rollups_unavailable(client: TestClient) -> None:
+    # Entity field first, metric second: the metric key still needs rollups, so the whole sort 503s.
+    _make_evaluation(client)
+    response = client.get(EVALUATIONS, params={"sort": "name,-cost_usd.mean"})
+    assert response.status_code == 503, response.text
+
+
+def test_multi_field_entity_sort_succeeds_without_rollups(client: TestClient) -> None:
+    _make_evaluation(client)
+    response = client.get(EVALUATIONS, params={"sort": "name,-created_at"})
+    assert response.status_code == 200, response.text
+
+
+def test_unknown_field_in_multi_field_sort_returns_400(client: TestClient) -> None:
+    response = client.get(EVALUATIONS, params={"sort": "name,bogus.field"})
+    assert response.status_code == 400, response.text
+
+
+def test_empty_sort_returns_400(client: TestClient) -> None:
+    for value in ("", ","):
+        response = client.get(EVALUATIONS, params={"sort": value})
+        assert response.status_code == 400, response.text
+
+
+def test_too_many_evaluations_to_sort_returns_413(client: TestClient, monkeypatch) -> None:
     # The whole filtered set is sorted in memory; over the cap we refuse rather than return a
     # silently truncated result. 413 (distinct from the 400 bad-sort-field case) so a caller can tell
     # the two apart. Shrink the cap so the test stays fast.
     from nmp.intake.api.v2.experiments import endpoints
 
-    monkeypatch.setattr(endpoints, "_MAX_GROUP_EXPERIMENTS", 2)
+    monkeypatch.setattr(endpoints, "_MAX_GROUP_EVALUATIONS", 2)
     group_resp = client.post(GROUPS, json={"name": "big-grp"})
     group_id = group_resp.json()["id"]
     for index in range(3):
         resp = client.post(
-            EXPERIMENTS,
+            EVALUATIONS,
             json={"name": f"exp-{index}", "experiment_group_id": group_id, "dataset_name": "ds"},
         )
         assert resp.status_code == 201, resp.text
 
-    response = client.get(EXPERIMENTS, params={"sort": "name"})
+    response = client.get(EVALUATIONS, params={"sort": "name"})
     assert response.status_code == 413, response.text
     assert "exceeding the maximum" in response.json()["detail"]

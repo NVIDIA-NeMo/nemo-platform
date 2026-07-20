@@ -36,7 +36,7 @@ export const MembersDataView: FC<MembersDataViewProps> = ({
   onRemoveMember,
 }) => {
   const dataViewState = useStudioDataViewState({
-    defaultSort: { id: 'principal', desc: false },
+    defaultSort: [{ id: 'principal', desc: false }],
   });
 
   const { data, isLoading, error, isFetching } = useEntitiesListWorkspaceMembers(workspace);

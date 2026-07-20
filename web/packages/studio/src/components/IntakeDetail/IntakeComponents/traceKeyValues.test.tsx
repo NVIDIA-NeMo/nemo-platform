@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
-  buildExperimentContextEntries,
+  buildEvaluationContextEntries,
   buildTraceHighlightMetrics,
   buildTraceSummaryEntries,
 } from '@studio/components/IntakeDetail/IntakeComponents/traceKeyValues';
@@ -66,19 +66,19 @@ describe('traceKeyValues', () => {
     ]);
   });
 
-  it('includes experiment context entries when present', () => {
+  it('includes evaluation context entries when present', () => {
     const trace = mockTraceById('trace-agent-run-001');
     expect(trace).toBeDefined();
 
-    const entries = buildExperimentContextEntries(trace!.experiment_context);
+    const entries = buildEvaluationContextEntries(trace!.evaluation_context);
 
-    expect(entries.map((entry) => entry.label)).toEqual(['Experiment ID', 'Test Case ID']);
+    expect(entries.map((entry) => entry.label)).toEqual(['Evaluation ID', 'Test Case ID']);
   });
 
-  it('returns no experiment context entries when context is absent', () => {
+  it('returns no evaluation context entries when context is absent', () => {
     const trace = mockTraceById('trace-agent-run-002');
     expect(trace).toBeDefined();
 
-    expect(buildExperimentContextEntries(trace!.experiment_context)).toEqual([]);
+    expect(buildEvaluationContextEntries(trace!.evaluation_context)).toEqual([]);
   });
 });

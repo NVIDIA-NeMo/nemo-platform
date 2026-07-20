@@ -8,7 +8,7 @@ import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { KeyValueRows } from '@studio/components/IntakeDetail/IntakeComponents/KeyValueRows';
 import { RawJsonDebug } from '@studio/components/IntakeDetail/IntakeComponents/RawJsonDebug';
 import {
-  buildExperimentContextEntries,
+  buildEvaluationContextEntries,
   buildTraceSummaryEntries,
 } from '@studio/components/IntakeDetail/IntakeComponents/traceKeyValues';
 import { TraceSummaryHeader } from '@studio/components/IntakeDetail/TraceDetailSummaryHeader';
@@ -25,13 +25,15 @@ import { CircleAlert } from 'lucide-react';
 import { type FC, useEffect, useMemo } from 'react';
 
 const TRACE_SUMMARY_SECTION = 'trace-summary';
-const EXPERIMENT_CONTEXT_SECTION = 'experiment-context';
+const EVALUATION_CONTEXT_SECTION = 'evaluation-context';
 
 interface IntakeTraceDetailViewProps {
   workspace: string;
   traceId: string;
   /** Leading breadcrumb items. Defaults to the Intake root when omitted. */
   parentBreadcrumbs?: BreadcrumbsItemProps[];
+  /** When true, shows "Test case: <test_case_id>" as the header instead of "Trace <name>". Falls back to "Trace <name>" when test_case_id is absent. */
+  showTestCaseTitle?: boolean;
 }
 
 /**
@@ -41,6 +43,7 @@ export const IntakeTraceDetailView: FC<IntakeTraceDetailViewProps> = ({
   workspace,
   traceId,
   parentBreadcrumbs,
+  showTestCaseTitle,
 }) => {
   const {
     data: trace,
@@ -57,8 +60,8 @@ export const IntakeTraceDetailView: FC<IntakeTraceDetailViewProps> = ({
     () => (trace ? buildTraceSummaryEntries(trace, { workspace }) : []),
     [trace, workspace]
   );
-  const experimentEntries = useMemo(
-    () => (trace ? buildExperimentContextEntries(trace.experiment_context) : []),
+  const evaluationEntries = useMemo(
+    () => (trace ? buildEvaluationContextEntries(trace.evaluation_context) : []),
     [trace]
   );
 
@@ -98,12 +101,15 @@ export const IntakeTraceDetailView: FC<IntakeTraceDetailViewProps> = ({
     return null;
   }
 
-  const title = getTraceDisplayName(trace);
+  const title =
+    showTestCaseTitle && trace.experiment_context?.test_case_id
+      ? `Test case: ${trace.experiment_context.test_case_id}`
+      : `Trace ${getTraceDisplayName(trace)}`;
 
   return (
-    <AccessibleTitle title={`Trace ${title}`}>
+    <AccessibleTitle title={title}>
       <Stack gap="density-2xl" padding="density-2xl" className="h-full overflow-auto">
-        <PageHeader className="p-0" slotHeading={`Trace ${title}`} />
+        <PageHeader className="p-0" slotHeading={title} />
         <TraceSummaryHeader trace={trace} />
         <TraceSpanAccordions workspace={workspace} trace={trace} />
         <IntakeAccordion
@@ -119,14 +125,14 @@ export const IntakeTraceDetailView: FC<IntakeTraceDetailViewProps> = ({
                 </Stack>
               ),
             },
-            ...(experimentEntries.length > 0
+            ...(evaluationEntries.length > 0
               ? [
                   {
-                    value: EXPERIMENT_CONTEXT_SECTION,
-                    slotLabel: <Text kind="body/semibold/sm">Experiment Context</Text>,
+                    value: EVALUATION_CONTEXT_SECTION,
+                    slotLabel: <Text kind="body/semibold/sm">Evaluation Context</Text>,
                     slotContent: (
                       <Stack className="min-w-0">
-                        <KeyValueRows entries={experimentEntries} />
+                        <KeyValueRows entries={evaluationEntries} />
                       </Stack>
                     ),
                   },

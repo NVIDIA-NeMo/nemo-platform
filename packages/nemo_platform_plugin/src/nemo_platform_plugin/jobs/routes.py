@@ -209,9 +209,18 @@ def _derive_job_type(job_cls: type["NemoJob"]) -> str:
     """PascalCase form of ``job_cls.name`` for OpenAPI schema names.
 
     ``"generate"`` → ``"Generate"``; ``"metric-eval"`` → ``"MetricEval"``;
-    ``"raw_job"`` → ``"RawJob"``.
+    ``"raw_job"`` → ``"RawJob"``; ``"automodel.jobs"`` → ``"AutomodelJobs"``.
+
+    Splits on ``.`` as well as ``-``/``_`` so a dot never reaches the generated
+    schema class name (``{job_type}JobRequest``). Were a dot to survive, Pydantic
+    would encode it as a ``__`` separator in the OpenAPI ref name, and schema-name
+    normalization (which strips everything before the last ``__`` to drop module
+    namespaces) would then collapse per-backend names like ``automodel.jobs`` and
+    ``rl.jobs`` to a single ``jobsJobRequest``, making every backend's request
+    body alias the first one. Folding the dot into the PascalCase name keeps the
+    discriminator inside the final segment so each backend gets a distinct schema.
     """
-    parts = job_cls.name.replace("_", "-").split("-")
+    parts = job_cls.name.replace("_", "-").replace(".", "-").split("-")
     return "".join(part[:1].upper() + part[1:] for part in parts if part)
 
 

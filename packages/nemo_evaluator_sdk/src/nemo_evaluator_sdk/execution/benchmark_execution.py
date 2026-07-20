@@ -69,6 +69,7 @@ from nemo_evaluator_sdk.values import (
     AggregatedMetricResult,
     AggregateFieldName,
     EvaluationResult,
+    MetricDiagnostic,
     Model,
     RowScore,
     RunConfig,
@@ -127,7 +128,10 @@ def _normalize_metric_result(metric_result: MetricResult, expected_outputs: list
     """Validate output names and normalize output ordering to the declared spec."""
     validated = validate_metric_result(metric_result, expected_outputs)
     actual_outputs = {output.name: output for output in validated.outputs}
-    return MetricResult(outputs=[actual_outputs[output.name] for output in expected_outputs])
+    return MetricResult(
+        outputs=[actual_outputs[output.name] for output in expected_outputs],
+        diagnostics=validated.diagnostics,
+    )
 
 
 def _benchmark_error_from_exception(exc: BaseException) -> EvaluationError | None:
@@ -199,6 +203,18 @@ def _metric_errors_for_ref(metric_errors: dict[str, str] | None, metric_ref: str
     if error is None:
         return None
     return {metric_ref: error}
+
+
+def _metric_diagnostics_for_ref(
+    metric_diagnostics: dict[str, list[MetricDiagnostic]] | None, metric_ref: str
+) -> dict[str, list[MetricDiagnostic]] | None:
+    """Return the metric-specific diagnostics payload for a per-metric row."""
+    if not metric_diagnostics:
+        return None
+    diagnostics = metric_diagnostics.get(metric_ref)
+    if diagnostics is None:
+        return None
+    return {metric_ref: diagnostics}
 
 
 async def _finalize_benchmark_metric_result(
@@ -440,6 +456,10 @@ async def _metric_worker(
 
         pipeline.results[event.row_index] = metric_result
         row_scores[event.row_index].metrics[pipeline.metric_ref] = metric_result.outputs
+        if metric_result.diagnostics:
+            row_diagnostics = row_scores[event.row_index].metric_diagnostics or {}
+            row_diagnostics[pipeline.metric_ref] = metric_result.diagnostics
+            row_scores[event.row_index].metric_diagnostics = row_diagnostics
         if progress is not None:
             progress.increment_work()
 
@@ -653,6 +673,7 @@ async def evaluate_benchmark(
                     *row_metric_requests[row_idx].get(pipeline.metric_ref, []),
                 ],
                 metric_errors=_metric_errors_for_ref(row.metric_errors, pipeline.metric_ref),
+                metric_diagnostics=_metric_diagnostics_for_ref(row.metric_diagnostics, pipeline.metric_ref),
             )
             for row_idx, row in enumerate(row_scores)
         ]

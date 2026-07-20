@@ -313,28 +313,28 @@ export const getExperimentGroupDetailRoute = (workspace: string, experimentGroup
   });
 };
 
-export const getExperimentDetailRoute = (
+export const getEvaluationDetailRoute = (
   workspace: string,
   experimentGroupName: string,
-  experimentName: string
+  evaluationName: string
 ) => {
-  return generatePath(ROUTES.workspace.experimentDetail, {
+  return generatePath(ROUTES.workspace.evaluationDetail, {
     workspace,
     experimentGroupName: encodeURIComponent(experimentGroupName),
-    experimentName: encodeURIComponent(experimentName),
+    evaluationName: encodeURIComponent(evaluationName),
   });
 };
 
-export const getExperimentTraceDetailRoute = (
+export const getEvaluationTraceDetailRoute = (
   workspace: string,
   experimentGroupName: string,
-  experimentName: string,
+  evaluationName: string,
   traceId: string
 ): string => {
-  return generatePath(ROUTES.workspace.experimentTraceDetail, {
+  return generatePath(ROUTES.workspace.evaluationTraceDetail, {
     workspace,
     experimentGroupName: encodeURIComponent(experimentGroupName),
-    experimentName: encodeURIComponent(experimentName),
+    evaluationName: encodeURIComponent(evaluationName),
     traceId,
   });
 };

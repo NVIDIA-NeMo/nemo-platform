@@ -33,3 +33,18 @@ platformConfig:
       backends:
         nim_operator:
           enabled: false
+  # Wire a nemo-deployments k8s executor so deployment_mode=k8s agent
+  # deployments (test_nemo_agents_k8s.py) run as real Deployment+Service
+  # workloads. default_namespace is omitted so the executor uses its own pod
+  # namespace (the Helm release namespace), landing the agent beside the platform.
+  agents:
+    deployments:
+      k8s_executor: kind-k8s
+      container_port: 8000
+  deployments:
+    default_executor: kind-k8s
+    executors:
+      - name: kind-k8s
+        backend: k8s
+        # No config needed: kubeconfig_path unset -> in-cluster ServiceAccount
+        # auth; default_namespace unset -> POD_NAMESPACE (release namespace).

@@ -62,7 +62,7 @@ class K8sDeploymentBackend(DeploymentBackend):
         self._entities = NemoEntitiesClient(AsyncEntitiesResource(self._sdk))
         logger.debug(
             "K8sDeploymentBackend initialized (default_namespace=%s)",
-            self._executor_config.default_namespace,
+            self._executor_config.effective_namespace,
         )
 
     def shutdown(self) -> None:
@@ -113,7 +113,7 @@ class K8sDeploymentBackend(DeploymentBackend):
         if config.restart_policy == "Always":
             return await deployment_ops.create_deployment(
                 self._clients,
-                default_namespace=self._executor_config.default_namespace,
+                default_namespace=self._executor_config.effective_namespace,
                 workspace=workspace,
                 name=name,
                 config_name=config_name,
@@ -124,7 +124,7 @@ class K8sDeploymentBackend(DeploymentBackend):
 
         return await job_ops.create_job(
             self._clients,
-            default_namespace=self._executor_config.default_namespace,
+            default_namespace=self._executor_config.effective_namespace,
             workspace=workspace,
             name=name,
             config_name=config_name,
@@ -151,7 +151,7 @@ class K8sDeploymentBackend(DeploymentBackend):
                 return BackendStatusUpdate(status="FAILED", status_message=str(exc))
             return await deployment_ops.read_deployment_status(
                 self._clients,
-                default_namespace=self._executor_config.default_namespace,
+                default_namespace=self._executor_config.effective_namespace,
                 workspace=workspace,
                 name=name,
                 backend_config=backend_config,
@@ -163,7 +163,7 @@ class K8sDeploymentBackend(DeploymentBackend):
 
         return await job_ops.read_job_status(
             self._clients,
-            default_namespace=self._executor_config.default_namespace,
+            default_namespace=self._executor_config.effective_namespace,
             workspace=workspace,
             name=name,
             backend_config=backend_config,
@@ -179,7 +179,7 @@ class K8sDeploymentBackend(DeploymentBackend):
             scope_labels = job_ops.deployment_scope_labels(workspace, name)
             deployment_result = await deployment_ops.delete_deployment(
                 self._clients,
-                default_namespace=self._executor_config.default_namespace,
+                default_namespace=self._executor_config.effective_namespace,
                 workspace=workspace,
                 name=name,
                 backend_config={},
@@ -187,7 +187,7 @@ class K8sDeploymentBackend(DeploymentBackend):
             )
             job_result = await job_ops.delete_job(
                 self._clients,
-                default_namespace=self._executor_config.default_namespace,
+                default_namespace=self._executor_config.effective_namespace,
                 workspace=workspace,
                 name=name,
                 backend_config={},
@@ -207,7 +207,7 @@ class K8sDeploymentBackend(DeploymentBackend):
         if config.restart_policy == "Always":
             return await deployment_ops.delete_deployment(
                 self._clients,
-                default_namespace=self._executor_config.default_namespace,
+                default_namespace=self._executor_config.effective_namespace,
                 workspace=workspace,
                 name=name,
                 backend_config=backend_config,
@@ -216,7 +216,7 @@ class K8sDeploymentBackend(DeploymentBackend):
 
         return await job_ops.delete_job(
             self._clients,
-            default_namespace=self._executor_config.default_namespace,
+            default_namespace=self._executor_config.effective_namespace,
             workspace=workspace,
             name=name,
             backend_config=backend_config,
@@ -226,11 +226,11 @@ class K8sDeploymentBackend(DeploymentBackend):
     async def list_managed_deployment_names(self) -> list[str]:
         job_names = await job_ops.list_managed_job_names(
             self._clients,
-            default_namespace=self._executor_config.default_namespace,
+            default_namespace=self._executor_config.effective_namespace,
         )
         deployment_names = await deployment_ops.list_managed_deployment_names(
             self._clients,
-            default_namespace=self._executor_config.default_namespace,
+            default_namespace=self._executor_config.effective_namespace,
         )
         return sorted(set(job_names) | set(deployment_names))
 
@@ -251,7 +251,7 @@ class K8sDeploymentBackend(DeploymentBackend):
         if config.restart_policy == "Always":
             return await deployment_ops.get_deployment_logs(
                 self._clients,
-                default_namespace=self._executor_config.default_namespace,
+                default_namespace=self._executor_config.effective_namespace,
                 workspace=workspace,
                 name=name,
                 backend_config=backend_config,
@@ -260,7 +260,7 @@ class K8sDeploymentBackend(DeploymentBackend):
 
         return await job_ops.get_job_logs(
             self._clients,
-            default_namespace=self._executor_config.default_namespace,
+            default_namespace=self._executor_config.effective_namespace,
             workspace=workspace,
             name=name,
             backend_config=backend_config,
@@ -278,7 +278,7 @@ class K8sDeploymentBackend(DeploymentBackend):
     ) -> VolumeStatusUpdate:
         return await volume_ops.create_volume(
             self._clients,
-            default_namespace=self._executor_config.default_namespace,
+            default_namespace=self._executor_config.effective_namespace,
             workspace=workspace,
             name=name,
             size=size,
@@ -295,7 +295,7 @@ class K8sDeploymentBackend(DeploymentBackend):
     ) -> VolumeStatusUpdate:
         return await volume_ops.read_volume_status(
             self._clients,
-            default_namespace=self._executor_config.default_namespace,
+            default_namespace=self._executor_config.effective_namespace,
             workspace=workspace,
             name=name,
             backend_config=backend_config,
@@ -310,7 +310,7 @@ class K8sDeploymentBackend(DeploymentBackend):
     ) -> VolumeStatusUpdate:
         return await volume_ops.delete_volume(
             self._clients,
-            default_namespace=self._executor_config.default_namespace,
+            default_namespace=self._executor_config.effective_namespace,
             workspace=workspace,
             name=name,
             backend_config=backend_config,

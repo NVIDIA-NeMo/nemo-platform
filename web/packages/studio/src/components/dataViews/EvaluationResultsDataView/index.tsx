@@ -36,7 +36,7 @@ export const EvaluationResultsDataView = () => {
   const navigate = useNavigate();
 
   const dataViewState = useStudioDataViewState<EvaluateJobsListFilter>({
-    defaultSort: { id: 'created_at', desc: true },
+    defaultSort: [{ id: 'created_at', desc: true }],
   });
 
   const {

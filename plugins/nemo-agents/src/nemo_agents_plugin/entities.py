@@ -52,18 +52,19 @@ class Endpoint(BaseModel):
 # Canonical spec storage convention
 # ---------------------------------------------------------------------------
 #
-# Each agent has exactly one spec, named by convention. We do **not** store
-# the spec location on the agent — it is fully derivable from the agent's
-# workspace and name. The convention is enforced by the nemo-spec and
-# nemo-build-agent skills; consumers (analyst agent, Studio, optimization
-# loop) should call :func:`agent_spec_file_ref` rather than reconstruct the
-# path inline.
+# Each agent has exactly one spec fileset, named by convention. The fileset can
+# hold both the human-readable agent spec and the machine-readable agent config.
+# We do **not** store these locations on the agent - they are fully derivable
+# from the agent's workspace and name. Consumers should call the file-ref
+# helpers below rather than reconstructing refs inline.
 #
 # Layout:
 #   - Fileset (entity ref):  ``{workspace}/{agent-name}-spec``
-#   - File inside fileset:   ``AGENT-SPEC.md`` (industry-standard name)
-#   - Full file ref:         ``{workspace}/{agent-name}-spec#AGENT-SPEC.md``
-#   - Local cache:           ``agents/{agent-name}-spec/AGENT-SPEC.md``
+#   - Human-readable spec:   ``AGENT-SPEC.md`` (industry-standard name)
+#   - Machine-readable cfg:  ``agent.yaml``
+#   - Spec file ref:         ``{workspace}/{agent-name}-spec#AGENT-SPEC.md``
+#   - Config file ref:       ``{workspace}/{agent-name}-spec#agent.yaml``
+#   - Local cache root:      ``agents/{agent-name}-spec/``
 #
 # This is intentionally **not** an Optional field on the Agent. The
 # relationship is 1:1 and convention-bound; carrying a stored ref would
@@ -73,9 +74,20 @@ class Endpoint(BaseModel):
 AGENT_SPEC_FILENAME = "AGENT-SPEC.md"
 """Canonical filename inside the agent's spec fileset."""
 
+AGENT_CONFIG_FILENAME = "agent.yaml"
+"""Canonical machine-readable agent config filename in the agent spec fileset.
+
+This file is parsed into Agent.config when using the nemo-agents-spec-v1 format.
+"""
 
 AGENT_SPEC_LOCAL_ROOT = "agents"
 """Local directory holding agent build artifacts."""
+
+NAT_WORKFLOW_CONFIG_FORMAT = "nat-workflow-v1"
+"""Canonical format tag for the legacy NAT workflow config format."""
+
+NEMO_AGENTS_SPEC_CONFIG_FORMAT = "nemo-agents-spec-v1"
+"""Canonical format tag for the Platform-owned agent.yaml spec format."""
 
 
 def agent_spec_fileset_name(agent_name: str) -> str:
@@ -91,7 +103,7 @@ def agent_spec_local_path(agent_name: str, root: str | Path = AGENT_SPEC_LOCAL_R
 def agent_spec_file_ref(workspace: str, agent_name: str) -> FilesetRef:
     """Return the canonical file ref ``workspace/<name>-spec#AGENT-SPEC.md``.
 
-    Use this anywhere downstream code needs to point at an agent's spec —
+    Use this anywhere downstream code needs to point at an agent's spec -
     do not reconstruct the path inline. If the layout ever changes (e.g.
     moving to a per-agent bundle fileset holding multiple artifacts), this
     is the only function that needs to update.
@@ -99,28 +111,42 @@ def agent_spec_file_ref(workspace: str, agent_name: str) -> FilesetRef:
     return FilesetRef(f"{workspace}/{agent_spec_fileset_name(agent_name)}#{AGENT_SPEC_FILENAME}")
 
 
+def agent_config_file_ref(workspace: str, agent_name: str) -> FilesetRef:
+    """Return the canonical file ref ``workspace/<name>-spec#agent.yaml``.
+
+    Use this anywhere downstream code needs to point at an agent's config -
+    do not reconstruct the path inline. If the layout ever changes (e.g.
+    moving to a per-agent bundle fileset holding multiple artifacts), this
+    is the only function that needs to update.
+    """
+    return FilesetRef(f"{workspace}/{agent_spec_fileset_name(agent_name)}#{AGENT_CONFIG_FILENAME}")
+
+
+# TODO: RFC-122 will add specs for environment, sandbox, and harness. Add those
+# specs to this object once finalized.
 class Agent(NemoEntity, entity_type="agent"):
-    """An agent definition — stores the NAT workflow config and metadata.
+    """An agent definition — stores agent config and metadata.
 
     Entity type: ``agent``
     Primary lookup: by ``name`` within a ``workspace``.
 
-    The agent's spec lives at the location returned by
-    :func:`agent_spec_file_ref` — it is **not** stored on the entity
-    because the path is fully derivable from ``(workspace, name)``.
+    The agent's spec files live at the locations returned by
+    :func:`agent_spec_file_ref` and :func:`agent_config_file_ref` — they
+    are **not** stored on the entity because the paths are fully derivable
+    from ``(workspace, name)``.
     """
 
     description: str = Field(default="", description="Human-readable description of the agent.")
     config: dict[str, Any] = Field(
         default_factory=dict,
-        description="NAT workflow config (YAML-equivalent dict, keyed by component name).",
+        description="Agent config dict interpreted according to config_format.",
     )
     config_format: str = Field(
-        default="nat-workflow-v1",
+        default=NAT_WORKFLOW_CONFIG_FORMAT,
         description=(
-            "platform-internal schema version tag for the agent config dict.  "
-            "Not read or validated by NAT — used by NeMo Platform for future config migration.  "
-            "Currently only 'nat-workflow-v1' is supported."
+            "platform-internal schema version tag for the agent config dict. "
+            "`nat-workflow-v1` is the default legacy NAT workflow format; "
+            "`nemo-agents-spec-v1` identifies the Platform-owned agent.yaml spec format."
         ),
     )
 

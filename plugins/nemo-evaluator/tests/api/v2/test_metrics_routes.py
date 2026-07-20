@@ -23,6 +23,7 @@ from nemo_evaluator.api.v2 import metrics as metrics_routes
 from nemo_evaluator.entities import MetricBundleEntity
 from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
+from nemo_evaluator.shared.metric_bundles.inline import InlineMetricBundlePackager
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_platform_plugin.entities import (
     EntityConflictError,
@@ -132,6 +133,16 @@ def test_create_then_get(client: TestClient) -> None:
 def test_create_duplicate_returns_409(client: TestClient) -> None:
     assert client.post(f"{_BASE}/exact", json=_create_body()).status_code == 201
     assert client.post(f"{_BASE}/exact", json=_create_body()).status_code == 409
+
+
+def test_create_invalid_inline_metric_returns_422(client: TestClient) -> None:
+    metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
+    body = MetricInline.model_validate(
+        bundle_metric(metric, InlineMetricBundlePackager()).model_dump(mode="json")
+    ).model_dump(mode="json")
+    body["payload"]["metric"].pop("type")
+
+    assert client.post(f"{_BASE}/invalid", json=body).status_code == 422
 
 
 def test_get_missing_returns_404(client: TestClient) -> None:

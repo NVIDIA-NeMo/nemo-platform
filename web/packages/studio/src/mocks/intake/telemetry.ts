@@ -21,6 +21,8 @@ const trace1: Trace = {
   session_id: 'session-agent-run-001',
   workspace: 'default',
   name: 'Answer customer policy question',
+  input: 'Can I deploy this model in a private workspace?',
+  output: 'Yes. Use a private workspace and restrict access through workspace membership.',
   started_at: '2026-05-20T16:42:00Z',
   ended_at: '2026-05-20T16:42:12Z',
   duration_ms: 12_230,
@@ -32,6 +34,10 @@ const trace1: Trace = {
   cost_usd: 0.0032,
   span_count: 4,
   error_count: 0,
+  evaluation_context: {
+    evaluation_id: 'support-policy-smoke',
+    test_case_id: 'case-0042',
+  },
   experiment_context: {
     experiment_id: 'support-policy-smoke',
     test_case_id: 'case-0042',
@@ -44,6 +50,8 @@ const trace2: Trace = {
   session_id: 'session-agent-run-002',
   workspace: 'default',
   name: 'Retrieve deployment troubleshooting steps',
+  input: 'Why did my deployment fail?',
+  output: 'The knowledge base lookup timed out before troubleshooting steps were retrieved.',
   started_at: '2026-05-20T15:11:00Z',
   ended_at: '2026-05-20T15:11:07Z',
   duration_ms: 7240,

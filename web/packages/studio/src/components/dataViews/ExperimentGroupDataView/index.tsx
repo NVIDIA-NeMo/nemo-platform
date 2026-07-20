@@ -15,30 +15,30 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { formatDurationMs } from '@nemo/common/src/utils/date';
 import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import type {
-  ExperimentFilter,
+  EvaluationFilter,
   ExperimentGroupResponse,
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/ExperimentGroupDataView/Empty';
 import { MeanValueTooltipCell } from '@studio/components/dataViews/ExperimentGroupDataView/MeanValueTooltipCell';
 import {
-  type ExperimentRow,
-  type ListExperimentsSortParam,
-  useExperimentGroupExperiments,
-} from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupExperiments';
+  type EvaluationRow,
+  type ListEvaluationsSortParam,
+  useExperimentGroupEvaluations,
+} from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupEvaluations';
 import { useSortErrorRecovery } from '@studio/components/dataViews/ExperimentGroupDataView/useSortErrorRecovery';
 import { deriveEvaluatorNames } from '@studio/components/dataViews/ExperimentGroupDataView/util';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { getExperimentDetailRoute } from '@studio/routes/utils';
+import { getEvaluationDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { Columns3, Pin } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-export type { ExperimentRow };
+export type { EvaluationRow };
 
-const DEFAULT_SORT: ListExperimentsSortParam = '-created_at';
+const DEFAULT_SORT: ListEvaluationsSortParam = '-created_at';
 
 // Maps sortable static column ids to their API sort fields.
 const STATIC_SORT_FIELD_MAP: Readonly<Record<string, string>> = {
@@ -46,32 +46,45 @@ const STATIC_SORT_FIELD_MAP: Readonly<Record<string, string>> = {
   created_at: 'created_at',
   cost_usd: 'cost_usd.mean',
   latency_ms: 'latency_ms.mean',
-  run_count: 'run_count',
+  test_case_count: 'test_case_count',
 };
 
 // Resolves a group's default_sort (a `sort`-param string like `-cost_usd.mean` or `-created_at`) to
 // the table's initial sort so the matching column header shows the sort on load. Entity columns map
 // by exact id; metric columns match on the family (any stat) since the column always sorts on `.mean`.
+// Maps one API sort field to its table column id: entity columns by exact id; metric columns by
+// family (any stat) since the column always sorts on `.mean`.
+const sortFieldToColumnId = (field: string): string | undefined => {
+  if (field === 'name' || field === 'created_at' || field === 'test_case_count') return field;
+  if (field.startsWith('cost_usd.')) return 'cost_usd';
+  if (field.startsWith('latency_ms.')) return 'latency_ms';
+  const evaluatorMatch = field.match(/^evaluators\.(.+)\.[^.]+$/);
+  if (evaluatorMatch) return `evaluator-${evaluatorMatch[1]}`;
+  return undefined;
+};
+
+// Seeds the table's (multi-column) initial sort from the group's default_sort — a comma-separated,
+// ordered list of API sort fields — so the column headers reflect the saved order on load.
 const seedSortFromDefault = (
   defaultSort: string | null | undefined
-): { id: string; desc: boolean } | undefined => {
+): { id: string; desc: boolean }[] | undefined => {
   if (!defaultSort) return undefined;
-  const desc = defaultSort.startsWith('-');
-  const field = desc ? defaultSort.slice(1) : defaultSort;
-  let id: string | undefined;
-  if (field === 'name' || field === 'created_at' || field === 'run_count') id = field;
-  else if (field.startsWith('cost_usd.')) id = 'cost_usd';
-  else if (field.startsWith('latency_ms.')) id = 'latency_ms';
-  else {
-    const evaluatorMatch = field.match(/^evaluators\.(.+)\.[^.]+$/);
-    if (evaluatorMatch) id = `evaluator-${evaluatorMatch[1]}`;
-  }
-  return id ? { id, desc } : undefined;
+  const entries = defaultSort
+    .split(',')
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .map((token) => {
+      const desc = token.startsWith('-');
+      const id = sortFieldToColumnId(desc ? token.slice(1) : token);
+      return id ? { id, desc } : undefined;
+    })
+    .filter((entry): entry is { id: string; desc: boolean } => entry !== undefined);
+  return entries.length ? entries : undefined;
 };
 
 // Maps a filter column id to its dotted API rollup-stat field (required by the backend parser).
-// Evaluator ids are dynamic, so derive `evaluators.<name>.mean` here, like getExperimentSortParam.
-const getExperimentFilterField = (id: string): string | undefined => {
+// Evaluator ids are dynamic, so derive `evaluators.<name>.mean` here, like getEvaluationSortParam.
+const getEvaluationFilterField = (id: string): string | undefined => {
   if (id === 'cost_usd') return 'cost_usd.mean';
   if (id === 'latency_ms') return 'latency_ms.mean';
   const evaluatorMatch = id.match(/^evaluator-(.+)$/);
@@ -79,21 +92,32 @@ const getExperimentFilterField = (id: string): string | undefined => {
   return undefined;
 };
 
-const getExperimentSortParam = (
-  sortingState: { id: string; desc: boolean }[]
-): ListExperimentsSortParam | undefined => {
-  const [first] = sortingState;
-  // No column sort -> omit `sort`; the API then defaults to -created_at with pinned first.
-  if (!first) return undefined;
-  let field = STATIC_SORT_FIELD_MAP[first.id];
+// Resolves one sorting-state entry to its API sort field (with '-' prefix for descending), or
+// undefined when the column has no corresponding API sort field.
+const resolveEvaluationSortField = (entry: { id: string; desc: boolean }): string | undefined => {
+  let field = STATIC_SORT_FIELD_MAP[entry.id];
   if (!field) {
     // Evaluator columns use id `evaluator-<name>` so the API field can be derived without
     // a separate lookup into evaluatorNames (which would create a circular dependency).
-    const evaluatorMatch = first.id.match(/^evaluator-(.+)$/);
+    const evaluatorMatch = entry.id.match(/^evaluator-(.+)$/);
     if (evaluatorMatch) field = `evaluators.${evaluatorMatch[1]}.mean`;
   }
-  if (!field) return DEFAULT_SORT;
-  return `${first.desc ? '-' : ''}${field}` as ListExperimentsSortParam;
+  if (!field) return undefined;
+  return `${entry.desc ? '-' : ''}${field}`;
+};
+
+// Emits the API `sort` param from the table's (multi-column) sorting state: a comma-separated,
+// ordered list of fields — the first sorted column dominates, matching the API's key precedence.
+const getEvaluationSortParam = (
+  sortingState: { id: string; desc: boolean }[]
+): ListEvaluationsSortParam | undefined => {
+  // No column sort -> omit `sort`; the API then defaults to -created_at with pinned first.
+  if (sortingState.length === 0) return undefined;
+  const fields = sortingState
+    .map(resolveEvaluationSortField)
+    .filter((field): field is string => field !== undefined);
+  if (fields.length === 0) return DEFAULT_SORT;
+  return fields.join(',') as ListEvaluationsSortParam;
 };
 
 interface ExperimentGroupDataViewProps {
@@ -130,12 +154,14 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
   // reference is stable across renders (until default_sort changes).
   const defaultSort = useMemo(() => seedSortFromDefault(group.default_sort), [group.default_sort]);
 
-  const dataViewState = useStudioDataViewState<ExperimentFilter>({
+  const dataViewState = useStudioDataViewState<EvaluationFilter>({
     defaultSort,
+    // The evaluations leaderboard supports multi-column sort (shift-click) — score vs. cost etc.
+    multiSort: true,
     columnVisibility: { created_by: false, updated_at: false },
     // Keep the pin toggle reachable while horizontally scrolling this wide table.
     columnPinning: { left: ['pin'] },
-    filterFieldMap: getExperimentFilterField,
+    filterFieldMap: getEvaluationFilterField,
     columnOrder: savedColumnOrder ?? [],
   });
 
@@ -147,7 +173,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
 
   const page = dataViewState.pagination.state.pageIndex + 1;
   const pageSize = dataViewState.pagination.state.pageSize;
-  const sortParam = getExperimentSortParam(dataViewState.sorting.state);
+  const sortParam = getEvaluationSortParam(dataViewState.sorting.state);
 
   const {
     rows: orderedData,
@@ -156,7 +182,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
     error,
     isLoading,
     isSuccess,
-  } = useExperimentGroupExperiments({
+  } = useExperimentGroupEvaluations({
     workspace,
     experimentGroupId,
     filter: dataViewState.apiFilter.filter,
@@ -197,7 +223,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
   );
 
   const makeColumns = useCallback<
-    ComponentProps<typeof DataViewRoot<ExperimentRow>>['makeColumns']
+    ComponentProps<typeof DataViewRoot<EvaluationRow>>['makeColumns']
   >(
     ({ accessor, display }) => [
       display({
@@ -227,7 +253,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
                 kind="tertiary"
                 color="neutral"
                 size="small"
-                aria-label={isPinned ? 'Unpin experiment' : 'Pin experiment'}
+                aria-label={isPinned ? 'Unpin evaluation' : 'Pin evaluation'}
                 aria-pressed={isPinned}
                 onClick={() => togglePin(row.original)}
               >
@@ -348,7 +374,6 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
             return (
               <MeanValueTooltipCell
                 label={title}
-                runNoun="scored run"
                 count={score?.count}
                 runCount={row.original.run_count}
               >
@@ -366,12 +391,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
         cell: ({ row }) => {
           const { cost_usd, run_count } = row.original;
           return (
-            <MeanValueTooltipCell
-              label="cost"
-              runNoun="run"
-              count={cost_usd?.count}
-              runCount={run_count}
-            >
+            <MeanValueTooltipCell label="cost" count={cost_usd?.count} runCount={run_count}>
               {cost_usd?.mean != null ? `$${cost_usd.mean.toFixed(3)}` : '-'}
             </MeanValueTooltipCell>
           );
@@ -385,23 +405,17 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
         cell: ({ row }) => {
           const { latency_ms, run_count } = row.original;
           return (
-            <MeanValueTooltipCell
-              label="latency"
-              runNoun="run"
-              count={latency_ms?.count}
-              runCount={run_count}
-            >
+            <MeanValueTooltipCell label="latency" count={latency_ms?.count} runCount={run_count}>
               {latency_ms?.mean != null ? formatDurationMs(latency_ms.mean) : '-'}
             </MeanValueTooltipCell>
           );
         },
       }),
-      accessor((original) => original.run_count, {
-        id: 'run_count',
-        header: 'Run Count',
+      accessor((original) => original.test_case_count, {
+        id: 'test_case_count',
+        header: 'Total test cases',
         enableSorting: true,
-        meta: { filter: numberRangeFilter('Run Count') },
-        cell: ({ row }) => <Text>{String(row.original.run_count ?? 0)}</Text>,
+        cell: ({ row }) => <Text>{String(row.original.test_case_count ?? 0)}</Text>,
       }),
       accessor('created_at', {
         header: 'Created',
@@ -441,7 +455,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
       makeColumns={makeColumns}
       searchField="name"
       onRowClick={(row) =>
-        navigate(getExperimentDetailRoute(workspace, experimentGroupName, row.name))
+        navigate(getEvaluationDetailRoute(workspace, experimentGroupName, row.name))
       }
       toolbarSlotEnd={
         <EditColumnsMenu

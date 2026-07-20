@@ -31,19 +31,9 @@ vi.mock('@nemo/common/src/components/Dial', () => ({
   ),
 }));
 
-// Mock lucide-react icons (React 19: ref is a plain prop, no forwardRef needed).
-// Spread the real module so other icons used by rendered children (e.g. the
-// DataView SearchBar's `Search`) keep working, and only stub the asserted ones.
-vi.mock('lucide-react', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('lucide-react')>()),
-  CircleCheck: ({ className, ref }: { className?: string; ref?: React.Ref<SVGSVGElement> }) => (
-    <svg ref={ref} data-testid="check-circle-icon" className={className} />
-  ),
-  Ban: ({ ref }: { ref?: React.Ref<SVGSVGElement> }) => <svg ref={ref} data-testid="cancel-icon" />,
-  Info: ({ className, ref }: { className?: string; ref?: React.Ref<SVGSVGElement> }) => (
-    <svg ref={ref} data-testid="info-circle-icon" className={className} />
-  ),
-}));
+vi.mock('lucide-react', async () => {
+  return (await import('@nemo/testing/mocks/lucide')).mockLucideReact(await import('react'));
+});
 
 // Mock the ScrollTable component
 /* eslint-disable testing-library/no-node-access */
@@ -354,8 +344,8 @@ describe('DataPrivacyPanel', () => {
         { wrapper: createWrapper() }
       );
 
-      const checkIcons = screen.getAllByTestId('check-circle-icon');
-      const cancelIcons = screen.getAllByTestId('cancel-icon');
+      const checkIcons = screen.getAllByTestId('circle-check-icon');
+      const cancelIcons = screen.getAllByTestId('ban-icon');
 
       expect(checkIcons).toHaveLength(2);
       expect(cancelIcons).toHaveLength(2);

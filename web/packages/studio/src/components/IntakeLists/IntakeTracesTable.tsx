@@ -18,6 +18,7 @@ import {
   type StartedAtFilterEntry,
   useSeededStartedAtFilter,
 } from '@studio/components/IntakeLists/defaultStartedAtFilter';
+import { IntakePayloadPreviewCell } from '@studio/components/IntakeLists/IntakePayloadPreviewCell';
 import { IntakeTelemetryDataView } from '@studio/components/IntakeLists/IntakeTelemetryDataView';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
 import { getIntakeTraceRoute } from '@studio/routes/utils';
@@ -66,7 +67,7 @@ const SeededIntakeTracesTable: FC<
   const requestWorkspace = workspace ?? '';
 
   const dataViewState = useStudioDataViewState({
-    defaultSort: { id: 'started_at', desc: true },
+    defaultSort: [{ id: 'started_at', desc: true }],
   });
 
   // The seeded started_at default doesn't count as user filtering: an empty
@@ -83,7 +84,7 @@ const SeededIntakeTracesTable: FC<
     requestWorkspace,
     {
       filter: (dataViewState.apiFilter.filter ?? {}) as TraceFilter,
-      mode: 'detailed',
+      mode: 'preview',
       page: dataViewState.pagination.state.pageIndex + 1,
       page_size: dataViewState.pagination.state.pageSize,
       sort: getSortParamWithWhitelist(
@@ -120,6 +121,20 @@ const SeededIntakeTracesTable: FC<
         const label = getTraceDisplayName(trace);
         return label;
       },
+    }),
+    accessor('input', {
+      id: 'input',
+      header: 'Input',
+      size: 360,
+      enableSorting: false,
+      cell: ({ row }) => <IntakePayloadPreviewCell value={row.original.input} />,
+    }),
+    accessor('output', {
+      id: 'output',
+      header: 'Output',
+      size: 360,
+      enableSorting: false,
+      cell: ({ row }) => <IntakePayloadPreviewCell value={row.original.output} />,
     }),
     {
       id: 'duration_ms',

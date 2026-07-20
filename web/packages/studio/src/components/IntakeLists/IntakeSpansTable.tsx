@@ -24,6 +24,7 @@ import {
   type StartedAtFilterEntry,
   useSeededStartedAtFilter,
 } from '@studio/components/IntakeLists/defaultStartedAtFilter';
+import { IntakePayloadPreviewCell } from '@studio/components/IntakeLists/IntakePayloadPreviewCell';
 import { IntakeTelemetryDataView } from '@studio/components/IntakeLists/IntakeTelemetryDataView';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
 import { getIntakeTraceSpanRoute } from '@studio/routes/utils';
@@ -107,7 +108,7 @@ export interface IntakeSpansTableProps {
   slotEndPortalTargetId?: string;
   fixedFilter?: SpanFilter;
   mode?: ListSpansMode;
-  defaultSort?: { id: string; desc: boolean };
+  defaultSort?: { id: string; desc: boolean }[];
   defaultPageSize?: number;
   showTraceColumn?: boolean;
   showHierarchy?: boolean;
@@ -139,8 +140,8 @@ const SeededIntakeSpansTable: FC<
   workspace: workspaceProp,
   slotEndPortalTargetId,
   fixedFilter,
-  mode = 'summary',
-  defaultSort = { id: 'started_at', desc: true },
+  mode = 'preview',
+  defaultSort = [{ id: 'started_at', desc: true }],
   defaultPageSize,
   showTraceColumn = true,
   showHierarchy = false,
@@ -257,6 +258,24 @@ const SeededIntakeSpansTable: FC<
           const depth = showHierarchy ? span.hierarchyDepth : 0;
           return <SpanNameCell span={span} depth={depth} showHierarchy={showHierarchy} />;
         },
+      }),
+      accessor('input', {
+        id: 'input',
+        header: 'Input',
+        size: 360,
+        enableSorting: false,
+        cell: ({ row }: { row: SpanRow }) => (
+          <IntakePayloadPreviewCell value={row.original.input} />
+        ),
+      }),
+      accessor('output', {
+        id: 'output',
+        header: 'Output',
+        size: 360,
+        enableSorting: false,
+        cell: ({ row }: { row: SpanRow }) => (
+          <IntakePayloadPreviewCell value={row.original.output} />
+        ),
       }),
       {
         id: 'subject',

@@ -6,8 +6,8 @@
 Pin the contract the customization-router hub depends on:
 
 - ``name`` and ``dependencies`` (used by the hub's dep merger).
-- ``get_routers`` returns the healthz + jobs routers under the right prefix,
-  with ``@path_rule`` authz stamped on the generated job routes (the platform
+- ``get_routers`` returns the jobs router under the right prefix, with
+  ``@path_rule`` authz stamped on the generated job routes (the platform
   derives the policy from those rules — there is no ``get_authz_contribution``).
 - ``get_cli`` exposes ``run`` / ``submit`` / ``explain`` and the submit
   group accepts the ``JOB_JSON`` positional. ``run`` hard-fails.
@@ -74,15 +74,16 @@ class TestAuthz:
 
 
 class TestRouters:
-    def test_returns_two_router_specs(self, contributor: object) -> None:
+    def test_returns_jobs_router_spec(self, contributor: object) -> None:
         specs = ()
         try:
             specs = contributor.get_routers()
         except ImportError as exc:
             pytest.skip(f"router deps unavailable in this env: {exc}")
-        assert len(specs) == 2
+        # Only the jobs router — health lives on the customization router hub,
+        # not per contributor.
+        assert len(specs) == 1
         prefixes = {s.prefix for s in specs}
-        assert "/v2/workspaces/{workspace}/unsloth" in prefixes
         # The jobs router is mounted at the workspace prefix; add_job_routes
         # adds the /unsloth/jobs suffix internally based on
         # UnslothJob.job_collection_path.

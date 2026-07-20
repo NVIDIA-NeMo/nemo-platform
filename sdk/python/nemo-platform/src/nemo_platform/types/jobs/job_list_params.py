@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing_extensions import TypedDict
 
-from .platform_job_sort_field import PlatformJobSortField
+from .platform_job_list_sort_field import PlatformJobListSortField
 from .platform_jobs_list_filter_param import PlatformJobsListFilterParam
 
 __all__ = ["JobListParams"]
@@ -40,7 +40,7 @@ class JobListParams(TypedDict, total=False):
     page_size: int
     """Page size."""
 
-    sort: PlatformJobSortField
+    sort: PlatformJobListSortField
     """The field to sort by.
 
     To sort in decreasing order, use `-` in front of the field name.

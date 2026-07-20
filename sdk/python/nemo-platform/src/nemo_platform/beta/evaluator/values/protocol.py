@@ -160,12 +160,35 @@ class MetricOutput(BaseModel):
         return value
 
 
+class MetricDiagnostic(BaseModel):
+    """One diagnostic finding explaining how a metric score was derived.
+
+    ``message`` is the human-readable entry point. Metric-specific structured
+    context (expected/actual values, diffs, check breakdowns, judge rationales,
+    etc.) belongs in ``details``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    message: str = Field(description="Human-readable diagnostic message.")
+    details: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional metric-specific structured context for debugging and inspection.",
+    )
+
+
 class MetricResult(BaseModel):
     """Structured row-level metric result."""
 
     model_config = ConfigDict(extra="forbid")
 
     outputs: list[MetricOutput]
+    diagnostics: list[MetricDiagnostic] = Field(
+        default_factory=list,
+        description=(
+            "Optional diagnostic findings that explain how the result was derived. For debugging and inspection only."
+        ),
+    )
 
 
 def validate_metric_result(result: MetricResult, outputs: list[MetricOutputSpec]) -> MetricResult:

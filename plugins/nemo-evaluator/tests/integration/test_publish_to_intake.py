@@ -178,7 +178,7 @@ async def test_publish_to_intake_round_trip(platform_base_url: str) -> None:
         group = await client.experiment_groups.create(
             workspace=WORKSPACE, name=GROUP_NAME, description="Intake IT", exist_ok=True
         )
-        await client.experiments.create(
+        await client.evaluations.create(
             workspace=WORKSPACE,
             name=EXPERIMENT_NAME,
             experiment_group_id=group.id,
@@ -208,9 +208,9 @@ async def test_publish_to_intake_round_trip(platform_base_url: str) -> None:
         trace = traces[0]
         assert trace.session_id == t1.session_id
         assert trace.root_span_id == t1.span_id
-        assert trace.experiment_context is not None
-        assert trace.experiment_context.experiment_id == EXPERIMENT_NAME
-        assert trace.experiment_context.test_case_id == "task-1"
+        assert trace.evaluation_context is not None
+        assert trace.evaluation_context.evaluation_id == EXPERIMENT_NAME
+        assert trace.evaluation_context.test_case_id == "task-1"
 
         # --- trial-1 scores: every field, every data_type coercion.
         rows = await client.intake.spans.evaluator_results.list(t1.span_id, workspace=WORKSPACE)
@@ -275,7 +275,7 @@ async def test_publish_skips_nan_and_failed_scores(platform_base_url: str) -> No
     # should reach Intake. Only the finite, completed output should be stored.
     async with AsyncNeMoPlatform(base_url=platform_base_url, max_retries=2) as client:
         group = await client.experiment_groups.create(workspace=WORKSPACE, name=GROUP_NAME, exist_ok=True)
-        await client.experiments.create(
+        await client.evaluations.create(
             workspace=WORKSPACE,
             name=NAN_EXPERIMENT_NAME,
             experiment_group_id=group.id,

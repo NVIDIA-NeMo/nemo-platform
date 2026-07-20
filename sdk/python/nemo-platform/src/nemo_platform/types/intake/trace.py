@@ -20,6 +20,7 @@ from datetime import datetime
 
 from ..._models import BaseModel
 from .span_status import SpanStatus
+from .evaluation_context import EvaluationContext
 from .experiment_context import ExperimentContext
 
 __all__ = ["Trace"]
@@ -50,15 +51,35 @@ class Trace(BaseModel):
 
     error_count: Optional[int] = None
 
+    evaluation_context: Optional[EvaluationContext] = None
+    """Evaluation context accepted by ingest endpoints (the canonical shape).
+
+    `extra="ignore"` so a producer still sending retired keys (evaluation_sha,
+    evaluation_run_id, metadata) keeps ingesting without error rather than being
+    rejected.
+    """
+
     experiment_context: Optional[ExperimentContext] = None
     """Deprecated alias for :class:`EvaluationContext`.
 
     Producers should send `evaluation_context`.
     """
 
+    input: Optional[str] = None
+    """Root-span input text.
+
+    Omitted in summary mode and truncated to 300 characters in preview mode.
+    """
+
     input_tokens: Optional[int] = None
 
     name: Optional[str] = None
+
+    output: Optional[str] = None
+    """Root-span output text.
+
+    Omitted in summary mode and truncated to 300 characters in preview mode.
+    """
 
     output_tokens: Optional[int] = None
 

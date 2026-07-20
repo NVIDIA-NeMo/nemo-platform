@@ -5,7 +5,7 @@
 
 import pytest
 from fastapi.testclient import TestClient
-from nmp.intake.api.v2.experiments.endpoints import get_experiment_rollup_repository
+from nmp.intake.api.v2.experiments.endpoints import get_evaluation_rollup_repository
 from nmp.intake.service import IntakeService
 from nmp.testing import create_test_client
 
@@ -16,6 +16,6 @@ def client():
     with create_test_client(
         IntakeService,
         client_type=TestClient,
-        dependency_overrides={get_experiment_rollup_repository: lambda: None},
+        dependency_overrides={get_evaluation_rollup_repository: lambda: None},
     ) as tc:
         yield tc

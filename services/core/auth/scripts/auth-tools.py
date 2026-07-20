@@ -352,6 +352,11 @@ def infer_permissions(path: str, method: str) -> List[str]:
 
     permission_prefix = f"{resource}.{sub_resource}" if sub_resource else resource
 
+    # pin/unpin mutate an existing resource in place; both belong under `update`, not the default
+    # post→create / delete→delete verb mapping.
+    if path.endswith("/pin"):
+        return [f"{permission_prefix}.update"]
+
     # Map HTTP methods to permissions
     method_to_permission = {
         "get": "list" if path.endswith(resource) or path.endswith(f"{resource}s") else "read",

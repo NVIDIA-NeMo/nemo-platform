@@ -11,7 +11,7 @@ from typing import Any
 
 from nmp.common.api.common import PaginatedResult
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
-from nmp.intake.spans.domain import IntakeSpan, SpanGroup, SpanListFilter
+from nmp.intake.spans.domain import IntakeResponseMode, IntakeSpan, SpanGroup, SpanListFilter
 from nmp.intake.spans.span_attribute_catalog import where_clause
 from nmp.intake.spans.storage import (
     dict_to_row,
@@ -19,6 +19,8 @@ from nmp.intake.spans.storage import (
     normalize_span_kind,
     normalize_span_status,
     result_rows,
+    text_query_parameters,
+    text_select_for_mode,
 )
 
 SPAN_COLUMNS = [
@@ -78,6 +80,7 @@ class SpanRepository:
         page: int,
         page_size: int,
         sort: str,
+        mode: IntakeResponseMode,
     ) -> PaginatedResult[IntakeSpan]:
         where_sql, parameters = _span_where(filters)
         table = self._client.table("spans")
@@ -86,7 +89,13 @@ class SpanRepository:
         )
         total_results = int(total_result.result_rows[0][0])
         offset = (page - 1) * page_size
-        columns_sql = ", ".join(SPAN_COLUMNS)
+        columns_sql = _span_select_columns(mode=mode)
+        rows_parameters: dict[str, Any] = {
+            **parameters,
+            **text_query_parameters(mode),
+            "limit": page_size,
+            "offset": offset,
+        }
         rows_result = await self._client.query(
             f"""
             SELECT {columns_sql}
@@ -95,7 +104,7 @@ class SpanRepository:
             ORDER BY {_order_by(sort)}
             LIMIT %(limit)s OFFSET %(offset)s
             """,
-            parameters={**parameters, "limit": page_size, "offset": offset},
+            parameters=rows_parameters,
         )
         rows = result_rows(rows_result)
         spans = _rows_to_spans(rows)
@@ -171,6 +180,16 @@ class SpanRepository:
         if not rows:
             return None
         return _row_to_span(rows[0])
+
+
+def _span_select_columns(*, mode: IntakeResponseMode) -> str:
+    columns = []
+    for column in SPAN_COLUMNS:
+        if column not in {"input", "output"}:
+            columns.append(column)
+        else:
+            columns.append(text_select_for_mode(column, alias=column, mode=mode))
+    return ", ".join(columns)
 
 
 def _span_where(filters: SpanListFilter) -> tuple[str, dict[str, Any]]:

@@ -137,18 +137,21 @@ authz:
           description: "Read intake experiment groups"
         update:
           description: "Update intake experiment groups"
-      experiments:
+      evaluations:
         create:
-          description: "Create intake experiments"
+          description: "Create intake evaluations"
         delete:
-          description: "Delete intake experiments"
+          description: "Delete intake evaluations"
         read:
-          description: "Read intake experiments"
+          description: "Read intake evaluations"
         update:
-          description: "Update intake experiments"
+          description: "Update intake evaluations"
       ingest:
         create:
           description: "Ingest traces into intake"
+      sessions:
+        read:
+          description: "Read intake sessions"
       spans:
         list:
           description: "List intake spans"
@@ -302,10 +305,11 @@ authz:
       - inference.virtual-models.read
       - intake.annotations.list
       - intake.annotations.read
+      - intake.evaluations.read
       - intake.evaluator-results.list
       - intake.evaluator-results.read
       - intake.experiment-groups.read
-      - intake.experiments.read
+      - intake.sessions.read
       - intake.spans.list
       - intake.spans.read
       - intake.traces.read
@@ -349,13 +353,13 @@ authz:
       - inference.virtual-models.update
       - intake.annotations.create
       - intake.annotations.delete
+      - intake.evaluations.create
+      - intake.evaluations.delete
+      - intake.evaluations.update
       - intake.evaluator-results.create
       - intake.experiment-groups.create
       - intake.experiment-groups.delete
       - intake.experiment-groups.update
-      - intake.experiments.create
-      - intake.experiments.delete
-      - intake.experiments.update
       - intake.ingest.create
       - jobs.cancel
       - jobs.create
@@ -421,6 +425,14 @@ authz:
   endpoints:
     /apis/auth/discovery:
       get:
+        permissions: []
+        scopes: []
+    /apis/auth/jwks:
+      get:
+        permissions: []
+        scopes: []
+    /apis/auth/token:
+      post:
         permissions: []
         scopes: []
     /apis/auth/v2/iam/opa-bundle.tar.gz:
@@ -877,6 +889,62 @@ authz:
         scopes:
         - intake:read
         - platform:read
+    /apis/intake/v2/workspaces/{workspace}/evaluations:
+      get:
+        permissions:
+        - intake.evaluations.read
+        scopes:
+        - intake:read
+        - platform:read
+      post:
+        permissions:
+        - intake.evaluations.create
+        scopes:
+        - intake:write
+        - platform:write
+    /apis/intake/v2/workspaces/{workspace}/evaluations/{name}:
+      delete:
+        permissions:
+        - intake.evaluations.delete
+        scopes:
+        - intake:write
+        - platform:write
+      get:
+        permissions:
+        - intake.evaluations.read
+        scopes:
+        - intake:read
+        - platform:read
+      put:
+        permissions:
+        - intake.evaluations.update
+        scopes:
+        - intake:write
+        - platform:write
+    /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/pin:
+      delete:
+        permissions:
+        - intake.evaluations.update
+        scopes:
+        - intake:write
+        - platform:write
+      post:
+        permissions:
+        - intake.evaluations.update
+        scopes:
+        - intake:write
+        - platform:write
+    /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/sessions:
+      get:
+        permissions:
+        - intake.evaluations.read
+        scopes:
+        - intake:read
+        - platform:read
+    # Deprecated /experiments* aliases: the child endpoints moved to /evaluations, but the old
+    # paths are kept as hidden back-compat routes (include_in_schema=False), so they are absent
+    # from the OpenAPI-derived bundle. Map them here to the intake.evaluations.* permissions and
+    # mark x-not-in-openapi so the orphan check skips them. Remove alongside the router aliases.
     /apis/intake/v2/workspaces/{workspace}/evaluator-results:
       get:
         permissions:
@@ -932,55 +1000,63 @@ authz:
     /apis/intake/v2/workspaces/{workspace}/experiments:
       get:
         permissions:
-        - intake.experiments.read
+        - intake.evaluations.read
         scopes:
         - intake:read
         - platform:read
+        x-not-in-openapi: true
       post:
         permissions:
-        - intake.experiments.create
+        - intake.evaluations.create
         scopes:
         - intake:write
         - platform:write
+        x-not-in-openapi: true
     /apis/intake/v2/workspaces/{workspace}/experiments/{name}:
       delete:
         permissions:
-        - intake.experiments.delete
+        - intake.evaluations.delete
         scopes:
         - intake:write
         - platform:write
+        x-not-in-openapi: true
       get:
         permissions:
-        - intake.experiments.read
+        - intake.evaluations.read
         scopes:
         - intake:read
         - platform:read
+        x-not-in-openapi: true
       put:
         permissions:
-        - intake.experiments.update
+        - intake.evaluations.update
         scopes:
         - intake:write
         - platform:write
+        x-not-in-openapi: true
     /apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin:
       delete:
         permissions:
-        - intake.experiments.update
+        - intake.evaluations.update
         scopes:
         - intake:write
         - platform:write
+        x-not-in-openapi: true
       post:
         permissions:
-        - intake.experiments.update
+        - intake.evaluations.update
         scopes:
         - intake:write
         - platform:write
+        x-not-in-openapi: true
     /apis/intake/v2/workspaces/{workspace}/experiments/{name}/sessions:
       get:
         permissions:
-        - intake.experiments.read
+        - intake.evaluations.read
         scopes:
         - intake:read
         - platform:read
+        x-not-in-openapi: true
     /apis/intake/v2/workspaces/{workspace}/ingest/atif:
       post:
         permissions:
@@ -1002,6 +1078,13 @@ authz:
         scopes:
         - intake:write
         - platform:write
+    /apis/intake/v2/workspaces/{workspace}/sessions/{id}:
+      get:
+        permissions:
+        - intake.sessions.read
+        scopes:
+        - intake:read
+        - platform:read
     /apis/intake/v2/workspaces/{workspace}/spans:
       get:
         permissions:

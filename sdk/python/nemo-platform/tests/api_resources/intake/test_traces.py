@@ -111,6 +111,7 @@ class TestTraces:
             workspace="workspace",
             filter={
                 "id": "id",
+                "evaluation_id": "evaluation_id",
                 "experiment_id": "experiment_id",
                 "session_id": "session_id",
                 "started_at": {
@@ -244,6 +245,7 @@ class TestAsyncTraces:
             workspace="workspace",
             filter={
                 "id": "id",
+                "evaluation_id": "evaluation_id",
                 "experiment_id": "experiment_id",
                 "session_id": "session_id",
                 "started_at": {

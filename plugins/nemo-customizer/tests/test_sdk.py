@@ -3,8 +3,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from nemo_automodel_plugin.sdk.resources import AutomodelCustomization
 from nemo_customizer.sdk.resources import (
     AsyncCustomization,
@@ -62,3 +63,60 @@ def test_customization_skips_contributors_without_sdk() -> None:
         customization = Customization(platform)
 
     assert not hasattr(customization, "noop")
+
+
+def _health_platform() -> MagicMock:
+    platform = MagicMock()
+    platform.workspace = "default"
+    platform.base_url = "http://localhost:8000"
+    platform.default_headers = {}
+    return platform
+
+
+def test_plugin_status_hits_versioned_hub_healthz() -> None:
+    platform = _health_platform()
+    response = MagicMock()
+    response.json.return_value = {"plugin": "customization", "status": "ok", "contributors": ["automodel"]}
+    platform._client.get.return_value = response
+
+    with patch(
+        "nemo_customizer.sdk.resources.discover_customization_contributors",
+        return_value={},
+    ):
+        status = Customization(platform).plugin_status()
+
+    called_url = platform._client.get.call_args.args[0]
+    assert called_url == "http://localhost:8000/apis/customization/v2/healthz"
+    assert status["contributors"] == ["automodel"]
+
+
+def test_plugin_status_rejects_non_object_payload() -> None:
+    platform = _health_platform()
+    response = MagicMock()
+    response.json.return_value = ["not", "an", "object"]
+    platform._client.get.return_value = response
+
+    with patch(
+        "nemo_customizer.sdk.resources.discover_customization_contributors",
+        return_value={},
+    ):
+        resource = Customization(platform)
+    with pytest.raises(TypeError):
+        resource.plugin_status()
+
+
+async def test_async_plugin_status_hits_versioned_hub_healthz() -> None:
+    platform = _health_platform()
+    response = MagicMock()
+    response.json.return_value = {"plugin": "customization", "status": "ok", "contributors": []}
+    platform._client.get = AsyncMock(return_value=response)
+
+    with patch(
+        "nemo_customizer.sdk.resources.discover_customization_contributors",
+        return_value={},
+    ):
+        status = await AsyncCustomization(platform).plugin_status()
+
+    called_url = platform._client.get.call_args.args[0]
+    assert called_url == "http://localhost:8000/apis/customization/v2/healthz"
+    assert status["status"] == "ok"

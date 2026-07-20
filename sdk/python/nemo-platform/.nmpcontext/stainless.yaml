@@ -536,20 +536,25 @@ resources:
       docker_job_network_config: DockerJobNetworkConfig
       docker_job_storage_config: DockerJobStorageConfig
       docker_volume_mount: DockerVolumeMount
+      docker_workload_identity_config: DockerWorkloadIdentityConfig
       e2e_job_execution_profile: E2EJobExecutionProfile
       gpu_execution_provider: GPUExecutionProviderOutput
       gpu_execution_provider_param: GPUExecutionProviderInput
       image_pull_secret: ImagePullSecret
       job_execution_profile_config: JobExecutionProfileConfig
+      kubernetes_config_map_volume: KubernetesConfigMapVolume
       kubernetes_empty_dir_volume: KubernetesEmptyDirVolume
       kubernetes_job_execution_profile: KubernetesJobExecutionProfile
       kubernetes_job_execution_profile_config: KubernetesJobExecutionProfileConfig
       kubernetes_job_storage_config: KubernetesJobStorageConfig
+      kubernetes_key_to_path: KubernetesKeyToPath
       kubernetes_object_metadata: KubernetesObjectMetadata
       kubernetes_persistent_volume_claim: KubernetesPersistentVolumeClaim
+      kubernetes_secret_volume: KubernetesSecretVolume
       kubernetes_volume: KubernetesVolume
       kubernetes_volume_mount: KubernetesVolumeMount
       platform_job_environment_variable: PlatformJobEnvironmentVariable
+      platform_job_list_sort_field: PlatformJobListSortField
       platform_job_response: PlatformJobResponse
       platform_job_responses_page: PlatformJobResponsesPage
       platform_job_secret_environment_variable_ref: PlatformJobSecretEnvironmentVariableRef
@@ -742,6 +747,10 @@ resources:
       tool_calling_metadata_content: ToolCallingMetadataContent
       backend_format: BackendFormat
       finetuning_type: FinetuningType
+      workload_token_exchange_response: WorkloadTokenExchangeResponse
+      workload_token_exchange_error_response: WorkloadTokenExchangeErrorResponse
+      json_web_key: JsonWebKey
+      json_web_key_set_response: JsonWebKeySetResponse
   iam:
     standalone_api: true
     subresources:
@@ -890,6 +899,11 @@ resources:
           evaluator_results:
             methods:
               list: get /apis/intake/v2/workspaces/{workspace}/spans/{span_id}/evaluator-results
+      sessions:
+        models:
+          session: Session
+        methods:
+          retrieve: get /apis/intake/v2/workspaces/{workspace}/sessions/{id}
       traces:
         models:
           trace: Trace
@@ -912,29 +926,29 @@ resources:
       retrieve: get /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}
       update: put /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}
       delete: delete /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}
-  experiments:
+  evaluations:
     standalone_api: true
     models:
+      evaluation_filter: EvaluationFilter
+      evaluation_request: EvaluationRequest
+      evaluation_response: EvaluationResponse
+      evaluation_responses_page: EvaluationResponsesPage
       evaluator_aggregate: EvaluatorAggregate
-      experiment_filter: ExperimentFilter
-      experiment_request: ExperimentRequest
-      experiment_response: ExperimentResponse
-      experiment_responses_page: ExperimentResponsesPage
       metric_stat_filters: MetricStatFilters
       number_filter: NumberFilter
     methods:
-      create: post /apis/intake/v2/workspaces/{workspace}/experiments
-      list: get /apis/intake/v2/workspaces/{workspace}/experiments
-      retrieve: get /apis/intake/v2/workspaces/{workspace}/experiments/{name}
-      update: put /apis/intake/v2/workspaces/{workspace}/experiments/{name}
-      delete: delete /apis/intake/v2/workspaces/{workspace}/experiments/{name}
-      pin: post /apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin
-      unpin: delete /apis/intake/v2/workspaces/{workspace}/experiments/{name}/pin
+      create: post /apis/intake/v2/workspaces/{workspace}/evaluations
+      list: get /apis/intake/v2/workspaces/{workspace}/evaluations
+      retrieve: get /apis/intake/v2/workspaces/{workspace}/evaluations/{name}
+      update: put /apis/intake/v2/workspaces/{workspace}/evaluations/{name}
+      delete: delete /apis/intake/v2/workspaces/{workspace}/evaluations/{name}
+      pin: post /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/pin
+      unpin: delete /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/pin
     subresources:
       sessions:
         models:
-          experiment_session_filter: ExperimentSessionFilter
-          experiment_session_response: ExperimentSessionResponse
-          experiment_session_responses_page: ExperimentSessionResponsesPage
+          evaluation_session_filter: EvaluationSessionFilter
+          evaluation_session_response: EvaluationSessionResponse
+          evaluation_session_responses_page: EvaluationSessionResponsesPage
         methods:
-          list: get /apis/intake/v2/workspaces/{workspace}/experiments/{name}/sessions
+          list: get /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/sessions

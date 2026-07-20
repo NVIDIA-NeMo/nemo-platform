@@ -38,7 +38,7 @@ export const ROUTE_PARAMS = {
   /** Benchmark entity name segment under evaluation/benchmarks/:name */
   benchmarkName: 'benchmarkName',
   experimentGroupName: 'experimentGroupName',
-  experimentName: 'experimentName',
+  evaluationName: 'evaluationName',
   guardrailConfigName: 'guardrailConfigName',
 } as const;
 
@@ -74,8 +74,8 @@ export const ROUTES = {
     /** Empty landing page for the EXPERIMENT feature (gated by VITE_FF_EXPERIMENT). */
     experiment: `/workspaces/:${P.workspace}/experiment`,
     experimentGroupDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentGroupName}`,
-    experimentDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentGroupName}/:${P.experimentName}`,
-    experimentTraceDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentGroupName}/:${P.experimentName}/traces/:${P.traceId}`,
+    evaluationDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentGroupName}/:${P.evaluationName}`,
+    evaluationTraceDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentGroupName}/:${P.evaluationName}/traces/:${P.traceId}`,
     customizationJobList: `/workspaces/:${P.workspace}/customizations`,
     customizationJobDetails: `/workspaces/:${P.workspace}/customizations/:${P.customizationJobName}`,
     filesets: `/workspaces/:${P.workspace}/filesets`,

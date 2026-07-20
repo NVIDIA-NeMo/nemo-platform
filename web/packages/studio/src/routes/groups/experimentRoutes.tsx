@@ -17,14 +17,14 @@ const ExperimentGroupDetailRoute = lazy(() =>
     default: module.ExperimentGroupDetailRoute,
   }))
 );
-const ExperimentDetailRoute = lazy(() =>
-  import('@studio/routes/ExperimentDetailRoute').then((module) => ({
-    default: module.ExperimentDetailRoute,
+const EvaluationDetailRoute = lazy(() =>
+  import('@studio/routes/EvaluationDetailRoute').then((module) => ({
+    default: module.EvaluationDetailRoute,
   }))
 );
-const ExperimentTraceDetailRoute = lazy(() =>
-  import('@studio/routes/ExperimentTraceDetailRoute').then((module) => ({
-    default: module.ExperimentTraceDetailRoute,
+const EvaluationTraceDetailRoute = lazy(() =>
+  import('@studio/routes/EvaluationTraceDetailRoute').then((module) => ({
+    default: module.EvaluationTraceDetailRoute,
   }))
 );
 
@@ -32,7 +32,7 @@ export const experimentRoutes: RouteObject[] = gateExperimentRoutes([
   {
     path: ROUTES.workspace.experiment,
     element: <ExperimentRoute />,
-    errorElement: <ErrorPanel title="Experiment" />,
+    errorElement: <ErrorPanel title="Experiment Groups" />,
   },
   {
     path: ROUTES.workspace.experimentGroupDetail,
@@ -40,13 +40,13 @@ export const experimentRoutes: RouteObject[] = gateExperimentRoutes([
     errorElement: <ErrorPanel title="Experiment Group" />,
   },
   {
-    path: ROUTES.workspace.experimentDetail,
-    element: <ExperimentDetailRoute />,
-    errorElement: <ErrorPanel title="Experiment" />,
+    path: ROUTES.workspace.evaluationDetail,
+    element: <EvaluationDetailRoute />,
+    errorElement: <ErrorPanel title="Evaluation" />,
   },
   {
-    path: ROUTES.workspace.experimentTraceDetail,
-    element: <ExperimentTraceDetailRoute />,
+    path: ROUTES.workspace.evaluationTraceDetail,
+    element: <EvaluationTraceDetailRoute />,
     errorElement: <ErrorPanel title="Trace" />,
   },
 ]);

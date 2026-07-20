@@ -32,11 +32,16 @@ Job JSON uses the `UnslothJobInput` schema (see `nemo_unsloth_plugin/schema.py`)
 What happens after submit:
 
 1. The plugin's `to_spec` validates the model entity + dataset fileset against the live platform.
-2. `UnslothJob.compile` produces a 4-step `PlatformJobSpec`:
-   1. **`model-and-dataset-download`** — CPU step, `nmp.unsloth.tasks.file_io` pulls the model entity's fileset + the dataset fileset to the shared PVC.
-   2. **`training`** — GPU step, `nmp.unsloth.tasks.training` runs `train_sft` against the local paths.
-   3. **`model-upload`** — CPU step, `nmp.unsloth.tasks.file_io` uploads the saved checkpoint to a new fileset (named after `output.fileset`).
-   4. **`model-entity-creation`** — CPU step, `nmp.unsloth.tasks.model_entity` registers the output entity (adapter for LoRA, full model entity otherwise).
+2. `UnslothJob.compile` produces a 4-step `PlatformJobSpec` (see `nmp.unsloth.images` for the exact container commands):
+
+   | Step | Image | Container command |
+   |------|-------|-------------------|
+   | **`model-and-dataset-download`** | `nmp-customizer-tasks` | `python -m nmp.customization_common.tasks.file_io --service-source unsloth --service-name unsloth` |
+   | **`training`** | `nmp-unsloth-training` | `python -m nmp.unsloth.tasks.training` |
+   | **`model-upload`** | `nmp-customizer-tasks` | `python -m nmp.customization_common.tasks.file_io --service-source unsloth --service-name unsloth` |
+   | **`model-entity-creation`** | `nmp-customizer-tasks` | `python -m nmp.customization_common.tasks.model_entity --service-name unsloth` |
+
+   Shared CPU tasks require explicit identity flags on the module entrypoints (`nmp.customization_common.tasks.file_io.__main__` requires both `--service-source` and `--service-name`; `model_entity.__main__` requires `--service-name`). The compiler sets these via `FILE_IO_TASK_COMMAND` and `MODEL_ENTITY_TASK_COMMAND` in `services/unsloth/src/nmp/unsloth/images.py`. `--service-source` is stamped on upload-created filesets; `--service-name` drives SDK auth/telemetry.
 3. The platform Jobs runner schedules each step; tail logs with the standard jobs API.
 
 ## CLI surface
@@ -75,7 +80,7 @@ The container image targets the same compute capabilities NVIDIA's stock `pytorc
 This plugin is the **thin contributor wrapper**. The heavy code lives in `services/unsloth/` (`nmp-unsloth`):
 
 - **Plugin** (`plugins/nemo-unsloth/`, `nemo_unsloth_plugin`) — `UnslothContributor`, `UnslothJob` (lifecycle + `compile()`), submitter-facing schema (`UnslothJobInput`), CLI overrides, SDK shapes, contributor wiring.
-- **Service** (`services/unsloth/`, `nmp.unsloth`) — canonical schemas (`UnslothJobOutput` and shared sub-shapes), the `train_sft` training driver, the three container task entrypoints (`tasks/file_io`, `tasks/model_entity`, `tasks/training`), and the `platform_job_config_compiler`.
+- **Service** (`services/unsloth/`, `nmp.unsloth`) — canonical schemas (`UnslothJobOutput` and shared sub-shapes), the `train_sft` training driver, CPU task commands wired through `nmp.customization_common.tasks.*` (`nmp-customizer-tasks` image), the `nmp.unsloth.tasks.training` GPU entrypoint, and the `platform_job_config_compiler`.
 
 The plugin imports two things from the service:
 

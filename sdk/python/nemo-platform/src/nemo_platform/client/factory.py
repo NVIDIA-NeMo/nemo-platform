@@ -49,13 +49,14 @@ share the same config file:
 See also: ``architecture/docs/auth/sdk-cli-oauth.md`` for a full design doc.
 """
 
+import asyncio
 import logging
 import os
 import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Protocol
 
 import httpx
 from nemo_platform import (
@@ -65,12 +66,15 @@ from nemo_platform import (
     NotGiven,
     not_given,
 )
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 
 from nemo_platform.auth.helpers import NMPOIDCConfig, build_effective_scope, discover_nmp_config
 from nemo_platform.auth.token_provider import (
     OIDCTokenProvider,
     TokenSet,
 )
+from nemo_platform.auth.workload_exchange import WorkloadTokenExchangeProvider
+from nemo_platform.client.tls import client_verify_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -82,10 +86,15 @@ _TOKEN_REFRESH_MARGIN_SECONDS = 60
 # Guards _TOKEN_PROVIDER_CACHE; acquired only during dict lookup/insert (fast).
 _TOKEN_PROVIDER_CACHE_LOCK = threading.Lock()
 
-
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
+
+
+class _AccessTokenProvider(Protocol):
+    def get_access_token(self) -> str: ...
+
+    async def get_access_token_async(self) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -110,7 +119,7 @@ class _ResolvedBootstrap:
     base_url: str
     workspace: str | None
     default_headers: dict[str, str]
-    token_provider: OIDCTokenProvider | None  # None for non-OAuth users
+    token_provider: _AccessTokenProvider | None  # None for non-OAuth users
 
 
 @dataclass(frozen=True)
@@ -159,12 +168,86 @@ def _discover_oidc_client_settings(base_url: str) -> NMPOIDCConfig:
         )
 
 
+def _workload_identity_token_file_from_env() -> Path | None:
+    """Return the configured workload identity token file, if workload bootstrap is active."""
+    token_file = os.environ.get(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR)
+    return Path(token_file) if token_file else None
+
+
+def _create_workload_exchange_provider(base_url: str, subject_token_file: Path) -> WorkloadTokenExchangeProvider:
+    """Create a workload identity token exchange provider from NeMo auth discovery metadata."""
+    oidc_config = _discover_oidc_client_settings(base_url)
+    if not oidc_config.workload_token_exchange_enabled:
+        raise RuntimeError(
+            f"{WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR} is set but workload token exchange is not enabled by auth discovery"
+        )
+
+    token_endpoint = oidc_config.workload_token_endpoint or oidc_config.token_endpoint or ""
+    client_id = oidc_config.workload_client_id or oidc_config.client_id or ""
+    if not token_endpoint:
+        raise RuntimeError(
+            "Workload token exchange is enabled but auth discovery did not return workload_token_endpoint or token_endpoint"
+        )
+    if not client_id:
+        raise RuntimeError(
+            "Workload token exchange is enabled but auth discovery did not return workload_client_id or client_id"
+        )
+
+    return WorkloadTokenExchangeProvider(
+        token_endpoint=token_endpoint,
+        client_id=client_id,
+        subject_token_file=subject_token_file,
+        audience=oidc_config.workload_audience,
+        scope=oidc_config.workload_scope,
+        refresh_margin_seconds=_TOKEN_REFRESH_MARGIN_SECONDS,
+    )
+
+
+class _LazyWorkloadTokenExchangeProvider:
+    """Create the workload exchange provider on the first token request."""
+
+    def __init__(self, *, base_url: str, subject_token_file: Path) -> None:
+        self._base_url = base_url
+        self._subject_token_file = subject_token_file
+        self._provider: WorkloadTokenExchangeProvider | None = None
+        self._lock = threading.Lock()
+
+    def _get_provider(self) -> WorkloadTokenExchangeProvider:
+        provider = self._provider
+        if provider is not None:
+            return provider
+        with self._lock:
+            provider = self._provider
+            if provider is None:
+                provider = _create_workload_exchange_provider(self._base_url, self._subject_token_file)
+                self._provider = provider
+            return provider
+
+    def get_cached_access_token(self) -> str | None:
+        provider = self._provider
+        if provider is None:
+            return None
+        tokens = provider.tokens
+        if not tokens.access_token or tokens.is_expired(provider.refresh_margin_seconds):
+            return None
+        return tokens.access_token
+
+    def get_access_token(self) -> str:
+        return self._get_provider().get_access_token()
+
+    async def get_access_token_async(self) -> str:
+        provider = self._provider
+        if provider is None:
+            provider = await asyncio.to_thread(self._get_provider)
+        return await provider.get_access_token_async()
+
+
 # ---------------------------------------------------------------------------
 # httpx event hooks — the core of transparent token injection
 # ---------------------------------------------------------------------------
 
 
-def _make_auth_event_hook(provider: OIDCTokenProvider):
+def _make_auth_event_hook(provider: _AccessTokenProvider):
     """Create a **sync** httpx request event hook that injects the Bearer token.
 
     Called before every SDK HTTP request.  ``provider.get_access_token()``
@@ -179,7 +262,7 @@ def _make_auth_event_hook(provider: OIDCTokenProvider):
     return inject_auth
 
 
-def _make_async_auth_event_hook(provider: OIDCTokenProvider):
+def _make_async_auth_event_hook(provider: _AccessTokenProvider):
     """Create an **async** httpx request event hook for AsyncNeMoPlatform.
 
     The actual refresh still runs in a worker thread (via
@@ -191,6 +274,17 @@ def _make_async_auth_event_hook(provider: OIDCTokenProvider):
         request.headers["Authorization"] = f"Bearer {token}"
 
     return inject_auth
+
+
+def _headers_with_seeded_auth(headers: Mapping[str, str], provider: _AccessTokenProvider) -> dict[str, str]:
+    seeded_headers = dict(headers)
+    if isinstance(provider, _LazyWorkloadTokenExchangeProvider):
+        token = provider.get_cached_access_token()
+    else:
+        token = provider.get_access_token()
+    if token:
+        seeded_headers["Authorization"] = f"Bearer {token}"
+    return seeded_headers
 
 
 # ---------------------------------------------------------------------------
@@ -411,6 +505,14 @@ def _resolve_bootstrap(
     base_url = str(resolved.cluster.base_url)
     headers: dict[str, str] = dict(extra_headers) if extra_headers else {}
 
+    workload_identity_token_file = _workload_identity_token_file_from_env()
+    if workload_identity_token_file is not None and access_token is None and not os.environ.get("NMP_ACCESS_TOKEN"):
+        provider = _LazyWorkloadTokenExchangeProvider(
+            base_url=base_url,
+            subject_token_file=workload_identity_token_file,
+        )
+        return _ResolvedBootstrap(base_url, resolved.workspace, headers, provider)
+
     # --- Non-OAuth path (no auth) ---
     if not isinstance(resolved.user, OAuthUser):
         user_config = resolved.user.get_client_config() if resolved.user else {}
@@ -508,12 +610,17 @@ def build_client_init_kwargs(
             default_headers=bootstrap.default_headers or None,
         )
 
-    # Seed the default headers with the current token so that SDK internals
-    # that inspect headers (e.g. auth_headers property) see a value.
+    # Seed the default headers with a current token so that SDK internals
+    # that inspect headers (e.g. auth_headers property) see a value. Workload
+    # identity only seeds when the request-time provider already has a token.
     # The event hook will overwrite it with a fresh token on each request.
-    headers = {**bootstrap.default_headers, "Authorization": f"Bearer {bootstrap.token_provider.get_access_token()}"}
+    headers = _headers_with_seeded_auth(bootstrap.default_headers, bootstrap.token_provider)
     hook = _make_auth_event_hook(bootstrap.token_provider)
-    http_client = DefaultHttpxClient(event_hooks={"request": [hook], "response": []}, follow_redirects=True)
+    http_client = DefaultHttpxClient(
+        event_hooks={"request": [hook], "response": []},
+        follow_redirects=True,
+        verify=client_verify_from_env(),
+    )
     return ClientInitConfig(
         base_url=bootstrap.base_url,
         workspace=bootstrap.workspace,
@@ -550,9 +657,13 @@ def build_async_client_init_kwargs(
             default_headers=bootstrap.default_headers or None,
         )
 
-    headers = {**bootstrap.default_headers, "Authorization": f"Bearer {bootstrap.token_provider.get_access_token()}"}
+    headers = _headers_with_seeded_auth(bootstrap.default_headers, bootstrap.token_provider)
     hook = _make_async_auth_event_hook(bootstrap.token_provider)
-    http_client = DefaultAsyncHttpxClient(event_hooks={"request": [hook], "response": []}, follow_redirects=True)
+    http_client = DefaultAsyncHttpxClient(
+        event_hooks={"request": [hook], "response": []},
+        follow_redirects=True,
+        verify=client_verify_from_env(),
+    )
     return ClientInitConfig(
         base_url=bootstrap.base_url,
         workspace=bootstrap.workspace,
@@ -583,6 +694,9 @@ def create_client(
         access_token=access_token,
         extra_headers=extra_headers,
     )
+    http_client = client_init_kwargs.http_client
+    if http_client is not None and not isinstance(http_client, httpx.Client):
+        raise TypeError("build_client_init_kwargs returned a non-sync HTTP client")
 
     return NeMoPlatform(
         config_path=config_path,
@@ -591,7 +705,7 @@ def create_client(
         base_url=client_init_kwargs.base_url,
         workspace=client_init_kwargs.workspace,
         default_headers=client_init_kwargs.default_headers,
-        http_client=client_init_kwargs.http_client,
+        http_client=http_client,
         max_retries=max_retries,
         timeout=timeout,
     )

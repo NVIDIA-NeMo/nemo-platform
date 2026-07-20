@@ -52,5 +52,5 @@ export const LINK_DOCS_JOBS = `${DOCS_BASE_URL}studio#jobs`;
 // Secrets documentation links
 export const LINK_DOCS_SECRETS = `${DOCS_BASE_URL}get-started/core-concepts/manage-secrets`;
 
-// Experiments
+// Evaluations
 export const LINK_DOCS_EXPERIMENTS_CLI = `${DOCS_BASE_URL}reference/cli-reference`;

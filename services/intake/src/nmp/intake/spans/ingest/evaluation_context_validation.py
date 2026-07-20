@@ -25,10 +25,10 @@ async def validate_evaluation_context(
     except EntityNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Experiment '{experiment_id}' must be created before it can be logged.",
+            detail=f"Evaluation '{experiment_id}' must be created before it can be logged.",
         ) from exc
     if experiment.is_deleted:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Experiment '{experiment_id}' has been deleted and cannot accept new sessions.",
+            detail=f"Evaluation '{experiment_id}' has been deleted and cannot accept new sessions.",
         )

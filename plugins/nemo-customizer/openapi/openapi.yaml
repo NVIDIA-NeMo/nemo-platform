@@ -1,0 +1,3381 @@
+openapi: 3.1.0
+info:
+  title: customization (plugin)
+  version: 0.0.0
+paths:
+  /apis/customization/v2/healthz:
+    get:
+      tags:
+      - Customization
+      summary: Healthz
+      operationId: healthz_apis_customization_v2_healthz_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Healthz Apis Customization V2 Healthz Get
+  /apis/customization/v2/workspaces/{workspace}/automodel/jobs:
+    post:
+      tags:
+      - Automodel Jobs
+      summary: Create Job
+      operationId: create_job_apis_customization_v2_workspaces__workspace__automodel_jobs_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutomodelJobsJobRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomodelJobsJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Automodel Jobs
+      summary: List Jobs
+      operationId: list_jobs_apis_customization_v2_workspaces__workspace__automodel_jobs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/AutomodelJobsJobsSortField'
+          description: The field to sort by. To sort in decreasing order, use `-`
+            in front of the field name.
+          default: -created_at
+        description: The field to sort by. To sort in decreasing order, use `-` in
+          front of the field name.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/AutomodelJobsJobsListFilter'
+        description: Filter jobs on various criteria.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomodelJobsJobsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/automodel/jobs/{job}/results/{name}:
+    get:
+      tags:
+      - Automodel Jobs
+      summary: Get Job Result
+      operationId: get_job_result_apis_customization_v2_workspaces__workspace__automodel_jobs__job__results__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/automodel/jobs/{job}/results/{name}/download:
+    get:
+      tags:
+      - Automodel Jobs
+      summary: Download Job Result
+      operationId: download_job_result_apis_customization_v2_workspaces__workspace__automodel_jobs__job__results__name__download_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Not Found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/automodel/jobs/{name}:
+    get:
+      tags:
+      - Automodel Jobs
+      summary: Get Job
+      operationId: get_job_apis_customization_v2_workspaces__workspace__automodel_jobs__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomodelJobsJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Automodel Jobs
+      summary: Delete Job
+      operationId: delete_job_apis_customization_v2_workspaces__workspace__automodel_jobs__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/automodel/jobs/{name}/cancel:
+    post:
+      tags:
+      - Automodel Jobs
+      summary: Cancel Job
+      operationId: cancel_job_apis_customization_v2_workspaces__workspace__automodel_jobs__name__cancel_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomodelJobsJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/automodel/jobs/{name}/logs:
+    get:
+      tags:
+      - Automodel Jobs
+      summary: Get Job Logs
+      operationId: get_job_logs_apis_customization_v2_workspaces__workspace__automodel_jobs__name__logs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: limit
+        in: query
+        required: false
+        schema:
+          title: Limit
+          type: integer
+      - name: page_cursor
+        in: query
+        required: false
+        schema:
+          title: Page Cursor
+          type: string
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobLogPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/automodel/jobs/{name}/results:
+    get:
+      tags:
+      - Automodel Jobs
+      summary: List Job Results
+      operationId: list_job_results_apis_customization_v2_workspaces__workspace__automodel_jobs__name__results_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobListResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/automodel/jobs/{name}/status:
+    get:
+      tags:
+      - Automodel Jobs
+      summary: Get Job Status
+      operationId: get_job_status_apis_customization_v2_workspaces__workspace__automodel_jobs__name__status_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobStatusResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/rl/jobs:
+    post:
+      tags:
+      - Rl Jobs
+      summary: Create Job
+      operationId: create_job_apis_customization_v2_workspaces__workspace__rl_jobs_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RlJobsJobRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RlJobsJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Rl Jobs
+      summary: List Jobs
+      operationId: list_jobs_apis_customization_v2_workspaces__workspace__rl_jobs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/RlJobsJobsSortField'
+          description: The field to sort by. To sort in decreasing order, use `-`
+            in front of the field name.
+          default: -created_at
+        description: The field to sort by. To sort in decreasing order, use `-` in
+          front of the field name.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/RlJobsJobsListFilter'
+        description: Filter jobs on various criteria.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RlJobsJobsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/rl/jobs/{job}/results/{name}:
+    get:
+      tags:
+      - Rl Jobs
+      summary: Get Job Result
+      operationId: get_job_result_apis_customization_v2_workspaces__workspace__rl_jobs__job__results__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/rl/jobs/{job}/results/{name}/download:
+    get:
+      tags:
+      - Rl Jobs
+      summary: Download Job Result
+      operationId: download_job_result_apis_customization_v2_workspaces__workspace__rl_jobs__job__results__name__download_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Not Found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/rl/jobs/{name}:
+    get:
+      tags:
+      - Rl Jobs
+      summary: Get Job
+      operationId: get_job_apis_customization_v2_workspaces__workspace__rl_jobs__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RlJobsJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Rl Jobs
+      summary: Delete Job
+      operationId: delete_job_apis_customization_v2_workspaces__workspace__rl_jobs__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/rl/jobs/{name}/cancel:
+    post:
+      tags:
+      - Rl Jobs
+      summary: Cancel Job
+      operationId: cancel_job_apis_customization_v2_workspaces__workspace__rl_jobs__name__cancel_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RlJobsJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/rl/jobs/{name}/logs:
+    get:
+      tags:
+      - Rl Jobs
+      summary: Get Job Logs
+      operationId: get_job_logs_apis_customization_v2_workspaces__workspace__rl_jobs__name__logs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: limit
+        in: query
+        required: false
+        schema:
+          title: Limit
+          type: integer
+      - name: page_cursor
+        in: query
+        required: false
+        schema:
+          title: Page Cursor
+          type: string
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobLogPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/rl/jobs/{name}/results:
+    get:
+      tags:
+      - Rl Jobs
+      summary: List Job Results
+      operationId: list_job_results_apis_customization_v2_workspaces__workspace__rl_jobs__name__results_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobListResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/rl/jobs/{name}/status:
+    get:
+      tags:
+      - Rl Jobs
+      summary: Get Job Status
+      operationId: get_job_status_apis_customization_v2_workspaces__workspace__rl_jobs__name__status_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobStatusResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/unsloth/jobs:
+    post:
+      tags:
+      - Unsloth Jobs
+      summary: Create Job
+      operationId: create_job_apis_customization_v2_workspaces__workspace__unsloth_jobs_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnslothJobsJobRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnslothJobsJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Unsloth Jobs
+      summary: List Jobs
+      operationId: list_jobs_apis_customization_v2_workspaces__workspace__unsloth_jobs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/UnslothJobsJobsSortField'
+          description: The field to sort by. To sort in decreasing order, use `-`
+            in front of the field name.
+          default: -created_at
+        description: The field to sort by. To sort in decreasing order, use `-` in
+          front of the field name.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/UnslothJobsJobsListFilter'
+        description: Filter jobs on various criteria.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnslothJobsJobsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/unsloth/jobs/{job}/results/{name}:
+    get:
+      tags:
+      - Unsloth Jobs
+      summary: Get Job Result
+      operationId: get_job_result_apis_customization_v2_workspaces__workspace__unsloth_jobs__job__results__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/unsloth/jobs/{job}/results/{name}/download:
+    get:
+      tags:
+      - Unsloth Jobs
+      summary: Download Job Result
+      operationId: download_job_result_apis_customization_v2_workspaces__workspace__unsloth_jobs__job__results__name__download_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Not Found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/unsloth/jobs/{name}:
+    get:
+      tags:
+      - Unsloth Jobs
+      summary: Get Job
+      operationId: get_job_apis_customization_v2_workspaces__workspace__unsloth_jobs__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnslothJobsJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Unsloth Jobs
+      summary: Delete Job
+      operationId: delete_job_apis_customization_v2_workspaces__workspace__unsloth_jobs__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/unsloth/jobs/{name}/cancel:
+    post:
+      tags:
+      - Unsloth Jobs
+      summary: Cancel Job
+      operationId: cancel_job_apis_customization_v2_workspaces__workspace__unsloth_jobs__name__cancel_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnslothJobsJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/unsloth/jobs/{name}/logs:
+    get:
+      tags:
+      - Unsloth Jobs
+      summary: Get Job Logs
+      operationId: get_job_logs_apis_customization_v2_workspaces__workspace__unsloth_jobs__name__logs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: limit
+        in: query
+        required: false
+        schema:
+          title: Limit
+          type: integer
+      - name: page_cursor
+        in: query
+        required: false
+        schema:
+          title: Page Cursor
+          type: string
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobLogPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/unsloth/jobs/{name}/results:
+    get:
+      tags:
+      - Unsloth Jobs
+      summary: List Job Results
+      operationId: list_job_results_apis_customization_v2_workspaces__workspace__unsloth_jobs__name__results_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobListResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/customization/v2/workspaces/{workspace}/unsloth/jobs/{name}/status:
+    get:
+      tags:
+      - Unsloth Jobs
+      summary: Get Job Status
+      operationId: get_job_status_apis_customization_v2_workspaces__workspace__unsloth_jobs__name__status_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobStatusResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    AutomodelBatchSpec:
+      properties:
+        global_batch_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Global Batch Size
+          default: 8
+        micro_batch_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Micro Batch Size
+          default: 1
+        sequence_packing:
+          type: boolean
+          title: Sequence Packing
+          default: false
+        sequence_packing_max_samples:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Sequence Packing Max Samples
+          description: Samples analyzed to estimate the optimal pack size when packing
+            is enabled.
+          default: 1000
+      additionalProperties: false
+      type: object
+      title: AutomodelBatchSpec
+    AutomodelDatasetSpec:
+      properties:
+        training:
+          type: string
+          title: Training
+          description: Training fileset as 'name' or 'workspace/name'.
+        validation:
+          title: Validation
+          type: string
+        prompt_template:
+          title: Prompt Template
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - training
+      title: AutomodelDatasetSpec
+    AutomodelJobInput:
+      properties:
+        name:
+          title: Name
+          type: string
+        model:
+          type: string
+          title: Model
+        dataset:
+          $ref: '#/components/schemas/AutomodelDatasetSpec'
+        training:
+          $ref: '#/components/schemas/AutomodelTrainingSpec'
+        schedule:
+          $ref: '#/components/schemas/AutomodelScheduleSpec'
+        batch:
+          $ref: '#/components/schemas/AutomodelBatchSpec'
+        optimizer:
+          $ref: '#/components/schemas/AutomodelOptimizerSpec'
+        parallelism:
+          $ref: '#/components/schemas/AutomodelParallelismSpec'
+        output:
+          $ref: '#/components/schemas/AutomodelOutputRequest'
+        integrations:
+          $ref: '#/components/schemas/IntegrationsSpecInput'
+      additionalProperties: false
+      type: object
+      required:
+      - model
+      - dataset
+      - training
+      title: AutomodelJobInput
+      description: POST body / CLI JSON.
+    AutomodelJobOutput:
+      properties:
+        name:
+          title: Name
+          type: string
+        model:
+          type: string
+          title: Model
+        dataset:
+          $ref: '#/components/schemas/AutomodelDatasetSpec'
+        training:
+          $ref: '#/components/schemas/AutomodelTrainingSpec'
+        schedule:
+          $ref: '#/components/schemas/AutomodelScheduleSpec'
+        batch:
+          $ref: '#/components/schemas/AutomodelBatchSpec'
+        optimizer:
+          $ref: '#/components/schemas/AutomodelOptimizerSpec'
+        parallelism:
+          $ref: '#/components/schemas/AutomodelParallelismSpec'
+        output:
+          $ref: '#/components/schemas/AutomodelOutputResponse'
+        integrations:
+          $ref: '#/components/schemas/IntegrationsSpecOutput'
+      additionalProperties: false
+      type: object
+      required:
+      - model
+      - dataset
+      - training
+      - schedule
+      - batch
+      - optimizer
+      - parallelism
+      - output
+      title: AutomodelJobOutput
+      description: Stored canonical spec after ``to_spec()``.
+    AutomodelJobsJob:
+      properties:
+        id:
+          title: Id
+          type: string
+        name:
+          type: string
+          title: Name
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        workspace:
+          title: Workspace
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        spec:
+          $ref: '#/components/schemas/AutomodelJobOutput'
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          title: Status Details
+          additionalProperties: true
+          type: object
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - name
+      - spec
+      title: AutomodelJobsJob
+    AutomodelJobsJobRequest:
+      properties:
+        name:
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        spec:
+          $ref: '#/components/schemas/AutomodelJobInput'
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - spec
+      title: AutomodelJobsJobRequest
+    AutomodelJobsJobsListFilter:
+      additionalProperties: false
+      properties:
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs created at 'gte' datetime or 'lte' datetime.
+        name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
+          description: Name of the job.
+          title: Name
+        workspace:
+          description: Workspace of the job.
+          title: Workspace
+          type: string
+        project:
+          description: Project containing the job.
+          title: Project
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/PlatformJobStatus'
+          description: The current status.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs updated at 'gte' datetime or 'lte' datetime.
+      title: AutomodelJobsJobsListFilter
+      type: object
+    AutomodelJobsJobsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/AutomodelJobsJob'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: AutomodelJobsJobsPage
+    AutomodelJobsJobsSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: AutomodelJobsJobsSortField
+    AutomodelLoRAParams:
+      properties:
+        rank:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Rank
+          default: 16
+        alpha:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Alpha
+          default: 32
+        dropout:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Dropout
+          description: LoRA dropout probability for regularization.
+          default: 0.0
+        merge:
+          type: boolean
+          title: Merge
+          default: false
+        target_modules:
+          title: Target Modules
+          items:
+            type: string
+          type: array
+        exclude_modules:
+          title: Exclude Modules
+          description: Module name patterns to exclude from LoRA (e.g. ['*.out_proj']).
+          items:
+            type: string
+          type: array
+        use_triton:
+          type: boolean
+          title: Use Triton
+          description: Use the optimized Triton LoRA kernel.
+          default: true
+      additionalProperties: false
+      type: object
+      title: AutomodelLoRAParams
+    AutomodelOptimizerSpec:
+      properties:
+        learning_rate:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Learning Rate
+          default: 5.0e-06
+        min_learning_rate:
+          title: Min Learning Rate
+          description: Minimum learning rate for the cosine decay schedule.
+          type: number
+          minimum: 0.0
+        weight_decay:
+          type: number
+          minimum: 0.0
+          title: Weight Decay
+          default: 0.01
+        adam_beta1:
+          type: number
+          exclusiveMaximum: 1.0
+          minimum: 0.0
+          title: Adam Beta1
+          description: Adam optimizer beta1.
+          default: 0.9
+        adam_beta2:
+          type: number
+          exclusiveMaximum: 1.0
+          minimum: 0.0
+          title: Adam Beta2
+          description: Adam optimizer beta2.
+          default: 0.999
+        warmup_steps:
+          type: integer
+          minimum: 0.0
+          title: Warmup Steps
+          default: 0
+        adam_eps:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Adam Eps
+          description: Adam/AdamW epsilon for numerical stability.
+          default: 1.0e-08
+        optimizer:
+          type: string
+          enum:
+          - Adam
+          - AdamW
+          title: Optimizer
+          description: Optimizer algorithm.
+          default: Adam
+        lr_decay_style:
+          type: string
+          enum:
+          - cosine
+          - linear
+          - constant
+          title: Lr Decay Style
+          description: Learning-rate decay schedule.
+          default: cosine
+      additionalProperties: false
+      type: object
+      title: AutomodelOptimizerSpec
+    AutomodelOutputRequest:
+      properties:
+        name:
+          type: string
+          title: Name
+        description:
+          title: Description
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      title: AutomodelOutputRequest
+    AutomodelOutputResponse:
+      properties:
+        name:
+          type: string
+          title: Name
+        type:
+          type: string
+          enum:
+          - model
+          - adapter
+          title: Type
+        fileset:
+          type: string
+          title: Fileset
+        description:
+          title: Description
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - type
+      - fileset
+      title: AutomodelOutputResponse
+    AutomodelParallelismSpec:
+      properties:
+        num_nodes:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Num Nodes
+          default: 1
+        num_gpus_per_node:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Num Gpus Per Node
+          default: 1
+        tensor_parallel_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Tensor Parallel Size
+          default: 1
+        pipeline_parallel_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Pipeline Parallel Size
+          default: 1
+        context_parallel_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Context Parallel Size
+          default: 1
+        expert_parallel_size:
+          title: Expert Parallel Size
+          type: integer
+          exclusiveMinimum: 0.0
+        sequence_parallel:
+          type: boolean
+          title: Sequence Parallel
+          description: Enable sequence parallelism.
+          default: false
+      additionalProperties: false
+      type: object
+      title: AutomodelParallelismSpec
+    AutomodelScheduleSpec:
+      properties:
+        epochs:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Epochs
+          default: 1
+        max_steps:
+          title: Max Steps
+          type: integer
+          exclusiveMinimum: 0.0
+        val_check_interval:
+          title: Val Check Interval
+          type: number
+        seed:
+          title: Seed
+          type: integer
+      additionalProperties: false
+      type: object
+      title: AutomodelScheduleSpec
+    AutomodelTrainingSpec:
+      properties:
+        training_type:
+          type: string
+          enum:
+          - sft
+          - distillation
+          title: Training Type
+          default: sft
+        finetuning_type:
+          type: string
+          enum:
+          - lora
+          - all_weights
+          - lora_merged
+          title: Finetuning Type
+          default: lora
+        lora:
+          $ref: '#/components/schemas/AutomodelLoRAParams'
+        max_seq_length:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Max Seq Length
+          default: 2048
+        precision:
+          title: Precision
+          description: Model precision for training. Auto-detected from the checkpoint
+            when unset.
+          type: string
+          enum:
+          - bf16
+          - fp16
+          - fp32
+          - fp8
+        attn_implementation:
+          type: string
+          enum:
+          - sdpa
+          - flash_attention_2
+          - eager
+          title: Attn Implementation
+          description: 'Attention backend: ''sdpa'' (PyTorch native), ''flash_attention_2'',
+            or ''eager''.'
+          default: sdpa
+        execution_profile:
+          title: Execution Profile
+          type: string
+          minLength: 1
+        teacher_model:
+          title: Teacher Model
+          type: string
+        distillation_ratio:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Distillation Ratio
+          default: 0.5
+        distillation_temperature:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Distillation Temperature
+          default: 1.0
+        teacher_precision:
+          type: string
+          enum:
+          - bf16
+          - fp16
+          - fp32
+          title: Teacher Precision
+          default: bf16
+        offload_teacher:
+          type: boolean
+          title: Offload Teacher
+          default: false
+      additionalProperties: false
+      type: object
+      title: AutomodelTrainingSpec
+    DatetimeFilter:
+      additionalProperties: false
+      properties:
+        $gte:
+          description: Filter for results greater than or equal to this datetime.
+          title: $Gte
+          format: date-time
+          type: string
+        $lte:
+          description: Filter for results less than or equal to this datetime.
+          title: $Lte
+          format: date-time
+          type: string
+      title: DatetimeFilter
+      type: object
+    FileStorageType:
+      type: string
+      enum:
+      - fileset
+      title: FileStorageType
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    IntegrationsSpecInput:
+      properties:
+        wandb:
+          allOf:
+          - $ref: '#/components/schemas/WandbIntegration'
+          description: Weights & Biases integration configuration.
+        mlflow:
+          allOf:
+          - $ref: '#/components/schemas/MlflowIntegration'
+          description: MLflow integration configuration.
+      additionalProperties: false
+      type: object
+      title: IntegrationsSpecInput
+      description: 'Third-party experiment-tracking integrations for a job spec.
+
+
+        Each integration is requested by presence: omit or set a field to ``null``
+        to
+
+        disable it. Activation at training time still requires credentials/URIs
+
+        (see compile-time warnings and runtime builders).'
+    IntegrationsSpecOutput:
+      properties:
+        wandb:
+          allOf:
+          - $ref: '#/components/schemas/WandbIntegration'
+          description: Weights & Biases integration configuration.
+        mlflow:
+          allOf:
+          - $ref: '#/components/schemas/MlflowIntegration'
+          description: MLflow integration configuration.
+      additionalProperties: false
+      type: object
+      title: IntegrationsSpecOutput
+      description: 'Third-party experiment-tracking integrations for a job spec.
+
+
+        Each integration is requested by presence: omit or set a field to ``null``
+        to
+
+        disable it. Activation at training time still requires credentials/URIs
+
+        (see compile-time warnings and runtime builders).'
+    MlflowIntegration:
+      properties:
+        experiment_name:
+          title: Experiment Name
+          description: MLflow experiment name (groups related runs). Defaults to output.name
+            if not set.
+          type: string
+        name:
+          title: Name
+          description: MLflow run name. Defaults to job_id if not provided.
+          type: string
+        tags:
+          title: Tags
+          description: MLflow tags as key-value pairs for filtering runs.
+          additionalProperties:
+            type: string
+          type: object
+        description:
+          title: Description
+          description: MLflow run description.
+          type: string
+        tracking_uri:
+          title: Tracking Uri
+          description: MLflow tracking server URI (e.g., 'http://mlflow.mycompany.com:5000').
+            Can also be set via MLFLOW_TRACKING_URI environment variable.
+          type: string
+      additionalProperties: false
+      type: object
+      title: MlflowIntegration
+      description: 'MLflow integration configuration.
+
+
+        To enable MLflow, provide a non-null ``mlflow`` object on :class:`IntegrationsSpec`.'
+    OptimizerType:
+      type: string
+      enum:
+      - adamw_with_cosine_annealing
+      - adam_with_cosine_annealing
+      - adamw_with_flat_lr
+      - adam_with_flat_lr
+      title: OptimizerType
+      description: Optimizer and scheduler combination types.
+    OutputNameType:
+      type: string
+      enum:
+      - adapter
+      - model
+      title: OutputNameType
+      description: "Output artifact type \u2014 adapter (LoRA only) or model (merged\
+        \ / full)."
+    PaginationData:
+      properties:
+        page:
+          type: integer
+          title: Page
+          description: The current page number.
+        page_size:
+          type: integer
+          title: Page Size
+          description: The page size used for the query.
+        current_page_size:
+          type: integer
+          title: Current Page Size
+          description: The size for the current page.
+        total_pages:
+          type: integer
+          title: Total Pages
+          description: The total number of pages.
+        total_results:
+          type: integer
+          title: Total Results
+          description: The total number of results.
+      type: object
+      required:
+      - page
+      - page_size
+      - current_page_size
+      - total_pages
+      - total_results
+      title: PaginationData
+    PlatformJobListResultResponse:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/PlatformJobResultResponse'
+          type: array
+          title: Data
+      type: object
+      required:
+      - data
+      title: PlatformJobListResultResponse
+    PlatformJobLog:
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          title: Timestamp
+        job:
+          type: string
+          title: Job
+        job_step:
+          type: string
+          title: Job Step
+        job_task:
+          type: string
+          title: Job Task
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - timestamp
+      - job
+      - job_step
+      - job_task
+      - message
+      title: PlatformJobLog
+    PlatformJobLogPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/PlatformJobLog'
+          type: array
+          title: Data
+        total:
+          type: integer
+          title: Total
+        next_page:
+          title: Next Page
+          type: string
+        prev_page:
+          title: Prev Page
+          type: string
+      type: object
+      required:
+      - data
+      - total
+      - next_page
+      - prev_page
+      title: PlatformJobLogPage
+    PlatformJobResultResponse:
+      properties:
+        name:
+          type: string
+          title: Name
+        job:
+          type: string
+          title: Job
+        workspace:
+          type: string
+          title: Workspace
+        project:
+          title: Project
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+        artifact_url:
+          type: string
+          title: Artifact Url
+        artifact_storage_type:
+          $ref: '#/components/schemas/FileStorageType'
+        download_url:
+          title: Download Url
+          type: string
+      type: object
+      required:
+      - name
+      - job
+      - workspace
+      - artifact_url
+      - artifact_storage_type
+      title: PlatformJobResultResponse
+    PlatformJobStatus:
+      type: string
+      enum:
+      - created
+      - pending
+      - active
+      - cancelled
+      - cancelling
+      - error
+      - completed
+      - paused
+      - pausing
+      - resuming
+      title: PlatformJobStatus
+      description: 'Enumeration of possible job statuses.
+
+
+        This enum represents the various states a job can be in during its lifecycle,
+
+        from creation to a terminal state.'
+    PlatformJobStatusResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          additionalProperties: true
+          type: object
+          title: Status Details
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        steps:
+          items:
+            $ref: '#/components/schemas/PlatformJobStepStatusResponse'
+          type: array
+          title: Steps
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - name
+      - status
+      - status_details
+      - error_details
+      - steps
+      - created_at
+      - updated_at
+      title: PlatformJobStatusResponse
+    PlatformJobStepStatusResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          additionalProperties: true
+          type: object
+          title: Status Details
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        tasks:
+          items:
+            $ref: '#/components/schemas/PlatformJobTaskStatusResponse'
+          type: array
+          title: Tasks
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - name
+      - status
+      - status_details
+      - error_details
+      - tasks
+      - created_at
+      - updated_at
+      title: PlatformJobStepStatusResponse
+    PlatformJobTaskStatusResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          additionalProperties: true
+          type: object
+          title: Status Details
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        error_stack:
+          title: Error Stack
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - name
+      - status
+      - status_details
+      - error_details
+      - error_stack
+      - created_at
+      - updated_at
+      title: PlatformJobTaskStatusResponse
+    RlDPOTraining:
+      properties:
+        optimizer_type:
+          allOf:
+          - $ref: '#/components/schemas/OptimizerType'
+          description: "Optimizer + LR-scheduler combination (AdamW/Adam \xD7 cosine-annealing/flat-LR).\
+            \ Defaults to AdamW with cosine annealing."
+        learning_rate:
+          type: number
+          title: Learning Rate
+          description: Peak learning rate.
+          default: 0.0001
+        min_learning_rate:
+          title: Min Learning Rate
+          description: Minimum LR for cosine decay.
+          type: number
+        weight_decay:
+          type: number
+          title: Weight Decay
+          description: Weight decay coefficient.
+          default: 0.01
+        adam_beta1:
+          type: number
+          title: Adam Beta1
+          description: Adam beta1.
+          default: 0.9
+        adam_beta2:
+          type: number
+          title: Adam Beta2
+          description: Adam beta2.
+          default: 0.999
+        adam_eps:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Adam Eps
+          description: Adam epsilon (numerical stability term).
+          default: 1.0e-05
+        warmup_steps:
+          type: integer
+          minimum: 0.0
+          title: Warmup Steps
+          description: Linear warmup steps.
+          default: 0
+        epochs:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Epochs
+          description: Number of passes through the dataset.
+          default: 1
+        max_steps:
+          title: Max Steps
+          description: Max training steps (overrides epochs if set).
+          type: integer
+          exclusiveMinimum: 0.0
+        val_check_interval:
+          title: Val Check Interval
+          description: Validation interval. Float <= 1.0 is fraction of epoch; > 1.0
+            is step count.
+          type: number
+        val_at_end:
+          type: boolean
+          title: Val At End
+          description: Run a final validation pass after the last training step. Keep
+            enabled so the final checkpoint carries validation metrics and best-checkpoint
+            selection works; set False only to skip the extra eval.
+          default: true
+        keep_top_k:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Keep Top K
+          description: Number of best checkpoints to retain (ranked by validation
+            loss).
+          default: 1
+        batch_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Batch Size
+          description: Global batch size across all GPUs.
+          default: 32
+        micro_batch_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Micro Batch Size
+          description: Per-GPU micro batch size.
+          default: 1
+        activation_checkpointing:
+          type: boolean
+          title: Activation Checkpointing
+          description: Recompute activations during the backward pass to reduce memory
+            at the cost of compute. Enable to fit larger models or longer sequences.
+          default: false
+        max_seq_length:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Max Seq Length
+          description: Maximum token sequence length for training.
+          default: 2048
+        seed:
+          title: Seed
+          description: Random seed for reproducibility.
+          type: integer
+        parallelism:
+          $ref: '#/components/schemas/RlParallelismParams'
+        execution_profile:
+          title: Execution Profile
+          description: Execution profile for the GPU training step (operator-configured).
+            Falls back to the service default when omitted.
+          type: string
+          minLength: 1
+        type:
+          type: string
+          const: dpo
+          title: Type
+          default: dpo
+        ref_policy_kl_penalty:
+          type: number
+          minimum: 0.0
+          title: Ref Policy Kl Penalty
+          description: KL penalty coefficient (beta in the DPO paper).
+          default: 0.05
+        preference_average_log_probs:
+          type: boolean
+          title: Preference Average Log Probs
+          description: Average log probabilities for preference loss calculation.
+          default: false
+        sft_average_log_probs:
+          type: boolean
+          title: Sft Average Log Probs
+          description: Average log probabilities for SFT regularization loss.
+          default: false
+        preference_loss_weight:
+          type: number
+          minimum: 0.0
+          title: Preference Loss Weight
+          description: Weight for the preference (DPO) loss term.
+          default: 1.0
+        sft_loss_weight:
+          type: number
+          minimum: 0.0
+          title: Sft Loss Weight
+          description: Weight for SFT regularization loss (0 = disabled).
+          default: 0.0
+        max_grad_norm:
+          type: number
+          minimum: 0.0
+          title: Max Grad Norm
+          description: Maximum gradient norm for clipping.
+          default: 1.0
+      additionalProperties: false
+      type: object
+      title: RlDPOTraining
+      description: "Direct Preference Optimization (full-weight only \u2014 PEFT unsupported)."
+    RlJobInput:
+      properties:
+        name:
+          title: Name
+          type: string
+        model:
+          type: string
+          title: Model
+          description: Model entity reference ('name' or 'workspace/name').
+        dataset:
+          type: string
+          title: Dataset
+          description: Preference dataset fileset reference. Must contain training.jsonl
+            + validation.jsonl.
+        training:
+          allOf:
+          - $ref: '#/components/schemas/RlDPOTraining'
+          description: DPO training method and hyperparameters.
+        integrations:
+          $ref: '#/components/schemas/IntegrationsSpecInput'
+        output:
+          $ref: '#/components/schemas/RlOutputRequest'
+      additionalProperties: false
+      type: object
+      required:
+      - model
+      - dataset
+      - training
+      title: RlJobInput
+      description: POST body / CLI JSON for ``nemo customization rl submit``.
+    RlJobOutput:
+      properties:
+        name:
+          title: Name
+          description: Optional job name; auto-generated when omitted.
+          type: string
+        model:
+          type: string
+          title: Model
+          description: Model entity reference ('name' or 'workspace/name').
+        dataset:
+          type: string
+          title: Dataset
+          description: Preference dataset fileset reference ('name' or 'workspace/name').
+        training:
+          allOf:
+          - $ref: '#/components/schemas/RlDPOTraining'
+          description: Training method and hyperparameters (DPO).
+        integrations:
+          allOf:
+          - $ref: '#/components/schemas/IntegrationsSpecOutput'
+          description: W&B / MLflow integrations.
+        output:
+          allOf:
+          - $ref: '#/components/schemas/RlOutputResponse'
+          description: Output artifact created by this job.
+      additionalProperties: false
+      type: object
+      required:
+      - model
+      - dataset
+      - training
+      - output
+      title: RlJobOutput
+      description: 'Canonical NeMo-RL job spec (output of the plugin transform).
+
+
+        The ``dataset`` fileset must contain ``training.jsonl`` and ``validation.jsonl``
+
+        (any of the four supported preference formats); the dataset-preparation step
+
+        splits/normalizes them at runtime.'
+    RlJobsJob:
+      properties:
+        id:
+          title: Id
+          type: string
+        name:
+          type: string
+          title: Name
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        workspace:
+          title: Workspace
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        spec:
+          $ref: '#/components/schemas/RlJobOutput'
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          title: Status Details
+          additionalProperties: true
+          type: object
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - name
+      - spec
+      title: RlJobsJob
+    RlJobsJobRequest:
+      properties:
+        name:
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        spec:
+          $ref: '#/components/schemas/RlJobInput'
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - spec
+      title: RlJobsJobRequest
+    RlJobsJobsListFilter:
+      additionalProperties: false
+      properties:
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs created at 'gte' datetime or 'lte' datetime.
+        name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
+          description: Name of the job.
+          title: Name
+        workspace:
+          description: Workspace of the job.
+          title: Workspace
+          type: string
+        project:
+          description: Project containing the job.
+          title: Project
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/PlatformJobStatus'
+          description: The current status.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs updated at 'gte' datetime or 'lte' datetime.
+      title: RlJobsJobsListFilter
+      type: object
+    RlJobsJobsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/RlJobsJob'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: RlJobsJobsPage
+    RlJobsJobsSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: RlJobsJobsSortField
+    RlOutputRequest:
+      properties:
+        name:
+          title: Name
+          type: string
+      additionalProperties: false
+      type: object
+      title: RlOutputRequest
+      description: Submitter-facing output preferences. ``name`` is auto-derived if
+        omitted.
+    RlOutputResponse:
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          title: Name
+          description: Name of the output artifact. Used to identify it during deployment
+            and inference.
+          examples:
+          - my-dpo-llama
+        type:
+          allOf:
+          - $ref: '#/components/schemas/OutputNameType'
+          description: Output artifact type. DPO is full-weight, so always `model`.
+          default: model
+        fileset:
+          type: string
+          maxLength: 255
+          title: Fileset
+          description: FileSet name where output artifacts are stored.
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - fileset
+      title: RlOutputResponse
+      description: Resolved output artifact details.
+    RlParallelismParams:
+      properties:
+        num_gpus_per_node:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Num Gpus Per Node
+          description: Number of GPUs per node.
+          default: 1
+        num_nodes:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Num Nodes
+          description: "Number of nodes (>1 \u2192 multi-node Ray cluster)."
+          default: 1
+        tensor_parallel_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Tensor Parallel Size
+          description: Tensor parallel size.
+          default: 1
+        pipeline_parallel_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Pipeline Parallel Size
+          description: Pipeline parallel size.
+          default: 1
+        context_parallel_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Context Parallel Size
+          description: Context parallel size.
+          default: 1
+        sequence_parallel:
+          type: boolean
+          title: Sequence Parallel
+          description: Enable sequence parallelism.
+          default: false
+      additionalProperties: false
+      type: object
+      title: RlParallelismParams
+      description: 'Distributed training parallelism configuration.
+
+
+        Single-node multi-GPU uses ``num_nodes=1`` with ``num_gpus_per_node>1``;
+
+        multi-node sets ``num_nodes>1`` and the compiler emits a distributed-GPU
+
+        executor (see :mod:`nmp.rl.app.jobs.compiler`).'
+    SecretRef:
+      type: string
+      pattern: ^[a-z0-9_-]+(/[a-z0-9_-]+)?$
+      title: SecretRef
+      description: 'Reference to a secret. Format: ''secret_name'' (uses request workspace)
+        or ''workspace/secret_name'' (explicit workspace).'
+    StringFilter:
+      additionalProperties: false
+      properties:
+        $eq:
+          description: Filter for results equal to this value.
+          title: $Eq
+          type: string
+        $like:
+          description: Filter for results matching this pattern.
+          title: $Like
+          type: string
+        $in:
+          description: Filter for results in this list of values.
+          title: $In
+          items:
+            type: string
+          type: array
+        $nin:
+          description: Filter for results not in this list of values.
+          title: $Nin
+          items:
+            type: string
+          type: array
+      title: StringFilter
+      type: object
+    UnslothBatchSpec:
+      properties:
+        per_device_train_batch_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Per Device Train Batch Size
+          default: 1
+        gradient_accumulation_steps:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Gradient Accumulation Steps
+          default: 1
+      additionalProperties: false
+      type: object
+      title: UnslothBatchSpec
+    UnslothDatasetSpec:
+      properties:
+        path:
+          type: string
+          title: Path
+          description: 'Training fileset reference: ''name'' (uses the job''s workspace)
+            or ''workspace/name''. Resolved to a local path by the plugin run.'
+        text_field:
+          type: string
+          title: Text Field
+          description: Row field consumed by SFTTrainer.
+          default: text
+        apply_chat_template:
+          type: boolean
+          title: Apply Chat Template
+          description: If True, expects rows with a 'messages' field and applies tokenizer.apply_chat_template
+            at training time.
+          default: false
+        validation_path:
+          title: Validation Path
+          description: Optional validation fileset reference (same format as 'path').
+            Downloaded under the same scheme.
+          type: string
+        packing:
+          type: boolean
+          title: Packing
+          description: trl.SFTTrainer packing flag.
+          default: false
+      additionalProperties: false
+      type: object
+      required:
+      - path
+      title: UnslothDatasetSpec
+      description: 'Training data location + shape.
+
+
+        ``path`` and ``validation_path`` are platform fileset references
+
+        (``"name"`` or ``"workspace/name"``). The plugin''s run downloads
+
+        each fileset before training; ``train_sft`` only ever sees a local
+
+        filesystem path.'
+    UnslothDeploymentParams:
+      properties:
+        gpu:
+          type: integer
+          title: Gpu
+          description: Number of GPUs required for the deployment.
+          default: 1
+        additional_envs:
+          title: Additional Envs
+          description: Additional environment variables for the deployment.
+          additionalProperties:
+            type: string
+          type: object
+        disk_size:
+          title: Disk Size
+          description: Disk size for the deployment.
+          type: string
+        image_name:
+          title: Image Name
+          description: Container image name from NGC. If not specified, defaults to
+            multi-llm.
+          type: string
+        image_tag:
+          title: Image Tag
+          description: Container image tag from NGC.
+          type: string
+        lora_enabled:
+          type: boolean
+          title: Lora Enabled
+          description: When auto-deploying a full SFT training, setting this true
+            allows subsequent LoRA adapters to be deployed against it.
+          default: true
+        tool_call_config:
+          allOf:
+          - $ref: '#/components/schemas/UnslothToolCallParams'
+          description: Tool calling configuration override for the NIM deployment.
+      additionalProperties: false
+      type: object
+      title: UnslothDeploymentParams
+      description: 'Inline deployment parameters for auto-deploying a trained model.
+
+
+        Used in :class:`UnslothJobInput.deployment_config` and passed through to
+
+        the model_entity task at compile time. When unset, no deployment is launched.'
+    UnslothHardwareSpec:
+      properties:
+        gpus:
+          title: Gpus
+          description: Comma-separated GPU indices ('0' or '0,1') for CUDA_VISIBLE_DEVICES.
+            Selection, not reservation.
+          type: string
+        precision:
+          type: string
+          enum:
+          - bf16
+          - fp16
+          title: Precision
+          description: Mixed-precision dtype for training. bf16 recommended for Ampere+.
+          default: bf16
+      additionalProperties: false
+      type: object
+      title: UnslothHardwareSpec
+    UnslothJobInput:
+      properties:
+        name:
+          title: Name
+          type: string
+        model:
+          $ref: '#/components/schemas/UnslothModelLoadSpec'
+        dataset:
+          $ref: '#/components/schemas/UnslothDatasetSpec'
+        training:
+          $ref: '#/components/schemas/UnslothTrainingSpec'
+        schedule:
+          $ref: '#/components/schemas/UnslothScheduleSpec'
+        batch:
+          $ref: '#/components/schemas/UnslothBatchSpec'
+        optimizer:
+          $ref: '#/components/schemas/UnslothOptimizerSpec'
+        hardware:
+          $ref: '#/components/schemas/UnslothHardwareSpec'
+        integrations:
+          $ref: '#/components/schemas/IntegrationsSpecInput'
+        output:
+          $ref: '#/components/schemas/UnslothOutputRequest'
+        deployment_config:
+          anyOf:
+          - type: string
+            title: Reference
+            description: A reference to UnslothDeploymentParams.
+          - $ref: '#/components/schemas/UnslothDeploymentParams'
+          title: Deployment Config
+          description: Deployment configuration for auto-deploying the model after
+            training. Pass a string to reference an existing ModelDeploymentConfig
+            by name ('my-config' or 'workspace/my-config'). An object provides inline
+            NIM deployment parameters. Omit to skip deployment.
+      additionalProperties: false
+      type: object
+      required:
+      - model
+      - dataset
+      title: UnslothJobInput
+      description: POST body / CLI JSON for ``nemo customization unsloth run``.
+    UnslothJobOutput:
+      properties:
+        name:
+          title: Name
+          type: string
+        model:
+          $ref: '#/components/schemas/UnslothModelLoadSpec'
+        dataset:
+          $ref: '#/components/schemas/UnslothDatasetSpec'
+        training:
+          $ref: '#/components/schemas/UnslothTrainingSpec'
+        schedule:
+          $ref: '#/components/schemas/UnslothScheduleSpec'
+        batch:
+          $ref: '#/components/schemas/UnslothBatchSpec'
+        optimizer:
+          $ref: '#/components/schemas/UnslothOptimizerSpec'
+        hardware:
+          $ref: '#/components/schemas/UnslothHardwareSpec'
+        integrations:
+          $ref: '#/components/schemas/IntegrationsSpecOutput'
+        output:
+          $ref: '#/components/schemas/UnslothOutputResponse'
+        deployment_config:
+          anyOf:
+          - type: string
+            title: Reference
+            description: A reference to UnslothDeploymentParams.
+          - $ref: '#/components/schemas/UnslothDeploymentParams'
+          title: Deployment Config
+          description: Deployment configuration for auto-deploying the model after
+            training. Pass a string to reference an existing ModelDeploymentConfig
+            by name ('my-config' or 'workspace/my-config'). An object provides inline
+            NIM deployment parameters. Omit to skip deployment.
+      additionalProperties: false
+      type: object
+      required:
+      - model
+      - dataset
+      - output
+      title: UnslothJobOutput
+      description: 'Canonical spec stored after the plugin''s ``to_spec()`` resolves
+        output naming.
+
+
+        Defaults match :class:`~nemo_unsloth_plugin.schema.UnslothJobInput` so SDK
+
+        callers and tests can construct :class:`UnslothJobOutput` directly without
+
+        restating every sub-section. The plugin''s ``to_spec`` always passes the
+
+        resolved input values through, so these defaults never override real input.'
+    UnslothJobsJob:
+      properties:
+        id:
+          title: Id
+          type: string
+        name:
+          type: string
+          title: Name
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        workspace:
+          title: Workspace
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        spec:
+          $ref: '#/components/schemas/UnslothJobOutput'
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          title: Status Details
+          additionalProperties: true
+          type: object
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - name
+      - spec
+      title: UnslothJobsJob
+    UnslothJobsJobRequest:
+      properties:
+        name:
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        spec:
+          $ref: '#/components/schemas/UnslothJobInput'
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - spec
+      title: UnslothJobsJobRequest
+    UnslothJobsJobsListFilter:
+      additionalProperties: false
+      properties:
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs created at 'gte' datetime or 'lte' datetime.
+        name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
+          description: Name of the job.
+          title: Name
+        workspace:
+          description: Workspace of the job.
+          title: Workspace
+          type: string
+        project:
+          description: Project containing the job.
+          title: Project
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/PlatformJobStatus'
+          description: The current status.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs updated at 'gte' datetime or 'lte' datetime.
+      title: UnslothJobsJobsListFilter
+      type: object
+    UnslothJobsJobsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/UnslothJobsJob'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: UnslothJobsJobsPage
+    UnslothJobsJobsSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: UnslothJobsJobsSortField
+    UnslothLoRAParams:
+      properties:
+        rank:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Rank
+          description: LoRA rank.
+          default: 16
+        alpha:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Alpha
+          description: LoRA scaling factor (alpha).
+          default: 16
+        dropout:
+          type: number
+          exclusiveMaximum: 1.0
+          minimum: 0.0
+          title: Dropout
+          default: 0.0
+        target_modules:
+          items:
+            type: string
+          type: array
+          title: Target Modules
+        bias:
+          type: string
+          enum:
+          - none
+          - all
+          - lora_only
+          title: Bias
+          default: none
+        use_rslora:
+          type: boolean
+          title: Use Rslora
+          default: false
+        random_state:
+          type: integer
+          title: Random State
+          default: 3407
+        use_dora:
+          type: boolean
+          title: Use Dora
+          description: DoRA (weight-decomposed LoRA). Improves quality at low ranks;
+            adds training overhead.
+          default: false
+        loftq_config:
+          title: Loftq Config
+          description: LoftQ initialization config for quantized bases. None disables
+            LoftQ.
+          additionalProperties: true
+          type: object
+        modules_to_save:
+          title: Modules To Save
+          description: Extra non-LoRA modules to train and save in full (e.g. ['embed_tokens',
+            'lm_head']). Needed for vocab changes / continued pretraining.
+          items:
+            type: string
+          type: array
+        layers_to_transform:
+          anyOf:
+          - type: integer
+          - items:
+              type: integer
+            type: array
+          title: Layers To Transform
+          description: Restrict LoRA to specific layer index(es). None applies to
+            all layers.
+        layer_replication:
+          title: Layer Replication
+          description: Layer-replication ranges for stacking, e.g. [[0, 16], [8, 24]].
+            None disables.
+          items:
+            items:
+              type: integer
+            type: array
+          type: array
+        init_lora_weights:
+          anyOf:
+          - type: boolean
+          - type: string
+            enum:
+            - gaussian
+            - pissa
+            - olora
+            - loftq
+          title: Init Lora Weights
+          description: LoRA weight init scheme. True = PEFT default; 'pissa'/'olora'/'loftq'
+            for advanced inits.
+          default: true
+      additionalProperties: false
+      type: object
+      title: UnslothLoRAParams
+      description: Args to ``FastLanguageModel.get_peft_model``.
+    UnslothModelLoadSpec:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Model entity reference. Accepts 'name' (uses the job's workspace)
+            or 'workspace/name'. The plugin's run resolves this to a local path before
+            training.
+        max_seq_length:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Max Seq Length
+          default: 2048
+        load_in_4bit:
+          type: boolean
+          title: Load In 4Bit
+          description: bitsandbytes 4-bit. Mutex with load_in_8bit. Default for Unsloth's
+            headline path.
+          default: true
+        load_in_8bit:
+          type: boolean
+          title: Load In 8Bit
+          default: false
+        dtype:
+          type: string
+          enum:
+          - auto
+          - bfloat16
+          - float16
+          - float32
+          title: Dtype
+          default: auto
+        trust_remote_code:
+          type: boolean
+          title: Trust Remote Code
+          default: false
+        device_map:
+          anyOf:
+          - type: string
+          - type: integer
+          - additionalProperties:
+              type: integer
+            type: object
+          title: Device Map
+          description: "Device placement forwarded to FastLanguageModel.from_pretrained.\
+            \ Omit (null) to pin the whole model to the single visible GPU ({'': 0})\
+            \ \u2014 the right default for this single-GPU backend, and it avoids\
+            \ accelerate's auto-placement under-sizing GPU memory on unified-memory\
+            \ parts (e.g. GB10 / DGX Spark), which otherwise spills layers to CPU\
+            \ and aborts 4-bit loads. Set 'auto', 'balanced', 'sequential', a device\
+            \ index, or a custom map for multi-device experiments."
+        rope_scaling:
+          title: Rope Scaling
+          description: 'RoPE scaling config for long-context extension, passed to
+            FastLanguageModel.from_pretrained (e.g. {''type'': ''linear'', ''factor'':
+            2.0}). None uses the model''s native context length.'
+          additionalProperties: true
+          type: object
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      title: UnslothModelLoadSpec
+      description: 'Args to ``FastLanguageModel.from_pretrained``.
+
+
+        ``name`` is a NeMo Platform model entity reference (``"name"`` or
+
+        ``"workspace/name"``). The plugin''s run orchestration resolves the
+
+        entity, downloads its fileset to a local path, and hands that path
+
+        to :func:`train_sft`.'
+    UnslothOptimizerSpec:
+      properties:
+        learning_rate:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Learning Rate
+          default: 0.0002
+        weight_decay:
+          type: number
+          minimum: 0.0
+          title: Weight Decay
+          default: 0.0
+        optim:
+          type: string
+          enum:
+          - adamw_torch
+          - adamw_torch_fused
+          - adamw_8bit
+          - paged_adamw_8bit
+          - sgd
+          title: Optim
+          default: adamw_8bit
+        adam_beta1:
+          type: number
+          exclusiveMaximum: 1.0
+          minimum: 0.0
+          title: Adam Beta1
+          description: Adam/AdamW beta1.
+          default: 0.9
+        adam_beta2:
+          type: number
+          exclusiveMaximum: 1.0
+          minimum: 0.0
+          title: Adam Beta2
+          description: Adam/AdamW beta2.
+          default: 0.999
+        adam_epsilon:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Adam Epsilon
+          description: Adam/AdamW epsilon for numerical stability.
+          default: 1.0e-08
+        max_grad_norm:
+          type: number
+          minimum: 0.0
+          title: Max Grad Norm
+          description: Gradient-clipping max norm (TRL default 1.0).
+          default: 1.0
+        label_smoothing_factor:
+          type: number
+          exclusiveMaximum: 1.0
+          minimum: 0.0
+          title: Label Smoothing Factor
+          description: Label smoothing for the cross-entropy loss. 0.0 disables.
+          default: 0.0
+        neftune_noise_alpha:
+          title: Neftune Noise Alpha
+          description: NEFTune embedding-noise alpha (quality boost). None disables.
+          type: number
+          minimum: 0.0
+      additionalProperties: false
+      type: object
+      title: UnslothOptimizerSpec
+    UnslothOutputRequest:
+      properties:
+        name:
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        save_method:
+          type: string
+          enum:
+          - lora
+          - merged_16bit
+          - merged_4bit
+          title: Save Method
+          default: lora
+      additionalProperties: false
+      type: object
+      title: UnslothOutputRequest
+      description: Submitter-facing output preferences. ``name`` is auto-derived if
+        omitted.
+    UnslothOutputResponse:
+      properties:
+        name:
+          type: string
+          title: Name
+        type:
+          type: string
+          enum:
+          - adapter
+          - model
+          title: Type
+        save_method:
+          type: string
+          enum:
+          - lora
+          - merged_16bit
+          - merged_4bit
+          title: Save Method
+        fileset:
+          type: string
+          title: Fileset
+          description: Platform fileset name the trained checkpoint will be uploaded
+            to. Defaults to the entity name.
+        description:
+          title: Description
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - type
+      - save_method
+      - fileset
+      title: UnslothOutputResponse
+      description: 'Stored on the canonical UnslothJobOutput. Output naming is resolved
+        during ``to_spec``.
+
+
+        ``type`` is the high-level shape (``adapter`` for a saved LoRA, ``model``
+
+        for a merged checkpoint). ``save_method`` keeps the original Unsloth
+
+        save verb so the training driver can dispatch correctly without
+
+        re-deriving it. ``fileset`` is the platform fileset name the trained
+
+        artefacts will be uploaded to (the plugin''s ``transform`` defaults
+
+        this to ``name``).'
+    UnslothScheduleSpec:
+      properties:
+        epochs:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Epochs
+          default: 1
+        max_steps:
+          title: Max Steps
+          type: integer
+          exclusiveMinimum: 0.0
+        warmup_steps:
+          type: integer
+          minimum: 0.0
+          title: Warmup Steps
+          default: 0
+        warmup_ratio:
+          title: Warmup Ratio
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+        lr_scheduler_type:
+          type: string
+          enum:
+          - linear
+          - cosine
+          - constant
+          - constant_with_warmup
+          - cosine_with_restarts
+          title: Lr Scheduler Type
+          default: linear
+        logging_steps:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Logging Steps
+          default: 1
+        save_steps:
+          title: Save Steps
+          type: integer
+          exclusiveMinimum: 0.0
+        eval_steps:
+          title: Eval Steps
+          type: integer
+          exclusiveMinimum: 0.0
+        seed:
+          type: integer
+          title: Seed
+          default: 3407
+        lr_scheduler_kwargs:
+          title: Lr Scheduler Kwargs
+          description: 'Extra kwargs for the LR scheduler, e.g. {''num_cycles'': 3}
+            for cosine_with_restarts. None uses scheduler defaults.'
+          additionalProperties: true
+          type: object
+      additionalProperties: false
+      type: object
+      title: UnslothScheduleSpec
+      description: Training schedule, scheduler, logging cadence.
+    UnslothToolCallParams:
+      properties:
+        tool_call_parser:
+          title: Tool Call Parser
+          description: Name of the tool call parser to use (e.g., 'openai', 'hermes',
+            'pythonic', 'llama3_json', 'mistral').
+          type: string
+        tool_call_plugin:
+          title: Tool Call Plugin
+          description: 'Reference to a fileset containing the custom tool call plugin
+            Python file. Expected format: ''{workspace}/{fileset_name}''.'
+          type: string
+          pattern: ^[\w\-.]+/[\w\-.]+$
+        auto_tool_choice:
+          title: Auto Tool Choice
+          description: Whether to enable automatic tool choice.
+          type: boolean
+      additionalProperties: false
+      type: object
+      title: UnslothToolCallParams
+      description: Tool calling configuration for NIM deployments.
+    UnslothTrainingSpec:
+      properties:
+        training_type:
+          type: string
+          const: sft
+          title: Training Type
+          default: sft
+        finetuning_type:
+          type: string
+          enum:
+          - lora
+          - all_weights
+          title: Finetuning Type
+          default: lora
+        lora:
+          allOf:
+          - $ref: '#/components/schemas/UnslothLoRAParams'
+          description: Required when finetuning_type='lora'. Auto-filled with defaults
+            if omitted.
+        use_gradient_checkpointing:
+          type: string
+          enum:
+          - unsloth
+          - 'true'
+          - 'false'
+          title: Use Gradient Checkpointing
+          default: unsloth
+      additionalProperties: false
+      type: object
+      title: UnslothTrainingSpec
+      description: Algorithm + adapter shape selectors.
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+          additionalProperties: true
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    WandbIntegration:
+      properties:
+        project:
+          title: Project
+          description: W&B project name (groups related runs). Defaults to output.name
+            if not set.
+          type: string
+        name:
+          title: Name
+          description: W&B run name. Defaults to job_id if not provided.
+          type: string
+        entity:
+          title: Entity
+          description: W&B entity (team or username).
+          type: string
+        tags:
+          title: Tags
+          description: W&B tags for filtering runs.
+          items:
+            type: string
+          type: array
+        notes:
+          title: Notes
+          description: W&B notes/description for the run.
+          type: string
+        base_url:
+          title: Base Url
+          description: Base URL for self-hosted W&B server (e.g., 'https://wandb.mycompany.com').
+            If not provided, uses the default W&B cloud service.
+          type: string
+        api_key_secret:
+          allOf:
+          - $ref: '#/components/schemas/SecretRef'
+          description: 'Reference to a secret containing the WANDB_API_KEY. Format:
+            ''secret_name'' (uses request workspace) or ''workspace/secret_name''
+            (explicit workspace).'
+      additionalProperties: false
+      type: object
+      title: WandbIntegration
+      description: 'Weights & Biases integration configuration.
+
+
+        To enable W&B, provide a non-null ``wandb`` object on :class:`IntegrationsSpec`.
+
+        Provide ``api_key_secret`` referencing a secret that contains ``WANDB_API_KEY``.
+
+        Optionally set ``base_url`` for self-hosted W&B servers.'

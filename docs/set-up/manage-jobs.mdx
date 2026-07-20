@@ -48,7 +48,7 @@ jobs:
  node-pool-name: h200-pool
 ```
 
-For full configuration details, see the [platform configuration reference](/documentation/reference/configuration-reference).
+For full configuration details, see the [platform configuration reference](/documentation/self-managed-deployment/config-reference).
 
 ### Default Execution Profiles
 
@@ -57,7 +57,7 @@ The NeMo Platform defines a default execution profile for each execution backend
 - Default CPU Execution Profile (`cpu`): The default execution profile for CPU based jobs.
 - Default GPU Execution Profile (`gpu`): The default execution profile for GPU based jobs.
 
-You may configure the default execution profiles by updating the `executor_defaults` section of the `jobs` section of the [platform configuration](/documentation/reference/configuration-reference). The structure of the `executor_defaults` matches the configuration of the execution backend configuration.
+You may configure the default execution profiles by updating the `executor_defaults` section of the `jobs` section of the [platform configuration](/documentation/self-managed-deployment/config-reference). The structure of the `executor_defaults` matches the configuration of the execution backend configuration.
 
 ```yaml
 jobs:
@@ -127,7 +127,7 @@ jobs:
  backend: docker
  config:
  storage:
- volume_name: nemo-microservices_jobs_storage
+ volume_name: nemo-platform_jobs_storage
 ```
 
 ### Kubernetes Jobs

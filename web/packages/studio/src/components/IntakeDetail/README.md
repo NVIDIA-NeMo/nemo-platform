@@ -56,7 +56,7 @@ flowchart TB
 | Layer                           | Role                                                                                                                       |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | **Routes**                      | Thin wrappers; resolve workspace + id, set breadcrumbs. `IntakeTraceDetailContent` is exported for experiment trace reuse. |
-| **IntakeTraceDetailView**       | Page header, trace summary header, span explorer, trace-level Attributes / Experiment Context accordions, raw JSON debug.  |
+| **IntakeTraceDetailView**       | Page header, trace summary header, span explorer, trace-level Attributes / Evaluation Context accordions, raw JSON debug.  |
 | **TraceSpanAccordions**         | Fetches span summaries and trace annotations; Tree/List toggle; expand/collapse toolbar; row headers + feedback.           |
 | **SpanTreeView / SpanListView** | Layout shells for tree vs list modes; shared row chrome (`SpanTriggerLabel`, `SpanTriggerMeta`, `SpanFeedbackControls`).   |
 | **TraceSpanAccordionContent**   | Lazy `useGetSpan` when a span body is shown; merges list summary with full detail via `mergeSpanDetails`.                  |

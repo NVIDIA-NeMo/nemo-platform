@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
 import json
 import logging
 import os
@@ -21,6 +22,7 @@ from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
 from nemo_evaluator_sdk.values import (
     InferenceParams,
     JSONScoreParser,
+    MetricDiagnostic,
     MetricResult,
     Model,
     RangeScore,
@@ -250,6 +252,63 @@ class CustomExactMatchMetric:
             return MetricResult(outputs=[MetricOutput(name=self.type, value=0.0)])
         score = 1.0 if prediction == reference else 0.0
         return MetricResult(outputs=[MetricOutput(name=self.type, value=score)])
+
+
+class DiffDiagnosticExactMatchMetric:
+    """Exact-match metric that attaches an expected-vs-actual diff on mismatch.
+
+    This demonstrates ``MetricResult.diagnostics``: a metric returns its score
+    as usual and, when the score is unexpected, attaches ``MetricDiagnostic``
+    findings explaining why. Comparison details (expected/actual/diff) go in
+    ``details``. The field defaults to empty, so consumers that ignore
+    diagnostics are unaffected.
+    """
+
+    type = "diff-diagnostic-exact-match"
+
+    def output_spec(self) -> list[MetricOutputSpec]:
+        """Return the outputs produced by the metric."""
+        return [MetricOutputSpec.continuous_score(self.type)]
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        """Score exact match and attach a diff diagnostic when it fails.
+
+        Args:
+            input: Original dataset row and evaluated candidate output.
+
+        Returns:
+            A metric result with the exact-match score and, on mismatch,
+            ``diagnostics`` containing a unified expected-vs-actual diff.
+        """
+        prediction = input.candidate.output_text or ""
+        reference = str(input.row.data.get("reference", ""))
+        matched = prediction == reference
+        outputs = [MetricOutput(name=self.type, value=1.0 if matched else 0.0)]
+
+        if matched:
+            return MetricResult(outputs=outputs)
+
+        diff = "".join(
+            difflib.unified_diff(
+                reference.splitlines(keepends=True),
+                prediction.splitlines(keepends=True),
+                fromfile="expected",
+                tofile="actual",
+            )
+        )
+        return MetricResult(
+            outputs=outputs,
+            diagnostics=[
+                MetricDiagnostic(
+                    message="exact match failed",
+                    details={
+                        "expected": reference,
+                        "actual": prediction,
+                        "diff": diff,
+                    },
+                )
+            ],
+        )
 
 
 class CustomFailingMetric:

@@ -34,7 +34,7 @@ input description in that workflow.
 | Type | IDs |
 | --- | --- |
 | Wheels | `nemo-platform`, `nemo-platform-plugin` |
-| Containers | `nmp-api`, `nmp-cpu-tasks`, `nmp-automodel-tasks`, `nmp-automodel-training`, `nmp-unsloth-training`, `auditor-tasks`, `safe-synthesizer-tasks` |
+| Containers | `nmp-api`, `nmp-cpu-tasks`, `nmp-customizer-tasks`, `nmp-automodel-training`, `nmp-unsloth-training`, `nmp-rl-training`, `auditor-tasks`, `safe-synthesizer-tasks` |
 | Helm chart | `nemo-platform` |
 
 For every selected wheel, the workflow checks that its package configuration
@@ -56,6 +56,7 @@ and select **Run workflow**. The form shows the allowed custom artifact IDs.
 | `release-scope` | `all` by default. Select `wheels`, `containers`, `helm`, or `custom` for a subset. |
 | `wheel-ids`, `container-ids` | Comma-separated IDs used only with `release-scope: custom`. Each ID must be in the catalog above; duplicates and empty entries fail validation. |
 | `include-helm` | Includes the Helm chart in a custom release. |
+| `helm-version` | Optional exact SemVer Helm chart version for stable Helm-only releases. The stable release label still comes from `version`. |
 | `update-ngc-metadata` | Also runs the reusable NGC metadata workflow for `nemo-platform` and `nemo-platform-dev`. It checks out the workflow ref, normally `main`. |
 | `send-notifications` | Sends Slack start and final-status notifications. Defaults to `true`. |
 | `dry-run` | Validates the selected source and packages the selected Helm chart, but does not publish, dispatch external work, poll, create a GitHub release, or signal deployment. The start notification intentionally still runs when notifications are enabled. |
@@ -66,28 +67,30 @@ Examples:
 | --- | --- |
 | Scheduled-style nightly | Leave `release-type` as `nightly` and use the default `all` scope. |
 | Stable full release | `release-type: stable`, `source-sha: <40-character SHA>`, `version: <MAJOR.MINOR.PATCH>`, `release-scope: all`. |
-| One container | `release-scope: custom`, `container-ids: nmp-automodel-tasks`. |
+| One container | `release-scope: custom`, `container-ids: nmp-customizer-tasks`. |
 | Helm-only validation | `release-scope: helm`, `dry-run: true`. |
+| Stable Helm-only chart override | `release-type: stable`, `source-sha: <40-character SHA>`, `version: 0.1.0`, `release-scope: helm`, `helm-version: 0.1.0+helmfix1`. |
 
 Nightlies also run automatically Monday through Friday at 8:00 PM
 America/Los_Angeles.
 
 ## What the workflow does
 
-1. Resolves the source, release label, selected artifacts, and wheel version.
-   Stable versions use the supplied release version. Nightly labels use
-   `nightly-<UTC timestamp>` and the wheel version is resolved by
-   `.github/scripts/stamp_sdk_version.py`.
+1. Resolves the source, release label, selected artifacts, wheel version, and
+   Helm chart version. Stable versions use the supplied release version.
+   Nightly labels use `nightly-<UTC timestamp>` and the wheel version is
+   resolved by `.github/scripts/stamp_sdk_version.py`.
 2. Checks out the selected source and validates the selected wheel paths,
    Docker Bake targets, and NGC overview files.
 3. Optionally synchronizes NGC metadata, when requested on a non-dry-run.
 4. Dispatches wheel, container, and stable-release registration work to the
    configured internal release repository. The selected source SHA, release
    type, version, and selected IDs are passed with the dispatch.
-5. Packages the Helm chart. A nightly chart uses the `Chart.yaml` version with
-   `-nightly-<UTC timestamp>` appended. A stable chart currently uses the
-   stable release version. Whether stable chart versions should instead remain
-   independently managed in `Chart.yaml` is an open policy decision.
+5. Packages the Helm chart with the planned chart version. A nightly chart uses
+   the latest release or RC Git tag core reachable from the selected source with
+   `-nightly-<UTC timestamp>` appended, falling back to the `Chart.yaml`
+   version if no such tag exists. A stable chart uses the stable release version
+   unless `helm-version` is set for a stable Helm-only release.
 6. Waits for every selected final artifact to become public before continuing.
    The polling job times out after four hours and sends a Slack alert after two
    hours if it is still waiting.
