@@ -46,7 +46,7 @@ const STATIC_SORT_FIELD_MAP: Readonly<Record<string, string>> = {
   created_at: 'created_at',
   cost_usd: 'cost_usd.mean',
   latency_ms: 'latency_ms.mean',
-  run_count: 'run_count',
+  test_case_count: 'test_case_count',
 };
 
 // Resolves a group's default_sort (a `sort`-param string like `-cost_usd.mean` or `-created_at`) to
@@ -55,7 +55,7 @@ const STATIC_SORT_FIELD_MAP: Readonly<Record<string, string>> = {
 // Maps one API sort field to its table column id: entity columns by exact id; metric columns by
 // family (any stat) since the column always sorts on `.mean`.
 const sortFieldToColumnId = (field: string): string | undefined => {
-  if (field === 'name' || field === 'created_at' || field === 'run_count') return field;
+  if (field === 'name' || field === 'created_at' || field === 'test_case_count') return field;
   if (field.startsWith('cost_usd.')) return 'cost_usd';
   if (field.startsWith('latency_ms.')) return 'latency_ms';
   const evaluatorMatch = field.match(/^evaluators\.(.+)\.[^.]+$/);
@@ -374,7 +374,6 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
             return (
               <MeanValueTooltipCell
                 label={title}
-                runNoun="scored run"
                 count={score?.count}
                 runCount={row.original.run_count}
               >
@@ -392,12 +391,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
         cell: ({ row }) => {
           const { cost_usd, run_count } = row.original;
           return (
-            <MeanValueTooltipCell
-              label="cost"
-              runNoun="run"
-              count={cost_usd?.count}
-              runCount={run_count}
-            >
+            <MeanValueTooltipCell label="cost" count={cost_usd?.count} runCount={run_count}>
               {cost_usd?.mean != null ? `$${cost_usd.mean.toFixed(3)}` : '-'}
             </MeanValueTooltipCell>
           );
@@ -411,23 +405,17 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
         cell: ({ row }) => {
           const { latency_ms, run_count } = row.original;
           return (
-            <MeanValueTooltipCell
-              label="latency"
-              runNoun="run"
-              count={latency_ms?.count}
-              runCount={run_count}
-            >
+            <MeanValueTooltipCell label="latency" count={latency_ms?.count} runCount={run_count}>
               {latency_ms?.mean != null ? formatDurationMs(latency_ms.mean) : '-'}
             </MeanValueTooltipCell>
           );
         },
       }),
-      accessor((original) => original.run_count, {
-        id: 'run_count',
-        header: 'Run Count',
+      accessor((original) => original.test_case_count, {
+        id: 'test_case_count',
+        header: 'Total test cases',
         enableSorting: true,
-        meta: { filter: numberRangeFilter('Run Count') },
-        cell: ({ row }) => <Text>{String(row.original.run_count ?? 0)}</Text>,
+        cell: ({ row }) => <Text>{String(row.original.test_case_count ?? 0)}</Text>,
       }),
       accessor('created_at', {
         header: 'Created',

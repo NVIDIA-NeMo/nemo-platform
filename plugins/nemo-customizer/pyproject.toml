@@ -33,6 +33,10 @@ build-backend = "hatchling.build"
 packages = ["src/nemo_customizer"]
 
 [tool.nemo.openapi]
+# nemo-customizer merges every customization backend (automodel, unsloth, …)
+# into one /apis/customization app, so enforce that no two backends emit the
+# same OpenAPI schema name with differing content (see NamespacedModel).
+strict_schema_collisions = true
 
 
 [tool.uv.sources]

@@ -35,9 +35,9 @@ from typing import Literal
 
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
+from nemo_platform.types.intake.evaluation_context_param import EvaluationContextParam
 from nemo_platform.types.intake.evaluator_result_create_params import EvaluatorResultCreateParams
 from nemo_platform.types.intake.evaluator_result_data_type import EvaluatorResultDataType
-from nemo_platform.types.intake.experiment_context_param import ExperimentContextParam
 from nemo_platform.types.intake.ingest.atif_agent_param import AtifAgentParam
 from nemo_platform.types.intake.ingest.atif_create_params import AtifCreateParams
 from nemo_platform.types.intake.ingest.atif_final_metrics_param import AtifFinalMetricsParam
@@ -69,14 +69,14 @@ def session_id_for(run_id: str, trial_id: str) -> str:
     return f"{run_id}:{trial_id}"
 
 
-def run_task_to_experiment_context(trial: AgentEvalTrial, *, experiment_id: str) -> ExperimentContextParam:
-    """Build the lean ingest ``experiment_context`` for a trial.
+def run_task_to_evaluation_context(trial: AgentEvalTrial, *, experiment_id: str) -> EvaluationContextParam:
+    """Build the lean ingest ``evaluation_context`` for a trial.
 
-    Only ``experiment_id`` and ``test_case_id`` live here. Dataset, group, and
-    free-form metadata belong on the Experiment entity (created separately via
-    the platform Experiments SDK), not on the per-ingest context.
+    Only ``evaluation_id`` (the Evaluation's name — ``experiment_id`` holds it) and
+    ``test_case_id`` live here. Dataset, group, and free-form metadata belong on the
+    Evaluation entity (created separately via the platform SDK), not on the per-ingest context.
     """
-    return {"experiment_id": experiment_id, "test_case_id": trial.task_id}
+    return {"evaluation_id": experiment_id, "test_case_id": trial.task_id}
 
 
 def trial_to_atif_ingest(
@@ -107,7 +107,7 @@ def trial_to_atif_ingest(
         "session_id": session_id_for(run_id, trial.id),
         "agent": agent,
         "steps": [step],
-        "experiment_context": run_task_to_experiment_context(trial, experiment_id=experiment_id),
+        "evaluation_context": run_task_to_evaluation_context(trial, experiment_id=experiment_id),
     }
     if final_metrics is not None:
         body["final_metrics"] = final_metrics

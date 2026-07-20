@@ -67,6 +67,7 @@ def test_evaluation_response_hydrates_clickhouse_rollups(client: TestClient) -> 
     evaluation = fetched.json()
 
     assert evaluation["run_count"] == 4
+    assert evaluation["test_case_count"] == 4  # 4 distinct test_case_ids, each run once
     assert evaluation["evaluator_names"] == ["reward"]
     assert evaluation["model_names"] == ["provider/sample-model"]
 
@@ -101,6 +102,115 @@ def test_evaluation_response_hydrates_clickhouse_rollups(client: TestClient) -> 
     assert listed.status_code == 200, listed.text
     listed_evaluation = next(item for item in listed.json()["data"] if item["name"] == evaluation_id)
     assert listed_evaluation["aggregate_scores"]["reward"]["mean"] == pytest.approx(0.75)
+
+
+def test_evaluation_rollups_aggregate_per_test_case_before_pooling(client: TestClient) -> None:
+    # Unbalanced k: test case A has 1 attempt, test case B has 3. Test-case-weighting counts each test case once, so the
+    # heavily-retried test case can't dominate. Pooling all 4 attempts would give score mean 0.75; the
+    # correct two-level rollup (average per test case, then across test cases) is 0.5.
+    evaluation_id = "rollup-k-exp"
+    group_id = _ensure_group(client)
+    created = client.post(
+        EVALUATIONS,
+        json={
+            "name": evaluation_id,
+            "experiment_group_id": group_id,
+            "dataset_name": "rollup-dataset",
+            "dataset_version": "v1",
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    rows = [
+        # (run_id, test_case_id, score, cost_usd, latency_ms)
+        ("run-1", "case-a", 0.0, 0.10, 1000),  # test case A: 1 attempt
+        ("run-1", "case-b", 1.0, 0.10, 1000),  # test case B: 3 attempts, differing cost/latency
+        ("run-2", "case-b", 1.0, 0.20, 2000),
+        ("run-3", "case-b", 1.0, 0.30, 3000),
+    ]
+    started_at = datetime.now(timezone.utc).replace(microsecond=0)
+    for index, (run_id, test_case_id, score, cost_usd, latency_ms) in enumerate(rows):
+        response = client.post(
+            ATIF_INGEST,
+            json=_atif_body(
+                started_at=started_at,
+                evaluation_id=evaluation_id,
+                run_id=run_id,
+                test_case_id=test_case_id,
+                score=score,
+                cost_usd=cost_usd,
+                latency_ms=latency_ms,
+                offset_seconds=index * 10,
+            ),
+        )
+        assert response.status_code == 201, response.text
+
+    evaluation = client.get(f"{EVALUATIONS}/{evaluation_id}").json()
+
+    # run_count stays the number of attempts (4); the distributions are over the 2 test cases.
+    assert evaluation["run_count"] == 4
+    assert evaluation["test_case_count"] == 2  # 2 distinct test cases (case-a, case-b)
+
+    score = evaluation["aggregate_scores"]["reward"]
+    assert score["mean"] == pytest.approx(0.5)  # per test case: A=0.0, B=1.0 -> not the pooled 0.75
+    assert score["sum"] == pytest.approx(1.0)
+    assert score["count"] == 2
+
+    cost = evaluation["cost_usd"]
+    # per-test-case cost is avg per attempt: A=0.10, B=avg(0.10, 0.20, 0.30)=0.20 -> mean 0.15 (not sum 0.60)
+    assert cost["mean"] == pytest.approx(0.15)
+    assert cost["count"] == 2
+
+    latency = evaluation["latency_ms"]
+    # per-test-case latency avg per attempt: A=1000, B=avg(1000, 2000, 3000)=2000 -> mean 1500
+    assert latency["mean"] == pytest.approx(1500.0)
+    assert latency["count"] == 2
+
+
+def test_evaluation_rollups_exclude_sessions_without_test_case_id(client: TestClient) -> None:
+    # Sessions with no test_case_id aren't attributable to a test case, so they're dropped from the
+    # test-case-weighted rollup: no scores/cost/latency and test_case_count 0, though run_count still
+    # reflects that the runs were ingested.
+    evaluation_id = "rollup-no-test-case-exp"
+    group_id = _ensure_group(client)
+    created = client.post(
+        EVALUATIONS,
+        json={
+            "name": evaluation_id,
+            "experiment_group_id": group_id,
+            "dataset_name": "rollup-dataset",
+            "dataset_version": "v1",
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    rows = [
+        ("run-1", "", 0.0, 0.10, 1000),
+        ("run-2", "", 1.0, 0.30, 3000),
+    ]
+    started_at = datetime.now(timezone.utc).replace(microsecond=0)
+    for index, (run_id, test_case_id, score, cost_usd, latency_ms) in enumerate(rows):
+        response = client.post(
+            ATIF_INGEST,
+            json=_atif_body(
+                started_at=started_at,
+                evaluation_id=evaluation_id,
+                run_id=run_id,
+                test_case_id=test_case_id,
+                score=score,
+                cost_usd=cost_usd,
+                latency_ms=latency_ms,
+                offset_seconds=index * 10,
+            ),
+        )
+        assert response.status_code == 201, response.text
+
+    evaluation = client.get(f"{EVALUATIONS}/{evaluation_id}").json()
+    assert evaluation["run_count"] == 2  # the runs were ingested
+    assert evaluation["test_case_count"] == 0  # but none are attributable to a test case
+    assert not evaluation.get("aggregate_scores")  # excluded from the test-case-weighted score rollup
+    assert evaluation.get("cost_usd") is None
+    assert evaluation.get("latency_ms") is None
 
 
 def test_atif_ingest_rejects_deleted_evaluation(client: TestClient) -> None:

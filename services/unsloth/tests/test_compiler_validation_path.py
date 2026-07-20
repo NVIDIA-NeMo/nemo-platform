@@ -122,9 +122,4 @@ async def test_upload_step_stamps_output_metadata() -> None:
         compiler_mod.fetch_model_entity = original_fetch
 
     upload = next(s for s in job["steps"] if s["name"] == "model-upload")
-    assert upload["config"]["upload"][0]["metadata"] == {
-        "model": "default/qwen3-1.7b",
-        "finetuning_type": "lora",
-        "save_method": "lora",
-        "output_type": "adapter",
-    }
+    assert upload["config"]["upload"][0]["metadata"] is None

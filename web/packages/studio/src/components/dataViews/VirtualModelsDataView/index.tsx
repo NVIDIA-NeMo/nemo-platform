@@ -26,6 +26,7 @@ import { Button, Flex, Stack, StatusMessage, Text } from '@nvidia/foundations-re
 import { getErrorMessage } from '@studio/api/common/utils';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { ErrorPanel } from '@studio/components/ErrorPanel';
+import { BaseModelSearchFilterField } from '@studio/components/FilterFields';
 import { VirtualModelDetailsSidePanel } from '@studio/routes/VirtualModelsListRoute/VirtualModelDetailsSidePanel';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
 import { Waypoints } from 'lucide-react';
@@ -79,7 +80,7 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
     const createdAt = columnFilters.get('created_at') as DatetimeFilter | undefined;
     return withOperators<VirtualModelFilter>({
       ...(name ? { name: { $like: name } } : {}),
-      ...(defaultModelEntity ? { default_model_entity: { $like: defaultModelEntity } } : {}),
+      ...(defaultModelEntity ? { default_model_entity: { $eq: defaultModelEntity } } : {}),
       ...(createdAt ? { created_at: createdAt } : {}),
     });
   }, [dataViewState.debouncedSearchBar, dataViewState.debouncedColumnFilters]);
@@ -157,7 +158,18 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
           header: 'Default model',
           enableSorting: false,
           meta: {
-            filter: { type: 'text', label: 'Default Model' },
+            filter: {
+              type: 'custom',
+              label: 'Default Model',
+              renderFilter: ({ setValue, value }) => (
+                <BaseModelSearchFilterField
+                  workspace={workspace}
+                  value={value as string | undefined}
+                  onValueChange={(models: string[]) => setValue(models[0] || undefined)}
+                  singleSelect
+                />
+              ),
+            },
           },
           cell({ row }) {
             const value = row.original.default_model_entity;
@@ -214,7 +226,7 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
           ],
         }),
       ],
-      [openDetailsPanel]
+      [openDetailsPanel, workspace]
     );
 
   const hasSearchOrFilters =

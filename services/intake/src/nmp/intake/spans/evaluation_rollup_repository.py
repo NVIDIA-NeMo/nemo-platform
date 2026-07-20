@@ -29,6 +29,7 @@ class ScoreRollup:
 class EvaluationRollup:
     evaluation_id: str
     run_count: int = 0
+    test_case_count: int = 0
     model_names: list[str] = field(default_factory=list)
     agent_names: list[str] = field(default_factory=list)
     agent_versions: list[str] = field(default_factory=list)
@@ -62,6 +63,7 @@ class EvaluationRollupRepository:
             )
         ):
             rollups[row["evaluation_id"]].run_count = int(row["run_count"])
+            rollups[row["evaluation_id"]].test_case_count = int(row["test_case_count"])
 
         for row in result_rows(
             await self._client.query(
@@ -116,7 +118,7 @@ def _evaluation_id_parameters(evaluation_ids: list[str]) -> tuple[str, dict[str,
 
 def _scoped_sessions_sql(trace_index_table: str, evaluation_names_sql: str) -> str:
     return f"""
-        SELECT workspace, evaluation_id, session_id, latency_ms
+        SELECT workspace, evaluation_id, session_id, test_case_id, latency_ms
         FROM {trace_index_table} FINAL
         WHERE workspace = %(workspace)s
             AND is_deleted = 0
@@ -127,13 +129,17 @@ def _scoped_sessions_sql(trace_index_table: str, evaluation_names_sql: str) -> s
 
 
 def _run_counts_sql(trace_index_table: str, evaluation_names_sql: str) -> str:
+    # run_count is every ingested session; test_case_count is the distinct test cases those sessions
+    # belong to. Sessions with no test_case_id aren't attributable to a test case, so they don't count
+    # toward test_case_count (and are excluded from the test-case-weighted rollups below).
     return f"""
         WITH scoped_sessions AS (
             {_scoped_sessions_sql(trace_index_table, evaluation_names_sql)}
         )
         SELECT
             evaluation_id,
-            count() AS run_count
+            count() AS run_count,
+            uniqExactIf(test_case_id, test_case_id != '') AS test_case_count
         FROM scoped_sessions
         GROUP BY evaluation_id
         ORDER BY evaluation_id ASC
@@ -179,10 +185,11 @@ def _stat_columns(value_expr: str, *, prefix: str = "", guarded: bool = False) -
 
 
 def _score_rollups_sql(*, trace_index_table: str, evaluator_results_table: str, evaluation_names_sql: str) -> str:
-    # Each run (session) contributes one score per evaluator, so reduce the per-span
-    # evaluator_results rows to a single per-(evaluation, session, evaluator) value before
-    # the distribution rollup. This keeps `count` aligned with run_count and the mean
-    # run-weighted rather than weighted by spans-per-session.
+    # Two-level rollup. Each run (session) contributes one score per evaluator, so first reduce the
+    # per-span evaluator_results rows to one per-(session, evaluator) value; then average those per test
+    # case; then take the distribution across test cases. The mean is test-case-weighted (each test case
+    # counts once regardless of k) and `count` is the number of test cases. Sessions with no test_case_id
+    # aren't attributable to a test case, so they're dropped here.
     return f"""
         WITH
         scoped_sessions AS (
@@ -191,6 +198,7 @@ def _score_rollups_sql(*, trace_index_table: str, evaluator_results_table: str, 
         session_scores AS (
             SELECT
                 sessions.evaluation_id AS evaluation_id,
+                sessions.test_case_id AS test_case_key,
                 results.name AS evaluator_name,
                 avg(results.value) AS value
             FROM scoped_sessions AS sessions
@@ -207,19 +215,33 @@ def _score_rollups_sql(*, trace_index_table: str, evaluator_results_table: str, 
             ) AS results
                 ON sessions.workspace = results.workspace
                 AND sessions.session_id = results.session_id
-            GROUP BY sessions.evaluation_id, sessions.session_id, results.name
+            WHERE sessions.test_case_id != ''
+            GROUP BY sessions.evaluation_id, sessions.session_id, sessions.test_case_id, results.name
+        ),
+        test_case_scores AS (
+            SELECT
+                evaluation_id,
+                test_case_key,
+                evaluator_name,
+                avg(value) AS value
+            FROM session_scores
+            GROUP BY evaluation_id, test_case_key, evaluator_name
         )
         SELECT
             evaluation_id,
             evaluator_name,
             {_stat_columns("value")}
-        FROM session_scores
+        FROM test_case_scores
         GROUP BY evaluation_id, evaluator_name
         ORDER BY evaluation_id ASC, evaluator_name ASC
     """
 
 
 def _metric_rollups_sql(*, trace_index_table: str, spans_table: str, evaluation_names_sql: str) -> str:
+    # Two-level rollup: per-attempt cost/latency, then averaged per test case (avg per attempt — the
+    # number must not scale with k), then the distribution across test cases (test-case-weighted).
+    # Attempts with no cost/latency are excluded from a test case's average rather than counted as zero;
+    # sessions with no test_case_id aren't attributable to a test case, so they're dropped.
     return f"""
         WITH
         scoped_sessions AS (
@@ -239,7 +261,7 @@ def _metric_rollups_sql(*, trace_index_table: str, spans_table: str, evaluation_
         session_costs AS (
             SELECT
                 sessions.evaluation_id AS evaluation_id,
-                sessions.session_id AS session_id,
+                sessions.test_case_id AS test_case_key,
                 sessions.latency_ms AS latency_ms,
                 if(
                     countIf(has(mapKeys(spans.attributes_number), %(cost_key)s)) = 0,
@@ -269,7 +291,20 @@ def _metric_rollups_sql(*, trace_index_table: str, spans_table: str, evaluation_
                 ON sessions.workspace = spans.workspace
                 AND sessions.session_id = spans.session_id
                 AND spans.is_deleted = 0
-            GROUP BY sessions.evaluation_id, sessions.session_id, sessions.latency_ms
+            WHERE sessions.test_case_id != ''
+            GROUP BY sessions.evaluation_id, sessions.session_id, sessions.test_case_id, sessions.latency_ms
+        ),
+        test_case_metrics AS (
+            SELECT
+                evaluation_id,
+                test_case_key,
+                if(countIf(isNotNull(cost_usd)) = 0, NULL, avgIf(cost_usd, isNotNull(cost_usd))) AS cost_usd,
+                if(countIf(isNotNull(latency_ms)) = 0, NULL, avgIf(latency_ms, isNotNull(latency_ms))) AS latency_ms,
+                arrayDistinct(arrayFlatten(groupArray(model_names))) AS model_names,
+                arrayDistinct(arrayFlatten(groupArray(agent_names))) AS agent_names,
+                arrayDistinct(arrayFlatten(groupArray(agent_versions))) AS agent_versions
+            FROM session_costs
+            GROUP BY evaluation_id, test_case_key
         )
         SELECT
             evaluation_id,
@@ -278,7 +313,7 @@ def _metric_rollups_sql(*, trace_index_table: str, spans_table: str, evaluation_
             arraySort(arrayDistinct(arrayFlatten(groupArray(agent_versions)))) AS agent_versions,
             {_stat_columns("cost_usd", prefix="cost", guarded=True)},
             {_stat_columns("latency_ms", prefix="latency", guarded=True)}
-        FROM session_costs
+        FROM test_case_metrics
         GROUP BY evaluation_id
         ORDER BY evaluation_id ASC
     """

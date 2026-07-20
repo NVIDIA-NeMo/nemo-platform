@@ -71,6 +71,14 @@ jobs:
         ttl_seconds_before_active: 60
         ttl_seconds_active: 3600
         ttl_seconds_after_finished: 300
+    # Auditor jobs always run as Docker containers (auditor-tasks image). Using a
+    # dedicated profile "auditor" avoids the cpu→subprocess translation that the
+    # subprocess/default entry above enables for profile "default".
+    - provider: cpu
+      profile: auditor
+      backend: docker
+      config:
+        launcher_tool_path: ./services/core/jobs/jobs-launcher/jobs-launcher
     # Customizer (automodel / unsloth) GPU jobs. The unsloth backend stamps the
     # profile name "gpu" onto all 4 steps, so both cpu/gpu and gpu/gpu must
     # exist. `profile` is a name, not a resource claim — `provider` governs

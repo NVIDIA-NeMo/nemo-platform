@@ -2365,12 +2365,18 @@ paths:
       tags:
       - Inference Gateway
       summary: OpenAI List Models
-      description: 'This endpoint aggregates models from all model entities and returns
-        them
+      description: 'This endpoint lists the routable VirtualModels in the requested
+        workspace and
 
-        in OpenAI''s list models format. Each model ID is the model entity identifier
+        returns them in OpenAI''s list models format. Each model ID is the VirtualModel
 
-        in format workspace/model_entity_name.'
+        identifier in format workspace/name. This includes both autoprovisioned
+
+        VirtualModels (one per served model entity) and custom VirtualModels, keeping
+
+        the catalog in agreement with the inference proxy, which also resolves
+
+        VirtualModels scoped to the request workspace.'
       operationId: openai_proxy_list_models
       parameters:
       - name: workspace
@@ -2399,9 +2405,13 @@ paths:
       summary: OpenAI Get Model
       description: 'Retrieve information about a specific OpenAI-compatible model.
 
-        Workspace is always taken from the URL path; name may be model_entity_name
+        Workspace is always taken from the URL path; name may be the VirtualModel
 
-        or workspace/model_entity_name (workspace prefix is ignored).'
+        name or workspace/name (workspace prefix is ignored). Resolves against
+
+        routable VirtualModels, including custom ones, so this route agrees with
+
+        the list route and the inference proxy.'
       operationId: openai_proxy_get_model
       parameters:
       - name: workspace
@@ -3402,8 +3412,8 @@ paths:
             \ (the first field dominates); prefix any field with '-' for descending\
             \ \u2014 e.g. '-evaluators.reward.mean,cost_usd.mean'. Each field is an\
             \ evaluation attribute (name, created_at, updated_at, pinned_at) or an\
-            \ aggregate metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or\
-            \ evaluators.<name>.<stat>, where <stat> is one of mean, median, p90,\
+            \ aggregate metric: run_count, test_case_count, cost_usd.<stat>, latency_ms.<stat>,\
+            \ or evaluators.<name>.<stat>, where <stat> is one of mean, median, p90,\
             \ p95, p99, sum, count. When omitted, defaults to -created_at with pinned\
             \ evaluations first."
           title: Sort
@@ -3412,9 +3422,10 @@ paths:
           \ (the first field dominates); prefix any field with '-' for descending\
           \ \u2014 e.g. '-evaluators.reward.mean,cost_usd.mean'. Each field is an\
           \ evaluation attribute (name, created_at, updated_at, pinned_at) or an aggregate\
-          \ metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>,\
-          \ where <stat> is one of mean, median, p90, p95, p99, sum, count. When omitted,\
-          \ defaults to -created_at with pinned evaluations first."
+          \ metric: run_count, test_case_count, cost_usd.<stat>, latency_ms.<stat>,\
+          \ or evaluators.<name>.<stat>, where <stat> is one of mean, median, p90,\
+          \ p95, p99, sum, count. When omitted, defaults to -created_at with pinned\
+          \ evaluations first."
       - in: query
         name: filter
         style: deepObject
@@ -4140,6 +4151,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/IngestResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/sessions/{id}:
+    get:
+      tags:
+      - Sessions
+      summary: Get Session
+      operationId: get_session_apis_intake_v2_workspaces__workspace__sessions__id__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '404':
+          description: Session not found
         '422':
           description: Validation Error
           content:
@@ -10456,6 +10501,14 @@ components:
           description: Number of distinct ingested evaluation sessions; one session
             is treated as one run.
           default: 0
+        test_case_count:
+          type: integer
+          title: Test Case Count
+          description: Number of distinct test cases in the evaluation, i.e. distinct
+            test_case_id values (sessions with no test_case_id each count as their
+            own). A test case run k times counts once; the rollup metrics are averaged
+            per test case before pooling across test cases.
+          default: 0
         cost_usd:
           $ref: '#/components/schemas/EvaluatorAggregate'
         latency_ms:
@@ -15004,7 +15057,7 @@ components:
       - source
       - -source
       title: PlatformJobListSortField
-      description: 'Sort fields for the job *list* endpoint.'
+      description: Sort fields for the job *list* endpoint.
     PlatformJobListTaskResponse:
       properties:
         data:
@@ -17253,6 +17306,71 @@ components:
       - served_model_name
       title: ServedModelMapping
       description: Mapping between a Model Entity and how it's served by this provider.
+    Session:
+      properties:
+        id:
+          type: string
+          title: Id
+        workspace:
+          type: string
+          title: Workspace
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        ended_at:
+          title: Ended At
+          type: string
+          format: date-time
+        duration_ms:
+          title: Duration Ms
+          type: number
+        status:
+          $ref: '#/components/schemas/SpanStatus'
+        input_tokens:
+          title: Input Tokens
+          type: integer
+          minimum: 0.0
+        output_tokens:
+          title: Output Tokens
+          type: integer
+          minimum: 0.0
+        cached_tokens:
+          title: Cached Tokens
+          type: integer
+          minimum: 0.0
+        total_tokens:
+          title: Total Tokens
+          type: integer
+          minimum: 0.0
+        cost_usd:
+          title: Cost Usd
+          type: number
+        cost_input_usd:
+          title: Cost Input Usd
+          type: number
+        cost_output_usd:
+          title: Cost Output Usd
+          type: number
+        trace_count:
+          type: integer
+          minimum: 0.0
+          title: Trace Count
+        span_count:
+          type: integer
+          minimum: 0.0
+          title: Span Count
+      type: object
+      required:
+      - id
+      - workspace
+      - started_at
+      - status
+      - trace_count
+      - span_count
+      title: Session
+      description: Aggregate telemetry for one Intake session; does not include traces
+        or span payloads.
     SingleCallConfig:
       properties:
         enabled:

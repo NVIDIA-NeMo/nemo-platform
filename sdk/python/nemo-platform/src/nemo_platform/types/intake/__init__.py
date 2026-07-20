@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from .span import Span as Span
 from .trace import Trace as Trace
+from .session import Session as Session
 from .span_kind import SpanKind as SpanKind
 from .annotation import Annotation as Annotation
 from .spans_page import SpansPage as SpansPage

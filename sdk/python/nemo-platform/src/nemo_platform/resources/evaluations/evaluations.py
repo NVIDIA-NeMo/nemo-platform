@@ -342,9 +342,9 @@ class EvaluationsResource(SyncAPIResource):
               dominates); prefix any field with '-' for descending — e.g.
               '-evaluators.reward.mean,cost_usd.mean'. Each field is an evaluation attribute
               (name, created_at, updated_at, pinned_at) or an aggregate metric: run_count,
-              cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>, where <stat> is
-              one of mean, median, p90, p95, p99, sum, count. When omitted, defaults to
-              -created_at with pinned evaluations first.
+              test_case_count, cost_usd.<stat>, latency_ms.<stat>, or
+              evaluators.<name>.<stat>, where <stat> is one of mean, median, p90, p95, p99,
+              sum, count. When omitted, defaults to -created_at with pinned evaluations first.
 
           extra_headers: Send extra headers
 
@@ -793,9 +793,9 @@ class AsyncEvaluationsResource(AsyncAPIResource):
               dominates); prefix any field with '-' for descending — e.g.
               '-evaluators.reward.mean,cost_usd.mean'. Each field is an evaluation attribute
               (name, created_at, updated_at, pinned_at) or an aggregate metric: run_count,
-              cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>, where <stat> is
-              one of mean, median, p90, p95, p99, sum, count. When omitted, defaults to
-              -created_at with pinned evaluations first.
+              test_case_count, cost_usd.<stat>, latency_ms.<stat>, or
+              evaluators.<name>.<stat>, where <stat> is one of mean, median, p90, p95, p99,
+              sum, count. When omitted, defaults to -created_at with pinned evaluations first.
 
           extra_headers: Send extra headers
 

@@ -47,6 +47,14 @@ from .traces import (
     TracesResourceWithStreamingResponse,
     AsyncTracesResourceWithStreamingResponse,
 )
+from .sessions import (
+    SessionsResource,
+    AsyncSessionsResource,
+    SessionsResourceWithRawResponse,
+    AsyncSessionsResourceWithRawResponse,
+    SessionsResourceWithStreamingResponse,
+    AsyncSessionsResourceWithStreamingResponse,
+)
 from .annotations import (
     AnnotationsResource,
     AsyncAnnotationsResource,
@@ -89,6 +97,12 @@ __all__ = [
     "AsyncSpansResourceWithRawResponse",
     "SpansResourceWithStreamingResponse",
     "AsyncSpansResourceWithStreamingResponse",
+    "SessionsResource",
+    "AsyncSessionsResource",
+    "SessionsResourceWithRawResponse",
+    "AsyncSessionsResourceWithRawResponse",
+    "SessionsResourceWithStreamingResponse",
+    "AsyncSessionsResourceWithStreamingResponse",
     "TracesResource",
     "AsyncTracesResource",
     "TracesResourceWithRawResponse",

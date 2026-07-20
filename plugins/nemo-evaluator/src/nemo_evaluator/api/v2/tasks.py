@@ -11,7 +11,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from nemo_evaluator.api.dependencies import get_task_service
 from nemo_evaluator.api.schemas import Task, TaskFilter, TaskInput, TaskSort
-from nemo_evaluator.api.service.task_service import TaskService
+from nemo_evaluator.api.service.task_service import MetricRefNotFoundError, TaskService
 from nemo_evaluator.authz import scope
 from nemo_evaluator.entities import MAX_NAME_LENGTH, NAME_PATTERN
 from nemo_platform_plugin.api.parsed_filter import ParsedFilter, make_filter_dep
@@ -101,6 +101,9 @@ async def create_task(
         return await service.create_task(name, task, workspace=workspace, project=project)
     except EntityValidationError as e:
         logger.warning(f"Entity store validation error during task creation: {e}")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    except MetricRefNotFoundError as e:
+        logger.warning(f"Task has an invalid metric reference: {e}")
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
     except ValueError as e:
         if "already exists" in str(e).lower():

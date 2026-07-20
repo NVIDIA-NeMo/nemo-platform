@@ -525,6 +525,13 @@ jobs:
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
           E2E_SERVICES_LOG_DIR: ${{ runner.temp }}/e2e-services-logs
           NGC_API_KEY: not-used-for-ghcr-cpu-e2e
+          # Let the k8s-mode agent deployment e2e (test_nemo_agents_k8s.py) learn
+          # the agent image ref. The Helm platform is configured with a k8s
+          # deployments executor (e2e/k8s/values/kind.yaml) and this same
+          # nmp-api image is pre-pulled into the kind nodes, so the agent pod
+          # resolves it node-locally under IfNotPresent.
+          NMP_E2E_IMAGE_REGISTRY: ${{ needs.build-cpu-smoke-images.outputs.image_registry }}
+          NMP_E2E_IMAGE_TAG: ${{ needs.build-cpu-smoke-images.outputs.image_tag }}
         run: |
           test -n "${NMP_E2E_CLUSTER_URL}"
           export NMP_BASE_URL="${NMP_E2E_CLUSTER_URL}"

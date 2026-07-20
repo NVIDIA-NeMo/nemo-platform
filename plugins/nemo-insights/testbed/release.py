@@ -86,7 +86,7 @@ def _release_repo_accessible() -> None:
 
 
 def _release_missing(error: subprocess.CalledProcessError) -> bool:
-    return (error.stderr or "").strip().lower() == "release not found"
+    return "not found" in (error.stderr or "").lower()
 
 
 def _release_exists() -> bool:
@@ -150,17 +150,20 @@ def resolve_state(state: str | None, *, subject: str | None, lock_path: Path) ->
 def download_ref(ref: str, dest_dir: Path) -> Path:
     """Download a state version tarball from the testbed-state release.
 
-    Returns the path to the tarball. Published refs are immutable, so an
-    already-downloaded ``<ref>.tar.zst`` in *dest_dir* is reused without
+    Returns the path to the tarball, cached under a per-repo subdirectory of
+    *dest_dir* (the repo is configurable via ``TESTBED_STATE_REPO``, so one
+    repo's bundle must never satisfy another repo's ref). Published refs are
+    immutable, so an already-downloaded ``<ref>.tar.zst`` is reused without
     invoking gh (one printed line says so). On a fresh download, ``--clobber``
     overwrites any leftover file from a prior run (gh refuses to overwrite by
     default, which would make re-downloading the same ref crash). Failures
     surface gh stderr and propagate the exception.
     """
-    dest = dest_dir / f"{ref}.tar.zst"
+    repo_dir = dest_dir / state_repo().replace("/", "__")
+    dest = repo_dir / f"{ref}.tar.zst"
     if dest.is_file():
         print(f"using cached {ref}.tar.zst")
         return dest
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    _release_gh("download", RELEASE_TAG, "--pattern", f"{ref}.tar.zst", "--dir", str(dest_dir), "--clobber")
+    repo_dir.mkdir(parents=True, exist_ok=True)
+    _release_gh("download", RELEASE_TAG, "--pattern", f"{ref}.tar.zst", "--dir", str(repo_dir), "--clobber")
     return dest

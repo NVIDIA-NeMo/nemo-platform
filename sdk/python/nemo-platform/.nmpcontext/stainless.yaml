@@ -891,6 +891,11 @@ resources:
           evaluator_results:
             methods:
               list: get /apis/intake/v2/workspaces/{workspace}/spans/{span_id}/evaluator-results
+      sessions:
+        models:
+          session: Session
+        methods:
+          retrieve: get /apis/intake/v2/workspaces/{workspace}/sessions/{id}
       traces:
         models:
           trace: Trace

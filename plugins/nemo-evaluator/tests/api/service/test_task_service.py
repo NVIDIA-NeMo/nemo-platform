@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 import pytest
 from nemo_evaluator.api.schemas import MetricInline, MetricRef, Task, TaskInput
-from nemo_evaluator.api.service.task_service import TaskService
+from nemo_evaluator.api.service.task_service import MetricRefNotFoundError, TaskService
 from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
@@ -23,12 +23,16 @@ from nemo_platform_plugin.entities import (
 class _FakeMetricService:
     """Records inline-metric normalization so we can assert a task stores refs, not bundles."""
 
-    def __init__(self) -> None:
+    def __init__(self, existing: set[tuple[str, str]] | None = None) -> None:
         self.stored: list[MetricInline] = []
+        self.existing = existing if existing is not None else {("default", "stored-metric")}
 
     async def store_derived_metric(self, metric: MetricInline, *, workspace: str) -> MetricRef:
         self.stored.append(metric)
         return MetricRef(f"{workspace}/derived.{metric.payload.digest}")
+
+    async def get_metric(self, workspace: str, name: str) -> object | None:
+        return object() if (workspace, name) in self.existing else None
 
 
 def _inline_metric() -> MetricInline:
@@ -133,6 +137,19 @@ async def test_create_normalizes_inline_metrics_to_refs(
     assert all(isinstance(m, MetricRef) for m in created.metrics)
     assert created.metrics[0].root == "default/stored-metric"
     assert created.metrics[1].root == f"default/derived.{inline.payload.digest}"
+
+
+async def test_create_rejects_missing_metric_ref(service: TaskService) -> None:
+    task_input = TaskInput(intent="x", inputs={"instruction": "?"}, metrics=[MetricRef("default/nope")])
+    with pytest.raises(MetricRefNotFoundError, match="not found"):
+        await service.create_task("task-1", task_input, workspace="default")
+
+
+async def test_create_canonicalizes_bare_metric_ref(service: TaskService) -> None:
+    # A bare "stored-metric" ref resolves against the task workspace and is persisted as "default/stored-metric".
+    task_input = TaskInput(intent="x", inputs={"instruction": "?"}, metrics=[MetricRef("stored-metric")])
+    created = await service.create_task("task-1", task_input, workspace="default")
+    assert created.metrics[0].root == "default/stored-metric"
 
 
 async def test_create_rejects_duplicate(service: TaskService) -> None:

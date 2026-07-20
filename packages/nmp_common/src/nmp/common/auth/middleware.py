@@ -355,8 +355,9 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             )
             return await self._call_next_with_auth_client(request, call_next, auth_client)
 
-        # Auth enabled - perform PDP check
-        return await self._handle_auth_check(request, call_next)
+        # Auth enabled - perform PDP check with the parsed principal headers. The HF-compatible
+        # flow synthesizes these from its Bearer service token without mutating request.headers.
+        return await self._handle_auth_check(request, call_next, headers_dict)
 
     async def _handle_bearer_token_request(self, request: Request, call_next: Callable, auth_header: str) -> Response:
         """Handle requests with Authorization: Bearer tokens.
@@ -548,7 +549,9 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         )
         return await self._call_next_with_auth_client(request, call_next, auth_client)
 
-    async def _handle_auth_check(self, request: Request, call_next: Callable) -> Response:
+    async def _handle_auth_check(
+        self, request: Request, call_next: Callable, headers_dict: dict | None = None
+    ) -> Response:
         """Perform authorization check by calling the Policy Decision Point (PDP).
 
         This is the main authorization flow when auth is enabled and no bypass
@@ -558,6 +561,8 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         Args:
             request: The incoming HTTP request
             call_next: The next middleware/handler in the chain
+            headers_dict: Optional preprocessed headers. HF-compatible requests use this
+                to pass the service principal synthesized from their Bearer token.
 
         Returns:
             - 401 Unauthorized: If no principal and request is denied
@@ -568,7 +573,8 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             - 500 Internal Server Error: For unexpected PDP errors
             - Response from downstream: If authorized
         """
-        headers_dict = dict(request.headers)
+        if not headers_dict:
+            headers_dict = dict(request.headers)
 
         principal, error_response = self._principal_from_headers(headers_dict)
         if error_response is not None:

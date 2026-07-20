@@ -8,7 +8,8 @@ from __future__ import annotations
 from typing import Literal, Self
 
 from nemo_platform_plugin.integrations import IntegrationsSpec
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from nmp.customization_common.schema import NamespacedModel
+from pydantic import Field, model_validator
 
 __all__ = [
     "AutomodelJobInput",
@@ -30,9 +31,16 @@ class ValidationError(ValueError):
     """Raised when automodel job input validation fails."""
 
 
-class LoRAParams(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class AutomodelSchema(NamespacedModel):
+    """Backend base: every Automodel-owned model emits an ``Automodel``-prefixed
+    OpenAPI schema name (``TrainingSpec`` -> ``AutomodelTrainingSpec``), so it
+    can't collide with another backend's same-named model in the merged
+    ``/apis/customization`` spec. ``extra='forbid'`` is inherited from the base."""
 
+    __schema_namespace__ = "Automodel"
+
+
+class LoRAParams(AutomodelSchema):
     rank: int = Field(default=16, gt=0)
     alpha: int = Field(default=32, gt=0)
     dropout: float = Field(default=0.0, ge=0.0, le=1.0, description="LoRA dropout probability for regularization.")
@@ -44,17 +52,13 @@ class LoRAParams(BaseModel):
     use_triton: bool = Field(default=True, description="Use the optimized Triton LoRA kernel.")
 
 
-class DatasetSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class DatasetSpec(AutomodelSchema):
     training: str = Field(description="Training fileset as 'name' or 'workspace/name'.")
     validation: str | None = None
     prompt_template: str | None = None
 
 
-class TrainingSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class TrainingSpec(AutomodelSchema):
     training_type: Literal["sft", "distillation"] = "sft"
     finetuning_type: Literal["lora", "all_weights", "lora_merged"] = "lora"
     lora: LoRAParams | None = None
@@ -83,18 +87,14 @@ class TrainingSpec(BaseModel):
         return self
 
 
-class ScheduleSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class ScheduleSpec(AutomodelSchema):
     epochs: int = Field(default=1, gt=0)
     max_steps: int | None = Field(default=None, gt=0)
     val_check_interval: float | None = None
     seed: int | None = None
 
 
-class BatchSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class BatchSpec(AutomodelSchema):
     global_batch_size: int = Field(default=8, gt=0)
     micro_batch_size: int = Field(default=1, gt=0)
     sequence_packing: bool = False
@@ -103,9 +103,7 @@ class BatchSpec(BaseModel):
     )
 
 
-class OptimizerSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class OptimizerSpec(AutomodelSchema):
     learning_rate: float = Field(default=5e-6, gt=0.0)
     min_learning_rate: float | None = Field(
         default=None, ge=0.0, description="Minimum learning rate for the cosine decay schedule."
@@ -121,9 +119,7 @@ class OptimizerSpec(BaseModel):
     )
 
 
-class ParallelismSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class ParallelismSpec(AutomodelSchema):
     num_nodes: int = Field(default=1, gt=0)
     num_gpus_per_node: int = Field(default=1, gt=0)
     tensor_parallel_size: int = Field(default=1, gt=0)
@@ -133,26 +129,20 @@ class ParallelismSpec(BaseModel):
     sequence_parallel: bool = Field(default=False, description="Enable sequence parallelism.")
 
 
-class OutputRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class OutputRequest(AutomodelSchema):
     name: str
     description: str | None = None
 
 
-class OutputResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class OutputResponse(AutomodelSchema):
     name: str
     type: Literal["model", "adapter"]
     fileset: str
     description: str | None = None
 
 
-class AutomodelJobInput(BaseModel):
+class AutomodelJobInput(AutomodelSchema):
     """POST body / CLI JSON."""
-
-    model_config = ConfigDict(extra="forbid")
 
     name: str | None = None
     model: str
@@ -173,10 +163,8 @@ class AutomodelJobInput(BaseModel):
         return data
 
 
-class AutomodelJobOutput(BaseModel):
+class AutomodelJobOutput(AutomodelSchema):
     """Stored canonical spec after ``to_spec()``."""
-
-    model_config = ConfigDict(extra="forbid")
 
     name: str | None = None
     model: str

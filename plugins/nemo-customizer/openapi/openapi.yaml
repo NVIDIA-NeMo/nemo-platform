@@ -1142,6 +1142,49 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
+    AutomodelBatchSpec:
+      properties:
+        global_batch_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Global Batch Size
+          default: 8
+        micro_batch_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Micro Batch Size
+          default: 1
+        sequence_packing:
+          type: boolean
+          title: Sequence Packing
+          default: false
+        sequence_packing_max_samples:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Sequence Packing Max Samples
+          description: Samples analyzed to estimate the optimal pack size when packing
+            is enabled.
+          default: 1000
+      additionalProperties: false
+      type: object
+      title: AutomodelBatchSpec
+    AutomodelDatasetSpec:
+      properties:
+        training:
+          type: string
+          title: Training
+          description: Training fileset as 'name' or 'workspace/name'.
+        validation:
+          title: Validation
+          type: string
+        prompt_template:
+          title: Prompt Template
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - training
+      title: AutomodelDatasetSpec
     AutomodelJobInput:
       properties:
         name:
@@ -1151,19 +1194,19 @@ components:
           type: string
           title: Model
         dataset:
-          $ref: '#/components/schemas/DatasetSpec'
+          $ref: '#/components/schemas/AutomodelDatasetSpec'
         training:
-          $ref: '#/components/schemas/TrainingSpec'
+          $ref: '#/components/schemas/AutomodelTrainingSpec'
         schedule:
-          $ref: '#/components/schemas/ScheduleSpec'
+          $ref: '#/components/schemas/AutomodelScheduleSpec'
         batch:
-          $ref: '#/components/schemas/BatchSpec'
+          $ref: '#/components/schemas/AutomodelBatchSpec'
         optimizer:
-          $ref: '#/components/schemas/OptimizerSpec'
+          $ref: '#/components/schemas/AutomodelOptimizerSpec'
         parallelism:
-          $ref: '#/components/schemas/ParallelismSpec'
+          $ref: '#/components/schemas/AutomodelParallelismSpec'
         output:
-          $ref: '#/components/schemas/OutputRequest'
+          $ref: '#/components/schemas/AutomodelOutputRequest'
         integrations:
           $ref: '#/components/schemas/IntegrationsSpecInput'
       additionalProperties: false
@@ -1183,19 +1226,19 @@ components:
           type: string
           title: Model
         dataset:
-          $ref: '#/components/schemas/DatasetSpec'
+          $ref: '#/components/schemas/AutomodelDatasetSpec'
         training:
-          $ref: '#/components/schemas/TrainingSpec'
+          $ref: '#/components/schemas/AutomodelTrainingSpec'
         schedule:
-          $ref: '#/components/schemas/ScheduleSpec'
+          $ref: '#/components/schemas/AutomodelScheduleSpec'
         batch:
-          $ref: '#/components/schemas/BatchSpec'
+          $ref: '#/components/schemas/AutomodelBatchSpec'
         optimizer:
-          $ref: '#/components/schemas/OptimizerSpec'
+          $ref: '#/components/schemas/AutomodelOptimizerSpec'
         parallelism:
-          $ref: '#/components/schemas/ParallelismSpec'
+          $ref: '#/components/schemas/AutomodelParallelismSpec'
         output:
-          $ref: '#/components/schemas/OutputResponse'
+          $ref: '#/components/schemas/AutomodelOutputResponse'
         integrations:
           $ref: '#/components/schemas/IntegrationsSpecOutput'
       additionalProperties: false
@@ -1349,338 +1392,7 @@ components:
       - updated_at
       - -updated_at
       title: AutomodelJobsJobsSortField
-    BatchSpec:
-      properties:
-        global_batch_size:
-          type: integer
-          exclusiveMinimum: 0.0
-          title: Global Batch Size
-          default: 8
-        micro_batch_size:
-          type: integer
-          exclusiveMinimum: 0.0
-          title: Micro Batch Size
-          default: 1
-        sequence_packing:
-          type: boolean
-          title: Sequence Packing
-          default: false
-        sequence_packing_max_samples:
-          type: integer
-          exclusiveMinimum: 0.0
-          title: Sequence Packing Max Samples
-          description: Samples analyzed to estimate the optimal pack size when packing
-            is enabled.
-          default: 1000
-      additionalProperties: false
-      type: object
-      title: BatchSpec
-    DPOTraining:
-      properties:
-        optimizer_type:
-          allOf:
-          - $ref: '#/components/schemas/OptimizerType'
-          description: "Optimizer + LR-scheduler combination (AdamW/Adam \xD7 cosine-annealing/flat-LR).\
-            \ Defaults to AdamW with cosine annealing."
-        learning_rate:
-          type: number
-          title: Learning Rate
-          description: Peak learning rate.
-          default: 0.0001
-        min_learning_rate:
-          title: Min Learning Rate
-          description: Minimum LR for cosine decay.
-          type: number
-        weight_decay:
-          type: number
-          title: Weight Decay
-          description: Weight decay coefficient.
-          default: 0.01
-        adam_beta1:
-          type: number
-          title: Adam Beta1
-          description: Adam beta1.
-          default: 0.9
-        adam_beta2:
-          type: number
-          title: Adam Beta2
-          description: Adam beta2.
-          default: 0.999
-        adam_eps:
-          type: number
-          exclusiveMinimum: 0.0
-          title: Adam Eps
-          description: Adam epsilon (numerical stability term).
-          default: 1.0e-05
-        warmup_steps:
-          type: integer
-          minimum: 0.0
-          title: Warmup Steps
-          description: Linear warmup steps.
-          default: 0
-        epochs:
-          type: integer
-          exclusiveMinimum: 0.0
-          title: Epochs
-          description: Number of passes through the dataset.
-          default: 1
-        max_steps:
-          title: Max Steps
-          description: Max training steps (overrides epochs if set).
-          type: integer
-          exclusiveMinimum: 0.0
-        val_check_interval:
-          title: Val Check Interval
-          description: Validation interval. Float <= 1.0 is fraction of epoch; > 1.0
-            is step count.
-          type: number
-        val_at_end:
-          type: boolean
-          title: Val At End
-          description: Run a final validation pass after the last training step. Keep
-            enabled so the final checkpoint carries validation metrics and best-checkpoint
-            selection works; set False only to skip the extra eval.
-          default: true
-        keep_top_k:
-          type: integer
-          exclusiveMinimum: 0.0
-          title: Keep Top K
-          description: Number of best checkpoints to retain (ranked by validation
-            loss).
-          default: 1
-        batch_size:
-          type: integer
-          exclusiveMinimum: 0.0
-          title: Batch Size
-          description: Global batch size across all GPUs.
-          default: 32
-        micro_batch_size:
-          type: integer
-          exclusiveMinimum: 0.0
-          title: Micro Batch Size
-          description: Per-GPU micro batch size.
-          default: 1
-        activation_checkpointing:
-          type: boolean
-          title: Activation Checkpointing
-          description: Recompute activations during the backward pass to reduce memory
-            at the cost of compute. Enable to fit larger models or longer sequences.
-          default: false
-        max_seq_length:
-          type: integer
-          exclusiveMinimum: 0.0
-          title: Max Seq Length
-          description: Maximum token sequence length for training.
-          default: 2048
-        seed:
-          title: Seed
-          description: Random seed for reproducibility.
-          type: integer
-        parallelism:
-          $ref: '#/components/schemas/ParallelismParams'
-        execution_profile:
-          title: Execution Profile
-          description: Execution profile for the GPU training step (operator-configured).
-            Falls back to the service default when omitted.
-          type: string
-          minLength: 1
-        type:
-          type: string
-          const: dpo
-          title: Type
-          default: dpo
-        ref_policy_kl_penalty:
-          type: number
-          minimum: 0.0
-          title: Ref Policy Kl Penalty
-          description: KL penalty coefficient (beta in the DPO paper).
-          default: 0.05
-        preference_average_log_probs:
-          type: boolean
-          title: Preference Average Log Probs
-          description: Average log probabilities for preference loss calculation.
-          default: false
-        sft_average_log_probs:
-          type: boolean
-          title: Sft Average Log Probs
-          description: Average log probabilities for SFT regularization loss.
-          default: false
-        preference_loss_weight:
-          type: number
-          minimum: 0.0
-          title: Preference Loss Weight
-          description: Weight for the preference (DPO) loss term.
-          default: 1.0
-        sft_loss_weight:
-          type: number
-          minimum: 0.0
-          title: Sft Loss Weight
-          description: Weight for SFT regularization loss (0 = disabled).
-          default: 0.0
-        max_grad_norm:
-          type: number
-          minimum: 0.0
-          title: Max Grad Norm
-          description: Maximum gradient norm for clipping.
-          default: 1.0
-      additionalProperties: false
-      type: object
-      title: DPOTraining
-      description: "Direct Preference Optimization (full-weight only \u2014 PEFT unsupported)."
-    DatasetSpec:
-      properties:
-        training:
-          type: string
-          title: Training
-          description: Training fileset as 'name' or 'workspace/name'.
-        validation:
-          title: Validation
-          type: string
-        prompt_template:
-          title: Prompt Template
-          type: string
-      additionalProperties: false
-      type: object
-      required:
-      - training
-      title: DatasetSpec
-    DatetimeFilter:
-      additionalProperties: false
-      properties:
-        $gte:
-          description: Filter for results greater than or equal to this datetime.
-          title: $Gte
-          format: date-time
-          type: string
-        $lte:
-          description: Filter for results less than or equal to this datetime.
-          title: $Lte
-          format: date-time
-          type: string
-      title: DatetimeFilter
-      type: object
-    DeploymentParams:
-      properties:
-        gpu:
-          type: integer
-          title: Gpu
-          description: Number of GPUs required for the deployment.
-          default: 1
-        additional_envs:
-          title: Additional Envs
-          description: Additional environment variables for the deployment.
-          additionalProperties:
-            type: string
-          type: object
-        disk_size:
-          title: Disk Size
-          description: Disk size for the deployment.
-          type: string
-        image_name:
-          title: Image Name
-          description: Container image name from NGC. If not specified, defaults to
-            multi-llm.
-          type: string
-        image_tag:
-          title: Image Tag
-          description: Container image tag from NGC.
-          type: string
-        lora_enabled:
-          type: boolean
-          title: Lora Enabled
-          description: When auto-deploying a full SFT training, setting this true
-            allows subsequent LoRA adapters to be deployed against it.
-          default: true
-        tool_call_config:
-          allOf:
-          - $ref: '#/components/schemas/ToolCallParams'
-          description: Tool calling configuration override for the NIM deployment.
-      additionalProperties: false
-      type: object
-      title: DeploymentParams
-      description: 'Inline deployment parameters for auto-deploying a trained model.
-
-
-        Used in :class:`UnslothJobInput.deployment_config` and passed through to
-
-        the model_entity task at compile time. When unset, no deployment is launched.'
-    FileStorageType:
-      type: string
-      enum:
-      - fileset
-      title: FileStorageType
-    HTTPValidationError:
-      properties:
-        detail:
-          items:
-            $ref: '#/components/schemas/ValidationError'
-          type: array
-          title: Detail
-      type: object
-      title: HTTPValidationError
-    HardwareSpec:
-      properties:
-        gpus:
-          title: Gpus
-          description: Comma-separated GPU indices ('0' or '0,1') for CUDA_VISIBLE_DEVICES.
-            Selection, not reservation.
-          type: string
-        precision:
-          type: string
-          enum:
-          - bf16
-          - fp16
-          title: Precision
-          description: Mixed-precision dtype for training. bf16 recommended for Ampere+.
-          default: bf16
-      additionalProperties: false
-      type: object
-      title: HardwareSpec
-    IntegrationsSpecInput:
-      properties:
-        wandb:
-          allOf:
-          - $ref: '#/components/schemas/WandbIntegration'
-          description: Weights & Biases integration configuration.
-        mlflow:
-          allOf:
-          - $ref: '#/components/schemas/MlflowIntegration'
-          description: MLflow integration configuration.
-      additionalProperties: false
-      type: object
-      title: IntegrationsSpecInput
-      description: 'Third-party experiment-tracking integrations for a job spec.
-
-
-        Each integration is requested by presence: omit or set a field to ``null``
-        to
-
-        disable it. Activation at training time still requires credentials/URIs
-
-        (see compile-time warnings and runtime builders).'
-    IntegrationsSpecOutput:
-      properties:
-        wandb:
-          allOf:
-          - $ref: '#/components/schemas/WandbIntegration'
-          description: Weights & Biases integration configuration.
-        mlflow:
-          allOf:
-          - $ref: '#/components/schemas/MlflowIntegration'
-          description: MLflow integration configuration.
-      additionalProperties: false
-      type: object
-      title: IntegrationsSpecOutput
-      description: 'Third-party experiment-tracking integrations for a job spec.
-
-
-        Each integration is requested by presence: omit or set a field to ``null``
-        to
-
-        disable it. Activation at training time still requires credentials/URIs
-
-        (see compile-time warnings and runtime builders).'
-    LoRAParams:
+    AutomodelLoRAParams:
       properties:
         rank:
           type: integer
@@ -1721,114 +1433,8 @@ components:
           default: true
       additionalProperties: false
       type: object
-      title: LoRAParams
-    MlflowIntegration:
-      properties:
-        experiment_name:
-          title: Experiment Name
-          description: MLflow experiment name (groups related runs). Defaults to output.name
-            if not set.
-          type: string
-        name:
-          title: Name
-          description: MLflow run name. Defaults to job_id if not provided.
-          type: string
-        tags:
-          title: Tags
-          description: MLflow tags as key-value pairs for filtering runs.
-          additionalProperties:
-            type: string
-          type: object
-        description:
-          title: Description
-          description: MLflow run description.
-          type: string
-        tracking_uri:
-          title: Tracking Uri
-          description: MLflow tracking server URI (e.g., 'http://mlflow.mycompany.com:5000').
-            Can also be set via MLFLOW_TRACKING_URI environment variable.
-          type: string
-      additionalProperties: false
-      type: object
-      title: MlflowIntegration
-      description: 'MLflow integration configuration.
-
-
-        To enable MLflow, provide a non-null ``mlflow`` object on :class:`IntegrationsSpec`.'
-    ModelLoadSpec:
-      properties:
-        name:
-          type: string
-          title: Name
-          description: Model entity reference. Accepts 'name' (uses the job's workspace)
-            or 'workspace/name'. The plugin's run resolves this to a local path before
-            training.
-        max_seq_length:
-          type: integer
-          exclusiveMinimum: 0.0
-          title: Max Seq Length
-          default: 2048
-        load_in_4bit:
-          type: boolean
-          title: Load In 4Bit
-          description: bitsandbytes 4-bit. Mutex with load_in_8bit. Default for Unsloth's
-            headline path.
-          default: true
-        load_in_8bit:
-          type: boolean
-          title: Load In 8Bit
-          default: false
-        dtype:
-          type: string
-          enum:
-          - auto
-          - bfloat16
-          - float16
-          - float32
-          title: Dtype
-          default: auto
-        trust_remote_code:
-          type: boolean
-          title: Trust Remote Code
-          default: false
-        device_map:
-          anyOf:
-          - type: string
-          - type: integer
-          - additionalProperties:
-              type: integer
-            type: object
-          title: Device Map
-          description: "Device placement forwarded to FastLanguageModel.from_pretrained.\
-            \ Omit (null) to pin the whole model to the single visible GPU ({'': 0})\
-            \ \u2014 the right default for this single-GPU backend, and it avoids\
-            \ accelerate's auto-placement under-sizing GPU memory on unified-memory\
-            \ parts (e.g. GB10 / DGX Spark), which otherwise spills layers to CPU\
-            \ and aborts 4-bit loads. Set 'auto', 'balanced', 'sequential', a device\
-            \ index, or a custom map for multi-device experiments."
-        rope_scaling:
-          title: Rope Scaling
-          description: 'RoPE scaling config for long-context extension, passed to
-            FastLanguageModel.from_pretrained (e.g. {''type'': ''linear'', ''factor'':
-            2.0}). None uses the model''s native context length.'
-          additionalProperties: true
-          type: object
-      additionalProperties: false
-      type: object
-      required:
-      - name
-      title: ModelLoadSpec
-      description: 'Args to ``FastLanguageModel.from_pretrained``.
-
-
-        ``name`` is a NeMo Platform model entity reference (``"name"`` or
-
-        ``"workspace/name"``). The plugin''s run orchestration resolves the
-
-        entity, downloads its fileset to a local path, and hands that path
-
-        to :func:`train_sft`.'
-    OptimizerSpec:
+      title: AutomodelLoRAParams
+    AutomodelOptimizerSpec:
       properties:
         learning_rate:
           type: number
@@ -1889,17 +1495,8 @@ components:
           default: cosine
       additionalProperties: false
       type: object
-      title: OptimizerSpec
-    OptimizerType:
-      type: string
-      enum:
-      - adamw_with_cosine_annealing
-      - adam_with_cosine_annealing
-      - adamw_with_flat_lr
-      - adam_with_flat_lr
-      title: OptimizerType
-      description: Optimizer and scheduler combination types.
-    OutputRequest:
+      title: AutomodelOptimizerSpec
+    AutomodelOutputRequest:
       properties:
         name:
           type: string
@@ -1911,8 +1508,8 @@ components:
       type: object
       required:
       - name
-      title: OutputRequest
-    OutputResponse:
+      title: AutomodelOutputRequest
+    AutomodelOutputResponse:
       properties:
         name:
           type: string
@@ -1935,86 +1532,8 @@ components:
       - name
       - type
       - fileset
-      title: OutputResponse
-    PaginationData:
-      properties:
-        page:
-          type: integer
-          title: Page
-          description: The current page number.
-        page_size:
-          type: integer
-          title: Page Size
-          description: The page size used for the query.
-        current_page_size:
-          type: integer
-          title: Current Page Size
-          description: The size for the current page.
-        total_pages:
-          type: integer
-          title: Total Pages
-          description: The total number of pages.
-        total_results:
-          type: integer
-          title: Total Results
-          description: The total number of results.
-      type: object
-      required:
-      - page
-      - page_size
-      - current_page_size
-      - total_pages
-      - total_results
-      title: PaginationData
-    ParallelismParams:
-      properties:
-        num_gpus_per_node:
-          type: integer
-          exclusiveMinimum: 0.0
-          title: Num Gpus Per Node
-          description: Number of GPUs per node.
-          default: 1
-        num_nodes:
-          type: integer
-          exclusiveMinimum: 0.0
-          title: Num Nodes
-          description: "Number of nodes (>1 \u2192 multi-node Ray cluster)."
-          default: 1
-        tensor_parallel_size:
-          type: integer
-          exclusiveMinimum: 0.0
-          title: Tensor Parallel Size
-          description: Tensor parallel size.
-          default: 1
-        pipeline_parallel_size:
-          type: integer
-          exclusiveMinimum: 0.0
-          title: Pipeline Parallel Size
-          description: Pipeline parallel size.
-          default: 1
-        context_parallel_size:
-          type: integer
-          exclusiveMinimum: 0.0
-          title: Context Parallel Size
-          description: Context parallel size.
-          default: 1
-        sequence_parallel:
-          type: boolean
-          title: Sequence Parallel
-          description: Enable sequence parallelism.
-          default: false
-      additionalProperties: false
-      type: object
-      title: ParallelismParams
-      description: 'Distributed training parallelism configuration.
-
-
-        Single-node multi-GPU uses ``num_nodes=1`` with ``num_gpus_per_node>1``;
-
-        multi-node sets ``num_nodes>1`` and the compiler emits a distributed-GPU
-
-        executor (see :mod:`nmp.rl.app.jobs.compiler`).'
-    ParallelismSpec:
+      title: AutomodelOutputResponse
+    AutomodelParallelismSpec:
       properties:
         num_nodes:
           type: integer
@@ -2052,7 +1571,257 @@ components:
           default: false
       additionalProperties: false
       type: object
-      title: ParallelismSpec
+      title: AutomodelParallelismSpec
+    AutomodelScheduleSpec:
+      properties:
+        epochs:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Epochs
+          default: 1
+        max_steps:
+          title: Max Steps
+          type: integer
+          exclusiveMinimum: 0.0
+        val_check_interval:
+          title: Val Check Interval
+          type: number
+        seed:
+          title: Seed
+          type: integer
+      additionalProperties: false
+      type: object
+      title: AutomodelScheduleSpec
+    AutomodelTrainingSpec:
+      properties:
+        training_type:
+          type: string
+          enum:
+          - sft
+          - distillation
+          title: Training Type
+          default: sft
+        finetuning_type:
+          type: string
+          enum:
+          - lora
+          - all_weights
+          - lora_merged
+          title: Finetuning Type
+          default: lora
+        lora:
+          $ref: '#/components/schemas/AutomodelLoRAParams'
+        max_seq_length:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Max Seq Length
+          default: 2048
+        precision:
+          title: Precision
+          description: Model precision for training. Auto-detected from the checkpoint
+            when unset.
+          type: string
+          enum:
+          - bf16
+          - fp16
+          - fp32
+          - fp8
+        attn_implementation:
+          type: string
+          enum:
+          - sdpa
+          - flash_attention_2
+          - eager
+          title: Attn Implementation
+          description: 'Attention backend: ''sdpa'' (PyTorch native), ''flash_attention_2'',
+            or ''eager''.'
+          default: sdpa
+        execution_profile:
+          title: Execution Profile
+          type: string
+          minLength: 1
+        teacher_model:
+          title: Teacher Model
+          type: string
+        distillation_ratio:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Distillation Ratio
+          default: 0.5
+        distillation_temperature:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Distillation Temperature
+          default: 1.0
+        teacher_precision:
+          type: string
+          enum:
+          - bf16
+          - fp16
+          - fp32
+          title: Teacher Precision
+          default: bf16
+        offload_teacher:
+          type: boolean
+          title: Offload Teacher
+          default: false
+      additionalProperties: false
+      type: object
+      title: AutomodelTrainingSpec
+    DatetimeFilter:
+      additionalProperties: false
+      properties:
+        $gte:
+          description: Filter for results greater than or equal to this datetime.
+          title: $Gte
+          format: date-time
+          type: string
+        $lte:
+          description: Filter for results less than or equal to this datetime.
+          title: $Lte
+          format: date-time
+          type: string
+      title: DatetimeFilter
+      type: object
+    FileStorageType:
+      type: string
+      enum:
+      - fileset
+      title: FileStorageType
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    IntegrationsSpecInput:
+      properties:
+        wandb:
+          allOf:
+          - $ref: '#/components/schemas/WandbIntegration'
+          description: Weights & Biases integration configuration.
+        mlflow:
+          allOf:
+          - $ref: '#/components/schemas/MlflowIntegration'
+          description: MLflow integration configuration.
+      additionalProperties: false
+      type: object
+      title: IntegrationsSpecInput
+      description: 'Third-party experiment-tracking integrations for a job spec.
+
+
+        Each integration is requested by presence: omit or set a field to ``null``
+        to
+
+        disable it. Activation at training time still requires credentials/URIs
+
+        (see compile-time warnings and runtime builders).'
+    IntegrationsSpecOutput:
+      properties:
+        wandb:
+          allOf:
+          - $ref: '#/components/schemas/WandbIntegration'
+          description: Weights & Biases integration configuration.
+        mlflow:
+          allOf:
+          - $ref: '#/components/schemas/MlflowIntegration'
+          description: MLflow integration configuration.
+      additionalProperties: false
+      type: object
+      title: IntegrationsSpecOutput
+      description: 'Third-party experiment-tracking integrations for a job spec.
+
+
+        Each integration is requested by presence: omit or set a field to ``null``
+        to
+
+        disable it. Activation at training time still requires credentials/URIs
+
+        (see compile-time warnings and runtime builders).'
+    MlflowIntegration:
+      properties:
+        experiment_name:
+          title: Experiment Name
+          description: MLflow experiment name (groups related runs). Defaults to output.name
+            if not set.
+          type: string
+        name:
+          title: Name
+          description: MLflow run name. Defaults to job_id if not provided.
+          type: string
+        tags:
+          title: Tags
+          description: MLflow tags as key-value pairs for filtering runs.
+          additionalProperties:
+            type: string
+          type: object
+        description:
+          title: Description
+          description: MLflow run description.
+          type: string
+        tracking_uri:
+          title: Tracking Uri
+          description: MLflow tracking server URI (e.g., 'http://mlflow.mycompany.com:5000').
+            Can also be set via MLFLOW_TRACKING_URI environment variable.
+          type: string
+      additionalProperties: false
+      type: object
+      title: MlflowIntegration
+      description: 'MLflow integration configuration.
+
+
+        To enable MLflow, provide a non-null ``mlflow`` object on :class:`IntegrationsSpec`.'
+    OptimizerType:
+      type: string
+      enum:
+      - adamw_with_cosine_annealing
+      - adam_with_cosine_annealing
+      - adamw_with_flat_lr
+      - adam_with_flat_lr
+      title: OptimizerType
+      description: Optimizer and scheduler combination types.
+    OutputNameType:
+      type: string
+      enum:
+      - adapter
+      - model
+      title: OutputNameType
+      description: "Output artifact type \u2014 adapter (LoRA only) or model (merged\
+        \ / full)."
+    PaginationData:
+      properties:
+        page:
+          type: integer
+          title: Page
+          description: The current page number.
+        page_size:
+          type: integer
+          title: Page Size
+          description: The page size used for the query.
+        current_page_size:
+          type: integer
+          title: Current Page Size
+          description: The size for the current page.
+        total_pages:
+          type: integer
+          title: Total Pages
+          description: The total number of pages.
+        total_results:
+          type: integer
+          title: Total Results
+          description: The total number of results.
+      type: object
+      required:
+      - page
+      - page_size
+      - current_page_size
+      - total_pages
+      - total_results
+      title: PaginationData
     PlatformJobListResultResponse:
       properties:
         data:
@@ -2295,6 +2064,158 @@ components:
       - created_at
       - updated_at
       title: PlatformJobTaskStatusResponse
+    RlDPOTraining:
+      properties:
+        optimizer_type:
+          allOf:
+          - $ref: '#/components/schemas/OptimizerType'
+          description: "Optimizer + LR-scheduler combination (AdamW/Adam \xD7 cosine-annealing/flat-LR).\
+            \ Defaults to AdamW with cosine annealing."
+        learning_rate:
+          type: number
+          title: Learning Rate
+          description: Peak learning rate.
+          default: 0.0001
+        min_learning_rate:
+          title: Min Learning Rate
+          description: Minimum LR for cosine decay.
+          type: number
+        weight_decay:
+          type: number
+          title: Weight Decay
+          description: Weight decay coefficient.
+          default: 0.01
+        adam_beta1:
+          type: number
+          title: Adam Beta1
+          description: Adam beta1.
+          default: 0.9
+        adam_beta2:
+          type: number
+          title: Adam Beta2
+          description: Adam beta2.
+          default: 0.999
+        adam_eps:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Adam Eps
+          description: Adam epsilon (numerical stability term).
+          default: 1.0e-05
+        warmup_steps:
+          type: integer
+          minimum: 0.0
+          title: Warmup Steps
+          description: Linear warmup steps.
+          default: 0
+        epochs:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Epochs
+          description: Number of passes through the dataset.
+          default: 1
+        max_steps:
+          title: Max Steps
+          description: Max training steps (overrides epochs if set).
+          type: integer
+          exclusiveMinimum: 0.0
+        val_check_interval:
+          title: Val Check Interval
+          description: Validation interval. Float <= 1.0 is fraction of epoch; > 1.0
+            is step count.
+          type: number
+        val_at_end:
+          type: boolean
+          title: Val At End
+          description: Run a final validation pass after the last training step. Keep
+            enabled so the final checkpoint carries validation metrics and best-checkpoint
+            selection works; set False only to skip the extra eval.
+          default: true
+        keep_top_k:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Keep Top K
+          description: Number of best checkpoints to retain (ranked by validation
+            loss).
+          default: 1
+        batch_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Batch Size
+          description: Global batch size across all GPUs.
+          default: 32
+        micro_batch_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Micro Batch Size
+          description: Per-GPU micro batch size.
+          default: 1
+        activation_checkpointing:
+          type: boolean
+          title: Activation Checkpointing
+          description: Recompute activations during the backward pass to reduce memory
+            at the cost of compute. Enable to fit larger models or longer sequences.
+          default: false
+        max_seq_length:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Max Seq Length
+          description: Maximum token sequence length for training.
+          default: 2048
+        seed:
+          title: Seed
+          description: Random seed for reproducibility.
+          type: integer
+        parallelism:
+          $ref: '#/components/schemas/RlParallelismParams'
+        execution_profile:
+          title: Execution Profile
+          description: Execution profile for the GPU training step (operator-configured).
+            Falls back to the service default when omitted.
+          type: string
+          minLength: 1
+        type:
+          type: string
+          const: dpo
+          title: Type
+          default: dpo
+        ref_policy_kl_penalty:
+          type: number
+          minimum: 0.0
+          title: Ref Policy Kl Penalty
+          description: KL penalty coefficient (beta in the DPO paper).
+          default: 0.05
+        preference_average_log_probs:
+          type: boolean
+          title: Preference Average Log Probs
+          description: Average log probabilities for preference loss calculation.
+          default: false
+        sft_average_log_probs:
+          type: boolean
+          title: Sft Average Log Probs
+          description: Average log probabilities for SFT regularization loss.
+          default: false
+        preference_loss_weight:
+          type: number
+          minimum: 0.0
+          title: Preference Loss Weight
+          description: Weight for the preference (DPO) loss term.
+          default: 1.0
+        sft_loss_weight:
+          type: number
+          minimum: 0.0
+          title: Sft Loss Weight
+          description: Weight for SFT regularization loss (0 = disabled).
+          default: 0.0
+        max_grad_norm:
+          type: number
+          minimum: 0.0
+          title: Max Grad Norm
+          description: Maximum gradient norm for clipping.
+          default: 1.0
+      additionalProperties: false
+      type: object
+      title: RlDPOTraining
+      description: "Direct Preference Optimization (full-weight only \u2014 PEFT unsupported)."
     RlJobInput:
       properties:
         name:
@@ -2311,12 +2232,12 @@ components:
             + validation.jsonl.
         training:
           allOf:
-          - $ref: '#/components/schemas/DPOTraining'
+          - $ref: '#/components/schemas/RlDPOTraining'
           description: DPO training method and hyperparameters.
         integrations:
           $ref: '#/components/schemas/IntegrationsSpecInput'
         output:
-          $ref: '#/components/schemas/OutputRequest'
+          $ref: '#/components/schemas/RlOutputRequest'
       additionalProperties: false
       type: object
       required:
@@ -2341,7 +2262,7 @@ components:
           description: Preference dataset fileset reference ('name' or 'workspace/name').
         training:
           allOf:
-          - $ref: '#/components/schemas/DPOTraining'
+          - $ref: '#/components/schemas/RlDPOTraining'
           description: Training method and hyperparameters (DPO).
         integrations:
           allOf:
@@ -2349,8 +2270,9 @@ components:
           description: W&B / MLflow integrations.
         output:
           allOf:
-          - $ref: '#/components/schemas/OutputResponse'
+          - $ref: '#/components/schemas/RlOutputResponse'
           description: Output artifact created by this job.
+      additionalProperties: false
       type: object
       required:
       - model
@@ -2504,26 +2426,91 @@ components:
       - updated_at
       - -updated_at
       title: RlJobsJobsSortField
-    ScheduleSpec:
+    RlOutputRequest:
       properties:
-        epochs:
-          type: integer
-          exclusiveMinimum: 0.0
-          title: Epochs
-          default: 1
-        max_steps:
-          title: Max Steps
-          type: integer
-          exclusiveMinimum: 0.0
-        val_check_interval:
-          title: Val Check Interval
-          type: number
-        seed:
-          title: Seed
-          type: integer
+        name:
+          title: Name
+          type: string
       additionalProperties: false
       type: object
-      title: ScheduleSpec
+      title: RlOutputRequest
+      description: Submitter-facing output preferences. ``name`` is auto-derived if
+        omitted.
+    RlOutputResponse:
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          title: Name
+          description: Name of the output artifact. Used to identify it during deployment
+            and inference.
+          examples:
+          - my-dpo-llama
+        type:
+          allOf:
+          - $ref: '#/components/schemas/OutputNameType'
+          description: Output artifact type. DPO is full-weight, so always `model`.
+          default: model
+        fileset:
+          type: string
+          maxLength: 255
+          title: Fileset
+          description: FileSet name where output artifacts are stored.
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - fileset
+      title: RlOutputResponse
+      description: Resolved output artifact details.
+    RlParallelismParams:
+      properties:
+        num_gpus_per_node:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Num Gpus Per Node
+          description: Number of GPUs per node.
+          default: 1
+        num_nodes:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Num Nodes
+          description: "Number of nodes (>1 \u2192 multi-node Ray cluster)."
+          default: 1
+        tensor_parallel_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Tensor Parallel Size
+          description: Tensor parallel size.
+          default: 1
+        pipeline_parallel_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Pipeline Parallel Size
+          description: Pipeline parallel size.
+          default: 1
+        context_parallel_size:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Context Parallel Size
+          description: Context parallel size.
+          default: 1
+        sequence_parallel:
+          type: boolean
+          title: Sequence Parallel
+          description: Enable sequence parallelism.
+          default: false
+      additionalProperties: false
+      type: object
+      title: RlParallelismParams
+      description: 'Distributed training parallelism configuration.
+
+
+        Single-node multi-GPU uses ``num_nodes=1`` with ``num_gpus_per_node>1``;
+
+        multi-node sets ``num_nodes>1`` and the compiler emits a distributed-GPU
+
+        executor (see :mod:`nmp.rl.app.jobs.compiler`).'
     SecretRef:
       type: string
       pattern: ^[a-z0-9_-]+(/[a-z0-9_-]+)?$
@@ -2555,133 +2542,156 @@ components:
           type: array
       title: StringFilter
       type: object
-    ToolCallParams:
+    UnslothBatchSpec:
       properties:
-        tool_call_parser:
-          title: Tool Call Parser
-          description: Name of the tool call parser to use (e.g., 'openai', 'hermes',
-            'pythonic', 'llama3_json', 'mistral').
-          type: string
-        tool_call_plugin:
-          title: Tool Call Plugin
-          description: 'Reference to a fileset containing the custom tool call plugin
-            Python file. Expected format: ''{workspace}/{fileset_name}''.'
-          type: string
-          pattern: ^[\w\-.]+/[\w\-.]+$
-        auto_tool_choice:
-          title: Auto Tool Choice
-          description: Whether to enable automatic tool choice.
-          type: boolean
-      additionalProperties: false
-      type: object
-      title: ToolCallParams
-      description: Tool calling configuration for NIM deployments.
-    TrainingSpec:
-      properties:
-        training_type:
-          type: string
-          enum:
-          - sft
-          - distillation
-          title: Training Type
-          default: sft
-        finetuning_type:
-          type: string
-          enum:
-          - lora
-          - all_weights
-          - lora_merged
-          title: Finetuning Type
-          default: lora
-        lora:
-          $ref: '#/components/schemas/LoRAParams'
-        max_seq_length:
+        per_device_train_batch_size:
           type: integer
           exclusiveMinimum: 0.0
-          title: Max Seq Length
-          default: 2048
-        precision:
-          title: Precision
-          description: Model precision for training. Auto-detected from the checkpoint
-            when unset.
-          type: string
-          enum:
-          - bf16
-          - fp16
-          - fp32
-          - fp8
-        attn_implementation:
-          type: string
-          enum:
-          - sdpa
-          - flash_attention_2
-          - eager
-          title: Attn Implementation
-          description: 'Attention backend: ''sdpa'' (PyTorch native), ''flash_attention_2'',
-            or ''eager''.'
-          default: sdpa
-        execution_profile:
-          title: Execution Profile
-          type: string
-          minLength: 1
-        teacher_model:
-          title: Teacher Model
-          type: string
-        distillation_ratio:
-          type: number
-          maximum: 1.0
-          minimum: 0.0
-          title: Distillation Ratio
-          default: 0.5
-        distillation_temperature:
-          type: number
+          title: Per Device Train Batch Size
+          default: 1
+        gradient_accumulation_steps:
+          type: integer
           exclusiveMinimum: 0.0
-          title: Distillation Temperature
-          default: 1.0
-        teacher_precision:
+          title: Gradient Accumulation Steps
+          default: 1
+      additionalProperties: false
+      type: object
+      title: UnslothBatchSpec
+    UnslothDatasetSpec:
+      properties:
+        path:
           type: string
-          enum:
-          - bf16
-          - fp16
-          - fp32
-          title: Teacher Precision
-          default: bf16
-        offload_teacher:
+          title: Path
+          description: 'Training fileset reference: ''name'' (uses the job''s workspace)
+            or ''workspace/name''. Resolved to a local path by the plugin run.'
+        text_field:
+          type: string
+          title: Text Field
+          description: Row field consumed by SFTTrainer.
+          default: text
+        apply_chat_template:
           type: boolean
-          title: Offload Teacher
+          title: Apply Chat Template
+          description: If True, expects rows with a 'messages' field and applies tokenizer.apply_chat_template
+            at training time.
+          default: false
+        validation_path:
+          title: Validation Path
+          description: Optional validation fileset reference (same format as 'path').
+            Downloaded under the same scheme.
+          type: string
+        packing:
+          type: boolean
+          title: Packing
+          description: trl.SFTTrainer packing flag.
           default: false
       additionalProperties: false
       type: object
-      title: TrainingSpec
+      required:
+      - path
+      title: UnslothDatasetSpec
+      description: 'Training data location + shape.
+
+
+        ``path`` and ``validation_path`` are platform fileset references
+
+        (``"name"`` or ``"workspace/name"``). The plugin''s run downloads
+
+        each fileset before training; ``train_sft`` only ever sees a local
+
+        filesystem path.'
+    UnslothDeploymentParams:
+      properties:
+        gpu:
+          type: integer
+          title: Gpu
+          description: Number of GPUs required for the deployment.
+          default: 1
+        additional_envs:
+          title: Additional Envs
+          description: Additional environment variables for the deployment.
+          additionalProperties:
+            type: string
+          type: object
+        disk_size:
+          title: Disk Size
+          description: Disk size for the deployment.
+          type: string
+        image_name:
+          title: Image Name
+          description: Container image name from NGC. If not specified, defaults to
+            multi-llm.
+          type: string
+        image_tag:
+          title: Image Tag
+          description: Container image tag from NGC.
+          type: string
+        lora_enabled:
+          type: boolean
+          title: Lora Enabled
+          description: When auto-deploying a full SFT training, setting this true
+            allows subsequent LoRA adapters to be deployed against it.
+          default: true
+        tool_call_config:
+          allOf:
+          - $ref: '#/components/schemas/UnslothToolCallParams'
+          description: Tool calling configuration override for the NIM deployment.
+      additionalProperties: false
+      type: object
+      title: UnslothDeploymentParams
+      description: 'Inline deployment parameters for auto-deploying a trained model.
+
+
+        Used in :class:`UnslothJobInput.deployment_config` and passed through to
+
+        the model_entity task at compile time. When unset, no deployment is launched.'
+    UnslothHardwareSpec:
+      properties:
+        gpus:
+          title: Gpus
+          description: Comma-separated GPU indices ('0' or '0,1') for CUDA_VISIBLE_DEVICES.
+            Selection, not reservation.
+          type: string
+        precision:
+          type: string
+          enum:
+          - bf16
+          - fp16
+          title: Precision
+          description: Mixed-precision dtype for training. bf16 recommended for Ampere+.
+          default: bf16
+      additionalProperties: false
+      type: object
+      title: UnslothHardwareSpec
     UnslothJobInput:
       properties:
         name:
           title: Name
           type: string
         model:
-          $ref: '#/components/schemas/ModelLoadSpec'
+          $ref: '#/components/schemas/UnslothModelLoadSpec'
         dataset:
-          $ref: '#/components/schemas/DatasetSpec'
+          $ref: '#/components/schemas/UnslothDatasetSpec'
         training:
-          $ref: '#/components/schemas/TrainingSpec'
+          $ref: '#/components/schemas/UnslothTrainingSpec'
         schedule:
-          $ref: '#/components/schemas/ScheduleSpec'
+          $ref: '#/components/schemas/UnslothScheduleSpec'
         batch:
-          $ref: '#/components/schemas/BatchSpec'
+          $ref: '#/components/schemas/UnslothBatchSpec'
         optimizer:
-          $ref: '#/components/schemas/OptimizerSpec'
+          $ref: '#/components/schemas/UnslothOptimizerSpec'
         hardware:
-          $ref: '#/components/schemas/HardwareSpec'
+          $ref: '#/components/schemas/UnslothHardwareSpec'
         integrations:
           $ref: '#/components/schemas/IntegrationsSpecInput'
         output:
-          $ref: '#/components/schemas/OutputRequest'
+          $ref: '#/components/schemas/UnslothOutputRequest'
         deployment_config:
           anyOf:
           - type: string
             title: Reference
-            description: A reference to DeploymentParams.
-          - $ref: '#/components/schemas/DeploymentParams'
+            description: A reference to UnslothDeploymentParams.
+          - $ref: '#/components/schemas/UnslothDeploymentParams'
           title: Deployment Config
           description: Deployment configuration for auto-deploying the model after
             training. Pass a string to reference an existing ModelDeploymentConfig
@@ -2700,29 +2710,29 @@ components:
           title: Name
           type: string
         model:
-          $ref: '#/components/schemas/ModelLoadSpec'
+          $ref: '#/components/schemas/UnslothModelLoadSpec'
         dataset:
-          $ref: '#/components/schemas/DatasetSpec'
+          $ref: '#/components/schemas/UnslothDatasetSpec'
         training:
-          $ref: '#/components/schemas/TrainingSpec'
+          $ref: '#/components/schemas/UnslothTrainingSpec'
         schedule:
-          $ref: '#/components/schemas/ScheduleSpec'
+          $ref: '#/components/schemas/UnslothScheduleSpec'
         batch:
-          $ref: '#/components/schemas/BatchSpec'
+          $ref: '#/components/schemas/UnslothBatchSpec'
         optimizer:
-          $ref: '#/components/schemas/OptimizerSpec'
+          $ref: '#/components/schemas/UnslothOptimizerSpec'
         hardware:
-          $ref: '#/components/schemas/HardwareSpec'
+          $ref: '#/components/schemas/UnslothHardwareSpec'
         integrations:
           $ref: '#/components/schemas/IntegrationsSpecOutput'
         output:
-          $ref: '#/components/schemas/OutputResponse'
+          $ref: '#/components/schemas/UnslothOutputResponse'
         deployment_config:
           anyOf:
           - type: string
             title: Reference
-            description: A reference to DeploymentParams.
-          - $ref: '#/components/schemas/DeploymentParams'
+            description: A reference to UnslothDeploymentParams.
+          - $ref: '#/components/schemas/UnslothDeploymentParams'
           title: Deployment Config
           description: Deployment configuration for auto-deploying the model after
             training. Pass a string to reference an existing ModelDeploymentConfig
@@ -2884,6 +2894,417 @@ components:
       - updated_at
       - -updated_at
       title: UnslothJobsJobsSortField
+    UnslothLoRAParams:
+      properties:
+        rank:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Rank
+          description: LoRA rank.
+          default: 16
+        alpha:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Alpha
+          description: LoRA scaling factor (alpha).
+          default: 16
+        dropout:
+          type: number
+          exclusiveMaximum: 1.0
+          minimum: 0.0
+          title: Dropout
+          default: 0.0
+        target_modules:
+          items:
+            type: string
+          type: array
+          title: Target Modules
+        bias:
+          type: string
+          enum:
+          - none
+          - all
+          - lora_only
+          title: Bias
+          default: none
+        use_rslora:
+          type: boolean
+          title: Use Rslora
+          default: false
+        random_state:
+          type: integer
+          title: Random State
+          default: 3407
+        use_dora:
+          type: boolean
+          title: Use Dora
+          description: DoRA (weight-decomposed LoRA). Improves quality at low ranks;
+            adds training overhead.
+          default: false
+        loftq_config:
+          title: Loftq Config
+          description: LoftQ initialization config for quantized bases. None disables
+            LoftQ.
+          additionalProperties: true
+          type: object
+        modules_to_save:
+          title: Modules To Save
+          description: Extra non-LoRA modules to train and save in full (e.g. ['embed_tokens',
+            'lm_head']). Needed for vocab changes / continued pretraining.
+          items:
+            type: string
+          type: array
+        layers_to_transform:
+          anyOf:
+          - type: integer
+          - items:
+              type: integer
+            type: array
+          title: Layers To Transform
+          description: Restrict LoRA to specific layer index(es). None applies to
+            all layers.
+        layer_replication:
+          title: Layer Replication
+          description: Layer-replication ranges for stacking, e.g. [[0, 16], [8, 24]].
+            None disables.
+          items:
+            items:
+              type: integer
+            type: array
+          type: array
+        init_lora_weights:
+          anyOf:
+          - type: boolean
+          - type: string
+            enum:
+            - gaussian
+            - pissa
+            - olora
+            - loftq
+          title: Init Lora Weights
+          description: LoRA weight init scheme. True = PEFT default; 'pissa'/'olora'/'loftq'
+            for advanced inits.
+          default: true
+      additionalProperties: false
+      type: object
+      title: UnslothLoRAParams
+      description: Args to ``FastLanguageModel.get_peft_model``.
+    UnslothModelLoadSpec:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Model entity reference. Accepts 'name' (uses the job's workspace)
+            or 'workspace/name'. The plugin's run resolves this to a local path before
+            training.
+        max_seq_length:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Max Seq Length
+          default: 2048
+        load_in_4bit:
+          type: boolean
+          title: Load In 4Bit
+          description: bitsandbytes 4-bit. Mutex with load_in_8bit. Default for Unsloth's
+            headline path.
+          default: true
+        load_in_8bit:
+          type: boolean
+          title: Load In 8Bit
+          default: false
+        dtype:
+          type: string
+          enum:
+          - auto
+          - bfloat16
+          - float16
+          - float32
+          title: Dtype
+          default: auto
+        trust_remote_code:
+          type: boolean
+          title: Trust Remote Code
+          default: false
+        device_map:
+          anyOf:
+          - type: string
+          - type: integer
+          - additionalProperties:
+              type: integer
+            type: object
+          title: Device Map
+          description: "Device placement forwarded to FastLanguageModel.from_pretrained.\
+            \ Omit (null) to pin the whole model to the single visible GPU ({'': 0})\
+            \ \u2014 the right default for this single-GPU backend, and it avoids\
+            \ accelerate's auto-placement under-sizing GPU memory on unified-memory\
+            \ parts (e.g. GB10 / DGX Spark), which otherwise spills layers to CPU\
+            \ and aborts 4-bit loads. Set 'auto', 'balanced', 'sequential', a device\
+            \ index, or a custom map for multi-device experiments."
+        rope_scaling:
+          title: Rope Scaling
+          description: 'RoPE scaling config for long-context extension, passed to
+            FastLanguageModel.from_pretrained (e.g. {''type'': ''linear'', ''factor'':
+            2.0}). None uses the model''s native context length.'
+          additionalProperties: true
+          type: object
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      title: UnslothModelLoadSpec
+      description: 'Args to ``FastLanguageModel.from_pretrained``.
+
+
+        ``name`` is a NeMo Platform model entity reference (``"name"`` or
+
+        ``"workspace/name"``). The plugin''s run orchestration resolves the
+
+        entity, downloads its fileset to a local path, and hands that path
+
+        to :func:`train_sft`.'
+    UnslothOptimizerSpec:
+      properties:
+        learning_rate:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Learning Rate
+          default: 0.0002
+        weight_decay:
+          type: number
+          minimum: 0.0
+          title: Weight Decay
+          default: 0.0
+        optim:
+          type: string
+          enum:
+          - adamw_torch
+          - adamw_torch_fused
+          - adamw_8bit
+          - paged_adamw_8bit
+          - sgd
+          title: Optim
+          default: adamw_8bit
+        adam_beta1:
+          type: number
+          exclusiveMaximum: 1.0
+          minimum: 0.0
+          title: Adam Beta1
+          description: Adam/AdamW beta1.
+          default: 0.9
+        adam_beta2:
+          type: number
+          exclusiveMaximum: 1.0
+          minimum: 0.0
+          title: Adam Beta2
+          description: Adam/AdamW beta2.
+          default: 0.999
+        adam_epsilon:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Adam Epsilon
+          description: Adam/AdamW epsilon for numerical stability.
+          default: 1.0e-08
+        max_grad_norm:
+          type: number
+          minimum: 0.0
+          title: Max Grad Norm
+          description: Gradient-clipping max norm (TRL default 1.0).
+          default: 1.0
+        label_smoothing_factor:
+          type: number
+          exclusiveMaximum: 1.0
+          minimum: 0.0
+          title: Label Smoothing Factor
+          description: Label smoothing for the cross-entropy loss. 0.0 disables.
+          default: 0.0
+        neftune_noise_alpha:
+          title: Neftune Noise Alpha
+          description: NEFTune embedding-noise alpha (quality boost). None disables.
+          type: number
+          minimum: 0.0
+      additionalProperties: false
+      type: object
+      title: UnslothOptimizerSpec
+    UnslothOutputRequest:
+      properties:
+        name:
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        save_method:
+          type: string
+          enum:
+          - lora
+          - merged_16bit
+          - merged_4bit
+          title: Save Method
+          default: lora
+      additionalProperties: false
+      type: object
+      title: UnslothOutputRequest
+      description: Submitter-facing output preferences. ``name`` is auto-derived if
+        omitted.
+    UnslothOutputResponse:
+      properties:
+        name:
+          type: string
+          title: Name
+        type:
+          type: string
+          enum:
+          - adapter
+          - model
+          title: Type
+        save_method:
+          type: string
+          enum:
+          - lora
+          - merged_16bit
+          - merged_4bit
+          title: Save Method
+        fileset:
+          type: string
+          title: Fileset
+          description: Platform fileset name the trained checkpoint will be uploaded
+            to. Defaults to the entity name.
+        description:
+          title: Description
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - type
+      - save_method
+      - fileset
+      title: UnslothOutputResponse
+      description: 'Stored on the canonical UnslothJobOutput. Output naming is resolved
+        during ``to_spec``.
+
+
+        ``type`` is the high-level shape (``adapter`` for a saved LoRA, ``model``
+
+        for a merged checkpoint). ``save_method`` keeps the original Unsloth
+
+        save verb so the training driver can dispatch correctly without
+
+        re-deriving it. ``fileset`` is the platform fileset name the trained
+
+        artefacts will be uploaded to (the plugin''s ``transform`` defaults
+
+        this to ``name``).'
+    UnslothScheduleSpec:
+      properties:
+        epochs:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Epochs
+          default: 1
+        max_steps:
+          title: Max Steps
+          type: integer
+          exclusiveMinimum: 0.0
+        warmup_steps:
+          type: integer
+          minimum: 0.0
+          title: Warmup Steps
+          default: 0
+        warmup_ratio:
+          title: Warmup Ratio
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+        lr_scheduler_type:
+          type: string
+          enum:
+          - linear
+          - cosine
+          - constant
+          - constant_with_warmup
+          - cosine_with_restarts
+          title: Lr Scheduler Type
+          default: linear
+        logging_steps:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Logging Steps
+          default: 1
+        save_steps:
+          title: Save Steps
+          type: integer
+          exclusiveMinimum: 0.0
+        eval_steps:
+          title: Eval Steps
+          type: integer
+          exclusiveMinimum: 0.0
+        seed:
+          type: integer
+          title: Seed
+          default: 3407
+        lr_scheduler_kwargs:
+          title: Lr Scheduler Kwargs
+          description: 'Extra kwargs for the LR scheduler, e.g. {''num_cycles'': 3}
+            for cosine_with_restarts. None uses scheduler defaults.'
+          additionalProperties: true
+          type: object
+      additionalProperties: false
+      type: object
+      title: UnslothScheduleSpec
+      description: Training schedule, scheduler, logging cadence.
+    UnslothToolCallParams:
+      properties:
+        tool_call_parser:
+          title: Tool Call Parser
+          description: Name of the tool call parser to use (e.g., 'openai', 'hermes',
+            'pythonic', 'llama3_json', 'mistral').
+          type: string
+        tool_call_plugin:
+          title: Tool Call Plugin
+          description: 'Reference to a fileset containing the custom tool call plugin
+            Python file. Expected format: ''{workspace}/{fileset_name}''.'
+          type: string
+          pattern: ^[\w\-.]+/[\w\-.]+$
+        auto_tool_choice:
+          title: Auto Tool Choice
+          description: Whether to enable automatic tool choice.
+          type: boolean
+      additionalProperties: false
+      type: object
+      title: UnslothToolCallParams
+      description: Tool calling configuration for NIM deployments.
+    UnslothTrainingSpec:
+      properties:
+        training_type:
+          type: string
+          const: sft
+          title: Training Type
+          default: sft
+        finetuning_type:
+          type: string
+          enum:
+          - lora
+          - all_weights
+          title: Finetuning Type
+          default: lora
+        lora:
+          allOf:
+          - $ref: '#/components/schemas/UnslothLoRAParams'
+          description: Required when finetuning_type='lora'. Auto-filled with defaults
+            if omitted.
+        use_gradient_checkpointing:
+          type: string
+          enum:
+          - unsloth
+          - 'true'
+          - 'false'
+          title: Use Gradient Checkpointing
+          default: unsloth
+      additionalProperties: false
+      type: object
+      title: UnslothTrainingSpec
+      description: Algorithm + adapter shape selectors.
     ValidationError:
       properties:
         loc:
