@@ -62,6 +62,12 @@ def _parse_stream_line(line: str, headers: httpx.Headers) -> str | None:
 ResponseT = TypeVar("ResponseT")
 
 
+def _raise_for_binary_status(response: httpx.Response, request: PreparedRequest) -> None:
+    """Raise unless the status is successful for this endpoint contract."""
+    if response.status_code not in request.additional_success_status_codes:
+        raise_for_status(response)
+
+
 @dataclass(frozen=True, slots=True)
 class NemoResponse(Generic[ResponseT]):
     """Typed HTTP response for JSON endpoints.
@@ -115,17 +121,18 @@ class NemoBinaryResponse:
 
     @property
     def http_response(self) -> httpx.Response:
-        """The underlying httpx response. Available after entering ``stream()``."""
+        """The underlying response, available after ``read()`` or while streaming."""
         if self._http_response is None:
-            raise RuntimeError("http_response is only available inside a stream() context")
+            raise RuntimeError("http_response is only available after read() or inside a stream() context")
         return self._http_response
 
     def read(self) -> bytes:
         """Read and return the entire response body as bytes."""
         try:
             with self._stream_ctx as raw:
+                self._http_response = raw
                 data = raw.read()
-                raise_for_status(raw)
+                _raise_for_binary_status(raw, self.request)
                 return data
         except httpx.TransportError as exc:
             raise NemoTransportError(exc) from exc
@@ -149,7 +156,7 @@ class NemoBinaryResponse:
         try:
             with self._stream_ctx as raw:
                 self._http_response = raw
-                raise_for_status(raw)
+                _raise_for_binary_status(raw, self.request)
                 yield raw.iter_raw(chunk_size) if chunk_size else raw.iter_raw()
         except httpx.TransportError as exc:
             raise NemoTransportError(exc) from exc
@@ -228,17 +235,18 @@ class AsyncNemoBinaryResponse:
 
     @property
     def http_response(self) -> httpx.Response:
-        """The underlying httpx response. Available after entering ``stream()``."""
+        """The underlying response, available after ``read()`` or while streaming."""
         if self._http_response is None:
-            raise RuntimeError("http_response is only available inside a stream() context")
+            raise RuntimeError("http_response is only available after read() or inside a stream() context")
         return self._http_response
 
     async def read(self) -> bytes:
         """Read and return the entire response body as bytes."""
         try:
             async with self._stream_ctx as raw:
+                self._http_response = raw
                 data = await raw.aread()
-                raise_for_status(raw)
+                _raise_for_binary_status(raw, self.request)
                 return data
         except httpx.TransportError as exc:
             raise NemoTransportError(exc) from exc
@@ -262,7 +270,7 @@ class AsyncNemoBinaryResponse:
         try:
             async with self._stream_ctx as raw:
                 self._http_response = raw
-                raise_for_status(raw)
+                _raise_for_binary_status(raw, self.request)
                 yield raw.aiter_raw(chunk_size) if chunk_size else raw.aiter_raw()
         except httpx.TransportError as exc:
             raise NemoTransportError(exc) from exc
