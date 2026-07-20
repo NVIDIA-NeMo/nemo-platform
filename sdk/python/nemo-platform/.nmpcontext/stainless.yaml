@@ -772,7 +772,6 @@ resources:
     models:
       project: Project
       project_param: ProjectInput
-      project_sort_field: ProjectSortField
       project_update: ProjectUpdate
       projects_page: ProjectsPage
     methods:

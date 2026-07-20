@@ -16,15 +16,13 @@ import logging
 import textwrap
 
 from fastapi import APIRouter, HTTPException, Query, status
-from nmp.common.api.common import Page, PaginationData
+from nmp.common.api.common import DeleteResponse, GenericSortField, Page, PaginationData
 from nmp.core.entities.api.dependencies import EntityRepository
 from nmp.core.entities.api.v2.projects.schemas import (
     Project,
     ProjectInput,
-    ProjectSortField,
     ProjectUpdate,
 )
-from nmp.core.entities.api.v2.schemas import DeleteResponse
 from nmp.core.entities.app.repository.exceptions import (
     EntityNotFoundError,
     EntityVersionConflictError,
@@ -141,7 +139,7 @@ async def list_projects(
     filter: FilterDep,
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(100, ge=1, le=1000, description="Items per page"),
-    sort: ProjectSortField = Query(ProjectSortField.CREATED_AT_DESC, description="Sort field"),
+    sort: GenericSortField = Query(GenericSortField.CREATED_AT_DESC, description="Sort field"),
 ) -> Page[Project]:
     """List projects in the workspace."""
     entities, total = await repository.list_entities(
@@ -287,7 +285,6 @@ async def delete_project(
         return DeleteResponse(
             id=f"{workspace}/{name}",
             message="Project deleted successfully",
-            deleted_count=deleted_count,
         )
     except IntegrityError as e:
         error_msg = str(e.orig) if hasattr(e, "orig") else str(e)

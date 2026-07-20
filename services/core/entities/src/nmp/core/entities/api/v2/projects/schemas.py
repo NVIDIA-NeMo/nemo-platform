@@ -4,7 +4,6 @@
 """Project API Schemas for v2."""
 
 from datetime import datetime
-from enum import Enum
 from typing import Optional
 
 from nmp.common.entities.constants import NAME_PATTERN, NAME_PATTERN_DESCRIPTION
@@ -40,17 +39,6 @@ class Project(BaseModel):
     description: Optional[str] = Field(None, description="Project description")
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
-
-
-class ProjectSortField(str, Enum):
-    """Fields available for sorting project results."""
-
-    CREATED_AT_ASC = "created_at"
-    CREATED_AT_DESC = "-created_at"
-    UPDATED_AT_ASC = "updated_at"
-    UPDATED_AT_DESC = "-updated_at"
-    NAME_ASC = "name"
-    NAME_DESC = "-name"
 
 
 class ProjectFilter(BaseModel):
