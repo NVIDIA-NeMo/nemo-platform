@@ -356,30 +356,12 @@ def _collision_spec():
     }
 
 
-def test_tweak_spec_raises_on_collision_by_default():
-    """A differing-content schema-name collision fails the build by default,
-    rather than silently keeping one model and mis-pointing the other's
-    ``$ref``s (which would ship a wrong contract in the generated SDK)."""
+def test_tweak_spec_raises_on_collision():
+    """A differing-content schema-name collision fails the build, rather than
+    silently keeping one model and mis-pointing the other's ``$ref``s (which
+    would ship a wrong contract in the generated SDK)."""
     with pytest.raises(ValueError, match="schema name collision"):
         tweak_spec(_collision_spec())
-
-
-def test_tweak_spec_warns_and_collapses_when_opted_out(caplog):
-    """``strict_collisions=False`` opts a spec out: warn and keep the first-seen
-    schema (legacy warn-and-collapse) for a spec that must tolerate a known
-    pre-existing collision."""
-    import logging
-
-    with caplog.at_level(logging.WARNING, logger="nmp.common.api.utils"):
-        result = tweak_spec(_collision_spec(), strict_collisions=False)
-
-    assert "schema name collision" in caplog.text
-    schemas = result["components"]["schemas"]
-    assert set(schemas) == {"TrainingSpec"}
-    # First-seen (automodel) wins the collapse.
-    assert "finetuning_type" in schemas["TrainingSpec"]["properties"]
-    ref = result["paths"]["/a"]["post"]["requestBody"]["content"]["application/json"]["schema"]["$ref"]
-    assert ref == REF + "TrainingSpec"
 
 
 def test_tweak_spec_dedups_identical_content_module_qualified_collision():

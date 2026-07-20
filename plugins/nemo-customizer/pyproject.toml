@@ -33,11 +33,6 @@ build-backend = "hatchling.build"
 packages = ["src/nemo_customizer"]
 
 [tool.nemo.openapi]
-# Strict collision detection is the platform-wide default; pinned here because
-# nemo-customizer merges every customization backend (automodel, unsloth, …)
-# into one /apis/customization app, where two backends emitting the same schema
-# name with differing content is always a bug (see NamespacedModel).
-strict_schema_collisions = true
 
 
 [tool.uv.sources]

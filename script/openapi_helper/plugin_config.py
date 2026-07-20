@@ -22,11 +22,6 @@ class PluginConfig:
     env_vars: Optional[Dict[str, str]] = None
     factory_override: Optional[str] = None  # "module:callable" escape hatch
     data_designer_plugin_allowlist: Optional[List[str]] = None
-    # Schema-name collisions fail spec generation by default. Set to false to
-    # opt a plugin out (warn-and-collapse) if its spec must tolerate a known
-    # pre-existing collision — collapsing silently ships a wrong contract, so
-    # opting out should be rare and deliberate.
-    strict_schema_collisions: bool = True
 
     @classmethod
     def from_pyproject(cls, pyproject_path: Path) -> Optional["PluginConfig"]:
@@ -54,9 +49,6 @@ class PluginConfig:
             raise ValueError(
                 f"plugin '{plugin_dir}': [tool.nemo.openapi].data_designer_plugin_allowlist must be a list of strings"
             )
-        strict_schema_collisions = opts.get("strict_schema_collisions", True)
-        if not isinstance(strict_schema_collisions, bool):
-            raise ValueError(f"plugin '{plugin_dir}': [tool.nemo.openapi].strict_schema_collisions must be a boolean")
 
         return cls(
             dir=plugin_dir,
@@ -64,7 +56,6 @@ class PluginConfig:
             env_vars=env_vars,
             factory_override=opts.get("factory_override"),
             data_designer_plugin_allowlist=data_designer_plugin_allowlist,
-            strict_schema_collisions=strict_schema_collisions,
         )
 
     def resolve_service_name(self) -> str:

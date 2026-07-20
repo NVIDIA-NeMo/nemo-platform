@@ -148,7 +148,7 @@ def _walk_spec(d: Dict, visitor: Callable[[str, Any, Dict], None]):
                     _walk_spec(item, visitor)
 
 
-def _normalize_refs_and_schema_keys(spec: Dict, *, strict_collisions: bool = True) -> Dict:
+def _normalize_refs_and_schema_keys(spec: Dict) -> Dict:
     """Normalize all ``$ref`` values and schema dictionary keys.
 
     Schema keys are renamed first so that ``$ref`` values can be rewritten
@@ -157,12 +157,8 @@ def _normalize_refs_and_schema_keys(spec: Dict, *, strict_collisions: bool = Tru
 
     When the content *differs*, two distinct Pydantic models are fighting over
     one schema name, and keeping one silently makes the other's ``$ref``\\ s point
-    at the wrong contract.  ``strict_collisions`` (the default) raises
-    ``ValueError`` so the build fails loudly rather than shipping a wrong
-    contract in the generated SDK.  Pass ``strict_collisions=False`` to opt a
-    spec out — it then logs a warning and keeps the first-seen schema (legacy
-    warn-and-collapse), for a spec that must tolerate a known pre-existing
-    collision.
+    at the wrong contract.  This raises ``ValueError`` so the build fails loudly
+    rather than shipping a wrong contract in the generated SDK.
     """
     schemas = spec["components"]["schemas"]
 
@@ -186,17 +182,13 @@ def _normalize_refs_and_schema_keys(spec: Dict, *, strict_collisions: bool = Tru
             if not any(schemas[key] == schemas[rep] for rep in reps):
                 reps.append(key)
         if len(reps) > 1:
-            message = (
+            raise ValueError(
                 f"OpenAPI schema name collision: {sorted(old_keys)} all normalize to "
                 f"'{target}' with differing content. Two distinct Pydantic models share a "
                 f"class name across modules; give them distinct names — rename or dedupe the "
                 f"models, or namespace them (e.g. via a per-backend NamespacedModel base) — so "
-                f"they emit distinct schema names. A spec that must tolerate the collision can "
-                f"opt out with strict_collisions=False."
+                f"they emit distinct schema names."
             )
-            if strict_collisions:
-                raise ValueError(message)
-            logger.warning("%s Keeping the first-seen schema.", message)
 
     # Iterating ``key_to_target`` preserves ``schemas`` order, so the first raw
     # key that maps to a given target still wins the collapse below.
@@ -356,9 +348,9 @@ def _sort_schemas(spec: Dict) -> Dict:
     return spec
 
 
-def tweak_spec(spec: Dict, *, strict_collisions: bool = True) -> Dict:
+def tweak_spec(spec: Dict) -> Dict:
     _walk_spec(spec, _anyof_null_visitor)
-    spec = _normalize_refs_and_schema_keys(spec, strict_collisions=strict_collisions)
+    spec = _normalize_refs_and_schema_keys(spec)
     spec = _split_input_output_schemas(spec)
     spec = _annotate_string_references(spec)
     spec = _sync_schema_titles(spec)

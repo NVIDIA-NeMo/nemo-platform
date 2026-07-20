@@ -466,7 +466,7 @@ def extract_plugin_specs_with_process_pool(plugins: List[PluginConfig]) -> None:
     print_green(f"All {len(plugins)} plugin(s) completed successfully!")
 
 
-def apply_schema_fixes(spec_files: List[str], apply_reorder: bool = True, strict_collisions: bool = True) -> None:
+def apply_schema_fixes(spec_files: List[str], apply_reorder: bool = True) -> None:
     """Apply schema fixes to a list of OpenAPI spec files."""
     print_green("=== Applying fixes to OpenAPI schemas ===")
     # Endpoints stripped from the public OpenAPI spec (not exposed in SDK).
@@ -517,7 +517,7 @@ def apply_schema_fixes(spec_files: List[str], apply_reorder: bool = True, strict
                 spec = fix_openai_streaming_endpoints(spec)
 
             # Apply the standard fix-schema logic
-            spec = tweak_spec(spec, strict_collisions=strict_collisions)
+            spec = tweak_spec(spec)
             spec = hoist_nested_defs(spec)
             spec = remove_unused_schemas(spec)
             spec = remove_invalid_components(spec)
@@ -748,16 +748,9 @@ def process_plugin_specs() -> None:
     # gated on `"platform" in spec_file` are no-ops because plugin paths live
     # under plugins/<dir>/openapi/ — no false positives by inspection.
     #
-    # Schema-name collisions fail the build by default (strict). A plugin may
-    # opt OUT via [tool.nemo.openapi].strict_schema_collisions = false if its
-    # spec must tolerate a known pre-existing collision. Plugin specs are
-    # independent files, so processing the two groups separately is safe.
-    strict_spec_files = [p.output_path() for p in plugins if p.strict_schema_collisions]
-    lenient_spec_files = [p.output_path() for p in plugins if not p.strict_schema_collisions]
-    if lenient_spec_files:
-        apply_schema_fixes(lenient_spec_files, strict_collisions=False)
-    if strict_spec_files:
-        apply_schema_fixes(strict_spec_files, strict_collisions=True)
+    # Schema-name collisions fail the build unconditionally: two distinct models
+    # sharing a schema name with differing content is always a bug.
+    apply_schema_fixes(plugin_spec_files)
     fix_ref_not_allowed_errors(plugin_spec_files)
     validate_final_specs(plugin_spec_files)
 
