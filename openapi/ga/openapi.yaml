@@ -3631,7 +3631,7 @@ paths:
   /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/sessions:
     get:
       tags:
-      - Evaluations
+      - Experiments
       summary: List Evaluation Sessions
       operationId: list_evaluation_sessions_apis_intake_v2_workspaces__workspace__evaluations__name__sessions_get
       parameters:
@@ -3689,10 +3689,19 @@ paths:
         in: query
         required: false
         schema:
-          description: Comma-separated sort fields...
+          description: "Comma-separated list of fields to sort by, applied in order\
+            \ (first field dominates); prefix any field with '-' for descending \u2014\
+            \ e.g. '-cost_total_usd,latency_ms'. Sortable fields: test_case_id, started_at,\
+            \ ended_at, latency_ms, cost_total_usd, status, tokens. When omitted,\
+            \ defaults to started_at ascending. Invalid or empty sort value \u2192\
+            \ 422."
           title: Sort
           type: string
-        description: Comma-separated sort fields...
+        description: "Comma-separated list of fields to sort by, applied in order\
+          \ (first field dominates); prefix any field with '-' for descending \u2014\
+          \ e.g. '-cost_total_usd,latency_ms'. Sortable fields: test_case_id, started_at,\
+          \ ended_at, latency_ms, cost_total_usd, status, tokens. When omitted, defaults\
+          \ to started_at ascending. Invalid or empty sort value \u2192 422."
       - in: query
         name: filter
         style: deepObject
@@ -3709,17 +3718,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/EvaluationSessionResponsesPage'
         '400':
-          description: Invalid filter value
+          description: Invalid filter value or sort field
         '404':
           description: Evaluation not found
+        '413':
+          description: Too many sessions to sort by cost or tokens
+        '422':
+          description: Unsupported or empty sort field
         '503':
           description: ClickHouse unavailable
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
   /apis/intake/v2/workspaces/{workspace}/evaluator-results:
     post:
       tags:

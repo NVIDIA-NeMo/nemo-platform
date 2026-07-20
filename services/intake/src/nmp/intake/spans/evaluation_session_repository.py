@@ -58,8 +58,36 @@ _SORT_EXPR_FINAL: dict[str, str] = {
     "status": "sessions.root_span_status",
     "test_case_id": "sessions.test_case_id",
     "cost_total_usd": "metrics.cost_total_usd",
-    "tokens": "(metrics.input_tokens + metrics.output_tokens)",
+    # Preserve NULL only when both input and output are absent (no span data at all).
+    # If only one side is NULL (e.g. a failed call with no output tokens but real input tokens),
+    # coalesce to 0 so the session sorts by its actual partial usage rather than disappearing
+    # to the bottom via NULLS LAST.
+    "tokens": (
+        "if(metrics.input_tokens IS NULL AND metrics.output_tokens IS NULL, NULL, "
+        "coalesce(metrics.input_tokens, 0) + coalesce(metrics.output_tokens, 0))"
+    ),
 }
+
+
+# Sessions above this threshold will not be sorted by cost or tokens. Pre-metrics sort joins
+# spans for EVERY scoped session before paginating — an unbounded aggregation on the request
+# path. Mirror the evaluations list cap (_MAX_GROUP_EVALUATIONS) to prevent runaway queries.
+# Raise this if legitimate evaluations routinely exceed it; the right long-term fix is to
+# denormalise cost/tokens into trace_index so no pre-pagination join is needed.
+_MAX_METRIC_SORT_SESSIONS = 10_000
+
+
+class MetricSortTooLargeError(Exception):
+    """Raised when a cost/tokens sort is requested on more sessions than the pre-metrics cap allows.
+
+    This is a domain exception (not HTTPException) so the repository stays HTTP-agnostic.
+    The endpoint catches it and converts it to 413.
+    """
+
+    def __init__(self, total: int, limit: int) -> None:
+        self.total = total
+        self.limit = limit
+        super().__init__(f"Metric sort requested on {total} sessions, limit is {limit}")
 
 
 @dataclass(frozen=True)
@@ -133,6 +161,9 @@ class EvaluationSessionRepository:
         total = int(count_result.result_rows[0][0]) if count_result.result_rows else 0
         if total == 0:
             return EvaluationSessionPage(rows=[], total=0)
+        needs_pre_metrics = sort_keys is not None and any(f in _PRE_METRICS_SORT_FIELDS for f, _ in sort_keys)
+        if needs_pre_metrics and total > _MAX_METRIC_SORT_SESSIONS:
+            raise MetricSortTooLargeError(total, _MAX_METRIC_SORT_SESSIONS)
 
         offset = (page - 1) * page_size
         list_sql = _list_sql(
@@ -261,7 +292,11 @@ def _pre_page_metrics_cte_sql(spans_table: str) -> str:
                 s.workspace AS workspace,
                 s.session_id AS session_id,
                 {_guarded_sum_sql("cost_key", scale=COST_SCALE)} AS cost_total_usd,
-                ({_guarded_sum_sql("input_tokens_key")} + {_guarded_sum_sql("output_tokens_key")}) AS total_tokens
+                if(
+                    {_guarded_sum_sql("input_tokens_key")} IS NULL AND {_guarded_sum_sql("output_tokens_key")} IS NULL,
+                    NULL,
+                    coalesce({_guarded_sum_sql("input_tokens_key")}, 0) + coalesce({_guarded_sum_sql("output_tokens_key")}, 0)
+                ) AS total_tokens
             FROM scoped_sessions AS s
             LEFT JOIN {all_scoped_spans} AS spans
                 ON s.workspace = spans.workspace

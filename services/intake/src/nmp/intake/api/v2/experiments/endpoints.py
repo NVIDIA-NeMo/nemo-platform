@@ -51,7 +51,7 @@ from nmp.intake.spans.evaluation_rollup_repository import (
     EvaluationRollupRepository,
     ScoreRollup,
 )
-from nmp.intake.spans.evaluation_session_repository import EvaluationSessionRepository
+from nmp.intake.spans.evaluation_session_repository import EvaluationSessionRepository, MetricSortTooLargeError
 from nmp.intake.spans.storage import make_pagination
 
 logger = logging.getLogger(__name__)
@@ -657,10 +657,11 @@ async def unpin_evaluation(
 @router.get(
     "/v2/workspaces/{workspace}/evaluations/{name}/sessions",
     response_model=Page[EvaluationSessionResponse],
-    tags=[EVALUATIONS_TAG],
     responses={
-        400: {"description": "Invalid filter value"},
+        400: {"description": "Invalid filter value or sort field"},
         404: {"description": "Evaluation not found"},
+        413: {"description": "Too many sessions to sort by cost or tokens"},
+        422: {"description": "Unsupported or empty sort field"},
         503: {"description": "ClickHouse unavailable"},
     },
     openapi_extra=generate_openapi_extra_params(
@@ -684,7 +685,16 @@ async def list_evaluation_sessions(
             "300 characters; detailed returns full root-span payloads."
         ),
     ),
-    sort: str | None = Query(default=None, description="Comma-separated sort fields..."),
+    sort: str | None = Query(
+        default=None,
+        description=(
+            "Comma-separated list of fields to sort by, applied in order (first field dominates); "
+            "prefix any field with '-' for descending — e.g. '-cost_total_usd,latency_ms'. "
+            "Sortable fields: test_case_id, started_at, ended_at, latency_ms, cost_total_usd, "
+            "status, tokens. When omitted, defaults to started_at ascending. "
+            "Invalid or empty sort value → 422."
+        ),
+    ),
 ) -> Page[EvaluationSessionResponse]:
     validate_list_query_params(request, additional_params={"mode"})
     sort_keys = _parse_session_sort_keys(sort) if sort is not None else None
@@ -721,6 +731,16 @@ async def list_evaluation_sessions(
             mode=mode,
             sort_keys=sort_keys,
         )
+    except MetricSortTooLargeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                f"This query selects {exc.total} sessions, exceeding the maximum of "
+                f"{exc.limit} that can be sorted by cost or tokens in one request. "
+                "Narrow the result with a filter (e.g. filter[status]=success) or sort by a "
+                "different field (started_at, latency_ms, status, test_case_id)."
+            ),
+        ) from exc
     except Exception as exc:
         # Sessions are the response payload (not enrichment), so we can't silently degrade like
         # _hydrate_rollups does. Convert backend failures (ClickHouse connection drop, query

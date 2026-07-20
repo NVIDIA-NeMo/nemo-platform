@@ -147,7 +147,9 @@ def test_tokens_sort_injects_pre_page_metrics_cte() -> None:
 
     assert "pre_page_metrics AS (" in query
     assert "pm.total_tokens ASC NULLS LAST" in query
-    assert "(metrics.input_tokens + metrics.output_tokens) ASC NULLS LAST" in query
+    # Final SELECT uses the NULL-safe coalesce form so sessions with only input or only
+    # output tokens still sort by their partial usage instead of NULL-ing to the bottom.
+    assert "coalesce(metrics.input_tokens, 0) + coalesce(metrics.output_tokens, 0)" in query
 
 
 # ---------------------------------------------------------------------------
