@@ -205,8 +205,7 @@ def _fill_main_model_placeholder(model_config: dict[str, Any]) -> dict[str, Any]
 
     parameters = model_config.get("parameters")
     if isinstance(parameters, dict) and (
-        _has_nonempty_model_name(parameters.get("model"))
-        or _has_nonempty_model_name(parameters.get("model_name"))
+        _has_nonempty_model_name(parameters.get("model")) or _has_nonempty_model_name(parameters.get("model_name"))
     ):
         return model_config
 
