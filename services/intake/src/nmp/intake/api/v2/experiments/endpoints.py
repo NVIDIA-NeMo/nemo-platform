@@ -658,10 +658,9 @@ async def unpin_evaluation(
     "/v2/workspaces/{workspace}/evaluations/{name}/sessions",
     response_model=Page[EvaluationSessionResponse],
     responses={
-        400: {"description": "Invalid filter value or sort field"},
+        400: {"description": "Invalid filter value, unsupported sort field, or empty sort"},
         404: {"description": "Evaluation not found"},
         413: {"description": "Too many sessions to sort by cost or tokens"},
-        422: {"description": "Unsupported or empty sort field"},
         503: {"description": "ClickHouse unavailable"},
     },
     openapi_extra=generate_openapi_extra_params(

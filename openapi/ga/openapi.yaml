@@ -3717,15 +3717,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/EvaluationSessionResponsesPage'
         '400':
-          description: Invalid filter value or sort field
+          description: Invalid filter value, unsupported sort field, or empty sort
         '404':
           description: Evaluation not found
         '413':
           description: Too many sessions to sort by cost or tokens
-        '422':
-          description: Unsupported or empty sort field
         '503':
           description: ClickHouse unavailable
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/intake/v2/workspaces/{workspace}/evaluator-results:
     post:
       tags:
