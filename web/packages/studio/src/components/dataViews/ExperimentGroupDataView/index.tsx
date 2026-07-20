@@ -171,7 +171,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
     // The evaluations leaderboard supports multi-column sort (shift-click) — score vs. cost etc.
     multiSort: true,
     columnVisibility: { created_by: false, updated_at: false },
-    // Keep the pin toggle reachable while horizontally scrolling this wide table.
+    // Keep the pin toggle and row selection reachable while horizontally scrolling this wide table.
     columnPinning: { left: ['pin', 'row-selection'] },
     filterFieldMap: getEvaluationFilterField,
     columnOrder: savedColumnOrder ?? [],

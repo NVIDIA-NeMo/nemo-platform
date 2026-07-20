@@ -44,5 +44,5 @@ Methods:
 
 Methods:
 
-- <code title="post /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/experiments/{experiment_id}">client.evaluations.experiments.<a href="./src/nemo_platform/resources/evaluations/experiments.py">reviewme_create</a>(experiment_id, \*, workspace, name) -> <a href="./src/nemo_platform/types/evaluations/evaluation_response.py">EvaluationResponse</a></code>
-- <code title="delete /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/experiments/{experiment_id}">client.evaluations.experiments.<a href="./src/nemo_platform/resources/evaluations/experiments.py">reviewme_delete</a>(experiment_id, \*, workspace, name) -> <a href="./src/nemo_platform/types/evaluations/evaluation_response.py">EvaluationResponse</a></code>
+- <code title="post /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/experiments/{experiment_id}">client.evaluations.experiments.<a href="./src/nemo_platform/resources/evaluations/experiments.py">add</a>(experiment_id, \*, workspace, name) -> <a href="./src/nemo_platform/types/evaluations/evaluation_response.py">EvaluationResponse</a></code>
+- <code title="delete /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/experiments/{experiment_id}">client.evaluations.experiments.<a href="./src/nemo_platform/resources/evaluations/experiments.py">remove</a>(experiment_id, \*, workspace, name) -> <a href="./src/nemo_platform/types/evaluations/evaluation_response.py">EvaluationResponse</a></code>

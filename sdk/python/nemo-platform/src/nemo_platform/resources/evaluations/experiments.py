@@ -55,7 +55,7 @@ class ExperimentsResource(SyncAPIResource):
         """
         return ExperimentsResourceWithStreamingResponse(self)
 
-    def reviewme_create(
+    def add(
         self,
         experiment_id: str,
         *,
@@ -105,7 +105,7 @@ class ExperimentsResource(SyncAPIResource):
             cast_to=EvaluationResponse,
         )
 
-    def reviewme_delete(
+    def remove(
         self,
         experiment_id: str,
         *,
@@ -176,7 +176,7 @@ class AsyncExperimentsResource(AsyncAPIResource):
         """
         return AsyncExperimentsResourceWithStreamingResponse(self)
 
-    async def reviewme_create(
+    async def add(
         self,
         experiment_id: str,
         *,
@@ -226,7 +226,7 @@ class AsyncExperimentsResource(AsyncAPIResource):
             cast_to=EvaluationResponse,
         )
 
-    async def reviewme_delete(
+    async def remove(
         self,
         experiment_id: str,
         *,
@@ -281,11 +281,11 @@ class ExperimentsResourceWithRawResponse:
     def __init__(self, experiments: ExperimentsResource) -> None:
         self._experiments = experiments
 
-        self.reviewme_create = to_raw_response_wrapper(
-            experiments.reviewme_create,
+        self.add = to_raw_response_wrapper(
+            experiments.add,
         )
-        self.reviewme_delete = to_raw_response_wrapper(
-            experiments.reviewme_delete,
+        self.remove = to_raw_response_wrapper(
+            experiments.remove,
         )
 
 
@@ -293,11 +293,11 @@ class AsyncExperimentsResourceWithRawResponse:
     def __init__(self, experiments: AsyncExperimentsResource) -> None:
         self._experiments = experiments
 
-        self.reviewme_create = async_to_raw_response_wrapper(
-            experiments.reviewme_create,
+        self.add = async_to_raw_response_wrapper(
+            experiments.add,
         )
-        self.reviewme_delete = async_to_raw_response_wrapper(
-            experiments.reviewme_delete,
+        self.remove = async_to_raw_response_wrapper(
+            experiments.remove,
         )
 
 
@@ -305,11 +305,11 @@ class ExperimentsResourceWithStreamingResponse:
     def __init__(self, experiments: ExperimentsResource) -> None:
         self._experiments = experiments
 
-        self.reviewme_create = to_streamed_response_wrapper(
-            experiments.reviewme_create,
+        self.add = to_streamed_response_wrapper(
+            experiments.add,
         )
-        self.reviewme_delete = to_streamed_response_wrapper(
-            experiments.reviewme_delete,
+        self.remove = to_streamed_response_wrapper(
+            experiments.remove,
         )
 
 
@@ -317,9 +317,9 @@ class AsyncExperimentsResourceWithStreamingResponse:
     def __init__(self, experiments: AsyncExperimentsResource) -> None:
         self._experiments = experiments
 
-        self.reviewme_create = async_to_streamed_response_wrapper(
-            experiments.reviewme_create,
+        self.add = async_to_streamed_response_wrapper(
+            experiments.add,
         )
-        self.reviewme_delete = async_to_streamed_response_wrapper(
-            experiments.reviewme_delete,
+        self.remove = async_to_streamed_response_wrapper(
+            experiments.remove,
         )

@@ -34,8 +34,8 @@ class TestExperiments:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    def test_method_reviewme_create(self, client: NeMoPlatform) -> None:
-        experiment = client.evaluations.experiments.reviewme_create(
+    def test_method_add(self, client: NeMoPlatform) -> None:
+        experiment = client.evaluations.experiments.add(
             experiment_id="experiment_id",
             workspace="workspace",
             name="name",
@@ -44,8 +44,8 @@ class TestExperiments:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    def test_raw_response_reviewme_create(self, client: NeMoPlatform) -> None:
-        response = client.evaluations.experiments.with_raw_response.reviewme_create(
+    def test_raw_response_add(self, client: NeMoPlatform) -> None:
+        response = client.evaluations.experiments.with_raw_response.add(
             experiment_id="experiment_id",
             workspace="workspace",
             name="name",
@@ -58,8 +58,8 @@ class TestExperiments:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    def test_streaming_response_reviewme_create(self, client: NeMoPlatform) -> None:
-        with client.evaluations.experiments.with_streaming_response.reviewme_create(
+    def test_streaming_response_add(self, client: NeMoPlatform) -> None:
+        with client.evaluations.experiments.with_streaming_response.add(
             experiment_id="experiment_id",
             workspace="workspace",
             name="name",
@@ -74,23 +74,23 @@ class TestExperiments:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    def test_path_params_reviewme_create(self, client: NeMoPlatform) -> None:
+    def test_path_params_add(self, client: NeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            client.evaluations.experiments.with_raw_response.reviewme_create(
+            client.evaluations.experiments.with_raw_response.add(
                 experiment_id="experiment_id",
                 workspace="",
                 name="name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
-            client.evaluations.experiments.with_raw_response.reviewme_create(
+            client.evaluations.experiments.with_raw_response.add(
                 experiment_id="experiment_id",
                 workspace="workspace",
                 name="",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `experiment_id` but received ''"):
-            client.evaluations.experiments.with_raw_response.reviewme_create(
+            client.evaluations.experiments.with_raw_response.add(
                 experiment_id="",
                 workspace="workspace",
                 name="name",
@@ -98,8 +98,8 @@ class TestExperiments:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    def test_method_reviewme_delete(self, client: NeMoPlatform) -> None:
-        experiment = client.evaluations.experiments.reviewme_delete(
+    def test_method_remove(self, client: NeMoPlatform) -> None:
+        experiment = client.evaluations.experiments.remove(
             experiment_id="experiment_id",
             workspace="workspace",
             name="name",
@@ -108,8 +108,8 @@ class TestExperiments:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    def test_raw_response_reviewme_delete(self, client: NeMoPlatform) -> None:
-        response = client.evaluations.experiments.with_raw_response.reviewme_delete(
+    def test_raw_response_remove(self, client: NeMoPlatform) -> None:
+        response = client.evaluations.experiments.with_raw_response.remove(
             experiment_id="experiment_id",
             workspace="workspace",
             name="name",
@@ -122,8 +122,8 @@ class TestExperiments:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    def test_streaming_response_reviewme_delete(self, client: NeMoPlatform) -> None:
-        with client.evaluations.experiments.with_streaming_response.reviewme_delete(
+    def test_streaming_response_remove(self, client: NeMoPlatform) -> None:
+        with client.evaluations.experiments.with_streaming_response.remove(
             experiment_id="experiment_id",
             workspace="workspace",
             name="name",
@@ -138,23 +138,23 @@ class TestExperiments:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    def test_path_params_reviewme_delete(self, client: NeMoPlatform) -> None:
+    def test_path_params_remove(self, client: NeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            client.evaluations.experiments.with_raw_response.reviewme_delete(
+            client.evaluations.experiments.with_raw_response.remove(
                 experiment_id="experiment_id",
                 workspace="",
                 name="name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
-            client.evaluations.experiments.with_raw_response.reviewme_delete(
+            client.evaluations.experiments.with_raw_response.remove(
                 experiment_id="experiment_id",
                 workspace="workspace",
                 name="",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `experiment_id` but received ''"):
-            client.evaluations.experiments.with_raw_response.reviewme_delete(
+            client.evaluations.experiments.with_raw_response.remove(
                 experiment_id="",
                 workspace="workspace",
                 name="name",
@@ -168,8 +168,8 @@ class TestAsyncExperiments:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    async def test_method_reviewme_create(self, async_client: AsyncNeMoPlatform) -> None:
-        experiment = await async_client.evaluations.experiments.reviewme_create(
+    async def test_method_add(self, async_client: AsyncNeMoPlatform) -> None:
+        experiment = await async_client.evaluations.experiments.add(
             experiment_id="experiment_id",
             workspace="workspace",
             name="name",
@@ -178,8 +178,8 @@ class TestAsyncExperiments:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    async def test_raw_response_reviewme_create(self, async_client: AsyncNeMoPlatform) -> None:
-        response = await async_client.evaluations.experiments.with_raw_response.reviewme_create(
+    async def test_raw_response_add(self, async_client: AsyncNeMoPlatform) -> None:
+        response = await async_client.evaluations.experiments.with_raw_response.add(
             experiment_id="experiment_id",
             workspace="workspace",
             name="name",
@@ -192,8 +192,8 @@ class TestAsyncExperiments:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    async def test_streaming_response_reviewme_create(self, async_client: AsyncNeMoPlatform) -> None:
-        async with async_client.evaluations.experiments.with_streaming_response.reviewme_create(
+    async def test_streaming_response_add(self, async_client: AsyncNeMoPlatform) -> None:
+        async with async_client.evaluations.experiments.with_streaming_response.add(
             experiment_id="experiment_id",
             workspace="workspace",
             name="name",
@@ -208,23 +208,23 @@ class TestAsyncExperiments:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    async def test_path_params_reviewme_create(self, async_client: AsyncNeMoPlatform) -> None:
+    async def test_path_params_add(self, async_client: AsyncNeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            await async_client.evaluations.experiments.with_raw_response.reviewme_create(
+            await async_client.evaluations.experiments.with_raw_response.add(
                 experiment_id="experiment_id",
                 workspace="",
                 name="name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
-            await async_client.evaluations.experiments.with_raw_response.reviewme_create(
+            await async_client.evaluations.experiments.with_raw_response.add(
                 experiment_id="experiment_id",
                 workspace="workspace",
                 name="",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `experiment_id` but received ''"):
-            await async_client.evaluations.experiments.with_raw_response.reviewme_create(
+            await async_client.evaluations.experiments.with_raw_response.add(
                 experiment_id="",
                 workspace="workspace",
                 name="name",
@@ -232,8 +232,8 @@ class TestAsyncExperiments:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    async def test_method_reviewme_delete(self, async_client: AsyncNeMoPlatform) -> None:
-        experiment = await async_client.evaluations.experiments.reviewme_delete(
+    async def test_method_remove(self, async_client: AsyncNeMoPlatform) -> None:
+        experiment = await async_client.evaluations.experiments.remove(
             experiment_id="experiment_id",
             workspace="workspace",
             name="name",
@@ -242,8 +242,8 @@ class TestAsyncExperiments:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    async def test_raw_response_reviewme_delete(self, async_client: AsyncNeMoPlatform) -> None:
-        response = await async_client.evaluations.experiments.with_raw_response.reviewme_delete(
+    async def test_raw_response_remove(self, async_client: AsyncNeMoPlatform) -> None:
+        response = await async_client.evaluations.experiments.with_raw_response.remove(
             experiment_id="experiment_id",
             workspace="workspace",
             name="name",
@@ -256,8 +256,8 @@ class TestAsyncExperiments:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    async def test_streaming_response_reviewme_delete(self, async_client: AsyncNeMoPlatform) -> None:
-        async with async_client.evaluations.experiments.with_streaming_response.reviewme_delete(
+    async def test_streaming_response_remove(self, async_client: AsyncNeMoPlatform) -> None:
+        async with async_client.evaluations.experiments.with_streaming_response.remove(
             experiment_id="experiment_id",
             workspace="workspace",
             name="name",
@@ -272,23 +272,23 @@ class TestAsyncExperiments:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    async def test_path_params_reviewme_delete(self, async_client: AsyncNeMoPlatform) -> None:
+    async def test_path_params_remove(self, async_client: AsyncNeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            await async_client.evaluations.experiments.with_raw_response.reviewme_delete(
+            await async_client.evaluations.experiments.with_raw_response.remove(
                 experiment_id="experiment_id",
                 workspace="",
                 name="name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
-            await async_client.evaluations.experiments.with_raw_response.reviewme_delete(
+            await async_client.evaluations.experiments.with_raw_response.remove(
                 experiment_id="experiment_id",
                 workspace="workspace",
                 name="",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `experiment_id` but received ''"):
-            await async_client.evaluations.experiments.with_raw_response.reviewme_delete(
+            await async_client.evaluations.experiments.with_raw_response.remove(
                 experiment_id="",
                 workspace="workspace",
                 name="name",
