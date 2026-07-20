@@ -288,9 +288,7 @@ class TestRequestLogging:
         assert "guardrails_data" not in response
 
         guardrails_choices = [
-            choice
-            for choice in response["choices"]
-            if choice["message"]["role"] == GUARDRAILS_DATA_MESSAGE_ROLE
+            choice for choice in response["choices"] if choice["message"]["role"] == GUARDRAILS_DATA_MESSAGE_ROLE
         ]
         assert len(guardrails_choices) == 1
 
