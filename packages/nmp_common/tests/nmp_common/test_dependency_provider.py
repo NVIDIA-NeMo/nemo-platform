@@ -35,11 +35,13 @@ def test_get_sdk_client_caches_request_sdk_and_creates_fresh_service_sdk() -> No
         assert provider.get_sdk_client() is request_sdk
         assert provider.get_sdk_client(as_service="jobs") is service_sdk
 
-    assert factory.call_args_list[0].kwargs == {"http_client": None}
+    # The provider now shares its pooled HTTP client with every SDK it builds.
+    http_client = provider.get_http_client()
+    assert factory.call_args_list[0].kwargs == {"http_client": http_client}
     assert factory.call_args_list[1].kwargs == {
         "as_service": "jobs",
         "internal": True,
-        "http_client": None,
+        "http_client": http_client,
     }
 
 
@@ -68,8 +70,10 @@ async def test_close_closes_managed_clients_and_clears_references() -> None:
 
     await provider.close()
 
+    # close() owns and closes the shared HTTP transport; the SDK borrows that
+    # transport, so it is dropped without a separate sdk.close().
     http_client.aclose.assert_awaited_once_with()
-    sdk.close.assert_awaited_once_with()
+    sdk.close.assert_not_awaited()
     assert provider._http_client is None
     assert provider._sdk_client is None
 

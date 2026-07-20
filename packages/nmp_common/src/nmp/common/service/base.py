@@ -10,12 +10,14 @@ import logging
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from threading import RLock
 from typing import ClassVar, Dict, Generic, List, Optional, Self, Type, TypeVar, cast, get_args, get_origin
 
 import httpx
 from fastapi import APIRouter, FastAPI
 from fastapi.openapi.utils import get_openapi
 from nemo_platform import AsyncNeMoPlatform, DefaultAsyncHttpxClient
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nmp.common.api.utils import register_query_param_schemas
 from nmp.common.config import Configuration, PlatformConfig, ServiceConfig
 from nmp.common.controller import Controller
@@ -58,7 +60,7 @@ def _get_config_class_from_generic(cls: type) -> Type[ServiceConfig] | None:
 
 class DependencyProvider:
     """
-    Manages SDK, entity client, HTTP client, and config lifecycle for NeMo Platform services.
+    Manages SDK, NemoClient, entity client, HTTP client, and config lifecycle for NeMo Platform services.
 
     Provides lazy initialization, FastAPI dependency wiring, and cleanup.
 
@@ -68,6 +70,7 @@ class DependencyProvider:
     """
 
     def __init__(self) -> None:
+        self._client_lock = RLock()
         self._http_client: Optional[httpx.AsyncClient] = None
         self._sdk_client: Optional[AsyncNeMoPlatform] = None
         self._platform_config: Optional[PlatformConfig] = None
@@ -80,9 +83,10 @@ class DependencyProvider:
         If you need to share a client across providers (e.g., for connection
         pooling), you can inject the same client via _http_client.
         """
-        if self._http_client is None:
-            self._http_client = DefaultAsyncHttpxClient()
-        return self._http_client
+        with self._client_lock:
+            if self._http_client is None:
+                self._http_client = DefaultAsyncHttpxClient()
+            return self._http_client
 
     def get_sdk_client(self, as_service: str | None = None) -> AsyncNeMoPlatform:
         """Return the async platform SDK client.
@@ -102,12 +106,13 @@ class DependencyProvider:
         # When as_service is specified, return a fresh SDK with service credentials.
         # This is needed for startup/background code where no user auth context exists.
         if as_service is not None:
-            return get_async_platform_sdk(as_service=as_service, internal=True, http_client=self._http_client)
+            return get_async_platform_sdk(as_service=as_service, internal=True, http_client=self.get_http_client())
 
         # For request handling, use cached SDK. EntityClient adds auth headers per-request.
-        if self._sdk_client is None:
-            self._sdk_client = get_async_platform_sdk(http_client=self._http_client)
-        return self._sdk_client
+        with self._client_lock:
+            if self._sdk_client is None:
+                self._sdk_client = get_async_platform_sdk(http_client=self.get_http_client())
+            return self._sdk_client
 
     def get_entity_client(self, as_service: str | None = None) -> Optional[EntityClient]:
         """Return the EntityClient.
@@ -170,33 +175,38 @@ class DependencyProvider:
         base_sdk = self.get_sdk_client()  # Cached base SDK
         return get_request_scoped_sdk(base_sdk)
 
+    def get_request_scoped_nemo_client(self) -> AsyncNemoClient:
+        """Return a fresh async NemoClient with request-scoped headers."""
+        from nmp.common.client_factory import get_async_nemo_client
+
+        return get_async_nemo_client(http_client=self.get_http_client())
+
     def setup_dependencies(self, app: FastAPI, service: "Service") -> None:
         """Configure FastAPI dependency overrides."""
         from nmp.common.service.dependencies import (
             get_entity_client,
+            get_nemo_client,
             get_platform_config,
             get_sdk_client,
             get_service_config,
         )
 
         app.dependency_overrides[get_sdk_client] = self.get_request_scoped_sdk
+        app.dependency_overrides[get_nemo_client] = self.get_request_scoped_nemo_client
         app.dependency_overrides[get_entity_client] = self.get_entity_client
         app.dependency_overrides[get_platform_config] = self.get_platform_config
         if service._service_config is not None:
             app.dependency_overrides[get_service_config] = lambda: service._service_config
 
     async def close(self) -> None:
-        """Close managed clients.
-
-        Each DependencyProvider owns its HTTP client and SDK, so closing them
-        here is safe. Called by Service.on_shutdown() during lifespan cleanup.
-        """
-        if self._http_client is not None:
-            await self._http_client.aclose()
+        """Close the provider-owned HTTP transport and clear cached wrappers."""
+        with self._client_lock:
+            http_client = self._http_client
             self._http_client = None
-        if self._sdk_client is not None:
-            await self._sdk_client.close()
             self._sdk_client = None
+
+        if http_client is not None:
+            await http_client.aclose()
 
 
 class Service(ABC, Generic[TConfig]):
