@@ -688,11 +688,10 @@ async def list_evaluation_sessions(
     sort: str | None = Query(
         default=None,
         description=(
-            "Comma-separated list of fields to sort by, applied in order (first field dominates); "
-            "prefix any field with '-' for descending — e.g. '-cost_total_usd,latency_ms'. "
-            "Sortable fields: test_case_id, started_at, ended_at, latency_ms, cost_total_usd, "
-            "status, tokens. When omitted, defaults to started_at ascending. "
-            "Invalid or empty sort value → 422."
+            "Comma-separated list of fields to sort by, applied in order (the first field dominates); "
+            "prefix a field with '-' for descending — e.g. '-cost_total_usd,latency_ms'. Fields: "
+            "test_case_id, started_at, ended_at, latency_ms, status, cost_total_usd, tokens. When omitted, "
+            "sessions are ordered by started_at ascending."
         ),
     ),
 ) -> Page[EvaluationSessionResponse]:

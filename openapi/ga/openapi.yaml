@@ -3690,18 +3690,17 @@ paths:
         required: false
         schema:
           description: "Comma-separated list of fields to sort by, applied in order\
-            \ (first field dominates); prefix any field with '-' for descending \u2014\
-            \ e.g. '-cost_total_usd,latency_ms'. Sortable fields: test_case_id, started_at,\
-            \ ended_at, latency_ms, cost_total_usd, status, tokens. When omitted,\
-            \ defaults to started_at ascending. Invalid or empty sort value \u2192\
-            \ 422."
+            \ (the first field dominates); prefix a field with '-' for descending\
+            \ \u2014 e.g. '-cost_total_usd,latency_ms'. Fields: test_case_id, started_at,\
+            \ ended_at, latency_ms, status, cost_total_usd, tokens. When omitted,\
+            \ sessions are ordered by started_at ascending."
           title: Sort
           type: string
         description: "Comma-separated list of fields to sort by, applied in order\
-          \ (first field dominates); prefix any field with '-' for descending \u2014\
-          \ e.g. '-cost_total_usd,latency_ms'. Sortable fields: test_case_id, started_at,\
-          \ ended_at, latency_ms, cost_total_usd, status, tokens. When omitted, defaults\
-          \ to started_at ascending. Invalid or empty sort value \u2192 422."
+          \ (the first field dominates); prefix a field with '-' for descending \u2014\
+          \ e.g. '-cost_total_usd,latency_ms'. Fields: test_case_id, started_at, ended_at,\
+          \ latency_ms, status, cost_total_usd, tokens. When omitted, sessions are\
+          \ ordered by started_at ascending."
       - in: query
         name: filter
         style: deepObject
