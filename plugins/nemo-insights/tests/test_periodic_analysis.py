@@ -486,6 +486,7 @@ def test_analyze_job_records_success(monkeypatch: pytest.MonkeyPatch, tmp_path: 
         return "analysis report"
 
     monkeypatch.setattr("nemo_insights_plugin.jobs.analyze.run_analyst", fake_run_analyst)
+    monkeypatch.setattr("nemo_insights_plugin.jobs.analyze.make_client", lambda base_url: object())
     sdk = _SyncSdk()
 
     result = AnalyzeJob().run(

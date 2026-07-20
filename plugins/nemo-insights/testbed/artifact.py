@@ -23,7 +23,9 @@ from collections.abc import Mapping
 from pathlib import Path
 
 import httpx
+from nemo_platform import AsyncNeMoPlatform
 from testbed import export
+from testbed.intake_client import build_basic_auth_intake_client
 from testbed.registry import Subject
 
 LOCAL_URL = "http://localhost:8080"  # the local NeMo Platform (the default restore/analyze target)
@@ -127,6 +129,28 @@ def workspaces_for_subject(subject: Subject) -> list[str]:
     )
 
 
+def _basic_auth_intake_client_for(subject: Subject, source_url: str) -> AsyncNeMoPlatform | None:
+    """Build this subject's configured basic-auth Intake client, if needed."""
+    if subject.config.get("auth") != "basic":
+        return None
+    config = subject.config
+    credentials: dict[str, str] = {}
+    for role, key in (("username", "auth_user_env"), ("password", "auth_password_env")):
+        env_name = config.get(key)
+        value = os.environ.get(str(env_name)) if env_name else None
+        if not value:
+            env_label = str(env_name) if env_name else key
+            sys.exit(f"snapshot: subject '{subject.name}' is missing basic-auth {role} credential: {env_label}")
+        credentials[role] = value
+    real_prefix = str(config.get("intake_path_prefix", "/api/intake")).rstrip("/") + "/"
+    return build_basic_auth_intake_client(
+        base_url=source_url,
+        username=credentials["username"],
+        password=credentials["password"],
+        real_prefix=real_prefix,
+    )
+
+
 def backup_records(testbed_tmp: Path, names: list[str], *, backup_dir: Path | None = None) -> Path:
     """Move the named local files into *backup_dir* (default ``<testbed_tmp>/backup-<UTC stamp>/``);
     returns that dir.
@@ -189,11 +213,13 @@ def snapshot_export(
     Source URL is each subject's stanza ``base_url`` (they must agree; the
     CLI's ``--base`` override rewrites every stanza before this is called).
     """
-    workspaces: list[str] = []
+    subject_workspaces: list[tuple[Subject, list[str]]] = []
+    claimed_workspaces: set[str] = set()
     for subject in subjects:
-        for workspace in workspaces_for_subject(subject):
-            if workspace not in workspaces:
-                workspaces.append(workspace)
+        workspaces = [workspace for workspace in workspaces_for_subject(subject) if workspace not in claimed_workspaces]
+        if workspaces:
+            subject_workspaces.append((subject, workspaces))
+            claimed_workspaces.update(workspaces)
     # Every selected subject must carry a base_url: a partial miss would silently
     # let the agreement check pass on the configured subset and export the
     # unconfigured subject from the others' platform.
@@ -215,7 +241,33 @@ def snapshot_export(
     with tempfile.TemporaryDirectory(dir=tmp_dir) as tmp:
         state = Path(tmp) / "state"
         (state / "tmp").mkdir(parents=True)
-        stats = export.export_workspaces(source_url, workspaces, state, since=since)
+        exported = [
+            export.export_workspaces(
+                source_url,
+                workspaces,
+                state,
+                since=since,
+                client=_basic_auth_intake_client_for(subject, source_url),
+            )
+            for subject, workspaces in subject_workspaces
+        ]
+        min_bounds = [
+            datetime.datetime.fromisoformat(stats["min_start_time"])
+            for stats in exported
+            if stats["min_start_time"] is not None
+        ]
+        max_bounds = [
+            datetime.datetime.fromisoformat(stats["max_start_time"])
+            for stats in exported
+            if stats["max_start_time"] is not None
+        ]
+        stats = {
+            "workspaces": {
+                workspace: counts for result in exported for workspace, counts in result["workspaces"].items()
+            },
+            "min_start_time": min(min_bounds).isoformat() if min_bounds else None,
+            "max_start_time": max(max_bounds).isoformat() if max_bounds else None,
+        }
         for rec in records:
             shutil.copy2(rec, state / "tmp" / rec.name)
         manifest = build_export_manifest(
