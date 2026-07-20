@@ -72,31 +72,66 @@ const listEvaluationSessionsWithModeFallback = async (
   }
 };
 
+// Column id → API sort field. All session sort fields are direct 1:1 matches so no
+// translation is needed beyond listing the sortable ids.
+const SESSION_SORT_FIELD_MAP: Readonly<Record<string, string>> = {
+  test_case_id: 'test_case_id',
+  started_at: 'started_at',
+  ended_at: 'ended_at',
+  latency_ms: 'latency_ms',
+  status: 'status',
+  tokens: 'tokens',
+  cost_total_usd: 'cost_total_usd',
+};
+
+// Converts the table's multi-column sorting state to the comma-separated `sort` API param.
+// Returns undefined when nothing is sorted so the endpoint uses its default order.
+const getSessionSortParam = (sortingState: { id: string; desc: boolean }[]): string | undefined => {
+  if (sortingState.length === 0) return undefined;
+  const fields = sortingState
+    .map(({ id, desc }) => {
+      const field = SESSION_SORT_FIELD_MAP[id];
+      return field ? `${desc ? '-' : ''}${field}` : undefined;
+    })
+    .filter((f): f is string => f !== undefined);
+  return fields.length > 0 ? fields.join(',') : undefined;
+};
+
 export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = ({
   evaluationName,
   experimentGroupName,
 }) => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
-  const dataViewState = useStudioDataViewState<EvaluationSessionFilter>({ columnVisibility: {} });
+  const dataViewState = useStudioDataViewState<EvaluationSessionFilter>({
+    columnVisibility: {},
+    multiSort: true,
+  });
   const { data: experiment } = useGetEvaluation(workspace, evaluationName);
 
   const page = dataViewState.pagination.state.pageIndex + 1;
   const pageSize = dataViewState.pagination.state.pageSize;
-  const sessionParams = useMemo<ListEvaluationSessionsParams>(
-    () => ({
+  const sessionParams = useMemo<ListEvaluationSessionsParams>(() => {
+    const sort = getSessionSortParam(dataViewState.sorting.state);
+    return {
       page,
       page_size: pageSize,
       mode: 'preview',
+      ...(sort && { sort }),
       filter: {
         ...dataViewState.apiFilter.filter,
         ...(dataViewState.debouncedSearchBar && {
           test_case_id: dataViewState.debouncedSearchBar,
         }),
       },
-    }),
-    [dataViewState.apiFilter.filter, dataViewState.debouncedSearchBar, page, pageSize]
-  );
+    };
+  }, [
+    dataViewState.apiFilter.filter,
+    dataViewState.debouncedSearchBar,
+    dataViewState.sorting.state,
+    page,
+    pageSize,
+  ]);
 
   const { data: sessionsResponse, isLoading } = useListEvaluationSessions(
     workspace,
@@ -153,7 +188,7 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
   }) => [
     accessor('test_case_id', {
       header: 'Test case',
-      enableSorting: false,
+      enableSorting: true,
       size: 200,
       cell: ({ row }) => {
         const value = row.original.test_case_id;
@@ -179,7 +214,7 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
     }),
     accessor('started_at', {
       header: 'Started at',
-      enableSorting: false,
+      enableSorting: true,
       cell: ({ row }) =>
         row.original.started_at ? (
           <RelativeTime datetime={row.original.started_at} />
@@ -189,13 +224,13 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
     }),
     accessor('ended_at', {
       header: 'Ended at',
-      enableSorting: false,
+      enableSorting: true,
       cell: ({ row }) =>
         row.original.ended_at ? <RelativeTime datetime={row.original.ended_at} /> : <Text>-</Text>,
     }),
     accessor('latency_ms', {
       header: 'Latency',
-      enableSorting: false,
+      enableSorting: true,
       meta: { alignment: 'right' },
       cell: ({ row }) => {
         const ms = row.original.latency_ms;
@@ -204,7 +239,7 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
     }),
     accessor('status', {
       header: 'Status',
-      enableSorting: false,
+      enableSorting: true,
       meta: {
         filter: {
           type: 'single-select',
@@ -227,7 +262,7 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
       {
         id: 'tokens',
         header: 'Tokens',
-        enableSorting: false,
+        enableSorting: true,
         meta: { alignment: 'right' },
         cell: ({ row }) => {
           const { input_tokens, output_tokens } = row.original;
@@ -238,7 +273,7 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
     ),
     accessor('cost_total_usd', {
       header: 'Cost',
-      enableSorting: false,
+      enableSorting: true,
       meta: { alignment: 'right' },
       cell: ({ row }) => {
         const cost = row.original.cost_total_usd;
