@@ -44,6 +44,8 @@ secrets will not decrypt with a new key.
 | api.autoscaling.targetCPUUtilizationPercentage | int | `80` | The target CPU utilization percentage. |
 | api.enabled | bool | `true` | Specifies whether to enable the api deployment. |
 | api.extraArgs | list | `[]` | Additional arguments to pass to the Platform API service |
+| api.extraVolumeMounts | list | `[]` | Additional volume mounts to add to the Platform API container. |
+| api.extraVolumes | list | `[]` | Additional volumes to add to the Platform API pod. |
 | api.image | object | This object has the following default values for the image configuration. | Container image configuration for the api deployment. |
 | api.image.pullPolicy | string | `"IfNotPresent"` | The image pull policy determining when to pull new images. |
 | api.image.repository | string | `"nvcr.io/nvidia/nemo-platform/nmp-api"` | The registry where the NeMo Platform image is located. |
@@ -166,8 +168,12 @@ secrets will not decrypt with a new key.
 | envoyProxy.autoscaling.maxReplicas | int | `10` | The maximum number of replicas for the deployment. |
 | envoyProxy.autoscaling.minReplicas | int | `1` | The minimum number of replicas for the deployment. |
 | envoyProxy.autoscaling.targetCPUUtilizationPercentage | int | `80` | The target CPU utilization percentage. |
+| envoyProxy.configOverride | string | `""` | Full Envoy config override. When set, this replaces the chart's default passthrough Envoy config. |
 | envoyProxy.enabled | bool | `true` | Specifies whether to enable the Envoy proxy deployment. Rendered only when platform config has auth.enabled: true. |
 | envoyProxy.extraArgs | list | `[]` | Extra arguments to append to the envoy container command. Useful for passing server flags such as concurrency. Example: ["--concurrency", "4"] |
+| envoyProxy.extraVolumeMounts | list | `[]` | Additional volume mounts to add to the Envoy container. |
+| envoyProxy.extraVolumes | list | `[]` | Additional volumes to add to the Envoy pod. |
+| envoyProxy.image.digest | string | `""` | Optional image digest. When set, the Envoy image renders as repository@digest. |
 | envoyProxy.livenessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/ready","port":"admin"},"periodSeconds":10,"timeoutSeconds":5}` | Liveness probe for the Envoy container (admin interface /ready). |
 | envoyProxy.nodeSelector | object | `{}` | Node selector configuration for the Envoy pods. |
 | envoyProxy.podAnnotations | object | `{}` | Annotations to add to the Envoy service pod. |

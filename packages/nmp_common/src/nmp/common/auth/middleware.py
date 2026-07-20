@@ -69,6 +69,8 @@ HEALTH_ENDPOINTS = {
     "/health/ready",
     "/metrics",
     "/apis/auth/discovery",  # Discovery endpoint for CLI/SDK
+    "/apis/auth/jwks",  # Workload identity exchange signing keys
+    "/apis/auth/token",  # Workload identity token exchange validates the subject token itself
 }
 
 # GET requests to these paths bypass authentication (e.g. / -> /studio redirect).

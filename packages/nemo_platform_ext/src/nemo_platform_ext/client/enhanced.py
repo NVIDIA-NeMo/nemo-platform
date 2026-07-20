@@ -5,13 +5,48 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, Mapping
 
 import httpx
 from httpx import Timeout
-from nemo_platform import DEFAULT_MAX_RETRIES, AsyncStream, NotGiven, __version__, not_given
+from nemo_platform import (
+    DEFAULT_MAX_RETRIES,
+    AsyncStream,
+    DefaultAsyncHttpxClient,
+    DefaultHttpxClient,
+    NotGiven,
+    __version__,
+    not_given,
+)
 from nemo_platform._base_client import AsyncAPIClient, SyncAPIClient
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+
+from nemo_platform_ext.client.tls import client_verify_from_env
+
+
+def _should_bootstrap_config(
+    *,
+    http_client: object | None,
+    base_url: str | httpx.URL | None,
+    config_path: Path | None,
+    context_name: str | None,
+    access_token: str | None,
+) -> bool:
+    """Return whether constructor arguments require config/auth bootstrap."""
+    if http_client is not None:
+        return False
+
+    # Backward compatibility: an explicit base_url means direct mode (no config
+    # bootstrap), unless config-specific overrides or workload identity are set.
+    return (
+        base_url is None
+        or config_path is not None
+        or context_name is not None
+        or access_token is not None
+        or bool(os.environ.get(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR))
+    )
 
 
 class NeMoPlatform(SyncAPIClient):
@@ -98,10 +133,12 @@ class NeMoPlatform(SyncAPIClient):
             http_client: Custom ``httpx.Client`` instance. When provided, the auth
                 bootstrap is skipped entirely regardless of other parameters.
         """
-        # Backward compatibility: an explicit base_url means direct mode (no config bootstrap),
-        # unless config-specific overrides are provided.
-        should_bootstrap = http_client is None and (
-            base_url is None or config_path is not None or context_name is not None or access_token is not None
+        should_bootstrap = _should_bootstrap_config(
+            http_client=http_client,
+            base_url=base_url,
+            config_path=config_path,
+            context_name=context_name,
+            access_token=access_token,
         )
         if should_bootstrap:
             try:
@@ -121,6 +158,10 @@ class NeMoPlatform(SyncAPIClient):
                 http_client = client_init_kwargs.http_client
             except Exception as e:
                 raise RuntimeError(f"NeMoPlatform client initialization failed: {e}")
+
+        client_verify = client_verify_from_env()
+        if http_client is None and client_verify is not True:
+            http_client = DefaultHttpxClient(verify=client_verify)
 
         self.workspace = workspace
 
@@ -254,10 +295,12 @@ class AsyncNeMoPlatform(AsyncAPIClient):
             http_client: Custom ``httpx.AsyncClient`` instance. When provided, the
                 auth bootstrap is skipped entirely regardless of other parameters.
         """
-        # Backward compatibility: an explicit base_url means direct mode (no config bootstrap),
-        # unless config-specific overrides are provided.
-        should_bootstrap = http_client is None and (
-            base_url is None or config_path is not None or context_name is not None or access_token is not None
+        should_bootstrap = _should_bootstrap_config(
+            http_client=http_client,
+            base_url=base_url,
+            config_path=config_path,
+            context_name=context_name,
+            access_token=access_token,
         )
         if should_bootstrap:
             try:
@@ -277,6 +320,10 @@ class AsyncNeMoPlatform(AsyncAPIClient):
                 http_client = client_init_kwargs.http_client
             except Exception as e:
                 raise RuntimeError(f"NeMoPlatform client initialization failed: {e}")
+
+        client_verify = client_verify_from_env()
+        if http_client is None and client_verify is not True:
+            http_client = DefaultAsyncHttpxClient(verify=client_verify)
 
         self.workspace = workspace
 

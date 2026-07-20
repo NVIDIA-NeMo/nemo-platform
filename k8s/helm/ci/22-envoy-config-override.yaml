@@ -1,0 +1,51 @@
+# CI validates by running: helm template nemo-platform . -f ci/22-envoy-config-override.yaml
+# Exercises the full-replacement envoyProxy.configOverride path with a deliberately
+# small custom Envoy config, so this fixture does not duplicate the chart default.
+
+platformConfig:
+  auth:
+    enabled: true
+envoyProxy:
+  image:
+    digest: sha256:f91c972d5c99bc133233a079b5663b903e7d56b3b0b0216398924f7b80d09e47
+  securityContext:
+    readOnlyRootFilesystem: true
+  extraVolumeMounts:
+    - name: tmp
+      mountPath: /tmp
+  extraVolumes:
+    - name: tmp
+      emptyDir: {}
+  configOverride: |-
+    admin:
+      address:
+        socket_address:
+          address: 127.0.0.1
+          port_value: 9901
+    static_resources:
+      listeners:
+        - name: ci_override_listener
+          address:
+            socket_address:
+              address: 0.0.0.0
+              port_value: 8080
+          filter_chains:
+            - filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                    stat_prefix: ci_override
+                    route_config:
+                      name: ci_override_route
+                      virtual_hosts:
+                        - name: ci
+                          domains: ["*"]
+                          routes:
+                            - match:
+                                prefix: "/"
+                              direct_response:
+                                status: 204
+                    http_filters:
+                      - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router

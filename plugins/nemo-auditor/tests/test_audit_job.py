@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import signal
 import subprocess
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -28,13 +29,20 @@ from nemo_auditor.jobs.audit import (
     AuditInputSpec,
     AuditJob,
     AuditSpec,
+    GarakFailure,
+    _aggregate_reports,
     _collect_report_artifacts,
+    _divide_and_write_confs,
     _garak_config_dict,
     _rewrite_options_uris,
 )
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
+
+# The probe name returned by parse_plugin_spec for "encoding.InjectAscii85".
+_PROBE_NAME = "encoding.InjectAscii85"
+_PROBE_FULL = f"probes.{_PROBE_NAME}"
 
 
 def _make_ctx(tmp_path: Path) -> JobContext:
@@ -79,18 +87,57 @@ def _make_target(**overrides) -> AuditTargetEntity:
 def _make_spec_dict(**overrides) -> dict:
     cfg = overrides.pop("config", _make_config())
     tgt = overrides.pop("target", _make_target())
-    return {
+    d = {
         "config": cfg.model_dump(mode="json"),
         "target": tgt.model_dump(mode="json"),
     }
+    d.update(overrides)
+    return d
 
 
-def _plant_reports(persistent: Path, prefix: str, kinds: tuple[str, ...]) -> None:
-    """Plant fake garak report files where ``run`` will look for them."""
-    report_dir = persistent / "garak" / "garak_runs"
-    report_dir.mkdir(parents=True, exist_ok=True)
+def _plant_reports(persistent: Path, prefix: str, kinds: tuple[str, ...], report_dir: str = "garak_runs") -> None:
+    """Plant fake aggregated garak report files where ``_collect_report_artifacts`` will look."""
+    d = persistent / "garak" / report_dir
+    d.mkdir(parents=True, exist_ok=True)
     for kind in kinds:
-        (report_dir / f"{prefix}{kind}").write_text(f"fake-{kind}")
+        (d / f"{prefix}{kind}").write_text(f"fake-{kind}")
+
+
+def _plant_probe_success(
+    persistent: Path,
+    probe_name: str,
+    report_prefix: str = "run1",
+    report_dir: str = "garak_runs",
+) -> None:
+    """Plant the per-probe HTML success marker that AuditJob uses to detect probe completion."""
+    marker = persistent / "running" / probe_name / "garak" / report_dir / f"{report_prefix}.report.html"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("ok")
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def fake_garak_python(tmp_path: Path, monkeypatch) -> Path:
+    """Create an empty file standing in for the garak interpreter and point the
+    job at it via the env var. AuditJob only checks existence, never executes
+    it (subprocess.run is patched separately)."""
+    interp = tmp_path / "garak-python"
+    interp.touch()
+    monkeypatch.setenv("NEMO_AUDITOR_GARAK_PYTHON", str(interp))
+    return interp
+
+
+@pytest.fixture
+def fake_parse_plugin_spec():
+    """Patch garakapi.parse_plugin_spec to return a single known probe without
+    requiring a real garak plugin cache."""
+    with patch("nemo_auditor.jobs.audit.garakapi.parse_plugin_spec") as mock:
+        mock.return_value = ([_PROBE_FULL], [])
+        yield mock
 
 
 # ---------------------------------------------------------------------------
@@ -118,30 +165,156 @@ class TestGarakConfigDict:
 
 
 # ---------------------------------------------------------------------------
+# _divide_and_write_confs
+# ---------------------------------------------------------------------------
+
+
+class TestDivideAndWriteConfs:
+    def test_writes_one_yaml_per_probe(self, tmp_path: Path) -> None:
+        todo = tmp_path / "todo"
+        todo.mkdir()
+        config_dict = {
+            "plugins": {"probe_spec": "encoding", "detector_spec": "auto"},
+            "run": {"probe_tags": None},
+            "system": {},
+            "reporting": {},
+        }
+        with patch("nemo_auditor.jobs.audit.garakapi.parse_plugin_spec") as mock:
+            mock.return_value = (["probes.encoding.InjectAscii85", "probes.encoding.InjectBase16"], [])
+            _divide_and_write_confs(config_dict, todo)
+
+        yamls = sorted(todo.glob("*.yaml"))
+        assert len(yamls) == 2
+        assert {y.stem for y in yamls} == {"encoding.InjectAscii85", "encoding.InjectBase16"}
+
+    def test_per_probe_yaml_has_single_probe_spec(self, tmp_path: Path) -> None:
+        todo = tmp_path / "todo"
+        todo.mkdir()
+        config_dict = {
+            "plugins": {"probe_spec": "encoding.InjectAscii85", "detector_spec": "auto"},
+            "run": {"probe_tags": None},
+        }
+        with patch("nemo_auditor.jobs.audit.garakapi.parse_plugin_spec") as mock:
+            mock.return_value = ([_PROBE_FULL], [])
+            _divide_and_write_confs(config_dict, todo)
+
+        loaded = yaml.safe_load((todo / f"{_PROBE_NAME}.yaml").read_text())
+        assert loaded["plugins"]["probe_spec"] == _PROBE_NAME
+        # Other plugin keys are preserved.
+        assert loaded["plugins"]["detector_spec"] == "auto"
+
+    def test_raises_on_empty_activated_list(self, tmp_path: Path) -> None:
+        todo = tmp_path / "todo"
+        todo.mkdir()
+        with patch("nemo_auditor.jobs.audit.garakapi.parse_plugin_spec") as mock:
+            mock.return_value = ([], [])
+            with pytest.raises(GarakFailure, match="No probes found"):
+                _divide_and_write_confs({"plugins": {"probe_spec": "nonexistent"}, "run": {}}, todo)
+
+    def test_raises_on_unknown_probes(self, tmp_path: Path) -> None:
+        todo = tmp_path / "todo"
+        todo.mkdir()
+        with patch("nemo_auditor.jobs.audit.garakapi.parse_plugin_spec") as mock:
+            mock.return_value = ([], ["bad.probe"])
+            with pytest.raises(GarakFailure, match="Invalid probe"):
+                _divide_and_write_confs({"plugins": {"probe_spec": "bad.probe"}, "run": {}}, todo)
+
+    def test_passes_probe_tags_to_parse_plugin_spec(self, tmp_path: Path) -> None:
+        todo = tmp_path / "todo"
+        todo.mkdir()
+        config_dict = {"plugins": {"probe_spec": "all"}, "run": {"probe_tags": "owasp:llm06"}}
+        with patch("nemo_auditor.jobs.audit.garakapi.parse_plugin_spec") as mock:
+            mock.return_value = ([_PROBE_FULL], [])
+            _divide_and_write_confs(config_dict, todo)
+
+        mock.assert_called_once_with("all", "probes", "owasp:llm06")
+
+    def test_normalises_none_probe_tags_to_empty_string(self, tmp_path: Path) -> None:
+        todo = tmp_path / "todo"
+        todo.mkdir()
+        config_dict = {"plugins": {"probe_spec": "encoding"}, "run": {"probe_tags": None}}
+        with patch("nemo_auditor.jobs.audit.garakapi.parse_plugin_spec") as mock:
+            mock.return_value = ([_PROBE_FULL], [])
+            _divide_and_write_confs(config_dict, todo)
+
+        mock.assert_called_once_with("encoding", "probes", "")
+
+
+# ---------------------------------------------------------------------------
+# _aggregate_reports
+# ---------------------------------------------------------------------------
+
+
+class TestAggregateReports:
+    def test_returns_false_when_no_completed_jsonls(self, tmp_path: Path, fake_garak_python: Path) -> None:
+        (tmp_path / "complete").mkdir()
+        result = _aggregate_reports(tmp_path, "garak_runs", "run1", str(fake_garak_python))
+        assert result is False
+
+    def test_calls_aggregate_reports_and_report_digest(self, tmp_path: Path, fake_garak_python: Path) -> None:
+        # Plant a per-probe JSONL so the function has something to aggregate.
+        jsonl = tmp_path / "complete" / _PROBE_NAME / "garak" / "garak_runs" / "run1.report.jsonl"
+        jsonl.parent.mkdir(parents=True)
+        jsonl.write_text("{}")
+
+        with patch("nemo_auditor.jobs.audit.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
+            result = _aggregate_reports(tmp_path, "garak_runs", "run1", str(fake_garak_python))
+
+        assert result is True
+        assert mock_run.call_count == 2
+        cmds = [call.args[0] for call in mock_run.call_args_list]
+        assert any("aggregate_reports" in " ".join(c) for c in cmds)
+        assert any("report_digest" in " ".join(c) for c in cmds)
+
+    def test_raises_garak_failure_when_aggregate_subprocess_fails(
+        self, tmp_path: Path, fake_garak_python: Path
+    ) -> None:
+        jsonl = tmp_path / "complete" / _PROBE_NAME / "garak" / "garak_runs" / "run1.report.jsonl"
+        jsonl.parent.mkdir(parents=True)
+        jsonl.write_text("{}")
+
+        with patch("nemo_auditor.jobs.audit.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=1, stderr="boom")
+            with pytest.raises(GarakFailure, match="aggregate_reports failed"):
+                _aggregate_reports(tmp_path, "garak_runs", "run1", str(fake_garak_python))
+
+    def test_concatenates_hitlogs(self, tmp_path: Path, fake_garak_python: Path) -> None:
+        for probe in ("probeA", "probeB"):
+            d = tmp_path / "complete" / probe / "garak" / "garak_runs"
+            d.mkdir(parents=True)
+            (d / "run1.report.jsonl").write_text("{}")
+            (d / "run1.hitlog.jsonl").write_bytes(b"hit-" + probe.encode())
+
+        with patch("nemo_auditor.jobs.audit.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
+            _aggregate_reports(tmp_path, "garak_runs", "run1", str(fake_garak_python))
+
+        hitlog = tmp_path / "garak" / "garak_runs" / "run1.hitlog.jsonl"
+        assert hitlog.exists()
+        contents = hitlog.read_bytes()
+        assert b"hit-probeA" in contents
+        assert b"hit-probeB" in contents
+
+
+# ---------------------------------------------------------------------------
 # Subprocess invocation
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def fake_garak_python(tmp_path: Path, monkeypatch) -> Path:
-    """Create an empty file standing in for the garak interpreter and point the
-    job at it via the env var. AuditJob only checks existence, never executes
-    it (subprocess.run is patched separately)."""
-    interp = tmp_path / "garak-python"
-    interp.touch()
-    monkeypatch.setenv("NEMO_AUDITOR_GARAK_PYTHON", str(interp))
-    return interp
-
-
 class TestAuditJobRun:
-    def test_invokes_garak_with_expected_argv_and_env(self, tmp_path: Path, fake_garak_python: Path) -> None:
+    def test_invokes_garak_with_expected_argv_and_env(
+        self, tmp_path: Path, fake_garak_python: Path, fake_parse_plugin_spec
+    ) -> None:
         ctx = _make_ctx(tmp_path)
         spec = _make_spec_dict()
 
         with patch("nemo_auditor.jobs.audit.subprocess.run") as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+            # returncode=0 but no HTML planted → probe "fails", GarakFailure caught internally.
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
             AuditJob().run(spec, ctx=ctx)
 
+        # One call: the probe invocation (aggregation not reached after failure).
         assert mock_run.call_count == 1
         call_args = mock_run.call_args
         argv = call_args.args[0]
@@ -150,48 +323,50 @@ class TestAuditJobRun:
         assert argv[1:3] == ["-m", "garak"]
         assert "--config" in argv
         cfg_idx = argv.index("--config")
-        assert argv[cfg_idx + 1].endswith("garak_config.yaml")
+        # Per-probe config is copied into running/<probe>/config.yaml.
+        assert argv[cfg_idx + 1].endswith("config.yaml")
         assert ["--target_type", "test"] == argv[argv.index("--target_type") : argv.index("--target_type") + 2]
         assert ["--target_name", "test.Blank"] == argv[argv.index("--target_name") : argv.index("--target_name") + 2]
         # No options on the default target → no --generator_option_file.
         assert "--generator_option_file" not in argv
 
         env = call_args.kwargs["env"]
-        # Either the test process inherited the var, or the job stubbed it
-        # to "NOT_SET". Either way the key must be present and non-empty so
-        # garak doesn't reject startup.
         for key in ("NIM_API_KEY", "OPENAI_API_KEY", "REST_API_KEY", "OPENAICOMPATIBLE_API_KEY"):
             assert env[key]
-        assert env["XDG_DATA_HOME"] == str(ctx.storage.persistent)
+        # XDG_DATA_HOME is the per-probe running dir, not the persistent root.
+        assert env["XDG_DATA_HOME"] == str(ctx.storage.persistent / "running" / _PROBE_NAME)
         assert env["GARAK_LOG_FILE"].endswith("garak.log")
 
-        # cwd is the ephemeral working dir.
-        assert call_args.kwargs["cwd"] == ctx.storage.ephemeral
-
-    def test_yaml_config_only_has_garak_sections(self, tmp_path: Path, fake_garak_python: Path) -> None:
+    def test_yaml_config_only_has_garak_sections(
+        self, tmp_path: Path, fake_garak_python: Path, fake_parse_plugin_spec
+    ) -> None:
         ctx = _make_ctx(tmp_path)
         spec = _make_spec_dict(config=_make_config(description="will-be-stripped"))
 
         with patch("nemo_auditor.jobs.audit.subprocess.run") as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
             AuditJob().run(spec, ctx=ctx)
 
-        garak_config_path = ctx.storage.ephemeral / "garak_config.yaml"
-        assert garak_config_path.exists()
-        loaded = yaml.safe_load(garak_config_path.read_text())
+        # The per-probe config is moved to failed/ after the probe fails (no HTML).
+        probe_config = ctx.storage.persistent / "failed" / _PROBE_NAME / "config.yaml"
+        assert probe_config.exists()
+        loaded = yaml.safe_load(probe_config.read_text())
         assert set(loaded.keys()) == {"system", "run", "plugins", "reporting"}
         assert "description" not in loaded
         assert "name" not in loaded
 
-    def test_target_options_written_when_present_and_flag_added(self, tmp_path: Path, fake_garak_python: Path) -> None:
+    def test_target_options_written_when_present_and_flag_added(
+        self, tmp_path: Path, fake_garak_python: Path, fake_parse_plugin_spec
+    ) -> None:
         ctx = _make_ctx(tmp_path)
         spec = _make_spec_dict(target=_make_target(options={"endpoint": "https://example.invalid", "key_env": "X"}))
 
         with patch("nemo_auditor.jobs.audit.subprocess.run") as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
             AuditJob().run(spec, ctx=ctx)
 
-        opts_path = ctx.storage.ephemeral / "target_options.json"
+        # Target options are written to persistent storage (survives pause/resume).
+        opts_path = ctx.storage.persistent / "target_options.json"
         assert opts_path.exists()
         assert json.loads(opts_path.read_text()) == {"endpoint": "https://example.invalid", "key_env": "X"}
 
@@ -205,76 +380,313 @@ class TestAuditJobRun:
         with pytest.raises(FileNotFoundError, match="garak interpreter not found"):
             AuditJob().run(_make_spec_dict(), ctx=ctx)
 
-    def test_completed_run_collects_all_three_artifacts(self, tmp_path: Path, fake_garak_python: Path) -> None:
-        ctx = _make_ctx(tmp_path)
-        spec = _make_spec_dict()
-
-        def fake_run(*args, **kwargs):
-            _plant_reports(
-                ctx.storage.persistent,
-                "run1",
-                (".report.jsonl", ".report.html", ".hitlog.jsonl"),
-            )
-            return subprocess.CompletedProcess(args=[], returncode=0, stdout="ok", stderr="")
-
-        with patch("nemo_auditor.jobs.audit.subprocess.run", side_effect=fake_run):
-            result = AuditJob().run(spec, ctx=ctx)
-
-        assert result["status"] == "completed"
-        assert result["returncode"] == 0
-        assert set(result["results"].keys()) == {"report-jsonl", "report-html", "report-hitlog-jsonl"}
-        for ref in result["results"].values():
-            assert ref["artifact_url"].startswith("file://")
-            # Local sink copies to <persistent>/results/<name>.
-            assert Path(ref["artifact_url"][len("file://") :]).exists()
-
-    def test_failed_run_returns_failed_status_and_collects_partial_artifacts(
-        self, tmp_path: Path, fake_garak_python: Path
+    def test_completed_run_collects_all_three_artifacts(
+        self, tmp_path: Path, fake_garak_python: Path, fake_parse_plugin_spec
     ) -> None:
         ctx = _make_ctx(tmp_path)
         spec = _make_spec_dict()
 
-        def fake_run(*args, **kwargs):
-            # Garak got far enough to emit the jsonl but crashed before the html.
-            _plant_reports(ctx.storage.persistent, "run1", (".report.jsonl",))
-            return subprocess.CompletedProcess(args=[], returncode=2, stdout="", stderr="garak exploded\n")
+        def fake_run(cmd, **kwargs):
+            # Plant the per-probe HTML success marker so the probe is treated as complete.
+            xdg = kwargs["env"]["XDG_DATA_HOME"]
+            marker = Path(xdg) / "garak" / "garak_runs" / "run1.report.html"
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text("ok")
+            return subprocess.CompletedProcess(args=[], returncode=0)
 
-        with patch("nemo_auditor.jobs.audit.subprocess.run", side_effect=fake_run):
+        with (
+            patch("nemo_auditor.jobs.audit.subprocess.run", side_effect=fake_run),
+            patch("nemo_auditor.jobs.audit._aggregate_reports", return_value=True),
+        ):
+            _plant_reports(ctx.storage.persistent, "run1", (".report.jsonl", ".report.html", ".hitlog.jsonl"))
             result = AuditJob().run(spec, ctx=ctx)
 
-        assert result["status"] == "failed"
-        assert result["returncode"] == 2
-        assert "garak exploded" in result["stderr_tail"]
-        assert set(result["results"].keys()) == {"report-jsonl"}
+        assert result["status"] == "completed"
+        assert result["probes_complete"] == 1
+        assert set(result["results"].keys()) == {"report-jsonl", "report-html", "report-hitlog-jsonl"}
+        for ref in result["results"].values():
+            assert ref["artifact_url"].startswith("file://")
+            assert Path(ref["artifact_url"][len("file://") :]).exists()
 
-    def test_failed_run_with_no_artifacts_still_returns_envelope(self, tmp_path: Path, fake_garak_python: Path) -> None:
+    def test_failed_run_returns_failed_status(
+        self, tmp_path: Path, fake_garak_python: Path, fake_parse_plugin_spec
+    ) -> None:
         ctx = _make_ctx(tmp_path)
         spec = _make_spec_dict()
 
         with patch("nemo_auditor.jobs.audit.subprocess.run") as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="early death")
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=2)
             result = AuditJob().run(spec, ctx=ctx)
 
         assert result["status"] == "failed"
-        assert result["returncode"] == 1
+        assert "results" in result
+
+    def test_failed_run_with_no_artifacts_still_returns_envelope(
+        self, tmp_path: Path, fake_garak_python: Path, fake_parse_plugin_spec
+    ) -> None:
+        ctx = _make_ctx(tmp_path)
+        spec = _make_spec_dict()
+
+        with patch("nemo_auditor.jobs.audit.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=1)
+            result = AuditJob().run(spec, ctx=ctx)
+
+        assert result["status"] == "failed"
         assert result["results"] == {}
 
-    def test_uses_custom_report_prefix_and_dir(self, tmp_path: Path, fake_garak_python: Path) -> None:
+    def test_uses_custom_report_prefix_and_dir(
+        self, tmp_path: Path, fake_garak_python: Path, fake_parse_plugin_spec
+    ) -> None:
         ctx = _make_ctx(tmp_path)
         cfg = _make_config(reporting=AuditReportData(report_prefix="custom-prefix", report_dir="custom_dir"))
         spec = _make_spec_dict(config=cfg)
 
-        def fake_run(*args, **kwargs):
-            d = ctx.storage.persistent / "garak" / "custom_dir"
-            d.mkdir(parents=True, exist_ok=True)
-            (d / "custom-prefix.report.jsonl").write_text("hi")
-            return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        def fake_run(cmd, **kwargs):
+            xdg = kwargs["env"]["XDG_DATA_HOME"]
+            marker = Path(xdg) / "garak" / "custom_dir" / "custom-prefix.report.html"
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text("ok")
+            return subprocess.CompletedProcess(args=[], returncode=0)
 
-        with patch("nemo_auditor.jobs.audit.subprocess.run", side_effect=fake_run):
+        with (
+            patch("nemo_auditor.jobs.audit.subprocess.run", side_effect=fake_run),
+            patch("nemo_auditor.jobs.audit._aggregate_reports", return_value=True),
+        ):
+            _plant_reports(ctx.storage.persistent, "custom-prefix", (".report.jsonl",), report_dir="custom_dir")
             result = AuditJob().run(spec, ctx=ctx)
 
         assert result["status"] == "completed"
         assert "report-jsonl" in result["results"]
+
+    # -----------------------------------------------------------------------
+    # Scratch space and per-probe directory management
+    # -----------------------------------------------------------------------
+
+    def test_first_run_creates_scratch_directories(
+        self, tmp_path: Path, fake_garak_python: Path, fake_parse_plugin_spec
+    ) -> None:
+        ctx = _make_ctx(tmp_path)
+
+        with patch("nemo_auditor.jobs.audit.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=1)
+            AuditJob().run(_make_spec_dict(), ctx=ctx)
+
+        persistent = ctx.storage.persistent
+        for d in ("todo", "running", "complete", "failed", "failed_probe_logs"):
+            assert (persistent / d).exists(), f"Expected {d}/ to be created"
+
+    def test_successful_probe_lands_in_complete(
+        self, tmp_path: Path, fake_garak_python: Path, fake_parse_plugin_spec
+    ) -> None:
+        ctx = _make_ctx(tmp_path)
+
+        def fake_run(cmd, **kwargs):
+            xdg = kwargs["env"]["XDG_DATA_HOME"]
+            marker = Path(xdg) / "garak" / "garak_runs" / "run1.report.html"
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text("ok")
+            return subprocess.CompletedProcess(args=[], returncode=0)
+
+        with (
+            patch("nemo_auditor.jobs.audit.subprocess.run", side_effect=fake_run),
+            patch("nemo_auditor.jobs.audit._aggregate_reports", return_value=False),
+        ):
+            AuditJob().run(_make_spec_dict(), ctx=ctx)
+
+        assert (ctx.storage.persistent / "complete" / _PROBE_NAME).is_dir()
+        # todo YAML removed after probe completes.
+        assert not list((ctx.storage.persistent / "todo").glob("*.yaml"))
+
+    def test_failed_probe_lands_in_failed(
+        self, tmp_path: Path, fake_garak_python: Path, fake_parse_plugin_spec
+    ) -> None:
+        ctx = _make_ctx(tmp_path)
+
+        with patch("nemo_auditor.jobs.audit.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=1)
+            AuditJob().run(_make_spec_dict(), ctx=ctx)
+
+        assert (ctx.storage.persistent / "failed" / _PROBE_NAME).is_dir()
+
+    def test_probe_succeeds_on_retry(self, tmp_path: Path, fake_garak_python: Path, fake_parse_plugin_spec) -> None:
+        ctx = _make_ctx(tmp_path)
+        call_count = 0
+
+        def fake_run(cmd, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:
+                # Second attempt plants the success marker.
+                xdg = kwargs["env"]["XDG_DATA_HOME"]
+                marker = Path(xdg) / "garak" / "garak_runs" / "run1.report.html"
+                marker.parent.mkdir(parents=True, exist_ok=True)
+                marker.write_text("ok")
+                return subprocess.CompletedProcess(args=[], returncode=0)
+            return subprocess.CompletedProcess(args=[], returncode=1)
+
+        spec = _make_spec_dict(max_probe_retries=1)
+        with (
+            patch("nemo_auditor.jobs.audit.subprocess.run", side_effect=fake_run),
+            patch("nemo_auditor.jobs.audit._aggregate_reports", return_value=False),
+        ):
+            result = AuditJob().run(spec, ctx=ctx)
+
+        assert result["probes_complete"] == 1
+        assert (ctx.storage.persistent / "complete" / _PROBE_NAME).is_dir()
+        # The failed-probe log directory was created for the first (failed) attempt.
+        assert (ctx.storage.persistent / "failed_probe_logs" / _PROBE_NAME).is_dir()
+
+    def test_retries_exhausted_fail_job_returns_failed(
+        self, tmp_path: Path, fake_garak_python: Path, fake_parse_plugin_spec
+    ) -> None:
+        ctx = _make_ctx(tmp_path)
+        spec = _make_spec_dict(max_probe_retries=1, fail_job_on_retries_exhausted=True)
+
+        with patch("nemo_auditor.jobs.audit.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=1)
+            result = AuditJob().run(spec, ctx=ctx)
+
+        assert result["status"] == "failed"
+        assert _PROBE_NAME in result["error"]
+        assert mock_run.call_count == 2  # 1 attempt + 1 retry
+
+    def test_retries_exhausted_continue_gives_partial_result(
+        self, tmp_path: Path, fake_garak_python: Path, fake_parse_plugin_spec
+    ) -> None:
+        """With fail_job_on_retries_exhausted=False and two probes, exhausted retries
+        on the first probe are skipped and the second probe still runs."""
+        ctx = _make_ctx(tmp_path)
+
+        with patch("nemo_auditor.jobs.audit.garakapi.parse_plugin_spec") as mock_spec:
+            mock_spec.return_value = (
+                ["probes.encoding.InjectAscii85", "probes.encoding.InjectBase16"],
+                [],
+            )
+            call_order: list[str] = []
+
+            def fake_run(cmd, **kwargs):
+                xdg = kwargs["env"]["XDG_DATA_HOME"]
+                probe_dir = Path(xdg)
+                if "InjectBase16" in str(probe_dir):
+                    # Second probe succeeds.
+                    marker = probe_dir / "garak" / "garak_runs" / "run1.report.html"
+                    marker.parent.mkdir(parents=True, exist_ok=True)
+                    marker.write_text("ok")
+                    call_order.append("success")
+                    return subprocess.CompletedProcess(args=[], returncode=0)
+                call_order.append("fail")
+                return subprocess.CompletedProcess(args=[], returncode=1)
+
+            spec = _make_spec_dict(fail_job_on_retries_exhausted=False)
+            with (
+                patch("nemo_auditor.jobs.audit.subprocess.run", side_effect=fake_run),
+                patch("nemo_auditor.jobs.audit._aggregate_reports", return_value=False),
+            ):
+                result = AuditJob().run(spec, ctx=ctx)
+
+        assert result["status"] == "partial"
+        assert result["probes_complete"] == 1
+        assert result["probes_failed"] == 1
+
+    def test_all_probes_fail_returns_failed(
+        self, tmp_path: Path, fake_garak_python: Path, fake_parse_plugin_spec
+    ) -> None:
+        ctx = _make_ctx(tmp_path)
+        spec = _make_spec_dict(fail_job_on_retries_exhausted=False)
+
+        with patch("nemo_auditor.jobs.audit.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=1)
+            result = AuditJob().run(spec, ctx=ctx)
+
+        assert result["status"] == "failed"
+        assert "All probes failed" in result["error"]
+
+    # -----------------------------------------------------------------------
+    # Pause / resume
+    # -----------------------------------------------------------------------
+
+    def test_resume_skips_initialization(self, tmp_path: Path, fake_garak_python: Path, fake_parse_plugin_spec) -> None:
+        """When todo/ already exists, _divide_and_write_confs must not be called again."""
+        ctx = _make_ctx(tmp_path)
+        persistent = ctx.storage.persistent
+
+        # Simulate a prior run that left one probe in todo/.
+        (persistent / "todo").mkdir(parents=True)
+        (persistent / "running").mkdir()
+        (persistent / "complete").mkdir()
+        (persistent / "failed").mkdir()
+        (persistent / "failed_probe_logs").mkdir()
+        cfg_dict = _garak_config_dict(_make_config())
+        (persistent / "todo" / f"{_PROBE_NAME}.yaml").write_text(yaml.safe_dump(cfg_dict))
+
+        with (
+            patch("nemo_auditor.jobs.audit.garakapi.parse_plugin_spec") as mock_spec,
+            patch("nemo_auditor.jobs.audit.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=1)
+            AuditJob().run(_make_spec_dict(), ctx=ctx)
+            # parse_plugin_spec must not be called — initialization was skipped.
+            mock_spec.assert_not_called()
+
+    def test_resume_requeues_interrupted_probe(
+        self, tmp_path: Path, fake_garak_python: Path, fake_parse_plugin_spec
+    ) -> None:
+        """A probe directory left in running/ is re-queued to todo/ on resume."""
+        ctx = _make_ctx(tmp_path)
+        persistent = ctx.storage.persistent
+
+        (persistent / "todo").mkdir(parents=True)
+        (persistent / "running").mkdir()
+        (persistent / "complete").mkdir()
+        (persistent / "failed").mkdir()
+        (persistent / "failed_probe_logs").mkdir()
+        # Simulate an interrupted probe: running/ has the probe dir with a config.
+        probe_dir = persistent / "running" / _PROBE_NAME
+        probe_dir.mkdir()
+        cfg_dict = _garak_config_dict(_make_config())
+        (probe_dir / "config.yaml").write_text(yaml.safe_dump(cfg_dict))
+
+        with patch("nemo_auditor.jobs.audit.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=1)
+            AuditJob().run(_make_spec_dict(), ctx=ctx)
+
+        # The probe was re-queued and executed (appears in failed/ because returncode=1).
+        assert (persistent / "failed" / _PROBE_NAME).is_dir()
+        # running/<probe> was cleaned up after re-queue and execution.
+        assert not (persistent / "running" / _PROBE_NAME).exists()
+
+    # -----------------------------------------------------------------------
+    # SIGTERM handler
+    # -----------------------------------------------------------------------
+
+    def test_sigterm_handler_aggregates_partial_results(
+        self, tmp_path: Path, fake_garak_python: Path, fake_parse_plugin_spec
+    ) -> None:
+        """Directly invoke the SIGTERM closure and verify it calls aggregation."""
+        ctx = _make_ctx(tmp_path)
+        captured_handler: list = []
+
+        original_signal = signal.signal
+
+        def capture_signal(signum, handler):
+            if signum == signal.SIGTERM:
+                captured_handler.append(handler)
+            return original_signal(signum, handler)
+
+        with (
+            patch("nemo_auditor.jobs.audit.subprocess.run") as mock_run,
+            patch("nemo_auditor.jobs.audit.signal.signal", side_effect=capture_signal),
+            patch("nemo_auditor.jobs.audit._aggregate_reports", return_value=False) as mock_agg,
+            patch("nemo_auditor.jobs.audit.sys.exit") as mock_exit,
+        ):
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=1)
+            AuditJob().run(_make_spec_dict(), ctx=ctx)
+
+            assert captured_handler, "SIGTERM handler was not registered"
+            # Invoke the handler inside the patch context so sys.exit remains mocked.
+            captured_handler[0](signal.SIGTERM, None)
+            mock_agg.assert_called()
+            mock_exit.assert_called_with(0)
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +710,15 @@ class TestAuditSpec:
             AuditSpec.model_validate({"target": _make_target().model_dump(mode="json")})
         with pytest.raises(ValueError):
             AuditSpec.model_validate({"config": _make_config().model_dump(mode="json")})
+
+    def test_default_task_options(self) -> None:
+        spec = AuditSpec.model_validate(_make_spec_dict())
+        assert spec.max_probe_retries == 0
+        assert spec.fail_job_on_retries_exhausted is True
+
+    def test_rejects_negative_max_probe_retries(self) -> None:
+        with pytest.raises(ValueError):
+            AuditSpec.model_validate({**_make_spec_dict(), "max_probe_retries": -1})
 
 
 # ---------------------------------------------------------------------------
@@ -518,7 +939,7 @@ class TestRewriteOptionsUris:
 
 class TestAuditJobIGW:
     def test_run_writes_options_with_resolved_uri_and_drops_sentinel(
-        self, tmp_path: Path, fake_garak_python: Path
+        self, tmp_path: Path, fake_garak_python: Path, fake_parse_plugin_spec
     ) -> None:
         ctx = _make_ctx(tmp_path)
         target = _make_target(
@@ -535,10 +956,11 @@ class TestAuditJobIGW:
         sdk = _mock_sdk("https://igw-resolved.example/v1")
 
         with patch("nemo_auditor.jobs.audit.subprocess.run") as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
             AuditJob().run(spec, ctx=ctx, sdk=sdk)
 
-        opts_path = ctx.storage.ephemeral / "target_options.json"
+        # Options are written to persistent storage (not ephemeral).
+        opts_path = ctx.storage.persistent / "target_options.json"
         assert opts_path.exists()
         on_disk = json.loads(opts_path.read_text())
         assert on_disk == {
@@ -550,19 +972,23 @@ class TestAuditJobIGW:
         # And the original validated spec is untouched.
         assert "nmp_uri_spec" in target.options["nim"]
 
-    def test_run_without_sdk_when_no_sentinel_works(self, tmp_path: Path, fake_garak_python: Path) -> None:
+    def test_run_without_sdk_when_no_sentinel_works(
+        self, tmp_path: Path, fake_garak_python: Path, fake_parse_plugin_spec
+    ) -> None:
         """sdk=None is fine when options carry no nmp_uri_spec."""
         ctx = _make_ctx(tmp_path)
         spec = _make_spec_dict(target=_make_target(options={"nim": {"max_tokens": 100}}))
 
         with patch("nemo_auditor.jobs.audit.subprocess.run") as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
             AuditJob().run(spec, ctx=ctx)  # no sdk kwarg
 
-        on_disk = json.loads((ctx.storage.ephemeral / "target_options.json").read_text())
+        on_disk = json.loads((ctx.storage.persistent / "target_options.json").read_text())
         assert on_disk == {"nim": {"max_tokens": 100}}
 
-    def test_run_resolves_nmp_uri_spec_via_async_sdk(self, tmp_path: Path, fake_garak_python: Path) -> None:
+    def test_run_resolves_nmp_uri_spec_via_async_sdk(
+        self, tmp_path: Path, fake_garak_python: Path, fake_parse_plugin_spec
+    ) -> None:
         """async_sdk path: nmp_uri_spec is rewritten when sdk=None but async_sdk is provided."""
         ctx = _make_ctx(tmp_path)
         target = _make_target(
@@ -582,10 +1008,10 @@ class TestAuditJobIGW:
         async_sdk.models.get_provider_route_openai_url.return_value = "https://igw-async.example/v1"
 
         with patch("nemo_auditor.jobs.audit.subprocess.run") as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
             AuditJob().run(spec, ctx=ctx, sdk=None, async_sdk=async_sdk)
 
-        opts_path = ctx.storage.ephemeral / "target_options.json"
+        opts_path = ctx.storage.persistent / "target_options.json"
         assert opts_path.exists()
         on_disk = json.loads(opts_path.read_text())
         assert on_disk == {"nim": {"max_tokens": 32, "uri": "https://igw-async.example/v1"}}
@@ -652,6 +1078,18 @@ class TestAuditInputSpec:
             AuditInputSpec.model_validate({"target": "my-tgt"})
         with pytest.raises(ValueError):
             AuditInputSpec.model_validate({"config": "my-cfg"})
+
+    def test_default_task_options(self) -> None:
+        spec = AuditInputSpec.model_validate({"config": "my-cfg", "target": "my-tgt"})
+        assert spec.max_probe_retries == 0
+        assert spec.fail_job_on_retries_exhausted is True
+
+    def test_custom_task_options(self) -> None:
+        spec = AuditInputSpec.model_validate(
+            {"config": "my-cfg", "target": "my-tgt", "max_probe_retries": 3, "fail_job_on_retries_exhausted": False}
+        )
+        assert spec.max_probe_retries == 3
+        assert spec.fail_job_on_retries_exhausted is False
 
 
 # ---------------------------------------------------------------------------
@@ -832,3 +1270,22 @@ class TestToSpec:
             )
         )
         assert isinstance(out, AuditSpec)
+
+    def test_task_options_pass_through_to_spec(self) -> None:
+        """max_probe_retries and fail_job_on_retries_exhausted are forwarded to AuditSpec."""
+        out = asyncio.run(
+            AuditJob.to_spec(
+                AuditInputSpec(
+                    config=_make_config(),
+                    target=_make_target(),
+                    max_probe_retries=3,
+                    fail_job_on_retries_exhausted=False,
+                ),
+                workspace="default",
+                entity_client=None,
+                async_sdk=None,
+                is_local=True,
+            )
+        )
+        assert out.max_probe_retries == 3
+        assert out.fail_job_on_retries_exhausted is False
