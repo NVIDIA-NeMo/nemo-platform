@@ -70,6 +70,7 @@ class TestRequestLogging:
                 {
                     "type": "main",
                     "engine": "nim",
+                    "model": "main-model",
                     "parameters": {"base_url": main_base_url},
                 }
             ],
