@@ -84,10 +84,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # CVE cleanup for unused/stale packages from the NGC base image. The task entry
 # points import from /opt/venv; scanners still report the shadowed system copies.
 RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade openssl libssl3t64 && \
-    rm -rf /var/lib/apt/lists/*
-
-RUN rm -rf \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends --only-upgrade openssl libssl3t64 && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -rf \
     /usr/local/lib/python3.12/dist-packages/aiohttp \
     /usr/local/lib/python3.12/dist-packages/aiohttp-*.dist-info \
     /usr/local/lib/python3.12/dist-packages/black \
