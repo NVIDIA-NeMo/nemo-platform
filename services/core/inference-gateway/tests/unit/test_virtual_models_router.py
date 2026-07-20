@@ -16,9 +16,12 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from nemo_platform_plugin.inference_middleware import InferenceMiddlewareError, NemoInferenceMiddleware
+from nemo_platform_plugin.virtual_models.client import AsyncVirtualModelsClient
+from nemo_platform_plugin.virtual_models.types import CreateVirtualModelRequest
 from nmp.core.inference_gateway.api.dependencies import global_middleware_registry
 from nmp.core.inference_gateway.api.middleware_registry import MiddlewareRegistry
 from nmp.core.inference_gateway.config import InferenceGatewayConfig
@@ -73,6 +76,34 @@ def _install_registry(client: TestClient, plugins: dict[str, NemoInferenceMiddle
     registry = MiddlewareRegistry(plugins=plugins)
     client.app.dependency_overrides[global_middleware_registry] = lambda: registry
     return registry
+
+
+@pytest.mark.asyncio
+async def test_typed_async_client_is_compatible_with_igw_router(client: TestClient) -> None:
+    """The public typed client and mounted IGW router share the same wire contract."""
+    transport = httpx.ASGITransport(app=client.app)
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        typed_client = AsyncVirtualModelsClient(
+            base_url="http://testserver",
+            workspace="default",
+            http_client=http_client,
+        )
+
+        created = (
+            await typed_client.create_virtual_model(
+                body=CreateVirtualModelRequest(
+                    name="vm-typed-client",
+                    default_model_entity="default/model-a",
+                )
+            )
+        ).data()
+        fetched = (await typed_client.get_virtual_model(name="vm-typed-client")).data()
+
+    assert created.name == "vm-typed-client"
+    assert created.id is not None
+    assert created.created_at is not None
+    assert fetched.id == created.id
+    assert fetched.default_model_entity == "default/model-a"
 
 
 # ---------------------------------------------------------------------------

@@ -9820,9 +9820,9 @@ components:
           type: array
           title: Request Middleware
           description: Ordered list of middleware plugins applied before proxying
-            to the backend. Each entry is a MiddlewareCall with a "name" (plugin identifier)
-            and optional "config_type" and "config_id" fields that reference a stored
-            plugin configuration.
+            to the backend. Each entry is a MiddlewareCall with required "name" (plugin
+            identifier) and "config_type" fields, plus optional inline "config" or
+            stored "config_id" configuration.
         response_middleware:
           items:
             $ref: '#/components/schemas/MiddlewareCall'
@@ -9853,7 +9853,7 @@ components:
       required:
       - name
       title: CreateVirtualModelRequest
-      description: Request body for creating a new VirtualModel.
+      description: Request body for creating a VirtualModel.
     CrowdStrikeAIDRRailConfig:
       properties:
         timeout:
@@ -18874,9 +18874,9 @@ components:
           type: array
           title: Request Middleware
           description: Ordered list of middleware plugins applied before proxying
-            to the backend. Each entry is a MiddlewareCall with a "name" (plugin identifier)
-            and optional "config_type" and "config_id" fields that reference a stored
-            plugin configuration.
+            to the backend. Each entry is a MiddlewareCall with required "name" (plugin
+            identifier) and "config_type" fields, plus optional inline "config" or
+            stored "config_id" configuration.
         response_middleware:
           items:
             $ref: '#/components/schemas/MiddlewareCall'
@@ -18900,18 +18900,14 @@ components:
           type: string
       type: object
       title: UpdateVirtualModelRequest
-      description: 'Request body for partially updating an existing VirtualModel (PATCH).
+      description: 'Request body for partially updating a VirtualModel.
 
 
-        Only fields present in the request body are updated.  Omitted fields
+        Only explicitly set fields are serialized by the endpoint layer. Omitted
 
-        retain their current values.  ``model_fields_set`` is used in the handler
+        fields retain their current values, while explicit nulls clear nullable
 
-        to distinguish an intentional ``[]`` (clear the list) from a missing field
-
-        (leave unchanged).  Set ``default_model_entity`` or ``override_proxy`` to
-
-        ``null`` explicitly to clear them.'
+        fields.'
     UpsertModelProviderRequest:
       properties:
         project:
