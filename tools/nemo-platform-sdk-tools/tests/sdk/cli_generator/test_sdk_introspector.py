@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
 from nemo_platform_sdk_tools.sdk.cli_generator.sdk_introspector import (
     ParsedDocstring,
     SDKIntrospector,
@@ -11,54 +10,37 @@ from nemo_platform_sdk_tools.sdk.cli_generator.sdk_introspector import (
 )
 
 
-@pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
-def test_introspect_datasets_resource():
-    """Test introspecting the datasets resource."""
+def test_introspect_jobs_resource():
+    """Test introspecting the current jobs resource."""
     introspector = SDKIntrospector()
-    methods = introspector.introspect_resource(["datasets"])
+    methods = introspector.introspect_resource(["jobs"])
 
     # Should have found the standard CRUD methods
     assert "list" in methods
     assert "create" in methods
     assert "retrieve" in methods
-    assert "update" in methods
     assert "delete" in methods
+    assert "cancel" in methods
 
     # Check the create method
     create_method = methods["create"]
     assert create_method.name == "create"
 
-    print("\n=== Datasets.create method ===")
-    print(f"Parameters ({len(create_method.parameters)}):")
-    for param in create_method.parameters:
-        print(f"  - {param.name}: {param.python_type_name}")
-        print(f"    Required: {param.is_required}, Path param: {param.is_path_param}")
-        print(f"    Default: {param.default}")
-        print(f"    Dict type: {param.is_dict_type}, List type: {param.is_list_type}")
-
-    # Should have files_url as required
-    files_url_params = [p for p in create_method.parameters if p.name == "files_url"]
-    assert len(files_url_params) == 1
-    files_url_param = files_url_params[0]
-    assert files_url_param.is_required
-    assert files_url_param.python_type_name == "str"
+    required_names = {p.name for p in create_method.parameters if p.is_required}
+    assert required_names == {"platform_spec", "source", "spec"}
+    source_param = next(p for p in create_method.parameters if p.name == "source")
+    assert source_param.python_type_name == "str"
 
     # Should have optional parameters
     optional_params = [p for p in create_method.parameters if not p.is_path_param and not p.is_required]
-    print(f"\nOptional parameters: {[p.name for p in optional_params]}")
     assert len(optional_params) > 0
 
 
-@pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
-def test_introspect_customization_jobs():
-    """Test introspecting customization jobs resource."""
+def test_introspect_jobs_pagination():
+    """Test introspecting pagination on the jobs resource."""
     introspector = SDKIntrospector()
-    methods = introspector.introspect_resource(["customization", "jobs"])
+    methods = introspector.introspect_resource(["jobs"])
 
-    print("\n=== Customization.jobs methods ===")
-    print(f"Found methods: {list(methods.keys())}")
-
-    # Should have job-related methods
     assert "list" in methods
     assert "create" in methods
     assert "retrieve" in methods
@@ -66,40 +48,19 @@ def test_introspect_customization_jobs():
 
     # Check the list method
     list_method = methods["list"]
-    print("\n=== Customization.jobs.list method ===")
-    print(f"Parameters ({len(list_method.parameters)}):")
-    for param in list_method.parameters:
-        print(f"  - {param.name}: {param.python_type_name}")
-        print(f"    Required: {param.is_required}, Default: {param.default}")
-
-    # Should have pagination parameters
     param_names = [p.name for p in list_method.parameters]
     assert "page" in param_names
     assert "page_size" in param_names
 
 
-@pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
-def test_introspect_namespaces():
-    """Test introspecting namespaces resource."""
+def test_introspect_workspace_path_parameter():
+    """Test introspecting a positional resource identifier."""
     introspector = SDKIntrospector()
-    methods = introspector.introspect_resource(["namespaces"])
+    methods = introspector.introspect_resource(["workspaces"])
 
-    print("\n=== Namespaces methods ===")
-    print(f"Found methods: {list(methods.keys())}")
-
-    # Check retrieve method to see path parameters
     retrieve_method = methods["retrieve"]
-    print("\n=== Namespaces.retrieve method ===")
-    print(f"Parameters ({len(retrieve_method.parameters)}):")
-    for param in retrieve_method.parameters:
-        print(f"  - {param.name}: {param.python_type_name}")
-        print(f"    Required: {param.is_required}, Path param: {param.is_path_param}")
-        print(f"    Default: {param.default}")
-
-    # The first parameter should be the ID (path param)
     path_params = retrieve_method.path_parameters
-    print(f"\nPath parameters: {[p.name for p in path_params]}")
-    assert len(path_params) >= 1
+    assert [p.name for p in path_params] == ["name"]
 
 
 def test_parse_docstring_basic():
@@ -151,157 +112,134 @@ def test_parse_docstring_no_args():
     assert parsed.param_descriptions == {}
 
 
-@pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
 def test_sdk_method_docstring_parsing():
     """Test that SDKMethod correctly parses docstrings from SDK."""
     introspector = SDKIntrospector()
-    methods = introspector.introspect_resource(["customization", "jobs"])
+    methods = introspector.introspect_resource(["jobs"])
 
     list_method = methods["list"]
 
     # Should have parsed docstring
-    assert list_method.description == "List available customization jobs."
-    assert list_method.get_param_description("filter") == "Filter jobs on various criteria."
+    assert list_method.description == "List platform jobs with filtering and pagination."
+    assert list_method.get_param_description("filter") == (
+        "Filter jobs by workspace, project, name, status, source, created_at, and updated_at."
+    )
     assert "field to sort by" in (list_method.get_param_description("sort") or "")
 
 
 class TestTypedDictFieldIsListType:
     """Tests for TypedDictField.is_list_type detection."""
 
-    @pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
-    def test_search_fields_with_sequence_are_list_types(self):
-        """Search fields with Union[str, Sequence[str]] should be detected as list types."""
-        from nemo_platform.types.dataset_search_param import DatasetSearchParam
+    def test_union_with_list_is_a_list_type(self):
+        """A filter accepting either one status or a list should be a list type."""
+        from nemo_platform.types.jobs.platform_jobs_list_filter_param import PlatformJobsListFilterParam
 
-        fields = introspect_typed_dict(DatasetSearchParam)
+        fields = introspect_typed_dict(PlatformJobsListFilterParam)
         field_map = {f.name: f for f in fields}
 
-        # These should all be list types (Union[str, SequenceNotStr[str]])
-        assert field_map["id"].is_list_type is True
-        assert field_map["name"].is_list_type is True
-        assert field_map["namespace"].is_list_type is True
-        assert field_map["description"].is_list_type is True
+        assert field_map["status"].is_list_type is True
 
-    @pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
     def test_filter_fields_without_sequence_are_not_list_types(self):
         """Filter fields with simple str type should not be list types."""
-        from nemo_platform.types.dataset_filter_param import DatasetFilterParam
+        from nemo_platform.types.jobs.platform_jobs_list_filter_param import PlatformJobsListFilterParam
 
-        fields = introspect_typed_dict(DatasetFilterParam)
+        fields = introspect_typed_dict(PlatformJobsListFilterParam)
         field_map = {f.name: f for f in fields}
 
         # These should NOT be list types (just str)
-        assert field_map["namespace"].is_list_type is False
+        assert field_map["workspace"].is_list_type is False
         assert field_map["project"].is_list_type is False
 
-    @pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
-    def test_iterable_int_is_list_type(self):
-        """Union[int, Iterable[int]] should be detected as list type."""
-        from nemo_platform.types.dataset_search_param import DatasetSearchParam
+    def test_string_filter_union_is_not_a_list_type(self):
+        """A nested string-filter union is not itself a repeatable scalar option."""
+        from nemo_platform.types.jobs.platform_jobs_list_filter_param import PlatformJobsListFilterParam
 
-        fields = introspect_typed_dict(DatasetSearchParam)
+        fields = introspect_typed_dict(PlatformJobsListFilterParam)
         field_map = {f.name: f for f in fields}
 
-        # limit has Union[int, Iterable[int]]
-        assert field_map["limit"].is_list_type is True
+        assert field_map["name"].is_list_type is False
+        assert field_map["source"].is_list_type is False
 
 
 class TestTypedDictFieldIsSimpleCliType:
     """Tests for TypedDictField.is_simple_cli_type detection."""
 
-    @pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
     def test_str_fields_are_simple(self):
         """String fields should be detected as simple CLI types."""
-        from nemo_platform.types.dataset_filter_param import DatasetFilterParam
+        from nemo_platform.types.jobs.platform_jobs_list_filter_param import PlatformJobsListFilterParam
 
-        fields = introspect_typed_dict(DatasetFilterParam)
+        fields = introspect_typed_dict(PlatformJobsListFilterParam)
         field_map = {f.name: f for f in fields}
 
-        assert field_map["namespace"].is_simple_cli_type is True
+        assert field_map["workspace"].is_simple_cli_type is True
         assert field_map["project"].is_simple_cli_type is True
 
-    @pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
-    def test_int_fields_are_simple(self):
-        """Integer fields should be detected as simple CLI types."""
-        from nemo_platform.types.customization.customization_job_list_filter_param import (
-            CustomizationJobListFilterParam,
-        )
+    def test_float_fields_are_simple(self):
+        """Float fields should be detected as simple CLI types."""
+        from nemo_platform.types.evaluations.number_filter_param import NumberFilterParam
 
-        fields = introspect_typed_dict(CustomizationJobListFilterParam)
+        fields = introspect_typed_dict(NumberFilterParam)
         field_map = {f.name: f for f in fields}
 
-        assert field_map["batch_size"].is_simple_cli_type is True
-        assert field_map["epochs"].is_simple_cli_type is True
+        assert field_map["gte"].is_simple_cli_type is True
+        assert field_map["lte"].is_simple_cli_type is True
 
-    @pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
-    def test_enum_types_are_simple(self):
-        """Enum-like types (PascalCase identifiers) should be detected as simple CLI types."""
-        from nemo_platform.types.customization.customization_job_list_filter_param import (
-            CustomizationJobListFilterParam,
+    def test_literal_types_are_simple(self):
+        """Literal status values should be detected as simple CLI types."""
+        from nemo_platform.types.jobs.platform_jobs_list_filter_param import (
+            PlatformJobsListFilterParam,
         )
 
-        fields = introspect_typed_dict(CustomizationJobListFilterParam)
+        fields = introspect_typed_dict(PlatformJobsListFilterParam)
         field_map = {f.name: f for f in fields}
 
-        # These are enum types: FinetuningType, JobStatus, TrainingType
-        assert field_map["finetuning_type"].is_simple_cli_type is True
         assert field_map["status"].is_simple_cli_type is True
-        assert field_map["training_type"].is_simple_cli_type is True
 
-    @pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
     def test_complex_types_are_not_simple(self):
         """Complex nested types should NOT be detected as simple CLI types."""
-        from nemo_platform.types.dataset_search_param import DatasetSearchParam
+        from nemo_platform.types.jobs.platform_jobs_list_filter_param import PlatformJobsListFilterParam
 
-        fields = introspect_typed_dict(DatasetSearchParam)
+        fields = introspect_typed_dict(PlatformJobsListFilterParam)
         field_map = {f.name: f for f in fields}
 
-        # DateRange is a nested type with start/end fields
         assert field_map["created_at"].is_simple_cli_type is False
         assert field_map["updated_at"].is_simple_cli_type is False
-
-        # Dict types are complex
-        assert field_map["custom_fields"].is_simple_cli_type is False
 
 
 class TestExplodableTypedDict:
     """Tests for detecting explodable TypedDict params (filter/search)."""
 
-    @pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
     def test_filter_param_is_explodable(self):
         """Filter params should be detected as explodable TypedDicts."""
         introspector = SDKIntrospector()
-        methods = introspector.introspect_resource(["datasets"])
+        methods = introspector.introspect_resource(["jobs"])
         list_method = methods["list"]
 
         filter_param = next(p for p in list_method.optional_parameters if p.name == "filter")
         assert filter_param.is_explodable_typed_dict is True
 
-    @pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
-    def test_search_param_is_explodable(self):
-        """Search params should be detected as explodable TypedDicts."""
+    def test_create_platform_spec_param_is_explodable(self):
+        """Required TypedDict request parameters should also be explodable."""
         introspector = SDKIntrospector()
-        methods = introspector.introspect_resource(["datasets"])
-        list_method = methods["list"]
+        methods = introspector.introspect_resource(["jobs"])
+        create_method = methods["create"]
 
-        search_param = next(p for p in list_method.optional_parameters if p.name == "search")
-        assert search_param.is_explodable_typed_dict is True
+        platform_spec_param = next(p for p in create_method.parameters if p.name == "platform_spec")
+        assert platform_spec_param.is_explodable_typed_dict is True
 
-    @pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
     def test_sort_param_is_not_explodable(self):
         """Sort params (simple enums) should NOT be detected as explodable."""
         introspector = SDKIntrospector()
-        methods = introspector.introspect_resource(["datasets"])
+        methods = introspector.introspect_resource(["jobs"])
         list_method = methods["list"]
 
         sort_param = next(p for p in list_method.optional_parameters if p.name == "sort")
         assert sort_param.is_explodable_typed_dict is False
 
-    @pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
     def test_page_param_is_not_explodable(self):
         """Simple params like page should NOT be explodable."""
         introspector = SDKIntrospector()
-        methods = introspector.introspect_resource(["datasets"])
+        methods = introspector.introspect_resource(["jobs"])
         list_method = methods["list"]
 
         page_param = next(p for p in list_method.optional_parameters if p.name == "page")
@@ -311,38 +249,30 @@ class TestExplodableTypedDict:
 class TestTypedDictFieldExtraction:
     """Tests for extracting fields from TypedDict classes."""
 
-    @pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
     def test_extract_filter_fields(self):
         """Should correctly extract fields from filter TypedDict."""
-        from nemo_platform.types.dataset_filter_param import DatasetFilterParam
+        from nemo_platform.types.jobs.platform_jobs_list_filter_param import PlatformJobsListFilterParam
 
-        fields = introspect_typed_dict(DatasetFilterParam)
+        fields = introspect_typed_dict(PlatformJobsListFilterParam)
         field_names = {f.name for f in fields}
 
-        assert "namespace" in field_names
+        assert "workspace" in field_names
         assert "project" in field_names
 
-    @pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
-    def test_extract_search_fields(self):
-        """Should correctly extract fields from search TypedDict."""
-        from nemo_platform.types.dataset_search_param import DatasetSearchParam
+    def test_extract_all_job_filter_fields(self):
+        """Should correctly extract the current jobs filter fields."""
+        from nemo_platform.types.jobs.platform_jobs_list_filter_param import PlatformJobsListFilterParam
 
-        fields = introspect_typed_dict(DatasetSearchParam)
+        fields = introspect_typed_dict(PlatformJobsListFilterParam)
         field_names = {f.name for f in fields}
 
-        assert "id" in field_names
-        assert "name" in field_names
-        assert "namespace" in field_names
-        assert "description" in field_names
-        assert "created_at" in field_names
-        assert "updated_at" in field_names
+        assert field_names == {"created_at", "name", "project", "source", "status", "updated_at", "workspace"}
 
-    @pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
-    def test_all_search_fields_have_evaluated_type(self):
+    def test_all_job_filter_fields_have_evaluated_type(self):
         """All fields should have evaluated_type set for proper type detection."""
-        from nemo_platform.types.dataset_search_param import DatasetSearchParam
+        from nemo_platform.types.jobs.platform_jobs_list_filter_param import PlatformJobsListFilterParam
 
-        fields = introspect_typed_dict(DatasetSearchParam)
+        fields = introspect_typed_dict(PlatformJobsListFilterParam)
 
         for field in fields:
             assert field.evaluated_type is not None, f"Field {field.name} should have evaluated_type"

@@ -522,61 +522,42 @@ config: []
 class TestGeneratorIntegration:
     """Integration tests for the generator with real SDK types."""
 
-    @pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
-    def test_customization_jobs_filter_has_all_simple_fields(self):
-        """Customization jobs filter should include all simple type fields."""
+    def test_jobs_filter_has_all_simple_fields(self):
+        """Jobs filter should expose every simple field as a CLI option."""
         introspector = SDKIntrospector()
-        methods = introspector.introspect_resource(["customization", "jobs"])
+        methods = introspector.introspect_resource(["jobs"])
         list_method = methods["list"]
 
         filter_param = next(p for p in list_method.optional_parameters if p.name == "filter")
         simple_fields = [f for f in filter_param.typed_dict_fields if f.is_simple_cli_type]
         field_names = {f.name for f in simple_fields}
 
-        # All these should be included as simple CLI options
-        assert "base_model" in field_names
-        assert "batch_size" in field_names
-        assert "dataset" in field_names
-        assert "epochs" in field_names
-        assert "namespace" in field_names
-        assert "project" in field_names
-        # Enum types should also be included
-        assert "finetuning_type" in field_names
-        assert "status" in field_names
-        assert "training_type" in field_names
+        assert field_names == {"name", "project", "source", "status", "workspace"}
 
-    @pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
-    def test_datasets_search_has_list_type_fields(self):
-        """Datasets search should have fields that support multiple values."""
+    def test_jobs_filter_has_list_type_fields(self):
+        """Jobs status filter should support multiple values."""
         introspector = SDKIntrospector()
-        methods = introspector.introspect_resource(["datasets"])
+        methods = introspector.introspect_resource(["jobs"])
         list_method = methods["list"]
 
-        search_param = next(p for p in list_method.optional_parameters if p.name == "search")
-        list_fields = [f for f in search_param.typed_dict_fields if f.is_list_type and f.is_simple_cli_type]
+        filter_param = next(p for p in list_method.optional_parameters if p.name == "filter")
+        list_fields = [f for f in filter_param.typed_dict_fields if f.is_list_type and f.is_simple_cli_type]
         field_names = {f.name for f in list_fields}
 
-        # These should all support multiple values
-        assert "name" in field_names
-        assert "namespace" in field_names
-        assert "id" in field_names
+        assert field_names == {"status"}
 
-    @pytest.mark.skip(reason="TODO: Update tests after SDK changes.")
-    def test_datasets_search_excludes_complex_fields(self):
-        """Datasets search should exclude complex nested types from simple fields."""
+    def test_jobs_filter_excludes_complex_fields(self):
+        """Jobs filter should not explode nested datetime filters as scalar options."""
         introspector = SDKIntrospector()
-        methods = introspector.introspect_resource(["datasets"])
+        methods = introspector.introspect_resource(["jobs"])
         list_method = methods["list"]
 
-        search_param = next(p for p in list_method.optional_parameters if p.name == "search")
-        simple_fields = [f for f in search_param.typed_dict_fields if f.is_simple_cli_type]
+        filter_param = next(p for p in list_method.optional_parameters if p.name == "filter")
+        simple_fields = [f for f in filter_param.typed_dict_fields if f.is_simple_cli_type]
         field_names = {f.name for f in simple_fields}
 
-        # These complex types should NOT be included
-        assert "created_at" not in field_names  # DateRange
-        assert "updated_at" not in field_names  # DateRange
-        assert "custom_fields" not in field_names  # Dict
-        assert "ownership" not in field_names  # Ownership
+        assert "created_at" not in field_names
+        assert "updated_at" not in field_names
 
 
 def _make_sdk_method(path_params: list[tuple[str, str | None]]) -> SDKMethod:
