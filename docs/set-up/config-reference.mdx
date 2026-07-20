@@ -603,6 +603,8 @@ models:
         default_vllm_group_id: 0
         # Kubernetes secret name for Files service authentication (HF_TOKEN) | default: 'nemo-models-files-token'
         files_auth_secret: nemo-models-files-token
+        # Image the NIM operator runs to fill the NIMCache from Files. We need this specific image because the operator runs `download-to-cache` as the entrypoint, and that binary isn't in the nmp-api image. Override the registry/tag if you're mirroring it. | default: 'nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10'
+        huggingface_model_puller: nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10
         # The name of the image pull secret for the modelPuller image | default: 'nvcrimagepullsecret'
         huggingface_model_puller_image_pull_secret: nvcrimagepullsecret
         # BusyBox image repository used by plugin init containers. Fully qualified (docker.io/library/...) so it resolves on container runtimes that enforce fully-qualified image names (short names like 'busybox' fail there). | default: 'docker.io/library/busybox'

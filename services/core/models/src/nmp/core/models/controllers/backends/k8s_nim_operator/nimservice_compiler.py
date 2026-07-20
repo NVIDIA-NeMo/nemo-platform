@@ -115,7 +115,6 @@ def compile_nimcache(
     model_namespace: str,
     model_name: str,
     pvc_size: str,
-    huggingface_model_puller: str,
     model_revision: Optional[str] = None,
 ) -> NIMCache:
     """Generate a NIMCache CR for models whose weights are served via the Files service HF-compatible API.
@@ -177,7 +176,10 @@ def compile_nimcache(
                     endpoint=files_full_url,
                     namespace=model_namespace,
                     authSecret=backend_config.files_auth_secret,
-                    modelPuller=huggingface_model_puller,
+                    # The operator runs `download-to-cache` in here, which nmp-api doesn't have,
+                    # so we use the huggingface-cli image that ships it.
+                    # value is set in the NIMService compiler, see K8sNimOperatorConfig.huggingface_model_puller.
+                    modelPuller=backend_config.huggingface_model_puller,
                     pullSecret=backend_config.huggingface_model_puller_image_pull_secret,
                     modelName=model_name,
                     revision=model_revision,

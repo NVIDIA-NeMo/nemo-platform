@@ -1555,6 +1555,7 @@ def test_compile_nimcache_basic(backend_config):
     # Configure backend config
     backend_config.default_storage_class = "local-storage"
     backend_config.files_auth_secret = "nemo-models-files-token"
+    backend_config.huggingface_model_puller = "nvcr.io/nvidia/model-puller:latest"
     backend_config.huggingface_model_puller_image_pull_secret = "nvcr-secret"
     backend_config.default_user_id = 1000
     backend_config.default_group_id = 1000
@@ -1578,7 +1579,6 @@ def test_compile_nimcache_basic(backend_config):
             model_namespace="test-ns",
             model_name="test-model",
             pvc_size="200Gi",
-            huggingface_model_puller="nvcr.io/nvidia/model-puller:latest",
             model_revision="v1",
         )
 
@@ -1602,6 +1602,35 @@ def test_compile_nimcache_basic(backend_config):
         assert nimcache.spec.source.hf.authSecret == "nemo-models-files-token"
         assert nimcache.spec.source.hf.modelPuller == "nvcr.io/nvidia/model-puller:latest"
         assert nimcache.spec.source.hf.pullSecret == "nvcr-secret"
+
+
+def test_compile_nimcache_default_puller_ships_download_to_cache(backend_config):
+    """Regression (nvbug 6480466): the NIMCache puller must default to an image that ships
+    `download-to-cache` (the entrypoint the k8s-nim-operator runs), NOT the nmp-api image.
+
+    Uses a bare K8sNimOperatorConfig() so the field default is what production Helm installs
+    resolve to when no override is set.
+    """
+    platform_config = PlatformConfig(  # type: ignore[abstract]
+        service_discovery={"files": "http://files-service:8000"},
+    )
+    with patch(
+        "nmp.core.models.controllers.backends.k8s_nim_operator.nimservice_compiler.get_platform_config",
+        return_value=platform_config,
+    ):
+        nimcache = compile_nimcache(
+            backend_config=backend_config,
+            k8s_namespace="default",
+            resource_name="test-deployment",
+            model_namespace="test-ns",
+            model_name="test-model",
+            pvc_size="200Gi",
+            model_revision=None,
+        )
+
+    assert nimcache.spec.source.hf is not None
+    assert nimcache.spec.source.hf.modelPuller == "nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10"
+    assert "nmp-api" not in nimcache.spec.source.hf.modelPuller
 
 
 def test_compile_nimcache_without_v2hf_suffix(backend_config):
@@ -1628,7 +1657,6 @@ def test_compile_nimcache_without_v2hf_suffix(backend_config):
             model_namespace="test-ns",
             model_name="test-model",
             pvc_size="200Gi",
-            huggingface_model_puller="nvcr.io/nvidia/model-puller:latest",
             model_revision=None,
         )
 
@@ -1661,7 +1689,6 @@ def test_compile_nimcache_with_v2hf_suffix(backend_config):
             model_namespace="test-ns",
             model_name="test-model",
             pvc_size="200Gi",
-            huggingface_model_puller="nvcr.io/nvidia/model-puller:latest",
             model_revision=None,
         )
 
@@ -1694,7 +1721,6 @@ def test_compile_nimcache_with_custom_auth_secret(backend_config):
             model_namespace="test-ns",
             model_name="test-model",
             pvc_size="200Gi",
-            huggingface_model_puller="nvcr.io/nvidia/model-puller:latest",
             model_revision=None,
         )
 
@@ -1735,7 +1761,6 @@ def test_compile_nimcache_default_resources_tolerations_node_selector(backend_co
             model_namespace="test-ns",
             model_name="test-model",
             pvc_size="200Gi",
-            huggingface_model_puller="nvcr.io/nvidia/model-puller:latest",
             model_revision=None,
         )
 
@@ -1784,7 +1809,6 @@ def test_compile_nimcache_no_defaults_when_unset(backend_config):
             model_namespace="test-ns",
             model_name="test-model",
             pvc_size="200Gi",
-            huggingface_model_puller="nvcr.io/nvidia/model-puller:latest",
             model_revision=None,
         )
 
@@ -1815,7 +1839,6 @@ def test_compile_nimcache_default_labels_and_annotations(backend_config):
             model_namespace="test-ns",
             model_name="test-model",
             pvc_size="200Gi",
-            huggingface_model_puller="nvcr.io/nvidia/model-puller:latest",
             model_revision=None,
         )
 

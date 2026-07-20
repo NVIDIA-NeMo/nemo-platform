@@ -103,6 +103,13 @@ class K8sNimOperatorConfig(BaseModel):
         default="nemo-models-files-token",
         description="Kubernetes secret name for Files service authentication (HF_TOKEN)",
     )
+    huggingface_model_puller: str = Field(
+        default="nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10",
+        description=(
+            "Image the NIM operator runs to fill the NIMCache from Files service. We need this specific "
+            "image because the operator runs `download-to-cache` as the entrypoint, which nmp-api doesn't support."
+        ),
+    )
     huggingface_model_puller_image_pull_secret: str = Field(
         default="nvcrimagepullsecret",
         description="The name of the image pull secret for the modelPuller image",

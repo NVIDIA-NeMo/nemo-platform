@@ -358,7 +358,6 @@ class NimOperatorReconciler(Reconciler):
                 model_namespace=model_namespace,
                 model_name=model_name,
                 pvc_size=pvc_size,
-                huggingface_model_puller=self._huggingface_model_puller,
                 model_revision=resolved.model_revision,
             )
             await self._create_nimcache(nimcache)

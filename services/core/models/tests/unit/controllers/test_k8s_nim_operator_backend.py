@@ -786,6 +786,9 @@ async def test_create_model_deployment_with_sft_model(k8s_backend, sample_deploy
     k8s_backend._backend_config.default_storage_class = "local-storage"
     k8s_backend._backend_config.default_pvc_size = "200Gi"
     k8s_backend._backend_config.files_auth_secret = "nemo-models-files-token"
+    k8s_backend._backend_config.huggingface_model_puller = (
+        "nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10"
+    )
     k8s_backend._backend_config.huggingface_model_puller_image_pull_secret = "nvcr-secret"
     k8s_backend._backend_config.default_user_id = None
     k8s_backend._backend_config.default_group_id = None
@@ -889,6 +892,9 @@ async def test_create_model_deployment_with_files_service_model_triggers_nimcach
     k8s_backend._backend_config.default_storage_class = "local-storage"
     k8s_backend._backend_config.default_pvc_size = "200Gi"
     k8s_backend._backend_config.files_auth_secret = "nemo-models-files-token"
+    k8s_backend._backend_config.huggingface_model_puller = (
+        "nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10"
+    )
     k8s_backend._backend_config.huggingface_model_puller_image_pull_secret = "nvcr-secret"
     k8s_backend._backend_config.default_user_id = None
     k8s_backend._backend_config.default_group_id = None
@@ -1054,6 +1060,9 @@ async def test_create_model_deployment_with_sft_model_and_revision(k8s_backend, 
     k8s_backend._backend_config.default_user_id = 1000
     k8s_backend._backend_config.default_group_id = 1000
     k8s_backend._backend_config.files_auth_secret = "files-api-token"
+    k8s_backend._backend_config.huggingface_model_puller = (
+        "nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10"
+    )
     k8s_backend._backend_config.huggingface_model_puller_image_pull_secret = "nvcrimagepullsecret"
     k8s_backend._backend_config.default_resources = None
     k8s_backend._backend_config.default_tolerations = None
@@ -1162,6 +1171,9 @@ async def test_create_model_deployment_nimcache_uses_fileset_not_entity_name(
     k8s_backend._backend_config.default_storage_class = "local-storage"
     k8s_backend._backend_config.default_pvc_size = "200Gi"
     k8s_backend._backend_config.files_auth_secret = "nemo-models-files-token"
+    k8s_backend._backend_config.huggingface_model_puller = (
+        "nvcr.io/nvidia/nemo-microservices/nds-v2-huggingface-cli:25.10"
+    )
     k8s_backend._backend_config.huggingface_model_puller_image_pull_secret = "nvcr-secret"
     k8s_backend._backend_config.default_user_id = None
     k8s_backend._backend_config.default_group_id = None
