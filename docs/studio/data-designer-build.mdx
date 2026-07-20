@@ -30,8 +30,6 @@ This page walks through the full workflow:
 
 ## View jobs
 
-![The Data Designer jobs list in NeMo Studio, with a search bar, status filter, and a New Job button.](images/ddJobs.png)
-
 Navigate to **Data Designer** in the workspace sidebar to open the jobs list. The list shows every Data Designer job in the current workspace with its status, and supports searching by name, filtering by status, and narrowing by creation or update date range.
 
 Selecting a job opens its [details page](#view-job-details). Each row also has a quick-actions menu with **Cancel** (when the job is still cancellable) and **Delete**.
@@ -41,8 +39,6 @@ Job status values match the platform-wide [Jobs](/documentation/studio#jobs) sta
 ---
 
 ## Create a new job
-
-![The Create a fileset start screen, showing Start from a template and Build from scratch options above a grid of template recipe cards.](images/ddTemplates.png)
 
 Click **New Job** on the jobs list to open the **Create a fileset** start screen. Choose how you want to start:
 
@@ -60,8 +56,6 @@ Either choice lands you in the **DAG builder**.
 <a id="the-dag-builder"></a>
 
 ## The DAG builder
-
-![The Data Designer builder, showing the column and model palette on the left, a canvas of connected column nodes in the center, and a configuration pane on the right.](images/ddCanvas.png)
 
 The builder is a three-pane layout with a toolbar across the top:
 
@@ -165,8 +159,6 @@ On success, the job is created with your configured name, row count, and generat
 
 ## View job details after completion
 
-![The job details page on the Profile tab, showing a completeness bar and per-column statistics cards with distribution charts and token counts.](images/ddDetails.png)
-
 The job details page shows the job name, status badge, description, and created/updated timestamps, plus a **View config** button (opens the generated Data Designer config) and a job actions menu (**Cancel**, **Delete**).
 
 Details are organized into three tabs:
@@ -180,8 +172,6 @@ Details are organized into three tabs:
 ---
 
 ## Edit rows after completion
-
-![The Data tab row editor, showing generated rows in a searchable, paginated table with a file selector, Download, Add Row, and Save File actions.](images/ddRowEditor.png)
 
 The **Data** tab shows the job's generated data in an in-browser row editor. It lists the output data files (`.parquet`, `.jsonl`, `.json`, `.csv`); when there's more than one, a file selector lets you switch between them.
 
