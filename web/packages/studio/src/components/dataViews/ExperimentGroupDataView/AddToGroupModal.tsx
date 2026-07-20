@@ -180,7 +180,11 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
     try {
       created = await createExperimentGroup({
         workspace,
-        data: { name: data.name, description: data.description || undefined, default_sort: defaultSort },
+        data: {
+          name: data.name,
+          description: data.description || undefined,
+          default_sort: defaultSort,
+        },
       });
     } catch (error) {
       // Creation failed (e.g. duplicate name) — surface inline on the name field where possible and
@@ -273,7 +277,11 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
 
         {isCreating && (
           <>
-            <FormField slotLabel="Name" slotError={errors.name?.message} status={errors.name && 'error'}>
+            <FormField
+              slotLabel="Name"
+              slotError={errors.name?.message}
+              status={errors.name && 'error'}
+            >
               <TextInput
                 autoFocus
                 disabled={busy}
@@ -291,7 +299,11 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
               slotError={errors.description?.message}
               status={errors.description && 'error'}
             >
-              <TextArea disabled={busy} status={errors.description && 'error'} {...register('description')} />
+              <TextArea
+                disabled={busy}
+                status={errors.description && 'error'}
+                {...register('description')}
+              />
             </FormField>
             <DefaultSortControl value={defaultSort} onChange={setDefaultSort} disabled={busy} />
           </>

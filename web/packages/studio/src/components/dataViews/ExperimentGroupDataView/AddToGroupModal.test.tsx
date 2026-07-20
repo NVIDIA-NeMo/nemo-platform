@@ -110,8 +110,16 @@ describe('AddToGroupModal', () => {
 
     expect(mockCreateMutateAsync).not.toHaveBeenCalled();
     expect(mockMutateAsync).toHaveBeenCalledTimes(2);
-    expect(mockMutateAsync).toHaveBeenCalledWith({ workspace: 'default', name: 'eval-1', experimentId: 'g3' });
-    expect(mockMutateAsync).toHaveBeenCalledWith({ workspace: 'default', name: 'eval-2', experimentId: 'g3' });
+    expect(mockMutateAsync).toHaveBeenCalledWith({
+      workspace: 'default',
+      name: 'eval-1',
+      experimentId: 'g3',
+    });
+    expect(mockMutateAsync).toHaveBeenCalledWith({
+      workspace: 'default',
+      name: 'eval-2',
+      experimentId: 'g3',
+    });
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
   });
 
@@ -130,8 +138,16 @@ describe('AddToGroupModal', () => {
     });
     // Added to the id returned by the create call.
     expect(mockMutateAsync).toHaveBeenCalledTimes(2);
-    expect(mockMutateAsync).toHaveBeenCalledWith({ workspace: 'default', name: 'eval-1', experimentId: 'g-new' });
-    expect(mockMutateAsync).toHaveBeenCalledWith({ workspace: 'default', name: 'eval-2', experimentId: 'g-new' });
+    expect(mockMutateAsync).toHaveBeenCalledWith({
+      workspace: 'default',
+      name: 'eval-1',
+      experimentId: 'g-new',
+    });
+    expect(mockMutateAsync).toHaveBeenCalledWith({
+      workspace: 'default',
+      name: 'eval-2',
+      experimentId: 'g-new',
+    });
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
   });
 

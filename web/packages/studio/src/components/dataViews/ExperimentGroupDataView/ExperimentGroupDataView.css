@@ -13,6 +13,8 @@
  * (specificity 0,3,1). Match the same `table.studio-data-view-table` base plus our scope class so
  * this rule out-specifies it (0,4,1) — without it, the shared rule wins and the divider stays.
  */
-.experiment-group-data-view table.studio-data-view-table [data-pinned='left']:has(+ [data-pinned='left']) {
+.experiment-group-data-view
+  table.studio-data-view-table
+  [data-pinned='left']:has(+ [data-pinned='left']) {
   box-shadow: none;
 }
