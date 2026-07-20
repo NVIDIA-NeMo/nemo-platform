@@ -13,14 +13,14 @@ NeMo Platform brings NVIDIA NeMo libraries together under one CLI, Python SDK, a
 
 ## Get started
 
-**Prerequisites:** Python 3.11-3.14 and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance). For source development, you also need Git, GNU Make, uv, and Node.js 22.18.x with `pnpm` if you want the web UI.
+**Prerequisites:** Python 3.11-3.12 and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance). For source development, you also need Git, GNU Make, uv, and Node.js 22.18.x with `pnpm` if you want the web UI.
 
 Quick install from PyPI:
 
 ```bash
-python -m venv .venv
+uv venv --python 3.12
 source .venv/bin/activate
-pip install "nemo-platform[all]"
+uv pip install nemo-platform
 
 nemo setup
 ```
