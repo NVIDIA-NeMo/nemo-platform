@@ -2,16 +2,21 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import asyncio
+import json
 import threading
 from logging import getLogger
 from typing import Optional
 
 from nemo_platform import DefaultAsyncHttpxClient
-from nemo_platform._exceptions import NotFoundError
-from nemo_platform.types.inference import ModelDeploymentStatus
-from nemo_platform.types.inference.model_deployment import ModelDeployment
-from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError
+from nemo_platform_plugin.models.client import AsyncModelsClient
+from nemo_platform_plugin.models.types import (
+    ModelDeployment,
+    ModelDeploymentConfig,
+    ModelDeploymentStatus,
+    ModelEntity,
+)
 from nmp.common.controller import Controller
 from nmp.common.entities.utils import parse_entity_ref
 from nmp.common.sdk_factory import get_async_platform_sdk
@@ -26,11 +31,11 @@ from nmp.core.models.controllers.provider_reconciler import ModelProviderReconci
 logger = getLogger(__name__)
 
 NON_TERMINAL_STATES: list[ModelDeploymentStatus] = [
-    "CREATED",
-    "PENDING",
-    "READY",
-    "DELETING",
-    "DELETED",  # Poll DELETED deployments to clean them up after grace period
+    ModelDeploymentStatus.CREATED,
+    ModelDeploymentStatus.PENDING,
+    ModelDeploymentStatus.READY,
+    ModelDeploymentStatus.DELETING,
+    ModelDeploymentStatus.DELETED,  # Poll DELETED deployments to clean them up after grace period
 ]
 
 
@@ -58,21 +63,23 @@ class ModelsController(Controller):
         self._current_task: asyncio.Task | None = None
 
         # Use service principal for controller - runs in background thread without user context
-        self._models_sdk = get_async_platform_sdk(
+        self._platform_sdk = get_async_platform_sdk(
             as_service="models",
             internal=True,
             http_client=DefaultAsyncHttpxClient(),
         )
+        self._models_client = client_from_platform(self._platform_sdk, AsyncModelsClient)
         self._service_backends = backend_registry.list_backends()
 
         # Initialize reconcilers
         self._deployment_reconciler = ModelDeploymentReconciler(
-            models_sdk=self._models_sdk,
+            models_client=self._models_client,
             backend_registry=backend_registry,
             controller_config=models_config.controller,
         )
         self._provider_reconciler = ModelProviderReconciler(
-            models_sdk=self._models_sdk,
+            models_client=self._models_client,
+            platform_sdk=self._platform_sdk,
             controller_config=models_config.controller,
         )
 
@@ -87,7 +94,7 @@ class ModelsController(Controller):
         """
         if self._loop is not None and not self._loop.is_closed():
             try:
-                self._loop.run_until_complete(self._models_sdk.close())
+                self._loop.run_until_complete(self._platform_sdk.close())
             except Exception as e:
                 logger.warning(f"Error closing event loop: {e}")
             finally:
@@ -115,7 +122,7 @@ class ModelsController(Controller):
         return self._backend_registry.get_backend()
 
     async def _retrieve_deployment_config(
-        self, config_ref: str, config_version: str, deployment_workspace: str
+        self, config_ref: str, config_version: int | str, deployment_workspace: str
     ) -> ModelDeploymentConfig:
         """Retrieve the ModelDeploymentConfig from the API.
 
@@ -132,12 +139,12 @@ class ModelsController(Controller):
             workspace, name = ref.workspace, ref.name
 
             logger.debug(f"Fetching ModelDeploymentConfig {workspace}/{name}@{config_version}")
-            config = await self._models_sdk.inference.deployment_configs.versions.retrieve(
-                name=str(config_version),  # version number
-                workspace=workspace,  # workspace
-                config=name,  # config name
+            response = await self._models_client.get_deployment_config_version(
+                name=str(config_version),
+                workspace=workspace,
+                config=name,
             )
-            return config
+            return response.data()
         except Exception as e:
             logger.error(f"Failed to fetch ModelDeploymentConfig {config_ref}@{config_version}: {e}")
             raise
@@ -224,10 +231,12 @@ class ModelsController(Controller):
 
             logger.debug(f"Querying Models API for model entity: {workspace}/{full_model_name}")
 
-            model_entity = await self._models_sdk.models.retrieve(
-                name=full_model_name,
-                workspace=workspace,
-            )
+            model_entity = (
+                await self._models_client.get_model(
+                    name=full_model_name,
+                    workspace=workspace,
+                )
+            ).data()
 
             if model_entity:
                 logger.debug(f"Successfully retrieved model entity from Models API: {workspace}/{model_name}")
@@ -267,16 +276,18 @@ class ModelsController(Controller):
             try:
                 logger.debug(f"Querying ModelDeployments with status: {status} across all workspaces")
                 # SDK returns AsyncPaginator - iterate through all pages
-                resp = self._models_sdk.inference.deployments.list(
+                resp = await self._models_client.list_deployments(
                     workspace="-",  # Cross-workspace query
-                    filter={"status": status},
-                    all_versions=True,
-                    page_size=1000,
+                    query_params={
+                        "filter": json.dumps({"status": status}),
+                        "all_versions": True,
+                        "page_size": 1000,
+                    },
                 )
                 logger.debug(f"Got paginator response for status {status}, iterating...")
 
                 # Collect all deployments from paginator
-                deployments = [deployment async for deployment in resp]
+                deployments = [deployment async for deployment in resp.items()]
                 logger.debug(f"Iteration complete for status {status}, got {len(deployments)} deployment(s)")
 
                 if deployments:
@@ -306,10 +317,12 @@ class ModelsController(Controller):
                             try:
                                 _prov_ref = parse_entity_ref(deployment.model_provider_id)
                                 provider_workspace, provider_name = _prov_ref.workspace, _prov_ref.name
-                                provider = await self._models_sdk.inference.providers.retrieve(
-                                    name=provider_name,
-                                    workspace=provider_workspace,
-                                )
+                                provider = (
+                                    await self._models_client.get_provider(
+                                        name=provider_name,
+                                        workspace=provider_workspace,
+                                    )
+                                ).data()
                             except Exception as e:
                                 logger.warning(
                                     f"Failed to fetch provider for deployment {deployment.workspace}/{deployment.name}: {e}"
@@ -347,11 +360,11 @@ class ModelsController(Controller):
         provider_contexts: list[ModelContext] = []
 
         try:
-            providers = self._models_sdk.inference.providers.list(
+            providers = await self._models_client.list_providers(
                 workspace="-",  # Cross-workspace query
             )
 
-            async for provider in providers:
+            async for provider in providers.items():
                 deployment = None
                 config = None
                 entity = None
@@ -361,10 +374,12 @@ class ModelsController(Controller):
                     try:
                         _depl_ref = parse_entity_ref(provider.model_deployment_id)
                         deployment_workspace, deployment_name = _depl_ref.workspace, _depl_ref.name
-                        deployment = await self._models_sdk.inference.deployments.retrieve(
-                            deployment_name,
-                            workspace=deployment_workspace,
-                        )
+                        deployment = (
+                            await self._models_client.get_deployment(
+                                name=deployment_name,
+                                workspace=deployment_workspace,
+                            )
+                        ).data()
 
                         # Fetch config if deployment has config reference
                         if deployment and deployment.config and deployment.config_version:
@@ -407,13 +422,15 @@ class ModelsController(Controller):
         since GC only needs the deployment itself and its timestamps.
         """
         try:
-            resp = self._models_sdk.inference.deployments.list(
+            resp = await self._models_client.list_deployments(
                 workspace="-",
-                filter={"status": "ERROR"},
-                all_versions=True,
-                page_size=1000,
+                query_params={
+                    "filter": json.dumps({"status": "ERROR"}),
+                    "all_versions": True,
+                    "page_size": 1000,
+                },
             )
-            return [deployment async for deployment in resp]
+            return [deployment async for deployment in resp.items()]
         except Exception:
             logger.warning("Error querying ERROR deployments for GC", exc_info=True)
             return []
@@ -433,7 +450,9 @@ class ModelsController(Controller):
             await self._deployment_reconciler.reconcile_deployments(deployment_contexts)
 
         known_deployment_ids = {
-            f"{ctx.model_deployment.workspace}/{ctx.model_deployment.name}" for ctx in deployment_contexts
+            f"{deployment.workspace}/{deployment.name}"
+            for ctx in deployment_contexts
+            if (deployment := ctx.model_deployment) is not None
         }
         await self._deployment_reconciler.reconcile_orphans(known_deployment_ids)
 

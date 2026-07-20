@@ -16,9 +16,9 @@ from typing import Any
 
 import httpx
 from docker.errors import APIError, NotFound
-from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError
+from nemo_platform_plugin.models.types import ModelDeployment
 from nemo_platform_plugin.secrets.client import AsyncSecretsClient
 from nmp.common.config import get_platform_config
 from nmp.common.docker.gpu_pool import DockerGPUPool

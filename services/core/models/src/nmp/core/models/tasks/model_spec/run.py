@@ -23,14 +23,27 @@ from nemo_platform import (
     APITimeoutError,
     InternalServerError,
     NeMoPlatform,
-    NeMoPlatformError,
+)
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import (
+    InternalServerError as ClientInternalServerError,
+)
+from nemo_platform_plugin.client.errors import (
+    NemoClientError,
+    NemoTransportError,
     NotFoundError,
 )
-from nemo_platform.types.models import ModelEntity
-from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.storage_config import HuggingfaceStorageConfig, LocalStorageConfig, NGCStorageConfig
 from nemo_platform_plugin.files.types import FilesetOutput
+from nemo_platform_plugin.models.client import ModelsClient
+from nemo_platform_plugin.models.types import (
+    ModelEntity,
+    UpdateModelEntityRequest,
+)
+from nemo_platform_plugin.models.types import (
+    ModelSpec as ClientModelSpec,
+)
 from nmp.common.entities.utils import parse_entity_ref
 from nmp.common.model_utils import is_embedding_model
 from nmp.common.sdk_factory import get_platform_sdk
@@ -75,6 +88,7 @@ class ModelSpecRunner:
 
     def __init__(self, sdk: NeMoPlatform, job_ctx: NMPJobContext):
         self.sdk = sdk
+        self.models_client = client_from_platform(sdk, ModelsClient)
         self.job_ctx = job_ctx
 
     @staticmethod
@@ -157,7 +171,15 @@ class ModelSpecRunner:
     @retry(
         stop=stop_after_attempt(MAX_RETRIES),
         wait=wait_exponential(multiplier=2, min=INITIAL_BACKOFF_SECONDS, max=MAX_BACKOFF_SECONDS),
-        retry=retry_if_exception_type((InternalServerError, APITimeoutError, APIConnectionError)),
+        retry=retry_if_exception_type(
+            (
+                InternalServerError,
+                APITimeoutError,
+                APIConnectionError,
+                ClientInternalServerError,
+                NemoTransportError,
+            )
+        ),
         reraise=True,
     )
     def analyze_checkpoint(self, config: ModelSpecTaskConfig) -> ModelEntity:
@@ -178,12 +200,18 @@ class ModelSpecRunner:
         logger.info(f"Fetching model entity: {config.workspace}/{config.name}")
 
         try:
-            me = self.sdk.models.retrieve(config.name, workspace=config.workspace, verbose=True)
+            me = self.models_client.get_model(
+                name=config.name,
+                workspace=config.workspace,
+                query_params={"verbose": True},
+            ).data()
         except NotFoundError as err:
             raise ModelSpecCreationError(
                 f"Failed to create model spec: model entity {config.workspace}/{config.name} does not exist"
             ) from err
-        except NeMoPlatformError as err:
+        except (ClientInternalServerError, NemoTransportError):
+            raise
+        except NemoClientError as err:
             raise ModelSpecCreationError(
                 f"Failed to create model spec: model entity {config.workspace}/{config.name} unable to be fetched"
             ) from err
@@ -241,14 +269,14 @@ class ModelSpecRunner:
 
         self.sdk.files.download(
             remote_path=non_tensor_files,
-            local_path=dest_dir,
+            local_path=str(dest_dir),
             fileset=fs.name,
             workspace=fs.workspace,
         )
 
         logger.info(os.listdir(dest_dir))
         is_trusted = me.trust_remote_code if me.trust_remote_code is not None else False
-        model_spec = infer_model_cfg_from_hf(dest_dir, is_trusted=is_trusted, file_listing=all_file_paths)
+        model_spec = infer_model_cfg_from_hf(str(dest_dir), is_trusted=is_trusted, file_listing=all_file_paths)
         # Embedding if model name or storage path contains "embed"; use or to avoid
         # overwriting a correct True from model name when storage path lacks "embed"
         model_spec.is_embedding_model = is_embedding_model(me.name)
@@ -286,14 +314,21 @@ class ModelSpecRunner:
         self._merge_existing_spec(me, model_spec)
 
         try:
-            me: ModelEntity = self.sdk.models.update(
-                name=config.name, workspace=config.workspace, spec=model_spec, verbose=True
-            )
+            me = self.models_client.update_model(
+                name=config.name,
+                workspace=config.workspace,
+                body=UpdateModelEntityRequest(
+                    spec=ClientModelSpec.model_validate(model_spec.model_dump()),
+                ),
+                query_params={"verbose": True},
+            ).data()
         except NotFoundError as err:
             raise ModelSpecCreationError(
                 f"Failed to update model spec: model entity {config.workspace}/{config.name} does not exist"
             ) from err
-        except NeMoPlatformError as err:
+        except (ClientInternalServerError, NemoTransportError):
+            raise
+        except NemoClientError as err:
             raise ModelSpecCreationError(
                 f"Failed to update model spec: model entity {config.workspace}/{config.name} unable to be fetched"
             ) from err

@@ -22,8 +22,7 @@ from urllib.parse import urljoin
 from kubernetes import client as k8s_client
 from kubernetes import config as k8s_config
 from kubernetes.dynamic import DynamicClient
-from nemo_platform.types.inference.model_deployment import ModelDeployment
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.models.types import ModelDeployment, ModelEntity
 from nmp.common.config import get_platform_config
 from nmp.core.models.app import (
     get_deployment_resource_name,

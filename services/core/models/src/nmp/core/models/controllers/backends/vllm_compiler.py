@@ -16,7 +16,7 @@ objects. Keep this module free of backend-specific imports so both can reuse it.
 from logging import getLogger
 from typing import Optional
 
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.models.types import ModelEntity
 from nmp.core.models.controllers.backends.common import DeploymentConfigView
 
 logger = getLogger(__name__)

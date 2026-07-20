@@ -7,9 +7,7 @@ from logging import getLogger
 from typing import Any, Optional
 from urllib.parse import urljoin
 
-from nemo_platform.types.inference.model_deployment import ModelDeployment
-from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.models.types import ModelDeployment, ModelDeploymentConfig, ModelEntity
 from nmp.common.config import get_platform_config
 from nmp.core.models.app import is_multi_llm_image, parse_model_name_revision
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER

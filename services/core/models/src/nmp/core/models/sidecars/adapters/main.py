@@ -13,9 +13,11 @@ import threading
 import urllib.error
 import urllib.request
 
-from nemo_platform import NeMoPlatform, NotFoundError
-from nemo_platform.types.models import ModelEntity
-from nemo_platform.types.models.adapter import Adapter
+from nemo_platform import NeMoPlatform
+from nemo_platform import NotFoundError as StainlessNotFoundError
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.models.client import ModelsClient
+from nemo_platform_plugin.models.types import Adapter, ModelEntity
 from nmp.common.config import get_platform_config
 from nmp.common.controller import Controller, ControllerManager, Loop, TimedLoopWaiter, TrackLastExecutionTime
 from nmp.common.sdk_factory import get_platform_sdk
@@ -85,6 +87,7 @@ class AdaptersController(Controller):
             as_service="models",
             internal=True,
         )
+        self._models_client = client_from_platform(self._sdk, ModelsClient)
 
     def download_fileset(self, dest_dir: str, workspace: str, name: str) -> bool:
         try:
@@ -106,7 +109,7 @@ class AdaptersController(Controller):
             )
             return True
 
-        except NotFoundError:
+        except StainlessNotFoundError:
             return False
 
     def step(self):
@@ -142,13 +145,11 @@ class AdaptersController(Controller):
         # (AALGO-129): they remain single-workspace for now and continue to
         # use the bare model_entity.name as their on-disk directory.
         logger.info(f"Fetching prompt data for {self.workspace}/{self.model_name}")
-        model_entities: list[ModelEntity] = self._sdk.models.list(
+        model_entities = self._models_client.list_models(
             workspace=self.workspace,
-            filter={
-                "base_model": self.model_name,
-            },
+            query_params={"filter": json.dumps({"base_model": self.model_name})},
         )
-        for model_entity in model_entities:
+        for model_entity in model_entities.items():
             if model_entity.prompt:
                 dirs_to_keep.add(model_entity.name)
                 prompt_tuned_model_dir = f"{self.nim_peft_source}/{model_entity.name}"
@@ -282,22 +283,9 @@ class AdaptersController(Controller):
             raise
 
     @staticmethod
-    def _resolve_adapter_workspace(adapter: Adapter, base_model_workspace: str) -> str:
-        """Return the workspace where ``adapter`` lives.
-
-        The flat ``{adapter_ws}--{adapter_name}`` directory layout needs each
-        adapter's own workspace to disambiguate cross-workspace name
-        collisions. The internal :class:`Adapter` entity carries ``workspace``,
-        but the public API/SDK schema does not yet expose it. Until it does,
-        fall back to the base model's workspace: the on-disk encoding stays in
-        the ``{ws}--{name}`` form so every directory the reconciler sees is
-        decodable — just collapsed onto the base model's workspace, matching
-        the legacy single-workspace assumption.
-
-        TODO: drop the ``getattr`` fallback once ``Adapter`` exposes
-        ``workspace`` in the SDK schema; the read becomes ``adapter.workspace``.
-        """
-        return getattr(adapter, "workspace", None) or base_model_workspace
+    def _resolve_adapter_workspace(adapter: Adapter) -> str:
+        """Return the adapter's workspace from the typed Models API contract."""
+        return adapter.workspace
 
     def _vllm_api_call(self, route: str, payload: dict) -> tuple[int, str]:
         """POST ``payload`` to the local vLLM server at ``route``.
@@ -401,7 +389,10 @@ class AdaptersController(Controller):
         """
         logger.info(f"Fetching adapters for {self.workspace}/{self.model_name}")
 
-        model_entity: ModelEntity = self._sdk.models.retrieve(name=self.model_name, workspace=self.workspace)
+        model_entity: ModelEntity = self._models_client.get_model(
+            name=self.model_name,
+            workspace=self.workspace,
+        ).data()
         if not model_entity.adapters:
             return
 
@@ -412,7 +403,7 @@ class AdaptersController(Controller):
                 logger.warning(f"Adapter {adapter.name} has no fileset, skipping")
                 continue
 
-            adapter_workspace = self._resolve_adapter_workspace(adapter, model_entity.workspace)
+            adapter_workspace = self._resolve_adapter_workspace(adapter)
             dir_name = f"{adapter_workspace}--{adapter.name}"
             dirs_to_keep.add(dir_name)
             adapter_dir = f"{self.nim_peft_source}/{dir_name}"

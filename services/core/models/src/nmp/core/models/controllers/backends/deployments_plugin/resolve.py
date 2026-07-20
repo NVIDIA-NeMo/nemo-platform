@@ -6,9 +6,7 @@
 from dataclasses import dataclass
 from urllib.parse import urljoin
 
-from nemo_platform.types.inference.model_deployment import ModelDeployment
-from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.models.types import ModelDeployment, ModelDeploymentConfig, ModelEntity
 from nmp.common.config import Runtime, get_platform_config
 from nmp.core.models.app import ModelWeightsType, get_model_weights_type, parse_model_name_revision
 from nmp.core.models.controllers.backends.common import DeploymentConfigView, deployment_config_view

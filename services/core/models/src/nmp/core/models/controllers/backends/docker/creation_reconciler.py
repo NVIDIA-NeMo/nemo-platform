@@ -24,11 +24,9 @@ from urllib.parse import urljoin
 from docker.errors import APIError, ImageNotFound, NotFound
 from docker.models.containers import Container
 from docker.models.volumes import Volume
-from nemo_platform.types.inference.model_deployment import ModelDeployment
-from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
-from nemo_platform.types.models.model_entity import ModelEntity
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.jobs.image import get_qualified_image
+from nemo_platform_plugin.models.types import ModelDeployment, ModelDeploymentConfig, ModelEntity
 from nemo_platform_plugin.secrets.client import AsyncSecretsClient
 from nmp.common.config import get_auth_config, get_platform_config
 from nmp.common.config.base import LOOPBACK_ADDRESSES

@@ -30,8 +30,7 @@ from logging import getLogger
 from typing import Any, Optional
 
 from kubernetes import client as k8s_client
-from nemo_platform.types.inference.model_deployment import ModelDeployment
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.models.types import ModelDeployment, ModelEntity
 from nmp.common.config import get_platform_config
 from nmp.core.models.app import ModelWeightsType, get_deployment_resource_name
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER

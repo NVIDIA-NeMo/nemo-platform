@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Protocol
 
 from nemo_platform.types.inference.k8s_nim_operator_config import K8sNIMOperatorConfig
-from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nemo_platform.types.shared.tool_call_config import ToolCallConfig
+from nemo_platform_plugin.models.types import ModelDeployment
 
 LOG_TAIL_LINES = 80
 LOG_MAX_CHARS = 2048

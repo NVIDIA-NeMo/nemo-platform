@@ -10,12 +10,24 @@ from logging import getLogger
 from typing import TypedDict
 
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform._exceptions import APIStatusError, ConflictError, NotFoundError
-from nemo_platform.types.inference import ServedModelMapping
-from nemo_platform.types.inference.model_deployment import ModelDeployment
-from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
-from nemo_platform.types.inference.model_provider import ModelProvider
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform._exceptions import APIStatusError
+from nemo_platform._exceptions import ConflictError as StainlessConflictError
+from nemo_platform_plugin.client.errors import NotFoundError
+from nemo_platform_plugin.models.client import AsyncModelsClient
+from nemo_platform_plugin.models.types import (
+    APIEndpointData,
+    CreateModelEntityRequest,
+    ModelDeployment,
+    ModelDeploymentConfig,
+    ModelEntity,
+    ModelProvider,
+    ServedModelMapping,
+    UpdateModelEntityRequest,
+    UpdateModelProviderStatusRequest,
+)
+from nemo_platform_plugin.models.types import (
+    ModelProviderStatus as PluginModelProviderStatus,
+)
 from nmp.common.datetime_utils import ensure_utc
 from nmp.common.entities.constants import NAME_PATTERN
 from nmp.common.entities.utils import parse_entity_ref
@@ -28,6 +40,7 @@ from nmp.core.models.app import (
 from nmp.core.models.config import ControllerConfig
 from nmp.core.models.controllers.context import ModelContext
 from nmp.core.models.schemas import BackendFormat, ModelProviderStatus
+from pydantic import AnyUrl
 
 logger = getLogger(__name__)
 
@@ -80,14 +93,6 @@ class DiscoveredModel(TypedDict, total=False):
     parent: str | None
 
 
-class ApiEndpointDict(TypedDict):
-    """Shape of :attr:`ArtifactDetails.api_endpoint`, stored on Model Entities."""
-
-    url: str
-    model_id: str
-    format: str
-
-
 class DiscoverySuccess(DiscoveryResult):
     """Provider responded with valid OpenAI model list.
 
@@ -129,7 +134,7 @@ class ArtifactDetails:
     """Artifact and API endpoint details resolved for a model entity."""
 
     fileset_url: str | None = None
-    api_endpoint: ApiEndpointDict | None = field(default=None)
+    api_endpoint: APIEndpointData | None = field(default=None)
 
 
 # ---------------------------------------------------------------------------
@@ -278,18 +283,48 @@ class ModelProviderReconciler:
     Model Entities are created and linked appropriately.
     """
 
-    def __init__(self, models_sdk: AsyncNeMoPlatform, controller_config: ControllerConfig) -> None:
+    def __init__(
+        self,
+        models_client: AsyncModelsClient,
+        platform_sdk: AsyncNeMoPlatform,
+        controller_config: ControllerConfig,
+    ) -> None:
         """Initialize the provider reconciler.
 
         Args:
-            models_sdk: SDK client for Models API interactions
+            models_client: Typed client for Models API interactions
+            platform_sdk: Umbrella SDK retained for IGW discovery and VirtualModel operations
             controller_config: Models controller configuration (discovery timeout/retry policy)
         """
-        self._models_sdk = models_sdk
+        self._models_client = models_client
+        self._platform_sdk = platform_sdk
         self._controller_config = controller_config
-        self._discovery_sdk = models_sdk.with_options(
+        self._discovery_sdk = platform_sdk.with_options(
             max_retries=controller_config.provider_discovery_max_retries,
         )
+
+    async def _update_provider_status(
+        self,
+        provider: ModelProvider,
+        *,
+        served_models: list[ServedModelMapping] | None = None,
+        status: str | None = None,
+        status_message: str | None = None,
+    ) -> ModelProvider:
+        update_fields: dict[str, object] = {}
+        if served_models is not None:
+            update_fields["served_models"] = served_models
+        if status is not None:
+            update_fields["status"] = PluginModelProviderStatus(status)
+        if status_message is not None:
+            update_fields["status_message"] = status_message
+
+        response = await self._models_client.update_provider_status(
+            name=provider.name,
+            workspace=provider.workspace,
+            body=UpdateModelProviderStatusRequest.model_validate(update_fields),
+        )
+        return response.data()
 
     # -------------------------------------------------------------------------
     # Public entry point
@@ -367,9 +402,8 @@ class ModelProviderReconciler:
                 )
                 ctx.served_models = []
                 try:
-                    ctx.model_provider = await self._models_sdk.inference.providers.update_status(
-                        name=provider.name,
-                        workspace=provider.workspace,
+                    ctx.model_provider = await self._update_provider_status(
+                        provider,
                         served_models=[],
                         status="READY",
                         status_message="Non-OpenAI compliant endpoint, model entity routing disabled",
@@ -420,9 +454,8 @@ class ModelProviderReconciler:
         logger.debug(f"Provider {provider_id}: serving {len(served_models)} model(s)")
 
         try:
-            ctx.model_provider = await self._models_sdk.inference.providers.update_status(
-                name=provider.name,
-                workspace=provider.workspace,
+            ctx.model_provider = await self._update_provider_status(
+                provider,
                 served_models=served_models,
                 status="READY",
             )
@@ -473,9 +506,8 @@ class ModelProviderReconciler:
     async def _mark_lost(self, ctx: ModelContext, provider: ModelProvider, provider_id: str) -> None:
         """Write LOST status for a provider that has permanently failed discovery."""
         try:
-            ctx.model_provider = await self._models_sdk.inference.providers.update_status(
-                name=provider.name,
-                workspace=provider.workspace,
+            ctx.model_provider = await self._update_provider_status(
+                provider,
                 status="LOST",
                 status_message="Provider discovery permanently failed. Delete and recreate to retry.",
             )
@@ -509,9 +541,8 @@ class ModelProviderReconciler:
             updated_at = ensure_utc(provider.updated_at)
             if updated_at and (now - updated_at).total_seconds() > PROVIDER_ERROR_THRESHOLD_SECONDS:
                 try:
-                    await self._models_sdk.inference.providers.update_status(
-                        name=provider.name,
-                        workspace=provider.workspace,
+                    await self._update_provider_status(
+                        provider,
                         status="ERROR",
                         status_message=f"Provider discovery failed: {err.message}"
                         if err.message
@@ -537,9 +568,8 @@ class ModelProviderReconciler:
         elif provider.status == ModelProviderStatus.ERROR:
             # Bump updated_at to pace the next retry
             try:
-                await self._models_sdk.inference.providers.update_status(
-                    name=provider.name,
-                    workspace=provider.workspace,
+                await self._update_provider_status(
+                    provider,
                     status="ERROR",
                     status_message=f"Discovery retry failed: {err.message}"
                     if err.message
@@ -593,26 +623,32 @@ class ModelProviderReconciler:
                 timeout=self._controller_config.provider_discovery_timeout_seconds,
             )
 
-            if not isinstance(models_response, dict) or "data" not in models_response:
+            if not isinstance(models_response, dict):
                 logger.warning(f"Non-OpenAI compliant response format from {provider_id}")
                 return DiscoveryNonCompliant()
 
-            discovered_models = models_response["data"]
+            discovered_models = models_response.get("data")
             if not isinstance(discovered_models, list):
                 logger.warning(f"Non-OpenAI compliant data field from {provider_id}")
                 return DiscoveryNonCompliant()
 
-            models = []
+            models: list[DiscoveredModel] = []
             for model in discovered_models:
-                if not isinstance(model, dict) or not isinstance(model.get("id"), str):
+                if not isinstance(model, dict):
                     logger.warning(f"Skipping invalid model entry in {provider_id}: {model}")
                     continue
+                model_id = model.get("id")
+                if not isinstance(model_id, str):
+                    logger.warning(f"Skipping invalid model entry in {provider_id}: {model}")
+                    continue
+                root = model.get("root")
+                parent = model.get("parent")
                 models.append(
-                    {
-                        "id": model["id"],
-                        "root": model.get("root"),
-                        "parent": model.get("parent"),
-                    }
+                    DiscoveredModel(
+                        id=model_id,
+                        root=root if isinstance(root, str) else None,
+                        parent=parent if isinstance(parent, str) else None,
+                    )
                 )
 
             return DiscoverySuccess(models)
@@ -891,10 +927,12 @@ class ModelProviderReconciler:
         # This is per-discovered-model, so we can't use the one from context.
         existing_model_entity = None
         try:
-            existing_model_entity = await self._models_sdk.models.retrieve(
-                workspace=model_workspace,
-                name=model_name,
-            )
+            existing_model_entity = (
+                await self._models_client.get_model(
+                    workspace=model_workspace,
+                    name=model_name,
+                )
+            ).data()
         except NotFoundError:
             pass
         except Exception as e:
@@ -909,10 +947,15 @@ class ModelProviderReconciler:
             )
             return
 
+        provider = ctx.model_provider
+        if provider is None:
+            logger.warning("Cannot ensure Model Entity %s/%s without a model provider", model_workspace, model_name)
+            return
+
         details = await self._build_artifact_details(
             model_name,
             provider_id,
-            ctx.model_provider,
+            provider,
             existing_model_entity,
             ctx.model_deployment,
             ctx.model_deployment_config,
@@ -921,46 +964,60 @@ class ModelProviderReconciler:
         try:
             if existing_model_entity:
                 current_providers = existing_model_entity.model_providers or []
-                update_params: dict[str, object] = {
-                    "name": model_name,
-                    "workspace": model_workspace,
-                }
-
-                if provider_id not in current_providers:
-                    update_params["model_providers"] = current_providers + [provider_id]
+                model_providers = current_providers + [provider_id] if provider_id not in current_providers else None
+                fileset = None
                 if details.fileset_url and not existing_model_entity.fileset:
-                    update_params["fileset"] = details.fileset_url.removeprefix("hf://").removeprefix("fileset://")
-                if details.api_endpoint and not existing_model_entity.api_endpoint:
-                    update_params["api_endpoint"] = details.api_endpoint
+                    fileset = details.fileset_url.removeprefix("hf://").removeprefix("fileset://")
+                api_endpoint = (
+                    details.api_endpoint if details.api_endpoint and not existing_model_entity.api_endpoint else None
+                )
                 # Treat None as missing here so legacy autodiscovered entities get
                 # backfilled. User corrections should set a concrete enum value.
-                if not _has_backend_format(existing_model_entity):
-                    update_params["backend_format"] = _infer_backend_format(model_name)
+                backend_format = (
+                    BackendFormat(_infer_backend_format(model_name))
+                    if not _has_backend_format(existing_model_entity)
+                    else None
+                )
 
-                if len(update_params) == 2:
+                if model_providers is None and fileset is None and api_endpoint is None and backend_format is None:
                     logger.debug(
                         f"Provider {provider_id} already linked to Model Entity {model_workspace}/{model_name}"
                     )
                     return
 
-                await self._models_sdk.models.update(**update_params)
+                update_fields: dict[str, object] = {}
+                if model_providers is not None:
+                    update_fields["model_providers"] = model_providers
+                if fileset is not None:
+                    update_fields["fileset"] = fileset
+                if api_endpoint is not None:
+                    update_fields["api_endpoint"] = api_endpoint
+                if backend_format is not None:
+                    update_fields["backend_format"] = backend_format
+
+                await self._models_client.update_model(
+                    name=model_name,
+                    workspace=model_workspace,
+                    body=UpdateModelEntityRequest.model_validate(update_fields),
+                )
                 logger.debug(f"Added provider {provider_id} to existing Model Entity {model_workspace}/{model_name}")
                 return
 
             logger.debug(f"Creating Model Entity {model_workspace}/{model_name} for provider {provider_id}")
-            create_kwargs: dict = {
-                "name": model_name,
-                "description": f"Auto-discovered model from provider {provider_id}",
-                "model_providers": [provider_id],
-                "backend_format": _infer_backend_format(model_name),
-            }
-
-            if details.fileset_url:
-                create_kwargs["fileset"] = details.fileset_url.removeprefix("hf://").removeprefix("fileset://")
-            if details.api_endpoint:
-                create_kwargs["api_endpoint"] = details.api_endpoint
-
-            await self._models_sdk.models.create(workspace=model_workspace, **create_kwargs)
+            fileset = (
+                details.fileset_url.removeprefix("hf://").removeprefix("fileset://") if details.fileset_url else None
+            )
+            await self._models_client.create_model(
+                workspace=model_workspace,
+                body=CreateModelEntityRequest(
+                    name=model_name,
+                    description=f"Auto-discovered model from provider {provider_id}",
+                    model_providers=[provider_id],
+                    backend_format=BackendFormat(_infer_backend_format(model_name)),
+                    fileset=fileset,
+                    api_endpoint=details.api_endpoint,
+                ),
+            )
             logger.debug(f"Created Model Entity {model_workspace}/{model_name} linked to provider {provider_id}")
         except Exception as e:
             logger.error(f"Failed to ensure Model Entity {model_workspace}/{model_name}: {e}")
@@ -983,7 +1040,7 @@ class ModelProviderReconciler:
             model_name: Name of the model entity (also used as the VirtualModel name).
         """
         try:
-            await self._models_sdk.inference.virtual_models.create(
+            await self._platform_sdk.inference.virtual_models.create(
                 workspace=workspace,
                 name=model_name,
                 default_model_entity=f"{workspace}/{model_name}",
@@ -994,7 +1051,7 @@ class ModelProviderReconciler:
                 workspace,
                 model_name,
             )
-        except ConflictError:
+        except StainlessConflictError:
             pass  # Already exists — nothing to do
         except Exception:
             logger.warning(
@@ -1019,7 +1076,7 @@ class ModelProviderReconciler:
                 if model_entity_id:
                     active_model_entity_ids.add(model_entity_id)
 
-        virtual_models = self._models_sdk.inference.virtual_models.list(workspace="-", page_size=200)
+        virtual_models = self._platform_sdk.inference.virtual_models.list(workspace="-", page_size=200)
         async for virtual_model in virtual_models:
             if not virtual_model.autoprovisioned:
                 continue
@@ -1030,8 +1087,12 @@ class ModelProviderReconciler:
             ):
                 continue
 
+            if virtual_model.name is None:
+                logger.warning("Skipping autoprovisioned VirtualModel with no name")
+                continue
+
             try:
-                await self._models_sdk.inference.virtual_models.delete(
+                await self._platform_sdk.inference.virtual_models.delete(
                     name=virtual_model.name,
                     workspace=virtual_model.workspace,
                 )
@@ -1083,11 +1144,11 @@ class ModelProviderReconciler:
             )
 
             if weights_type == ModelWeightsType.EXTERNAL_PROVIDER:
-                details.api_endpoint = {
-                    "url": provider.host_url,
-                    "model_id": model_name,
-                    "format": "openai",
-                }
+                details.api_endpoint = APIEndpointData(
+                    url=AnyUrl(provider.host_url),
+                    model_id=model_name,
+                    format="openai",
+                )
                 logger.debug(f"Built api_endpoint for external provider: {provider.host_url}")
 
             elif weights_type == ModelWeightsType.HUGGINGFACE and config:

@@ -44,8 +44,8 @@ class NMPJobContext:
     files_url: str | None
     models_url: str | None
 
-    storage_path: str | None
-    config_path: str | None
+    storage_path: Path
+    config_path: Path
 
     @classmethod
     def from_env(cls) -> Self:

@@ -54,6 +54,16 @@ def mock_get_config_patch(mock_platform_config):
         yield
 
 
+@pytest.fixture(autouse=True)
+def mock_models_client_bridge():
+    """Use the injected platform mock as the typed Models client in controller tests."""
+    with patch(
+        "nmp.core.models.controllers.models_controller.client_from_platform",
+        side_effect=lambda platform, _client_cls: platform,
+    ):
+        yield
+
+
 @pytest.fixture
 def mock_sdk_class_patch():
     """Patch get_async_platform_sdk factory function."""
@@ -144,7 +154,8 @@ def _assert_controller_has_required_attributes(controller):
     """Assert that controller has all required attributes."""
     assert hasattr(controller, "_is_healthy")
     assert hasattr(controller, "_backend_registry")
-    assert hasattr(controller, "_models_sdk")
+    assert hasattr(controller, "_platform_sdk")
+    assert hasattr(controller, "_models_client")
 
 
 def _assert_controller_healthy(controller, is_healthy=True):
