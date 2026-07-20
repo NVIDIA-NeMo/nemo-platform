@@ -16,14 +16,13 @@ import logging
 import textwrap
 
 from fastapi import APIRouter, HTTPException, Query, status
-from nmp.common.api.common import GenericSortField, Page, PaginationData
+from nmp.common.api.common import DeleteResponse, GenericSortField, Page, PaginationData
 from nmp.core.entities.api.dependencies import EntityRepository
 from nmp.core.entities.api.v2.projects.schemas import (
     Project,
     ProjectInput,
     ProjectUpdate,
 )
-from nmp.core.entities.api.v2.schemas import EntityDeleteResponse
 from nmp.core.entities.app.repository.exceptions import (
     EntityNotFoundError,
     EntityVersionConflictError,
@@ -254,7 +253,7 @@ async def update_project(
 
 @router.delete(
     "/v2/workspaces/{workspace}/projects/{name}",
-    response_model=EntityDeleteResponse,
+    response_model=DeleteResponse,
     tags=[API_TAG],
     summary="Delete project",
     description=textwrap.dedent("""
@@ -270,7 +269,7 @@ async def delete_project(
     workspace: str,
     name: str,
     repository: EntityRepository,
-) -> EntityDeleteResponse:
+) -> DeleteResponse:
     """Delete project."""
     try:
         deleted_count = await repository.delete_entity_by_name(
@@ -283,10 +282,9 @@ async def delete_project(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Project '{name}' not found in workspace '{workspace}'",
             )
-        return EntityDeleteResponse(
+        return DeleteResponse(
             id=f"{workspace}/{name}",
             message="Project deleted successfully",
-            deleted_count=deleted_count,
         )
     except IntegrityError as e:
         error_msg = str(e.orig) if hasattr(e, "orig") else str(e)

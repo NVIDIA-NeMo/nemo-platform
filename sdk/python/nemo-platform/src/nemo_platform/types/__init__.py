@@ -43,7 +43,6 @@ from .shared import (
     PlatformJobLogPage as PlatformJobLogPage,
     HTTPValidationError as HTTPValidationError,
     SlidingWindowConfig as SlidingWindowConfig,
-    EntityDeleteResponse as EntityDeleteResponse,
     FilesetMetadataParam as FilesetMetadataParam,
     ModelMetadataContent as ModelMetadataContent,
     AuthDiscoveryResponse as AuthDiscoveryResponse,

@@ -751,7 +751,6 @@ resources:
       workload_token_exchange_error_response: WorkloadTokenExchangeErrorResponse
       json_web_key: JsonWebKey
       json_web_key_set_response: JsonWebKeySetResponse
-      entity_delete_response: EntityDeleteResponse
   iam:
     standalone_api: true
     subresources:

@@ -41,8 +41,8 @@ from ...pagination import SyncDefaultPagination, AsyncDefaultPagination
 from ..._base_client import AsyncPaginator, make_request_options
 from ...types.workspaces import workspace_list_params, workspace_create_params, workspace_update_params
 from ...types.workspaces.workspace import Workspace
+from ...types.shared.delete_response import DeleteResponse
 from ...types.shared.generic_sort_field import GenericSortField
-from ...types.shared.entity_delete_response import EntityDeleteResponse
 from ..._exceptions import ConflictError
 
 __all__ = ["WorkspacesResource", "AsyncWorkspacesResource"]
@@ -320,7 +320,7 @@ class WorkspacesResource(SyncAPIResource):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
-    ) -> EntityDeleteResponse:
+    ) -> DeleteResponse:
         """
         Delete a workspace.
 
@@ -352,7 +352,7 @@ class WorkspacesResource(SyncAPIResource):
             options=make_request_options(
                 extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
             ),
-            cast_to=EntityDeleteResponse,
+            cast_to=DeleteResponse,
         )
 
 
@@ -630,7 +630,7 @@ class AsyncWorkspacesResource(AsyncAPIResource):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
-    ) -> EntityDeleteResponse:
+    ) -> DeleteResponse:
         """
         Delete a workspace.
 
@@ -662,7 +662,7 @@ class AsyncWorkspacesResource(AsyncAPIResource):
             options=make_request_options(
                 extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
             ),
-            cast_to=EntityDeleteResponse,
+            cast_to=DeleteResponse,
         )
 
 

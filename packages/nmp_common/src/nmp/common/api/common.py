@@ -77,8 +77,7 @@ class GenericSortField(StrEnum):
 
 class DeleteResponse(Value):
     message: str = Field(default="Resource deleted successfully.")
-    id: Optional[str] = Field(default=None, description="The ID of the deleted resource.")
-    deleted_at: Optional[datetime] = Field(default=None, description="The timestamp when the resource was deleted.")
+    id: str = Field(..., description="The ID of the deleted resource.")
 
 
 class ErrorResponse(Value):

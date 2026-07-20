@@ -9,7 +9,6 @@ from nemo_platform.types import (
     DatasetMetadataContent,
     DatetimeFilter,
     DeleteResponse,
-    EntityDeleteResponse,
     FileStorageType,
     FilesetMetadata,
     FilesetMetadataParam,

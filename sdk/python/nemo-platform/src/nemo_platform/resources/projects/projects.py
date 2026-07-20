@@ -33,8 +33,8 @@ from ...pagination import SyncDefaultPagination, AsyncDefaultPagination
 from ..._base_client import AsyncPaginator, make_request_options
 from ...types.projects import project_list_params, project_create_params, project_update_params
 from ...types.projects.project import Project
+from ...types.shared.delete_response import DeleteResponse
 from ...types.shared.generic_sort_field import GenericSortField
-from ...types.shared.entity_delete_response import EntityDeleteResponse
 from ..._exceptions import ConflictError
 
 __all__ = ["ProjectsResource", "AsyncProjectsResource"]
@@ -312,7 +312,7 @@ class ProjectsResource(SyncAPIResource):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
-    ) -> EntityDeleteResponse:
+    ) -> DeleteResponse:
         """
         Delete a project.
 
@@ -342,7 +342,7 @@ class ProjectsResource(SyncAPIResource):
             options=make_request_options(
                 extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
             ),
-            cast_to=EntityDeleteResponse,
+            cast_to=DeleteResponse,
         )
 
 
@@ -618,7 +618,7 @@ class AsyncProjectsResource(AsyncAPIResource):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
-    ) -> EntityDeleteResponse:
+    ) -> DeleteResponse:
         """
         Delete a project.
 
@@ -648,7 +648,7 @@ class AsyncProjectsResource(AsyncAPIResource):
             options=make_request_options(
                 extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
             ),
-            cast_to=EntityDeleteResponse,
+            cast_to=DeleteResponse,
         )
 
 

@@ -31,8 +31,8 @@ from ..._response import (
 )
 from ..._base_client import make_request_options
 from ...types.workspaces import member_create_params, member_delete_params, member_update_params
+from ...types.shared.delete_response import DeleteResponse
 from ...types.workspaces.workspace_member import WorkspaceMember
-from ...types.shared.entity_delete_response import EntityDeleteResponse
 from ...types.workspaces.workspace_member_list_response import WorkspaceMemberListResponse
 
 __all__ = ["MembersResource", "AsyncMembersResource"]
@@ -249,7 +249,7 @@ class MembersResource(SyncAPIResource):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
-    ) -> EntityDeleteResponse:
+    ) -> DeleteResponse:
         """
         Remove a member from the workspace by revoking all their roles.
 
@@ -296,7 +296,7 @@ class MembersResource(SyncAPIResource):
                     {"wait_role_propagation": wait_role_propagation}, member_delete_params.MemberDeleteParams
                 ),
             ),
-            cast_to=EntityDeleteResponse,
+            cast_to=DeleteResponse,
         )
 
 
@@ -511,7 +511,7 @@ class AsyncMembersResource(AsyncAPIResource):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
-    ) -> EntityDeleteResponse:
+    ) -> DeleteResponse:
         """
         Remove a member from the workspace by revoking all their roles.
 
@@ -558,7 +558,7 @@ class AsyncMembersResource(AsyncAPIResource):
                     {"wait_role_propagation": wait_role_propagation}, member_delete_params.MemberDeleteParams
                 ),
             ),
-            cast_to=EntityDeleteResponse,
+            cast_to=DeleteResponse,
         )
 
 

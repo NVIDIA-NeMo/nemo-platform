@@ -40,7 +40,6 @@ from .platform_job_status import PlatformJobStatus as PlatformJobStatus
 from .http_validation_error import HTTPValidationError as HTTPValidationError
 from .platform_job_log_page import PlatformJobLogPage as PlatformJobLogPage
 from .sliding_window_config import SlidingWindowConfig as SlidingWindowConfig
-from .entity_delete_response import EntityDeleteResponse as EntityDeleteResponse
 from .fileset_metadata_param import FilesetMetadataParam as FilesetMetadataParam
 from .model_metadata_content import ModelMetadataContent as ModelMetadataContent
 from .auth_discovery_response import AuthDiscoveryResponse as AuthDiscoveryResponse

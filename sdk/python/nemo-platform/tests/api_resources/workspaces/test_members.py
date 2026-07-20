@@ -24,7 +24,7 @@ import pytest
 
 from tests.utils import assert_matches_type
 from nemo_platform import NeMoPlatform, AsyncNeMoPlatform
-from nemo_platform.types.shared import EntityDeleteResponse
+from nemo_platform.types.shared import DeleteResponse
 from nemo_platform.types.workspaces import (
     WorkspaceMember,
     WorkspaceMemberListResponse,
@@ -210,7 +210,7 @@ class TestMembers:
             principal_id="principal_id",
             workspace="workspace",
         )
-        assert_matches_type(EntityDeleteResponse, member, path=["response"])
+        assert_matches_type(DeleteResponse, member, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
@@ -220,7 +220,7 @@ class TestMembers:
             workspace="workspace",
             wait_role_propagation=True,
         )
-        assert_matches_type(EntityDeleteResponse, member, path=["response"])
+        assert_matches_type(DeleteResponse, member, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
@@ -233,7 +233,7 @@ class TestMembers:
         assert response.is_closed is True
         assert response.http_request.headers.get("X-Stainless-Lang") == "python"
         member = response.parse()
-        assert_matches_type(EntityDeleteResponse, member, path=["response"])
+        assert_matches_type(DeleteResponse, member, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
@@ -246,7 +246,7 @@ class TestMembers:
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
 
             member = response.parse()
-            assert_matches_type(EntityDeleteResponse, member, path=["response"])
+            assert_matches_type(DeleteResponse, member, path=["response"])
 
         assert cast(Any, response.is_closed) is True
 
@@ -445,7 +445,7 @@ class TestAsyncMembers:
             principal_id="principal_id",
             workspace="workspace",
         )
-        assert_matches_type(EntityDeleteResponse, member, path=["response"])
+        assert_matches_type(DeleteResponse, member, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
@@ -455,7 +455,7 @@ class TestAsyncMembers:
             workspace="workspace",
             wait_role_propagation=True,
         )
-        assert_matches_type(EntityDeleteResponse, member, path=["response"])
+        assert_matches_type(DeleteResponse, member, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
@@ -468,7 +468,7 @@ class TestAsyncMembers:
         assert response.is_closed is True
         assert response.http_request.headers.get("X-Stainless-Lang") == "python"
         member = await response.parse()
-        assert_matches_type(EntityDeleteResponse, member, path=["response"])
+        assert_matches_type(DeleteResponse, member, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
@@ -481,7 +481,7 @@ class TestAsyncMembers:
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
 
             member = await response.parse()
-            assert_matches_type(EntityDeleteResponse, member, path=["response"])
+            assert_matches_type(DeleteResponse, member, path=["response"])
 
         assert cast(Any, response.is_closed) is True
 

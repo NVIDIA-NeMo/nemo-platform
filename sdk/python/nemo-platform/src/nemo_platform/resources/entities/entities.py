@@ -41,7 +41,7 @@ from ...types.entities import (
     entity_update_entity_by_name_params,
 )
 from ...types.entities.entity import Entity
-from ...types.shared.entity_delete_response import EntityDeleteResponse
+from ...types.shared.delete_response import DeleteResponse
 
 __all__ = ["EntitiesResource", "AsyncEntitiesResource"]
 
@@ -245,7 +245,7 @@ class EntitiesResource(SyncAPIResource):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
-    ) -> EntityDeleteResponse:
+    ) -> DeleteResponse:
         """
         Delete an entity by its name.
 
@@ -290,7 +290,7 @@ class EntitiesResource(SyncAPIResource):
                     {"parent": parent}, entity_delete_entity_by_name_params.EntityDeleteEntityByNameParams
                 ),
             ),
-            cast_to=EntityDeleteResponse,
+            cast_to=DeleteResponse,
         )
 
     def get_entity_by_id(
@@ -680,7 +680,7 @@ class AsyncEntitiesResource(AsyncAPIResource):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
-    ) -> EntityDeleteResponse:
+    ) -> DeleteResponse:
         """
         Delete an entity by its name.
 
@@ -725,7 +725,7 @@ class AsyncEntitiesResource(AsyncAPIResource):
                     {"parent": parent}, entity_delete_entity_by_name_params.EntityDeleteEntityByNameParams
                 ),
             ),
-            cast_to=EntityDeleteResponse,
+            cast_to=DeleteResponse,
         )
 
     async def get_entity_by_id(

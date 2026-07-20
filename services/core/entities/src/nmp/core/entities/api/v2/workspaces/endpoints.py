@@ -24,11 +24,10 @@ import textwrap
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, status
-from nmp.common.api.common import GenericSortField, Page, PaginationData
+from nmp.common.api.common import DeleteResponse, GenericSortField, Page, PaginationData
 from nmp.common.api.filter import ComparisonOperation, FilterOperator
 from nmp.common.auth.models import Principal
 from nmp.core.entities.api.dependencies import AuthClientDep, EntityRepository, WorkspaceRepository
-from nmp.core.entities.api.v2.schemas import EntityDeleteResponse
 from nmp.core.entities.api.v2.utils import (
     ROLE_BINDING_ENTITY_TYPE,
     add_workspace_filtering,
@@ -395,7 +394,7 @@ async def update_workspace(
 
 @router.delete(
     "/v2/workspaces/{name}",
-    response_model=EntityDeleteResponse,
+    response_model=DeleteResponse,
     tags=[API_TAG],
     summary="Delete workspace",
     description=textwrap.dedent("""
@@ -417,7 +416,7 @@ async def delete_workspace(
     name: str,
     repository: WorkspaceRepository,
     entity_repository: EntityRepository,
-) -> EntityDeleteResponse:
+) -> DeleteResponse:
     """Mark workspace for deletion."""
     # Check if workspace exists first
     workspace = await repository.get_workspace_by_name(name=name)
@@ -456,10 +455,9 @@ async def delete_workspace(
         extra={"workspace": name, "deleted_count": len(deleted_bindings)},
     )
 
-    return EntityDeleteResponse(
+    return DeleteResponse(
         id=name,
         message="Workspace marked for deletion",
-        deleted_count=1,
     )
 
 
@@ -818,7 +816,7 @@ async def update_workspace_member(
 
 @router.delete(
     "/v2/workspaces/{workspace}/members/{principal_id}",
-    response_model=EntityDeleteResponse,
+    response_model=DeleteResponse,
     tags=[API_TAG],
     summary="Remove workspace member",
     description=textwrap.dedent("""
@@ -844,7 +842,7 @@ async def remove_workspace_member(
         default=True,
         description="If true, wait for roles to propagate before returning (default: true). Set to false for bulk operations.",
     ),
-) -> EntityDeleteResponse:
+) -> DeleteResponse:
     """Remove a member from the workspace."""
     # Check if workspace exists
     ws = await workspace_repository.get_workspace_by_name(name=workspace)
@@ -920,8 +918,7 @@ async def remove_workspace_member(
                     extra={"workspace": workspace, "principal": principal_id, "role": role},
                 )
 
-    return EntityDeleteResponse(
+    return DeleteResponse(
         id=principal_id,
         message=f"Member removed from workspace '{workspace}'",
-        deleted_count=len(active_bindings),
     )

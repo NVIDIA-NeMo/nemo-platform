@@ -566,7 +566,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EntityDeleteResponse'
+                $ref: '#/components/schemas/DeleteResponse'
         '422':
           description: Validation Error
           content:
@@ -899,7 +899,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EntityDeleteResponse'
+                $ref: '#/components/schemas/DeleteResponse'
         '422':
           description: Validation Error
           content:
@@ -1100,7 +1100,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EntityDeleteResponse'
+                $ref: '#/components/schemas/DeleteResponse'
         '422':
           description: Validation Error
           content:
@@ -1359,7 +1359,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EntityDeleteResponse'
+                $ref: '#/components/schemas/DeleteResponse'
         '422':
           description: Validation Error
           content:
@@ -9932,15 +9932,12 @@ components:
           title: Message
           default: Resource deleted successfully.
         id:
+          type: string
           title: Id
           description: The ID of the deleted resource.
-          type: string
-        deleted_at:
-          title: Deleted At
-          description: The timestamp when the resource was deleted.
-          type: string
-          format: date-time
       type: object
+      required:
+      - id
       title: DeleteResponse
     DialogRails:
       properties:
@@ -10383,26 +10380,6 @@ components:
         Name is optional - if not provided, it will be auto-generated.
 
         Workspace and entity_type come from the URL path parameters.'
-    EntityDeleteResponse:
-      properties:
-        message:
-          type: string
-          title: Message
-          default: Resource deleted successfully
-        id:
-          type: string
-          title: Id
-          description: ID of the deleted resource
-        deleted_count:
-          type: integer
-          title: Deleted Count
-          description: Number of items deleted
-          default: 1
-      type: object
-      required:
-      - id
-      title: EntityDeleteResponse
-      description: Response for successful delete operations.
     EntityUpdate:
       properties:
         new_name:
