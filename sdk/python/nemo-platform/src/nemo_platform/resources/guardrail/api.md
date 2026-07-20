@@ -107,7 +107,6 @@ Types:
 from nemo_platform.types.guardrail import (
     GuardrailConfigFilter,
     GuardrailConfigParam,
-    GuardrailConfigSortField,
     GuardrailConfigUpdate,
     GuardrailConfigsPage,
 )

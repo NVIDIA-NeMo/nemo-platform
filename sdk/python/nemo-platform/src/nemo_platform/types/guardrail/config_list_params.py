@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing_extensions import TypedDict
 
-from .guardrail_config_sort_field import GuardrailConfigSortField
+from ..shared.generic_sort_field import GenericSortField
 from .guardrail_config_filter_param import GuardrailConfigFilterParam
 
 __all__ = ["ConfigListParams"]
@@ -40,7 +40,7 @@ class ConfigListParams(TypedDict, total=False):
     page_size: int
     """Page size."""
 
-    sort: GuardrailConfigSortField
+    sort: GenericSortField
     """The field to sort by.
 
     To sort in decreasing order, use `-` in front of the field name.

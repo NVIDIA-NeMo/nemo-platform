@@ -4,7 +4,7 @@
 """Common structures used across multiple API endpoints/schemas."""
 
 from datetime import datetime, timezone
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Generic, List, Optional, TypeVar
 
 from nemo_platform_plugin.schema import Page as Page
@@ -58,9 +58,19 @@ class PaginatedResult(BaseModel, Generic[T]):
     pagination: PaginationData
 
 
-class GenericSortField(str, Enum):
+class GenericSortField(StrEnum):
+    """Sort options for entity-store-backed list endpoints.
+
+    Members map to entity base columns (see ``BASE_FIELDS``), so any
+    entity-backed resource (filesets, guardrail configs, …) can share this
+    without advertising a sort it cannot honor. Prefix a field with ``-`` for
+    descending order.
+    """
+
     CREATED_AT_ASC = "created_at"
     CREATED_AT_DESC = "-created_at"
+    UPDATED_AT_ASC = "updated_at"
+    UPDATED_AT_DESC = "-updated_at"
     NAME_ASC = "name"
     NAME_DESC = "-name"
 

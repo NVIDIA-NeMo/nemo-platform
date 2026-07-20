@@ -33,15 +33,10 @@ from ..._response import (
 )
 from ...pagination import SyncDefaultPagination, AsyncDefaultPagination
 from ..._base_client import AsyncPaginator, make_request_options
-from ...types.guardrail import (
-    GuardrailConfigSortField,
-    config_list_params,
-    config_create_params,
-    config_update_params,
-)
+from ...types.guardrail import config_list_params, config_create_params, config_update_params
 from ...types.shared.delete_response import DeleteResponse
+from ...types.shared.generic_sort_field import GenericSortField
 from ...types.guardrail.guardrail_config import GuardrailConfig
-from ...types.guardrail.guardrail_config_sort_field import GuardrailConfigSortField
 from ...types.guardrail.guardrail_config_filter_param import GuardrailConfigFilterParam
 from ..._exceptions import ConflictError
 
@@ -228,7 +223,7 @@ class ConfigsResource(SyncAPIResource):
         filter: GuardrailConfigFilterParam | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
-        sort: GuardrailConfigSortField | Omit = omit,
+        sort: GenericSortField | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -504,7 +499,7 @@ class AsyncConfigsResource(AsyncAPIResource):
         filter: GuardrailConfigFilterParam | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
-        sort: GuardrailConfigSortField | Omit = omit,
+        sort: GenericSortField | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,

@@ -2002,7 +2002,7 @@ paths:
         required: false
         schema:
           allOf:
-          - $ref: '#/components/schemas/GuardrailConfigSortField'
+          - $ref: '#/components/schemas/GenericSortField'
           description: The field to sort by. To sort in decreasing order, use `-`
             in front of the field name.
           default: created_at
@@ -11999,9 +11999,15 @@ components:
       enum:
       - created_at
       - -created_at
+      - updated_at
+      - -updated_at
       - name
       - -name
       title: GenericSortField
+      description: "Sort options for entity-store-backed list endpoints.\n\nMembers\
+        \ map to entity base columns (see ``BASE_FIELDS``), so any\nentity-backed\
+        \ resource (filesets, guardrail configs, \u2026) can share this\nwithout advertising\
+        \ a sort it cannot honor. Prefix a field with ``-`` for\ndescending order."
     GuardrailCheckRequest:
       properties:
         model:
@@ -12320,12 +12326,6 @@ components:
       - name
       title: GuardrailConfigInput
       description: Input schema for creating a guardrail config.
-    GuardrailConfigSortField:
-      type: string
-      enum:
-      - created_at
-      - -created_at
-      title: GuardrailConfigSortField
     GuardrailConfigUpdate:
       properties:
         description:

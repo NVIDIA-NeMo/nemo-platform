@@ -3,7 +3,7 @@
 
 """Common structures used across multiple API endpoints/schemas."""
 
-from enum import Enum, StrEnum
+from enum import Enum
 
 from nmp.common.entities.values import Value
 from pydantic import BaseModel, Field
@@ -18,11 +18,6 @@ class URN(str):
     urn:nemo:models/meta/llama3-8b-instruct
     urn:nemo:models/meta/llama3-8b-instruct@v2
     """
-
-
-class GuardrailConfigSortField(StrEnum):
-    CREATED_AT_ASC = "created_at"
-    CREATED_AT_DESC = "-created_at"
 
 
 class ErrorResponse(Value):

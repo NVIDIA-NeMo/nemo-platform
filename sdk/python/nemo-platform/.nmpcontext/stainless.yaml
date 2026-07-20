@@ -368,7 +368,6 @@ resources:
         models:
           guardrail_config_filter: GuardrailConfigFilter
           guardrail_config_param: GuardrailConfigInput
-          guardrail_config_sort_field: GuardrailConfigSortField
           guardrail_config_update: GuardrailConfigUpdate
           guardrail_configs_page: GuardrailConfigsPage
         methods:
