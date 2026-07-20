@@ -97,9 +97,9 @@ class _Runner:
             if "identity" in self.failures:
                 return ComposeCommandResult(argv, 1, "", f"token={environment.get('TEST_TOKEN', 'identity failed')}")
             return ComposeCommandResult(argv, 0, "1001:1002", "")
-        if args[:6] == ("exec", "--no-tty", "--user", "0", "agent", "mkdir") and "mkdir" in self.failures:
+        if args[:6] == ("exec", "--no-TTY", "--user", "0", "agent", "mkdir") and "mkdir" in self.failures:
             return ComposeCommandResult(argv, 1, "", f"token={environment.get('TEST_TOKEN', 'mkdir failed')}")
-        if args[:6] == ("exec", "--no-tty", "--user", "0", "agent", "chown") and "chown" in self.failures:
+        if args[:6] == ("exec", "--no-TTY", "--user", "0", "agent", "chown") and "chown" in self.failures:
             return ComposeCommandResult(argv, 1, "", f"token={environment.get('TEST_TOKEN', 'chown failed')}")
         return ComposeCommandResult(argv, 0, "", "")
 
@@ -339,6 +339,58 @@ async def test_port_conflict_uses_caller_hint(
     with pytest.raises(SandboxCreateError, match="AGENT_PORT") as caught:
         await _create(monkeypatch, provider, runner)
     assert "127.0.0.1:18080 -> 8080/tcp" in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    ("protocol", "socket_type", "expected_options"),
+    [
+        ("tcp", compose.socket.SOCK_STREAM, [(compose.socket.SOL_SOCKET, compose.socket.SO_REUSEADDR, 1)]),
+        ("udp", compose.socket.SOCK_DGRAM, []),
+    ],
+)
+def test_published_port_probe_reuses_only_tcp_addresses(
+    monkeypatch: pytest.MonkeyPatch,
+    protocol: str,
+    socket_type: int,
+    expected_options: list[tuple[int, int, int]],
+) -> None:
+    options: list[tuple[int, int, int]] = []
+    bindings: list[tuple[str, int]] = []
+
+    class ProbeSocket:
+        def __enter__(self) -> ProbeSocket:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def setsockopt(self, level: int, option: int, value: int) -> None:
+            options.append((level, option, value))
+
+        def bind(self, address: tuple[str, int]) -> None:
+            bindings.append(address)
+
+    def socket_factory(family: int, kind: int) -> ProbeSocket:
+        assert family == compose.socket.AF_INET
+        assert kind == socket_type
+        return ProbeSocket()
+
+    monkeypatch.setattr(compose.socket, "socket", socket_factory)
+    published_port = compose._PublishedPort("agent", "127.0.0.1", 18080, 8080, protocol)
+
+    assert compose._published_port_available(published_port)
+    assert options == expected_options
+    assert bindings == [("127.0.0.1", 18080)]
+
+
+def test_published_port_probe_rejects_active_tcp_listener() -> None:
+    with compose.socket.socket(compose.socket.AF_INET, compose.socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        host, port = listener.getsockname()
+        published_port = compose._PublishedPort("agent", host, port, 8080, "tcp")
+
+        assert not compose._published_port_available(published_port)
 
 
 async def test_preflight_parses_rendered_config_once(
@@ -620,10 +672,10 @@ async def test_exec_transfer_and_status_target_configured_service(
         _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
     ]
     assert transfer_suffixes[:4] == [
-        ("exec", "--no-tty", "--user", "0", "agent", "mkdir", "-p", "--", "/missing/parent"),
+        ("exec", "--no-TTY", "--user", "0", "agent", "mkdir", "-p", "--", "/missing/parent"),
         ("cp", str(source), "agent:/missing/parent/seed.txt"),
-        ("exec", "--no-tty", "agent", "sh", "-lc", 'printf "%s:%s" "$(id -u)" "$(id -g)"'),
-        ("exec", "--no-tty", "--user", "0", "agent", "chown", "-R", "1001:1002", "--", "/missing/parent/seed.txt"),
+        ("exec", "--no-TTY", "agent", "sh", "-lc", 'printf "%s:%s" "$(id -u)" "$(id -g)"'),
+        ("exec", "--no-TTY", "--user", "0", "agent", "chown", "-R", "1001:1002", "--", "/missing/parent/seed.txt"),
     ]
     await provider.close(handle)
 
@@ -651,10 +703,10 @@ async def test_directory_transfers_copy_contents_into_prepared_targets(
         _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
     ]
     assert suffixes[:4] == [
-        ("exec", "--no-tty", "--user", "0", "agent", "mkdir", "-p", "--", "/work/existing"),
+        ("exec", "--no-TTY", "--user", "0", "agent", "mkdir", "-p", "--", "/work/existing"),
         ("cp", f"{source}{os.sep}.", "agent:/work/existing"),
-        ("exec", "--no-tty", "agent", "sh", "-lc", 'printf "%s:%s" "$(id -u)" "$(id -g)"'),
-        ("exec", "--no-tty", "--user", "0", "agent", "chown", "-R", "1001:1002", "--", "/work/existing"),
+        ("exec", "--no-TTY", "agent", "sh", "-lc", 'printf "%s:%s" "$(id -u)" "$(id -g)"'),
+        ("exec", "--no-TTY", "--user", "0", "agent", "chown", "-R", "1001:1002", "--", "/work/existing"),
     ]
     assert ("cp", "agent:/out/.", str(existing_download)) in suffixes
     assert ("cp", "agent:/out/.", str(absent_download)) in suffixes
@@ -685,12 +737,12 @@ async def test_relative_upload_targets_use_the_same_root_for_every_command(
         _compose_suffix(argv) for argv, _, _ in runner.calls[transfer_start:] if argv[:2] == ("docker", "compose")
     ]
     assert suffixes[:4] == [
-        ("exec", "--no-tty", "--user", "0", "agent", "mkdir", "-p", "--", "/missing/parent"),
+        ("exec", "--no-TTY", "--user", "0", "agent", "mkdir", "-p", "--", "/missing/parent"),
         ("cp", str(source_file), "agent:/missing/parent/seed.txt"),
-        ("exec", "--no-tty", "agent", "sh", "-lc", 'printf "%s:%s" "$(id -u)" "$(id -g)"'),
+        ("exec", "--no-TTY", "agent", "sh", "-lc", 'printf "%s:%s" "$(id -u)" "$(id -g)"'),
         (
             "exec",
-            "--no-tty",
+            "--no-TTY",
             "--user",
             "0",
             "agent",
@@ -704,7 +756,7 @@ async def test_relative_upload_targets_use_the_same_root_for_every_command(
     assert ("cp", str(source_file), "agent:/root-seed.txt") in suffixes
     assert (
         "exec",
-        "--no-tty",
+        "--no-TTY",
         "--user",
         "0",
         "agent",
@@ -714,7 +766,7 @@ async def test_relative_upload_targets_use_the_same_root_for_every_command(
         "--",
         "/root-seed.txt",
     ) in suffixes
-    assert ("exec", "--no-tty", "--user", "0", "agent", "mkdir", "-p", "--", "/workspace") in suffixes
+    assert ("exec", "--no-TTY", "--user", "0", "agent", "mkdir", "-p", "--", "/workspace") in suffixes
     assert ("cp", f"{source_dir}{os.sep}.", "agent:/workspace") in suffixes
     await provider.close(handle)
 

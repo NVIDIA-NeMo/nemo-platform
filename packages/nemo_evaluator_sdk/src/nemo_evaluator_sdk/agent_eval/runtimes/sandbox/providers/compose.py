@@ -461,7 +461,7 @@ class ComposeTeardownContext:
             ``await context.exec_service("redis", ("redis-cli", "PING"))`` executes without shell parsing.
         """
         return await self._provider._cli.run_compose(
-            ["exec", "--no-tty", service, *command],
+            ["exec", "--no-TTY", service, *command],
             environment=self._environment,
             timeout=timeout_seconds or self._provider.command_timeout_seconds,
         )
@@ -710,7 +710,7 @@ class DockerComposeSandboxProvider:
             Sandbox result containing captured output, return code, and timeout classification.
         """
         state = self._state(handle)
-        args = ["exec", "--no-tty"]
+        args = ["exec", "--no-TTY"]
         if cwd is not None:
             args.extend(["--workdir", cwd])
         for key, value in (env or {}).items():
@@ -1168,7 +1168,7 @@ class DockerComposeSandboxProvider:
             Captured result for the privileged Compose exec command.
         """
         return await self._cli.run_compose(
-            ["exec", "--no-tty", "--user", "0", session.target_service, *command],
+            ["exec", "--no-TTY", "--user", "0", session.target_service, *command],
             environment=session.environment,
             timeout=self.command_timeout_seconds,
         )
@@ -1326,7 +1326,7 @@ class DockerComposeSandboxProvider:
         result = await self._cli.run_compose(
             [
                 "exec",
-                "--no-tty",
+                "--no-TTY",
                 session.target_service,
                 "sh",
                 "-lc",
@@ -1764,6 +1764,8 @@ def _published_port_available(published_port: _PublishedPort) -> bool:
     family = socket.AF_INET6 if ":" in published_port.host_ip else socket.AF_INET
     socket_type = socket.SOCK_DGRAM if published_port.protocol == "udp" else socket.SOCK_STREAM
     with socket.socket(family, socket_type) as probe:
+        if socket_type == socket.SOCK_STREAM:
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             probe.bind((published_port.host_ip, published_port.published))
         except OSError:
