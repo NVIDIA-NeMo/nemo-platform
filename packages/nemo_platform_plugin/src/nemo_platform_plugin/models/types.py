@@ -1,24 +1,22 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Shared request/response types for the Models service.
+"""Typed request/response models for the Models service client.
 
-These types define the HTTP contract for the Models service CRUD surface:
-model entities, adapters, model providers, prompts, model deployments, and
-model deployment configs. Both the server (FastAPI routes) and the client
-(NemoClient endpoints) import from here -- one source of truth, no
-Stainless-generated duplicates.
+These models mirror the HTTP contract for model entities, adapters, model
+providers, prompts, model deployments, and model deployment configs. The
+Models service remains the authoritative wire-schema owner; this plugin module
+keeps client DTOs independent of the Stainless-generated SDK.
 
-The plugin package must stay free of an ``nmp_common`` dependency (it would
-create a reverse service dependency). So server-only pieces are handled per the
-data-vs-behavior split documented in ``client/MIGRATION.md``:
+The plugin package must stay free of an ``nmp_common`` dependency because that
+would create a reverse service dependency. Server-only pieces are handled per
+the data-vs-behavior split documented in ``client/MIGRATION.md``:
 
 - **Constants** (name regex, max lengths) that live in
   ``nmp.common.entities.constants`` are inlined here with a comment pointing at
   the origin (matching the ``secrets.types`` boundary).
 - **``AuthContext``** is a pure-data mirror of ``nmp.common.auth.AuthContext``
-  (same wire shape, no ``from_principal``/``to_principal`` behavior). The
-  server subclasses the response models to re-type this field.
+  with the same wire shape and no ``from_principal``/``to_principal`` behavior.
 - **``InferenceParams``** is a faithful replica of
   ``nmp.common.inference.InferenceParams`` (pure pydantic, no server imports).
 - **``BackendFormat``** is reused from ``nemo_platform_plugin.inference_middleware``.

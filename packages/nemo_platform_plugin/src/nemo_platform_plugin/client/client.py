@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import email.utils
 import inspect
 import json
 import os
@@ -117,6 +118,23 @@ def _get_paginated_types(
 # ---------------------------------------------------------------------------
 
 
+def _retry_after(response: httpx.Response) -> float | None:
+    """Parse a reasonable server-requested retry delay in seconds."""
+    retry_after_ms = response.headers.get("retry-after-ms")
+    try:
+        delay = float(retry_after_ms) / 1000
+    except (TypeError, ValueError):
+        retry_after = response.headers.get("retry-after")
+        try:
+            delay = float(retry_after)
+        except (TypeError, ValueError):
+            retry_date = email.utils.parsedate_tz(retry_after)
+            if retry_date is None:
+                return None
+            delay = float(email.utils.mktime_tz(retry_date) - time.time())
+    return delay if 0 < delay <= 60 else None
+
+
 def _should_retry(
     response: httpx.Response | None,
     exc: httpx.TransportError | None,
@@ -129,14 +147,33 @@ def _should_retry(
     Returns the sleep duration if a retry should happen, or ``None`` if
     the response should be returned / the exception re-raised.
     """
-    is_last = attempt >= policy.max_retries
-    if is_last:
+    if attempt >= policy.max_retries:
         return None
+
+    backoff = policy.backoff_base * (2**attempt)
     if exc is not None:
-        return policy.backoff_base * (2**attempt)
-    if response is not None and response.status_code in policy.retryable_status_codes:
-        return policy.backoff_base * (2**attempt)
-    return None
+        return backoff
+    if response is None:
+        return None
+
+    if policy.respect_retry_decision_headers:
+        if response.status_code < 400:
+            return None
+        should_retry = response.headers.get("x-should-retry")
+        if should_retry == "true":
+            return (_retry_after(response) or backoff) if policy.respect_retry_after_headers else backoff
+        if should_retry == "false":
+            return None
+
+    retryable_status = response.status_code in policy.retryable_status_codes
+    if policy.retry_all_server_errors and response.status_code >= 500:
+        retryable_status = True
+    if not retryable_status:
+        return None
+
+    if policy.respect_retry_after_headers:
+        return _retry_after(response) or backoff
+    return backoff
 
 
 def _should_resolve_conflict(response: httpx.Response, request: PreparedRequest) -> bool:

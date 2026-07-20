@@ -61,7 +61,13 @@ def client_from_platform(
         _skip = {"accept", "accept-encoding", "connection", "user-agent", "host"}
         headers = {k: v for k, v in platform._client.headers.items() if k.lower() not in _skip}  # type: ignore[union-attr]
 
-    retry = RetryPolicy(max_retries=platform.max_retries)
+    retry = RetryPolicy(
+        max_retries=platform.max_retries,
+        retryable_status_codes=(408, 409, 429),
+        retry_all_server_errors=True,
+        respect_retry_decision_headers=True,
+        respect_retry_after_headers=True,
+    )
     url_resolver = _url_resolver_from_platform(platform)
     if isinstance(platform, AsyncNeMoPlatform):
         if not issubclass(client_cls, AsyncNemoClient):
