@@ -16,10 +16,10 @@ dependencies = [
     "boto3>=1.40.46,<1.40.62",
     "botocore>=1.40.46,<1.40.62",
     "httpx>=0.27",
+    # TODO(AIRCORE-897): Move this to a stable Fabric version before release once available.
+    # TODO(AIRCORE-897): Add the `relay` extra once nemo-evaluator-sdk's nemo-relay pin allows >=0.5.
+    "nemo-fabric>=0.1.0a20260717,<0.2.0",
     "pyyaml>=6.0",
-    # TODO(AIRCORE-896): Add Fabric SDK/runtime and Relay as default
-    # dependencies once the PyPI wheels are available to the repo resolver.
-    # Harness adapter packages should stay target-environment dependencies.
     # improvement/ subpackage — agent-improvement workflow (POC).
     "anthropic>=0.88.0",
     "rich>=13.7.1",
