@@ -133,6 +133,8 @@ navigation:
     contents:
     - page: Agents
       path: ../../studio/agents.mdx
+    - page: Data Designer
+      path: ../../studio/data-designer-build.mdx
     - page: Monitor
       path: ../../studio/monitor.mdx
     - page: Suggestions
