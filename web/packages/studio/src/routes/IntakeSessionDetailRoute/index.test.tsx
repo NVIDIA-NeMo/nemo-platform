@@ -335,6 +335,10 @@ describe('IntakeSessionDetailRoute', () => {
 
   it('preserves a directly linked span outside the loaded summary page', async () => {
     const user = userEvent.setup();
+    let resolveOutsidePageSpan!: () => void;
+    const outsidePageSpanGate = new Promise<void>((resolve) => {
+      resolveOutsidePageSpan = resolve;
+    });
     const outsidePageSpan = {
       ...mockSpanById('span-llm-001')!,
       span_id: 'span-outside-page-001',
@@ -356,7 +360,7 @@ describe('IntakeSessionDetailRoute', () => {
       }),
       http.get('*/apis/intake/v2/workspaces/:workspace/spans/:spanId', async ({ params }) => {
         if (params['spanId'] === outsidePageSpan.span_id) {
-          await delay(100);
+          await outsidePageSpanGate;
           return HttpResponse.json(outsidePageSpan);
         }
         const span = mockSpanById(String(params['spanId']));
@@ -371,6 +375,7 @@ describe('IntakeSessionDetailRoute', () => {
 
     await user.click(await screen.findByText('List'));
     expect(await screen.findByLabelText('Loading linked span')).toBeInTheDocument();
+    resolveOutsidePageSpan();
     expect((await screen.findAllByText('Outside page span')).length).toBeGreaterThan(0);
   });
 
