@@ -4,14 +4,12 @@
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema/AgentDeployment';
 import { Button, Flex, Stack, StatusIndicator, Text } from '@nvidia/foundations-react-core';
-import { DeploymentLogsView } from '@studio/components/sidePanels/AgentPanels/AgentPanel/DeploymentLogsView';
 import { deploymentStatusColor } from '@studio/components/sidePanels/AgentPanels/AgentPanel/helpers';
 import { NoHealthyDeploymentsBanner } from '@studio/components/sidePanels/AgentPanels/AgentPanel/NoHealthyDeploymentsBanner';
 import { DetailPanel } from '@studio/routes/agents/AgentDetailRoute/overview/DetailPanel';
 import type { FC } from 'react';
 
 interface DeploymentsTabProps {
-  workspace: string;
   agentName?: string;
   deployments: AgentDeployment[];
   isDeploymentsLoading: boolean;
@@ -19,11 +17,11 @@ interface DeploymentsTabProps {
   onDeploy: () => void;
   onChat: (deployment: AgentDeployment) => void;
   onDelete: (deployment: AgentDeployment) => void;
+  onViewLogs: (deployment: AgentDeployment) => void;
 }
 
-/** Deployments list with per-deployment actions, plus live deployment logs. */
+/** Deployments list with per-deployment actions. */
 export const DeploymentsTab: FC<DeploymentsTabProps> = ({
-  workspace,
   agentName,
   deployments,
   isDeploymentsLoading,
@@ -31,6 +29,7 @@ export const DeploymentsTab: FC<DeploymentsTabProps> = ({
   onDeploy,
   onChat,
   onDelete,
+  onViewLogs,
 }) => (
   <Stack gap="5" className="w-full">
     <DetailPanel title="Deployments" flush>
@@ -76,6 +75,9 @@ export const DeploymentsTab: FC<DeploymentsTabProps> = ({
                 >
                   Chat
                 </Button>
+                <Button kind="tertiary" size="small" onClick={() => onViewLogs(deployment)}>
+                  Logs
+                </Button>
                 <Button
                   kind="tertiary"
                   size="small"
@@ -90,8 +92,5 @@ export const DeploymentsTab: FC<DeploymentsTabProps> = ({
         </Stack>
       )}
     </DetailPanel>
-    {deployments.length > 0 && (
-      <DeploymentLogsView workspace={workspace} deployments={deployments} />
-    )}
   </Stack>
 );

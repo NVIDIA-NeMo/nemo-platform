@@ -22,11 +22,15 @@ describe('AgentDetailRoute', () => {
     renderDetail();
 
     expect(await screen.findByTestId('nv-page-header-heading')).toHaveTextContent(agentName);
-    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Deployments' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
     expect(screen.getByRole('tab', { name: 'Evaluations' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Deployments' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Configuration' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Logs' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Chat' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Overview' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Configuration' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open traces' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Run evaluation' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Deploy' })).toBeInTheDocument();

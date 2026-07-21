@@ -19,9 +19,18 @@ interface DeploymentLogsViewProps {
   workspace: string;
   /** All known deployments for the active agent — any status. */
   deployments: AgentDeployment[];
+  /** Controlled selection — when provided, the picker reflects this deployment. */
+  selectedDeploymentName?: string;
+  /** Called when the user (or a caller) changes the selected deployment. */
+  onSelectDeployment?: (name: string) => void;
 }
 
-export const DeploymentLogsView: FC<DeploymentLogsViewProps> = ({ workspace, deployments }) => {
+export const DeploymentLogsView: FC<DeploymentLogsViewProps> = ({
+  workspace,
+  deployments,
+  selectedDeploymentName,
+  onSelectDeployment,
+}) => {
   const sortedDeployments = useMemo(
     () =>
       [...deployments].sort((a, b) => {
@@ -31,18 +40,25 @@ export const DeploymentLogsView: FC<DeploymentLogsViewProps> = ({ workspace, dep
       }),
     [deployments]
   );
-  const [selectedName, setSelectedName] = useState<string | undefined>(
-    () => sortedDeployments[0]?.name
+  const [internalName, setInternalName] = useState<string | undefined>(
+    () => selectedDeploymentName ?? sortedDeployments[0]?.name
   );
+  const isControlled = selectedDeploymentName !== undefined;
+  const selectedName = isControlled ? selectedDeploymentName : internalName;
+  const setSelectedName = (name: string) => {
+    if (!isControlled) setInternalName(name);
+    onSelectDeployment?.(name);
+  };
 
   useEffect(() => {
-    if (!selectedName) {
-      setSelectedName(sortedDeployments[0]?.name);
+    if (isControlled) return;
+    if (!internalName) {
+      setInternalName(sortedDeployments[0]?.name);
       return;
     }
-    const stillPresent = sortedDeployments.some((d) => d.name === selectedName);
-    if (!stillPresent) setSelectedName(sortedDeployments[0]?.name);
-  }, [sortedDeployments, selectedName]);
+    const stillPresent = sortedDeployments.some((d) => d.name === internalName);
+    if (!stillPresent) setInternalName(sortedDeployments[0]?.name);
+  }, [sortedDeployments, internalName, isControlled]);
 
   if (sortedDeployments.length === 0) {
     return (

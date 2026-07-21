@@ -13,43 +13,28 @@ import {
   TabsRoot,
   TabsTrigger,
   Text,
-  Tooltip,
 } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
+import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { ChatPlaygroundContent } from '@studio/components/sidePanels/AgentPanels/AgentPanel/ChatPlaygroundContent';
+import { DeploymentLogsView } from '@studio/components/sidePanels/AgentPanels/AgentPanel/DeploymentLogsView';
 import { useAgentPanel } from '@studio/components/sidePanels/AgentPanels/AgentPanel/useAgentPanel';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { CreateDeploymentModal } from '@studio/routes/agents/AgentDeploymentsListRoute/CreateDeploymentModal';
-import { ConfigurationTab } from '@studio/routes/agents/AgentDetailRoute/ConfigurationTab';
 import { DeploymentsTab } from '@studio/routes/agents/AgentDetailRoute/DeploymentsTab';
 import { EvaluationsTab } from '@studio/routes/agents/AgentDetailRoute/EvaluationsTab';
-import { TabPlaceholder } from '@studio/routes/agents/AgentDetailRoute/TabPlaceholder';
 import { SubmitEvaluationModal } from '@studio/routes/agents/AgentEvaluationsRoute/components/SubmitEvaluationModal';
 import { getAgentMonitorRoute, getAgentsListRoute } from '@studio/routes/utils';
-import {
-  Activity,
-  ClipboardCheck,
-  LayoutDashboard,
-  Rocket,
-  Sparkles,
-  Waypoints,
-} from 'lucide-react';
+import { Activity, ClipboardCheck, Dot, Rocket } from 'lucide-react';
 import { type FC, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 const TAB_SEARCH_PARAM = 'tab';
-const DETAIL_TABS = [
-  'overview',
-  'traces',
-  'evaluations',
-  'improvements',
-  'deployments',
-  'configuration',
-  'chat',
-] as const;
+const DETAIL_TABS = ['deployments', 'logs', 'chat', 'evaluations'] as const;
+const DEFAULT_TAB = 'deployments';
 
 type AgentDetailTab = (typeof DETAIL_TABS)[number];
 
@@ -62,6 +47,7 @@ export const AgentDetailRoute: FC = () => {
   const { [ROUTE_PARAMS.agentName]: agentName } = useParams<{ agentName: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedDeploymentName, setSelectedDeploymentName] = useState<string | undefined>();
+  const [logsDeploymentName, setLogsDeploymentName] = useState<string | undefined>();
   const [createDeploymentOpen, setCreateDeploymentOpen] = useState(false);
   const [submitEvalOpen, setSubmitEvalOpen] = useState(false);
   const [deleteDeploymentTarget, setDeleteDeploymentTarget] = useState<AgentDeployment | null>(
@@ -69,7 +55,7 @@ export const AgentDetailRoute: FC = () => {
   );
   const chatAreaRef = useRef<HTMLDivElement>(null);
   const tabFromUrl = searchParams.get(TAB_SEARCH_PARAM);
-  const selectedTab: AgentDetailTab = isAgentDetailTab(tabFromUrl) ? tabFromUrl : 'overview';
+  const selectedTab: AgentDetailTab = isAgentDetailTab(tabFromUrl) ? tabFromUrl : DEFAULT_TAB;
 
   const {
     agent,
@@ -98,6 +84,13 @@ export const AgentDetailRoute: FC = () => {
     setSelectedTab('chat');
   };
 
+  const viewLogs = (deployment: AgentDeployment) => {
+    setLogsDeploymentName(deployment.name);
+    setSelectedTab('logs');
+  };
+
+  const modelNames = getAgentModelNames(agent?.config);
+
   const status = healthyDeployments.length > 0 ? 'running' : agentDeployments[0]?.status;
   const statusPillLabel =
     healthyDeployments.length > 0
@@ -111,20 +104,32 @@ export const AgentDetailRoute: FC = () => {
             : agentDeployments.length === 0
               ? 'No deployments'
               : (status ?? 'Unknown');
-  const totalDeployments = agentDeployments.length;
-  const statusDetail =
-    totalDeployments === 0
-      ? undefined
-      : `${healthyDeployments.length} healthy · ${totalDeployments} total deployment${totalDeployments === 1 ? '' : 's'}`;
 
   return (
     <AccessibleTitle title={`${agentName ?? 'Agent'} details for ${workspace}`}>
       <Stack className="h-full min-h-0" gap="density-2xl" padding="density-2xl">
         <PageHeader
           className="shrink-0 p-0"
-          slotHeading={agent?.name ?? agentName ?? 'Agent details'}
-          slotDescription={
-            agent?.description ?? 'View and manage this agent, its deployments, and evaluations.'
+          slotHeading={
+            <Stack gap="1">
+              <Flex align="baseline" gap="3">
+                <Text kind="title/md">{agent?.name ?? agentName ?? 'Agent details'}</Text>
+                <StatusBadge status={status} label={statusPillLabel} />
+              </Flex>
+              <Flex align="center" gap="1">
+                <Text kind="body/regular/sm" className="text-secondary">
+                  {modelNames.join(', ')}
+                </Text>
+                {agent?.description && (
+                  <>
+                    <Dot className="size-2" aria-hidden />
+                    <Text kind="body/regular/sm" className="text-secondary">
+                      {agent.description}
+                    </Text>
+                  </>
+                )}
+              </Flex>
+            </Stack>
           }
           slotActions={
             <Flex gap="2" wrap="wrap" justify="end">
@@ -150,22 +155,7 @@ export const AgentDetailRoute: FC = () => {
               </Button>
             </Flex>
           }
-        >
-          <Flex align="center" gap="2">
-            {statusDetail ? (
-              <Tooltip
-                side="bottom"
-                slotContent={<Text kind="body/regular/sm">{statusDetail}</Text>}
-              >
-                <span className="cursor-help" role="status">
-                  <StatusBadge status={status} label={statusPillLabel} />
-                </span>
-              </Tooltip>
-            ) : (
-              <StatusBadge status={status} label={statusPillLabel} />
-            )}
-          </Flex>
-        </PageHeader>
+        ></PageHeader>
 
         <TabsRoot
           className="flex min-h-0 flex-1 flex-col"
@@ -175,30 +165,11 @@ export const AgentDetailRoute: FC = () => {
           }}
         >
           <TabsList className="shrink-0">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="traces">Traces</TabsTrigger>
-            <TabsTrigger value="evaluations">Evaluations</TabsTrigger>
-            <TabsTrigger value="improvements">Improvements</TabsTrigger>
             <TabsTrigger value="deployments">Deployments</TabsTrigger>
-            <TabsTrigger value="configuration">Configuration</TabsTrigger>
+            <TabsTrigger value="logs">Logs</TabsTrigger>
             <TabsTrigger value="chat">Chat</TabsTrigger>
+            <TabsTrigger value="evaluations">Evaluations</TabsTrigger>
           </TabsList>
-
-          <TabsContent className="min-h-0 flex-1 overflow-auto p-0 pt-6" value="overview">
-            <TabPlaceholder
-              icon={LayoutDashboard}
-              title="Overview is coming soon"
-              description="A summary of this agent's health, recent activity, and open findings will appear here."
-            />
-          </TabsContent>
-
-          <TabsContent className="min-h-0 flex-1 overflow-auto p-0 pt-6" value="traces">
-            <TabPlaceholder
-              icon={Waypoints}
-              title="Traces are coming soon"
-              description="Inspect clustered request traces and drill into failures for this agent. Use Open traces to view them in the monitor for now."
-            />
-          </TabsContent>
 
           <TabsContent className="min-h-0 flex-1 overflow-auto p-0 pt-6" value="evaluations">
             <EvaluationsTab
@@ -208,17 +179,8 @@ export const AgentDetailRoute: FC = () => {
             />
           </TabsContent>
 
-          <TabsContent className="min-h-0 flex-1 overflow-auto p-0 pt-6" value="improvements">
-            <TabPlaceholder
-              icon={Sparkles}
-              title="Improvements are coming soon"
-              description="Validated candidates from optimization runs will show up here for review, comparison, and promotion."
-            />
-          </TabsContent>
-
           <TabsContent className="min-h-0 flex-1 overflow-auto p-0 pt-6" value="deployments">
             <DeploymentsTab
-              workspace={workspace}
               agentName={agentName}
               deployments={agentDeployments}
               isDeploymentsLoading={isDeploymentsLoading}
@@ -226,11 +188,17 @@ export const AgentDetailRoute: FC = () => {
               onDeploy={() => setCreateDeploymentOpen(true)}
               onChat={switchToChat}
               onDelete={setDeleteDeploymentTarget}
+              onViewLogs={viewLogs}
             />
           </TabsContent>
 
-          <TabsContent className="min-h-0 flex-1 overflow-auto p-0 pt-6" value="configuration">
-            <ConfigurationTab workspace={workspace} agentName={agentName} agent={agent} />
+          <TabsContent className="min-h-0 flex-1 overflow-auto p-0 pt-6" value="logs">
+            <DeploymentLogsView
+              workspace={workspace}
+              deployments={agentDeployments}
+              selectedDeploymentName={logsDeploymentName}
+              onSelectDeployment={setLogsDeploymentName}
+            />
           </TabsContent>
 
           <TabsContent className="min-h-0 flex-1 overflow-hidden p-0 pt-6" value="chat">
