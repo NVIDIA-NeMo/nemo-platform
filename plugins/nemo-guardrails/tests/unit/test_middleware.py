@@ -166,15 +166,13 @@ def _make_generation_response(
     *,
     is_blocked: bool = False,
     content: str = "I'm sorry, I can't help with that.",
-    output_data: dict[str, Any] | None = None,
 ) -> GenerationResponse:
     return GenerationResponse(
         response=[{"role": "assistant", "content": content}],
         log=GenerationLog(
             activated_rails=[ActivatedRail(type="input", name="self check input", stop=is_blocked)],
             stats=GenerationStats(input_rails_duration=0.1, total_duration=0.1),
-        ),
-        output_data=output_data,
+        )
     )
 
 
