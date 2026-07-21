@@ -118,6 +118,17 @@ The raw evidence retains `event:` lines, but only payload fields such as `data:`
 frames. An application-owned stream translator can turn those frames into an ATIF trajectory without
 changing the shared HTTP transport.
 
+The following example demonstrates how to evaluate a Hermes agent that streams SSE responses with
+`GenericAgent`.
+
+To set up Hermes locally:
+
+- Follow the [Hermes quickstart](https://hermes-agent.nousresearch.com/docs/getting-started/quickstart).
+- After the agent is running and tested with `hermes --tui`, [set up the local gateway](https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server#1-enable-the-api-server) to interact with the agent over its API.
+  1. Set `API_SERVER_ENABLED=true` and `API_SERVER_KEY=<key>` in `~/.hermes/.env`.
+  1. Start the API server with `hermes gateway`.
+  1. Export the same key as `HERMES_TOKEN` for the evaluator client.
+
 The [complete Hermes example](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/packages/nemo_evaluator_sdk/examples/hermes/example.py)
 defines `HermesStreamTranslator`, which implements the [AgentStreamTranslator](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/packages/nemo_evaluator_sdk/src/nemo_evaluator_sdk/agent_stream_translation.py)
 protocol, and scores whether the deployed agent returns the requested phrase `streaming works`:

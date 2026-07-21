@@ -31,8 +31,12 @@ from nemo_evaluator_sdk.agent_inference import make_agent_inference_fn
 from nemo_evaluator_sdk.values.atif import Agent as AtifAgent
 from nemo_evaluator_sdk.values.atif import FinalMetrics, Step, Trajectory
 
-# This example assumes a Hermes agent is running locally on port 8642.
-# Update the URL to the Hermes agent if it is running on a different port or host.
+# To run Hermes locally:
+#   1. Set API_SERVER_ENABLED=true and API_SERVER_KEY=<key> in ~/.hermes/.env.
+#   2. Start the API server with `hermes gateway`.
+#   3. Export the same key as HERMES_TOKEN for this evaluator client.
+# See HERMES_API_SERVER_DOCS_URL below for the complete setup. Update the URL if
+# Hermes is running on a different port or host.
 DEFAULT_HERMES_URL = "http://127.0.0.1:8642/v1/responses"
 EXPECTED_TEXT = "streaming works"
 # Export the key configured for the Hermes API server under this name.

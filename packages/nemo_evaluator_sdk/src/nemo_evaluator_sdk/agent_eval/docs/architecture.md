@@ -2,12 +2,13 @@
 
 ## GenericAgent and NemoAgentToolkitAgent evaluation paths
 
-The central mental model is:
+The architecture is application-agnostic. Its central mental model is:
 
 > `GenericAgent` and `NemoAgentToolkitAgent` have different public
 > configurations, but both normalize into the same internal HTTP invocation.
-> Hermes demonstrates how a streaming `GenericAgent` can add domain-specific
-> interpretation through a translator while keeping the transport shared.
+> Hermes is one real-world example of how a streaming `GenericAgent` can add
+> domain-specific interpretation through a translator while keeping the
+> transport shared; it is not the scope of the architecture itself.
 
 ### 1. Complete architecture flow
 
@@ -17,7 +18,7 @@ flowchart TB
     %% APPLICATION CONFIGURATION
     %% ─────────────────────────────
 
-    subgraph HERMES["Hermes Responses SSE evaluation"]
+    subgraph HERMES["Example: Hermes Responses SSE evaluation"]
         HM0["Load streaming smoke task"]
         HM1["GenericAgent<br/>format = generic"]
         HM2["Responses request<br/>model, input, stream, store"]
@@ -200,12 +201,12 @@ flowchart TB
     end
 
     %% ─────────────────────────────
-    %% HERMES TRANSLATOR DETAILS
+    %% EXAMPLE TRANSLATOR DETAILS
     %% ─────────────────────────────
 
     HM4 -. implementation of generic protocol .-> HMT0
 
-    subgraph HERMES_TRANSLATOR["Hermes-specific semantic adapter"]
+    subgraph HERMES_TRANSLATOR["Example: Hermes semantic adapter"]
         HMT0["Receive all SseFrame objects"]
         HMT1["Select JSON data payloads"]
         HMT2["Require final JSON data payload<br/>type = response.completed"]
@@ -252,7 +253,7 @@ flowchart TB
     %% APPLICATION CONSUMERS
     %% ─────────────────────────────
 
-    A12 --> HMO["Hermes evaluation writes reports"]
+    A12 --> HMO["Example: Hermes evaluation writes reports"]
     A12 --> GO["Generic application consumes<br/>scores, trials and evidence"]
     A12 --> NTO["NAT application consumes<br/>scores, trials and evidence"]
     A12 -. explicit optional consumer .-> INTAKE["publish_to_intake result<br/>does not rerun the agent"]
@@ -293,7 +294,7 @@ sequenceDiagram
     participant MT as Metrics
     participant OUT as Result persistence
 
-    alt Hermes Responses SSE
+    alt Example: Hermes Responses SSE
         Caller->>Caller: Load streaming smoke task
         Caller->>Caller: Construct GenericAgent
         Caller->>Caller: Configure Responses body and response_path=$..text
@@ -412,7 +413,7 @@ sequenceDiagram
     AE->>OUT: Persist AgentEvalResult and dashboard
     OUT-->>Caller: Durable local result
 
-    alt Hermes
+    alt Example: Hermes
         Caller->>Caller: Write Hermes evaluation reports
         opt Explicit Intake publishing
             Caller->>OUT: publish_to_intake(existing result)
@@ -480,8 +481,8 @@ Important nuance: `PARTIAL` is still inspectable and can be scored. `FAILED` is 
 
 ### 4. Application configurations
 
-Hermes supplies domain knowledge through a translator while using a
-`GenericAgent` for its Responses HTTP and SSE contract:
+As a concrete example, Hermes supplies domain knowledge through a translator
+while using a `GenericAgent` for its Responses HTTP and SSE contract:
 
 ```python
 target = GenericAgent(
@@ -545,7 +546,7 @@ For blocking JSON, the generic application only changes `stream=False`.
 
 ### 5. What belongs where
 
-| Layer | Hermes | Generic application | NeMo Agent Toolkit | Shared SDK |
+| Layer | Hermes example | Generic application | NeMo Agent Toolkit | Shared SDK |
 | --- | --- | --- | --- | --- |
 | Public target | `GenericAgent` | `GenericAgent` | `NemoAgentToolkitAgent` | Discriminated `Agent` union |
 | Request defaults | Responses `body`, URL, JSONPaths | `body`, URL, JSONPaths | `NatAgentConfig` | Normalization |
