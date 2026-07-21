@@ -42,7 +42,13 @@ export function usePreview({
   }, []);
 
   const runPreview = useCallback(async () => {
-    const config = getCurrentConfig();
+    let config: DataDesignerConfig | undefined;
+    try {
+      config = getCurrentConfig();
+    } catch (err) {
+      setPreviewLogs(getErrorMessage(err, 'Could not build a preview config from the recipe.'));
+      return;
+    }
     if (!config) {
       setPreviewLogs('Generate a job spec first, then run Preview.');
       return;
