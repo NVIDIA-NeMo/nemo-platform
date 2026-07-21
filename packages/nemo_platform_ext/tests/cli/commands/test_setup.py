@@ -10,6 +10,7 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import httpx
+import nemo_platform_ext.cli.commands.setup as setup_commands
 import pytest
 import typer
 from click.exceptions import Exit as ClickExit
@@ -69,16 +70,21 @@ from nemo_platform_ext.cli.commands.setup import (
 from nemo_platform_ext.cli.commands.skills import registry as skills_registry
 from nemo_platform_ext.cli.commands.skills.base import Scope, Skill
 from nemo_platform_ext.cli.commands.skills.registry import UnsupportedAgentError
+from nemo_platform_ext.config.config import Config
 from nemo_platform_ext.config.models import (
     Cluster,
     ConfigFile,
     ConfigParams,
     Context,
     ContextDefinition,
+    NoAuthUser,
+    OAuthUser,
 )
 from nemo_platform_ext.local.process import PortConflict
+from nemo_platform_ext.ui.prompts import UserCancelled
 from nemo_platform_plugin.client.errors import NotFoundError
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest, PlatformSecretUpdateRequest
+from pydantic import SecretStr
 
 SETUP_MOD = "nemo_platform_ext.cli.commands.setup"
 
@@ -545,6 +551,52 @@ class TestMaybeStartServices:
         with patch(f"{SETUP_MOD}._check_platform_reachable", return_value=True):
             _maybe_start_services("http://localhost:8080", auto=False, start_services=False)
 
+    def test_returns_remote_choice_without_starting_services(self):
+        with (
+            patch(f"{SETUP_MOD}._check_platform_reachable", return_value=False),
+            patch(f"{SETUP_MOD}.prompt_choice", return_value="remote") as mock_prompt,
+            patch(f"{SETUP_MOD}._start_services_background") as mock_start,
+        ):
+            result = _maybe_start_services("http://localhost:8080", auto=False, start_services=None)
+
+        assert result == "connect_remote"
+        assert mock_prompt.call_args.kwargs["options"] == [
+            ("yes", "Yes, start services now"),
+            ("remote", "No, I want to connect to a remote Platform instance"),
+            ("manual", "No, I'll start them myself"),
+        ]
+        mock_start.assert_not_called()
+
+    def test_start_myself_choice_keeps_existing_exit(self, capsys):
+        with (
+            patch(f"{SETUP_MOD}._check_platform_reachable", return_value=False),
+            patch(f"{SETUP_MOD}.prompt_choice", return_value="manual"),
+            pytest.raises(ClickExit),
+        ):
+            _maybe_start_services("http://localhost:8080", auto=False, start_services=None)
+
+        assert "Start the platform first" in capsys.readouterr().err
+
+    def test_unreachable_remote_url_selects_remote_connection_without_local_prompt(self):
+        with (
+            patch(f"{SETUP_MOD}._check_platform_reachable", return_value=False),
+            patch(f"{SETUP_MOD}.prompt_choice") as mock_prompt,
+        ):
+            result = _maybe_start_services("https://remote.example.com", auto=False, start_services=None)
+
+        assert result == "connect_remote"
+        mock_prompt.assert_not_called()
+
+    def test_rejects_start_services_for_remote_url(self):
+        with (
+            patch(f"{SETUP_MOD}._check_platform_reachable", return_value=False),
+            patch(f"{SETUP_MOD}._start_services_background") as mock_start,
+            pytest.raises(typer.BadParameter, match="local Platform URL"),
+        ):
+            _maybe_start_services("https://remote.example.com", auto=False, start_services=True)
+
+        mock_start.assert_not_called()
+
     def test_restarts_when_running_and_start_services_true(self):
         reachable_calls = [True, True, False, True]
 
@@ -620,6 +672,160 @@ class TestMaybeStartServices:
             maybe_start_preflight_mocks.return_value = MagicMock(pid=999)
             _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
         maybe_start_preflight_mocks.assert_called_once()
+
+
+class TestRemoteConnection:
+    def test_prompts_again_until_platform_is_reachable(self, capsys):
+        with (
+            patch(
+                f"{SETUP_MOD}.prompt_text",
+                side_effect=["https://unreachable.example.com", "https://remote.example.com/"],
+            ),
+            patch(
+                f"{SETUP_MOD}._check_platform_reachable_with_retries",
+                side_effect=[False, True],
+            ),
+        ):
+            base_url = setup_commands._prompt_remote_base_url()
+
+        assert base_url == "https://remote.example.com"
+        assert "Unable to connect" in capsys.readouterr().err
+
+    def test_persists_remote_url_and_workspace_in_active_context(self, tmp_path, monkeypatch):
+        config_path = tmp_path / "config.yaml"
+        monkeypatch.setenv("NMP_CONFIG_FILE", str(config_path))
+        cli_context = MagicMock()
+        cli_context.overrides = {}
+        cli_context.get_sdk_context.return_value = Context(
+            context_name="default",
+            cluster=Cluster(name="default-cluster", base_url="http://localhost:8080"),
+            user=NoAuthUser(name="default-user"),
+            workspace="default",
+            preferences={},
+        )
+
+        setup_commands._configure_remote_connection(
+            cli_context,
+            "https://remote.example.com",
+            "shared-workspace",
+        )
+
+        context = Config.load(config_path=config_path).resolve()
+        assert str(context.cluster.base_url) == "https://remote.example.com/"
+        assert context.workspace == "shared-workspace"
+        cli_context.reset_sdk_context.assert_called_once_with()
+
+    def test_updates_selected_context_and_runtime_url_override(self, tmp_path, monkeypatch):
+        config_path = tmp_path / "config.yaml"
+        monkeypatch.setenv("NMP_CONFIG_FILE", str(config_path))
+        Config.write({"base_url": "https://default.example.com"})
+        Config.write({"base_url": "https://old-dev.example.com"}, context_name="dev")
+
+        cli_context = MagicMock()
+        cli_context.overrides = {
+            "current_context": "dev",
+            "base_url": "https://stale-override.example.com",
+        }
+        cli_context.get_sdk_context.return_value = Context(
+            context_name="dev",
+            cluster=Cluster(name="dev-cluster", base_url="https://stale-override.example.com"),
+            user=NoAuthUser(name="dev-user"),
+            workspace="default",
+            preferences={},
+        )
+
+        setup_commands._configure_remote_connection(
+            cli_context,
+            "https://new-dev.example.com",
+            "shared-workspace",
+        )
+
+        config_file = Config.load(config_path=config_path).get_config_file()
+        default_cluster = next(cluster for cluster in config_file.clusters if cluster.name == "default-cluster")
+        dev_cluster = next(cluster for cluster in config_file.clusters if cluster.name == "dev-cluster")
+        assert str(default_cluster.base_url) == "https://default.example.com/"
+        assert str(dev_cluster.base_url) == "https://new-dev.example.com/"
+        assert cli_context.overrides["base_url"] == "https://new-dev.example.com"
+
+    def test_authenticates_when_context_has_no_credentials(self):
+        cli_context = MagicMock()
+        cli_context.get_sdk_context.return_value = Context(
+            context_name="default",
+            cluster=Cluster(name="remote", base_url="https://remote.example.com"),
+            user=NoAuthUser(name="default-user"),
+            workspace="default",
+            preferences={},
+        )
+
+        with patch("nemo_platform_ext.cli.commands.auth._login_with_oidc", return_value=True) as mock_login:
+            setup_commands._ensure_platform_auth(cli_context)
+
+        mock_login.assert_called_once_with(cli_context, selected_context="default")
+        cli_context.reset_sdk_context.assert_called_once_with()
+
+    def test_reauthenticates_stored_context_credentials_for_new_remote(self):
+        cli_context = MagicMock()
+        context = Context(
+            context_name="default",
+            cluster=Cluster(name="remote", base_url="https://remote.example.com"),
+            user=OAuthUser(name="default-user", token=SecretStr("token")),
+            workspace="default",
+            preferences={},
+        )
+        cli_context.get_sdk_context.return_value = context
+
+        with patch("nemo_platform_ext.cli.commands.auth._login_with_oidc", return_value=True) as mock_login:
+            setup_commands._ensure_platform_auth(cli_context)
+
+        mock_login.assert_called_once_with(cli_context, selected_context="default")
+        cli_context.reset_sdk_context.assert_called_once_with()
+
+    def test_reuses_runtime_access_token_override(self, monkeypatch):
+        monkeypatch.setenv("NMP_ACCESS_TOKEN", "runtime-token")
+        cli_context = MagicMock()
+        cli_context.get_sdk_context.return_value = Context(
+            context_name="default",
+            cluster=Cluster(name="remote", base_url="https://remote.example.com"),
+            user=OAuthUser(name="default-user", token=SecretStr("runtime-token")),
+            workspace="default",
+            preferences={},
+        )
+
+        with patch("nemo_platform_ext.cli.commands.auth._login_with_oidc") as mock_login:
+            setup_commands._ensure_platform_auth(cli_context)
+
+        mock_login.assert_not_called()
+
+    def test_clears_stale_credentials_when_remote_auth_is_disabled(self, tmp_path, monkeypatch):
+        config_path = tmp_path / "config.yaml"
+        monkeypatch.setenv("NMP_CONFIG_FILE", str(config_path))
+        monkeypatch.delenv("NMP_ACCESS_TOKEN", raising=False)
+        Config.write(
+            {
+                "base_url": "https://remote.example.com",
+                "access_token": "old-cluster-token",
+            }
+        )
+        cli_context = MagicMock()
+        cli_context.get_sdk_context.return_value = Config.load(config_path=config_path).resolve()
+
+        with patch("nemo_platform_ext.cli.commands.auth._login_with_oidc", return_value=False):
+            setup_commands._ensure_platform_auth(cli_context)
+
+        assert isinstance(Config.load(config_path=config_path).resolve().user, NoAuthUser)
+        cli_context.reset_sdk_context.assert_called_once_with()
+
+    def test_platform_request_headers_include_context_token(self):
+        cli_context = MagicMock()
+        cli_context.get_sdk_context.return_value = Context(
+            context_name="default",
+            cluster=Cluster(name="remote", base_url="https://remote.example.com"),
+            user=OAuthUser(name="default-user", token=SecretStr("remote-token")),
+            workspace="default",
+            preferences={},
+        )
+
+        assert setup_commands._platform_request_headers(cli_context) == {"Authorization": "Bearer remote-token"}
 
 
 class TestLocalDataDirHelpers:
@@ -2296,6 +2502,42 @@ class TestNonTtyEarlyExit:
             patch(f"{SETUP_MOD}._run_interactive_mode"),
         ):
             self._invoke(auto=False)
+
+    def test_cancelling_initial_connection_prompt_exits_cleanly(self, capsys):
+        with (
+            patch(f"{SETUP_MOD}.is_interactive", return_value=True),
+            patch(f"{SETUP_MOD}._maybe_start_services", side_effect=UserCancelled),
+            pytest.raises(typer.Exit) as exc_info,
+        ):
+            self._invoke(auto=False)
+
+        assert exc_info.value.exit_code == 0
+        assert "Setup cancelled" in capsys.readouterr().err
+
+
+class TestSetupCommandRemoteFlow:
+    def test_remote_choice_connects_before_continuing_setup(self):
+        ctx = MagicMock(spec=typer.Context)
+        cli_context = MagicMock()
+        cli_context.get_base_url.return_value = "http://localhost:8080"
+        cli_context.get_client.return_value.workspaces.retrieve.return_value = MagicMock()
+        ctx.obj = cli_context
+
+        with (
+            patch(f"{SETUP_MOD}.is_interactive", return_value=True),
+            patch(f"{SETUP_MOD}._maybe_start_services", return_value="connect_remote"),
+            patch(f"{SETUP_MOD}._prompt_remote_base_url", return_value="https://remote.example.com"),
+            patch(f"{SETUP_MOD}._configure_remote_connection") as mock_configure,
+            patch(f"{SETUP_MOD}._ensure_platform_auth") as mock_auth,
+            patch(f"{SETUP_MOD}._check_platform_reachable_with_retries", return_value=True),
+            patch(f"{SETUP_MOD}._bootstrap_config_if_missing"),
+            patch(f"{SETUP_MOD}._run_interactive_mode") as mock_run,
+        ):
+            setup_command(ctx)
+
+        mock_configure.assert_called_once_with(cli_context, "https://remote.example.com", "default")
+        mock_auth.assert_called_once_with(cli_context)
+        assert mock_run.call_args.args[3] == "https://remote.example.com"
 
 
 # ---------------------------------------------------------------------------

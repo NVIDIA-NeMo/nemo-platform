@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from typing import Annotated, cast
 
 import httpx
 import typer
+from rich.console import Console
 
 from nemo_platform_ext.auth.helpers import (
     AuthError,
@@ -31,6 +33,7 @@ from nemo_platform_ext.auth.token_provider import OIDCTokenProvider, TokenSet
 from nemo_platform_ext.cli.core.context import CLIContext
 from nemo_platform_ext.cli.core.errors import handle_errors
 from nemo_platform_ext.cli.core.help_formatter import create_typer_app
+from nemo_platform_ext.config.config import Config
 from nemo_platform_ext.config.models import ConfigParams, Context
 
 app = create_typer_app(
@@ -156,6 +159,168 @@ def auth_callback(ctx: typer.Context) -> None:
         typer.echo(ctx.get_help())
 
 
+def _login_with_oidc(
+    cli_context: CLIContext,
+    *,
+    no_browser: bool = False,
+    scope: str | None = None,
+    username: str | None = None,
+    password: str | None = None,
+    selected_context: str | None = None,
+) -> bool:
+    """Authenticate the selected context using the cluster's OIDC configuration.
+
+    Returns ``False`` when cluster authentication is disabled.
+    """
+    from nemo_platform_ext.auth.device_flow import (
+        DeviceFlowError,
+        authenticate_with_device_flow,
+        authenticate_with_password_grant,
+    )
+
+    console = Console()
+    context = cli_context.get_sdk_context()
+    base_url = str(context.cluster.base_url).rstrip("/")
+
+    console.print(f"\nDiscovering auth configuration from {base_url}...")
+
+    try:
+        oidc_config = discover_nmp_config(base_url)
+    except httpx.HTTPError as exc:
+        raise AuthError(f"Failed to discover auth configuration: {exc}") from exc
+
+    if not oidc_config.auth_enabled:
+        console.print("[yellow]Authentication is not enabled on this cluster.[/]")
+        console.print("You can use the API without authentication.")
+        return False
+
+    if not oidc_config.token_endpoint:
+        raise AuthError(
+            "This cluster does not have OIDC token endpoint configured.\n"
+            "Use OIDC configuration for device/password login, or for local testing use:\n"
+            "nemo auth login --unsigned-token --email <email>"
+        )
+
+    login_username = username or os.environ.get("NMP_OIDC_USERNAME")
+    login_password = password or os.environ.get("NMP_OIDC_PASSWORD")
+    use_password_grant = bool(login_username and login_password)
+
+    if use_password_grant:
+        if not oidc_config.client_id:
+            raise AuthError("OIDC client_id is required for password grant.")
+    elif not oidc_config.device_authorization_endpoint:
+        raise AuthError(
+            "This cluster does not support device flow authentication.\n"
+            "For non-interactive login use: nemo auth login --username <user> --password <pass>\n"
+            "Or set NMP_OIDC_USERNAME and NMP_OIDC_PASSWORD (e.g. in CI)."
+        )
+
+    console.print(f"[green]Found OIDC configuration[/] (issuer: {oidc_config.issuer})")
+
+    raw_defaults = oidc_config.default_scopes
+    default_baseline = " ".join(item for item in raw_defaults.split() if ":" not in item)
+    if scope:
+        seen: set[str] = set()
+        parts: list[str] = []
+        for item in default_baseline.split():
+            if item not in seen:
+                seen.add(item)
+                parts.append(item)
+        for item in scope.split():
+            if item not in seen:
+                seen.add(item)
+                parts.append(item)
+        requested_scopes = " ".join(parts)
+    else:
+        requested_scopes = raw_defaults
+
+    scope_prefix = normalize_scope_prefix(oidc_config.scope_prefix)
+    effective_scope = build_effective_scope(requested_scopes, oidc_config.scope_prefix)
+
+    console.print("\n[bold]Requesting scopes:[/]")
+    for requested_scope in requested_scopes.split():
+        if scope_prefix and (":" in requested_scope or requested_scope.endswith(".default")):
+            console.print(f"  [cyan]{requested_scope}[/] [dim]({scope_prefix}{requested_scope})[/]")
+        else:
+            console.print(f"  [cyan]{requested_scope}[/]")
+    console.print()
+
+    if use_password_grant:
+        if login_username is None or login_password is None:
+            raise AuthError("Username and password are required for password grant.")
+        client_id = cast(str, oidc_config.client_id)
+        try:
+            token_response = authenticate_with_password_grant(
+                token_endpoint=oidc_config.token_endpoint,
+                client_id=client_id,
+                username=login_username,
+                password=login_password,
+                scope=effective_scope,
+            )
+        except DeviceFlowError as exc:
+            raise AuthError(f"Authentication failed: {exc}") from exc
+    else:
+        if oidc_config.device_authorization_endpoint is None:
+            raise AuthError("This cluster does not support device flow authentication.")
+        client_id = cast(str, oidc_config.client_id)
+        try:
+            token_response = asyncio.run(
+                authenticate_with_device_flow(
+                    device_authorization_endpoint=oidc_config.device_authorization_endpoint,
+                    token_endpoint=oidc_config.token_endpoint,
+                    client_id=client_id,
+                    scope=effective_scope,
+                    open_browser=not no_browser,
+                )
+            )
+        except DeviceFlowError as exc:
+            raise AuthError(f"Authentication failed: {exc}") from exc
+
+    token = token_response.token_for_nmp
+    claims = decode_jwt_claims(token)
+    user_email = claims.get("upn") or claims.get("email") or claims.get("preferred_username")
+    raw_granted_scopes = claims.get("scp") or claims.get("scope")
+    granted_scopes: list[str] = []
+    if isinstance(raw_granted_scopes, str):
+        granted_scopes = raw_granted_scopes.split()
+    elif isinstance(raw_granted_scopes, list):
+        granted_scopes = [item for item in raw_granted_scopes if isinstance(item, str)]
+
+    validate_requested_scopes_granted(effective_scope, granted_scopes, scope_prefix)
+
+    config_params: ConfigParams = {"access_token": token}
+    if token_response.refresh_token:
+        config_params["refresh_token"] = token_response.refresh_token
+    if selected_context is not None:
+        config_params["current_context"] = context.context_name
+    Config.write(config_params, context_name=context.context_name)
+
+    console.print("\n[bold green]Authentication successful![/]")
+    if user_email:
+        console.print(f"  Logged in as: [cyan]{user_email}[/]")
+
+    if granted_scopes:
+        display_scopes = [
+            item[len(scope_prefix) :] if scope_prefix and item.startswith(scope_prefix) else item
+            for item in granted_scopes
+        ]
+        console.print(f"  Granted scopes: [cyan]{' '.join(display_scopes)}[/]")
+
+    if token_response.refresh_token:
+        console.print("  Refresh token: [green]saved[/] (enables automatic token renewal)")
+    else:
+        console.print("  Refresh token: [yellow]not available[/] (add 'offline_access' scope to enable)")
+
+    console.print("\n[bold green]Credentials saved to config file.[/]")
+    if runtime_token_source := _runtime_token_source_label():
+        console.print(
+            f"[yellow]Warning:[/] {runtime_token_source} is active and will override these saved credentials. "
+            "Unset the runtime token override to use this login for future commands."
+        )
+    console.print("\n[dim]Run 'nemo workspaces list' to verify your access.[/]")
+    return True
+
+
 @app.command("login")
 @handle_errors
 def login(
@@ -274,17 +439,6 @@ def login(
     # Device flow, show code only
     nemo auth login --no-browser
     """
-    import os
-
-    from rich.console import Console
-
-    from nemo_platform_ext.auth.device_flow import (
-        DeviceFlowError,
-        authenticate_with_device_flow,
-        authenticate_with_password_grant,
-    )
-    from nemo_platform_ext.config.config import Config
-
     cli_context: CLIContext = ctx.obj
     selected_context = cli_context.overrides.get("current_context")
 
@@ -376,154 +530,15 @@ def login(
         console.print("\n[dim]Run 'nemo auth status' to inspect the token.[/]")
         return
 
-    context = cli_context.get_sdk_context()
-    base_url = str(context.cluster.base_url).rstrip("/")
-
-    console.print(f"\nDiscovering auth configuration from {base_url}...")
-
-    try:
-        oidc_config = discover_nmp_config(base_url)
-    except httpx.HTTPError as exc:
-        raise AuthError(f"Failed to discover auth configuration: {exc}") from exc
-
-    if not oidc_config.auth_enabled:
-        console.print("[yellow]Authentication is not enabled on this cluster.[/]")
-        console.print("You can use the API without authentication.")
+    if not _login_with_oidc(
+        cli_context,
+        no_browser=no_browser,
+        scope=scope,
+        username=username,
+        password=password,
+        selected_context=selected_context,
+    ):
         raise typer.Exit(0)
-
-    if not oidc_config.token_endpoint:
-        raise AuthError(
-            "This cluster does not have OIDC token endpoint configured.\n"
-            "Use OIDC configuration for device/password login, or for local testing use:\n"
-            "nemo auth login --unsigned-token --email <email>"
-        )
-
-    login_username = username or os.environ.get("NMP_OIDC_USERNAME")
-    login_password = password or os.environ.get("NMP_OIDC_PASSWORD")
-    use_password_grant = bool(login_username and login_password)
-
-    if use_password_grant:
-        if not oidc_config.client_id:
-            raise AuthError("OIDC client_id is required for password grant.")
-    else:
-        if not oidc_config.device_authorization_endpoint:
-            raise AuthError(
-                "This cluster does not support device flow authentication.\n"
-                "For non-interactive login use: nemo auth login --username <user> --password <pass>\n"
-                "Or set NMP_OIDC_USERNAME and NMP_OIDC_PASSWORD (e.g. in CI)."
-            )
-
-    console.print(f"[green]Found OIDC configuration[/] (issuer: {oidc_config.issuer})")
-
-    # Use only generic scopes from cluster defaults (exclude platform/custom scopes like platform:read)
-    # so platform scopes come only from --scope. Merge with --scope if provided.
-    raw_defaults = oidc_config.default_scopes
-    default_baseline = " ".join(s for s in raw_defaults.split() if ":" not in s)
-    if scope:
-        seen: set[str] = set()
-        parts: list[str] = []
-        for s in default_baseline.split():
-            if s not in seen:
-                seen.add(s)
-                parts.append(s)
-        for s in scope.split():
-            if s not in seen:
-                seen.add(s)
-                parts.append(s)
-        requested_scopes = " ".join(parts)
-    else:
-        requested_scopes = raw_defaults
-
-    scope_prefix = normalize_scope_prefix(oidc_config.scope_prefix)
-    effective_scope = build_effective_scope(requested_scopes, oidc_config.scope_prefix)
-
-    # Display the scopes being requested
-    console.print("\n[bold]Requesting scopes:[/]")
-    for s in requested_scopes.split():
-        if scope_prefix and (":" in s or s.endswith(".default")):
-            console.print(f"  [cyan]{s}[/] [dim]({scope_prefix}{s})[/]")
-        else:
-            console.print(f"  [cyan]{s}[/]")
-    console.print()
-
-    if use_password_grant:
-        if login_username is None or login_password is None:
-            raise AuthError("Username and password are required for password grant.")
-        client_id = cast(str, oidc_config.client_id)
-        try:
-            token_response = authenticate_with_password_grant(
-                token_endpoint=oidc_config.token_endpoint,
-                client_id=client_id,
-                username=login_username,
-                password=login_password,
-                scope=effective_scope,
-            )
-        except DeviceFlowError as exc:
-            raise AuthError(f"Authentication failed: {exc}") from exc
-    else:
-        if oidc_config.device_authorization_endpoint is None:
-            raise AuthError("This cluster does not support device flow authentication.")
-        client_id = cast(str, oidc_config.client_id)
-        device_authorization_endpoint = oidc_config.device_authorization_endpoint
-        try:
-            token_response = asyncio.run(
-                authenticate_with_device_flow(
-                    device_authorization_endpoint=device_authorization_endpoint,
-                    token_endpoint=oidc_config.token_endpoint,
-                    client_id=client_id,
-                    scope=effective_scope,
-                    open_browser=not no_browser,
-                )
-            )
-        except DeviceFlowError as exc:
-            raise AuthError(f"Authentication failed: {exc}") from exc
-
-    token = token_response.token_for_nmp
-
-    claims = decode_jwt_claims(token)
-    user_email = claims.get("upn") or claims.get("email") or claims.get("preferred_username")
-    raw_granted_scopes = claims.get("scp") or claims.get("scope")
-    granted_scopes: list[str] = []
-    if isinstance(raw_granted_scopes, str):
-        granted_scopes = raw_granted_scopes.split()
-    elif isinstance(raw_granted_scopes, list):
-        granted_scopes = [scope for scope in raw_granted_scopes if isinstance(scope, str)]
-
-    validate_requested_scopes_granted(effective_scope, granted_scopes, scope_prefix)
-
-    config_params: ConfigParams = {"access_token": token}
-    if token_response.refresh_token:
-        config_params["refresh_token"] = token_response.refresh_token
-    if selected_context is not None:
-        config_params["current_context"] = context.context_name
-    Config.write(config_params, context_name=context.context_name)
-
-    console.print("\n[bold green]Authentication successful![/]")
-    if user_email:
-        console.print(f"  Logged in as: [cyan]{user_email}[/]")
-
-    if granted_scopes:
-        # Normalize scopes by stripping prefix for display
-        display_scopes = []
-        for s in granted_scopes:
-            if scope_prefix and s.startswith(scope_prefix):
-                display_scopes.append(s[len(scope_prefix) :])
-            else:
-                display_scopes.append(s)
-        console.print(f"  Granted scopes: [cyan]{' '.join(display_scopes)}[/]")
-
-    if token_response.refresh_token:
-        console.print("  Refresh token: [green]saved[/] (enables automatic token renewal)")
-    else:
-        console.print("  Refresh token: [yellow]not available[/] (add 'offline_access' scope to enable)")
-
-    console.print("\n[bold green]Credentials saved to config file.[/]")
-    if runtime_token_source := _runtime_token_source_label():
-        console.print(
-            f"[yellow]Warning:[/] {runtime_token_source} is active and will override these saved credentials. "
-            "Unset the runtime token override to use this login for future commands."
-        )
-    console.print("\n[dim]Run 'nemo workspaces list' to verify your access.[/]")
 
 
 @app.command("logout")
