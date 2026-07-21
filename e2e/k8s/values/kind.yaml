@@ -27,8 +27,6 @@ platformConfig:
   models:
     controller:
       backends:
-        nim_operator:
-          enabled: false
         deployments_plugin:
           enabled: true
           k8s_executor: kind-k8s
