@@ -174,9 +174,7 @@ def test_score_rollup_cte_builders_compose_the_pipeline():
     session_scores = _session_scores_cte("evaluator_results")
     assert "avg(results.value) AS value" in session_scores
     assert "FROM evaluator_results FINAL" in session_scores
-    assert (
-        "GROUP BY sessions.evaluation_id, sessions.session_id, sessions.test_case_id, results.name" in session_scores
-    )
+    assert "GROUP BY sessions.evaluation_id, sessions.session_id, sessions.test_case_id, results.name" in session_scores
 
     # Fixed denominator: distinct sessions per test case.
     assert "count(DISTINCT session_id) AS session_count" in _test_case_sessions_cte()
