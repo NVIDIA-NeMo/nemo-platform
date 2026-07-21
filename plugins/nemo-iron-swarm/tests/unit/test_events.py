@@ -7,11 +7,19 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
 from nemo_iron_swarm_plugin.api.v2 import events
 from starlette.testclient import TestClient
+
+
+def _write_events(path: Path, event_list: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w") as f:
+        for e in event_list:
+            f.write(json.dumps(e) + "\n")
 
 
 def test_history_filters_by_last_seen_id(tmp_path: Path) -> None:
@@ -74,3 +82,60 @@ def test_get_events_endpoint_returns_events_after_id(tmp_path: Path, monkeypatch
     assert [e["id"] for e in body["events"]] == [2, 3]
     assert body["events"][0]["event"] == "e1"
     assert body["events"][1]["event"] == "e2"
+
+
+def test_get_events_falls_back_to_fileset_when_local_missing(tmp_path: Path) -> None:
+    """When local events.jsonl is absent but run entity has events_fileset, download and serve."""
+    events_file = tmp_path / "source" / "events.jsonl"
+    _write_events(events_file, [{"event": "run_started", "payload": {}}])
+
+    missing_path = tmp_path / "missing" / "events.jsonl"
+
+    mock_sdk = MagicMock()
+    mock_run = MagicMock()
+    mock_run.events_fileset = "default/my-events-fs"
+    mock_sdk.entities.get_entity_by_name.return_value = mock_run
+
+    def fake_download(sdk, ref, dest):
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "events.jsonl").write_text(events_file.read_text())
+        return dest
+
+    with (
+        patch.object(events, "hub", events.EventHub()),
+        patch("nemo_iron_swarm_plugin.api.v2.events._events_path", return_value=missing_path),
+        patch("nemo_iron_swarm_plugin.api.v2.events._get_sdk", return_value=mock_sdk),
+        patch("nemo_iron_swarm_plugin.api.v2.events.download_fileset", side_effect=fake_download),
+    ):
+        app = FastAPI()
+        app.include_router(events.router, prefix="/v2/workspaces/{workspace}")
+        client = TestClient(app)
+        resp = client.get("/v2/workspaces/default/runs/my-run/events?after=0")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["events"]) == 1
+    assert data["events"][0]["event"] == "run_started"
+
+
+def test_get_events_returns_empty_when_no_local_and_no_fileset(tmp_path: Path) -> None:
+    """When local file is missing and no fileset ref exists, return empty list."""
+    missing_path = tmp_path / "missing" / "events.jsonl"
+
+    mock_sdk = MagicMock()
+    mock_run = MagicMock()
+    mock_run.events_fileset = ""
+    mock_sdk.entities.get_entity_by_name.return_value = mock_run
+
+    with (
+        patch.object(events, "hub", events.EventHub()),
+        patch("nemo_iron_swarm_plugin.api.v2.events._events_path", return_value=missing_path),
+        patch("nemo_iron_swarm_plugin.api.v2.events._get_sdk", return_value=mock_sdk),
+    ):
+        app = FastAPI()
+        app.include_router(events.router, prefix="/v2/workspaces/{workspace}")
+        client = TestClient(app)
+        resp = client.get("/v2/workspaces/default/runs/my-run/events?after=0")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"events": []}
