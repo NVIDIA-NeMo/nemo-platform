@@ -85,19 +85,23 @@ export const AgentEvaluationDetailRoute: FC = () => {
   const isJobTerminal = isTerminal(job?.status);
 
   // Aggregate scores (mean/min/max per metric) from the queryable result record.
-  // Only meaningful once the job is terminal.
+  // Only meaningful once the job is terminal. The record is persisted best-effort and
+  // may lag the terminal status, so poll while it is still absent and stop once it loads.
   const { data: result, isLoading: isLoadingResult } = useQuery({
     queryKey: ['agent-eval-result', workspace, jobName] as const,
     queryFn: ({ signal }) => fetchAgentEvalResult(workspace, jobName, signal),
     enabled: !!workspace && !!jobName && isJobTerminal,
+    refetchInterval: (query) => (query.state.data == null ? 5_000 : false),
   });
 
   // Per-task detail (agent response + per-task score + diagnostics) from the
-  // result bundle referenced by the record. Gated on the result being loaded.
+  // result bundle referenced by the record. Gated on the result being loaded; polls
+  // while the bundle is still absent so late-written artifacts are picked up.
   const { data: bundle, isLoading: isLoadingBundle } = useQuery({
     queryKey: ['agent-eval-bundle', workspace, jobName, result?.bundle_ref] as const,
     queryFn: ({ signal }) => fetchAgentEvalBundle(workspace, result?.bundle_ref, signal),
     enabled: !!workspace && isJobTerminal && !!result?.bundle_ref,
+    refetchInterval: (query) => (query.state.data == null ? 5_000 : false),
   });
 
   const cancelMutation = useMutation({

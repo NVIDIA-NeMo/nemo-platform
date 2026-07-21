@@ -225,7 +225,9 @@ export const joinBundleByTask = (bundle: AgentEvalBundle | null): AgentEvalTaskD
   }
   return bundle.tasks.map((task) => {
     const trial = trialByTask.get(task.id);
-    const taskScores = scoresByTask.get(task.id) ?? [];
+    // Keep only the selected trial's scores: with multiple trials per task, scores/diagnostics
+    // must come from the same trial as the displayed responseText, not every trial's.
+    const taskScores = (scoresByTask.get(task.id) ?? []).filter((s) => s.trial_id === trial?.id);
     return {
       taskId: task.id,
       intent: task.intent,

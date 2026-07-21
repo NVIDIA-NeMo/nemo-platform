@@ -151,6 +151,42 @@ describe('joinBundleByTask', () => {
     expect(joinBundleByTask(null)).toEqual([]);
   });
 
+  it("attaches only the selected trial's scores when a task has multiple trials", () => {
+    const bundle: AgentEvalBundle = {
+      tasks: [{ id: 'A', inputs: { instruction: 'email a' } }],
+      // Two trials for task A; the join keeps the last one (t2).
+      trials: [
+        { id: 't1', task_id: 'A', status: 'completed', output: { output_text: 'benign' } },
+        { id: 't2', task_id: 'A', status: 'completed', output: { output_text: 'phishing' } },
+      ],
+      scores: [
+        {
+          id: 's1',
+          task_id: 'A',
+          trial_id: 't1',
+          metric_type: 'llm-judge',
+          status: 'completed',
+          outputs: [{ name: 'accuracy', value: 0 }],
+          diagnostics: ['t1-diag'],
+        },
+        {
+          id: 's2',
+          task_id: 'A',
+          trial_id: 't2',
+          metric_type: 'llm-judge',
+          status: 'completed',
+          outputs: [{ name: 'accuracy', value: 1 }],
+          diagnostics: ['t2-diag'],
+        },
+      ],
+    };
+    const [row] = joinBundleByTask(bundle);
+    // responseText and scores/diagnostics must come from the same trial (t2).
+    expect(row.responseText).toBe('phishing');
+    expect(row.scores).toEqual([{ name: 'llm-judge.accuracy', value: 1 }]);
+    expect(row.diagnostics).toEqual(['t2-diag']);
+  });
+
   it('normalizes serialized NaN score values for display', () => {
     const bundle: AgentEvalBundle = {
       tasks: [{ id: 'A' }],
