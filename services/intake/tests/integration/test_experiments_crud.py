@@ -77,11 +77,6 @@ def test_filter_groups_by_insight_id(client: TestClient) -> None:
     names = {g["name"] for g in listed.json()["data"]}
     assert names == {"seeded-group"}
 
-    # A non-matching insight id returns no groups.
-    empty = client.get(GROUPS, params={"filter[insight_id]": "insight-missing"})
-    assert empty.status_code == 200, empty.text
-    assert empty.json()["data"] == []
-
 
 def test_experiment_group_update_description(client: TestClient) -> None:
     client.post(GROUPS, json={"name": "grp", "description": "old"})

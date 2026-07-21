@@ -8,10 +8,9 @@ import {
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
-import { useListExperimentGroups } from '@nemo/sdk/generated/platform/api';
 import { Flex, PageHeader, Stack, Tag, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
-import { type Insight, useOptimizerListInsights } from '@studio/api/optimizer';
+import { type InsightListItem, useOptimizerListInsights } from '@studio/api/optimizer';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { FeatureFlagBadge } from '@studio/components/FeatureFlagBadge';
@@ -21,7 +20,7 @@ import { insightStatusColor } from '@studio/routes/optimizer/insightStatus';
 import { getOptimizerInsightRoute, getOptimizerRoute } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Lightbulb } from 'lucide-react';
-import { type ComponentProps, type FC, useMemo } from 'react';
+import { type ComponentProps, type FC } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export const OptimizerRoute: FC = () => {
@@ -50,25 +49,7 @@ export const OptimizerRoute: FC = () => {
     { query: { placeholderData: keepPreviousData } }
   );
 
-  const pagination = data?.pagination;
-
-  // Per-insight experiment count: an experiment group carries `insight_id`, so we map each insight
-  // to the total experiments across its group(s). Mirrors the insight detail page's linkage.
-  // NOTE: bounded to the first 100 groups (no server-side insight_id filter yet).
-  const { data: groupsData } = useListExperimentGroups(workspace, { page_size: 100 });
-  const experimentCountByInsight = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const group of groupsData?.data ?? []) {
-      if (!group.insight_id) continue;
-      counts.set(
-        group.insight_id,
-        (counts.get(group.insight_id) ?? 0) + (group.experiment_count ?? 0)
-      );
-    }
-    return counts;
-  }, [groupsData]);
-
-  const makeColumns: ComponentProps<typeof StudioDataView<Insight>>['makeColumns'] = (
+  const makeColumns: ComponentProps<typeof StudioDataView<InsightListItem>>['makeColumns'] = (
     { accessor },
     { rowActionsColumn }
   ) => [
@@ -110,13 +91,12 @@ export const OptimizerRoute: FC = () => {
         return <Text>{row.original.trace_refs?.length ?? 0}</Text>;
       },
     }),
-    accessor('id', {
-      id: 'experiments',
+    accessor('experiment_group_count', {
       header: 'Experiments',
       enableSorting: false,
       size: 110,
       cell({ row }) {
-        return <Text>{experimentCountByInsight.get(row.original.id) ?? 0}</Text>;
+        return <Text>{row.original.experiment_group_count ?? '—'}</Text>;
       },
     }),
     accessor('created_at', {
@@ -161,16 +141,16 @@ export const OptimizerRoute: FC = () => {
               <FeatureFlagBadge flag="optimizerEnabled" />
             </Flex>
           }
-          slotDescription="Leverage the optimizer agent to review your code and traces and suggest insights. Learn more."
+          slotDescription="Leverage the optimizer agent to review your code and traces and suggest insights."
         />
         <StudioDataView
           dataViewState={dataViewState}
           makeColumns={makeColumns}
-          onRowClick={(row: Insight) => navigate(getOptimizerInsightRoute(workspace, row.id))}
+          onRowClick={(row) => navigate(getOptimizerInsightRoute(workspace, row.id))}
           attributes={{
             DataViewRoot: {
               data: data?.data ?? [],
-              totalCount: pagination?.total_results,
+              totalCount: data?.pagination?.total_results,
               requestStatus: error ? 'error' : isFetching ? 'loading' : undefined,
             },
             DataViewTableContent: {

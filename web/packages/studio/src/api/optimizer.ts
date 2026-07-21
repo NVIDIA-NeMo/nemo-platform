@@ -14,15 +14,15 @@ import {
 } from '@tanstack/react-query';
 
 /**
- * The Optimizer plugin is a NeMo Platform backend plugin whose routes are NOT
+ * The Insights plugin is a NeMo Platform backend plugin whose routes are NOT
  * part of the generated SDK. We hand-write typed hooks against its endpoints
  * using `customFetch`, which applies the same base URL + OIDC auth handling as
  * the generated clients.
  *
- * Routes mount at `/apis/optimizer/v2/workspaces/{workspace}/...`.
+ * Routes mount at `/apis/insights/v2/workspaces/{workspace}/...`.
  */
 
-export type InsightStatus = 'new' | 'open' | 'resolved' | 'rejected' | 'closed' | 'deleted';
+export type InsightStatus = 'open' | 'resolved' | 'deleted';
 
 export interface Insight {
   /** Store-assigned id — used to fetch a single insight (`GET /insights/{id}`). */
@@ -44,6 +44,11 @@ export interface Insight {
   [key: string]: unknown;
 }
 
+export interface InsightListItem extends Insight {
+  /** Number of experiment groups linked to this insight, or null when unknown. */
+  experiment_group_count: number | null;
+}
+
 export type OptimizerListInsightsParams = Record<string, unknown> & {
   page?: number;
   page_size?: number;
@@ -52,13 +57,13 @@ export type OptimizerListInsightsParams = Record<string, unknown> & {
 };
 
 export interface InsightPage {
-  data?: Insight[];
+  data?: InsightListItem[];
   pagination?: PaginationData;
   [key: string]: unknown;
 }
 
 const optimizerInsightsPath = (workspace: string, path = '') =>
-  `/apis/optimizer/v2/workspaces/${encodeURIComponent(String(workspace))}/insights${path}`;
+  `/apis/insights/v2/workspaces/${encodeURIComponent(String(workspace))}/insights${path}`;
 
 type QueryOptions<TData, TError> = {
   query?: Partial<UseQueryOptions<TData, TError, TData>>;

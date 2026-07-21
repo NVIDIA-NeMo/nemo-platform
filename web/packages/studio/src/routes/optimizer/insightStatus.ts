@@ -9,11 +9,8 @@ type TagColor = ComponentProps<typeof Tag>['color'];
 
 /** Tag color per insight status. Exhaustive over InsightStatus. */
 export const INSIGHT_STATUS_COLOR: Record<InsightStatus, TagColor> = {
-  new: 'yellow',
   open: 'blue',
   resolved: 'green',
-  rejected: 'red',
-  closed: 'gray',
   deleted: 'gray',
 };
 
@@ -37,24 +34,9 @@ const OPEN: InsightAction = {
   kind: 'primary',
   color: 'brand',
 };
-const REJECT: InsightAction = { label: 'Reject', target: 'rejected', kind: 'secondary' };
-const CLOSE: InsightAction = { label: 'Close', target: 'closed', kind: 'secondary' };
+const DELETE: InsightAction = { label: 'Delete', target: 'deleted', kind: 'secondary' };
 const RESOLVE: InsightAction = { label: 'Resolve', target: 'resolved', kind: 'primary' };
 
-/**
- * The status-change actions available for an insight in a given status.
- *
- * - new        → Reject, Run experiment (a new insight can't be closed)
- * - open       → Close, Resolve (no re-open; Resolve closes it)
- * - resolved / rejected / closed / deleted → Run experiment (re-open)
- */
 export const insightActions = (status: InsightStatus): InsightAction[] => {
-  switch (status) {
-    case 'new':
-      return [REJECT, OPEN];
-    case 'open':
-      return [CLOSE, RESOLVE];
-    default:
-      return [OPEN];
-  }
+  return status === 'open' ? [DELETE, RESOLVE] : [OPEN];
 };

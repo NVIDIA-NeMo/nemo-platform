@@ -24,6 +24,7 @@ from nemo_insights_plugin.schema import (
     AnalysisConfigPage,
     AnalysisRunStatusPage,
     CreateInsightRequest,
+    InsightListItem,
     InsightPage,
     UpdateAnalysisConfigRequest,
     UpdateAnalysisRunStatusRequest,
@@ -33,6 +34,7 @@ from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entities import (
     EntityValidationError as NemoEntityValidationError,
 )
+from nemo_platform_plugin.entity import NemoEntity
 from nemo_platform_plugin.entity_client import (
     NemoEntitiesClient,
     NemoEntityConflictError,
@@ -44,6 +46,51 @@ from nemo_platform_plugin.schema import PaginationData
 from nemo_platform_plugin.service import NemoService, RouterSpec
 
 logger = logging.getLogger(__name__)
+
+_EXPERIMENT_GROUP_PAGE_SIZE = 100
+
+
+class _ExperimentGroupReadModel(NemoEntity, entity_type="experiment_group"):
+    """Minimal read model for Insight list aggregation."""
+
+    insight_id: str | None = None
+
+
+def _to_list_item(insight: Insight) -> InsightListItem:
+    item = InsightListItem.model_validate(insight.model_dump(exclude_computed_fields=True))
+    if insight.__pydantic_private__ is not None:
+        item.__pydantic_private__ = insight.__pydantic_private__.copy()
+    return item
+
+
+async def _count_experiment_groups(
+    entity_client: NemoEntitiesClient,
+    *,
+    workspace: str,
+    insight_ids: list[str],
+) -> dict[str, int]:
+    counts = dict.fromkeys(insight_ids, 0)
+    page = 1
+
+    while True:
+        result = await entity_client.list(
+            _ExperimentGroupReadModel,
+            workspace=workspace,
+            page=page,
+            page_size=_EXPERIMENT_GROUP_PAGE_SIZE,
+            filter_obj={
+                "insight_id": {"$in": insight_ids},
+                "is_deleted": False,
+            },
+        )
+        for group in result.data:
+            if group.insight_id in counts:
+                counts[group.insight_id] += 1
+        if page >= result.pagination.total_pages:
+            break
+        page += 1
+
+    return counts
 
 
 class InsightsService(NemoService):
@@ -159,9 +206,23 @@ def _build_insights_router() -> APIRouter:
             logger.exception("Failed to list insights")
             raise HTTPException(status_code=500, detail="Failed to list insights.") from exc
 
+        items = [_to_list_item(insight) for insight in result.data]
+        if items:
+            try:
+                counts = await _count_experiment_groups(
+                    entity_client,
+                    workspace=workspace,
+                    insight_ids=[item.id for item in items],
+                )
+            except Exception:
+                logger.exception("Failed to count experiment groups for insights")
+            else:
+                for item in items:
+                    item.experiment_group_count = counts[item.id]
+
         pagination = PaginationData.model_validate(result.pagination.model_dump()) if result.pagination else None
         return InsightPage(
-            data=result.data,
+            data=items,
             pagination=pagination,
             sort=sort,
             filter=filter_obj or None,

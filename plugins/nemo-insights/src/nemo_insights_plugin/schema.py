@@ -50,7 +50,16 @@ class UpdateInsightRequest(BaseModel):
     trace_refs: list[str] | None = None
 
 
-InsightPage = NemoListResponse[Insight]
+class InsightListItem(Insight, entity_type="insights_insight"):
+    """Insight representation used only in the paginated list response."""
+
+    experiment_group_count: int | None = Field(
+        default=None,
+        description="Number of live experiment groups linked to this insight.",
+    )
+
+
+InsightPage = NemoListResponse[InsightListItem]
 
 
 class UpdateAnalysisConfigRequest(BaseModel):

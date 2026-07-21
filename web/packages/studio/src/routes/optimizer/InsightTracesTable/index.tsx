@@ -9,13 +9,15 @@ import { getGetTraceQueryKey, getTrace } from '@nemo/sdk/generated/platform/api'
 import type { Trace } from '@nemo/sdk/generated/platform/schema';
 import { Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
-import { makeIntakeTraceColumns } from '@studio/components/IntakeLists/intakeTraceColumns';
 import { IntakeTelemetryDataView } from '@studio/components/IntakeLists/IntakeTelemetryDataView';
+import { makeIntakeTraceColumns } from '@studio/components/IntakeLists/intakeTraceColumns';
 import { getIntakeTraceRoute } from '@studio/routes/utils';
 import { useQueries } from '@tanstack/react-query';
 import { Columns3, TriangleAlert } from 'lucide-react';
 import { type FC } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+const TRACE_PREVIEW_PARAMS = { mode: 'preview' } as const;
 
 export interface InsightTracesTableProps {
   workspace: string;
@@ -31,11 +33,14 @@ export interface InsightTracesTableProps {
 export const InsightTracesTable: FC<InsightTracesTableProps> = ({ workspace, traceIds }) => {
   const navigate = useNavigate();
   const dataViewState = useStudioDataViewState();
+  const { pageIndex, pageSize } = dataViewState.pagination.state;
+  const firstVisibleIndex = pageIndex * pageSize;
+  const visibleTraceIds = traceIds.slice(firstVisibleIndex, firstVisibleIndex + pageSize);
 
   const results = useQueries({
-    queries: traceIds.map((id) => ({
-      queryKey: getGetTraceQueryKey(workspace, id),
-      queryFn: ({ signal }: { signal: AbortSignal }) => getTrace(workspace, id, undefined, signal),
+    queries: visibleTraceIds.map((id) => ({
+      queryKey: getGetTraceQueryKey(workspace, id, TRACE_PREVIEW_PARAMS),
+      queryFn: ({ signal }) => getTrace(workspace, id, TRACE_PREVIEW_PARAMS, signal),
       enabled: Boolean(workspace) && Boolean(id),
     })),
   });
@@ -43,7 +48,8 @@ export const InsightTracesTable: FC<InsightTracesTableProps> = ({ workspace, tra
   const traces = results.map((r) => r.data).filter((t): t is Trace => Boolean(t));
   const isFetching = results.some((r) => r.isFetching);
   const failedCount = results.filter((r) => r.isError).length;
-  const allFailed = traceIds.length > 0 && failedCount === traceIds.length && !isFetching;
+  const allFailed =
+    visibleTraceIds.length > 0 && failedCount === visibleTraceIds.length && !isFetching;
   const firstError = results.find((r) => r.error)?.error;
 
   return (
@@ -52,7 +58,7 @@ export const InsightTracesTable: FC<InsightTracesTableProps> = ({ workspace, tra
         <Flex className="items-center gap-density-sm">
           <TriangleAlert aria-hidden className="size-4 shrink-0 text-danger" />
           <Text kind="body/regular/sm" className="text-danger">
-            {failedCount} of {traceIds.length} traces couldn&apos;t be loaded.
+            {failedCount} of {visibleTraceIds.length} traces couldn&apos;t be loaded.
           </Text>
         </Flex>
       ) : null}
@@ -75,7 +81,7 @@ export const InsightTracesTable: FC<InsightTracesTableProps> = ({ workspace, tra
         attributes={{
           DataViewRoot: {
             data: traces,
-            totalCount: traces.length,
+            totalCount: traceIds.length,
             requestStatus: allFailed ? 'error' : isFetching ? 'loading' : undefined,
           },
           DataViewTableContent: {

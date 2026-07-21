@@ -3,9 +3,11 @@
 
 import { useGetEvaluation, useGetExperimentGroup } from '@nemo/sdk/generated/platform/api';
 import { Badge, Card, Flex, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
+import { useOptimizerGetInsight } from '@studio/api/optimizer';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { EvaluationSessionsDataView } from '@studio/components/dataViews/EvaluationSessionsDataView';
 import { OriginatingInsightLink } from '@studio/components/OriginatingInsightLink';
+import { OPTIMIZER_ENABLED } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -23,10 +25,11 @@ export const EvaluationDetailRoute: FC = () => {
   const { data: evaluation } = useGetEvaluation(workspace, evaluationName);
   // Evaluations reach their originating insight through the owning group's insight_id.
   const { data: experimentGroup } = useGetExperimentGroup(workspace, experimentGroupName);
-  const insightId = experimentGroup?.insight_id;
-  // Show the originating-insight card (artwork + description) instead of the header description when
-  // this evaluation's group was seeded from an insight; otherwise fall back to the header description.
-  const showInsightCard = Boolean(insightId && evaluation?.description);
+  const insightId = experimentGroup?.insight_id ?? '';
+  const { data: insight } = useOptimizerGetInsight(workspace, insightId, {
+    query: { enabled: OPTIMIZER_ENABLED && Boolean(insightId) },
+  });
+  const showInsightCard = Boolean(insight?.description);
 
   useBreadcrumbs({
     items: [
@@ -51,10 +54,10 @@ export const EvaluationDetailRoute: FC = () => {
         {showInsightCard ? (
           <Card className="!h-fit">
             <Flex className="items-start gap-density-md">
-              {insightId ? <OriginatingInsightLink insightId={insightId} /> : null}
+              <OriginatingInsightLink insightId={insightId} />
               <Stack className="min-w-0 flex-1 gap-density-md">
                 <Text kind="label/bold/lg">Insight description</Text>
-                <Text kind="body/regular/md">{evaluation?.description}</Text>
+                <Text kind="body/regular/md">{insight?.description}</Text>
               </Stack>
             </Flex>
           </Card>

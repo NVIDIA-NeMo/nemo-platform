@@ -7,11 +7,12 @@ import logging
 from fnmatch import fnmatchcase
 from functools import cached_property
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from nmp.common.config import Configuration, create_service_config_class
+from nmp.common.config import Configuration, EnvironmentFirstSettings, create_service_config_class
 from nmp.studio.env_mappings import ENV_MAPPINGS
 from pydantic import BaseModel, Field
+from pydantic_settings import SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,14 @@ class StudioOtelConfig(BaseModel):
         return any(fnmatchcase(origin, allowed_origin) for allowed_origin in self.allowed_origins)
 
 
+class StudioFeatureFlagsConfig(EnvironmentFirstSettings):
+    """Typed Studio feature flags with direct environment-variable overrides."""
+
+    model_config = SettingsConfigDict(env_prefix="NMP_STUDIO_FEATURE_FLAGS_", extra="allow")
+
+    optimizer_enabled: bool | Literal["preview"] = False
+
+
 class StudioConfig(create_service_config_class("studio")):  # type: ignore[misc]
     """Configuration for the Studio service.
 
@@ -77,6 +86,9 @@ class StudioConfig(create_service_config_class("studio")):  # type: ignore[misc]
     otel: StudioOtelConfig = Field(
         default_factory=StudioOtelConfig,
         description="Studio UI OpenTelemetry settings.",
+    )
+    feature_flags: StudioFeatureFlagsConfig = Field(
+        default_factory=StudioFeatureFlagsConfig,
     )
 
     @cached_property
@@ -148,11 +160,12 @@ class StudioConfig(create_service_config_class("studio")):  # type: ignore[misc]
 
         for mapping in ENV_MAPPINGS:
             value = self._resolve_config_path(mapping.config_path)
+            if mapping.config_path.startswith("studio.feature_flags."):
+                field_path = mapping.config_path.removeprefix("studio.feature_flags.")
+                if field_path in self.feature_flags.model_fields_set:
+                    value = self._resolve_field_path(mapping.config_path.removeprefix("studio."))
             if value == "":
                 value = None
-            # Fall back to own pydantic-settings fields for paths under "studio.*"
-            # (env vars like NMP_STUDIO_PLATFORM_BASE_URL set pydantic fields but
-            # aren't reflected in the YAML-backed global_settings dict).
             if value is None and mapping.config_path.startswith("studio."):
                 value = self._resolve_field_path(mapping.config_path.removeprefix("studio."))
             if value == "":

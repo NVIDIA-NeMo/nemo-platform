@@ -18,6 +18,7 @@ import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { ExperimentGroupDataView } from '@studio/components/dataViews/ExperimentGroupDataView';
 import { ExperimentGroupEditModal } from '@studio/components/ExperimentGroupEditModal';
 import { OriginatingInsightLink } from '@studio/components/OriginatingInsightLink';
+import { OPTIMIZER_ENABLED } from '@studio/constants/environment';
 import { LINK_DOCS_STUDIO_EVALUATION } from '@studio/constants/links';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
@@ -33,7 +34,9 @@ export const ExperimentGroupDetailRoute: FC = () => {
   const { experimentGroupName } = useRequiredPathParams([ROUTE_PARAMS.experimentGroupName]);
   const { data: group, error } = useGetExperimentGroup(workspace, experimentGroupName);
   // The insight is a group-level concept, reached via the group's insight_id.
-  const { data: insight } = useOptimizerGetInsight(workspace, group?.insight_id ?? '');
+  const { data: insight } = useOptimizerGetInsight(workspace, group?.insight_id ?? '', {
+    query: { enabled: OPTIMIZER_ENABLED && Boolean(group?.insight_id) },
+  });
   const [editOpen, setEditOpen] = useState(false);
 
   useBreadcrumbs({
@@ -51,7 +54,7 @@ export const ExperimentGroupDetailRoute: FC = () => {
           slotHeading={experimentGroupName}
           slotDescription={
             <>
-              A experiment is a group of evaluation runs aligned toward a common objective.{' '}
+              An experiment is a group of evaluation runs aligned toward a common objective.{' '}
               <Anchor href={LINK_DOCS_STUDIO_EVALUATION} target="_blank">
                 Learn more
               </Anchor>
@@ -92,7 +95,7 @@ export const ExperimentGroupDetailRoute: FC = () => {
               <Card className="min-w-0 flex-1">
                 <Stack className="gap-density-md">
                   <Text kind="title/sm">Summary</Text>
-                  <Text kind="body/regular/md">{group?.description || '—'}</Text>
+                  <Text kind="body/regular/md">{group?.summary || '—'}</Text>
                 </Stack>
               </Card>
             </div>

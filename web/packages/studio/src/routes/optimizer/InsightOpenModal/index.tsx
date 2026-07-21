@@ -4,28 +4,25 @@
 import { Button, CodeSnippet, Modal, Stack, Text } from '@nvidia/foundations-react-core';
 import type { Insight } from '@studio/api/optimizer';
 import { LINK_DOCS_EXPERIMENTS_CLI } from '@studio/constants/links';
+import { buildOptimizerExperimentCommand } from '@studio/routes/optimizer/InsightOpenModal/command';
 import { ChevronRight, File } from 'lucide-react';
 import { type FC } from 'react';
-
-/** Shell-escape a value interpolated into a single-quoted CLI argument. */
-const shellQuote = (value: string): string => value.replace(/'/g, "'\\''");
-
-/** CLI command that runs experiments to address an insight. */
-const buildCliCommand = (insight: Insight): string =>
-  `nemo exp run \\\n` +
-  `  --insight '${shellQuote(insight.id)}' \\\n` +
-  `  --dataset "<dataset-name>" \\\n` +
-  `  --evaluators correctness,helpfulness,groundedness,tool-error`;
 
 export interface InsightOpenModalProps {
   open: boolean;
   insight: Insight;
+  workspace: string;
   /** Close the modal. */
   onClose: () => void;
 }
 
-export const InsightOpenModal: FC<InsightOpenModalProps> = ({ open, insight, onClose }) => {
-  const cliCommand = buildCliCommand(insight);
+export const InsightOpenModal: FC<InsightOpenModalProps> = ({
+  open,
+  insight,
+  workspace,
+  onClose,
+}) => {
+  const cliCommand = buildOptimizerExperimentCommand(insight.id, workspace);
 
   return (
     <Modal

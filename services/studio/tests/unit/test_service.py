@@ -379,6 +379,28 @@ class TestStaticFilesPath:
 class TestStudioConfigEnvReplacements:
     """Tests for StudioConfig.env_replacements property."""
 
+    def test_feature_flag_environment_overrides_yaml(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("NMP_STUDIO_FEATURE_FLAGS_OPTIMIZER_ENABLED", "preview")
+        monkeypatch.setattr(
+            "nmp.studio.config.Configuration.get_global_settings_from_env",
+            lambda: {"studio": {"feature_flags": {"optimizer_enabled": False}}},
+        )
+
+        config = StudioConfig(feature_flags={"optimizer_enabled": False})
+
+        assert config.feature_flags.optimizer_enabled == "preview"
+        assert config.env_replacements["STUDIO_UI_VITE_FF_OPTIMIZER_ENABLED"] == "preview"
+
+        monkeypatch.delenv("NMP_STUDIO_FEATURE_FLAGS_OPTIMIZER_ENABLED")
+        monkeypatch.setattr(
+            "nmp.studio.config.Configuration.get_global_settings_from_env",
+            lambda: {"studio": {"feature_flags": {"optimizer_enabled": "preview"}}},
+        )
+
+        config = StudioConfig()
+
+        assert config.env_replacements["STUDIO_UI_VITE_FF_OPTIMIZER_ENABLED"] == "preview"
+
     def test_env_replacements_returns_dict(self):
         """Test that env_replacements returns a dict."""
         config = StudioConfig()
