@@ -175,14 +175,14 @@ describe('EvaluationTraceDetailRoute', () => {
       await waitFor(() => expect(trigger).toBeEnabled());
       await user.click(trigger);
 
-      // Panel title + the sibling evaluation as a group heading + its trial row.
-      // The primary run (TRACE_ID) is excluded, so only the compare evaluation shows.
+      // The compare evaluation has a single trial, so it collapses to one option
+      // labelled "<evaluation> · Trial XXXXX" (the primary run is excluded).
       expect(
         await screen.findByText('Select a trial from a run to compare against')
       ).toBeInTheDocument();
-      expect(screen.getByText(COMPARE_EVALUATION_NAME)).toBeInTheDocument();
-
-      await user.click(screen.getByRole('option', { name: /Trial BBBBB/ }));
+      await user.click(
+        screen.getByRole('option', { name: new RegExp(`${COMPARE_EVALUATION_NAME}.*Trial BBBBB`) })
+      );
 
       // Selecting the run swaps into the comparison view.
       expect(

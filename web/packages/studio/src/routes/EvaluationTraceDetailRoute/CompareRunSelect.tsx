@@ -10,7 +10,6 @@ import {
   SelectListbox,
   SelectRoot,
   SelectTrigger,
-  Stack,
   Text,
 } from '@nvidia/foundations-react-core';
 import { runLabel, trialLabel } from '@studio/routes/EvaluationTraceDetailRoute/runLabel';
@@ -76,27 +75,40 @@ export const CompareRunSelect: FC<CompareRunSelectProps> = ({
           <DropdownHeading>
             <Text kind="label/bold/sm">Select a trial from a run to compare against</Text>
           </DropdownHeading>
-          <Stack gap="0" className="max-h-[320px] w-full overflow-auto">
-            {groups.map(([evaluationName, evaluationRuns]) => (
-              <Fragment key={evaluationName}>
-                <DropdownHeading>
-                  <Text kind="label/bold/sm">{evaluationName}</Text>
-                </DropdownHeading>
-                {evaluationRuns.map((run) => (
-                  <SelectItem
-                    key={run.trace_id}
-                    value={run.trace_id}
-                    className="pl-density-lg"
-                    // Options read the full "<evaluation> · Trial XXXXX" for screen
-                    // readers; the visible label stays "Trial XXXXX" under the heading.
-                    aria-label={runLabel(run)}
-                  >
-                    {trialLabel(run)}
-                  </SelectItem>
-                ))}
-              </Fragment>
-            ))}
-          </Stack>
+          {/* Block (not flex) container so long headings keep their height instead of
+              being shrunk and vertically clipped when the list overflows. */}
+          <div className="max-h-[360px] w-full overflow-y-auto">
+            {groups.map(([evaluationName, evaluationRuns]) =>
+              evaluationRuns.length === 1 ? (
+                // Single trial: collapse run + trial onto one selectable line.
+                <SelectItem
+                  key={evaluationRuns[0].trace_id}
+                  value={evaluationRuns[0].trace_id}
+                  aria-label={runLabel(evaluationRuns[0])}
+                >
+                  {runLabel(evaluationRuns[0])}
+                </SelectItem>
+              ) : (
+                <Fragment key={evaluationName}>
+                  <DropdownHeading>
+                    <Text kind="label/bold/sm">{evaluationName}</Text>
+                  </DropdownHeading>
+                  {evaluationRuns.map((run) => (
+                    <SelectItem
+                      key={run.trace_id}
+                      value={run.trace_id}
+                      className="pl-density-lg"
+                      // Screen readers get the full "<evaluation> · Trial XXXXX"; the
+                      // visible label stays "Trial XXXXX" indented under the heading.
+                      aria-label={runLabel(run)}
+                    >
+                      {trialLabel(run)}
+                    </SelectItem>
+                  ))}
+                </Fragment>
+              )
+            )}
+          </div>
         </SelectListbox>
       </SelectContent>
     </SelectRoot>

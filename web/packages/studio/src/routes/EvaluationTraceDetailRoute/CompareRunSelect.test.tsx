@@ -4,6 +4,7 @@
 import type { EvaluationSessionResponse } from '@nemo/sdk/generated/platform/schema';
 import { CompareRunSelect } from '@studio/routes/EvaluationTraceDetailRoute/CompareRunSelect';
 import { render, screen } from '@studio/tests/util/render';
+import userEvent from '@testing-library/user-event';
 
 const run = (
   evaluationName: string,
@@ -22,6 +23,11 @@ const run = (
 
 describe('CompareRunSelect', () => {
   const onChange = vi.fn();
+  // Radix Select needs these pointer/layout APIs that jsdom does not implement.
+  beforeAll(() => {
+    Element.prototype.hasPointerCapture = vi.fn();
+    Element.prototype.scrollIntoView = vi.fn();
+  });
 
   it('shows a disabled loading placeholder while runs load', () => {
     render(
@@ -62,5 +68,32 @@ describe('CompareRunSelect', () => {
     );
     expect(screen.getByText('Compare against evaluation run')).toBeInTheDocument();
     expect(screen.getByRole('combobox')).toBeEnabled();
+  });
+  it('collapses single-trial evaluations and nests multi-trial ones', async () => {
+    const user = userEvent.setup();
+    render(
+      <CompareRunSelect
+        runs={[
+          run('primary-eval', 'sess-prim', 'trace-0'), // current — excluded
+          run('solo-eval', 'sess-SOLO1', 'trace-solo'), // 1 trial → collapsed
+          run('multi-eval', 'sess-MULTA', 'trace-m1'), // 2 trials → nested
+          run('multi-eval', 'sess-MULTB', 'trace-m2'),
+        ]}
+        currentTraceId="trace-0"
+        value={null}
+        onChange={onChange}
+      />
+    );
+
+    await user.click(screen.getByRole('combobox'));
+
+    // Single-trial eval collapses to one option; no standalone heading for it.
+    expect(screen.getByRole('option', { name: 'solo-eval · Trial SOLO1' })).toBeInTheDocument();
+    expect(screen.queryByText('solo-eval', { exact: true })).not.toBeInTheDocument();
+
+    // Multi-trial eval keeps a heading with its trials nested beneath.
+    expect(screen.getByText('multi-eval')).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'multi-eval · Trial MULTA' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'multi-eval · Trial MULTB' })).toBeInTheDocument();
   });
 });
