@@ -105,6 +105,8 @@ def _add_mock_provider_or_skip(
             workspace=workspace,
             name=name,
             mock_response_body=mock_response_body,
+            # Keep test VMs out of controller orphan cleanup between readiness wait and job scoring.
+            should_autoprovision_virtual_model=False,
         )
     except RuntimeError as exc:
         if "mock_provider_prefix is not configured" in str(exc):
@@ -258,8 +260,20 @@ def _create_ready_mock_model(
         model_providers=[f"{workspace}/{provider.name}"],
         exist_ok=True,
     )
-    wait_for_model_entity(sdk, workspace, name, ensure_virtual_model=True)
-    ensure_passthrough_virtual_model(sdk, workspace, name, timeout=IGW_ROUTE_TIMEOUT_SECONDS)
+    wait_for_model_entity(
+        sdk,
+        workspace,
+        name,
+        ensure_virtual_model=True,
+        should_autoprovision_virtual_model=False,
+    )
+    ensure_passthrough_virtual_model(
+        sdk,
+        workspace,
+        name,
+        timeout=IGW_ROUTE_TIMEOUT_SECONDS,
+        autoprovisioned=False,
+    )
     _wait_for_stable_model_chat_route(sdk, workspace, name)
 
 
