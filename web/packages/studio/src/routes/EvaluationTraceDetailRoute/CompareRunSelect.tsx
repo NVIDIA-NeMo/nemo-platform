@@ -5,7 +5,6 @@ import { TextInputSpinner } from '@nemo/common/src/components/form/TextInputSpin
 import type { EvaluationSessionResponse } from '@nemo/sdk/generated/platform/schema';
 import {
   DropdownHeading,
-  DropdownSection,
   SelectContent,
   SelectItem,
   SelectListbox,
@@ -14,8 +13,8 @@ import {
   Stack,
   Text,
 } from '@nvidia/foundations-react-core';
-import { trialLabel } from '@studio/routes/EvaluationTraceDetailRoute/runLabel';
-import { type FC, useMemo } from 'react';
+import { runLabel, trialLabel } from '@studio/routes/EvaluationTraceDetailRoute/runLabel';
+import { Fragment, type FC, useMemo } from 'react';
 
 interface CompareRunSelectProps {
   /** Every run of the current test case across the group's evaluations. */
@@ -73,20 +72,29 @@ export const CompareRunSelect: FC<CompareRunSelectProps> = ({
         aria-label="Compare against evaluation run"
       />
       <SelectContent className="w-(--radix-popper-anchor-width)">
-        <SelectListbox>
+        <SelectListbox density="compact">
           <DropdownHeading>
             <Text kind="label/bold/sm">Select a trial from a run to compare against</Text>
           </DropdownHeading>
-          <Stack className="max-h-[320px] w-full overflow-auto">
+          <Stack gap="0" className="max-h-[320px] w-full overflow-auto">
             {groups.map(([evaluationName, evaluationRuns]) => (
-              <DropdownSection key={evaluationName}>
-                <DropdownHeading>{evaluationName}</DropdownHeading>
+              <Fragment key={evaluationName}>
+                <DropdownHeading>
+                  <Text kind="label/bold/sm">{evaluationName}</Text>
+                </DropdownHeading>
                 {evaluationRuns.map((run) => (
-                  <SelectItem key={run.trace_id} value={run.trace_id}>
+                  <SelectItem
+                    key={run.trace_id}
+                    value={run.trace_id}
+                    className="pl-density-lg"
+                    // Options read the full "<evaluation> · Trial XXXXX" for screen
+                    // readers; the visible label stays "Trial XXXXX" under the heading.
+                    aria-label={runLabel(run)}
+                  >
                     {trialLabel(run)}
                   </SelectItem>
                 ))}
-              </DropdownSection>
+              </Fragment>
             ))}
           </Stack>
         </SelectListbox>
