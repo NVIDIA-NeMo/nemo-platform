@@ -3,16 +3,16 @@
 
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
+import type { AgentEvaluateJob } from '@nemo/sdk/generated/evaluator/schema';
 import { Button, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { DetailPanel } from '@studio/routes/agents/AgentDetailRoute/overview/DetailPanel';
-import type { AgentEvalJob } from '@studio/routes/agents/AgentEvaluationsRoute/api';
 import { getAgentEvaluationDetailRoute, getAgentEvaluationsListRoute } from '@studio/routes/utils';
 import type { FC } from 'react';
 import { Link } from 'react-router-dom';
 
 interface EvaluationsTabProps {
   workspace: string;
-  evals: AgentEvalJob[];
+  evals: AgentEvaluateJob[];
   onRunEvaluation: () => void;
 }
 
@@ -52,7 +52,7 @@ export const EvaluationsTab: FC<EvaluationsTabProps> = ({ workspace, evals, onRu
                   {job.name}
                 </Text>
                 <Text kind="body/regular/xs" color="secondary">
-                  <RelativeTime datetime={job.created_at} />
+                  {job.created_at ? <RelativeTime datetime={job.created_at} /> : '—'}
                 </Text>
               </Stack>
               <StatusBadge status={job.status} />
