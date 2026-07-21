@@ -148,6 +148,7 @@ export const ClaudeCodeChatThread: FC<ClaudeCodeChatThreadProps> = ({
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <AssistantChatThread
+        animateAssistantMessageCompletion
         contentClassName={
           mode === 'compact' ? 'w-full px-density-lg' : 'mx-auto w-full max-w-180 px-density-2xl'
         }

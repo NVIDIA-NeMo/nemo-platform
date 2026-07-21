@@ -22,6 +22,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from nmp.studio import studio_links
 from nmp.studio.coding_agent_artifacts import (
     ChatArtifactsResponse,
+    InputSelectionTool,
     answer_selection_pairs,
     record_answer_selections,
     record_coding_agent_model,
@@ -467,6 +468,7 @@ def _record_assistant_tool_calls(
     message: dict[str, Any],
     seen_tool_use_ids: set[str],
     question_labels_by_tool_use_id: dict[str, dict[str, str]],
+    input_selection_tools_by_tool_use_id: dict[str, InputSelectionTool],
 ) -> None:
     for part in message.get("content") or []:
         if not isinstance(part, dict):
@@ -493,6 +495,7 @@ def _record_assistant_tool_calls(
             part.get("input") or {},
             tool_use_id if isinstance(tool_use_id, str) else None,
             question_labels_by_tool_use_id,
+            input_selection_tools_by_tool_use_id,
         )
 
 
@@ -501,6 +504,7 @@ def _summarize_history_session(path: Path) -> HistorySummary:
     seen_usage_events: set[tuple[str, str]] = set()
     seen_tool_use_ids: set[str] = set()
     question_labels_by_tool_use_id: dict[str, dict[str, str]] = {}
+    input_selection_tools_by_tool_use_id: dict[str, InputSelectionTool] = {}
     try:
         with path.open("r", encoding="utf-8", errors="replace") as fh:
             for line in fh:
@@ -534,6 +538,7 @@ def _summarize_history_session(path: Path) -> HistorySummary:
                         message,
                         seen_tool_use_ids,
                         question_labels_by_tool_use_id,
+                        input_selection_tools_by_tool_use_id,
                     )
                 elif entry_type == "user" and isinstance(message, dict):
                     content = message.get("content")
@@ -549,6 +554,7 @@ def _summarize_history_session(path: Path) -> HistorySummary:
                             summary.chat_artifacts,
                             content,
                             question_labels_by_tool_use_id,
+                            input_selection_tools_by_tool_use_id,
                         )
     except OSError:
         return HistorySummary()
