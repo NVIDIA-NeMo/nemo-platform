@@ -862,7 +862,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
 
         Reads the log file written by the local in-memory runner backend.
         NAT subprocess deployments write process output there; Fabric-backed
-        deployments write runtime lifecycle entries there. The log file
+        deployments write validation/preparation entries there. The log file
         location is the same convention the backend uses internally:
         ``nmp_user_data_dir() / 'agents' / 'system' / <deployment-name>.log``
         by default. This command is therefore only meaningful when the CLI runs

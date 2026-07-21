@@ -35,16 +35,9 @@ from typing import Any
 
 import httpx
 import yaml
-from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.config import AgentsConfig, ControllerConfig
 from nemo_agents_plugin.entities import NEMO_AGENTS_SPEC_CONFIG_FORMAT, DeploymentMode
-from nemo_agents_plugin.fabric.runtime import (
-    FabricRuntimeHandle,
-    FabricRuntimeStartRequest,
-    start_fabric_agent_runtime,
-    stop_fabric_agent_runtime,
-)
-from nemo_agents_plugin.fabric.translator import translate_agent_config
+from nemo_agents_plugin.fabric.validation import validate_platform_agent_config
 from nemo_agents_plugin.runner.backend import DeploymentInfo, LocalLog, LogLocation, NotYetAvailable, RunnerBackend
 
 # Match characters not safe for filesystem paths.  Deployment names are
@@ -132,7 +125,6 @@ class InMemoryRunnerBackend(RunnerBackend):
         self._workspace_root: Path = config.workspace_dir.resolve()
         self._processes: dict[tuple[str, str], subprocess.Popen[bytes]] = {}
         self._deployments: dict[tuple[str, str], DeploymentInfo] = {}
-        self._fabric_runtimes: dict[tuple[str, str], FabricRuntimeHandle] = {}
         self._next_port: int = config.port_range_start
         self._temp_files: dict[tuple[str, str], Path] = {}
         self._http_client: httpx.AsyncClient | None = None
@@ -247,21 +239,13 @@ class InMemoryRunnerBackend(RunnerBackend):
         return info
 
     async def _create_fabric_deployment(self, workspace: str, name: str, config: dict[str, Any]) -> DeploymentInfo:
-        """Translate Platform config and start a managed Fabric runtime."""
-        key = (workspace, name)
-        agent_config = AgentConfig.model_validate(config)
-        fabric_config = translate_agent_config(agent_config)
+        """Validate and prepare a Platform-owned Fabric-backed deployment."""
         base_dir = self._fabric_base_dir_for(workspace, name)
         await asyncio.to_thread(base_dir.mkdir, parents=True, exist_ok=True)
-        handle = await start_fabric_agent_runtime(
-            FabricRuntimeStartRequest(
-                fabric_config=fabric_config,
-                base_dir=base_dir,
-            )
-        )
+        validation_result = await validate_platform_agent_config(config, base_dir=base_dir)
 
         log_path = self.log_path_for(workspace, name)
-        await asyncio.to_thread(self._write_fabric_start_log, workspace, name, log_path, handle)
+        await asyncio.to_thread(self._write_fabric_validation_log, workspace, name, log_path, validation_result)
 
         info = DeploymentInfo(
             name=name,
@@ -269,17 +253,15 @@ class InMemoryRunnerBackend(RunnerBackend):
             log_path=str(log_path),
             extra={
                 "runtime": "fabric",
-                "runtime_id": handle.runtime_id or "",
                 "base_dir": str(base_dir),
+                "prepared": True,
             },
         )
-        self._fabric_runtimes[key] = handle
-        self._deployments[key] = info
+        self._deployments[(workspace, name)] = info
         logger.info(
-            "Started Fabric runtime for '%s/%s' (runtime_id=%s, base_dir=%s)",
+            "Prepared Fabric-backed deployment for '%s/%s' (base_dir=%s)",
             workspace,
             name,
-            handle.runtime_id or "<unknown>",
             base_dir,
         )
         return info
@@ -289,7 +271,7 @@ class InMemoryRunnerBackend(RunnerBackend):
         info = self._deployments.get(key)
         if info is None:
             return None
-        if key in self._fabric_runtimes:
+        if info.extra.get("runtime") == "fabric":
             return info
 
         proc = self._processes.get(key)
@@ -301,16 +283,12 @@ class InMemoryRunnerBackend(RunnerBackend):
     async def delete_deployment(self, workspace: str, name: str) -> bool:
         key = (workspace, name)
         proc = self._processes.pop(key, None)
-        runtime = self._fabric_runtimes.pop(key, None)
         info = self._deployments.pop(key, None)
         config_path = self._temp_files.pop(key, None)
 
-        if proc is None and runtime is None and info is None:
+        if proc is None and info is None:
             # Already gone — safe for the controller to remove the entity.
             return True
-
-        if runtime is not None:
-            await stop_fabric_agent_runtime(runtime)
 
         if proc is not None:
             await asyncio.to_thread(self._terminate, name, proc)
@@ -349,15 +327,6 @@ class InMemoryRunnerBackend(RunnerBackend):
             return_exceptions=True,
         )
         self._processes.clear()
-        runtimes = list(self._fabric_runtimes.items())
-        labels.extend(f"{ws}/{nm}" for (ws, nm), _ in runtimes)
-        results.extend(
-            await asyncio.gather(
-                *(stop_fabric_agent_runtime(runtime) for _, runtime in runtimes),
-                return_exceptions=True,
-            )
-        )
-        self._fabric_runtimes.clear()
         for label, result in zip(labels, results, strict=False):
             if isinstance(result, Exception):
                 logger.warning("Error terminating '%s' during shutdown", label, exc_info=result)
@@ -383,22 +352,22 @@ class InMemoryRunnerBackend(RunnerBackend):
         return config_path
 
     def _fabric_base_dir_for(self, workspace: str, name: str) -> Path:
-        """Return the local base directory used by a managed Fabric runtime."""
+        """Return the local base directory used for Fabric validation/preparation."""
         return self.system_dir / _sanitize_filename(workspace) / f"{_sanitize_filename(name)}-fabric"
 
-    def _write_fabric_start_log(
+    def _write_fabric_validation_log(
         self,
         workspace: str,
         name: str,
         log_path: Path,
-        handle: FabricRuntimeHandle,
+        validation_result: Any,
     ) -> None:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_path.write_text(
             "\n".join(
                 [
-                    f"Started Fabric runtime for {workspace}/{name}.",
-                    f"runtime_id={handle.runtime_id or ''}",
+                    f"Validated Fabric-backed deployment for {workspace}/{name}.",
+                    f"agent={validation_result.agent_config.name}",
                     f"base_dir={self._fabric_base_dir_for(workspace, name)}",
                     "",
                 ]

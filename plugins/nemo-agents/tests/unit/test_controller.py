@@ -130,7 +130,7 @@ class TestStartDeployment:
         ctrl.backend.create_deployment.return_value = DeploymentInfo(
             name="test-dep",
             status="running",
-            extra={"runtime": "fabric", "runtime_id": "runtime-1"},
+            extra={"runtime": "fabric", "prepared": True},
         )
 
         await ctrl._start_deployment(dep)
