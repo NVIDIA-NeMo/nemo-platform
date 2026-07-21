@@ -30,20 +30,12 @@ from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.secrets.client import SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest, PlatformSecretUpdateRequest
 from nmp.common.config import nmp_user_data_dir
+from nmp.platform_runner.config import DEFAULT_LOCAL_SERVICES_BIND_HOST, PlatformAppConfig
 from pydantic import SecretStr
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
 
-from nemo_platform_ext.cli.commands.services._process import (
-    DEFAULT_SERVICES_BIND_HOST,
-    check_port_available_for_start,
-    compute_scope,
-    format_port_conflict,
-    log_path_for,
-    start_background,
-    stop_instance,
-)
 from nemo_platform_ext.cli.commands.skills import registry as skills_registry
 from nemo_platform_ext.cli.commands.skills.base import Scope, Skill
 from nemo_platform_ext.cli.commands.skills.registry import get_installer, load_skills
@@ -51,6 +43,14 @@ from nemo_platform_ext.cli.core.context import CLIContext
 from nemo_platform_ext.cli.core.errors import handle_errors
 from nemo_platform_ext.config.config import Config
 from nemo_platform_ext.config.models import ConfigFile, ConfigParams, LocalServicesConfig
+from nemo_platform_ext.local.process import (
+    check_port_available_for_start,
+    compute_scope,
+    format_port_conflict,
+    log_path_for,
+    start_background,
+    stop_instance,
+)
 from nemo_platform_ext.ui.prompts import (
     UserCancelled,
     is_interactive,
@@ -635,8 +635,10 @@ def _start_services_background(base_url: str, data_dir: str | None = None) -> su
     exported it).
     """
     port = _resolve_services_port(base_url)
-    scope = compute_scope(port=port)
-    return start_background(scope=scope, port=port, data_dir=data_dir)
+    return start_background(
+        PlatformAppConfig(scope=compute_scope(port=port), port=port),
+        data_dir=data_dir,
+    )
 
 
 def _last_startup_service(log_path: Path | None) -> str:
@@ -686,16 +688,13 @@ def _kill_existing_services(base_url: str) -> None:
 
     Delegates to the shared process lifecycle module.
     """
-    port = _resolve_services_port(base_url)
-    scope = compute_scope(port=port)
-    stop_instance(scope, timeout=2.0, force=True)
+    stop_instance(compute_scope(port=_resolve_services_port(base_url)), timeout=2.0, force=True)
 
 
 def _ensure_port_available_for_start(base_url: str) -> None:
     """Fail fast when the services port cannot be bound."""
     port = _resolve_services_port(base_url)
-    scope = compute_scope(port=port)
-    conflict = check_port_available_for_start(DEFAULT_SERVICES_BIND_HOST, port, scope)
+    conflict = check_port_available_for_start(DEFAULT_LOCAL_SERVICES_BIND_HOST, port, compute_scope(port=port))
     if conflict is None:
         return
     lines = format_port_conflict(conflict)
@@ -777,8 +776,7 @@ def _maybe_start_services(
     _ensure_port_available_for_start(base_url)
     proc = _start_services_background(base_url, data_dir=data_dir)
 
-    port = _resolve_services_port(base_url)
-    log = log_path_for(compute_scope(port=port))
+    log = log_path_for(compute_scope(port=_resolve_services_port(base_url)))
 
     if not _wait_for_platform(base_url, timeout=timeout, log_path=log):
         exit_code = proc.poll()
