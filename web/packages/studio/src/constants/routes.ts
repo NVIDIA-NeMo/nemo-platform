@@ -111,6 +111,7 @@ export const ROUTES = {
     secrets: `/workspaces/:${P.workspace}/secrets`,
     guardrails: `/workspaces/:${P.workspace}/guardrails`,
     guardrailDetail: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}`,
+    guardrailConfig: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}/config`,
     settings: `/workspaces/:${P.workspace}/settings`,
     /** Workspace members and role-based access (Entities role bindings) */
     members: `/workspaces/:${P.workspace}/members`,
