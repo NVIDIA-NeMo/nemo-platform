@@ -17,7 +17,19 @@ from pydantic import BaseModel, Field, PrivateAttr, TypeAdapter, computed_field
 
 # Regex pattern for valid workspace names
 ID_PATTERN = r"^[\w\-\+.@:]+$"
-BASE_FIELDS = {"id", "name", "workspace", "created_at", "updated_at", "entity_type", "project"}
+BASE_FIELDS = {
+    "id",
+    "name",
+    "workspace",
+    "created_at",
+    "created_by",
+    "updated_at",
+    "updated_by",
+    "entity_type",
+    "parent",
+    "project",
+    "db_version",
+}
 
 # Default workspace when none is specified
 DEFAULT_WORKSPACE = "default"

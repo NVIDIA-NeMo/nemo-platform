@@ -6,6 +6,7 @@
 import pytest
 from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
 from nmp.core.entities.app.repository import SQLAlchemyEntityRepository
+from nmp.core.entities.app.repository.sqlalchemy.models import DBEntity
 
 pytestmark = pytest.mark.asyncio
 
@@ -86,3 +87,52 @@ async def test_omits_missing_and_null_json_group_keys(entity_repo: SQLAlchemyEnt
     )
 
     assert counts == {"insight-a": 1}
+
+
+async def test_normalizes_sqlite_json_booleans_without_changing_numbers(
+    entity_repo: SQLAlchemyEntityRepository, setup_workspaces
+):
+    for name, value in (
+        ("true", True),
+        ("false", False),
+        ("one", 1),
+        ("zero", 0),
+    ):
+        await entity_repo.create_entity(
+            workspace="workspace-1",
+            entity_type="experiment_group",
+            name=name,
+            data={"value": value},
+        )
+
+    counts = await entity_repo.count_entities_by(
+        workspace="workspace-1",
+        entity_type="experiment_group",
+        group_by="data.value",
+    )
+
+    assert counts == {"true": 1, "false": 1, "1": 1, "0": 1}
+
+
+async def test_rejects_more_than_1000_group_values(
+    entity_repo: SQLAlchemyEntityRepository, session_maker, setup_workspaces
+):
+    async with session_maker() as session:
+        session.add_all(
+            DBEntity(
+                id=f"experiment-group-{index}",
+                workspace="workspace-1",
+                entity_type="experiment_group",
+                name=f"group-{index}",
+                data={"value": f"group-{index}"},
+            )
+            for index in range(1001)
+        )
+        await session.commit()
+
+    with pytest.raises(ValueError, match="more than 1000 distinct values"):
+        await entity_repo.count_entities_by(
+            workspace="workspace-1",
+            entity_type="experiment_group",
+            group_by="data.value",
+        )

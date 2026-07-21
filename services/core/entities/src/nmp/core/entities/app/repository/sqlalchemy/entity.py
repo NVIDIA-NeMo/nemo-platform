@@ -15,9 +15,11 @@ from nmp.core.entities.app.repository.sqlalchemy.filter import SQLAlchemyFilterR
 from nmp.core.entities.app.repository.sqlalchemy.models import DBEntity
 from nmp.core.entities.entities import Entity
 from nmp.core.entities.utils.identifiers import generate_entity_id
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm.exc import StaleDataError
+
+MAX_GROUP_COUNT_ROWS = 1000
 
 
 class SQLAlchemyEntityRepository(EntityRepositoryInterface):
@@ -213,6 +215,14 @@ class SQLAlchemyEntityRepository(EntityRepositoryInterface):
                 DBEntity, relationship_child_workspaces=relationship_child_workspaces
             )
             group_column, is_json = filter_repo.get_text_column(group_by)
+            if is_json and self._is_sqlite(sess):
+                json_path = "$." + ".".join(group_by.split(".")[1:])
+                json_type = func.json_type(DBEntity.data, json_path)
+                group_column = case(
+                    (json_type == "true", "true"),
+                    (json_type == "false", "false"),
+                    else_=group_column,
+                )
             query = select(group_column, func.count()).select_from(DBEntity).where(DBEntity.entity_type == entity_type)
 
             if workspace != ALL_WORKSPACES:
@@ -225,7 +235,12 @@ class SQLAlchemyEntityRepository(EntityRepositoryInterface):
             if is_json:
                 query = query.where(group_column != "null")
 
-            rows = (await sess.execute(query.group_by(group_column))).all()
+            rows = (await sess.execute(query.group_by(group_column).limit(MAX_GROUP_COUNT_ROWS + 1))).all()
+            if len(rows) > MAX_GROUP_COUNT_ROWS:
+                raise ValueError(
+                    f"Grouped count has more than {MAX_GROUP_COUNT_ROWS} distinct values; "
+                    "narrow the filter or choose a lower-cardinality field."
+                )
             return {str(key): int(count) for key, count in rows}
 
     async def update_entity(

@@ -56,6 +56,17 @@ async def test_count_by_returns_grouped_counts_for_shorthand_filter() -> None:
 
 
 @pytest.mark.asyncio
+async def test_count_by_preserves_top_level_parent_field() -> None:
+    mock_api = Mock()
+    mock_api.list = AsyncMock(return_value=_entities_page(group_counts={"parent-id": 1}))
+    client = EntityClient(mock_api)
+
+    await client.count_by(ExperimentGroup, "parent")
+
+    assert mock_api.list.await_args.kwargs["extra_query"] == {"count_by": "parent"}
+
+
+@pytest.mark.asyncio
 async def test_count_by_rejects_response_without_grouped_counts() -> None:
     mock_api = Mock()
     mock_api.list = AsyncMock(return_value=_entities_page())

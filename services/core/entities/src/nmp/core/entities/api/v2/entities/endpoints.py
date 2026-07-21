@@ -370,17 +370,18 @@ async def list_entities(
         filter_op=effective_filter,
         relationship_child_workspaces=accessible_workspaces,
     )
-    group_counts = (
-        await repository.count_entities_by(
-            workspace=query_workspace,
-            entity_type=entity_type,
-            group_by=count_by,
-            filter_op=effective_filter,
-            relationship_child_workspaces=accessible_workspaces,
-        )
-        if count_by
-        else None
-    )
+    group_counts = None
+    if count_by:
+        try:
+            group_counts = await repository.count_entities_by(
+                workspace=query_workspace,
+                entity_type=entity_type,
+                group_by=count_by,
+                filter_op=effective_filter,
+                relationship_child_workspaces=accessible_workspaces,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     return EntitiesPage(
         data=entities,
