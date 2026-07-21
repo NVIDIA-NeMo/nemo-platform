@@ -416,6 +416,25 @@ export const getGuardrailConfigRoute = (workspace: string, guardrailConfigName: 
   });
 };
 
+export const getGuardrailChecksRoute = (workspace: string, guardrailConfigName: string) => {
+  return generatePath(ROUTES.workspace.guardrailChecks, {
+    workspace,
+    guardrailConfigName,
+  });
+};
+
+export const getGuardrailCheckRoute = (
+  workspace: string,
+  guardrailConfigName: string,
+  guardrailCheckName: string
+) => {
+  return generatePath(ROUTES.workspace.guardrailCheckDetail, {
+    workspace,
+    guardrailConfigName,
+    guardrailCheckName,
+  });
+};
+
 export const getWorkspaceSettingsRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.settings, { workspace });
 };

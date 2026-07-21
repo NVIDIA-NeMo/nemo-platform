@@ -38,6 +38,7 @@ const pathParams = {
   [RP.evaluationName]: 'test-experiment',
   [RP.insightId]: 'test-insight',
   [RP.guardrailConfigName]: 'test-guardrail-config',
+  [RP.guardrailCheckName]: 'test-guardrail-check',
 };
 
 describe('AccessibleTitleE2E', () => {

@@ -12,7 +12,11 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { GuardrailFormProvider } from '@studio/routes/guardrails/GuardrailForm/GuardrailFormProvider';
 import { GuardrailHeaderActions } from '@studio/routes/guardrails/GuardrailForm/GuardrailHeaderActions';
-import { getGuardrailConfigRoute, getGuardrailsRoute } from '@studio/routes/utils';
+import {
+  getGuardrailChecksRoute,
+  getGuardrailConfigRoute,
+  getGuardrailsRoute,
+} from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { type FC, Suspense } from 'react';
 import { Link, Outlet, matchPath, useLocation } from 'react-router-dom';
@@ -85,6 +89,11 @@ export const GuardrailDetailRoute: FC = () => {
                 value: 'config',
                 children: 'Configuration',
                 href: getGuardrailConfigRoute(workspace, guardrailConfigName),
+              },
+              {
+                value: 'checks',
+                children: 'Test and Validate',
+                href: getGuardrailChecksRoute(workspace, guardrailConfigName),
               },
             ]}
             renderLink={(item) => <Link to={item.href!}>{item.children}</Link>}
