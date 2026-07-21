@@ -847,7 +847,7 @@ jobs:
           DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
           SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
           RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
-          RELEASE_SCOPE: ${{ needs.plan-release.outputs.release_scope }}
+          HAS_WHEELS: ${{ needs.plan-release.outputs.has_wheels }}
           RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
           HELM_VERSION: ${{ needs.stage-helm.outputs.chart_version }}
           WHEEL_IDS: ${{ needs.plan-release.outputs.wheel_ids }}
@@ -857,7 +857,7 @@ jobs:
           script: |
             const [owner, repo] = process.env.DISPATCH_REPO.split("/");
             const wheelIds = JSON.parse(process.env.WHEEL_IDS);
-            const sdkVersions = process.env.RELEASE_SCOPE === "all"
+            const sdkVersions = process.env.HAS_WHEELS === "true"
               ? Object.fromEntries(wheelIds.map((id) => [id, process.env.WHEEL_VERSION]))
               : {};
 
