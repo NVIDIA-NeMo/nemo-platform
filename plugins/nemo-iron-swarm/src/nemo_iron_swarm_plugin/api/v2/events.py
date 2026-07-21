@@ -21,10 +21,18 @@ from fastapi import APIRouter
 from nemo_iron_swarm_plugin._perms import IronSwarmRunPerms
 from nemo_iron_swarm_plugin.authz import scope
 from nemo_iron_swarm_plugin.config import IronSwarmConfig
+from nemo_iron_swarm_plugin.entities import IRON_SWARM_RUN_TYPE, IronSwarmRun
+from nemo_iron_swarm_plugin.filesets import download_fileset
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+
+def _get_sdk() -> Any:
+    from nemo_platform_plugin.sdk import get_sdk
+
+    return get_sdk()
 
 
 def _events_path(workspace: str, run_name: str) -> Path:
@@ -120,7 +128,26 @@ class EventsResponse(BaseModel):
 @scope.read
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[IronSwarmRunPerms.EVENTS_READ])
 async def get_events(workspace: str, name: str, after: int = 0) -> EventsResponse:
-    """Return all persisted run events with sequence id greater than *after*."""
-    return EventsResponse(
-        events=[{"id": seq, **event} for seq, event in hub.stream(workspace, name).history(after_id=after)]
-    )
+    """Return all persisted run events with sequence id greater than *after*.
+
+    Falls back to downloading from the run's ``events_fileset`` when the local
+    file is absent (e.g. after a pod restart).
+    """
+    stream = hub.stream(workspace, name)
+    result = stream.history(after_id=after)
+
+    if not result and not stream._path.exists():
+        try:
+            sdk = _get_sdk()
+            run: IronSwarmRun = sdk.entities.get_entity_by_name(
+                name=name,
+                entity_type=IRON_SWARM_RUN_TYPE,
+                workspace=workspace,
+            )
+            if run.events_fileset:
+                download_fileset(sdk, run.events_fileset, stream._path.parent)
+                result = stream.history(after_id=after)
+        except Exception:
+            logger.warning("Fileset fallback failed for run %r events; returning empty", name)
+
+    return EventsResponse(events=[{"id": seq, **event} for seq, event in result])
