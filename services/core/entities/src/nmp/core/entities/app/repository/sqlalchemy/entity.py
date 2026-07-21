@@ -222,15 +222,18 @@ class SQLAlchemyEntityRepository(EntityRepositoryInterface):
             filter_repo = SQLAlchemyFilterRepository(
                 DBEntity, relationship_child_workspaces=relationship_child_workspaces
             )
-            group_column, is_json = filter_repo.get_text_column(group_by)
-            if is_json and self._is_sqlite(sess):
-                json_path = "$." + ".".join(group_by.split(".")[1:])
-                json_type = func.json_type(DBEntity.data, json_path)
-                group_column = case(
-                    (json_type == "true", "true"),
-                    (json_type == "false", "false"),
-                    else_=group_column,
-                )
+            group_column, raw_group_column, is_json = filter_repo.get_text_column(group_by)
+            if is_json:
+                if self._is_sqlite(sess):
+                    json_path = "$." + ".".join(group_by.split(".")[1:])
+                    json_type = func.json_type(DBEntity.data, json_path)
+                    group_column = case(
+                        (json_type == "true", "true"),
+                        (json_type == "false", "false"),
+                        else_=group_column,
+                    )
+                else:
+                    json_type = func.json_typeof(raw_group_column)
             query = select(group_column, func.count()).select_from(DBEntity).where(DBEntity.entity_type == entity_type)
 
             if workspace != ALL_WORKSPACES:
@@ -239,9 +242,10 @@ class SQLAlchemyEntityRepository(EntityRepositoryInterface):
             if filter_op is not None:
                 query = query.where(filter_op.apply(filter_repo))
 
-            query = query.where(group_column.is_not(None))
             if is_json:
-                query = query.where(group_column != "null")
+                query = query.where(json_type.is_not(None), json_type != "null")
+            else:
+                query = query.where(group_column.is_not(None))
 
             rows = (await sess.execute(query.group_by(group_column).limit(MAX_GROUP_COUNT_ROWS + 1))).all()
             if len(rows) > MAX_GROUP_COUNT_ROWS:

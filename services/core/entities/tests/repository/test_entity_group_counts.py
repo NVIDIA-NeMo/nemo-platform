@@ -72,6 +72,7 @@ async def test_omits_missing_and_null_json_group_keys(entity_repo: SQLAlchemyEnt
         ("linked", {"insight_id": "insight-a"}),
         ("missing", {}),
         ("null", {"insight_id": None}),
+        ("string-null", {"insight_id": "null"}),
     ):
         await entity_repo.create_entity(
             workspace="workspace-1",
@@ -86,7 +87,7 @@ async def test_omits_missing_and_null_json_group_keys(entity_repo: SQLAlchemyEnt
         group_by="data.insight_id",
     )
 
-    assert counts == {"insight-a": 1}
+    assert counts == {"insight-a": 1, "null": 1}
 
 
 async def test_normalizes_sqlite_json_booleans_without_changing_numbers(
@@ -126,9 +127,23 @@ async def test_rejects_more_than_1000_group_values(
                 name=f"group-{index}",
                 data={"value": f"group-{index}"},
             )
-            for index in range(1001)
+            for index in range(1000)
         )
         await session.commit()
+
+    counts = await entity_repo.count_entities_by(
+        workspace="workspace-1",
+        entity_type="experiment_group",
+        group_by="data.value",
+    )
+    assert len(counts) == 1000
+
+    await entity_repo.create_entity(
+        workspace="workspace-1",
+        entity_type="experiment_group",
+        name="group-1000",
+        data={"value": "group-1000"},
+    )
 
     with pytest.raises(ValueError, match="more than 1000 distinct values"):
         await entity_repo.count_entities_by(
