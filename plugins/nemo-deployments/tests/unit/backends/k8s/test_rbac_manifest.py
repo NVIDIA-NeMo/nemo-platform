@@ -3,12 +3,9 @@
 
 """Assert the deploy chart's controller Role grants the k8s backend's required RBAC.
 
-The chart under ``k8s/helm`` declares an unconditional ``k8s-nim-operator`` chart
-dependency, so ``helm template`` cannot render without that subchart present in
-``charts/`` (fetched from an NGC repo) — a network dependency this suite must not
-require. Assertions instead parse the static YAML rule entries directly out of the
-Go-template source, which is safe because the base RBAC rules (unlike the
-Volcano/NIM-Operator blocks) are plain YAML with no Helm expressions inside them.
+Assertions parse the static YAML rule entries directly out of the Go-template
+source, which is safe because the base RBAC rules (unlike the Volcano block)
+are plain YAML with no Helm expressions inside them.
 """
 
 from __future__ import annotations

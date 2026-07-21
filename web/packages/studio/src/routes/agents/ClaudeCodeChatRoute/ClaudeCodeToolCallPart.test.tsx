@@ -153,7 +153,7 @@ describe('ClaudeCodeToolCallPart', () => {
     );
 
     const disclosure = screen.getByTestId('claude-code-collapsed-studio-details');
-    expect(disclosure).toHaveTextContent('worked for 42s');
+    expect(disclosure).toHaveTextContent('View work · worked for 42s');
     expect(disclosure).not.toHaveAttribute('open');
     expect(screen.getByTestId('claude-code-collapsed-studio-details-content')).toHaveTextContent(
       'Optimization report'
@@ -162,7 +162,7 @@ describe('ClaudeCodeToolCallPart', () => {
       'Ran pwd'
     );
 
-    await user.click(screen.getByText('worked for 42s'));
+    await user.click(screen.getByText('View work'));
 
     expect(disclosure).toHaveAttribute('open');
     expect(screen.getByRole('heading', { level: 2, name: 'Optimization report' })).toBeVisible();
@@ -221,7 +221,7 @@ describe('ClaudeCodeToolCallPart', () => {
       />
     );
 
-    expect(screen.getByText('Work details')).toBeVisible();
+    expect(screen.getByText('View work')).toBeVisible();
     expect(screen.queryByText('worked for unknown')).not.toBeInTheDocument();
   });
 

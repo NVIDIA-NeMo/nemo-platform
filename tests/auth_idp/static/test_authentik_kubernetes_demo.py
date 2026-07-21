@@ -796,8 +796,7 @@ def test_authentik_umbrella_values_configure_nemo_envoy_as_the_only_edge_proxy()
     assert values["integration"]["nemoPlatform"]["envoyServiceName"] == "nemo-platform-envoy"
     assert nemo_values["rbac"]["volcanoEnabled"] is False
     assert nemo_values["platformConfig"]["models"]["controller"]["backends"] == {
-        "none": {"enabled": True},
-        "nim_operator": {"enabled": False},
+        "deployments_plugin": {"enabled": True},
     }
 
 

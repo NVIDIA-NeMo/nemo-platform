@@ -1452,11 +1452,14 @@ class ContainerExecutorConfig(BaseModel):
         "Applied after defaults but before override_config. Ignored by non-NIM engines.",
     )
 
-    # Raw NIMService spec override (NIM engine on k8s only).
+    # Raw per-container override map (NIM engine on k8s only).
     override_config: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Raw NIMService spec configuration that takes precedence over generated config (NIM engine "
-        "on k8s). Allows advanced configuration options directly. Ignored by non-NIM engines.",
+        description="Partial NIMService Spec fragments deep-merged after generated defaults and "
+        "k8s_nim_operator_config (NIM engine on k8s only). Supported keys: image, command, args, "
+        "resources, env, readinessProbe, livenessProbe, startupProbe, nodeSelector, tolerations, "
+        "userID, groupID, labels, initContainers, sidecarContainers. Unsupported keys are rejected "
+        "at compile time. Ignored by non-NIM engines and docker runtime.",
     )
 
 

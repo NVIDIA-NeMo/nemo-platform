@@ -20,6 +20,16 @@ from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityCon
 
 logger = logging.getLogger(__name__)
 
+_DELETE_COMPLETE_STATUSES = frozenset({"SUCCEEDED", "DELETED"})
+
+
+def _is_terminal_deleting_timeout_failure(deployment: Deployment) -> bool:
+    """Return True when delete reconciliation already recorded a deleting timeout."""
+    if deployment.status != "FAILED":
+        return False
+    details = deployment.error_details
+    return isinstance(details, dict) and details.get("reason") == "deleting_timeout"
+
 
 def deployment_id(deployment: Deployment) -> str:
     return f"{deployment.workspace}/{deployment.name}"
@@ -180,6 +190,13 @@ class DeploymentReconciler:
     async def _reconcile_delete(self, deployment: Deployment) -> None:
         dep_id = deployment_id(deployment)
         self._drift_cache.remove(dep_id)
+        if _is_terminal_deleting_timeout_failure(deployment):
+            return
+        timeout_update = self._check_deleting_timeout(deployment)
+        if timeout_update is not None:
+            await self._update_deployment_status(deployment, timeout_update)
+            return
+
         backend = self._try_resolve_backend(deployment)
         if deployment.status != "DELETING":
             await self._update_deployment_status(
@@ -189,9 +206,17 @@ class DeploymentReconciler:
 
         if backend is not None:
             try:
-                await backend.delete_deployment(deployment.workspace, deployment.name)
+                status_update = await backend.delete_deployment(deployment.workspace, deployment.name)
             except Exception:
                 logger.warning("Backend delete failed for %s — will retry", dep_id, exc_info=True)
+                return
+            if status_update.status not in _DELETE_COMPLETE_STATUSES:
+                logger.debug(
+                    "Backend delete not complete for %s: %s — %s",
+                    dep_id,
+                    status_update.status,
+                    status_update.status_message,
+                )
                 return
         else:
             logger.warning("No executor for delete of %s — removing entity only", dep_id)
@@ -351,6 +376,30 @@ class DeploymentReconciler:
             },
         )
 
+    def _check_deleting_timeout(self, deployment: Deployment) -> BackendStatusUpdate | None:
+        timeout = self._controller_config.deleting_timeout_seconds
+        if timeout <= 0:
+            return None
+        deleting_at = _deleting_timestamp(deployment)
+        if deleting_at is None:
+            return None
+        elapsed = (datetime.now(timezone.utc) - deleting_at).total_seconds()
+        if elapsed < timeout:
+            return None
+        elapsed_int = int(elapsed)
+        return BackendStatusUpdate(
+            status="FAILED",
+            status_message=(
+                f"Deployment stuck in DELETING for {elapsed_int}s (timeout: {timeout}s). "
+                "Backend resources were not removed."
+            ),
+            error_details={
+                "reason": "deleting_timeout",
+                "elapsed_seconds": elapsed_int,
+                "timeout_seconds": timeout,
+            },
+        )
+
     async def _update_deployment_status_pending(self, deployment: Deployment, message: str) -> None:
         if deployment.status == "PENDING" and deployment.status_message == message:
             return
@@ -402,6 +451,13 @@ def _starting_timestamp(deployment: Deployment) -> datetime | None:
             return datetime.fromisoformat(event.timestamp)
     if deployment.status_history and deployment.status_history[0].timestamp:
         return datetime.fromisoformat(deployment.status_history[0].timestamp)
+    return None
+
+
+def _deleting_timestamp(deployment: Deployment) -> datetime | None:
+    for event in reversed(deployment.status_history):
+        if event.status == "DELETING" and event.timestamp:
+            return datetime.fromisoformat(event.timestamp)
     return None
 
 

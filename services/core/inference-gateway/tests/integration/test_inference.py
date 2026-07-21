@@ -17,6 +17,8 @@ from typing import Any
 
 import pytest
 from docker.errors import NotFound
+from nemo_deployments_plugin.backends.labels import container_name as plugin_container_name
+from nemo_deployments_plugin.backends.labels import docker_volume_name
 from nemo_platform import ConflictError, NeMoPlatform, NotFoundError
 from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
@@ -24,7 +26,7 @@ from nemo_platform.types.inference.model_provider import ModelProvider
 from nemo_platform.types.inference.virtual_model import VirtualModel as SDKVirtualModel
 from nmp.core.inference_gateway.api.dependencies import global_virtual_model_cache
 from nmp.core.inference_gateway.api.model_cache import ModelCache, ModelProviderInfo
-from nmp.core.models.app.utils import get_docker_container_name, get_docker_volume_name
+from nmp.core.models.controllers.backends.deployments_plugin.naming import entity_names
 from nmp.core.models.controllers.models_controller import ModelsController
 from tenacity import retry, stop_after_delay, wait_fixed
 
@@ -67,6 +69,37 @@ def _wait_for_deployment_ready(
         return deployment
 
     return _poll()
+
+
+def _wait_for_deployment_deleted(
+    controller: ModelsController,
+    sdk: NeMoPlatform,
+    deployment_name: str,
+    max_wait: float = 30,
+    poll_interval: float = 0.1,
+) -> None:
+    """Step the controller until a deployment reaches DELETED (or is gone).
+
+    The deployments_plugin delete path is non-blocking, so a single
+    ``controller.step()`` is not enough to drive a deployment to DELETED: the
+    reconciler must run several times (DELETING -> backend teardown -> DELETED).
+    Deleting the ModelDeploymentConfig before its deployment is DELETED fails
+    with a 409 Conflict.
+    """
+
+    @retry(stop=stop_after_delay(max_wait), wait=wait_fixed(poll_interval), reraise=True)
+    def _poll() -> None:
+        controller.step()
+        try:
+            deployment = sdk.inference.deployments.retrieve(
+                deployment_name,
+                workspace=DEFAULT_WORKSPACE,
+            )
+        except NotFoundError:
+            return
+        assert deployment.status == "DELETED", f"Deployment not DELETED: {deployment.status}"
+
+    _poll()
 
 
 def _create_deployment_with_config(
@@ -246,11 +279,13 @@ def test_igw_routes_to_deployed_mock_nim(
     test_uuid = uuid.uuid4().hex[:8]
     config_name = f"test-igw-e2e-{test_uuid}"
     deployment_name = f"test-igw-e2e-{test_uuid}"
-    container_name = get_docker_container_name(DEFAULT_WORKSPACE, deployment_name)
+    names = entity_names(deployment_name)
+    container_name = plugin_container_name(DEFAULT_WORKSPACE, names.server)
 
     # Register for cleanup
     ctx.register_container(container_name)
-    ctx.register_volume(get_docker_volume_name(DEFAULT_WORKSPACE, deployment_name))
+    ctx.register_volume(docker_volume_name(DEFAULT_WORKSPACE, names.volume))
+    ctx.register_volume(docker_volume_name(DEFAULT_WORKSPACE, names.scratch))
 
     # === Phase 1: Create deployment config and deployment ===
     config, deployment = _create_deployment_with_config(sdk, config_name, deployment_name, mock_nim_image)
@@ -358,9 +393,10 @@ def test_igw_routes_to_deployed_mock_nim(
 
     # === Phase 8: Cleanup ===
     sdk.inference.deployments.delete(deployment_name, workspace=DEFAULT_WORKSPACE)
-    controller.step()  # Process deletion
+    # Drive the non-blocking delete to completion before removing the config.
+    _wait_for_deployment_deleted(controller, sdk, deployment_name)
 
-    # Poll for container to be removed or stopped (DinD may be slow)
+    # Container should be gone once the deployment is DELETED (DinD may lag).
     @retry(stop=stop_after_delay(15), wait=wait_fixed(0.1), reraise=True)
     def wait_for_container_deleted():
         try:
@@ -411,10 +447,12 @@ def test_igw_cache_removes_deleted_deployment_provider(
     test_uuid = uuid.uuid4().hex[:8]
     config_name = f"test-igw-delete-{test_uuid}"
     deployment_name = f"test-igw-delete-{test_uuid}"
-    container_name = get_docker_container_name(DEFAULT_WORKSPACE, deployment_name)
+    names = entity_names(deployment_name)
+    container_name = plugin_container_name(DEFAULT_WORKSPACE, names.server)
 
     ctx.register_container(container_name)
-    ctx.register_volume(get_docker_volume_name(DEFAULT_WORKSPACE, deployment_name))
+    ctx.register_volume(docker_volume_name(DEFAULT_WORKSPACE, names.volume))
+    ctx.register_volume(docker_volume_name(DEFAULT_WORKSPACE, names.scratch))
 
     # Create deployment
     config, deployment = _create_deployment_with_config(sdk, config_name, deployment_name, mock_nim_image)
@@ -431,7 +469,7 @@ def test_igw_cache_removes_deleted_deployment_provider(
 
     # Delete deployment
     sdk.inference.deployments.delete(deployment_name, workspace=DEFAULT_WORKSPACE)
-    controller.step()
+    _wait_for_deployment_deleted(controller, sdk, deployment_name)
 
     # Manually remove from cache (simulating cache refresh)
     cache_key = (DEFAULT_WORKSPACE, deployment_name)

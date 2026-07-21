@@ -46,19 +46,27 @@ export const AssistantChatThread = ({
   messageContentProps,
   enableImageAttachments,
   minInputRows,
+  animateAssistantMessageCompletion,
 }: AssistantChatThreadProps) => {
   const { className: threadViewportClassName, ...threadViewportAttributes } =
     attributes?.ThreadViewport ?? {};
   const AssistantMessageWithToolCallPart = useCallback(
     () => (
       <AssistantMessage
+        animateCompletion={animateAssistantMessageCompletion}
         hideAssistantMessageActions={hideAssistantMessageActions}
         messageContentProps={messageContentProps}
         showRunningIndicator={showRunningIndicator}
         toolCallPartComponent={toolCallPartComponent}
       />
     ),
-    [hideAssistantMessageActions, messageContentProps, showRunningIndicator, toolCallPartComponent]
+    [
+      animateAssistantMessageCompletion,
+      hideAssistantMessageActions,
+      messageContentProps,
+      showRunningIndicator,
+      toolCallPartComponent,
+    ]
   );
   const UserMessageWithToolCallPart = useCallback(
     () => (

@@ -120,6 +120,7 @@ class K8sDeploymentBackend(DeploymentBackend):
                 labels=labels,
                 backend_config=backend_config,
                 config=config,
+                executor_image_pull_secrets=self._executor_config.image_pull_secrets,
             )
 
         return await job_ops.create_job(
@@ -131,6 +132,7 @@ class K8sDeploymentBackend(DeploymentBackend):
             labels=labels,
             backend_config=backend_config,
             config=config,
+            executor_image_pull_secrets=self._executor_config.image_pull_secrets,
         )
 
     async def read_status(self, *, workspace: str, name: str) -> BackendStatusUpdate:
