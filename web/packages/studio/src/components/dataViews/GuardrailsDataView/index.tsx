@@ -49,6 +49,9 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
       page: dataViewState.pagination.state.pageIndex + 1,
       page_size: dataViewState.pagination.state.pageSize,
       sort: sortParam,
+      ...(dataViewState.debouncedSearchBar
+        ? { filter: { name: { $like: dataViewState.debouncedSearchBar } } }
+        : {}),
     },
     {
       query: { placeholderData: keepPreviousData },
