@@ -199,6 +199,24 @@ class TestUpdateConfig:
         )
         assert resp.status_code == 422
 
+    def test_conflict_hides_raw_exception_details(self, client, mock_entity_client) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_config("cfg-1"))
+        mock_entity_client.update = AsyncMock(
+            side_effect=NemoEntityConflictError("Error code: 409 - {'detail': 'db_version mismatch'}")
+        )
+
+        resp = client.put(
+            "/apis/auditor/v2/workspaces/default/configs/cfg-1",
+            json={"description": "new"},
+        )
+
+        assert resp.status_code == 409
+        detail = resp.json()["detail"]
+        assert "AuditConfig 'cfg-1'" in detail
+        assert "Refresh the config" in detail
+        assert "Error code" not in detail
+        assert "db_version" not in detail
+
 
 class TestDeleteConfig:
     def test_returns_204(self, client, mock_entity_client) -> None:

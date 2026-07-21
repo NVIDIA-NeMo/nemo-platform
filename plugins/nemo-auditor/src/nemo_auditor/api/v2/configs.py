@@ -165,7 +165,14 @@ async def update_config(
             detail=f"AuditConfig '{name}' not found in workspace '{workspace}'.",
         ) from exc
     except NemoEntityConflictError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        logger.info("Conflict updating audit config '%s' in workspace '%s'", name, workspace, exc_info=True)
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"AuditConfig '{name}' was modified by another request in workspace '{workspace}'. "
+                "Refresh the config and try again."
+            ),
+        ) from exc
     except Exception as exc:
         logger.exception("Failed to update audit config '%s'", name)
         raise HTTPException(status_code=500, detail="Failed to update audit config.") from exc
