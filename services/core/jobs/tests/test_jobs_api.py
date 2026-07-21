@@ -18,6 +18,8 @@ from nmp.common.entities import ALL_WORKSPACES, DEFAULT_WORKSPACE
 from nmp.common.entities.client import EntityValidationError
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.api.v2.jobs.endpoints import (
+    _format_create_job_conflict,
+    _format_entity_validation_error,
     get_platform_jobs_steps_list_filter,
 )
 from nmp.core.jobs.api.v2.jobs.schemas import (
@@ -26,7 +28,12 @@ from nmp.core.jobs.api.v2.jobs.schemas import (
     PlatformJobSortField,
     PlatformJobStepsListFilter,
 )
-from nmp.core.jobs.app.dispatcher import JobDispatcher, StateTransitionConflictError
+from nmp.core.jobs.app.dispatcher import (
+    JobAlreadyExistsError,
+    JobDispatcher,
+    JobSecretValidationError,
+    StateTransitionConflictError,
+)
 from nmp.core.jobs.app.providers import ContainerSpec, GPUExecutionProvider, SubprocessExecutionProvider
 from nmp.core.jobs.app.schemas import (
     PlatformJobSpec,
@@ -267,13 +274,22 @@ async def test_create_job_validation_error_returns_actionable_message(
     assert "db_version" not in detail
 
 
+def test_format_entity_validation_error_unknown_type_message():
+    raw_error = "field 'required_string_count' has an invalid value"
+    detail = _format_entity_validation_error(EntityValidationError(raw_error), resource="job")
+
+    assert detail == (
+        "Invalid job request. Field 'required_string_count' has an invalid value. Update the request and try again."
+    )
+
+
 @pytest.mark.asyncio
 async def test_create_job_conflict_hides_raw_exception_message(
     test_client: AsyncClient,
     mock_dispatcher: JobDispatcher,
 ):
     raw_error = "ValueError: Job with name 'dup-job' already exists in workspace 'default'. internal=db_version"
-    with patch.object(mock_dispatcher, "create_job", new=AsyncMock(side_effect=ValueError(raw_error))):
+    with patch.object(mock_dispatcher, "create_job", new=AsyncMock(side_effect=JobAlreadyExistsError(raw_error))):
         response = await test_client.post(
             "/apis/jobs/v2/workspaces/default/jobs",
             json={
@@ -296,6 +312,25 @@ async def test_create_job_conflict_hides_raw_exception_message(
     detail = response.json()["detail"]
     assert "Job 'dup-job' already exists in workspace 'default'" in detail
     assert "ValueError" not in detail
+    assert "db_version" not in detail
+
+
+def test_create_job_conflict_does_not_classify_generic_message():
+    raw_error = "unrelated secret already exists; internal=db_version"
+    detail = _format_create_job_conflict(ValueError(raw_error), job_name="test-job", workspace="default")
+
+    assert "conflicts with existing platform state" in detail
+    assert "already exists" not in detail
+    assert "referenced secrets" not in detail
+    assert "db_version" not in detail
+
+
+def test_create_job_secret_validation_error_returns_safe_guidance():
+    raw_error = "Secret 'default/api-key' not found; internal=db_version"
+    detail = _format_create_job_conflict(JobSecretValidationError(raw_error), job_name="test-job", workspace="default")
+
+    assert "referenced secrets were not found or are not accessible" in detail
+    assert "api-key" not in detail
     assert "db_version" not in detail
 
 

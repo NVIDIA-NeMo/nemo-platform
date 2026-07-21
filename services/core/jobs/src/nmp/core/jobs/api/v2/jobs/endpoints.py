@@ -48,7 +48,12 @@ from nmp.core.jobs.api.v2.jobs.schemas import (
     PlatformJobTaskUpdate,
 )
 from nmp.core.jobs.app.ctx import JobContext
-from nmp.core.jobs.app.dispatcher import JobDispatcher, StateTransitionConflictError
+from nmp.core.jobs.app.dispatcher import (
+    JobAlreadyExistsError,
+    JobDispatcher,
+    JobSecretValidationError,
+    StateTransitionConflictError,
+)
 from nmp.core.jobs.app.profiles import ExecutionProfileT
 from nmp.core.jobs.app.providers import CPUExecutionProvider, SubprocessExecutionProvider
 from nmp.core.jobs.app.schemas import (
@@ -116,10 +121,10 @@ def _format_pydantic_validation_error(exc: ValidationError, *, prefix: str | Non
 
 def _format_entity_validation_error(exc: EntityValidationError, *, resource: str) -> str:
     detail = str(exc.args[0]) if exc.args else ""
-    field_match = re.search(r"field ['\"](?P<field>[A-Za-z_][A-Za-z0-9_.\[\]-]*)['\"]", detail)
+    field_match = re.search(r"field ['\"](?P<field>[A-Za-z_][A-Za-z0-9_.\[\]-]*)['\"](?P<message>.*)", detail)
     if field_match:
         field = field_match.group("field")
-        message = _safe_validation_message(detail)
+        message = _safe_validation_message(field_match.group("message"))
         return f"Invalid {resource} request. Field '{field}' {message}. Update the request and try again."
 
     return (
@@ -142,13 +147,12 @@ def _format_job_compilation_error(exc: PlatformJobCompilationError) -> str:
 
 
 def _format_create_job_conflict(exc: ValueError, *, job_name: str | None, workspace: str) -> str:
-    detail = str(exc).lower()
-    if "already exists" in detail and job_name:
+    if isinstance(exc, JobAlreadyExistsError) and job_name:
         return (
             f"Job '{job_name}' already exists in workspace '{workspace}'. Choose a different job name or delete the "
             "existing job before creating a new one."
         )
-    if "secret" in detail:
+    if isinstance(exc, JobSecretValidationError):
         return (
             "Unable to create job because one or more referenced secrets were not found or are not accessible. "
             "Verify each platform_spec secret reference uses the expected workspace/name and that you have access."
