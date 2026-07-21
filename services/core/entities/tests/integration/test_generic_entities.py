@@ -3,6 +3,8 @@
 
 """Integration tests for generic entity API v2 endpoints."""
 
+import json
+
 import pytest
 from httpx import AsyncClient
 
@@ -151,6 +153,40 @@ class TestEntityCRUD:
         assert result["pagination"]["page_size"] == 2
         assert result["pagination"]["total_results"] == 5
         assert result["pagination"]["total_pages"] == 3
+
+    async def test_list_entities_returns_group_counts_for_filtered_field(self, client: AsyncClient, ctx):
+        """Test list results include counts for a requested filtered data field."""
+        entities = [
+            {"name": "group-count-a-1", "data": {"insight_id": "insight-a", "is_deleted": False}},
+            {"name": "group-count-a-2", "data": {"insight_id": "insight-a", "is_deleted": False}},
+            {"name": "group-count-b-1", "data": {"insight_id": "insight-b", "is_deleted": False}},
+            {"name": "group-count-deleted", "data": {"insight_id": "insight-a", "is_deleted": True}},
+        ]
+        for entity in entities:
+            response = await client.post(
+                "/apis/entities/v2/workspaces/default/entities/experiment_group",
+                json=entity,
+            )
+            assert response.status_code == 201
+
+        response = await client.get(
+            "/apis/entities/v2/workspaces/default/entities/experiment_group",
+            params={
+                "count_by": "data.insight_id",
+                "filter": json.dumps(
+                    {
+                        "data.insight_id": {"$in": ["insight-a", "insight-b"]},
+                        "data.is_deleted": False,
+                    }
+                ),
+                "page_size": 1,
+            },
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert result["group_counts"] == {"insight-a": 2, "insight-b": 1}
+        assert len(result["data"]) == 1
 
     async def test_update_entity_by_name(self, client: AsyncClient, ctx):
         """Test updating an entity by name."""
