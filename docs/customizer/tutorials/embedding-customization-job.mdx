@@ -5,8 +5,6 @@ description: ""
 
 [Run in Google Colab](https://colab.research.google.com/github/NVIDIA-NeMo/nemo-platform/blob/main/docs/customizer/tutorials/embedding-customization-job.ipynb)
 
-# Embedding Model Customization
-
 Learn how to fine-tune an embedding model to improve retrieval accuracy for your specific domain.
 
 ## About
@@ -43,8 +41,10 @@ Before starting this tutorial, ensure you have:
 
 1. **Completed the [Quickstart](/documentation/get-started)** to install and deploy NeMo Platform locally
 2. **Installed the Python SDK** (PyPI wrapper: `pip install "nemo-platform[all]"`; source checkout: run `make bootstrap` from the repository root)
-3. **HuggingFace token** with read access to download the SPECTER dataset (get one at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens))
-4. **NGC API key** to pull NIM container images from nvcr.io (get one at [ngc.nvidia.com](https://ngc.nvidia.com/) → Setup → Generate API Key)
+3. **NGC API key** to pull NIM container images from nvcr.io (get one at [ngc.nvidia.com](https://ngc.nvidia.com/) → Setup → Generate API Key)
+4. **At least one GPU with CUDA 13+**
+
+The SPECTER dataset and the tutorial's base model are public and do not require a Hugging Face token. If you substitute a gated or private model, provide a token with read access.
 
 ## Quick Start
 
@@ -256,7 +256,7 @@ print("GPU freed. Proceed to fine-tune and improve these rankings.")
 
 ### 3. Prepare Dataset
 
-Use the [SPECTER dataset](https://huggingface.co/datasets/embedding-data/SPECTER) from HuggingFace, a collection of scientific paper triplets where papers that cite each other are considered related.
+Use the [SPECTER dataset](https://huggingface.co/datasets/embedding-data/SPECTER) from Hugging Face, a collection of scientific paper triplets where papers that cite each other are considered related.
 
 **Dataset structure:**
 - ~684K scientific paper triplets (this tutorial uses 10%)
@@ -278,12 +278,6 @@ The SPECTER dataset requires conversion to the triplet format required for fine-
 from pathlib import Path
 from datasets import load_dataset
 import json
-
-# HuggingFace token for dataset access
-HF_TOKEN = os.environ.get("HF_TOKEN")
-if not HF_TOKEN:
-    raise ValueError("HF_TOKEN environment variable is required. Get one at https://huggingface.co/settings/tokens")
-os.environ["HF_TOKEN"] = HF_TOKEN
 
 # Configuration
 DATASET_SIZE = 3000        # Number of triplets (increase for better results, max ~684K)
@@ -358,11 +352,11 @@ print(json.dumps([f.model_dump() for f in client.files.list(fileset=DATASET_NAME
 Configure authentication for accessing base models:
 
 - **NGC models** (`ngc://` URIs): Requires NGC API key
-- **HuggingFace models** (`hf://` URIs): Requires HF token for gated/private models
+- **Hugging Face models** (`hf://` URIs): Requires HF token for gated/private models
 
 Get your credentials:
 - [NGC API Key](https://ngc.nvidia.com/) (Setup → Generate API Key)
-- [HuggingFace Token](https://huggingface.co/settings/tokens) (Create token with Read access)
+- [Hugging Face Token](https://huggingface.co/settings/tokens) (Optional; needed only for a gated/private replacement model)
 
 ---
 
@@ -392,9 +386,10 @@ def create_or_get_secret(name: str, value: str | None, label: str):
         return client.secrets.retrieve(name=name, workspace="default")
 
 
-# Create HuggingFace token secret (for downloading model from HF during training)
-hf_secret = create_or_get_secret("hf-token", HF_TOKEN, "HF_TOKEN")
-print(f"HF_TOKEN secret: {hf_secret.name}")
+# Public Hugging Face models need no token. Create a secret only when HF_TOKEN is set.
+hf_secret = create_or_get_secret("hf-token", HF_TOKEN, "HF_TOKEN") if HF_TOKEN else None
+if hf_secret:
+    print(f"HF_TOKEN secret: {hf_secret.name}")
 
 # NGC secret was already created in baseline step (Step 2), or use the platform default
 if "NGC_SECRET_NAME" not in globals():
@@ -404,7 +399,7 @@ print(f"NGC_API_KEY secret: {NGC_SECRET_NAME}")
 
 ### 7. Create Base Model FileSet and Model Entity
 
-Create a fileset pointing to the [nvidia/llama-nemotron-embed-1b-v2](https://huggingface.co/nvidia/llama-nemotron-embed-1b-v2) embedding model from HuggingFace, then create a Model Entity that references this fileset. Model downloading will take place at training time.
+Create a fileset pointing to the [nvidia/llama-nemotron-embed-1b-v2](https://huggingface.co/nvidia/llama-nemotron-embed-1b-v2) embedding model from Hugging Face, then create a Model Entity that references this fileset. Model downloading will take place at training time.
 
 ```python
 import time
@@ -413,20 +408,20 @@ from nemo_platform.types.files import HuggingfaceStorageConfigParam
 HF_REPO_ID = "nvidia/llama-nemotron-embed-1b-v2"
 MODEL_NAME = "nv-nemotron-embed-1b-base"
 
-# Ensure you have a HuggingFace token secret created
+storage = HuggingfaceStorageConfigParam(
+    type="huggingface",
+    repo_id=HF_REPO_ID,
+    repo_type="model",
+)
+if hf_secret:
+    storage["token_secret"] = hf_secret.name
+
 try:
     base_model_fs = client.files.filesets.create(
         workspace="default",
         name=MODEL_NAME,
         description="NVIDIA Llama Nemotron Embed 1B v2 embedding model",
-        storage=HuggingfaceStorageConfigParam(
-            type="huggingface",
-            # repo_id is the full model name from Hugging Face
-            repo_id=HF_REPO_ID,
-            repo_type="model",
-            # we use the secret created in the previous step
-            token_secret=hf_secret.name
-        )
+        storage=storage,
     )
 except ConflictError as e:
     print(f"Base model fileset already exists. Skipping creation.")
@@ -494,7 +489,7 @@ training={
     "training_type": "sft",
     "finetuning_type": "lora_merged",
     "lora": {"rank": 16, "alpha": 32},
-    "max_seq_length": MAX_SEQ_LENGTH,
+    "max_seq_length": 512,
 }
 ```
 
@@ -580,6 +575,9 @@ while True:
         break
     
     time.sleep(10)
+
+if status.status != "completed":
+    raise RuntimeError(f"Training job finished with status: {status.status}")
 ```
 
 **Interpreting Embedding Training Metrics:**
@@ -770,10 +768,10 @@ For detailed information on all available hyperparameters, recommended values, a
 
 | Parameter | Recommended | Notes |
 |-----------|-------------|-------|
-| `learning_rate` | 1e-6 to 5e-6 | Lower than standard SFT |
-| `batch_size` | 128-256 | Larger batches improve contrastive learning |
-| `max_seq_length` | 512 | Typical for embedding models |
-| `epochs` | 1-3 | Start small, increase if needed |
+| `optimizer.learning_rate` | 1e-6 to 5e-6 | Lower than standard SFT |
+| `batch.global_batch_size` | 128-256 | Larger batches improve contrastive learning |
+| `training.max_seq_length` | 512 | Typical for embedding models |
+| `schedule.epochs` | 1-3 | Start small, increase if needed |
 
 ---
 

@@ -288,7 +288,7 @@ if model.spec:
     print(f"Is Chat Model: {model.spec.is_chat}")
     print(f"Family: {model.spec.family}")
     print(f"Parameters: {model.spec.base_num_parameters:,}")
-    print(f"Max Sequence Length: {model.spec.max_sequence_length}")
+    print(f"Context Size: {model.spec.context_size}")
 ```
 
 ### Chat with the Model
@@ -334,8 +334,8 @@ print(f"Response: {response.choices[0].message.content}")
 
 Now that you know how to format your training datasets, you can proceed with creating customization jobs:
 
-- [Start a LoRA Model Customization Job](./lora-customization-job.ipynb) - For parameter-efficient fine-tuning
-- [Start a Full SFT Customization Job](./sft-customization-job.ipynb) - For full model fine-tuning
+- [Start a LoRA Model Customization Job](/documentation/customizer-reference/tutorials/lora-customization-job) - For parameter-efficient fine-tuning
+- [Start a Full SFT Customization Job](/documentation/customizer-reference/tutorials/sft-customization-job) - For full model fine-tuning
 
 ---
 

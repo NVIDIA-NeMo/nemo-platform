@@ -5,8 +5,6 @@ description: ""
 
 [Run in Google Colab](https://colab.research.google.com/github/NVIDIA-NeMo/nemo-platform/blob/main/docs/customizer/tutorials/optimize-throughput.ipynb)
 
-# Optimize for Tokens/GPU Throughput
-
 ## About
 Learn how to use the NeMo Platform Customizer to create a [LoRA](/documentation/customizer-reference/customization-concepts#nemo-ms-about-concepts-customization) (Low-Rank Adaptation) customization job optimized for higher tokens/GPU throughput and lower runtime. 
 
@@ -23,6 +21,7 @@ Before starting this tutorial, ensure you have:
 
 1. **Completed the [Quickstart](/documentation/get-started)** to install and deploy NeMo Platform locally
 2. **Installed the Python SDK** (PyPI wrapper: `pip install "nemo-platform[all]"`; source checkout: run `make bootstrap` from the repository root)
+3. **At least one GPU with CUDA 13+**
 
 ## Quick Start
 
@@ -159,29 +158,29 @@ print(json.dumps([f.model_dump() for f in client.files.list(fileset=DATASET_NAME
 
 ### 3. Secrets Setup
 
-If you plan to use NGC or HuggingFace models, you will need to configure authentication:
+If you plan to use NGC or Hugging Face models, you will need to configure authentication:
 
 - **NGC models** (`ngc://` URIs): Requires NGC API key
-- **HuggingFace models** (`hf://` URIs): Requires HF token for gated/private models
+- **Hugging Face models** (`hf://` URIs): Requires HF token for gated/private models
 
 
 Configure these as secrets in your platform. Refer to [Managing Secrets](/documentation/get-started/core-concepts/manage-secrets) for detailed instructions.
 
 Get your credentials to access base models:
 - [NGC API Key](https://ngc.nvidia.com/) (Setup → Generate API Key)
-- [HuggingFace Token](https://huggingface.co/settings/tokens) (Create token with Read access)
+- [Hugging Face Token](https://huggingface.co/settings/tokens) (Create token with Read access)
 
 
 ---
 
 #### Quick Setup Example
 
-This tutorial uses the [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main) model from HuggingFace. Ensure that you have sufficient permissions to download the model. If you cannot access the files on the [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main) Hugging Face page, request access.
+This tutorial uses the [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main) model from Hugging Face. Ensure that you have sufficient permissions to download the model. If you cannot access the files on the [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main) Hugging Face page, request access.
 
-**HuggingFace Authentication:**
-- For gated models (Llama, Gemma), you must provide a HuggingFace token via the `token_secret` parameter
-- Get your token from [HuggingFace Settings](https://huggingface.co/settings/tokens) (requires Read access)
-- Accept the model's terms on the HuggingFace model page before using it. Example: [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main)
+**Hugging Face Authentication:**
+- For gated models (Llama, Gemma), you must provide a Hugging Face token via the `token_secret` parameter
+- Get your token from [Hugging Face Settings](https://huggingface.co/settings/tokens) (requires Read access)
+- Accept the model's terms on the Hugging Face model page before using it. Example: [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main)
 - For public models, you can omit the `token_secret` parameter when creating a fileset for the model in the next step.
 
 ```python
@@ -206,7 +205,7 @@ def create_or_get_secret(name: str, value: str | None, label: str):
         return client.secrets.retrieve(name=name, workspace="default")
 
 
-# Create HuggingFace token secret
+# Create Hugging Face token secret
 hf_secret = create_or_get_secret("hf-token", HF_TOKEN, "HF_TOKEN")
 print("HF_TOKEN secret:")
 print(hf_secret.model_dump_json(indent=2))
@@ -218,7 +217,7 @@ print(hf_secret.model_dump_json(indent=2))
 
 ### 4. Create Base Model FileSet
 
-Create a fileset pointing to the [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main) model on HuggingFace. This step creates a pointer to the model on Hugging Face and does not download it. The model is downloaded at job creation time.
+Create a fileset pointing to the [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main) model on Hugging Face. This step creates a pointer to the model on Hugging Face and does not download it. The model is downloaded at job creation time.
 
 Note: for public models, you can omit the `token_secret` parameter when creating a model fileset.
 
@@ -229,13 +228,13 @@ from nemo_platform.types.files import HuggingfaceStorageConfigParam
 HF_REPO_ID = "meta-llama/Llama-3.2-1B-Instruct"
 MODEL_NAME = "llama-3-2-1b-base"
 
-# Ensure you have a HuggingFace token secret created
-# Create a fileset pointing to the desired HuggingFace model
+# Ensure you have a Hugging Face token secret created
+# Create a fileset pointing to the desired Hugging Face model
 try:
     base_model_fs = client.files.filesets.create(
         workspace="default",
         name=MODEL_NAME,
-        description="Llama 3.2 1B base model from HuggingFace",
+        description="Llama 3.2 1B base model from Hugging Face",
         storage=HuggingfaceStorageConfigParam(
             type="huggingface",
             # repo_id is the full model name from Hugging Face
@@ -330,15 +329,15 @@ print(f"Output adapter: {PACK_OUTPUT_NAME}")
 
 ```
 
-### 6. Track Finetuning Progress
+### 6. Track Fine-Tuning Progress
 
 A training job contains multiple steps: 
 - Model and dataset downloading
-- Finetuning where LoRA adapter weights are trained
-- Creating a fileset entry for the finetuned model
-- Finetuned weights uploading
+- Fine-tuning where LoRA adapter weights are trained
+- Creating a fileset entry for the fine-tuned model
+- Fine-tuned weights uploading
 
-The elapsed time printed below reflects progress of the entire job. We compare the time taken by the finetuning step for both jobs in the last section of this tutorial.
+The elapsed time printed below reflects progress of the entire job. We compare the time taken by the fine-tuning step for both jobs in the last section of this tutorial.
 
 #### Define Helper Functions
 
@@ -489,7 +488,7 @@ def _draw_dashboard(
 
 #### Monitor the Job Until Completion
 
-The cell below polls the job status every 10 seconds and renders a live dashboard with validation loss, GPU VRAM usage, and GPU utilization charts. The charts appear empty at first while the model and dataset download; training metrics and GPU activity populate after the finetuning step begins.
+The cell below polls the job status every 10 seconds and renders a live dashboard with validation loss, GPU VRAM usage, and GPU utilization charts. The charts appear empty at first while the model and dataset download; training metrics and GPU activity populate after the fine-tuning step begins.
 
 > **Note:** This is additional code. You can also use the Weights & Biases or MLflow integrations.
 
@@ -503,7 +502,22 @@ from nemo_platform.types.shared import PlatformJobStatusResponse
 # Actual training time will vary based on hardware, model size, and dataset complexity.
 TIMEOUT_SECONDS = 30 * 60  # 30 minutes
 VAL_LOSS_KEY = "val_loss"
-TRAIN_LOSS_KEY = "loss"
+TRAIN_LOSS_KEY = "train_loss"
+
+
+def get_training_metric(
+    status: PlatformJobStatusResponse,
+    metric_key: str,
+) -> float | None:
+    """Return a metric reported by a task in the training step."""
+    for job_step in status.steps or []:
+        if job_step.name == "training":
+            for task in job_step.tasks or []:
+                value = (task.status_details or {}).get(metric_key)
+                if value is not None:
+                    return float(value)
+    return None
+
 
 # ---------------------------------------------------------------------------
 # Job polling with live dashboard
@@ -680,9 +694,9 @@ job_with_sequence_packing_status = wait_for_job(
     timeout=TIMEOUT_SECONDS,
 )
 
-packed_val_loss = (job_with_sequence_packing_status.status_details or {}).get("val_loss")
+packed_val_loss = get_training_metric(job_with_sequence_packing_status, VAL_LOSS_KEY)
 if packed_val_loss is not None:
-    print(f"Validation loss: {float(packed_val_loss):.2f}")
+    print(f"Validation loss: {packed_val_loss:.2f}")
 else:
     print("Validation loss: not reported in job status")
 
@@ -727,7 +741,7 @@ print(f"Output adapter: {NO_PACK_OUTPUT_NAME}")
 
 ```
 
-### 8. Track Finetuning Progress for Job without Sequence Packing
+### 8. Track Fine-Tuning Progress for Job without Sequence Packing
 
 ```python
 # Wait for the training step to complete
@@ -737,9 +751,9 @@ job_without_sequence_packing_status = wait_for_job(
     timeout=TIMEOUT_SECONDS
 )
 
-no_pack_val_loss = (job_without_sequence_packing_status.status_details or {}).get("val_loss")
+no_pack_val_loss = get_training_metric(job_without_sequence_packing_status, VAL_LOSS_KEY)
 if no_pack_val_loss is not None:
-    print(f"Validation loss: {float(no_pack_val_loss):.2f}")
+    print(f"Validation loss: {no_pack_val_loss:.2f}")
 else:
     print("Validation loss: not reported in job status")
 ```
@@ -751,16 +765,15 @@ else:
 
 ```python
 from nemo_platform.types.jobs import PlatformJobStep
-from datetime import datetime
 import pandas as pd
 
 STEP_NAME = "training"
 
 def get_elapsed_time(step: PlatformJobStep) -> float:
     """Calculate elapsed time in seconds from step's created_at to updated_at."""
-    created_at = datetime.fromisoformat(step.created_at.replace("Z", "+00:00"))
-    updated_at = datetime.fromisoformat(step.updated_at.replace("Z", "+00:00"))
-    return (updated_at - created_at).total_seconds()
+    if step.created_at is None or step.updated_at is None:
+        raise ValueError("Training step timestamps are unavailable")
+    return (step.updated_at - step.created_at).total_seconds()
 
 step_with_sequence_packing = client.jobs.steps.retrieve(
             name=STEP_NAME,
@@ -780,10 +793,7 @@ time_to_complete_without_sequence_packing = get_elapsed_time(step_without_sequen
 # Display results as a table
 results_df = pd.DataFrame({
     "Seq Packing Enabled": [True, False],
-    "Val Loss": [
-        (job_with_sequence_packing_status.status_details or {}).get("val_loss"),
-        (job_without_sequence_packing_status.status_details or {}).get("val_loss"),
-    ],
+    "Val Loss": [packed_val_loss, no_pack_val_loss],
     "Training Step Time, sec": [
         time_to_complete_with_sequence_packing,
         time_to_complete_without_sequence_packing

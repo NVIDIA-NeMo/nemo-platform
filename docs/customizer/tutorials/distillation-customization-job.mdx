@@ -5,8 +5,6 @@ description: ""
 
 [Run in Google Colab](https://colab.research.google.com/github/NVIDIA-NeMo/nemo-platform/blob/main/docs/customizer/tutorials/distillation-customization-job.ipynb)
 
-# Knowledge Distillation Customization
-
 Learn how to train a smaller student model to mimic a larger teacher model using knowledge distillation (KD).
 
 ## About
@@ -66,6 +64,8 @@ Before starting this tutorial, ensure you have:
 ```sh
 pip install evaluate rouge_score datasets
 ```
+
+4. **At least one GPU with CUDA 13+**
 
 ## Quick Start
 
@@ -189,16 +189,16 @@ print(json.dumps([f.model_dump() for f in client.files.list(fileset=DATASET_NAME
 
 ### 3. Secrets Setup
 
-In this tutorial we use two Llama 3.2 Instruct models from HuggingFace:
+In this tutorial we use two Llama 3.2 Instruct models from Hugging Face:
 - **Teacher:** [meta-llama/Llama-3.2-3B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct) (3B parameters)
 - **Student:** [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct) (1B parameters)
 
 Both models share the same tokenizer/vocabulary (required for knowledge distillation) and include a chat template for deployment with `/chat/completions`.
 
-**HuggingFace Authentication:**
-- For gated models (Llama, Gemma), you must provide a HuggingFace token via the `token_secret` parameter
-- Get your token from [HuggingFace Settings](https://huggingface.co/settings/tokens) (requires Read access)
-- Accept the model's terms on the HuggingFace model page before using it:
+**Hugging Face Authentication:**
+- For gated models (Llama, Gemma), you must provide a Hugging Face token via the `token_secret` parameter
+- Get your token from [Hugging Face Settings](https://huggingface.co/settings/tokens) (requires Read access)
+- Accept the model's terms on the Hugging Face model page before using it:
   - [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct)
   - [meta-llama/Llama-3.2-3B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct)
 
@@ -433,13 +433,13 @@ def wait_for_deployment(deployment_name: str, timeout_minutes: int = 30):
 
         if dep.status == "READY":
             print("\nDeployment is ready!")
+            if not client.models.wait_for_gateway(deployment_name, workspace="default", timeout=60):
+                raise RuntimeError("Inference gateway did not become ready")
             return dep
         if dep.status in ("FAILED", "ERROR", "TERMINATED", "LOST"):
-            print(f"\nDeployment failed: {dep.status}")
-            return dep
+            raise RuntimeError(f"Deployment failed with status: {dep.status}")
         if elapsed > timeout:
-            print(f"\nTimeout ({timeout_minutes}m). Check status manually.")
-            return dep
+            raise TimeoutError(f"Deployment timeout after {timeout_minutes} minutes")
         time.sleep(15)
 
 
@@ -694,7 +694,7 @@ For detailed information on all available hyperparameters, recommended values, a
 
 **Job fails during model download:**
 - Verify authentication secrets are configured (refer to [Managing Secrets](/documentation/get-started/core-concepts/manage-secrets))
-- For gated HuggingFace models (Llama, Gemma), accept the license on the model page
+- For gated Hugging Face models (Llama, Gemma), accept the license on the model page
 - Check both `model` (student) and `teacher_model` URNs are correct
 - Ensure both model entities exist: `client.models.retrieve(name=..., workspace="default")`
 

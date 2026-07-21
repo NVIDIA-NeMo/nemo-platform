@@ -19,7 +19,7 @@ From the repo root (these wrap `cd docs/fern && npm run …`):
 ```bash
 make docs-deps     # one-time: install docs/fern tooling (needed for MDX validation)
 make docs-login    # one-time per machine: Fern CLI auth for the nvidia org
-make docs-check    # validate: fern check + MDX validation + gated-link check (what CI runs)
+make docs-check    # validate: fern check + MDX + NotebookViewer artifacts + gated links
 make docs          # start local preview (prints a localhost URL)
 make docs-watch    # start local preview plus a repo-level watcher for docs/** changes
 ```
@@ -93,7 +93,7 @@ Fern groups endpoints by their OpenAPI tag in the sidebar (Customizer, Evaluator
 
 Some features are not shipped yet and must be **fully excluded from the build** — not just hidden from the sidebar. Fern's `hidden: true` still builds and serves the page (reachable by direct URL and indexable), so it is **not** used for this. Instead, the gated pages are simply **left out of `versions/latest.yml`**: Fern only builds pages referenced in the navigation, so an omitted page is never built (it 404s and is not indexed). This matches the old MkDocs `hide_unready_docs` hook, which dropped the same files from the build.
 
-The gated `.mdx` files stay in the repo so they remain maintained. The gated trees today are: `auth/`, `customizer/`, `safe-synthesizer/`, `evaluator/benchmarks/`, plus individual pages (`evaluator/metrics/{job-management,results}`, `run-inference/tutorials/deploy-models`, `example-applications/`, `troubleshooting/{cluster-setup,customizer}`, `get-started/quickstart`).
+Gated `.mdx` files stay in the repo so they remain maintained. Do not keep a separate list of gated directories in contributor docs: publication state is derived from `versions/latest.yml`. A page listed there is published; an omitted page is gated.
 
 Inbound links from visible pages into gated pages are **delinked to plain text** (not rewritten URLs), since the target is not built — otherwise they would be broken links.
 
@@ -114,7 +114,7 @@ One difference from the old MkDocs hook: that hook ran at build time and kept th
 
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
-| `fern-docs-ci.yaml` | `pull_request` touching `docs/**` | `npm run check` (fern check + MDX + gated-link check) and `npm run broken-links` |
+| `fern-docs-ci.yaml` | `pull_request` touching `docs/**` | `npm run check` (fern check + MDX + NotebookViewer artifacts + gated links) and `npm run broken-links` |
 | `fern-docs-preview-build.yaml` | `pull_request` touching `docs/**` | Upload PR `docs/` sources as an artifact (no secrets — fork-safe) |
 | `fern-docs-preview-comment.yaml` | successful preview build (`workflow_run`) | Build a Fern preview with `DOCS_FERN_TOKEN` and post/update the PR comment |
 | `publish-fern-docs.yaml` | push to `main` touching `docs/**`, `docs/v*` tag, or manual dispatch | Publish the Fern docs site |

@@ -10,7 +10,7 @@ Get detailed execution status for a customization job, including step-by-step pr
 This endpoint provides granular execution details including:
 
 - **Step-level status**: `model-and-dataset-download` → `training` → `model-upload` → `model-entity-creation`
-- **Training metrics**: `step`, `epoch`, `loss`, `lr` (learning rate), `grad_norm`, `val_loss`
+- **Training metrics**: `step`, `epoch`, `train_loss`, `lr` (learning rate), `grad_norm`, `val_loss`
 - **Progress tracking**: `downloaded_files`, `uploaded_bytes`, `progress_pct`
 
 To list jobs or get job definitions (model entity, hyperparameters, spec), use [List Active Jobs](/documentation/customizer-reference/manage-customization-jobs/list-active-jobs) instead.
@@ -146,7 +146,7 @@ curl -X GET \
              "num_epochs": 2,
              "step": 8,
              "epoch": 1,
-             "loss": 2.8918895721435547,
+             "train_loss": 2.8918895721435547,
              "lr": 4.9101714686276044e-05,
              "grad_norm": 26.0
            }
@@ -222,7 +222,7 @@ curl -X GET \
              "num_epochs": 2,
              "step": 94,
              "epoch": 2,
-             "loss": 0.3437718152999878,
+             "train_loss": 0.3437718152999878,
              "lr": 5.000000000000001e-07,
              "grad_norm": 20.125,
              "val_loss": 0.5527229905128479,

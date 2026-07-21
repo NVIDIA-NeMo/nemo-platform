@@ -14,7 +14,7 @@ NeMo Customizer ships **two training backends**, and each accepts its own job co
 | Backend | Best for | Training methods | Hardware |
 |---------|----------|------------------|----------|
 | **Automodel** (default) | Production fine-tuning, larger models, multi-GPU scaling | SFT, distillation; LoRA, merged-LoRA, or full-weight | Single- or multi-GPU (tensor / pipeline / context / expert parallel) |
-| **Unsloth** | Memory-constrained single-GPU LoRA | SFT; LoRA or full-weight | Single GPU (4-bit / 8-bit quantization) |
+| **Unsloth** | Memory-constrained single-GPU training | SFT; LoRA or full-weight | Single GPU; optional 4-bit / 8-bit loading for LoRA, unquantized loading for full-weight |
 
 <Note>
 
@@ -93,7 +93,7 @@ The `parallelism` block scales Automodel training across GPUs and nodes.
 | `parallelism.tensor_parallel_size` | GPUs for tensor parallelism (splits layers across GPUs for large models) | `1` |
 | `parallelism.pipeline_parallel_size` | GPUs for pipeline parallelism (splits model stages across GPUs) | `1` |
 | `parallelism.context_parallel_size` | GPUs for context parallelism (for very long sequences) | `1` |
-| `parallelism.expert_parallel_size` | Expert parallelism for MoE models; must divide the number of experts | `null` |
+| `parallelism.expert_parallel_size` | Expert parallelism for MoE models; must divide the number of experts. Leave unset for non-MoE models | `null` |
 
 <Note>
 
@@ -102,7 +102,7 @@ The `parallelism` block scales Automodel training across GPUs and nodes.
 - `total_gpus = num_gpus_per_node × num_nodes`.
 - `total_gpus` must be divisible by `tensor_parallel_size × pipeline_parallel_size × context_parallel_size`.
 - `data_parallel_size` is derived as `total_gpus / (TP × PP × CP)`, and `global_batch_size` must be divisible by `micro_batch_size × data_parallel_size`.
-- For MoE models, tensor parallelism must be `1` when `expert_parallel_size > 1`.
+- For MoE models, when `expert_parallel_size` is set: the number of experts must be divisible by `expert_parallel_size`, `(data_parallel_size × context_parallel_size)` must be divisible by `expert_parallel_size`, and `tensor_parallel_size` must be `1` when `expert_parallel_size > 1`.
 
 </Note>
 
@@ -131,7 +131,7 @@ When `training.training_type` is `"distillation"`, the following additional fiel
 
 ## Unsloth Configuration
 
-An Unsloth job is configured with the following top-level sections: `model`, `dataset`, `training`, `schedule`, `batch`, `optimizer`, `hardware`, `output`, and (optionally) `integrations`. Unsloth runs on a **single GPU** and supports 4-bit / 8-bit quantized loading.
+An Unsloth job is configured with the following top-level sections: `model`, `dataset`, `training`, `schedule`, `batch`, `optimizer`, `hardware`, `output`, and (optionally) `integrations`. Unsloth runs on a **single GPU** and supports 4-bit / 8-bit quantized loading for LoRA. Full-weight training must load the model without quantization.
 
 ### Model
 
@@ -143,6 +143,8 @@ An Unsloth job is configured with the following top-level sections: `model`, `da
 | `model.load_in_8bit` | Load the base model in 8-bit | `false` |
 | `model.dtype` | Compute dtype (`auto`, `bfloat16`, `float16`, `float32`) | `auto` |
 | `model.trust_remote_code` | Allow custom model code from the checkpoint | `false` |
+| `model.device_map` | Device placement forwarded to Unsloth. Accepts `auto`, `balanced`, `sequential`, a device index, or a custom map. `null` pins the model to the single visible GPU | `null` |
+| `model.rope_scaling` | RoPE scaling configuration for long-context extension, such as `{"type": "linear", "factor": 2.0}` | `null` |
 
 <Note>
 
@@ -166,7 +168,7 @@ Full-weight training (`training.finetuning_type: "all_weights"`) cannot be combi
 |-----------|--------|-------------|---------|
 | `training.training_type` | `sft` | Training method | `sft` |
 | `training.finetuning_type` | `lora`, `all_weights` | Adapter regime. `lora` trains an adapter; `all_weights` performs full-weight training | `lora` |
-| `training.lora` | `{ rank, alpha, dropout, target_modules, bias, use_rslora, random_state }` | LoRA configuration (auto-filled with defaults when `finetuning_type` is `lora`) | *(see below)* |
+| `training.lora` | `LoRAParams` object | LoRA configuration (auto-filled with defaults when `finetuning_type` is `lora`) | *(see below)* |
 | `training.use_gradient_checkpointing` | `unsloth`, `true`, `false` | Gradient checkpointing mode. `unsloth` uses Unsloth's optimized implementation | `unsloth` |
 
 LoRA parameters (`training.lora`):
@@ -180,6 +182,12 @@ LoRA parameters (`training.lora`):
 | `bias` | Bias training mode (`none`, `all`, `lora_only`) | `none` |
 | `use_rslora` | Use rank-stabilized LoRA | `false` |
 | `random_state` | LoRA initialization seed | `3407` |
+| `use_dora` | Use weight-decomposed LoRA (DoRA). Can improve quality at low ranks with additional training overhead | `false` |
+| `loftq_config` | LoftQ initialization configuration for quantized base models | `null` |
+| `modules_to_save` | Additional non-LoRA modules to train and save in full, such as `embed_tokens` or `lm_head` | `null` |
+| `layers_to_transform` | Layer index or list of layer indexes to receive LoRA; `null` applies LoRA to all layers | `null` |
+| `layer_replication` | Layer-replication ranges, such as `[[0, 16], [8, 24]]` | `null` |
+| `init_lora_weights` | LoRA initialization: `true`, `false`, `gaussian`, `pissa`, `olora`, or `loftq` | `true` |
 
 ### Schedule
 
@@ -194,6 +202,7 @@ LoRA parameters (`training.lora`):
 | `schedule.save_steps` | Checkpoint cadence (steps) | `null` |
 | `schedule.eval_steps` | Evaluation cadence (steps) | `null` |
 | `schedule.seed` | Random seed | `3407` |
+| `schedule.lr_scheduler_kwargs` | Additional scheduler arguments, such as `{"num_cycles": 3}` for `cosine_with_restarts` | `null` |
 
 ### Batch
 
@@ -209,6 +218,12 @@ LoRA parameters (`training.lora`):
 | `optimizer.learning_rate` | Step size for weight updates | `2e-4` |
 | `optimizer.weight_decay` | L2 regularization strength | `0.0` |
 | `optimizer.optim` | Optimizer (`adamw_torch`, `adamw_torch_fused`, `adamw_8bit`, `paged_adamw_8bit`, `sgd`). 8-bit optimizers reduce optimizer-state memory | `adamw_8bit` |
+| `optimizer.adam_beta1` | Adam/AdamW first-moment decay | `0.9` |
+| `optimizer.adam_beta2` | Adam/AdamW second-moment decay | `0.999` |
+| `optimizer.adam_epsilon` | Adam/AdamW epsilon for numerical stability | `1e-8` |
+| `optimizer.max_grad_norm` | Maximum gradient norm for clipping | `1.0` |
+| `optimizer.label_smoothing_factor` | Cross-entropy label smoothing factor; `0.0` disables smoothing | `0.0` |
+| `optimizer.neftune_noise_alpha` | NEFTune embedding-noise alpha; `null` disables NEFTune | `null` |
 
 ### Hardware
 
@@ -217,9 +232,15 @@ LoRA parameters (`training.lora`):
 | `hardware.gpus` | Comma-separated GPU indices (`0` or `0,1`) for `CUDA_VISIBLE_DEVICES` (selection, not reservation) | `null` |
 | `hardware.precision` | Mixed-precision dtype (`bf16`, `fp16`). `bf16` recommended for Ampere+ | `bf16` |
 
-### Output (save method)
+### Output
 
-Unsloth's output `save_method` controls the saved checkpoint shape:
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `output.name` | Output Model Entity or adapter name | Auto-generated from the job name |
+| `output.description` | Optional description for the generated artifact | `null` |
+| `output.save_method` | Saved checkpoint shape (see below) | `lora` |
+
+The `output.save_method` field accepts:
 
 | `save_method` | Result |
 |---------------|--------|
