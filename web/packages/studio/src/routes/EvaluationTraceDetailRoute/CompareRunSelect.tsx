@@ -9,7 +9,6 @@ import {
   SelectListbox,
   SelectRoot,
   SelectTrigger,
-  Spinner,
   Text,
 } from '@nvidia/foundations-react-core';
 import { runLabel, trialLabel } from '@studio/routes/EvaluationTraceDetailRoute/runLabel';
@@ -67,7 +66,6 @@ export const CompareRunSelect: FC<CompareRunSelectProps> = ({
         placeholder={label}
         // Keep the trigger label fixed instead of echoing the selected run.
         renderValue={() => label}
-        slotEnd={isLoading ? <Spinner size="small" aria-label="Loading runs" /> : undefined}
         aria-label="Compare against evaluation run"
       />
       <SelectContent className="w-(--radix-popper-anchor-width)">
