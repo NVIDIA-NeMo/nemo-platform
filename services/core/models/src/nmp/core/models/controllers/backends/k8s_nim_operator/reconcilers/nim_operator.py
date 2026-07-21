@@ -67,14 +67,12 @@ class NimOperatorReconciler(Reconciler):
         dynamic_client: DynamicClient,
         backend_config: K8sNimOperatorConfig,
         k8s_namespace: str,
-        huggingface_model_puller: str,
         status: StatusProjector,
         deleter: ResourceDeleter,
     ) -> None:
         self._dynamic_client = dynamic_client
         self._backend_config = backend_config
         self._k8s_namespace = k8s_namespace
-        self._huggingface_model_puller = huggingface_model_puller
         self._status = status
         self._deleter = deleter
 
@@ -113,7 +111,7 @@ class NimOperatorReconciler(Reconciler):
                 resource_name=resource_name,
                 nimcache_name=nimcache_name,
                 model_entity=model_entity,
-                huggingface_model_puller=self._huggingface_model_puller,
+                huggingface_model_puller=self._backend_config.huggingface_model_puller,
             )
 
             nimservice_api = self._dynamic_client.resources.get(
@@ -189,7 +187,7 @@ class NimOperatorReconciler(Reconciler):
                 resource_name=resource_name,
                 nimcache_name=nimcache_name,
                 model_entity=model_entity,
-                huggingface_model_puller=self._huggingface_model_puller,
+                huggingface_model_puller=self._backend_config.huggingface_model_puller,
             )
 
             nimservice_api = self._dynamic_client.resources.get(

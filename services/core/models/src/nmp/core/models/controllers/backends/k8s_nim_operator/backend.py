@@ -105,7 +105,6 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
             dynamic_client=self._dynamic_client,
             backend_config=self._backend_config,
             k8s_namespace=self._k8s_namespace,
-            huggingface_model_puller=self._huggingface_model_puller,
             status=self._status_projector,
             deleter=self._resource_deleter,
         )
