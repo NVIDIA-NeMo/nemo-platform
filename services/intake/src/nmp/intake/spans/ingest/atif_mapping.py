@@ -285,6 +285,8 @@ def _trajectory_to_span(
         raw_attributes=raw_attributes,
     )
     trajectory_started_at = _trajectory_started_at(trajectory, ingested_at)
+    # ATIF does not report a trajectory-level outcome status. Tool failures are
+    # represented by their TOOL spans and must not be rolled up to this parent.
     return IntakeSpan(
         workspace=workspace,
         session_id=trace_session_id,
@@ -294,7 +296,7 @@ def _trajectory_to_span(
         external_parent_span_id=external_parent_span_id or "",
         kind=SpanKind.AGENT,
         name=trajectory.agent.name,
-        status=SpanStatus.ERROR if _trajectory_has_error(trajectory) else SpanStatus.SUCCESS,
+        status=SpanStatus.SUCCESS,
         start_time=trajectory_started_at,
         end_time=_clamped_end(trajectory_started_at, _trajectory_ended_at(trajectory)),
         attributes_string=attribute_bags.string,
@@ -832,25 +834,6 @@ def _trajectory_output(trajectory: AtifTrajectory) -> str | None:
                 return _string_or_json(step.message)
             return _step_output(step)
     return None
-
-
-def _trajectory_has_error(trajectory: AtifTrajectory) -> bool:
-    """Return whether this trajectory directly contains a tool error.
-
-    Embedded trajectories map to independent AGENT spans. Their errors remain
-    visible on those spans and in the trace error count, but must not change the
-    status of a parent trajectory that successfully delegated and recovered.
-    """
-    for step in trajectory.steps:
-        if not isinstance(step, AtifStepAgent):
-            continue
-        observation = _step_observation(step)
-        if observation is None:
-            continue
-        for result in observation.results:
-            if _tool_result_is_error(step, result):
-                return True
-    return False
 
 
 def _step_tool_calls(step: AtifStep) -> list[AtifToolCall]:
