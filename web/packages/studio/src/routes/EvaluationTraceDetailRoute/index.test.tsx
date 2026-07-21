@@ -169,7 +169,7 @@ describe('EvaluationTraceDetailRoute', () => {
       renderTraceDetail();
 
       // The trigger enables once the group's runs finish loading.
-      const trigger = await screen.findByRole('button', {
+      const trigger = await screen.findByRole('combobox', {
         name: 'Compare against evaluation run',
       });
       await waitFor(() => expect(trigger).toBeEnabled());
@@ -182,7 +182,7 @@ describe('EvaluationTraceDetailRoute', () => {
       ).toBeInTheDocument();
       expect(screen.getByText(COMPARE_EVALUATION_NAME)).toBeInTheDocument();
 
-      await user.click(screen.getByText('Trial BBBBB'));
+      await user.click(screen.getByRole('option', { name: /Trial BBBBB/ }));
 
       // Selecting the run swaps into the comparison view.
       expect(

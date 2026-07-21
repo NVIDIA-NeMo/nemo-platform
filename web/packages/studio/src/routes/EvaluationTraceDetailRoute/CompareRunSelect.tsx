@@ -1,14 +1,16 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { TextInputSpinner } from '@nemo/common/src/components/form/TextInputSpinner';
 import type { EvaluationSessionResponse } from '@nemo/sdk/generated/platform/schema';
 import {
-  DropdownContent,
   DropdownHeading,
-  DropdownItem,
-  DropdownRoot,
   DropdownSection,
-  DropdownTrigger,
+  SelectContent,
+  SelectItem,
+  SelectListbox,
+  SelectRoot,
+  SelectTrigger,
   Stack,
   Text,
 } from '@nvidia/foundations-react-core';
@@ -20,21 +22,24 @@ interface CompareRunSelectProps {
   runs: EvaluationSessionResponse[];
   /** trace_id of the run shown in the primary column — never offered as an option. */
   currentTraceId: string;
+  /** trace_id of the currently selected comparison run, or null when none. */
+  value: string | null;
   /** Called with the selected run's trace_id. */
   onChange: (traceId: string) => void;
-  /** Disables the trigger while the runs are loading. */
+  /** Keeps the control disabled with a loading placeholder until the runs resolve. */
   isLoading?: boolean;
 }
 
 /**
- * Menu for picking another run of this test case to compare against. Runs are
- * grouped by evaluation so the evaluation name is shown once as a section
- * heading rather than repeated on every row. Picking a run swaps the comparison
- * column (the cap is a single compare run for now).
+ * Select for picking another run of this test case to compare against. Runs are
+ * grouped by evaluation so the evaluation name shows once as a section heading
+ * rather than repeating on every row. Picking a run swaps the comparison column
+ * (the cap is a single compare run for now); the trigger label stays fixed.
  */
 export const CompareRunSelect: FC<CompareRunSelectProps> = ({
   runs,
   currentTraceId,
+  value,
   onChange,
   isLoading = false,
 }) => {
@@ -50,33 +55,42 @@ export const CompareRunSelect: FC<CompareRunSelectProps> = ({
   }, [runs, currentTraceId]);
 
   const isEmpty = groups.length === 0;
+  const disabled = isLoading || isEmpty;
+  const label = isLoading
+    ? 'Loading other runs'
+    : isEmpty
+      ? 'No runs to compare to'
+      : 'Compare against evaluation run';
 
   return (
-    <DropdownRoot>
-      <DropdownTrigger
-        className="min-w-[240px] justify-between"
-        disabled={isLoading || isEmpty}
+    <SelectRoot value={value ?? undefined} onValueChange={onChange} disabled={disabled}>
+      <SelectTrigger
+        className={`min-w-[240px] border-1 ${disabled ? 'nv-input-disabled' : 'nv-input'}`}
+        placeholder={label}
+        // Keep the trigger label fixed instead of echoing the selected run.
+        renderValue={() => label}
+        slotEnd={isLoading ? <TextInputSpinner /> : undefined}
         aria-label="Compare against evaluation run"
-      >
-        {isLoading ? 'Loading…' : isEmpty ? 'No other runs' : 'Compare against evaluation run'}
-      </DropdownTrigger>
-      <DropdownContent align="end" className="min-w-[280px]">
-        <DropdownHeading>
-          <Text kind="label/bold/sm">Select a trial from a run to compare against</Text>
-        </DropdownHeading>
-        {groups.map(([evaluationName, evaluationRuns]) => (
-          <Stack key={evaluationName}>
-            <DropdownHeading>{evaluationName}</DropdownHeading>
-            <DropdownSection>
-              {evaluationRuns.map((run) => (
-                <DropdownItem key={run.trace_id} onSelect={() => onChange(run.trace_id)}>
-                  {trialLabel(run)}
-                </DropdownItem>
-              ))}
-            </DropdownSection>
+      />
+      <SelectContent className="w-(--radix-popper-anchor-width)">
+        <SelectListbox>
+          <DropdownHeading>
+            <Text kind="label/bold/sm">Select a trial from a run to compare against</Text>
+          </DropdownHeading>
+          <Stack className="max-h-[320px] w-full overflow-auto">
+            {groups.map(([evaluationName, evaluationRuns]) => (
+              <DropdownSection key={evaluationName}>
+                <DropdownHeading>{evaluationName}</DropdownHeading>
+                {evaluationRuns.map((run) => (
+                  <SelectItem key={run.trace_id} value={run.trace_id}>
+                    {trialLabel(run)}
+                  </SelectItem>
+                ))}
+              </DropdownSection>
+            ))}
           </Stack>
-        ))}
-      </DropdownContent>
-    </DropdownRoot>
+        </SelectListbox>
+      </SelectContent>
+    </SelectRoot>
   );
 };

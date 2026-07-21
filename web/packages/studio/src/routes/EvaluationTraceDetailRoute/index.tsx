@@ -39,9 +39,12 @@ export const EvaluationTraceDetailRoute: FC = () => {
   ]);
 
   // The experiment group's id scopes the sibling evaluations we fan out over.
-  const { data: group } = useGetExperimentGroup(workspace, experimentGroupName);
+  const { data: group, isLoading: isGroupLoading } = useGetExperimentGroup(
+    workspace,
+    experimentGroupName
+  );
 
-  const { data: evaluationsPage } = useListEvaluations(
+  const { data: evaluationsPage, isLoading: isEvaluationsLoading } = useListEvaluations(
     workspace,
     { filter: { experiment_group_id: group?.id }, page_size: 1000 },
     { query: { enabled: Boolean(group?.id) } }
@@ -52,7 +55,9 @@ export const EvaluationTraceDetailRoute: FC = () => {
   );
 
   // The primary trace supplies the test_case_id every run is matched on.
-  const { data: primaryTrace } = useGetTrace(workspace, traceId, { mode: 'summary' });
+  const { data: primaryTrace, isLoading: isTraceLoading } = useGetTrace(workspace, traceId, {
+    mode: 'summary',
+  });
   const testCaseId = primaryTrace?.experiment_context?.test_case_id;
 
   // Every run of this test case across the group (Option A: FE fan-out per evaluation).
@@ -61,6 +66,10 @@ export const EvaluationTraceDetailRoute: FC = () => {
     evaluationNames,
     testCaseId,
   });
+
+  // The selector is "loading" through the whole chain: group -> evaluations -> trace -> runs.
+  const isRunsSelectorLoading =
+    isGroupLoading || isEvaluationsLoading || isTraceLoading || isRunsLoading;
 
   const primarySession = runs.find((r) => r.trace_id === traceId);
   const compareSession = compareWith ? runs.find((r) => r.trace_id === compareWith) : undefined;
@@ -102,8 +111,9 @@ export const EvaluationTraceDetailRoute: FC = () => {
       <CompareRunSelect
         runs={runs}
         currentTraceId={traceId}
+        value={compareWith}
         onChange={handleCompareChange}
-        isLoading={isRunsLoading}
+        isLoading={isRunsSelectorLoading}
       />
       {compareWith && (
         <button className="text-sm text-content-link hover:underline" onClick={handleClearCompare}>
