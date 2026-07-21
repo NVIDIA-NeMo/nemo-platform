@@ -30,9 +30,9 @@ logger = logging.getLogger(__name__)
 
 
 def _get_sdk() -> Any:
-    from nemo_platform_plugin.sdk import get_sdk
+    from nemo_platform_plugin.sdk_provider import get_platform_sdk
 
-    return get_sdk()
+    return get_platform_sdk(as_service="iron-swarm", internal=True)
 
 
 def _events_path(workspace: str, run_name: str) -> Path:
