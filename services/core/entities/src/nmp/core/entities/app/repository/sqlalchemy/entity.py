@@ -15,7 +15,7 @@ from nmp.core.entities.app.repository.sqlalchemy.filter import SQLAlchemyFilterR
 from nmp.core.entities.app.repository.sqlalchemy.models import DBEntity
 from nmp.core.entities.entities import Entity
 from nmp.core.entities.utils.identifiers import generate_entity_id
-from sqlalchemy import case, func, select
+from sqlalchemy import JSON, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm.exc import StaleDataError
 
@@ -211,6 +211,14 @@ class SQLAlchemyEntityRepository(EntityRepositoryInterface):
     ) -> dict[str, int]:
         """Count filtered entities grouped by a scalar field."""
         async with self._get_session(session) as sess:
+            if group_by.startswith("data."):
+                if not all(group_by.split(".")[1:]):
+                    raise ValueError(f"Field '{group_by}' does not exist on model DBEntity")
+            else:
+                column = DBEntity.__table__.columns.get(group_by)
+                if column is None or isinstance(column.type, JSON):
+                    raise ValueError(f"Field '{group_by}' does not exist on model DBEntity")
+
             filter_repo = SQLAlchemyFilterRepository(
                 DBEntity, relationship_child_workspaces=relationship_child_workspaces
             )
