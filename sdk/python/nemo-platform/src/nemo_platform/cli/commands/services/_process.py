@@ -27,10 +27,12 @@ import re
 import shutil
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -61,8 +63,7 @@ def _pause(seconds: float) -> None:
 # ---------------------------------------------------------------------------
 
 
-# Resolved once per process (see _base_state_dir) so reads and writes agree on one
-# directory and we don't re-probe the filesystem on every call.
+# Resolved once per process by _base_state_dir; ``None`` until first resolved.
 _resolved_base_dir: Path | None = None
 
 
@@ -80,10 +81,8 @@ def _fallback_base_state_dir() -> Path | None:
     ``TMPDIR`` -- ``tempfile.gettempdir()`` raises there).
 
     Namespaced by uid because ``/tmp`` is shared: distinct users on one host must
-    not collide on (or contend for ownership of) a single state dir. This is the
-    escape hatch for running the ``nemo`` entrypoint under a uid that does not own
-    ``$HOME`` -- e.g. a Kubernetes pod whose securityContext forces ``runAsUser``
-    onto an image whose baked ``$HOME`` belongs to a different uid.
+    not collide on (or contend for ownership of) a single state dir. See
+    ``_base_state_dir`` for when and why this fallback is used.
     """
     try:
         tmp = tempfile.gettempdir()
@@ -92,17 +91,36 @@ def _fallback_base_state_dir() -> Path | None:
     return Path(tmp) / f"nmp-state-{os.getuid()}" / "nmp"
 
 
-def _restrict_state_dir(base: Path) -> None:
-    """Best-effort: make the per-uid temp fallback owner-only (0700).
+def _secure_fallback_root(per_uid: Path) -> None:
+    """Create the per-uid temp root (``nmp-state-<uid>``) as an owner-only (0700)
+    directory this uid owns, or raise ``OSError`` so the caller rejects the fallback.
 
-    The XDG/``$HOME`` location is already user-private, but the temp fallback sits in
-    a world-writable, shared ``/tmp``; without this the instance descriptor (which
-    names a pid, port, and config path) and the service log would be world-readable.
-    Best-effort: a pre-existing dir owned by another uid can't be chmod-ed -- that
-    case is a squat and is left to fail loudly on the subsequent write.
+    The temp fallback sits under a world-writable, shared ``/tmp``, so another user can
+    pre-create ``nmp-state-<uid>``. If we wrote state into a directory we do not own,
+    the instance descriptor (pid, port, config path) and the service log would land
+    under that user's control -- an information leak and a symlink-swap foothold. So
+    reject any root we cannot make private:
+
+    - a symlink or non-directory: ``lstat`` does not follow, so a symlink fails the
+      ``S_ISDIR`` check -- it points somewhere we did not create;
+    - one owned by another uid: ``os.chmod`` alone misses this when we run as root,
+      since root can chmod a file it does not own, so check the owner explicitly;
+    - one we cannot lock down to 0700.
+
+    ``mkdir(mode=0o700)`` creates it private with no world-readable window; the explicit
+    ``chmod`` re-tightens a dir we made earlier under a laxer umask and, on a squatter's
+    dir we somehow own-but-cannot-chmod, propagates its EPERM -- the rejection we want.
     """
-    with contextlib.suppress(OSError):
-        os.chmod(base.parent, 0o700)  # the `nmp-state-<uid>` dir under the temp root
+    per_uid.mkdir(mode=0o700, exist_ok=True)
+    info = per_uid.lstat()
+    if not stat.S_ISDIR(info.st_mode):
+        raise OSError(errno.ENOTDIR, f"{per_uid} is not a directory")
+    if info.st_uid != os.getuid():
+        raise OSError(errno.EPERM, f"{per_uid} is owned by uid {info.st_uid}, not {os.getuid()}")
+    os.chmod(per_uid, 0o700)
+    mode = stat.S_IMODE(os.stat(per_uid).st_mode)
+    if mode & 0o077:
+        raise OSError(errno.EPERM, f"{per_uid} is not owner-only (mode {mode:#o})")
 
 
 def _base_state_dir() -> Path:
@@ -114,7 +132,9 @@ def _base_state_dir() -> Path:
     under a uid that does not own its baked ``$HOME``). Selection is by an actual
     ``mkdir`` of the ``instances`` dir rather than an advisory ``os.access`` probe,
     so it is correct even where the two disagree (NFS root-squash, SELinux) and even
-    if the fallback itself is unwritable.
+    if the fallback itself is unwritable. The temp fallback is additionally rejected
+    unless it is a directory this uid owns and can lock down to 0700 (see
+    ``_secure_fallback_root``), so another user cannot pre-create it and capture state.
 
     Memoized: the first call creates the directory and every later call in the
     process -- writes (``acquire_lock``/``write_descriptor``) and reads
@@ -127,20 +147,31 @@ def _base_state_dir() -> Path:
         return _resolved_base_dir
 
     preferred = _preferred_base_state_dir()
+
+    def _candidates() -> Iterator[tuple[Path, bool]]:
+        # (dir, is_fallback). Lazy: the temp fallback -- and its gettempdir() /tmp
+        # probe -- is computed only if the preferred location fails, so the common
+        # path never touches /tmp. Only the fallback can be absent (no usable temp dir).
+        yield preferred, False
+        fallback = _fallback_base_state_dir()
+        if fallback is not None:
+            yield fallback, True
+
     first_error: OSError | None = None
-    for candidate in (preferred, _fallback_base_state_dir()):
-        if candidate is None:
-            continue
+    for candidate, is_fallback in _candidates():
         try:
+            # Vet ownership of and lock down the shared-/tmp root before creating any
+            # state under it, so a squatted fallback is rejected, not written into.
+            if is_fallback:
+                _secure_fallback_root(candidate.parent)
             (candidate / "instances").mkdir(parents=True, exist_ok=True)
         except OSError as err:
             first_error = first_error or err
             continue
-        if candidate is not preferred:
-            _restrict_state_dir(candidate)
+        if is_fallback:
             logger.warning(
-                "State directory %s is not writable; using %s instead. Set XDG_STATE_HOME "
-                "or _NMP_STATE_DIR to a writable path to control where instance state lives.",
+                "State directory %s is not writable; using %s instead. Set XDG_STATE_HOME to a "
+                "writable path to control where instance state lives.",
                 preferred,
                 candidate,
             )

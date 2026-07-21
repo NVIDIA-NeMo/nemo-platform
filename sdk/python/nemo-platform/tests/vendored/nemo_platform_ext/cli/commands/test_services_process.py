@@ -141,6 +141,22 @@ class TestBaseStateDir:
         _process._resolved_base_dir = None
         _process._scope_prefix_cache = None
 
+    @pytest.fixture()
+    def fallback_root(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        """Force resolution onto the temp fallback and return that root.
+
+        Points the preferred dir under a regular file so its mkdir raises for every uid
+        (root-proof, unlike a chmod-based block), then aims ``gettempdir`` at a fresh dir
+        -- the resolved base becomes ``<root>/nmp-state-<uid>/nmp``.
+        """
+        blocker = tmp_path / "not-a-dir"
+        blocker.write_text("x")
+        monkeypatch.setattr(_process, "_preferred_base_state_dir", lambda: blocker / "nmp")
+        root = tmp_path / "tmp"
+        root.mkdir()
+        monkeypatch.setattr(tempfile, "gettempdir", lambda: str(root))
+        return root
+
     def test_resolves_and_creates_under_preferred(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
         base = _base_state_dir()
@@ -154,32 +170,67 @@ class TestBaseStateDir:
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "other"))
         assert _base_state_dir() == first
 
-    def test_falls_back_when_preferred_uncreatable(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        # Preferred points under a regular file, so mkdir raises NotADirectoryError
-        # (an OSError) for every uid -- root-proof, unlike a chmod-based block.
-        blocker = tmp_path / "not-a-dir"
-        blocker.write_text("x")
-        monkeypatch.setattr(_process, "_preferred_base_state_dir", lambda: blocker / "nmp")
-        fallback_root = tmp_path / "tmp"
-        fallback_root.mkdir()
-        monkeypatch.setattr(tempfile, "gettempdir", lambda: str(fallback_root))
-
+    def test_falls_back_when_preferred_uncreatable(self, fallback_root: Path) -> None:
         base = _base_state_dir()
         assert base == fallback_root / f"nmp-state-{os.getuid()}" / "nmp"
         assert (base / "instances").is_dir()
 
-    def test_fallback_dir_is_owner_only(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_fallback_dir_is_owner_only(self, fallback_root: Path) -> None:
         # The per-uid dir under shared /tmp must not be world-traversable/readable,
         # or another user could read the descriptor (pid/port/config) and the log.
-        blocker = tmp_path / "not-a-dir"
-        blocker.write_text("x")
-        monkeypatch.setattr(_process, "_preferred_base_state_dir", lambda: blocker / "nmp")
-        fallback_root = tmp_path / "tmp"
-        fallback_root.mkdir()
-        monkeypatch.setattr(tempfile, "gettempdir", lambda: str(fallback_root))
-
         _base_state_dir()
         per_uid = fallback_root / f"nmp-state-{os.getuid()}"
+        assert os.stat(per_uid).st_mode & 0o777 == 0o700
+
+    def test_rejects_squatted_fallback_owned_by_other_uid(
+        self, fallback_root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Simulate a squat without a second real user: make the process *believe* it is a
+        # different uid than the one that owns the temp root it creates. _secure_fallback_root
+        # must refuse to write state into a directory it does not own -- and this holds even
+        # as root, where a chmod-only check would not (root can chmod a foreign dir).
+        real_uid = os.getuid()
+        monkeypatch.setattr(_process.os, "getuid", lambda: real_uid + 1)
+
+        with pytest.raises(OSError):
+            _base_state_dir()
+
+        # The per-uid root gets created (empty) but no state subtree is written under it.
+        squatted = fallback_root / f"nmp-state-{real_uid + 1}"
+        assert not (squatted / "nmp").exists()
+
+    def test_rejects_fallback_it_cannot_lock_down(self, fallback_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The per-uid temp root exists and we own it, but the chmod that would make it
+        # owner-only fails (EPERM). The fallback must be rejected -- never written into --
+        # rather than silently swallowing the chmod error.
+        per_uid = fallback_root / f"nmp-state-{os.getuid()}"
+        per_uid.mkdir(mode=0o755)  # a pre-existing, too-permissive root
+
+        real_chmod = os.chmod
+
+        def deny_chmod(path, *args, **kwargs):
+            if Path(path) == per_uid:
+                raise PermissionError("Operation not permitted")
+            return real_chmod(path, *args, **kwargs)
+
+        monkeypatch.setattr(_process.os, "chmod", deny_chmod)
+
+        with pytest.raises(OSError):
+            _base_state_dir()
+        assert not (per_uid / "nmp").exists()  # no state written under the unsecurable root
+
+    def test_reuses_and_tightens_own_loose_fallback_dir(self, fallback_root: Path) -> None:
+        # A per-uid root we already own but that is too permissive -- e.g. a plain mkdir
+        # under the default umask, left by an older build -- is not a squat: accept it and
+        # tighten it to 0700, don't reject it.
+        per_uid = fallback_root / f"nmp-state-{os.getuid()}"
+        per_uid.mkdir()
+        os.chmod(per_uid, 0o755)  # group/other-readable; _secure_fallback_root must clamp it
+
+        base = _base_state_dir()
+        assert base == per_uid / "nmp"
+        assert (base / "instances").is_dir()
+        # _secure_fallback_root ran an absolute chmod(0o700), overriding the 0o755 above.
         assert os.stat(per_uid).st_mode & 0o777 == 0o700
 
     def test_fallback_is_none_without_tempdir(self, monkeypatch: pytest.MonkeyPatch) -> None:
