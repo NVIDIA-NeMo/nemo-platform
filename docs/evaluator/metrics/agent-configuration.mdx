@@ -143,8 +143,9 @@ Use the `nemo_agent_toolkit` format when evaluating agents built with the [NeMo 
 
 1. Sends a POST to `{url}/generate/full?filter_steps=none` with `{"input_message": "<text>"}`.
 2. Reads the SSE (Server-Sent Events) stream.
-3. Extracts the final `value` from the last SSE `data:` chunk.
-4. Returns it as the agent response.
+3. Extracts the `value` from each SSE `data:` chunk. NAT emits token-level deltas, so the
+   values are concatenated in order to reconstruct the complete response (`concat` aggregation).
+4. Returns the reconstructed response.
 
 ### NeMo Agent Toolkit Fields
 
