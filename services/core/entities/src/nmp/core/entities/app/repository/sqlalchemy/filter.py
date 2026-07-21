@@ -85,16 +85,23 @@ class SQLAlchemyFilterRepository(FilterRepository):
 
         return value
 
-    def _cast_json_to_text(self, column: Any) -> Any:
-        """Cast a JSON column element to text, handling SQLite's quoted output.
+    def _cast_json_to_raw_text(self, column: Any) -> Any:
+        """Cast a JSON column element to its raw serialized text, quotes and all.
 
-        SQLite's json_extract returns string values with quotes (e.g., '"value"').
-        PostgreSQL's JSONB subscript also returns JSON-formatted strings.
-        We use TRIM to remove surrounding quotes for consistent comparison.
+        Unlike ``_cast_json_to_text``, this keeps JSON's surrounding double quotes. Use it when the
+        quotes carry meaning — e.g. matching a quote-delimited array element (``$contains``) or comparing
+        against the literal ``"null"``/``"true"``/``"false"`` tokens both backends render.
         """
-        # Cast to string and trim surrounding double quotes
-        # This handles both SQLite and PostgreSQL JSON string extraction
-        return func.trim(cast(column, String), '"')
+        return cast(column, String)
+
+    def _cast_json_to_text(self, column: Any) -> Any:
+        """Cast a JSON column element to text, trimming JSON's surrounding double quotes.
+
+        SQLite's json_extract returns string values with quotes (e.g., '"value"'), and PostgreSQL's
+        JSONB subscript also returns JSON-formatted strings. Trimming yields a consistent bare value for
+        equality/substring comparison. Use ``_cast_json_to_raw_text`` when the quotes must be preserved.
+        """
+        return func.trim(self._cast_json_to_raw_text(column), '"')
 
     def _cast_json_to_numeric(self, column: Any) -> Any:
         """Cast a JSON column element to a float for numeric comparisons.
@@ -125,7 +132,7 @@ class SQLAlchemyFilterRepository(FilterRepository):
             # SQLAlchemy's JSON subscript IS NULL doesn't work reliably across backends,
             # but cast to String returns "null" for both cases on SQLite and PostgreSQL.
             if value is None:
-                return cast(column, String) == "null"
+                return self._cast_json_to_raw_text(column) == "null"
             # Handle boolean values specially:
             # - SQLite stores JSON booleans as integers (0/1), json_extract returns "0" or "1"
             # - PostgreSQL stores them as "false"/"true"
@@ -134,8 +141,8 @@ class SQLAlchemyFilterRepository(FilterRepository):
                 sqlite_value = "1" if value else "0"
                 pg_value = "true" if value else "false"
                 return or_(
-                    cast(column, String) == sqlite_value,
-                    cast(column, String) == pg_value,
+                    self._cast_json_to_raw_text(column) == sqlite_value,
+                    self._cast_json_to_raw_text(column) == pg_value,
                 )
             # For string values, use _cast_json_to_text to handle quoted JSON output
             return self._cast_json_to_text(column) == str(value)
@@ -196,7 +203,7 @@ class SQLAlchemyFilterRepository(FilterRepository):
         needle = str(value)
         for ch in ("\\", "%", "_"):
             needle = needle.replace(ch, f"\\{ch}")
-        return cast(column, String).like(f'%"{needle}"%', escape="\\")
+        return self._cast_json_to_raw_text(column).like(f'%"{needle}"%', escape="\\")
 
     def and_op(self, operations: List[Any]) -> Any:
         """Logical AND."""
