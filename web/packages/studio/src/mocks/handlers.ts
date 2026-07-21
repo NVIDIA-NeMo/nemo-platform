@@ -13,6 +13,7 @@ import {
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { customizerHandlers } from '@studio/mocks/handlers/customizer';
 import { deploymentsHandlers } from '@studio/mocks/handlers/deployments';
+import { evaluatorHandlers } from '@studio/mocks/handlers/evaluator';
 import { filesetsHandlers } from '@studio/mocks/handlers/filesets';
 import { guardrailsHandlers } from '@studio/mocks/handlers/guardrails';
 import { modelsHandlers } from '@studio/mocks/handlers/models';
@@ -697,28 +698,10 @@ export const handlers = [
     () => HttpResponse.json({ data: [], total: 0 })
   ),
 
-  // nemo-evaluator agent-evaluate jobs — Studio's agent-evaluation feature runs
-  // here. Default to an empty list / 404 so the list + detail routes render
-  // their empty/not-found states in tests without per-test overrides.
-  http.get(`${PLATFORM_BASE_URL}/apis/evaluator/v2/workspaces/:workspace/agent-evaluate/jobs`, () =>
-    HttpResponse.json({ data: [], pagination: { total: 0, page: 1, page_size: 50 } })
-  ),
-  http.get(
-    `${PLATFORM_BASE_URL}/apis/evaluator/v2/workspaces/:workspace/agent-evaluate/jobs/:name`,
-    () => HttpResponse.json({ detail: 'Not found' }, { status: 404 })
-  ),
-  http.get(
-    `${PLATFORM_BASE_URL}/apis/evaluator/v2/workspaces/:workspace/agent-evaluate/jobs/:name/status`,
-    () => HttpResponse.json({ name: '', status: 'unknown' })
-  ),
-  http.get(
-    `${PLATFORM_BASE_URL}/apis/evaluator/v2/workspaces/:workspace/agent-eval-results/:name`,
-    () => HttpResponse.json({ detail: 'Not found' }, { status: 404 })
-  ),
-
   ...workspacesHandlers,
   ...customizerHandlers,
   ...deploymentsHandlers,
+  ...evaluatorHandlers,
   ...modelsHandlers,
   ...secretsHandlers,
   ...filesetsHandlers,

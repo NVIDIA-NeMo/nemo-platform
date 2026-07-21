@@ -7,6 +7,7 @@ import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { isDefined } from '@nemo/common/src/utils/list';
 import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
 import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema/AgentDeployment';
+import type { AgentEvaluateJob } from '@nemo/sdk/generated/evaluator/schema';
 import {
   Accordion,
   Block,
@@ -16,7 +17,6 @@ import {
   StatusIndicator,
   Text,
 } from '@nvidia/foundations-react-core';
-import type { AgentEvalJob } from '@studio/api/evaluation/agent-evaluations';
 import type { AgentConfig } from '@studio/components/dataViews/AgentsDataView';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { deploymentStatusColor } from '@studio/components/sidePanels/AgentPanels/AgentPanel/helpers';
@@ -31,7 +31,7 @@ interface AgentDetailsContentProps {
   agentName?: string;
   agent?: Agent;
   agentDeployments: AgentDeployment[];
-  agentEvals: AgentEvalJob[];
+  agentEvals: AgentEvaluateJob[];
   isDeploymentsLoading: boolean;
   isDeploying: boolean;
   walkthroughStep: WalkthroughStep | null;

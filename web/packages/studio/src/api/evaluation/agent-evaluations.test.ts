@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { AgentEvaluateJob } from '@nemo/sdk/generated/evaluator/schema';
 import {
   type AgentEvalBundle,
-  type AgentEvalJob,
   type AgentEvalResult,
   agentNameForJob,
   aggregateScoresOf,
@@ -28,7 +28,7 @@ beforeEach(() => {
   filesDownloadFileMock.mockReset();
 });
 
-const baseJob = (overrides: Partial<AgentEvalJob> = {}): AgentEvalJob =>
+const baseJob = (overrides: Partial<AgentEvaluateJob> = {}): AgentEvaluateJob =>
   ({
     name: 'eval-1',
     workspace: 'ws-a',
@@ -37,7 +37,7 @@ const baseJob = (overrides: Partial<AgentEvalJob> = {}): AgentEvalJob =>
     updated_at: '2026-05-05T00:01:00Z',
     spec: { target: { kind: 'agent', agent: { name: 'support-bot-mini' } }, tasks: [{}, {}] },
     ...overrides,
-  }) as AgentEvalJob;
+  }) as AgentEvaluateJob;
 
 describe('fetchAgentEvalJobs', () => {
   it('walks all pages until a short page ends pagination', async () => {
@@ -84,7 +84,7 @@ describe('agentNameForJob', () => {
   });
 
   it('returns null when no target agent is set', () => {
-    expect(agentNameForJob(baseJob({ spec: {} as AgentEvalJob['spec'] }))).toBeNull();
+    expect(agentNameForJob(baseJob({ spec: {} as AgentEvaluateJob['spec'] }))).toBeNull();
   });
 });
 

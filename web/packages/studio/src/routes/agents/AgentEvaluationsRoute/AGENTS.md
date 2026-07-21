@@ -4,7 +4,7 @@ How Studio runs agent evaluations.
 
 ## Overview
 
-- **Runner:** nemo-evaluator's **`agent-evaluate/jobs`** endpoint (task-based, `AgentEvalJob`),
+- **Runner:** nemo-evaluator's **`agent-evaluate/jobs`** endpoint (task-based, `AgentEvaluateJob`),
   with an **agent** target. This is the canonical path for Studio agent evaluation, per the
   nemo-evaluator team — it is purpose-built for agent tasks with extensive artifact + trace
   collection. (A legacy row-based `evaluate/jobs` endpoint also exists — see the bottom.)

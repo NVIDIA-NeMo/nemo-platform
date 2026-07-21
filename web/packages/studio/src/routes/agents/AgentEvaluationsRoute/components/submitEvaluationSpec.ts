@@ -4,13 +4,6 @@
 import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 
-// Two shapes flow through here (see this route's AGENTS.md for the contract):
-//   - a *template* (`EvalConfig`): the sample's inline tasks + one shared inline metric,
-//     read only when creating a new config from an example.
-//   - a *persisted spec* (`PersistedEvalSpec`): the yardstick stored in the fileset —
-//     tasks that each carry the metric (judge baked in), no target. It is an
-//     `AgentEvalInputSpec` minus `target`; submit injects the per-run agent target.
-
 /** Sentinel ``evalConfig`` value that switches the form into create mode. */
 export const CREATE_NEW = '__create_new__';
 
@@ -129,9 +122,7 @@ export const buildPersistedSpec = (
   max_concurrent_tasks: config.max_concurrent_tasks ?? DEFAULT_MAX_CONCURRENT_TASKS,
 });
 
-/** Build the ``agent-evaluate/jobs`` POST body from a persisted spec + selections.
- *  The spec's tasks already carry their metrics (judge baked); submit only injects
- *  the per-run agent target and wraps it as the job request. */
+/** Build the ``agent-evaluate/jobs`` POST body from a persisted spec + selections. */
 export const buildAgentEvalRequestBody = (
   spec: PersistedEvalSpec,
   selections: SubmitSelections
@@ -153,9 +144,7 @@ export const parseEvalConfig = (text: string): EvalConfig => {
   if (!parsed.metric || typeof parsed.metric !== 'object') {
     throw new Error('eval-config.json must contain a "metric"');
   }
-  // Guard the one shape the client dereferences (injection reads payload.metric)
-  // so a malformed bundle fails here, not with a TypeError at request build.
-  // Metric-type/bounds validity is the backend's job (bundle is otherwise loose).
+
   const { payload } = parsed.metric;
   if (
     !payload ||

@@ -13,8 +13,6 @@ interface AgentEvalTaskResultsPanelProps {
   tasks: AgentEvalTaskDetail[];
 }
 
-/** Human-readable heading for a task: the email subject (parsed from the
- *  composed instruction's `Subject:` line), falling back to the task id. */
 const headingFor = (task: AgentEvalTaskDetail): string => {
   const firstLine = (task.instruction ?? '').split('\n', 1)[0] ?? '';
   const match = /^\s*subject:\s*(.+)$/i.exec(firstLine);
@@ -34,9 +32,6 @@ const metadataEntries = (metadata?: Record<string, unknown>): Array<[string, str
     typeof v === 'string' ? v : JSON.stringify(v),
   ]);
 
-/** Per-task results, one card each: the agent's response, its metric score(s),
- *  the expected label, the composed input, and provenance metadata. Rebuilt
- *  from the result bundle (trials + scores + tasks) — see this route's AGENTS.md. */
 export const AgentEvalTaskResultsPanel: FC<AgentEvalTaskResultsPanelProps> = ({ tasks }) => {
   if (tasks.length === 0) {
     return <Block className="text-subtle">No per-task results recorded for this evaluation.</Block>;
@@ -50,7 +45,6 @@ export const AgentEvalTaskResultsPanel: FC<AgentEvalTaskResultsPanelProps> = ({ 
           const metadata = metadataEntries(task.metadata);
           return (
             <Card key={task.taskId} className="relative">
-              {/* Score chip pinned top-right so verbose responses read cleanly below it. */}
               <Flex
                 gap="density-sm"
                 className="absolute right-density-lg top-density-lg"

@@ -20,18 +20,6 @@ import { filesDownloadFile } from '@nemo/sdk/generated/platform/api';
 
 const PAGE_SIZE = 50;
 
-// ---------------------------------------------------------------------------
-// Agent-evaluate job listing + retrieval
-//
-// Studio runs agent evaluation through nemo-evaluator's task-based
-// `agent-evaluate/jobs` endpoint (see this route's AGENTS.md). A job's spec
-// carries the inline tasks and the agent target; results are read from the
-// queryable `agent-eval-results/{name}` record.
-// ---------------------------------------------------------------------------
-
-/** SDK's AgentEvaluateJob aliased for backward compatibility. */
-export type AgentEvalJob = AgentEvaluateJob;
-
 /** Aggregate score — numeric range or rubric category distribution. */
 export type AgentEvalAggregateScore = AggregateRangeScore | AggregateRubricScore;
 
@@ -41,7 +29,7 @@ export type { AgentEvalResult };
 /** The agent name a job evaluated, read from its target (spec.target.agent.name).
  *  Strips only this job's own ``workspace/`` prefix so the result compares equal to a
  *  bare agent name; any other ``/`` in the name is left intact. */
-export const agentNameForJob = (job: AgentEvalJob): string | null => {
+export const agentNameForJob = (job: AgentEvaluateJob): string | null => {
   const target = job.spec.target as { kind?: string; agent?: { name?: string } } | null | undefined;
   if (!target || target.kind !== 'agent') return null;
   const name = target.agent?.name;
@@ -53,8 +41,8 @@ export const agentNameForJob = (job: AgentEvalJob): string | null => {
 export const fetchAgentEvalJobs = async (
   workspace: string,
   signal: AbortSignal
-): Promise<AgentEvalJob[]> => {
-  const all: AgentEvalJob[] = [];
+): Promise<AgentEvaluateJob[]> => {
+  const all: AgentEvaluateJob[] = [];
   let page = 1;
   while (true) {
     const res = await evaluatorListAgentEvaluateJobs(
@@ -74,7 +62,7 @@ export const fetchAgentEvalJob = async (
   workspace: string,
   name: string,
   signal: AbortSignal
-): Promise<AgentEvalJob | null> => {
+): Promise<AgentEvaluateJob | null> => {
   try {
     return await evaluatorGetAgentEvaluateJob(workspace, name, signal);
   } catch (err) {
@@ -96,7 +84,7 @@ export const submitAgentEvalJob = async (
   workspace: string,
   request: AgentEvaluateJobRequest,
   signal?: AbortSignal
-): Promise<AgentEvalJob> => evaluatorCreateAgentEvaluateJob(workspace, request, signal);
+): Promise<AgentEvaluateJob> => evaluatorCreateAgentEvaluateJob(workspace, request, signal);
 
 // ---------------------------------------------------------------------------
 // Structured results (agent-eval-results record)
@@ -119,15 +107,6 @@ export const fetchAgentEvalResult = async (
     throw err;
   }
 };
-
-// ---------------------------------------------------------------------------
-// Per-task detail — the result bundle (trials + scores + tasks)
-//
-// The queryable result record above carries only aggregates. Per-task detail
-// (the agent's response, its per-task score, judge reasoning) lives in the
-// bundle fileset referenced by result.bundle_ref, as JSONL files. We read
-// them to rebuild the per-item view the detail page shows.
-// ---------------------------------------------------------------------------
 
 /** One trial row from trials.jsonl — the agent's response to a task. */
 export interface AgentEvalTrialRow {
