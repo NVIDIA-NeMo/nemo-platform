@@ -15,10 +15,9 @@ from nemo_agents_plugin.fabric.runtime import (
     FabricRuntimeExecutionError,
     FabricRuntimeRequest,
     FabricRuntimeTimeoutError,
-    normalize_fabric_run_result,
     run_fabric_agent_once,
 )
-from nemo_fabric import FabricConfig, RunResult  # ty: ignore[unresolved-import]
+from nemo_fabric import FabricConfig  # ty: ignore[unresolved-import]
 
 
 class _FabricMapping:
@@ -192,20 +191,20 @@ class TestRunFabricAgentOnce:
         assert result.status == "failed"
         assert result.error == {"stage": "invoke", "message": "adapter failed"}
 
-
-class TestNormalizeFabricRunResult:
-    def test_normalizes_fabric_mapping_fields_to_plain_values(self) -> None:
-        result = normalize_fabric_run_result(
-            cast(
-                RunResult,
-                _FakeRunResult(
-                    output={
-                        "response": "done",
-                        "messages": (_FabricMapping({"role": "assistant", "content": "done"}),),
-                    },
-                ),
-            )
+    async def test_normalizes_fabric_mapping_fields_to_plain_values(self) -> None:
+        fake_result = _FakeRunResult(
+            output={
+                "response": "done",
+                "messages": (_FabricMapping({"role": "assistant", "content": "done"}),),
+            },
         )
+        fake_fabric = _FakeFabric(runtime=_FakeRuntime(result=fake_result))
+        request = FabricRuntimeRequest(
+            fabric_config=cast(FabricConfig, object()),
+            base_dir=Path("/tmp/agent"),
+        )
+
+        result = await run_fabric_agent_once(request, fabric=fake_fabric)
 
         assert result.output == {
             "response": "done",

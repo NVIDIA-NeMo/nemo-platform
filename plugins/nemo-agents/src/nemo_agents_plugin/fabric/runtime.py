@@ -92,7 +92,7 @@ async def run_fabric_agent_once(
             f"Fabric runtime invocation failed: {error}",
         ) from error
 
-    return normalize_fabric_run_result(result)
+    return _normalize_fabric_run_result(result)
 
 
 async def _invoke_fabric_agent_once(
@@ -120,7 +120,7 @@ def _with_platform_invocation_context(request: FabricRuntimeRequest) -> RunReque
     return RunRequest(**request_kwargs)
 
 
-def normalize_fabric_run_result(result: RunResult) -> FabricRuntimeResult:
+def _normalize_fabric_run_result(result: RunResult) -> FabricRuntimeResult:
     """Convert Fabric's SDK result into the Platform runtime result shape."""
     output = _to_plain_value(result.output)
     return FabricRuntimeResult(
