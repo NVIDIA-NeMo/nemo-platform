@@ -72,7 +72,7 @@ export const DeploymentLogsView: FC<DeploymentLogsViewProps> = ({
   const pOffset = '2';
 
   return (
-    <Stack className="h-full min-h-0" gap="2">
+    <Stack className="h-full min-h-0 w-full" gap="2">
       {sortedDeployments.length > 1 && (
         <Block className="shrink-0" paddingX={pOffset}>
           <Select
@@ -91,7 +91,7 @@ export const DeploymentLogsView: FC<DeploymentLogsViewProps> = ({
           />
         </Block>
       )}
-      <Block className="flex-1 min-h-0 overflow-auto" paddingX={pOffset}>
+      <Block className="flex-1 min-h-0" paddingX={pOffset}>
         {selectedName ? (
           <LogsForDeployment workspace={workspace} deploymentName={selectedName} />
         ) : null}
@@ -106,7 +106,6 @@ interface LogsForDeploymentProps {
 }
 
 const TAIL_LINES = 500;
-// Cap the live buffer so a long-lived, noisy stream can't grow state unbounded.
 const MAX_STREAMED_LINES = 5000;
 
 const LogsForDeployment: FC<LogsForDeploymentProps> = ({ workspace, deploymentName }) => {
@@ -114,24 +113,18 @@ const LogsForDeployment: FC<LogsForDeploymentProps> = ({ workspace, deploymentNa
     workspace,
     deploymentName,
     { tail: TAIL_LINES },
-    // Short staleTime: the live SSE stream keeps logs current after mount, so we
-    // only need a fresh tail baseline, not a refetch on every quick tab toggle.
     { query: { staleTime: 5000 } }
   );
 
   const [streamedLines, setStreamedLines] = useState<PlatformJobLog[]>([]);
-  // Reset on deployment change so we don't stitch one process's tail onto another.
   useEffect(() => {
     setStreamedLines([]);
   }, [deploymentName]);
 
   const accessToken = useAuth()?.user?.access_token;
-  // Byte offset just past the tail; resume the stream from here so lines written
-  // between the tail fetch and the stream opening aren't dropped.
   const tailOffset = data?.next_offset;
 
   useEffect(() => {
-    // Wait for the tail query to settle so the stream can resume from tailOffset.
     if (!deploymentName || isLoading) return;
     const url = `${PLATFORM_BASE_URL}${getAgentsStreamDeploymentLogsQueryKey(workspace, deploymentName)[0]}`;
     const controller = new AbortController();
