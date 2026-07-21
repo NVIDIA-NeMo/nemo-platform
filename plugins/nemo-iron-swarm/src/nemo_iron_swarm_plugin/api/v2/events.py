@@ -26,8 +26,6 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-_QUEUE_MAX = 2000  # bound each live subscriber queue; history replay comes from the file, not this queue
-
 
 def _events_path(workspace: str, run_name: str) -> Path:
     """Durable per-run events log: ``<state_dir>/run-events/<workspace>/<safe-run-name>.jsonl``."""
