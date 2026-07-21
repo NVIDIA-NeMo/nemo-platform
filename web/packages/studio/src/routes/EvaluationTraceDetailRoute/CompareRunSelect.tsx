@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { TextInputSpinner } from '@nemo/common/src/components/form/TextInputSpinner';
 import type { EvaluationSessionResponse } from '@nemo/sdk/generated/platform/schema';
 import {
   DropdownHeading,
@@ -10,6 +9,7 @@ import {
   SelectListbox,
   SelectRoot,
   SelectTrigger,
+  Spinner,
   Text,
 } from '@nvidia/foundations-react-core';
 import { runLabel, trialLabel } from '@studio/routes/EvaluationTraceDetailRoute/runLabel';
@@ -67,7 +67,7 @@ export const CompareRunSelect: FC<CompareRunSelectProps> = ({
         placeholder={label}
         // Keep the trigger label fixed instead of echoing the selected run.
         renderValue={() => label}
-        slotEnd={isLoading ? <TextInputSpinner /> : undefined}
+        slotEnd={isLoading ? <Spinner size="small" aria-label="Loading runs" /> : undefined}
         aria-label="Compare against evaluation run"
       />
       <SelectContent className="w-(--radix-popper-anchor-width)">
