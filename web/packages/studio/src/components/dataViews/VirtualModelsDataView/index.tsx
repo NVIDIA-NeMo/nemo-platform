@@ -91,7 +91,7 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
         : {}),
       ...(createdAt ? { created_at: createdAt } : {}),
     });
-  }, [dataViewState.debouncedSearchBar, dataViewState.debouncedColumnFilters]);
+  }, [dataViewState.debouncedSearchBar, dataViewState.debouncedColumnFilters, workspace]);
 
   const { data, isFetching, error } = useListVirtualModels(
     workspace,
