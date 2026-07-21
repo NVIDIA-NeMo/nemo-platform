@@ -286,11 +286,11 @@ When you set `expert_parallel_size`:
 - `(data_parallel_size × context_parallel_size)` must be divisible by `expert_parallel_size`.
 - When `expert_parallel_size > 1`, `tensor_parallel_size` must be `1`.
 
-For example, with 8 total GPUs, `tensor_parallel_size=2`, `pipeline_parallel_size=1`, and `context_parallel_size=1`:
-- Derived `data_parallel_size = 8 / (2 × 1 × 1) = 4`
-- `data_parallel_size × context_parallel_size = 4`
-- Valid `expert_parallel_size` values: `1`, `2`, or `4`
-- Invalid `expert_parallel_size` value: `3` (does not divide 4)
+For example, with 8 total GPUs, `tensor_parallel_size=1`, `pipeline_parallel_size=1`, and `context_parallel_size=1`:
+- Derived `data_parallel_size = 8 / (1 × 1 × 1) = 8`
+- `data_parallel_size × context_parallel_size = 8`
+- Valid `expert_parallel_size` values: `1`, `2`, `4`, or `8`
+- Invalid `expert_parallel_size` value: `3` (does not divide 8)
 
 </Note>
 ### Resource Allocation Rules

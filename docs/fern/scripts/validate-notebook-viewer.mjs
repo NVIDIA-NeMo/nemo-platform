@@ -4,7 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Ensure every NotebookViewer registration has generated notebook data on disk
- * and that the generated JSON still matches its source notebook.
+ * and that the generated JSON and TypeScript artifacts still match their source
+ * notebooks.
  *
  * NotebookViewer.tsx imports `./notebooks/<name>` modules produced by
  * `ipynb-to-fern-json.py`. A missing `.ts` / `.json` pair breaks publication
@@ -87,9 +88,9 @@ for (const name of names) {
 
   try {
     const notebook = JSON.parse(await readFile(sourcePath, "utf8"));
-    const artifact = JSON.parse(
-      await readFile(join(NOTEBOOKS_DIR, `${name}.json`), "utf8"),
-    );
+    const jsonPath = join(NOTEBOOKS_DIR, `${name}.json`);
+    const tsPath = join(NOTEBOOKS_DIR, `${name}.ts`);
+    const artifact = JSON.parse(await readFile(jsonPath, "utf8"));
     const sourceCells = notebook.cells.map((cell) =>
       (Array.isArray(cell.source) ? cell.source.join("") : cell.source ?? "").trimEnd(),
     );
@@ -103,8 +104,28 @@ for (const name of names) {
     if (mismatch) {
       failed += 1;
       console.error(
-        `stale ${join(NOTEBOOKS_DIR, `${name}.json`)}; regenerate it from ${sourcePath}`,
+        `stale ${jsonPath}; regenerate it from ${sourcePath}`,
       );
+    }
+
+    const tsSource = await readFile(tsPath, "utf8");
+    const tsMatch = tsSource.match(/export\s+default\s+\{\s*cells:\s*(\[[\s\S]*\])\s*\};\s*$/);
+    if (!tsMatch) {
+      failed += 1;
+      console.error(`could not parse default export in ${tsPath}`);
+    } else {
+      const tsCells = JSON.parse(tsMatch[1]).map((cell) =>
+        (cell.source ?? "").trimEnd(),
+      );
+      const tsMismatch =
+        artifactCells.length !== tsCells.length ||
+        artifactCells.some((source, index) => source !== tsCells[index]);
+      if (tsMismatch) {
+        failed += 1;
+        console.error(
+          `stale ${tsPath}; regenerate it from ${sourcePath}`,
+        );
+      }
     }
   } catch (error) {
     failed += 1;

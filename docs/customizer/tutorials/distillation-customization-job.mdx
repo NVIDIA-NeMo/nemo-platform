@@ -433,8 +433,17 @@ def wait_for_deployment(deployment_name: str, timeout_minutes: int = 30):
 
         if dep.status == "READY":
             print("\nDeployment is ready!")
-            if not client.models.wait_for_gateway(deployment_name, workspace="default", timeout=60):
-                raise RuntimeError("Inference gateway did not become ready")
+            remaining = int(timeout - elapsed)
+            if remaining <= 0:
+                raise TimeoutError(f"Deployment timeout after {timeout_minutes} minutes")
+            if not client.models.wait_for_status(
+                deployment_name=deployment_name,
+                desired_status="READY",
+                workspace="default",
+                timeout=remaining,
+                check_gateway=True,
+            ):
+                raise TimeoutError("Inference gateway did not become ready")
             return dep
         if dep.status in ("FAILED", "ERROR", "TERMINATED", "LOST"):
             raise RuntimeError(f"Deployment failed with status: {dep.status}")
@@ -443,8 +452,17 @@ def wait_for_deployment(deployment_name: str, timeout_minutes: int = 30):
         time.sleep(15)
 
 
-dep_status = wait_for_deployment(BASELINE_DEPLOYMENT_NAME)
-assert dep_status.status == "READY"
+try:
+    dep_status = wait_for_deployment(BASELINE_DEPLOYMENT_NAME)
+    assert dep_status.status == "READY"
+except Exception:
+    # Free GPUs if readiness fails before the later baseline-cleanup cell runs.
+    try:
+        client.inference.deployments.delete(name=BASELINE_DEPLOYMENT_NAME, workspace="default")
+        client.inference.deployment_configs.delete(name=BASELINE_DEPLOYMENT_CONFIG, workspace="default")
+    except Exception as cleanup_error:
+        print(f"Baseline cleanup after readiness failure also failed: {cleanup_error}")
+    raise
 ```
 
 ### 7. Generate Baseline Predictions on Test Set

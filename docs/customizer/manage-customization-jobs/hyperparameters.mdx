@@ -238,7 +238,7 @@ LoRA parameters (`training.lora`):
 |-----------|-------------|---------|
 | `output.name` | Output Model Entity or adapter name | Auto-generated from the job name |
 | `output.description` | Optional description for the generated artifact | `null` |
-| `output.save_method` | Saved checkpoint shape (see below) | `lora` |
+| `output.save_method` | LoRA checkpoint serialization (see below); omit for full-weight training | `lora` |
 
 The `output.save_method` field accepts:
 
@@ -248,7 +248,7 @@ The `output.save_method` field accepts:
 | `merged_16bit` | Merges the adapter into the base and saves a 16-bit checkpoint |
 | `merged_4bit` | Merges the adapter into the base and saves a 4-bit checkpoint |
 
-The `merged_*` methods are only valid when `training.finetuning_type` is `lora`.
+The `merged_*` methods are only valid when `training.finetuning_type` is `lora`. When `training.finetuning_type` is `all_weights`, omit `output.save_method`; the training driver saves the full trained checkpoint.
 
 ---
 

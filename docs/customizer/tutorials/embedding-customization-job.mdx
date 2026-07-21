@@ -408,13 +408,14 @@ from nemo_platform.types.files import HuggingfaceStorageConfigParam
 HF_REPO_ID = "nvidia/llama-nemotron-embed-1b-v2"
 MODEL_NAME = "nv-nemotron-embed-1b-base"
 
-storage = HuggingfaceStorageConfigParam(
-    type="huggingface",
-    repo_id=HF_REPO_ID,
-    repo_type="model",
-)
+storage_kwargs = {
+    "type": "huggingface",
+    "repo_id": HF_REPO_ID,
+    "repo_type": "model",
+}
 if hf_secret:
-    storage["token_secret"] = hf_secret.name
+    storage_kwargs["token_secret"] = hf_secret.name
+storage = HuggingfaceStorageConfigParam(**storage_kwargs)
 
 try:
     base_model_fs = client.files.filesets.create(

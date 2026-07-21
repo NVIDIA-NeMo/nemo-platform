@@ -270,10 +270,14 @@ def create_or_get_secret(name: str, value: str | None, label: str):
         return client.secrets.retrieve(name=name, workspace="default")
 
 
-# Create Hugging Face token secret
-hf_secret = create_or_get_secret("hf-token", HF_TOKEN, "HF_TOKEN")
-print("HF_TOKEN secret:")
-print(hf_secret.model_dump_json(indent=2))
+# Create Hugging Face token secret only when HF_TOKEN is set.
+# Gated models (for example Llama) require this secret; public models can omit token_secret.
+hf_secret = create_or_get_secret("hf-token", HF_TOKEN, "HF_TOKEN") if HF_TOKEN else None
+if hf_secret:
+    print("HF_TOKEN secret:")
+    print(hf_secret.model_dump_json(indent=2))
+else:
+    print("HF_TOKEN is not set; continuing without token_secret (public models only).")
 
 # Create NGC API key secret
 # Uncomment the line below if you have NGC API Key and want to finetune NGC models
@@ -295,20 +299,23 @@ from nemo_platform.types.files import HuggingfaceStorageConfigParam
 HF_REPO_ID = "meta-llama/Llama-3.2-1B-Instruct"
 MODEL_NAME = "llama-3-2-1b-base"
 
-# Ensure you have a Hugging Face token secret created
+storage_kwargs = {
+    "type": "huggingface",
+    # repo_id is the full model name from Hugging Face
+    "repo_id": HF_REPO_ID,
+    "repo_type": "model",
+}
+if hf_secret:
+    # we use the secret created in the previous step for gated models
+    storage_kwargs["token_secret"] = hf_secret.name
+
+# Ensure you have a Hugging Face token secret created for gated models
 try:
     base_model_fs = client.files.filesets.create(
         workspace="default",
         name=MODEL_NAME,
         description="Llama 3.2 1B base model from Hugging Face",
-        storage=HuggingfaceStorageConfigParam(
-            type="huggingface",
-            # repo_id is the full model name from Hugging Face
-            repo_id=HF_REPO_ID,
-            repo_type="model",
-            # we use the secret created in the previous step
-            token_secret=hf_secret.name
-        )
+        storage=HuggingfaceStorageConfigParam(**storage_kwargs),
     )
     print(f"Created base model fileset: {MODEL_NAME}")
 except ConflictError:
