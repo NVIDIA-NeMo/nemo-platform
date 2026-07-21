@@ -120,7 +120,7 @@ def _save_events_fileset(sdk: Any, *, workspace: str, run_name: str) -> str:
     try:
         return upload_file_to_fileset(sdk, path, workspace=workspace)
     except Exception:
-        logger.warning("Failed to upload events.jsonl for run %r; history will not survive pod restart", run_name)
+        logger.warning("Failed to upload events.jsonl for run %r; history will not survive pod restart", run_name, exc_info=True)
         return ""
 
 
