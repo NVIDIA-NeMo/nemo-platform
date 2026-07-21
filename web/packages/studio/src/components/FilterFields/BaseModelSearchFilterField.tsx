@@ -52,7 +52,11 @@ const BaseModelSearchFilterFieldSingle: FC<
   }, [selectedBaseModel, form]);
 
   const options = useMemo(
-    () => models.map((model) => ({ value: model.name ?? '', label: model.name ?? '' })),
+    () =>
+      models.map((model) => ({
+        value: `${model.workspace}/${model.name ?? ''}`,
+        label: model.name ?? '',
+      })),
     [models]
   );
 
