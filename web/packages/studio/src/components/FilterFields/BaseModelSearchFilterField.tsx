@@ -39,7 +39,7 @@ const BaseModelSearchFilterFieldSingle: FC<
 
   const { models, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useBaseModels({
     workspace,
-    filter: searchInput.trim() ? { name: searchInput.trim() } : undefined,
+    filter: searchInput.trim() ? { name: { $like: searchInput.trim() } } : undefined,
     sort: ModelEntitySortField.name,
   });
 

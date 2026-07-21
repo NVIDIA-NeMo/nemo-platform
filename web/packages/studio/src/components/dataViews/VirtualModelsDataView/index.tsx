@@ -77,10 +77,18 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
     const columnFilters = new Map(dataViewState.debouncedColumnFilters.map((f) => [f.id, f.value]));
     const name = dataViewState.debouncedSearchBar || undefined;
     const defaultModelEntity = columnFilters.get('default_model_entity') as string | undefined;
+    // API requires workspace-qualified form ("default/model-name"); dropdown yields bare names.
+    const qualifiedDefaultModelEntity = defaultModelEntity
+      ? defaultModelEntity.includes('/')
+        ? defaultModelEntity
+        : `${workspace}/${defaultModelEntity}`
+      : undefined;
     const createdAt = columnFilters.get('created_at') as DatetimeFilter | undefined;
     return withOperators<VirtualModelFilter>({
       ...(name ? { name: { $like: name } } : {}),
-      ...(defaultModelEntity ? { default_model_entity: { $eq: defaultModelEntity } } : {}),
+      ...(qualifiedDefaultModelEntity
+        ? { default_model_entity: { $eq: qualifiedDefaultModelEntity } }
+        : {}),
       ...(createdAt ? { created_at: createdAt } : {}),
     });
   }, [dataViewState.debouncedSearchBar, dataViewState.debouncedColumnFilters]);
