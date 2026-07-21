@@ -172,7 +172,7 @@ def _make_generation_response(
         log=GenerationLog(
             activated_rails=[ActivatedRail(type="input", name="self check input", stop=is_blocked)],
             stats=GenerationStats(input_rails_duration=0.1, total_duration=0.1),
-        )
+        ),
     )
 
 
