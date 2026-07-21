@@ -56,6 +56,7 @@ interface DatasetFileSelectProps {
   datasetLabel?: string;
   /** Auto-select the first root-level accepted file on fileset selection. */
   autoSelectFirstAcceptable?: boolean;
+  showUpdatedAt?: boolean;
 }
 
 /**
@@ -87,6 +88,7 @@ export const DatasetFileSelect: FC<DatasetFileSelectProps> = ({
   filesetPurpose,
   datasetLabel,
   autoSelectFirstAcceptable,
+  showUpdatedAt,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -211,6 +213,7 @@ export const DatasetFileSelect: FC<DatasetFileSelectProps> = ({
             filesetPurpose={filesetPurpose}
             datasetLabel={datasetLabel}
             autoSelectFirstAcceptable={autoSelectFirstAcceptable}
+            showUpdatedAt={showUpdatedAt}
           />
         ) : (
           <DatasetFileSelectButton

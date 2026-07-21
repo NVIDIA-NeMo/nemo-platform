@@ -66,7 +66,12 @@ export const JudgeModelSelect = <TFieldValues extends FieldValues = FieldValues>
   };
 
   return (
-    <FormField slotLabel={slotLabel} slotError={fieldState.error?.message} required={required}>
+    <FormField
+      slotLabel={slotLabel}
+      status={fieldState.error ? 'error' : undefined}
+      slotError={fieldState.error?.message}
+      required={required}
+    >
       <ModelSelectV2
         value={value}
         onValueChange={handleValueChange}
