@@ -233,6 +233,16 @@ class EntityClientProtocol(Protocol[EntityT]):
         page: int = 1,
         page_size: int = 100,
     ) -> ListResponse[EntityT]: ...
+    async def count_by(
+        self,
+        entity_type: EntityTypeLike,
+        field: str,
+        *,
+        workspace: str = DEFAULT_WORKSPACE,
+        filter_operation: FilterOperation | None = None,
+        filter_str: str | None = None,
+        filter_obj: dict[str, Any] | None = None,
+    ) -> dict[str, int]: ...
     async def get(self, entity_type: EntityTypeLike, name: str, *, workspace: Optional[str] = None) -> EntityT: ...
     async def get_by_id(self, entity_type: EntityTypeLike, entity_id: str) -> EntityT: ...
     async def update(self, entity: EntityT, *, original_name: str | None = None) -> EntityT: ...
@@ -292,6 +302,13 @@ def _get_entity_type(entity_class: EntityTypeLike) -> str:
     return "".join(["_" + c.lower() if c.isupper() else c for c in name]).lstrip("_")
 
 
+def _convert_field_to_api_field(field: str) -> str:
+    """Convert an entity field name to its API field name."""
+    if field in BASE_FIELDS or field.startswith("data."):
+        return field
+    return f"data.{field}"
+
+
 def _convert_filter_obj_to_filter_str(filter_obj: Dict[str, Any]) -> Dict[str, Any]:
     """Convert a filter dict to API filter format.
 
@@ -301,16 +318,7 @@ def _convert_filter_obj_to_filter_str(filter_obj: Dict[str, Any]) -> Dict[str, A
     filter_dict: Dict[str, Any] = {}
 
     for field, value in filter_obj.items():
-        # Base fields don't need the data. prefix
-        if field in BASE_FIELDS:
-            api_field = field
-        # Already has data. prefix - don't double-prefix
-        elif field.startswith("data."):
-            api_field = field
-        # All other fields are stored in the data JSON column
-        else:
-            api_field = f"data.{field}"
-        filter_dict[api_field] = value
+        filter_dict[_convert_field_to_api_field(field)] = value
     return filter_dict
 
 
@@ -320,11 +328,30 @@ def _convert_sort_to_api_sort(sort: str) -> str:
     For EntityBase entities, fields are stored in the data JSON column,
     so we prefix them with 'data.' unless they're base fields.
     """
-    field = sort.lstrip("-")
-    if field not in BASE_FIELDS:
-        return f"{'-' if sort.startswith('-') else ''}data.{field}"
+    direction = "-" if sort.startswith("-") else ""
+    return f"{direction}{_convert_field_to_api_field(sort.lstrip('-'))}"
 
-    return sort
+
+def _get_effective_filter(
+    filter_operation: FilterOperation | None,
+    filter_str: str | None,
+    filter_obj: dict[str, Any] | None,
+) -> str | None:
+    """Resolve structured, string, and shorthand filters into an API filter string."""
+    if filter_operation is not None and filter_str is not None:
+        raise ValueError(
+            "EntityClient.list: pass either filter_operation or filter_str, not both. "
+            "Combining them previously silently dropped one — merge into a single filter_operation "
+            "via ParsedFilter.and_with."
+        )
+
+    if filter_operation is not None:
+        return json.dumps(filter_operation.to_dict())
+    if filter_str:
+        return filter_str
+    if filter_obj:
+        return json.dumps(_convert_filter_obj_to_filter_str(filter_obj))
+    return None
 
 
 class EntityClient:
@@ -450,24 +477,7 @@ class EntityClient:
             ListResponse containing data and pagination info
         """
 
-        if filter_operation is not None and filter_str is not None:
-            raise ValueError(
-                "EntityClient.list: pass either filter_operation or filter_str, not both. "
-                "Combining them previously silently dropped one — merge into a single filter_operation "
-                "via ParsedFilter.and_with."
-            )
-
-        if filter_operation is not None:
-            effective_filter_str = json.dumps(filter_operation.to_dict())
-        else:
-            effective_filter_str = filter_str
-
-        # Build filter string from filter_obj if provided
-        if filter_obj and not effective_filter_str:
-            # Convert filter_obj to filter JSON format
-            filter_dict = _convert_filter_obj_to_filter_str(filter_obj)
-            if filter_dict:
-                effective_filter_str = json.dumps(filter_dict)
+        effective_filter_str = _get_effective_filter(filter_operation, filter_str, filter_obj)
 
         response = await self.entities_api.list(
             _get_entity_type(entity_type),
@@ -492,6 +502,31 @@ class EntityClient:
         )
 
         return ListResponse(data=entities, pagination=pagination)
+
+    async def count_by(
+        self,
+        entity_type: EntityTypeLike,
+        field: str,
+        *,
+        workspace: str = DEFAULT_WORKSPACE,
+        filter_operation: FilterOperation | None = None,
+        filter_str: str | None = None,
+        filter_obj: dict[str, Any] | None = None,
+    ) -> dict[str, int]:
+        """Return the number of matching entities grouped by ``field``."""
+        effective_filter_str = _get_effective_filter(filter_operation, filter_str, filter_obj)
+        response = await self.entities_api.list(
+            _get_entity_type(entity_type),
+            workspace=workspace,
+            filter=effective_filter_str if effective_filter_str else omit,
+            page=1,
+            page_size=1,
+            extra_query={"count_by": _convert_field_to_api_field(field)},
+        )
+        group_counts = getattr(response, "group_counts", None)
+        if group_counts is None:
+            raise EntityStoreError("Grouped counts not found in response")
+        return TypeAdapter(dict[str, int]).validate_python(group_counts)
 
     async def create(self, entity: EntityT) -> EntityT:
         """Create a new entity.
