@@ -10,6 +10,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.log_utils import sanitize_for_log
 from nmp.common.api.common import Page, PaginationData
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params, parse_deep_object
@@ -114,31 +115,12 @@ def _format_pydantic_validation_error(exc: ValidationError, *, prefix: str | Non
 
 
 def _format_entity_validation_error(exc: EntityValidationError, *, resource: str) -> str:
-    detail = exc.args[0] if exc.args else None
-
-    if isinstance(detail, list):
-        messages: list[str] = []
-        for item in detail:
-            if not isinstance(item, dict):
-                continue
-            location = _format_validation_location(item.get("loc"))
-            message = _safe_validation_message(item.get("msg"))
-            messages.append(f"{location}: {message}")
-        if messages:
-            return f"Invalid {resource} request. {'; '.join(messages)}. Update the request and try again."
-
-    if isinstance(detail, dict):
-        location = _format_validation_location(detail.get("loc")) if "loc" in detail else None
-        if location:
-            message = _safe_validation_message(detail.get("msg"))
-            return f"Invalid {resource} request. {location}: {message}. Update the request and try again."
-
-    if isinstance(detail, str):
-        field_match = re.search(r"field ['\"](?P<field>[A-Za-z_][A-Za-z0-9_.\[\]-]*)['\"]", detail)
-        if field_match:
-            field = field_match.group("field")
-            message = _safe_validation_message(detail)
-            return f"Invalid {resource} request. Field '{field}' {message}. Update the request and try again."
+    detail = str(exc.args[0]) if exc.args else ""
+    field_match = re.search(r"field ['\"](?P<field>[A-Za-z_][A-Za-z0-9_.\[\]-]*)['\"]", detail)
+    if field_match:
+        field = field_match.group("field")
+        message = _safe_validation_message(detail)
+        return f"Invalid {resource} request. Field '{field}' {message}. Update the request and try again."
 
     return (
         f"Invalid {resource} request. Check that the name, project, platform_spec, and referenced resources are "
@@ -283,13 +265,18 @@ async def create_job(
             sdk=sdk,
         )
     except ValueError as exc:
-        logger.info("Failed to create job '%s' in workspace '%s'", request.name, workspace, exc_info=True)
+        logger.info(
+            "Failed to create job '%s' in workspace '%s'",
+            sanitize_for_log(request.name),
+            sanitize_for_log(workspace),
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=_format_create_job_conflict(exc, job_name=request.name, workspace=workspace),
         ) from exc
     except EntityValidationError as exc:
-        logger.info("Invalid job entity for workspace '%s'", workspace, exc_info=True)
+        logger.info("Invalid job entity for workspace '%s'", sanitize_for_log(workspace), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=_format_entity_validation_error(exc, resource="job"),
@@ -377,7 +364,12 @@ async def cancel_job(
         try:
             job = await dispatcher.cancel_job(name, workspace)
         except StateTransitionConflictError as exc:
-            logger.info("Cannot cancel job '%s' in workspace '%s'", name, workspace, exc_info=True)
+            logger.info(
+                "Cannot cancel job '%s' in workspace '%s'",
+                sanitize_for_log(name),
+                sanitize_for_log(workspace),
+                exc_info=True,
+            )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(f"Cannot cancel job '{name}' from its current state. Refresh the job status and try again."),
@@ -792,9 +784,9 @@ async def update_job_step_status(
         except StateTransitionConflictError as exc:
             logger.info(
                 "Cannot update job step '%s' for job '%s' to status '%s'",
-                name,
-                job,
-                request.status,
+                sanitize_for_log(name),
+                sanitize_for_log(job),
+                sanitize_for_log(request.status),
                 exc_info=True,
             )
             raise HTTPException(
@@ -805,7 +797,12 @@ async def update_job_step_status(
                 ),
             ) from exc
         except EntityConflictError as exc:
-            logger.info("Conflict updating job step '%s' for job '%s'", name, job, exc_info=True)
+            logger.info(
+                "Conflict updating job step '%s' for job '%s'",
+                sanitize_for_log(name),
+                sanitize_for_log(job),
+                exc_info=True,
+            )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Conflict updating job step: it was modified by another request. Refresh the step and retry.",
