@@ -34,7 +34,7 @@ export const useSwarmEvents = (workspace: string, runName: string): SwarmEvent[]
   useEffect(() => {
     setAllEvents([]);
     setAfterId(0);
-  }, [runName]);
+  }, [workspace, runName]);
 
   return allEvents;
 };
