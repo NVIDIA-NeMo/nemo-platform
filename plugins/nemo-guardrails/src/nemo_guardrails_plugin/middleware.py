@@ -489,10 +489,9 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
             # on a never-iterated generator is a no-op — so an eager lease
             # would leak a Pool slot any time IGW drops the returned
             # iterator without iterating.
-            cache, stable, lease_provenance, main_llm = await self._prepare_lease_with_503(
+            cache, stable, lease_provenance, main_llm, sdk = await self._prepare_lease_with_503(
                 source, request_body, request_headers, "Failed to run streaming output rails"
             )
-            sdk = self._ensure_sdk()
 
             # Snapshot inputs so the streaming closure doesn't observe
             # mutations after ``process_response`` returns. Deep copy
@@ -678,10 +677,9 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
           propagated so caller-set ``status_code`` survives.
         - Anything else below the lease → 503 with ``error_msg``.
         """
-        cache, stable, provenance, main_llm = await self._prepare_lease_with_503(
+        cache, stable, provenance, main_llm, sdk = await self._prepare_lease_with_503(
             source, request_body, request_headers, error_msg
         )
-        sdk = self._ensure_sdk()
         try:
             # TODO: same as streaming path — use a request-scoped SDK from ctx
             # once IGW threads one through InferenceMiddlewareContext.
@@ -720,7 +718,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         request_body: dict[str, Any],
         request_headers: dict[str, str],
         error_msg: str,
-    ) -> tuple[LLMRailsCache, StableRailsConfig, Provenance, LLMModel]:
+    ) -> tuple[LLMRailsCache, StableRailsConfig, Provenance, LLMModel, nemo_platform.AsyncNeMoPlatform]:
         """Run :meth:`_prepare_lease` with the plugin's error-mapping policy.
 
         Single source of truth for "lease setup → HTTP status" so non-streaming
@@ -728,12 +726,18 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         stays local to the plugin (IGW only catches
         :class:`InferenceMiddlewareError`).
 
+        Also resolves the SDK via :meth:`_ensure_sdk` inside the same boundary
+        so a request that races ``on_shutdown`` (SDK detached) maps to 503
+        rather than escaping as a raw ``RuntimeError``.
+
         - ``ValueError`` → 400 (caller-shape: missing ``model``, malformed inline config).
         - :class:`InferenceMiddlewareError` → propagated unchanged.
         - Anything else → 503 with ``error_msg``, original as ``__cause__``.
         """
         try:
-            return await self._prepare_lease(source, request_body, request_headers)
+            cache, stable, provenance, main_llm = await self._prepare_lease(source, request_body, request_headers)
+            sdk = self._ensure_sdk()
+            return cache, stable, provenance, main_llm, sdk
         except InferenceMiddlewareError:
             raise
         except ValueError as exc:

@@ -2333,6 +2333,46 @@ class TestProcessRequestErrorSurfacing:
         assert isinstance(exc_info.value.__cause__, RuntimeError)
         assert "cache exploded" in str(exc_info.value.__cause__)
 
+    async def test_sdk_not_initialized_wraps_to_503(self, middleware: GuardrailsMiddleware) -> None:
+        """SDK detached after ``on_shutdown`` must map to 503, not a raw
+        ``RuntimeError``, on both the non-streaming and streaming paths.
+
+        ``_ensure_sdk`` lives inside :meth:`_prepare_lease_with_503` so the
+        same lifecycle boundary that wraps cache/stabilize failures also
+        covers SDK validation — without this, a shutdown race escaped as
+        IGW 500.
+        """
+        request_body = {
+            "messages": [{"role": "user", "content": "Hi"}],
+            "model": "ws/llama",
+        }
+
+        middleware._sdk = None
+
+        with patch.object(middleware, "_prepare_lease", new=_patch_prepare_lease()):
+            with pytest.raises(InferenceMiddlewareUnavailableError) as exc_info:
+                await _process_request(middleware, request_body, {}, _entity_source())
+
+        assert isinstance(exc_info.value.__cause__, RuntimeError)
+        assert "SDK is not initialized" in str(exc_info.value.__cause__)
+
+        async def _stream() -> AsyncIterator[dict[str, Any]]:
+            yield {"choices": []}
+
+        with patch.object(middleware, "_prepare_lease", new=_patch_prepare_lease()):
+            with pytest.raises(InferenceMiddlewareUnavailableError) as stream_exc:
+                await _process_response(
+                    middleware,
+                    _stream(),
+                    {**request_body, "stream": True},
+                    {},
+                    {},
+                    _entity_source(output_flows=["self check output"]),
+                )
+
+        assert isinstance(stream_exc.value.__cause__, RuntimeError)
+        assert "SDK is not initialized" in str(stream_exc.value.__cause__)
+
     async def test_bracketed_upstream_400_from_rail_task_llm_preserved(self, middleware: GuardrailsMiddleware) -> None:
         """A rail-task LLM call (e.g. a vision-safety judge, via
         ``langchain_nvidia_ai_endpoints``) that rejects the request shape
