@@ -1508,19 +1508,21 @@ class TestNATAgentExecutor:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        ("data_line", "expected_content"),
+        ("response_aggregation", "data_line", "expected_content"),
         [
-            ('data: {"value": {"answer": 7}}', {"answer": 7}),
-            ('data: {"value": 7}', 7),
+            ("last", 'data: {"value": {"answer": 7}}', {"answer": 7}),
+            ("last", 'data: {"value": 7}', 7),
+            ("concat", 'data: {"value": {"answer": 7}}', {"answer": 7}),
+            ("concat", 'data: {"value": 7}', 7),
         ],
     )
-    async def test_preserves_non_string_value_type(self, data_line, expected_content):
-        """The ``last`` aggregation on ``$.value`` keeps the raw value type in OpenAI content."""
+    async def test_preserves_non_string_value_type(self, response_aggregation, data_line, expected_content):
+        """A single non-string value keeps its raw type under either aggregation policy."""
         agent = NemoAgentToolkitAgent(
             url="http://nat.test",
             name="nat-agent",
             format=AgentFormat.NEMO_AGENT_TOOLKIT,
-            nat=NatAgentConfig(response_aggregation="last"),
+            nat=NatAgentConfig(response_aggregation=response_aggregation),
         )
 
         async def fake_aiter_lines():
@@ -1552,6 +1554,28 @@ class TestNATAgentExecutor:
 
         # Raw type preserved, not stringified.
         assert result["choices"][0]["message"]["content"] == expected_content
+
+    @pytest.mark.asyncio
+    async def test_concat_rejects_mixed_string_and_non_string_values(self):
+        """Concat reports a partial result instead of silently dropping or stringifying a mixed value."""
+        agent = NemoAgentToolkitAgent(url="http://nat.test", name="nat-agent")
+
+        def handle(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                content=('data: {"value": "partial"}\ndata: {"value": {"answer": 7}}\n'),
+                headers={"content-type": "text/event-stream"},
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+            result = await invoke_agent(agent, {"prompt": "answer"}, client=client)
+
+        assert result.status is AgentInvocationStatus.PARTIAL
+        assert result.output_text == "partial"
+        assert result.metadata["stream_error"] == (
+            "ValueError: response_aggregation='concat' accepts string deltas or one non-string value; "
+            "use 'last' for multi-frame non-string streams"
+        )
 
     @pytest.mark.asyncio
     async def test_empty_string_final_value_is_partial(self):

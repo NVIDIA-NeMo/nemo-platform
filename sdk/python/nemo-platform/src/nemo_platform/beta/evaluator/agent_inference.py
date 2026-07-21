@@ -394,6 +394,7 @@ async def _invoke_http_agent(
         # the last one. Accumulate parts here and materialize after the stream.
         aggregate = invocation.response_aggregation == "concat"
         value_parts: list[str] = []
+        non_string_value: Any | None = None
         try:
             async with inference_client.stream(
                 "POST",
@@ -426,7 +427,22 @@ async def _invoke_http_agent(
                     )
                     if value is not None:
                         if aggregate:
-                            value_parts.append(value if isinstance(value, str) else str(value))
+                            # ``concat`` is a text-delta policy: ["15", ".", "0"] -> "15.0".
+                            # A lone non-string result is not a delta, so preserve its JSON type.
+                            if isinstance(value, str):
+                                if non_string_value is not None:
+                                    raise ValueError(
+                                        "response_aggregation='concat' accepts string deltas or one non-string "
+                                        "value; use 'last' for multi-frame non-string streams"
+                                    )
+                                value_parts.append(value)
+                            else:
+                                if value_parts or non_string_value is not None:
+                                    raise ValueError(
+                                        "response_aggregation='concat' accepts string deltas or one non-string "
+                                        "value; use 'last' for multi-frame non-string streams"
+                                    )
+                                non_string_value = value
                         else:
                             capture.final_value = value
                             # Preserve the original type in the response; expose
@@ -446,9 +462,13 @@ async def _invoke_http_agent(
             if capture.event_count == 0:
                 raise
             capture.error = f"{type(exc).__name__}: {exc}"
-        if aggregate and value_parts:
-            capture.final_value = "".join(value_parts)
-            capture.output_text = capture.final_value
+        if aggregate:
+            if value_parts:
+                capture.final_value = "".join(value_parts)
+                capture.output_text = capture.final_value
+            elif non_string_value is not None:
+                capture.final_value = non_string_value
+                capture.output_text = None
         return capture
 
     log.info("Making streaming agent request to %s", invocation.endpoint)
