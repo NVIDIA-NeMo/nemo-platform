@@ -63,9 +63,7 @@ RUN uv venv --no-project /app/.garak_venv
 # litellm: CVE-2026-35029 (affects <1.83.0)
 # langchain-core: CVE-2025-68664 (affects <1.2.5) + GHSA-qh6h-p6c9-ff54 (affects <1.2.22)
 RUN --mount=type=cache,target=/root/.cache/uv \
-    VIRTUAL_ENV=/app/.garak_venv \
     uv pip --no-config install garak==0.15.1 --python /app/.garak_venv/bin/python && \
-    uv sync --frozen --active --project /app/plugins/nemo-auditor/third-party --no-dev --no-editable && \
     uv pip install --python /app/.garak_venv/bin/python "setuptools>=78.1.1" && \
     uv pip install --no-deps --python /app/.garak_venv/bin/python \
     "litellm>=1.83.0" \
