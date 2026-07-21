@@ -847,12 +847,19 @@ jobs:
           DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
           SOURCE_SHA: ${{ needs.plan-release.outputs.source_sha }}
           RELEASE_TYPE: ${{ needs.plan-release.outputs.release_type }}
+          RELEASE_SCOPE: ${{ needs.plan-release.outputs.release_scope }}
           RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
           HELM_VERSION: ${{ needs.stage-helm.outputs.chart_version }}
+          WHEEL_IDS: ${{ needs.plan-release.outputs.wheel_ids }}
+          WHEEL_VERSION: ${{ needs.plan-release.outputs.wheel_version }}
         with:
           github-token: ${{ secrets.CI_DISPATCH_TOKEN }}
           script: |
             const [owner, repo] = process.env.DISPATCH_REPO.split("/");
+            const wheelIds = JSON.parse(process.env.WHEEL_IDS);
+            const sdkVersions = process.env.RELEASE_SCOPE === "all"
+              ? Object.fromEntries(wheelIds.map((id) => [id, process.env.WHEEL_VERSION]))
+              : {};
 
             await github.rest.repos.createDispatchEvent({
               owner,
@@ -863,6 +870,7 @@ jobs:
                 cadence: process.env.RELEASE_TYPE === "stable" ? "release" : "nightly",
                 release_label: process.env.RELEASE_LABEL,
                 helm_version: process.env.HELM_VERSION,
+                sdk_versions: sdkVersions,
               },
             });
 
