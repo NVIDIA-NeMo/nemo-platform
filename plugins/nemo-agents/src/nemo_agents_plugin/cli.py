@@ -8,11 +8,11 @@ discovers this class and mounts it as ``nemo agents <command>``.
 
 **Local commands (no platform required):**
 
-These wrap NAT's runtime directly and work without a running NeMo Platform
+These run against a local agent config and work without a running NeMo Platform
 instance.
 
-- ``invoke``   — single invocation (wraps ``nat run``)
-- ``run``      — start a persistent local FastAPI server (wraps ``nat serve``)
+- ``invoke``   — single invocation
+- ``run``      — start a persistent local FastAPI server for NAT configs
 
 The ``evaluate`` and ``optimize`` commands are auto-generated from the
 ``EvaluateAgentJob`` and ``OptimizeAgentJob`` registered under the
@@ -39,6 +39,7 @@ import logging
 import os
 import re
 import time
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Optional, cast
@@ -1217,14 +1218,11 @@ def _local_invoke(
     workspace: str = _DEFAULT_WORKSPACE,
     base_url: str = _DEFAULT_BASE_URL,
 ) -> None:
-    """Invoke a NAT workflow locally via ``nat run`` and print the result.
+    """Invoke a local agent config once and print the result.
 
-    Injects the Inference Gateway URL into any LLMs that do not already have
-    ``base_url`` set before spawning the subprocess, so agent configs that omit
-    ``base_url`` route through the IGW automatically.
-
-    Delegates to the ``nat run`` subprocess so this command works against the
-    NAT CLI provided by the plugin's ``nvidia-nat-core`` dependency.
+    NAT workflow configs delegate to ``nat run``. Platform-owned
+    ``nemo-agents-spec-v1`` configs translate to an in-memory ``FabricConfig``
+    and use Fabric's one-shot runtime lifecycle.
     """
     import subprocess
 
@@ -1240,6 +1238,15 @@ def _local_invoke(
         typer.echo("Error: provide --input or --input-file.", err=True)
         raise typer.Exit(code=1)
 
+    config_dict = _load_yaml(agent_config)
+    config_format = config_dict.get("config_format", NAT_WORKFLOW_CONFIG_FORMAT)
+    if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+        _local_fabric_invoke(config_dict, queries, base_dir=agent_config.parent)
+        return
+    if config_format != NAT_WORKFLOW_CONFIG_FORMAT:
+        typer.echo(f"Error: unsupported config_format {config_format!r}", err=True)
+        raise typer.Exit(code=1)
+
     with temp_injected_config(agent_config, workspace, base_url=base_url) as injected_path:
         for query in queries:
             cmd = ["nat", "run", "--config_file", injected_path.name, "--input", query]
@@ -1251,6 +1258,25 @@ def _local_invoke(
             except FileNotFoundError:
                 typer.echo("Error: 'nat' command not found.  Install nvidia-nat-core.", err=True)
                 raise typer.Exit(code=1)
+
+
+def _local_fabric_invoke(config: dict[str, Any], inputs: list[Any], *, base_dir: Path) -> None:
+    """Invoke a Platform-owned agent config through Fabric and print results."""
+    from nemo_agents_plugin.fabric.invocation import invoke_agent_config_once
+    from nemo_agents_plugin.fabric.runtime import FabricRuntimeExecutionError
+    from nemo_agents_plugin.fabric.translator import FabricTranslationError
+    from pydantic import ValidationError
+
+    try:
+        results = asyncio.run(invoke_agent_config_once(config, inputs, base_dir=base_dir))
+    except (FabricRuntimeExecutionError, FabricTranslationError, ValidationError) as error:
+        typer.echo(f"Error: Fabric invocation failed: {error}", err=True)
+        raise typer.Exit(code=1) from error
+
+    for result in results:
+        typer.echo(json.dumps(asdict(result), indent=2))
+        if result.status != "succeeded":
+            raise typer.Exit(code=1)
 
 
 def _platform_invoke(

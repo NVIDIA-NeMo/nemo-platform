@@ -227,6 +227,101 @@ def test_invoke_timeout_error_message() -> None:
     assert "--timeout" in result.stderr
 
 
+def test_local_invoke_runs_fabric_config_once(tmp_path: Path) -> None:
+    import json as _json
+
+    from nemo_agents_plugin.fabric.runtime import FabricRuntimeResult
+
+    config = tmp_path / "agent.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "config_format: nemo-agents-spec-v1",
+                "name: fabric-agent",
+                "default_harness: hermes",
+                "harnesses:",
+                "  hermes:",
+                "    kind: hermes",
+                "models:",
+                "  default:",
+                "    provider: openai",
+                "    model: openai/gpt-5.4",
+                "",
+            ]
+        )
+    )
+    captured: dict[str, Any] = {}
+
+    async def _invoke_agent_config_once(config_dict: dict[str, Any], inputs: list[Any], *, base_dir: Path):
+        captured["config"] = config_dict
+        captured["inputs"] = inputs
+        captured["base_dir"] = base_dir
+        return [
+            FabricRuntimeResult(
+                status="succeeded",
+                output={"response": "hello"},
+                response="hello",
+                runtime_id="runtime-1",
+                invocation_id="invocation-1",
+                request_id="request-1",
+            )
+        ]
+
+    app = AgentsCLI().get_cli()
+    with patch("nemo_agents_plugin.fabric.invocation.invoke_agent_config_once", _invoke_agent_config_once):
+        result = CliRunner().invoke(app, ["invoke", "--agent-config", str(config), "--input", "hello"])
+
+    assert result.exit_code == 0, result.stderr
+    assert captured["base_dir"] == tmp_path
+    assert captured["inputs"] == ["hello"]
+    assert captured["config"]["config_format"] == "nemo-agents-spec-v1"
+    parsed = _json.loads(result.stdout)
+    assert parsed["status"] == "succeeded"
+    assert parsed["response"] == "hello"
+    assert parsed["runtime_id"] == "runtime-1"
+
+
+def test_local_invoke_fabric_config_exits_nonzero_on_failed_result(tmp_path: Path) -> None:
+    from nemo_agents_plugin.fabric.runtime import FabricRuntimeResult
+
+    config = tmp_path / "agent.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "config_format: nemo-agents-spec-v1",
+                "name: fabric-agent",
+                "default_harness: hermes",
+                "harnesses:",
+                "  hermes:",
+                "    kind: hermes",
+                "models:",
+                "  default:",
+                "    provider: openai",
+                "    model: openai/gpt-5.4",
+                "",
+            ]
+        )
+    )
+
+    async def _invoke_agent_config_once(config_dict: dict[str, Any], inputs: list[Any], *, base_dir: Path):
+        del config_dict, inputs, base_dir
+        return [
+            FabricRuntimeResult(
+                status="failed",
+                error={"stage": "invoke", "message": "adapter failed"},
+                events=[{"kind": "invocation_end"}],
+            )
+        ]
+
+    app = AgentsCLI().get_cli()
+    with patch("nemo_agents_plugin.fabric.invocation.invoke_agent_config_once", _invoke_agent_config_once):
+        result = CliRunner().invoke(app, ["invoke", "--agent-config", str(config), "--input", "hello"])
+
+    assert result.exit_code == 1
+    assert '"status": "failed"' in result.stdout
+    assert "adapter failed" in result.stdout
+
+
 def test_platform_invoke_writes_clean_json_to_stdout() -> None:
     """`nemo agents invoke --agent` returns JSON on stdout with no spinner bleed.
 
