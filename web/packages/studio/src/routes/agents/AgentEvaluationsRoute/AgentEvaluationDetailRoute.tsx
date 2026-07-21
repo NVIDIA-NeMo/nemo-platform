@@ -197,12 +197,12 @@ export const AgentEvaluationDetailRoute: FC = () => {
               )}
               <KVPair
                 label="Created"
-                value={<RelativeTime datetime={job.created_at ?? ''} />}
+                value={job.created_at ? <RelativeTime datetime={job.created_at} /> : ''}
                 loading={isLoadingJob}
               />
               <KVPair
                 label="Updated"
-                value={<RelativeTime datetime={job.updated_at ?? ''} />}
+                value={job.updated_at ? <RelativeTime datetime={job.updated_at} /> : ''}
                 loading={isLoadingJob}
               />
               {(errorMessage ?? statusMessage) && (

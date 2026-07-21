@@ -210,7 +210,7 @@ export const AgentEvaluationsListRoute: FC = () => {
                         <StatusBadge status={job.status} />
                       </Block>
                       <Text kind="body/regular/sm" color="secondary">
-                        Created <RelativeTime datetime={job.created_at ?? ''} />
+                        Created {job.created_at ? <RelativeTime datetime={job.created_at} /> : '—'}
                       </Text>
                     </Stack>
                   </Flex>

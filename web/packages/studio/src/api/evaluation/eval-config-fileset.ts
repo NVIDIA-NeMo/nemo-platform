@@ -16,6 +16,11 @@ const isNotFoundError = (err: unknown): boolean => {
   return e?.response?.status === 404 || e?.status === 404;
 };
 
+const isConflictError = (err: unknown): boolean => {
+  const e = err as { response?: { status?: number }; status?: number };
+  return e?.response?.status === 409 || e?.status === 409;
+};
+
 const isCanceledError = (err: unknown): boolean => {
   const e = err as { name?: string; code?: string };
   return e?.name === 'AbortError' || e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED';
@@ -123,7 +128,8 @@ export const ensureEvalConfigFileset = async (
       await filesCreateFileset(workspace, { name: fileset, description }, signal);
     } catch (createErr) {
       if (isCanceledError(createErr)) throw createErr;
-      // 409 is fine — a parallel apply already created it.
+      // Ignore only 409 (parallel apply already created it); surface everything else.
+      if (!isConflictError(createErr)) throw createErr;
     }
   }
   // Idempotent: never overwrite files already present in the fileset.
