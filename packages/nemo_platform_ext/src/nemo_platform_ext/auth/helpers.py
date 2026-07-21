@@ -25,6 +25,8 @@ from typing import Any
 
 import httpx
 
+from nemo_platform_ext.client.tls import client_verify_from_env
+
 DEFAULT_OAUTH_SCOPES = "openid profile email offline_access"
 
 
@@ -143,6 +145,11 @@ class NMPOIDCConfig:
     device_authorization_endpoint: str | None = None
     default_scopes: str = DEFAULT_OAUTH_SCOPES
     scope_prefix: str | None = None
+    workload_token_exchange_enabled: bool = False
+    workload_client_id: str | None = None
+    workload_token_endpoint: str | None = None
+    workload_audience: str | None = None
+    workload_scope: str | None = None
 
 
 def discover_nmp_config(base_url: str, timeout: float = 10.0) -> NMPOIDCConfig:
@@ -150,6 +157,7 @@ def discover_nmp_config(base_url: str, timeout: float = 10.0) -> NMPOIDCConfig:
     response = httpx.get(
         f"{base_url.rstrip('/')}/apis/auth/discovery",
         timeout=timeout,
+        verify=client_verify_from_env(),
     )
     response.raise_for_status()
     data = response.json()
@@ -163,6 +171,11 @@ def discover_nmp_config(base_url: str, timeout: float = 10.0) -> NMPOIDCConfig:
         device_authorization_endpoint=oidc.get("device_authorization_endpoint"),
         default_scopes=oidc.get("default_scopes", DEFAULT_OAUTH_SCOPES),
         scope_prefix=oidc.get("scope_prefix"),
+        workload_token_exchange_enabled=oidc.get("workload_token_exchange_enabled", False),
+        workload_client_id=oidc.get("workload_client_id"),
+        workload_token_endpoint=oidc.get("workload_token_endpoint"),
+        workload_audience=oidc.get("workload_audience"),
+        workload_scope=oidc.get("workload_scope"),
     )
 
 

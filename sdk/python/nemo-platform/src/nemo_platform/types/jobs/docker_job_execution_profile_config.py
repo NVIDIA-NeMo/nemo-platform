@@ -20,6 +20,7 @@ from typing import Dict, Optional
 from ..._models import BaseModel
 from .docker_job_network_config import DockerJobNetworkConfig
 from .docker_job_storage_config import DockerJobStorageConfig
+from .docker_workload_identity_config import DockerWorkloadIdentityConfig
 
 __all__ = ["DockerJobExecutionProfileConfig"]
 
@@ -58,3 +59,6 @@ class DockerJobExecutionProfileConfig(BaseModel):
     ttl_seconds_after_finished: Optional[int] = None
 
     ttl_seconds_before_active: Optional[int] = None
+
+    workload_identity: Optional[DockerWorkloadIdentityConfig] = None
+    """Docker-only subject token issuer configuration for workload identity."""

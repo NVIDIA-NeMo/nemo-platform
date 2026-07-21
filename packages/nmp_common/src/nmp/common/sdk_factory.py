@@ -4,17 +4,19 @@
 """SDK factory functions for creating NeMo Platform SDK instances."""
 
 import logging
-from typing import Callable, Optional
+from dataclasses import dataclass
+from typing import Any, Callable, Optional, TypeVar, cast
 
 import httpx
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nmp.common.auth import Principal, get_principal_auth_headers, principal_from_env
-from nmp.common.config import Configuration
+from nmp.common.config import Configuration, PlatformConfig
 from nmp.common.http_clients import shared_async_http_client, shared_sync_http_client
 from nmp.common.observability import MARK_INTERNAL_REQUEST_HEADERS
 from nmp.common.observability.otel import get_otel_headers
 
 logger = logging.getLogger(__name__)
+PlatformSDKT = TypeVar("PlatformSDKT", NeMoPlatform, AsyncNeMoPlatform)
 
 # Test-only: HTTP clients to use for SDK requests in test context.
 # Set by test fixtures to route requests through the in-process test transport.
@@ -29,45 +31,93 @@ def _base_url_from_config() -> str:
     return Configuration.get_platform_config().base_url
 
 
-def _create_url_router(
-    original: Callable[[str], httpx.URL],
-) -> Callable[[str], httpx.URL]:
-    """Create a URL routing function that routes requests based on API name.
+def resolve_platform_request_url(
+    url: str,
+    *,
+    platform_config: PlatformConfig,
+    default_resolver: Callable[[str], httpx.URL],
+) -> httpx.URL:
+    """Resolve the destination URL for an SDK request.
 
-    Returns:
-        A function that routes URLs based on path segments in service_urls.
+    The generated SDK builds requests from relative paths like
+    ``/apis/entities/v2/...`` and then calls its private ``_prepare_url`` hook.
+    Keep the routing policy here, not in that private hook:
+
+    - resolve the SDK URL normally against ``platform.base_url``;
+    - if the path targets ``/apis/{api_name}/...``, replace only the origin
+      with ``platform.get_service_url(api_name)``;
+    - preserve the original path and query string.
     """
-
-    platform_config = Configuration.get_platform_config()
+    request_url = default_resolver(url)
     service_pattern = platform_config.create_service_pattern()
-
-    def route_url(url: str) -> httpx.URL:
-        # Try to match the API name in the URL
-        if service_pattern:
-            match = service_pattern.search(url)
-            if match:
-                api_name = match.group(1)
-                svc_url = httpx.URL(platform_config.get_service_url(api_name))
-                request_url = httpx.URL(url)
-                logger.debug(
-                    "Routing URL to matched service URL",
-                    extra={"service": api_name, "url": url, "host": svc_url.host, "port": svc_url.port},
-                )
-                # Use scheme/host/port from service URL, path/params from request URL
-                return request_url.copy_with(
-                    scheme=svc_url.scheme,
-                    host=svc_url.host,
-                    port=svc_url.port,
-                )
-        request_url = original(url)
+    if service_pattern is None:
+        return request_url
+    match = service_pattern.search(request_url.path)
+    if match is None:
         logger.debug(
             "Routing URL to original URL",
-            extra={"service": "unknown", "url": url, "host": request_url.host, "port": request_url.port},
+            extra={"service": "unknown", "path": request_url.path, "host": request_url.host, "port": request_url.port},
         )
-        # Default: route to original URL if no service pattern is found
         return request_url
 
-    return route_url
+    api_name = match.group(1)
+    service_url = httpx.URL(platform_config.get_service_url(api_name))
+    routed_url = request_url.copy_with(
+        scheme=service_url.scheme,
+        host=service_url.host,
+        port=service_url.port,
+    )
+    logger.debug(
+        "Routing URL to service URL",
+        extra={
+            "service": api_name,
+            "path": request_url.path,
+            "host": routed_url.host,
+            "port": routed_url.port,
+        },
+    )
+    return routed_url
+
+
+@dataclass(frozen=True)
+class PlatformRequestRouter:
+    """Routes SDK requests to the platform gateway or a service-specific origin."""
+
+    platform_config: PlatformConfig
+    default_resolver: Callable[[str], httpx.URL]
+
+    def resolve(self, url: str) -> httpx.URL:
+        return resolve_platform_request_url(
+            url,
+            platform_config=self.platform_config,
+            default_resolver=self.default_resolver,
+        )
+
+
+def attach_platform_request_router(sdk: PlatformSDKT) -> PlatformSDKT:
+    """Attach the platform request router to a generated SDK instance.
+
+    Stainless sends every request through ``_prepare_url``. Assigning the hook is
+    the SDK integration point; the routing policy itself lives in
+    :class:`PlatformRequestRouter`.
+    """
+    router = PlatformRequestRouter(
+        platform_config=Configuration.get_platform_config(),
+        default_resolver=sdk._prepare_url,
+    )
+    setattr(sdk, "_nmp_request_router", router)
+    sdk._prepare_url = router.resolve
+    return sdk
+
+
+def with_options_preserving_request_router(base_sdk: PlatformSDKT, **kwargs: Any) -> PlatformSDKT:
+    """Return ``base_sdk.with_options(...)`` while preserving platform request routing."""
+    scoped_sdk = cast(PlatformSDKT, base_sdk.with_options(**kwargs))
+    router = getattr(base_sdk, "_nmp_request_router", None)
+    if isinstance(router, PlatformRequestRouter):
+        setattr(scoped_sdk, "_nmp_request_router", router)
+        scoped_sdk._prepare_url = router.resolve
+    return scoped_sdk
 
 
 def _get_default_headers(
@@ -136,6 +186,7 @@ def get_platform_sdk(
     internal: bool = False,
     http_client: httpx.Client | None = None,
     on_behalf_of: str | Principal | None = None,
+    base_url: str | None = None,
 ) -> NeMoPlatform:
     """
     Returns an instance of the NeMoPlatform SDK configured with the platform's base URL.
@@ -149,18 +200,18 @@ def get_platform_sdk(
                  Use this for controllers and background tasks that make internal API calls.
         http_client: Optional sync HTTP client to use for requests.
         on_behalf_of: Optional principal ID to use for on-behalf-of authorization.
+        base_url: Optional platform base URL. Defaults to configured platform base URL.
 
     Returns:
         Configured NeMoPlatform SDK instance.
     """
     headers = _get_default_headers(as_service, internal, on_behalf_of)
     sdk = NeMoPlatform(
-        base_url=_base_url_from_config(),
+        base_url=base_url or _base_url_from_config(),
         http_client=http_client or shared_sync_http_client(),
         default_headers=headers if headers else None,
     )
-    sdk._prepare_url = _create_url_router(sdk._prepare_url)
-    return sdk
+    return attach_platform_request_router(sdk)
 
 
 def get_task_sdk(as_service: str, http_client: httpx.Client | None = None) -> NeMoPlatform:
@@ -224,6 +275,7 @@ def get_async_platform_sdk(
     internal: bool = False,
     http_client: Optional[httpx.AsyncClient] = None,
     on_behalf_of: Optional[str | Principal] = None,
+    base_url: str | None = None,
 ) -> AsyncNeMoPlatform:
     """
     Returns an instance of the AsyncNeMoPlatform SDK configured with the platform's base URL.
@@ -238,6 +290,7 @@ def get_async_platform_sdk(
         http_client: Optional HTTP client to use for requests. Used for test injection
                     via DependencyProvider. See architecture/docs/http-client-injection.md.
         on_behalf_of: Optional principal ID to use for on-behalf-of authorization.
+        base_url: Optional platform base URL. Defaults to configured platform base URL.
     Returns:
         Configured AsyncNeMoPlatform SDK instance.
     """
@@ -248,12 +301,11 @@ def get_async_platform_sdk(
     effective_client = http_client or _test_http_client or shared_async_http_client()
 
     sdk = AsyncNeMoPlatform(
-        base_url=_base_url_from_config(),
+        base_url=base_url or _base_url_from_config(),
         http_client=effective_client,
         default_headers=headers if headers else None,
     )
-    sdk._prepare_url = _create_url_router(sdk._prepare_url)
-    return sdk
+    return attach_platform_request_router(sdk)
 
 
 def get_request_scoped_sdk(
@@ -284,7 +336,7 @@ def get_request_scoped_sdk(
     # If we have headers to add, create a new SDK with them
     # This reuses the underlying HTTP client (lightweight operation)
     if headers:
-        return base_sdk.with_options(set_default_headers=headers)
+        return with_options_preserving_request_router(base_sdk, set_default_headers=headers)
 
     return base_sdk
 
@@ -340,7 +392,7 @@ def get_sdk_on_behalf_of(
         merged_headers = {**headers, "X-NMP-Principal-On-Behalf-Of": on_behalf_of}
         merged_headers.pop("X-NMP-Principal-On-Behalf-Of-Groups", None)
         merged_headers.pop("X-NMP-Principal-On-Behalf-Of-Email", None)
-    return base_sdk.with_options(set_default_headers=merged_headers)
+    return with_options_preserving_request_router(base_sdk, set_default_headers=merged_headers)
 
 
 def get_entity_parts(name: str, default_workspace: str | None = None) -> tuple[str, str]:
@@ -382,12 +434,14 @@ class PlatformSDKProvider:
         internal: bool = False,
         http_client: httpx.Client | None = None,
         on_behalf_of: str | Principal | None = None,
+        base_url: str | None = None,
     ) -> NeMoPlatform:
         return get_platform_sdk(
             as_service=as_service,
             internal=internal,
             http_client=http_client,
             on_behalf_of=on_behalf_of,
+            base_url=base_url,
         )
 
     def get_async_platform_sdk(
@@ -396,5 +450,11 @@ class PlatformSDKProvider:
         as_service: str | None = None,
         internal: bool = False,
         on_behalf_of: str | Principal | None = None,
+        base_url: str | None = None,
     ) -> AsyncNeMoPlatform:
-        return get_async_platform_sdk(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
+        return get_async_platform_sdk(
+            as_service=as_service,
+            internal=internal,
+            on_behalf_of=on_behalf_of,
+            base_url=base_url,
+        )

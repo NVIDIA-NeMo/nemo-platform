@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing_extensions import TypedDict
 
-from .project_sort_field import ProjectSortField
+from ..shared.generic_sort_field import GenericSortField
 
 __all__ = ["ProjectListParams"]
 
@@ -45,5 +45,5 @@ class ProjectListParams(TypedDict, total=False):
     page_size: int
     """Items per page"""
 
-    sort: ProjectSortField
+    sort: GenericSortField
     """Sort field"""

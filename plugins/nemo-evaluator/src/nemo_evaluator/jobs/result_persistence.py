@@ -20,7 +20,14 @@ import re
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from nemo_evaluator.entities import AgentEvalResultEntity, EvaluateResultEntity
-from nemo_evaluator.jobs.agent_spec import AgentTarget, CodexRunnerTarget, ModelTarget, Target
+from nemo_evaluator.jobs.agent_spec import (
+    AgentTarget,
+    CodexRunnerTarget,
+    FabricRunnerTarget,
+    HarborRunnerTarget,
+    ModelTarget,
+    Target,
+)
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.execution.metric_execution import run_sync
 from nemo_evaluator_sdk.values import Agent, AgentBase, Model
@@ -82,6 +89,10 @@ def _agent_target_fields(target: Target | None) -> tuple[str | None, str | None,
         return "agent", getattr(target.agent, "name", None), _safe_target_url(target.agent.url)
     if isinstance(target, CodexRunnerTarget):
         return "codex", target.model, None
+    if isinstance(target, FabricRunnerTarget):
+        return "fabric", target.model, None
+    if isinstance(target, HarborRunnerTarget):
+        return "harbor", target.agent_import_path or target.agent_name, None
     return None, None, None
 
 

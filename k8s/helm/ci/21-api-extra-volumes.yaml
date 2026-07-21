@@ -1,0 +1,18 @@
+# CI validates by running: helm template nemo-platform . -f ci/21-api-extra-volumes.yaml
+# Exercises API extra volume/mount rendering with workload token exchange config.
+
+api:
+  extraVolumes:
+    - name: workload-token-signing-key
+      secret:
+        secretName: nemo-workload-token-signing-key
+  extraVolumeMounts:
+    - name: workload-token-signing-key
+      mountPath: /etc/nmp/workload-token
+      readOnly: true
+platformConfig:
+  auth:
+    oidc:
+      workload_token_exchange_enabled: true
+      workload_token_key_id: nemo-workload-exchange
+      workload_token_private_key_file: /etc/nmp/workload-token/private-key.pem

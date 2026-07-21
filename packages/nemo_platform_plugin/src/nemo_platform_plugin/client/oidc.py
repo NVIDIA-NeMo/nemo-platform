@@ -18,15 +18,20 @@ import asyncio
 import base64
 import json
 import logging
+import math
 import threading
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
+from ipaddress import ip_address
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 import httpx
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+from nemo_platform_plugin.client.tls import client_verify_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +123,9 @@ def generate_unsigned_jwt(
 # ---------------------------------------------------------------------------
 
 DEFAULT_OAUTH_SCOPES = "openid profile email offline_access"
+TOKEN_EXCHANGE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange"
+JWT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt"
+ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
 
 
 @dataclass(frozen=True)
@@ -131,6 +139,11 @@ class NMPOIDCConfig:
     device_authorization_endpoint: str | None = None
     default_scopes: str = DEFAULT_OAUTH_SCOPES
     scope_prefix: str | None = None
+    workload_token_exchange_enabled: bool = False
+    workload_client_id: str | None = None
+    workload_token_endpoint: str | None = None
+    workload_audience: str | None = None
+    workload_scope: str | None = None
 
 
 def discover_nmp_config(base_url: str, timeout: float = 10.0) -> NMPOIDCConfig:
@@ -138,6 +151,7 @@ def discover_nmp_config(base_url: str, timeout: float = 10.0) -> NMPOIDCConfig:
     response = httpx.get(
         f"{base_url.rstrip('/')}/apis/auth/discovery",
         timeout=timeout,
+        verify=client_verify_from_env(),
     )
     response.raise_for_status()
     data = response.json()
@@ -151,6 +165,11 @@ def discover_nmp_config(base_url: str, timeout: float = 10.0) -> NMPOIDCConfig:
         device_authorization_endpoint=oidc.get("device_authorization_endpoint"),
         default_scopes=oidc.get("default_scopes", DEFAULT_OAUTH_SCOPES),
         scope_prefix=oidc.get("scope_prefix"),
+        workload_token_exchange_enabled=oidc.get("workload_token_exchange_enabled", False),
+        workload_client_id=oidc.get("workload_client_id"),
+        workload_token_endpoint=oidc.get("workload_token_endpoint"),
+        workload_audience=oidc.get("workload_audience"),
+        workload_scope=oidc.get("workload_scope"),
     )
 
 
@@ -197,12 +216,23 @@ def build_effective_scope(requested_scopes: str, scope_prefix: str | None) -> st
 DEFAULT_REFRESH_MARGIN_SECONDS = 60
 
 
+def _is_loopback_host(hostname: str | None) -> bool:
+    if hostname == "localhost":
+        return True
+    if hostname is None:
+        return False
+    try:
+        return ip_address(hostname).is_loopback
+    except ValueError:
+        return False
+
+
 def _validate_token_endpoint(token_endpoint: str) -> None:
     """Reject non-HTTPS token endpoints (except loopback for local dev)."""
     parsed = urlparse(token_endpoint)
     if parsed.scheme == "https":
         return
-    if parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
+    if parsed.scheme == "http" and _is_loopback_host(parsed.hostname):
         return
     raise ValueError(
         f"OIDC token endpoint must use HTTPS (got {token_endpoint!r}). "
@@ -228,7 +258,7 @@ def refresh_token_grant(
     if scope:
         data["scope"] = scope
 
-    response = httpx.post(token_endpoint, data=data, timeout=timeout)
+    response = httpx.post(token_endpoint, data=data, timeout=timeout, verify=client_verify_from_env())
 
     if response.status_code != 200:
         error_data: dict[str, str] = {}
@@ -242,6 +272,101 @@ def refresh_token_grant(
         raise TokenRefreshError(error=error, error_description=error_description)
 
     return response.json()
+
+
+class WorkloadTokenExchangeError(RuntimeError):
+    """Raised when workload identity token exchange fails."""
+
+
+def _workload_exchange_error(error: str, error_description: str) -> WorkloadTokenExchangeError:
+    return WorkloadTokenExchangeError(f"Workload token exchange failed: {error} - {error_description}")
+
+
+def read_subject_token_file(path: Path) -> str:
+    try:
+        token = path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise ValueError(f"Unable to read {WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR} at {path}: {exc}") from exc
+    if not token:
+        raise ValueError(f"{WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR} at {path} is empty")
+    return token
+
+
+def token_exchange_grant(
+    *,
+    token_endpoint: str,
+    client_id: str,
+    subject_token: str,
+    audience: str | None = None,
+    scope: str | None = None,
+    allow_http: bool = False,
+    timeout: float = 30.0,
+) -> dict[str, Any]:
+    """Execute an OAuth 2.0 Token Exchange (RFC 8693) request."""
+    # Backward-compatible argument: endpoint host controls HTTP allowance.
+    _validate_token_endpoint(token_endpoint)
+    data: dict[str, str] = {
+        "grant_type": TOKEN_EXCHANGE_GRANT_TYPE,
+        "client_id": client_id,
+        "subject_token": subject_token,
+        "subject_token_type": JWT_TOKEN_TYPE,
+        "requested_token_type": ACCESS_TOKEN_TYPE,
+    }
+    if audience:
+        data["audience"] = audience
+    if scope:
+        data["scope"] = scope
+
+    response = httpx.post(token_endpoint, data=data, timeout=timeout, verify=client_verify_from_env())
+    if response.status_code != 200:
+        error_data: dict[str, object] = {}
+        if response.headers.get("content-type", "").startswith("application/json"):
+            error_data = _response_json_object(
+                response,
+                error_description="Token endpoint error response was not a JSON object",
+            )
+        error = _response_string(error_data, "error", "unknown_error")
+        error_description = _response_string(error_data, "error_description", response.text)
+        raise _workload_exchange_error(error, error_description)
+
+    token_data = _response_json_object(
+        response,
+        error_description="Token endpoint response was not a JSON object",
+    )
+    _access_token_from_response(token_data)
+    return token_data
+
+
+def _response_json_object(response: httpx.Response, *, error_description: str) -> dict[str, object]:
+    try:
+        payload = response.json()
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise _workload_exchange_error("invalid_response", error_description) from exc
+    if not isinstance(payload, dict):
+        raise _workload_exchange_error("invalid_response", error_description)
+    return payload
+
+
+def _response_string(payload: dict[str, object], key: str, default: str) -> str:
+    value = payload.get(key)
+    return value if isinstance(value, str) and value else default
+
+
+def _access_token_from_response(token_data: dict[str, object]) -> str:
+    access_token = token_data.get("access_token")
+    if not isinstance(access_token, str) or not access_token.strip():
+        raise _workload_exchange_error(
+            "invalid_response",
+            "Token endpoint response did not include a non-empty access_token",
+        )
+    return access_token
+
+
+def _expires_in_from_response(token_data: dict[str, object]) -> int | float | None:
+    expires_in = token_data.get("expires_in")
+    if isinstance(expires_in, bool):
+        return None
+    return expires_in if isinstance(expires_in, int | float) else None
 
 
 # ---------------------------------------------------------------------------
@@ -426,3 +551,61 @@ class OIDCTokenProvider:
         with self._lock:
             self._refresh(force=True)
             return self.tokens.access_token
+
+
+@dataclass
+class WorkloadTokenExchangeProvider:
+    """Provides access tokens by exchanging a refreshed workload subject-token file."""
+
+    token_endpoint: str
+    client_id: str
+    subject_token_file: Path
+    audience: str | None = None
+    scope: str | None = None
+    allow_http: bool = False
+    refresh_margin_seconds: float = DEFAULT_REFRESH_MARGIN_SECONDS
+    tokens: TokenSet | None = field(default=None, repr=False)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+
+    def get_access_token(self) -> str:
+        with self._lock:
+            if self.tokens is None or self.tokens.is_expired(self.refresh_margin_seconds):
+                self._exchange()
+            assert self.tokens is not None
+            return self.tokens.access_token
+
+    async def get_access_token_async(self) -> str:
+        return await asyncio.to_thread(self.get_access_token)
+
+    def _exchange(self) -> None:
+        subject_token = read_subject_token_file(self.subject_token_file)
+        token_data = token_exchange_grant(
+            token_endpoint=self.token_endpoint,
+            client_id=self.client_id,
+            subject_token=subject_token,
+            audience=self.audience,
+            scope=self.scope,
+            allow_http=self.allow_http,
+        )
+        access_token = _access_token_from_response(token_data)
+        try:
+            tokens = TokenSet.from_access_token(
+                access_token,
+                expires_in=_expires_in_from_response(token_data),
+            )
+        except (OverflowError, TypeError, ValueError) as exc:
+            raise _workload_exchange_error(
+                "invalid_response",
+                "Token endpoint response did not include a usable access_token lifetime",
+            ) from exc
+        if tokens.expires_at is None or not math.isfinite(tokens.expires_at):
+            raise _workload_exchange_error(
+                "invalid_response",
+                "Token endpoint response did not include a usable access_token lifetime",
+            )
+        if tokens.is_expired(0):
+            raise _workload_exchange_error(
+                "invalid_response",
+                "Token endpoint response returned an expired access_token",
+            )
+        self.tokens = tokens

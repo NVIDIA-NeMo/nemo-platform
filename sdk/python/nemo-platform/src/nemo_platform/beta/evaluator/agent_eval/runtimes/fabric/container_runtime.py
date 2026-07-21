@@ -93,6 +93,7 @@ class FabricContainerRuntime:
         provider: SandboxProvider,
         profiles: Sequence[FabricProfileConfig | Mapping[str, Any]] = (),
         secrets: Mapping[str, SecretRef] = {},
+        image: str | None = None,
     ) -> None:
         # The Fabric agent is fully described by its ``FabricConfig`` (harness + model + runtime); it is
         # consumed structurally as a mapping to cross the sandbox boundary as JSON.
@@ -105,8 +106,9 @@ class FabricContainerRuntime:
         self._secrets = dict(secrets)
         self._resolved_env: dict[str, str] = {}
         self._secrets_resolved = False
-        # Provisioned opaquely on first run (build-if-missing from the config's harness).
-        self._image: str | None = None
+        # Optional prebuilt image: the trial runs inside it, so it must contain the Fabric CLI + adapter.
+        # None -> stock harness-agnostic image built on first run.
+        self._image: str | None = image
 
     async def resolve_secrets(self, secret_resolver: SecretResolver) -> None:
         """Resolve declared ``SecretRef``\\ s to values, keyed by the env var each harness reads.
@@ -143,7 +145,8 @@ class FabricContainerRuntime:
             # Provision the harness-agnostic Fabric image once, build-if-missing (a first build compiles
             # nemo-fabric — minutes); keep the blocking build off the shared event loop. Inside the guard
             # so the provider is disposed even if provisioning or secret resolution raises.
-            self._image = await asyncio.to_thread(ensure_fabric_image)
+            if self._image is None:
+                self._image = await asyncio.to_thread(ensure_fabric_image)
             if self._secrets and not self._secrets_resolved:
                 # No orchestrator resolved our secrets (standalone run) — fall back to local env resolution.
                 await self.resolve_secrets(LocalSecretResolver())
@@ -173,7 +176,8 @@ class FabricContainerRuntime:
                 await sandbox.download_dir(_OUT_DIR, out_dir)
             return self._to_trial(task, out_dir, evidence_dir, result)
         except Exception as exc:  # noqa: BLE001 - a task failure must not abort the whole run
-            return self._failed_trial(task, evidence_dir, exc)
+            # Stamp runtime + image even on failures before _to_trial (startup/seeding/download).
+            return self._failed_trial(task, evidence_dir, exc, extra_metadata=self._base_metadata())
 
     def _fabric_command(self, profile_paths: Sequence[str]) -> str:
         """The ``fabric run`` invocation: pre-create the /out dirs Fabric chdirs into, run, capture stdout."""
@@ -232,14 +236,14 @@ class FabricContainerRuntime:
             await asyncio.to_thread(seed_workspace, staging, seeds)
             await sandbox.upload_dir(staging, _WORKSPACE_DIR)
 
+    def _base_metadata(self) -> dict[str, object]:
+        """Metadata stamped on every trial from this runtime (success or failure), incl. the resolved image."""
+        return {"runtime": _RUNTIME_NAME, "image": self._image, "sandbox_provider": self._provider.name}
+
     def _to_trial(
         self, task: AgentEvalTask, out_dir: Path, evidence_dir: Path, result: SandboxExecResult
     ) -> AgentEvalTrial:
-        base_metadata: dict[str, object] = {
-            "runtime": _RUNTIME_NAME,
-            "image": self._image,
-            "sandbox_provider": self._provider.name,
-        }
+        base_metadata = self._base_metadata()
 
         # Gate on the exec outcome first: a timed-out or non-zero ``fabric run`` is untrustworthy even
         # when a stale/partial fabric_result.json is left behind (the shell ``>`` redirect truncates the

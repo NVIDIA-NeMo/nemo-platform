@@ -33,6 +33,7 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentTarget,
     CodexRunnerTarget,
     FabricRunnerTarget,
+    HarborRunnerTarget,
     ModelTarget,
     Target,
 )
@@ -44,6 +45,7 @@ from nemo_evaluator_sdk.agent_eval.persistence import persist_run
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import CodexCliAgentRuntime
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
+from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import HarborAgentTaskRunner, HarborRuntimeConfig
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTarget
 from nemo_evaluator_sdk.metrics.protocol import Metric
@@ -263,6 +265,22 @@ class AgentEvalJob(NemoJob):
                 work_root=ctx.storage.persistent / "fabric",
             )
             return fabric_runtime, None, None
+        if isinstance(target, HarborRunnerTarget):
+            harbor_runtime = HarborAgentTaskRunner(
+                config=HarborRuntimeConfig(
+                    jobs_dir=ctx.storage.persistent / "harbor",
+                    agent_name=target.agent_name,
+                    agent_import_path=target.agent_import_path,
+                    agent_model_name=target.agent_model_name,
+                    n_attempts=target.n_attempts,
+                    n_concurrent_trials=target.n_concurrent_trials,
+                    max_retries=target.max_retries,
+                    artifacts=target.artifacts,
+                    trace_dir=target.trace_dir,
+                    reward_key=target.reward_key,
+                )
+            )
+            return harbor_runtime, None, None
         return None, None, None
 
     @staticmethod

@@ -70,6 +70,22 @@ export const FilesetCard: FC<FilesetCardProps> = ({
   );
 
   const isDataset = fileset.purpose === FilesetPurpose.dataset;
+  const hasReadme = Boolean(readmePath);
+  const metaPanels = (
+    <Stack gap="density-xl" className="h-full overflow-auto">
+      <FilesetMetadataPanel
+        fileset={fileset}
+        readmeMetadata={parsed?.metadata}
+        modelEntities={isModel ? modelEntities : undefined}
+      />
+      {isDataset && (
+        <DatasetSamplePanel workspace={workspace} filesetName={filesetName} files={files} />
+      )}
+    </Stack>
+  );
+  if (!hasReadme) {
+    return <div data-testid="fileset-card">{metaPanels}</div>;
+  }
 
   return (
     <div
@@ -77,28 +93,15 @@ export const FilesetCard: FC<FilesetCardProps> = ({
       data-testid="fileset-card"
     >
       <div className="lg:col-span-2">
-        <Stack gap="density-md">
-          <ReadmeBody
-            isFilesError={isFilesError}
-            readmePath={readmePath}
-            isContentLoading={isContentLoading}
-            isContentError={isContentError}
-            content={parsed?.content}
-          />
-        </Stack>
+        <ReadmeBody
+          isFilesError={isFilesError}
+          readmePath={readmePath}
+          isContentLoading={isContentLoading}
+          isContentError={isContentError}
+          content={parsed?.content}
+        />
       </div>
-      <div className="lg:col-span-1">
-        <Stack gap="density-xl" className="h-full overflow-auto">
-          <FilesetMetadataPanel
-            fileset={fileset}
-            readmeMetadata={parsed?.metadata}
-            modelEntities={isModel ? modelEntities : undefined}
-          />
-          {isDataset && (
-            <DatasetSamplePanel workspace={workspace} filesetName={filesetName} files={files} />
-          )}
-        </Stack>
-      </div>
+      <div className="lg:col-span-1">{metaPanels}</div>
     </div>
   );
 };

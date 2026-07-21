@@ -55,6 +55,7 @@ class TestSessions:
             mode="summary",
             page=1,
             page_size=1,
+            sort="sort",
         )
         assert_matches_type(SyncDefaultPagination[EvaluationSessionResponse], session, path=["response"])
 
@@ -129,6 +130,7 @@ class TestAsyncSessions:
             mode="summary",
             page=1,
             page_size=1,
+            sort="sort",
         )
         assert_matches_type(AsyncDefaultPagination[EvaluationSessionResponse], session, path=["response"])
 

@@ -11,14 +11,20 @@ import signal
 import threading
 import time
 from collections.abc import Callable, Mapping
+from typing import cast
 
-from nmp.common.config import get_auth_config, get_common_service_config, get_service_config
+from nmp.common.config import get_auth_config, get_common_service_config, get_platform_config, get_service_config
 from nmp.common.observability import initialize_obs, setup_global_instrumentations
 from nmp.common.observability.otel import settings as otel_settings
 from nmp.common.service import CircularDependencyError, Service
 from nmp.platform_runner.config import apply_run_environment, resolve_run_configuration
 from nmp.platform_runner.health import get_platform_resource_attributes
-from nmp.platform_runner.loader import load_controller_run_func, load_service, order_services_by_dependencies
+from nmp.platform_runner.loader import (
+    ControllerRunFunc,
+    load_controller_run_func,
+    load_service,
+    order_services_by_dependencies,
+)
 from nmp.platform_runner.registry import AVAILABLE_SIDECARS
 from nmp.platform_runner.server import run_server, run_server_with_reload
 from nmp.platform_runner.version import get_platform_version
@@ -53,7 +59,7 @@ def _database_display(db_url: str) -> str:
 
 
 def run_controllers_in_threads(
-    controller_run_funcs: dict[str, Callable],
+    controller_run_funcs: dict[str, ControllerRunFunc],
     stop_signal: threading.Event,
 ) -> list[threading.Thread]:
     """Start controller run functions in daemon threads."""
@@ -111,6 +117,7 @@ def run_platform(
         raise ValueError(f"Controller/sidecar name collision: {', '.join(sorted(collisions))}")
 
     service_instances = _load_service_instances(sorted(resolved.services), resolved.available_services)
+    get_platform_config().services = ",".join(sorted(service.name for service in service_instances))
     controller_run_funcs = _load_run_functions(
         sorted(resolved.controllers), resolved.available_controllers, "controller"
     )
@@ -212,16 +219,16 @@ def _load_service_instances(
 
 def _load_run_functions(
     names: list[str],
-    registry: Mapping[str, str | Callable],
+    registry: Mapping[str, str | ControllerRunFunc],
     kind: str,
-) -> dict[str, Callable]:
-    run_funcs: dict[str, Callable] = {}
+) -> dict[str, ControllerRunFunc]:
+    run_funcs: dict[str, ControllerRunFunc] = {}
     for name in names:
         t0 = time.perf_counter()
         value = registry[name]
         try:
             if callable(value):
-                run_funcs[name] = value
+                run_funcs[name] = cast(ControllerRunFunc, value)
             else:
                 run_funcs[name] = load_controller_run_func(name, value)
         except (ImportError, TypeError, AttributeError, ValueError) as error:

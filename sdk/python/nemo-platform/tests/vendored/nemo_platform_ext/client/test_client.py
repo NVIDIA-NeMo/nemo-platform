@@ -17,6 +17,8 @@ import yaml
 from nemo_platform import AsyncNeMoPlatform, DefaultHttpxClient, NeMoPlatform, not_given
 from nemo_platform.auth.helpers import NMPOIDCConfig, decode_jwt_claims
 from nemo_platform.client.factory import create_client
+from nemo_platform.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 
 
 def _make_jwt(claims: dict) -> str:
@@ -65,6 +67,17 @@ _MOCK_NMP_CONFIG = NMPOIDCConfig(
     auth_enabled=True,
     client_id="nmp-client-id",
     token_endpoint="https://idp/token",
+)
+
+_MOCK_WORKLOAD_NMP_CONFIG = NMPOIDCConfig(
+    auth_enabled=True,
+    client_id="nmp-client-id",
+    token_endpoint="https://idp/token",
+    workload_token_exchange_enabled=True,
+    workload_client_id="nmp-workload-client-id",
+    workload_token_endpoint="https://workload-idp/token",
+    workload_audience="nemo-platform",
+    workload_scope="openid email groups",
 )
 
 
@@ -116,6 +129,27 @@ class TestCreateClientOAuth:
         finally:
             client.close()
 
+    @patch("nemo_platform.client.factory.DefaultHttpxClient")
+    @patch("nemo_platform.client.factory.discover_nmp_config", return_value=_MOCK_NMP_CONFIG)
+    def test_oauth_uses_nemo_scoped_ca_bundle(self, _mock_discover, mock_default_httpx_client, tmp_path, monkeypatch):
+        token = _make_jwt({"exp": int(time.time()) + 3600, "sub": "user1"})
+        config_path = _write_config(
+            tmp_path,
+            token=token,
+            refresh_token="refresh_abc",
+        )
+        http_client = httpx.Client()
+        mock_default_httpx_client.return_value = http_client
+        monkeypatch.setenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, "/tmp/nemo-ca.pem")
+
+        client = create_client(config_path=config_path)
+        try:
+            assert client is not None
+        finally:
+            client.close()
+
+        assert mock_default_httpx_client.call_args.kwargs["verify"] == "/tmp/nemo-ca.pem"
+
     @patch("nemo_platform.client.factory.discover_nmp_config", return_value=_MOCK_NMP_CONFIG)
     @patch("nemo_platform.auth.token_provider.httpx.post")
     def test_persist_refreshed_tokens_writes_to_config(self, mock_post, _mock_discover, tmp_path):
@@ -156,6 +190,90 @@ class TestCreateClientOAuth:
         request = client._client.build_request("GET", "http://localhost:8080/test")
         client._client._event_hooks["request"][0](request)
         assert request.headers["Authorization"] == "Bearer env-access-token-123"
+
+
+class TestCreateClientWorkloadIdentity:
+    @patch("nemo_platform.client.factory.discover_nmp_config", return_value=_MOCK_WORKLOAD_NMP_CONFIG)
+    @patch("nemo_platform.auth.workload_exchange.token_exchange_grant")
+    def test_exchanges_workload_identity_token_file(self, mock_exchange, _mock_discover, tmp_path, monkeypatch):
+        subject_token_file = tmp_path / "workload-token"
+        subject_token_file.write_text("subject-token-one\n", encoding="utf-8")
+        access_token = _make_jwt({"exp": int(time.time()) + 3600, "sub": "workload-user"})
+        mock_exchange.return_value = {"access_token": access_token, "expires_in": 300}
+        monkeypatch.setenv("NMP_BASE_URL", "https://api.example.com")
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+
+        client = create_client()
+
+        try:
+            assert str(client.base_url).rstrip("/") == "https://api.example.com"
+            assert "Authorization" not in client._custom_headers
+            _mock_discover.assert_not_called()
+            mock_exchange.assert_not_called()
+
+            request = client._client.build_request("GET", "https://api.example.com/test")
+            client._client._event_hooks["request"][0](request)
+            assert request.headers["Authorization"] == f"Bearer {access_token}"
+        finally:
+            client.close()
+
+        mock_exchange.assert_called_once()
+        assert mock_exchange.call_args.kwargs["token_endpoint"] == "https://workload-idp/token"
+        assert mock_exchange.call_args.kwargs["client_id"] == "nmp-workload-client-id"
+        assert mock_exchange.call_args.kwargs["subject_token"] == "subject-token-one"
+        assert mock_exchange.call_args.kwargs["audience"] == "nemo-platform"
+        assert mock_exchange.call_args.kwargs["scope"] == "openid email groups"
+
+    @pytest.mark.asyncio
+    @patch("nemo_platform.client.factory.discover_nmp_config", return_value=_MOCK_WORKLOAD_NMP_CONFIG)
+    @patch("nemo_platform.auth.workload_exchange.token_exchange_grant")
+    async def test_async_exchanges_workload_identity_token_file_at_request_time(
+        self, mock_exchange, _mock_discover, tmp_path, monkeypatch
+    ):
+        subject_token_file = tmp_path / "workload-token"
+        subject_token_file.write_text("subject-token-one\n", encoding="utf-8")
+        access_token = _make_jwt({"exp": int(time.time()) + 3600, "sub": "workload-user"})
+        mock_exchange.return_value = {"access_token": access_token, "expires_in": 300}
+        monkeypatch.setenv("NMP_BASE_URL", "https://api.example.com")
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+
+        client = AsyncNeMoPlatform()
+
+        try:
+            assert str(client.base_url).rstrip("/") == "https://api.example.com"
+            assert "Authorization" not in client._custom_headers
+            _mock_discover.assert_not_called()
+            mock_exchange.assert_not_called()
+
+            request = client._client.build_request("GET", "https://api.example.com/test")
+            await client._client._event_hooks["request"][0](request)
+            assert request.headers["Authorization"] == f"Bearer {access_token}"
+        finally:
+            await client.close()
+
+        mock_exchange.assert_called_once()
+        assert mock_exchange.call_args.kwargs["token_endpoint"] == "https://workload-idp/token"
+        assert mock_exchange.call_args.kwargs["client_id"] == "nmp-workload-client-id"
+        assert mock_exchange.call_args.kwargs["subject_token"] == "subject-token-one"
+        assert mock_exchange.call_args.kwargs["audience"] == "nemo-platform"
+        assert mock_exchange.call_args.kwargs["scope"] == "openid email groups"
+
+    @patch("nemo_platform.client.factory.discover_nmp_config", return_value=_MOCK_WORKLOAD_NMP_CONFIG)
+    def test_env_access_token_takes_precedence_over_workload_identity_file(self, _mock_discover, tmp_path, monkeypatch):
+        subject_token_file = tmp_path / "workload-token"
+        subject_token_file.write_text("subject-token-one\n", encoding="utf-8")
+        monkeypatch.setenv("NMP_BASE_URL", "https://api.example.com")
+        monkeypatch.setenv("NMP_ACCESS_TOKEN", "env-access-token-123")
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+
+        client = create_client()
+
+        try:
+            request = client._client.build_request("GET", "https://api.example.com/test")
+            client._client._event_hooks["request"][0](request)
+            assert request.headers["Authorization"] == "Bearer env-access-token-123"
+        finally:
+            client.close()
 
 
 class TestCreateClientApiKey:
@@ -357,6 +475,42 @@ class TestClientConstructorBootstrapBypass:
 
         mock_build_client_kwargs.assert_not_called()
 
+    @patch("nemo_platform._client.DefaultHttpxClient")
+    @patch("nemo_platform.client.factory.build_client_init_kwargs")
+    def test_sync_constructor_direct_mode_uses_nemo_scoped_ca_bundle(
+        self, mock_build_client_kwargs, mock_default_httpx_client, monkeypatch
+    ):
+        mock_build_client_kwargs.side_effect = AssertionError("bootstrap should not be called")
+        mock_default_httpx_client.return_value = httpx.Client()
+        monkeypatch.setenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, "/tmp/nemo-ca.pem")
+
+        client = NeMoPlatform(base_url="https://override-host:8081", workspace="test-workspace")
+        try:
+            assert str(client.base_url).rstrip("/") == "https://override-host:8081"
+        finally:
+            client.close()
+
+        mock_build_client_kwargs.assert_not_called()
+        mock_default_httpx_client.assert_called_once_with(verify="/tmp/nemo-ca.pem")
+
+    @patch("nemo_platform.client.factory.build_client_init_kwargs")
+    def test_sync_constructor_with_workload_file_and_base_url_bootstraps(self, mock_build_client_kwargs, monkeypatch):
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, "/var/run/secrets/nemo-platform/workload/token")
+        mock_build_client_kwargs.return_value = MagicMock(
+            base_url="http://override-host:8081",
+            workspace="test-workspace",
+            default_headers=None,
+            http_client=None,
+        )
+
+        client = NeMoPlatform(base_url="http://override-host:8081", workspace="test-workspace")
+        try:
+            assert str(client.base_url).rstrip("/") == "http://override-host:8081"
+        finally:
+            client.close()
+
+        assert mock_build_client_kwargs.call_args.kwargs["base_url"] == "http://override-host:8081"
+
     @patch("nemo_platform.client.factory.build_client_init_kwargs")
     def test_sync_constructor_passes_context_name_to_bootstrap(self, mock_build_client_kwargs):
         mock_build_client_kwargs.return_value = MagicMock(
@@ -410,6 +564,46 @@ class TestClientConstructorBootstrapBypass:
             await client.close()
 
         mock_build_client_kwargs.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("nemo_platform._client.DefaultAsyncHttpxClient")
+    @patch("nemo_platform.client.factory.build_async_client_init_kwargs")
+    async def test_async_constructor_direct_mode_uses_nemo_scoped_ca_bundle(
+        self, mock_build_client_kwargs, mock_default_httpx_client, monkeypatch
+    ):
+        mock_build_client_kwargs.side_effect = AssertionError("bootstrap should not be called")
+        mock_default_httpx_client.return_value = httpx.AsyncClient()
+        monkeypatch.setenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, "/tmp/nemo-ca.pem")
+
+        client = AsyncNeMoPlatform(base_url="https://override-host:8081", workspace="test-workspace")
+        try:
+            assert str(client.base_url).rstrip("/") == "https://override-host:8081"
+        finally:
+            await client.close()
+
+        mock_build_client_kwargs.assert_not_called()
+        mock_default_httpx_client.assert_called_once_with(verify="/tmp/nemo-ca.pem")
+
+    @pytest.mark.asyncio
+    @patch("nemo_platform.client.factory.build_async_client_init_kwargs")
+    async def test_async_constructor_with_workload_file_and_base_url_bootstraps(
+        self, mock_build_client_kwargs, monkeypatch
+    ):
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, "/var/run/secrets/nemo-platform/workload/token")
+        mock_build_client_kwargs.return_value = MagicMock(
+            base_url="http://override-host:8081",
+            workspace="test-workspace",
+            default_headers=None,
+            http_client=None,
+        )
+
+        client = AsyncNeMoPlatform(base_url="http://override-host:8081", workspace="test-workspace")
+        try:
+            assert str(client.base_url).rstrip("/") == "http://override-host:8081"
+        finally:
+            await client.close()
+
+        assert mock_build_client_kwargs.call_args.kwargs["base_url"] == "http://override-host:8081"
 
     @pytest.mark.asyncio
     @patch("nemo_platform.client.factory.build_async_client_init_kwargs")

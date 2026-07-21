@@ -8,7 +8,7 @@ required:
   - discovery_url
   - nemo_config
   - principal_contract
-  - human_identity
+  - interactive_user_identity
   - workload_identity
   - workload_contract
   - healthchecks
@@ -40,8 +40,19 @@ properties:
       - groups_claim
       - external_machine_principals_use_service_prefix
       - internal_service_prefix_reserved
-  human_identity:
+  interactive_user_identity:
     type: object
+    required:
+      - username
+      - password
+      - expected_email
+    properties:
+      username:
+        type: string
+      password:
+        type: string
+      expected_email:
+        type: string
   workload_identity:
     type: object
     required:
@@ -56,6 +67,98 @@ properties:
       - groups_format
       - token_env_vars
       - forwarded_headers
+  token_acquisition:
+    type: object
+    required:
+      - token_endpoint
+      - workload_provider_password_grant
+    properties:
+      token_endpoint:
+        type: string
+      e2e_setup_password_grant:
+        type: object
+        description: >-
+          E2E test harness only. Do not use this grant as a production user,
+          CLI, or workload authentication pattern.
+        required:
+          - grant_type
+          - client_id
+          - username
+          - scope
+        oneOf:
+          - required:
+              - password
+          - required:
+              - password_env_var
+        properties:
+          grant_type:
+            type: string
+          client_id:
+            type: string
+          client_secret:
+            type: string
+          username:
+            type: string
+          password:
+            type: string
+          password_env_var:
+            type: string
+          scope:
+            type: string
+      interactive_user_password_grant:
+        type: object
+        required:
+          - grant_type
+          - client_id
+          - username
+          - scope
+        oneOf:
+          - required:
+              - password
+          - required:
+              - password_env_var
+        properties:
+          grant_type:
+            type: string
+          client_id:
+            type: string
+          client_secret:
+            type: string
+          username:
+            type: string
+          password:
+            type: string
+          password_env_var:
+            type: string
+          scope:
+            type: string
+      workload_provider_password_grant:
+        type: object
+        required:
+          - grant_type
+          - client_id
+          - username
+          - scope
+        oneOf:
+          - required:
+              - password
+          - required:
+              - password_env_var
+        properties:
+          grant_type:
+            type: string
+          client_id:
+            type: string
+          client_secret:
+            type: string
+          username:
+            type: string
+          password:
+            type: string
+          password_env_var:
+            type: string
+          scope:
+            type: string
   healthchecks:
     type: array
   startup_timeouts:
@@ -64,3 +167,28 @@ properties:
       - healthchecks_seconds
       - gateway_seconds
       - token_endpoint_seconds
+  test_runtimes:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      required:
+        - id
+        - backend
+        - capabilities
+      properties:
+        id:
+          type: string
+        backend:
+          type: string
+          enum:
+            - compose
+            - kubernetes
+            - external
+        command:
+          type: string
+        capabilities:
+          type: array
+          minItems: 1
+          items:
+            type: string

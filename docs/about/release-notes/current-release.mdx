@@ -1,73 +1,56 @@
 ---
-title: "v0.2.0 - 2026-06-25"
+title: "v0.3.0"
 description: ""
 ---
-NeMo Platform v0.2.0 expands the local-first OSS distribution with plugin
-workflows for fine-tuning, synthetic data generation, and model auditing. It
-also improves Docker-backed local workflows, SDK resources, and NAT-based agent
-container tooling.
+NeMo Platform v0.3.0 expands the OSS distribution beyond local setup with
+self-managed Kubernetes and Helm documentation, while continuing to support
+the local-first Python package, CLI, SDK, Studio, and plugin workflows.
 
 ## Highlights
 
-- **Fine-tuning.** Customizer is available through the plugin architecture,
-  with Docker-backed Unsloth jobs, NeMo Automodel configuration support, vLLM
-  adapter support, and updated tutorials.
-- **Local model serving.** vLLM deployment in Docker supports local
-  model-serving workflows for OSS development and testing.
-- **Synthetic data generation.** Safe Synthesizer is available as a local
-  plugin for privacy-preserving synthetic data generation workflows.
-- **Model auditing.** Auditor adds local garak-backed audit configuration,
-  target management, SDK resources, and documentation.
-- **Agent containers.** `nemo agents` includes commands for rendering,
-  building, and publishing agent containers.
-- **Plugin platform.** Platform capabilities can ship as plugins while still
-  using platform APIs, SDK resources, local services, and workspace scoping.
+- **Self-managed Kubernetes.** The docs now cover Helm-based deployment to
+  user-managed Kubernetes clusters, including local Kind workflows and
+  cluster prerequisites.
+- **Agent deployment docs.** Agent container deployment guidance covers local
+  and Kubernetes paths and clarifies how SDK, CLI, and REST callers resolve
+  default model placeholders.
+- **Versioned compatibility.** Requirements and support-matrix pages describe
+  the 0.3.0 release instead of the previous local-only scope.
+- **Generated reference docs.** The configuration reference remains generated
+  from platform config models and renders as regular Fern MDX.
 
 ## What's included
 
-### Platform and Plugins
+### Platform
 
-- Plugin packaging for platform capabilities distributed outside the core
-  package.
-- Docker support for source-install local platform workflows.
-- SDK and API support for plugin-provided resources.
+- Local source-install workflows with `make bootstrap`, `nemo setup`, and
+  `nemo services run`.
+- Self-managed Helm/Kubernetes documentation for users deploying the platform
+  outside the local developer process.
 - Source-install auth and OIDC bootstrap guidance for users who enable RBAC
   locally.
 
-### Fine-tune Models
+### Agents
 
-- Customizer migration to the plugin architecture.
-- Docker-backed Unsloth SFT jobs.
-- NeMo Automodel and Unsloth backend support for fine-tuning workflows.
-- vLLM adapter support for serving trained adapters.
-- Updated Customizer documentation and examples.
+- NAT-based agent workflow support through `nemo agents`.
+- Agent container rendering, building, publishing, and deployment guidance.
+- SDK and CLI examples that use the configured default model for agent
+  registration.
 
 ### Models and Inference
 
-- vLLM deployment in Docker for local model-serving workflows.
-- Local model-deployment documentation for the OSS quickstart and SDK usage.
-- Continued Inference Gateway support for provider registration, virtual
-  models, and OpenAI-compatible routing.
+- Inference Gateway support for provider registration, virtual models, and
+  OpenAI-compatible routing.
+- Local and provider-backed model workflows for CLI, SDK, Studio, and agents.
 
-### Agents
+### Plugins
 
-- `nemo agents` container subcommands for rendering, building, and publishing
-  agent containers.
-- Continued NAT-based agent workflow support from the 0.1 line.
-
-### Safe Synthesizer
-
-- Safe Synthesizer packaged as a platform plugin.
-- Local execution support for Safe Synthesizer workflows.
-- Documentation and tutorials for data synthesis, PII replacement,
-  evaluation, jobs, host-local development, and differential privacy.
-
-### Auditor
-
-- Auditor plugin APIs for audit configs and targets.
-- Local garak-backed auditing workflows.
-- SDK resources and documentation for configuring audits and reviewing
-  results.
+- First-party plugin workflows continue from the previous release line,
+  including Agents, Customizer, Safe Synthesizer, Auditor, Guardrails,
+  Evaluator, Anonymizer, Data Designer, Switchyard middleware, and
+  Deployments.
+- Plugin docs cover runtime service, CLI, job, controller, inference
+  middleware, and coding-agent skill surfaces.
 
 ## Install
 
@@ -84,20 +67,20 @@ nemo setup
 See [Setup](/documentation/get-started) for prerequisites and provider
 configuration.
 
-## Upgrade from v0.1.x
+For self-managed Kubernetes, start with
+[Install NeMo Platform Helm Chart](/documentation/self-managed-deployment/setup/helm/install).
+
+## Upgrade from v0.2.x
 
 From an existing local checkout:
 
 ```bash
-git fetch --tags
-git checkout v0.2.0
+git fetch
+git checkout main
 make bootstrap
 source .venv/bin/activate
 nemo setup
 ```
-
-If the `v0.2.0` tag is not available from GitHub yet, use the fresh checkout
-flow above and return to the release tag after it is published.
 
 After setup, restart local services before using CLI, SDK, Studio, or plugin
 workflows against the upgraded checkout.
@@ -105,18 +88,20 @@ workflows against the upgraded checkout.
 ## Compatibility
 
 - Python 3.11-3.14
-- macOS and Linux for the OSS local install path
-- Docker for Docker-backed platform, job, and vLLM model-serving workflows
+- macOS and Linux for local CLI, SDK, Studio, and hosted-provider workflows
+- Linux x86_64 for local NVIDIA GPU workloads
+- Self-managed Kubernetes clusters deployed with Helm
+- Docker for Docker-backed platform, job, and local model-serving workflows
 - NVIDIA GPU access for local training, model serving, and GPU-backed
   synthetic data workflows
 - Node 22.18.0+ for Studio assets
-- Platform API `0.2.0` and `nemo-platform` Python SDK `0.2.0`
+- Platform API and `nemo-platform` Python SDK `0.3.0`
 
 ## Current constraints
 
-- **Local-first OSS scope.** v0.2.0 improves local Docker-backed workflows. It
-  is not a managed cluster or scale-out enterprise release.
-- **Docker model serving.** v0.2.0 includes vLLM deployment in Docker. Docker
+- **Self-managed scope.** v0.3.0 documents local setup and user-managed
+  Kubernetes deployment. It is not a managed hosted-service release.
+- **Docker model serving.** v0.3.0 includes vLLM deployment in Docker. Docker
   deployment for NIM is not included in this release.
 - **Customizer Docker support.** Docker-backed Customizer jobs target GPU
   Linux environments. ARM64 images and NeMo Automodel Docker execution are not
@@ -126,7 +111,7 @@ workflows against the upgraded checkout.
   role bindings for your deployment mode before relying on them for multi-user
   access control.
 - **Skill Evaluation.** Skill Evaluation workflows are not included in
-  v0.2.0.
+  v0.3.0.
 
 ## Links
 

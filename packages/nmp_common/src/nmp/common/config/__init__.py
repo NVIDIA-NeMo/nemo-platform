@@ -25,9 +25,11 @@ from nmp.common.config.base import (
     get_auth_config,
     get_common_service_config,
     get_platform_config,
+    get_platform_config_class,
     get_service_config,
     get_service_config_prefix,
     internal_field,
+    register_platform_config_class,
 )
 from nmp.common.config.paths import (
     NMP_DATA_DIR_ENV_VAR,
@@ -59,8 +61,10 @@ __all__ = [
     "get_auth_config",
     "get_common_service_config",
     "get_platform_config",
+    "get_platform_config_class",
     "get_service_config",
     "get_service_config_prefix",
     "internal_field",
     "nmp_user_data_dir",
+    "register_platform_config_class",
 ]

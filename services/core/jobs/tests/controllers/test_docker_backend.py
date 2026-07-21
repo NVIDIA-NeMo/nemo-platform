@@ -3,7 +3,9 @@
 
 import datetime
 import json
+import time
 import uuid
+from types import SimpleNamespace
 from typing import Iterator
 from unittest.mock import MagicMock, patch
 
@@ -11,6 +13,7 @@ import pytest
 from docker.errors import APIError, NotFound
 from nemo_platform.types.shared import AuthContext as SdkAuthContext
 from nmp.common.auth import NMP_PRINCIPAL_ENVVAR, AuthContext, Principal
+from nmp.common.config import PlatformConfig
 from nmp.common.docker.gpu_pool import DockerGPUPool
 from nmp.common.jobs.constants import (
     EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
@@ -49,20 +52,31 @@ from nmp.core.jobs.app.schemas import (
     PlatformJobSecretEnvironmentVariableRef,
     PlatformJobStepSpec,
 )
+from nmp.core.jobs.controllers.backends.base import (
+    JOB_LOGS_ENDPOINT_ENVVAR,
+    WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
+    WORKLOAD_IDENTITY_TOKEN_FILE_PATH,
+    WORKLOAD_IDENTITY_VOLUME_PATH,
+)
 from nmp.core.jobs.controllers.backends.docker import (
     DEFAULT_VOLUME_PERMISSIONS_IMAGE,
     DOCKER_CONTAINER_START_WORKERS,
+    DOCKER_WORKLOAD_IDENTITY_TOKEN_FILE_LABEL,
+    DOCKER_WORKLOAD_IDENTITY_VOLUME_LABEL,
     CPUDockerJobBackend,
     DockerJobExecutionProfileConfig,
     DockerJobStorageConfig,
     DockerVolumeMount,
+    DockerWorkloadIdentityConfig,
     GPUDockerJobBackend,
 )
 from nmp.core.jobs.controllers.backends.exceptions import (
     FailedToScheduleError,
+    JobStorageError,
     ResourceAllocationError,
     SchedulingDeferred,
 )
+from nmp.core.jobs.controllers.backends.workload_tokens import SubjectToken
 from pydantic import ValidationError
 
 from services.core.jobs.tests.controllers.client_mocks import data_response
@@ -81,6 +95,18 @@ def owned_container_labels(labels: dict) -> dict:
         JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
         JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
     }
+
+
+def assert_created_task_volumes_cleaned_up(docker_client_mock) -> None:
+    created_volume_names = [volume_call.args[0] for volume_call in docker_client_mock.volumes.create.call_args_list]
+    assert len(created_volume_names) == 3
+    assert any(name.startswith("task-storage-") for name in created_volume_names)
+    assert any(name.startswith("task-config-") for name in created_volume_names)
+    assert any(name.startswith("task-workload-identity-") for name in created_volume_names)
+
+    cleaned_volume_names = [volume_call.args[0] for volume_call in docker_client_mock.volumes.get.call_args_list]
+    assert sorted(cleaned_volume_names) == sorted(created_volume_names)
+    assert docker_client_mock.volumes.get.return_value.remove.call_count == 3
 
 
 @pytest.fixture
@@ -708,6 +734,44 @@ def test_docker_job_profile_environment_applied(mock_nmp_client, docker_client_m
     assert env_vars.get("ENV_VAR") == "test_value"
 
 
+def test_docker_job_uses_service_discovery_urls_for_job_runtime(mock_nmp_client, docker_client_mock, test_job_step):
+    """Job containers use routable service_discovery URLs instead of local in-process service URLs."""
+    platform_config = PlatformConfig(  # type: ignore[abstract]
+        base_url="http://127.0.0.1:8080",
+        services="jobs,files,models,secrets",
+        service_discovery={
+            "platform": "https://nemo-gateway:8080",
+            "auth": "https://nemo-auth:8080",
+        },
+        loopback_address="nemo-gateway",
+    )
+    with patch("nmp.core.jobs.controllers.backends.docker.get_platform_config", return_value=platform_config):
+        backend = CPUDockerJobBackend(
+            mock_nmp_client,
+            DockerJobExecutionProfileConfig(
+                storage=DockerJobStorageConfig(volume_name="test_jobs_storage"),
+            ),
+            profile_name="default",
+        )
+        backend._client = docker_client_mock
+
+        backend.schedule(test_job_step.step_spec.executor, test_job_step)
+        backend._container_run_threadpool.shutdown(wait=True)
+        backend._container_run_threadpool = MagicMock()
+
+    create_call_args = docker_client_mock.containers.create.call_args
+    container_args = create_call_args[1] if create_call_args[1] else create_call_args[0][0]
+    env_vars = container_args.get("environment", {})
+
+    assert env_vars["NMP_BASE_URL"] == "https://nemo-gateway:8080"
+    assert env_vars["NMP_AUTH_URL"] == "https://nemo-auth:8080"
+    assert env_vars["NMP_JOBS_URL"] == "https://nemo-gateway:8080"
+    assert env_vars["NMP_FILES_URL"] == "https://nemo-gateway:8080"
+    assert env_vars["NMP_MODELS_URL"] == "https://nemo-gateway:8080"
+    assert env_vars["NMP_SECRETS_URL"] == "https://nemo-gateway:8080"
+    assert env_vars[JOB_LOGS_ENDPOINT_ENVVAR].startswith("https://nemo-gateway:8080/apis/files/")
+
+
 def test_docker_job_execution_profile_config_rejects_reserved_env_vars():
     """DockerJobExecutionProfileConfig raises when environment contains reserved names."""
     with pytest.raises(ValidationError) as exc_info:
@@ -717,6 +781,339 @@ def test_docker_job_execution_profile_config_rejects_reserved_env_vars():
         )
     assert "NEMO_JOB_ID" in str(exc_info.value)
     assert "reserved" in str(exc_info.value).lower()
+
+
+def test_docker_job_rejects_reserved_step_auth_env_vars(docker_job, test_job_step):
+    test_job_step.step_spec.environment.append(
+        PlatformJobEnvironmentVariable(name=WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, value="/tmp/token")
+    )
+
+    with pytest.raises(ValueError, match=WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR):
+        docker_job.schedule(test_job_step.step_spec.executor, test_job_step)
+
+
+def test_docker_job_injects_workload_identity_volume_when_token_exchange_enabled(
+    docker_job, docker_client_mock, test_job_step
+):
+    auth_config = SimpleNamespace(oidc=SimpleNamespace(workload_token_exchange_enabled=True))
+
+    class FakeIssuer:
+        def issue(self):
+            return SubjectToken(value="subject-token", expires_at=time.time() + 3600)
+
+    with (
+        patch("nmp.common.config.get_auth_config", return_value=auth_config),
+        patch.object(docker_job, "_create_docker_subject_token_issuer", return_value=FakeIssuer()),
+    ):
+        docker_job.schedule(test_job_step.step_spec.executor, test_job_step)
+
+    docker_job._container_run_threadpool.shutdown(wait=True)
+    docker_job._container_run_threadpool = MagicMock()
+
+    try:
+        job_create_call = next(
+            call
+            for call in docker_client_mock.containers.create.call_args_list
+            if call.kwargs.get("name") == "job-test-job-id-test-step"
+        )
+        kwargs = job_create_call.kwargs
+        env = kwargs["environment"]
+        assert env[WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR] == WORKLOAD_IDENTITY_TOKEN_FILE_PATH
+
+        mounts = kwargs["mounts"]
+        workload_identity_mount = next(m for m in mounts if m["Target"] == WORKLOAD_IDENTITY_VOLUME_PATH)
+        assert workload_identity_mount["Type"] == "volume"
+        assert workload_identity_mount["Source"].startswith(
+            f"task-workload-identity-{test_job_step.workspace}-{test_job_step.job}-"
+        )
+        assert workload_identity_mount["ReadOnly"] is True
+        assert kwargs["labels"][DOCKER_WORKLOAD_IDENTITY_TOKEN_FILE_LABEL] == WORKLOAD_IDENTITY_TOKEN_FILE_PATH
+        assert kwargs["labels"][DOCKER_WORKLOAD_IDENTITY_VOLUME_LABEL] == workload_identity_mount["Source"]
+        workload_token_write_call = next(
+            call
+            for call in docker_client_mock.containers.create.call_args_list
+            if call.kwargs.get("name", "").startswith("workload-token-write-")
+        )
+        assert workload_token_write_call.kwargs["command"] == [
+            "sh",
+            "-c",
+            "mv /workload-identity-vol/token.tmp /workload-identity-vol/token && chmod 0444 /workload-identity-vol/token",
+        ]
+    finally:
+        for refresher in list(docker_job._workload_identity_refreshers.values()):
+            refresher.stop()
+
+
+def test_docker_schedule_cleans_task_volumes_when_workload_identity_issuer_fails(
+    docker_job, docker_client_mock, test_job_step
+):
+    docker_job._execution_profile_config.workload_identity.enabled = True
+
+    with (
+        patch.object(
+            docker_job,
+            "_create_docker_subject_token_issuer",
+            side_effect=JobStorageError("issuer failed"),
+        ),
+        pytest.raises(JobStorageError, match="issuer failed"),
+    ):
+        docker_job.schedule_single_container(test_job_step.step_spec.executor, test_job_step)
+
+    assert_created_task_volumes_cleaned_up(docker_client_mock)
+
+
+def test_docker_schedule_cleans_task_volumes_when_initial_workload_identity_refresh_fails(
+    docker_job, docker_client_mock, test_job_step
+):
+    docker_job._execution_profile_config.workload_identity.enabled = True
+    refresher = MagicMock()
+    refresher.refresh_once.side_effect = RuntimeError("refresh failed")
+
+    with (
+        patch.object(docker_job, "_build_workload_identity_refresher", return_value=refresher),
+        pytest.raises(RuntimeError, match="refresh failed"),
+    ):
+        docker_job.schedule_single_container(test_job_step.step_spec.executor, test_job_step)
+
+    refresher.refresh_once.assert_called_once()
+    assert_created_task_volumes_cleaned_up(docker_client_mock)
+
+
+def test_docker_sync_restores_workload_identity_refresher_from_container_labels(
+    docker_job, docker_client_mock, test_job_step
+):
+    volume_name = "task-workload-identity-default-job-test-job-id-task-restored"
+    container = MagicMock()
+    container.name = "job-test-job-id-test-step"
+    container.id = "workload-container-id"
+    container.status = "running"
+    container.attrs = {"State": {"Status": "running", "Running": True, "ExitCode": 0}, "HostConfig": {}}
+    container.labels = owned_container_labels(
+        {
+            JOB_WORKSPACE_ID_LABEL: test_job_step.workspace,
+            JOB_ID_LABEL: test_job_step.job,
+            JOB_STEP_NAME_LABEL: test_job_step.name,
+            JOB_TASK_ID_LABEL: "task-restored",
+            JOB_TYPE_LABEL: JOB_TYPE_JOB,
+            DOCKER_WORKLOAD_IDENTITY_TOKEN_FILE_LABEL: WORKLOAD_IDENTITY_TOKEN_FILE_PATH,
+            DOCKER_WORKLOAD_IDENTITY_VOLUME_LABEL: volume_name,
+        }
+    )
+
+    docker_client_mock.containers.get.side_effect = None
+    docker_client_mock.containers.get.return_value = container
+    refresher = MagicMock()
+
+    test_job_step.status = PlatformJobStatus.ACTIVE
+    with patch.object(docker_job, "_build_workload_identity_refresher", return_value=refresher) as build_refresher:
+        update = docker_job.sync(test_job_step)
+
+    assert update.status == PlatformJobStatus.ACTIVE
+    build_refresher.assert_called_once_with(volume_name)
+    refresher.start.assert_called_once()
+    assert docker_job._workload_identity_refreshers[container.name] is refresher
+
+
+def test_docker_sync_restores_workload_identity_refresher_from_mounted_volume(
+    docker_job, docker_client_mock, test_job_step
+):
+    volume_name = "task-workload-identity-default-job-test-job-id-task-mounted"
+    container = MagicMock()
+    container.name = "job-test-job-id-test-step"
+    container.id = "workload-container-id"
+    container.status = "running"
+    container.attrs = {
+        "State": {"Status": "running", "Running": True, "ExitCode": 0},
+        "HostConfig": {},
+        "Mounts": [{"Type": "volume", "Destination": WORKLOAD_IDENTITY_VOLUME_PATH, "Name": volume_name}],
+    }
+    container.labels = owned_container_labels(
+        {
+            JOB_WORKSPACE_ID_LABEL: test_job_step.workspace,
+            JOB_ID_LABEL: test_job_step.job,
+            JOB_STEP_NAME_LABEL: test_job_step.name,
+            JOB_TASK_ID_LABEL: "task-mounted",
+            JOB_TYPE_LABEL: JOB_TYPE_JOB,
+        }
+    )
+
+    docker_client_mock.containers.get.side_effect = None
+    docker_client_mock.containers.get.return_value = container
+    refresher = MagicMock()
+
+    test_job_step.status = PlatformJobStatus.ACTIVE
+    with patch.object(docker_job, "_build_workload_identity_refresher", return_value=refresher) as build_refresher:
+        update = docker_job.sync(test_job_step)
+
+    assert update.status == PlatformJobStatus.ACTIVE
+    build_refresher.assert_called_once_with(volume_name)
+    refresher.start.assert_called_once()
+    assert docker_job._workload_identity_refreshers[container.name] is refresher
+
+
+def test_docker_stop_workload_identity_refresher_keeps_refresher_when_stop_fails(docker_job):
+    refresher = MagicMock()
+    refresher.stop.side_effect = RuntimeError("Timed out stopping workload identity subject token refresher")
+    docker_job._workload_identity_refreshers["job-container"] = refresher
+
+    with pytest.raises(RuntimeError, match="Timed out stopping workload identity subject token refresher"):
+        docker_job._stop_workload_identity_refresher("job-container")
+
+    assert docker_job._workload_identity_refreshers["job-container"] is refresher
+
+
+def test_docker_shutdown_stops_workload_identity_refreshers(docker_job, docker_client_mock):
+    first_refresher = MagicMock()
+    second_refresher = MagicMock()
+    docker_job._workload_identity_refreshers = {
+        "job-container-one": first_refresher,
+        "job-container-two": second_refresher,
+    }
+    close_calls_before_shutdown = docker_client_mock.close.call_count
+
+    docker_job.shutdown()
+
+    first_refresher.stop.assert_called_once()
+    second_refresher.stop.assert_called_once()
+    assert docker_job._workload_identity_refreshers == {}
+    assert docker_client_mock.close.call_count == close_calls_before_shutdown + 1
+
+
+def test_docker_shutdown_continues_stopping_refreshers_when_one_stop_fails(docker_job, docker_client_mock):
+    failing_refresher = MagicMock()
+    failing_refresher.stop.side_effect = RuntimeError("Timed out stopping workload identity subject token refresher")
+    second_refresher = MagicMock()
+    docker_job._workload_identity_refreshers = {
+        "job-container-one": failing_refresher,
+        "job-container-two": second_refresher,
+    }
+    close_calls_before_shutdown = docker_client_mock.close.call_count
+
+    docker_job.shutdown()
+
+    failing_refresher.stop.assert_called_once()
+    second_refresher.stop.assert_called_once()
+    assert docker_job._workload_identity_refreshers == {}
+    assert docker_client_mock.close.call_count == close_calls_before_shutdown + 1
+
+
+def test_docker_subject_token_issuer_reads_password_from_configured_env_var(docker_job, monkeypatch):
+    monkeypatch.setenv("AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD", "shared-secret")
+    auth_config = SimpleNamespace(
+        oidc=SimpleNamespace(
+            token_endpoint="http://127.0.0.1:18080/application/o/token/",
+            workload_client_id="nemo-platform-workload",
+            client_id="nemo-platform-cli",
+            workload_scope="openid email groups",
+        )
+    )
+    docker_job._execution_profile_config.workload_identity = DockerWorkloadIdentityConfig(
+        username="svc-nemo",
+        password_env_var="AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD",
+    )
+
+    with patch("nmp.common.config.get_auth_config", return_value=auth_config):
+        issuer = docker_job._create_docker_subject_token_issuer()
+
+    assert issuer.token_endpoint == "http://127.0.0.1:18080/application/o/token/"
+    assert issuer.client_id == "nemo-platform-workload"
+    assert issuer.username == "svc-nemo"
+    assert issuer.password == "shared-secret"
+    assert issuer.scope == "openid email groups"
+
+
+def test_docker_subject_token_issuer_uses_internal_token_endpoint_override(docker_job, monkeypatch):
+    monkeypatch.setenv("AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD", "shared-secret")
+    auth_config = SimpleNamespace(
+        oidc=SimpleNamespace(
+            token_endpoint="http://127.0.0.1:18080/application/o/token/",
+            workload_client_id="nemo-platform-workload",
+            client_id="nemo-platform-cli",
+            workload_scope="openid email groups",
+        )
+    )
+    docker_job._execution_profile_config.workload_identity = DockerWorkloadIdentityConfig(
+        token_endpoint="https://nemo-gateway:8080/application/o/token/",
+        username="svc-nemo",
+        password_env_var="AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD",
+    )
+
+    with patch("nmp.common.config.get_auth_config", return_value=auth_config):
+        issuer = docker_job._create_docker_subject_token_issuer()
+
+    assert issuer.token_endpoint == "https://nemo-gateway:8080/application/o/token/"
+
+
+@pytest.mark.parametrize("env_value", [None, ""])
+def test_docker_subject_token_issuer_requires_non_empty_password_env_var(docker_job, monkeypatch, env_value):
+    if env_value is None:
+        monkeypatch.delenv("AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD", raising=False)
+    else:
+        monkeypatch.setenv("AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD", env_value)
+    auth_config = SimpleNamespace(
+        oidc=SimpleNamespace(
+            token_endpoint="http://127.0.0.1:18080/application/o/token/",
+            workload_client_id="nemo-platform-workload",
+            client_id="nemo-platform-cli",
+            workload_scope="openid email groups",
+        )
+    )
+    docker_job._execution_profile_config.workload_identity = DockerWorkloadIdentityConfig(
+        username="svc-nemo",
+        password_env_var="AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD",
+    )
+
+    with (
+        patch("nmp.common.config.get_auth_config", return_value=auth_config),
+        pytest.raises(JobStorageError, match="AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD"),
+    ):
+        docker_job._create_docker_subject_token_issuer()
+
+
+def test_docker_workload_identity_config_rejects_legacy_password_field():
+    with pytest.raises(ValidationError) as exc_info:
+        DockerWorkloadIdentityConfig.model_validate(
+            {
+                "username": "svc-nemo",
+                "password": "inline-secret",
+            }
+        )
+
+    assert "password" in str(exc_info.value)
+    assert "extra" in str(exc_info.value).lower()
+
+
+def test_docker_workload_identity_client_secret_schema_is_write_only():
+    client_secret_schema = DockerWorkloadIdentityConfig.model_json_schema()["properties"]["client_secret"]
+
+    assert client_secret_schema["format"] == "password"
+    assert client_secret_schema["writeOnly"] is True
+
+
+def test_docker_workload_identity_token_timing_constraints(monkeypatch):
+    properties = DockerWorkloadIdentityConfig.model_json_schema()["properties"]
+
+    assert properties["subject_token_ttl_seconds"]["minimum"] == 1
+    assert properties["refresh_margin_seconds"]["minimum"] == 0
+    assert (
+        DockerWorkloadIdentityConfig(subject_token_ttl_seconds=1, refresh_margin_seconds=0).subject_token_ttl_seconds
+        == 1
+    )
+    assert DockerWorkloadIdentityConfig(refresh_margin_seconds=0).refresh_margin_seconds == 0
+    with pytest.raises(ValidationError):
+        DockerWorkloadIdentityConfig.model_validate({"subject_token_ttl_seconds": 0})
+    with pytest.raises(ValidationError):
+        DockerWorkloadIdentityConfig.model_validate({"refresh_margin_seconds": -1})
+    for values in (
+        {"subject_token_ttl_seconds": 1},
+        {"subject_token_ttl_seconds": 30, "refresh_margin_seconds": 30},
+        {"subject_token_ttl_seconds": 30, "refresh_margin_seconds": 31},
+    ):
+        with pytest.raises(ValidationError, match="refresh_margin_seconds"):
+            DockerWorkloadIdentityConfig.model_validate(values)
+    monkeypatch.setenv("NMP_WORKLOAD_IDENTITY_TOKEN_TTL_SECONDS", "0")
+    with pytest.raises(ValidationError):
+        DockerWorkloadIdentityConfig()
 
 
 def test_schedule_docker_gpu(mock_nmp_client, docker_client_mock):
@@ -1562,13 +1959,16 @@ def test_cleanup_steps_by_ttl(docker_job, docker_client_mock, test_job_step, cle
         mock_container_running.remove.assert_not_called()
 
         # Verify task storage and config volumes were cleaned up for successful containers (2 volumes per task)
-        assert docker_client_mock.volumes.get.call_count == 6
+        assert docker_client_mock.volumes.get.call_count == 9
         docker_client_mock.volumes.get.assert_any_call("task-storage-default-test-job-id-task-success")
         docker_client_mock.volumes.get.assert_any_call("task-config-default-test-job-id-task-success")
+        docker_client_mock.volumes.get.assert_any_call("task-workload-identity-default-test-job-id-task-success")
         docker_client_mock.volumes.get.assert_any_call("task-storage-default-test-job-id-task-killed")
         docker_client_mock.volumes.get.assert_any_call("task-config-default-test-job-id-task-killed")
+        docker_client_mock.volumes.get.assert_any_call("task-workload-identity-default-test-job-id-task-killed")
         docker_client_mock.volumes.get.assert_any_call("task-storage-default-test-job-id-task-old-error")
         docker_client_mock.volumes.get.assert_any_call("task-config-default-test-job-id-task-old-error")
+        docker_client_mock.volumes.get.assert_any_call("task-workload-identity-default-test-job-id-task-old-error")
     else:
         # When cleanup_completed_jobs_immediately is False, no containers should be removed
         mock_container_success.remove.assert_not_called()
@@ -1579,9 +1979,10 @@ def test_cleanup_steps_by_ttl(docker_job, docker_client_mock, test_job_step, cle
         assert mock_container_old_error.remove.call_count == 1
         mock_container_old_error.remove.assert_called_with(force=True)
 
-        assert docker_client_mock.volumes.get.call_count == 2
+        assert docker_client_mock.volumes.get.call_count == 3
         docker_client_mock.volumes.get.assert_any_call("task-storage-default-test-job-id-task-old-error")
         docker_client_mock.volumes.get.assert_any_call("task-config-default-test-job-id-task-old-error")
+        docker_client_mock.volumes.get.assert_any_call("task-workload-identity-default-test-job-id-task-old-error")
 
     # Network cleanup should happen for all exited containers regardless of exit code
     assert mock_network.disconnect.call_count == 4  # success, killed, and error containers
@@ -2070,11 +2471,12 @@ def test_job_step_with_auth_context():
 
 
 def test_docker_job_schedule_with_auth_context(docker_job, docker_client_mock, test_job_step_with_auth_context):
-    """Test that scheduling sets NMP_PRINCIPAL and OTEL headers env vars when auth_context is present.
+    """Test that scheduling sets NMP_PRINCIPAL without injecting OTEL log headers.
 
     Verifies GitLab issue #3390 Gap 2: job tasks should run with the creating
-    user's auth context, propagated via the NMP_PRINCIPAL environment variable
-    and OTEL_EXPORTER_OTLP_LOGS_HEADERS for authenticated telemetry export.
+    user's auth context, propagated via the NMP_PRINCIPAL environment variable.
+    Job log upload auth is handled by jobs-launcher workload token exchange,
+    not by globally scoped OTEL header environment variables.
     """
     step_spec = test_job_step_with_auth_context.step_spec
     executor_config = step_spec.executor
@@ -2103,13 +2505,15 @@ def test_docker_job_schedule_with_auth_context(docker_job, docker_client_mock, t
         "groups": ["engineering", "ml-team"],
     }
 
-    # Verify OTEL headers env var is set for authenticated telemetry
-    assert "OTEL_EXPORTER_OTLP_LOGS_HEADERS" in env
-    otlp_headers = env["OTEL_EXPORTER_OTLP_LOGS_HEADERS"]
-    # URL-encoded: @ -> %40, , -> %2C
-    assert "X-NMP-Principal-Id=creator%40example.com" in otlp_headers
-    assert "X-NMP-Principal-Email=creator%40example.com" in otlp_headers
-    assert "X-NMP-Principal-Groups=engineering%2Cml-team" in otlp_headers
+    assert env[JOB_LOGS_ENDPOINT_ENVVAR].endswith(
+        "/apis/files/v2/workspaces/default/filesets/test-logs-fileset/otlp/v1/logs"
+    )
+    assert "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT" not in env
+    assert "OTEL_EXPORTER_OTLP_PROTOCOL" not in env
+    assert "OTEL_EXPORTER_OTLP_LOGS_PROTOCOL" not in env
+    assert "OTEL_LOGS_EXPORTER" not in env
+    assert "OTEL_SERVICE_NAME" not in env
+    assert "OTEL_EXPORTER_OTLP_LOGS_HEADERS" not in env
 
 
 def test_docker_job_schedule_without_auth_context(docker_job, docker_client_mock, test_job_step):
@@ -2240,7 +2644,7 @@ def test_cleanup_single_container_checks_job_terminal_before_persistent_storage_
 
     # Verify container and task volumes were cleaned up
     assert mock_container.remove.call_count == 1
-    assert docker_client_mock.volumes.get.call_count == 2  # task storage + config volumes
+    assert docker_client_mock.volumes.get.call_count == 3  # task storage + config + workload identity volumes
 
     # Verify persistent storage cleanup was NOT called
     docker_job.cleanup_job_persistent_storage.assert_not_called()
@@ -2261,7 +2665,7 @@ def test_cleanup_single_container_checks_job_terminal_before_persistent_storage_
 
     # Verify container and task volumes were cleaned up
     assert mock_container.remove.call_count == 1
-    assert docker_client_mock.volumes.get.call_count == 2  # task storage + config volumes
+    assert docker_client_mock.volumes.get.call_count == 3  # task storage + config + workload identity volumes
 
     # Verify persistent storage cleanup WAS called
     docker_job.cleanup_job_persistent_storage.assert_called_once_with("default", "test-job-id")
@@ -2299,7 +2703,7 @@ def test_cleanup_single_container_without_persistent_storage_label(docker_job, d
 
     # Verify container and task volumes were cleaned up
     assert mock_container.remove.call_count == 1
-    assert docker_client_mock.volumes.get.call_count == 2  # task storage + config volumes
+    assert docker_client_mock.volumes.get.call_count == 3  # task storage + config + workload identity volumes
 
     # Verify job terminal check was NOT called (no persistent storage to cleanup)
     docker_job.check_job_is_terminal.assert_not_called()
@@ -2348,7 +2752,7 @@ def test_cleanup_single_container_step_terminal_but_job_has_more_steps(docker_jo
 
     # Verify container and task volumes were cleaned up
     assert mock_container.remove.call_count == 1
-    assert docker_client_mock.volumes.get.call_count == 2  # task storage + config volumes
+    assert docker_client_mock.volumes.get.call_count == 3  # task storage + config + workload identity volumes
 
     # Verify job terminal check WAS called (since container uses persistent storage)
     docker_job.check_job_is_terminal.assert_called_once_with(job="multi-step-job", workspace="default")
@@ -2449,9 +2853,10 @@ def test_cleanup_steps_with_multi_step_job_only_first_step_complete(docker_job, 
     mock_network.disconnect.assert_called_once_with(mock_container_step1)
 
     # Verify task storage volumes were cleaned up for step 1 (2 volumes per task)
-    assert docker_client_mock.volumes.get.call_count == 2
+    assert docker_client_mock.volumes.get.call_count == 3
     docker_client_mock.volumes.get.assert_any_call("task-storage-default-multi-step-job-task-step1")
     docker_client_mock.volumes.get.assert_any_call("task-config-default-multi-step-job-task-step1")
+    docker_client_mock.volumes.get.assert_any_call("task-workload-identity-default-multi-step-job-task-step1")
 
     # Verify job terminal check was called for step 1
     docker_job.check_job_is_terminal.assert_called_once_with(job="multi-step-job", workspace="default")
