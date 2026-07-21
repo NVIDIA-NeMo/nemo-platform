@@ -76,9 +76,20 @@ uv pip install --python "$VENV_PY" "${FABRIC_REPO}[codex,relay,runtime]"
 #    NEMO_RELAY_REPO to force a source build (e.g. on a platform with no prebuilt asset).
 NEMO_RELAY_VERSION="${NEMO_RELAY_VERSION:-0.5.0}"
 RELAY_BIN_DIR="${CARGO_HOME:-$HOME/.cargo}/bin"
+# Skip provisioning only when an existing nemo-relay already matches NEMO_RELAY_VERSION, so an
+# explicit version request is honored rather than silently short-circuited by any PATH match.
+need_relay_install=1
 if command -v nemo-relay >/dev/null 2>&1; then
-  echo "nemo-relay gateway already on PATH: $(command -v nemo-relay) ($(nemo-relay --version 2>/dev/null || echo '?'))"
-else
+  installed_relay_ver="$(nemo-relay --version 2>/dev/null | awk '{print $NF}')"
+  if [ "$installed_relay_ver" = "$NEMO_RELAY_VERSION" ]; then
+    echo "nemo-relay gateway already on PATH at requested version ${installed_relay_ver}: $(command -v nemo-relay)"
+    need_relay_install=0
+  else
+    echo "nemo-relay ${installed_relay_ver:-?} on PATH differs from requested ${NEMO_RELAY_VERSION}; (re)installing ..."
+  fi
+fi
+
+if [ "$need_relay_install" = 1 ]; then
   # Map host platform -> NeMo-Relay release target triple (no Intel-macOS asset is published).
   relay_target=""
   case "$(uname -s):$(uname -m)" in
@@ -109,6 +120,11 @@ else
     install -m 0755 "${tmp}/nemo-relay" "${RELAY_BIN_DIR}/nemo-relay"
     rm -rf "$tmp"
     echo "nemo-relay gateway installed: ${RELAY_BIN_DIR}/nemo-relay ($("${RELAY_BIN_DIR}/nemo-relay" --version 2>/dev/null || echo '?'))"
+    # Warn if the install dir isn't on PATH — live tests resolve the gateway via shutil.which().
+    case ":${PATH}:" in
+      *":${RELAY_BIN_DIR}:"*) : ;;
+      *) echo "NOTE: ${RELAY_BIN_DIR} is not on PATH — add it so 'nemo-relay' is found: export PATH=\"${RELAY_BIN_DIR}:\$PATH\"" >&2 ;;
+    esac
   else
     # Fallback: source build from a NeMo-Relay checkout (no prebuilt asset for this platform, e.g.
     # Intel macOS, or NEMO_RELAY_REPO set explicitly to force a build).
