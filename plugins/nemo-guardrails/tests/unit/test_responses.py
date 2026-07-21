@@ -9,12 +9,15 @@ import openai
 import pytest
 from nemo_guardrails_plugin.constants import GUARDRAILS_DATA_MESSAGE_ROLE
 from nemo_guardrails_plugin.responses import (
+    apply_input_rail_modifications,
+    apply_output_rail_modifications,
     build_assistant_message_from_response_result,
     build_blocked_output_response_body,
     build_immediate_response,
     build_inference_response,
     build_output_response_body,
     extract_upstream_error,
+    resolve_rail_message_content,
 )
 from nemo_platform_plugin.inference_middleware import InferenceMiddlewareError, InferenceResponse
 from nemoguardrails.exceptions import LLMCallException
@@ -25,12 +28,18 @@ from nemoguardrails.rails.llm.options import ActivatedRail, GenerationLog, Gener
 # ---------------------------------------------------------------------------
 
 
-def _make_generation_response(*, stopped: bool = False, content: str = "I can't help with that.") -> GenerationResponse:
+def _make_generation_response(
+    *,
+    stopped: bool = False,
+    content: str = "I can't help with that.",
+    output_data: dict[str, Any] | None = None,
+) -> GenerationResponse:
     return GenerationResponse(
         response=[{"role": "assistant", "content": content}],
         log=GenerationLog(
             activated_rails=[ActivatedRail(type="output", name="self check output", stop=stopped)],
         ),
+        output_data=output_data,
     )
 
 
@@ -48,6 +57,83 @@ def _make_response_result(content: str = "Hello!") -> dict[str, Any]:
         ],
         "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
     }
+
+
+# ---------------------------------------------------------------------------
+# Masking write-back helpers
+# ---------------------------------------------------------------------------
+
+
+class TestResolveRailMessageContent:
+    def test_returns_redacted_when_changed(self) -> None:
+        assert resolve_rail_message_content(original="Hi John", processed="Hi <PERSON>") == "Hi <PERSON>"
+
+    def test_returns_original_when_unchanged(self) -> None:
+        assert resolve_rail_message_content(original="same", processed="same") == "same"
+
+
+class TestApplyInputRailModifications:
+    def test_writes_back_last_user_message_only(self) -> None:
+        earlier_user = {"role": "user", "content": "Hi, I am Alice"}
+        assistant = {"role": "assistant", "content": "Hello Alice"}
+        last_user = {"role": "user", "content": "Hi John"}
+        messages = [earlier_user, assistant, last_user]
+        # Post-rail text comes from GenerationResponse.response content.
+        generation_response = _make_generation_response(content="Hi <PERSON>")
+
+        updated = apply_input_rail_modifications(messages, generation_response)
+
+        assert updated is not messages
+        assert updated[0] is earlier_user
+        assert updated[1] is assistant
+        assert updated[0]["content"] == "Hi, I am Alice"
+        assert updated[1]["content"] == "Hello Alice"
+        assert updated[2]["content"] == "Hi <PERSON>"
+        assert updated[2] is not last_user
+        # Original request messages must not be mutated.
+        assert last_user["content"] == "Hi John"
+
+    def test_returns_same_list_for_non_string_last_user_content(self) -> None:
+        # Multimodal: never write back, even if response.content is a string.
+        messages = [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "Hi John"}],
+            }
+        ]
+        generation_response = _make_generation_response(content="Hi <PERSON>")
+
+        assert apply_input_rail_modifications(messages, generation_response) is messages
+
+    def test_returns_same_list_when_content_unchanged(self) -> None:
+        messages = [{"role": "user", "content": "hello"}]
+        generation_response = _make_generation_response(content="hello")
+
+        assert apply_input_rail_modifications(messages, generation_response) is messages
+
+    def test_skips_stringified_multimodal_response_content(self) -> None:
+        # No-op multimodal rails may stringify the list into response.content.
+        # Original content is still a list, so write-back must not run.
+        multimodal_content = [
+            {"type": "text", "text": "hello"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAA"}},
+        ]
+        messages = [{"role": "user", "content": multimodal_content}]
+        generation_response = _make_generation_response(content=str(multimodal_content))
+
+        assert apply_input_rail_modifications(messages, generation_response) is messages
+
+
+class TestApplyOutputRailModifications:
+    def test_writes_back_from_response_content(self) -> None:
+        generation_response = _make_generation_response(content="Hi <PERSON>")
+
+        assert apply_output_rail_modifications("Hi John", generation_response) == "Hi <PERSON>"
+
+    def test_returns_original_when_unchanged(self) -> None:
+        generation_response = _make_generation_response(content="hello")
+
+        assert apply_output_rail_modifications("hello", generation_response) == "hello"
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +255,7 @@ class TestBuildOutputResponseBody:
         result = build_output_response_body(
             config_id="ws/my-config",
             original_response=original,
-            generation_response=_make_generation_response(),
+            generation_response=_make_generation_response(content="Hello!"),
             input_generation_response=None,
             user_log_options=None,
         )
@@ -177,6 +263,22 @@ class TestBuildOutputResponseBody:
         assert result["choices"] == original["choices"]
         assert "guardrails_data" in result
         assert result["guardrails_data"]["config_ids"] == ["ws/my-config"]
+
+    def test_applies_output_masking_to_assistant_content(self) -> None:
+        original = _make_response_result("Hello there! My name is Michael!")
+
+        result = build_output_response_body(
+            config_id="ws/my-config",
+            original_response=original,
+            generation_response=_make_generation_response(
+                content="Hello there! My name is <PERSON>!",
+            ),
+            input_generation_response=None,
+            user_log_options=None,
+        )
+
+        assert result["choices"][0]["message"]["content"] == "Hello there! My name is <PERSON>!"
+        assert original["choices"][0]["message"]["content"] == "Hello there! My name is Michael!"
 
     def test_keeps_only_first_choice(self) -> None:
         original = {
@@ -190,7 +292,7 @@ class TestBuildOutputResponseBody:
         result = build_output_response_body(
             config_id="ws/my-config",
             original_response=original,
-            generation_response=_make_generation_response(),
+            generation_response=_make_generation_response(content="A"),
             input_generation_response=None,
             user_log_options=None,
         )
@@ -211,7 +313,7 @@ class TestBuildOutputResponseBody:
         result = build_output_response_body(
             config_id="ws/my-config",
             original_response=original,
-            generation_response=_make_generation_response(),
+            generation_response=_make_generation_response(content="A"),
             input_generation_response=None,
             user_log_options=None,
             return_guardrails_data_as_choice=True,

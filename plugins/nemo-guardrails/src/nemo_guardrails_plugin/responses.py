@@ -144,8 +144,12 @@ def is_blocked_generation_response(generation_response: GenerationResponse) -> b
 
 
 def extract_response_content(generation_response: GenerationResponse) -> str:
-    """
-    Extract the last assistant message content from a GenerationResponse.
+    """Return the post-rail text from a ``GenerationResponse``.
+
+    ``GenerationResponse.response`` is OpenAI-shaped. When it is a message list,
+    the library puts the rails result on an ``role=assistant`` entry — even for
+    **input-only** runs, where that string is the post-rail ``$user_message``
+    (e.g. PII-redacted user text), not a model reply from chat history.
     """
     response = generation_response.response
     if isinstance(response, list):
@@ -156,6 +160,85 @@ def extract_response_content(generation_response: GenerationResponse) -> str:
         return ""
 
     return response
+
+
+# ---------------------------------------------------------------------------
+# Masking write-back helpers
+#
+# After input-only generate_async, the (possibly redacted) user text is returned
+# as GenerationResponse.response with role=assistant (not role=user).
+# Example: request user "Hi John" → response [{"role": "assistant", "content": "Hi <PERSON>"}].
+# If the message content is redacted, we need to write it back onto the last user message
+# in the request.
+# ---------------------------------------------------------------------------
+
+
+def resolve_rail_message_content(*, original: str, processed: str) -> str:
+    """Return the text to forward after rails: redacted if changed, else original."""
+    return processed if processed != original else original
+
+
+def _index_of_last_user_message(messages: list[dict[str, Any]]) -> int | None:
+    """Return the index of the last ``role=user`` message, if any."""
+    last_user_index: int | None = None
+    for index, message in enumerate(messages):
+        if isinstance(message, dict) and message.get("role") == "user":
+            last_user_index = index
+    return last_user_index
+
+
+def apply_input_rail_modifications(
+    messages: list[dict[str, Any]],
+    generation_response: GenerationResponse,
+) -> list[dict[str, Any]]:
+    """Return messages with input-rail modifications applied to the last user turn.
+
+    Post-rail user text is taken from ``GenerationResponse.response`` via
+    ``extract_response_content``. If modified, it is written onto the last user message.
+
+    Returns the same list object when there is nothing to change; otherwise, returns a
+    shallow copy that replaces only the last user message dict.
+    """
+    last_user_index = _index_of_last_user_message(messages)
+    if last_user_index is None:
+        return messages
+
+    last_user_message = messages[last_user_index]
+    original_content = last_user_message.get("content")
+    if not isinstance(original_content, str):
+        logger.debug(
+            "Skipping input-rail write-back; last user content is %s, not str",
+            type(original_content).__name__,
+        )
+        return messages
+
+    # NOTE: the input-rail result is labeled as an assistant message in the GenerationResponse,
+    # but the content is actually the redacted/transformed user message.
+    processed = extract_response_content(generation_response)
+    if not isinstance(processed, str):
+        return messages
+
+    # If the message content wasn't modified, return the original messages.
+    updated_content = resolve_rail_message_content(original=original_content, processed=processed)
+    if updated_content == original_content:
+        return messages
+
+    # If the message content was modified, write it back onto the last user message.
+    updated_messages = list(messages)
+    updated_messages[last_user_index] = {**last_user_message, "content": updated_content}
+    return updated_messages
+
+
+def apply_output_rail_modifications(
+    original_content: str,
+    generation_response: GenerationResponse,
+) -> str:
+    """Return assistant content after output rails, from ``response`` content."""
+    processed = extract_response_content(generation_response)
+    if not isinstance(processed, str):
+        return original_content
+
+    return resolve_rail_message_content(original=original_content, processed=processed)
 
 
 def build_assistant_message_from_response_result(response_result: ResponseResult) -> dict[str, Any]:
@@ -299,9 +382,16 @@ def build_output_response_body(
 
     choices = list(response.get("choices", [])) if isinstance(response.get("choices"), list) else []
     response["choices"] = choices
-    # Output rails validate choices[0].message, so return only the choice that was checked
+    # Output rails validate choices[0].message, so return only the choice that was checked.
+    # If output rails masked ``$bot_message``, write that text back onto the choice.
     if generation_response is not None and choices:
-        response["choices"] = [{**choices[0], "index": 0}]
+        choice = {**choices[0], "index": 0}
+        message = dict(choice.get("message") or {}) if isinstance(choice.get("message"), dict) else {}
+        original_content = message.get("content")
+        if isinstance(original_content, str):
+            message["content"] = apply_output_rail_modifications(original_content, generation_response)
+            choice["message"] = message
+        response["choices"] = [choice]
 
     guardrails_data = build_guardrails_data(
         config_id,

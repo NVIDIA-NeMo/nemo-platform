@@ -162,13 +162,19 @@ def _make_entity(
     )
 
 
-def _make_generation_response(*, is_blocked: bool = False) -> GenerationResponse:
+def _make_generation_response(
+    *,
+    is_blocked: bool = False,
+    content: str = "I'm sorry, I can't help with that.",
+    output_data: dict[str, Any] | None = None,
+) -> GenerationResponse:
     return GenerationResponse(
-        response=[{"role": "assistant", "content": "I'm sorry, I can't help with that."}],
+        response=[{"role": "assistant", "content": content}],
         log=GenerationLog(
             activated_rails=[ActivatedRail(type="input", name="self check input", stop=is_blocked)],
             stats=GenerationStats(input_rails_duration=0.1, total_duration=0.1),
         ),
+        output_data=output_data,
     )
 
 
@@ -615,7 +621,7 @@ class TestProcessRequest:
 
     async def test_successful_generation_returns_request_body(self, middleware: GuardrailsMiddleware) -> None:
         request_body = {"model": "ws/llama", "messages": [{"role": "user", "content": "Hello"}]}
-        generation_response = _make_generation_response(is_blocked=False)
+        generation_response = _make_generation_response(is_blocked=False, content="Hello")
         ctx = _make_ctx(request_body)
 
         with patch.object(middleware, "_run_rails", new=AsyncMock(return_value=generation_response)):
@@ -628,6 +634,54 @@ class TestProcessRequest:
         # ``guardrails_data`` payload.
         assert ctx.state(PLUGIN_NAME).get(STATE_KEY_INPUT_GENERATION_RESPONSE) is generation_response
         assert ctx.response_body_annotations["guardrails_data"]["config_ids"] == ["my-workspace/my-config"]
+
+    async def test_input_masking_writes_back_last_user_message(self, middleware: GuardrailsMiddleware) -> None:
+        request_body = {
+            "model": "ws/llama",
+            "messages": [
+                {"role": "user", "content": "earlier turn"},
+                {"role": "assistant", "content": "ok"},
+                {"role": "user", "content": "Hi! I am Mr. John!"},
+            ],
+        }
+        generation_response = _make_generation_response(
+            is_blocked=False,
+            content="Hi! I am <TITLE> <PERSON>!",
+        )
+
+        with patch.object(middleware, "_run_rails", new=AsyncMock(return_value=generation_response)):
+            result = await _process_request(middleware, request_body, {}, _entity_source())
+
+        assert isinstance(result, dict)
+        assert result["messages"] == [
+            {"role": "user", "content": "earlier turn"},
+            {"role": "assistant", "content": "ok"},
+            {"role": "user", "content": "Hi! I am <TITLE> <PERSON>!"},
+        ]
+        # Original request body must not be mutated (IGW aliases nested values).
+        assert request_body["messages"][-1]["content"] == "Hi! I am Mr. John!"
+
+    async def test_input_masking_skips_non_string_user_content(self, middleware: GuardrailsMiddleware) -> None:
+        # Multimodal content is unsupported for PII write-back; leave the request alone
+        # even when response.content looks like a redacted string (or a stringified list).
+        multimodal_content = [
+            {"type": "text", "text": "Hi! I am Mr. John!"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAA"}},
+        ]
+        request_body = {
+            "model": "ws/llama",
+            "messages": [{"role": "user", "content": multimodal_content}],
+        }
+        generation_response = _make_generation_response(
+            is_blocked=False,
+            content=str(multimodal_content),
+        )
+
+        with patch.object(middleware, "_run_rails", new=AsyncMock(return_value=generation_response)):
+            result = await _process_request(middleware, request_body, {}, _entity_source())
+
+        assert isinstance(result, dict)
+        assert result["messages"][0]["content"] == multimodal_content
 
     async def test_user_log_options_forwarded_to_run_rails(self, middleware: GuardrailsMiddleware) -> None:
         request_body = {
