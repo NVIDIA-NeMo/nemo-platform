@@ -147,7 +147,6 @@ export function TrainValidationLossLineChart({
   const hasTrainData = useMemo(() => chartData.some((d) => d.trainLoss !== undefined), [chartData]);
   const hasValData = useMemo(() => chartData.some((d) => d.valLoss !== undefined), [chartData]);
 
-  // Steps at which a new epoch begins (skipping the first epoch's start), used to draw boundaries.
   const epochBoundaries = useMemo(() => {
     const boundaries: { step: number; epoch: number }[] = [];
     let previousEpoch: number | undefined;

@@ -26,13 +26,7 @@ export function hasMetrics(
   return statusDetails !== undefined && 'metrics' in statusDetails;
 }
 
-/**
- * Live per-step training telemetry the backend streams into the free-form `status_details` dict.
- * Every field is optional: the wire type is `Record<string, unknown>` and a given trainer may omit
- * any key (e.g. `lr`/`grad_norm` arrive absent when the underlying trainer doesn't report them).
- */
 export interface CustomizationTrainingTelemetry {
-  /** Lifecycle phase, e.g. 'training', 'validation', 'checkpoint_saved', 'completed'. */
   phase?: string;
   step?: number;
   maxSteps?: number;

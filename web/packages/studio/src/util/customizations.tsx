@@ -169,10 +169,6 @@ const asFiniteNumber = (value: unknown): number | undefined =>
 const asNonEmptyString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.length > 0 ? value : undefined;
 
-/**
- * Read the live per-step training telemetry the backend streams into `status_details`. The wire type
- * is `Record<string, unknown>`, so every field is defensively coerced and omitted when absent.
- */
 export const getTrainingTelemetry = (
   job: CustomizationJob | null | undefined
 ): CustomizationTrainingTelemetry => {
@@ -203,7 +199,6 @@ const TRAINING_PHASE_LABELS: Record<string, string> = {
   completed: 'Completed',
 };
 
-/** Human-readable label for a backend training `phase`, title-casing unrecognized values. */
 export const formatTrainingPhase = (phase: string): string =>
   TRAINING_PHASE_LABELS[phase] ??
   phase

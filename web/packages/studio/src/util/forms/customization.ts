@@ -106,12 +106,6 @@ export const FORM_DEFAULTS: CustomizationFormFields = {
   },
 };
 
-// Structural validation (enums, numeric bounds, field names) is derived from the generated
-// request-body zod so it stays in sync with the backend on every SDK regen. We layer on only the
-// rules OpenAPI can't express: the non-empty required fields the form surfaces (with user-facing
-// copy — the generated schema types these as loose `z.string()`) and the distillation teacher-model
-// requirement. `output` is omitted because the form never collects it; `formToAutomodelCreate`
-// synthesizes it from `outputName`.
 const automodelBodySpec = CustomizationCreateAutomodelJobBody.shape.spec;
 const automodelSpecSchema = automodelBodySpec
   .omit({ output: true })
@@ -131,7 +125,6 @@ const automodelSpecSchema = automodelBodySpec
     }
   });
 
-// See {@link automodelSpecSchema}: derived structural validation plus the form-only non-empty copy.
 const unslothBodySpec = CustomizationCreateUnslothJobBody.shape.spec;
 const unslothSpecSchema = unslothBodySpec.omit({ output: true }).extend({
   model: unslothBodySpec.shape.model.extend({
