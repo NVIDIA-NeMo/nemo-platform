@@ -30,10 +30,19 @@ def test_volume_mounts_ready_when_all_bound() -> None:
     assert result.ready is True
 
 
-def test_volume_mounts_wait_when_pending() -> None:
+def test_volume_mounts_ready_when_pending() -> None:
     cfg = make_deployment_config()
     cfg.volume_mounts = [VolumeMount(name="data", mountPath="/data")]
     vol = make_volume("data")
     result = volume_mounts_ready(cfg, "default", {("default", "data"): vol})
+    assert result.ready is True
+
+
+def test_volume_mounts_failed_blocks() -> None:
+    cfg = make_deployment_config()
+    cfg.volume_mounts = [VolumeMount(name="data", mountPath="/data")]
+    vol = make_volume("data")
+    vol.status = "FAILED"
+    result = volume_mounts_ready(cfg, "default", {("default", "data"): vol})
     assert result.ready is False
-    assert "BOUND" in result.reason
+    assert "failed" in result.reason.lower()

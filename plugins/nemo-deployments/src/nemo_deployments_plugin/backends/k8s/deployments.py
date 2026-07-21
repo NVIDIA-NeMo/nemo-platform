@@ -77,6 +77,7 @@ def build_deployment_body(
     workspace: str,
     deployment_name: str,
     k8s_config: K8sDeploymentConfig | None,
+    executor_image_pull_secrets: list | None = None,
 ) -> BuiltDeployment:
     """Build an ``apps/v1.Deployment`` for create and its compiled workload."""
     k8s = k8s_client_module()
@@ -89,6 +90,7 @@ def build_deployment_body(
         labels=labels,
         k8s_config=k8s_config,
         pod_restart_policy="Always",
+        executor_image_pull_secrets=executor_image_pull_secrets,
     )
     deployment = k8s.client.V1Deployment(
         api_version="apps/v1",
@@ -224,6 +226,7 @@ async def create_deployment(
     labels: dict[str, str],
     backend_config: dict[str, Any],
     config: DeploymentConfig,
+    executor_image_pull_secrets: list | None = None,
 ) -> BackendStatusUpdate:
     resource_name = k8s_deployment_resource_name(workspace, name)
     try:
@@ -245,6 +248,7 @@ async def create_deployment(
             workspace=workspace,
             deployment_name=name,
             k8s_config=k8s_config,
+            executor_image_pull_secrets=executor_image_pull_secrets,
         )
         deployment_body = built.deployment
         compiled = built.compiled

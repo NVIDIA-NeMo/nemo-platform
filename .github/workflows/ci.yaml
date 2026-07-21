@@ -447,6 +447,7 @@ jobs:
           export NMP_BASE_URL="${NMP_E2E_CLUSTER_URL}"
           uv run --frozen pytest \
             e2e/test_jobs.py::test_job_using_secret_environment_variable \
+            e2e/test_models_deployments_plugin.py::test_generic_model_deployment_lifecycle \
             -v \
             --run-e2e \
             --no-cov \

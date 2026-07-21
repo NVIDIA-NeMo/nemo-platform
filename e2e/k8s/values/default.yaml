@@ -1,9 +1,5 @@
 # Default E2E values for running tests in a Kubernetes cluster, for ephemeral testing
 
-# Always disable nim operator for E2E tests
-k8s-nim-operator:
-  enabled: false
-
 postgresql:
   image:
     repository: docker.io/library/postgres

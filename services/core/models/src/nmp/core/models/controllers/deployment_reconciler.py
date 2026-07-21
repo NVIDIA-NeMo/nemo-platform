@@ -17,6 +17,7 @@ from nemo_platform.types.inference.model_provider import ModelProvider
 from nmp.common.entities.utils import parse_entity_ref
 from nmp.core.models.config import ControllerConfig
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate, ServiceBackend
+from nmp.core.models.controllers.backends.common import deleting_elapsed_seconds
 from nmp.core.models.controllers.backends.registry import BackendRegistry
 from nmp.core.models.controllers.context import ModelContext
 
@@ -228,7 +229,11 @@ class ModelDeploymentReconciler:
                     case "DELETING":
                         await self._reconcile_individual_deployment(
                             deployment,
-                            lambda d: backend.delete_model_deployment(d.workspace, d.name),
+                            lambda d: backend.delete_model_deployment(
+                                d.workspace,
+                                d.name,
+                                deleting_elapsed_seconds=deleting_elapsed_seconds(d),
+                            ),
                             "delete",
                             existing_provider=ctx.model_provider,
                         )

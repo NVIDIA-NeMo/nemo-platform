@@ -18,7 +18,7 @@ These tests verify the full pipeline:
 2. Model spec task updates model entity via API → retrieve preserves spec
 3. _compile_env_vars produces correct NIM_* env vars from real entities
 
-Unlike the unit tests in test_docker_backend.py (which use MagicMock),
+Unlike the removed docker backend unit tests (which used MagicMock),
 these tests use:
 - Real Pydantic ModelSpec / ToolCallConfig objects for the merge step
 - The actual Models API (via in-memory test client) for the CRUD step
@@ -32,15 +32,18 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from nmp.common.config import Runtime
 from nmp.common.files.metadata import FilesetMetadata, ModelMetadataContent, ToolCallingMetadataContent
+from nmp.core.models.app import ModelWeightsType, get_model_weights_type
 from nmp.core.models.config import config as models_config
-from nmp.core.models.controllers.backends.docker.backend import DockerServiceBackend
-from nmp.core.models.controllers.backends.docker.creation_reconciler import DockerDeploymentCreationReconciler
-from nmp.core.models.controllers.backends.k8s_nim_operator.config import K8sNimOperatorConfig
-from nmp.core.models.controllers.backends.k8s_nim_operator.nimservice_compiler import (
-    TOOL_CALL_PLUGIN_PATH,
-    compile_nimservice,
+from nmp.core.models.controllers.backends.common import deployment_config_view
+from nmp.core.models.controllers.backends.deployments_plugin.compiler import compile_model_deployment
+from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
+from nmp.core.models.controllers.backends.deployments_plugin.nim_compiler import (
+    _TOOL_CALL_PLUGIN_PATH,
+    compile_nim_server_env,
 )
+from nmp.core.models.controllers.backends.deployments_plugin.resolve import ResolvedPluginDeployment
 from nmp.core.models.schemas import (
     ContainerExecutorConfig,
     ModelDeploymentConfigModelSpec,
@@ -109,34 +112,69 @@ def _set_llama_config(config, *, chat_template=None, tool_call_config=None) -> N
     )
 
 
+def _resolved_plugin(
+    config, model_entity, deployment, *, runtime: Runtime = Runtime.DOCKER
+) -> ResolvedPluginDeployment:
+    view = deployment_config_view(config)
+    return ResolvedPluginDeployment(
+        deployment=deployment,
+        config=config,
+        model_entity=model_entity,
+        view=view,
+        weights_type=get_model_weights_type(
+            model_deployment=deployment,
+            model_deployment_config=config,
+            model_entity=model_entity,
+        ),
+        model_namespace=view.model_namespace,
+        model_name=view.model_name,
+        model_revision=view.model_revision,
+        files_hf_url="http://testserver/apis/files/v2/hf",
+        huggingface_model_puller="nvcr.io/nvidia/model-puller:latest",
+        runtime=runtime,
+    )
+
+
+def _compile_nim_env(
+    config,
+    model_entity,
+    deployment,
+    *,
+    weighted: bool = False,
+    tool_call_plugin_path: str | None = None,
+) -> dict[str, str]:
+    return compile_nim_server_env(
+        _resolved_plugin(config, model_entity, deployment),
+        DeploymentsPluginConfig(),
+        weighted=weighted,
+        tool_call_plugin_path=tool_call_plugin_path,
+    )
+
+
+def _compile_k8s_deployment(config, model_entity, deployment):
+    view = deployment_config_view(config)
+    resolved = ResolvedPluginDeployment(
+        deployment=deployment,
+        config=config,
+        model_entity=model_entity,
+        view=view,
+        weights_type=ModelWeightsType.FILES_SERVICE,
+        model_namespace=view.model_namespace,
+        model_name=view.model_name,
+        model_revision=view.model_revision,
+        files_hf_url="http://testserver/apis/files/v2/hf",
+        huggingface_model_puller="nvcr.io/nvidia/model-puller:latest",
+        runtime=Runtime.KUBERNETES,
+    )
+    return compile_model_deployment(
+        resolved,
+        DeploymentsPluginConfig(busybox_image="busybox", busybox_image_tag="latest"),
+    )
+
+
 # ============================================================================
 # Fixtures
 # ============================================================================
-
-
-@pytest.fixture
-def docker_backend():
-    """Create a DockerServiceBackend with mocked internals."""
-    with (
-        patch("nmp.core.models.controllers.backends.docker.backend.docker.from_env") as mock_docker,
-        patch("nmp.core.models.controllers.backends.docker.backend.SharedResourceManager"),
-    ):
-        mock_docker.return_value = MagicMock()
-        backend = DockerServiceBackend.__new__(DockerServiceBackend)
-        backend._client = mock_docker.return_value
-        backend._backend_config = MagicMock()
-        backend._backend_config.nim_guided_decoding_backend = "outlines"
-        backend._backend_config.peft_source = "/scratch/loras"
-        backend._backend_config.peft_refresh_interval = 60
-        backend._backend_config.models_docker_host_service_name = "localhost"
-        backend._gpu_pool = None
-        backend._reconciler = DockerDeploymentCreationReconciler(
-            client=backend._client,
-            backend_config=backend._backend_config,
-            nmp_sdk=MagicMock(),
-            gpu_pool=backend._gpu_pool,
-        )
-        yield backend
 
 
 @pytest.fixture
@@ -556,8 +594,7 @@ class TestMergeFilesetMetadata:
 # ============================================================================
 
 
-@pytest.mark.asyncio
-async def test_pipeline_fileset_metadata_to_env_vars(docker_backend, sample_deployment):
+def test_pipeline_fileset_metadata_to_env_vars(sample_deployment):
     """End-to-end: fileset metadata → ModelSpec merge → _compile_env_vars.
 
     1. Start with a bare ModelSpec.
@@ -597,11 +634,11 @@ async def test_pipeline_fileset_metadata_to_env_vars(docker_backend, sample_depl
     config = MagicMock()
     _set_llama_config(config)
 
-    env_vars = await docker_backend._reconciler._compile_env_vars(
-        sample_deployment,
+    env_vars = _compile_nim_env(
         config,
-        model_entity=model_entity,
-        is_multi_llm=True,
+        model_entity,
+        sample_deployment,
+        weighted=True,
     )
 
     assert env_vars["NIM_CHAT_TEMPLATE"] == SAMPLE_CHAT_TEMPLATE
@@ -610,8 +647,7 @@ async def test_pipeline_fileset_metadata_to_env_vars(docker_backend, sample_depl
     assert "NIM_TOOL_PARSER_PLUGIN" not in env_vars
 
 
-@pytest.mark.asyncio
-async def test_pipeline_deployment_overrides_fileset_values(docker_backend, sample_deployment):
+def test_pipeline_deployment_overrides_fileset_values(sample_deployment):
     """End-to-end: deployment config overrides values merged from fileset."""
     model_spec = ModelSpec(**MINIMAL_SPEC)
     fileset = SimpleNamespace(
@@ -644,11 +680,11 @@ async def test_pipeline_deployment_overrides_fileset_values(docker_backend, samp
         },
     )
 
-    env_vars = await docker_backend._reconciler._compile_env_vars(
-        sample_deployment,
+    env_vars = _compile_nim_env(
         config,
-        model_entity=model_entity,
-        is_multi_llm=True,
+        model_entity,
+        sample_deployment,
+        weighted=True,
     )
 
     # Deployment-level values should win over fileset values
@@ -657,8 +693,7 @@ async def test_pipeline_deployment_overrides_fileset_values(docker_backend, samp
     assert env_vars["NIM_ENABLE_AUTO_TOOL_CHOICE"] == "1"
 
 
-@pytest.mark.asyncio
-async def test_pipeline_mixed_sources(docker_backend, sample_deployment):
+def test_pipeline_mixed_sources(sample_deployment):
     """End-to-end: chat_template from fileset, tool_call_config from deployment."""
     model_spec = ModelSpec(**MINIMAL_SPEC)
 
@@ -685,11 +720,11 @@ async def test_pipeline_mixed_sources(docker_backend, sample_deployment):
         tool_call_config={"tool_call_parser": "hermes", "auto_tool_choice": True},
     )
 
-    env_vars = await docker_backend._reconciler._compile_env_vars(
-        sample_deployment,
+    env_vars = _compile_nim_env(
         config,
-        model_entity=model_entity,
-        is_multi_llm=True,
+        model_entity,
+        sample_deployment,
+        weighted=True,
     )
 
     # chat_template from fileset (via model spec), tool config from deployment
@@ -698,8 +733,7 @@ async def test_pipeline_mixed_sources(docker_backend, sample_deployment):
     assert env_vars["NIM_ENABLE_AUTO_TOOL_CHOICE"] == "1"
 
 
-@pytest.mark.asyncio
-async def test_pipeline_plugin_path_flows_through(docker_backend, sample_deployment):
+def test_pipeline_plugin_path_flows_through(sample_deployment):
     """End-to-end: tool_call_plugin from fileset metadata → env var with plugin path."""
     model_spec = ModelSpec(**MINIMAL_SPEC)
 
@@ -727,11 +761,11 @@ async def test_pipeline_plugin_path_flows_through(docker_backend, sample_deploym
     config = MagicMock()
     _set_llama_config(config)
 
-    env_vars = await docker_backend._reconciler._compile_env_vars(
-        sample_deployment,
+    env_vars = _compile_nim_env(
         config,
-        model_entity=model_entity,
-        is_multi_llm=True,
+        model_entity,
+        sample_deployment,
+        weighted=True,
         tool_call_plugin_path="/model-store/tool_call_plugin/my_plugin.py",
     )
 
@@ -741,8 +775,7 @@ async def test_pipeline_plugin_path_flows_through(docker_backend, sample_deploym
     assert env_vars["NIM_ENABLE_AUTO_TOOL_CHOICE"] == "1"
 
 
-@pytest.mark.asyncio
-async def test_pipeline_no_fileset_metadata_no_deployment_overrides(docker_backend, sample_deployment):
+def test_pipeline_no_fileset_metadata_no_deployment_overrides(sample_deployment):
     """End-to-end: no fileset metadata, no deployment overrides → no tool env vars."""
     model_spec = ModelSpec(**MINIMAL_SPEC)
 
@@ -760,11 +793,11 @@ async def test_pipeline_no_fileset_metadata_no_deployment_overrides(docker_backe
     config = MagicMock()
     _set_llama_config(config)
 
-    env_vars = await docker_backend._reconciler._compile_env_vars(
-        sample_deployment,
+    env_vars = _compile_nim_env(
         config,
-        model_entity=model_entity,
-        is_multi_llm=True,
+        model_entity,
+        sample_deployment,
+        weighted=True,
     )
 
     assert "NIM_CHAT_TEMPLATE" not in env_vars
@@ -794,40 +827,19 @@ def test_k8s_nimservice_adds_plugin_init_containers_from_model_entity(sample_dep
     config.entity_version = "v1"
     _set_llama_config(config)
 
-    platform_config = SimpleNamespace(
-        image_pull_secrets=[],
-        to_shared_envvars=lambda: {},
-        get_service_url=lambda _svc: "http://files:8000",
-    )
-    with (
-        patch(
-            "nmp.core.models.controllers.backends.k8s_nim_operator.nimservice_compiler.get_platform_config",
-            return_value=platform_config,
-        ),
-    ):
-        nimservice = compile_nimservice(
-            deployment=sample_deployment,
-            config=config,
-            backend_config=K8sNimOperatorConfig(busybox_image="busybox", busybox_image_tag="latest"),
-            k8s_namespace="default",
-            resource_name="md-integ-k8s-entity-plugin",
-            model_entity=model_entity,
-            huggingface_model_puller="nvcr.io/nvidia/model-puller:latest",
-        )
+    compiled = _compile_k8s_deployment(config, model_entity, sample_deployment)
 
-    assert nimservice.spec.initContainers is not None
-    assert len(nimservice.spec.initContainers) == 3
-    pull_container = nimservice.spec.initContainers[1]
+    assert len(compiled.server_config.init_containers) == 3
+    pull_container = compiled.server_config.init_containers[1]
     assert pull_container.command == ["download", "default/entity-plugin-fileset", "--local-dir", "/scratch/plugin"]
 
-    env_dict = {env.name: env.value for env in nimservice.spec.env if env.value}
-    assert env_dict["NIM_GUIDED_DECODING_BACKEND"] == "outlines"
-    assert env_dict["NIM_MODEL_NAME"] == "meta/llama-3.2-1b-instruct"
+    env_dict = {item.name: item.value for item in compiled.server_config.containers[0].env}
+    assert env_dict["NIM_MODEL_NAME"] == "/model-store"
     assert env_dict["NIM_SERVED_MODEL_NAME"] == "meta/llama-3.2-1b-instruct"
     assert env_dict["NMP_MODEL_ENTITY_WORKSPACE"] == DEFAULT_WORKSPACE
     assert env_dict["NMP_MODEL_ENTITY_NAME"] == "integ-k8s-entity-plugin-model"
     assert env_dict["NIM_TOOL_CALL_PARSER"] == "entity-parser"
-    assert env_dict["NIM_TOOL_PARSER_PLUGIN"] == TOOL_CALL_PLUGIN_PATH
+    assert env_dict["NIM_TOOL_PARSER_PLUGIN"] == _TOOL_CALL_PLUGIN_PATH
     assert env_dict["NIM_ENABLE_AUTO_TOOL_CHOICE"] == "1"
 
 
@@ -859,38 +871,17 @@ def test_k8s_nimservice_deployment_tool_config_takes_priority(sample_deployment)
         },
     )
 
-    platform_config = SimpleNamespace(
-        image_pull_secrets=[],
-        to_shared_envvars=lambda: {},
-        get_service_url=lambda _svc: "http://files:8000",
-    )
-    with (
-        patch(
-            "nmp.core.models.controllers.backends.k8s_nim_operator.nimservice_compiler.get_platform_config",
-            return_value=platform_config,
-        ),
-    ):
-        nimservice = compile_nimservice(
-            deployment=sample_deployment,
-            config=config,
-            backend_config=K8sNimOperatorConfig(busybox_image="busybox", busybox_image_tag="latest"),
-            k8s_namespace="default",
-            resource_name="md-integ-k8s-priority",
-            model_entity=model_entity,
-            huggingface_model_puller="nvcr.io/nvidia/model-puller:latest",
-        )
+    compiled = _compile_k8s_deployment(config, model_entity, sample_deployment)
 
-    assert nimservice.spec.initContainers is not None
-    assert len(nimservice.spec.initContainers) == 3
-    pull_container = nimservice.spec.initContainers[1]
+    assert len(compiled.server_config.init_containers) == 3
+    pull_container = compiled.server_config.init_containers[1]
     assert pull_container.command == ["download", "default/deployment-plugin-fileset", "--local-dir", "/scratch/plugin"]
 
-    env_dict = {env.name: env.value for env in nimservice.spec.env if env.value}
-    assert env_dict["NIM_GUIDED_DECODING_BACKEND"] == "outlines"
-    assert env_dict["NIM_MODEL_NAME"] == "meta/llama-3.2-1b-instruct"
+    env_dict = {item.name: item.value for item in compiled.server_config.containers[0].env}
+    assert env_dict["NIM_MODEL_NAME"] == "/model-store"
     assert env_dict["NIM_SERVED_MODEL_NAME"] == "meta/llama-3.2-1b-instruct"
     assert env_dict["NMP_MODEL_ENTITY_WORKSPACE"] == DEFAULT_WORKSPACE
     assert env_dict["NMP_MODEL_ENTITY_NAME"] == "integ-k8s-priority-model"
     assert env_dict["NIM_TOOL_CALL_PARSER"] == "deployment-parser"
-    assert env_dict["NIM_TOOL_PARSER_PLUGIN"] == TOOL_CALL_PLUGIN_PATH
+    assert env_dict["NIM_TOOL_PARSER_PLUGIN"] == _TOOL_CALL_PLUGIN_PATH
     assert env_dict["NIM_ENABLE_AUTO_TOOL_CHOICE"] == "1"

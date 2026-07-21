@@ -249,9 +249,9 @@ async def test_pending_timeout_escalates_stuck_deployment() -> None:
 
 
 @pytest.mark.asyncio
-async def test_delete_waits_for_server_before_config() -> None:
+async def test_delete_returns_deleting_when_server_still_exists() -> None:
     backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
-    backend._backend_config = DeploymentsPluginConfig(delete_wait_seconds=0.02, delete_poll_seconds=0.005)
+    backend.init()
     backend._entities = AsyncMock()
     server = Deployment(
         name="my-dep-server",
@@ -261,8 +261,10 @@ async def test_delete_waits_for_server_before_config() -> None:
     )
 
     async def _get(entity_type: type, name: str, workspace: str | None = None) -> Deployment:
-        del entity_type, name, workspace
-        return server
+        del entity_type, workspace
+        if name == "my-dep-server":
+            return server
+        raise NemoEntityNotFoundError("missing")
 
     backend._entities.get = AsyncMock(side_effect=_get)
     backend._entities.update = AsyncMock(side_effect=lambda entity: entity)
@@ -271,3 +273,107 @@ async def test_delete_waits_for_server_before_config() -> None:
     result = await backend.delete_model_deployment("default", "my-dep")
     assert result.status == "DELETING"
     backend._entities.delete.assert_not_called()
+    backend._entities.update.assert_awaited_once()
+    assert server.status == "DELETING"
+    assert server.desired_state == "STOPPED"
+
+
+@pytest.mark.asyncio
+async def test_delete_returns_deleting_without_blocking_poll() -> None:
+    backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
+    backend.init()
+    backend._entities = AsyncMock()
+    server = Deployment(
+        name="my-dep-server",
+        workspace="default",
+        deployment_config="my-dep-server",
+        status="READY",
+    )
+    backend._entities.get = AsyncMock(return_value=server)
+    backend._entities.update = AsyncMock(side_effect=lambda entity: entity)
+    backend._entities.delete = AsyncMock()
+
+    with patch("asyncio.sleep", AsyncMock()) as sleep_mock:
+        result = await backend.delete_model_deployment("default", "my-dep")
+
+    assert result.status == "DELETING"
+    sleep_mock.assert_not_called()
+    backend._entities.delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_delete_retries_on_next_call_when_deployment_still_exists() -> None:
+    backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
+    backend.init()
+    backend._entities = AsyncMock()
+    server = Deployment(
+        name="my-dep-server",
+        workspace="default",
+        deployment_config="my-dep-server",
+        status="DELETING",
+        desired_state="STOPPED",
+    )
+    seen_server = False
+
+    async def _get(entity_type: type, name: str, workspace: str | None = None) -> Deployment:
+        del entity_type, workspace
+        nonlocal seen_server
+        if name == "my-dep-server":
+            if not seen_server:
+                seen_server = True
+                return server
+            raise NemoEntityNotFoundError("missing")
+        raise NemoEntityNotFoundError("missing")
+
+    backend._entities.get = AsyncMock(side_effect=_get)
+    backend._entities.update = AsyncMock(side_effect=lambda entity: entity)
+    backend._entities.delete = AsyncMock()
+
+    first = await backend.delete_model_deployment("default", "my-dep")
+    assert first.status == "DELETING"
+
+    second = await backend.delete_model_deployment("default", "my-dep")
+    assert second.status == "DELETED"
+
+
+@pytest.mark.asyncio
+async def test_delete_completes_when_plugin_deployment_failed() -> None:
+    backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
+    backend.init()
+    backend._entities = AsyncMock()
+    server = Deployment(
+        name="my-dep-server",
+        workspace="default",
+        deployment_config="my-dep-server",
+        status="FAILED",
+        desired_state="STOPPED",
+    )
+    backend._entities.get = AsyncMock(return_value=server)
+    backend._entities.delete = AsyncMock()
+
+    result = await backend.delete_model_deployment("default", "my-dep")
+
+    assert result.status == "DELETED"
+    backend._entities.delete.assert_any_await(Deployment, name="my-dep-server", workspace="default")
+
+
+@pytest.mark.asyncio
+async def test_delete_escalates_to_error_after_deleting_timeout() -> None:
+    backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
+    backend.init()
+    backend._backend_config = DeploymentsPluginConfig(deleting_timeout_seconds=60)
+    backend._entities = AsyncMock()
+    server = Deployment(
+        name="my-dep-server",
+        workspace="default",
+        deployment_config="my-dep-server",
+        status="DELETING",
+    )
+    backend._entities.get = AsyncMock(return_value=server)
+    backend._entities.update = AsyncMock(side_effect=lambda entity: entity)
+
+    result = await backend.delete_model_deployment("default", "my-dep", deleting_elapsed_seconds=120)
+    assert result.status == "ERROR"
+    assert result.error_details is not None
+    assert result.error_details["reason"] == "deleting_timeout"
+    assert result.error_details["timeout_seconds"] == 60
