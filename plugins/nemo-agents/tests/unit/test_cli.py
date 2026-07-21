@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -12,6 +13,14 @@ import httpx
 import pytest
 from nemo_agents_plugin.cli import AgentsCLI
 from typer.testing import CliRunner
+
+
+class _ValidatedAgentConfig:
+    def __init__(self, config: dict[str, Any]) -> None:
+        self._config = config
+
+    def model_dump(self, *, exclude_none: bool = False) -> dict[str, Any]:
+        return self._config
 
 
 def _install_mock_transport(
@@ -85,6 +94,78 @@ def test_create_resolves_default_model_placeholder(tmp_path, placeholder: str) -
     assert result.exit_code == 0, result.stderr
     sent = _json.loads(captured["body"])
     assert sent["config"]["llms"]["llm"]["model_name"] == "nvidia-nemotron-3-super-v3"
+    assert sent["config_format"] == "nat-workflow-v1"
+
+
+def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
+    import json as _json
+
+    config = tmp_path / "agent.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "config_format: nemo-agents-spec-v1",
+                "name: fabric-agent",
+                "default_harness: hermes",
+                "harnesses:",
+                "  hermes:",
+                "    kind: hermes",
+                "",
+            ]
+        )
+    )
+    normalized_config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "hermes",
+        "harnesses": {"hermes": {"kind": "hermes", "settings": {}}},
+        "environment": {"provider": "local"},
+    }
+    captured: dict[str, Any] = {}
+
+    async def _validate_platform_agent_config(config_dict: dict[str, Any], *, base_dir: Path):
+        captured["validated_config"] = config_dict
+        captured["base_dir"] = base_dir
+        return type("ValidationResult", (), {"agent_config": _ValidatedAgentConfig(normalized_config)})()
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = req.read()
+        return httpx.Response(200, json={"name": "fabric-agent"})
+
+    app = AgentsCLI().get_cli()
+    with (
+        _install_mock_transport(handler),
+        patch("nemo_agents_plugin.fabric.validation.validate_platform_agent_config", _validate_platform_agent_config),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["create", "--name", "fabric-agent", "--agent-config", str(config), "--base-url", "http://test"],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    sent = _json.loads(captured["body"])
+    assert captured["base_dir"] == tmp_path
+    assert captured["validated_config"]["config_format"] == "nemo-agents-spec-v1"
+    assert sent["config"] == normalized_config
+    assert sent["config_format"] == "nemo-agents-spec-v1"
+
+
+def test_create_rejects_unsupported_config_format(tmp_path) -> None:
+    config = tmp_path / "agent.yaml"
+    config.write_text("config_format: custom-v2\nname: custom-agent\n")
+
+    def handler(_req: httpx.Request) -> httpx.Response:
+        raise AssertionError("should not POST unsupported config_format")
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            ["create", "--name", "custom-agent", "--agent-config", str(config), "--base-url", "http://test"],
+        )
+
+    assert result.exit_code == 1
+    assert "unsupported config_format 'custom-v2'" in result.stderr
 
 
 @pytest.mark.parametrize("placeholder", ["${NEMO_DEFAULT_MODEL}", "$NEMO_DEFAULT_MODEL"])

@@ -33,6 +33,7 @@ group at startup.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -57,7 +58,11 @@ from nemo_agents_plugin.cli_context import (
 from nemo_agents_plugin.cli_context import (
     resolve_context_headers as _resolve_context_headers,
 )
-from nemo_agents_plugin.entities import CONTAINER_DEPLOYMENT_MODES
+from nemo_agents_plugin.entities import (
+    CONTAINER_DEPLOYMENT_MODES,
+    NAT_WORKFLOW_CONFIG_FORMAT,
+    NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+)
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
 from nemo_agents_plugin.usage.cli import register_usage_commands
 from nemo_platform.cli.core.formatters import Column, format_output
@@ -119,7 +124,7 @@ class AgentsCLI(NemoCLI):
 
 
 def _register_local_commands(app: typer.Typer) -> None:
-    """Register local NAT-wrapper commands onto *app*."""
+    """Register local agent commands onto *app*."""
 
     @app.command(rich_help_panel="Local commands")
     def invoke(
@@ -127,7 +132,7 @@ def _register_local_commands(app: typer.Typer) -> None:
             None,
             "--agent-config",
             "-c",
-            help="Path to a NAT workflow YAML config file for local execution.",
+            help="Path to an agent YAML config file.",
             exists=True,
             file_okay=True,
             dir_okay=False,
@@ -199,7 +204,7 @@ def _register_local_commands(app: typer.Typer) -> None:
             ...,
             "--agent-config",
             "-c",
-            help="Path to a NAT workflow YAML config file.",
+            help="Path to an agent YAML config file.",
             exists=True,
             file_okay=True,
             dir_okay=False,
@@ -252,7 +257,7 @@ def _register_package_command(app: typer.Typer) -> None:
             ...,
             "--agent",
             "-c",
-            help="Path to a NAT workflow YAML config file.",
+            help="Path to an agent YAML config file.",
             exists=True,
             file_okay=True,
             dir_okay=False,
@@ -634,7 +639,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
             ...,
             "--agent-config",
             "-c",
-            help="Path to a NAT workflow YAML config file.",
+            help="Path to an agent YAML config file.",
             exists=True,
             file_okay=True,
             dir_okay=False,
@@ -648,18 +653,30 @@ def _register_platform_commands(app: typer.Typer) -> None:
         from nemo_agents_plugin.utils import inject_default_model
 
         config_dict = _load_yaml(agent_config)
-        # Resolve ${NEMO_DEFAULT_MODEL} client-side — agents service has no
-        # user context at deploy time.
-        config_dict = inject_default_model(config_dict)
-        if _contains_default_model_placeholder(config_dict):
-            typer.echo(
-                "Error: agent config references ${NEMO_DEFAULT_MODEL} but no "
-                "default model is selected. Run `nemo setup` to pick one, or "
-                "replace the placeholder in the config with an explicit model name.",
-                err=True,
-            )
+        config_format = config_dict.get("config_format", NAT_WORKFLOW_CONFIG_FORMAT)
+        if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+            config_dict = _validate_platform_agent_config_for_cli(config_dict, base_dir=agent_config.parent)
+        elif config_format == NAT_WORKFLOW_CONFIG_FORMAT:
+            # Resolve ${NEMO_DEFAULT_MODEL} client-side — agents service has no
+            # user context at deploy time.
+            config_dict = inject_default_model(config_dict)
+            if _contains_default_model_placeholder(config_dict):
+                typer.echo(
+                    "Error: agent config references ${NEMO_DEFAULT_MODEL} but no "
+                    "default model is selected. Run `nemo setup` to pick one, or "
+                    "replace the placeholder in the config with an explicit model name.",
+                    err=True,
+                )
+                raise typer.Exit(code=1)
+        else:
+            typer.echo(f"Error: unsupported config_format {config_format!r}", err=True)
             raise typer.Exit(code=1)
-        payload = {"name": name, "description": description, "config": config_dict}
+        payload = {
+            "name": name,
+            "description": description,
+            "config": config_dict,
+            "config_format": config_format,
+        }
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents", json_body=payload)
         typer.echo(json.dumps(resp, indent=2))
 
@@ -1403,3 +1420,15 @@ def _contains_default_model_placeholder(value: Any) -> bool:
     if isinstance(value, list):
         return any(_contains_default_model_placeholder(v) for v in value)
     return False
+
+
+def _validate_platform_agent_config_for_cli(config: dict[str, Any], *, base_dir: Path) -> dict[str, Any]:
+    from nemo_agents_plugin.fabric.validation import FabricValidationError, validate_platform_agent_config
+
+    try:
+        validation_result = asyncio.run(validate_platform_agent_config(config, base_dir=base_dir))
+    except FabricValidationError as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=1) from error
+
+    return validation_result.agent_config.model_dump(exclude_none=True)
