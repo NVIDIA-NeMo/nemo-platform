@@ -53,11 +53,12 @@ export const DeploymentLogsView: FC<DeploymentLogsViewProps> = ({ workspace, dep
       </Stack>
     );
   }
+  const pOffset = '2';
 
   return (
-    <Stack className="h-full min-h-0" gap="0">
+    <Stack className="h-full min-h-0" gap="2">
       {sortedDeployments.length > 1 && (
-        <Block padding="4" className="border-b border-base shrink-0">
+        <Block className="shrink-0" paddingX={pOffset}>
           <Select
             value={selectedName ?? ''}
             items={sortedDeployments.flatMap((d) =>
@@ -74,7 +75,7 @@ export const DeploymentLogsView: FC<DeploymentLogsViewProps> = ({ workspace, dep
           />
         </Block>
       )}
-      <Block className="flex-1 min-h-0 overflow-auto" padding="4">
+      <Block className="flex-1 min-h-0 overflow-auto" paddingX={pOffset}>
         {selectedName ? (
           <LogsForDeployment workspace={workspace} deploymentName={selectedName} />
         ) : null}
