@@ -197,6 +197,40 @@ class SQLAlchemyEntityRepository(EntityRepositoryInterface):
 
             return entities, total
 
+    async def count_entities_by(
+        self,
+        *,
+        workspace: str,
+        entity_type: str,
+        group_by: str,
+        filter_op: FilterOperation | None = None,
+        relationship_child_workspaces: set[str] | None = None,
+        session: AsyncSession | None = None,
+    ) -> dict[str, int]:
+        """Count filtered entities grouped by a scalar field."""
+        async with self._get_session(session) as sess:
+            filter_repo = SQLAlchemyFilterRepository(
+                DBEntity, relationship_child_workspaces=relationship_child_workspaces
+            )
+            group_column, is_json = filter_repo.get_text_column(group_by)
+            group_counts = (
+                select(group_column, func.count()).select_from(DBEntity).where(DBEntity.entity_type == entity_type)
+            )
+
+            if workspace != ALL_WORKSPACES:
+                group_counts = group_counts.where(DBEntity.workspace == workspace)
+
+            if filter_op is not None:
+                group_counts = group_counts.where(filter_op.apply(filter_repo))
+
+            group_counts = group_counts.where(group_column.is_not(None))
+            if is_json:
+                group_counts = group_counts.where(group_column != "null")
+            group_counts = group_counts.group_by(group_column)
+
+            rows = (await sess.execute(group_counts)).all()
+            return {str(key): int(count) for key, count in rows}
+
     async def update_entity(
         self,
         *,
