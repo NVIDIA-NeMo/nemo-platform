@@ -77,6 +77,26 @@ RUN --mount=from=ffmpeg-vlm-wheel-src,target=/tmp/ffmpeg-vlm-wheel-src,readonly 
         /tmp/ffmpeg-vlm-wheel-src/wheels/opencv_python_headless-*cp313*.whl \
         /tmp/ffmpeg-vlm-wheel-src/wheels/decord2-*cp313*.whl
 
+# Replace Pillow copies that can be left in the inherited NeMo-RL venv/uv cache.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    set -e; \
+    for site in ${VIRTUAL_ENV}/lib/python*/site-packages; do \
+        [ -d "${site}" ] || continue; \
+        rm -rf \
+            "${site}/PIL" \
+            "${site}/pillow.libs" \
+            "${site}"/pillow-*.dist-info; \
+    done; \
+    for archive in /root/.cache/uv/archive-v0/*; do \
+        [ -d "${archive}" ] || continue; \
+        if [ -e "${archive}/pillow.libs" ] || \
+           [ -e "${archive}/pillow-12.2.0.dist-info" ]; then \
+            rm -rf "${archive}"; \
+        fi; \
+    done; \
+    uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache --no-deps --reinstall \
+        "pillow>=12.3.0,<13"
+
 # The NeMo-RL base venv ships some packages with missing dist-info METADATA (a
 # known property of the image — the package code is present, only uv's metadata
 # file is gone). Normal `uv pip install` reads ALL installed metadata during

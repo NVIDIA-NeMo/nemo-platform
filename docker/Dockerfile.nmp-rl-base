@@ -26,6 +26,15 @@ ENV VIRTUAL_ENV=/opt/nemo_rl_venv \
 # editable installs in the training image can write.
 RUN chmod 755 /root /root/.cache /root/.cache/uv /root/.local /root/.local/share /root/.local/share/uv 2>/dev/null || true
 
+# CVE remediation for fixable Ubuntu packages inherited from the NeMo-RL base.
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade \
+        libssl3t64 \
+        openssl \
+        rsync && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 # NeMo-RL is installed EDITABLE in this base: its source tree lives at
 # /opt/nemo-rl (root-owned, non-traversable) and the editable import finder
 # os.stat()s files under it at import time. The training image drops to

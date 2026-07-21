@@ -168,6 +168,9 @@ RUN rm -rf \
     /usr/local/lib/python3.12/dist-packages/mlflow \
     /usr/local/lib/python3.12/dist-packages/mlflow-*.dist-info \
     /usr/local/lib/python3.12/dist-packages/mlflow_skinny-*.dist-info \
+    /usr/local/lib/python3.12/dist-packages/PIL \
+    /usr/local/lib/python3.12/dist-packages/pillow.libs \
+    /usr/local/lib/python3.12/dist-packages/pillow-*.dist-info \
     /usr/local/lib/python3.12/dist-packages/mistune \
     /usr/local/lib/python3.12/dist-packages/mistune-*.dist-info \
     /usr/local/lib/python3.12/dist-packages/soupsieve \
