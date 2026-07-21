@@ -23,11 +23,13 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 import yaml
 from nemo_agents_plugin.config import AgentsConfig, ControllerConfig
+from nemo_agents_plugin.fabric.runtime import FabricRuntimeHandle
 from nemo_agents_plugin.runner.in_memory import InMemoryRunnerBackend, _resolve_nat_bin
 from nemo_platform_plugin.config import Configuration, nmp_user_data_dir
 
@@ -185,6 +187,71 @@ async def test_create_deployment_records_log_path(tmp_path: Path) -> None:
     assert Path(info.log_path).exists()
     assert info.pid == 4242
     assert info.status == "starting"
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_starts_fabric_runtime_for_platform_agent_config(tmp_path: Path) -> None:
+    backend = _backend(tmp_path)
+    config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "hermes",
+        "harnesses": {"hermes": {"kind": "hermes"}},
+        "models": {"default": {"provider": "openai", "model": "openai/gpt-5.4"}},
+    }
+    start_calls: list[Any] = []
+    fake_handle = FabricRuntimeHandle(runtime=object(), context_manager=object(), runtime_id="runtime-1")
+
+    async def _start_fabric_agent_runtime(request: Any) -> FabricRuntimeHandle:
+        start_calls.append(request)
+        return fake_handle
+
+    with (
+        patch("nemo_agents_plugin.runner.in_memory.translate_agent_config", return_value=object()),
+        patch("nemo_agents_plugin.runner.in_memory.start_fabric_agent_runtime", _start_fabric_agent_runtime),
+    ):
+        info = await backend.create_deployment("ws", "fabric-dep", config, port=0)
+
+    assert info.status == "running"
+    assert info.extra["runtime"] == "fabric"
+    assert info.extra["runtime_id"] == "runtime-1"
+    assert Path(info.log_path).exists()
+    assert start_calls[0].base_dir == tmp_path / "system" / "ws" / "fabric-dep-fabric"
+    status = await backend.get_deployment_status("ws", "fabric-dep")
+    assert status is info
+
+
+@pytest.mark.asyncio
+async def test_delete_deployment_stops_fabric_runtime(tmp_path: Path) -> None:
+    backend = _backend(tmp_path)
+    config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "hermes",
+        "harnesses": {"hermes": {"kind": "hermes"}},
+        "models": {"default": {"provider": "openai", "model": "openai/gpt-5.4"}},
+    }
+    fake_handle = FabricRuntimeHandle(runtime=object(), context_manager=object(), runtime_id="runtime-1")
+    stopped: list[FabricRuntimeHandle] = []
+
+    async def _start_fabric_agent_runtime(request: Any) -> FabricRuntimeHandle:
+        del request
+        return fake_handle
+
+    async def _stop_fabric_agent_runtime(handle: FabricRuntimeHandle) -> None:
+        stopped.append(handle)
+
+    with (
+        patch("nemo_agents_plugin.runner.in_memory.translate_agent_config", return_value=object()),
+        patch("nemo_agents_plugin.runner.in_memory.start_fabric_agent_runtime", _start_fabric_agent_runtime),
+        patch("nemo_agents_plugin.runner.in_memory.stop_fabric_agent_runtime", _stop_fabric_agent_runtime),
+    ):
+        await backend.create_deployment("ws", "fabric-dep", config, port=0)
+        cleaned = await backend.delete_deployment("ws", "fabric-dep")
+
+    assert cleaned is True
+    assert stopped == [fake_handle]
+    assert await backend.get_deployment_status("ws", "fabric-dep") is None
 
 
 # ---------------------------------------------------------------------------

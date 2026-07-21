@@ -27,7 +27,7 @@ group at startup.
 - ``delete``       — delete an agent
 - ``deploy``       — create a deployment for an agent (waits for ``running`` by default)
 - ``undeploy``     — stop and remove a deployment
-- ``logs``         — print or tail the subprocess log file for a deployment
+- ``logs``         — print or tail the local deployment log file
 - ``deployments``  — sub-group: list / get / delete deployments
 """
 
@@ -758,8 +758,8 @@ def _register_platform_commands(app: typer.Typer) -> None:
             help=(
                 "Wait for the deployment to reach a terminal status (running or failed) "
                 "before returning.  Exits 0 only on running; exits 1 with the failure "
-                "reason if the subprocess dies during startup or the health check times "
-                "out.  Pass --no-wait for fire-and-forget behaviour (the original "
+                "reason if runtime startup fails or readiness times out. "
+                "Pass --no-wait for fire-and-forget behaviour (the original "
                 "default — returns the pending deployment immediately as JSON)."
             ),
         ),
@@ -776,7 +776,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
 
         Blocks until the deployment is ``running`` (exit 0) or ``failed`` /
         timed out (exit 1) by default, so the exit code reflects the actual
-        outcome of the spawn instead of merely the API call.  Use
+        outcome of runtime startup instead of merely the API call.  Use
         ``--no-wait`` to keep the previous fire-and-forget behaviour for
         scripted pipelines that prefer to poll separately via ``nemo agents
         deployments wait``.
@@ -859,13 +859,14 @@ def _register_platform_commands(app: typer.Typer) -> None:
     ) -> None:
         """Show logs for an agent deployment.
 
-        Reads the subprocess log file written by the local in-memory runner
-        backend.  The log file location is the same convention the backend
-        uses internally: ``nmp_user_data_dir() / 'agents' / 'system' /
-        <deployment-name>.log`` by default.  This command is therefore only
-        meaningful when the CLI runs on the same host as the platform — once
-        a remote backend lands, log retrieval should move to a server-side
-        endpoint.
+        Reads the log file written by the local in-memory runner backend.
+        NAT subprocess deployments write process output there; Fabric-backed
+        deployments write runtime lifecycle entries there. The log file
+        location is the same convention the backend uses internally:
+        ``nmp_user_data_dir() / 'agents' / 'system' / <deployment-name>.log``
+        by default. This command is therefore only meaningful when the CLI runs
+        on the same host as the platform — once a remote backend lands, log
+        retrieval should move to a server-side endpoint.
 
         With ``--follow`` (``-f``), this command behaves like ``tail -f`` and
         streams new output until interrupted with Ctrl-C.

@@ -42,6 +42,27 @@ class FabricRuntimeRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class FabricRuntimeStartRequest:
+    """Platform-owned request for starting a managed Fabric runtime."""
+
+    fabric_config: FabricConfig
+    base_dir: Path | str
+    overrides: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FabricRuntimeHandle:
+    """Handle for a Fabric runtime kept alive by the Platform deployment backend."""
+
+    # Deployment start/stop happen in separate controller cycles, so this stores
+    # the async context manager that `async with await start_runtime(...)` would
+    # normally enter and exit in one lexical block.
+    runtime: Any
+    context_manager: Any
+    runtime_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class FabricRuntimeResult:
     """Platform-normalized result for one Fabric runtime invocation.
 
@@ -68,6 +89,39 @@ class FabricRuntimeExecutionError(RuntimeError):
 
 class FabricRuntimeTimeoutError(FabricRuntimeExecutionError):
     """Raised when a Fabric runtime invocation exceeds the Platform timeout."""
+
+
+async def start_fabric_agent_runtime(
+    request: FabricRuntimeStartRequest,
+    *,
+    fabric: Any | None = None,
+) -> FabricRuntimeHandle:
+    """Start a managed Fabric runtime and return a handle that must be stopped."""
+    fabric_client = fabric or Fabric()
+
+    try:
+        context_manager = await fabric_client.start_runtime(
+            request.fabric_config,
+            base_dir=request.base_dir,
+            overrides=request.overrides,
+        )
+        runtime = await context_manager.__aenter__()
+    except FabricError as error:
+        raise FabricRuntimeExecutionError(f"Fabric runtime start failed: {error}") from error
+
+    return FabricRuntimeHandle(
+        runtime=runtime,
+        context_manager=context_manager,
+        runtime_id=getattr(runtime, "runtime_id", None),
+    )
+
+
+async def stop_fabric_agent_runtime(handle: FabricRuntimeHandle) -> None:
+    """Stop a managed Fabric runtime previously returned by start_fabric_agent_runtime."""
+    try:
+        await handle.context_manager.__aexit__(None, None, None)
+    except FabricError as error:
+        raise FabricRuntimeExecutionError(f"Fabric runtime stop failed: {error}") from error
 
 
 async def run_fabric_agent_once(

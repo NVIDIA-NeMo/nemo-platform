@@ -14,8 +14,11 @@ from nemo_agents_plugin.fabric import runtime as fabric_runtime
 from nemo_agents_plugin.fabric.runtime import (
     FabricRuntimeExecutionError,
     FabricRuntimeRequest,
+    FabricRuntimeStartRequest,
     FabricRuntimeTimeoutError,
     run_fabric_agent_once,
+    start_fabric_agent_runtime,
+    stop_fabric_agent_runtime,
 )
 from nemo_fabric import FabricConfig  # ty: ignore[unresolved-import]
 
@@ -61,6 +64,7 @@ class _FakeRuntime:
         self.invoke_delay = invoke_delay
         self.entered = False
         self.exited = False
+        self.runtime_id = "runtime-1"
         self.invoke_requests: list[Any] = []
 
     async def __aenter__(self) -> "_FakeRuntime":
@@ -112,6 +116,50 @@ class _FakeFabric:
         if self.start_error is not None:
             raise self.start_error
         return self.runtime
+
+
+@pytest.mark.asyncio
+async def test_start_fabric_agent_runtime_returns_managed_handle() -> None:
+    fabric_config = cast(FabricConfig, object())
+    fake_runtime = _FakeRuntime()
+    fake_fabric = _FakeFabric(runtime=fake_runtime)
+
+    handle = await start_fabric_agent_runtime(
+        FabricRuntimeStartRequest(
+            fabric_config=fabric_config,
+            base_dir=Path("/tmp/agent"),
+            overrides={"models": {"default": {"temperature": 0.1}}},
+        ),
+        fabric=fake_fabric,
+    )
+
+    assert fake_fabric.start_calls == [
+        {
+            "base_dir": Path("/tmp/agent"),
+            "fabric_config": fabric_config,
+            "overrides": {"models": {"default": {"temperature": 0.1}}},
+        }
+    ]
+    assert handle.runtime is fake_runtime
+    assert handle.runtime_id == "runtime-1"
+    assert fake_runtime.entered is True
+
+
+@pytest.mark.asyncio
+async def test_stop_fabric_agent_runtime_exits_context_manager() -> None:
+    fake_runtime = _FakeRuntime()
+    fake_fabric = _FakeFabric(runtime=fake_runtime)
+    handle = await start_fabric_agent_runtime(
+        FabricRuntimeStartRequest(
+            fabric_config=cast(FabricConfig, object()),
+            base_dir=Path("/tmp/agent"),
+        ),
+        fabric=fake_fabric,
+    )
+
+    await stop_fabric_agent_runtime(handle)
+
+    assert fake_runtime.exited is True
 
 
 @pytest.mark.asyncio
