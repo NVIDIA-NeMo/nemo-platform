@@ -835,8 +835,12 @@ jobs:
     name: Signal deployment
     needs: [plan-release, stage-helm, poll-final-release]
     if: >-
+      always() &&
       !cancelled() &&
+      needs.plan-release.result == 'success' &&
       needs.poll-final-release.result == 'success' &&
+      (needs.plan-release.outputs.include_helm != 'true' ||
+        needs.stage-helm.result == 'success') &&
       (needs.plan-release.outputs.include_helm == 'true' ||
         needs.plan-release.outputs.has_wheels == 'true') &&
       needs.plan-release.outputs.dry_run != 'true'
