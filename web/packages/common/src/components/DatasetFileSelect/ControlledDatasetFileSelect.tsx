@@ -39,6 +39,7 @@ interface ControlledDatasetFileSelectProps extends UseControllerComponentProps {
   datasetLabel?: string;
   /** Auto-select the first root-level accepted file on fileset selection. */
   autoSelectFirstAcceptable?: boolean;
+  showUpdatedAt?: boolean;
   /**
    * Callback fired when a file is selected. Useful for custom validation or processing.
    * Called with the selected file info, or null when file is cleared.
@@ -83,6 +84,7 @@ export const ControlledDatasetFileSelect: FC<ControlledDatasetFileSelectProps> =
   filesetPurpose,
   datasetLabel,
   autoSelectFirstAcceptable,
+  showUpdatedAt,
 }) => {
   const {
     field: { onChange, value },
@@ -144,6 +146,7 @@ export const ControlledDatasetFileSelect: FC<ControlledDatasetFileSelectProps> =
         filesetPurpose={filesetPurpose}
         datasetLabel={datasetLabel}
         autoSelectFirstAcceptable={autoSelectFirstAcceptable}
+        showUpdatedAt={showUpdatedAt}
       />
     </FormField>
   );

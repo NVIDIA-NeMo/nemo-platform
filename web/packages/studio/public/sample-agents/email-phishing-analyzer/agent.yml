@@ -20,7 +20,7 @@ llms:
     api_key: not-used
     model_name: ${NEMO_DEFAULT_MODEL}
     temperature: 0.0
-    max_tokens: 512
+    max_tokens: 1024
 workflow:
   _type: tool_calling_agent
   tool_names: [email_phishing_analyzer]

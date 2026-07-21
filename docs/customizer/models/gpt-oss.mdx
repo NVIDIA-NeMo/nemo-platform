@@ -52,7 +52,7 @@ Default training max sequence length: 4096.
 
 ### Reasoning Levels
 
-Both GPT-OSS models support configurable reasoning levels that you can set in system prompts:
+GPT-OSS models support configurable reasoning levels that you can set in system prompts:
 
 - **Low**: Fast responses for general dialogue
 - **Medium**: Balanced speed and detail
@@ -74,11 +74,10 @@ MoE models only support expert parallelism for distributing experts across GPUs.
 ### Model Selection Guidelines
 
 - **GPT-OSS 20B**: Ideal for lower latency requirements, local deployment, specialized use cases, and consumer hardware (with Ollama support)
-- **GPT-OSS 120B**: Best for production environments, complex reasoning tasks, and scenarios requiring full capability within single-GPU constraints
 
 ### Important Usage Note
 
-Both models use the harmony response format and require this format for proper functionality.
+GPT-OSS models use the harmony response format and require this format for proper functionality.
 
 <Note>
 

@@ -24,12 +24,15 @@ const mocks = vi.hoisted(() => ({
   waitForEvalJob: vi.fn(),
 }));
 
+vi.mock('@studio/api/evaluation/eval-config-fileset', () => ({
+  ensureEvalConfigFileset: (...args: unknown[]) => mocks.ensureEvalConfigFileset(...args),
+}));
+
 vi.mock('@studio/routes/agents/AgentSuggestionsRoute/api', () => ({
   applySuggestion: (...args: unknown[]) => mocks.applySuggestion(...args),
   archivePreviousRun: (...args: unknown[]) => mocks.archivePreviousRun(...args),
   CONTENT_SAFETY_MODEL_RE: /content[.-]?safety|safety[.-]?guard|gliner/i,
   checkContentSafety: (...args: unknown[]) => mocks.checkContentSafety(...args),
-  ensureEvalConfigFileset: (...args: unknown[]) => mocks.ensureEvalConfigFileset(...args),
   fetchAgents: (...args: unknown[]) => mocks.fetchAgents(...args),
   fetchEvalAverageScores: (...args: unknown[]) => mocks.fetchEvalAverageScores(...args),
   fetchModels: (...args: unknown[]) => mocks.fetchModels(...args),
