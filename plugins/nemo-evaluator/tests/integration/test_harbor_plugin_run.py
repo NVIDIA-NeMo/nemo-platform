@@ -43,7 +43,12 @@ _DATASET_DIR = Path(__file__).resolve().parents[4] / "packages/nemo_evaluator_sd
 def _docker_available() -> bool:
     if shutil.which("docker") is None:
         return False
-    return subprocess.run(["docker", "info"], capture_output=True).returncode == 0
+    try:
+        # Bound the probe: a wedged daemon can make ``docker info`` hang until the
+        # test-level timeout. Treat a stalled daemon as unavailable and skip.
+        return subprocess.run(["docker", "info"], capture_output=True, timeout=10).returncode == 0
+    except subprocess.TimeoutExpired:
+        return False
 
 
 def _reward_metric() -> MetricInline:
