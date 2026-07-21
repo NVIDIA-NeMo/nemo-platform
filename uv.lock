@@ -3920,7 +3920,6 @@ dependencies = [
     { name = "nemo-agents-example-email-phishing", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-deployments-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-fabric", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nemo-fabric-runtime", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nvidia-nat-config-optimizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -3958,7 +3957,6 @@ requires-dist = [
     { name = "nemo-agents-example-email-phishing", editable = "plugins/nemo-agents/examples/email-phishing-analyzer" },
     { name = "nemo-deployments-plugin", editable = "plugins/nemo-deployments" },
     { name = "nemo-fabric", specifier = ">=0.1.0a20260717,<0.2.0" },
-    { name = "nemo-fabric-runtime", marker = "sys_platform == 'linux'", specifier = ">=0.1.0a20260717,<0.2.0" },
     { name = "nemo-platform", editable = "packages/nemo_platform" },
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
     { name = "nvidia-nat-config-optimizer", specifier = ">=1.8.0,<1.9" },
@@ -4383,23 +4381,8 @@ dev = [
 [[package]]
 name = "nemo-fabric"
 version = "0.1.0a20260717"
-source = { registry = "https://pypi.nvidia.com/" }
-wheels = [
-    { url = "https://pypi.nvidia.com/nemo-fabric/nemo_fabric-0.1.0a20260717-py3-none-any.whl", hash = "sha256:19dddf7e5ca7bec542cdb3c3048c892bc4d26f653121630cdf38a3f18dcd5f19" },
-]
-
-[[package]]
-name = "nemo-fabric-runtime"
-version = "0.1.0a20260717"
-source = { registry = "https://pypi.nvidia.com/" }
-dependencies = [
-    { name = "pydantic", extra = ["email"], marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "typing-extensions", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-]
-wheels = [
-    { url = "https://pypi.nvidia.com/nemo-fabric-runtime/nemo_fabric_runtime-0.1.0a20260717-cp311-abi3-manylinux_2_39_aarch64.whl", hash = "sha256:fe909d253b230a1771c93be48a92ae681016717cabdc2a6141a5a2bcc8d2e59c" },
-    { url = "https://pypi.nvidia.com/nemo-fabric-runtime/nemo_fabric_runtime-0.1.0a20260717-cp311-abi3-manylinux_2_39_x86_64.whl", hash = "sha256:c565e0cc8c39f8447892f75eb6c22f0fd832ed5d5b4db3b1157a6ce804cac701" },
-]
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/85/7a/971dfffaa98f245904cb6b753d40725023e4fc74e3245120ec5a1e79f63a/nemo_fabric-0.1.0a20260717.tar.gz", hash = "sha256:55b850fd03bb54e1559039504048cf5c2b7fd96903f91fd8e517a4c5cfff395f", size = 6149, upload-time = "2026-07-17T15:23:14.982Z" }
 
 [[package]]
 name = "nemo-guardrails-plugin"
@@ -4558,7 +4541,6 @@ all = [
     { name = "nemo-auditor-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-evaluator-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-fabric", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nemo-fabric-runtime", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-safe-synthesizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -4780,7 +4762,6 @@ nemo-agents-plugin = [
     { name = "langchain-aws", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-agents-example-calculator", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-fabric", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nemo-fabric-runtime", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nvidia-nat-config-optimizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nvidia-nat-core", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -4953,7 +4934,6 @@ plugins = [
     { name = "nemo-anonymizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-evaluator-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-fabric", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nemo-fabric-runtime", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-safe-synthesizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -5016,7 +4996,6 @@ services = [
     { name = "nemo-auditor-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-evaluator-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-fabric", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nemo-fabric-runtime", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-safe-synthesizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -5314,10 +5293,6 @@ requires-dist = [
     { name = "nemo-fabric", marker = "extra == 'nemo-agents-plugin'", specifier = ">=0.1.0a20260717,<0.2.0" },
     { name = "nemo-fabric", marker = "extra == 'plugins'", specifier = ">=0.1.0a20260717,<0.2.0" },
     { name = "nemo-fabric", marker = "extra == 'services'", specifier = ">=0.1.0a20260717,<0.2.0" },
-    { name = "nemo-fabric-runtime", marker = "sys_platform == 'linux' and extra == 'all'", specifier = ">=0.1.0a20260717,<0.2.0" },
-    { name = "nemo-fabric-runtime", marker = "sys_platform == 'linux' and extra == 'nemo-agents-plugin'", specifier = ">=0.1.0a20260717,<0.2.0" },
-    { name = "nemo-fabric-runtime", marker = "sys_platform == 'linux' and extra == 'plugins'", specifier = ">=0.1.0a20260717,<0.2.0" },
-    { name = "nemo-fabric-runtime", marker = "sys_platform == 'linux' and extra == 'services'", specifier = ">=0.1.0a20260717,<0.2.0" },
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
     { name = "nemo-platform-plugin", marker = "extra == 'all'", editable = "packages/nemo_platform_plugin" },
     { name = "nemo-platform-plugin", marker = "extra == 'core-service'", editable = "packages/nemo_platform_plugin" },
@@ -6624,7 +6599,7 @@ wheels = [
 [[package]]
 name = "ngcsdk"
 version = "4.16.0"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "aiohttp", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -6647,7 +6622,7 @@ dependencies = [
     { name = "validators", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 wheels = [
-    { url = "https://pypi.nvidia.com/ngcsdk/ngcsdk-4.16.0-py3-none-any.whl", hash = "sha256:3fe7267fab02b5e4c63521ade365a708238113a1b19802e53fa699b548e13fce" },
+    { url = "https://files.pythonhosted.org/packages/d1/c1/1f4195a83c2a41f3c130096f05ae22d8291afa72d00ef01ae9dbe91da69c/ngcsdk-4.16.0-py3-none-any.whl", hash = "sha256:3fe7267fab02b5e4c63521ade365a708238113a1b19802e53fa699b548e13fce", size = 3081403, upload-time = "2026-04-01T20:43:27.362Z" },
 ]
 
 [[package]]
@@ -7776,103 +7751,103 @@ wheels = [
 [[package]]
 name = "nvidia-cublas-cu12"
 version = "12.8.4.1"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-cublas-cu12/nvidia_cublas_cu12-12.8.4.1-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:8ac4e771d5a348c551b2a426eda6193c19aa630236b418086020df5ba9667142" },
+    { url = "https://files.pythonhosted.org/packages/dc/61/e24b560ab2e2eaeb3c839129175fb330dfcfc29e5203196e5541a4c44682/nvidia_cublas_cu12-12.8.4.1-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:8ac4e771d5a348c551b2a426eda6193c19aa630236b418086020df5ba9667142", size = 594346921, upload-time = "2025-03-07T01:44:31.254Z" },
 ]
 
 [[package]]
 name = "nvidia-cuda-cupti-cu12"
 version = "12.8.90"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-cuda-cupti-cu12/nvidia_cuda_cupti_cu12-12.8.90-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:ea0cb07ebda26bb9b29ba82cda34849e73c166c18162d3913575b0c9db9a6182" },
+    { url = "https://files.pythonhosted.org/packages/f8/02/2adcaa145158bf1a8295d83591d22e4103dbfd821bcaf6f3f53151ca4ffa/nvidia_cuda_cupti_cu12-12.8.90-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:ea0cb07ebda26bb9b29ba82cda34849e73c166c18162d3913575b0c9db9a6182", size = 10248621, upload-time = "2025-03-07T01:40:21.213Z" },
 ]
 
 [[package]]
 name = "nvidia-cuda-nvrtc-cu12"
 version = "12.8.93"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-cuda-nvrtc-cu12/nvidia_cuda_nvrtc_cu12-12.8.93-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl", hash = "sha256:a7756528852ef889772a84c6cd89d41dfa74667e24cca16bb31f8f061e3e9994" },
+    { url = "https://files.pythonhosted.org/packages/05/6b/32f747947df2da6994e999492ab306a903659555dddc0fbdeb9d71f75e52/nvidia_cuda_nvrtc_cu12-12.8.93-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl", hash = "sha256:a7756528852ef889772a84c6cd89d41dfa74667e24cca16bb31f8f061e3e9994", size = 88040029, upload-time = "2025-03-07T01:42:13.562Z" },
 ]
 
 [[package]]
 name = "nvidia-cuda-runtime-cu12"
 version = "12.8.90"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-cuda-runtime-cu12/nvidia_cuda_runtime_cu12-12.8.90-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:adade8dcbd0edf427b7204d480d6066d33902cab2a4707dcfc48a2d0fd44ab90" },
+    { url = "https://files.pythonhosted.org/packages/0d/9b/a997b638fcd068ad6e4d53b8551a7d30fe8b404d6f1804abf1df69838932/nvidia_cuda_runtime_cu12-12.8.90-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:adade8dcbd0edf427b7204d480d6066d33902cab2a4707dcfc48a2d0fd44ab90", size = 954765, upload-time = "2025-03-07T01:40:01.615Z" },
 ]
 
 [[package]]
 name = "nvidia-cudnn-cu12"
 version = "9.10.2.21"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nvidia-cublas-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-cudnn-cu12/nvidia_cudnn_cu12-9.10.2.21-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:949452be657fa16687d0930933f032835951ef0892b37d2d53824d1a84dc97a8" },
+    { url = "https://files.pythonhosted.org/packages/ba/51/e123d997aa098c61d029f76663dedbfb9bc8dcf8c60cbd6adbe42f76d049/nvidia_cudnn_cu12-9.10.2.21-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:949452be657fa16687d0930933f032835951ef0892b37d2d53824d1a84dc97a8", size = 706758467, upload-time = "2025-06-06T21:54:08.597Z" },
 ]
 
 [[package]]
 name = "nvidia-cufft-cu12"
 version = "11.3.3.83"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nvidia-nvjitlink-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-cufft-cu12/nvidia_cufft_cu12-11.3.3.83-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:4d2dd21ec0b88cf61b62e6b43564355e5222e4a3fb394cac0db101f2dd0d4f74" },
+    { url = "https://files.pythonhosted.org/packages/1f/13/ee4e00f30e676b66ae65b4f08cb5bcbb8392c03f54f2d5413ea99a5d1c80/nvidia_cufft_cu12-11.3.3.83-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:4d2dd21ec0b88cf61b62e6b43564355e5222e4a3fb394cac0db101f2dd0d4f74", size = 193118695, upload-time = "2025-03-07T01:45:27.821Z" },
 ]
 
 [[package]]
 name = "nvidia-cufile-cu12"
 version = "1.13.1.3"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-cufile-cu12/nvidia_cufile_cu12-1.13.1.3-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:1d069003be650e131b21c932ec3d8969c1715379251f8d23a1860554b1cb24fc" },
+    { url = "https://files.pythonhosted.org/packages/bb/fe/1bcba1dfbfb8d01be8d93f07bfc502c93fa23afa6fd5ab3fc7c1df71038a/nvidia_cufile_cu12-1.13.1.3-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:1d069003be650e131b21c932ec3d8969c1715379251f8d23a1860554b1cb24fc", size = 1197834, upload-time = "2025-03-07T01:45:50.723Z" },
 ]
 
 [[package]]
 name = "nvidia-curand-cu12"
 version = "10.3.9.90"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-curand-cu12/nvidia_curand_cu12-10.3.9.90-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:b32331d4f4df5d6eefa0554c565b626c7216f87a06a4f56fab27c3b68a830ec9" },
+    { url = "https://files.pythonhosted.org/packages/fb/aa/6584b56dc84ebe9cf93226a5cde4d99080c8e90ab40f0c27bda7a0f29aa1/nvidia_curand_cu12-10.3.9.90-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:b32331d4f4df5d6eefa0554c565b626c7216f87a06a4f56fab27c3b68a830ec9", size = 63619976, upload-time = "2025-03-07T01:46:23.323Z" },
 ]
 
 [[package]]
 name = "nvidia-cusolver-cu12"
 version = "11.7.3.90"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nvidia-cublas-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "nvidia-cusparse-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "nvidia-nvjitlink-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-cusolver-cu12/nvidia_cusolver_cu12-11.7.3.90-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:4376c11ad263152bd50ea295c05370360776f8c3427b30991df774f9fb26c450" },
+    { url = "https://files.pythonhosted.org/packages/85/48/9a13d2975803e8cf2777d5ed57b87a0b6ca2cc795f9a4f59796a910bfb80/nvidia_cusolver_cu12-11.7.3.90-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:4376c11ad263152bd50ea295c05370360776f8c3427b30991df774f9fb26c450", size = 267506905, upload-time = "2025-03-07T01:47:16.273Z" },
 ]
 
 [[package]]
 name = "nvidia-cusparse-cu12"
 version = "12.5.8.93"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nvidia-nvjitlink-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-cusparse-cu12/nvidia_cusparse_cu12-12.5.8.93-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:1ec05d76bbbd8b61b06a80e1eaf8cf4959c3d4ce8e711b65ebd0443bb0ebb13b" },
+    { url = "https://files.pythonhosted.org/packages/c2/f5/e1854cb2f2bcd4280c44736c93550cc300ff4b8c95ebe370d0aa7d2b473d/nvidia_cusparse_cu12-12.5.8.93-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:1ec05d76bbbd8b61b06a80e1eaf8cf4959c3d4ce8e711b65ebd0443bb0ebb13b", size = 288216466, upload-time = "2025-03-07T01:48:13.779Z" },
 ]
 
 [[package]]
 name = "nvidia-cusparselt-cu12"
 version = "0.7.1"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-cusparselt-cu12/nvidia_cusparselt_cu12-0.7.1-py3-none-manylinux2014_x86_64.whl", hash = "sha256:f1bb701d6b930d5a7cea44c19ceb973311500847f81b634d802b7b539dc55623" },
+    { url = "https://files.pythonhosted.org/packages/56/79/12978b96bd44274fe38b5dde5cfb660b1d114f70a65ef962bcbbed99b549/nvidia_cusparselt_cu12-0.7.1-py3-none-manylinux2014_x86_64.whl", hash = "sha256:f1bb701d6b930d5a7cea44c19ceb973311500847f81b634d802b7b539dc55623", size = 287193691, upload-time = "2025-02-26T00:15:44.104Z" },
 ]
 
 [[package]]
@@ -7887,18 +7862,18 @@ wheels = [
 [[package]]
 name = "nvidia-nat-atif"
 version = "1.8.0"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic", extra = ["email"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-nat-atif/nvidia_nat_atif-1.8.0-py3-none-any.whl", hash = "sha256:38c97d6e506e8cc151a997bfd6cafa08b969e181b50b9302f28d2229a3b37829" },
+    { url = "https://files.pythonhosted.org/packages/f1/ee/a22d1b5d5d6f3d625f451f5185b7e32a6464058f2c7899f6d98c68f46aef/nvidia_nat_atif-1.8.0-py3-none-any.whl", hash = "sha256:38c97d6e506e8cc151a997bfd6cafa08b969e181b50b9302f28d2229a3b37829", size = 105633, upload-time = "2026-06-17T00:25:16.624Z" },
 ]
 
 [[package]]
 name = "nvidia-nat-config-optimizer"
 version = "1.8.0"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nvidia-nat-core", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -7909,13 +7884,13 @@ dependencies = [
     { name = "pyyaml", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-nat-config-optimizer/nvidia_nat_config_optimizer-1.8.0-py3-none-any.whl", hash = "sha256:dc5ef765fbff28d74af462351756c91f35b62c6adc83f5938e61aa9a35c5292d" },
+    { url = "https://files.pythonhosted.org/packages/65/39/ae7dab34800eb4b8ccb50adfda37b8da74b18af6974027720525b08a48b0/nvidia_nat_config_optimizer-1.8.0-py3-none-any.whl", hash = "sha256:dc5ef765fbff28d74af462351756c91f35b62c6adc83f5938e61aa9a35c5292d", size = 40134, upload-time = "2026-06-17T00:21:05.628Z" },
 ]
 
 [[package]]
 name = "nvidia-nat-core"
 version = "1.8.0"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "authlib", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -7950,24 +7925,24 @@ dependencies = [
     { name = "uvicorn", extra = ["standard"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-nat-core/nvidia_nat_core-1.8.0-py3-none-any.whl", hash = "sha256:645bcc995f73598016b750f7849decb24bea857549f96f5fcbbd8ff37f0c3fc5" },
+    { url = "https://files.pythonhosted.org/packages/10/17/46f8bb24ba9789064ab6a90a905f31218bca802346adace079256db82c72/nvidia_nat_core-1.8.0-py3-none-any.whl", hash = "sha256:645bcc995f73598016b750f7849decb24bea857549f96f5fcbbd8ff37f0c3fc5", size = 779726, upload-time = "2026-06-17T00:21:24.556Z" },
 ]
 
 [[package]]
 name = "nvidia-nat-eval"
 version = "1.8.0"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nvidia-nat-atif", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-nat-eval/nvidia_nat_eval-1.8.0-py3-none-any.whl", hash = "sha256:4baebf66289040708c22bfd57f6edb37728409795a260bd0f07b894c9ec8b110" },
+    { url = "https://files.pythonhosted.org/packages/7a/25/0fd8109c653d967d82f8ef6fc729c41504e3b4ec51dcfd39c952275d4e67/nvidia_nat_eval-1.8.0-py3-none-any.whl", hash = "sha256:4baebf66289040708c22bfd57f6edb37728409795a260bd0f07b894c9ec8b110", size = 69649, upload-time = "2026-06-17T00:23:20.109Z" },
 ]
 
 [[package]]
 name = "nvidia-nat-langchain"
 version = "1.8.0"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "langchain", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "langchain-aws", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -7991,13 +7966,13 @@ dependencies = [
     { name = "wikipedia", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-nat-langchain/nvidia_nat_langchain-1.8.0-py3-none-any.whl", hash = "sha256:8120ad2b972ce2d90fae1e7f95b3daf6b463310e0105fc330896bfb069a5d403" },
+    { url = "https://files.pythonhosted.org/packages/f0/49/eee7d8f68568e4c994a67ee0def4070e8fdeb0d603a7ef580050b3ee3d34/nvidia_nat_langchain-1.8.0-py3-none-any.whl", hash = "sha256:8120ad2b972ce2d90fae1e7f95b3daf6b463310e0105fc330896bfb069a5d403", size = 197395, upload-time = "2026-06-17T00:27:13.69Z" },
 ]
 
 [[package]]
 name = "nvidia-nat-opentelemetry"
 version = "1.8.0"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nvidia-nat-core", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "openinference-semantic-conventions", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -8006,39 +7981,39 @@ dependencies = [
     { name = "opentelemetry-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-nat-opentelemetry/nvidia_nat_opentelemetry-1.8.0-py3-none-any.whl", hash = "sha256:2ef2de28a1d07029126ae1c13ff39b9dd61a6985e43199e6fe80968b465b1eec" },
+    { url = "https://files.pythonhosted.org/packages/df/df/33cba1fb316f720b075dac2330b588b1a62d9d991cd6e1d5bc8f795b3bba/nvidia_nat_opentelemetry-1.8.0-py3-none-any.whl", hash = "sha256:2ef2de28a1d07029126ae1c13ff39b9dd61a6985e43199e6fe80968b465b1eec", size = 68449, upload-time = "2026-06-17T00:39:23.758Z" },
 ]
 
 [[package]]
 name = "nvidia-nccl-cu12"
 version = "2.27.5"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-nccl-cu12/nvidia_nccl_cu12-2.27.5-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:ad730cf15cb5d25fe849c6e6ca9eb5b76db16a80f13f425ac68d8e2e55624457" },
+    { url = "https://files.pythonhosted.org/packages/6e/89/f7a07dc961b60645dbbf42e80f2bc85ade7feb9a491b11a1e973aa00071f/nvidia_nccl_cu12-2.27.5-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:ad730cf15cb5d25fe849c6e6ca9eb5b76db16a80f13f425ac68d8e2e55624457", size = 322348229, upload-time = "2025-06-26T04:11:28.385Z" },
 ]
 
 [[package]]
 name = "nvidia-nvjitlink-cu12"
 version = "12.8.93"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-nvjitlink-cu12/nvidia_nvjitlink_cu12-12.8.93-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl", hash = "sha256:81ff63371a7ebd6e6451970684f916be2eab07321b73c9d244dc2b4da7f73b88" },
+    { url = "https://files.pythonhosted.org/packages/f6/74/86a07f1d0f42998ca31312f998bd3b9a7eff7f52378f4f270c8679c77fb9/nvidia_nvjitlink_cu12-12.8.93-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl", hash = "sha256:81ff63371a7ebd6e6451970684f916be2eab07321b73c9d244dc2b4da7f73b88", size = 39254836, upload-time = "2025-03-07T01:49:55.661Z" },
 ]
 
 [[package]]
 name = "nvidia-nvshmem-cu12"
 version = "3.4.5"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-nvshmem-cu12/nvidia_nvshmem_cu12-3.4.5-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:042f2500f24c021db8a06c5eec2539027d57460e1c1a762055a6554f72c369bd" },
+    { url = "https://files.pythonhosted.org/packages/b5/09/6ea3ea725f82e1e76684f0708bbedd871fc96da89945adeba65c3835a64c/nvidia_nvshmem_cu12-3.4.5-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:042f2500f24c021db8a06c5eec2539027d57460e1c1a762055a6554f72c369bd", size = 139103095, upload-time = "2025-09-06T00:32:31.266Z" },
 ]
 
 [[package]]
 name = "nvidia-nvtx-cu12"
 version = "12.8.90"
-source = { registry = "https://pypi.nvidia.com/" }
+source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://pypi.nvidia.com/nvidia-nvtx-cu12/nvidia_nvtx_cu12-12.8.90-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:5b17e2001cc0d751a5bc2c6ec6d26ad95913324a4adb86788c944f8ce9ba441f" },
+    { url = "https://files.pythonhosted.org/packages/a2/eb/86626c1bbc2edb86323022371c39aa48df6fd8b0a1647bc274577f72e90b/nvidia_nvtx_cu12-12.8.90-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:5b17e2001cc0d751a5bc2c6ec6d26ad95913324a4adb86788c944f8ce9ba441f", size = 89954, upload-time = "2025-03-07T01:42:44.131Z" },
 ]
 
 [[package]]
