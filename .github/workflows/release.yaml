@@ -863,7 +863,7 @@ jobs:
           script: |
             const [owner, repo] = process.env.DISPATCH_REPO.split("/");
             const wheelIds = JSON.parse(process.env.WHEEL_IDS);
-            const sdkVersions = process.env.HAS_WHEELS === "true"
+            const wheelVersions = process.env.HAS_WHEELS === "true"
               ? Object.fromEntries(wheelIds.map((id) => [id, process.env.WHEEL_VERSION]))
               : {};
 
@@ -876,7 +876,7 @@ jobs:
                 cadence: process.env.RELEASE_TYPE === "stable" ? "release" : "nightly",
                 release_label: process.env.RELEASE_LABEL,
                 helm_version: process.env.HAS_HELM === "true" ? process.env.HELM_VERSION : null,
-                sdk_versions: sdkVersions,
+                wheel_versions: wheelVersions,
               },
             });
 
