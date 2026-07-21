@@ -156,6 +156,43 @@ tasksets.delete("geography-suite")
 
 Deleting a taskset does not delete its member tasks — a taskset only holds references.
 
+## Run an evaluation over a taskset
+
+An agent evaluation is submitted with an `AgentEvalInputSpec`, whose `tasks` field is either an
+inline list of tasks or a **reference to a stored taskset**. Referencing a taskset lets you keep the
+task definitions in one place and evaluate the whole set by name, instead of inlining every task on
+each run.
+
+```python
+from nemo_evaluator.api.schemas import TasksetRef
+from nemo_evaluator.jobs.agent_spec import AgentEvalInputSpec, ModelTarget
+from nemo_evaluator_sdk.values import Model
+from nemo_evaluator_sdk.enums import ModelFormat
+
+# Instead of inlining AgentEvalTaskInput objects, point `tasks` at a stored taskset.
+input_spec = AgentEvalInputSpec(
+    tasks=TasksetRef("default/geography-suite"),
+    target=ModelTarget(
+        model=Model(url="https://integrate.api.nvidia.com/v1", name="meta/llama-3.3-70b-instruct", format=ModelFormat.OPEN_AI),
+    ),
+)
+```
+
+When the job runs, the taskset reference is resolved: its member tasks are loaded, and each task's
+stored metric references are hydrated into runnable metrics — exactly as if you had inlined them. The
+same spec is submitted as the agent-evaluate job input; see
+[Agent Evaluation](/documentation/evaluate-models/agent-eval) for the full run, target, and
+results flow.
+
+The inline form remains available for one-off tasks — swap `tasks=TasksetRef(...)` for
+`tasks=[AgentEvalTaskInput(...), ...]`.
+
+<Note>
+Stored tasks carry no grader-only `reference` (held-out ground truth): that field lives only on inline
+`AgentEvalTaskInput`. Taskset-driven tasks therefore run with an empty `reference`, so use a taskset
+when your metrics score the agent's output directly rather than against per-task held-out data.
+</Note>
+
 ## Async usage
 
 `AsyncNeMoPlatform` exposes the same surface; await each call.
