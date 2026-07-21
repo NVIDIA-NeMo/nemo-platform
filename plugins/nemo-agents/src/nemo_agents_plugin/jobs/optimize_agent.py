@@ -50,10 +50,12 @@ config's LLMs are injected with the platform Inference Gateway URL via
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import subprocess
+import tempfile
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Iterator
 
 from nemo_agents_plugin.refs import AgentRef, AgentTarget, classify_agent_target
 from nemo_agents_plugin.utils import (
@@ -64,7 +66,7 @@ from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
-from nemo_platform_plugin.refs import EndpointURL
+from nemo_platform_plugin.refs import EndpointURL, FilesetRef
 from nemo_platform_plugin.run_dependencies import LocalRunError
 from pydantic import BaseModel, Field
 
@@ -109,7 +111,21 @@ class OptimizeAgentSpec(BaseModel):
         "parameter sweeps don't reach the remote agent).  When omitted, the "
         "optimize config must include an inline agent workflow.",
     )
-    optimize_config: str = Field(description="Path to the NAT optimization YAML config file.")
+    optimize_config: str = Field(
+        description="Path to the NAT optimization YAML config file.  When "
+        "``optimize_config_fileset`` is set, this is interpreted relative to the "
+        "downloaded fileset's contents.",
+    )
+    optimize_config_fileset: FilesetRef | None = Field(
+        default=None,
+        description=(
+            "Optional fileset reference (``name`` or ``workspace/name``) that "
+            "pre-stages the optimize YAML and any sibling files (e.g. dataset).  "
+            "Used by platform-managed submissions where the config is uploaded to a "
+            "fileset before the job is submitted; local CLI runs leave this ``None`` "
+            "and let ``optimize_config`` be a real local path."
+        ),
+    )
     workspace: str = Field(
         default="default",
         description="Workspace name used to fetch the agent's stored config when "
@@ -130,7 +146,7 @@ class OptimizeAgentJob(NemoJob):
     spec_schema: ClassVar[type[BaseModel]] = OptimizeAgentSpec
 
     @classmethod
-    async def compile(  # type: ignore[override]
+    async def compile(  # ty: ignore[invalid-method-override]
         cls,
         *,
         workspace: str,
@@ -153,7 +169,8 @@ class OptimizeAgentJob(NemoJob):
             PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
         )
 
-        _require_absolute(spec.optimize_config, "optimize_config")
+        if not spec.optimize_config_fileset:
+            _require_absolute(spec.optimize_config, "optimize_config")
 
         spec_dict = spec.model_dump(mode="json")
         # URL workspace is the auth boundary; overwrites any spec workspace.
@@ -211,58 +228,109 @@ class OptimizeAgentJob(NemoJob):
             Dict with ``status`` and ``returncode`` keys.
         """
         cfg = OptimizeAgentSpec.model_validate(config)
-        optimize_config_path = Path(cfg.optimize_config)
 
         agent_config, endpoint = self._resolve_agent(cfg.agent, workspace=cfg.workspace, sdk=sdk)
-
-        # Pre-flight: surface a missing-VirtualModel error before the
-        # ``nat optimize`` subprocess starts.  ``agent_config`` is merged
-        # under the YAML in the same shape ``temp_injected_config`` will
-        # use, so an agent-fetched LLM gets validated alongside the
-        # optimize-side judge.  No-op when ``sdk`` is None
-        # (URL/inline-workflow modes have nothing to look up against).
-        preflight_validate_llm_models(
-            optimize_config_path,
-            workspace=cfg.workspace,
-            sdk=sdk,
-            agent_config=agent_config,
-        )
 
         output_base = ctx.storage.persistent / "results"
         output_base.mkdir(parents=True, exist_ok=True)
 
-        with temp_injected_config(
-            optimize_config_path,
-            cfg.workspace,
-            extra_config=agent_config,
-            output_base=output_base,
-        ) as injected_path:
-            cwd = injected_path.parent
-            cmd = ["nat", "optimize", "--config_file", injected_path.name]
+        with self._resolve_optimize_config(cfg, sdk=sdk, ctx=ctx) as optimize_config_path:
+            # Pre-flight: surface a missing-VirtualModel error before the
+            # ``nat optimize`` subprocess starts.  ``agent_config`` is merged
+            # under the YAML in the same shape ``temp_injected_config`` will
+            # use, so an agent-fetched LLM gets validated alongside the
+            # optimize-side judge.  No-op when ``sdk`` is None
+            # (URL/inline-workflow modes have nothing to look up against).
+            preflight_validate_llm_models(
+                optimize_config_path,
+                workspace=cfg.workspace,
+                sdk=sdk,
+                agent_config=agent_config,
+            )
 
-            # Only the explicit URL mode hands ``--endpoint`` to NAT.  The
-            # AgentRef mode merges the agent's workflow into the config so
-            # ``nat optimize`` runs it locally and per-trial param overrides
-            # actually take effect; the inline-workflow mode (agent=None)
-            # similarly relies on the user's config to declare a workflow.
-            if endpoint is not None:
-                cmd.extend(["--endpoint", endpoint])
-                logger.info("Optimizing against agent endpoint %s (opaque service mode)", endpoint)
+            with temp_injected_config(
+                optimize_config_path,
+                cfg.workspace,
+                extra_config=agent_config,
+                output_base=output_base,
+            ) as injected_path:
+                cwd = injected_path.parent
+                cmd = ["nat", "optimize", "--config_file", injected_path.name]
 
-            logger.info("Writing optimize outputs to platform-persistent dir %s", output_base)
-            logger.info("Running: %s (cwd=%s)", " ".join(cmd), cwd)
-            try:
-                result = subprocess.run(cmd, check=True, cwd=cwd)
-                logger.info("OptimizeAgentJob completed (returncode=%d).", result.returncode)
-                return {"status": "completed", "returncode": result.returncode}
-            except subprocess.CalledProcessError as exc:
-                logger.error("Optimization failed (returncode=%d).", exc.returncode)
-                return {"status": "failed", "returncode": exc.returncode}
-            except FileNotFoundError as exc:
-                raise RuntimeError(
-                    "'nat optimize' command not found.  Install the NAT config optimizer: "
-                    "uv pip install 'nvidia-nat-config-optimizer>=1.5.0,<2.0'"
-                ) from exc
+                # Only the explicit URL mode hands ``--endpoint`` to NAT.  The
+                # AgentRef mode merges the agent's workflow into the config so
+                # ``nat optimize`` runs it locally and per-trial param overrides
+                # actually take effect; the inline-workflow mode (agent=None)
+                # similarly relies on the user's config to declare a workflow.
+                if endpoint is not None:
+                    cmd.extend(["--endpoint", endpoint])
+                    logger.info("Optimizing against agent endpoint %s (opaque service mode)", endpoint)
+
+                logger.info("Writing optimize outputs to platform-persistent dir %s", output_base)
+                logger.info("Running: %s (cwd=%s)", " ".join(cmd), cwd)
+                try:
+                    result = subprocess.run(cmd, check=True, cwd=cwd)
+                    logger.info("OptimizeAgentJob completed (returncode=%d).", result.returncode)
+                    return {"status": "completed", "returncode": result.returncode}
+                except subprocess.CalledProcessError as exc:
+                    logger.error("Optimization failed (returncode=%d).", exc.returncode)
+                    return {"status": "failed", "returncode": exc.returncode}
+                except FileNotFoundError as exc:
+                    raise RuntimeError(
+                        "'nat optimize' command not found.  Install the NAT config optimizer: "
+                        "uv pip install 'nvidia-nat-config-optimizer>=1.5.0,<2.0'"
+                    ) from exc
+
+    @contextlib.contextmanager
+    def _resolve_optimize_config(
+        self,
+        cfg: OptimizeAgentSpec,
+        *,
+        ctx: JobContext,
+        sdk: NeMoPlatform | None,
+    ) -> Iterator[Path]:
+        """Yield a local path to the optimize YAML.
+
+        When ``cfg.optimize_config_fileset`` is set, download the fileset into a
+        tempdir under ``ctx.storage.ephemeral`` and resolve ``cfg.optimize_config``
+        relative to it.  Otherwise pass through verbatim as a local path.
+        ``sdk`` is required on the fileset branch — when it is missing, raise
+        :class:`LocalRunError` so the caller sees an actionable error.
+        """
+        if not cfg.optimize_config_fileset:
+            yield Path(cfg.optimize_config)
+            return
+
+        if sdk is None:
+            raise LocalRunError(
+                "OptimizeAgentJob.run requires a 'sdk: NeMoPlatform' to download "
+                "optimize_config_fileset contents, but no platform SDK was available. "
+                "Set NMP_BASE_URL or pass sdk via NemoJobScheduler.run_local(sdk=...)."
+            )
+
+        ref = FilesetRef(cfg.optimize_config_fileset)
+        if "/" in ref:
+            ws, name = ref.split("/", 1)
+        else:
+            ws, name = cfg.workspace, ref
+
+        with tempfile.TemporaryDirectory(
+            prefix=f".optimize-config-{name}-",
+            dir=str(ctx.storage.ephemeral),
+        ) as tmp:
+            tmp_path = Path(tmp)
+            logger.info("Downloading fileset %s/%s into %s for optimize config.", ws, name, tmp_path)
+            sdk.files.download(local_path=str(tmp_path), fileset=name, workspace=ws)
+            root = tmp_path.resolve()
+            local_optimize_config = (tmp_path / cfg.optimize_config).resolve()
+            if not local_optimize_config.is_relative_to(root):
+                raise ValueError(f"optimize_config {cfg.optimize_config!r} resolves outside the downloaded fileset")
+            if not local_optimize_config.is_file():
+                raise FileNotFoundError(
+                    f"optimize_config '{cfg.optimize_config}' was not found in fileset '{ws}/{name}' "
+                    f"after download.  Available files: {sorted(p.name for p in tmp_path.iterdir())}"
+                )
+            yield local_optimize_config
 
     @staticmethod
     def _resolve_agent(
