@@ -70,7 +70,6 @@ describe('CustomizationDetailsPanel', () => {
       timeout: XL_SELECTOR_TIMEOUT,
     });
 
-    // customizationJob1 carries step/max_steps, scalar losses, lr, grad_norm and a checkpoint path.
     expect(await screen.findByText('Step')).toBeInTheDocument();
     expect(screen.getByText('10 / 10')).toBeInTheDocument();
     expect(screen.getByText('Current Training Loss')).toBeInTheDocument();
