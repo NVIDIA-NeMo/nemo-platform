@@ -34,12 +34,12 @@ nemo config use-context dev""",
     TopLevelEntry(
         import_path="nemo_platform.cli.commands.setup:setup_command",
         help="""\
-Set up NeMo Platform: start services, configure a provider, install skills.
+Set up NeMo Platform: connect or start services, configure a provider, install skills.
 
-Walks through starting local services, selecting a provider, entering
-credentials, registering the provider with the platform, picking a
-default model, installing coding agent skills, and optionally deploying
-a demo agent.
+Uses an already-running platform, starts local services, or connects the
+CLI to an existing remote deployment. Then selects and registers an
+inference provider, picks a default model, installs coding agent skills,
+and optionally deploys a demo agent.
 
 Requires an interactive terminal (TTY). In non-interactive contexts
 (CI, piped input), pass --auto to use environment variables instead.
@@ -54,6 +54,7 @@ Examples:
   nemo setup --auto
   nemo setup --auto --start-services --install-skills --deploy-agent
   nemo setup --auto --start-services --ready-timeout 360
+  NMP_BASE_URL=https://nmp.example.com NMP_ACCESS_TOKEN=... nemo setup --auto --no-start-services
   nemo setup --workspace my-workspace
   nemo setup --no-install-skills --no-deploy-agent""",
         name="setup",
