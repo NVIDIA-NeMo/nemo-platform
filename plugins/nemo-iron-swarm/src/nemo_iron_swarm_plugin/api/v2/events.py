@@ -78,7 +78,7 @@ class _RunStream:
 
 
 class EventHub:
-    """Per-run event streams for this plugin process (created on first publish/subscribe).
+    """Per-run event streams for this plugin process (created on first access).
 
     Keyed by ``(workspace, run_name)`` so runs sharing a name across workspaces never cross streams.
     """
