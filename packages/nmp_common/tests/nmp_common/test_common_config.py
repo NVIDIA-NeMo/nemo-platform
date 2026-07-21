@@ -5,6 +5,7 @@
 
 import pytest
 from nmp.common.config import (
+    AuthConfig,
     CommonServiceConfig,
     Configuration,
     DatabaseConfig,
@@ -12,6 +13,7 @@ from nmp.common.config import (
     get_common_service_config,
     get_platform_config,
 )
+from nmp.common.platform_endpoint import UDS_BASE_URL
 
 
 class TestPlatformConfig:
@@ -172,6 +174,29 @@ class TestPlatformConfig:
         match = pattern.search("/apis/my/service/")
         assert match is not None
         assert match.group(1) == "my"
+
+
+class TestAuthConfig:
+    """Tests for shared auth configuration helpers."""
+
+    def test_get_pdp_url_for_embedded_provider_normalizes_base_url(self):
+        config = AuthConfig(policy_decision_point_base_url="http://localhost:8080/")
+
+        assert config.get_pdp_url("allow") == "http://localhost:8080/apis/auth/v2/authz/allow"
+        assert config.auth_url == "http://localhost:8080/apis/auth/v2/authz/allow"
+
+    def test_get_pdp_url_for_opa_provider_normalizes_base_url(self):
+        config = AuthConfig(
+            policy_decision_point_base_url="http://opa:8181/",
+            policy_decision_point_provider="opa",
+        )
+
+        assert config.get_pdp_url("has_permissions") == "http://opa:8181/v1/data/authz/has_permissions"
+
+    def test_get_pdp_url_for_uds_endpoint_uses_connect_base_url(self):
+        config = AuthConfig(policy_decision_point_base_url="unix:///tmp/nemo-platform.sock")
+
+        assert config.get_pdp_url("allow") == f"{UDS_BASE_URL}/apis/auth/v2/authz/allow"
 
 
 class TestCommonServiceConfig:

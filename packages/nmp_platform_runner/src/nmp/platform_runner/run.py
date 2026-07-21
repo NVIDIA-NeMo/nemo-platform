@@ -17,7 +17,11 @@ from nmp.common.config import get_auth_config, get_common_service_config, get_pl
 from nmp.common.observability import initialize_obs, setup_global_instrumentations
 from nmp.common.observability.otel import settings as otel_settings
 from nmp.common.service import CircularDependencyError, Service
-from nmp.platform_runner.config import apply_run_environment, resolve_run_configuration
+from nmp.platform_runner.config import (
+    PlatformAppConfig,
+    apply_run_environment,
+    resolve_run_configuration,
+)
 from nmp.platform_runner.health import get_platform_resource_attributes
 from nmp.platform_runner.loader import (
     ControllerRunFunc,
@@ -72,15 +76,8 @@ def run_controllers_in_threads(
 
 
 def run_platform(
+    config: PlatformAppConfig | None = None,
     *,
-    services: list[str] | None = None,
-    service_group: str | None = None,
-    controllers: list[str] | None = None,
-    controller_group: str | None = None,
-    sidecars: list[str] | None = None,
-    config_path: str | None = None,
-    host: str = "0.0.0.0",
-    port: int = 8080,
     reload_app_factory: str | None = None,
     on_shutdown: Callable[[], object] | None = None,
 ) -> None:
@@ -88,16 +85,7 @@ def run_platform(
     t_total = time.perf_counter()
 
     t0 = time.perf_counter()
-    resolved = resolve_run_configuration(
-        services=services,
-        service_group=service_group,
-        controllers=controllers,
-        controller_group=controller_group,
-        sidecars=sidecars,
-        config_path=config_path,
-        host=host,
-        port=port,
-    )
+    resolved = resolve_run_configuration(config)
     apply_run_environment(resolved)
     _startup_phase("resolve_config", t0)
 
@@ -163,7 +151,7 @@ def run_platform(
                 controller_threads.extend(run_controllers_in_threads(controller_run_funcs, controller_stop_signal))
             if sidecar_run_funcs:
                 controller_threads.extend(run_controllers_in_threads(sidecar_run_funcs, controller_stop_signal))
-            run_server(service_instances, host=resolved.host, port=resolved.port)
+            run_server(service_instances, host=resolved.host, port=resolved.port, socket_path=resolved.socket_path)
     except ValueError as error:
         logger.error("Configuration error: %s", error)
         raise SystemExit(1) from error

@@ -317,9 +317,14 @@ class AuthConfig(create_service_config_class("auth")):  # ty: ignore[unsupported
     )
 
     def get_pdp_url(self, entrypoint: str) -> str:
+        # Import lazily to avoid a module cycle: platform_endpoint imports
+        # PlatformConfig from nmp.common.config, which is defined in this file.
+        from nmp.common.platform_endpoint import parse_platform_endpoint
+
+        endpoint = parse_platform_endpoint(self.policy_decision_point_base_url)
         if self.policy_decision_point_provider == "opa":
-            return f"{self.policy_decision_point_base_url}/v1/data/authz/{entrypoint}"
-        return f"{self.policy_decision_point_base_url}/apis/auth/v2/authz/{entrypoint}"
+            return f"{endpoint.connect_base_url}/v1/data/authz/{entrypoint}"
+        return f"{endpoint.connect_base_url}/apis/auth/v2/authz/{entrypoint}"
 
     @property
     def auth_url(self) -> str:
