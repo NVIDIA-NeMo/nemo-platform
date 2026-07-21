@@ -13,18 +13,20 @@ const EXPERIMENT_GROUP = 'my-group';
 const EVALUATION_NAME = 'my-evaluation';
 const COMPARE_EVALUATION_NAME = 'my-other-evaluation';
 const GROUP_ID = 'group-uuid-001';
-const DATASET_NAME = 'my-dataset';
-// Reuses the pre-wired mock trace from @studio/mocks/intake/telemetry
+// Reuses the pre-wired mock traces from @studio/mocks/intake/telemetry
 const TRACE_ID = 'trace-agent-run-001';
 const COMPARE_TRACE_ID = 'trace-agent-run-002';
 const TEST_CASE_ID = 'case-0042'; // matches the mock trace's experiment_context.test_case_id
+const PRIMARY_SESSION_ID = 'sess-primary-AAAAA';
+const COMPARE_SESSION_ID = 'sess-compare-BBBBB';
+
+const PRIMARY_LABEL = `${EVALUATION_NAME} · Trial AAAAA`;
+const COMPARE_LABEL = `${COMPARE_EVALUATION_NAME} · Trial BBBBB`;
 
 const EXPERIMENT_GROUP_URL = `${PLATFORM_BASE_URL}/apis/intake/v2/workspaces/${WORKSPACE}/experiment-groups/${EXPERIMENT_GROUP}`;
-const EVALUATION_URL = `${PLATFORM_BASE_URL}/apis/intake/v2/workspaces/${WORKSPACE}/evaluations/${EVALUATION_NAME}`;
 const EVALUATIONS_LIST_URL = `${PLATFORM_BASE_URL}/apis/intake/v2/workspaces/${WORKSPACE}/evaluations`;
-const COMPARE_SESSIONS_URL = `${PLATFORM_BASE_URL}/apis/intake/v2/workspaces/${WORKSPACE}/evaluations/${COMPARE_EVALUATION_NAME}/sessions`;
-const COMPARE_EVALUATION_URL = `${PLATFORM_BASE_URL}/apis/intake/v2/workspaces/${WORKSPACE}/evaluations/${COMPARE_EVALUATION_NAME}`;
 const PRIMARY_SESSIONS_URL = `${PLATFORM_BASE_URL}/apis/intake/v2/workspaces/${WORKSPACE}/evaluations/${EVALUATION_NAME}/sessions`;
+const COMPARE_SESSIONS_URL = `${PLATFORM_BASE_URL}/apis/intake/v2/workspaces/${WORKSPACE}/evaluations/${COMPARE_EVALUATION_NAME}/sessions`;
 
 const mockGroup = {
   id: GROUP_ID,
@@ -33,59 +35,63 @@ const mockGroup = {
   default_sort: '-created_at',
 };
 
-const mockPrimaryEvaluation = {
-  id: 'eval-uuid-001',
-  name: EVALUATION_NAME,
+const mockEvaluation = (name: string) => ({
+  id: `eval-${name}`,
+  name,
   workspace: WORKSPACE,
   experiment_group_id: GROUP_ID,
-  dataset_name: DATASET_NAME,
-};
+  dataset_name: 'my-dataset',
+});
 
-const mockCompareEvaluation = {
-  id: 'eval-uuid-002',
-  name: COMPARE_EVALUATION_NAME,
+const mockSession = (evaluationName: string, sessionId: string, traceId: string) => ({
   workspace: WORKSPACE,
-  experiment_group_id: GROUP_ID,
-  dataset_name: DATASET_NAME,
-};
-
-const mockCompareSession = {
-  workspace: WORKSPACE,
-  evaluation_name: COMPARE_EVALUATION_NAME,
-  session_id: 'session-compare-001',
-  trace_id: COMPARE_TRACE_ID,
-  root_span_id: 'span-root-compare',
+  evaluation_name: evaluationName,
+  session_id: sessionId,
+  trace_id: traceId,
+  root_span_id: `span-root-${traceId}`,
   started_at: '2026-01-01T00:00:00Z',
   status: 'success',
   test_case_id: TEST_CASE_ID,
-};
+  latency_ms: 1200,
+  input_tokens: 500,
+  output_tokens: 250,
+  cached_tokens: 0,
+  cost_total_usd: 0.0123,
+  evaluator_scores: { correctness: 0.9 },
+});
 
-/** MSW handlers for the evaluation/group entity lookups the route fires. */
-function registerEvaluationHandlers() {
+const sessionsPage = (rows: object[]) =>
+  HttpResponse.json({ data: rows, pagination: { page: 1, total_results: rows.length } });
+
+/** MSW handlers for the group + fan-out session lookups every render fires. */
+function registerHandlers() {
   server.use(
     http.get(EXPERIMENT_GROUP_URL, () => HttpResponse.json(mockGroup)),
-    http.get(EVALUATION_URL, () => HttpResponse.json(mockPrimaryEvaluation)),
-    http.get(COMPARE_EVALUATION_URL, () => HttpResponse.json(mockCompareEvaluation)),
     http.get(EVALUATIONS_LIST_URL, () =>
       HttpResponse.json({
-        data: [mockPrimaryEvaluation, mockCompareEvaluation],
+        data: [mockEvaluation(EVALUATION_NAME), mockEvaluation(COMPARE_EVALUATION_NAME)],
         pagination: { page: 1, total_results: 2 },
       })
     ),
     http.get(PRIMARY_SESSIONS_URL, () =>
-      HttpResponse.json({ data: [], pagination: { page: 1, total_results: 0 } })
+      sessionsPage([mockSession(EVALUATION_NAME, PRIMARY_SESSION_ID, TRACE_ID)])
+    ),
+    http.get(COMPARE_SESSIONS_URL, () =>
+      sessionsPage([mockSession(COMPARE_EVALUATION_NAME, COMPARE_SESSION_ID, COMPARE_TRACE_ID)])
     )
   );
 }
 
-const renderTraceDetail = (compareWith?: string) => {
+const renderTraceDetail = (compareWithTraceId?: string) => {
   const base = getEvaluationTraceDetailRoute(
     WORKSPACE,
     EXPERIMENT_GROUP,
     EVALUATION_NAME,
     TRACE_ID
   );
-  const path = compareWith ? `${base}?compareWith=${encodeURIComponent(compareWith)}` : base;
+  const path = compareWithTraceId
+    ? `${base}?compareWith=${encodeURIComponent(compareWithTraceId)}`
+    : base;
 
   return renderRoute(undefined, {
     history: path,
@@ -99,9 +105,8 @@ const renderTraceDetail = (compareWith?: string) => {
 };
 
 describe('EvaluationTraceDetailRoute', () => {
-  // Every render fires the evaluation/group fetches that populate the compare selector.
   beforeEach(() => {
-    registerEvaluationHandlers();
+    registerHandlers();
   });
 
   describe('single trace view (no compareWith param)', () => {
@@ -124,52 +129,30 @@ describe('EvaluationTraceDetailRoute', () => {
   });
 
   describe('compare view (compareWith query param set)', () => {
-    it('renders both column header labels with evaluation names', async () => {
-      server.use(
-        http.get(COMPARE_SESSIONS_URL, () =>
-          HttpResponse.json({
-            data: [mockCompareSession],
-            pagination: { page: 1, total_results: 1 },
-          })
-        )
-      );
+    it('labels each column with its run (evaluation name · Trial)', async () => {
+      renderTraceDetail(COMPARE_TRACE_ID);
 
-      renderTraceDetail(COMPARE_EVALUATION_NAME);
-
-      // Both names are rendered by the slotHeader render prop inside TraceSpanAccordions,
-      // which only fires after the trace loads — wait for both together.
+      // Column labels come from the slotHeader render prop, which fires once the
+      // trace + runs load — wait for both together.
       await waitFor(() => {
-        expect(screen.getAllByText(EVALUATION_NAME).length).toBeGreaterThanOrEqual(1);
-        expect(screen.getAllByText(COMPARE_EVALUATION_NAME).length).toBeGreaterThanOrEqual(1);
+        expect(screen.getAllByText(PRIMARY_LABEL).length).toBeGreaterThanOrEqual(1);
+        expect(screen.getAllByText(COMPARE_LABEL).length).toBeGreaterThanOrEqual(1);
       });
     });
 
-    it('shows "test case not available" when the compare evaluation has no matching session', async () => {
-      server.use(
-        http.get(COMPARE_SESSIONS_URL, () =>
-          HttpResponse.json({ data: [], pagination: { page: 1, total_results: 0 } })
-        )
-      );
-
-      renderTraceDetail(COMPARE_EVALUATION_NAME);
-
-      expect(await screen.findByText('Test case not available')).toBeInTheDocument();
+    it('renders the page header with the test case id', async () => {
+      renderTraceDetail(COMPARE_TRACE_ID);
+      expect(
+        await screen.findByText(`Test case comparison — Test case ${TEST_CASE_ID}`)
+      ).toBeInTheDocument();
     });
 
-    it('renders the primary evaluation column header', async () => {
-      server.use(
-        http.get(COMPARE_SESSIONS_URL, () =>
-          HttpResponse.json({
-            data: [mockCompareSession],
-            pagination: { page: 1, total_results: 1 },
-          })
-        )
-      );
+    it('shows "test case not available" when the selected run has no matching session', async () => {
+      server.use(http.get(COMPARE_SESSIONS_URL, () => sessionsPage([])));
 
-      renderTraceDetail(COMPARE_EVALUATION_NAME);
+      renderTraceDetail(COMPARE_TRACE_ID);
 
-      // Text kind="title/sm" is not a semantic heading — assert by text content.
-      expect(await screen.findByText(EVALUATION_NAME)).toBeInTheDocument();
+      expect(await screen.findByText('Test case not available')).toBeInTheDocument();
     });
   });
 });

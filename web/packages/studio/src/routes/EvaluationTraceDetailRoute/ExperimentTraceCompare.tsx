@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { KVPair } from '@nemo/common/src/components/KVPair';
-import { useListEvaluationSessions } from '@nemo/sdk/generated/platform/api';
 import type { EvaluationSessionResponse } from '@nemo/sdk/generated/platform/schema';
-import { Button, Divider, Flex, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
+import { Button, Flex, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { IntakeTraceDetailView } from '@studio/components/IntakeDetail/TraceDetailView';
 import { type SlotHeaderRenderProp } from '@studio/components/IntakeDetail/TraceSpanAccordions';
@@ -13,21 +12,22 @@ import {
   type BreadcrumbsItemProps,
   useBreadcrumbs,
 } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { useCompareSession } from '@studio/routes/EvaluationTraceDetailRoute/useCompareSession';
+import { runLabel } from '@studio/routes/EvaluationTraceDetailRoute/runLabel';
 import { getExperimentGroupDetailRoute, getExperimentRoute } from '@studio/routes/utils';
-import { CircleAlert, ChevronsDownUp, ChevronsUpDown, X } from 'lucide-react';
-import { type FC, useEffect, useState } from 'react';
+import { CircleAlert, ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
+import { type FC, useEffect } from 'react';
 
 interface ExperimentTraceCompareProps {
   workspace: string;
   experimentGroupName: string;
-  primaryEvaluationName: string;
-  primaryTraceId: string;
-  compareEvaluationName: string;
   testCaseId: string | null | undefined;
-  isPrimaryTraceLoading: boolean;
+  primaryTraceId: string;
+  primarySession: EvaluationSessionResponse | undefined;
+  compareTraceId: string;
+  compareSession: EvaluationSessionResponse | undefined;
+  /** True while the group's test-case runs are still loading. */
+  isRunsLoading: boolean;
   slotHeaderActions?: React.ReactNode;
-  onClose: () => void;
 }
 
 // ── Metrics helpers ───────────────────────────────────────────────────────────
@@ -46,100 +46,75 @@ const fmtMs = (ms?: number | null) => {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 };
 
-const pickCorrectness = (scores?: EvaluationSessionResponse['evaluator_scores']): number | null => {
-  if (!scores) return null;
-  return scores['composite_score'] ?? scores['correctness'] ?? Object.values(scores)[0] ?? null;
+const fmtCost = (usd?: number | null) => {
+  if (usd == null) return '—';
+  if (usd === 0) return '$0';
+  return usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`;
 };
+
+/** Evaluator means in the 0–1 range read as percentages; anything else is a raw scale. */
+const fmtScore = (v: number) => (v >= 0 && v <= 1 ? `${Math.round(v * 100)}%` : v.toFixed(2));
+
+/** The per-session metrics shown in each column's card, in display order. */
+const sessionMetrics = (session: EvaluationSessionResponse | undefined) => [
+  { label: 'Cost', value: fmtCost(session?.cost_total_usd) },
+  { label: 'Latency', value: fmtMs(session?.latency_ms) },
+  { label: 'Tkns In', value: fmtNum(session?.input_tokens) },
+  { label: 'Tkns Out', value: fmtNum(session?.output_tokens) },
+  { label: 'Cached Tkns', value: fmtNum(session?.cached_tokens) },
+  ...Object.entries(session?.evaluator_scores ?? {}).map(([name, score]) => ({
+    label: name,
+    value: fmtScore(score),
+  })),
+];
 
 // ── Column slot render prop ───────────────────────────────────────────────────
 
 /**
- * Builds the slotSpanHeader render prop for a compare column.
- * Renders: evaluation name + collapse/expand/close buttons (top row),
- * then a metrics card, all passed into TraceSpanAccordions as its header slot.
+ * Builds the slotSpanHeader render prop for a compare column: the run label +
+ * expand/collapse controls, then a card of this run's per-session metrics.
  */
 const makeColumnSlot =
-  (
-    evaluationName: string,
-    session: EvaluationSessionResponse | undefined,
-    onClose: () => void
-  ): SlotHeaderRenderProp =>
-  ({ expandAll, collapseAll }) => {
-    const correctness = pickCorrectness(session?.evaluator_scores);
-    return (
-      <Stack gap="density-md">
-        {/* Heading row */}
-        <Flex align="center" justify="between" gap="density-sm">
-          <Text kind="title/sm">{evaluationName}</Text>
-          <Flex align="center" gap="density-xs">
-            <Button
-              kind="tertiary"
-              size="tiny"
-              type="button"
-              aria-label="Collapse all"
-              title="Collapse all"
-              onClick={collapseAll}
-            >
-              <ChevronsDownUp size={14} aria-hidden />
-            </Button>
-            <Button
-              kind="tertiary"
-              size="tiny"
-              type="button"
-              aria-label="Expand all"
-              title="Expand all"
-              onClick={expandAll}
-            >
-              <ChevronsUpDown size={14} aria-hidden />
-            </Button>
-            <Button
-              kind="tertiary"
-              type="button"
-              aria-label="Close comparison"
-              title="Close comparison"
-              onClick={onClose}
-            >
-              <X size={16} aria-hidden />
-            </Button>
-          </Flex>
+  (label: string, session: EvaluationSessionResponse | undefined): SlotHeaderRenderProp =>
+  ({ expandAll, collapseAll }) => (
+    <Stack gap="density-md">
+      {/* Heading row */}
+      <Flex align="center" justify="between" gap="density-sm">
+        <Text kind="title/sm">{label}</Text>
+        <Flex align="center" gap="density-xs">
+          <Button
+            kind="tertiary"
+            size="tiny"
+            type="button"
+            aria-label="Collapse all"
+            title="Collapse all"
+            onClick={collapseAll}
+          >
+            <ChevronsDownUp size={14} aria-hidden />
+          </Button>
+          <Button
+            kind="tertiary"
+            size="tiny"
+            type="button"
+            aria-label="Expand all"
+            title="Expand all"
+            onClick={expandAll}
+          >
+            <ChevronsUpDown size={14} aria-hidden />
+          </Button>
         </Flex>
+      </Flex>
 
-        {/* Metrics card */}
-        <div className="rounded-sm border border-base bg-surface-raised p-density-lg">
-          <Flex align="stretch" justify="between" gap="density-2xl">
-            <KVPair
-              label="Correctness"
-              value={correctness != null ? `${Math.round(correctness * 100)}%` : undefined}
-              orientation="vertical"
-              attributes={{ value: { kind: 'title/sm' } }}
-            />
-            <Flex align="stretch" gap="density-lg">
-              <Divider orientation="vertical" className="grow-0 self-stretch" />
-              <KVPair label="Latency" value={fmtMs(session?.latency_ms)} orientation="vertical" />
-              <Divider orientation="vertical" className="grow-0 self-stretch" />
-              <KVPair
-                label="Tkns In"
-                value={fmtNum(session?.input_tokens)}
-                orientation="vertical"
-              />
-              <Divider orientation="vertical" className="grow-0 self-stretch" />
-              <KVPair
-                label="Tkns Out"
-                value={fmtNum(session?.output_tokens)}
-                orientation="vertical"
-              />
-              <Divider orientation="vertical" className="grow-0 self-stretch" />
-              <KVPair
-                label="Cached Tkns"
-                value={fmtNum(session?.cached_tokens)}
-                orientation="vertical"
-              />
-            </Flex>
-          </Flex>
-        </div>
-      </Stack>
-    );
-  };
+      {/* Per-session metrics card */}
+      <div className="rounded-sm border border-base bg-surface-raised p-density-lg">
+        <Flex align="stretch" gap="density-2xl" className="flex-wrap">
+          {sessionMetrics(session).map((m) => (
+            <KVPair key={m.label} label={m.label} value={m.value} orientation="vertical" />
+          ))}
+        </Flex>
+      </div>
+    </Stack>
+  );
 
 // ── Column ────────────────────────────────────────────────────────────────────
 
@@ -147,21 +122,18 @@ const CompareTraceColumn: FC<{
   workspace: string;
   traceId: string;
   slotSpanHeader: SlotHeaderRenderProp;
-}> = ({ workspace, traceId, slotSpanHeader }) => {
-  const [linkedSpanId, setLinkedSpanId] = useState<string | null>(null);
-  return (
-    <IntakeTraceDetailView
-      workspace={workspace}
-      traceId={traceId}
-      disableBreadcrumbs
-      hidePageHeader
-      forceListView
-      linkedSpanId={linkedSpanId}
-      onLinkedSpanIdChange={setLinkedSpanId}
-      slotSpanHeader={slotSpanHeader}
-    />
-  );
-};
+}> = ({ workspace, traceId, slotSpanHeader }) => (
+  <IntakeTraceDetailView
+    workspace={workspace}
+    traceId={traceId}
+    disableBreadcrumbs
+    hidePageHeader
+    forceListView
+    linkedSpanId={null}
+    onLinkedSpanIdChange={() => {}}
+    slotSpanHeader={slotSpanHeader}
+  />
+);
 
 const CompareNotFound: FC<{ testCaseId: string }> = ({ testCaseId }) => (
   <div className="flex h-full flex-col items-center justify-center gap-3 p-density-2xl text-center">
@@ -188,63 +160,46 @@ const CompareNoTestCaseId: FC = () => (
 export const ExperimentTraceCompare: FC<ExperimentTraceCompareProps> = ({
   workspace,
   experimentGroupName,
-  primaryEvaluationName,
-  primaryTraceId,
-  compareEvaluationName,
   testCaseId,
-  isPrimaryTraceLoading,
+  primaryTraceId,
+  primarySession,
+  compareTraceId,
+  compareSession,
+  isRunsLoading,
   slotHeaderActions,
-  onClose,
 }) => {
   const { setBreadcrumbs } = useBreadcrumbs();
 
-  const breadcrumbs: BreadcrumbsItemProps[] = [
-    { slotLabel: 'Experiment Groups', href: getExperimentRoute(workspace) },
-    {
-      slotLabel: experimentGroupName,
-      href: getExperimentGroupDetailRoute(workspace, experimentGroupName),
-    },
-    { slotLabel: 'Test case comparison' },
-  ];
-
   useEffect(() => {
+    const breadcrumbs: BreadcrumbsItemProps[] = [
+      { slotLabel: 'Experiment Groups', href: getExperimentRoute(workspace) },
+      {
+        slotLabel: experimentGroupName,
+        href: getExperimentGroupDetailRoute(workspace, experimentGroupName),
+      },
+      { slotLabel: 'Test case comparison' },
+    ];
     setBreadcrumbs(breadcrumbs);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setBreadcrumbs, workspace, experimentGroupName]);
 
-  const { data: primarySessionPage } = useListEvaluationSessions(
-    workspace,
-    primaryEvaluationName,
-    { filter: { test_case_id: testCaseId ?? '' }, page_size: 1 },
-    { query: { enabled: Boolean(testCaseId) && !isPrimaryTraceLoading } }
-  );
-  const primarySession = primarySessionPage?.data?.[0];
-
-  const compareState = useCompareSession({
-    workspace,
-    compareEvaluationName,
-    testCaseId,
-    isTestCaseIdLoading: isPrimaryTraceLoading,
-  });
+  const heading = testCaseId
+    ? `Test case comparison — Test case ${testCaseId}`
+    : 'Test case comparison';
 
   const renderRightColumn = () => {
-    switch (compareState.status) {
-      case 'loading':
-        return <Loading description="Loading comparison trace…" />;
-      case 'no-test-case-id':
-        return <CompareNoTestCaseId />;
-      case 'not-found':
-        return <CompareNotFound testCaseId={compareState.testCaseId} />;
-      case 'found':
-        return (
-          <CompareTraceColumn
-            key={compareState.session.trace_id}
-            workspace={workspace}
-            traceId={compareState.session.trace_id}
-            slotSpanHeader={makeColumnSlot(compareEvaluationName, compareState.session, onClose)}
-          />
-        );
+    if (!testCaseId) return <CompareNoTestCaseId />;
+    if (compareSession) {
+      return (
+        <CompareTraceColumn
+          key={compareTraceId}
+          workspace={workspace}
+          traceId={compareTraceId}
+          slotSpanHeader={makeColumnSlot(runLabel(compareSession), compareSession)}
+        />
+      );
     }
+    if (isRunsLoading) return <Loading description="Loading comparison run…" />;
+    return <CompareNotFound testCaseId={testCaseId} />;
   };
 
   return (
@@ -253,8 +208,8 @@ export const ExperimentTraceCompare: FC<ExperimentTraceCompareProps> = ({
         <div className="shrink-0 border-b border-base px-density-2xl py-density-lg">
           <PageHeader
             className="p-0"
-            slotHeading="Test case comparison"
-            slotDescription="Compare multiple test cases from compatible evaluations"
+            slotHeading={heading}
+            slotDescription="See how this test case performed across different runs"
             slotActions={slotHeaderActions}
           />
         </div>
@@ -265,7 +220,10 @@ export const ExperimentTraceCompare: FC<ExperimentTraceCompareProps> = ({
                 key={primaryTraceId}
                 workspace={workspace}
                 traceId={primaryTraceId}
-                slotSpanHeader={makeColumnSlot(primaryEvaluationName, primarySession, onClose)}
+                slotSpanHeader={makeColumnSlot(
+                  primarySession ? runLabel(primarySession) : '—',
+                  primarySession
+                )}
               />
             </div>
           </div>

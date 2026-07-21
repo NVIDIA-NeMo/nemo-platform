@@ -2,17 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
-  useGetEvaluation,
   useGetExperimentGroup,
   useGetTrace,
   useListEvaluations,
 } from '@nemo/sdk/generated/platform/api';
+import { Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { type BreadcrumbsItemProps } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { QUERY_PARAMETERS } from '@studio/routes/constants';
-import { CompareExperimentSelect } from '@studio/routes/EvaluationTraceDetailRoute/CompareExperimentSelect';
+import { CompareRunSelect } from '@studio/routes/EvaluationTraceDetailRoute/CompareRunSelect';
 import { ExperimentTraceCompare } from '@studio/routes/EvaluationTraceDetailRoute/ExperimentTraceCompare';
+import { useTestCaseRuns } from '@studio/routes/EvaluationTraceDetailRoute/useTestCaseRuns';
 import { IntakeTraceDetailContent } from '@studio/routes/IntakeTraceDetailRoute';
 import {
   getEvaluationDetailRoute,
@@ -28,6 +29,7 @@ export const EvaluationTraceDetailRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  // compareWith carries the trace_id of the run to show in the right column.
   const compareWith = searchParams.get(QUERY_PARAMETERS.compareWith);
 
   const { traceId, experimentGroupName, evaluationName } = useRequiredPathParams([
@@ -36,33 +38,32 @@ export const EvaluationTraceDetailRoute: FC = () => {
     ROUTE_PARAMS.evaluationName,
   ]);
 
-  // Fetch primary evaluation to get dataset_name for filtering sibling evaluations.
-  const { data: primaryEvaluation } = useGetEvaluation(workspace, evaluationName);
-
-  // Fetch the experiment group to get its id for the sibling evaluation query.
+  // The experiment group's id scopes the sibling evaluations we fan out over.
   const { data: group } = useGetExperimentGroup(workspace, experimentGroupName);
 
-  // List all evaluations in the same group so the compare selector is populated.
-  const { data: siblingsPage, isLoading: isLoadingSiblings } = useListEvaluations(
+  const { data: evaluationsPage } = useListEvaluations(
     workspace,
-    {
-      filter: { experiment_group_id: group?.id },
-      page_size: 1000,
-    },
+    { filter: { experiment_group_id: group?.id }, page_size: 1000 },
     { query: { enabled: Boolean(group?.id) } }
   );
+  const evaluationNames = useMemo(
+    () => evaluationsPage?.data?.map((e) => e.name) ?? [],
+    [evaluationsPage]
+  );
 
-  // Filter to evaluations sharing the same dataset as the primary.
-  const comparableEvaluations = useMemo(() => {
-    if (!siblingsPage?.data || !primaryEvaluation?.dataset_name) return [];
-    return siblingsPage.data.filter((e) => e.dataset_name === primaryEvaluation.dataset_name);
-  }, [siblingsPage, primaryEvaluation]);
-
-  // Fetch the primary trace to extract test_case_id (needed to look up the compare session).
-  const { data: primaryTrace, isLoading: isPrimaryTraceLoading } = useGetTrace(workspace, traceId, {
-    mode: 'summary',
-  });
+  // The primary trace supplies the test_case_id every run is matched on.
+  const { data: primaryTrace } = useGetTrace(workspace, traceId, { mode: 'summary' });
   const testCaseId = primaryTrace?.experiment_context?.test_case_id;
+
+  // Every run of this test case across the group (Option A: FE fan-out per evaluation).
+  const { runs, isLoading: isRunsLoading } = useTestCaseRuns({
+    workspace,
+    evaluationNames,
+    testCaseId,
+  });
+
+  const primarySession = runs.find((r) => r.trace_id === traceId);
+  const compareSession = compareWith ? runs.find((r) => r.trace_id === compareWith) : undefined;
 
   const parentBreadcrumbs = useMemo<BreadcrumbsItemProps[]>(
     () => [
@@ -79,11 +80,11 @@ export const EvaluationTraceDetailRoute: FC = () => {
     [workspace, experimentGroupName, evaluationName]
   );
 
-  const handleCompareChange = (selectedEvaluationName: string) => {
+  const handleCompareChange = (selectedTraceId: string) => {
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
-        next.set(QUERY_PARAMETERS.compareWith, selectedEvaluationName);
+        next.set(QUERY_PARAMETERS.compareWith, selectedTraceId);
         return next;
       },
       { replace: false }
@@ -97,20 +98,28 @@ export const EvaluationTraceDetailRoute: FC = () => {
   };
 
   const compareSelector = (
-    <div className="flex items-center gap-density-md">
-      <CompareExperimentSelect
-        evaluations={comparableEvaluations}
-        currentEvaluationName={evaluationName}
-        value={compareWith}
-        onChange={handleCompareChange}
-        isLoading={isLoadingSiblings}
-      />
-      {compareWith && (
-        <button className="text-sm text-content-link hover:underline" onClick={handleClearCompare}>
-          Clear
-        </button>
-      )}
-    </div>
+    <Stack gap="density-xs">
+      <Text kind="label/regular/sm" className="text-content-secondary">
+        Compare against another run of this test case
+      </Text>
+      <Flex align="center" gap="density-md">
+        <CompareRunSelect
+          runs={runs}
+          currentTraceId={traceId}
+          value={compareWith}
+          onChange={handleCompareChange}
+          isLoading={isRunsLoading}
+        />
+        {compareWith && (
+          <button
+            className="text-sm text-content-link hover:underline"
+            onClick={handleClearCompare}
+          >
+            Clear
+          </button>
+        )}
+      </Flex>
+    </Stack>
   );
 
   if (compareWith) {
@@ -118,13 +127,13 @@ export const EvaluationTraceDetailRoute: FC = () => {
       <ExperimentTraceCompare
         workspace={workspace}
         experimentGroupName={experimentGroupName}
-        primaryEvaluationName={evaluationName}
-        primaryTraceId={traceId}
-        compareEvaluationName={compareWith}
         testCaseId={testCaseId}
-        isPrimaryTraceLoading={isPrimaryTraceLoading}
+        primaryTraceId={traceId}
+        primarySession={primarySession}
+        compareTraceId={compareWith}
+        compareSession={compareSession}
+        isRunsLoading={isRunsLoading}
         slotHeaderActions={compareSelector}
-        onClose={handleClearCompare}
       />
     );
   }
