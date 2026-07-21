@@ -382,15 +382,18 @@ def build_output_response_body(
 
     choices = list(response.get("choices", [])) if isinstance(response.get("choices"), list) else []
     response["choices"] = choices
+
     # Output rails validate choices[0].message, so return only the choice that was checked.
-    # If output rails masked ``$bot_message``, write that text back onto the choice.
     if generation_response is not None and choices:
         choice = {**choices[0], "index": 0}
         message = dict(choice.get("message") or {}) if isinstance(choice.get("message"), dict) else {}
         original_content = message.get("content")
+
+        # If the output rail modified the message content, write it back onto the choice.
         if isinstance(original_content, str):
             message["content"] = apply_output_rail_modifications(original_content, generation_response)
             choice["message"] = message
+
         response["choices"] = [choice]
 
     guardrails_data = build_guardrails_data(
