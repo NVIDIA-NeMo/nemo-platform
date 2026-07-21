@@ -173,11 +173,6 @@ def extract_response_content(generation_response: GenerationResponse) -> str:
 # ---------------------------------------------------------------------------
 
 
-def resolve_rail_message_content(*, original: str, processed: str) -> str:
-    """Return the text to forward after rails: redacted if changed, else original."""
-    return processed if processed != original else original
-
-
 def _index_of_last_user_message(messages: list[dict[str, Any]]) -> int | None:
     """Return the index of the last ``role=user`` message, if any."""
     last_user_index: int | None = None
@@ -215,17 +210,13 @@ def apply_input_rail_modifications(
     # NOTE: the input-rail result is labeled as an assistant message in the GenerationResponse,
     # but the content is actually the redacted/transformed user message.
     processed = extract_response_content(generation_response)
-    if not isinstance(processed, str):
-        return messages
-
     # If the message content wasn't modified, return the original messages.
-    updated_content = resolve_rail_message_content(original=original_content, processed=processed)
-    if updated_content == original_content:
+    if not isinstance(processed, str) or processed == original_content:
         return messages
 
     # If the message content was modified, write it back onto the last user message.
     updated_messages = list(messages)
-    updated_messages[last_user_index] = {**last_user_message, "content": updated_content}
+    updated_messages[last_user_index] = {**last_user_message, "content": processed}
     return updated_messages
 
 
@@ -235,10 +226,11 @@ def apply_output_rail_modifications(
 ) -> str:
     """Return assistant content after output rails, from ``response`` content."""
     processed = extract_response_content(generation_response)
-    if not isinstance(processed, str):
+
+    if not isinstance(processed, str) or processed == original_content:
         return original_content
 
-    return resolve_rail_message_content(original=original_content, processed=processed)
+    return processed
 
 
 def build_assistant_message_from_response_result(response_result: ResponseResult) -> dict[str, Any]:

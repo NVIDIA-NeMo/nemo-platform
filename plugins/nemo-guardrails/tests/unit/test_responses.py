@@ -17,7 +17,6 @@ from nemo_guardrails_plugin.responses import (
     build_inference_response,
     build_output_response_body,
     extract_upstream_error,
-    resolve_rail_message_content,
 )
 from nemo_platform_plugin.inference_middleware import InferenceMiddlewareError, InferenceResponse
 from nemoguardrails.exceptions import LLMCallException
@@ -62,14 +61,6 @@ def _make_response_result(content: str = "Hello!") -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Masking write-back helpers
 # ---------------------------------------------------------------------------
-
-
-class TestResolveRailMessageContent:
-    def test_returns_redacted_when_changed(self) -> None:
-        assert resolve_rail_message_content(original="Hi John", processed="Hi <PERSON>") == "Hi <PERSON>"
-
-    def test_returns_original_when_unchanged(self) -> None:
-        assert resolve_rail_message_content(original="same", processed="same") == "same"
 
 
 class TestApplyInputRailModifications:
