@@ -14,38 +14,22 @@ async def test_counts_filtered_entities_grouped_by_json_field(
     entity_repo: SQLAlchemyEntityRepository, setup_workspaces
 ):
     """Count only live experiment groups for the requested insights."""
-    for name, insight_id in (("a-1", "insight-a"), ("a-2", "insight-a"), ("b-1", "insight-b")):
+    entities = (
+        ("workspace-1", "experiment_group", "a-1", {"insight_id": "insight-a", "is_deleted": False}),
+        ("workspace-1", "experiment_group", "a-2", {"insight_id": "insight-a", "is_deleted": False}),
+        ("workspace-1", "experiment_group", "b-1", {"insight_id": "insight-b", "is_deleted": False}),
+        ("workspace-1", "experiment_group", "deleted", {"insight_id": "insight-a", "is_deleted": True}),
+        ("workspace-1", "experiment_group", "unlinked", {"is_deleted": False}),
+        ("workspace-2", "experiment_group", "other-workspace", {"insight_id": "insight-a", "is_deleted": False}),
+        ("workspace-1", "other_type", "other-type", {"insight_id": "insight-a", "is_deleted": False}),
+    )
+    for workspace, entity_type, name, data in entities:
         await entity_repo.create_entity(
-            workspace="workspace-1",
-            entity_type="experiment_group",
+            workspace=workspace,
+            entity_type=entity_type,
             name=name,
-            data={"insight_id": insight_id, "is_deleted": False},
+            data=data,
         )
-
-    await entity_repo.create_entity(
-        workspace="workspace-1",
-        entity_type="experiment_group",
-        name="deleted",
-        data={"insight_id": "insight-a", "is_deleted": True},
-    )
-    await entity_repo.create_entity(
-        workspace="workspace-1",
-        entity_type="experiment_group",
-        name="unlinked",
-        data={"is_deleted": False},
-    )
-    await entity_repo.create_entity(
-        workspace="workspace-2",
-        entity_type="experiment_group",
-        name="other-workspace",
-        data={"insight_id": "insight-a", "is_deleted": False},
-    )
-    await entity_repo.create_entity(
-        workspace="workspace-1",
-        entity_type="other_type",
-        name="other-type",
-        data={"insight_id": "insight-a", "is_deleted": False},
-    )
 
     filter_op = LogicalOperation(
         operator=FilterOperator.AND,

@@ -13,11 +13,11 @@ class ExperimentGroup:
     __entity_type__ = "experiment_group"
 
 
-def _entities_page(**extra_fields: object) -> EntitiesPage:
+def _entities_page(group_counts: dict[str, int] | None = None) -> EntitiesPage:
     return EntitiesPage.model_construct(
         data=[],
         pagination=PaginationData(page=1, page_size=1, current_page_size=0, total_pages=0, total_results=0),
-        **extra_fields,
+        group_counts=group_counts,
     )
 
 

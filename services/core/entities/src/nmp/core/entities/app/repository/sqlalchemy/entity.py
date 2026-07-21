@@ -213,22 +213,19 @@ class SQLAlchemyEntityRepository(EntityRepositoryInterface):
                 DBEntity, relationship_child_workspaces=relationship_child_workspaces
             )
             group_column, is_json = filter_repo.get_text_column(group_by)
-            group_counts = (
-                select(group_column, func.count()).select_from(DBEntity).where(DBEntity.entity_type == entity_type)
-            )
+            query = select(group_column, func.count()).select_from(DBEntity).where(DBEntity.entity_type == entity_type)
 
             if workspace != ALL_WORKSPACES:
-                group_counts = group_counts.where(DBEntity.workspace == workspace)
+                query = query.where(DBEntity.workspace == workspace)
 
             if filter_op is not None:
-                group_counts = group_counts.where(filter_op.apply(filter_repo))
+                query = query.where(filter_op.apply(filter_repo))
 
-            group_counts = group_counts.where(group_column.is_not(None))
+            query = query.where(group_column.is_not(None))
             if is_json:
-                group_counts = group_counts.where(group_column != "null")
-            group_counts = group_counts.group_by(group_column)
+                query = query.where(group_column != "null")
 
-            rows = (await sess.execute(group_counts)).all()
+            rows = (await sess.execute(query.group_by(group_column))).all()
             return {str(key): int(count) for key, count in rows}
 
     async def update_entity(

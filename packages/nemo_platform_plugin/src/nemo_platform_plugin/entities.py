@@ -315,11 +315,7 @@ def _convert_filter_obj_to_filter_str(filter_obj: Dict[str, Any]) -> Dict[str, A
     For EntityBase entities, fields are stored in the data JSON column,
     so we prefix them with 'data.' unless they're base fields.
     """
-    filter_dict: Dict[str, Any] = {}
-
-    for field, value in filter_obj.items():
-        filter_dict[_convert_field_to_api_field(field)] = value
-    return filter_dict
+    return {_convert_field_to_api_field(field): value for field, value in filter_obj.items()}
 
 
 def _convert_sort_to_api_sort(sort: str) -> str:
