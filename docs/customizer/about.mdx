@@ -19,7 +19,7 @@ Full SFT models require a NIM deployment to serve inference. The Deployment Mana
 | **Multi-LLM** (Default) | Generic multi-model NIM | On-the-fly download via Files service | Supported Hugging Face architectures, custom fine-tuned models, development |
 | **Model-Specific NIM** | Dedicated model image | Pre-download via model puller | Production, optimized performance and latency |
 
-- **Multi-LLM Image**: Can deploy Hugging Face checkpoints whose architectures are supported by the image's inference engine, providing flexibility for custom fine-tuned models. Importing a checkpoint does not guarantee training or deployment compatibility; for example, Automodel LoRA does not support Conv1D-based architectures. Does not guarantee optimized inference performance.
+- **Multi-LLM Image**: Can deploy Hugging Face checkpoints whose architectures are supported by the image's inference engine, providing flexibility for custom fine-tuned models. Importing a checkpoint does not guarantee training or deployment compatibility; for example, Automodel LoRA does not support Conv1D-based architectures. It also does not guarantee optimized inference performance.
 
 - **Model-Specific NIM**: Provides optimized inference performance and latency through model-specific optimizations. Recommended for production deployments where performance is critical.
 
@@ -28,7 +28,7 @@ Full SFT models require a NIM deployment to serve inference. The Deployment Mana
 Parameter-Efficient Fine-Tuning (PEFT) methods enable efficient model customization by training a small number of parameters while keeping the base model frozen. For example, when customizing Llama 3.3 70B:
 
 - **Traditional SFT**: Produces a full BF16 checkpoint of approximately 140 GB per task. During training, budget free disk space separately for the base checkpoint, intermediate checkpoint, and final output—approximately 3× the downloaded base checkpoint size.
-- **PEFT**: Produces an adapter that is typically approximately 100–500 MB per task while maintaining comparable performance. During training, budget approximately 1.5× the downloaded base checkpoint size.
+- **PEFT**: Produces an adapter that is typically approximately ~100-500 MB per task while maintaining comparable performance. During training, budget approximately 1.5× the downloaded base checkpoint size.
 
 ```mermaid
 ---
