@@ -6,6 +6,7 @@ import { server } from '@studio/mocks/node';
 import { EvaluationTraceDetailRoute } from '@studio/routes/EvaluationTraceDetailRoute';
 import { getEvaluationTraceDetailRoute } from '@studio/routes/utils';
 import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 
 const WORKSPACE = 'default';
@@ -153,6 +154,40 @@ describe('EvaluationTraceDetailRoute', () => {
       renderTraceDetail(COMPARE_TRACE_ID);
 
       expect(await screen.findByText('Test case not available')).toBeInTheDocument();
+    });
+  });
+
+  describe('compare run selector', () => {
+    // Radix menus need these pointer/layout APIs that jsdom does not implement.
+    beforeAll(() => {
+      Element.prototype.hasPointerCapture = vi.fn();
+      Element.prototype.scrollIntoView = vi.fn();
+    });
+
+    it('groups runs by evaluation and selecting one enters the comparison', async () => {
+      const user = userEvent.setup();
+      renderTraceDetail();
+
+      // The trigger enables once the group's runs finish loading.
+      const trigger = await screen.findByRole('button', {
+        name: 'Compare against evaluation run',
+      });
+      await waitFor(() => expect(trigger).toBeEnabled());
+      await user.click(trigger);
+
+      // Panel title + the sibling evaluation as a group heading + its trial row.
+      // The primary run (TRACE_ID) is excluded, so only the compare evaluation shows.
+      expect(
+        await screen.findByText('Select a trial from a run to compare against')
+      ).toBeInTheDocument();
+      expect(screen.getByText(COMPARE_EVALUATION_NAME)).toBeInTheDocument();
+
+      await user.click(screen.getByText('Trial BBBBB'));
+
+      // Selecting the run swaps into the comparison view.
+      expect(
+        await screen.findByText(`Test case comparison — Test case ${TEST_CASE_ID}`)
+      ).toBeInTheDocument();
     });
   });
 });

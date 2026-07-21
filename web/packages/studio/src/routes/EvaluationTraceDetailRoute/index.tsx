@@ -6,7 +6,7 @@ import {
   useGetTrace,
   useListEvaluations,
 } from '@nemo/sdk/generated/platform/api';
-import { Flex, Stack, Text } from '@nvidia/foundations-react-core';
+import { Flex } from '@nvidia/foundations-react-core';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { type BreadcrumbsItemProps } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -98,28 +98,19 @@ export const EvaluationTraceDetailRoute: FC = () => {
   };
 
   const compareSelector = (
-    <Stack gap="density-xs">
-      <Text kind="label/regular/sm" className="text-content-secondary">
-        Compare against another run of this test case
-      </Text>
-      <Flex align="center" gap="density-md">
-        <CompareRunSelect
-          runs={runs}
-          currentTraceId={traceId}
-          value={compareWith}
-          onChange={handleCompareChange}
-          isLoading={isRunsLoading}
-        />
-        {compareWith && (
-          <button
-            className="text-sm text-content-link hover:underline"
-            onClick={handleClearCompare}
-          >
-            Clear
-          </button>
-        )}
-      </Flex>
-    </Stack>
+    <Flex align="center" gap="density-md">
+      <CompareRunSelect
+        runs={runs}
+        currentTraceId={traceId}
+        onChange={handleCompareChange}
+        isLoading={isRunsLoading}
+      />
+      {compareWith && (
+        <button className="text-sm text-content-link hover:underline" onClick={handleClearCompare}>
+          Clear
+        </button>
+      )}
+    </Flex>
   );
 
   if (compareWith) {

@@ -3,6 +3,9 @@
 
 import type { EvaluationSessionResponse } from '@nemo/sdk/generated/platform/schema';
 
-/** `<evaluation-name> · Trial XXXXX` where XXXXX is the last 5 chars of the session id. */
+/** `Trial XXXXX`, where XXXXX is the last 5 chars of the session id. */
+export const trialLabel = (run: EvaluationSessionResponse) => `Trial ${run.session_id.slice(-5)}`;
+
+/** `<evaluation-name> · Trial XXXXX` — used for column headers where the run stands alone. */
 export const runLabel = (run: EvaluationSessionResponse) =>
-  `${run.evaluation_name} · Trial ${run.session_id.slice(-5)}`;
+  `${run.evaluation_name} · ${trialLabel(run)}`;
