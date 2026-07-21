@@ -727,6 +727,7 @@ class TestProcessRequest:
     async def test_blocked_rail_returns_immediate_response(self, middleware: GuardrailsMiddleware) -> None:
         request_body = {"model": "ws/llama", "messages": [{"role": "user", "content": "Do something bad"}]}
         generation_response = _make_generation_response(is_blocked=True)
+        ctx = _make_ctx(request_body)
 
         with patch.object(middleware, "_run_rails", new=AsyncMock(return_value=generation_response)):
             result = await _process_request(
@@ -734,6 +735,7 @@ class TestProcessRequest:
                 request_body,
                 {},
                 _entity_source(workspace="ws", name="my-config"),
+                ctx=ctx,
             )
 
         assert isinstance(result, ImmediateResponse)
@@ -755,6 +757,62 @@ class TestProcessRequest:
         # for diagnostics, but the wire format keeps the legacy shape so
         # downstream consumers don't have to track per-revision IDs.
         assert result.response_body_annotations["guardrails_data"]["config_ids"] == ["ws/my-config"]
+        # Must stash even on the blocked path — response middleware still runs
+        # after ImmediateResponse and rebuilds guardrails_data from this state.
+        assert ctx.state(PLUGIN_NAME).get(STATE_KEY_INPUT_GENERATION_RESPONSE) is generation_response
+
+    async def test_blocked_input_preserves_requested_log_through_response_middleware(
+        self, middleware: GuardrailsMiddleware
+    ) -> None:
+        """Input block + response middleware must still surface requested log fields.
+
+        IGW always runs response middleware after an ImmediateResponse. That
+        handler rebuilds ``guardrails_data`` from plugin state, so a blocked
+        input rail that skipped the stash would drop ``activated_rails`` (and
+        other requested log fields) from the final response.
+        """
+        request_body = {
+            "model": "ws/llama",
+            "messages": [{"role": "user", "content": "Do something bad"}],
+            "guardrails": {"options": {"log": {"activated_rails": True}}},
+        }
+        input_blocked = _make_generation_response(is_blocked=True)
+        output_ok = GenerationResponse(
+            response=[{"role": "assistant", "content": "I'm sorry, I can't help with that."}],
+            log=GenerationLog(
+                activated_rails=[ActivatedRail(type="output", name="custom check output", stop=False)],
+                stats=GenerationStats(output_rails_duration=0.05, total_duration=0.05),
+            ),
+        )
+        source = _entity_source(
+            workspace="ws",
+            name="my-config",
+            output_flows=["custom check output"],
+        )
+        ctx = _make_ctx(request_body)
+
+        with patch.object(middleware, "_run_rails", new=AsyncMock(return_value=input_blocked)):
+            blocked = await _process_request(middleware, request_body, {}, source, ctx=ctx)
+
+        assert isinstance(blocked, ImmediateResponse)
+        # Mimic IGW wrapping ImmediateResponse before the response chain.
+        inference_response = InferenceResponse(
+            result=blocked.data,
+            headers={},
+            response_body_annotations={
+                **ctx.response_body_annotations,
+                **blocked.response_body_annotations,
+            },
+        )
+
+        with patch.object(middleware, "_run_rails", new=AsyncMock(return_value=output_ok)):
+            final = await middleware.process_response(ctx, inference_response, source)
+
+        guardrails_data = final.response_body_annotations["guardrails_data"]
+        activated_rails = (guardrails_data.get("log") or {}).get("activated_rails") or []
+        activated_by_name = {rail["name"]: rail for rail in activated_rails}
+        assert activated_by_name["self check input"]["stop"] is True
+        assert activated_by_name["custom check output"]["stop"] is False
 
     async def test_inline_source_blocked_rail_uses_inline_label(self, middleware: GuardrailsMiddleware) -> None:
         """An inline source's diagnostic label flows through into the

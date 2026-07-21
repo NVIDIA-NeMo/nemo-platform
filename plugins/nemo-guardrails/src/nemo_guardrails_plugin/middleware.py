@@ -376,6 +376,13 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
             error_msg="Failed to run input rails",
         )
 
+        # Store the input GenerationResponse before returning. IGW still runs
+        # response middleware even when the input is blocked, so this ensures
+        # `process_response` can access the input rail's log fields before it
+        # builds the final `guardrails_data` included in the response body.
+        logger.debug("Storing process_request GenerationResponse for %s", provenance.label)
+        plugin_state.set(STATE_KEY_INPUT_GENERATION_RESPONSE, generation_response)
+
         if is_blocked_generation_response(generation_response):
             return build_immediate_response(
                 response_body=build_blocked_immediate_response_body(
