@@ -48,3 +48,16 @@ async def test_invoke_agent_config_once_translates_and_runs_each_input(tmp_path:
     assert [request.input for request in captured] == ["one", "two"]
     assert all(request.base_dir == tmp_path for request in captured)
     assert captured[0].fabric_config.metadata.name == "fabric-agent"
+
+
+@pytest.mark.asyncio
+async def test_invoke_agent_config_once_creates_local_workspace_dir(tmp_path: Path) -> None:
+    config = _agent_config()
+    config["environment"] = {"workspace": "./workspace"}
+
+    async def _run_fabric_agent_once(request: Any) -> FabricRuntimeResult:
+        assert (tmp_path / "workspace").is_dir()
+        return FabricRuntimeResult(status="succeeded")
+
+    with patch("nemo_agents_plugin.fabric.invocation.run_fabric_agent_once", _run_fabric_agent_once):
+        await invoke_agent_config_once(config, ["one"], base_dir=tmp_path)

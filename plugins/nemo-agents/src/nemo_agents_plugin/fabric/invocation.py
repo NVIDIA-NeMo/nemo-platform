@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,7 @@ async def invoke_agent_config_once(
     """Translate a Platform agent config and run each input through Fabric once."""
     agent_config = AgentConfig.model_validate(config)
     fabric_config = translate_agent_config(agent_config)
+    await asyncio.to_thread(_ensure_local_workspace_dir, agent_config, base_dir)
 
     results: list[FabricRuntimeResult] = []
     for item in inputs:
@@ -36,3 +38,13 @@ async def invoke_agent_config_once(
             )
         )
     return results
+
+
+def _ensure_local_workspace_dir(agent_config: AgentConfig, base_dir: Path) -> None:
+    if agent_config.environment.provider != "local":
+        return
+
+    workspace = Path(agent_config.environment.workspace)
+    if not workspace.is_absolute():
+        workspace = base_dir / workspace
+    workspace.mkdir(parents=True, exist_ok=True)
