@@ -5,10 +5,49 @@ import {
   createEmptyClaudeCodeChatArtifacts,
   updateClaudeCodeChatArtifactsFromEvent,
   updateClaudeCodeChatArtifactsFromHistoryItems,
+  updateClaudeCodeChatArtifactsFromInputSelection,
   updateClaudeCodeChatArtifactsFromSelections,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/artifacts';
 
 describe('Claude Code chat artifacts', () => {
+  it.each([
+    {
+      kind: 'agent' as const,
+      input: {},
+      value: { agent: 'calculator-agent' },
+      expected: { label: 'Agent', value: 'calculator-agent' },
+    },
+    {
+      kind: 'model' as const,
+      input: { output_key: 'selected_model' },
+      value: { selected_model: 'nvidia/llama-3.3-nemotron-super-49b-v1' },
+      expected: { label: 'Model', value: 'nvidia/llama-3.3-nemotron-super-49b-v1' },
+    },
+    {
+      kind: 'dataset_file' as const,
+      input: {},
+      value: { dataset_fileset: 'evaluation-data', dataset_path: 'inputs/test.jsonl' },
+      expected: { label: 'Dataset', value: 'evaluation-data/inputs/test.jsonl' },
+    },
+    {
+      kind: 'eval_config' as const,
+      input: {},
+      value: { eval_config_fileset: 'agent-evals', eval_config: 'configs/default.yml' },
+      expected: { label: 'Eval config', value: 'agent-evals/configs/default.yml' },
+    },
+  ])(
+    'records a $kind picker submission as a selection artifact',
+    ({ expected, input, kind, value }) => {
+      const artifacts = updateClaudeCodeChatArtifactsFromInputSelection(
+        createEmptyClaudeCodeChatArtifacts(),
+        { requestId: 'request-1', kind, input },
+        value
+      );
+
+      expect(artifacts.selections).toEqual([expected]);
+    }
+  );
+
   it('keeps the latest streamed coding-agent model', () => {
     const initial = createEmptyClaudeCodeChatArtifacts();
     const first = updateClaudeCodeChatArtifactsFromEvent(initial, {

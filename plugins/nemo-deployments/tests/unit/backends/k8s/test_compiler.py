@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest.mock import patch
+
 import pytest
 from backends.k8s.k8s_helpers import sample_always_config, sample_config
 from kubernetes.client import ApiClient
@@ -22,6 +25,7 @@ from nemo_deployments_plugin.entities import (
     ContainerPort,
     K8sDeploymentConfig,
 )
+from nemo_platform_plugin.config import ImagePullSecret
 
 
 def _serialized(obj: object) -> dict:
@@ -146,6 +150,28 @@ def test_compile_applies_k8s_deployment_config() -> None:
     assert affinity.node_affinity is not None
     security_context = compiled.pod_spec_kwargs["security_context"]
     assert security_context.run_as_user == 1000
+
+
+def test_compile_workload_emits_image_pull_secrets() -> None:
+    config = sample_config(restart_policy="Never")
+    platform_secret = ImagePullSecret(name="platform-secret")
+    executor_secret = ImagePullSecret(name="executor-secret")
+    with patch(
+        "nemo_deployments_plugin.backends.k8s.compiler.get_platform_config",
+        return_value=SimpleNamespace(image_pull_secrets=[platform_secret]),
+    ):
+        compiled = compile_workload(
+            config=config,
+            workspace="default",
+            deployment_name="task",
+            labels={"managed-by": "nemo-deployments"},
+            k8s_config=None,
+            pod_restart_policy="Never",
+            executor_image_pull_secrets=[executor_secret],
+        )
+    pod_spec = _serialized(compiled.pod_spec_kwargs)
+    secret_names = {secret["name"] for secret in pod_spec["image_pull_secrets"]}
+    assert secret_names == {"platform-secret", "executor-secret"}
 
 
 def test_compile_config_files_emit_configmap_and_mounts() -> None:

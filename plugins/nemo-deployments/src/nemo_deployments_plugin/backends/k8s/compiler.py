@@ -32,6 +32,7 @@ from nemo_deployments_plugin.entities import (
     VolumeMount,
 )
 from nemo_deployments_plugin.types import RestartPolicy
+from nemo_platform_plugin.config import ImagePullSecret, get_platform_config
 
 CONFIG_FILES_VOLUME = "config-files"
 NATIVE_SIDECAR_RESTART_POLICY: RestartPolicy = "Always"
@@ -344,6 +345,19 @@ def _build_config_file_volume(configmap_name: str, config_files: list[ConfigFile
     )
 
 
+def build_pod_image_pull_secrets(
+    executor_image_pull_secrets: list[ImagePullSecret] | None = None,
+) -> list[Any]:
+    """Merge platform and executor image pull secrets for pod specs."""
+    k8s = k8s_client_module()
+    merged_names: dict[str, None] = {}
+    for secret in get_platform_config().image_pull_secrets:
+        merged_names[secret.name] = None
+    for secret in executor_image_pull_secrets or []:
+        merged_names[secret.name] = None
+    return [k8s.client.V1LocalObjectReference(name=name) for name in merged_names]
+
+
 def compile_workload(
     *,
     config: DeploymentConfig,
@@ -352,6 +366,7 @@ def compile_workload(
     labels: dict[str, str],
     k8s_config: K8sDeploymentConfig | None,
     pod_restart_policy: RestartPolicy,
+    executor_image_pull_secrets: list[ImagePullSecret] | None = None,
 ) -> CompiledWorkload:
     """Compile pod spec kwargs and optional ConfigMap for a Job or Deployment."""
     validate_workload_config(config)
@@ -387,6 +402,10 @@ def compile_workload(
         pod_spec_kwargs["init_containers"] = init_containers
     if volumes:
         pod_spec_kwargs["volumes"] = volumes
+
+    image_pull_secrets = build_pod_image_pull_secrets(executor_image_pull_secrets)
+    if image_pull_secrets:
+        pod_spec_kwargs["image_pull_secrets"] = image_pull_secrets
 
     if k8s_config is not None:
         tolerations = build_tolerations(k8s_config.tolerations)

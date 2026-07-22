@@ -2,21 +2,22 @@
 title: "Support Matrix"
 description: ""
 ---
-This matrix defines the supported OSS targets for NeMo Platform 0.3.0. It applies to the Python package, CLI, SDK, local services started by `nemo setup`, and self-managed Kubernetes deployments documented for this release.
 
-Helm and Kubernetes deployment paths are documented for self-managed clusters, including OpenShift-specific notes. Docker Compose deployment guides are not part of the OSS 0.3.0 documentation scope.
+This matrix defines the supported OSS targets for NeMo Platform. It covers the
+Python package, CLI, SDK, local services started by `nemo setup`, and
+self-managed Kubernetes deployments installed with the NeMo Platform Helm chart.
 
 ## Host Platforms
 
 | Area | Supported | Notes |
 |------|-----------|-------|
-| Deployment mode | `nemo setup` local install; self-managed Helm/Kubernetes | Setup starts local services, registers a model provider, and configures the CLI and SDK. Helm deploys platform services to a user-managed Kubernetes cluster. |
+| Deployment mode | `nemo setup` local install; Helm chart on Kubernetes | `nemo setup` starts local services, registers a model provider, and configures the CLI and SDK. The Helm chart is the supported path for self-managed Kubernetes clusters. |
 | Python | 3.11, 3.12, 3.13, 3.14 (`>=3.11,<3.15`) | Use an isolated virtual environment. On Python 3.14, prefix `pip install "nemo-platform[all]"` with `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` while the transitive `litellm` Rust extension catches up to Python 3.14. Python 3.11 is the lowest supported Python version and Python 3.14 is the highest supported Python version for the OSS local install path. |
 | Linux | Ubuntu 22.04 LTS, Ubuntu 24.04 LTS, RHEL 9, Rocky Linux 9, Debian 12 | Supported for CLI, SDK, local services, and NVIDIA GPU workloads. |
 | macOS | [macOS Tahoe 26](https://support.apple.com/en-us/122868) and macOS Sequoia 15 | Supported for CLI, SDK, local services, and cloud/provider workflows. Local NVIDIA GPU workloads are not supported on macOS. |
 | Architecture | x86_64 Linux; Apple Silicon and Intel macOS | NVIDIA GPU workloads require x86_64 Linux. |
-| Windows and WSL | Not in the OSS 0.3.0 support matrix | Use a supported Linux or macOS host for the local install path. |
-| Kubernetes | User-managed clusters with Helm | Use a conformant Kubernetes cluster where you can create namespaces, secrets, services, deployments, jobs, and persistent volumes. Kind is suitable for local development and smoke tests. |
+| Windows and WSL | Not supported for the OSS local install path | Use a supported Linux or macOS host for the local install path. |
+| Kubernetes clusters | minikube, kind, EKS, AKS, GKE, OKE, OpenShift, and on-prem Kubernetes | See [Install NeMo Platform with Helm](/documentation/self-managed-deployment/helm) for prerequisites and cluster-specific notes. |
 
 ## Local Runtime
 
@@ -56,7 +57,7 @@ Helm and Kubernetes deployment paths are documented for self-managed clusters, i
 
 ## Out of Scope
 
-The following are not part of the OSS 0.3.0 support matrix:
+The following are not part of the OSS support matrix:
 
 - Native Windows local install.
 - Docker Compose deployment guides.

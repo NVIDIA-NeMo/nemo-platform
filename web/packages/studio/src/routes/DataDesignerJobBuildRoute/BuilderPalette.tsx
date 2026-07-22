@@ -7,19 +7,20 @@ import { SegmentedControl } from '@nvidia/foundations-react-core';
 import { AddColumnPalette } from '@studio/components/AddColumnPalette';
 import type { AddColumnSelection } from '@studio/components/AddColumnPalette/types';
 import { AddModelPalette } from '@studio/components/AddModelPalette';
-import type { BuilderModel } from '@studio/routes/DataDesignerJobBuildRoute/models';
-import type { PaletteTab } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
+import type {
+  JobBuilderFormValues,
+  PaletteTab,
+} from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
 import type { FC } from 'react';
+import { useFormContext, useWatch } from 'react-hook-form';
 
 export interface BuilderPaletteProps {
   tab: PaletteTab;
   onTabChange: (tab: PaletteTab) => void;
-  models: BuilderModel[];
   selectedModelId: string | null;
   modelGroups: ModelWorkspaceGroup[];
   isLoadingModels?: boolean;
   onAddColumn: (selection: AddColumnSelection) => void;
-  disabledColumnReasons?: Partial<Record<string, string>>;
   onAddModel: (selection: ModelSelection, provider: string) => void;
   onSelectModel: (id: string | null) => void;
 }
@@ -28,39 +29,48 @@ export interface BuilderPaletteProps {
 export const BuilderPalette: FC<BuilderPaletteProps> = ({
   tab,
   onTabChange,
-  models,
   selectedModelId,
   modelGroups,
   isLoadingModels,
   onAddColumn,
-  disabledColumnReasons,
   onAddModel,
   onSelectModel,
-}) => (
-  <aside className="flex w-[240px] shrink-0 flex-col gap-density-lg border-r border-base p-density-lg">
-    <SegmentedControl
-      size="tiny"
-      className="w-full shrink-0"
-      value={tab}
-      onValueChange={(value) => onTabChange(value as PaletteTab)}
-      items={[
-        { value: 'columns', children: 'Columns' },
-        { value: 'models', children: 'Models' },
-      ]}
-    />
-    <div className="min-h-0 flex-1">
-      {tab === 'columns' ? (
-        <AddColumnPalette onAddColumn={onAddColumn} disabledReasons={disabledColumnReasons} />
-      ) : (
-        <AddModelPalette
-          models={models}
-          selectedId={selectedModelId}
-          modelGroups={modelGroups}
-          isLoadingModels={isLoadingModels}
-          onAddModel={onAddModel}
-          onSelectModel={onSelectModel}
-        />
-      )}
-    </div>
-  </aside>
-);
+}) => {
+  const { control, getValues } = useFormContext<JobBuilderFormValues>();
+  const models = useWatch({ control, name: 'models' });
+  const hasSeedColumn = getValues('columns').some(
+    (column) => column.option.columnType === 'seed-dataset'
+  );
+  const disabledColumnReasons = hasSeedColumn
+    ? { 'seed-dataset': 'Only one seed dataset is supported per recipe.' }
+    : undefined;
+
+  return (
+    <aside className="flex w-[240px] shrink-0 flex-col gap-density-lg border-r border-base p-density-lg">
+      <SegmentedControl
+        size="tiny"
+        className="w-full shrink-0"
+        value={tab}
+        onValueChange={(value) => onTabChange(value as PaletteTab)}
+        items={[
+          { value: 'columns', children: 'Columns' },
+          { value: 'models', children: 'Models' },
+        ]}
+      />
+      <div className="min-h-0 flex-1">
+        {tab === 'columns' ? (
+          <AddColumnPalette onAddColumn={onAddColumn} disabledReasons={disabledColumnReasons} />
+        ) : (
+          <AddModelPalette
+            models={models}
+            selectedId={selectedModelId}
+            modelGroups={modelGroups}
+            isLoadingModels={isLoadingModels}
+            onAddModel={onAddModel}
+            onSelectModel={onSelectModel}
+          />
+        )}
+      </div>
+    </aside>
+  );
+};

@@ -116,7 +116,13 @@ class ServiceBackend(ABC):
         ...
 
     @abstractmethod
-    async def delete_model_deployment(self, workspace: str, name: str) -> DeploymentStatusUpdate:
+    async def delete_model_deployment(
+        self,
+        workspace: str,
+        name: str,
+        *,
+        deleting_elapsed_seconds: float | None = None,
+    ) -> DeploymentStatusUpdate:
         """Delete a model deployment by workspace and name (model deployment ID).
 
         Used for both regular reconciliation (controller passes deployment.workspace/name)
@@ -125,6 +131,8 @@ class ServiceBackend(ABC):
         Args:
             workspace: Deployment workspace
             name: Deployment name
+            deleting_elapsed_seconds: Seconds the deployment has been in DELETING; used by
+                backends that escalate stuck teardown to ERROR.
 
         Returns:
             DeploymentStatusUpdate with the current status after deletion attempt

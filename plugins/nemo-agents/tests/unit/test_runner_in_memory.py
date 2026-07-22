@@ -23,6 +23,8 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -185,6 +187,86 @@ async def test_create_deployment_records_log_path(tmp_path: Path) -> None:
     assert Path(info.log_path).exists()
     assert info.pid == 4242
     assert info.status == "starting"
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_validates_platform_agent_config(tmp_path: Path) -> None:
+    backend = _backend(tmp_path)
+    config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "hermes",
+        "harnesses": {"hermes": {"kind": "hermes"}},
+        "models": {"default": {"provider": "openai", "model": "openai/gpt-5.4"}},
+    }
+    validation_calls: list[Any] = []
+
+    async def _validate_platform_agent_config(config_: dict[str, Any], *, base_dir: Path) -> Any:
+        validation_calls.append({"config": config_, "base_dir": base_dir})
+        return SimpleNamespace(agent_config=SimpleNamespace(name="fabric-agent"))
+
+    with patch("nemo_agents_plugin.runner.in_memory.validate_platform_agent_config", _validate_platform_agent_config):
+        info = await backend.create_deployment("ws", "fabric-dep", config, port=0)
+
+    assert info.status == "running"
+    assert info.extra["runtime"] == "fabric"
+    assert info.extra["prepared"] is True
+    assert Path(info.log_path).exists()
+    assert validation_calls == [{"config": config, "base_dir": tmp_path / "system" / "ws" / "fabric-dep-fabric"}]
+    assert "Validated Fabric-backed deployment" in Path(info.log_path).read_text()
+    status = await backend.get_deployment_status("ws", "fabric-dep")
+    assert status is info
+
+
+@pytest.mark.asyncio
+async def test_delete_deployment_removes_prepared_fabric_deployment(tmp_path: Path) -> None:
+    backend = _backend(tmp_path)
+    config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "hermes",
+        "harnesses": {"hermes": {"kind": "hermes"}},
+        "models": {"default": {"provider": "openai", "model": "openai/gpt-5.4"}},
+    }
+
+    async def _validate_platform_agent_config(config_: dict[str, Any], *, base_dir: Path) -> Any:
+        del config_, base_dir
+        return SimpleNamespace(agent_config=SimpleNamespace(name="fabric-agent"))
+
+    with patch("nemo_agents_plugin.runner.in_memory.validate_platform_agent_config", _validate_platform_agent_config):
+        info = await backend.create_deployment("ws", "fabric-dep", config, port=0)
+        base_dir = Path(info.extra["base_dir"])
+        assert base_dir.exists()
+        cleaned = await backend.delete_deployment("ws", "fabric-dep")
+
+    assert cleaned is True
+    assert not base_dir.exists()
+    assert await backend.get_deployment_status("ws", "fabric-dep") is None
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_cleans_fabric_base_dir_on_validation_failure(tmp_path: Path) -> None:
+    backend = _backend(tmp_path)
+    config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "hermes",
+        "harnesses": {"hermes": {"kind": "hermes"}},
+        "models": {"default": {"provider": "openai", "model": "openai/gpt-5.4"}},
+    }
+    base_dir = tmp_path / "system" / "ws" / "fabric-dep-fabric"
+
+    async def _validate_platform_agent_config(config_: dict[str, Any], *, base_dir: Path) -> Any:
+        del config_
+        (base_dir / "prepared.txt").write_text("created during validation")
+        raise ValueError("bad fabric config")
+
+    with patch("nemo_agents_plugin.runner.in_memory.validate_platform_agent_config", _validate_platform_agent_config):
+        with pytest.raises(ValueError, match="bad fabric config"):
+            await backend.create_deployment("ws", "fabric-dep", config, port=0)
+
+    assert not base_dir.exists()
+    assert await backend.get_deployment_status("ws", "fabric-dep") is None
 
 
 # ---------------------------------------------------------------------------

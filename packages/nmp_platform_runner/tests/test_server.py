@@ -3,6 +3,7 @@
 
 import asyncio
 import builtins
+import os
 import sys
 import threading
 import time
@@ -15,8 +16,32 @@ from fastapi.testclient import TestClient
 from nmp.common.config import AuthConfig, Configuration
 from nmp.common.config.base import OIDCConfig
 from nmp.common.service import Service
+from nmp.platform_runner import config as runner_config
 from nmp.platform_runner import server
 from nmp.platform_runner.health import ReadinessCheck, create_platform_health_router
+
+_RUN_ENV_KEYS = (
+    "NMP_CONFIG_FILE_PATH",
+    "NMP_SERVICE_HOST",
+    "NMP_SERVICE_PORT",
+    "NMP_BASE_URL",
+    "NMP_AUTH_POLICY_DECISION_POINT_BASE_URL",
+    "NMP_SERVICES",
+    "NMP_CONTROLLERS",
+    "NMP_SIDECARS",
+)
+
+
+@pytest.fixture(autouse=True)
+def restore_platform_runner_env():
+    original_env = {key: os.environ.get(key) for key in _RUN_ENV_KEYS}
+    yield
+    for key, value in original_env.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+    Configuration.clear_cache()
 
 
 def _make_auth_config(*, enabled: bool) -> AuthConfig:
@@ -180,6 +205,59 @@ def test_create_app_mounted_services_drive_sdk_local_routing_without_services_en
         Configuration.clear_cache()
 
 
+def test_build_platform_app_returns_app_without_running_uvicorn(monkeypatch):
+    plugin_service = PluginService()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(runner_config, "get_available_services", lambda: {"agents": plugin_service})
+    monkeypatch.setattr(runner_config, "get_available_controllers", lambda: {})
+    monkeypatch.setattr(runner_config, "get_controller_groups", lambda _controllers: {"all": [], "core": []})
+    monkeypatch.setattr(server, "order_services_by_dependencies", lambda services: services)
+
+    def fake_create_app(services, controller_run_funcs=None, http_client=None):
+        captured["services"] = services
+        captured["controller_run_funcs"] = controller_run_funcs
+        captured["http_client"] = http_client
+        return FastAPI()
+
+    monkeypatch.setattr(server, "create_app", fake_create_app)
+
+    app = server.build_platform_app(runner_config.PlatformAppConfig(services=["agents"], controllers=[]), env={})
+
+    assert isinstance(app, FastAPI)
+    assert captured["services"] == [plugin_service]
+    assert captured["controller_run_funcs"] == {}
+    assert captured["http_client"] is None
+
+
+def test_build_platform_app_accepts_platform_app_config(monkeypatch):
+    plugin_service = PluginService()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(runner_config, "get_available_services", lambda: {"agents": plugin_service})
+    monkeypatch.setattr(runner_config, "get_available_controllers", lambda: {})
+    monkeypatch.setattr(runner_config, "get_controller_groups", lambda _controllers: {"all": [], "core": []})
+    monkeypatch.setattr(server, "order_services_by_dependencies", lambda services: services)
+
+    def fake_create_app(services, controller_run_funcs=None, http_client=None):
+        captured["services"] = services
+        captured["controller_run_funcs"] = controller_run_funcs
+        captured["http_client"] = http_client
+        return FastAPI()
+
+    monkeypatch.setattr(server, "create_app", fake_create_app)
+
+    app = server.build_platform_app(
+        config=runner_config.PlatformAppConfig(services=("agents",), controllers=()),
+        env={},
+    )
+
+    assert isinstance(app, FastAPI)
+    assert captured["services"] == [plugin_service]
+    assert captured["controller_run_funcs"] == {}
+    assert captured["http_client"] is None
+
+
 def test_embedded_auth_preflight_invokes_policy_wasm_helper(monkeypatch):
     calls: list[bool] = []
     auth_cfg = AuthConfig(
@@ -233,6 +311,25 @@ def test_run_server_runs_embedded_auth_preflight():
     assert calls == [auth_cfg]
     create_app.assert_called_once_with([])
     uvicorn_run.assert_called_once()
+
+
+def test_run_server_can_bind_tcp_and_unix_domain_socket():
+    auth_cfg = _make_auth_config(enabled=True)
+    with (
+        patch("nmp.platform_runner.server.get_auth_config", return_value=auth_cfg),
+        patch("nmp.platform_runner.server.preflight_embedded_auth_policy_wasm"),
+        patch("nmp.platform_runner.server.create_app", return_value=FastAPI()),
+        patch("nmp.platform_runner.server.setup_fastapi_instrumentations"),
+        patch("nmp.platform_runner.server._run_server_on_bound_sockets") as run_bound_sockets,
+    ):
+        server.run_server(services=[], host="127.0.0.1", port=9999, socket_path="/tmp/nemo-platform.sock")
+
+    run_bound_sockets.assert_called_once()
+    assert run_bound_sockets.call_args.kwargs == {
+        "host": "127.0.0.1",
+        "port": 9999,
+        "socket_path": "/tmp/nemo-platform.sock",
+    }
 
 
 def test_create_default_app_raises_for_unknown_service_from_env(monkeypatch):

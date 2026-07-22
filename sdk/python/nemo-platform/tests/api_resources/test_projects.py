@@ -26,9 +26,7 @@ from tests.utils import assert_matches_type
 from nemo_platform import NeMoPlatform, AsyncNeMoPlatform
 from nemo_platform.pagination import SyncDefaultPagination, AsyncDefaultPagination
 from nemo_platform.types.shared import DeleteResponse
-from nemo_platform.types.projects import (
-    Project,
-)
+from nemo_platform.types.projects import Project
 
 base_url = os.environ.get("TEST_API_BASE_URL", "http://127.0.0.1:4010")
 

@@ -34,15 +34,15 @@ from collections import OrderedDict, deque
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
-from langchain_core.language_models.base import BaseLanguageModel
 from nemo_platform.types.guardrail import OutputRailsStreamingConfig
 from nemo_platform.types.guardrail import RailsConfig as PlatformRailsConfig
 from nemo_platform_plugin.inference_middleware import OpenAICompatibleInferenceTarget
 from nemoguardrails import RailsConfig as LibraryRailsConfig
 from nemoguardrails.rails.llm.config import Model
 from nemoguardrails.rails.llm.llmrails import LLMRails
+from nemoguardrails.types import LLMModel
 from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
@@ -171,30 +171,45 @@ EMBEDDINGS_MODEL_TYPE = "embeddings"
 """Reserved ``Model.type`` for an embeddings model."""
 
 
-def _is_stub_main_entry(raw: dict[str, Any]) -> bool:
-    """``True`` for a stub ``main`` entry — ``{"type": "main", ...}`` with
-    no model name in ``model``, ``parameters.model``, or
-    ``parameters.model_name``.
+MAIN_MODEL_REQUEST_PLACEHOLDER = "<request>"
+"""Placeholder model used as the main model entry in a GuardrailConfig.
+``model`` is a required field in the nemoguardrails library schema.
+We always populate the actual model name using the incoming request
+body's model, so this placeholder is to satisfy the schema validator.
+"""
 
-    Dropped before upstream validation: stubs carry no signal under IGW
-    (the gateway owns main-LLM routing per request) but trip nemoguardrails
-    0.21.0+'s ``Model.model_must_be_none_empty`` check. *Named* mains
-    survive this filter and are extracted as ``main_model_template``.
+
+def _has_nonempty_model_name(value: object) -> bool:
+    """``True`` when ``value`` is a non-empty (after strip) model name string."""
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _fill_main_model_placeholder(model_config: dict[str, Any]) -> dict[str, Any]:
+    """Given a model config from a GuardrailConfig, populates the ``model`` field with
+    a placeholder value if the config represents the main model and doesn't already have
+    a model name.
+
+    The upstream ``Model`` schema accepts a name in exactly one of three places:
+    top-level ``model``, ``parameters.model``, or ``parameters.model_name``. Filling a
+    placeholder when either parameters form is already set would trip the library's
+    dual-location validator, so those configs are left unchanged.
+
+    This is required to satisfy the nemoguardrails library schema validator.
+    We always populate the actual model name using the incoming request
+    body's model, so this placeholder is to satisfy the schema validator.
     """
+    if model_config.get("type") != MAIN_MODEL_TYPE:
+        return model_config
+    if _has_nonempty_model_name(model_config.get("model")):
+        return model_config
 
-    def is_missing(value: Any) -> bool:
-        return value is None or (isinstance(value, str) and not value.strip())
+    parameters = model_config.get("parameters")
+    if isinstance(parameters, dict) and (
+        _has_nonempty_model_name(parameters.get("model")) or _has_nonempty_model_name(parameters.get("model_name"))
+    ):
+        return model_config
 
-    if raw.get("type") != MAIN_MODEL_TYPE:
-        return False
-    if not is_missing(raw.get("model")):
-        return False
-    params = raw.get("parameters")
-    if params is None:
-        return True
-    if not isinstance(params, dict):
-        return False
-    return all(is_missing(params.get(key)) for key in ("model", "model_name"))
+    return {**model_config, "model": MAIN_MODEL_REQUEST_PLACEHOLDER}
 
 
 def _is_missing_model_name_error(err: ValidationError) -> bool:
@@ -220,7 +235,10 @@ class StableRailsConfig:
       ``None`` in the production case — under the IGW Plugin model the
       gateway owns main-LLM routing, so configs typically declare only task
       LLMs (content-safety, topic-control, embeddings). The template is
-      retained for self-check / demo configs that pin a specific main model.
+      retained whenever a config declares a ``main`` entry at all, whether
+      to pin a specific model (self-check / demo configs) or just to
+      override ``engine``/``parameters`` (ex. a custom ``base_url``) while
+      leaving the model name to the request body.
     - Non-main ``base_url`` values are resolved against the IGW route table.
     - Static ``default_headers`` are preserved; platform service headers are
       added by the header-aware NIM client at call time.
@@ -259,9 +277,12 @@ def stabilize(
     warning and proceeds; the per-request main is then injected via
     ``update_llm`` from :func:`rails.build_main_llm`.
 
-    Stub ``main`` entries (no model name in any location) are stripped
-    before library validation — see :func:`_is_stub_main_entry`. Named
-    main entries pass through and become ``main_model_template``.
+    ``main`` entries never need a ``model`` name — IGW always supplies the
+    real model from the request body. However, the upstream validator
+    requires a non-empty model name on every entry, so nameless ``main``
+    entries get a placeholder filled in first. This keeps configs that pin
+    other fields on the main entry (e.g. `parameters.base_url`) from being
+    lost.
 
     Non-main models with empty ``model`` are rejected by the library
     ``Model`` validator during ``model_validate`` below, so
@@ -272,33 +293,15 @@ def stabilize(
     # optional under the IGW Plugin architecture. Coerce here so a user can
     # post the minimum-viable config (e.g. just ``{"rails": {...}}``).
     payload.setdefault("models", [])
-
-    raw_models: list[dict[str, Any]] = payload["models"]
-    filtered_models = [m for m in raw_models if not _is_stub_main_entry(m)]
-    dropped = len(raw_models) - len(filtered_models)
-    if dropped:
-        logger.info(
-            "Dropping stub 'main' model entries from guardrails config; "
-            "IGW owns main-LLM routing per request. Set a non-empty `model:` "
-            "(for engine/parameters templates or self-check rails) or omit "
-            "the entry to silence this message.",
-        )
-    payload["models"] = filtered_models
+    payload["models"] = [_fill_main_model_placeholder(m) for m in payload["models"]]
 
     try:
         library_rails = LibraryRailsConfig.model_validate(payload)
     except ValidationError as exc:
-        # Wrap the cryptic upstream "Model name must be specified..." error
-        # with an IGW-aware message. ``ValueError`` → 400 via
-        # ``InferenceMiddleware._run_rails`` so the friendlier message reaches
-        # the client. Anything else propagates unchanged so callers see the
-        # original (also ``ValueError``-shaped → 400) diagnostic.
+        # Wrap the cryptic upstream error with an IGW-aware message.
+        # ``ValueError`` → 400 via ``InferenceMiddleware._run_rails``.
         if _is_missing_model_name_error(exc):
-            raise ValueError(
-                "Guardrails config has a model entry with no `model:` name. "
-                "Set a non-empty `model:` — for 'main' entries this pins the "
-                "engine/parameters template or enables self-check rails."
-            ) from exc
+            raise ValueError("Guardrails config has a model entry with a missing `model` name.") from exc
         raise
     stripped: list[Model] = []
     main_template: Model | None = None
@@ -657,7 +660,7 @@ class LLMRailsCache:
         self,
         stable: StableRailsConfig,
         *,
-        main_llm: BaseLanguageModel | None = None,
+        main_llm: LLMModel | None = None,
         provenance: Provenance | None = None,
     ) -> AsyncIterator[LLMRails]:
         """Lease one :class:`LLMRails` for one logical operation.
@@ -817,11 +820,16 @@ class LLMRailsCache:
             )
 
     @staticmethod
-    def _reset(rails: LLMRails, main_llm: BaseLanguageModel | None) -> None:
+    def _reset(rails: LLMRails, main_llm: LLMModel | None) -> None:
         """Wipe per-request shared state and apply this request's main LLM."""
         # Prevent leaks by clearing shared state inside a LLMRails instance.
         rails.events_history_cache.clear()
         rails.explain_info = None
         # Inject main_llm. Even if main_llm is None, we want this to persist
         # to prevent subsequent leases without main_llms from reusing the wrong model.
-        rails.update_llm(main_llm)
+        #
+        # ``update_llm`` is typed ``llm: LLMModel`` (no ``None``), but its own
+        # isinstance check treats any non-``LLMModel`` value — including
+        # ``None`` — as a legacy LangChain LLM to wrap, so passing ``None``
+        # here safely clears the previous lease's model instead of reusing it.
+        rails.update_llm(cast(LLMModel, main_llm))

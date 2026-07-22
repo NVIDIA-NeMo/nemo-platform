@@ -1199,7 +1199,7 @@ paths:
         required: false
         schema:
           allOf:
-          - $ref: '#/components/schemas/ProjectSortField'
+          - $ref: '#/components/schemas/GenericSortField'
           description: Sort field
           default: -created_at
         description: Sort field
@@ -3622,6 +3622,55 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - Evaluations
+      summary: Patch Evaluation
+      description: "Partially update an evaluation: only fields present in the request\
+        \ are changed.\n\nThe common case is curating an evaluation into another ExperimentGroup\
+        \ \u2014 PATCH with the merged\n``experiment_ids``. Membership is replaced\
+        \ (not appended), so send the full desired set; any new\ngroup must exist\
+        \ and the set must be non-empty (an evaluation always belongs to >=1 group).\
+        \ Omitted\nfields are left untouched (unlike the full-body PUT, which overwrites\
+        \ them)."
+      operationId: patch_evaluation_apis_intake_v2_workspaces__workspace__evaluations__name__patch
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationPatchRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResponse'
+        '400':
+          description: A referenced ExperimentGroup does not exist, or experiment_ids
+            is empty
+        '404':
+          description: Evaluation not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
     delete:
       tags:
       - Evaluations
@@ -3730,7 +3779,7 @@ paths:
   /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/sessions:
     get:
       tags:
-      - Evaluations
+      - Experiments
       summary: List Evaluation Sessions
       operationId: list_evaluation_sessions_apis_intake_v2_workspaces__workspace__evaluations__name__sessions_get
       parameters:
@@ -3784,6 +3833,22 @@ paths:
         description: Response mode. summary omits root-span input and output; preview
           includes both truncated to 300 characters; detailed returns full root-span
           payloads.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          description: "Comma-separated list of fields to sort by, applied in order\
+            \ (the first field dominates); prefix a field with '-' for descending\
+            \ \u2014 e.g. '-cost_total_usd,latency_ms'. Fields: test_case_id, started_at,\
+            \ ended_at, latency_ms, status, cost_total_usd, tokens. When omitted,\
+            \ sessions are ordered by started_at ascending."
+          title: Sort
+          type: string
+        description: "Comma-separated list of fields to sort by, applied in order\
+          \ (the first field dominates); prefix a field with '-' for descending \u2014\
+          \ e.g. '-cost_total_usd,latency_ms'. Fields: test_case_id, started_at, ended_at,\
+          \ latency_ms, status, cost_total_usd, tokens. When omitted, sessions are\
+          \ ordered by started_at ascending."
       - in: query
         name: filter
         style: deepObject
@@ -3800,9 +3865,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/EvaluationSessionResponsesPage'
         '400':
-          description: Invalid filter value
+          description: Invalid filter value, unsupported sort field, or empty sort
         '404':
           description: Evaluation not found
+        '413':
+          description: Too many sessions to sort by cost or tokens
         '503':
           description: ClickHouse unavailable
         '422':
@@ -9154,9 +9221,12 @@ components:
             Ignored by non-NIM engines.
         override_config:
           title: Override Config
-          description: Raw NIMService spec configuration that takes precedence over
-            generated config (NIM engine on k8s). Allows advanced configuration options
-            directly. Ignored by non-NIM engines.
+          description: 'Partial NIMService Spec fragments deep-merged after generated
+            defaults and k8s_nim_operator_config (NIM engine on k8s only). Supported
+            keys: image, command, args, resources, env, readinessProbe, livenessProbe,
+            startupProbe, nodeSelector, tolerations, userID, groupID, labels, initContainers,
+            sidecarContainers. Unsupported keys are rejected at compile time. Ignored
+            by non-NIM engines and docker runtime.'
           additionalProperties: true
           type: object
       type: object
@@ -9914,15 +9984,12 @@ components:
           title: Message
           default: Resource deleted successfully.
         id:
+          type: string
           title: Id
           description: The ID of the deleted resource.
-          type: string
-        deleted_at:
-          title: Deleted At
-          description: The timestamp when the resource was deleted.
-          type: string
-          format: date-time
       type: object
+      required:
+      - id
       title: DeleteResponse
     DialogRails:
       properties:
@@ -10486,17 +10553,75 @@ components:
           type: object
       title: EvaluationFilter
       type: object
+    EvaluationPatchRequest:
+      properties:
+        experiment_ids:
+          title: Experiment Ids
+          description: Replace the ExperimentGroups this Evaluation belongs to. Must
+            be non-empty when provided; each group must already exist. Omit to leave
+            membership unchanged.
+          items:
+            type: string
+          type: array
+        source_link:
+          title: Source Link
+          description: Optional URL for the source evaluation.
+          type: string
+          minLength: 1
+          format: uri
+        metadata:
+          title: Metadata
+          description: Free-form producer metadata.
+          additionalProperties:
+            type: string
+          type: object
+        description:
+          title: Description
+          description: Human-readable description.
+          type: string
+        parent_evaluation_id:
+          title: Parent Evaluation Id
+          description: Entity id of the evaluation this one was derived from (e.g.
+            a variant of a baseline), if any.
+          type: string
+        status:
+          title: Status
+          description: Producer-defined lifecycle status of the evaluation.
+          type: string
+        root_cause:
+          title: Root Cause
+          description: Human- or agent-authored explanation of the evaluation's outcome
+            (e.g. why it was killed).
+          type: string
+      additionalProperties: false
+      type: object
+      title: EvaluationPatchRequest
+      description: "Partial-update body for an Evaluation: only fields present in\
+        \ the request are applied.\n\nUnset fields are left unchanged (PATCH semantics\
+        \ \u2014 same pattern as the models service's PATCH).\nImmutable fields (name,\
+        \ dataset_name, dataset_version) aren't accepted here. ``experiment_ids``,\n\
+        when provided, must be non-empty: an evaluation must always belong to at least\
+        \ one group."
     EvaluationRequest:
       properties:
         name:
           type: string
           title: Name
           description: Producer-supplied, workspace-unique evaluation id.
+        experiment_ids:
+          items:
+            type: string
+          type: array
+          title: Experiment Ids
+          description: Entity ids of the ExperimentGroups this Evaluation belongs
+            to (>=1). Preferred; each group must already exist. When omitted, the
+            deprecated experiment_group_id is used instead.
         experiment_group_id:
-          type: string
           title: Experiment Group Id
-          description: "Entity id of the owning ExperimentGroup. Required \u2014 the\
-            \ group must already exist."
+          description: Deprecated single-group field; provide experiment_ids instead.
+            Coalesced into experiment_ids when experiment_ids is omitted.
+          deprecated: true
+          type: string
         dataset_name:
           type: string
           title: Dataset Name
@@ -10544,7 +10669,6 @@ components:
       type: object
       required:
       - name
-      - experiment_group_id
       - dataset_name
       title: EvaluationRequest
       description: Request body for creating an Evaluation.
@@ -10559,11 +10683,13 @@ components:
         workspace:
           type: string
           title: Workspace
-        experiment_group_id:
-          type: string
-          title: Experiment Group Id
-          description: Entity id of the owning ExperimentGroup. Required for every
-            Evaluation.
+        experiment_ids:
+          items:
+            type: string
+          type: array
+          title: Experiment Ids
+          description: Entity ids of the ExperimentGroups this Evaluation belongs
+            to (>=1).
         dataset_name:
           type: string
           title: Dataset Name
@@ -10665,14 +10791,22 @@ components:
           deprecated: true
           readOnly: true
           type: string
+        experiment_group_id:
+          type: string
+          title: Experiment Group Id
+          description: Deprecated single-group alias; the first of experiment_ids.
+            Use experiment_ids.
+          deprecated: true
+          readOnly: true
       type: object
       required:
       - id
       - name
       - workspace
-      - experiment_group_id
+      - experiment_ids
       - dataset_name
       - parent_experiment_id
+      - experiment_group_id
       title: EvaluationResponse
       description: Evaluation as served by the API, including ClickHouse-hydrated
         rollups.
@@ -11961,9 +12095,22 @@ components:
       enum:
       - created_at
       - -created_at
+      - updated_at
+      - -updated_at
       - name
       - -name
       title: GenericSortField
+      description: 'Sort options for entity-store-backed list endpoints.
+
+
+        Members map to entity base columns (see ``BASE_FIELDS``), so any
+
+        entity-backed resource (filesets, guardrail configs, workspaces, projects)
+
+        can share this without advertising a sort it cannot honor. Prefix a field
+        with ``-`` for
+
+        descending order.'
     GuardrailCheckRequest:
       properties:
         model:
@@ -16472,17 +16619,6 @@ components:
       - name
       title: ProjectInput
       description: Schema for creating a new project.
-    ProjectSortField:
-      type: string
-      enum:
-      - created_at
-      - -created_at
-      - updated_at
-      - -updated_at
-      - name
-      - -name
-      title: ProjectSortField
-      description: Fields available for sorting project results.
     ProjectUpdate:
       properties:
         description:

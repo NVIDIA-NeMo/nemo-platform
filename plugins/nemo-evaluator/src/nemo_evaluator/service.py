@@ -21,6 +21,13 @@ from nemo_platform_plugin.authz import CallerKind, PermissionSet, path_rule, per
 from nemo_platform_plugin.jobs.routes import add_job_routes
 from nemo_platform_plugin.service import NemoService, RouterSpec
 
+#: The ``source`` tag for agent-evaluate job records, passed as ``add_job_routes(..., service_name=)``.
+#: Distinct from ``EvaluateJob``'s derived ``nemo-evaluator`` source: the evaluator plugin owns two job
+#: types (row ``evaluate`` + ``agent-evaluate``), and a shared source makes each collection's list
+#: endpoint 500 when it renders the other type's spec. ``EvaluateJob`` keeps the derived default so its
+#: existing records still match its list.
+AGENT_EVAL_JOB_SOURCE = "nemo-evaluator.agent-evaluate"
+
 
 class EvaluatorPerms(PermissionSet, namespace="evaluator"):
     """Permissions owned by the evaluator plugin's hand-written routes.
@@ -42,7 +49,10 @@ class EvaluatorPluginService(NemoService):
     def get_routers(self) -> list[RouterSpec]:
         router = APIRouter()
         jobs_router = add_job_routes(EvaluateJob, authz=scope)
-        agent_jobs_router = add_job_routes(AgentEvalJob, authz=scope)
+        # A distinct ``service_name`` gives agent-evaluate jobs their own ``source`` tag so this
+        # collection's list endpoint doesn't return (and 500 rendering) row EvaluateJob specs, and
+        # vice versa. EvaluateJob keeps its derived ``nemo-evaluator`` source. See AGENT_EVAL_JOB_SOURCE.
+        agent_jobs_router = add_job_routes(AgentEvalJob, service_name=AGENT_EVAL_JOB_SOURCE, authz=scope)
 
         @router.get("/healthz")
         @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])

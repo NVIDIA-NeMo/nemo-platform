@@ -8,7 +8,7 @@ paths:
       tags:
       - Agents
       summary: Create Agent
-      description: Create a new agent from a NAT workflow config.
+      description: Create a new agent from an agent config.
       operationId: create_agent_apis_agents_v2_workspaces__workspace__agents_post
       parameters:
       - name: workspace

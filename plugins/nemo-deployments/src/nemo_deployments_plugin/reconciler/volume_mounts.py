@@ -30,7 +30,11 @@ def volume_mounts_ready(
     workspace: str,
     volumes_by_name: dict[tuple[str, str], Volume],
 ) -> VolumeMountResult:
-    """Return whether all mounted volumes exist and are BOUND."""
+    """Return whether all mounted volumes exist and are usable for pod create.
+
+    ``PENDING`` volumes are allowed so Jobs can mount WaitForFirstConsumer PVCs
+    and become the first consumer that triggers binding. ``FAILED`` volumes block.
+    """
     for mount_name in sorted(collect_volume_mount_names(config)):
         volume = volumes_by_name.get((workspace, mount_name))
         if volume is None:
@@ -45,10 +49,10 @@ def volume_mounts_ready(
                 reason=f"Volume '{mount_name}' failed",
                 blocking_volume=mount_name,
             )
-        if volume.status != "BOUND":
+        if volume.status not in {"PENDING", "BOUND"}:
             return VolumeMountResult(
                 ready=False,
-                reason=f"Waiting for volume '{mount_name}' to reach BOUND (currently {volume.status})",
+                reason=f"Waiting for volume '{mount_name}' to become ready (currently {volume.status})",
                 blocking_volume=mount_name,
             )
     return VolumeMountResult(ready=True)

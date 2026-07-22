@@ -10,6 +10,7 @@ import inspect
 import logging
 import os
 import threading
+from collections.abc import Callable, Mapping, MutableMapping
 from contextlib import asynccontextmanager
 from typing import cast
 
@@ -25,6 +26,7 @@ from nmp.common.observability import initialize_obs, setup_fastapi_instrumentati
 from nmp.common.observability.context import create_app_context_dependency
 from nmp.common.pyleak import detect_blocking
 from nmp.common.service import Service
+from nmp.platform_runner.config import PlatformAppConfig
 from nmp.platform_runner.health import ReadinessCheck, create_platform_health_router, get_platform_resource_attributes
 from nmp.platform_runner.loader import (
     ControllerRunFunc,
@@ -32,7 +34,12 @@ from nmp.platform_runner.loader import (
     load_service,
     order_services_by_dependencies,
 )
-from nmp.platform_runner.registry import get_available_controllers, get_available_services, get_openapi_service_names
+from nmp.platform_runner.registry import (
+    AVAILABLE_SIDECARS,
+    get_available_controllers,
+    get_available_services,
+    get_openapi_service_names,
+)
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
@@ -272,12 +279,85 @@ def create_app(
     return app
 
 
-def run_server(services: list[Service] | None = None, host: str = "0.0.0.0", port: int = 8080) -> None:
+def _load_run_functions(
+    names: list[str],
+    registry: Mapping[str, str | Callable[[threading.Event], object]],
+) -> dict[str, Callable[[threading.Event], object]]:
+    run_funcs: dict[str, Callable[[threading.Event], object]] = {}
+    for name in names:
+        value = registry[name]
+        if isinstance(value, str):
+            run_funcs[name] = load_controller_run_func(name, value)
+        else:
+            run_funcs[name] = value
+    return run_funcs
+
+
+def build_platform_app(
+    config: PlatformAppConfig | None = None,
+    *,
+    http_client: httpx.AsyncClient | None = None,
+    env: MutableMapping[str, str] | None = None,
+) -> FastAPI:
+    """Build a platform FastAPI app without starting uvicorn.
+
+    Args:
+        config: App-build selection and bind configuration. Prefer this over
+            individual service/controller/sidecar keyword arguments for new
+            callers.
+        env: Environment mapping passed to :func:`apply_run_environment`.
+            Defaults to ``None`` which writes to ``os.environ``.  Tests can
+            pass an empty dict to avoid polluting the process environment.
+    """
+    from nmp.platform_runner.config import apply_run_environment, resolve_run_configuration
+
+    resolved = resolve_run_configuration(config)
+    apply_run_environment(resolved, env=env)
+
+    service_instances = []
+    for service_name in sorted(resolved.services):
+        service_value = resolved.available_services[service_name]
+        service_instances.append(
+            service_value if isinstance(service_value, Service) else load_service(service_name, service_value)
+        )
+    service_instances = order_services_by_dependencies(service_instances)
+
+    collisions = resolved.controllers & resolved.sidecars
+    if collisions:
+        raise ValueError(f"Controller/sidecar name collision: {', '.join(sorted(collisions))}")
+
+    controller_run_funcs = _load_run_functions(sorted(resolved.controllers), resolved.available_controllers)
+    sidecar_run_funcs = _load_run_functions(sorted(resolved.sidecars), AVAILABLE_SIDECARS)
+    controller_run_funcs.update(sidecar_run_funcs)
+
+    return create_app(service_instances, controller_run_funcs=controller_run_funcs, http_client=http_client)
+
+
+def run_server(
+    services: list[Service] | None = None,
+    host: str = "0.0.0.0",
+    port: int = 8080,
+    socket_path: str | None = None,
+) -> None:
     """Run the platform API server."""
     preflight_embedded_auth_policy_wasm(get_auth_config())
     app = create_app(services or [])
     setup_fastapi_instrumentations(app)
-    uvicorn.run(app, host=host, port=port, log_config=None)
+    if socket_path:
+        _run_server_on_bound_sockets(app, host=host, port=port, socket_path=socket_path)
+    else:
+        uvicorn.run(app, host=host, port=port, log_config=None)
+
+
+def _run_server_on_bound_sockets(app: FastAPI, *, host: str, port: int, socket_path: str) -> None:
+    tcp_config = uvicorn.Config(app, host=host, port=port, log_config=None)
+    uds_config = uvicorn.Config(app, uds=socket_path, log_config=None)
+    sockets = [tcp_config.bind_socket(), uds_config.bind_socket()]
+    try:
+        asyncio.run(uvicorn.Server(tcp_config).serve(sockets=sockets))
+    finally:
+        for sock in sockets:
+            sock.close()
 
 
 def run_server_with_reload(app_factory: str, host: str = "0.0.0.0", port: int = 8080) -> None:

@@ -36,7 +36,7 @@ def create_server(base_url: str | None = None) -> FastMCP:
     server = FastMCP("NeMo Entities Service")
 
     # Create NeMo SDK client using shared factory
-    nemo_client = get_platform_sdk(base_url)
+    nemo_client = get_platform_sdk(base_url=base_url)
 
     # === WORKSPACE TOOLS ===
 

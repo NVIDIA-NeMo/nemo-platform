@@ -7,8 +7,9 @@ import datetime
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
+from dataclasses import dataclass
 from enum import Enum
-from typing import Generic, Optional, TypeVar
+from typing import Generic, Literal, Optional, TypeVar
 from urllib.parse import SplitResult, urlsplit
 
 from nemo_platform import NeMoPlatform
@@ -40,6 +41,7 @@ from nmp.common.jobs.constants import (
     PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
     TASK_CONFIG_ENVVAR,
 )
+from nmp.common.platform_endpoint import parse_platform_endpoint
 from nmp.common.sdk_factory import get_entity_parts
 from nmp.core.jobs.app.providers import ComputeResources
 from pydantic import BaseModel, model_validator
@@ -153,6 +155,31 @@ def get_workload_identity_token_audience() -> str:
     except Exception:
         logger.debug("Could not resolve auth config for workload identity audience", exc_info=True)
         return "nemo-platform"
+
+
+NMP_JOB_LAUNCHER_LOGS_EXPORTER_ENVVAR = "NMP_JOB_LAUNCHER_LOGS_EXPORTER"
+NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR = "NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT"
+NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS_ENVVAR = "NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS"
+NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL_ENVVAR = "NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL"
+NMP_JOB_LAUNCHER_OTLP_LOGS_SOCKET_PATH_ENVVAR = "NMP_JOB_LAUNCHER_OTLP_LOGS_SOCKET_PATH"
+NMP_JOB_LAUNCHER_OTLP_LOGS_TRANSPORT_ENVVAR = "NMP_JOB_LAUNCHER_OTLP_LOGS_TRANSPORT"
+NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL = "http/protobuf"
+
+
+@dataclass(frozen=True)
+class OtlpLogsEndpointConfig:
+    endpoint: str
+    transport: Literal["tcp", "uds"]
+    socket_path: str | None = None
+
+    def to_env(self) -> dict[str, str]:
+        env = {
+            NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR: self.endpoint,
+            NMP_JOB_LAUNCHER_OTLP_LOGS_TRANSPORT_ENVVAR: self.transport,
+        }
+        if self.socket_path is not None:
+            env[NMP_JOB_LAUNCHER_OTLP_LOGS_SOCKET_PATH_ENVVAR] = self.socket_path
+        return env
 
 
 class JobUpdate(BaseModel):
@@ -531,14 +558,41 @@ def get_logs_endpoint_from_fileset(
     Returns:
         Full OTLP logs endpoint URL with appropriate loopback address applied.
     """
-    # Job telemetry is emitted from a separate process/container/pod. When Files
-    # runs in-process with the API server, local service URLs are not necessarily
-    # routable from job runtime networks, so fall back through the same
-    # workload-facing base URL used for job SDK env vars.
-    base_url = platform_config.service_discovery.get("files") or _job_runtime_base_url(platform_config)
+    return get_logs_endpoint_config_from_fileset(
+        platform_config,
+        workspace,
+        fileset_id,
+        loopback_address=loopback_address,
+    ).endpoint
+
+
+def get_logs_endpoint_config_from_fileset(
+    platform_config: PlatformConfig, workspace: str, fileset_id: str, loopback_address: str | None = None
+) -> OtlpLogsEndpointConfig:
+    """Get OTLP logs endpoint config, preserving transport metadata for local UDS runtimes.
+
+    Job telemetry is emitted from a separate process/container/pod. When Files
+    runs in-process with the API server, local service URLs are not necessarily
+    routable from job runtime networks, so fall back through the same
+    workload-facing base URL used for job SDK env vars.
+    """
+    # Check service_discovery for a files-specific URL first, then fall back to
+    # the job runtime base URL (service_discovery["platform"] / base_url).
+    files_discovery_url = platform_config.service_discovery.get("files")
+    if files_discovery_url:
+        platform_endpoint = parse_platform_endpoint(files_discovery_url)
+    else:
+        runtime_base = _job_runtime_base_url(platform_config)
+        platform_endpoint = parse_platform_endpoint(runtime_base)
+
+    base_url = platform_endpoint.connect_base_url
 
     # Use configured loopback_address, or fall back to automatic detection
     effective_override = loopback_address or platform_config.loopback_address or determine_loopback_override()
     base_url = _replace_loopback_address(base_url, effective_override)
 
-    return f"{base_url}/apis/files/v2/workspaces/{workspace}/filesets/{fileset_id}/otlp/v1/logs"
+    return OtlpLogsEndpointConfig(
+        endpoint=f"{base_url}/apis/files/v2/workspaces/{workspace}/filesets/{fileset_id}/otlp/v1/logs",
+        transport=platform_endpoint.transport,
+        socket_path=str(platform_endpoint.socket_path) if platform_endpoint.socket_path is not None else None,
+    )

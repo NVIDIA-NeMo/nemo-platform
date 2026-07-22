@@ -149,7 +149,8 @@ func TestNewLogExporterCachesWorkloadAuthAcrossExports(t *testing.T) {
 
 	t.Setenv(nmpBaseURLEnv, server.URL)
 	t.Setenv(workloadIdentityTokenFileEnv, subjectTokenPath)
-	t.Setenv(nmpJobLogsEndpointEnv, server.URL+"/v1/logs")
+	t.Setenv(launcherLogsExporterEnv, "otlp")
+	t.Setenv(launcherOTLPLogsEndpointEnv, server.URL+"/v1/logs")
 
 	exporter, err := newLogExporter(context.Background())
 	if err != nil {
@@ -352,7 +353,8 @@ func TestNewLogExporterPropagatesInitialWorkloadAuthFailure(t *testing.T) {
 
 	t.Setenv(nmpBaseURLEnv, server.URL)
 	t.Setenv(workloadIdentityTokenFileEnv, subjectTokenPath)
-	t.Setenv(nmpJobLogsEndpointEnv, server.URL+"/v1/logs")
+	t.Setenv(launcherLogsExporterEnv, "otlp")
+	t.Setenv(launcherOTLPLogsEndpointEnv, server.URL+"/v1/logs")
 
 	_, err := newLogExporter(context.Background())
 	if err == nil {

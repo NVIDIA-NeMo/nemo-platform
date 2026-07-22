@@ -255,10 +255,8 @@ nemo-platform:
     models:
       controller:
         backends:
-          none:
+          deployments_plugin:
             enabled: true
-          nim_operator:
-            enabled: false
 
 integration:
   nemoPlatform:

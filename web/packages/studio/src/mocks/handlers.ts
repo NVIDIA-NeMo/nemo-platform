@@ -13,6 +13,7 @@ import {
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { customizerHandlers } from '@studio/mocks/handlers/customizer';
 import { deploymentsHandlers } from '@studio/mocks/handlers/deployments';
+import { evaluatorHandlers } from '@studio/mocks/handlers/evaluator';
 import { filesetsHandlers } from '@studio/mocks/handlers/filesets';
 import { guardrailsHandlers } from '@studio/mocks/handlers/guardrails';
 import { modelsHandlers } from '@studio/mocks/handlers/models';
@@ -733,6 +734,7 @@ export const handlers = [
   ...workspacesHandlers,
   ...customizerHandlers,
   ...deploymentsHandlers,
+  ...evaluatorHandlers,
   ...modelsHandlers,
   ...secretsHandlers,
   ...filesetsHandlers,

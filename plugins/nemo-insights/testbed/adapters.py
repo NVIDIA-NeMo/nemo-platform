@@ -12,6 +12,8 @@ from typing import Protocol
 
 import httpx
 from nemo_insights_plugin.analyst.run import run_analyst
+from nemo_insights_plugin.client import make_client
+from nemo_platform import AsyncNeMoPlatform
 from testbed.ingest import (
     create_experiment,
     ensure_experiment_group,
@@ -19,6 +21,7 @@ from testbed.ingest import (
     mint_agent_id,
     poll_visible,
 )
+from testbed.intake_client import build_basic_auth_intake_client
 from testbed.otlp_build import session_id_for, sim_to_spans
 from testbed.otlp_ingest import export_spans, post_evaluator_results, trace_id_for
 from testbed.registry import Subject
@@ -51,7 +54,21 @@ class IntakeAdapter:
     def check(self) -> list[str]:
         """Unmet prerequisites for this subject (empty list = ready to run)."""
         cfg = self.subject.config
-        return [f"config key '{k}'" for k in ("agent", "workspace", "base_url") if not cfg.get(k)]
+        missing = [f"config key '{k}'" for k in ("agent", "workspace", "base_url") if not cfg.get(k)]
+        if cfg.get("auth") == "basic":
+            missing.extend(self._missing_basic_auth())
+        return missing
+
+    def _missing_basic_auth(self) -> list[str]:
+        """Return missing basic-auth configuration and environment values."""
+        missing: list[str] = []
+        for role, key in (("username", "auth_user_env"), ("password", "auth_password_env")):
+            env_name = self.subject.config.get(key)
+            if not env_name:
+                missing.append(f"config key '{key}' (env var name for the basic-auth {role})")
+            elif not os.environ.get(str(env_name)):
+                missing.append(f"env {env_name} (basic-auth {role}, in testbed/.env)")
+        return missing
 
     async def produce(self) -> dict[str, object]:
         raise SystemExit(
@@ -70,14 +87,27 @@ class IntakeAdapter:
         cfg = self.subject.config
         if missing := self.check():
             raise SystemExit(f"intake testbed '{self.subject.name}' is missing: {', '.join(missing)}")
+        client = self._basic_auth_client() if cfg.get("auth") == "basic" else make_client(str(cfg["base_url"]))
         return await run_analyst(
             agent=cfg["agent"],
             agent_spec=None,
             workspace=cfg["workspace"],
             base_url=cfg["base_url"],
+            client=client,
             insights_output=str(out_path),
             verbose=verbose,
             since=since,
+        )
+
+    def _basic_auth_client(self) -> AsyncNeMoPlatform:
+        """Build the basic-auth client configured for this Intake subject."""
+        cfg = self.subject.config
+        real_prefix = str(cfg.get("intake_path_prefix", "/api/intake")).rstrip("/") + "/"
+        return build_basic_auth_intake_client(
+            base_url=str(cfg["base_url"]),
+            username=os.environ[str(cfg["auth_user_env"])],
+            password=os.environ[str(cfg["auth_password_env"])],
+            real_prefix=real_prefix,
         )
 
 
@@ -269,6 +299,7 @@ class BenchmarkAdapter:
             agent_spec=policy,
             workspace=workspace,
             base_url=str(record["base_url"]),
+            client=make_client(str(record["base_url"])),
             insights_output=str(out_path),
             verbose=verbose,
             since=since,

@@ -17,7 +17,7 @@ the parent directory:
 
 - `../config/platform-compose-authentik.yaml` as the NeMo Platform config.
 - `../gateway/envoy.yaml` as the local gateway config.
-- `../helm/files/blueprints` as Authentik's custom blueprint directory.
+- `../helm/files/blueprints` as the |product-name| blueprint source.
 - `../.generated` for local generated keys and certificates.
 
 The shared tutorial does not build NeMo images for Compose. It runs
@@ -33,6 +33,8 @@ The stack contains:
 - `gateway`: Envoy terminating local HTTPS on host port `18080`.
 - `gateway-tls-init`: a small init container that copies local TLS material into
   the named `gateway-tls` volume with permissions suitable for Envoy.
+- `authentik-blueprint-init`: a one-shot init container that applies the shared
+  |product-name| blueprint before the gateway starts.
 - `authentik-postgres`: PostgreSQL for Authentik.
 - `authentik-redis`: Redis for Authentik.
 - `authentik-server` and `authentik-worker`: Authentik itself.
@@ -68,10 +70,15 @@ only.
 
 ## Authentik Blueprint
 
-Compose mounts the shared blueprint directory
-`../helm/files/blueprints` directly into Authentik at `/blueprints/custom`.
-Authentik applies `nemo.yaml` from that directory to create the demo OIDC
-providers, demo user, demo groups, workload identity, and E2E setup identity.
+Compose applies the shared `../helm/files/blueprints/nemo.yaml` file with the
+one-shot `authentik-blueprint-init` service. The gateway depends on that init
+service, so `/health/gateway/ready` is checked only after the demo OIDC
+providers, demo user, demo groups, workload identity, and E2E setup identity
+have been seeded.
+
+The init service retries blueprint application for up to about a minute because
+Authentik can report healthy before its built-in default blueprints have created
+the provider flows and OAuth scope mappings referenced by the shared blueprint.
 
 The blueprint reads `AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD` when creating the
 `svc-nemo` app-password token. Compose provides a local-development default,
