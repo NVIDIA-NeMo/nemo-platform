@@ -7,7 +7,7 @@ import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName'
 import {
   useCustomizationCreateAutomodelJob,
   useCustomizationCreateUnslothJob,
-} from '@nemo/sdk/vendored/customizer/api';
+} from '@nemo/sdk/generated/customizer/api';
 import {
   Banner,
   Button,
