@@ -339,7 +339,7 @@ async def list_entities(
     ),
     count_by: str | None = Query(
         default=None,
-        description="Optional scalar field whose matching values should be counted.",
+        description="Optional direct string data field whose matching values should be counted.",
     ),
 ) -> EntitiesPage:
     """List entities with filtering, supporting cross-workspace queries."""

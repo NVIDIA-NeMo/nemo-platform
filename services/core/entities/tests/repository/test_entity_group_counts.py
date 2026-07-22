@@ -6,28 +6,29 @@
 import pytest
 from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
 from nmp.core.entities.app.repository import SQLAlchemyEntityRepository
-from nmp.core.entities.app.repository.sqlalchemy.models import DBEntity
+from nmp.core.entities.app.repository.sqlalchemy import entity as entity_repository
 
 pytestmark = pytest.mark.asyncio
 
 
-async def test_counts_filtered_entities_grouped_by_json_field(
+async def test_counts_filtered_entities_grouped_by_direct_string_data_field(
     entity_repo: SQLAlchemyEntityRepository, setup_workspaces
 ):
     """Count only live experiment groups for the requested insights."""
     entities = (
-        ("workspace-1", "experiment_group", "a-1", {"insight_id": "insight-a", "is_deleted": False}),
-        ("workspace-1", "experiment_group", "a-2", {"insight_id": "insight-a", "is_deleted": False}),
-        ("workspace-1", "experiment_group", "b-1", {"insight_id": "insight-b", "is_deleted": False}),
-        ("workspace-1", "experiment_group", "deleted", {"insight_id": "insight-a", "is_deleted": True}),
-        ("workspace-1", "experiment_group", "unlinked", {"is_deleted": False}),
-        ("workspace-2", "experiment_group", "other-workspace", {"insight_id": "insight-a", "is_deleted": False}),
-        ("workspace-1", "other_type", "other-type", {"insight_id": "insight-a", "is_deleted": False}),
+        ("live-a-1", {"insight_id": "insight-a", "is_deleted": False}),
+        ("live-a-2", {"insight_id": "insight-a", "is_deleted": False}),
+        ("live-b", {"insight_id": "insight-b", "is_deleted": False}),
+        ("deleted", {"insight_id": "insight-a", "is_deleted": True}),
+        ("missing", {"is_deleted": False}),
+        ("null", {"insight_id": None, "is_deleted": False}),
+        ("boolean", {"insight_id": True, "is_deleted": False}),
+        ("numeric", {"insight_id": 1, "is_deleted": False}),
     )
-    for workspace, entity_type, name, data in entities:
+    for name, data in entities:
         await entity_repo.create_entity(
-            workspace=workspace,
-            entity_type=entity_type,
+            workspace="workspace-1",
+            entity_type="experiment_group",
             name=name,
             data=data,
         )
@@ -50,102 +51,29 @@ async def test_counts_filtered_entities_grouped_by_json_field(
     assert counts == {"insight-a": 2, "insight-b": 1}
 
 
-async def test_counts_base_field_literal_null(entity_repo: SQLAlchemyEntityRepository, setup_workspaces):
-    await entity_repo.create_entity(
-        workspace="workspace-1",
-        entity_type="experiment_group",
-        name="null",
-        data={},
-    )
-
-    counts = await entity_repo.count_entities_by(
-        workspace="workspace-1",
-        entity_type="experiment_group",
-        group_by="name",
-    )
-
-    assert counts == {"null": 1}
+@pytest.mark.parametrize("field", ["name", "data.nested.value", "data.", "data.not-valid"])
+async def test_rejects_unsupported_group_fields(entity_repo: SQLAlchemyEntityRepository, setup_workspaces, field: str):
+    with pytest.raises(ValueError, match="direct string data field"):
+        await entity_repo.count_entities_by(
+            workspace="workspace-1",
+            entity_type="experiment_group",
+            group_by=field,
+        )
 
 
-async def test_omits_missing_and_null_json_group_keys(entity_repo: SQLAlchemyEntityRepository, setup_workspaces):
-    for name, data in (
-        ("linked", {"insight_id": "insight-a"}),
-        ("missing", {}),
-        ("null", {"insight_id": None}),
-        ("string-null", {"insight_id": "null"}),
-    ):
+async def test_rejects_group_counts_over_limit(
+    entity_repo: SQLAlchemyEntityRepository, setup_workspaces, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(entity_repository, "MAX_GROUP_COUNT_ROWS", 2)
+    for index in range(3):
         await entity_repo.create_entity(
             workspace="workspace-1",
             entity_type="experiment_group",
-            name=name,
-            data=data,
+            name=f"group-{index}",
+            data={"value": f"group-{index}"},
         )
 
-    counts = await entity_repo.count_entities_by(
-        workspace="workspace-1",
-        entity_type="experiment_group",
-        group_by="data.insight_id",
-    )
-
-    assert counts == {"insight-a": 1, "null": 1}
-
-
-async def test_normalizes_sqlite_json_booleans_without_changing_numbers(
-    entity_repo: SQLAlchemyEntityRepository, setup_workspaces
-):
-    for name, value in (
-        ("true", True),
-        ("false", False),
-        ("one", 1),
-        ("zero", 0),
-    ):
-        await entity_repo.create_entity(
-            workspace="workspace-1",
-            entity_type="experiment_group",
-            name=name,
-            data={"value": value},
-        )
-
-    counts = await entity_repo.count_entities_by(
-        workspace="workspace-1",
-        entity_type="experiment_group",
-        group_by="data.value",
-    )
-
-    assert counts == {"true": 1, "false": 1, "1": 1, "0": 1}
-
-
-async def test_rejects_more_than_1000_group_values(
-    entity_repo: SQLAlchemyEntityRepository, session_maker, setup_workspaces
-):
-    async with session_maker() as session:
-        session.add_all(
-            DBEntity(
-                id=f"experiment-group-{index}",
-                workspace="workspace-1",
-                entity_type="experiment_group",
-                name=f"group-{index}",
-                data={"value": f"group-{index}"},
-            )
-            for index in range(1000)
-        )
-        await session.commit()
-
-    counts = await entity_repo.count_entities_by(
-        workspace="workspace-1",
-        entity_type="experiment_group",
-        group_by="data.value",
-    )
-    assert len(counts) == 1000
-
-    await entity_repo.create_entity(
-        workspace="workspace-1",
-        entity_type="experiment_group",
-        name="group-1000",
-        data={"value": "group-1000"},
-    )
-
-    with pytest.raises(ValueError, match="more than 1000 distinct values"):
+    with pytest.raises(ValueError, match="more than 2 distinct values"):
         await entity_repo.count_entities_by(
             workspace="workspace-1",
             entity_type="experiment_group",

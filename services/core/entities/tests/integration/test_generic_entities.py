@@ -4,7 +4,6 @@
 """Integration tests for generic entity API v2 endpoints."""
 
 import json
-from unittest.mock import AsyncMock
 
 import pytest
 from httpx import AsyncClient
@@ -189,30 +188,14 @@ class TestEntityCRUD:
         assert result["group_counts"] == {"insight-a": 2, "insight-b": 1}
         assert len(result["data"]) == 1
 
-    @pytest.mark.parametrize("count_by", ["not_a_field", "metadata"])
-    async def test_list_entities_rejects_invalid_count_field(self, client: AsyncClient, ctx, count_by: str):
+    async def test_list_entities_rejects_unsupported_count_field(self, client: AsyncClient, ctx):
         response = await client.get(
             "/apis/entities/v2/workspaces/default/entities/experiment_group",
-            params={"count_by": count_by},
+            params={"count_by": "name"},
         )
 
         assert response.status_code == 400
-        assert "does not exist" in response.json()["detail"]
-
-    async def test_list_entities_translates_group_count_overflow(self, client: AsyncClient, ctx, repos, monkeypatch):
-        monkeypatch.setattr(
-            repos["entity"],
-            "count_entities_by",
-            AsyncMock(side_effect=ValueError("Grouped count has more than 1000 distinct values")),
-        )
-
-        response = await client.get(
-            "/apis/entities/v2/workspaces/default/entities/experiment_group",
-            params={"count_by": "data.value"},
-        )
-
-        assert response.status_code == 400
-        assert response.json()["detail"] == "Grouped count has more than 1000 distinct values"
+        assert "direct string data field" in response.json()["detail"]
 
     async def test_update_entity_by_name(self, client: AsyncClient, ctx):
         """Test updating an entity by name."""

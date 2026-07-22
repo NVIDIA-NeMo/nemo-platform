@@ -96,12 +96,6 @@ class SQLAlchemyFilterRepository(FilterRepository):
         # This handles both SQLite and PostgreSQL JSON string extraction
         return func.trim(cast(column, String), '"')
 
-    def get_text_column(self, field: str) -> tuple[ColumnElement, ColumnElement, bool]:
-        """Return text-normalized and raw field expressions and whether the field is JSON."""
-        column, is_json = self._get_column(field)
-        text_column = self._cast_json_to_text(column) if is_json else cast(column, String)
-        return text_column, column, is_json
-
     def _cast_json_to_numeric(self, column: Any) -> Any:
         """Cast a JSON column element to a float for numeric comparisons.
 

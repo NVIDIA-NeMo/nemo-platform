@@ -15,7 +15,7 @@ from nmp.core.entities.app.repository.sqlalchemy.filter import SQLAlchemyFilterR
 from nmp.core.entities.app.repository.sqlalchemy.models import DBEntity
 from nmp.core.entities.entities import Entity
 from nmp.core.entities.utils.identifiers import generate_entity_id
-from sqlalchemy import JSON, case, func, select
+from sqlalchemy import String, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm.exc import StaleDataError
 
@@ -209,31 +209,25 @@ class SQLAlchemyEntityRepository(EntityRepositoryInterface):
         relationship_child_workspaces: set[str] | None = None,
         session: AsyncSession | None = None,
     ) -> dict[str, int]:
-        """Count filtered entities grouped by a scalar field."""
+        """Count filtered entities grouped by a direct string data field."""
         async with self._get_session(session) as sess:
-            if group_by.startswith("data."):
-                if not all(group_by.split(".")[1:]):
-                    raise ValueError(f"Field '{group_by}' does not exist on model DBEntity")
+            parts = group_by.split(".")
+            if len(parts) != 2 or parts[0] != "data" or not parts[1].isidentifier():
+                raise ValueError(f"Field '{group_by}' is not a direct string data field")
+
+            field = parts[1]
+            raw_group_column = DBEntity.data[field]
+            group_column = func.trim(cast(raw_group_column, String), '"')
+            if self._is_sqlite(sess):
+                json_type = func.json_type(DBEntity.data, f"$.{field}")
+                string_type = "text"
             else:
-                column = DBEntity.__table__.columns.get(group_by)
-                if column is None or isinstance(column.type, JSON):
-                    raise ValueError(f"Field '{group_by}' does not exist on model DBEntity")
+                json_type = func.json_typeof(raw_group_column)
+                string_type = "string"
 
             filter_repo = SQLAlchemyFilterRepository(
                 DBEntity, relationship_child_workspaces=relationship_child_workspaces
             )
-            group_column, raw_group_column, is_json = filter_repo.get_text_column(group_by)
-            if is_json:
-                if self._is_sqlite(sess):
-                    json_path = "$." + ".".join(group_by.split(".")[1:])
-                    json_type = func.json_type(DBEntity.data, json_path)
-                    group_column = case(
-                        (json_type == "true", "true"),
-                        (json_type == "false", "false"),
-                        else_=group_column,
-                    )
-                else:
-                    json_type = func.json_typeof(raw_group_column)
             query = select(group_column, func.count()).select_from(DBEntity).where(DBEntity.entity_type == entity_type)
 
             if workspace != ALL_WORKSPACES:
@@ -242,10 +236,7 @@ class SQLAlchemyEntityRepository(EntityRepositoryInterface):
             if filter_op is not None:
                 query = query.where(filter_op.apply(filter_repo))
 
-            if is_json:
-                query = query.where(json_type.is_not(None), json_type != "null")
-            else:
-                query = query.where(group_column.is_not(None))
+            query = query.where(json_type == string_type)
 
             rows = (await sess.execute(query.group_by(group_column).limit(MAX_GROUP_COUNT_ROWS + 1))).all()
             if len(rows) > MAX_GROUP_COUNT_ROWS:
