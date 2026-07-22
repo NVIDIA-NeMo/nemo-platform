@@ -116,10 +116,7 @@ export const EvaluationTraceDetailRoute: FC = () => {
         isLoading={isRunsSelectorLoading}
       />
       {compareWith && (
-        <button
-          className="text-sm text-color-secondary hover:underline"
-          onClick={handleClearCompare}
-        >
+        <button className="text-sm text-secondary hover:underline" onClick={handleClearCompare}>
           Clear
         </button>
       )}

@@ -137,9 +137,9 @@ const CompareTraceColumn: FC<{
 
 const CompareNotFound: FC<{ testCaseId: string }> = ({ testCaseId }) => (
   <div className="flex h-full flex-col items-center justify-center gap-3 p-density-2xl text-center">
-    <CircleAlert className="h-10 w-10 text-color-feedback-warning" aria-hidden />
-    <p className="font-semibold text-color-primary">Test case not available</p>
-    <p className="max-w-sm text-sm text-color-secondary">
+    <CircleAlert className="h-10 w-10 text-feedback-warning" aria-hidden />
+    <p className="font-semibold text-primary">Test case not available</p>
+    <p className="max-w-sm text-sm text-secondary">
       Test case <code className="font-mono">{testCaseId}</code> was not run for this evaluation.
     </p>
   </div>
@@ -147,9 +147,9 @@ const CompareNotFound: FC<{ testCaseId: string }> = ({ testCaseId }) => (
 
 const CompareNoTestCaseId: FC = () => (
   <div className="flex h-full flex-col items-center justify-center gap-3 p-density-2xl text-center">
-    <CircleAlert className="h-10 w-10 text-color-feedback-warning" aria-hidden />
-    <p className="font-semibold text-color-primary">Cannot compare</p>
-    <p className="max-w-sm text-sm text-color-secondary">
+    <CircleAlert className="h-10 w-10 text-feedback-warning" aria-hidden />
+    <p className="font-semibold text-primary">Cannot compare</p>
+    <p className="max-w-sm text-sm text-secondary">
       This trace has no test case ID. Comparison requires a producer-supplied test case ID.
     </p>
   </div>
