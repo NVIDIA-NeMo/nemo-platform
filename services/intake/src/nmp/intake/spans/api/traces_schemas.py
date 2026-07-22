@@ -7,11 +7,17 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal, Self
+from typing import Self
 
 from nmp.common.entities.values import DatetimeFilter
-from nmp.intake.spans.domain import IntakeTrace, SpanStatus
+from nmp.intake.spans.domain import (
+    INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT,
+    IntakeResponseMode,
+    IntakeTrace,
+    SpanStatus,
+)
 from nmp.intake.spans.ingest.evaluation_context import EvaluationContext, ExperimentContext
+from nmp.intake.spans.storage import text_for_mode
 from pydantic import BaseModel, Field
 
 
@@ -20,7 +26,7 @@ class TraceSortField(StrEnum):
     STARTED_AT_DESC = "-started_at"
 
 
-TraceMode = Literal["summary", "detailed"]
+TraceMode = IntakeResponseMode
 
 
 class TraceFilter(BaseModel):
@@ -43,6 +49,20 @@ class Trace(BaseModel):
     session_id: str
     workspace: str
     name: str | None = None
+    input: str | None = Field(
+        default=None,
+        description=(
+            f"Root-span input text. Omitted in summary mode and truncated to {INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT} "
+            "characters in preview mode."
+        ),
+    )
+    output: str | None = Field(
+        default=None,
+        description=(
+            f"Root-span output text. Omitted in summary mode and truncated to {INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT} "
+            "characters in preview mode."
+        ),
+    )
     evaluation_context: EvaluationContext | None = None
     experiment_context: ExperimentContext | None = Field(
         default=None,
@@ -64,13 +84,15 @@ class Trace(BaseModel):
     error_count: int | None = Field(default=None, ge=0)
 
     @classmethod
-    def from_domain(cls, trace: IntakeTrace) -> Self:
+    def from_domain(cls, trace: IntakeTrace, *, mode: TraceMode = "detailed") -> Self:
         return cls(
             id=trace.id,
             root_span_id=trace.root_span_id,
             session_id=trace.session_id,
             workspace=trace.workspace,
             name=trace.name,
+            input=text_for_mode(trace.input, mode=mode),
+            output=text_for_mode(trace.output, mode=mode),
             evaluation_context=_evaluation_context(trace),
             experiment_context=_experiment_context(trace),
             started_at=trace.started_at,

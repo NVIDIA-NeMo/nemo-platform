@@ -91,6 +91,22 @@ def test_list_evaluation_sessions_returns_joined_session_rows(client: TestClient
     assert case_a["cost_total_usd"] == pytest.approx(0.05)
     assert case_a["evaluator_scores"] == {"reward": pytest.approx(1.0)}
     assert case_a["status"] in {"success", "unknown"}
+    assert case_a["output"] == "solved case-a"
+
+    summary = client.get(
+        f"{EVALUATIONS}/{evaluation_name}/sessions",
+        params={"mode": "summary", "page_size": 3},
+    )
+    assert summary.status_code == 200, summary.text
+    assert all(row["input"] is None and row["output"] is None for row in summary.json()["data"])
+
+    preview = client.get(
+        f"{EVALUATIONS}/{evaluation_name}/sessions",
+        params={"mode": "preview", "page_size": 3},
+    )
+    assert preview.status_code == 200, preview.text
+    preview_by_case = {row["test_case_id"]: row for row in preview.json()["data"]}
+    assert preview_by_case["case-a"]["output"] == "solved case-a"
 
     paged = client.get(f"{EVALUATIONS}/{evaluation_name}/sessions", params={"page": 2, "page_size": 1})
     assert paged.status_code == 200, paged.text

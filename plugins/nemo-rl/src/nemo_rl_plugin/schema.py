@@ -18,9 +18,10 @@ from nmp.rl.schemas import (
     OutputResponse,
     ParallelismParams,
     RlJobOutput,
+    RlSchema,
     TrainingMethod,
 )
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
 __all__ = [
     "DPOTraining",
@@ -33,18 +34,18 @@ __all__ = [
 ]
 
 
-class OutputRequest(BaseModel):
+class OutputRequest(RlSchema):
     """Submitter-facing output preferences. ``name`` is auto-derived if omitted."""
-
-    model_config = ConfigDict(extra="forbid")
 
     name: str | None = None
 
 
-class RlJobInput(BaseModel):
+class RlJobInput(RlSchema):
     """POST body / CLI JSON for ``nemo customization rl submit``."""
 
-    model_config = ConfigDict(extra="forbid", protected_namespaces=())
+    # extra="forbid" inherited from RlSchema; protected_namespaces=() kept for the
+    # ``model`` field.
+    model_config = ConfigDict(protected_namespaces=())
 
     name: str | None = None
     model: str = Field(description="Model entity reference ('name' or 'workspace/name').")

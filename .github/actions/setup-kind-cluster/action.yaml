@@ -1,38 +1,42 @@
 name: Setup Kind cluster with NeMo Platform
 description: >
   Creates a Kind cluster, installs tooling (kind, kubectl, Helm, uv),
-  pre-pulls images, deploys NeMo Platform via Helm, and waits for the
-  API to become healthy.
+  optionally deploys NeMo Platform via Helm, and waits for the API to become
+  healthy.
 
 inputs:
-  kind_cluster_name:
+  kind-cluster-name:
     description: Kind cluster name
     required: true
-  kube_namespace:
+  install-nemo-platform:
+    description: Deploy NeMo Platform into the Kind cluster
+    required: false
+    default: "true"
+  kube-namespace:
     description: Kubernetes namespace for NeMo Platform
     required: false
     default: nemo-platform
-  kube_gateway_name:
+  kube-gateway-name:
     description: Gateway resource name
     required: false
     default: nmp-e2e-gateway
-  image_registry:
+  image-registry:
     description: Container image registry
     required: true
-  image_tag:
+  image-tag:
     description: Container image tag
     required: true
-  helm_values:
+  helm-values:
     description: Helm values file path (relative to repo root)
     required: false
     default: e2e/k8s/values/kind.yaml
-  kind_image_pull_token:
+  kind-image-pull-token:
     description: Token for pulling images into Kind
     required: true
-  kind_image_pull_user:
+  kind-image-pull-user:
     description: Username for pulling images into Kind
     required: true
-  ngc_api_key:
+  ngc-api-key:
     description: NGC API key (can be a placeholder for CPU-only)
     required: false
     default: not-used
@@ -108,22 +112,23 @@ runs:
     - name: Start kind cluster
       shell: bash
       env:
-        KIND_CLUSTER_NAME: ${{ inputs.kind_cluster_name }}
-        KUBE_NAMESPACE: ${{ inputs.kube_namespace }}
-        NGC_API_KEY: ${{ inputs.ngc_api_key }}
+        KIND_CLUSTER_NAME: ${{ inputs['kind-cluster-name'] }}
+        KUBE_NAMESPACE: ${{ inputs['kube-namespace'] }}
+        NGC_API_KEY: ${{ inputs['ngc-api-key'] }}
+        GITHUB_TOKEN: ${{ inputs['kind-image-pull-token'] }}
       run: bash e2e/k8s/scripts/setup_local_kind_cpu.sh
 
     - name: Set default kubectl namespace
       shell: bash
       env:
-        NAMESPACE: ${{ inputs.kube_namespace }}
+        NAMESPACE: ${{ inputs['kube-namespace'] }}
       run: kubectl config set-context --current --namespace="${NAMESPACE}"
 
     - name: Verify Gateway API setup
       shell: bash
       env:
-        NAMESPACE: ${{ inputs.kube_namespace }}
-        KUBE_GATEWAY_NAME: ${{ inputs.kube_gateway_name }}
+        NAMESPACE: ${{ inputs['kube-namespace'] }}
+        KUBE_GATEWAY_NAME: ${{ inputs['kube-gateway-name'] }}
       run: |
         set -euo pipefail
         kubectl wait --for=condition=Established crd/gateways.gateway.networking.k8s.io --timeout=2m
@@ -132,27 +137,34 @@ runs:
         kubectl -n "${NAMESPACE}" get gateway "${KUBE_GATEWAY_NAME}"
 
     - name: Pre-pull GHCR images into kind
+      if: ${{ inputs['install-nemo-platform'] == 'true' }}
       shell: bash
       env:
-        KIND_IMAGE_PULL_TOKEN: ${{ inputs.kind_image_pull_token }}
-        KIND_IMAGE_PULL_USER: ${{ inputs.kind_image_pull_user }}
-        NMP_E2E_REGISTRY: ${{ inputs.image_registry }}
-        NMP_E2E_TAG: ${{ inputs.image_tag }}
+        KIND_IMAGE_PULL_TOKEN: ${{ inputs['kind-image-pull-token'] }}
+        KIND_IMAGE_PULL_USER: ${{ inputs['kind-image-pull-user'] }}
+        NMP_E2E_REGISTRY: ${{ inputs['image-registry'] }}
+        NMP_E2E_TAG: ${{ inputs['image-tag'] }}
+        # CPU generic HTTP smoke image; tag must match e2e/test_models_deployments_plugin.py.
+        GENERIC_HTTP_IMAGE: docker.io/library/python
+        GENERIC_HTTP_TAG: 3.12-alpine
       run: |
         e2e/k8s/scripts/prepull_kind_images.sh \
           "${NMP_E2E_REGISTRY}/nmp-api:${NMP_E2E_TAG}" \
-          "${NMP_E2E_REGISTRY}/nmp-cpu-tasks:${NMP_E2E_TAG}"
+          "${NMP_E2E_REGISTRY}/nmp-cpu-tasks:${NMP_E2E_TAG}" \
+          "${GENERIC_HTTP_IMAGE}:${GENERIC_HTTP_TAG}"
 
     - name: Install NeMo Platform
+      if: ${{ inputs['install-nemo-platform'] == 'true' }}
       shell: bash
       env:
-        NAMESPACE: ${{ inputs.kube_namespace }}
-        NMP_E2E_REGISTRY: ${{ inputs.image_registry }}
-        NMP_E2E_TAG: ${{ inputs.image_tag }}
-        HELM_VALUES: ${{ inputs.helm_values }}
+        NAMESPACE: ${{ inputs['kube-namespace'] }}
+        NMP_E2E_REGISTRY: ${{ inputs['image-registry'] }}
+        NMP_E2E_TAG: ${{ inputs['image-tag'] }}
+        HELM_VALUES: ${{ inputs['helm-values'] }}
         REQUIRE_NMP_E2E_IMAGES: "true"
         POSTGRES_IMAGE: docker.io/library/postgres
         BUSYBOX_IMAGE: docker.io/library/busybox
+        GITHUB_TOKEN: ${{ inputs['kind-image-pull-token'] }}
       run: |
         if ! e2e/k8s/scripts/install_helm_e2e.sh; then
           echo "--- helm list -A ---"
@@ -165,6 +177,7 @@ runs:
         fi
 
     - name: Wait for API
+      if: ${{ inputs['install-nemo-platform'] == 'true' }}
       shell: bash
       env:
         NMP_E2E_CLUSTER_URL: ${{ env.NMP_E2E_CLUSTER_URL }}

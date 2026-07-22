@@ -12,7 +12,12 @@ from datetime import datetime, timezone
 from typing import Any
 
 from nmp.common.api.common import PaginationData
-from nmp.intake.spans.domain import SpanKind, SpanStatus
+from nmp.intake.spans.domain import (
+    INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT,
+    IntakeResponseMode,
+    SpanKind,
+    SpanStatus,
+)
 
 
 def utc_now() -> datetime:
@@ -46,6 +51,47 @@ def json_loads_or_none(value: Any) -> Any:
         return json.loads(value)
     except json.JSONDecodeError:
         return None
+
+
+def truncated_text_select(
+    column_sql: str,
+    *,
+    alias: str,
+    limit_parameter: str = "payload_char_limit",
+) -> str:
+    """Build a ClickHouse select expression that bounds a UTF-8 text column."""
+    return f"substringUTF8({column_sql}, 1, %({limit_parameter})s) AS {alias}"
+
+
+def text_select_for_mode(column_sql: str, *, alias: str, mode: IntakeResponseMode) -> str:
+    """Project payload text without reading it for summary responses."""
+    if mode == "summary":
+        return f"'' AS {alias}"
+    if mode == "preview":
+        return truncated_text_select(column_sql, alias=alias)
+    if mode == "detailed":
+        return f"{column_sql} AS {alias}"
+    raise ValueError(f"Unsupported Intake response mode: {mode}")
+
+
+def text_query_parameters(mode: IntakeResponseMode) -> dict[str, int]:
+    """Return the query parameters required by a mode's text projection."""
+    if mode == "preview":
+        return {"payload_char_limit": INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT}
+    if mode in {"summary", "detailed"}:
+        return {}
+    raise ValueError(f"Unsupported Intake response mode: {mode}")
+
+
+def text_for_mode(value: str | None, *, mode: IntakeResponseMode) -> str | None:
+    """Enforce payload mode semantics again at the API response boundary."""
+    if value is None or mode == "summary":
+        return None
+    if mode == "detailed":
+        return value
+    if mode == "preview":
+        return value[:INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT]
+    raise ValueError(f"Unsupported Intake response mode: {mode}")
 
 
 def normalize_span_kind(value: Any) -> SpanKind:

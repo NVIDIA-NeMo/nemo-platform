@@ -4,8 +4,9 @@
 
 The consumption side of testbed export bundles: convert exported span docs back
 to OTLP protobuf and POST them to Intake's ingest route, then re-post
-annotations and evaluator results — additive and idempotent, into
-caller-specified workspaces, never touching existing data.
+annotations and evaluator results. Fixture-scoped restores are additive,
+idempotent, and healing. Direct restores use ``require_empty=True`` and are
+fresh-target-only: they fail once the target contains data.
 
 Doc -> OTLP inversion (validated against the live platform, 2026-07-06 spike):
 
@@ -73,7 +74,8 @@ TEMP_ROOT = Path(__file__).resolve().parent / "tmp"
 _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 _EPOCH_ISO = "1970-01-01T00:00:00Z"
 _STATUS_CODE_ERROR = 2  # opentelemetry.proto.trace.v1.Status.STATUS_CODE_ERROR
-SPAN_BATCH = 100  # spans per OTLP request (ingest caps bodies at 5 MiB; tau2 spans are a few KB)
+OTLP_REQUEST_MAX_BYTES = 4 * 1024 * 1024
+OTLP_REQUEST_MAX_SPANS = 100
 
 # Where the attribute catalog lives inside a nemo-platform checkout.
 CATALOG_RELPATH = Path("services/intake/src/nmp/intake/spans/span_attribute_catalog.py")
@@ -181,6 +183,17 @@ def fixture_workspace_map(workspaces: list[str], suffix: str) -> dict[str, str]:
         if not _WS_OK.fullmatch(target):
             sys.exit(f"fixture workspace '{target}' violates the platform naming rule ({_WS_OK.pattern})")
     return mapping
+
+
+def explicit_workspace_map(workspaces: list[str], into: str) -> dict[str, str]:
+    if len(workspaces) != 1:
+        sys.exit(
+            "restore --into requires a single-workspace bundle; "
+            f"found {len(workspaces)}: {', '.join(sorted(workspaces))}"
+        )
+    if not _WS_OK.fullmatch(into):
+        sys.exit(f"workspace {into!r} violates the platform naming rule ({_WS_OK.pattern})")
+    return {workspaces[0]: into}
 
 
 def manifest_since(manifest: dict) -> datetime:
@@ -323,6 +336,52 @@ def build_trace_request(otlp_spans: list[dict]) -> ExportTraceServiceRequest:
     return request
 
 
+def build_trace_requests(
+    docs: list[dict],
+    catalog,
+    *,
+    max_bytes: int | None = None,
+    max_spans: int | None = None,
+) -> list[ExportTraceServiceRequest]:
+    """Convert span docs into OTLP export requests bounded by span count and protobuf size.
+
+    Each doc is converted once via :func:`doc_to_otlp`. A candidate batch is flushed
+    when adding the next span would exceed ``max_spans`` or ``max_bytes`` (measured
+    with protobuf ``ByteSize()``). A single span whose request exceeds ``max_bytes``
+    raises before any request is returned.
+    """
+    if max_bytes is None:
+        max_bytes = OTLP_REQUEST_MAX_BYTES
+    if max_spans is None:
+        max_spans = OTLP_REQUEST_MAX_SPANS
+    requests: list[ExportTraceServiceRequest] = []
+    batch: list[dict] = []
+
+    def _reject_oversized(otlp: dict, doc: dict) -> None:
+        size = build_trace_request([otlp]).ByteSize()
+        if size > max_bytes:
+            raise RuntimeError(f"span {doc.get('span_id')}: OTLP body exceeds {max_bytes} bytes ({size})")
+
+    for doc in docs:
+        otlp = doc_to_otlp(doc, catalog)
+        if not batch:
+            _reject_oversized(otlp, doc)
+            batch = [otlp]
+            continue
+        candidate = batch + [otlp]
+        candidate_request = build_trace_request(candidate)
+        if len(candidate) > max_spans or candidate_request.ByteSize() > max_bytes:
+            requests.append(build_trace_request(batch))
+            _reject_oversized(otlp, doc)
+            batch = [otlp]
+        else:
+            batch = candidate
+
+    if batch:
+        requests.append(build_trace_request(batch))
+    return requests
+
+
 def _collection_count(
     base_url: str, workspace: str, collection: str, time_field: str, *, client: httpx.Client | None = None
 ) -> int:
@@ -360,6 +419,22 @@ def annotation_count(base_url: str, workspace: str, *, client: httpx.Client | No
 def evaluator_result_count(base_url: str, workspace: str, *, client: httpx.Client | None = None) -> int:
     """Total evaluator results in a workspace (``created_at`` >= epoch)."""
     return _collection_count(base_url, workspace, "evaluator-results", "created_at", client=client)
+
+
+def _require_zero(workspace: str, collection: str, count: int) -> None:
+    if count:
+        raise RuntimeError(
+            f"{workspace}: direct restore requires an empty target, but it has "
+            f"{count} {collection}. Choose a fresh workspace or explicitly delete "
+            "and recreate this one."
+        )
+
+
+def _collection_outcome(documents: list[dict], ingested: bool) -> dict[str, int]:
+    count = len(documents)
+    if ingested:
+        return {"ingested": count, "skipped": 0}
+    return {"ingested": 0, "skipped": count}
 
 
 def _post_created(client: httpx.Client, url: str, body: dict) -> None:
@@ -463,6 +538,12 @@ def _first_span_id(base_url: str, workspace: str, *, client: httpx.Client | None
             client.close()
 
 
+def _doc_started_at(doc: dict) -> datetime:
+    """A span doc's chronological ``started_at`` (naive values are UTC; missing sorts first)."""
+    parsed = datetime.fromisoformat(str(doc.get("started_at") or _EPOCH_ISO))
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+
+
 def _assert_same_first_span(base_url: str, workspace: str, span_docs: list[dict], *, client: httpx.Client) -> None:
     """Harden the count-only skip guard: matching counts can still be a different corpus.
 
@@ -476,8 +557,8 @@ def _assert_same_first_span(base_url: str, workspace: str, span_docs: list[dict]
     live_first = _first_span_id(base_url, workspace, client=client)
     if live_first is None:
         return
-    earliest = min(str(doc.get("started_at") or "") for doc in span_docs)
-    expected = {doc.get("span_id") for doc in span_docs if str(doc.get("started_at") or "") == earliest}
+    earliest = min(_doc_started_at(doc) for doc in span_docs)
+    expected = {doc.get("span_id") for doc in span_docs if _doc_started_at(doc) == earliest}
     if live_first not in expected:
         raise RuntimeError(
             f"{workspace}: span count matches the bundle but its first span is {live_first!r} "
@@ -523,6 +604,7 @@ def ingest_bundle(
     *,
     workspace_map: dict[str, str],
     catalog,
+    require_empty: bool = False,
     sleep: Callable[[float], None] = time.sleep,
 ) -> dict:
     """Re-ingest a bundle's export into the mapped workspaces through the real APIs.
@@ -543,6 +625,10 @@ def ingest_bundle(
     * annotations: equal -> skip; zero existing -> post; anything else -> hard
       error — annotation POSTs mint fresh server-side uuids, so re-posting a
       partial set would duplicate; there is no safe heal (delete + re-restore).
+
+    With ``require_empty=True``, all three target collections must be empty
+    up front. This direct-restore mode is not idempotent into a populated
+    workspace.
 
     "already restored — skipping" is printed only when EVERY collection is
     satisfied. Returns
@@ -598,59 +684,74 @@ def ingest_bundle(
             ensure_workspace(base_url, target, client=client)
 
             have_spans = span_count(base_url, target, client=client)
-            if have_spans == expected_spans:
-                ingest_spans = False
-                if expected_spans and spans:
-                    # Counts alone can't tell a restored corpus from a re-minted one — fingerprint it.
-                    _assert_same_first_span(base_url, target, spans, client=client)
-            elif have_spans == 0:
-                ingest_spans = True
+            if require_empty:
+                have_ann = annotation_count(base_url, target, client=client)
+                have_res = evaluator_result_count(base_url, target, client=client)
+                for collection, count in (
+                    ("spans", have_spans),
+                    ("annotations", have_ann),
+                    ("evaluator results", have_res),
+                ):
+                    _require_zero(target, collection, count)
+                ingest_spans = bool(spans)
+                post_annotations = bool(annotations)
+                post_results = bool(results)
             else:
-                raise RuntimeError(
-                    f"{target}: has {have_spans} spans but the bundle expects {expected_spans} — the workspace "
-                    "is partially restored (or holds foreign data). Delete the workspace (or map to a fresh "
-                    "one) and restore again."
-                )
-            have_ann = annotation_count(base_url, target, client=client)
-            if have_ann == expected_ann:
-                post_annotations = False
-            elif have_ann == 0:
-                post_annotations = True
-            else:
-                raise RuntimeError(
-                    f"{target}: has {have_ann} annotations but the bundle expects {expected_ann} — annotation "
-                    "POSTs mint fresh server-side ids, so re-posting would duplicate what is already there "
-                    "(there is no safe partial re-post). Delete the fixture workspace (or map to a fresh one) "
-                    "and restore again."
-                )
-            have_res = evaluator_result_count(base_url, target, client=client)
-            if have_res == expected_res:
-                post_results = False
-            elif have_res < expected_res:
-                post_results = True  # upsert-safe: re-post the FULL set
-            else:
-                raise RuntimeError(
-                    f"{target}: has {have_res} evaluator results but the bundle expects {expected_res} — the "
-                    "workspace holds foreign evaluator results. Delete the fixture workspace (or map to a "
-                    "fresh one) and restore again."
-                )
+                if have_spans == expected_spans:
+                    ingest_spans = False
+                    if expected_spans and spans:
+                        # Counts alone can't tell a restored corpus from a re-minted one — fingerprint it.
+                        _assert_same_first_span(base_url, target, spans, client=client)
+                elif have_spans == 0:
+                    ingest_spans = True
+                else:
+                    raise RuntimeError(
+                        f"{target}: has {have_spans} spans but the bundle expects {expected_spans} — the workspace "
+                        "is partially restored (or holds foreign data). Delete the workspace (or map to a fresh "
+                        "one) and restore again."
+                    )
+                have_ann = annotation_count(base_url, target, client=client)
+                if have_ann == expected_ann:
+                    post_annotations = False
+                elif have_ann == 0:
+                    post_annotations = True
+                else:
+                    raise RuntimeError(
+                        f"{target}: has {have_ann} annotations but the bundle expects {expected_ann} — annotation "
+                        "POSTs mint fresh server-side ids, so re-posting would duplicate what is already there "
+                        "(there is no safe partial re-post). Delete the fixture workspace (or map to a fresh one) "
+                        "and restore again."
+                    )
+                have_res = evaluator_result_count(base_url, target, client=client)
+                if have_res == expected_res:
+                    post_results = False
+                elif have_res < expected_res:
+                    post_results = True  # upsert-safe: re-post the FULL set
+                else:
+                    raise RuntimeError(
+                        f"{target}: has {have_res} evaluator results but the bundle expects {expected_res} — the "
+                        "workspace holds foreign evaluator results. Delete the fixture workspace (or map to a "
+                        "fresh one) and restore again."
+                    )
 
             if not (ingest_spans or post_annotations or post_results):
                 print(f"{target}: already restored ({have_spans} spans) — skipping")
                 outcome[source_ws] = {
                     "workspace": target,
-                    "spans": {"ingested": 0, "skipped": len(spans)},
-                    "annotations": {"ingested": 0, "skipped": len(annotations)},
-                    "evaluator_results": {"ingested": 0, "skipped": len(results)},
+                    "spans": _collection_outcome(spans, False),
+                    "annotations": _collection_outcome(annotations, False),
+                    "evaluator_results": _collection_outcome(results, False),
                 }
                 continue
             # Healing = posting into a workspace whose spans already landed (interrupted restore).
             healing = expected_spans > 0 and not ingest_spans
             if ingest_spans:
                 print(f"ingesting {len(spans)} spans into {target}")
-                for start in range(0, len(spans), SPAN_BATCH):
-                    batch = [doc_to_otlp(doc, catalog) for doc in spans[start : start + SPAN_BATCH]]
-                    export_trace_request(base_url, target, build_trace_request(batch), client=client)
+                # Materialize every request before posting: higher memory use buys up-front
+                # validation (including oversized spans) and prevents a partial restore.
+                trace_requests = build_trace_requests(spans, catalog)
+                for request in trace_requests:
+                    export_trace_request(base_url, target, request, client=client)
                 if spans:
                     _wait_for_spans(base_url, target, expected_spans or len(spans), client=client, sleep=sleep)
             root = f"{base_url.rstrip('/')}/apis/intake/v2/workspaces/{target}"
@@ -668,19 +769,9 @@ def ingest_bundle(
                     _post_created(client, f"{root}/evaluator-results", body)
             outcome[source_ws] = {
                 "workspace": target,
-                "spans": (
-                    {"ingested": len(spans), "skipped": 0} if ingest_spans else {"ingested": 0, "skipped": len(spans)}
-                ),
-                "annotations": (
-                    {"ingested": len(annotations), "skipped": 0}
-                    if post_annotations
-                    else {"ingested": 0, "skipped": len(annotations)}
-                ),
-                "evaluator_results": (
-                    {"ingested": len(results), "skipped": 0}
-                    if post_results
-                    else {"ingested": 0, "skipped": len(results)}
-                ),
+                "spans": _collection_outcome(spans, ingest_spans),
+                "annotations": _collection_outcome(annotations, post_annotations),
+                "evaluator_results": _collection_outcome(results, post_results),
             }
     return outcome
 

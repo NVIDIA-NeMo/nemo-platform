@@ -29,9 +29,6 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-_WORKLOAD_TOKEN_ENVVAR = "NEMO_WORKLOAD_TOKEN"
-_WORKLOAD_TOKEN_FILE_ENVVAR = "NEMO_WORKLOAD_TOKEN_FILE"
-
 
 @dataclass(frozen=True)
 class _RuntimeAccessTokenSource:
@@ -141,18 +138,6 @@ class Config(BaseModel):
     def _runtime_access_token_source_from_env(cls) -> _RuntimeAccessTokenSource | None:
         if token := os.environ.get("NMP_ACCESS_TOKEN"):
             return _RuntimeAccessTokenSource(token, "NMP_ACCESS_TOKEN environment override")
-        if token := os.environ.get(_WORKLOAD_TOKEN_ENVVAR):
-            return _RuntimeAccessTokenSource(token, f"{_WORKLOAD_TOKEN_ENVVAR} environment override")
-        if token_path := os.environ.get(_WORKLOAD_TOKEN_FILE_ENVVAR):
-            try:
-                token = Path(token_path).read_text(encoding="utf-8").strip()
-            except OSError as exc:
-                raise ValueError(f"Unable to read {_WORKLOAD_TOKEN_FILE_ENVVAR} at {token_path}: {exc}") from exc
-            if token:
-                return _RuntimeAccessTokenSource(
-                    token,
-                    f"{_WORKLOAD_TOKEN_FILE_ENVVAR} environment override ({token_path})",
-                )
         return None
 
     @classmethod

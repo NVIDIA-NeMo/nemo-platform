@@ -1,15 +1,47 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import asyncio
+import builtins
+import os
+import sys
+import threading
+import time
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from nmp.common.config import AuthConfig
+from nmp.common.config import AuthConfig, Configuration
 from nmp.common.config.base import OIDCConfig
 from nmp.common.service import Service
+from nmp.platform_runner import config as runner_config
 from nmp.platform_runner import server
+from nmp.platform_runner.health import ReadinessCheck, create_platform_health_router
+
+_RUN_ENV_KEYS = (
+    "NMP_CONFIG_FILE_PATH",
+    "NMP_SERVICE_HOST",
+    "NMP_SERVICE_PORT",
+    "NMP_BASE_URL",
+    "NMP_AUTH_POLICY_DECISION_POINT_BASE_URL",
+    "NMP_SERVICES",
+    "NMP_CONTROLLERS",
+    "NMP_SIDECARS",
+)
+
+
+@pytest.fixture(autouse=True)
+def restore_platform_runner_env():
+    original_env = {key: os.environ.get(key) for key in _RUN_ENV_KEYS}
+    yield
+    for key, value in original_env.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+    Configuration.clear_cache()
 
 
 def _make_auth_config(*, enabled: bool) -> AuthConfig:
@@ -26,6 +58,67 @@ class PluginService(Service):
 
     def get_routers(self):
         return []
+
+
+async def _ready() -> bool:
+    return True
+
+
+async def _not_ready() -> bool:
+    return False
+
+
+def _client_for_health_checks(checks: list[ReadinessCheck]) -> TestClient:
+    app = FastAPI()
+    app.include_router(create_platform_health_router([PluginService()], readiness_checks=checks))
+    return TestClient(app)
+
+
+def _patch_platform_app_config(monkeypatch, *, seed_on_startup: bool):
+    auth_cfg = _make_auth_config(enabled=False)
+    platform_cfg = _make_platform_config_mock()
+    platform_cfg.seed_on_startup = seed_on_startup
+    monkeypatch.setattr(server, "get_platform_config", lambda: platform_cfg)
+    monkeypatch.setattr(server, "get_auth_config", lambda: auth_cfg)
+
+    import nmp.common.auth.middleware as auth_middleware
+
+    monkeypatch.setattr(auth_middleware, "get_auth_config", lambda: auth_cfg)
+    return platform_cfg
+
+
+def _wait_for_response(client: TestClient, path: str, status_code: int, timeout: float = 2.0):
+    deadline = time.monotonic() + timeout
+    last_response = None
+    while time.monotonic() < deadline:
+        last_response = client.get(path)
+        if last_response.status_code == status_code:
+            return last_response
+        time.sleep(0.05)
+    return last_response
+
+
+def test_platform_health_ready_includes_startup_readiness_checks():
+    client = _client_for_health_checks(
+        [ReadinessCheck(name="platform-seed", is_ready=_not_ready, message=lambda: "pending")]
+    )
+
+    response = client.get("/health/ready")
+    assert response.status_code == 503
+
+    status = client.get("/status").json()
+    assert "agents" in status["services"]["ready"]
+    assert {"name": "platform-seed", "message": "pending"} in status["services"]["not_ready"]
+
+
+def test_platform_health_status_reports_ready_startup_checks():
+    client = _client_for_health_checks([ReadinessCheck(name="platform-seed", is_ready=_ready)])
+
+    response = client.get("/health/ready")
+    assert response.status_code == 200
+
+    status = client.get("/status").json()
+    assert "platform-seed" in status["services"]["ready"]
 
 
 def test_create_platform_openapi_app_includes_explicit_service_instances(monkeypatch):
@@ -70,6 +163,99 @@ def test_create_default_app_uses_plugin_services_and_controllers(monkeypatch):
 
     assert captured["services"] == [plugin_service]
     assert captured["controller_run_funcs"] == {"agents-deployment": plugin_controller}
+
+
+def test_create_app_marks_mounted_services_as_local(monkeypatch):
+    platform_cfg = _patch_platform_app_config(monkeypatch, seed_on_startup=False)
+    platform_cfg.services = ""
+
+    server.create_app(services=[PluginService()])
+
+    assert platform_cfg.services == "agents"
+
+
+def test_create_app_mounted_services_drive_sdk_local_routing_without_services_env(monkeypatch):
+    monkeypatch.delenv("NMP_SERVICES", raising=False)
+    monkeypatch.setenv("NMP_BASE_URL", "https://nemo-gateway:8080")
+    monkeypatch.setenv("NMP_SERVICE_HOST", "127.0.0.1")
+    monkeypatch.setenv("NMP_SERVICE_PORT", "8080")
+    Configuration.clear_cache()
+    platform_cfg = Configuration.get_platform_config()
+
+    try:
+        auth_cfg = _make_auth_config(enabled=False)
+        monkeypatch.setattr(server, "get_platform_config", lambda: platform_cfg)
+        monkeypatch.setattr(server, "get_auth_config", lambda: auth_cfg)
+
+        import nmp.common.auth.middleware as auth_middleware
+        from nmp.common.sdk_factory import get_platform_sdk
+
+        monkeypatch.setattr(auth_middleware, "get_auth_config", lambda: auth_cfg)
+
+        server.create_app(services=[PluginService()])
+
+        sdk = get_platform_sdk()
+        prepared = sdk._prepare_url("https://nemo-gateway:8080/apis/agents/v2/example")
+
+        assert platform_cfg.services == "agents"
+        assert prepared.scheme == "http"
+        assert prepared.host == "127.0.0.1"
+        assert prepared.port == 8080
+    finally:
+        Configuration.clear_cache()
+
+
+def test_build_platform_app_returns_app_without_running_uvicorn(monkeypatch):
+    plugin_service = PluginService()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(runner_config, "get_available_services", lambda: {"agents": plugin_service})
+    monkeypatch.setattr(runner_config, "get_available_controllers", lambda: {})
+    monkeypatch.setattr(runner_config, "get_controller_groups", lambda _controllers: {"all": [], "core": []})
+    monkeypatch.setattr(server, "order_services_by_dependencies", lambda services: services)
+
+    def fake_create_app(services, controller_run_funcs=None, http_client=None):
+        captured["services"] = services
+        captured["controller_run_funcs"] = controller_run_funcs
+        captured["http_client"] = http_client
+        return FastAPI()
+
+    monkeypatch.setattr(server, "create_app", fake_create_app)
+
+    app = server.build_platform_app(runner_config.PlatformAppConfig(services=["agents"], controllers=[]), env={})
+
+    assert isinstance(app, FastAPI)
+    assert captured["services"] == [plugin_service]
+    assert captured["controller_run_funcs"] == {}
+    assert captured["http_client"] is None
+
+
+def test_build_platform_app_accepts_platform_app_config(monkeypatch):
+    plugin_service = PluginService()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(runner_config, "get_available_services", lambda: {"agents": plugin_service})
+    monkeypatch.setattr(runner_config, "get_available_controllers", lambda: {})
+    monkeypatch.setattr(runner_config, "get_controller_groups", lambda _controllers: {"all": [], "core": []})
+    monkeypatch.setattr(server, "order_services_by_dependencies", lambda services: services)
+
+    def fake_create_app(services, controller_run_funcs=None, http_client=None):
+        captured["services"] = services
+        captured["controller_run_funcs"] = controller_run_funcs
+        captured["http_client"] = http_client
+        return FastAPI()
+
+    monkeypatch.setattr(server, "create_app", fake_create_app)
+
+    app = server.build_platform_app(
+        config=runner_config.PlatformAppConfig(services=("agents",), controllers=()),
+        env={},
+    )
+
+    assert isinstance(app, FastAPI)
+    assert captured["services"] == [plugin_service]
+    assert captured["controller_run_funcs"] == {}
+    assert captured["http_client"] is None
 
 
 def test_embedded_auth_preflight_invokes_policy_wasm_helper(monkeypatch):
@@ -127,6 +313,25 @@ def test_run_server_runs_embedded_auth_preflight():
     uvicorn_run.assert_called_once()
 
 
+def test_run_server_can_bind_tcp_and_unix_domain_socket():
+    auth_cfg = _make_auth_config(enabled=True)
+    with (
+        patch("nmp.platform_runner.server.get_auth_config", return_value=auth_cfg),
+        patch("nmp.platform_runner.server.preflight_embedded_auth_policy_wasm"),
+        patch("nmp.platform_runner.server.create_app", return_value=FastAPI()),
+        patch("nmp.platform_runner.server.setup_fastapi_instrumentations"),
+        patch("nmp.platform_runner.server._run_server_on_bound_sockets") as run_bound_sockets,
+    ):
+        server.run_server(services=[], host="127.0.0.1", port=9999, socket_path="/tmp/nemo-platform.sock")
+
+    run_bound_sockets.assert_called_once()
+    assert run_bound_sockets.call_args.kwargs == {
+        "host": "127.0.0.1",
+        "port": 9999,
+        "socket_path": "/tmp/nemo-platform.sock",
+    }
+
+
 def test_create_default_app_raises_for_unknown_service_from_env(monkeypatch):
     monkeypatch.setattr(server, "_obs_initialized", True)
     monkeypatch.setenv("NMP_SERVICES", "missing-service")
@@ -158,6 +363,81 @@ def _make_platform_config_mock(*, redirect_root_to_studio: bool = True) -> Magic
     cfg.seed_on_startup = False
     cfg.redirect_root_to_studio = redirect_root_to_studio
     return cfg
+
+
+def test_create_app_without_seed_on_startup_keeps_health_ready_unchanged(monkeypatch):
+    _patch_platform_app_config(monkeypatch, seed_on_startup=False)
+
+    with TestClient(server.create_app(services=[])) as client:
+        response = client.get("/health/ready")
+        status = client.get("/status").json()
+
+    assert response.status_code == 200
+    assert "platform-seed" not in status["services"]["ready"]
+    assert all(item["name"] != "platform-seed" for item in status["services"]["not_ready"])
+
+
+def test_create_app_with_seed_on_startup_blocks_readiness_until_seed_completes(monkeypatch):
+    _patch_platform_app_config(monkeypatch, seed_on_startup=True)
+    started = threading.Event()
+    release = threading.Event()
+
+    async def fake_seed() -> bool:
+        started.set()
+        await asyncio.to_thread(release.wait)
+        return True
+
+    monkeypatch.setitem(sys.modules, "nmp.platform_seed", SimpleNamespace(run_platform_seed_from_startup=fake_seed))
+
+    with TestClient(server.create_app(services=[])) as client:
+        assert started.wait(timeout=2)
+        response = client.get("/health/ready")
+        assert response.status_code == 503
+
+        status = client.get("/status").json()
+        assert {"name": "platform-seed", "message": "pending"} in status["services"]["not_ready"]
+
+        release.set()
+        response = _wait_for_response(client, "/health/ready", 200)
+
+    assert response is not None
+    assert response.status_code == 200
+
+
+def test_create_app_with_failed_seed_keeps_health_not_ready(monkeypatch):
+    _patch_platform_app_config(monkeypatch, seed_on_startup=True)
+
+    async def fake_seed() -> bool:
+        return False
+
+    monkeypatch.setitem(sys.modules, "nmp.platform_seed", SimpleNamespace(run_platform_seed_from_startup=fake_seed))
+
+    with TestClient(server.create_app(services=[])) as client:
+        response = _wait_for_response(client, "/health/ready", 503)
+        status = client.get("/status").json()
+
+    assert response is not None
+    assert response.status_code == 503
+    assert {"name": "platform-seed", "message": "platform seed failed"} in status["services"]["not_ready"]
+
+
+def test_create_app_with_missing_seed_package_keeps_health_not_ready(monkeypatch):
+    _patch_platform_app_config(monkeypatch, seed_on_startup=True)
+    real_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "nmp.platform_seed":
+            raise ImportError("missing platform seed")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    with TestClient(server.create_app(services=[])) as client:
+        response = client.get("/health/ready")
+        status = client.get("/status").json()
+
+    assert response.status_code == 503
+    assert {"name": "platform-seed", "message": "platform seed is not installed"} in status["services"]["not_ready"]
 
 
 @pytest.mark.parametrize("auth_enabled", [True, False])

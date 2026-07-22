@@ -28,6 +28,7 @@ from nmp.common.observability import create_counter
 from nmp.common.sdk_factory import get_entity_parts
 from nmp.core.jobs.api.v2.jobs.schemas import (
     CreatePlatformJobRequest,
+    PlatformJobListSortField,
     PlatformJobResponse,
     PlatformJobSortField,
     PlatformJobStepsListFilter,
@@ -339,7 +340,7 @@ class JobDispatcher:
         workspace: str,
         limit: Optional[int] = None,
         offset: Optional[int] = None,
-        sort: Optional[PlatformJobSortField] = None,
+        sort: Optional[PlatformJobListSortField] = None,
     ) -> Tuple[List[PlatformJobResponse], int]:
         """List platform jobs with their current attempts."""
         # Status lives on PlatformJobAttempt, not PlatformJob, so the full filter

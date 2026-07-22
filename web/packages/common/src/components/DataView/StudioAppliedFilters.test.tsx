@@ -36,9 +36,9 @@ vi.mock('@nvidia/foundations-react-core', () => ({
   ),
 }));
 
-vi.mock('lucide-react', () => ({
-  X: () => <span data-testid="x-icon" />,
-}));
+vi.mock('lucide-react', async () => {
+  return (await import('@nemo/testing/mocks/lucide')).mockLucideReact(await import('react'));
+});
 
 function makeColumn(
   id: string,

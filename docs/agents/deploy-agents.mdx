@@ -323,8 +323,10 @@ conventions apply to the agent's workflow YAML:
   credentials.
 - **Reference models by their Inference Gateway entity name**, with slashes and
   dots converted to hyphens (`meta/llama-3.1-8b-instruct` becomes
-  `default/meta-llama-3-1-8b-instruct`). Use `${NEMO_DEFAULT_MODEL}` to defer to
-  the platform's configured default model.
+  `default/meta-llama-3-1-8b-instruct`). Use `${NEMO_DEFAULT_MODEL}` in agent
+  config files to defer to the SDK or CLI context's configured default model at
+  agent registration time. If you call the REST API directly, replace the
+  placeholder with an explicit VirtualModel name before creating the agent.
 
 To make an external model available to the agent, register a provider first —
 see [Deploy Models](/documentation/models-and-inference/tutorials/deploy-models#add-external-providers)
@@ -341,6 +343,30 @@ container-reachable address — for example the Docker bridge address
 Kubernetes.
 
 </Note>
+
+#### Docker mode on Linux
+
+Docker Desktop (macOS/Windows) handles this automatically. On **Linux**, where
+`host.docker.internal` does not resolve inside containers, point the platform at
+the Docker bridge address (`172.17.0.1` by default) instead, or `nemo agents
+invoke` fails with `openai.APIConnectionError`.
+
+Set both in `config.yaml`, then start the platform bound to all interfaces:
+
+```yaml
+platform:
+  base_url: http://172.17.0.1:8080
+agents:
+  deployments:
+    gateway_url_override: http://172.17.0.1:8080
+```
+
+```bash
+uv run nemo services run --host 0.0.0.0 --port 8080
+```
+
+If your Docker bridge uses a non-default subnet, substitute its gateway address
+(`docker network inspect bridge --format '{{ (index .IPAM.Config 0).Gateway }}'`).
 
 ---
 

@@ -1,7 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from types import SimpleNamespace
+from unittest.mock import patch
+
 from nemo_platform.cli.core.context import CLIContext
+from nemo_platform.config.models import NoAuthUser, OAuthUser
 
 
 def test_context_instances_are_independent():
@@ -60,16 +64,112 @@ def test_get_no_truncate_default():
     assert result is False
 
 
-def test_get_client_passes_user_config_and_is_cached():
-    """Test that get_client passes user's client config to the SDK client and caches it."""
-    ctx = CLIContext(overrides={"base_url": "http://test.example.com", "access_token": "token-123"})
+def test_get_client_uses_config_bootstrap_for_persisted_oauth_context_and_is_cached():
+    """Test that get_client lets the SDK bootstrap config-backed OAuth auth and caches it."""
+    ctx = CLIContext(overrides={"base_url": "http://test.example.com"})
+    resolved_context = SimpleNamespace(
+        cluster=SimpleNamespace(base_url="http://test.example.com"),
+        context_name="dev",
+        workspace="test-workspace",
+        user=OAuthUser(name="dev-user", token="token-123", refresh_token="refresh-123"),
+    )
+    config_file = SimpleNamespace(contexts=[SimpleNamespace(name="dev")])
 
-    client = ctx.get_client()
+    with (
+        patch("nemo_platform.config.config.get_context", return_value=resolved_context),
+        patch("nemo_platform.config.config.Config.load") as mock_config_load,
+        patch("nemo_platform.config.config.Config.runtime_access_token_source_label", return_value=None),
+        patch("nemo_platform.NeMoPlatform", autospec=True) as mock_client_cls,
+    ):
+        mock_config_load.return_value.get_config_file.return_value = config_file
+        client = ctx.get_client()
+        client2 = ctx.get_client()
 
-    # Verify the client has the expected headers from get_client_config()
-    assert "Authorization" in client.default_headers
-    assert client.default_headers["Authorization"] == "Bearer token-123"
+    mock_client_cls.assert_called_once_with(
+        base_url="http://test.example.com",
+        context_name="dev",
+        timeout=60.0,
+        workspace="test-workspace",
+    )
+    assert client is mock_client_cls.return_value
 
     # Verify the client is cached
-    client2 = ctx.get_client()
+    assert client is client2
+
+
+def test_get_client_preserves_direct_mode_for_synthetic_no_auth_context():
+    """Test that synthesized default/no-auth contexts do not force SDK config bootstrap."""
+    ctx = CLIContext(overrides={"base_url": "http://test.example.com"})
+    resolved_context = SimpleNamespace(
+        cluster=SimpleNamespace(base_url="http://test.example.com"),
+        context_name="default",
+        workspace="default",
+        user=NoAuthUser(name="default-user"),
+    )
+
+    with (
+        patch("nemo_platform.config.config.get_context", return_value=resolved_context),
+        patch("nemo_platform.NeMoPlatform", autospec=True) as mock_client_cls,
+    ):
+        ctx.get_client()
+
+    mock_client_cls.assert_called_once_with(
+        base_url="http://test.example.com",
+        timeout=60.0,
+        workspace="default",
+    )
+
+
+def test_get_client_passes_explicit_access_token_override():
+    """Test that explicit access token overrides remain caller-managed static headers."""
+    ctx = CLIContext(overrides={"base_url": "http://test.example.com", "access_token": "token-123"})
+    resolved_context = SimpleNamespace(
+        cluster=SimpleNamespace(base_url="http://test.example.com"),
+        context_name="dev",
+        workspace="test-workspace",
+        user=OAuthUser(name="dev-user", token="token-123"),
+    )
+
+    with (
+        patch("nemo_platform.config.config.get_context", return_value=resolved_context),
+        patch("nemo_platform.NeMoPlatform", autospec=True) as mock_client_cls,
+    ):
+        ctx.get_client()
+
+    mock_client_cls.assert_called_once_with(
+        base_url="http://test.example.com",
+        default_headers={"Authorization": "Bearer token-123"},
+        timeout=60.0,
+        workspace="test-workspace",
+    )
+
+
+def test_get_async_client_uses_config_bootstrap_for_persisted_oauth_context_and_is_cached():
+    """Test that get_async_client lets the SDK bootstrap config-backed OAuth auth and caches it."""
+    ctx = CLIContext(overrides={"base_url": "http://test.example.com"})
+    resolved_context = SimpleNamespace(
+        cluster=SimpleNamespace(base_url="http://test.example.com"),
+        context_name="dev",
+        workspace="test-workspace",
+        user=OAuthUser(name="dev-user", token="token-123", refresh_token="refresh-123"),
+    )
+    config_file = SimpleNamespace(contexts=[SimpleNamespace(name="dev")])
+
+    with (
+        patch("nemo_platform.config.config.get_context", return_value=resolved_context),
+        patch("nemo_platform.config.config.Config.load") as mock_config_load,
+        patch("nemo_platform.config.config.Config.runtime_access_token_source_label", return_value=None),
+        patch("nemo_platform.AsyncNeMoPlatform", autospec=True) as mock_client_cls,
+    ):
+        mock_config_load.return_value.get_config_file.return_value = config_file
+        client = ctx.get_async_client()
+        client2 = ctx.get_async_client()
+
+    mock_client_cls.assert_called_once_with(
+        base_url="http://test.example.com",
+        context_name="dev",
+        timeout=60.0,
+        workspace="test-workspace",
+    )
+    assert client is mock_client_cls.return_value
     assert client is client2

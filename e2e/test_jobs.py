@@ -16,7 +16,10 @@ from nemo_platform import NeMoPlatform, NotFoundError
 from nemo_platform_plugin.jobs.constants import DEFAULT_JOB_STORAGE_PATH
 from nmp.testing.e2e import wait_for_job_logs, wait_for_platform_job
 
+from e2e.services_pool import RunningServices
+
 JOB_SOURCE = "e2e-test-jobs"
+ADDITIONAL_VOLUME_PROFILE = "additional-volume"
 
 pytestmark = [
     pytest.mark.timeout(600),
@@ -449,9 +452,15 @@ def test_job_pause_and_cancel(sdk: NeMoPlatform, workspace: str):
     assert cancelled_job.status == "cancelled", f"Job should have been cancelled but has status: {cancelled_job.status}"
 
 
-@pytest.mark.skip(reason="Requires additional_volumes configured in Helm chart storage config")
-def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str):
+def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str, _services_instance: RunningServices):
     """Test that a job can use an additional volume to store data between steps."""
+    if _services_instance.config_path is not None and _services_instance.docker_network_name is None:
+        pytest.skip("Requires a container-backed platform with /mnt/additional_storage mounted")
+
+    # Kubernetes e2e runs use a dedicated profile so the extra PVC mount does
+    # not affect unrelated jobs that also request persistent job storage.
+    profile = ADDITIONAL_VOLUME_PROFILE if _services_instance.config_path is None else "default"
+
     job = sdk.jobs.create(
         workspace=workspace,
         source=JOB_SOURCE,
@@ -462,6 +471,7 @@ def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str):
                     "name": "write-data",
                     "executor": {
                         "provider": "cpu",
+                        "profile": profile,
                         "container": {
                             "command": [
                                 "sh",
@@ -476,6 +486,7 @@ def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str):
                     "name": "read-data",
                     "executor": {
                         "provider": "cpu",
+                        "profile": profile,
                         "container": {
                             "command": [
                                 "sh",

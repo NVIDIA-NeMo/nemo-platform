@@ -41,7 +41,7 @@ from nmp.customization_common.schemas.model_entity import (
 )
 from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig, PEFTConfig
 from nmp.customization_common.service.platform_client import fetch_model_entity
-from nmp.customization_common.tasks.file_io_metadata import build_output_metadata
+from nmp.customization_common.tasks.file_io_metadata import build_output_fileset_metadata_from_model_entity
 from nmp.unsloth.app.constants import (
     DEFAULT_DATASET_PATH,
     DEFAULT_MODEL_PATH,
@@ -171,7 +171,7 @@ def _build_file_download_config(
     return FileIOTaskConfig(download=downloads)
 
 
-def _build_file_upload_config(job_spec: UnslothJobOutput) -> FileIOTaskConfig:
+def _build_file_upload_config(job_spec: UnslothJobOutput, me: ModelEntity) -> FileIOTaskConfig:
     """Compile the upload step.
 
     ``workspace=None`` tells the file_io task to use the job's workspace
@@ -182,12 +182,7 @@ def _build_file_upload_config(job_spec: UnslothJobOutput) -> FileIOTaskConfig:
             UploadItem(
                 src=DEFAULT_OUTPUT_MODEL_PATH,
                 dest=FileSetRef(workspace=None, name=job_spec.output.fileset),
-                metadata=build_output_metadata(
-                    model=job_spec.model.name,
-                    finetuning_type=job_spec.training.finetuning_type,
-                    save_method=job_spec.output.save_method,
-                    output_type=job_spec.output.type,
-                ),
+                metadata=build_output_fileset_metadata_from_model_entity(me),
             ),
         ],
     )
@@ -242,7 +237,7 @@ async def platform_job_config_compiler(
 
     validation_dataset_path = _resolve_validation_dataset_path(job_spec, workspace=workspace)
     download_config = _build_file_download_config(job_spec, me, workspace=workspace)
-    upload_config = _build_file_upload_config(job_spec)
+    upload_config = _build_file_upload_config(job_spec, me)
     model_entity_config = _build_model_entity_config(
         workspace,
         job_spec,

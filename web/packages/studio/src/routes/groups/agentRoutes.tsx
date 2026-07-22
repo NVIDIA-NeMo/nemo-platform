@@ -4,7 +4,14 @@
 import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { AGENTS_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
-import { agentsRoutes } from '@studio/routes/utils';
+import { iconColorClass } from '@studio/routes/constants';
+import {
+  agentsRoutes,
+  getAgentEvaluationsListRoute,
+  getAgentMonitorRoute,
+  getAgentsListRoute,
+} from '@studio/routes/utils';
+import { Activity, FlaskConical, HatGlasses } from 'lucide-react';
 import { lazy } from 'react';
 import type { RouteObject } from 'react-router-dom';
 
@@ -15,11 +22,11 @@ const AgentsListRoute =
       default: m.AgentsListRoute,
     }))
   );
-const AgentOptimizationsRoute =
+const AgentDetailRoute =
   AGENTS_ENABLED &&
   lazy(() =>
-    import('@studio/routes/agents/AgentSuggestionsRoute').then((m) => ({
-      default: m.AgentOptimizationsRoute,
+    import('@studio/routes/agents/AgentDetailRoute').then((m) => ({
+      default: m.AgentDetailRoute,
     }))
   );
 const AgentMonitorRoute =
@@ -51,11 +58,6 @@ export const agentRoutes: RouteObject[] = agentsRoutes([
     errorElement: <ErrorPanel title="Agents" />,
   },
   {
-    path: ROUTES.workspace.agentOptimizations,
-    element: AgentOptimizationsRoute ? <AgentOptimizationsRoute /> : null,
-    errorElement: <ErrorPanel title="Optimizations" />,
-  },
-  {
     path: ROUTES.workspace.agentMonitor,
     element: AgentMonitorRoute ? <AgentMonitorRoute /> : null,
     errorElement: <ErrorPanel title="Monitor" />,
@@ -72,7 +74,31 @@ export const agentRoutes: RouteObject[] = agentsRoutes([
   },
   {
     path: ROUTES.workspace.agentDetail,
-    element: AgentsListRoute ? <AgentsListRoute /> : null,
-    errorElement: <ErrorPanel title="Agents" />,
+    element: AgentDetailRoute ? <AgentDetailRoute /> : null,
+    errorElement: <ErrorPanel title="Agent details" />,
   },
 ]);
+
+export const getAgentSideNavItems = (workspace: string) =>
+  AGENTS_ENABLED
+    ? [
+        {
+          id: 'agents',
+          slotIcon: <HatGlasses className={iconColorClass} />,
+          slotLabel: 'Agents',
+          href: getAgentsListRoute(workspace),
+        },
+        {
+          id: 'agent-evaluations',
+          slotIcon: <FlaskConical className={iconColorClass} />,
+          slotLabel: 'Evaluations',
+          href: getAgentEvaluationsListRoute(workspace),
+        },
+        {
+          id: 'agent-monitor',
+          slotIcon: <Activity className={iconColorClass} />,
+          slotLabel: 'Monitor',
+          href: getAgentMonitorRoute(workspace),
+        },
+      ]
+    : [];

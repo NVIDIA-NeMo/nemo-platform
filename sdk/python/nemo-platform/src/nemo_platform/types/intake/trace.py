@@ -65,9 +65,21 @@ class Trace(BaseModel):
     Producers should send `evaluation_context`.
     """
 
+    input: Optional[str] = None
+    """Root-span input text.
+
+    Omitted in summary mode and truncated to 300 characters in preview mode.
+    """
+
     input_tokens: Optional[int] = None
 
     name: Optional[str] = None
+
+    output: Optional[str] = None
+    """Root-span output text.
+
+    Omitted in summary mode and truncated to 300 characters in preview mode.
+    """
 
     output_tokens: Optional[int] = None
 

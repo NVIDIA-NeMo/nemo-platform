@@ -4,6 +4,8 @@
 import json
 from typing import Any
 
+import httpx
+import openai
 import pytest
 from nemo_guardrails_plugin.constants import GUARDRAILS_DATA_MESSAGE_ROLE
 from nemo_guardrails_plugin.responses import (
@@ -12,8 +14,10 @@ from nemo_guardrails_plugin.responses import (
     build_immediate_response,
     build_inference_response,
     build_output_response_body,
+    extract_upstream_error,
 )
 from nemo_platform_plugin.inference_middleware import InferenceMiddlewareError, InferenceResponse
+from nemoguardrails.exceptions import LLMCallException
 from nemoguardrails.rails.llm.options import ActivatedRail, GenerationLog, GenerationResponse
 
 # ---------------------------------------------------------------------------
@@ -360,3 +364,112 @@ class TestBuildInferenceResponse:
         )
 
         assert result.response_body_annotations == {"other_plugin": {"trace_id": "abc"}}
+
+
+# ---------------------------------------------------------------------------
+# extract_upstream_error
+# ---------------------------------------------------------------------------
+
+
+class TestExtractUpstreamError:
+    def test_status_code_attribute_4xx_preserved(self) -> None:
+        """A genuine ``status_code`` attribute (``openai.APIStatusError``) is
+        read directly, no message parsing."""
+        response = httpx.Response(422, request=httpx.Request("POST", "http://example.test"))
+        inner = openai.BadRequestError("Unsupported parameter: foo", response=response, body=None)
+        try:
+            raise LLMCallException(inner, detail="Error invoking LLM") from inner
+        except LLMCallException as exc:
+            result = extract_upstream_error(exc)
+
+        assert result is not None
+        assert result.status_code == 422
+        assert result.detail == "Error invoking LLM: Unsupported parameter: foo"
+
+    def test_bracketed_prefix_4xx_preserved(self) -> None:
+        """With no structured ``status_code``, the ``[<status>] ...`` prefix is
+        parsed off ``inner_exception`` (the langchain library's convention)."""
+        inner = Exception(  # noqa: TRY002 - mirrors langchain_nvidia_ai_endpoints._format_error
+            '[400] Unknown Error {"object":"error","message":'
+            '"At most 1 image(s) may be provided in one request.",'
+            '"type":"BadRequestError","param":null,"code":400}'
+        )
+        try:
+            raise LLMCallException(inner, detail="Error invoking LLM (model=vision-judge)") from inner
+        except LLMCallException as exc:
+            result = extract_upstream_error(exc)
+
+        assert result is not None
+        assert result.status_code == 400
+        # LLMCallException.detail is prefixed; "Unknown Error"/raw JSON dropped.
+        assert result.detail == (
+            "Error invoking LLM (model=vision-judge): At most 1 image(s) may be provided in one request."
+        )
+
+    def test_bracketed_prefix_without_wrapping_preserved(self) -> None:
+        """A bare bracketed exception (no ``LLMCallException``) works too, with
+        no context to prefix."""
+        exc = Exception("[404] Model not found")  # noqa: TRY002
+
+        result = extract_upstream_error(exc)
+
+        assert result is not None
+        assert result.status_code == 404
+        assert result.detail == "Model not found"
+
+    def test_bracketed_prefix_unparseable_json_uses_raw_text(self) -> None:
+        """Non-JSON text after the status prefix is used as-is."""
+        exc = Exception("[400] Bad Request: not-json-at-all")  # noqa: TRY002
+
+        result = extract_upstream_error(exc)
+
+        assert result is not None
+        assert result.status_code == 400
+        assert result.detail == "Bad Request: not-json-at-all"
+
+    def test_string_inner_exception_returns_none(self) -> None:
+        """A string ``inner_exception`` (its type is ``BaseException | str``)
+        is skipped without crashing, returning ``None``."""
+        exc = LLMCallException("no exception object here, just a string", detail="Error invoking LLM")
+
+        assert extract_upstream_error(exc) is None
+
+    def test_status_code_attribute_5xx_preserved(self) -> None:
+        """A ``status_code`` attribute is preserved for a 5xx too, not
+        collapsed to the middleware's generic 503."""
+        response = httpx.Response(500, request=httpx.Request("POST", "http://example.test"))
+        inner = openai.InternalServerError("Upstream exploded", response=response, body=None)
+        try:
+            raise LLMCallException(inner, detail="Error invoking LLM") from inner
+        except LLMCallException as exc:
+            result = extract_upstream_error(exc)
+
+        assert result is not None
+        assert result.status_code == 500
+        assert result.detail == "Error invoking LLM: Upstream exploded"
+
+    def test_bracketed_prefix_5xx_preserved(self) -> None:
+        """A ``[5xx]``-prefixed failure is preserved, same as a 4xx."""
+        exc = Exception("[503] Service temporarily overloaded")  # noqa: TRY002
+
+        result = extract_upstream_error(exc)
+
+        assert result is not None
+        assert result.status_code == 503
+        assert result.detail == "Service temporarily overloaded"
+
+    def test_non_error_status_returns_none(self) -> None:
+        """A 1xx-3xx status embedded in the error message is ignored."""
+        exc = Exception("[302] Found")  # noqa: TRY002
+
+        assert extract_upstream_error(exc) is None
+
+    def test_no_recoverable_status_returns_none(self) -> None:
+        """No status anywhere → ``None``, so the caller keeps its 503 fallback."""
+        inner = ValueError("something went wrong")
+        try:
+            raise LLMCallException(inner, detail="Error invoking LLM") from inner
+        except LLMCallException as exc:
+            result = extract_upstream_error(exc)
+
+        assert result is None

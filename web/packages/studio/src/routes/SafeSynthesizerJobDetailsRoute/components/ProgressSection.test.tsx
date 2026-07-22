@@ -19,11 +19,9 @@ vi.mock('@nemo/common/src/providers/toast/useToast', () => ({
   }),
 }));
 
-// Mock brand assets icons
-vi.mock('lucide-react', () => ({
-  Download: () => <svg data-testid="download-icon" />,
-  ArrowUp: () => <svg data-testid="arrow-up-icon" />,
-}));
+vi.mock('lucide-react', async () => {
+  return (await import('@nemo/testing/mocks/lucide')).mockLucideReact(await import('react'));
+});
 
 // Mock CodeSnippet to avoid act() warnings from async Shiki highlighting.
 vi.mock('@nvidia/foundations-react-core', async (importOriginal) => {

@@ -37,8 +37,9 @@ from nmp.unsloth.schemas import (
     ToolCallParams,
     TrainingSpec,
     UnslothJobOutput,
+    UnslothSchema,
 )
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import Field, model_validator
 
 __all__ = [
     "BatchSpec",
@@ -58,20 +59,16 @@ __all__ = [
 ]
 
 
-class OutputRequest(BaseModel):
+class OutputRequest(UnslothSchema):
     """Submitter-facing output preferences. ``name`` is auto-derived if omitted."""
-
-    model_config = ConfigDict(extra="forbid")
 
     name: str | None = None
     description: str | None = None
     save_method: Literal["lora", "merged_16bit", "merged_4bit"] = "lora"
 
 
-class UnslothJobInput(BaseModel):
+class UnslothJobInput(UnslothSchema):
     """POST body / CLI JSON for ``nemo customization unsloth run``."""
-
-    model_config = ConfigDict(extra="forbid")
 
     name: str | None = None
     model: ModelLoadSpec

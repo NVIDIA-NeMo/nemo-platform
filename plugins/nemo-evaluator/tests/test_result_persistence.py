@@ -15,7 +15,13 @@ from typing import cast
 import pytest
 from nemo_evaluator.entities import AgentEvalResultEntity, EvaluateResultEntity
 from nemo_evaluator.jobs import result_persistence
-from nemo_evaluator.jobs.agent_spec import AgentTarget, CodexRunnerTarget, ModelTarget
+from nemo_evaluator.jobs.agent_spec import (
+    AgentTarget,
+    CodexRunnerTarget,
+    FabricRunnerTarget,
+    HarborRunnerTarget,
+    ModelTarget,
+)
 from nemo_evaluator.jobs.result_persistence import (
     _agent_target_fields,
     _row_target_fields,
@@ -61,6 +67,12 @@ def _agent() -> Agent:
         (ModelTarget(model=_model()), ("model", "my-model", "https://model.test/v1/chat/completions")),
         (AgentTarget(agent=_agent()), ("agent", "my-agent", "http://agent.test")),
         (CodexRunnerTarget(model="gpt-5.5"), ("codex", "gpt-5.5", None)),
+        (
+            FabricRunnerTarget(config={"metadata": {"name": "a"}}, model="openai/gpt-5.4"),
+            ("fabric", "openai/gpt-5.4", None),
+        ),
+        (HarborRunnerTarget(agent_name="oracle"), ("harbor", "oracle", None)),
+        (HarborRunnerTarget(agent_import_path="wrapper:Agent"), ("harbor", "wrapper:Agent", None)),
         (None, (None, None, None)),
     ],
 )

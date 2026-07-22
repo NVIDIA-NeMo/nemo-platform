@@ -33,6 +33,7 @@ from nmp.common.service.dependencies import get_sdk_client
 from nmp.core.jobs.api.dependencies import dep_dispatcher
 from nmp.core.jobs.api.v2.jobs.schemas import (
     CreatePlatformJobRequest,
+    PlatformJobListSortField,
     PlatformJobListTaskResponse,
     PlatformJobResponse,
     PlatformJobsListFilter,
@@ -182,8 +183,8 @@ async def list_jobs(
     workspace: str,
     page: int = Query(default=1, description="Page number.", gt=0),
     page_size: int = Query(default=10, description="Page size.", gt=0),
-    sort: PlatformJobSortField = Query(
-        default=PlatformJobSortField.CREATED_AT_DESC,
+    sort: PlatformJobListSortField = Query(
+        default=PlatformJobListSortField.CREATED_AT_DESC,
         description="The field to sort by. To sort in decreasing order, use `-` in front of the field name.",
     ),
     parsed: ParsedFilter = Depends(make_filter_dep(PlatformJobsListFilter)),

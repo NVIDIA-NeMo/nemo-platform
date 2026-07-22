@@ -747,6 +747,9 @@ def process_plugin_specs() -> None:
     # Reuse the platform schema-fix pipeline. Branches in apply_schema_fixes
     # gated on `"platform" in spec_file` are no-ops because plugin paths live
     # under plugins/<dir>/openapi/ — no false positives by inspection.
+    #
+    # Schema-name collisions fail the build unconditionally: two distinct models
+    # sharing a schema name with differing content is always a bug.
     apply_schema_fixes(plugin_spec_files)
     fix_ref_not_allowed_errors(plugin_spec_files)
     validate_final_specs(plugin_spec_files)

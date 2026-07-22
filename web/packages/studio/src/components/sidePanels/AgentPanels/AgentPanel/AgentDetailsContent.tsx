@@ -7,6 +7,7 @@ import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { isDefined } from '@nemo/common/src/utils/list';
 import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
 import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema/AgentDeployment';
+import type { AgentEvaluateJob } from '@nemo/sdk/generated/evaluator/schema';
 import {
   Accordion,
   Block,
@@ -21,7 +22,6 @@ import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/
 import { deploymentStatusColor } from '@studio/components/sidePanels/AgentPanels/AgentPanel/helpers';
 import { NoHealthyDeploymentsBanner } from '@studio/components/sidePanels/AgentPanels/AgentPanel/NoHealthyDeploymentsBanner';
 import type { WalkthroughStep } from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthrough';
-import type { AgentEvalJob } from '@studio/routes/agents/AgentEvaluationsRoute/api';
 import { getAgentEvaluationDetailRoute, getAgentEvaluationsListRoute } from '@studio/routes/utils';
 import type { FC, RefObject } from 'react';
 import { Link } from 'react-router-dom';
@@ -31,7 +31,7 @@ interface AgentDetailsContentProps {
   agentName?: string;
   agent?: Agent;
   agentDeployments: AgentDeployment[];
-  agentEvals: AgentEvalJob[];
+  agentEvals: AgentEvaluateJob[];
   isDeploymentsLoading: boolean;
   isDeploying: boolean;
   walkthroughStep: WalkthroughStep | null;
@@ -209,7 +209,7 @@ export const AgentDetailsContent: FC<AgentDetailsContentProps> = ({
                           {job.name}
                         </Text>
                         <Text kind="body/regular/xs" color="secondary">
-                          <RelativeTime datetime={job.created_at} />
+                          <RelativeTime datetime={job.created_at ?? ''} />
                         </Text>
                       </Stack>
                       <StatusBadge status={job.status} />

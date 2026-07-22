@@ -25,6 +25,14 @@ from .traces import (
     TracesResourceWithStreamingResponse,
     AsyncTracesResourceWithStreamingResponse,
 )
+from .sessions import (
+    SessionsResource,
+    AsyncSessionsResource,
+    SessionsResourceWithRawResponse,
+    AsyncSessionsResourceWithRawResponse,
+    SessionsResourceWithStreamingResponse,
+    AsyncSessionsResourceWithStreamingResponse,
+)
 from ..._compat import cached_property
 from ..._resource import SyncAPIResource, AsyncAPIResource
 from .annotations import (
@@ -81,6 +89,10 @@ class IntakeResource(SyncAPIResource):
         return SpansResource(self._client)
 
     @cached_property
+    def sessions(self) -> SessionsResource:
+        return SessionsResource(self._client)
+
+    @cached_property
     def traces(self) -> TracesResource:
         return TracesResource(self._client)
 
@@ -120,6 +132,10 @@ class AsyncIntakeResource(AsyncAPIResource):
     @cached_property
     def spans(self) -> AsyncSpansResource:
         return AsyncSpansResource(self._client)
+
+    @cached_property
+    def sessions(self) -> AsyncSessionsResource:
+        return AsyncSessionsResource(self._client)
 
     @cached_property
     def traces(self) -> AsyncTracesResource:
@@ -166,6 +182,10 @@ class IntakeResourceWithRawResponse:
         return SpansResourceWithRawResponse(self._intake.spans)
 
     @cached_property
+    def sessions(self) -> SessionsResourceWithRawResponse:
+        return SessionsResourceWithRawResponse(self._intake.sessions)
+
+    @cached_property
     def traces(self) -> TracesResourceWithRawResponse:
         return TracesResourceWithRawResponse(self._intake.traces)
 
@@ -189,6 +209,10 @@ class AsyncIntakeResourceWithRawResponse:
     @cached_property
     def spans(self) -> AsyncSpansResourceWithRawResponse:
         return AsyncSpansResourceWithRawResponse(self._intake.spans)
+
+    @cached_property
+    def sessions(self) -> AsyncSessionsResourceWithRawResponse:
+        return AsyncSessionsResourceWithRawResponse(self._intake.sessions)
 
     @cached_property
     def traces(self) -> AsyncTracesResourceWithRawResponse:
@@ -216,6 +240,10 @@ class IntakeResourceWithStreamingResponse:
         return SpansResourceWithStreamingResponse(self._intake.spans)
 
     @cached_property
+    def sessions(self) -> SessionsResourceWithStreamingResponse:
+        return SessionsResourceWithStreamingResponse(self._intake.sessions)
+
+    @cached_property
     def traces(self) -> TracesResourceWithStreamingResponse:
         return TracesResourceWithStreamingResponse(self._intake.traces)
 
@@ -239,6 +267,10 @@ class AsyncIntakeResourceWithStreamingResponse:
     @cached_property
     def spans(self) -> AsyncSpansResourceWithStreamingResponse:
         return AsyncSpansResourceWithStreamingResponse(self._intake.spans)
+
+    @cached_property
+    def sessions(self) -> AsyncSessionsResourceWithStreamingResponse:
+        return AsyncSessionsResourceWithStreamingResponse(self._intake.sessions)
 
     @cached_property
     def traces(self) -> AsyncTracesResourceWithStreamingResponse:

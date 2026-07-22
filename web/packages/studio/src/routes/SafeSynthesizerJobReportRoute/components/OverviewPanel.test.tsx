@@ -12,9 +12,9 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // Mock brand assets icons
-vi.mock('lucide-react', () => ({
-  Download: () => <svg data-testid="download-icon" />,
-}));
+vi.mock('lucide-react', async () => {
+  return (await import('@nemo/testing/mocks/lucide')).mockLucideReact(await import('react'));
+});
 
 // Mock SafeSynthesizerFilesetPreview component
 vi.mock('@studio/components/SafeSynthesizerFilesetPreview', () => ({

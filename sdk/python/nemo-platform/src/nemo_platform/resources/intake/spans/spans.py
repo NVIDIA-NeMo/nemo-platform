@@ -130,7 +130,7 @@ class SpansResource(SyncAPIResource):
         *,
         workspace: str | None = None,
         filter: SpanFilterParam | Omit = omit,
-        mode: Literal["summary", "detailed"] | Omit = omit,
+        mode: Literal["summary", "preview", "detailed"] | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
         sort: SpanSortField | Omit = omit,
@@ -148,6 +148,10 @@ class SpansResource(SyncAPIResource):
           filter: Filter spans by session_id, trace_id, parent_span_id, project, evaluation
               context fields, source, kind, status, model, tool_name, provider, agent_id,
               agent_name, prompt_name, prompt_version, and started_at.
+
+          mode: Response mode. summary omits payloads and raw attributes; preview includes input
+              and output truncated to 300 characters; detailed returns full payloads and raw
+              attributes.
 
           page: Page number.
 
@@ -261,7 +265,7 @@ class AsyncSpansResource(AsyncAPIResource):
         *,
         workspace: str | None = None,
         filter: SpanFilterParam | Omit = omit,
-        mode: Literal["summary", "detailed"] | Omit = omit,
+        mode: Literal["summary", "preview", "detailed"] | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
         sort: SpanSortField | Omit = omit,
@@ -279,6 +283,10 @@ class AsyncSpansResource(AsyncAPIResource):
           filter: Filter spans by session_id, trace_id, parent_span_id, project, evaluation
               context fields, source, kind, status, model, tool_name, provider, agent_id,
               agent_name, prompt_name, prompt_version, and started_at.
+
+          mode: Response mode. summary omits payloads and raw attributes; preview includes input
+              and output truncated to 300 characters; detailed returns full payloads and raw
+              attributes.
 
           page: Page number.
 

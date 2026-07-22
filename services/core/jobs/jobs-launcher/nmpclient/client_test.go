@@ -5,6 +5,7 @@ package nmpclient
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -159,6 +160,55 @@ func TestSecretClient_GetSecret(t *testing.T) {
 				t.Errorf("Expected workspace ID '%s', got %s", tc.workspace, secret.WorkspaceID)
 			}
 		})
+	}
+}
+
+func TestSecretClient_GetSecretOverUDS(t *testing.T) {
+	socketFile, err := os.CreateTemp("", "nmp-*.sock")
+	if err != nil {
+		t.Fatalf("failed to create temp socket path: %v", err)
+	}
+	socketPath := socketFile.Name()
+	socketFile.Close()
+	os.Remove(socketPath)
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("failed to listen on unix socket: %v", err)
+	}
+
+	server := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/apis/secrets/v2/workspaces/default/secrets/api-key/access" {
+				t.Errorf("unexpected path: %s", r.URL.Path)
+				http.Error(w, "unexpected path", http.StatusNotFound)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprintln(w, `{"value":"secret-over-uds"}`)
+		}),
+	}
+	defer server.Close()
+	t.Cleanup(func() {
+		if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
+			t.Errorf("failed to remove unix socket path: %v", err)
+		}
+	})
+	go func() {
+		_ = server.Serve(listener)
+	}()
+
+	endpoint, err := ParseEndpoint("unix://" + socketPath)
+	if err != nil {
+		t.Fatalf("ParseEndpoint returned error: %v", err)
+	}
+	client := NewSecretClientForEndpoint(endpoint, &Principal{ID: "test-principal"})
+
+	secret, err := client.GetSecret("default", "api-key")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if secret.Value != "secret-over-uds" {
+		t.Fatalf("unexpected secret value: %s", secret.Value)
 	}
 }
 

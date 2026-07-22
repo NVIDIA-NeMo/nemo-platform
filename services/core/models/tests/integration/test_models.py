@@ -16,12 +16,8 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 from nemo_platform import ConflictError
-from nmp.core.models.config import BackendName, ControllerConfig, ModelsConfig
-from nmp.core.models.controllers.backends.registry import (
-    BackendRegistry,
-    DockerBackendConfigModel,
-    K8sNimOperatorBackendConfigModel,
-)
+from nmp.core.models.config import ControllerConfig, ModelsConfig
+from nmp.core.models.controllers.backends.registry import BackendRegistry
 from nmp.testing import ClientContext
 
 # Default workspace for tests
@@ -1519,53 +1515,18 @@ def test_deployment_workspace_isolation(test_clients: ClientContext):
 # "nim_operator" that would cause service startup failures.
 
 
-def test_backend_config_key_docker_works_end_to_end():
-    """Verify 'docker' key in ModelsConfig works with BackendRegistry.
+def test_backend_config_key_deployments_plugin_works_end_to_end():
+    """Verify deployments_plugin key in ModelsConfig works with BackendRegistry."""
+    from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginBackendConfigModel
 
-    This test validates the end-to-end path from config to registry:
-    1. ModelsConfig validates the key against BackendName type
-    2. BackendRegistry.from_config() validates key exists in backend_classes
-
-    If these definitions drift apart, this test will fail.
-    """
-    # Create config using ModelsConfig (validates BackendName type)
-    config = ModelsConfig(controller=ControllerConfig(backends={"docker": DockerBackendConfigModel(enabled=True)}))
-
-    # Mock Docker client to avoid needing actual Docker daemon
-    with patch("nmp.core.models.controllers.backends.docker.backend.docker.from_env"):
-        registry = BackendRegistry.from_config(
-            nmp_sdk=AsyncMock(),
-            backend_configs=config.controller.backends,
-            huggingface_model_puller=config.huggingface_model_puller,
-        )
-
-    assert "docker" in registry.list_backends()
-
-
-def test_backend_config_key_k8s_works_end_to_end():
-    """Verify K8s backend key in ModelsConfig works with BackendRegistry.
-
-    This test validates that:
-    1. The K8s backend key in BackendName type is valid
-    2. The same key exists in BackendRegistry.backend_classes
-
-    If these definitions use different key names, this test will fail.
-    """
-    # Get the K8s backend key from the BackendName type
-    # This ensures we use whatever key the config expects
-    k8s_key = [k for k in BackendName.__args__ if k != "docker"][0]
-
-    # Create config using ModelsConfig (validates BackendName type)
     config = ModelsConfig(
-        controller=ControllerConfig(backends={k8s_key: K8sNimOperatorBackendConfigModel(enabled=True)})
+        controller=ControllerConfig(
+            backends={"deployments_plugin": DeploymentsPluginBackendConfigModel(enabled=True)},
+        )
     )
 
-    # Mock K8s client to avoid needing actual K8s cluster
-    with (
-        patch("nmp.core.models.controllers.backends.k8s_nim_operator.backend.k8s_config.load_incluster_config"),
-        patch("nmp.core.models.controllers.backends.k8s_nim_operator.backend.k8s_config.load_kube_config"),
-        patch("nmp.core.models.controllers.backends.k8s_nim_operator.backend.k8s_client.ApiClient"),
-        patch("nmp.core.models.controllers.backends.k8s_nim_operator.backend.DynamicClient"),
+    with patch(
+        "nmp.core.models.controllers.backends.deployments_plugin.backend.NemoEntitiesClient",
     ):
         registry = BackendRegistry.from_config(
             nmp_sdk=AsyncMock(),
@@ -1573,6 +1534,4 @@ def test_backend_config_key_k8s_works_end_to_end():
             huggingface_model_puller=config.huggingface_model_puller,
         )
 
-    # Verify the registry was created with the expected backend
-    backends = registry.list_backends()
-    assert len(backends) == 1
+    assert registry.list_backends() == ["deployments_plugin"]

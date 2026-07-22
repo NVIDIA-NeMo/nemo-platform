@@ -307,7 +307,7 @@ def list_jobs(
     page: Annotated[int | None, typer.Option("--page", help="Page number.")] = None,
     page_size: Annotated[int | None, typer.Option("--page-size", help="Page size.")] = None,
     sort: Annotated[
-        Literal["created_at", "-created_at", "updated_at", "-updated_at"] | None,
+        Literal["created_at", "-created_at", "updated_at", "-updated_at", "source", "-source"] | None,
         typer.Option(
             "--sort", help="The field to sort by. To sort in decreasing order, use `-` in front of the field name."
         ),

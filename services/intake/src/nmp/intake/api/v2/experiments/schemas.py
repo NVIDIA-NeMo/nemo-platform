@@ -10,16 +10,20 @@ Response models are standalone: they translate from the stored entity via
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal, Self
+from typing import Annotated, Self
 
 from nmp.common.entities.values import DatetimeFilter, Filter, NumberFilter, map_entity_field
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup
-from nmp.intake.spans.domain import SpanStatus
+from nmp.intake.spans.domain import (
+    INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT,
+    IntakeResponseMode,
+    SpanStatus,
+)
 from nmp.intake.spans.evaluation_session_repository import EvaluationSessionRow
+from nmp.intake.spans.storage import text_for_mode
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, computed_field, model_validator
 
-EvaluationSessionMode = Literal["summary", "detailed"]
-EVALUATION_SESSION_SUMMARY_INPUT_CHAR_LIMIT = 1000
+EvaluationSessionMode = IntakeResponseMode
 
 
 class ExperimentGroupRequest(BaseModel):
@@ -52,8 +56,20 @@ class EvaluationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(description="Producer-supplied, workspace-unique evaluation id.")
-    experiment_group_id: str = Field(
-        description="Entity id of the owning ExperimentGroup. Required — the group must already exist.",
+    experiment_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Entity ids of the ExperimentGroups this Evaluation belongs to (>=1). Preferred; each group "
+            "must already exist. When omitted, the deprecated experiment_group_id is used instead."
+        ),
+    )
+    experiment_group_id: str | None = Field(
+        default=None,
+        deprecated=True,
+        description=(
+            "Deprecated single-group field; provide experiment_ids instead. Coalesced into experiment_ids "
+            "when experiment_ids is omitted."
+        ),
     )
     dataset_name: str = Field(description="Producer-supplied dataset name.")
     dataset_version: str | None = Field(default=None, description="Producer-supplied dataset version.")
@@ -76,6 +92,25 @@ class EvaluationRequest(BaseModel):
     )
 
     @model_validator(mode="after")
+    def _resolve_group_membership(self) -> Self:
+        """Require >=1 group. Coalesce the deprecated ``experiment_group_id`` into ``experiment_ids``
+        when the latter is omitted; reject a request that supplies neither.
+
+        Read the deprecated value via ``__dict__`` to avoid tripping its deprecation warning per request.
+        """
+        if not self.experiment_ids:
+            group_id = self.__dict__.get("experiment_group_id")
+            if group_id:
+                self.experiment_ids = [group_id]
+        if not self.experiment_ids:
+            raise ValueError(
+                "An evaluation must belong to at least one group: provide experiment_ids or experiment_group_id."
+            )
+        # Membership is a set — drop duplicate group ids (order-preserving) so counts aren't inflated.
+        self.experiment_ids = list(dict.fromkeys(self.experiment_ids))
+        return self
+
+    @model_validator(mode="after")
     def _coalesce_deprecated_parent(self) -> Self:
         """Accept the deprecated ``parent_experiment_id`` alias; the canonical field wins if both are set.
 
@@ -86,6 +121,37 @@ class EvaluationRequest(BaseModel):
         if self.parent_evaluation_id is None and deprecated_parent is not None:
             self.parent_evaluation_id = deprecated_parent
         return self
+
+
+class EvaluationPatchRequest(BaseModel):
+    """Partial-update body for an Evaluation: only fields present in the request are applied.
+
+    Unset fields are left unchanged (PATCH semantics — same pattern as the models service's PATCH).
+    Immutable fields (name, dataset_name, dataset_version) aren't accepted here. ``experiment_ids``,
+    when provided, must be non-empty: an evaluation must always belong to at least one group.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    experiment_ids: list[str] | None = Field(
+        default=None,
+        description=(
+            "Replace the ExperimentGroups this Evaluation belongs to. Must be non-empty when provided; "
+            "each group must already exist. Omit to leave membership unchanged."
+        ),
+    )
+    source_link: AnyUrl | None = Field(default=None, description="Optional URL for the source evaluation.")
+    metadata: dict[str, str] | None = Field(default=None, description="Free-form producer metadata.")
+    description: str | None = Field(default=None, description="Human-readable description.")
+    parent_evaluation_id: str | None = Field(
+        default=None,
+        description="Entity id of the evaluation this one was derived from (e.g. a variant of a baseline), if any.",
+    )
+    status: str | None = Field(default=None, description="Producer-defined lifecycle status of the evaluation.")
+    root_cause: str | None = Field(
+        default=None,
+        description="Human- or agent-authored explanation of the evaluation's outcome (e.g. why it was killed).",
+    )
 
 
 class ExperimentGroupResponse(BaseModel):
@@ -145,8 +211,8 @@ class EvaluationResponse(BaseModel):
     id: str
     name: str
     workspace: str
-    experiment_group_id: str = Field(
-        description="Entity id of the owning ExperimentGroup. Required for every Evaluation.",
+    experiment_ids: list[str] = Field(
+        description="Entity ids of the ExperimentGroups this Evaluation belongs to (>=1).",
     )
     dataset_name: str
     dataset_version: str | None = None
@@ -188,6 +254,14 @@ class EvaluationResponse(BaseModel):
         default=0,
         description="Number of distinct ingested evaluation sessions; one session is treated as one run.",
     )
+    test_case_count: int = Field(
+        default=0,
+        description=(
+            "Number of distinct test cases in the evaluation, i.e. distinct test_case_id values "
+            "(sessions with no test_case_id each count as their own). A test case run k times counts once; "
+            "the rollup metrics are averaged per test case before pooling across test cases."
+        ),
+    )
     cost_usd: EvaluatorAggregate | None = None
     latency_ms: EvaluatorAggregate | None = None
 
@@ -196,13 +270,21 @@ class EvaluationResponse(BaseModel):
     def parent_experiment_id(self) -> str | None:
         return self.parent_evaluation_id
 
+    @computed_field(  # type: ignore[prop-decorator]
+        deprecated=True,
+        description="Deprecated single-group alias; the first of experiment_ids. Use experiment_ids.",
+    )
+    @property
+    def experiment_group_id(self) -> str:
+        return self.experiment_ids[0]
+
     @classmethod
     def from_entity(cls, entity: Experiment) -> EvaluationResponse:
         return cls(
             id=entity.id,
             name=entity.name,
             workspace=entity.workspace,
-            experiment_group_id=entity.experiment_group_id,
+            experiment_ids=entity.experiment_ids,
             dataset_name=entity.dataset_name,
             dataset_version=entity.dataset_version,
             source_link=entity.source_link,
@@ -341,8 +423,15 @@ class EvaluationSessionResponse(BaseModel):
     input: str | None = Field(
         default=None,
         description=(
-            "Root-span input text. In summary mode this is truncated to "
-            f"{EVALUATION_SESSION_SUMMARY_INPUT_CHAR_LIMIT} characters."
+            f"Root-span input text. Omitted in summary mode and truncated to {INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT} "
+            "characters in preview mode."
+        ),
+    )
+    output: str | None = Field(
+        default=None,
+        description=(
+            f"Root-span output text. Omitted in summary mode and truncated to {INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT} "
+            "characters in preview mode."
         ),
     )
 
@@ -360,7 +449,12 @@ class EvaluationSessionResponse(BaseModel):
     )
 
     @classmethod
-    def from_row(cls, row: EvaluationSessionRow) -> EvaluationSessionResponse:
+    def from_row(
+        cls,
+        row: EvaluationSessionRow,
+        *,
+        mode: EvaluationSessionMode = "detailed",
+    ) -> EvaluationSessionResponse:
         return cls(
             workspace=row.workspace,
             evaluation_name=row.evaluation_name,
@@ -372,7 +466,8 @@ class EvaluationSessionResponse(BaseModel):
             ended_at=row.ended_at,
             latency_ms=row.latency_ms,
             status=row.status,
-            input=row.input,
+            input=text_for_mode(row.input, mode=mode),
+            output=text_for_mode(row.output, mode=mode),
             input_tokens=row.input_tokens,
             output_tokens=row.output_tokens,
             cached_tokens=row.cached_tokens,

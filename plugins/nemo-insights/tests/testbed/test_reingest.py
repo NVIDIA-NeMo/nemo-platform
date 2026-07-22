@@ -202,6 +202,79 @@ def test_iso_to_ns_treats_naive_as_utc():
 # --- build_trace_request ---
 
 
+def test_build_trace_requests_respects_serialized_size(monkeypatch):
+    """ByteSize() drives batching: a small limit splits spans across requests."""
+    monkeypatch.setattr(reingest, "OTLP_REQUEST_MAX_BYTES", 512)
+    docs = [{**AGENT_DOC, "span_id": f"{i:016x}"} for i in range(5)]
+    requests = reingest.build_trace_requests(docs, CATALOG)
+    assert len(requests) > 1
+    for request in requests:
+        assert request.ByteSize() <= 512
+        assert len(request.resource_spans[0].scope_spans[0].spans) >= 1
+
+
+def test_build_trace_requests_accepts_exact_serialized_size_limit():
+    one_span_size = reingest.build_trace_request([reingest.doc_to_otlp(AGENT_DOC, CATALOG)]).ByteSize()
+
+    requests = reingest.build_trace_requests([AGENT_DOC], CATALOG, max_bytes=one_span_size)
+
+    assert len(requests) == 1
+    assert requests[0].ByteSize() == one_span_size
+    with pytest.raises(RuntimeError, match=rf"exceeds {one_span_size - 1} bytes"):
+        reingest.build_trace_requests([AGENT_DOC], CATALOG, max_bytes=one_span_size - 1)
+
+
+def test_build_trace_requests_respects_span_count_limit(monkeypatch):
+    monkeypatch.setattr(reingest, "OTLP_REQUEST_MAX_SPANS", 2)
+    docs = [{**AGENT_DOC, "span_id": f"{i:016x}"} for i in range(5)]
+    requests = reingest.build_trace_requests(docs, CATALOG)
+    sizes = [len(req.resource_spans[0].scope_spans[0].spans) for req in requests]
+    assert sizes == [2, 2, 1]
+
+
+def test_build_trace_requests_rejects_oversized_single_span():
+    huge = {**AGENT_DOC, "raw_attributes": json.dumps({"payload": "x" * (5 * 1024 * 1024)})}
+    with pytest.raises(RuntimeError, match="exceeds"):
+        reingest.build_trace_requests([huge], CATALOG)
+
+
+def test_ingest_bundle_splits_on_serialized_size(tmp_path, quiet_platform, monkeypatch):
+    """Small byte limit forces multiple OTLP posts even when span count is low."""
+    monkeypatch.setattr(reingest, "OTLP_REQUEST_MAX_BYTES", 512)
+    docs = [{**AGENT_DOC, "span_id": f"{i:016x}"} for i in range(5)]
+    export_dir = _write_export(tmp_path, "ws-a", docs)
+    quiet_platform["span_counts"] = [0, 5]
+    quiet_platform["annotation_counts"] = [0]
+    quiet_platform["result_counts"] = [0]
+    reingest.ingest_bundle(
+        "http://x",
+        export_dir,
+        _manifest("ws-a", 5),
+        workspace_map={"ws-a": "ws-b"},
+        catalog=CATALOG,
+        sleep=lambda s: None,
+    )
+    assert len(quiet_platform["requests"]) > 1
+
+
+def test_ingest_bundle_oversized_span_raises_before_post(tmp_path, quiet_platform):
+    """One span above the byte limit must fail before the first export_trace_request call."""
+    huge = {**AGENT_DOC, "raw_attributes": json.dumps({"payload": "x" * (5 * 1024 * 1024)})}
+    export_dir = _write_export(tmp_path, "ws-a", [huge])
+    quiet_platform["span_counts"] = [0]
+    quiet_platform["annotation_counts"] = [0]
+    quiet_platform["result_counts"] = [0]
+    with pytest.raises(RuntimeError, match="exceeds"):
+        reingest.ingest_bundle(
+            "http://x",
+            export_dir,
+            _manifest("ws-a", 1),
+            workspace_map={"ws-a": "ws-b"},
+            catalog=CATALOG,
+        )
+    assert quiet_platform["requests"] == []
+
+
 def test_build_request_groups_by_scope_and_encodes_protocol_fields():
     spans = [reingest.doc_to_otlp(AGENT_DOC, CATALOG), reingest.doc_to_otlp(LLM_DOC, CATALOG)]
     spans.append({**spans[1], "span_id": "aabbccdd11223344", "scope": None, "status_error": True})
@@ -342,6 +415,7 @@ def quiet_platform(monkeypatch):
         "posts": [],
         "ensured": [],
         "counts": [],
+        "events": [],
         "span_counts": [],
         "annotation_counts": [],
         "result_counts": [],
@@ -351,24 +425,53 @@ def quiet_platform(monkeypatch):
     def _counter(name):
         def fake(base_url, workspace, *, client=None):
             calls["counts"].append((name, workspace))
+            calls["events"].append(("count", name, workspace))
             return calls[f"{name}_counts"].pop(0)
 
         return fake
 
     def fake_first(base_url, workspace, *, client=None):
         calls["counts"].append(("first_span", workspace))
+        calls["events"].append(("count", "first_span", workspace))
         # default (no preloaded id): probe unavailable -> count-only fallback
         return calls["first_ids"].pop(0) if calls["first_ids"] else None
+
+    def fake_ensure(url, workspace, *, client=None):
+        calls["ensured"].append(workspace)
+        calls["events"].append(("ensure", workspace))
+
+    def fake_export(url, workspace, request, *, client=None):
+        calls["requests"].append((workspace, request))
+        calls["events"].append(("write", "span", workspace))
+
+    def fake_post(client, url, body):
+        calls["posts"].append((url, body))
+        endpoint = "annotation" if url.endswith("/annotations") else "result"
+        workspace = url.split("/workspaces/", 1)[1].split("/", 1)[0]
+        calls["events"].append(("write", endpoint, workspace))
+
+    real_client = httpx.Client
+
+    def reject_unexpected_request(request: httpx.Request) -> httpx.Response:
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            calls["events"].append(("write", request.method, request.url.path))
+            raise AssertionError(f"unexpected {request.method} mutation: {request.url}")
+        raise AssertionError(f"unexpected HTTP request: {request.method} {request.url}")
+
+    transport = httpx.MockTransport(reject_unexpected_request)
+
+    def client_factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real_client(*args, **kwargs)
 
     monkeypatch.setattr(reingest, "span_count", _counter("span"))
     monkeypatch.setattr(reingest, "annotation_count", _counter("annotation"))
     monkeypatch.setattr(reingest, "evaluator_result_count", _counter("result"))
     monkeypatch.setattr(reingest, "_first_span_id", fake_first, raising=False)
-    monkeypatch.setattr(reingest, "ensure_workspace", lambda url, ws, client=None: calls["ensured"].append(ws))
-    monkeypatch.setattr(
-        reingest, "export_trace_request", lambda url, ws, req, client=None: calls["requests"].append((ws, req))
-    )
-    monkeypatch.setattr(reingest, "_post_created", lambda client, url, body: calls["posts"].append((url, body)))
+    monkeypatch.setattr(reingest, "ensure_workspace", fake_ensure)
+    monkeypatch.setattr(reingest, "export_trace_request", fake_export)
+    monkeypatch.setattr(reingest, "_post_created", fake_post)
+    monkeypatch.setattr(reingest.httpx, "Client", client_factory)
     return calls
 
 
@@ -383,6 +486,180 @@ def fake_docker(monkeypatch):
 
     monkeypatch.setattr(reingest.subprocess, "run", fake_run)
     return runs
+
+
+@pytest.mark.parametrize(
+    ("counts_key", "message"),
+    [
+        ("span_counts", "spans"),
+        ("annotation_counts", "annotations"),
+        ("result_counts", "evaluator results"),
+    ],
+)
+def test_require_empty_rejects_existing_target_data(tmp_path, quiet_platform, counts_key: str, message: str) -> None:
+    export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC], [ANNOTATION_DOC], [RESULT_DOC])
+    quiet_platform["span_counts"] = [0]
+    quiet_platform["annotation_counts"] = [0]
+    quiet_platform["result_counts"] = [0]
+    quiet_platform[counts_key] = [1]
+
+    with pytest.raises(RuntimeError, match=message):
+        reingest.ingest_bundle(
+            "http://x",
+            export_dir,
+            _manifest("ws-a", 1, 1, 1),
+            workspace_map={"ws-a": "target"},
+            catalog=CATALOG,
+            require_empty=True,
+        )
+
+    assert quiet_platform["events"] == [
+        ("ensure", "target"),
+        ("count", "span", "target"),
+        ("count", "annotation", "target"),
+        ("count", "result", "target"),
+    ]
+    assert quiet_platform["requests"] == []
+    assert quiet_platform["posts"] == []
+
+
+@pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])
+def test_require_empty_transport_rejects_all_http_mutations(quiet_platform, method: str) -> None:
+    with reingest.httpx.Client() as client:
+        with pytest.raises(AssertionError, match=f"unexpected {method} mutation"):
+            client.request(method, "http://x/hidden-mutation")
+
+    assert quiet_platform["events"] == [("write", method, "/hidden-mutation")]
+
+
+def test_require_empty_direct_restore_uses_real_http_transport(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC], [ANNOTATION_DOC], [RESULT_DOC])
+    counts = {"spans": 0, "annotations": 0, "evaluator-results": 0}
+    requests: list[tuple[str, str]] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        requests.append((request.method, path))
+        if request.method == "POST" and path == "/apis/entities/v2/workspaces":
+            return httpx.Response(409)
+        if request.method == "GET":
+            collection = path.rsplit("/", 1)[-1]
+            return httpx.Response(200, json={"pagination": {"total_results": counts[collection]}, "data": []})
+        if request.method == "POST" and path.endswith("/ingest/otlp/v1/traces"):
+            counts["spans"] = 1
+            return httpx.Response(200, json={"errors": []})
+        if request.method == "POST" and path.endswith("/annotations"):
+            counts["annotations"] = 1
+            return httpx.Response(201, json={})
+        if request.method == "POST" and path.endswith("/evaluator-results"):
+            counts["evaluator-results"] = 1
+            return httpx.Response(201, json={})
+        raise AssertionError(f"unexpected request: {request.method} {path}")
+
+    real_client = httpx.Client
+    transport = httpx.MockTransport(handle)
+
+    def client_factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr(reingest.httpx, "Client", client_factory)
+
+    outcome = reingest.ingest_bundle(
+        "http://platform.example",
+        export_dir,
+        _manifest("ws-a", 1, 1, 1),
+        workspace_map={"ws-a": "target"},
+        catalog=CATALOG,
+        require_empty=True,
+        sleep=lambda seconds: None,
+    )
+
+    assert [request for request in requests if request[0] != "GET"] == [
+        ("POST", "/apis/entities/v2/workspaces"),
+        ("POST", "/apis/intake/v2/workspaces/target/ingest/otlp/v1/traces"),
+        ("POST", "/apis/intake/v2/workspaces/target/annotations"),
+        ("POST", "/apis/intake/v2/workspaces/target/evaluator-results"),
+    ]
+    assert outcome["ws-a"] == {
+        "workspace": "target",
+        "spans": {"ingested": 1, "skipped": 0},
+        "annotations": {"ingested": 1, "skipped": 0},
+        "evaluator_results": {"ingested": 1, "skipped": 0},
+    }
+
+
+def test_require_empty_ingests_all_nonempty_collections_in_order(tmp_path, quiet_platform) -> None:
+    export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC], [ANNOTATION_DOC], [RESULT_DOC])
+    quiet_platform["span_counts"] = [0, 1]
+    quiet_platform["annotation_counts"] = [0]
+    quiet_platform["result_counts"] = [0]
+
+    outcome = reingest.ingest_bundle(
+        "http://x",
+        export_dir,
+        _manifest("ws-a", 1, 1, 1),
+        workspace_map={"ws-a": "target"},
+        catalog=CATALOG,
+        require_empty=True,
+        sleep=lambda seconds: None,
+    )
+
+    assert quiet_platform["events"] == [
+        ("ensure", "target"),
+        ("count", "span", "target"),
+        ("count", "annotation", "target"),
+        ("count", "result", "target"),
+        ("write", "span", "target"),
+        ("count", "span", "target"),
+        ("write", "annotation", "target"),
+        ("write", "result", "target"),
+    ]
+    assert len(quiet_platform["requests"]) == 1
+    assert [url.rsplit("/", 1)[-1] for url, _ in quiet_platform["posts"]] == [
+        "annotations",
+        "evaluator-results",
+    ]
+    assert outcome["ws-a"] == {
+        "workspace": "target",
+        "spans": {"ingested": 1, "skipped": 0},
+        "annotations": {"ingested": 1, "skipped": 0},
+        "evaluator_results": {"ingested": 1, "skipped": 0},
+    }
+
+
+def test_require_empty_all_empty_bundle_has_no_recounts_or_writes(tmp_path, quiet_platform) -> None:
+    export_dir = _write_export(tmp_path, "ws-a", [])
+    quiet_platform["span_counts"] = [0]
+    quiet_platform["annotation_counts"] = [0]
+    quiet_platform["result_counts"] = [0]
+
+    outcome = reingest.ingest_bundle(
+        "http://x",
+        export_dir,
+        _manifest("ws-a", 0),
+        workspace_map={"ws-a": "target"},
+        catalog=CATALOG,
+        require_empty=True,
+    )
+
+    assert quiet_platform["events"] == [
+        ("ensure", "target"),
+        ("count", "span", "target"),
+        ("count", "annotation", "target"),
+        ("count", "result", "target"),
+    ]
+    assert quiet_platform["requests"] == []
+    assert quiet_platform["posts"] == []
+    assert outcome["ws-a"] == {
+        "workspace": "target",
+        "spans": {"ingested": 0, "skipped": 0},
+        "annotations": {"ingested": 0, "skipped": 0},
+        "evaluator_results": {"ingested": 0, "skipped": 0},
+    }
 
 
 def test_ingest_bundle_zero_ingests_everything(tmp_path, quiet_platform):
@@ -421,7 +698,7 @@ def test_ingest_bundle_zero_ingests_everything(tmp_path, quiet_platform):
 
 
 def test_ingest_bundle_batches_spans(tmp_path, quiet_platform, monkeypatch):
-    monkeypatch.setattr(reingest, "SPAN_BATCH", 2)
+    monkeypatch.setattr(reingest, "OTLP_REQUEST_MAX_SPANS", 2)
     export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC, LLM_DOC, {**LLM_DOC, "span_id": "aabbccdd11223344"}])
     quiet_platform["span_counts"] = [0, 3]
     quiet_platform["annotation_counts"] = [0]
@@ -815,6 +1092,26 @@ def test_skip_path_probe_tolerates_started_at_ties(tmp_path, quiet_platform, cap
     export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC, tied])
     quiet_platform["span_counts"] = [2]
     quiet_platform["first_ids"] = [tied["span_id"]]  # the OTHER member of the tie
+    quiet_platform["annotation_counts"] = [0]
+    quiet_platform["result_counts"] = [0]
+    reingest.ingest_bundle(
+        "http://x",
+        export_dir,
+        _manifest("ws-a", 2),
+        workspace_map={"ws-a": "ws-b"},
+        catalog=CATALOG,
+    )
+    assert "already restored" in capsys.readouterr().out
+
+
+def test_skip_path_probe_compares_started_at_chronologically(tmp_path, quiet_platform, capsys):
+    """Mixed timestamp serializations: the bundle's first span is the chronological min, not the lexicographic one."""
+    # 14:14-05:00 is 19:14 UTC — lexicographically first but chronologically LATER than 18:14 UTC.
+    later_by_offset = {**LLM_DOC, "started_at": "2026-06-26T14:14:41.406179-05:00"}
+    earlier_utc = {**AGENT_DOC, "started_at": "2026-06-26T18:14:41.406179Z"}
+    export_dir = _write_export(tmp_path, "ws-a", [earlier_utc, later_by_offset])
+    quiet_platform["span_counts"] = [2]
+    quiet_platform["first_ids"] = [AGENT_DOC["span_id"]]  # the live first span IS the chronological min
     quiet_platform["annotation_counts"] = [0]
     quiet_platform["result_counts"] = [0]
     reingest.ingest_bundle(
@@ -1248,3 +1545,14 @@ def test_manifest_since_naive_timestamp_is_utc():
 def test_manifest_since_missing_bound_is_epoch():
     assert reingest.manifest_since({}) == datetime(1970, 1, 1, tzinfo=timezone.utc)
     assert reingest.manifest_since({"min_start_time": None}) == datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+
+def test_explicit_workspace_map_single_workspace() -> None:
+    assert reingest.explicit_workspace_map(["run-scoped-workspace"], "stable-workspace") == {
+        "run-scoped-workspace": "stable-workspace"
+    }
+
+
+def test_explicit_workspace_map_rejects_multi_workspace_bundle() -> None:
+    with pytest.raises(SystemExit, match="single-workspace"):
+        reingest.explicit_workspace_map(["realistic", "oracle"], "stable-workspace")

@@ -6,6 +6,7 @@
 import json
 import logging
 import os
+from collections import defaultdict
 from copy import deepcopy
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union
@@ -152,30 +153,46 @@ def _normalize_refs_and_schema_keys(spec: Dict) -> Dict:
 
     Schema keys are renamed first so that ``$ref`` values can be rewritten
     consistently.  When two raw keys normalize to the same target and have
-    identical content the duplicate is silently dropped.  When the content
-    differs a warning is logged and the *existing* schema wins (the
-    duplicate is still dropped).
+    identical content the duplicate is silently dropped.
+
+    When the content *differs*, two distinct Pydantic models are fighting over
+    one schema name, and keeping one silently makes the other's ``$ref``\\ s point
+    at the wrong contract.  This raises ``ValueError`` so the build fails loudly
+    rather than shipping a wrong contract in the generated SDK.
     """
     schemas = spec["components"]["schemas"]
 
-    rename_map: Dict[str, str] = {}
+    # Normalize each raw key once, then group by the name it maps to.  Two
+    # distinct models from different modules (e.g. each customization backend's
+    # own ``TrainingSpec``) produce module-qualified raw keys that normalize to
+    # the same bare name; collapsing them would make one silently steal the
+    # other's ``$ref``\\ s, shipping a wrong contract.
+    key_to_target: Dict[str, str] = {old_key: normalize_schema_name(old_key) for old_key in schemas}
 
-    for old_key, value in list(schemas.items()):
-        new_key = normalize_schema_name(old_key)
-        if new_key == old_key:
-            continue
+    by_target: Dict[str, List[str]] = defaultdict(list)
+    for old_key, target in key_to_target.items():
+        by_target[target].append(old_key)
 
-        if new_key in schemas and schemas[new_key] != value:
-            logger.warning(
-                "Schema key collision: '%s' renamed to '%s' which already exists "
-                "with different content. Keeping the existing schema. This likely "
-                "means two distinct Pydantic models from different modules share "
-                "the same class name.",
-                old_key,
-                new_key,
+    for target, old_keys in by_target.items():
+        # Identical-content duplicates are harmless — they dedup to one schema.
+        # Keep one representative per distinct content shape; more than one means
+        # genuinely different models are colliding on a single name.
+        reps: List[str] = []
+        for key in old_keys:
+            if not any(schemas[key] == schemas[rep] for rep in reps):
+                reps.append(key)
+        if len(reps) > 1:
+            raise ValueError(
+                f"OpenAPI schema name collision: {sorted(old_keys)} all normalize to "
+                f"'{target}' with differing content. Two distinct Pydantic models share a "
+                f"class name across modules; give them distinct names — rename or dedupe the "
+                f"models, or namespace them (e.g. via a per-backend NamespacedModel base) — so "
+                f"they emit distinct schema names."
             )
 
-        rename_map[old_key] = new_key
+    # Iterating ``key_to_target`` preserves ``schemas`` order, so the first raw
+    # key that maps to a given target still wins the collapse below.
+    rename_map: Dict[str, str] = {old_key: target for old_key, target in key_to_target.items() if target != old_key}
 
     for old_key, new_key in rename_map.items():
         if new_key not in schemas:

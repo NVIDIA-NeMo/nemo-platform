@@ -10,6 +10,8 @@
 
 ARG SMOKE_MARKER=smoke_nmp_rl_training
 
+FROM ffmpeg-vlm-wheel-image AS ffmpeg-vlm-wheel-src
+
 # Supplied by bake (target:nmp-rl-base-builder).
 FROM nmp-rl-base AS rl-base
 
@@ -39,6 +41,41 @@ RUN mkdir -p /home/${USERNAME}/.cache && \
 # the compiler stamps onto every step resolves in this image too (the CPU tasks
 # image has a real /opt/venv).
 RUN ln -sfn /opt/nemo_rl_venv /opt/venv
+
+# Replace base-image av/opencv/decord2 wheels that bundle vulnerable FFmpeg.
+# decord2 stays installed because NeMo-RL imports the `decord` module for
+# multimodal video loading; rebuild it from source against FFmpeg 8.1.2.
+RUN --mount=from=ffmpeg-vlm-wheel-src,target=/tmp/ffmpeg-vlm-wheel-src,readonly \
+    set -e; \
+    for site in ${VIRTUAL_ENV}/lib/python*/site-packages; do \
+        [ -d "${site}" ] || continue; \
+        rm -rf \
+            "${site}/av" \
+            "${site}"/av-*.dist-info \
+            "${site}/av.libs" \
+            "${site}/cv2" \
+            "${site}/opencv_python_headless.libs" \
+            "${site}"/opencv_python_headless-*.dist-info \
+            "${site}/decord" \
+            "${site}"/decord-*.dist-info \
+            "${site}/decord.libs" \
+            "${site}/decord2" \
+            "${site}"/decord2-*.dist-info \
+            "${site}/decord2.libs"; \
+    done; \
+    for archive in /root/.cache/uv/archive-v0/*; do \
+        [ -d "${archive}" ] || continue; \
+        if [ -e "${archive}/av.libs" ] || \
+           [ -e "${archive}/opencv_python_headless.libs" ] || \
+           [ -e "${archive}/decord.libs" ] || \
+           [ -e "${archive}/decord2.libs" ]; then \
+            rm -rf "${archive}"; \
+        fi; \
+    done; \
+    UV_LINK_MODE=copy uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache --no-deps --reinstall \
+        /tmp/ffmpeg-vlm-wheel-src/wheels/av-*-abi3-manylinux_2_28_*.whl \
+        /tmp/ffmpeg-vlm-wheel-src/wheels/opencv_python_headless-*cp313*.whl \
+        /tmp/ffmpeg-vlm-wheel-src/wheels/decord2-*cp313*.whl
 
 # The NeMo-RL base venv ships some packages with missing dist-info METADATA (a
 # known property of the image — the package code is present, only uv's metadata

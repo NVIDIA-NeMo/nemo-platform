@@ -218,11 +218,7 @@ async def test_compiler_emits_four_steps(monkeypatch: pytest.MonkeyPatch, mock_s
     ]
 
     upload_meta = steps[2]["config"]["upload"][0]["metadata"]
-    assert upload_meta == {
-        "model": "default/base-model",
-        "finetuning_type": "all_weights",
-        "output_type": "model",
-    }
+    assert upload_meta is None
 
 
 @pytest.mark.asyncio

@@ -65,12 +65,21 @@ class EvaluationSessionResponse(BaseModel):
     """
 
     input: Optional[str] = None
-    """Root-span input text. In summary mode this is truncated to 1000 characters."""
+    """Root-span input text.
+
+    Omitted in summary mode and truncated to 300 characters in preview mode.
+    """
 
     input_tokens: Optional[int] = None
     """Sum of input tokens across this session's spans."""
 
     latency_ms: Optional[float] = None
+
+    output: Optional[str] = None
+    """Root-span output text.
+
+    Omitted in summary mode and truncated to 300 characters in preview mode.
+    """
 
     output_tokens: Optional[int] = None
     """Sum of output tokens across this session's spans."""

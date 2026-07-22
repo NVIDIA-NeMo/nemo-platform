@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema/AgentDeployment';
-import { Block, SegmentedControl, SidePanel } from '@nvidia/foundations-react-core';
+import { Block, SegmentedControl, SidePanel, Stack, Text } from '@nvidia/foundations-react-core';
+import type { AgentConfig } from '@studio/components/dataViews/AgentsDataView';
+import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { AgentDetailsContent } from '@studio/components/sidePanels/AgentPanels/AgentPanel/AgentDetailsContent';
 import { ChatPlaygroundContent } from '@studio/components/sidePanels/AgentPanels/AgentPanel/ChatPlaygroundContent';
@@ -72,7 +74,6 @@ export const AgentPanel: FC<AgentPanelProps> = ({
   useEffect(() => {
     setSelectedDeploymentName(undefined);
     setWalkthroughDismissed(false);
-    // Start the walkthrough only for the agent it was queued for (just created).
     setWalkthroughActive(!!agentName && isAgentWalkthroughPending(agentName));
   }, [agentName]);
 
@@ -106,6 +107,8 @@ export const AgentPanel: FC<AgentPanelProps> = ({
     setSelectedTab('chat-playground');
     onTabChange?.('chat-playground');
   };
+
+  const agentModelNames = getAgentModelNames(agent?.config as AgentConfig | undefined);
 
   let content: React.ReactNode;
 
@@ -150,7 +153,16 @@ export const AgentPanel: FC<AgentPanelProps> = ({
       <SidePanel
         open={open}
         onOpenChange={onOpenChange}
-        slotHeading={agentName}
+        slotHeading={
+          <Stack gap="1">
+            <Text kind="inherit">{agentName}</Text>
+            {agentModelNames.length > 0 && (
+              <Text kind="body/regular/sm" className="text-secondary">
+                {agentModelNames.join(', ')}
+              </Text>
+            )}
+          </Stack>
+        }
         bordered
         modal
         className="[&.nv-side-panel-content]:w-full [&.nv-side-panel-content]:max-w-[50vw] [&_.nv-side-panel-main]:gap-4 [&_.nv-side-panel-main]:p-0"

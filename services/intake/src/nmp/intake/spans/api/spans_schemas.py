@@ -8,14 +8,21 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
-from typing import Literal, Self
+from typing import Self
 
 from nmp.common.api.common import Page
 from nmp.common.entities.values import DatetimeFilter
-from nmp.intake.spans.domain import IntakeSpan, SpanKind, SpanStatus
+from nmp.intake.spans.domain import (
+    INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT,
+    IntakeResponseMode,
+    IntakeSpan,
+    SpanKind,
+    SpanStatus,
+)
 from nmp.intake.spans.domain import SpanGroup as IntakeSpanGroup
 from nmp.intake.spans.span_attribute_bags import SpanAttributeBags
 from nmp.intake.spans.span_semantic_attributes import SpanSemanticAttributes
+from nmp.intake.spans.storage import text_for_mode
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -34,7 +41,7 @@ class SpanGroupBy(StrEnum):
     SESSION_ID = "session_id"
 
 
-SpanMode = Literal["summary", "detailed"]
+SpanMode = IntakeResponseMode
 SPAN_SUMMARY_ERROR_MESSAGE_CHAR_LIMIT = 1000
 
 
@@ -112,7 +119,7 @@ class Span(BaseModel):
     error_message: str | None = Field(
         default=None,
         description=(
-            "Normalized error message. In summary mode this is truncated to "
+            "Normalized error message. In summary and preview modes this is truncated to "
             f"{SPAN_SUMMARY_ERROR_MESSAGE_CHAR_LIMIT} characters."
         ),
     )
@@ -131,14 +138,26 @@ class Span(BaseModel):
     cost_input_usd: float | None = None
     cost_output_usd: float | None = None
     cost_details: dict[str, float] = Field(default_factory=dict)
-    input: str | None = None
-    output: str | None = None
+    input: str | None = Field(
+        default=None,
+        description=(
+            f"Span input text. Omitted in summary mode and truncated to {INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT} "
+            "characters in preview mode."
+        ),
+    )
+    output: str | None = Field(
+        default=None,
+        description=(
+            f"Span output text. Omitted in summary mode and truncated to {INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT} "
+            "characters in preview mode."
+        ),
+    )
     raw_attributes: str | None = None
     ingested_at: datetime
 
     @classmethod
     def from_domain(cls, span: IntakeSpan, *, mode: SpanMode = "detailed") -> Self:
-        summary = mode == "summary"
+        compact = mode != "detailed"
         attribute_bags = SpanAttributeBags.from_domain_maps(
             attributes_string=span.attributes_string,
             attributes_number=span.attributes_number,
@@ -161,7 +180,7 @@ class Span(BaseModel):
             ended_at=span.end_time,
             status=span.status,
             error_type=semantic_attributes.error_type,
-            error_message=_error_message_for_mode(semantic_attributes.error_message, summary=summary),
+            error_message=_error_message_for_mode(semantic_attributes.error_message, compact=compact),
             provider=semantic_attributes.provider,
             model=semantic_attributes.model,
             prompt_id=semantic_attributes.prompt_id,
@@ -177,9 +196,9 @@ class Span(BaseModel):
             cost_input_usd=_float_or_none(semantic_attributes.cost_input_usd),
             cost_output_usd=_float_or_none(semantic_attributes.cost_output_usd),
             cost_details=attribute_bags.cost_details(),
-            input=None if summary else span.input or None,
-            output=None if summary else span.output or None,
-            raw_attributes=None if summary else attribute_bags.raw_attributes_json(),
+            input=text_for_mode(span.input or None, mode=mode),
+            output=text_for_mode(span.output or None, mode=mode),
+            raw_attributes=None if compact else attribute_bags.raw_attributes_json(),
             ingested_at=span.event_ts,
         )
 
@@ -224,7 +243,7 @@ def _float_or_none(value: object) -> float | None:
     raise TypeError(f"Expected float-compatible span value, got {type(value).__name__}")
 
 
-def _error_message_for_mode(value: str | None, *, summary: bool) -> str | None:
-    if value is None or not summary:
+def _error_message_for_mode(value: str | None, *, compact: bool) -> str | None:
+    if value is None or not compact:
         return value
     return value[:SPAN_SUMMARY_ERROR_MESSAGE_CHAR_LIMIT]

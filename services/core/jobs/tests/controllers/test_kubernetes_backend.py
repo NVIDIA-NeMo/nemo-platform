@@ -2,12 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
 from kubernetes import client
 from kubernetes.client.rest import ApiException
-from nmp.common.config import ImagePullSecret
+from nmp.common.config import ImagePullSecret, PlatformConfig
 from nmp.common.jobs.constants import (
     EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
     NEMO_JOB_FILESET_ENVVAR,
@@ -34,6 +37,13 @@ from nmp.core.jobs.app.schemas import (
     PlatformJobSecretEnvironmentVariableRef,
     PlatformJobStepSpec,
 )
+from nmp.core.jobs.controllers.backends.base import (
+    NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR,
+    WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
+    WORKLOAD_IDENTITY_TOKEN_FILE_PATH,
+    WORKLOAD_IDENTITY_VOLUME_NAME,
+    WORKLOAD_IDENTITY_VOLUME_PATH,
+)
 from nmp.core.jobs.controllers.backends.kubernetes import (
     CPUKubernetesJobBackend,
     GPUKubernetesJobBackend,
@@ -42,10 +52,13 @@ from nmp.core.jobs.controllers.backends.kubernetes import (
 from nmp.core.jobs.controllers.backends.kubernetes.common import (
     JOB_DSHM_VOLUME_NAME,
     JOB_STORAGE_VOLUME_NAME,
+    KubernetesConfigMapVolume,
     KubernetesEmptyDirVolume,
     KubernetesJobStorageConfig,
+    KubernetesKeyToPath,
     KubernetesObjectMetadata,
     KubernetesPersistentVolumeClaim,
+    KubernetesSecretVolume,
     KubernetesVolume,
     KubernetesVolumeMount,
     PodStatus,
@@ -185,18 +198,94 @@ def test_kubernetes_volume_to_k8s_empty_dir():
     assert k8s_volume.empty_dir.size_limit == "1Gi"
 
 
+def test_kubernetes_volume_to_k8s_secret():
+    """Test conversion of KubernetesVolume with Secret to V1Volume."""
+
+    secret_config = KubernetesSecretVolume(
+        secret_name="test-secret",
+        items=[KubernetesKeyToPath(key="ca.crt", path="ca.crt")],
+    )
+    volume_config = KubernetesVolume(name="test-volume", secret=secret_config)
+
+    k8s_volume = volume_config.to_k8s()
+
+    assert k8s_volume is not None
+    assert k8s_volume.name == "test-volume"
+    assert k8s_volume.secret is not None
+    assert k8s_volume.secret.secret_name == "test-secret"
+    assert k8s_volume.secret.items[0].key == "ca.crt"
+    assert k8s_volume.secret.items[0].path == "ca.crt"
+
+
+def test_kubernetes_volume_to_k8s_config_map():
+    """Test conversion of KubernetesVolume with ConfigMap to V1Volume."""
+
+    config_map_config = KubernetesConfigMapVolume(
+        name="test-config-map",
+        items=[KubernetesKeyToPath(key="trust-bundle.pem", path="ca.crt")],
+    )
+    volume_config = KubernetesVolume(name="test-volume", config_map=config_map_config)
+
+    k8s_volume = volume_config.to_k8s()
+
+    assert k8s_volume is not None
+    assert k8s_volume.name == "test-volume"
+    assert k8s_volume.config_map is not None
+    assert k8s_volume.config_map.name == "test-config-map"
+    assert k8s_volume.config_map.items[0].key == "trust-bundle.pem"
+    assert k8s_volume.config_map.items[0].path == "ca.crt"
+
+
 def test_kubernetes_volume_invalid_configuration():
     """Test that invalid KubernetesVolume configuration raises ValueError."""
 
     # Neither PVC nor EmptyDir specified
-    with pytest.raises(ValueError, match="Exactly one of 'persistent_volume_claim' or 'empty_dir' must be specified."):
+    with pytest.raises(ValueError, match="Exactly one of"):
         KubernetesVolume(name="invalid-volume")
 
     # Both PVC and EmptyDir specified
     pvc_config = KubernetesPersistentVolumeClaim(claim_name="test-pvc")
     empty_dir_config = KubernetesEmptyDirVolume()
-    with pytest.raises(ValueError, match="Exactly one of 'persistent_volume_claim' or 'empty_dir' must be specified."):
+    with pytest.raises(ValueError, match="Exactly one of"):
         KubernetesVolume(name="invalid-volume", persistent_volume_claim=pvc_config, empty_dir=empty_dir_config)
+
+
+def test_kubernetes_volume_json_schema_requires_exactly_one_source():
+    """Test OpenAPI schema requires exactly one non-null KubernetesVolume source."""
+
+    schema = KubernetesVolume.model_json_schema()
+    validator = Draft202012Validator(schema)
+
+    assert "name" in schema["required"]
+    assert schema["oneOf"] == [
+        {
+            "required": ["persistent_volume_claim"],
+            "properties": {"persistent_volume_claim": {"not": {"type": "null"}}},
+        },
+        {"required": ["empty_dir"], "properties": {"empty_dir": {"not": {"type": "null"}}}},
+        {"required": ["secret"], "properties": {"secret": {"not": {"type": "null"}}}},
+        {"required": ["config_map"], "properties": {"config_map": {"not": {"type": "null"}}}},
+    ]
+
+    validator.validate({"name": "pvc-volume", "persistent_volume_claim": {"claim_name": "test-pvc"}})
+    validator.validate({"name": "empty-dir-volume", "empty_dir": {}})
+    validator.validate({"name": "secret-volume", "secret": {"secret_name": "test-secret"}})
+    validator.validate({"name": "config-map-volume", "config_map": {"name": "test-config-map"}})
+
+    with pytest.raises(JsonSchemaValidationError):
+        validator.validate({"name": "missing-source"})
+
+    with pytest.raises(JsonSchemaValidationError):
+        validator.validate(
+            {
+                "name": "multiple-sources",
+                "persistent_volume_claim": {"claim_name": "test-pvc"},
+                "empty_dir": {},
+            }
+        )
+
+    with pytest.raises(JsonSchemaValidationError):
+        validator.validate({"name": "null-source", "persistent_volume_claim": None})
 
 
 def test_build_metadata():
@@ -749,6 +838,55 @@ def test_kubernetes_job_profile_environment_applied(
     assert env_vars.get("ENV_VAR") == "test_value"
 
 
+def test_kubernetes_job_uses_service_discovery_urls_for_job_runtime(
+    mock_nmp_client,
+    kubernetes_client_mock,
+    kubernetes_execution_profile_config,
+    cpu_execution_provider,
+    test_step_pending,
+):
+    """Job pods use routable service_discovery URLs instead of local in-process service URLs."""
+    platform_config = PlatformConfig(  # type: ignore[abstract]
+        base_url="http://127.0.0.1:8080",
+        services="jobs,files,models,secrets",
+        service_discovery={
+            "platform": "https://nemo-gateway:8080",
+            "auth": "https://nemo-auth:8080",
+        },
+        loopback_address="nemo-gateway",
+    )
+    with (
+        patch("nmp.core.jobs.controllers.backends.kubernetes.common.config.load_incluster_config"),
+        patch(
+            "nmp.core.jobs.controllers.backends.kubernetes.common.get_platform_config",
+            return_value=platform_config,
+        ),
+    ):
+        backend = CPUKubernetesJobBackend(
+            mock_nmp_client,
+            kubernetes_execution_profile_config,
+            profile_name="default",
+        )
+        backend._batch_v1 = kubernetes_client_mock["batch_v1"]
+        backend._core_v1 = kubernetes_client_mock["core_v1"]
+
+        backend._batch_v1.create_namespaced_job.return_value = MagicMock()
+        backend.schedule(cpu_execution_provider, test_step_pending)
+
+        call_args = backend._batch_v1.create_namespaced_job.call_args
+    job_body = call_args.kwargs["body"]
+    main_container = job_body.spec.template.spec.containers[0]
+    env_vars = {env.name: env.value for env in main_container.env}
+
+    assert env_vars["NMP_BASE_URL"] == "https://nemo-gateway:8080"
+    assert env_vars["NMP_AUTH_URL"] == "https://nemo-auth:8080"
+    assert env_vars["NMP_JOBS_URL"] == "https://nemo-gateway:8080"
+    assert env_vars["NMP_FILES_URL"] == "https://nemo-gateway:8080"
+    assert env_vars["NMP_MODELS_URL"] == "https://nemo-gateway:8080"
+    assert env_vars["NMP_SECRETS_URL"] == "https://nemo-gateway:8080"
+    assert env_vars[NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR].startswith("https://nemo-gateway:8080/apis/files/")
+
+
 def test_kubernetes_job_execution_profile_config_rejects_reserved_env_vars():
     """KubernetesJobExecutionProfileConfig raises when environment contains reserved names."""
     with pytest.raises(ValidationError) as exc_info:
@@ -759,6 +897,46 @@ def test_kubernetes_job_execution_profile_config_rejects_reserved_env_vars():
         )
     assert "NEMO_JOB_ID" in str(exc_info.value)
     assert "reserved" in str(exc_info.value).lower()
+
+
+def test_kubernetes_job_rejects_reserved_step_auth_env_vars(kubernetes_job, cpu_execution_provider, test_step_pending):
+    test_step_pending.step_spec.environment.append(
+        PlatformJobEnvironmentVariable(name="NEMO_WORKFLOW_TOKEN", value="token")
+    )
+
+    with pytest.raises(ValueError, match="NEMO_WORKFLOW_TOKEN"):
+        kubernetes_job.schedule(cpu_execution_provider, test_step_pending)
+
+
+def test_kubernetes_job_injects_projected_workload_identity_token_when_exchange_enabled(
+    kubernetes_job, cpu_execution_provider, test_step_pending
+):
+    kubernetes_job._execution_profile_config.workload_identity_token_expiration_seconds = 600
+    kubernetes_job._execution_profile_config.workload_identity_token_audience = "test-audience"
+    auth_config = SimpleNamespace(oidc=SimpleNamespace(workload_token_exchange_enabled=True))
+
+    with patch("nmp.common.config.get_auth_config", return_value=auth_config):
+        kubernetes_job.schedule(cpu_execution_provider, test_step_pending)
+
+    call_args = kubernetes_job._batch_v1.create_namespaced_job.call_args
+    job_body = call_args.kwargs["body"]
+    pod_spec = job_body.spec.template.spec
+    main_container = pod_spec.containers[0]
+
+    env_vars = {env.name: env.value for env in main_container.env}
+    assert env_vars[WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR] == WORKLOAD_IDENTITY_TOKEN_FILE_PATH
+
+    workload_identity_volume = next(
+        volume for volume in pod_spec.volumes if volume.name == WORKLOAD_IDENTITY_VOLUME_NAME
+    )
+    projection = workload_identity_volume.projected.sources[0].service_account_token
+    assert projection.path == "token"
+    assert projection.expiration_seconds == 600
+    assert projection.audience == "test-audience"
+
+    mount = next(vm for vm in main_container.volume_mounts if vm.name == WORKLOAD_IDENTITY_VOLUME_NAME)
+    assert mount.mount_path == WORKLOAD_IDENTITY_VOLUME_PATH
+    assert mount.read_only is True
 
 
 def test_schedule_job_with_args(kubernetes_job, cpu_execution_provider, test_step_pending):
@@ -1701,10 +1879,18 @@ def test_schedule_with_additional_volumes(kubernetes_job, cpu_execution_provider
             name="extra-volume-2",
             empty_dir=KubernetesEmptyDirVolume(medium="Memory"),
         ),
+        KubernetesVolume(
+            name="extra-volume-3",
+            secret=KubernetesSecretVolume(
+                secret_name="extra-secret",
+                items=[KubernetesKeyToPath(key="ca.crt", path="ca.crt")],
+            ),
+        ),
     ]
     kubernetes_job._execution_profile_config.storage.additional_volume_mounts = [
         KubernetesVolumeMount(name="extra-volume-1", mount_path="/mnt/extra-1"),
         KubernetesVolumeMount(name="extra-volume-2", mount_path="/mnt/extra-2"),
+        KubernetesVolumeMount(name="extra-volume-3", mount_path="/mnt/extra-3", read_only=True),
     ]
     mock_create_job = kubernetes_job._batch_v1.create_namespaced_job
 
@@ -1723,9 +1909,16 @@ def test_schedule_with_additional_volumes(kubernetes_job, cpu_execution_provider
     extra_volume_2 = next((v for v in volumes if v.name == "extra-volume-2"), None)
     assert extra_volume_2 is not None
     assert extra_volume_2.empty_dir.medium == "Memory"
+    extra_volume_3 = next((v for v in volumes if v.name == "extra-volume-3"), None)
+    assert extra_volume_3 is not None
+    assert extra_volume_3.secret.secret_name == "extra-secret"
+    assert extra_volume_3.secret.items[0].key == "ca.crt"
 
     # Check volume mounts
     main_container = job_body.spec.template.spec.containers[0]
+    volume_mounts = {mount.name: mount for mount in main_container.volume_mounts}
+    assert volume_mounts["extra-volume-3"].mount_path == "/mnt/extra-3"
+    assert volume_mounts["extra-volume-3"].read_only is True
     job_storage_mount = next((vm for vm in main_container.volume_mounts if vm.name == "extra-volume-1"), None)
     assert job_storage_mount is not None
     assert job_storage_mount.mount_path == "/mnt/extra-1"
@@ -1952,11 +2145,11 @@ def test_step_pending_with_auth_context() -> PlatformJobStepWithContext:
 def test_kubernetes_job_schedule_with_auth_context(
     kubernetes_job, cpu_execution_provider, test_step_pending_with_auth_context
 ):
-    """Test that scheduling sets NMP_PRINCIPAL and OTEL headers env vars when auth_context is present.
+    """Test that scheduling sets NMP_PRINCIPAL and launcher OTLP headers when auth_context is present.
 
     Verifies GitLab issue #3390 Gap 2: job tasks should run with the creating
     user's auth context, propagated via the NMP_PRINCIPAL environment variable
-    and OTEL_EXPORTER_OTLP_LOGS_HEADERS for authenticated telemetry export.
+    and private launcher OTLP headers for authenticated telemetry export.
     """
     import json
 
@@ -1977,6 +2170,7 @@ def test_kubernetes_job_schedule_with_auth_context(
     pod_spec = job_body.spec.template.spec
     main_container = pod_spec.containers[0]
     env_vars = {env.name: env.value for env in main_container.env if env.value is not None}
+    env_var_names = {env.name for env in main_container.env}
 
     # Verify NMP_PRINCIPAL env var is set
     assert NMP_PRINCIPAL_ENVVAR in env_vars
@@ -1989,13 +2183,19 @@ def test_kubernetes_job_schedule_with_auth_context(
         "groups": ["engineering", "ml-team"],
     }
 
-    # Verify OTEL headers env var is set for authenticated telemetry
-    assert "OTEL_EXPORTER_OTLP_LOGS_HEADERS" in env_vars
-    otlp_headers = env_vars["OTEL_EXPORTER_OTLP_LOGS_HEADERS"]
+    # Verify launcher OTLP headers env var is set for authenticated telemetry
+    assert "NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS" in env_vars
+    otlp_headers = env_vars["NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS"]
     # URL-encoded: @ -> %40, , -> %2C
     assert "X-NMP-Principal-Id=creator%40example.com" in otlp_headers
     assert "X-NMP-Principal-Email=creator%40example.com" in otlp_headers
     assert "X-NMP-Principal-Groups=engineering%2Cml-team" in otlp_headers
+
+    # Verify no globally scoped OTEL header environment variables are set
+    assert "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT" not in env_var_names
+    assert "OTEL_LOGS_EXPORTER" not in env_var_names
+    assert "OTEL_SERVICE_NAME" not in env_var_names
+    assert "OTEL_EXPORTER_OTLP_LOGS_HEADERS" not in env_var_names
 
 
 def test_kubernetes_job_schedule_without_auth_context(kubernetes_job, cpu_execution_provider, test_step_pending):
@@ -2020,7 +2220,7 @@ def test_kubernetes_job_schedule_without_auth_context(kubernetes_job, cpu_execut
 
     # Verify auth env vars are NOT set
     assert NMP_PRINCIPAL_ENVVAR not in env_vars
-    assert "OTEL_EXPORTER_OTLP_LOGS_HEADERS" not in env_vars
+    assert "NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS" not in env_vars
 
 
 def test_cleanup_steps_with_multi_step_job_only_first_step_complete(kubernetes_job):

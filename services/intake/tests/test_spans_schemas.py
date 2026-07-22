@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import pytest
 from nmp.intake.spans.api.spans_schemas import SPAN_SUMMARY_ERROR_MESSAGE_CHAR_LIMIT, Span, SpanGroup
 from nmp.intake.spans.api.traces_schemas import Trace
-from nmp.intake.spans.domain import IntakeSpan, IntakeTrace, SpanKind, SpanStatus
+from nmp.intake.spans.domain import INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT, IntakeSpan, IntakeTrace, SpanKind, SpanStatus
 from nmp.intake.spans.domain import SpanGroup as IntakeSpanGroup
 from nmp.intake.spans.storage import json_dumps_preserve
 from pydantic import ValidationError
@@ -65,7 +65,7 @@ def test_span_response_raw_attributes_merges_atif_raw_with_unknown_attributes():
     }
 
 
-def test_span_summary_keeps_bounded_error_message_without_bulk_fields():
+def test_span_summary_omits_payloads_and_raw_attributes():
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
     error_message = "x" * (SPAN_SUMMARY_ERROR_MESSAGE_CHAR_LIMIT + 50)
     span = IntakeSpan(
@@ -78,8 +78,8 @@ def test_span_summary_keeps_bounded_error_message_without_bulk_fields():
         status=SpanStatus.ERROR,
         start_time=now,
         event_ts=now,
-        input="large input",
-        output="large output",
+        input="i" * 1050,
+        output="o" * 1050,
         attributes_string={
             "exception.type": "RuntimeError",
             "exception.message": error_message,
@@ -94,6 +94,12 @@ def test_span_summary_keeps_bounded_error_message_without_bulk_fields():
     assert response.input is None
     assert response.output is None
     assert response.raw_attributes is None
+
+    preview = Span.from_domain(span, mode="preview")
+
+    assert preview.input == "i" * INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT
+    assert preview.output == "o" * INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT
+    assert preview.raw_attributes is None
 
 
 def test_span_group_response_maps_group_values():
@@ -145,6 +151,8 @@ def test_trace_response_maps_core_trace_fields():
     assert response.session_id == "session-a"
     assert response.workspace == "workspace-a"
     assert response.name == "root"
+    assert response.input == "root input"
+    assert response.output == "root output"
     assert response.started_at == started_at
     assert response.ended_at == ended_at
     assert response.status == SpanStatus.ERROR
@@ -164,3 +172,29 @@ def test_trace_response_maps_core_trace_fields():
     assert response.experiment_context is not None
     assert response.experiment_context.experiment_id == "experiment-a"
     assert response.experiment_context.test_case_id == "case-a"
+
+
+def test_trace_response_applies_payload_mode_at_api_boundary():
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    trace = IntakeTrace(
+        id="trace-a",
+        workspace="workspace-a",
+        session_id="session-a",
+        source_format="otel",
+        input="i" * 1050,
+        output="o" * 1050,
+        started_at=now,
+        ingested_at=now,
+        status=SpanStatus.SUCCESS,
+    )
+
+    summary = Trace.from_domain(trace, mode="summary")
+    preview = Trace.from_domain(trace, mode="preview")
+    detailed = Trace.from_domain(trace, mode="detailed")
+
+    assert summary.input is None
+    assert summary.output is None
+    assert preview.input == "i" * INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT
+    assert preview.output == "o" * INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT
+    assert detailed.input == "i" * 1050
+    assert detailed.output == "o" * 1050

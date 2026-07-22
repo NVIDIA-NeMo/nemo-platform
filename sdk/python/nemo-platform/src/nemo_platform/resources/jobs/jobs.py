@@ -57,8 +57,8 @@ from ..._response import (
 )
 from ...pagination import SyncLogsPagination, AsyncLogsPagination, SyncDefaultPagination, AsyncDefaultPagination
 from ...types.jobs import (
-    PlatformJobSortField,
     PlatformJobSpecParam,
+    PlatformJobListSortField,
     job_list_params,
     job_create_params,
     job_get_logs_params,
@@ -67,8 +67,8 @@ from ...types.jobs import (
 from ..._base_client import AsyncPaginator, make_request_options
 from ...types.shared.platform_job_log import PlatformJobLog
 from ...types.jobs.platform_job_response import PlatformJobResponse
-from ...types.jobs.platform_job_sort_field import PlatformJobSortField
 from ...types.jobs.platform_job_spec_param import PlatformJobSpecParam
+from ...types.jobs.platform_job_list_sort_field import PlatformJobListSortField
 from ...types.shared.platform_job_status_response import PlatformJobStatusResponse
 from ...types.jobs.platform_jobs_list_filter_param import PlatformJobsListFilterParam
 from ...types.jobs.job_list_execution_profiles_response import JobListExecutionProfilesResponse
@@ -211,7 +211,7 @@ class JobsResource(SyncAPIResource):
         filter: PlatformJobsListFilterParam | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
-        sort: PlatformJobSortField | Omit = omit,
+        sort: PlatformJobListSortField | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -721,7 +721,7 @@ class AsyncJobsResource(AsyncAPIResource):
         filter: PlatformJobsListFilterParam | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
-        sort: PlatformJobSortField | Omit = omit,
+        sort: PlatformJobListSortField | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,

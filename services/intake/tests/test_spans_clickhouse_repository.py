@@ -93,6 +93,7 @@ async def test_list_spans_counts_final_rows():
         page=1,
         page_size=10,
         sort="started_at",
+        mode="summary",
     )
 
     assert client.queries[0] == "SELECT count() FROM spans FINAL WHERE workspace = %(workspace)s AND is_deleted = 0"
@@ -108,9 +109,50 @@ async def test_list_spans_reads_final_rows():
         page=1,
         page_size=10,
         sort="started_at",
+        mode="summary",
     )
 
     assert "FROM spans FINAL" in client.queries[1]
+    assert "'' AS input" in client.queries[1]
+    assert "'' AS output" in client.queries[1]
+    assert "payload_char_limit" not in client.parameters[1]
+
+
+@pytest.mark.asyncio
+async def test_list_spans_preview_truncates_payloads_in_clickhouse():
+    client = _Client()
+    repository = _repository(client)
+
+    await repository.list_spans(
+        filters=SpanListFilter(workspace="workspace-a"),
+        page=1,
+        page_size=10,
+        sort="started_at",
+        mode="preview",
+    )
+
+    assert "substringUTF8(input, 1, %(payload_char_limit)s) AS input" in client.queries[1]
+    assert "substringUTF8(output, 1, %(payload_char_limit)s) AS output" in client.queries[1]
+    assert client.parameters[1]["payload_char_limit"] == 300
+
+
+@pytest.mark.asyncio
+async def test_list_spans_detailed_reads_full_payloads():
+    client = _Client()
+    repository = _repository(client)
+
+    await repository.list_spans(
+        filters=SpanListFilter(workspace="workspace-a"),
+        page=1,
+        page_size=10,
+        sort="started_at",
+        mode="detailed",
+    )
+
+    assert "input AS input" in client.queries[1]
+    assert "output AS output" in client.queries[1]
+    assert "substringUTF8(input" not in client.queries[1]
+    assert "payload_char_limit" not in client.parameters[1]
 
 
 def test_span_group_by_enum_matches_repository_columns():

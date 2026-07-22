@@ -175,6 +175,14 @@ def test_export_closes_client(tmp_path, monkeypatch):
     assert client.closed
 
 
+def test_export_closes_injected_client(tmp_path):
+    client = FakeClient({})
+
+    export.export_workspaces("http://localhost:8080", ["ws-a"], tmp_path, since=None, client=client)
+
+    assert client.closed
+
+
 # --------------------------------------------------------------------------- #
 # subject scoping
 # --------------------------------------------------------------------------- #
@@ -340,10 +348,11 @@ def test_fetch_platform_info_none_when_unreachable(monkeypatch):
 
 
 def _fake_export(seen):
-    def fake(base_url, workspaces, out_dir, *, since):
+    def fake(base_url, workspaces, out_dir, *, since, client=None):
         seen["base_url"] = base_url
         seen["workspaces"] = list(workspaces)
         seen["since"] = since
+        seen["client"] = client
         for ws in workspaces:
             ws_dir = out_dir / "export" / ws
             ws_dir.mkdir(parents=True, exist_ok=True)

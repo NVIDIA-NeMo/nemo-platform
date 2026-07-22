@@ -1,0 +1,195 @@
+name: ${COMPOSE_PROJECT_NAME:-nemo-platform-authentik}
+
+x-authentik-env: &authentik-env
+  AUTHENTIK_REDIS__HOST: authentik-redis
+  AUTHENTIK_POSTGRESQL__HOST: authentik-postgres
+  AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+  AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
+  AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS:-authentik}
+  AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-change-me-dev-only}
+  AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:-akadmin-dev}
+  AUTHENTIK_BOOTSTRAP_TOKEN: ${AUTHENTIK_BOOTSTRAP_TOKEN:-bootstrap-token-dev}
+  AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD: ${AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD:-svc-nemo-token-secret-dev}
+
+services:
+  nemo:
+    image: ${IMAGE_REGISTRY:-my-registry}/nmp-api:${BAKE_TAG:-local}
+    # The local Docker jobs backend controls sibling workload containers through
+    # the mounted host socket, which Docker Desktop exposes as root-owned.
+    user: "0:0"
+    environment:
+      MODE: development
+      NMP_CONFIG_FILE_PATH: /etc/nmp/config.yaml
+      NMP_CONFIG_WARNINGS_DISABLED: "1"
+      NMP_AUTH_POLICY_DECISION_POINT_BASE_URL: http://127.0.0.1:8080
+      NMP_SEED_ON_STARTUP: "true"
+      NMP_PLATFORM_SEED_MODEL_PROVIDER_ENABLED: "false"
+      NMP_SECRETS_ALLOW_KEY_CREATION: "1"
+      NEMO_JOBS_DEFAULT_DOCKER_NETWORK: ${AUTHENTIK_WORKLOAD_NETWORK_NAME:-authentik_workload}
+      SSL_CERT_FILE: /etc/nmp/gateway-tls/tls.crt
+      REQUESTS_CA_BUNDLE: /etc/nmp/gateway-tls/tls.crt
+      AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD: ${AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD:-svc-nemo-token-secret-dev}
+    depends_on:
+      gateway-tls-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/live', timeout=5)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    volumes:
+      - ${NEMO_COMPOSE_CONFIG_PATH:-../config/platform-compose-authentik.yaml}:/etc/nmp/config.yaml:ro
+      - ../.generated/workload-token-private-key.pem:/var/run/secrets/nemo-platform/workload-token-signing/private-key.pem:ro
+      - gateway-tls:/etc/nmp/gateway-tls:ro
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - nemo-data:/data
+    networks:
+      nemo-internal: {}
+
+  gateway:
+    image: envoyproxy/envoy:v1.36.2@sha256:4972515dd9a069b44beb43cebba7851596e72a8c61cd7a7c33d8f48efc5280ba
+    command: ["envoy", "-c", "/etc/envoy/envoy.yaml"]
+    volumes:
+      - ../gateway/envoy.yaml:/etc/envoy/envoy.yaml:ro
+      - gateway-tls:/etc/envoy/tls:ro
+    ports:
+      - "${AUTHENTIK_GATEWAY_PORT:-18080}:8080"
+    depends_on:
+      gateway-tls-init:
+        condition: service_completed_successfully
+      authentik-blueprint-init:
+        condition: service_completed_successfully
+      nemo:
+        condition: service_healthy
+    networks:
+      nemo-internal:
+        aliases:
+          - nemo-gateway
+      workload:
+        aliases:
+          - nemo-gateway
+
+  gateway-tls-init:
+    image: docker.io/library/busybox:1.37.0@sha256:9532d8c39891ca2ecde4d30d7710e01fb739c87a8b9299685c63704296b16028
+    user: "0:0"
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        cp /source/tls/tls.crt /target/tls/tls.crt
+        cp /source/tls/tls.key /target/tls/tls.key
+        chown 101:101 /target/tls/tls.crt /target/tls/tls.key
+        chmod 644 /target/tls/tls.crt
+        chmod 600 /target/tls/tls.key
+    volumes:
+      - ${AUTHENTIK_GATEWAY_TLS_DIR:-../.generated/gateway-tls}:/source/tls:ro
+      - gateway-tls:/target/tls
+    networks:
+      - nemo-internal
+
+  authentik-postgres:
+    image: docker.io/library/postgres:16-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    environment:
+      POSTGRES_USER: ${PG_USER:-authentik}
+      POSTGRES_DB: ${PG_DB:-authentik}
+      POSTGRES_PASSWORD: ${PG_PASS:-authentik}
+    volumes:
+      - authentik-pgdata:/var/lib/postgresql/data
+    networks:
+      - nemo-internal
+
+  authentik-redis:
+    image: docker.io/library/redis:7-alpine
+    restart: unless-stopped
+    command: --save 60 1 --loglevel warning
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - authentik-redisdata:/data
+    networks:
+      - nemo-internal
+
+  authentik-server:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2024.12}
+    restart: unless-stopped
+    command: server
+    environment: *authentik-env
+    volumes:
+      - authentik-media:/media
+    depends_on:
+      authentik-postgres:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_healthy
+    networks:
+      - nemo-internal
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2024.12}
+    restart: unless-stopped
+    command: worker
+    environment: *authentik-env
+    volumes:
+      - authentik-media:/media
+    depends_on:
+      authentik-postgres:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_healthy
+    networks:
+      - nemo-internal
+
+  authentik-blueprint-init:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2024.12}
+    # Authentik health can be reported before default blueprints finish, while
+    # nemo.yaml depends on their built-in provider flows and scope mappings.
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        attempt=1
+        while [ "$$attempt" -le 30 ]; do
+          if ak apply_blueprint /blueprints/custom/nemo.yaml; then
+            exit 0
+          fi
+          if [ "$$attempt" -eq 30 ]; then
+            exit 1
+          fi
+          echo "Waiting for Authentik default blueprints before applying NeMo blueprint (attempt $$attempt/30)"
+          attempt=$$((attempt + 1))
+          sleep 2
+        done
+    environment: *authentik-env
+    volumes:
+      - ${AUTHENTIK_BLUEPRINT_DIR:-../helm/files/blueprints}:/blueprints/custom:ro
+      - authentik-media:/media
+    depends_on:
+      authentik-server:
+        condition: service_healthy
+      authentik-worker:
+        condition: service_healthy
+    networks:
+      - nemo-internal
+
+volumes:
+  nemo-data:
+  authentik-pgdata:
+  authentik-redisdata:
+  authentik-media:
+  gateway-tls:
+    name: ${AUTHENTIK_GATEWAY_TLS_VOLUME:-authentik_gateway_tls}
+
+networks:
+  nemo-internal: {}
+  workload:
+    name: ${AUTHENTIK_WORKLOAD_NETWORK_NAME:-authentik_workload}

@@ -78,12 +78,25 @@ from nmp.core.jobs.app.constants import (
 )
 from nmp.core.jobs.app.providers import ComputeResources, ContainerSpec
 from nmp.core.jobs.controllers.backends.base import (
+    NMP_JOB_LAUNCHER_LOGS_EXPORTER_ENVVAR,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS_ENVVAR,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL_ENVVAR,
+    WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
+    WORKLOAD_IDENTITY_TOKEN_FILE_PATH,
+    WORKLOAD_IDENTITY_VOLUME_NAME,
+    WORKLOAD_IDENTITY_VOLUME_PATH,
+    get_job_runtime_shared_envvars,
     get_logs_endpoint_from_fileset,
+    get_workload_identity_token_audience,
+    is_workload_identity_token_exchange_enabled,
     resolve_gpu_job_shm_size,
     resolve_task_image,
+    validate_no_reserved_managed_job_environment_variable_names,
 )
 from nmp.core.jobs.controllers.backends.exceptions import FailedToScheduleError, JobStorageError
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -606,8 +619,83 @@ def load_from_dict(data: dict, klass: str):
 # ``to_k8s()`` is available on nested volumes.
 
 
+class KubernetesKeyToPath(BaseModel):
+    """Kubernetes volume key-to-path mapping."""
+
+    key: str = Field(description="Source key to project from the volume source")
+    path: str = Field(description="Relative file path to write the key to")
+    mode: int | None = Field(default=None, description="Optional file mode for this key")
+
+    def to_k8s(self) -> client.V1KeyToPath:
+        """Convert to Kubernetes V1KeyToPath object."""
+        return client.V1KeyToPath(key=self.key, path=self.path, mode=self.mode)
+
+
+class KubernetesSecretVolume(BaseModel):
+    """Kubernetes Secret volume definition."""
+
+    secret_name: str = Field(description="Secret name to mount")
+    default_mode: int | None = Field(default=None, description="Optional default file mode")
+    optional: bool | None = Field(default=None, description="Whether the Secret is optional")
+    items: list[KubernetesKeyToPath] = Field(default_factory=list, description="Optional Secret keys to project")
+
+    def to_k8s(self) -> client.V1SecretVolumeSource:
+        """Convert to Kubernetes V1SecretVolumeSource object."""
+        return client.V1SecretVolumeSource(
+            secret_name=self.secret_name,
+            default_mode=self.default_mode,
+            optional=self.optional,
+            items=[item.to_k8s() for item in self.items] or None,
+        )
+
+
+class KubernetesConfigMapVolume(BaseModel):
+    """Kubernetes ConfigMap volume definition."""
+
+    name: str = Field(description="ConfigMap name to mount")
+    default_mode: int | None = Field(default=None, description="Optional default file mode")
+    optional: bool | None = Field(default=None, description="Whether the ConfigMap is optional")
+    items: list[KubernetesKeyToPath] = Field(default_factory=list, description="Optional ConfigMap keys to project")
+
+    def to_k8s(self) -> client.V1ConfigMapVolumeSource:
+        """Convert to Kubernetes V1ConfigMapVolumeSource object."""
+        return client.V1ConfigMapVolumeSource(
+            name=self.name,
+            default_mode=self.default_mode,
+            optional=self.optional,
+            items=[item.to_k8s() for item in self.items] or None,
+        )
+
+
 class KubernetesVolume(PluginKubernetesVolume):
-    """Kubernetes Volume definition."""
+    """Kubernetes Volume definition with secret and config_map support."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "oneOf": [
+                {
+                    "required": ["persistent_volume_claim"],
+                    "properties": {"persistent_volume_claim": {"not": {"type": "null"}}},
+                },
+                {"required": ["empty_dir"], "properties": {"empty_dir": {"not": {"type": "null"}}}},
+                {"required": ["secret"], "properties": {"secret": {"not": {"type": "null"}}}},
+                {"required": ["config_map"], "properties": {"config_map": {"not": {"type": "null"}}}},
+            ]
+        }
+    )
+
+    secret: KubernetesSecretVolume | None = Field(default=None, description="Secret Volume configuration")
+    config_map: KubernetesConfigMapVolume | None = Field(default=None, description="ConfigMap Volume configuration")
+
+    @model_validator(mode="after")
+    def validate_self(self):
+        """Ensure that exactly one volume source is specified."""
+        sources = [self.persistent_volume_claim, self.empty_dir, self.secret, self.config_map]
+        if sum(source is not None for source in sources) != 1:
+            raise ValueError(
+                "Exactly one of 'persistent_volume_claim', 'empty_dir', 'secret', or 'config_map' must be specified."
+            )
+        return self
 
     def to_k8s(self) -> client.V1Volume:
         """Convert to Kubernetes V1Volume object."""
@@ -622,6 +710,10 @@ class KubernetesVolume(PluginKubernetesVolume):
                 medium=self.empty_dir.medium,
                 size_limit=self.empty_dir.size_limit,
             )
+        if self.secret:
+            volume.secret = self.secret.to_k8s()
+        if self.config_map:
+            volume.config_map = self.config_map.to_k8s()
         return volume
 
 
@@ -651,6 +743,17 @@ class KubernetesJobStorageConfig(PluginKubernetesJobStorageConfig):
 class BaseKubernetesExecutionProfileConfig(PluginBaseKubernetesExecutionProfileConfig):
     """Kubernetes execution config whose storage carries ``to_k8s()`` (server-side)."""
 
+    workload_identity_token_expiration_seconds: int = Field(
+        default=600,
+        ge=600,
+        description="Requested expirationSeconds for the projected service account token used as the workload identity subject token.",
+    )
+    workload_identity_token_audience: str | None = Field(
+        default=None,
+        description="Audience for the projected service account token. Defaults to auth.oidc.workload_client_id, auth.oidc.client_id, then 'nemo-platform'.",
+    )
+
+    # Storage configurations for the job (re-typed to server subclass with to_k8s())
     storage: KubernetesJobStorageConfig = Field(
         default_factory=KubernetesJobStorageConfig, description="Storage configuration for the Kubernetes job pods."
     )
@@ -879,9 +982,15 @@ def create_pod_template_spec(
     """
 
     platform_config = get_platform_config()
+    workload_identity_enabled = is_workload_identity_token_exchange_enabled()
+    workload_identity_token_audience = config.workload_identity_token_audience or get_workload_identity_token_audience()
 
     # Profile-level env vars first (e.g. HOME=/tmp); system, step, and shared env override these
     env = [client.V1EnvVar(name=name, value=value) for name, value in config.env.items()]
+    validate_no_reserved_managed_job_environment_variable_names(
+        (envvar.name for envvar in step.step_spec.environment or []),
+        source="Job step environment keys",
+    )
     env.extend(
         [
             client.V1EnvVar(name=NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR, value=DEFAULT_NEMO_JOB_STEP_CONFIG_FILE_PATH),
@@ -896,18 +1005,20 @@ def create_pod_template_spec(
             ),
             client.V1EnvVar(name=EPHEMERAL_TASK_STORAGE_PATH_ENVVAR, value=DEFAULT_TASK_STORAGE_PATH),
             client.V1EnvVar(
-                name="OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
+                name=NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR,
                 value=get_logs_endpoint_from_fileset(
                     platform_config,
                     step.workspace,
                     step.fileset,
                 ),
             ),
-            client.V1EnvVar(name="OTEL_LOGS_EXPORTER", value="otlp"),
-            client.V1EnvVar(name="OTEL_SERVICE_NAME", value="nmp-job-task"),
+            client.V1EnvVar(name=NMP_JOB_LAUNCHER_LOGS_EXPORTER_ENVVAR, value="otlp"),
+            client.V1EnvVar(name=NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL_ENVVAR, value=NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL),
             client.V1EnvVar(name=NEMO_JOB_SECRETS_ENVVAR, value=secret_env_var_str),
         ]
     )
+    if workload_identity_enabled:
+        env.append(client.V1EnvVar(name=WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, value=WORKLOAD_IDENTITY_TOKEN_FILE_PATH))
 
     # Set auth context env var for job containers to make authenticated API calls
     if step.auth_context:
@@ -917,11 +1028,13 @@ def create_pod_template_spec(
         env_var_dict = principal.get_env_var()
         for name, value in env_var_dict.items():
             env.append(client.V1EnvVar(name=name, value=value))
-        # Also set OTLP headers for telemetry (logs) to be authenticated
-        env.append(client.V1EnvVar(name="OTEL_EXPORTER_OTLP_LOGS_HEADERS", value=principal.get_otlp_headers_value()))
+        # Also set launcher OTLP headers for authenticated platform log export.
+        env.append(
+            client.V1EnvVar(name=NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS_ENVVAR, value=principal.get_otlp_headers_value())
+        )
 
     # Thread through shared platform envvars to the job
-    shared_envvars = platform_config.to_shared_envvars()
+    shared_envvars = get_job_runtime_shared_envvars(platform_config)
     env.extend([client.V1EnvVar(name=name, value=value) for name, value in shared_envvars.items()])
 
     job_storage_mount = ""
@@ -949,6 +1062,14 @@ def create_pod_template_spec(
             mount_path=DEFAULT_CONFIG_STORAGE_PATH,
         ),
     ]
+    if workload_identity_enabled:
+        volume_mounts.append(
+            client.V1VolumeMount(
+                name=WORKLOAD_IDENTITY_VOLUME_NAME,
+                mount_path=WORKLOAD_IDENTITY_VOLUME_PATH,
+                read_only=True,
+            )
+        )
     storage_config = config.storage
 
     # Persistent job storage (PVC mount) is only provisioned when the step
@@ -973,6 +1094,23 @@ def create_pod_template_spec(
         client.V1Volume(name=LAUNCHER_VOLUME_NAME, empty_dir=client.V1EmptyDirVolumeSource()),
         client.V1Volume(name=STEP_CONFIG_VOLUME_NAME, config_map=client.V1ConfigMapVolumeSource(name=configmap_name)),
     ]
+    if workload_identity_enabled:
+        volumes.append(
+            client.V1Volume(
+                name=WORKLOAD_IDENTITY_VOLUME_NAME,
+                projected=client.V1ProjectedVolumeSource(
+                    sources=[
+                        client.V1VolumeProjection(
+                            service_account_token=client.V1ServiceAccountTokenProjection(
+                                path="token",
+                                expiration_seconds=config.workload_identity_token_expiration_seconds,
+                                audience=workload_identity_token_audience,
+                            )
+                        )
+                    ]
+                ),
+            )
+        )
     if storage_config.additional_volumes:
         volumes.extend(vol.to_k8s() for vol in storage_config.additional_volumes)
 

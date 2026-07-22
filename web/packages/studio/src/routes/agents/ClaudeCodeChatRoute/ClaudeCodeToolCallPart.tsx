@@ -117,6 +117,7 @@ const CollapsedStudioDetailsToolCall = ({ args }: { readonly args: ClaudeCodeToo
       ? CLAUDE_CODE_WORK_DETAILS_LABEL
       : storedLabel;
   const parts = getCollapsedStudioDetailsParts(args);
+  const contextLabel = label === CLAUDE_CODE_WORK_DETAILS_LABEL ? undefined : label;
   if (!parts.length) return null;
 
   return (
@@ -131,7 +132,10 @@ const CollapsedStudioDetailsToolCall = ({ args }: { readonly args: ClaudeCodeToo
             className="size-3 shrink-0 transition-transform group-open/studio-details:rotate-90"
           />
           <ClipboardList aria-hidden className="size-3.5 shrink-0" />
-          <span>{label}</span>
+          <span>
+            <span className="font-medium text-primary">View work</span>
+            {contextLabel ? ` · ${contextLabel}` : null}
+          </span>
         </summary>
         <div
           className="mt-density-xs space-y-density-xs border-l border-base pl-density-md text-secondary"

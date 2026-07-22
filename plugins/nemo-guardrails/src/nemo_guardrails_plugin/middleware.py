@@ -50,6 +50,7 @@ from nemo_guardrails_plugin.responses import (
     build_immediate_response,
     build_inference_response,
     build_output_response_body,
+    extract_upstream_error,
     is_blocked_generation_response,
 )
 from nemo_guardrails_plugin.schemas import GuardrailsRequest
@@ -671,6 +672,14 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
             # 503 here would clobber it.
             raise
         except Exception as exc:
+            # Rail-task LLM calls (e.g. a vision-safety judge) can fail with
+            # a real upstream status code (bad request shape, unsupported
+            # parameter, provider outage, etc.) that nemoguardrails otherwise
+            # buries inside a generic exception. Recover and propagate it
+            # verbatim so callers see the actual upstream status instead of
+            # our own middleware's fallback.
+            if upstream_error := extract_upstream_error(exc):
+                raise upstream_error from exc
             # ``ValueError`` from below the lease boundary is a library bug,
             # not caller-shape (caller-shape ValueErrors are caught and
             # converted to 400 in ``_prepare_lease_with_503`` before we

@@ -79,12 +79,12 @@ variable "BASE_TAG_PYTHON" {
 
 # Pin for nmp-automodel-base.
 variable "BASE_TAG_AUTOMODEL" {
-  default = "f0756dd64eaf2ddb9c5c962e18216b2e70ba4b64"
+  default = "2c1a9ef2535a6648a272d9b74dae97fb672b8234"
 }
 
 # The tag for base images if needed
 variable "WHEELS_TAG" {
-  default = "f0756dd64eaf2ddb9c5c962e18216b2e70ba4b64"
+  default = "2c1a9ef2535a6648a272d9b74dae97fb672b8234"
 }
 
 variable "BAKE_CACHE_SOURCE_BRANCH" {
@@ -412,8 +412,9 @@ target "nmp-rl-training" {
   context    = "."
   dockerfile = "docker/Dockerfile.nmp-rl-training"
   contexts = {
-    platform-workspace = "target:rl-platform-workspace"
-    nmp-rl-base        = "target:nmp-rl-base-builder"
+    platform-workspace     = "target:rl-platform-workspace"
+    nmp-rl-base            = "target:nmp-rl-base-builder"
+    ffmpeg-vlm-wheel-image = ffmpeg_vlm_wheel_context()
   }
   cache-to   = maybe_registry_cache_to("nmp-rl-training")
   cache-from = maybe_registry_cache_from("nmp-rl-training")

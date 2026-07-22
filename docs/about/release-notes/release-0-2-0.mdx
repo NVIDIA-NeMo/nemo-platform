@@ -1,0 +1,135 @@
+---
+title: "v0.2.0 - 2026-06-25"
+description: ""
+---
+NeMo Platform v0.2.0 expands the local-first OSS distribution with plugin
+workflows for fine-tuning, synthetic data generation, and model auditing. It
+also improves Docker-backed local workflows, SDK resources, and NAT-based agent
+container tooling.
+
+## Highlights
+
+- **Fine-tuning.** Customizer is available through the plugin architecture,
+  with Docker-backed Unsloth jobs, NeMo Automodel configuration support, vLLM
+  adapter support, and updated tutorials.
+- **Local model serving.** vLLM deployment in Docker supports local
+  model-serving workflows for OSS development and testing.
+- **Synthetic data generation.** Safe Synthesizer is available as a local
+  plugin for privacy-preserving synthetic data generation workflows.
+- **Model auditing.** Auditor adds local garak-backed audit configuration,
+  target management, SDK resources, and documentation.
+- **Agent containers.** `nemo agents` includes commands for rendering,
+  building, and publishing agent containers.
+- **Plugin platform.** Platform capabilities can ship as plugins while still
+  using platform APIs, SDK resources, local services, and workspace scoping.
+
+## What's included
+
+### Platform and Plugins
+
+- Plugin packaging for platform capabilities distributed outside the core
+  package.
+- Docker support for source-install local platform workflows.
+- SDK and API support for plugin-provided resources.
+- Source-install auth and OIDC bootstrap guidance for users who enable RBAC
+  locally.
+
+### Fine-tune Models
+
+- Customizer migration to the plugin architecture.
+- Docker-backed Unsloth SFT jobs.
+- NeMo Automodel and Unsloth backend support for fine-tuning workflows.
+- vLLM adapter support for serving trained adapters.
+- Updated Customizer documentation and examples.
+
+### Models and Inference
+
+- vLLM deployment in Docker for local model-serving workflows.
+- Local model-deployment documentation for the OSS quickstart and SDK usage.
+- Continued Inference Gateway support for provider registration, virtual
+  models, and OpenAI-compatible routing.
+
+### Agents
+
+- `nemo agents` container subcommands for rendering, building, and publishing
+  agent containers.
+- Continued NAT-based agent workflow support from the 0.1 line.
+
+### Safe Synthesizer
+
+- Safe Synthesizer packaged as a platform plugin.
+- Local execution support for Safe Synthesizer workflows.
+- Documentation and tutorials for data synthesis, PII replacement,
+  evaluation, jobs, host-local development, and differential privacy.
+
+### Auditor
+
+- Auditor plugin APIs for audit configs and targets.
+- Local garak-backed auditing workflows.
+- SDK resources and documentation for configuring audits and reviewing
+  results.
+
+## Install
+
+For a fresh local checkout:
+
+```bash
+git clone https://github.com/NVIDIA-NeMo/nemo-platform.git
+cd nemo-platform
+make bootstrap
+source .venv/bin/activate
+nemo setup
+```
+
+See [Setup](/documentation/get-started) for prerequisites and provider
+configuration.
+
+## Upgrade from v0.1.x
+
+From an existing local checkout:
+
+```bash
+git fetch --tags
+git checkout v0.2.0
+make bootstrap
+source .venv/bin/activate
+nemo setup
+```
+
+If the `v0.2.0` tag is not available from GitHub yet, use the fresh checkout
+flow above and return to the release tag after it is published.
+
+After setup, restart local services before using CLI, SDK, Studio, or plugin
+workflows against the upgraded checkout.
+
+## Compatibility
+
+- Python 3.11-3.14
+- macOS and Linux for the OSS local install path
+- Docker for Docker-backed platform, job, and vLLM model-serving workflows
+- NVIDIA GPU access for local training, model serving, and GPU-backed
+  synthetic data workflows
+- Node 22.18.0+ for Studio assets
+- Platform API `0.2.0` and `nemo-platform` Python SDK `0.2.0`
+
+## Current constraints
+
+- **Local-first OSS scope.** v0.2.0 improves local Docker-backed workflows. It
+  is not a managed cluster or scale-out enterprise release.
+- **Docker model serving.** v0.2.0 includes vLLM deployment in Docker. Docker
+  deployment for NIM is not included in this release.
+- **Customizer Docker support.** Docker-backed Customizer jobs target GPU
+  Linux environments. ARM64 images and NeMo Automodel Docker execution are not
+  part of this release.
+- **Auth and RBAC.** Source-install auth and OIDC setups require the bootstrap
+  IAM seed step described in [Setup](/documentation/get-started). Validate
+  role bindings for your deployment mode before relying on them for multi-user
+  access control.
+- **Skill Evaluation.** Skill Evaluation workflows are not included in
+  v0.2.0.
+
+## Links
+
+- Repository: [https://github.com/NVIDIA-NeMo/nemo-platform](https://github.com/NVIDIA-NeMo/nemo-platform)
+- Issues: [https://github.com/NVIDIA-NeMo/nemo-platform/issues](https://github.com/NVIDIA-NeMo/nemo-platform/issues)
+- NeMo Agent Toolkit: [https://docs.nvidia.com/nemo/agent-toolkit/latest/](https://docs.nvidia.com/nemo/agent-toolkit/latest/)

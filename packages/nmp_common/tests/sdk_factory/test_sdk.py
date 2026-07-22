@@ -2,26 +2,30 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+import logging
 from unittest.mock import patch
 
 import httpx
 import pytest
 from nmp.common.config import Configuration, PlatformConfig
 from nmp.common.sdk_factory import (
+    PlatformRequestRouter,
     get_async_platform_sdk,
     get_entity_parts,
     get_platform_sdk,
     get_request_scoped_sdk,
+    get_sdk_on_behalf_of,
     get_task_sdk,
+    resolve_platform_request_url,
 )
 
 
 @pytest.fixture(autouse=True)
 def _clear_sdk_factory_test_client():
-    """Clear _test_http_client before each test so config-based SDK behavior is asserted.
+    """Clear SDK factory state before each test so config-based SDK behavior is asserted.
 
     When _test_http_client is set (e.g. by another test's create_test_client), the SDK
-    is created with base_url='http://testserver' and no URL router, which breaks tests
+    is created with base_url='http://testserver' and no request router, which breaks tests
     that assert on base_url or service routing. Clearing it keeps tests order-independent
     and ensures sdk_factory tests always exercise the config path.
     """
@@ -29,10 +33,12 @@ def _clear_sdk_factory_test_client():
 
     old = sdk_factory_module._test_http_client
     sdk_factory_module._test_http_client = None
+    Configuration.clear_cache()
     try:
         yield
     finally:
         sdk_factory_module._test_http_client = old
+        Configuration.clear_cache()
 
 
 def test_get_platform_sdk():
@@ -44,6 +50,82 @@ def test_get_platform_sdk():
     assert sdk is not None, "SDK instance should not be None"
     assert hasattr(sdk, "base_url"), "SDK instance should have a base_url attribute"
     assert sdk.base_url == Configuration.get_platform_config().base_url
+
+
+def test_get_platform_sdk_keeps_platform_base_url_for_local_services(monkeypatch: pytest.MonkeyPatch):
+    """The SDK base URL remains the platform entrypoint; per-service routing handles local APIs."""
+    monkeypatch.setenv("NMP_BASE_URL", "https://nemo-gateway:8080")
+    monkeypatch.setenv("NMP_SERVICES", "auth")
+    monkeypatch.setenv("NMP_SERVICE_HOST", "127.0.0.1")
+    monkeypatch.setenv("NMP_SERVICE_PORT", "8080")
+    Configuration.clear_cache()
+
+    sdk = get_platform_sdk()
+
+    assert str(sdk.base_url).rstrip("/") == "https://nemo-gateway:8080"
+
+
+def test_get_platform_sdk_preserves_api_base_url_for_controller_only_pods(monkeypatch: pytest.MonkeyPatch):
+    """Controller-only pods must call the API service, not their own health listener."""
+    captured_requests: list[httpx.Request] = []
+
+    def capture_request(request: httpx.Request) -> httpx.Response:
+        captured_requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "data": [],
+                "pagination": {
+                    "current_page_size": 0,
+                    "page": 1,
+                    "page_size": 0,
+                    "total_pages": 1,
+                    "total_results": 0,
+                },
+            },
+        )
+
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    monkeypatch.setenv("NMP_CONTROLLERS", "jobs")
+    monkeypatch.delenv("NMP_SERVICES", raising=False)
+    monkeypatch.setenv("NMP_SERVICE_HOST", "127.0.0.1")
+    monkeypatch.setenv("NMP_SERVICE_PORT", "8080")
+    Configuration.clear_cache()
+
+    with httpx.Client(transport=httpx.MockTransport(capture_request)) as http_client:
+        sdk = get_platform_sdk(http_client=http_client)
+
+        assert str(sdk.base_url).rstrip("/") == "http://nemo-platform-api:8080"
+        sdk.jobs.list(workspace="default")
+
+    assert len(captured_requests) == 1
+    assert str(captured_requests[0].url) == "http://nemo-platform-api:8080/apis/jobs/v2/workspaces/default/jobs"
+
+
+def test_get_platform_sdk_routes_local_service_path_to_process_listener(monkeypatch: pytest.MonkeyPatch):
+    """Requests for APIs hosted in this process bypass the platform entrypoint."""
+    monkeypatch.setenv("NMP_BASE_URL", "https://nemo-gateway:8080")
+    monkeypatch.setenv("NMP_SERVICES", "auth")
+    monkeypatch.setenv("NMP_SERVICE_HOST", "127.0.0.1")
+    monkeypatch.setenv("NMP_SERVICE_PORT", "8080")
+    Configuration.clear_cache()
+
+    sdk = get_platform_sdk()
+    prepared = sdk._prepare_url("https://nemo-gateway:8080/apis/auth/v2/authz/allow")
+
+    assert prepared.scheme == "http"
+    assert prepared.host == "127.0.0.1"
+    assert prepared.port == 8080
+    assert prepared.path == "/apis/auth/v2/authz/allow"
+
+
+def test_get_platform_sdk_uses_uds_endpoint_from_base_url():
+    config = PlatformConfig(base_url="unix:///tmp/nemo-platform.sock")  # type: ignore[abstract]
+
+    with patch("nmp.common.sdk_factory.Configuration.get_platform_config", return_value=config):
+        sdk = get_platform_sdk()
+
+    assert sdk.base_url == "http://nemo-platform.local"
 
 
 def test_get_platform_sdk_with_service_principal():
@@ -84,6 +166,15 @@ def test_get_async_platform_sdk():
     # Normalize to str: SDK may expose URL object, config may be str; both environments
     expected = Configuration.get_platform_config().base_url
     assert str(sdk.base_url).rstrip("/") == str(expected).rstrip("/")
+
+
+def test_get_async_platform_sdk_uses_uds_endpoint_from_base_url():
+    config = PlatformConfig(base_url="unix:///tmp/nemo-platform.sock")  # type: ignore[abstract]
+
+    with patch("nmp.common.sdk_factory.Configuration.get_platform_config", return_value=config):
+        sdk = get_async_platform_sdk()
+
+    assert str(sdk.base_url).rstrip("/") == "http://nemo-platform.local"
 
 
 def test_get_async_platform_sdk_with_service_principal():
@@ -192,6 +283,56 @@ def test_get_request_scoped_sdk_merges_otel_and_auth_headers():
     assert scoped_sdk.default_headers["X-NMP-Principal-Id"] == "user@example.com"
     assert "X-NMP-Principal-Groups" in scoped_sdk.default_headers
     assert scoped_sdk.default_headers["X-NMP-Principal-Groups"] == "group1,group2"
+
+
+def test_get_request_scoped_sdk_preserves_request_router(monkeypatch: pytest.MonkeyPatch):
+    """Derived request SDKs must keep the base SDK's path-aware platform request router."""
+    monkeypatch.setenv("NMP_BASE_URL", "https://nemo-gateway:8080")
+    monkeypatch.setenv("NMP_SERVICES", "entities")
+    monkeypatch.setenv("NMP_SERVICE_HOST", "127.0.0.1")
+    monkeypatch.setenv("NMP_SERVICE_PORT", "8080")
+    Configuration.clear_cache()
+
+    try:
+        base_sdk = get_async_platform_sdk()
+
+        with patch("nmp.common.sdk_factory.get_otel_headers", return_value={}):
+            with patch(
+                "nmp.common.sdk_factory.get_principal_auth_headers",
+                return_value={"X-NMP-Principal-Id": "service:models"},
+            ):
+                scoped_sdk = get_request_scoped_sdk(base_sdk)
+
+        prepared = scoped_sdk._prepare_url("https://nemo-gateway:8080/apis/entities/v2/workspaces")
+
+        assert prepared.scheme == "http"
+        assert prepared.host == "127.0.0.1"
+        assert prepared.port == 8080
+        assert prepared.path == "/apis/entities/v2/workspaces"
+    finally:
+        Configuration.clear_cache()
+
+
+def test_get_sdk_on_behalf_of_preserves_request_router(monkeypatch: pytest.MonkeyPatch):
+    """SDKs derived with on-behalf-of headers must still keep platform request routing."""
+    monkeypatch.setenv("NMP_BASE_URL", "https://nemo-gateway:8080")
+    monkeypatch.setenv("NMP_SERVICES", "entities")
+    monkeypatch.setenv("NMP_SERVICE_HOST", "127.0.0.1")
+    monkeypatch.setenv("NMP_SERVICE_PORT", "8080")
+    Configuration.clear_cache()
+
+    try:
+        base_sdk = get_async_platform_sdk(as_service="models", internal=True)
+        scoped_sdk = get_sdk_on_behalf_of(base_sdk, "user@example.com")
+
+        prepared = scoped_sdk._prepare_url("https://nemo-gateway:8080/apis/entities/v2/workspaces")
+
+        assert prepared.scheme == "http"
+        assert prepared.host == "127.0.0.1"
+        assert prepared.port == 8080
+        assert prepared.path == "/apis/entities/v2/workspaces"
+    finally:
+        Configuration.clear_cache()
 
 
 def test_get_request_scoped_sdk_returns_base_sdk_when_no_headers():
@@ -373,6 +514,82 @@ def platform_config_with_service_discovery():
     )
 
 
+def test_resolve_platform_request_url_routes_api_path_to_service_url(platform_config_with_service_discovery):
+    """The named request router policy owns per-service routing."""
+
+    def default_resolver(url: str) -> httpx.URL:
+        if url.startswith("/"):
+            return httpx.URL(f"http://platform:8080{url}")
+        return httpx.URL(url)
+
+    prepared = resolve_platform_request_url(
+        "/apis/entities/v2/workspaces?limit=10",
+        platform_config=platform_config_with_service_discovery,
+        default_resolver=default_resolver,
+    )
+
+    assert prepared.scheme == "http"
+    assert prepared.host == "entities-service"
+    assert prepared.port == 8080
+    assert prepared.path == "/apis/entities/v2/workspaces"
+    assert prepared.query == b"limit=10"
+
+
+def test_resolve_platform_request_url_logs_path_without_raw_url(
+    caplog: pytest.LogCaptureFixture,
+    platform_config_with_service_discovery,
+):
+    """Routing logs expose the resolved path without query parameters."""
+
+    def default_resolver(url: str) -> httpx.URL:
+        if url.startswith("/"):
+            return httpx.URL(f"http://platform:8080{url}")
+        return httpx.URL(url)
+
+    caplog.set_level(logging.DEBUG, logger="nmp.common.sdk_factory")
+
+    resolve_platform_request_url(
+        "/health/ready?token=secret",
+        platform_config=platform_config_with_service_discovery,
+        default_resolver=default_resolver,
+    )
+    resolve_platform_request_url(
+        "/apis/entities/v2/workspaces?token=secret",
+        platform_config=platform_config_with_service_discovery,
+        default_resolver=default_resolver,
+    )
+
+    original_record = next(record for record in caplog.records if record.message == "Routing URL to original URL")
+    service_record = next(record for record in caplog.records if record.message == "Routing URL to service URL")
+
+    assert not hasattr(original_record, "url")
+    assert original_record.service == "unknown"
+    assert original_record.path == "/health/ready"
+    assert original_record.host == "platform"
+    assert original_record.port == 8080
+
+    assert not hasattr(service_record, "url")
+    assert service_record.service == "entities"
+    assert service_record.path == "/apis/entities/v2/workspaces"
+    assert service_record.host == "entities-service"
+    assert service_record.port == 8080
+
+    for record in (original_record, service_record):
+        assert "token=secret" not in str(record.__dict__)
+
+
+def test_platform_request_router_uses_default_resolver_for_non_api_paths(platform_config_with_service_discovery):
+    """Non-API paths follow the SDK's normal URL preparation."""
+    router = PlatformRequestRouter(
+        platform_config=platform_config_with_service_discovery,
+        default_resolver=lambda url: httpx.URL(f"http://platform:8080{url}"),
+    )
+
+    prepared = router.resolve("/health/ready")
+
+    assert str(prepared) == "http://platform:8080/health/ready"
+
+
 def test_get_platform_sdk_routes_entities_path_to_entities_service(
     platform_config_with_service_discovery,
 ):
@@ -382,7 +599,6 @@ def test_get_platform_sdk_routes_entities_path_to_entities_service(
         return_value=platform_config_with_service_discovery,
     ):
         sdk = get_platform_sdk()
-        # Router calls get_platform_config when _prepare_url runs; keep patch active
         request_url = "http://platform:8080/apis/entities/v2/workspaces"
         prepared = sdk._prepare_url(request_url)
 
@@ -390,6 +606,24 @@ def test_get_platform_sdk_routes_entities_path_to_entities_service(
     assert prepared.port == 8080
     assert prepared.scheme == "http"
     assert "/apis/entities/v2/workspaces" in str(prepared.path)
+
+
+def test_get_platform_sdk_routes_service_path_to_env_override(
+    monkeypatch: pytest.MonkeyPatch,
+    platform_config_with_service_discovery,
+):
+    monkeypatch.setenv("NMP_ENTITIES_URL", "http://entities-env:9090")
+    with patch(
+        "nmp.common.sdk_factory.Configuration.get_platform_config",
+        return_value=platform_config_with_service_discovery,
+    ):
+        sdk = get_platform_sdk()
+        request_url = "http://platform:8080/apis/entities/v2/workspaces"
+        prepared = sdk._prepare_url(request_url)
+
+    assert prepared.host == "entities-env"
+    assert prepared.port == 9090
+    assert prepared.scheme == "http"
 
 
 def test_get_platform_sdk_routes_jobs_path_to_jobs_service(
