@@ -16,6 +16,7 @@ from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import (
     AgentSkill,
     SkillInjectionError,
     install_skill,
+    install_skills,
     native_skills_route,
     resolve_skill_mode,
 )
@@ -265,3 +266,49 @@ def test_hash_is_content_sensitive(tmp_path: Path) -> None:
         skill_stage_dir=tmp_path / "sb",
     )
     assert a.provenance["hash"] != b.provenance["hash"]
+
+
+def test_install_skills_rolls_back_staged_bundles_on_failure(tmp_path: Path) -> None:
+    # All-or-nothing: a later skill failing to stage rolls back the bundles already staged in this call,
+    # so a partial skill set never lingers on disk.
+    good = AgentSkill.from_directory(_make_bundle(tmp_path / "src", name="good"))
+    (tmp_path / "missing").mkdir()
+    bad = AgentSkill(name="bad", directory=tmp_path / "missing")  # no SKILL.md -> stages fail
+    stage_dir = tmp_path / "stage"
+
+    with pytest.raises(SkillInjectionError):
+        install_skills(
+            skills=[good, bad],
+            adapter_id="nvidia.fabric.hermes.sdk",
+            mode=SKILL_MODE_NATIVE,
+            workspace_dir=tmp_path / "ws",
+            skill_stage_dir=stage_dir,
+        )
+
+    # The first skill was staged, then rolled back when the second failed.
+    assert not (stage_dir / "good").exists()
+
+
+def test_install_skills_rollback_never_deletes_preexisting_seed_file(tmp_path: Path) -> None:
+    # Codex reserved-path collision: the second skill's target already holds a task-seeded file. Rollback
+    # must remove only the bundle THIS call staged (the first skill), never the pre-existing seed file.
+    good = AgentSkill.from_directory(_make_bundle(tmp_path / "src", name="good"))
+    collide = AgentSkill.from_directory(_make_bundle(tmp_path / "src2", name="collide"))
+    workspace = tmp_path / "ws"
+    seeded = workspace / CODEX_SKILLS_DIR / "collide"  # a task-seeded file on the reserved codex path
+    seeded.mkdir(parents=True)
+    (seeded / "seed.txt").write_text("task data", encoding="utf-8")
+
+    with pytest.raises(SkillInjectionError):
+        install_skills(
+            skills=[good, collide],
+            adapter_id="nvidia.fabric.codex.cli",
+            mode=SKILL_MODE_CODEX_SKILLS_DIR,
+            workspace_dir=workspace,
+            skill_stage_dir=tmp_path / "stage",
+        )
+
+    # The staged first bundle is rolled back...
+    assert not (workspace / CODEX_SKILLS_DIR / "good").exists()
+    # ...but the pre-existing task-seeded file is untouched.
+    assert (seeded / "seed.txt").read_text(encoding="utf-8") == "task data"
