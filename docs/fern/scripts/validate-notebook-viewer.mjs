@@ -3,13 +3,15 @@
  * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
- * Ensure every NotebookViewer registration has generated notebook data on disk
- * and that the generated JSON and TypeScript artifacts still match their source
- * notebooks.
+ * Ensure every NotebookViewer import is registered, every registration has
+ * generated notebook data on disk, and that the generated JSON and TypeScript
+ * artifacts still match their source notebooks.
  *
  * NotebookViewer.tsx imports `./notebooks/<name>` modules produced by
- * `ipynb-to-fern-json.py`. A missing `.ts` / `.json` pair breaks publication
- * even when the MDX wrapper and registry entry exist.
+ * `ipynb-to-fern-json.py` and looks them up by name in `const notebooks`.
+ * An import missing from that registry cannot be resolved by
+ * `<NotebookViewer name="…" />`. A missing `.ts` / `.json` pair breaks
+ * publication even when the MDX wrapper and registry entry exist.
  *
  * Run from the fern/ directory: `node scripts/validate-notebook-viewer.mjs`.
  */
@@ -65,7 +67,26 @@ if (!registryBlock) {
 }
 
 const registered = [...registryBlock.matchAll(REGISTRY_RE)].map((m) => m[1]);
-const names = [...new Set([...imported, ...registered])].sort();
+const registeredSet = new Set(registered);
+const unregisteredImports = [...new Set(imported)]
+  .filter((name) => !registeredSet.has(name))
+  .sort();
+
+if (unregisteredImports.length > 0) {
+  for (const name of unregisteredImports) {
+    console.error(
+      `imported ./notebooks/${name} but missing from NotebookViewer notebooks registry`,
+    );
+  }
+  console.error(
+    `\nvalidate-notebook-viewer: ${unregisteredImports.length} imported notebook(s) are not registered. ` +
+      `Add each name to the const notebooks map in NotebookViewer.tsx.`,
+  );
+  process.exit(1);
+}
+
+// Only registered notebooks are resolvable via <NotebookViewer name="…" />.
+const names = [...registeredSet].sort();
 
 let failed = 0;
 for (const name of names) {
