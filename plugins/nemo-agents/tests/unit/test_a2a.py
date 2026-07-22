@@ -176,9 +176,13 @@ async def test_send_message_jsonrpc_error_raises() -> None:
 @pytest.mark.asyncio
 @respx.mock
 async def test_send_message_transport_error_raises() -> None:
-    respx.post("http://host:10000/").mock(side_effect=httpx.ConnectError("refused"))
-    with pytest.raises(A2AMessageError, match="could not reach"):
-        await send_a2a_message("http://host:10000/", "hi")
+    endpoint = "http://user:s3cret@host:10000/"
+    respx.post(endpoint).mock(side_effect=httpx.ConnectError("refused"))
+    with pytest.raises(A2AMessageError, match="could not reach") as excinfo:
+        await send_a2a_message(endpoint, "hi")
+    # The endpoint may carry embedded credentials; it must not leak into the error.
+    assert "s3cret" not in str(excinfo.value)
+    assert "host:10000" not in str(excinfo.value)
 
 
 class TestExtractStreamDelta:
@@ -220,6 +224,17 @@ async def test_stream_jsonrpc_error_raises() -> None:
     )
     with pytest.raises(A2AMessageError, match="kaboom"):
         _ = [d async for d in stream_a2a_message("http://host:10000/", "hi")]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_stream_transport_error_does_not_leak_endpoint() -> None:
+    endpoint = "http://user:s3cret@host:10000/"
+    respx.post(endpoint).mock(side_effect=httpx.ConnectError("refused"))
+    with pytest.raises(A2AMessageError, match="could not reach") as excinfo:
+        _ = [d async for d in stream_a2a_message(endpoint, "hi")]
+    assert "s3cret" not in str(excinfo.value)
+    assert "host:10000" not in str(excinfo.value)
 
 
 @pytest.mark.asyncio

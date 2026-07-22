@@ -267,7 +267,7 @@ async def send_a2a_message(endpoint: str, text: str) -> str:
                     raise A2AMessageError(f"agent returned HTTP {resp.status_code}")
                 raw = await _read_capped(resp, _MAX_MESSAGE_BYTES)
     except httpx.HTTPError as exc:
-        raise A2AMessageError(f"could not reach agent at {endpoint} ({exc.__class__.__name__})") from exc
+        raise A2AMessageError(f"could not reach agent ({exc.__class__.__name__})") from exc
 
     try:
         data = json.loads(raw)
@@ -356,4 +356,4 @@ async def stream_a2a_message(endpoint: str, text: str) -> AsyncIterator[str]:
                         if delta:
                             yield delta
     except httpx.HTTPError as exc:
-        raise A2AMessageError(f"could not reach agent at {endpoint} ({exc.__class__.__name__})") from exc
+        raise A2AMessageError(f"could not reach agent ({exc.__class__.__name__})") from exc
