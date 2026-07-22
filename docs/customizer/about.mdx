@@ -236,24 +236,30 @@ TP can be configured via `parallelism.tensor_parallel_size` in the [training con
 As of release 25.10.0, AutoModel engines including Phi-4, Qwen, and Gemma support tensor parallelism greater than 1 through the multi-GPU LoRA patch. Previous releases only supported `TP=1` for these models.
 
 </Note>
+
+#### Tensor Parallelism Configuration
+
+**Constraints**
+
+- TP must be less than or equal to the total number of GPUs available.
+- TP should divide the total GPU count evenly.
+
+**Multi-node considerations**
+
+TP can span nodes, but doing so increases network communication overhead. For multi-node setups, keep TP within a single node when possible. High-bandwidth inter-node connections such as InfiniBand are important when TP must span nodes.
+
+For example, with 2 nodes and 4 GPUs per node, start with `TP=4` to keep tensor-parallel operations within each node. If the model still requires more memory, increase to `TP=8` to distribute tensor operations across both nodes.
+
+**Performance**
+
+- Smaller TP values generally have less communication overhead.
+- Larger TP values provide more memory savings but increase communication costs.
+
 ### Pipeline Parallelism
 
 [Pipeline Parallelism](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/features/parallelisms.html#pipeline-parallelism) (PP) distributes the layers of a neural network across GPUs. The GPUs then process the different layers sequentially.
 
 PP can be configured via `parallelism.pipeline_parallel_size` in the [training configuration](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
-
-#### Configuration
-
-- Constraints
-- TP must be less than or equal to the total number of GPUs available. It should be a factor of the total GPU count (divisible evenly).
-- Multi-node considerations
-- TP can span across nodes, but this introduces network communication overhead. For multi-node setups, it's often recommended to keep TP within a single node when possible. If using TP across nodes, high-bandwidth inter-node connections (like InfiniBand) become critical.
-
-Example: if you have 2 nodes with 4 GPUs each, start with TP=4 first. This keeps all tensor parallel operations within a single node. If your model still uses too much GPU memory with this setting, increase to TP=8, which will distribute tensor operations across both nodes.
-
-- Performance
-- Smaller TP values generally have less communication overhead.
-- Larger TP values provide more memory savings but increase communication costs.
 
 ### Context Parallelism
 

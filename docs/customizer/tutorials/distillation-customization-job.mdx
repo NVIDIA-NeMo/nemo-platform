@@ -459,6 +459,15 @@ except Exception:
     # Free GPUs if readiness fails before the later baseline-cleanup cell runs.
     try:
         client.inference.deployments.delete(name=BASELINE_DEPLOYMENT_NAME, workspace="default")
+        if not client.models.wait_for_status(
+            deployment_name=BASELINE_DEPLOYMENT_NAME,
+            desired_status="DELETED",
+            workspace="default",
+            timeout=600,
+        ):
+            raise TimeoutError(
+                f"Deployment {BASELINE_DEPLOYMENT_NAME} was not deleted within timeout"
+            )
         client.inference.deployment_configs.delete(name=BASELINE_DEPLOYMENT_CONFIG, workspace="default")
     except Exception as cleanup_error:
         print(f"Baseline cleanup after readiness failure also failed: {cleanup_error}")
