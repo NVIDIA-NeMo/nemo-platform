@@ -18,39 +18,24 @@
 from __future__ import annotations
 
 from typing import Dict
-from typing_extensions import Required, TypedDict
+from typing_extensions import TypedDict
 
 from ..._types import SequenceNotStr
 
-__all__ = ["EvaluationCreateParams"]
+__all__ = ["EvaluationPatchParams"]
 
 
-class EvaluationCreateParams(TypedDict, total=False):
+class EvaluationPatchParams(TypedDict, total=False):
     workspace: str
-
-    dataset_name: Required[str]
-    """Producer-supplied dataset name."""
-
-    name: Required[str]
-    """Producer-supplied, workspace-unique evaluation id."""
-
-    dataset_version: str
-    """Producer-supplied dataset version."""
 
     description: str
     """Human-readable description."""
 
-    experiment_group_id: str
-    """Deprecated single-group field; provide experiment_ids instead.
-
-    Coalesced into experiment_ids when experiment_ids is omitted.
-    """
-
     experiment_ids: SequenceNotStr[str]
-    """Entity ids of the ExperimentGroups this Evaluation belongs to (>=1).
+    """Replace the ExperimentGroups this Evaluation belongs to.
 
-    Preferred; each group must already exist. When omitted, the deprecated
-    experiment_group_id is used instead.
+    Must be non-empty when provided; each group must already exist. Omit to leave
+    membership unchanged.
     """
 
     metadata: Dict[str, str]
@@ -61,9 +46,6 @@ class EvaluationCreateParams(TypedDict, total=False):
 
     a variant of a baseline), if any.
     """
-
-    parent_experiment_id: str
-    """Deprecated alias for parent_evaluation_id."""
 
     root_cause: str
     """Human- or agent-authored explanation of the evaluation's outcome (e.g.

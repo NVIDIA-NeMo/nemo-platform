@@ -117,6 +117,17 @@ class InMemoryFilterRepository(FilterRepository):
             return False
         return field_value not in values
 
+    def contains(self, field: str, value: Any) -> bool:
+        """Array membership: true when the list at ``field`` contains ``value``.
+
+        Absent/None/non-list fields match nothing (mirrors the SQL path, where a missing
+        or scalar element can't contain the token). Elements are compared by native value.
+        """
+        field_value = self._value(field)
+        if field_value is _MISSING or not isinstance(field_value, (list, tuple)):
+            return False
+        return value in field_value
+
     def and_op(self, operations: List[Any]) -> bool:
         return all(operations)
 
