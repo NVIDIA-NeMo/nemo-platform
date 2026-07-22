@@ -70,8 +70,10 @@ export const CompareRunSelect: FC<CompareRunSelectProps> = ({
       />
       <SelectContent className="w-(--radix-popper-anchor-width)">
         <SelectListbox density="compact">
-          <DropdownHeading>
-            <Text kind="label/bold/sm">Select a trial from a run to compare against</Text>
+          <DropdownHeading className="pb-density-sm">
+            <Text kind="label/regular/sm" className="text-content-secondary">
+              Select a trial from a run to compare against
+            </Text>
           </DropdownHeading>
           {/* Block (not flex) container so long headings keep their height instead of
               being shrunk and vertically clipped when the list overflows. */}
@@ -84,23 +86,28 @@ export const CompareRunSelect: FC<CompareRunSelectProps> = ({
                   value={evaluationRuns[0].trace_id}
                   aria-label={runLabel(evaluationRuns[0])}
                 >
-                  {runLabel(evaluationRuns[0])}
+                  <Text kind="label/bold/sm">{runLabel(evaluationRuns[0])}</Text>
                 </SelectItem>
               ) : (
                 <Fragment key={evaluationName}>
                   <DropdownHeading>
-                    <Text kind="label/bold/sm">{evaluationName}</Text>
+                    <Text kind="label/regular/sm" className="text-content-secondary">
+                      {evaluationName}
+                    </Text>
                   </DropdownHeading>
                   {evaluationRuns.map((run) => (
                     <SelectItem
                       key={run.trace_id}
                       value={run.trace_id}
-                      className="pl-density-lg"
                       // Screen readers get the full "<evaluation> · Trial XXXXX"; the
                       // visible label stays "Trial XXXXX" indented under the heading.
                       aria-label={runLabel(run)}
                     >
-                      {trialLabel(run)}
+                      {/* Indent the content (not the item) — SelectItem's own padding
+                          wins over a className on the item itself. */}
+                      <Text kind="label/bold/sm" className="pl-density-lg">
+                        {trialLabel(run)}
+                      </Text>
                     </SelectItem>
                   ))}
                 </Fragment>
