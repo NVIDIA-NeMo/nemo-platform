@@ -62,12 +62,16 @@ from nmp.core.models.controllers.backends.vllm_compiler import (
 _WEIGHTS_MOUNT = "/model-store"
 _SCRATCH_MOUNT = "/scratch"
 _LORA_MOUNT = "/scratch/loras"
-# The adapters sidecar's `nemo services run` writes instance state under $XDG_STATE_HOME
-# (default ~/.local/state), but the pod runs it as the vLLM uid (2000), which does not own
-# the nmp-api image's $HOME (/home/nvs, uid 1000) -- so the default path is unwritable and
-# the sidecar crash-loops. Redirect it to the writable scratch volume, outside the
-# /scratch/loras subtree the adapters controller GCs.
-_LORA_SIDECAR_STATE_DIR = f"{_SCRATCH_MOUNT}/.nmp-state"
+# The adapters sidecar's `nemo services run` writes to two XDG homes: instance
+# lock/descriptor state under $XDG_STATE_HOME (default ~/.local/state, -> .../nmp/) and its
+# local SQLite/data dir under $XDG_DATA_HOME (default ~/.local/share, -> .../nemo/, via
+# nmp_user_data_dir()). The pod runs the sidecar as the vLLM uid (2000), which does not own
+# the nmp-api image's baked $HOME (/home/nvs, uid 1000), so both defaults are unwritable and
+# the sidecar crash-loops (PermissionError creating ~/.local). Point both XDG homes at this
+# writable scratch dir -- named for the ~/.local the XDG homes normally live under -- outside
+# the /scratch/loras subtree the adapters controller GCs. State (nmp/) and data (nemo/) land
+# in distinct leaves, so a single base holds both without collision.
+_LORA_SIDECAR_XDG_HOME = f"{_SCRATCH_MOUNT}/.local"
 _SCRATCH_VOLUME_SIZE = "1Gi"
 
 
@@ -151,7 +155,8 @@ def _lora_sidecar(
         "NMP_MODEL_ENTITY_WORKSPACE": entity_workspace,
         "NMP_MODEL_ENTITY_NAME": entity_name,
         "NMP_BASE_URL": platform.base_url,
-        "XDG_STATE_HOME": _LORA_SIDECAR_STATE_DIR,
+        "XDG_STATE_HOME": _LORA_SIDECAR_XDG_HOME,
+        "XDG_DATA_HOME": _LORA_SIDECAR_XDG_HOME,
     }
     if engine == ENGINE_VLLM:
         sidecar_env["VLLM_LORA_BASE_MODEL_OVERRIDE"] = MODEL_STORE_PATH

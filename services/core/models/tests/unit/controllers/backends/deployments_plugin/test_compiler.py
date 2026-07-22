@@ -300,9 +300,12 @@ def test_lora_uses_native_sidecar_on_k8s_and_container_on_docker() -> None:
     assert sidecar.image == "registry/nmp-api:tag"
     env = {item.name: item.value for item in sidecar.env}
     assert env["NIM_PEFT_SOURCE"] == "/scratch/loras"
-    # Sidecar `nemo services run` state must land on the writable scratch volume, not the
-    # nmp-api image's $HOME (unwritable under the pod's vLLM uid). See _lora_sidecar.
-    assert env["XDG_STATE_HOME"] == "/scratch/.nmp-state"
+    # Sidecar `nemo services run` writes both its instance state ($XDG_STATE_HOME) and its
+    # local data dir ($XDG_DATA_HOME, via nmp_user_data_dir) -- both must land on the
+    # writable scratch volume, not the nmp-api image's $HOME (unwritable under the pod's
+    # vLLM uid, so the sidecar crash-loops on PermissionError). See _lora_sidecar.
+    assert env["XDG_STATE_HOME"] == "/scratch/.local"
+    assert env["XDG_DATA_HOME"] == "/scratch/.local"
     assert env["VLLM_LORA_BASE_MODEL_OVERRIDE"] == "/model-store"
     assert env["NMP_BASE_URL"] == "http://platform.example:8080"
     assert env["VLLM_ENDPOINT"] == "http://127.0.0.1:8000"
