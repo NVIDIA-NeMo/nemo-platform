@@ -20,6 +20,7 @@ import {
   CreateFileSplitsFormFields,
   createFileSplitsSchema,
 } from '@studio/components/FilesTable/CreateFileSplitsModal/types';
+import { LeftTruncatedText } from '@studio/components/LeftTruncatedText';
 import { ValueWithLabel } from '@studio/components/ValueWithLabel';
 import { useSelectedDatasetId } from '@studio/hooks/useSelectedDatasetId';
 import { tooltipClassName } from '@studio/styles/common';
@@ -31,23 +32,46 @@ import { ComponentProps, FC, useMemo } from 'react';
 import { FormProvider, useForm, useWatch } from 'react-hook-form';
 
 interface Props extends Pick<ComponentProps<typeof FormModal>, 'open' | 'onClose'> {
+  /** Fixed source file. When set, the file is shown read-only. */
   filepath?: string;
+  /**
+   * Dataset/fileset reference (`workspace/name`) whose files are being split.
+   * Falls back to the route's selected dataset when omitted.
+   */
+  datasetId?: string;
+  /**
+   * Selectable source files. When provided (and no fixed `filepath`), the modal
+   * renders a picker so the user chooses which file to split.
+   */
+  fileOptions?: string[];
 }
 
 /**
  * This modal is used to handle splitting a larger file
  * into smaller files for training/validation/evaluation.
  */
-export const CreateFileSplitsModal: FC<Props> = ({ open, onClose, filepath }) => {
+export const CreateFileSplitsModal: FC<Props> = ({
+  open,
+  onClose,
+  filepath,
+  datasetId,
+  fileOptions,
+}) => {
   const toast = useToast();
-  const datasetId = useSelectedDatasetId();
-  const datasetNameSplit = getPartsFromReference(datasetId);
+  const resolvedDatasetId = useSelectedDatasetId({ datasetId });
+  const datasetNameSplit = getPartsFromReference(resolvedDatasetId);
+
+  const defaultFilepath =
+    filepath ??
+    fileOptions?.find((path) => /\.(json|jsonl|parquet)$/i.test(path)) ??
+    fileOptions?.[0] ??
+    '';
 
   const formMethods = useForm<CreateFileSplitsFormFields>({
     mode: 'onChange',
     resolver: zodResolver(createFileSplitsSchema),
     defaultValues: {
-      filepath,
+      filepath: defaultFilepath,
       splitDescriptor: SELECT_SPLIT_OPTIONS[0],
       training: 80,
       testing: 20,
@@ -64,9 +88,14 @@ export const CreateFileSplitsModal: FC<Props> = ({ open, onClose, filepath }) =>
     onClose();
   };
 
-  const { data: fileContent, isLoading: isLoadingFileContent } = useDatasetFileContent({
+  const {
+    data: fileContent,
+    isLoading: isLoadingFileContent,
+    error: fileContentError,
+  } = useDatasetFileContent({
     ...datasetNameSplit,
     path: filepathForm,
+    fullContent: true,
   });
   const { total_rows } = useMemo(() => {
     const contentSchema = getContentSchema(fileContent, {
@@ -127,7 +156,7 @@ export const CreateFileSplitsModal: FC<Props> = ({ open, onClose, filepath }) =>
         )}
         onClose={resetAndClose}
         disabled={isPending}
-        submitDisabled={isLoadingFileContent}
+        submitDisabled={isLoadingFileContent || Boolean(fileContentError)}
         loading={isPending}
       >
         <Stack gap="density-xl">
@@ -135,13 +164,36 @@ export const CreateFileSplitsModal: FC<Props> = ({ open, onClose, filepath }) =>
             To fine-tune and evaluate a model, you need to split a dataset into three subsets:
             training data, validation data, and test data.
           </Text>
-          <ValueWithLabel
-            labelProps={{ className: 'font-bold' }}
-            label="Source File"
-            value={filepath}
-          />
+          {filepath || !fileOptions?.length ? (
+            <ValueWithLabel
+              labelProps={{ className: 'font-bold' }}
+              label="Source File"
+              value={filepathForm}
+            />
+          ) : (
+            <ControlledSelect
+              items={fileOptions.map((path) => ({
+                value: path,
+                children: <LeftTruncatedText>{path}</LeftTruncatedText>,
+              }))}
+              renderValue={(value) => <LeftTruncatedText>{value}</LeftTruncatedText>}
+              formFieldProps={{
+                attributes: { Popover: { className: tooltipClassName } },
+                slotLabel: <Label className="font-bold">Source File</Label>,
+              }}
+              useControllerProps={{ control, name: 'filepath' }}
+            />
+          )}
           <Divider />
-          {isLoadingFileContent ? (
+          {fileContentError ? (
+            <Banner
+              kind="inline"
+              status="error"
+              attributes={{ BannerIcon: { className: 'self-start' } }}
+            >
+              {fileContentError.message}
+            </Banner>
+          ) : isLoadingFileContent ? (
             <Flex justify="center" align="center" className="h-full py-[80px]">
               <Spinner description="Loading file content..." />
             </Flex>

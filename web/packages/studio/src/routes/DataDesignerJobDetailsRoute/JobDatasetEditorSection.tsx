@@ -12,7 +12,6 @@ import {
   SelectTrigger,
   Spinner,
   Stack,
-  Text,
 } from '@nvidia/foundations-react-core';
 import {
   EDITOR_MAX_BYTES,
@@ -73,7 +72,6 @@ export const JobDatasetEditorSection: FC = () => {
   const { filesetWorkspace, filesetName, files, isResultsLoading, isFilesLoading } =
     useDataDesignerArtifactsFileset();
 
-  // Data files only — exclude the builder config and any non-row formats.
   const dataFiles = useMemo(
     () =>
       files.filter(
@@ -190,40 +188,46 @@ export const JobDatasetEditorSection: FC = () => {
 
   const isResolving = isResultsLoading || isFilesLoading;
 
+  // Rendered inside the editor's header (as `slotFileName`) so the file picker and the file
+  // identity share one row; falls back to a slim bar above the centered states below.
   const fileSelector =
     dataFiles.length > 1 ? (
-      <Flex align="center" gap="density-sm" className="shrink-0">
-        <Text kind="label/semibold/sm" className="text-secondary">
-          File
-        </Text>
-        <SelectRoot
-          value={selectedPath ?? defaultPath ?? undefined}
-          onValueChange={(value: string) => setSelectedPath(value)}
-        >
-          <SelectTrigger
-            placeholder="Select a file"
-            renderValue={(value) =>
-              typeof value === 'string' ? (
-                <span className="block max-w-[200px] truncate text-left [direction:rtl]">
-                  {getFileNameFromPath(value)}
-                </span>
-              ) : null
-            }
-          />
-          <SelectContent className="w-(--radix-popper-anchor-width)">
-            <SelectListbox>
-              {dataFiles.map((file) => (
-                <SelectItem key={file.path} value={file.path}>
-                  {getFileNameFromPath(file.path)}
-                </SelectItem>
-              ))}
-            </SelectListbox>
-          </SelectContent>
-        </SelectRoot>
-      </Flex>
+      <SelectRoot
+        value={selectedPath ?? defaultPath ?? undefined}
+        onValueChange={(value: string) => setSelectedPath(value)}
+      >
+        <SelectTrigger
+          placeholder="Select a file"
+          className="max-w-[280px]"
+          renderValue={(value) =>
+            typeof value === 'string' ? (
+              <span className="block truncate text-left [direction:rtl]">
+                {getFileNameFromPath(value)}
+              </span>
+            ) : null
+          }
+        />
+        <SelectContent className="w-(--radix-popper-anchor-width)">
+          <SelectListbox>
+            {dataFiles.map((file) => (
+              <SelectItem key={file.path} value={file.path}>
+                {getFileNameFromPath(file.path)}
+              </SelectItem>
+            ))}
+          </SelectListbox>
+        </SelectContent>
+      </SelectRoot>
     ) : null;
 
-  const renderBody = () => {
+  const showEditor =
+    dataFiles.length > 0 &&
+    !isTooLargeToEdit &&
+    !isContentLoading &&
+    parsed != null &&
+    !isContentError &&
+    !parsed.error;
+
+  const renderCenteredState = () => {
     if (isResolving && dataFiles.length === 0) {
       return centered(<Spinner aria-label="Loading job data" description="Loading job data..." />);
     }
@@ -259,31 +263,28 @@ export const JobDatasetEditorSection: FC = () => {
       );
     }
 
-    if (parsed.error) {
-      return centered(<Empty title="Could not parse file" description={parsed.error} />);
-    }
-
-    return (
-      <FileRowEditor
-        key={selectedPath}
-        fileName={selectedPath ?? undefined}
-        fileSizeLabel={selectedFile ? getHumanReadableFileSize(selectedFile.size) : undefined}
-        initialRows={parsed.rows}
-        showOpenFile={false}
-        onSaveFile={handleSaveFile}
-        isSaving={isSaving}
-      />
-    );
+    return centered(<Empty title="Could not parse file" description={parsed.error ?? undefined} />);
   };
 
   return (
     <Stack gap="density-md" className="h-full min-h-0 min-w-0 w-full">
-      {fileSelector ? (
-        <Flex align="center" justify="start" className="shrink-0">
-          {fileSelector}
-        </Flex>
-      ) : null}
-      <Stack className="min-h-0 min-w-0 w-full flex-1">{renderBody()}</Stack>
+      {showEditor ? (
+        <FileRowEditor
+          key={selectedPath}
+          slotFileName={fileSelector}
+          fileName={selectedPath ?? undefined}
+          fileSizeLabel={selectedFile ? getHumanReadableFileSize(selectedFile.size) : undefined}
+          initialRows={parsed?.rows ?? []}
+          showOpenFile={false}
+          onSaveFile={handleSaveFile}
+          isSaving={isSaving}
+        />
+      ) : (
+        <>
+          {fileSelector ? <Flex className="shrink-0">{fileSelector}</Flex> : null}
+          <Stack className="min-h-0 min-w-0 w-full flex-1">{renderCenteredState()}</Stack>
+        </>
+      )}
     </Stack>
   );
 };

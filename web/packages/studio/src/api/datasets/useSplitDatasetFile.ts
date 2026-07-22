@@ -55,11 +55,12 @@ export const useSplitDatasetFile = ({ onError, onSuccess }: Props) => {
           ? splitRandomDistribution(rows, splits, seed)
           : splitSequentialDistribution(rows, splits, { key: sortKey });
 
-      // Upload files to fileset
-      const filename = filepath.split('/').pop() ?? filepath;
+      const isJson = filepath.endsWith('json');
+      const sourceName = filepath.split('/').pop() ?? filepath;
+      const baseName = sourceName.replace(/\.[^./]+$/, '');
+      const outputName = `${baseName}.${isJson ? 'json' : 'jsonl'}`;
       const toUpload = splits
         .map((_, index) => {
-          const isJson = filepath.endsWith('json');
           let content = splitList[index]
             .map((row) => JSON.stringify(row))
             .join(isJson ? ',\n' : '\n');
@@ -70,7 +71,7 @@ export const useSplitDatasetFile = ({ onError, onSuccess }: Props) => {
             return undefined;
           }
           return {
-            path: `${fileSuffix[index]}/${filename}`,
+            path: `${fileSuffix[index]}/${outputName}`,
             content,
           };
         })
