@@ -633,6 +633,14 @@ async def _serve_external_agent(
     ``generate`` (nat eval) → NAT-generate↔A2A translation. Anything else 400s —
     external agents have no deployment to proxy arbitrary paths to.
     """
+    # This bridge is reachable through the read-scoped GET/HEAD/OPTIONS proxy route,
+    # so a bodied GET must not be able to invoke the agent under read scope.
+    if request.method != "POST":
+        raise HTTPException(
+            status_code=405,
+            detail="External agent invocation requires POST.",
+            headers={"Allow": "POST"},
+        )
     endpoint = _external_a2a_endpoint(agent, name)
     if trailing_uri.endswith("chat/completions"):
         body = await _read_json_object(request)

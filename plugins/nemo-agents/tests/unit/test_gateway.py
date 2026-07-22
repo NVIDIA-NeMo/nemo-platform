@@ -901,3 +901,22 @@ class TestExternalAgentGenerate:
         )
 
         assert resp.status_code == 400
+
+    def test_read_scoped_get_cannot_invoke(
+        self, client: TestClient, mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The GET/HEAD/OPTIONS proxy route reaches this bridge; a bodied GET must
+        # not be able to invoke the agent under read scope.
+        mock_entity_client.get = AsyncMock(return_value=_make_external_agent())
+        send = AsyncMock(return_value="4")
+        monkeypatch.setattr(gateway_module, "send_a2a_message", send)
+
+        resp = client.request(
+            "GET",
+            "/apis/agents/v2/workspaces/default/agents/ext/-/v1/chat/completions",
+            json={"messages": [{"role": "user", "content": "2+2?"}]},
+        )
+
+        assert resp.status_code == 405
+        assert resp.headers["allow"] == "POST"
+        send.assert_not_awaited()
