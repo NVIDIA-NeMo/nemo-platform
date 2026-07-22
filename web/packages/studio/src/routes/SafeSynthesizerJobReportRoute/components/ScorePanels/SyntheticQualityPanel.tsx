@@ -25,9 +25,7 @@ export const SyntheticQualityPanel: FC<SyntheticQualityPanelProps> = ({
   icon,
 }) => {
   const sqsScore = reportSummary?.synthetic_data_quality_score ?? 0;
-  const sqsValue = (sqsScore / 10) * 100; // Convert to percentage for dial
-  const sqsDisplay = sqsScore ? sqsScore.toFixed(1) : '';
-  const sqsGrade = sqsDisplay ? getSyntheticQualityGradeLabel(sqsScore) : GRADE_VALUES.UNAVAILABLE; // Use the actual score (0-10), not percentage
+  const sqsGrade = sqsScore ? getSyntheticQualityGradeLabel(sqsScore) : GRADE_VALUES.UNAVAILABLE;
 
   return (
     <Panel slotHeading={title} slotIcon={icon} elevation="high" density="standard">
@@ -36,9 +34,7 @@ export const SyntheticQualityPanel: FC<SyntheticQualityPanelProps> = ({
           <Stack>
             <TitledDial
               title="Synthetic Quality Score (SQS)"
-              value={sqsValue}
-              displayValue={sqsDisplay}
-              color="var(--color-purple-500)"
+              score={reportSummary?.synthetic_data_quality_score}
               description="The Synthetic Quality Score is computed by taking a weighted combination of the individual quality metrics: Column Distribution Stability, Column Correlation Stability, Deep Structure Stability, Text Semantic Similarity and Text Structure Similarity."
               grade={sqsGrade}
             />
@@ -104,7 +100,6 @@ export const SyntheticQualityPanel: FC<SyntheticQualityPanelProps> = ({
                 displayValue: reportSummary?.text_structure_similarity_score?.toFixed(1) ?? '—',
               },
             ]}
-            color="var(--color-purple-500)"
           />
         </Stack>
       </Grid>

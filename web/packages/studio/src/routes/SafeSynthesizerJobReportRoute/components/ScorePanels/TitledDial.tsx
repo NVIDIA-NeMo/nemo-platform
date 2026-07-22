@@ -1,31 +1,22 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Dial } from '@nemo/common/src/components/Dial';
+import { ScoreGauge } from '@nemo/common/src/components/ScoreGauge';
 import { Divider, Flex, Stack, Tag, Text } from '@nvidia/foundations-react-core';
 import { FC } from 'react';
 
 interface TitledDialProps {
   title: string;
-  value: number;
-  displayValue: string;
-  color: string;
+  score?: number;
   description: string;
   grade: string;
 }
 
-export const TitledDial: FC<TitledDialProps> = ({
-  title,
-  value,
-  displayValue,
-  color,
-  description,
-  grade,
-}) => {
+export const TitledDial: FC<TitledDialProps> = ({ title, score, description, grade }) => {
   return (
     <Stack gap="density-sm" data-testid="titled-dial">
       <Flex gap="density-sm">
-        <Dial value={value} displayValue={displayValue} color={color} size="m" />
+        <ScoreGauge score={score} size="lg" />
         <Stack align="start" justify="start" gap="density-lg" padding="density-md">
           <Text kind="body/bold/lg">{title}</Text>
           <Tag readOnly>{grade}</Tag>

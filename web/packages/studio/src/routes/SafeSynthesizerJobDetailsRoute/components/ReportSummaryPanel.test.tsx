@@ -22,24 +22,12 @@ vi.mock('@studio/hooks/useWorkspaceFromPath', () => ({
   useWorkspaceFromPath: vi.fn(() => 'test-project'),
 }));
 
-// Mock the Dial component
-vi.mock('@nemo/common/src/components/Dial', () => ({
-  Dial: ({
-    value,
-    displayValue,
-    color,
-    size,
-  }: {
-    value: number;
-    displayValue: string;
-    color: string;
-    size: string;
-  }) => (
-    <div data-testid="dial">
-      <div data-testid="dial-value">{value}</div>
-      <div data-testid="dial-display">{displayValue}</div>
-      <div data-testid="dial-color">{color}</div>
-      <div data-testid="dial-size">{size}</div>
+// Mock the ScoreGauge component
+vi.mock('@nemo/common/src/components/ScoreGauge', () => ({
+  ScoreGauge: ({ score, size }: { score?: number; size: string }) => (
+    <div data-testid="score-gauge">
+      <div data-testid="gauge-score">{score}</div>
+      <div data-testid="gauge-size">{size}</div>
     </div>
   ),
 }));
@@ -108,13 +96,13 @@ describe('ReportSummaryPanel', () => {
       expect(screen.getByText('Privacy (DPS)')).toBeInTheDocument();
     });
 
-    it('should render two dial components', () => {
+    it('should render two score gauges', () => {
       render(<ReportSummaryPanel jobId="test-job-id" jobResultSummary={mockJobResultSummary} />, {
         wrapper: createWrapper(),
       });
 
-      const dials = screen.getAllByTestId('dial');
-      expect(dials).toHaveLength(2);
+      const gauges = screen.getAllByTestId('score-gauge');
+      expect(gauges).toHaveLength(2);
     });
   });
 
