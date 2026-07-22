@@ -153,6 +153,7 @@ func TestRunExecWithSecrets(t *testing.T) {
 		name             string
 		secretsEnv       string
 		apiURL           string
+		baseURL          string
 		principalJSON    string
 		expectedExitCode int
 		expectError      bool
@@ -169,6 +170,14 @@ func TestRunExecWithSecrets(t *testing.T) {
 			name:             "multiple_secrets_injection",
 			secretsEnv:       "TEST_SECRET=default/test-secret,ANOTHER_SECRET=default/another-secret",
 			apiURL:           mockServer.URL,
+			principalJSON:    `{"id":"test-principal"}`,
+			expectedExitCode: 0,
+			expectError:      false,
+		},
+		{
+			name:             "uses_base_url_fallback",
+			secretsEnv:       "TEST_SECRET=default/test-secret",
+			baseURL:          mockServer.URL,
 			principalJSON:    `{"id":"test-principal"}`,
 			expectedExitCode: 0,
 			expectError:      false,
@@ -197,6 +206,7 @@ func TestRunExecWithSecrets(t *testing.T) {
 			origEnvVars := map[string]envVarState{
 				"NEMO_JOB_SECRETS": getEnvState("NEMO_JOB_SECRETS"),
 				"NMP_SECRETS_URL":  getEnvState("NMP_SECRETS_URL"),
+				"NMP_BASE_URL":     getEnvState("NMP_BASE_URL"),
 				"NMP_PRINCIPAL":    getEnvState("NMP_PRINCIPAL"),
 			}
 			defer restoreEnvVars(origEnvVars)
@@ -209,6 +219,11 @@ func TestRunExecWithSecrets(t *testing.T) {
 				os.Setenv("NMP_SECRETS_URL", tc.apiURL)
 			} else {
 				os.Unsetenv("NMP_SECRETS_URL")
+			}
+			if tc.baseURL != "" {
+				os.Setenv("NMP_BASE_URL", tc.baseURL)
+			} else {
+				os.Unsetenv("NMP_BASE_URL")
 			}
 			if tc.principalJSON != "" {
 				os.Setenv("NMP_PRINCIPAL", tc.principalJSON)
@@ -258,6 +273,7 @@ func TestRunExecWithSecretsNotFound(t *testing.T) {
 	origEnvVars := map[string]envVarState{
 		"NEMO_JOB_SECRETS": getEnvState("NEMO_JOB_SECRETS"),
 		"NMP_SECRETS_URL":  getEnvState("NMP_SECRETS_URL"),
+		"NMP_BASE_URL":     getEnvState("NMP_BASE_URL"),
 		"NMP_PRINCIPAL":    getEnvState("NMP_PRINCIPAL"),
 	}
 	defer restoreEnvVars(origEnvVars)
@@ -265,6 +281,7 @@ func TestRunExecWithSecretsNotFound(t *testing.T) {
 	// Set test environment variables
 	os.Setenv("NEMO_JOB_SECRETS", "NONEXISTENT_SECRET=default/nonexistent")
 	os.Setenv("NMP_SECRETS_URL", mockServer.URL)
+	os.Unsetenv("NMP_BASE_URL")
 	os.Setenv("NMP_PRINCIPAL", `{"id":"test-principal"}`)
 
 	exitCode, err := runExec([]string{"echo", "test"}, nil)
@@ -279,6 +296,37 @@ func TestRunExecWithSecretsNotFound(t *testing.T) {
 
 	if err != nil && !strings.Contains(err.Error(), "failed to fetch secret") {
 		t.Errorf("Expected error about failed secret fetch, got: %v", err)
+	}
+}
+
+func TestSecretEndpointHTTPClientSetsBoundedTimeout(t *testing.T) {
+	originalDefaultTimeout := http.DefaultClient.Timeout
+
+	tcpEndpoint, err := nmpclient.ParseEndpoint("http://127.0.0.1:8080")
+	if err != nil {
+		t.Fatalf("ParseEndpoint returned error: %v", err)
+	}
+	tcpClient := secretEndpointHTTPClient(tcpEndpoint)
+	if tcpClient == http.DefaultClient {
+		t.Fatal("expected bounded TCP client to avoid mutating http.DefaultClient")
+	}
+	if tcpClient.Timeout != secretFetchTimeout {
+		t.Fatalf("expected TCP client timeout %s, got %s", secretFetchTimeout, tcpClient.Timeout)
+	}
+	if http.DefaultClient.Timeout != originalDefaultTimeout {
+		t.Fatalf("expected http.DefaultClient timeout to remain %s, got %s", originalDefaultTimeout, http.DefaultClient.Timeout)
+	}
+
+	udsEndpoint, err := nmpclient.ParseEndpoint("unix:///tmp/nemo-platform.sock")
+	if err != nil {
+		t.Fatalf("ParseEndpoint returned error: %v", err)
+	}
+	udsClient := secretEndpointHTTPClient(udsEndpoint)
+	if udsClient.Timeout != secretFetchTimeout {
+		t.Fatalf("expected UDS client timeout %s, got %s", secretFetchTimeout, udsClient.Timeout)
+	}
+	if udsClient.Transport == nil {
+		t.Fatal("expected UDS client to preserve custom transport")
 	}
 }
 
@@ -303,6 +351,90 @@ func TestRunExecWithoutSecrets(t *testing.T) {
 
 	if err != nil {
 		t.Errorf("Expected no error, got: %v", err)
+	}
+}
+
+func TestConfigureOTELHeadersFromWorkloadToken(t *testing.T) {
+	testCases := []struct {
+		name            string
+		token           string
+		existingHeaders string
+		expectedHeaders string
+	}{
+		{
+			name:            "adds_authorization_header",
+			token:           "token.with-symbols_123",
+			expectedHeaders: "Authorization=Bearer%20token.with-symbols_123",
+		},
+		{
+			name:            "preserves_existing_headers",
+			token:           "abc.def",
+			existingHeaders: "X-NMP-Principal-Id=nemo-user",
+			expectedHeaders: "X-NMP-Principal-Id=nemo-user,Authorization=Bearer%20abc.def",
+		},
+		{
+			name:            "keeps_existing_authorization_header",
+			token:           "abc.def",
+			existingHeaders: "authorization=Bearer+explicit",
+			expectedHeaders: "authorization=Bearer+explicit",
+		},
+		{
+			name:            "does_nothing_without_token",
+			existingHeaders: "X-Test=value",
+			expectedHeaders: "X-Test=value",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			origEnvVars := map[string]envVarState{
+				"NEMO_WORKLOAD_TOKEN":             getEnvState("NEMO_WORKLOAD_TOKEN"),
+				launcherOTLPLogsHeadersEnv:        getEnvState(launcherOTLPLogsHeadersEnv),
+				"OTEL_EXPORTER_OTLP_LOGS_HEADERS": getEnvState("OTEL_EXPORTER_OTLP_LOGS_HEADERS"),
+			}
+			defer restoreEnvVars(origEnvVars)
+
+			if tc.token != "" {
+				os.Setenv("NEMO_WORKLOAD_TOKEN", tc.token)
+			} else {
+				os.Unsetenv("NEMO_WORKLOAD_TOKEN")
+			}
+			if tc.existingHeaders != "" {
+				os.Setenv(launcherOTLPLogsHeadersEnv, tc.existingHeaders)
+			} else {
+				os.Unsetenv(launcherOTLPLogsHeadersEnv)
+			}
+			os.Setenv("OTEL_EXPORTER_OTLP_LOGS_HEADERS", "user-owned=value")
+
+			configureOTELHeadersFromWorkloadToken()
+
+			got := os.Getenv(launcherOTLPLogsHeadersEnv)
+			if got != tc.expectedHeaders {
+				t.Errorf("Expected launcher OTLP headers %q, got %q", tc.expectedHeaders, got)
+			}
+			if got := os.Getenv("OTEL_EXPORTER_OTLP_LOGS_HEADERS"); got != "user-owned=value" {
+				t.Errorf("Expected user OTEL headers to be preserved, got %q", got)
+			}
+		})
+	}
+}
+
+func TestWorkloadEnvFromParentFiltersLauncherPrivateVars(t *testing.T) {
+	origEnvVars := map[string]envVarState{
+		"NMP_JOB_LAUNCHER_LOGS_EXPORTER": getEnvState("NMP_JOB_LAUNCHER_LOGS_EXPORTER"),
+		"OTEL_LOGS_EXPORTER":             getEnvState("OTEL_LOGS_EXPORTER"),
+	}
+	defer restoreEnvVars(origEnvVars)
+
+	os.Setenv("NMP_JOB_LAUNCHER_LOGS_EXPORTER", "otlp")
+	os.Setenv("OTEL_LOGS_EXPORTER", "otlp")
+
+	env := strings.Join(workloadEnvFromParent(), "\n")
+	if strings.Contains(env, "NMP_JOB_LAUNCHER_LOGS_EXPORTER=") {
+		t.Fatal("expected launcher-private env var to be filtered")
+	}
+	if !strings.Contains(env, "OTEL_LOGS_EXPORTER=otlp") {
+		t.Fatal("expected user OTEL env var to be preserved")
 	}
 }
 

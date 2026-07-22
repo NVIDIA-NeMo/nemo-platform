@@ -17,17 +17,18 @@ Examples:
 from __future__ import annotations
 
 import csv
+import importlib.util
 import io
 import json
 import os
-import subprocess
 import sys
 import time
 import uuid
 from collections.abc import Callable, Iterator
 from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from types import ModuleType
+from typing import Any, cast
 
 import pytest
 from nemo_platform import NeMoPlatform
@@ -51,7 +52,6 @@ SMOKE_JOB_TIMEOUT_SECONDS = 180.0
 K8S_JOB_TIMEOUT_SECONDS = float(os.environ.get("NSS_E2E_JOB_TIMEOUT_SECONDS", "5400"))
 POLL_INTERVAL_SECONDS = float(os.environ.get("NSS_E2E_POLL_INTERVAL_SECONDS", "10"))
 RESULT_DOWNLOAD_TIMEOUT_SECONDS = float(os.environ.get("NSS_E2E_RESULT_DOWNLOAD_TIMEOUT_SECONDS", "600"))
-MODEL_FILESETS_TIMEOUT_SECONDS = float(os.environ.get("NSS_E2E_MODEL_FILESETS_TIMEOUT_SECONDS", "300"))
 DELETE_VERIFY_TIMEOUT_SECONDS = float(os.environ.get("NSS_E2E_DELETE_VERIFY_TIMEOUT_SECONDS", "60"))
 DEFAULT_INPUT_ROWS = int(os.environ.get("NSS_E2E_INPUT_ROWS", "250"))
 DEFAULT_NUM_RECORDS = int(os.environ.get("NSS_E2E_NUM_RECORDS", "250"))
@@ -344,14 +344,6 @@ def _assert_known_pii_replaced(content: bytes) -> None:
         assert source_value not in text
 
 
-def _process_output_text(output: str | bytes | None) -> str:
-    if output is None:
-        return ""
-    if isinstance(output, bytes):
-        return output.decode("utf-8", errors="replace")
-    return output
-
-
 def _platform_root() -> Path:
     candidates: list[Path] = []
     if os.environ.get("NMP_PLATFORM_ROOT"):
@@ -376,37 +368,29 @@ def nss_model_filesets(sdk: NeMoPlatform) -> None:
         return
 
     platform_root = _platform_root()
-    script = platform_root / "plugins/nemo-safe-synthesizer/scripts/setup_model_filesets.py"
-    try:
-        result = subprocess.run(
-            [
-                "uv",
-                "run",
-                "--project",
-                str(platform_root),
-                "python",
-                str(script),
-                "--files-api-url",
-                str(sdk.base_url).rstrip("/"),
-                "--workspace",
-                "default",
-            ],
-            cwd=platform_root,
-            timeout=MODEL_FILESETS_TIMEOUT_SECONDS,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-    except subprocess.TimeoutExpired as exc:
+    setup_module = _load_model_filesets_setup_module(platform_root)
+    create_filesets = cast(
+        Callable[[NeMoPlatform, str, bool], list[str]],
+        getattr(setup_module, "create_filesets"),
+    )
+    model_filesets = cast(list[dict[str, object]], getattr(setup_module, "MODEL_FILESETS"))
+
+    created = create_filesets(sdk, "default", False)
+    if len(created) != len(model_filesets):
         pytest.fail(
-            f"Timed out after {MODEL_FILESETS_TIMEOUT_SECONDS:g}s registering Safe Synthesizer model filesets\n"
-            f"stdout:\n{_process_output_text(exc.stdout)}\n"
-            f"stderr:\n{_process_output_text(exc.stderr)}"
+            "Failed to register all Safe Synthesizer model filesets: "
+            f"registered {len(created)} of {len(model_filesets)} ({', '.join(created)})"
         )
-    if result.returncode != 0:
-        pytest.fail(
-            f"Failed to register Safe Synthesizer model filesets\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+
+
+def _load_model_filesets_setup_module(platform_root: Path) -> ModuleType:
+    setup_script = platform_root / "plugins/nemo-safe-synthesizer/scripts/setup_model_filesets.py"
+    spec = importlib.util.spec_from_file_location("nss_setup_model_filesets", setup_script)
+    if spec is None or spec.loader is None:
+        pytest.fail(f"Failed to load Safe Synthesizer model fileset setup script: {setup_script}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 @pytest.fixture

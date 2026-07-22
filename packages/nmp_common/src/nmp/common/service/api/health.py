@@ -6,13 +6,56 @@
 import logging
 import threading
 import time
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
 from nmp.common.config import PlatformConfig
 from nmp.common.observability import MARK_INTERNAL_REQUEST_HEADERS
+from nmp.common.platform_endpoint import resolve_service_endpoint
 
 logger = logging.getLogger(__name__)
+
+
+def _status_names(values: object) -> set[str]:
+    if not isinstance(values, list):
+        return set()
+
+    names: set[str] = set()
+    for value in values:
+        if isinstance(value, Mapping):
+            name = value.get("name")
+        else:
+            name = getattr(value, "name", value)
+        if isinstance(name, str):
+            names.add(name)
+    return names
+
+
+def service_ready_state_from_status(data: object, service_name: str) -> bool | None:
+    """Return service readiness from a platform /status payload.
+
+    ``True`` means the service is ready or absent from this platform deployment.
+    ``False`` means the service is explicitly present but not ready.
+    ``None`` means the payload shape is unusable and should be retried.
+    """
+    if not isinstance(data, Mapping):
+        return None
+
+    services = data.get("services") or {}
+    if not isinstance(services, Mapping):
+        return None
+
+    ready = _status_names(services.get("ready") or [])
+    if service_name in ready:
+        return True
+
+    not_ready = _status_names(services.get("not_ready") or [])
+    if service_name in not_ready:
+        return False
+
+    # Service is absent from this deployment — treat as ready so callers don't block.
+    return True
 
 
 async def async_wait_for_service_ready(
@@ -40,10 +83,11 @@ async def async_wait_for_service_ready(
     """
     import asyncio
 
-    status_url = f"{platform_config.get_service_url(service_name).rstrip('/')}/status"
+    endpoint = resolve_service_endpoint(service_name, platform_config)
+    status_url = f"{endpoint.connect_base_url.rstrip('/')}/status"
     own_client = http_client is None
     if http_client is None:
-        http_client = httpx.AsyncClient(timeout=2.0)
+        http_client = endpoint.async_http_client(timeout=2.0)
 
     logger.debug("Waiting for service to be ready", extra={"service": service_name, "url": status_url})
 
@@ -56,9 +100,9 @@ async def async_wait_for_service_ready(
                     headers=MARK_INTERNAL_REQUEST_HEADERS,
                 )
                 if response.status_code == 200:
-                    data: dict[str, Any] = response.json()
-                    ready = (data.get("services") or {}).get("ready") or []
-                    if service_name in ready:
+                    data: Any = response.json()
+                    ready = service_ready_state_from_status(data, service_name)
+                    if ready is True:
                         logger.info("Service is ready", extra={"service": service_name})
                         return True
             except (httpx.RequestError, ValueError) as e:
@@ -97,23 +141,16 @@ async def async_wait_for_dependencies(
     Returns:
         True if all dependencies became ready, False if any timed out.
     """
-    own_client = http_client is None
-    if own_client:
-        http_client = httpx.AsyncClient(timeout=2.0)
-    try:
-        for dep in dependency_names:
-            if not await async_wait_for_service_ready(
-                platform_config,
-                dep,
-                timeout=timeout_per_service,
-                poll_interval=poll_interval,
-                http_client=http_client,
-            ):
-                return False
-        return True
-    finally:
-        if own_client and http_client is not None:
-            await http_client.aclose()
+    for dep in dependency_names:
+        if not await async_wait_for_service_ready(
+            platform_config,
+            dep,
+            timeout=timeout_per_service,
+            poll_interval=poll_interval,
+            http_client=http_client,
+        ):
+            return False
+    return True
 
 
 def wait_for_service_ready(
@@ -141,31 +178,36 @@ def wait_for_service_ready(
         True if the service became ready, False if timeout or stop signal.
     """
     start_time = time.time()
-    status_url = f"{platform_config.get_service_url(service_name).rstrip('/')}/status"
+    endpoint = resolve_service_endpoint(service_name, platform_config)
+    status_url = f"{endpoint.connect_base_url.rstrip('/')}/status"
+    http_client = endpoint.sync_http_client(timeout=2.0)
 
     logger.info(
         "Waiting for service to be ready",
         extra={"service": service_name, "url": status_url},
     )
 
-    while not stop_signal.is_set() and (time.time() - start_time) < timeout:
-        try:
-            response = httpx.get(status_url, timeout=2.0, headers=MARK_INTERNAL_REQUEST_HEADERS)
-            if response.status_code == 200:
-                data: dict[str, Any] = response.json()
-                ready = (data.get("services") or {}).get("ready") or []
-                if service_name in ready:
-                    logger.debug(
-                        "Service is ready",
-                        extra={"service": service_name, "url": status_url},
-                    )
-                    return True
-        except (httpx.RequestError, ValueError) as e:
-            logger.debug(
-                "Status check failed, will retry",
-                extra={"service": service_name, "url": status_url, "error": str(e)},
-            )
-        time.sleep(poll_interval)
+    try:
+        while not stop_signal.is_set() and (time.time() - start_time) < timeout:
+            try:
+                response = http_client.get(status_url, headers=MARK_INTERNAL_REQUEST_HEADERS)
+                if response.status_code == 200:
+                    data: Any = response.json()
+                    ready = service_ready_state_from_status(data, service_name)
+                    if ready is True:
+                        logger.debug(
+                            "Service is ready",
+                            extra={"service": service_name, "url": status_url},
+                        )
+                        return True
+            except (httpx.RequestError, ValueError) as e:
+                logger.debug(
+                    "Status check failed, will retry",
+                    extra={"service": service_name, "url": status_url, "error": str(e)},
+                )
+            time.sleep(poll_interval)
+    finally:
+        http_client.close()
 
     if stop_signal.is_set():
         logger.debug("Stop signal received while waiting for service")

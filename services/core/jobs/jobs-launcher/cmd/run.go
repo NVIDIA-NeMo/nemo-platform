@@ -10,16 +10,21 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/NVIDIA-NeMo/nemo-platform/services/core/jobs/jobs-launcher/nmpclient"
 	"github.com/spf13/cobra"
 )
+
+const secretFetchTimeout = 30 * time.Second
 
 var runCmd = &cobra.Command{
 	Use:   "run <command> [args...]",
@@ -108,11 +113,27 @@ func parseSecretReferences(secretsEnv string) ([]secretReference, error) {
 
 // fetchSecrets retrieves secrets using the NeMo Platform API client and returns them as environment variables
 func fetchSecrets(apiBaseURL string, principal *nmpclient.Principal, secretRefs []secretReference) ([]string, error) {
+	return fetchSecretsWithClient(nmpclient.NewSecretClient(apiBaseURL, principal), secretRefs)
+}
+
+func fetchSecretsWithEndpoint(endpoint nmpclient.Endpoint, principal *nmpclient.Principal, secretRefs []secretReference) ([]string, error) {
+	return fetchSecretsWithClient(
+		nmpclient.NewSecretClientWithHTTPClient(endpoint.ConnectBaseURL, principal, secretEndpointHTTPClient(endpoint)),
+		secretRefs,
+	)
+}
+
+func secretEndpointHTTPClient(endpoint nmpclient.Endpoint) *http.Client {
+	httpClient := *endpoint.HTTPClient()
+	httpClient.Timeout = secretFetchTimeout
+	return &httpClient
+}
+
+func fetchSecretsWithClient(client nmpclient.SecretClient, secretRefs []secretReference) ([]string, error) {
 	if len(secretRefs) == 0 {
 		return nil, nil
 	}
 
-	client := nmpclient.NewSecretClient(apiBaseURL, principal)
 	envVars := make([]string, 0, len(secretRefs))
 
 	for _, ref := range secretRefs {
@@ -129,6 +150,19 @@ func fetchSecrets(apiBaseURL string, principal *nmpclient.Principal, secretRefs 
 	}
 
 	return envVars, nil
+}
+
+func workloadEnvFromParent() []string {
+	env := os.Environ()
+	filtered := make([]string, 0, len(env))
+	for _, item := range env {
+		key, _, _ := strings.Cut(item, "=")
+		if strings.HasPrefix(key, "NMP_JOB_LAUNCHER_") {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	return filtered
 }
 
 // runExecWithStdin sets up OTEL and runs the specified command with stdin
@@ -148,6 +182,30 @@ func runExecWithStdin(args []string) (exitCode int, err error) {
 	return runExec(args, os.Stdin)
 }
 
+func configureOTELHeadersFromWorkloadToken() {
+	token := os.Getenv("NEMO_WORKLOAD_TOKEN")
+	if token == "" {
+		return
+	}
+
+	const headersEnv = launcherOTLPLogsHeadersEnv
+	headers := os.Getenv(headersEnv)
+	for _, item := range strings.Split(headers, ",") {
+		key, _, _ := strings.Cut(strings.TrimSpace(item), "=")
+		if strings.EqualFold(key, "authorization") {
+			return
+		}
+	}
+
+	authHeader := "Authorization=" + url.PathEscape("Bearer "+token)
+	if headers == "" {
+		os.Setenv(headersEnv, authHeader)
+		return
+	}
+	os.Setenv(headersEnv, headers+","+authHeader)
+}
+
+
 // runExec runs the specified command with arguments, injecting secrets as environment variables if specified
 func runExec(args []string, stdinReader io.Reader) (int, error) {
 	// Command and arguments
@@ -160,8 +218,8 @@ func runExec(args []string, stdinReader io.Reader) (int, error) {
 	// Prepare the subprocess
 	cmd := exec.Command(cmdName, cmdArgs...)
 
-	// Inherit parent environment
-	cmd.Env = os.Environ()
+	// Inherit parent environment, excluding launcher-private control variables.
+	cmd.Env = workloadEnvFromParent()
 
 	// Parse and fetch secrets if NEMO_JOB_SECRETS is set
 	secretsEnv := os.Getenv("NEMO_JOB_SECRETS")
@@ -173,18 +231,16 @@ func runExec(args []string, stdinReader io.Reader) (int, error) {
 		}
 
 		if len(secretRefs) > 0 {
-			// Get API configuration from environment
-			apiBaseURL := os.Getenv("NMP_SECRETS_URL")
-
-			if apiBaseURL == "" {
-				logger.Printf("Error: NMP_SECRETS_URL environment variable is required when NEMO_JOB_SECRETS is set\n")
-				return 1, fmt.Errorf("NMP_SECRETS_URL is not set")
+			secretEndpoint, err := nmpclient.ResolveServiceEndpointFromEnv("secrets")
+			if err != nil {
+				logger.Printf("Error: NMP_SECRETS_URL or NMP_BASE_URL is required when NEMO_JOB_SECRETS is set: %v\n", err)
+				return 1, fmt.Errorf("secrets endpoint is not configured: %w", err)
 			}
 
 			// Build auth context from NMP_PRINCIPAL JSON env var set by the jobs controller
 			principal := nmpclient.PrincipalFromEnv()
 
-			secretEnvVars, err := fetchSecrets(apiBaseURL, principal, secretRefs)
+			secretEnvVars, err := fetchSecretsWithEndpoint(secretEndpoint, principal, secretRefs)
 			if err != nil {
 				logger.Printf("Error fetching secrets: %v\n", err)
 				return 1, err

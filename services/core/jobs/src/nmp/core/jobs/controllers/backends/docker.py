@@ -89,7 +89,11 @@ from nmp.core.jobs.app.providers import (
     GPUExecutionProvider,
 )
 from nmp.core.jobs.controllers.backends.base import (
-    JOB_LOGS_ENDPOINT_ENVVAR,
+    NMP_JOB_LAUNCHER_LOGS_EXPORTER_ENVVAR,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS_ENVVAR,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL_ENVVAR,
     WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
     WORKLOAD_IDENTITY_TOKEN_FILE_PATH,
     WORKLOAD_IDENTITY_VOLUME_PATH,
@@ -951,12 +955,14 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 EPHEMERAL_TASK_STORAGE_PATH_ENVVAR: DEFAULT_TASK_STORAGE_PATH,
                 CONFIG_TASK_STORAGE_PATH_ENVVAR: DEFAULT_CONFIG_STORAGE_PATH,
                 NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR: DEFAULT_NEMO_JOB_STEP_CONFIG_FILE_PATH,
-                # Endpoint used by jobs-launcher to upload task stdout/stderr logs.
-                JOB_LOGS_ENDPOINT_ENVVAR: get_logs_endpoint_from_fileset(
+                # Private env vars for jobs-launcher to export captured logs.
+                NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR: get_logs_endpoint_from_fileset(
                     platform_config,
                     step.workspace,
                     step.fileset,
                 ),
+                NMP_JOB_LAUNCHER_LOGS_EXPORTER_ENVVAR: "otlp",
+                NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL_ENVVAR: NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL,
                 # Inject secret environment variable mappings for the jobs-launcher to fetch
                 NEMO_JOB_SECRETS_ENVVAR: self.get_secrets_environment_variable_for_injection(step),
             }
@@ -973,6 +979,8 @@ chmod -R 777 {job_vol}/{storage_subpath}
             env_var_dict = principal.get_env_var()
             for name, value in env_var_dict.items():
                 env[name] = value
+            # Also set launcher OTLP headers for authenticated platform log export.
+            env[NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS_ENVVAR] = principal.get_otlp_headers_value()
 
         step_config_json = json.dumps(step.step_spec.config)
 

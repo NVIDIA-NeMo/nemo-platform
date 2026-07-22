@@ -5,58 +5,41 @@ import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels'
 import { Flex, Text } from '@nvidia/foundations-react-core';
 import { ColumnConfigPanel } from '@studio/components/ColumnConfigPanel';
 import { ModelConfigPanel } from '@studio/components/ModelConfigPanel';
-import type { BuilderColumn } from '@studio/routes/DataDesignerJobBuildRoute/columns';
-import type {
-  BuilderModel,
-  BuilderModelPatch,
-} from '@studio/routes/DataDesignerJobBuildRoute/models';
 import type { FC } from 'react';
 
 export interface BuilderConfigPaneProps {
-  selectedColumn: BuilderColumn | null;
-  selectedModel: BuilderModel | null;
-  takenNames: Set<string>;
-  takenAliases: Set<string>;
+  selectedColumnId: string | null;
+  selectedModelId: string | null;
   modelGroups: ModelWorkspaceGroup[];
   isLoadingModels: boolean;
-  onColumnChange: (patch: { name?: string; values?: Record<string, string> }) => void;
   onColumnRemove: () => void;
   onColumnClose: () => void;
-  onModelChange: (patch: BuilderModelPatch) => void;
   onModelRemove: () => void;
   onModelClose: () => void;
 }
 
 export const BuilderConfigPane: FC<BuilderConfigPaneProps> = ({
-  selectedColumn,
-  selectedModel,
-  takenNames,
-  takenAliases,
+  selectedColumnId,
+  selectedModelId,
   modelGroups,
   isLoadingModels,
-  onColumnChange,
   onColumnRemove,
   onColumnClose,
-  onModelChange,
   onModelRemove,
   onModelClose,
 }) => (
   <div className="w-[240px] shrink-0 border-l border-base bg-surface-base">
-    {selectedColumn ? (
+    {selectedColumnId ? (
       <ColumnConfigPanel
-        column={selectedColumn}
-        takenNames={takenNames}
-        onChange={onColumnChange}
+        columnId={selectedColumnId}
         onRemove={onColumnRemove}
         onClose={onColumnClose}
       />
-    ) : selectedModel ? (
+    ) : selectedModelId ? (
       <ModelConfigPanel
-        model={selectedModel}
-        takenAliases={takenAliases}
+        modelId={selectedModelId}
         modelGroups={modelGroups}
         isLoadingModels={isLoadingModels}
-        onChange={onModelChange}
         onRemove={onModelRemove}
         onClose={onModelClose}
       />
