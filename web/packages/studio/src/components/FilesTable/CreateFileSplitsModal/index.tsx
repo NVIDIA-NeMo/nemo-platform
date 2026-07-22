@@ -249,7 +249,7 @@ export const CreateFileSplitsModal: FC<Props> = ({
               <ControlledRadioGroup
                 orientation="horizontal"
                 defaultValue="random"
-                className="flex w-full! [&>*]:flex-1"
+                className="flex w-full! *:flex-1"
                 items={[
                   { children: 'Random', value: 'random' },
                   { children: 'Sequential', value: 'sequential' },
