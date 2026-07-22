@@ -149,7 +149,6 @@ def audit_target_name(sdk: NeMoPlatform, audit_workspace: str, mock_provider_nam
 # ---- Tests ----
 
 
-@pytest.mark.skip("re-enable after auditor image rebuilt")
 def test_audit_job_submit_blank_probe(
     sdk: NeMoPlatform,
     audit_workspace: str,
@@ -192,7 +191,6 @@ def test_audit_job_submit_blank_probe(
         _cleanup_audit_job(sdk, job_name, audit_workspace)
 
 
-@pytest.mark.skip("re-enable after auditor image rebuilt")
 def test_audit_job_submit_with_entity_refs(
     sdk: NeMoPlatform,
     audit_workspace: str,
