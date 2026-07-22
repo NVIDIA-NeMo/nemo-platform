@@ -153,7 +153,12 @@ describe('EvaluationTraceDetailRoute', () => {
 
       renderTraceDetail(COMPARE_TRACE_ID);
 
-      expect(await screen.findByText('Test case not available')).toBeInTheDocument();
+      // "Test case not available" is the terminal state, shown only after the full
+      // run fan-out settles. Anchor on the mounted view first, then allow CI headroom.
+      await screen.findByText(`Test case comparison — Test case ${TEST_CASE_ID}`);
+      expect(
+        await screen.findByText('Test case not available', undefined, { timeout: 5000 })
+      ).toBeInTheDocument();
     });
   });
 
