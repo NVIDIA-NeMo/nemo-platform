@@ -35,16 +35,26 @@ lost 40–78% throughput versus its isolated baseline.
 1. Small OTLP batches are inefficient. One-span requests spend most of their
    time queued behind per-request ClickHouse inserts and asynchronous-insert
    waits; higher concurrency primarily increases latency.
+   - This is a limited production risk if high-volume exporters batch spans, as
+     expected. Document and recommend OTLP batching; low-volume one-span traffic
+     does not create meaningful aggregate load.
 2. Evaluation overview and trace preview compute broad rollups on read. These
    queries consume multiple ClickHouse CPUs and up to roughly 450 MiB per query.
-3. Ingest and read workloads have weak isolation. Concurrent rollups increased
-   ClickHouse query time by 1.6–3.5x in the mixed run.
-4. Large trace responses move the bottleneck to the single API worker through
+   - These UI- and agent-driven paths should run at much lower throughput than
+     ingest, so the measured capacity is likely sufficient initially. Monitor
+     latency and query memory; add persisted rollups or caching if interactive
+     concurrency grows.
+3. Large trace responses move the bottleneck to the single API worker through
    response construction and JSON serialization.
+   - This work can scale horizontally across API replicas. Validate that
+     throughput scales with replica count before treating serialization as an
+     endpoint-design problem.
 
-The highest-value follow-up is reducing or isolating compute-on-read rollups,
-then retesting the same mixed profile. Stored-volume scaling, exporter retry
-versions, and production multi-replica topology remain unverified.
+The current results do not identify a blocking issue for the expected workload
+shape. Near-term actions are to document OTLP batching, monitor interactive
+rollup latency and memory, and validate horizontal API scaling. Stored-volume
+scaling, exporter retry versions, and production multi-replica topology remain
+unverified.
 
 ## Test environment
 
