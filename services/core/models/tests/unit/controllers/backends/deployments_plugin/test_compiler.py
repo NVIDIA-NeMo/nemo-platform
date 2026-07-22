@@ -30,10 +30,10 @@ def _resolved(engine: str, *, lora: bool = False, runtime: Runtime = Runtime.KUB
     )
 
 
-def test_vllm_weighted_chain_has_on_failure_puller_and_always_server() -> None:
+def test_vllm_weighted_chain_has_never_puller_and_always_server() -> None:
     compiled = compile_model_deployment(_resolved("vllm"), DeploymentsPluginConfig())
     assert compiled.volume is not None
-    assert compiled.puller_config is not None and compiled.puller_config.restart_policy == "OnFailure"
+    assert compiled.puller_config is not None and compiled.puller_config.restart_policy == "Never"
     assert compiled.server_config.restart_policy == "Always"
     assert compiled.puller_prerequisite is True
     assert compiled.server_config.containers[0].volume_mounts[0].read_only is True

@@ -178,10 +178,13 @@ def compile_nim_server_env(
     *,
     weighted: bool,
     tool_call_plugin_path: str | None,
+    ngc_api_key: str | None = None,
 ) -> dict[str, str]:
     """Compile NIM server environment variables."""
     view = resolved.view
     env: dict[str, str] = dict(view.additional_envs or {})
+    if ngc_api_key:
+        env.setdefault("NGC_API_KEY", ngc_api_key)
 
     model_fqdn: str | None = None
     if view.model_name:

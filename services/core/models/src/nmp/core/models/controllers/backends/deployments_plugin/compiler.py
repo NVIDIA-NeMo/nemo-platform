@@ -174,7 +174,10 @@ def _lora_sidecar(
 
 
 def compile_model_deployment(
-    resolved: ResolvedPluginDeployment, config: DeploymentsPluginConfig
+    resolved: ResolvedPluginDeployment,
+    config: DeploymentsPluginConfig,
+    *,
+    ngc_api_key: str | None = None,
 ) -> CompiledModelDeployment:
     """Compile a model deployment into deployments-plugin entity specifications.
 
@@ -222,7 +225,7 @@ def compile_model_deployment(
             workspace=resolved.deployment.workspace,
             containers=[puller],
             labels=_labels(resolved, engine, "puller"),
-            restartPolicy="OnFailure",
+            restartPolicy="Never",
             backoffLimit=config.max_restart_count,
             backendConfig=backend_config or DeploymentBackendConfig(),
         )
@@ -254,6 +257,7 @@ def compile_model_deployment(
             config,
             weighted=weighted,
             tool_call_plugin_path=tool_call_plugin_path,
+            ngc_api_key=ngc_api_key,
         )
         if lora_enabled:
             env["NIM_PEFT_SOURCE"] = _LORA_MOUNT
