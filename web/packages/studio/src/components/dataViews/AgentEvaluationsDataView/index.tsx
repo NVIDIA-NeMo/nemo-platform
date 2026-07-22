@@ -36,6 +36,7 @@ import { STATUS_FILTER_OPTIONS } from '@studio/constants/platformJobs';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { formatScore } from '@studio/routes/agents/AgentEvaluationsRoute/evalScores';
 import { getAgentEvaluationDetailRoute, getFilesetDetailRoute } from '@studio/routes/utils';
+import { getTextWithCount } from '@studio/util/strings';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Trash } from 'lucide-react';
 import { ComponentProps, useMemo, useState } from 'react';
@@ -284,7 +285,7 @@ export const AgentEvaluationsDataView = () => {
         items={deleteJobs}
         open={deleteJobs.length > 0}
         onDelete={handleDeleteJobs}
-        title={(count) => `Delete ${count} Evaluation${count !== 1 ? 's' : ''}`}
+        title={(count) => `Delete ${getTextWithCount('Evaluation', count)}`}
         onClose={() => {
           setDeleteJobs([]);
           dataViewState.rowSelection.set({});

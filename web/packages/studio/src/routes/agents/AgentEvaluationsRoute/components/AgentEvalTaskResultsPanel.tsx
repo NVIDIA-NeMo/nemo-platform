@@ -2,17 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { AccordionPanel } from '@nemo/common/src/components/AccordionPanel';
-import * as DataView from '@nemo/common/src/components/DataView/internal';
+import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
 import {
   TableExpandableCell,
   type TableExpandableCellState,
 } from '@nemo/common/src/components/DataView/TableExpandableCell';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
+import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { Badge, Block, Button, Flex, Modal, Stack, Text } from '@nvidia/foundations-react-core';
 import type { AgentEvalTaskDetail } from '@studio/api/evaluation/agent-evaluations';
 import { formatScore } from '@studio/routes/agents/AgentEvaluationsRoute/evalScores';
 import { ListChecks } from 'lucide-react';
-import { type ComponentProps, type FC, useCallback, useState } from 'react';
+import { type ComponentProps, type FC, useCallback, useMemo, useState } from 'react';
 
 interface AgentEvalTaskResultsPanelProps {
   tasks: AgentEvalTaskDetail[];
@@ -43,17 +44,25 @@ const LongCell: FC<{
 
 export const AgentEvalTaskResultsPanel: FC<AgentEvalTaskResultsPanelProps> = ({ tasks }) => {
   const [expandedCell, setExpandedCell] = useState<TableExpandableCellState | null>(null);
-  const dataViewState = DataView.useDataViewState();
+  const dataViewState = useStudioDataViewState();
+
+  const { pageIndex, pageSize } = dataViewState.pagination.state;
+  const pageRows = useMemo(
+    () => tasks.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
+    [tasks, pageIndex, pageSize]
+  );
 
   const makeColumns = useCallback<
-    ComponentProps<typeof DataView.Root<AgentEvalTaskDetail>>['makeColumns']
+    ComponentProps<typeof StudioDataView<AgentEvalTaskDetail>>['makeColumns']
   >(
     (col) => [
       col.display({
         id: 'task',
         header: 'Task',
         size: 80,
-        cell: ({ row }) => <Text kind="body/semibold/sm">{row.index + 1}</Text>,
+        cell: ({ row }) => (
+          <Text kind="body/semibold/sm">{pageIndex * pageSize + row.index + 1}</Text>
+        ),
       }),
       col.display({
         id: 'score',
@@ -76,7 +85,7 @@ export const AgentEvalTaskResultsPanel: FC<AgentEvalTaskResultsPanelProps> = ({ 
         cell: ({ row }) => (
           <LongCell
             content={row.original.instruction ?? ''}
-            title={`Task ${row.index + 1} — Input`}
+            title={`Task ${pageIndex * pageSize + row.index + 1} — Input`}
             onExpand={setExpandedCell}
           />
         ),
@@ -105,7 +114,7 @@ export const AgentEvalTaskResultsPanel: FC<AgentEvalTaskResultsPanelProps> = ({ 
         cell: ({ row }) => (
           <LongCell
             content={row.original.responseText ?? ''}
-            title={`Task ${row.index + 1} — Agent Response`}
+            title={`Task ${pageIndex * pageSize + row.index + 1} — Agent Response`}
             onExpand={setExpandedCell}
           />
         ),
@@ -123,13 +132,13 @@ export const AgentEvalTaskResultsPanel: FC<AgentEvalTaskResultsPanelProps> = ({ 
         cell: ({ row }) => (
           <LongCell
             content={diagnosticsText(row.original.diagnostics)}
-            title={`Task ${row.index + 1} — Diagnostics`}
+            title={`Task ${pageIndex * pageSize + row.index + 1} — Diagnostics`}
             onExpand={setExpandedCell}
           />
         ),
       }),
     ],
-    []
+    [pageIndex, pageSize]
   );
 
   if (tasks.length === 0) {
@@ -138,15 +147,19 @@ export const AgentEvalTaskResultsPanel: FC<AgentEvalTaskResultsPanelProps> = ({ 
 
   return (
     <AccordionPanel slotHeading={`Task Results (${tasks.length})`} slotIcon={<ListChecks />}>
-      <div className="border border-base rounded-md overflow-hidden">
-        <DataView.Root
-          data={tasks}
-          state={dataViewState}
+      <div className="flex flex-col min-h-[400px] max-h-[640px]">
+        <StudioDataView
+          dataViewState={dataViewState}
           makeColumns={makeColumns}
-          reactTableOptions={{ getRowId: (row) => row.taskId }}
-        >
-          <DataView.TableContent />
-        </DataView.Root>
+          maxTwoLines={false}
+          attributes={{
+            DataViewRoot: {
+              data: pageRows,
+              totalCount: tasks.length,
+              reactTableOptions: { getRowId: (row) => row.taskId },
+            },
+          }}
+        />
       </div>
       <Modal
         open={expandedCell !== null}

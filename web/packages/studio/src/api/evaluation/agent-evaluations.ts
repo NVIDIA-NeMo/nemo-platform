@@ -45,8 +45,7 @@ export const agentNameForJob = (job: AgentEvaluateJob): string | null => {
 };
 
 export const evalConfigName = (job: AgentEvaluateJob): string | null => {
-  const benchmark = job.spec?.benchmark as { eval_config_fileset?: unknown } | null | undefined;
-  const name = benchmark?.eval_config_fileset;
+  const name = job.spec?.benchmark?.eval_config_fileset;
   return typeof name === 'string' && name.length > 0 ? name : null;
 };
 
