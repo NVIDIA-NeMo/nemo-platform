@@ -43,6 +43,7 @@ from nemo_guardrails_plugin.requests import (
 )
 from nemo_guardrails_plugin.responses import (
     GUARDRAILS_DATA_FIELD,
+    apply_input_rail_modifications,
     build_assistant_message_from_response_result,
     build_blocked_immediate_response_body,
     build_blocked_output_response_body,
@@ -351,10 +352,10 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
 
         # Remove Guardrails-specific fields from the request body proxied to the upstream model.
         # Otherwise, the upstream model may reject the request.
-        # Nested values inside ``request.body`` (notably ``messages``) remain aliased with
-        # ``ctx.original_request.body`` per IGW's shallow snapshot — fine because we don't mutate them.
-        sanitized_body = sanitize_request_body_for_proxy(request.body)
-        request = InferenceRequest(body=sanitized_body, headers=request.headers, path=request.path)
+        # Assign a new top-level body dict (sanitize returns a shallow copy) so we do not
+        # mutate ``ctx.original_request.body``. Nested ``messages`` may still be aliased
+        # until replaced below — we only replace that list, never mutate it in place.
+        request.body = sanitize_request_body_for_proxy(request.body)
 
         if not source_has_input_flows(source):
             return request
@@ -384,6 +385,13 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
                     user_log_options,
                 )
             )
+
+        # If an input rail masked/transformed the user message, write the text content
+        # back onto the last user message so the upstream model sees the post-rail content.
+        updated_messages = apply_input_rail_modifications(messages, generation_response)
+        if updated_messages is not messages:
+            request.body["messages"] = updated_messages
+            logger.debug("Applied input-rail message modifications for %s", provenance.label)
 
         # Store the generation_response in plugin state so it can be used by the response middleware
         # to build the `guardrails_data` for the input and output rails.
