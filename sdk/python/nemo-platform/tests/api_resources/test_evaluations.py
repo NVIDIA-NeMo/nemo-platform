@@ -528,6 +528,74 @@ class TestEvaluations:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
+    def test_method_patch(self, client: NeMoPlatform) -> None:
+        evaluation = client.evaluations.patch(
+            name="name",
+            workspace="workspace",
+        )
+        assert_matches_type(EvaluationResponse, evaluation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_method_patch_with_all_params(self, client: NeMoPlatform) -> None:
+        evaluation = client.evaluations.patch(
+            name="name",
+            workspace="workspace",
+            description="description",
+            experiment_ids=["string"],
+            metadata={"foo": "string"},
+            parent_evaluation_id="parent_evaluation_id",
+            root_cause="root_cause",
+            source_link="https://example.com",
+            status="status",
+        )
+        assert_matches_type(EvaluationResponse, evaluation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_raw_response_patch(self, client: NeMoPlatform) -> None:
+        response = client.evaluations.with_raw_response.patch(
+            name="name",
+            workspace="workspace",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        evaluation = response.parse()
+        assert_matches_type(EvaluationResponse, evaluation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_streaming_response_patch(self, client: NeMoPlatform) -> None:
+        with client.evaluations.with_streaming_response.patch(
+            name="name",
+            workspace="workspace",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            evaluation = response.parse()
+            assert_matches_type(EvaluationResponse, evaluation, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_path_params_patch(self, client: NeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
+            client.evaluations.with_raw_response.patch(
+                name="name",
+                workspace="",
+            )
+
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
+            client.evaluations.with_raw_response.patch(
+                name="",
+                workspace="workspace",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
     def test_method_pin(self, client: NeMoPlatform) -> None:
         evaluation = client.evaluations.pin(
             name="name",
@@ -1122,6 +1190,74 @@ class TestAsyncEvaluations:
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             await async_client.evaluations.with_raw_response.delete(
+                name="",
+                workspace="workspace",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_patch(self, async_client: AsyncNeMoPlatform) -> None:
+        evaluation = await async_client.evaluations.patch(
+            name="name",
+            workspace="workspace",
+        )
+        assert_matches_type(EvaluationResponse, evaluation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_patch_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
+        evaluation = await async_client.evaluations.patch(
+            name="name",
+            workspace="workspace",
+            description="description",
+            experiment_ids=["string"],
+            metadata={"foo": "string"},
+            parent_evaluation_id="parent_evaluation_id",
+            root_cause="root_cause",
+            source_link="https://example.com",
+            status="status",
+        )
+        assert_matches_type(EvaluationResponse, evaluation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_raw_response_patch(self, async_client: AsyncNeMoPlatform) -> None:
+        response = await async_client.evaluations.with_raw_response.patch(
+            name="name",
+            workspace="workspace",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        evaluation = await response.parse()
+        assert_matches_type(EvaluationResponse, evaluation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_streaming_response_patch(self, async_client: AsyncNeMoPlatform) -> None:
+        async with async_client.evaluations.with_streaming_response.patch(
+            name="name",
+            workspace="workspace",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            evaluation = await response.parse()
+            assert_matches_type(EvaluationResponse, evaluation, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_path_params_patch(self, async_client: AsyncNeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
+            await async_client.evaluations.with_raw_response.patch(
+                name="name",
+                workspace="",
+            )
+
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
+            await async_client.evaluations.with_raw_response.patch(
                 name="",
                 workspace="workspace",
             )

@@ -128,11 +128,12 @@ class SQLAlchemyFilterRepository(FilterRepository):
         """Equal comparison."""
         column, is_json = self._get_column(field)
         if is_json:
-            # Handle None/null: match both missing JSON keys and explicit null values.
-            # SQLAlchemy's JSON subscript IS NULL doesn't work reliably across backends,
-            # but cast to String returns "null" for both cases on SQLite and PostgreSQL.
+            # Handle None/null: match both an explicit JSON null and an absent key. A present-but-null
+            # value extracts to the JSON text token "null"; a missing key extracts to SQL NULL (notably
+            # on PostgreSQL, where `data->'key'` on an absent key is SQL NULL, so casting it would never
+            # equal "null"). Test both so `field == None` catches missing and explicitly-null values.
             if value is None:
-                return self._cast_json_to_raw_text(column) == "null"
+                return or_(self._cast_json_to_raw_text(column) == "null", column.is_(None))
             # Handle boolean values specially:
             # - SQLite stores JSON booleans as integers (0/1), json_extract returns "0" or "1"
             # - PostgreSQL stores them as "false"/"true"

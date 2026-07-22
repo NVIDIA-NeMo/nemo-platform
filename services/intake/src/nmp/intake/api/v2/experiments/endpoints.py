@@ -27,6 +27,7 @@ from nmp.common.entities.client import EntityClient, EntityConflictError, Entity
 from nmp.common.service.dependencies import get_entity_client
 from nmp.intake.api.v2.experiments.schemas import (
     EvaluationFilter,
+    EvaluationPatchRequest,
     EvaluationRequest,
     EvaluationResponse,
     EvaluationSessionFilter,
@@ -564,6 +565,64 @@ async def update_evaluation(
     return response
 
 
+@router.patch(
+    "/v2/workspaces/{workspace}/evaluations/{name}",
+    response_model=EvaluationResponse,
+    tags=[EVALUATIONS_TAG],
+    responses={
+        400: {"description": "A referenced ExperimentGroup does not exist, or experiment_ids is empty"},
+        404: {"description": "Evaluation not found"},
+    },
+)
+async def patch_evaluation(
+    workspace: str,
+    name: str,
+    body: EvaluationPatchRequest,
+    entity_client: EntityClientDep,
+    rollup_repository: EvaluationRollupRepositoryDep,
+) -> EvaluationResponse:
+    """Partially update an evaluation: only fields present in the request are changed.
+
+    The common case is curating an evaluation into another ExperimentGroup — PATCH with the merged
+    ``experiment_ids``. Membership is replaced (not appended), so send the full desired set; any new
+    group must exist and the set must be non-empty (an evaluation always belongs to >=1 group). Omitted
+    fields are left untouched (unlike the full-body PUT, which overwrites them).
+    """
+    existing = await _get_or_404(entity_client, Evaluation, workspace=workspace, name=name, label="Evaluation")
+    _reject_if_deleted(existing, workspace=workspace, name=name, label="Evaluation")
+
+    fields_set = body.model_fields_set
+    if "experiment_ids" in fields_set:
+        if not body.experiment_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="experiment_ids must be non-empty: an evaluation must belong to at least one group.",
+            )
+        new_group_ids = [gid for gid in body.experiment_ids if gid not in existing.experiment_ids]
+        if new_group_ids:
+            await _validate_groups_exist(entity_client, group_ids=new_group_ids)
+        existing.experiment_ids = body.experiment_ids
+    if "parent_evaluation_id" in fields_set:
+        await _validate_parent_evaluation_exists(entity_client, parent_evaluation_id=body.parent_evaluation_id)
+        existing.parent_experiment_id = body.parent_evaluation_id
+    if "source_link" in fields_set:
+        existing.source_link = body.source_link
+    if "metadata" in fields_set:
+        # Entity metadata is a non-null dict; a client clearing it (explicit null) resets to empty.
+        existing.metadata = body.metadata or {}
+    if "description" in fields_set:
+        existing.description = body.description
+    if "status" in fields_set:
+        existing.status = body.status
+    if "root_cause" in fields_set:
+        existing.root_cause = body.root_cause
+
+    updated = await entity_client.update(existing)
+    response = EvaluationResponse.from_entity(updated)
+    await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
+    return response
+
+
 @router.delete(
     "/v2/workspaces/{workspace}/evaluations/{name}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -642,80 +701,6 @@ async def unpin_evaluation(
     entity.pinned_at = None
     updated = await entity_client.update(entity)
     response = EvaluationResponse.from_entity(updated)
-    await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
-    return response
-
-
-@router.post(
-    "/v2/workspaces/{workspace}/evaluations/{name}/experiments/{experiment_id}",
-    response_model=EvaluationResponse,
-    tags=[EVALUATIONS_TAG],
-    responses={
-        400: {"description": "Experiment does not exist or is deleted"},
-        404: {"description": "Evaluation not found"},
-    },
-)
-async def add_evaluation_to_experiment(
-    workspace: str,
-    name: str,
-    experiment_id: str,
-    entity_client: EntityClientDep,
-    rollup_repository: EvaluationRollupRepositoryDep,
-) -> EvaluationResponse:
-    """Add an evaluation to an Experiment so it appears on that experiment's board.
-
-    Curates an existing run into another comparison experiment (e.g. an all-benchmarks view). The
-    experiment must exist and be live. Idempotent: adding an experiment the evaluation already belongs
-    to is a no-op.
-    """
-    entity = await _get_or_404(entity_client, Evaluation, workspace=workspace, name=name, label="Evaluation")
-    _reject_if_deleted(entity, workspace=workspace, name=name, label="Evaluation")
-    await _validate_group_exists(entity_client, group_id=experiment_id)
-    if experiment_id not in entity.experiment_ids:
-        entity.experiment_ids = [*entity.experiment_ids, experiment_id]
-        entity = await entity_client.update(entity)
-    response = EvaluationResponse.from_entity(entity)
-    await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
-    return response
-
-
-@router.delete(
-    "/v2/workspaces/{workspace}/evaluations/{name}/experiments/{experiment_id}",
-    response_model=EvaluationResponse,
-    tags=[EVALUATIONS_TAG],
-    responses={
-        404: {"description": "Evaluation not found"},
-        409: {"description": "Cannot remove the evaluation from its only experiment"},
-    },
-)
-async def remove_evaluation_from_experiment(
-    workspace: str,
-    name: str,
-    experiment_id: str,
-    entity_client: EntityClientDep,
-    rollup_repository: EvaluationRollupRepositoryDep,
-) -> EvaluationResponse:
-    """Remove an evaluation from an Experiment.
-
-    Preserves the >=1-experiment invariant: removing the evaluation's *last* experiment is rejected
-    with 409 — delete the evaluation instead. Idempotent: removing an experiment the evaluation isn't
-    in is a no-op.
-    """
-    entity = await _get_or_404(entity_client, Evaluation, workspace=workspace, name=name, label="Evaluation")
-    _reject_if_deleted(entity, workspace=workspace, name=name, label="Evaluation")
-    if experiment_id in entity.experiment_ids:
-        remaining = [gid for gid in entity.experiment_ids if gid != experiment_id]
-        if not remaining:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    f"Cannot remove Evaluation '{name}' from its only experiment '{experiment_id}'; an "
-                    "evaluation must belong to at least one experiment. Delete the evaluation instead."
-                ),
-            )
-        entity.experiment_ids = remaining
-        entity = await entity_client.update(entity)
-    response = EvaluationResponse.from_entity(entity)
     await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
     return response
 

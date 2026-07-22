@@ -206,16 +206,10 @@ def test_legacy_experiments_url_aliases_are_hidden_from_schema() -> None:
     from fastapi.routing import APIRoute
     from nmp.intake.api.v2.experiments.endpoints import router
 
-    # Legacy aliases are the top-level `/experiments` collection routes that mirror `/evaluations`.
-    # Exclude `/experiment-groups` (a distinct resource) and the nested
-    # `/evaluations/{name}/experiments/{experiment_id}` membership routes (real, in-schema endpoints).
     alias_routes = [
         route
         for route in router.routes
-        if isinstance(route, APIRoute)
-        and "/experiments" in route.path
-        and "/experiment-groups" not in route.path
-        and "/evaluations/" not in route.path
+        if isinstance(route, APIRoute) and "/experiments" in route.path and "/experiment-groups" not in route.path
     ]
     assert alias_routes, "expected legacy /experiments alias routes to be registered"
     assert all(route.include_in_schema is False for route in alias_routes)
@@ -577,49 +571,48 @@ def test_delete_group_reference_counted_cascade(client: TestClient) -> None:
     assert any(e["name"] == "rc-shared" for e in in_b.json()["data"])
 
 
-def test_add_evaluation_to_experiment(client: TestClient) -> None:
-    """POST .../experiments/{id} adds a membership (idempotent) and the run appears on that board."""
+def test_patch_evaluation_adds_to_group(client: TestClient) -> None:
+    """PATCH .../evaluations/{name} with a merged experiment_ids adds a membership; the run shows on the board."""
     group_a = client.post(GROUPS, json={"name": "add-a"}).json()
     group_b = client.post(GROUPS, json={"name": "add-b"}).json()
     client.post(EVALUATIONS, json=_evaluation_body(name="add-eval", experiment_group_id=group_a["id"]))
 
-    added = client.post(f"{EVALUATIONS}/add-eval/experiments/{group_b['id']}")
+    added = client.patch(f"{EVALUATIONS}/add-eval", json={"experiment_ids": [group_a["id"], group_b["id"]]})
     assert added.status_code == 200, added.text
     assert set(added.json()["experiment_ids"]) == {group_a["id"], group_b["id"]}
-
-    again = client.post(f"{EVALUATIONS}/add-eval/experiments/{group_b['id']}")  # idempotent
-    assert set(again.json()["experiment_ids"]) == {group_a["id"], group_b["id"]}
 
     in_b = client.get(EVALUATIONS, params={"filter[experiment_group_id]": group_b["id"]})
     assert any(e["name"] == "add-eval" for e in in_b.json()["data"])
 
 
-def test_add_evaluation_to_unknown_experiment_rejected(client: TestClient) -> None:
+def test_patch_evaluation_unknown_group_rejected(client: TestClient) -> None:
     group = client.post(GROUPS, json={"name": "add-known"}).json()
     client.post(EVALUATIONS, json=_evaluation_body(name="add-eval-2", experiment_group_id=group["id"]))
-    resp = client.post(f"{EVALUATIONS}/add-eval-2/experiments/experiment_group-nope")
+    resp = client.patch(f"{EVALUATIONS}/add-eval-2", json={"experiment_ids": [group["id"], "experiment_group-nope"]})
     assert resp.status_code == 400, resp.text
 
 
-def test_remove_evaluation_from_experiment(client: TestClient) -> None:
-    group_a = client.post(GROUPS, json={"name": "rm-a"}).json()
-    group_b = client.post(GROUPS, json={"name": "rm-b"}).json()
-    body = _evaluation_body(name="rm-eval", experiment_group_id="placeholder")
-    body.pop("experiment_group_id")
-    body["experiment_ids"] = [group_a["id"], group_b["id"]]
+def test_patch_evaluation_rejects_empty_experiment_ids(client: TestClient) -> None:
+    group = client.post(GROUPS, json={"name": "empty-ids"}).json()
+    client.post(EVALUATIONS, json=_evaluation_body(name="empty-ids-eval", experiment_group_id=group["id"]))
+    resp = client.patch(f"{EVALUATIONS}/empty-ids-eval", json={"experiment_ids": []})
+    assert resp.status_code == 400, resp.text
+    # The >=1-group invariant holds: membership is unchanged.
+    assert client.get(f"{EVALUATIONS}/empty-ids-eval").json()["experiment_ids"] == [group["id"]]
+
+
+def test_patch_evaluation_leaves_omitted_fields_unchanged(client: TestClient) -> None:
+    """Partial semantics: PATCHing experiment_ids alone must not clobber omitted fields (e.g. description)."""
+    group_a = client.post(GROUPS, json={"name": "patch-a"}).json()
+    group_b = client.post(GROUPS, json={"name": "patch-b"}).json()
+    body = _evaluation_body(name="patch-eval", experiment_group_id=group_a["id"])
+    body["description"] = "keep me"
+    body["metadata"] = {"team": "switchyard"}
     client.post(EVALUATIONS, json=body)
 
-    removed = client.delete(f"{EVALUATIONS}/rm-eval/experiments/{group_a['id']}")
-    assert removed.status_code == 200, removed.text
-    assert removed.json()["experiment_ids"] == [group_b["id"]]
-
-    in_a = client.get(EVALUATIONS, params={"filter[experiment_group_id]": group_a["id"]})
-    assert all(e["name"] != "rm-eval" for e in in_a.json()["data"])
-
-
-def test_remove_evaluation_from_last_experiment_rejected(client: TestClient) -> None:
-    group = client.post(GROUPS, json={"name": "rm-last"}).json()
-    client.post(EVALUATIONS, json=_evaluation_body(name="rm-last-eval", experiment_group_id=group["id"]))
-    resp = client.delete(f"{EVALUATIONS}/rm-last-eval/experiments/{group['id']}")
-    assert resp.status_code == 409, resp.text
-    assert client.get(f"{EVALUATIONS}/rm-last-eval").status_code == 200  # still there
+    patched = client.patch(f"{EVALUATIONS}/patch-eval", json={"experiment_ids": [group_a["id"], group_b["id"]]})
+    assert patched.status_code == 200, patched.text
+    data = patched.json()
+    assert set(data["experiment_ids"]) == {group_a["id"], group_b["id"]}
+    assert data["description"] == "keep me"  # omitted from the PATCH -> unchanged
+    assert data["metadata"] == {"team": "switchyard"}

@@ -3523,6 +3523,55 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - Evaluations
+      summary: Patch Evaluation
+      description: "Partially update an evaluation: only fields present in the request\
+        \ are changed.\n\nThe common case is curating an evaluation into another ExperimentGroup\
+        \ \u2014 PATCH with the merged\n``experiment_ids``. Membership is replaced\
+        \ (not appended), so send the full desired set; any new\ngroup must exist\
+        \ and the set must be non-empty (an evaluation always belongs to >=1 group).\
+        \ Omitted\nfields are left untouched (unlike the full-body PUT, which overwrites\
+        \ them)."
+      operationId: patch_evaluation_apis_intake_v2_workspaces__workspace__evaluations__name__patch
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationPatchRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResponse'
+        '400':
+          description: A referenced ExperimentGroup does not exist, or experiment_ids
+            is empty
+        '404':
+          description: Evaluation not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
     delete:
       tags:
       - Evaluations
@@ -3546,104 +3595,6 @@ paths:
           description: Successful Response
         '404':
           description: Evaluation not found
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/experiments/{experiment_id}:
-    post:
-      tags:
-      - Evaluations
-      summary: Add Evaluation To Experiment
-      description: 'Add an evaluation to an Experiment so it appears on that experiment''s
-        board.
-
-
-        Curates an existing run into another comparison experiment (e.g. an all-benchmarks
-        view). The
-
-        experiment must exist and be live. Idempotent: adding an experiment the evaluation
-        already belongs
-
-        to is a no-op.'
-      operationId: add_evaluation_to_experiment_apis_intake_v2_workspaces__workspace__evaluations__name__experiments__experiment_id__post
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      - name: experiment_id
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Experiment Id
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EvaluationResponse'
-        '400':
-          description: Experiment does not exist or is deleted
-        '404':
-          description: Evaluation not found
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    delete:
-      tags:
-      - Evaluations
-      summary: Remove Evaluation From Experiment
-      description: "Remove an evaluation from an Experiment.\n\nPreserves the >=1-experiment\
-        \ invariant: removing the evaluation's *last* experiment is rejected\nwith\
-        \ 409 \u2014 delete the evaluation instead. Idempotent: removing an experiment\
-        \ the evaluation isn't\nin is a no-op."
-      operationId: remove_evaluation_from_experiment_apis_intake_v2_workspaces__workspace__evaluations__name__experiments__experiment_id__delete
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      - name: experiment_id
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Experiment Id
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EvaluationResponse'
-        '404':
-          description: Evaluation not found
-        '409':
-          description: Cannot remove the evaluation from its only experiment
         '422':
           description: Validation Error
           content:
@@ -10393,6 +10344,55 @@ components:
           type: object
       title: EvaluationFilter
       type: object
+    EvaluationPatchRequest:
+      properties:
+        experiment_ids:
+          title: Experiment Ids
+          description: Replace the ExperimentGroups this Evaluation belongs to. Must
+            be non-empty when provided; each group must already exist. Omit to leave
+            membership unchanged.
+          items:
+            type: string
+          type: array
+        source_link:
+          title: Source Link
+          description: Optional URL for the source evaluation.
+          type: string
+          minLength: 1
+          format: uri
+        metadata:
+          title: Metadata
+          description: Free-form producer metadata.
+          additionalProperties:
+            type: string
+          type: object
+        description:
+          title: Description
+          description: Human-readable description.
+          type: string
+        parent_evaluation_id:
+          title: Parent Evaluation Id
+          description: Entity id of the evaluation this one was derived from (e.g.
+            a variant of a baseline), if any.
+          type: string
+        status:
+          title: Status
+          description: Producer-defined lifecycle status of the evaluation.
+          type: string
+        root_cause:
+          title: Root Cause
+          description: Human- or agent-authored explanation of the evaluation's outcome
+            (e.g. why it was killed).
+          type: string
+      additionalProperties: false
+      type: object
+      title: EvaluationPatchRequest
+      description: "Partial-update body for an Evaluation: only fields present in\
+        \ the request are applied.\n\nUnset fields are left unchanged (PATCH semantics\
+        \ \u2014 same pattern as the models service's PATCH).\nImmutable fields (name,\
+        \ dataset_name, dataset_version) aren't accepted here. ``experiment_ids``,\n\
+        when provided, must be non-empty: an evaluation must always belong to at least\
+        \ one group."
     EvaluationRequest:
       properties:
         name:

@@ -121,6 +121,37 @@ class EvaluationRequest(BaseModel):
         return self
 
 
+class EvaluationPatchRequest(BaseModel):
+    """Partial-update body for an Evaluation: only fields present in the request are applied.
+
+    Unset fields are left unchanged (PATCH semantics — same pattern as the models service's PATCH).
+    Immutable fields (name, dataset_name, dataset_version) aren't accepted here. ``experiment_ids``,
+    when provided, must be non-empty: an evaluation must always belong to at least one group.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    experiment_ids: list[str] | None = Field(
+        default=None,
+        description=(
+            "Replace the ExperimentGroups this Evaluation belongs to. Must be non-empty when provided; "
+            "each group must already exist. Omit to leave membership unchanged."
+        ),
+    )
+    source_link: AnyUrl | None = Field(default=None, description="Optional URL for the source evaluation.")
+    metadata: dict[str, str] | None = Field(default=None, description="Free-form producer metadata.")
+    description: str | None = Field(default=None, description="Human-readable description.")
+    parent_evaluation_id: str | None = Field(
+        default=None,
+        description="Entity id of the evaluation this one was derived from (e.g. a variant of a baseline), if any.",
+    )
+    status: str | None = Field(default=None, description="Producer-defined lifecycle status of the evaluation.")
+    root_cause: str | None = Field(
+        default=None,
+        description="Human- or agent-authored explanation of the evaluation's outcome (e.g. why it was killed).",
+    )
+
+
 class ExperimentGroupResponse(BaseModel):
     """ExperimentGroup as served by the API."""
 

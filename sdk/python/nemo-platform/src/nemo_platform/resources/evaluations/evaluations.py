@@ -39,18 +39,11 @@ from ..._response import (
     async_to_raw_response_wrapper,
     async_to_streamed_response_wrapper,
 )
-from .experiments import (
-    ExperimentsResource,
-    AsyncExperimentsResource,
-    ExperimentsResourceWithRawResponse,
-    AsyncExperimentsResourceWithRawResponse,
-    ExperimentsResourceWithStreamingResponse,
-    AsyncExperimentsResourceWithStreamingResponse,
-)
 from ...pagination import SyncDefaultPagination, AsyncDefaultPagination
 from ..._base_client import AsyncPaginator, make_request_options
 from ...types.evaluations import (
     evaluation_list_params,
+    evaluation_patch_params,
     evaluation_create_params,
     evaluation_update_params,
 )
@@ -65,10 +58,6 @@ class EvaluationsResource(SyncAPIResource):
     @cached_property
     def sessions(self) -> SessionsResource:
         return SessionsResource(self._client)
-
-    @cached_property
-    def experiments(self) -> ExperimentsResource:
-        return ExperimentsResource(self._client)
 
     @cached_property
     def with_raw_response(self) -> EvaluationsResourceWithRawResponse:
@@ -442,6 +431,86 @@ class EvaluationsResource(SyncAPIResource):
             cast_to=NoneType,
         )
 
+    def patch(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        description: str | Omit = omit,
+        experiment_ids: SequenceNotStr[str] | Omit = omit,
+        metadata: Dict[str, str] | Omit = omit,
+        parent_evaluation_id: str | Omit = omit,
+        root_cause: str | Omit = omit,
+        source_link: str | Omit = omit,
+        status: str | Omit = omit,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> EvaluationResponse:
+        """
+        Partially update an evaluation: only fields present in the request are changed.
+
+        The common case is curating an evaluation into another ExperimentGroup — PATCH
+        with the merged `experiment_ids`. Membership is replaced (not appended), so send
+        the full desired set; any new group must exist and the set must be non-empty (an
+        evaluation always belongs to >=1 group). Omitted fields are left untouched
+        (unlike the full-body PUT, which overwrites them).
+
+        Args:
+          description: Human-readable description.
+
+          experiment_ids: Replace the ExperimentGroups this Evaluation belongs to. Must be non-empty when
+              provided; each group must already exist. Omit to leave membership unchanged.
+
+          metadata: Free-form producer metadata.
+
+          parent_evaluation_id: Entity id of the evaluation this one was derived from (e.g. a variant of a
+              baseline), if any.
+
+          root_cause: Human- or agent-authored explanation of the evaluation's outcome (e.g. why it
+              was killed).
+
+          source_link: Optional URL for the source evaluation.
+
+          status: Producer-defined lifecycle status of the evaluation.
+
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if workspace is None:
+            workspace = self._client._get_workspace_path_param()
+        if not workspace:
+            raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
+        if not name:
+            raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
+        return self._patch(
+            path_template("/apis/intake/v2/workspaces/{workspace}/evaluations/{name}", workspace=workspace, name=name),
+            body=maybe_transform(
+                {
+                    "description": description,
+                    "experiment_ids": experiment_ids,
+                    "metadata": metadata,
+                    "parent_evaluation_id": parent_evaluation_id,
+                    "root_cause": root_cause,
+                    "source_link": source_link,
+                    "status": status,
+                },
+                evaluation_patch_params.EvaluationPatchParams,
+            ),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=EvaluationResponse,
+        )
+
     def pin(
         self,
         name: str,
@@ -532,10 +601,6 @@ class AsyncEvaluationsResource(AsyncAPIResource):
     @cached_property
     def sessions(self) -> AsyncSessionsResource:
         return AsyncSessionsResource(self._client)
-
-    @cached_property
-    def experiments(self) -> AsyncExperimentsResource:
-        return AsyncExperimentsResource(self._client)
 
     @cached_property
     def with_raw_response(self) -> AsyncEvaluationsResourceWithRawResponse:
@@ -909,6 +974,86 @@ class AsyncEvaluationsResource(AsyncAPIResource):
             cast_to=NoneType,
         )
 
+    async def patch(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        description: str | Omit = omit,
+        experiment_ids: SequenceNotStr[str] | Omit = omit,
+        metadata: Dict[str, str] | Omit = omit,
+        parent_evaluation_id: str | Omit = omit,
+        root_cause: str | Omit = omit,
+        source_link: str | Omit = omit,
+        status: str | Omit = omit,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> EvaluationResponse:
+        """
+        Partially update an evaluation: only fields present in the request are changed.
+
+        The common case is curating an evaluation into another ExperimentGroup — PATCH
+        with the merged `experiment_ids`. Membership is replaced (not appended), so send
+        the full desired set; any new group must exist and the set must be non-empty (an
+        evaluation always belongs to >=1 group). Omitted fields are left untouched
+        (unlike the full-body PUT, which overwrites them).
+
+        Args:
+          description: Human-readable description.
+
+          experiment_ids: Replace the ExperimentGroups this Evaluation belongs to. Must be non-empty when
+              provided; each group must already exist. Omit to leave membership unchanged.
+
+          metadata: Free-form producer metadata.
+
+          parent_evaluation_id: Entity id of the evaluation this one was derived from (e.g. a variant of a
+              baseline), if any.
+
+          root_cause: Human- or agent-authored explanation of the evaluation's outcome (e.g. why it
+              was killed).
+
+          source_link: Optional URL for the source evaluation.
+
+          status: Producer-defined lifecycle status of the evaluation.
+
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if workspace is None:
+            workspace = self._client._get_workspace_path_param()
+        if not workspace:
+            raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
+        if not name:
+            raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
+        return await self._patch(
+            path_template("/apis/intake/v2/workspaces/{workspace}/evaluations/{name}", workspace=workspace, name=name),
+            body=await async_maybe_transform(
+                {
+                    "description": description,
+                    "experiment_ids": experiment_ids,
+                    "metadata": metadata,
+                    "parent_evaluation_id": parent_evaluation_id,
+                    "root_cause": root_cause,
+                    "source_link": source_link,
+                    "status": status,
+                },
+                evaluation_patch_params.EvaluationPatchParams,
+            ),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=EvaluationResponse,
+        )
+
     async def pin(
         self,
         name: str,
@@ -1014,6 +1159,9 @@ class EvaluationsResourceWithRawResponse:
         self.delete = to_raw_response_wrapper(
             evaluations.delete,
         )
+        self.patch = to_raw_response_wrapper(
+            evaluations.patch,
+        )
         self.pin = to_raw_response_wrapper(
             evaluations.pin,
         )
@@ -1024,10 +1172,6 @@ class EvaluationsResourceWithRawResponse:
     @cached_property
     def sessions(self) -> SessionsResourceWithRawResponse:
         return SessionsResourceWithRawResponse(self._evaluations.sessions)
-
-    @cached_property
-    def experiments(self) -> ExperimentsResourceWithRawResponse:
-        return ExperimentsResourceWithRawResponse(self._evaluations.experiments)
 
 
 class AsyncEvaluationsResourceWithRawResponse:
@@ -1049,6 +1193,9 @@ class AsyncEvaluationsResourceWithRawResponse:
         self.delete = async_to_raw_response_wrapper(
             evaluations.delete,
         )
+        self.patch = async_to_raw_response_wrapper(
+            evaluations.patch,
+        )
         self.pin = async_to_raw_response_wrapper(
             evaluations.pin,
         )
@@ -1059,10 +1206,6 @@ class AsyncEvaluationsResourceWithRawResponse:
     @cached_property
     def sessions(self) -> AsyncSessionsResourceWithRawResponse:
         return AsyncSessionsResourceWithRawResponse(self._evaluations.sessions)
-
-    @cached_property
-    def experiments(self) -> AsyncExperimentsResourceWithRawResponse:
-        return AsyncExperimentsResourceWithRawResponse(self._evaluations.experiments)
 
 
 class EvaluationsResourceWithStreamingResponse:
@@ -1084,6 +1227,9 @@ class EvaluationsResourceWithStreamingResponse:
         self.delete = to_streamed_response_wrapper(
             evaluations.delete,
         )
+        self.patch = to_streamed_response_wrapper(
+            evaluations.patch,
+        )
         self.pin = to_streamed_response_wrapper(
             evaluations.pin,
         )
@@ -1094,10 +1240,6 @@ class EvaluationsResourceWithStreamingResponse:
     @cached_property
     def sessions(self) -> SessionsResourceWithStreamingResponse:
         return SessionsResourceWithStreamingResponse(self._evaluations.sessions)
-
-    @cached_property
-    def experiments(self) -> ExperimentsResourceWithStreamingResponse:
-        return ExperimentsResourceWithStreamingResponse(self._evaluations.experiments)
 
 
 class AsyncEvaluationsResourceWithStreamingResponse:
@@ -1119,6 +1261,9 @@ class AsyncEvaluationsResourceWithStreamingResponse:
         self.delete = async_to_streamed_response_wrapper(
             evaluations.delete,
         )
+        self.patch = async_to_streamed_response_wrapper(
+            evaluations.patch,
+        )
         self.pin = async_to_streamed_response_wrapper(
             evaluations.pin,
         )
@@ -1129,7 +1274,3 @@ class AsyncEvaluationsResourceWithStreamingResponse:
     @cached_property
     def sessions(self) -> AsyncSessionsResourceWithStreamingResponse:
         return AsyncSessionsResourceWithStreamingResponse(self._evaluations.sessions)
-
-    @cached_property
-    def experiments(self) -> AsyncExperimentsResourceWithStreamingResponse:
-        return AsyncExperimentsResourceWithStreamingResponse(self._evaluations.experiments)

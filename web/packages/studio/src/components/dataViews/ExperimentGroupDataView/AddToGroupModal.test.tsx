@@ -23,7 +23,7 @@ vi.mock('@nemo/sdk/generated/platform/api', async () => {
   return {
     ...actual,
     useListExperimentGroups: () => mockUseListExperimentGroups(),
-    useAddEvaluationToExperiment: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
+    usePatchEvaluation: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
     useCreateExperimentGroup: () => ({ mutateAsync: mockCreateMutateAsync, isPending: false }),
   };
 });
@@ -113,12 +113,12 @@ describe('AddToGroupModal', () => {
     expect(mockMutateAsync).toHaveBeenCalledWith({
       workspace: 'default',
       name: 'eval-1',
-      experimentId: 'g3',
+      data: { experiment_ids: ['g1', 'g3'] },
     });
     expect(mockMutateAsync).toHaveBeenCalledWith({
       workspace: 'default',
       name: 'eval-2',
-      experimentId: 'g3',
+      data: { experiment_ids: ['g1', 'g2', 'g3'] },
     });
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
   });
@@ -141,12 +141,12 @@ describe('AddToGroupModal', () => {
     expect(mockMutateAsync).toHaveBeenCalledWith({
       workspace: 'default',
       name: 'eval-1',
-      experimentId: 'g-new',
+      data: { experiment_ids: ['g1', 'g-new'] },
     });
     expect(mockMutateAsync).toHaveBeenCalledWith({
       workspace: 'default',
       name: 'eval-2',
-      experimentId: 'g-new',
+      data: { experiment_ids: ['g1', 'g2', 'g-new'] },
     });
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
   });

@@ -903,22 +903,15 @@ authz:
         scopes:
         - intake:read
         - platform:read
-      put:
+      patch:
         permissions:
         - intake.evaluations.update
         scopes:
         - intake:write
         - platform:write
-    /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/experiments/{experiment_id}:
-      delete:
+      put:
         permissions:
-        - intake.evaluations.delete
-        scopes:
-        - intake:write
-        - platform:write
-      post:
-        permissions:
-        - intake.evaluations.create
+        - intake.evaluations.update
         scopes:
         - intake:write
         - platform:write

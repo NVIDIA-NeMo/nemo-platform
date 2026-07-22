@@ -7,9 +7,9 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
   getListEvaluationsQueryKey,
   getListExperimentGroupsQueryKey,
-  useAddEvaluationToExperiment,
   useCreateExperimentGroup,
   useListExperimentGroups,
+  usePatchEvaluation,
 } from '@nemo/sdk/generated/platform/api';
 import {
   Flex,
@@ -30,6 +30,7 @@ import {
   experimentGroupCreateSchema,
   type ExperimentGroupCreateFormFields,
 } from '@studio/components/ExperimentGroupCreateModal/constants';
+import { DEFAULT_LARGE_PAGE_SIZE } from '@studio/constants/constants';
 import { useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
 import { Plus } from 'lucide-react';
@@ -104,7 +105,7 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
   // Only fetch groups while the modal is open. A single large page covers any realistic group count.
   const { data: groupsPage, isLoading } = useListExperimentGroups(
     workspace,
-    { page_size: 1000 },
+    { page_size: DEFAULT_LARGE_PAGE_SIZE },
     { query: { enabled: open && !!workspace } }
   );
 
@@ -122,8 +123,7 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
     [groups]
   );
 
-  const { mutateAsync: addEvaluationToExperiment, isPending: isAdding } =
-    useAddEvaluationToExperiment();
+  const { mutateAsync: patchEvaluation, isPending: isAdding } = usePatchEvaluation();
   const { mutateAsync: createExperimentGroup, isPending: isCreatingGroup } =
     useCreateExperimentGroup();
 
@@ -131,12 +131,18 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
   const count = evaluations.length;
   const countLabel = `${count} ${count === 1 ? 'evaluation' : 'evaluations'}`;
 
-  // Add every selected evaluation to `groupId`. Adding one already in the group is a server-side no-op,
-  // so it's safe to add all. Best-effort: returns how many failed rather than throwing on first error.
-  const associateEvaluations = async (experimentId: string): Promise<number> => {
+  // Add every selected evaluation to `groupId` by PATCHing its membership with the group merged in.
+  // Membership is a replace, so send the full desired set (existing + new, de-duped); re-adding a group
+  // the evaluation already belongs to is a no-op. Best-effort: returns how many failed rather than
+  // throwing on the first error.
+  const associateEvaluations = async (groupId: string): Promise<number> => {
     const results = await Promise.allSettled(
       evaluations.map((evaluation) =>
-        addEvaluationToExperiment({ workspace, name: evaluation.name, experimentId })
+        patchEvaluation({
+          workspace,
+          name: evaluation.name,
+          data: { experiment_ids: [...new Set([...evaluation.experiment_ids, groupId])] },
+        })
       )
     );
     return results.filter((result) => result.status === 'rejected').length;
@@ -259,17 +265,18 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
             />
             <SelectContent className="w-(--radix-popper-anchor-width)">
               <SelectListbox>
+                {groups.map((group) => (
+                  <SelectItem key={group.id} value={group.id}>
+                    {group.name}
+                  </SelectItem>
+                ))}
+                {/* "Create new" sits at the bottom of the list, matching the workspace dropdown. */}
                 <SelectItem value={CREATE_NEW}>
                   <Flex gap="density-sm" align="center">
                     <Plus className="size-4" />
                     Create new group
                   </Flex>
                 </SelectItem>
-                {groups.map((group) => (
-                  <SelectItem key={group.id} value={group.id}>
-                    {group.name}
-                  </SelectItem>
-                ))}
               </SelectListbox>
             </SelectContent>
           </SelectRoot>

@@ -31,14 +31,6 @@ from .evaluations import (
     EvaluationsResourceWithStreamingResponse,
     AsyncEvaluationsResourceWithStreamingResponse,
 )
-from .experiments import (
-    ExperimentsResource,
-    AsyncExperimentsResource,
-    ExperimentsResourceWithRawResponse,
-    AsyncExperimentsResourceWithRawResponse,
-    ExperimentsResourceWithStreamingResponse,
-    AsyncExperimentsResourceWithStreamingResponse,
-)
 
 __all__ = [
     "SessionsResource",
@@ -47,12 +39,6 @@ __all__ = [
     "AsyncSessionsResourceWithRawResponse",
     "SessionsResourceWithStreamingResponse",
     "AsyncSessionsResourceWithStreamingResponse",
-    "ExperimentsResource",
-    "AsyncExperimentsResource",
-    "ExperimentsResourceWithRawResponse",
-    "AsyncExperimentsResourceWithRawResponse",
-    "ExperimentsResourceWithStreamingResponse",
-    "AsyncExperimentsResourceWithStreamingResponse",
     "EvaluationsResource",
     "AsyncEvaluationsResource",
     "EvaluationsResourceWithRawResponse",
