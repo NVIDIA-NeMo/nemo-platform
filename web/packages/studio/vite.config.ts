@@ -143,10 +143,23 @@ const formatLicenseReport = (dependencies: Dependency[]): string =>
 // eslint-disable-next-line import/no-default-export
 export default defineConfig(({ mode }) => {
   // Load env file based on mode (e.g., .env.fastapi for --mode fastapi)
-  const { VITE_BASE_URL, VITE_DEV_SERVER_HOST } = loadEnv(mode, './env');
+  const {
+    VITE_BASE_URL,
+    VITE_DEV_SERVER_HOST,
+    VITE_PLATFORM_BASE_URL,
+    VITE_PLATFORM_PROXY_DOMAIN,
+  } = loadEnv(mode, './env');
   const devServerHost = VITE_DEV_SERVER_HOST?.trim() || 'localhost';
   // Use VITE_BASE_URL to host the app at a subpath (fast mode)
   const base = ['fastapi'].includes(mode) && VITE_BASE_URL ? `/${VITE_BASE_URL}` : '/';
+
+  // Dev-server proxy: when VITE_PLATFORM_BASE_URL is empty the app issues
+  // same-origin `/apis/...` requests, so the browser only ever talks to the
+  // (HTTPS) dev server and Vite forwards to the plain-HTTP platform server-side.
+  // This avoids Safari's mixed-content block on an HTTPS page calling http://.
+  // Gated on VITE_PLATFORM_PROXY_DOMAIN so it stays opt-in per developer.
+  const proxyDomain = VITE_PLATFORM_PROXY_DOMAIN?.trim();
+  const shouldProxyPlatform = VITE_PLATFORM_BASE_URL?.trim() === '' && Boolean(proxyDomain);
 
   // Skip mkcert in tests/CI: it fetches GitHub API for releases and hits rate limits (403) in CI.
   const plugins = [
@@ -191,6 +204,17 @@ export default defineConfig(({ mode }) => {
     server: {
       host: devServerHost,
       port: 5173,
+      ...(shouldProxyPlatform
+        ? {
+            proxy: {
+              '/apis': {
+                target: proxyDomain,
+                changeOrigin: true,
+                secure: false,
+              },
+            },
+          }
+        : {}),
     },
     worker: {
       format: 'es',
