@@ -179,7 +179,7 @@ def test_create_experiment_posts_full_body():
         experiment_group_id="grp-1",
         dataset_name="tau2:airline",
         dataset_version="v1",
-        metadata={"seed": 300},
+        metadata={"seed": 300, "num_tasks": None},
         client=stub,
     )
     assert stub.calls == [
@@ -191,7 +191,7 @@ def test_create_experiment_posts_full_body():
                 "experiment_group_id": "grp-1",
                 "dataset_name": "tau2:airline",
                 "dataset_version": "v1",
-                "metadata": {"seed": 300},
+                "metadata": {"seed": "300"},
             },
         )
     ]
