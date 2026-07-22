@@ -310,7 +310,13 @@ def test_local_invoke_fabric_config_exits_nonzero_on_failed_result(tmp_path: Pat
                 status="failed",
                 error={"stage": "invoke", "message": "adapter failed"},
                 events=[{"kind": "invocation_end"}],
-            )
+                request_id="request-1",
+            ),
+            FabricRuntimeResult(
+                status="succeeded",
+                response="later result",
+                request_id="request-2",
+            ),
         ]
 
     app = AgentsCLI().get_cli()
@@ -320,6 +326,8 @@ def test_local_invoke_fabric_config_exits_nonzero_on_failed_result(tmp_path: Pat
     assert result.exit_code == 1
     assert '"status": "failed"' in result.stdout
     assert "adapter failed" in result.stdout
+    assert "later result" in result.stdout
+    assert "request-2" in result.stdout
 
 
 def test_platform_invoke_writes_clean_json_to_stdout() -> None:

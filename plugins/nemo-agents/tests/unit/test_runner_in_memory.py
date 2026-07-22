@@ -234,10 +234,38 @@ async def test_delete_deployment_removes_prepared_fabric_deployment(tmp_path: Pa
         return SimpleNamespace(agent_config=SimpleNamespace(name="fabric-agent"))
 
     with patch("nemo_agents_plugin.runner.in_memory.validate_platform_agent_config", _validate_platform_agent_config):
-        await backend.create_deployment("ws", "fabric-dep", config, port=0)
+        info = await backend.create_deployment("ws", "fabric-dep", config, port=0)
+        base_dir = Path(info.extra["base_dir"])
+        assert base_dir.exists()
         cleaned = await backend.delete_deployment("ws", "fabric-dep")
 
     assert cleaned is True
+    assert not base_dir.exists()
+    assert await backend.get_deployment_status("ws", "fabric-dep") is None
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_cleans_fabric_base_dir_on_validation_failure(tmp_path: Path) -> None:
+    backend = _backend(tmp_path)
+    config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "hermes",
+        "harnesses": {"hermes": {"kind": "hermes"}},
+        "models": {"default": {"provider": "openai", "model": "openai/gpt-5.4"}},
+    }
+    base_dir = tmp_path / "system" / "ws" / "fabric-dep-fabric"
+
+    async def _validate_platform_agent_config(config_: dict[str, Any], *, base_dir: Path) -> Any:
+        del config_
+        (base_dir / "prepared.txt").write_text("created during validation")
+        raise ValueError("bad fabric config")
+
+    with patch("nemo_agents_plugin.runner.in_memory.validate_platform_agent_config", _validate_platform_agent_config):
+        with pytest.raises(ValueError, match="bad fabric config"):
+            await backend.create_deployment("ws", "fabric-dep", config, port=0)
+
+    assert not base_dir.exists()
     assert await backend.get_deployment_status("ws", "fabric-dep") is None
 
 

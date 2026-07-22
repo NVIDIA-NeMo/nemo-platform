@@ -1273,10 +1273,13 @@ def _local_fabric_invoke(config: dict[str, Any], inputs: list[Any], *, base_dir:
         typer.echo(f"Error: Fabric invocation failed: {error}", err=True)
         raise typer.Exit(code=1) from error
 
+    failed = False
     for result in results:
         typer.echo(json.dumps(asdict(result), indent=2))
         if result.status != "succeeded":
-            raise typer.Exit(code=1)
+            failed = True
+    if failed:
+        raise typer.Exit(code=1)
 
 
 def _platform_invoke(

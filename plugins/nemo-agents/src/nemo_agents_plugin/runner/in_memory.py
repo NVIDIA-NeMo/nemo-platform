@@ -242,7 +242,11 @@ class InMemoryRunnerBackend(RunnerBackend):
         """Validate and prepare a Platform-owned Fabric-backed deployment."""
         base_dir = self._fabric_base_dir_for(workspace, name)
         await asyncio.to_thread(base_dir.mkdir, parents=True, exist_ok=True)
-        validation_result = await validate_platform_agent_config(config, base_dir=base_dir)
+        try:
+            validation_result = await validate_platform_agent_config(config, base_dir=base_dir)
+        except Exception:
+            await asyncio.to_thread(shutil.rmtree, base_dir, ignore_errors=True)
+            raise
 
         log_path = self.log_path_for(workspace, name)
         await asyncio.to_thread(self._write_fabric_validation_log, workspace, name, log_path, validation_result)
@@ -295,6 +299,9 @@ class InMemoryRunnerBackend(RunnerBackend):
 
         if config_path is not None:
             config_path.unlink(missing_ok=True)
+
+        if info is not None and (base_dir := info.extra.get("base_dir")):
+            await asyncio.to_thread(shutil.rmtree, base_dir, ignore_errors=True)
 
         logger.info("Deleted agent deployment '%s/%s'", workspace, name)
         return True
