@@ -148,7 +148,7 @@ class TestJobLogsAPI:
         response = test_client.get(f"/v2/workspaces/{DEFAULT_WORKSPACE}/jobs/nonexistent-job/logs")
 
         assert response.status_code == 404
-        assert response.json()["detail"] == "Job not found"
+        assert response.json()["detail"] == "Job 'nonexistent-job' not found in workspace 'default'."
         mock_logs_client.query_logs.assert_not_called()
 
     async def test_get_job_logs_invalid_page_cursor(

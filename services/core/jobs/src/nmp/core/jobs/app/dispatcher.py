@@ -57,6 +57,14 @@ class StateTransitionConflictError(Exception):
     """Exception raised when a state transition is invalid."""
 
 
+class JobAlreadyExistsError(ValueError):
+    """Exception raised when creating a job whose name is already in use."""
+
+
+class JobSecretValidationError(ValueError):
+    """Exception raised when a job's secret references cannot be validated."""
+
+
 operations_counter = create_counter(
     meter=meter,
     subsystem="jobs",
@@ -223,15 +231,19 @@ class JobDispatcher:
                     secrets = client_from_platform(sdk_to_use, AsyncSecretsClient)
                     try:
                         await secrets.get_secret(name=secret_name, workspace=workspace)
-                    except ClientNotFoundError:
-                        raise ValueError(f"Secret '{workspace}/{secret_name}' not found.")
-                    except ClientPermissionDeniedError:
-                        raise ValueError(f"User does not have access to secret '{workspace}/{secret_name}'.")
-                    except Exception:
+                    except ClientNotFoundError as exc:
+                        raise JobSecretValidationError(f"Secret '{workspace}/{secret_name}' not found.") from exc
+                    except ClientPermissionDeniedError as exc:
+                        raise JobSecretValidationError(
+                            f"User does not have access to secret '{workspace}/{secret_name}'."
+                        ) from exc
+                    except Exception as exc:
                         logger.exception(
                             "Error validating secret", extra={"secret_name": secret_name, "workspace": workspace}
                         )
-                        raise ValueError(f"Unknown error when validating secret '{workspace}/{secret_name}'.")
+                        raise JobSecretValidationError(
+                            f"Unknown error when validating secret '{workspace}/{secret_name}'."
+                        ) from exc
 
     async def create_job(
         self,
@@ -247,7 +259,9 @@ class JobDispatcher:
             try:
                 existing_job = await self.store.get(PlatformJob, job_name, workspace=workspace)
                 if existing_job:
-                    raise ValueError(f"Job with name '{job_name}' already exists in workspace '{workspace}'.")
+                    raise JobAlreadyExistsError(
+                        f"Job with name '{job_name}' already exists in workspace '{workspace}'."
+                    )
             except EntityNotFoundError:
                 pass  # Job does not exist, proceed to create
 

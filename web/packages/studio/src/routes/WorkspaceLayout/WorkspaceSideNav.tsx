@@ -5,7 +5,6 @@ import SafeSynthesizerLogo from '@nemo/common/src/svgs/safe_synthesizer_logo.svg
 import { NavigationDrawer } from '@studio/components/Layouts/NavigationDrawer';
 import { DataDesignerIconFc } from '@studio/constants/constants';
 import {
-  AGENTS_ENABLED,
   BASE_MODELS_ENABLED,
   CODING_AGENT_STUDIO_ENABLED,
   CUSTOMIZER_ENABLED,
@@ -24,11 +23,8 @@ import {
 } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { iconColorClass } from '@studio/routes/constants';
+import { getAgentSideNavItems } from '@studio/routes/groups/agentRoutes';
 import {
-  getAgentEvaluationsListRoute,
-  getAgentsListRoute,
-  getAgentMonitorRoute,
-  getAgentOptimizationsRoute,
   getDataDesignerJobListRoute,
   getModelCompareRoute,
   getEvaluationResultsRoute,
@@ -50,7 +46,6 @@ import {
   Boxes,
   ChartBar,
   Database,
-  HatGlasses,
   ListChecks,
   Home,
   ShieldCheck,
@@ -59,9 +54,6 @@ import {
   Cog,
   Columns3,
   Rocket,
-  Lightbulb,
-  Activity,
-  FlaskConical,
   Waypoints,
 } from 'lucide-react';
 import { useMemo } from 'react';
@@ -157,35 +149,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
         ]
       : [];
 
-    const agentsNav = AGENTS_ENABLED
-      ? [
-          {
-            id: 'agents',
-            slotIcon: <HatGlasses className={iconColorClass} />,
-            slotLabel: 'Agents',
-            href: getAgentsListRoute(workspace),
-          },
-          {
-            id: 'agent-evaluations',
-            slotIcon: <FlaskConical className={iconColorClass} />,
-            slotLabel: 'Evaluations',
-            href: getAgentEvaluationsListRoute(workspace),
-          },
-          {
-            id: 'agent-monitor',
-            slotIcon: <Activity className={iconColorClass} />,
-            slotLabel: 'Monitor',
-            href: getAgentMonitorRoute(workspace),
-          },
-
-          {
-            id: 'agent-optimizations',
-            slotIcon: <Lightbulb className={iconColorClass} />,
-            slotLabel: 'Suggestions',
-            href: getAgentOptimizationsRoute(workspace),
-          },
-        ]
-      : [];
+    const agentItems = getAgentSideNavItems(workspace);
 
     const virtualModelsNav = [
       {
@@ -237,11 +201,11 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
     return [
       ...dashboardNav,
       ...modelCompareNav,
-      ...(agentsNav.length > 0
+      ...(agentItems.length > 0
         ? [
             {
               group: 'Agents',
-              items: agentsNav,
+              items: agentItems,
             },
           ]
         : []),

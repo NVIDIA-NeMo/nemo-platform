@@ -11,6 +11,7 @@ match what the CLI actually hits.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -198,6 +199,41 @@ class TestUpdateConfig:
             json={"run": {"generations": 0}},
         )
         assert resp.status_code == 422
+
+    def test_conflict_hides_raw_exception_details(self, client, mock_entity_client) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_config("cfg-1"))
+        mock_entity_client.update = AsyncMock(
+            side_effect=NemoEntityConflictError("Error code: 409 - {'detail': 'db_version mismatch'}")
+        )
+
+        resp = client.put(
+            "/apis/auditor/v2/workspaces/default/configs/cfg-1",
+            json={"description": "new"},
+        )
+
+        assert resp.status_code == 409
+        detail = resp.json()["detail"]
+        assert "AuditConfig 'cfg-1'" in detail
+        assert "Refresh the config" in detail
+        assert "Error code" not in detail
+        assert "db_version" not in detail
+
+    def test_conflict_sanitizes_log_fields(self, client, mock_entity_client, caplog) -> None:
+        mock_entity_client.get = AsyncMock(return_value=_make_config("cfg-1"))
+        mock_entity_client.update = AsyncMock(side_effect=NemoEntityConflictError("conflict"))
+
+        with caplog.at_level(logging.INFO, logger=configs_router_module.__name__):
+            resp = client.put(
+                "/apis/auditor/v2/workspaces/default%0Aforged/configs/cfg-1%0D%0Aforged",
+                json={"description": "new"},
+            )
+
+        assert resp.status_code == 409
+        message = next(
+            record.getMessage() for record in caplog.records if "Conflict updating audit config" in record.msg
+        )
+        assert "\r" not in message
+        assert "\n" not in message
 
 
 class TestDeleteConfig:

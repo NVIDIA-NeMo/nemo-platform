@@ -9,12 +9,15 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/NVIDIA-NeMo/nemo-platform/services/core/jobs/jobs-launcher/nmpclient"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
-	"go.opentelemetry.io/contrib/exporters/autoexport"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutlog"
@@ -24,14 +27,22 @@ import (
 )
 
 const (
-	name                     = "nmp.nvidia.com/nemo-platform/jobs-launcher"
-	NEMO_JOB_WORKSPACE       = "NEMO_JOB_WORKSPACE"
-	NEMO_JOB_ID_ENV          = "NEMO_JOB_ID"
-	NEMO_JOB_ATTEMPT_ID_ENV  = "NEMO_JOB_ATTEMPT_ID"
-	NEMO_JOB_STEP_NAME_ENV   = "NEMO_JOB_STEP"
-	NEMO_JOB_TASK_ID_ENV     = "NEMO_JOB_TASK"
-	nmpJobLogsEndpointEnv    = "NMP_JOB_LOGS_ENDPOINT"
-	otlpHTTPLogExportTimeout = 10 * time.Second
+	name                    = "nmp.nvidia.com/nemo-platform/jobs-launcher"
+	NEMO_JOB_WORKSPACE      = "NEMO_JOB_WORKSPACE"
+	NEMO_JOB_ID_ENV         = "NEMO_JOB_ID"
+	NEMO_JOB_ATTEMPT_ID_ENV = "NEMO_JOB_ATTEMPT_ID"
+	NEMO_JOB_STEP_NAME_ENV  = "NEMO_JOB_STEP"
+	NEMO_JOB_TASK_ID_ENV    = "NEMO_JOB_TASK"
+
+	launcherLogsExporterEnv     = "NMP_JOB_LAUNCHER_LOGS_EXPORTER"
+	launcherOTLPLogsEndpointEnv = "NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT"
+	launcherOTLPLogsHeadersEnv  = "NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS"
+	launcherOTLPLogsProtocolEnv = "NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL"
+	launcherOTLPLogsTimeoutEnv  = "NMP_JOB_LAUNCHER_OTLP_LOGS_TIMEOUT"
+	launcherOTLPLogsCompressEnv = "NMP_JOB_LAUNCHER_OTLP_LOGS_COMPRESSION"
+	launcherOTLPHTTPProto       = "http/protobuf"
+	defaultLauncherLogsExporter = "console"
+	otlpHTTPLogExportTimeout    = 10 * time.Second
 )
 
 var (
@@ -111,26 +122,64 @@ func newLoggerProvider(ctx context.Context, res *resource.Resource) (*log.Logger
 }
 
 func newLogExporter(ctx context.Context) (log.Exporter, error) {
-	if endpoint := os.Getenv(nmpJobLogsEndpointEnv); endpoint != "" {
-		if os.Getenv(workloadIdentityTokenFileEnv) != "" {
-			tokenSource, err := newOTLPLogWorkloadAuthTokenSource(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("configure workload identity auth for OTLP logs: %w", err)
-			}
-			return newRefreshableAuthLogExporter(ctx, endpoint, tokenSource, otlpHTTPLogExporter)
-		}
-		return otlploghttp.New(ctx, otlploghttp.WithEndpointURL(endpoint))
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(launcherLogsExporterEnv))) {
+	case "", defaultLauncherLogsExporter, "stdout":
+		return stdoutlog.New()
+	case "none":
+		return noopLogExporter{}, nil
+	case "otlp":
+		return newLauncherOTLPLogExporter(ctx)
+	default:
+		return nil, fmt.Errorf("unsupported %s value %q", launcherLogsExporterEnv, os.Getenv(launcherLogsExporterEnv))
+	}
+}
+
+func newLauncherOTLPLogExporter(ctx context.Context) (log.Exporter, error) {
+	protocol := strings.TrimSpace(os.Getenv(launcherOTLPLogsProtocolEnv))
+	if protocol == "" {
+		protocol = launcherOTLPHTTPProto
+	}
+	if protocol != launcherOTLPHTTPProto {
+		return nil, fmt.Errorf("%s must be %q, got %q", launcherOTLPLogsProtocolEnv, launcherOTLPHTTPProto, protocol)
 	}
 
-	return autoexport.NewLogExporter(
-		ctx,
-		// Default to a stdout log exporter if autoexport fails to configure one.
-		autoexport.WithFallbackLogExporter(
-			func(ctx context.Context) (log.Exporter, error) {
-				return stdoutlog.New()
-			},
-		),
-	)
+	endpointURL := strings.TrimSpace(os.Getenv(launcherOTLPLogsEndpointEnv))
+	if endpointURL == "" {
+		return nil, fmt.Errorf("%s is required when %s=otlp", launcherOTLPLogsEndpointEnv, launcherLogsExporterEnv)
+	}
+
+	// If a workload identity token file is available, use a refreshable auth
+	// transport that exchanges the projected SA token for platform credentials.
+	if os.Getenv(workloadIdentityTokenFileEnv) != "" {
+		tokenSource, err := newOTLPLogWorkloadAuthTokenSource(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("configure workload identity auth for OTLP logs: %w", err)
+		}
+		return newRefreshableAuthLogExporter(ctx, endpointURL, tokenSource, otlpHTTPLogExporter)
+	}
+
+	options := []otlploghttp.Option{
+		otlploghttp.WithEndpointURL(endpointURL),
+		otlploghttp.WithHeaders(parseLauncherOTLPHeaders()),
+	}
+
+	timeout, timeoutSet, err := parseLauncherOTLPTimeout()
+	if err != nil {
+		return nil, err
+	}
+	if httpClient := launcherOTLPHTTPClient(timeout, timeoutSet); httpClient != nil {
+		options = append(options, otlploghttp.WithHTTPClient(httpClient))
+	}
+	if timeoutSet {
+		options = append(options, otlploghttp.WithTimeout(timeout))
+	}
+	if compression, ok, err := parseLauncherOTLPCompression(); err != nil {
+		return nil, err
+	} else if ok {
+		options = append(options, otlploghttp.WithCompression(compression))
+	}
+
+	return otlploghttp.New(ctx, options...)
 }
 
 type authHeaderSource interface {
@@ -213,4 +262,78 @@ func (t *authHeaderTransport) baseTransport() http.RoundTripper {
 
 func otlpHTTPLogExporter(ctx context.Context, opts ...otlploghttp.Option) (log.Exporter, error) {
 	return otlploghttp.New(ctx, opts...)
+}
+
+func launcherOTLPHTTPClient(timeout time.Duration, timeoutSet bool) *http.Client {
+	endpoint, err := nmpclient.ResolvePlatformEndpointFromEnv()
+	if err != nil || endpoint.Transport != nmpclient.TransportUDS {
+		return nil
+	}
+	httpClient := endpoint.HTTPClient()
+	if timeoutSet {
+		httpClient.Timeout = timeout
+	}
+	return httpClient
+}
+
+func parseLauncherOTLPHeaders() map[string]string {
+	raw := strings.TrimSpace(os.Getenv(launcherOTLPLogsHeadersEnv))
+	if raw == "" {
+		return nil
+	}
+	headers := map[string]string{}
+	for _, item := range strings.Split(raw, ",") {
+		key, value, ok := strings.Cut(strings.TrimSpace(item), "=")
+		if !ok || key == "" {
+			continue
+		}
+		if decoded, err := url.PathUnescape(value); err == nil {
+			value = decoded
+		}
+		headers[key] = value
+	}
+	return headers
+}
+
+func parseLauncherOTLPTimeout() (time.Duration, bool, error) {
+	raw := strings.TrimSpace(os.Getenv(launcherOTLPLogsTimeoutEnv))
+	if raw == "" {
+		return 0, false, nil
+	}
+	duration, err := time.ParseDuration(raw)
+	if err == nil {
+		return duration, true, nil
+	}
+	milliseconds, intErr := strconv.Atoi(raw)
+	if intErr == nil {
+		return time.Duration(milliseconds) * time.Millisecond, true, nil
+	}
+	return 0, false, fmt.Errorf("invalid %s value %q: %w", launcherOTLPLogsTimeoutEnv, raw, err)
+}
+
+func parseLauncherOTLPCompression() (otlploghttp.Compression, bool, error) {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(launcherOTLPLogsCompressEnv))) {
+	case "":
+		return otlploghttp.NoCompression, false, nil
+	case "none":
+		return otlploghttp.NoCompression, true, nil
+	case "gzip":
+		return otlploghttp.GzipCompression, true, nil
+	default:
+		return otlploghttp.NoCompression, false, fmt.Errorf("unsupported %s value %q", launcherOTLPLogsCompressEnv, os.Getenv(launcherOTLPLogsCompressEnv))
+	}
+}
+
+type noopLogExporter struct{}
+
+func (noopLogExporter) Export(context.Context, []log.Record) error {
+	return nil
+}
+
+func (noopLogExporter) Shutdown(context.Context) error {
+	return nil
+}
+
+func (noopLogExporter) ForceFlush(context.Context) error {
+	return nil
 }

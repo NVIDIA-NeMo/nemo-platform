@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-import nemo_platform_ext.cli.commands.services._process as _process_mod
+import nemo_platform_ext.local.process as _process_mod
 import pytest
 
 

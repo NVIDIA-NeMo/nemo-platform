@@ -2,25 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { KVPair } from '@nemo/common/src/components/KVPair';
+import { LogViewer } from '@nemo/common/src/components/LogViewer';
 import { PanelFooterAccordion } from '@nemo/common/src/components/PanelFooterAccordion';
 import { formatAbsoluteTimestamp } from '@nemo/common/src/components/RelativeTime/util';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { CJobTerminalStatuses } from '@nemo/common/src/constants/query';
 import { useJobLogs } from '@nemo/common/src/hooks/useJobLogs';
 import { useLiveSeconds } from '@nemo/common/src/hooks/useLiveSeconds';
-import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { formatTimeInSeconds, utcToLocalDate } from '@nemo/common/src/utils/date';
-import { formatLogs } from '@nemo/common/src/utils/logs';
 import { getJobRefetchInterval } from '@nemo/common/src/utils/query';
-import {
-  Button,
-  CodeSnippet,
-  Flex,
-  Grid,
-  Panel,
-  Stack,
-  Text,
-} from '@nvidia/foundations-react-core';
+import { Button, Flex, Grid, Panel, Stack, Text } from '@nvidia/foundations-react-core';
 import { TrainValidationLossLineChart } from '@studio/components/charts/TrainValidationLossLineChart';
 import { ErrorMessageWithRetry } from '@studio/components/ErrorMessageWithRetry';
 import { Loading } from '@studio/components/Layouts/Loading';
@@ -44,7 +35,6 @@ type Props = {
   workspace?: string;
 };
 export const CustomizationDetailsPanel: FC<Props> = ({ customizationJobName, workspace = '' }) => {
-  const toast = useToast();
   const [openConfigSidePanel, setOpenConfigSidePanel] = useState(false);
   const {
     job: customization,
@@ -55,7 +45,7 @@ export const CustomizationDetailsPanel: FC<Props> = ({ customizationJobName, wor
     refetchInterval: (query) => getJobRefetchInterval(query.state.data?.status),
   });
 
-  const { data: logs } = useJobLogs({
+  const { data: logs, isLoading: isLogsLoading } = useJobLogs({
     workspace,
     name: customizationJobName,
     enabled: !!customization,
@@ -164,11 +154,6 @@ export const CustomizationDetailsPanel: FC<Props> = ({ customizationJobName, wor
     );
   }
 
-  // Fallback to status details if logs are not available
-  const codeSnippet = logs?.length
-    ? formatLogs(logs)
-    : (JSON.stringify(customization?.status_details?.events, null, 2) ?? '');
-
   return (
     <Panel
       elevation="high"
@@ -190,15 +175,11 @@ export const CustomizationDetailsPanel: FC<Props> = ({ customizationJobName, wor
             </Flex>
           }
           slotContent={
-            <Flex className="h-full">
-              <CodeSnippet
-                className="h-full w-full"
-                value={codeSnippet}
-                language="shell"
-                kind="block"
-                onCopySuccess={() => toast.success('Logs copied to clipboard')}
-              />
-            </Flex>
+            <LogViewer
+              logs={logs ?? []}
+              isLoading={isLogsLoading}
+              downloadFilename={`${customizationJobName}.log`}
+            />
           }
         />
       }

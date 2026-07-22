@@ -5,6 +5,7 @@ Types:
 ```python
 from nemo_platform.types.evaluations import (
     EvaluationFilter,
+    EvaluationPatchRequest,
     EvaluationRequest,
     EvaluationResponse,
     EvaluationResponsesPage,
@@ -21,6 +22,7 @@ Methods:
 - <code title="put /apis/intake/v2/workspaces/{workspace}/evaluations/{name}">client.evaluations.<a href="./src/nemo_platform/resources/evaluations/evaluations.py">update</a>(path_name, \*, workspace, \*\*<a href="src/nemo_platform/types/evaluations/evaluation_update_params.py">params</a>) -> <a href="./src/nemo_platform/types/evaluations/evaluation_response.py">EvaluationResponse</a></code>
 - <code title="get /apis/intake/v2/workspaces/{workspace}/evaluations">client.evaluations.<a href="./src/nemo_platform/resources/evaluations/evaluations.py">list</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/evaluations/evaluation_list_params.py">params</a>) -> <a href="./src/nemo_platform/types/evaluations/evaluation_response.py">SyncDefaultPagination[EvaluationResponse]</a></code>
 - <code title="delete /apis/intake/v2/workspaces/{workspace}/evaluations/{name}">client.evaluations.<a href="./src/nemo_platform/resources/evaluations/evaluations.py">delete</a>(name, \*, workspace) -> None</code>
+- <code title="patch /apis/intake/v2/workspaces/{workspace}/evaluations/{name}">client.evaluations.<a href="./src/nemo_platform/resources/evaluations/evaluations.py">patch</a>(name, \*, workspace, \*\*<a href="src/nemo_platform/types/evaluations/evaluation_patch_params.py">params</a>) -> <a href="./src/nemo_platform/types/evaluations/evaluation_response.py">EvaluationResponse</a></code>
 - <code title="post /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/pin">client.evaluations.<a href="./src/nemo_platform/resources/evaluations/evaluations.py">pin</a>(name, \*, workspace) -> <a href="./src/nemo_platform/types/evaluations/evaluation_response.py">EvaluationResponse</a></code>
 - <code title="delete /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/pin">client.evaluations.<a href="./src/nemo_platform/resources/evaluations/evaluations.py">unpin</a>(name, \*, workspace) -> <a href="./src/nemo_platform/types/evaluations/evaluation_response.py">EvaluationResponse</a></code>
 

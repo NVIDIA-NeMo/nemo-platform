@@ -5,10 +5,12 @@
 
 import logging
 import math
-from typing import Optional
+import re
+from typing import Any, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.log_utils import sanitize_for_log
 from nmp.common.api.common import Page, PaginationData
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params, parse_deep_object
@@ -25,6 +27,7 @@ from nmp.common.jobs.schemas import (
     PlatformJobLogPage,
     PlatformJobResultCreateRequest,
     PlatformJobResultResponse,
+    PlatformJobStatus,
     PlatformJobStatusResponse,
 )
 from nmp.common.observability import scoped_app_ctx
@@ -45,7 +48,12 @@ from nmp.core.jobs.api.v2.jobs.schemas import (
     PlatformJobTaskUpdate,
 )
 from nmp.core.jobs.app.ctx import JobContext
-from nmp.core.jobs.app.dispatcher import JobDispatcher, StateTransitionConflictError
+from nmp.core.jobs.app.dispatcher import (
+    JobAlreadyExistsError,
+    JobDispatcher,
+    JobSecretValidationError,
+    StateTransitionConflictError,
+)
 from nmp.core.jobs.app.profiles import ExecutionProfileT
 from nmp.core.jobs.app.providers import CPUExecutionProvider, SubprocessExecutionProvider
 from nmp.core.jobs.app.schemas import (
@@ -61,6 +69,98 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 platform_config = get_platform_config()
+_JOB_STATUS_VALUES = ", ".join(job_status.value for job_status in PlatformJobStatus)
+
+
+def _format_validation_location(loc: Any, *, prefix: str | None = None) -> str:
+    if isinstance(loc, (list, tuple)):
+        parts = [str(part) for part in loc if part not in ("body", "query")]
+    elif loc:
+        parts = [str(loc)]
+    else:
+        parts = []
+    if prefix:
+        parts.insert(0, prefix)
+    return ".".join(parts) if parts else (prefix or "request")
+
+
+def _safe_validation_message(message: object) -> str:
+    if not isinstance(message, str):
+        return "has an invalid value"
+
+    normalized = message.lower()
+    if "required" in normalized or "missing" in normalized:
+        return "is required"
+    if "integer" in normalized:
+        return "must be an integer"
+    if "number" in normalized or "float" in normalized:
+        return "must be a number"
+    if "boolean" in normalized:
+        return "must be a boolean"
+    if "string" in normalized:
+        return "must be a string"
+    if "list" in normalized or "array" in normalized:
+        return "must be a list"
+    if "dictionary" in normalized or "object" in normalized:
+        return "must be an object"
+    return "has an invalid value"
+
+
+def _format_pydantic_validation_error(exc: ValidationError, *, prefix: str | None = None) -> str:
+    messages: list[str] = []
+    for error in exc.errors():
+        location = _format_validation_location(error.get("loc"), prefix=prefix)
+        message = error.get("msg") or "Invalid value."
+        if location.endswith("status") or ".status." in location:
+            message = f"{message} Expected one or more of: {_JOB_STATUS_VALUES}."
+        messages.append(f"{location}: {message}")
+    if not messages:
+        return "The request contains invalid values. Update the request and try again."
+    return f"The request contains invalid values. {'; '.join(messages)}."
+
+
+def _format_entity_validation_error(exc: EntityValidationError, *, resource: str) -> str:
+    detail = str(exc.args[0]) if exc.args else ""
+    field_match = re.search(r"field ['\"](?P<field>[A-Za-z_][A-Za-z0-9_.\[\]-]*)['\"](?P<message>.*)", detail)
+    if field_match:
+        field = field_match.group("field")
+        message = _safe_validation_message(field_match.group("message"))
+        return f"Invalid {resource} request. Field '{field}' {message}. Update the request and try again."
+
+    return (
+        f"Invalid {resource} request. Check that the name, project, platform_spec, and referenced resources are "
+        "valid for this workspace, then try again."
+    )
+
+
+def _format_job_compilation_error(exc: PlatformJobCompilationError) -> str:
+    detail = str(exc).lower()
+    if "gpu" in detail and "docker" in detail:
+        return (
+            "Invalid job specification: this job requires GPU resources, but the platform is running on Docker with "
+            "no GPUs configured. Configure GPUs in the platform config or choose a non-GPU execution profile."
+        )
+    return (
+        "Invalid job specification. Check platform_spec.steps, executor profiles, and resource requirements, "
+        "then try again."
+    )
+
+
+def _format_create_job_conflict(exc: ValueError, *, job_name: str | None, workspace: str) -> str:
+    if isinstance(exc, JobAlreadyExistsError) and job_name:
+        return (
+            f"Job '{job_name}' already exists in workspace '{workspace}'. Choose a different job name or delete the "
+            "existing job before creating a new one."
+        )
+    if isinstance(exc, JobSecretValidationError):
+        return (
+            "Unable to create job because one or more referenced secrets were not found or are not accessible. "
+            "Verify each platform_spec secret reference uses the expected workspace/name and that you have access."
+        )
+    return (
+        "Unable to create job because the request conflicts with existing platform state. Review the job name and "
+        "referenced resources, then try again."
+    )
 
 
 def get_platform_jobs_steps_list_filter(request: Request) -> PlatformJobStepsListFilter:
@@ -68,8 +168,12 @@ def get_platform_jobs_steps_list_filter(request: Request) -> PlatformJobStepsLis
     try:
         filters = parse_deep_object(name="filter", params=request.query_params) or {}
         return PlatformJobStepsListFilter(**filters)
-    except ValidationError as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
+    except ValidationError as exc:
+        logger.info("Invalid job steps filter parameters", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=_format_pydantic_validation_error(exc, prefix="filter"),
+        ) from exc
 
 
 def validate_job_spec(
@@ -96,11 +200,12 @@ def validate_job_spec(
             )
     try:
         validate_gpu_available_for_docker(job_spec.model_dump())
-    except PlatformJobCompilationError as e:
+    except PlatformJobCompilationError as exc:
+        logger.info("Invalid platform job specification", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=str(e),
-        ) from e
+            detail=_format_job_compilation_error(exc),
+        ) from exc
 
 
 def translate_cpu_container_steps_to_subprocess(
@@ -163,10 +268,23 @@ async def create_job(
             auth_context=AuthContext.from_principal(auth_client.principal),
             sdk=sdk,
         )
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Unable to create job: {str(e)}")
-    except EntityValidationError as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
+    except ValueError as exc:
+        logger.info(
+            "Failed to create job '%s' in workspace '%s'",
+            sanitize_for_log(request.name),
+            sanitize_for_log(workspace),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=_format_create_job_conflict(exc, job_name=request.name, workspace=workspace),
+        ) from exc
+    except EntityValidationError as exc:
+        logger.info("Invalid job entity for workspace '%s'", sanitize_for_log(workspace), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=_format_entity_validation_error(exc, resource="job"),
+        ) from exc
 
 
 @router.get(
@@ -226,7 +344,10 @@ async def get_job(
     with scoped_app_ctx(JobContext(id=name)):
         job = await dispatcher.get_job(name, workspace)
         if not job:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job '{name}' not found in workspace '{workspace}'.",
+            )
         return job
 
 
@@ -246,10 +367,22 @@ async def cancel_job(
     with scoped_app_ctx(JobContext(id=name)):
         try:
             job = await dispatcher.cancel_job(name, workspace)
-        except StateTransitionConflictError as e:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+        except StateTransitionConflictError as exc:
+            logger.info(
+                "Cannot cancel job '%s' in workspace '%s'",
+                sanitize_for_log(name),
+                sanitize_for_log(workspace),
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(f"Cannot cancel job '{name}' from its current state. Refresh the job status and try again."),
+            ) from exc
         if not job:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job '{name}' not found in workspace '{workspace}'.",
+            )
         return job
 
 
@@ -269,7 +402,10 @@ async def pause_job(
     with scoped_app_ctx(JobContext(id=name)):
         job = await dispatcher.pause_job(name, workspace)
         if not job:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job '{name}' not found in workspace '{workspace}'.",
+            )
         return job
 
 
@@ -289,7 +425,10 @@ async def resume_job(
     with scoped_app_ctx(JobContext(id=name)):
         job = await dispatcher.resume_job(name, workspace)
         if not job:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job '{name}' not found in workspace '{workspace}'.",
+            )
         return job
 
 
@@ -310,7 +449,10 @@ async def delete_job(
     with scoped_app_ctx(JobContext(id=name)):
         deleted = await dispatcher.delete_job(name, workspace)
         if not deleted:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job '{name}' not found in workspace '{workspace}'.",
+            )
 
 
 @router.get(
@@ -330,7 +472,10 @@ async def get_job_status(
     with scoped_app_ctx(JobContext(id=name)):
         job_status = await dispatcher.get_job_status(name, workspace)
         if not job_status:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job '{name}' not found in workspace '{workspace}'.",
+            )
         return job_status
 
 
@@ -352,7 +497,10 @@ async def update_job_status_details(
     with scoped_app_ctx(JobContext(id=name)):
         result = await dispatcher.update_job_status_details(name, workspace, request)
         if not result:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job '{name}' not found in workspace '{workspace}'.",
+            )
 
 
 @router.get(
@@ -378,7 +526,10 @@ async def page_job_logs(
     with scoped_app_ctx(JobContext(id=name)):
         job = await dispatcher.get_job(name, workspace)
         if not job:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job '{name}' not found in workspace '{workspace}'.",
+            )
 
         try:
             filters = {
@@ -420,7 +571,10 @@ async def create_job_result(
     with scoped_app_ctx(JobContext(id=job, result_name=name)):
         job_entity = await dispatcher.get_job(job, workspace)
         if not job_entity:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job '{job}' not found in workspace '{workspace}'.",
+            )
         result = await dispatcher.create_result(
             job_id=job_entity.id,
             result_name=name,
@@ -452,7 +606,10 @@ async def list_job_results(
     with scoped_app_ctx(JobContext(id=name)):
         job_entity = await dispatcher.get_job(name, workspace)
         if not job_entity:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job '{name}' not found in workspace '{workspace}'.",
+            )
 
         results, _ = await dispatcher.list_results(job_id=job_entity.id, workspace=workspace, sort=sort)
         return PlatformJobListResultResponse(data=[r.to_response() for r in results])
@@ -476,7 +633,10 @@ async def get_job_result(
     with scoped_app_ctx(JobContext(id=job, result_name=name)):
         result = await dispatcher.get_result(job, name, workspace)
         if not result:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job result not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Result '{name}' for job '{job}' not found in workspace '{workspace}'.",
+            )
         return result.to_response()
 
 
@@ -505,7 +665,10 @@ async def download_job_result(
     with scoped_app_ctx(JobContext(id=job, result_name=name)):
         result = await dispatcher.get_result(job, name, workspace)
         if not result:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job result not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Result '{name}' for job '{job}' not found in workspace '{workspace}'.",
+            )
 
         filename, tmp_dir_path = await download_from_result_info(
             result_name=name,
@@ -583,7 +746,10 @@ async def get_job_step(
     with scoped_app_ctx(JobContext(id=job, step_name=name)):
         step = await dispatcher.get_current_job_step_by_name(job, name, workspace)
         if not step:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job step not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Step '{name}' for job '{job}' not found in workspace '{workspace}'.",
+            )
         return step
 
 
@@ -607,7 +773,10 @@ async def update_job_step_status(
     with scoped_app_ctx(JobContext(id=job, step_name=name)):
         step_entity = await dispatcher.get_current_job_step_by_name(job, name, workspace)
         if not step_entity:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job step not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Step '{name}' for job '{job}' not found in workspace '{workspace}'.",
+            )
 
         try:
             step_entity, _ = await dispatcher.update_job_status_from_step(
@@ -616,13 +785,32 @@ async def update_job_step_status(
                 status_details=request.status_details,
                 error_details=request.error_details,
             )
-        except StateTransitionConflictError as e:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
-        except EntityConflictError as e:
+        except StateTransitionConflictError as exc:
+            logger.info(
+                "Cannot update job step '%s' for job '%s' to status '%s'",
+                sanitize_for_log(name),
+                sanitize_for_log(job),
+                sanitize_for_log(request.status),
+                exc_info=True,
+            )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Conflict updating job step (entity was modified by another request): {e}",
+                detail=(
+                    f"Cannot update job step '{name}' to status '{request.status}' from its current state. "
+                    "Refresh the step status and try again."
+                ),
+            ) from exc
+        except EntityConflictError as exc:
+            logger.info(
+                "Conflict updating job step '%s' for job '%s'",
+                sanitize_for_log(name),
+                sanitize_for_log(job),
+                exc_info=True,
             )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Conflict updating job step: it was modified by another request. Refresh the step and retry.",
+            ) from exc
 
         return step_entity
 
@@ -646,11 +834,17 @@ async def list_job_step_tasks(
     with scoped_app_ctx(JobContext(id=job, step_name=name)):
         job_entity = await dispatcher.get_job(job, workspace)
         if not job_entity:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job '{job}' not found in workspace '{workspace}'.",
+            )
 
         step_entity = await dispatcher.get_current_job_step_by_name(job, name, workspace)
         if not step_entity:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job step not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Step '{name}' for job '{job}' not found in workspace '{workspace}'.",
+            )
 
         return PlatformJobListTaskResponse(data=await dispatcher.list_tasks(step_entity.id, workspace=workspace))
 
@@ -675,7 +869,10 @@ async def update_job_step_task(
     with scoped_app_ctx(JobContext(id=job, step_name=step)):
         step_entity = await dispatcher.get_current_job_step_by_name(job, step, workspace)
         if not step_entity:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job step not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Step '{step}' for job '{job}' not found in workspace '{workspace}'.",
+            )
 
         return await dispatcher.create_or_update_task(
             job,
@@ -705,9 +902,15 @@ async def get_job_step_task(
     with scoped_app_ctx(JobContext(id=job, step_name=step, task_id=name)):
         step_entity = await dispatcher.get_current_job_step_by_name(job, step, workspace)
         if not step_entity:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job step not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Step '{step}' for job '{job}' not found in workspace '{workspace}'.",
+            )
 
         task = await dispatcher.get_task(step_entity.id, name, workspace)
         if not task:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job step task not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=(f"Task '{name}' for step '{step}' of job '{job}' not found in workspace '{workspace}'."),
+            )
         return task

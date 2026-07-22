@@ -34,15 +34,15 @@ from collections import OrderedDict, deque
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
-from langchain_core.language_models.base import BaseLanguageModel
 from nemo_platform.types.guardrail import OutputRailsStreamingConfig
 from nemo_platform.types.guardrail import RailsConfig as PlatformRailsConfig
 from nemo_platform_plugin.inference_middleware import OpenAICompatibleInferenceTarget
 from nemoguardrails import RailsConfig as LibraryRailsConfig
 from nemoguardrails.rails.llm.config import Model
 from nemoguardrails.rails.llm.llmrails import LLMRails
+from nemoguardrails.types import LLMModel
 from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
@@ -660,7 +660,7 @@ class LLMRailsCache:
         self,
         stable: StableRailsConfig,
         *,
-        main_llm: BaseLanguageModel | None = None,
+        main_llm: LLMModel | None = None,
         provenance: Provenance | None = None,
     ) -> AsyncIterator[LLMRails]:
         """Lease one :class:`LLMRails` for one logical operation.
@@ -820,11 +820,16 @@ class LLMRailsCache:
             )
 
     @staticmethod
-    def _reset(rails: LLMRails, main_llm: BaseLanguageModel | None) -> None:
+    def _reset(rails: LLMRails, main_llm: LLMModel | None) -> None:
         """Wipe per-request shared state and apply this request's main LLM."""
         # Prevent leaks by clearing shared state inside a LLMRails instance.
         rails.events_history_cache.clear()
         rails.explain_info = None
         # Inject main_llm. Even if main_llm is None, we want this to persist
         # to prevent subsequent leases without main_llms from reusing the wrong model.
-        rails.update_llm(main_llm)
+        #
+        # ``update_llm`` is typed ``llm: LLMModel`` (no ``None``), but its own
+        # isinstance check treats any non-``LLMModel`` value — including
+        # ``None`` — as a legacy LangChain LLM to wrap, so passing ``None``
+        # here safely clears the previous lease's model instead of reusing it.
+        rails.update_llm(cast(LLMModel, main_llm))
