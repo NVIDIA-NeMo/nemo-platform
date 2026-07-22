@@ -1262,13 +1262,15 @@ def _local_invoke(
 
 def _local_fabric_invoke(config: dict[str, Any], inputs: list[Any], *, base_dir: Path) -> None:
     """Invoke a Platform-owned agent config through Fabric and print results."""
+    from nemo_agents_plugin.agent_config import AgentConfig
     from nemo_agents_plugin.fabric.invocation import invoke_agent_config_once
     from nemo_agents_plugin.fabric.runtime import FabricRuntimeExecutionError
     from nemo_agents_plugin.fabric.translator import FabricTranslationError
     from pydantic import ValidationError
 
     try:
-        results = asyncio.run(invoke_agent_config_once(config, inputs, base_dir=base_dir))
+        agent_config = AgentConfig.model_validate(config)
+        results = asyncio.run(invoke_agent_config_once(agent_config, inputs, base_dir=base_dir))
     except (FabricRuntimeExecutionError, FabricTranslationError, ValidationError) as error:
         typer.echo(f"Error: Fabric invocation failed: {error}", err=True)
         raise typer.Exit(code=1) from error

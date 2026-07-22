@@ -16,13 +16,12 @@ from nemo_agents_plugin.fabric.translator import translate_agent_config
 
 
 async def invoke_agent_config_once(
-    config: dict[str, Any],
+    agent_config: AgentConfig,
     inputs: Sequence[Any],
     *,
     base_dir: Path,
 ) -> list[FabricRuntimeResult]:
     """Translate a Platform agent config and run each input through Fabric once."""
-    agent_config = AgentConfig.model_validate(config)
     fabric_config = translate_agent_config(agent_config)
     await asyncio.to_thread(_ensure_local_workspace_dir, agent_config, base_dir)
 

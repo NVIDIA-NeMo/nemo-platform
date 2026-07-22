@@ -10,6 +10,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.fabric.invocation import invoke_agent_config_once
 from nemo_agents_plugin.fabric.runtime import FabricRuntimeResult
 
@@ -41,8 +42,9 @@ async def test_invoke_agent_config_once_translates_and_runs_each_input(tmp_path:
         captured.append(request)
         return FabricRuntimeResult(status="succeeded", response=f"response:{request.input}")
 
+    agent_config = AgentConfig.model_validate(_agent_config())
     with patch("nemo_agents_plugin.fabric.invocation.run_fabric_agent_once", _run_fabric_agent_once):
-        results = await invoke_agent_config_once(_agent_config(), ["one", "two"], base_dir=tmp_path)
+        results = await invoke_agent_config_once(agent_config, ["one", "two"], base_dir=tmp_path)
 
     assert [result.response for result in results] == ["response:one", "response:two"]
     assert [request.input for request in captured] == ["one", "two"]
@@ -59,5 +61,6 @@ async def test_invoke_agent_config_once_creates_local_workspace_dir(tmp_path: Pa
         assert (tmp_path / "workspace").is_dir()
         return FabricRuntimeResult(status="succeeded")
 
+    agent_config = AgentConfig.model_validate(config)
     with patch("nemo_agents_plugin.fabric.invocation.run_fabric_agent_once", _run_fabric_agent_once):
-        await invoke_agent_config_once(config, ["one"], base_dir=tmp_path)
+        await invoke_agent_config_once(agent_config, ["one"], base_dir=tmp_path)

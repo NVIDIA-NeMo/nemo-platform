@@ -252,8 +252,8 @@ def test_local_invoke_runs_fabric_config_once(tmp_path: Path) -> None:
     )
     captured: dict[str, Any] = {}
 
-    async def _invoke_agent_config_once(config_dict: dict[str, Any], inputs: list[Any], *, base_dir: Path):
-        captured["config"] = config_dict
+    async def _invoke_agent_config_once(agent_config: Any, inputs: list[Any], *, base_dir: Path):
+        captured["agent_config"] = agent_config
         captured["inputs"] = inputs
         captured["base_dir"] = base_dir
         return [
@@ -274,7 +274,8 @@ def test_local_invoke_runs_fabric_config_once(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.stderr
     assert captured["base_dir"] == tmp_path
     assert captured["inputs"] == ["hello"]
-    assert captured["config"]["config_format"] == "nemo-agents-spec-v1"
+    assert captured["agent_config"].config_format == "nemo-agents-spec-v1"
+    assert captured["agent_config"].name == "fabric-agent"
     parsed = _json.loads(result.stdout)
     assert parsed["status"] == "succeeded"
     assert parsed["response"] == "hello"
@@ -303,8 +304,8 @@ def test_local_invoke_fabric_config_exits_nonzero_on_failed_result(tmp_path: Pat
         )
     )
 
-    async def _invoke_agent_config_once(config_dict: dict[str, Any], inputs: list[Any], *, base_dir: Path):
-        del config_dict, inputs, base_dir
+    async def _invoke_agent_config_once(agent_config: Any, inputs: list[Any], *, base_dir: Path):
+        del agent_config, inputs, base_dir
         return [
             FabricRuntimeResult(
                 status="failed",
