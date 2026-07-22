@@ -106,6 +106,8 @@ class EvaluationRequest(BaseModel):
             raise ValueError(
                 "An evaluation must belong to at least one group: provide experiment_ids or experiment_group_id."
             )
+        # Membership is a set — drop duplicate group ids (order-preserving) so counts aren't inflated.
+        self.experiment_ids = list(dict.fromkeys(self.experiment_ids))
         return self
 
     @model_validator(mode="after")

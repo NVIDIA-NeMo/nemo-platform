@@ -601,7 +601,8 @@ async def patch_evaluation(
         new_group_ids = [gid for gid in body.experiment_ids if gid not in existing.experiment_ids]
         if new_group_ids:
             await _validate_groups_exist(entity_client, group_ids=new_group_ids)
-        existing.experiment_ids = body.experiment_ids
+        # Membership is a set — store deduped so a duplicated id can't inflate a group's count.
+        existing.experiment_ids = list(dict.fromkeys(body.experiment_ids))
     if "parent_evaluation_id" in fields_set:
         await _validate_parent_evaluation_exists(entity_client, parent_evaluation_id=body.parent_evaluation_id)
         existing.parent_experiment_id = body.parent_evaluation_id

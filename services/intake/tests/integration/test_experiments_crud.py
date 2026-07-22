@@ -616,3 +616,18 @@ def test_patch_evaluation_leaves_omitted_fields_unchanged(client: TestClient) ->
     assert set(data["experiment_ids"]) == {group_a["id"], group_b["id"]}
     assert data["description"] == "keep me"  # omitted from the PATCH -> unchanged
     assert data["metadata"] == {"team": "switchyard"}
+
+
+def test_patch_evaluation_dedupes_experiment_ids(client: TestClient) -> None:
+    """Membership is a set: duplicate ids are stored once, so a group can't double-count an evaluation."""
+    group = client.post(GROUPS, json={"name": "dedupe-grp"}).json()
+    client.post(EVALUATIONS, json=_evaluation_body(name="dedupe-eval", experiment_group_id=group["id"]))
+
+    patched = client.patch(f"{EVALUATIONS}/dedupe-eval", json={"experiment_ids": [group["id"], group["id"]]})
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["experiment_ids"] == [group["id"]]
+
+    # The group counts the evaluation once, not twice.
+    listed = client.get(GROUPS)
+    grp = next(g for g in listed.json()["data"] if g["id"] == group["id"])
+    assert grp["evaluation_count"] == 1
