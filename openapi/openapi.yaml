@@ -703,10 +703,12 @@ paths:
         in: query
         required: false
         schema:
-          description: Optional scalar field whose matching values should be counted.
+          description: Optional direct string data field whose matching values should
+            be counted.
           title: Count By
           type: string
-        description: Optional scalar field whose matching values should be counted.
+        description: Optional direct string data field whose matching values should
+          be counted.
       - name: filter
         in: query
         required: false
