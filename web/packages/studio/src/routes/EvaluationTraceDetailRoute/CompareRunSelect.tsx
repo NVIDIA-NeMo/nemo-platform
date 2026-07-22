@@ -71,7 +71,7 @@ export const CompareRunSelect: FC<CompareRunSelectProps> = ({
       <SelectContent className="w-(--radix-popper-anchor-width)">
         <SelectListbox density="compact">
           <DropdownHeading className="pb-density-sm">
-            <Text kind="label/regular/sm" className="text-content-secondary">
+            <Text kind="label/regular/sm" className="text-color-secondary">
               Select a trial from a run to compare against
             </Text>
           </DropdownHeading>
@@ -91,7 +91,7 @@ export const CompareRunSelect: FC<CompareRunSelectProps> = ({
               ) : (
                 <Fragment key={evaluationName}>
                   <DropdownHeading>
-                    <Text kind="label/regular/sm" className="text-content-secondary">
+                    <Text kind="label/regular/sm" className="text-color-subtle">
                       {evaluationName}
                     </Text>
                   </DropdownHeading>
