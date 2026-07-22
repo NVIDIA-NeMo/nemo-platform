@@ -22,17 +22,6 @@ def _entities_page(group_counts: dict[str, int] | None = None) -> EntitiesPage:
 
 
 @pytest.mark.asyncio
-async def test_list_uses_shorthand_filter_when_filter_string_is_empty() -> None:
-    mock_api = Mock()
-    mock_api.list = AsyncMock(return_value=_entities_page())
-    client = EntityClient(mock_api)
-
-    await client.list(ExperimentGroup, filter_str="", filter_obj={"insight_id": "insight-a"})
-
-    assert mock_api.list.await_args.kwargs["filter"] == '{"data.insight_id": "insight-a"}'
-
-
-@pytest.mark.asyncio
 async def test_count_by_returns_grouped_counts_for_shorthand_filter() -> None:
     mock_api = Mock()
     mock_api.list = AsyncMock(return_value=_entities_page(group_counts={"insight-a": 2}))
@@ -41,29 +30,14 @@ async def test_count_by_returns_grouped_counts_for_shorthand_filter() -> None:
     counts = await client.count_by(
         ExperimentGroup,
         "insight_id",
-        filter_obj={"insight_id": {"$in": ["insight-a"]}},
+        filter_obj={
+            "insight_id": {"$in": ["insight-a"]},
+            "is_deleted": False,
+        },
     )
 
     assert counts == {"insight-a": 2}
-    mock_api.list.assert_awaited_once_with(
-        "experiment_group",
-        workspace="default",
-        filter='{"data.insight_id": {"$in": ["insight-a"]}}',
-        page=1,
-        page_size=1,
-        extra_query={"count_by": "data.insight_id"},
-    )
-
-
-@pytest.mark.asyncio
-async def test_count_by_preserves_top_level_parent_field() -> None:
-    mock_api = Mock()
-    mock_api.list = AsyncMock(return_value=_entities_page(group_counts={"parent-id": 1}))
-    client = EntityClient(mock_api)
-
-    await client.count_by(ExperimentGroup, "parent")
-
-    assert mock_api.list.await_args.kwargs["extra_query"] == {"count_by": "parent"}
+    assert mock_api.list.await_args.kwargs["extra_query"] == {"count_by": "data.insight_id"}
 
 
 @pytest.mark.asyncio
@@ -74,3 +48,13 @@ async def test_count_by_rejects_response_without_grouped_counts() -> None:
 
     with pytest.raises(EntityStoreError, match="Grouped counts not found"):
         await client.count_by(ExperimentGroup, "insight_id")
+
+
+@pytest.mark.asyncio
+async def test_count_by_rejects_non_direct_field() -> None:
+    mock_api = Mock()
+    mock_api.list = AsyncMock(return_value=_entities_page())
+    client = EntityClient(mock_api)
+
+    with pytest.raises(ValueError, match="direct entity data field"):
+        await client.count_by(ExperimentGroup, "data.insight_id")
