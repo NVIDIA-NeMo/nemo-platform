@@ -7,8 +7,8 @@ authors = [{ name = "NVIDIA", email = "nemo@nvidia.com" }]
 dependencies = [
     "nemo-platform-plugin",
     "nemo-platform",
-    "nemo-anonymizer>=0.3.0",
-    "data-designer==0.7.0",
+    "nemo-anonymizer>=0.3.1",
+    "data-designer==0.8.0",
     "data-designer-nemo",
     "httpx>=0.27",
     "fastapi",
@@ -62,4 +62,3 @@ data-designer-nemo = { workspace = true }
 testpaths = ["tests"]
 asyncio_mode = "auto"
 pythonpath = ["src"]
-
