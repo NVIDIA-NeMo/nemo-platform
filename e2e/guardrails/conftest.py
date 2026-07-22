@@ -15,9 +15,25 @@ from e2e.guardrails.utils import (
     RailType,
     content_safety_config,
     create_guarded_virtual_model,
+    ensure_probe_model_exists,
     setup_mock_provider,
     unique_name,
 )
+
+
+@pytest.fixture(autouse=True, scope="module")
+def probe_model(sdk: NeMoPlatform) -> None:
+    """Ensure `PROBE_MODEL_REF` exists before any test in this module runs.
+
+    A guarded VirtualModel isn't actually guarded the instant it's created: IGW's
+    background cache refresh needs a cycle to pick up its Guardrails middleware, so
+    there's a window right after creation where requests would bypass the rails
+    entirely. `wait_for_guarded_virtual_model` closes that window by polling with a
+    throwaway request until Guardrails is confirmed attached. The polling requests need
+    a real, callable model to point at (see `PROBE_MODEL_REF`) so it doesn't consume a
+    mock response configured in the test's own mock provider.
+    """
+    ensure_probe_model_exists(sdk)
 
 
 @pytest.fixture

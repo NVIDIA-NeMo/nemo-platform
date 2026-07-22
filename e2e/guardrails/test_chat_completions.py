@@ -1,12 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""E2E tests for the Guardrails plugin on chat completions.
+"""E2E tests for chat completions with the Guardrails plugin.
 
-These tests verify that the ``nemo-guardrails`` inference middleware works
+These tests verify that the Guardrails IGW middleware works
 through the real platform subprocess, exercising content-safety input and
-output rails on non-streaming and streaming Inference Gateway chat-completion
-routes.
+output rails on non-streaming and streaming chat-completion routes.
 
 Mock provider mode is enabled by the NMP_INFERENCE_GATEWAY_MOCK_PROVIDER_PREFIX
 env var set in e2e/conftest.py. Tests use ``add_mock_provider()`` from
@@ -26,9 +25,25 @@ from e2e.guardrails.utils import (
     CONTENT_SAFETY_INPUT_FLOW,
     CONTENT_SAFETY_OUTPUT_FLOW,
     REFUSAL_TEXT,
+    GuardrailsChatTestCase,
     post_chat_completion,
     post_streaming_chat_completion,
 )
+
+
+def _post(
+    test_case: GuardrailsChatTestCase,
+    *,
+    extra_body: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return post_chat_completion(
+        test_case.sdk,
+        workspace=test_case.workspace,
+        virtual_model_name=test_case.virtual_model_name,
+        backend_model_ref=test_case.backend_model_ref,
+        messages=[{"role": "user", "content": test_case.user_input}],
+        extra_body=extra_body,
+    )
 
 
 def _assert_blocked(response: dict[str, Any]) -> None:
@@ -65,7 +80,7 @@ def test_chat_completions_blocks_unsafe_input(
 ) -> None:
     test_case = guardrails_chat_test_case(config_mode="referenced", outcome="unsafe_input", rail_types=("input",))
 
-    response = post_chat_completion(test_case)
+    response = _post(test_case)
 
     _assert_blocked(response)
 
@@ -75,7 +90,7 @@ def test_chat_completions_blocks_unsafe_llm_output(
 ) -> None:
     test_case = guardrails_chat_test_case(config_mode="referenced", outcome="unsafe_output", rail_types=("output",))
 
-    response = post_chat_completion(test_case)
+    response = _post(test_case)
 
     _assert_blocked(response)
 
@@ -85,7 +100,7 @@ def test_chat_completions_allows_safe_request(
 ) -> None:
     test_case = guardrails_chat_test_case(config_mode="referenced", outcome="safe", rail_types=("input", "output"))
 
-    response = post_chat_completion(test_case)
+    response = _post(test_case)
 
     _assert_allowed(response)
 
@@ -95,7 +110,7 @@ def test_chat_completions_blocks_unsafe_input_with_inline_config(
 ) -> None:
     test_case = guardrails_chat_test_case(config_mode="inline", outcome="unsafe_input", rail_types=("input",))
 
-    response = post_chat_completion(test_case)
+    response = _post(test_case)
 
     _assert_blocked(response)
 
@@ -105,7 +120,7 @@ def test_chat_completions_blocks_unsafe_llm_output_with_inline_config(
 ) -> None:
     test_case = guardrails_chat_test_case(config_mode="inline", outcome="unsafe_output", rail_types=("output",))
 
-    response = post_chat_completion(test_case)
+    response = _post(test_case)
 
     _assert_blocked(response)
 
@@ -115,7 +130,7 @@ def test_chat_completions_allows_safe_request_with_inline_config(
 ) -> None:
     test_case = guardrails_chat_test_case(config_mode="inline", outcome="safe", rail_types=("input", "output"))
 
-    response = post_chat_completion(test_case)
+    response = _post(test_case)
 
     _assert_allowed(response)
 
@@ -209,7 +224,7 @@ def test_chat_completions_reports_guardrails_metadata_when_blocked(
         config_mode="referenced", outcome="unsafe_output", rail_types=("input", "output")
     )
 
-    response = post_chat_completion(
+    response = _post(
         test_case,
         extra_body={"guardrails": {"options": {"log": {"activated_rails": True}}}},
     )
@@ -227,7 +242,7 @@ def test_chat_completions_rejects_unsupported_body_guardrails_config(
     test_case = guardrails_chat_test_case(config_mode="referenced", outcome="safe", rail_types=("input",))
 
     with pytest.raises(nemo_platform.APIStatusError) as exc_info:
-        post_chat_completion(
+        _post(
             test_case,
             extra_body={"guardrails": {"config_id": test_case.config_ref}},
         )

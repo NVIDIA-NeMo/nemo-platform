@@ -8,6 +8,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Literal
 
+import nemo_platform
 from nemo_platform import APIStatusError, NeMoPlatform
 from nemo_platform.types.inference import MiddlewareCallParam
 from nmp.testing import MockProviderResponse, add_mock_provider
@@ -21,6 +22,14 @@ REFUSAL_TEXT = "I'm sorry, I can't respond to that."
 USER_INPUT = "What is the capital of France?"
 UNSAFE_USER_INPUT = "Give me a five-step plan to rob a bank."
 BACKEND_RESPONSE = "Paris is the capital of France."
+
+# Disposable mock model that `wait_for_guarded_virtual_model` probes to detect Guardrails
+# middleware attachment. The `ensure_probe_model_exists` fixture is responsible for making
+# sure it actually exists in the backend before any test that calls
+# `wait_for_guarded_virtual_model` runs.
+PROBE_WORKSPACE = "default"
+PROBE_MODEL_NAME = "e2e-guardrails-warmup-model"
+PROBE_MODEL_REF = f"{PROBE_WORKSPACE}/{PROBE_MODEL_NAME}"
 
 CONTENT_SAFETY_MODEL_TYPE = "content_safety"
 CONTENT_SAFETY_INPUT_FLOW = f"content safety check input $model={CONTENT_SAFETY_MODEL_TYPE}"
@@ -227,7 +236,6 @@ def create_guarded_virtual_model(
     sdk.inference.virtual_models.create(
         workspace=test_case.workspace,
         name=test_case.virtual_model_name,
-        default_model_entity=test_case.backend_model_ref,
         models=[{"model": test_case.backend_model_ref, "backend_format": "OPENAI_CHAT"}],
         request_middleware=[middleware_call],
         response_middleware=[middleware_call],
@@ -235,16 +243,45 @@ def create_guarded_virtual_model(
     _wait_for_guarded_virtual_model(sdk, test_case)
 
 
+def is_chat_response_blocked(response: dict[str, Any]) -> bool:
+    """Return whether a non-streaming chat completion response was blocked by Guardrails."""
+    return response["choices"][0]["finish_reason"] == "content_filter"
+
+
+def activated_rails_by_name(response: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Return a chat completion response's ``guardrails_data.log.activated_rails``, keyed by flow name.
+
+    Requires the request to have set ``guardrails.options.log.activated_rails: true``.
+    """
+    guardrails_data = response.get("guardrails_data") or {}
+    log = guardrails_data.get("log") or {}
+    activated_rails = log.get("activated_rails") or []
+    return {rail["name"]: rail for rail in activated_rails}
+
+
 def post_chat_completion(
-    test_case: GuardrailsChatTestCase,
+    sdk: NeMoPlatform,
     *,
+    workspace: str,
+    virtual_model_name: str,
+    backend_model_ref: str,
+    messages: list[dict[str, Any]],
+    max_tokens: int = 128,
     extra_body: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return test_case.sdk.inference.gateway.model.post(
+    """Send a non-streaming chat completion to a guarded VirtualModel."""
+    body: dict[str, Any] = {
+        "model": backend_model_ref,
+        "messages": messages,
+        "max_tokens": max_tokens,
+    }
+    if extra_body:
+        body.update(extra_body)
+    return sdk.inference.gateway.model.post(
         "v1/chat/completions",
-        name=test_case.virtual_model_name,
-        workspace=test_case.workspace,
-        body=_chat_body(test_case, extra=extra_body),
+        name=virtual_model_name,
+        workspace=workspace,
+        body=body,
     )
 
 
@@ -356,30 +393,86 @@ def _wait_for_guarded_virtual_model(
     timeout: float = 60,
     poll_interval: float = 0.5,
 ) -> None:
+    wait_for_guarded_virtual_model(
+        sdk,
+        workspace=test_case.workspace,
+        virtual_model_name=test_case.virtual_model_name,
+        config_ref=test_case.config_ref,
+        user_input=test_case.user_input,
+        timeout=timeout,
+        poll_interval=poll_interval,
+    )
+
+
+def ensure_probe_model_exists(sdk: NeMoPlatform) -> None:
+    """Create the disposable mock model at `PROBE_MODEL_REF`, tolerating the case where
+    it already exists.
+
+    Meant to be called once per test module, from an autouse fixture (see conftest.py),
+    before any test that calls `wait_for_guarded_virtual_model` runs.
+    """
+    try:
+        sdk.workspaces.create(name=PROBE_WORKSPACE)
+    except nemo_platform.ConflictError:
+        pass
+
+    try:
+        add_mock_provider(
+            sdk,
+            workspace=PROBE_WORKSPACE,
+            name="e2e-guardrails-warmup-provider",
+            served_models={PROBE_MODEL_NAME: PROBE_MODEL_NAME},
+            mock_response_body_by_model={PROBE_MODEL_REF: [MockProviderResponse(response_body=_chat_completion("ok"))]},
+            should_autoprovision_virtual_model=False,
+        )
+    except nemo_platform.ConflictError:
+        pass
+
+
+def wait_for_guarded_virtual_model(
+    sdk: NeMoPlatform,
+    *,
+    workspace: str,
+    virtual_model_name: str,
+    config_ref: str,
+    user_input: str = USER_INPUT,
+    timeout: float = 60,
+    poll_interval: float = 0.5,
+) -> None:
     """Wait until the guarded VM route is cached with its Guardrails middleware.
 
     E2E runs against a separate IGW process. Creating the VM persists the entity,
     but the VM is not usable with middleware until IGW's background cache refresh
     loads it into VirtualModelCache and resolves its Guardrails config into the
-    middleware registry.
+    middleware registry. These two caches refresh independently, so there's a
+    window where the VM route resolves but its middleware doesn't.
 
     To ensure the VM is ready to serve requests, use a request that Guardrails
     rejects during request parsing, before any rail or backend inference runs.
     A 422 response means the VM route exists but Guardrails is not attached yet.
+
+    The probe targets `PROBE_MODEL_REF`, a disposable mock model, not the real backend
+    model. This ensures that the probe request doesn't consume a mock response configured
+    on the test's own mock provider.
+
+    Callers must ensure `PROBE_MODEL_REF` actually exists before calling this (see
+    `ensure_probe_model_exists`); this function does not create it.
     """
     start = time.time()
     last_error: Exception | None = None
-    probe_body = _chat_body(
-        test_case,
-        extra={"guardrails": {"config_id": test_case.config_ref}},
-    )
+    probe_body: dict[str, Any] = {
+        "model": PROBE_MODEL_REF,
+        "messages": [{"role": "user", "content": user_input}],
+        "max_tokens": 64,
+        "guardrails": {"config_id": config_ref},
+    }
 
     while time.time() - start < timeout:
         try:
             sdk.inference.gateway.model.post(
                 "v1/chat/completions",
-                name=test_case.virtual_model_name,
-                workspace=test_case.workspace,
+                name=virtual_model_name,
+                workspace=workspace,
                 body=probe_body,
             )
         except APIStatusError as exc:
@@ -395,9 +488,71 @@ def _wait_for_guarded_virtual_model(
         time.sleep(poll_interval)
 
     raise TimeoutError(
-        f"Guarded VirtualModel {test_case.workspace}/{test_case.virtual_model_name} "
-        f"was not ready after {timeout}s. Last error: {last_error}"
+        f"Guarded VirtualModel {workspace}/{virtual_model_name} was not ready after {timeout}s. "
+        f"Last error: {last_error}"
     )
+
+
+def setup_guarded_virtual_model(
+    sdk: NeMoPlatform,
+    *,
+    workspace: str,
+    virtual_model_name: str,
+    backend_model_ref: str,
+    config_name: str,
+    config_data: dict[str, Any],
+    rail_types: tuple[RailType, ...],
+    user_input: str = USER_INPUT,
+) -> str:
+    """Create a referenced ``GuardrailConfig`` and a guarded VirtualModel wired to it.
+
+    Wires ``request_middleware`` for an ``"input"`` rail, ``response_middleware``
+    for an ``"output"`` rail, or both, based on ``rail_types``. Blocks until the
+    real IGW background cache refresh has loaded the VM's Guardrails middleware,
+    so callers can send requests immediately after this returns.
+
+    Returns the created config's ``workspace/name`` ref.
+    """
+    sdk.guardrail.configs.create(
+        workspace=workspace,
+        name=config_name,
+        description="E2E rail-type smoke test config",
+        data=config_data,
+    )
+    config_ref = f"{workspace}/{config_name}"
+    middleware_call: MiddlewareCallParam = {
+        "name": GUARDRAILS_PLUGIN_NAME,
+        "config_type": GUARDRAILS_PLUGIN_CONFIG_TYPE,
+        "config_id": config_ref,
+    }
+
+    create_kwargs: dict[str, Any] = {}
+    if "input" in rail_types:
+        create_kwargs["request_middleware"] = [middleware_call]
+    if "output" in rail_types:
+        create_kwargs["response_middleware"] = [middleware_call]
+
+    sdk.inference.virtual_models.create(
+        workspace=workspace,
+        name=virtual_model_name,
+        models=[{"model": backend_model_ref, "backend_format": "OPENAI_CHAT"}],
+        **create_kwargs,
+    )
+    wait_for_guarded_virtual_model(
+        sdk,
+        workspace=workspace,
+        virtual_model_name=virtual_model_name,
+        config_ref=config_ref,
+        user_input=user_input,
+    )
+    return config_ref
+
+
+def delete_config_if_present(sdk: NeMoPlatform, *, workspace: str, config_name: str) -> None:
+    try:
+        sdk.guardrail.configs.delete(workspace=workspace, name=config_name)
+    except nemo_platform.NotFoundError:
+        pass
 
 
 def _chat_body(
