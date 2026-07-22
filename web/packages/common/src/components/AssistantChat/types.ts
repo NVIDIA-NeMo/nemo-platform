@@ -29,6 +29,7 @@ export interface MessageRenderProps {
 }
 
 export interface AssistantChatThreadProps {
+  animateAssistantMessageCompletion?: boolean;
   disabled?: boolean;
   placeholder: string;
   onReset: () => void;

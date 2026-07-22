@@ -74,7 +74,13 @@ async def list_spans(
     page: int = Query(default=1, ge=1, description="Page number."),
     page_size: int = Query(default=10, ge=1, le=1000, description="Page size."),
     sort: SpanSortField = Query(default=SpanSortField.STARTED_AT_DESC),
-    mode: SpanMode = Query(default="detailed"),
+    mode: SpanMode = Query(
+        default="detailed",
+        description=(
+            "Response mode. summary omits payloads and raw attributes; preview includes input and output "
+            "truncated to 300 characters; detailed returns full payloads and raw attributes."
+        ),
+    ),
     parsed: ParsedFilter = Depends(make_filter_dep(SpanFilter)),
 ) -> Page[Span]:
     validate_list_query_params(request, additional_params={"mode"})
@@ -84,6 +90,7 @@ async def list_spans(
         page=page,
         page_size=page_size,
         sort=sort.value,
+        mode=mode,
     )
     spans = [Span.from_domain(span, mode=mode) for span in result.data]
     return Page[Span](

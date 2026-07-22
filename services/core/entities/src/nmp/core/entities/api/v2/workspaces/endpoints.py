@@ -24,11 +24,10 @@ import textwrap
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, status
-from nmp.common.api.common import Page, PaginationData
+from nmp.common.api.common import DeleteResponse, GenericSortField, Page, PaginationData
 from nmp.common.api.filter import ComparisonOperation, FilterOperator
 from nmp.common.auth.models import Principal
 from nmp.core.entities.api.dependencies import AuthClientDep, EntityRepository, WorkspaceRepository
-from nmp.core.entities.api.v2.schemas import DeleteResponse, GenericSortField
 from nmp.core.entities.api.v2.utils import (
     ROLE_BINDING_ENTITY_TYPE,
     add_workspace_filtering,
@@ -459,7 +458,6 @@ async def delete_workspace(
     return DeleteResponse(
         id=name,
         message="Workspace marked for deletion",
-        deleted_count=1,
     )
 
 
@@ -923,5 +921,4 @@ async def remove_workspace_member(
     return DeleteResponse(
         id=principal_id,
         message=f"Member removed from workspace '{workspace}'",
-        deleted_count=len(active_bindings),
     )

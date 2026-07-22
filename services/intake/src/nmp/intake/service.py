@@ -9,7 +9,7 @@ from typing import ClassVar, List
 from nmp.common.service import RouterConfig, Service
 from nmp.intake.api.v2.experiments import endpoints as experiments
 from nmp.intake.config import IntakeConfig
-from nmp.intake.spans.api import annotations, evaluator_results, spans, traces
+from nmp.intake.spans.api import annotations, evaluator_results, sessions, spans, traces
 from nmp.intake.spans.clickhouse_client import ClickHouseSettings, ClickHouseSpanClient
 from nmp.intake.spans.ingest import atif, chat_completions, otlp
 
@@ -34,13 +34,14 @@ class IntakeService(Service[IntakeConfig]):
 
     @property
     def description(self) -> str:
-        return "Intake service for ingesting and reading spans, traces, annotations, and evaluator results"
+        return "Intake service for ingesting and reading sessions, traces, spans, annotations, and evaluator results"
 
     def get_routers(self) -> List[RouterConfig]:
         """Return routers for the intake service."""
         return [
             RouterConfig(spans.router, tag="Spans", description="ClickHouse-backed span read endpoints"),
             RouterConfig(traces.router, tag="Traces", description="ClickHouse-backed trace summary read endpoints"),
+            RouterConfig(sessions.router, tag="Sessions", description="ClickHouse-backed session detail endpoints"),
             RouterConfig(
                 evaluator_results.router,
                 tag="Evaluator Results",

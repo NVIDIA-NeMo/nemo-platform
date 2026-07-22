@@ -11,6 +11,7 @@ def test_controller_config_defaults() -> None:
     assert cfg.controller.drift_recovery_max_attempts == 5
     assert cfg.controller.orphan_cleanup_interval_seconds == 30
     assert cfg.controller.starting_timeout_seconds == 3600
+    assert cfg.controller.deleting_timeout_seconds == 300
 
 
 def test_controller_config_custom_orphan_interval() -> None:

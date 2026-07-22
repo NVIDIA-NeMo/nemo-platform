@@ -66,9 +66,10 @@ class SessionsResource(SyncAPIResource):
         *,
         workspace: str | None = None,
         filter: EvaluationSessionFilterParam | Omit = omit,
-        mode: Literal["summary", "detailed"] | Omit = omit,
+        mode: Literal["summary", "preview", "detailed"] | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
+        sort: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -82,12 +83,18 @@ class SessionsResource(SyncAPIResource):
         Args:
           filter: Filter sessions by test_case_id and status.
 
-          mode: Response payload mode. summary keeps the same session row fields but truncates
-              root-span input to 1000 characters; detailed returns the full root-span input.
+          mode: Response mode. summary omits root-span input and output; preview includes both
+              truncated to 300 characters; detailed returns full root-span payloads.
 
           page: Page number.
 
           page_size: Page size.
+
+          sort: Comma-separated list of fields to sort by, applied in order (the first field
+              dominates); prefix a field with '-' for descending — e.g.
+              '-cost_total_usd,latency_ms'. Fields: test_case_id, started_at, ended_at,
+              latency_ms, status, cost_total_usd, tokens. When omitted, sessions are ordered
+              by started_at ascending.
 
           extra_headers: Send extra headers
 
@@ -119,6 +126,7 @@ class SessionsResource(SyncAPIResource):
                         "mode": mode,
                         "page": page,
                         "page_size": page_size,
+                        "sort": sort,
                     },
                     session_list_params.SessionListParams,
                 ),
@@ -153,9 +161,10 @@ class AsyncSessionsResource(AsyncAPIResource):
         *,
         workspace: str | None = None,
         filter: EvaluationSessionFilterParam | Omit = omit,
-        mode: Literal["summary", "detailed"] | Omit = omit,
+        mode: Literal["summary", "preview", "detailed"] | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
+        sort: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -169,12 +178,18 @@ class AsyncSessionsResource(AsyncAPIResource):
         Args:
           filter: Filter sessions by test_case_id and status.
 
-          mode: Response payload mode. summary keeps the same session row fields but truncates
-              root-span input to 1000 characters; detailed returns the full root-span input.
+          mode: Response mode. summary omits root-span input and output; preview includes both
+              truncated to 300 characters; detailed returns full root-span payloads.
 
           page: Page number.
 
           page_size: Page size.
+
+          sort: Comma-separated list of fields to sort by, applied in order (the first field
+              dominates); prefix a field with '-' for descending — e.g.
+              '-cost_total_usd,latency_ms'. Fields: test_case_id, started_at, ended_at,
+              latency_ms, status, cost_total_usd, tokens. When omitted, sessions are ordered
+              by started_at ascending.
 
           extra_headers: Send extra headers
 
@@ -206,6 +221,7 @@ class AsyncSessionsResource(AsyncAPIResource):
                         "mode": mode,
                         "page": page,
                         "page_size": page_size,
+                        "sort": sort,
                     },
                     session_list_params.SessionListParams,
                 ),

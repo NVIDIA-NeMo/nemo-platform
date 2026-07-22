@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import ClassVar
 
 from nemo_insights_plugin.analyst.run import run_analyst
+from nemo_insights_plugin.client import make_client
 from nemo_insights_plugin.entities import AnalysisConfigStatus
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.job import NemoJob
@@ -155,6 +156,7 @@ class AnalyzeJob(NemoJob):
                     agent_spec=spec.agent_spec,
                     workspace=ctx.workspace,
                     base_url=spec.base_url,
+                    client=make_client(spec.base_url),
                     insights_output=spec.insights_output,
                     since=spec.since,
                 )

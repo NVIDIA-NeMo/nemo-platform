@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ensureEvalConfigFileset } from '@studio/api/evaluation/eval-config-fileset';
 import {
   applySuggestion,
   archivePreviousRun,
   CONTENT_SAFETY_MODEL_RE,
   checkContentSafety,
-  ensureEvalConfigFileset,
   fetchAgents,
   fetchEvalAverageScores,
   fetchModels,

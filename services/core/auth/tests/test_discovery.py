@@ -36,6 +36,11 @@ def oidc_config():
         authorization_endpoint="https://sso.example.com/authorize",
         token_endpoint="https://sso.example.com/token",
         device_authorization_endpoint="https://sso.example.com/device/code",
+        workload_token_exchange_enabled=True,
+        workload_client_id="test-workload-client",
+        workload_token_endpoint="https://workload-idp.example.com/token",
+        workload_audience="nemo-platform",
+        workload_scope="openid email groups",
     )
 
 
@@ -103,6 +108,25 @@ class TestOIDCDiscoveryResponse:
         assert response.device_authorization_endpoint is None
         assert response.userinfo_endpoint is None
 
+    def test_oidc_discovery_response_includes_workload_exchange_fields(self):
+        """Test OIDCDiscoveryResponse includes workload identity token exchange fields."""
+        response = OIDCDiscoveryResponse(
+            issuer="https://sso.example.com",
+            client_id="test-client",
+            token_endpoint="https://sso.example.com/token",
+            workload_token_exchange_enabled=True,
+            workload_client_id="test-workload-client",
+            workload_token_endpoint="https://workload-idp.example.com/token",
+            workload_audience="nemo-platform",
+            workload_scope="openid email groups",
+        )
+
+        assert response.workload_token_exchange_enabled is True
+        assert response.workload_client_id == "test-workload-client"
+        assert response.workload_token_endpoint == "https://workload-idp.example.com/token"
+        assert response.workload_audience == "nemo-platform"
+        assert response.workload_scope == "openid email groups"
+
 
 class TestAuthDiscoveryResponse:
     """Tests for AuthDiscoveryResponse model."""
@@ -152,6 +176,11 @@ class TestGetAuthDiscovery:
             assert result.oidc.authorization_endpoint == "https://sso.example.com/authorize"
             assert result.oidc.token_endpoint == "https://sso.example.com/token"
             assert result.oidc.device_authorization_endpoint == "https://sso.example.com/device/code"
+            assert result.oidc.workload_token_exchange_enabled is True
+            assert result.oidc.workload_client_id == "test-workload-client"
+            assert result.oidc.workload_token_endpoint == "https://workload-idp.example.com/token"
+            assert result.oidc.workload_audience == "nemo-platform"
+            assert result.oidc.workload_scope == "openid email groups"
         finally:
             Configuration.clear_overrides()
 
@@ -165,6 +194,31 @@ class TestGetAuthDiscovery:
 
             assert result.auth_enabled is True
             assert result.oidc is None
+        finally:
+            Configuration.clear_overrides()
+
+    @pytest.mark.asyncio
+    async def test_workload_token_endpoint_defaults_to_platform_auth_endpoint(self):
+        """Test workload exchange endpoint defaults to the NeMo auth service."""
+        oidc_config = OIDCConfig(
+            enabled=True,
+            issuer="https://sso.example.com",
+            client_id="test-client",
+            workload_token_exchange_enabled=True,
+            workload_client_id="test-workload-client",
+        )
+        auth_config = AuthConfig(
+            enabled=True,
+            policy_decision_point_base_url="http://localhost:8181",
+            oidc=oidc_config,
+        )
+        Configuration.set_override(auth_config)
+
+        try:
+            result = await get_auth_discovery()
+
+            assert result.oidc is not None
+            assert result.oidc.workload_token_endpoint == "http://localhost:8080/apis/auth/token"
         finally:
             Configuration.clear_overrides()
 

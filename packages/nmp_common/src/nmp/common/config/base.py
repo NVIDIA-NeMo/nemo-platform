@@ -29,9 +29,11 @@ from nemo_platform_plugin.config import Runtime as Runtime
 from nemo_platform_plugin.config import ServiceConfig as ServiceConfig
 from nemo_platform_plugin.config import create_service_config_class as create_service_config_class
 from nemo_platform_plugin.config import determine_loopback_override as determine_loopback_override
+from nemo_platform_plugin.config import get_platform_config_class as get_platform_config_class
 from nemo_platform_plugin.config import get_service_config as get_service_config
 from nemo_platform_plugin.config import get_service_config_prefix as get_service_config_prefix
 from nemo_platform_plugin.config import internal_field as internal_field
+from nemo_platform_plugin.config import register_platform_config_class as register_platform_config_class
 from nmp.common.config.paths import nmp_user_data_dir
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -60,9 +62,9 @@ class PlatformConfig(_PluginPlatformConfig):
         return super().get_service_url(api_name)
 
 
-# Re-register PlatformConfig on Configuration so get_platform_config() returns
-# the extended version (with local-service routing).
-Configuration.get_platform_config = classmethod(lambda cls: cls.get_service_config(PlatformConfig))  # type: ignore[attr-defined]
+# Register PlatformConfig so get_platform_config() returns the extended version
+# with local-service routing.
+Configuration.register_platform_config_class(PlatformConfig)
 
 
 class OIDCConfig(BaseSettings):
@@ -143,6 +145,96 @@ class OIDCConfig(BaseSettings):
         "For Azure AD with custom API, use: 'api://{app-id}/.default openid profile email'",
     )
 
+    workload_token_exchange_enabled: bool = Field(
+        default=False,
+        description="Enable SDK workload identity token exchange using NMP_WORKLOAD_IDENTITY_TOKEN_FILE subject tokens.",
+    )
+
+    workload_client_id: str | None = Field(
+        default=None,
+        description="OAuth client ID to use for workload identity token exchange. Defaults to client_id when unset.",
+    )
+
+    workload_token_endpoint: str | None = Field(
+        default=None,
+        description="OAuth token endpoint to use for workload identity token exchange. Defaults to token_endpoint.",
+    )
+
+    workload_audience: str | None = Field(
+        default=None,
+        description="RFC 8693 audience requested for workload identity token exchange.",
+    )
+
+    workload_scope: str | None = Field(
+        default=None,
+        description="Space-separated OAuth scopes requested for workload identity token exchange.",
+    )
+
+    workload_token_issuer: str | None = Field(
+        default=None,
+        description=(
+            "Issuer to stamp on workload identity access tokens minted by the NeMo auth service. "
+            "Defaults to the platform auth endpoint origin serving the token exchange request."
+        ),
+    )
+
+    workload_token_ttl_seconds: int = Field(
+        default=300,
+        ge=1,
+        description="Lifetime in seconds for workload identity access tokens minted by the NeMo auth service.",
+    )
+
+    workload_token_key_id: str = Field(
+        default="nemo-workload-exchange",
+        description="JWT key id advertised by the NeMo auth service workload identity JWKS endpoint.",
+    )
+
+    workload_token_private_key_file: str | None = Field(
+        default=None,
+        description=(
+            "Path to a PEM-encoded RSA private key used by the NeMo auth service to sign workload identity "
+            "access tokens. Intended for mounted shared secrets."
+        ),
+    )
+
+    workload_allowed_audiences: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Additional RFC 8693 audience values accepted by the NeMo auth service workload token exchange endpoint. "
+            "The configured workload_audience is always accepted."
+        ),
+    )
+
+    workload_subject_jwks_uri: str | None = Field(
+        default=None,
+        description=(
+            "JWKS URI used by the NeMo auth service to validate JWT subject tokens for workload token exchange. "
+            "Leave unset when only Kubernetes TokenReview subject validation is enabled."
+        ),
+    )
+
+    workload_subject_issuers: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Allowed JWT subject token issuers for workload token exchange. "
+            "Required when workload_subject_jwks_uri is set."
+        ),
+    )
+
+    workload_subject_jwks_cache_ttl_seconds: int = Field(
+        default=3600,
+        ge=0,
+        description=("TTL in seconds for caching workload subject JWKS responses. Set to 0 to disable caching."),
+    )
+
+    workload_kubernetes_token_review_enabled: bool = Field(
+        default=False,
+        description=(
+            "Allow the NeMo auth service workload token exchange endpoint to validate Kubernetes projected "
+            "service account subject tokens using the TokenReview API."
+        ),
+    )
+
     scope_prefix: str | None = Field(
         default=None,
         description="Prefix to strip from token scopes before authorization. "
@@ -159,7 +251,7 @@ class OIDCConfig(BaseSettings):
     )
 
 
-class AuthConfig(create_service_config_class("auth")):
+class AuthConfig(create_service_config_class("auth")):  # ty: ignore[unsupported-base]
     """
     Shared authorization configuration read from the 'auth' key in config.yaml.
 
@@ -225,9 +317,14 @@ class AuthConfig(create_service_config_class("auth")):
     )
 
     def get_pdp_url(self, entrypoint: str) -> str:
+        # Import lazily to avoid a module cycle: platform_endpoint imports
+        # PlatformConfig from nmp.common.config, which is defined in this file.
+        from nmp.common.platform_endpoint import parse_platform_endpoint
+
+        endpoint = parse_platform_endpoint(self.policy_decision_point_base_url)
         if self.policy_decision_point_provider == "opa":
-            return f"{self.policy_decision_point_base_url}/v1/data/authz/{entrypoint}"
-        return f"{self.policy_decision_point_base_url}/apis/auth/v2/authz/{entrypoint}"
+            return f"{endpoint.connect_base_url}/v1/data/authz/{entrypoint}"
+        return f"{endpoint.connect_base_url}/apis/auth/v2/authz/{entrypoint}"
 
     @property
     def auth_url(self) -> str:

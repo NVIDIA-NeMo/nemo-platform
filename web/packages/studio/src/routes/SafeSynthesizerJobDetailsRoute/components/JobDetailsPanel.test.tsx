@@ -123,13 +123,9 @@ vi.mock('@studio/providers/toast/useToast', () => ({
 }));
 
 // Mock brand assets icons
-vi.mock('lucide-react', () => ({
-  Play: () => <svg data-testid="running-icon" />,
-  File: () => <svg data-testid="document-icon" />,
-  Cog: () => <svg data-testid="cog-icon" />,
-  Copy: () => <svg data-testid="copy-doc-icon" />,
-  Palette: () => <svg data-testid="palette-icon" />,
-}));
+vi.mock('lucide-react', async () => {
+  return (await import('@nemo/testing/mocks/lucide')).mockLucideReact(await import('react'));
+});
 
 // Test wrapper
 const createWrapper = () => {
@@ -216,7 +212,7 @@ describe('JobDetailsPanel', () => {
       render(<JobDetailsPanel job={job} />, { wrapper: createWrapper() });
 
       expect(screen.getByText('Job Details')).toBeInTheDocument();
-      expect(screen.getByTestId('running-icon')).toBeInTheDocument();
+      expect(screen.getByTestId('play-icon')).toBeInTheDocument();
     });
 
     it('should display job status with badge', () => {

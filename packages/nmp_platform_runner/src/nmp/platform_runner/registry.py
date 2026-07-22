@@ -6,11 +6,11 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from functools import cache
 
 from nemo_platform_plugin.discovery import discover_controllers, discover_services
 from nmp.common.service import Service
+from nmp.platform_runner.loader import ControllerRunFunc
 from nmp.platform_runner.plugin_adapter import NemoServiceAdapter, make_controller_run_func
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,10 @@ AVAILABLE_CONTROLLERS: dict[str, str] = {
 
 AVAILABLE_SIDECARS: dict[str, str] = {
     "adapters": "nmp.core.models.sidecars.adapters.main:run",
+}
+
+SERVICE_SIDECAR_DEPENDENCIES: dict[str, set[str]] = {
+    "models": {"adapters"},
 }
 
 CORE_SERVICES = [
@@ -75,7 +79,7 @@ OPENAPI_SERVICES = [
 
 
 @cache
-def get_available_controllers() -> dict[str, str | Callable]:
+def get_available_controllers() -> dict[str, str | ControllerRunFunc]:
     """Return all available controller run functions for the current run.
 
     Merges built-in core controllers (stored as ``"module:object"`` import
@@ -86,7 +90,7 @@ def get_available_controllers() -> dict[str, str | Callable]:
     Returns:
         Mapping of controller name → string import path or run callable.
     """
-    controllers: dict[str, str | Callable] = dict(AVAILABLE_CONTROLLERS)
+    controllers: dict[str, str | ControllerRunFunc] = dict(AVAILABLE_CONTROLLERS)
 
     for name, controller_cls in discover_controllers().items():
         try:
@@ -105,7 +109,7 @@ def get_available_controllers() -> dict[str, str | Callable]:
 
 
 def get_controller_groups(
-    available_controllers: dict[str, str | Callable] | None = None,
+    available_controllers: dict[str, str | ControllerRunFunc] | None = None,
 ) -> dict[str, list[str]]:
     """Return dynamic controller groups for the current run."""
     available_controllers = available_controllers or get_available_controllers()

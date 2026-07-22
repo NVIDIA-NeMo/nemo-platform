@@ -176,6 +176,18 @@ Methods:
 
 - <code title="get /apis/intake/v2/workspaces/{workspace}/spans/{span_id}/evaluator-results">client.intake.spans.evaluator_results.<a href="./src/nemo_platform/resources/intake/spans/evaluator_results.py">list</a>(span_id, \*, workspace) -> <a href="./src/nemo_platform/types/intake/spans/evaluator_result_list_response.py">EvaluatorResultListResponse</a></code>
 
+## Sessions
+
+Types:
+
+```python
+from nemo_platform.types.intake import Session
+```
+
+Methods:
+
+- <code title="get /apis/intake/v2/workspaces/{workspace}/sessions/{id}">client.intake.sessions.<a href="./src/nemo_platform/resources/intake/sessions.py">retrieve</a>(id, \*, workspace) -> <a href="./src/nemo_platform/types/intake/session.py">Session</a></code>
+
 ## Traces
 
 Types:

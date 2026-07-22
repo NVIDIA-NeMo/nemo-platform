@@ -133,10 +133,16 @@ navigation:
     contents:
     - page: Agents
       path: ../../studio/agents.mdx
+    - page: Data Designer
+      path: ../../studio/data-designer-build.mdx
     - page: Monitor
       path: ../../studio/monitor.mdx
     - page: Suggestions
       path: ../../studio/suggestions.mdx
+    - page: Guardrail Configs
+      path: ../../studio/guardrails.mdx
+    - page: Virtual Models
+      path: ../../studio/virtual-models.mdx
   - section: Models and Inference
     path: ../../run-inference/about.mdx
     contents:
@@ -448,6 +454,9 @@ navigation:
       contents:
       - page: Current Release
         path: ../../about/release-notes/current-release.mdx
+      - page: v0.2.0
+        slug: release-0-2-0
+        path: ../../about/release-notes/release-0-2-0.mdx
       - page: v0.1.0
         slug: release-0-1-0
         path: ../../about/release-notes/release-0-1-0.mdx

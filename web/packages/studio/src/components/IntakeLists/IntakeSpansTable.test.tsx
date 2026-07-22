@@ -17,6 +17,30 @@ const LocationProbe = () => {
 };
 
 describe('IntakeSpansTable', () => {
+  it('shows bounded input and output summaries', async () => {
+    const requestedModes: Array<string | null> = [];
+    server.use(
+      http.get('*/apis/intake/v2/workspaces/:workspace/spans', ({ request }) => {
+        requestedModes.push(new URL(request.url).searchParams.get('mode'));
+        return HttpResponse.json(mockSpansPage);
+      })
+    );
+
+    renderRoute(<IntakeSpansTable workspace="default" />, {
+      history: '/workspaces/default/intake/spans',
+    });
+
+    expect(
+      await screen.findByText('Can I deploy this model in a private workspace?')
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(
+        'Yes. Use a private workspace and restrict access through workspace membership.'
+      ).length
+    ).toBeGreaterThan(0);
+    expect(requestedModes).toContain('preview');
+  });
+
   it('opens span rows in the trace detail route with the span deep link', async () => {
     const user = userEvent.setup();
 

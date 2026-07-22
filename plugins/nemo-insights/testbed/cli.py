@@ -6,6 +6,7 @@
     uv run python -m testbed doctor [<name>]
     uv run python -m testbed run <name> [--base URL] [--set KEY=VALUE ...]                     # benchmark: produce traces + record the run
     uv run python -m testbed analyze <name> [--update-insights] [--base URL] [--platform-root PATH]  # reproducible default: restore the subject's pinned state, then analyze
+    uv run python -m testbed analyze all                                                       # transactionally refresh every pinned benchmark/intake baseline
     uv run python -m testbed analyze <name> --state (state-vN | FILE)                          # same, against another published state or a local bundle file
     uv run python -m testbed analyze <name> --live [--since S] [-v] [--set KEY=VALUE ...]      # analyze the platform's live traces (no restore)
     uv run python -m testbed snapshot <subject> [...] [-o FILE] [--base URL] [--since S]       # export subject workspaces (read API) into a state bundle
@@ -22,9 +23,11 @@ target; run/snapshot/`analyze --live` source, replacing the stanza base_url).
 
 Export bundles (`kind: testbed-export`) restore by re-ingesting through the real
 APIs into fixture-scoped workspaces (`<ws>-<ref>` for published refs,
-`<ws>-<sha256[:8]>` for local files) — additive and idempotent, never touching
-existing data. Legacy tar bundles (state-v1..v5) are restorable only from a
-pre-migration checkout; see testbed/README.md.
+`<ws>-<sha256[:8]>` for local files) — additive, idempotent, and healing.
+`restore --into WORKSPACE` is the direct alternative: it requires a fresh,
+empty target and is not idempotent into a populated workspace. Legacy tar
+bundles (state-v1..v5) are restorable only from a pre-migration checkout; see
+testbed/README.md.
 
 This drives the analyst (`nemo insights analyze`) against registered subjects; it is not
 the product CLI and is not shipped in the wheel.
@@ -33,6 +36,7 @@ the product CLI and is not shipped in the wheel.
 import argparse
 import asyncio
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -40,6 +44,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
+from collections.abc import Mapping
 from pathlib import Path
 
 import yaml
@@ -54,8 +60,17 @@ from testbed.timeparse import parse_since
 HERE = Path(__file__).parent
 REGISTRY_PATH = HERE / "testbeds.toml"
 TMP = HERE / "tmp"
+INSIGHTS_DIR = HERE / "insights"
+ANALYST_SOURCE_ROOT = HERE.parent / "src" / "nemo_insights_plugin"
+ANALYST_LOCKFILE = HERE.parents[2] / "uv.lock"
+ANALYST_LOCK_ROOT = "nemo-insights-plugin"
 ENV_PATH = HERE / ".env"
 LOCAL_URL = artifact.LOCAL_URL  # the local NeMo Platform (the default restore/analyze target)
+_REMOTE_AUTH_KEYS = ("auth", "intake_path_prefix", "auth_user_env", "auth_password_env")
+INSIGHTS_SPDX_HEADER = (
+    "# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.\n"
+    "# SPDX-License-Identifier: Apache-2.0\n"
+)
 
 
 def _load_dotenv(path: Path = ENV_PATH) -> None:
@@ -102,11 +117,252 @@ def _doctor(subjects: dict[str, Subject], name: str | None) -> None:
             print(f"✓ {subject_name} ({subject.type}) — ready: uv run python -m testbed analyze {subject_name} --live")
 
 
-def _with_base(subject: Subject, base: str | None) -> Subject:
+def _atomic_write_text(path: Path, contents: str) -> None:
+    """Replace a text file atomically after writing it beside the destination."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            stream.write(contents)
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def _check_in_insights(
+    subject_name: str,
+    source: Path,
+    *,
+    directory: Path | None = None,
+) -> Path:
+    """Copy one successful runtime result into the tracked Insights directory."""
+    if not source.is_file():
+        sys.exit(f"analyze: expected Insights output at {source}, but the Analyst did not write it")
+    destination = (directory or INSIGHTS_DIR) / f"{subject_name}.yaml"
+    _atomic_write_text(destination, INSIGHTS_SPDX_HEADER + source.read_text(encoding="utf-8"))
+    return destination
+
+
+def _resolved_lock_entries(lockfile: dict, lockfile_path: Path) -> list[str]:
+    """Return deterministic lock entries in the Analyst plugin's dependency closure."""
+    packages_by_name: dict[str, list[dict]] = {}
+    for package in lockfile.get("package", []):
+        packages_by_name.setdefault(str(package["name"]), []).append(package)
+
+    pending = [{"name": ANALYST_LOCK_ROOT}]
+    visited: set[tuple[str, tuple[str, ...]]] = set()
+    selected: set[str] = set()
+    while pending:
+        dependency = pending.pop()
+        name = str(dependency["name"])
+        extras = tuple(sorted(str(extra) for extra in dependency.get("extra", [])))
+        request = (name, extras)
+        if request in visited:
+            continue
+        visited.add(request)
+        packages = packages_by_name.get(name)
+        if not packages:
+            raise ValueError(f"{lockfile_path} is missing Analyst dependency: {name}")
+        for package in packages:
+            optional = package.get("optional-dependencies", {})
+            entry = {key: value for key, value in package.items() if key not in {"metadata", "optional-dependencies"}}
+            if extras:
+                entry["selected-optional-dependencies"] = {extra: optional.get(extra, []) for extra in extras}
+            selected.add(json.dumps(entry, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+            pending.extend(package.get("dependencies", []))
+            for extra in extras:
+                pending.extend(optional.get(extra, []))
+    return sorted(selected)
+
+
+def _analyst_sha256(
+    root: Path = ANALYST_SOURCE_ROOT,
+    lockfile_path: Path = ANALYST_LOCKFILE,
+) -> str:
+    """Fingerprint Insights plugin source and the resolved Analyst dependency closure."""
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob("*.py")):
+        digest.update(path.relative_to(root).as_posix().encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+
+    lockfile = tomllib.loads(lockfile_path.read_text(encoding="utf-8"))
+    for canonical in _resolved_lock_entries(lockfile, lockfile_path):
+        digest.update(b"dependency\0")
+        digest.update(canonical.encode())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _write_insights_manifest(
+    states: Mapping[str, str],
+    *,
+    merge: bool = False,
+    directory: Path | None = None,
+) -> Path:
+    """Write snapshot hashes and provenance, optionally preserving other subjects."""
+    insights_dir = directory or INSIGHTS_DIR
+    path = insights_dir / "manifest.yaml"
+    snapshots: dict[str, dict[str, str]] = {}
+    if merge and path.is_file():
+        existing = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if not isinstance(existing, dict) or not isinstance(existing.get("snapshots", {}), dict):
+            raise ValueError(f"{path} does not contain a snapshots mapping")
+        snapshots.update(existing.get("snapshots", {}))
+
+    analyst_sha256 = _analyst_sha256()
+    for name, state in states.items():
+        snapshots[name] = {
+            "analyst_sha256": analyst_sha256,
+            "insights_sha256": hashlib.sha256((insights_dir / f"{name}.yaml").read_bytes()).hexdigest(),
+            "state": state,
+        }
+    contents = yaml.safe_dump({"snapshots": snapshots}, sort_keys=True)
+    _atomic_write_text(path, INSIGHTS_SPDX_HEADER + contents)
+    return path
+
+
+def _remove_stale_insights(names: list[str], *, directory: Path | None = None) -> None:
+    """Remove YAML files outside the complete expected snapshot set."""
+    insights_dir = directory or INSIGHTS_DIR
+    expected = {"manifest.yaml", *(f"{name}.yaml" for name in names)}
+    for path in insights_dir.glob("*.yaml"):
+        if path.name not in expected:
+            path.unlink()
+            print(f"✓ Removed stale checked-in Insights {path}")
+
+
+def _swap_insights_directory(staged: Path) -> None:
+    """Promote a complete staged directory, restoring the old one on swap failure."""
+    INSIGHTS_DIR.parent.mkdir(parents=True, exist_ok=True)
+    backup: Path | None = None
+    if INSIGHTS_DIR.exists():
+        backup = Path(
+            tempfile.mkdtemp(
+                prefix=f".{INSIGHTS_DIR.name}.backup-",
+                dir=INSIGHTS_DIR.parent,
+            )
+        )
+        backup.rmdir()
+        os.replace(INSIGHTS_DIR, backup)
+    try:
+        os.replace(staged, INSIGHTS_DIR)
+    except BaseException:
+        if backup is not None:
+            try:
+                os.replace(backup, INSIGHTS_DIR)
+            except BaseException as rollback_error:
+                raise RuntimeError(
+                    f"failed to promote {staged} and could not restore backup {backup}"
+                ) from rollback_error
+        raise
+    if backup is not None:
+        try:
+            shutil.rmtree(backup)
+        except OSError as exc:
+            print(f"warning: promoted checked-in Insights but could not remove backup {backup}: {exc}")
+
+
+def _check_in_single_insights(subject_name: str, source: Path, state: str) -> tuple[Path, Path]:
+    """Transactionally update one Insight and its manifest entry."""
+    INSIGHTS_DIR.parent.mkdir(parents=True, exist_ok=True)
+    staged = Path(
+        tempfile.mkdtemp(
+            prefix=f".{INSIGHTS_DIR.name}.staging-",
+            dir=INSIGHTS_DIR.parent,
+        )
+    )
+    try:
+        if INSIGHTS_DIR.is_dir():
+            shutil.copytree(INSIGHTS_DIR, staged, dirs_exist_ok=True)
+        _check_in_insights(subject_name, source, directory=staged)
+        _write_insights_manifest({subject_name: state}, merge=True, directory=staged)
+        _swap_insights_directory(staged)
+    finally:
+        if staged.exists():
+            shutil.rmtree(staged)
+    return INSIGHTS_DIR / f"{subject_name}.yaml", INSIGHTS_DIR / "manifest.yaml"
+
+
+def _analyze_all(args: argparse.Namespace, subjects: dict[str, Subject]) -> None:
+    """Run every reproducible subject, then transactionally promote all outputs."""
+    if args.live or args.state is not None or args.since is not None or args.sets or args.update_insights:
+        sys.exit(
+            "analyze all uses each subject's pinned state and cannot be combined with "
+            "--live, --state, --since, --set, or --update-insights"
+        )
+
+    names = sorted(name for name, subject in subjects.items() if subject.type in ("benchmark", "intake"))
+    resolved_pins = {name: release.lock_ref(HERE / "state.lock", name) for name in names}
+    missing_pins = [name for name, pin in resolved_pins.items() if pin is None]
+    if missing_pins:
+        sys.exit(
+            "analyze all requires a state.lock pin for every analyzable subject; missing: " + ", ".join(missing_pins)
+        )
+    pins = {name: pin for name, pin in resolved_pins.items() if pin is not None}
+
+    stale_outputs = [f"insights_{name}.yaml" for name in names if (TMP / f"insights_{name}.yaml").is_file()]
+    if stale_outputs:
+        backup_dir = artifact.backup_records(TMP, stale_outputs)
+        print(f"analyze all: moved prior runtime Insights to {backup_dir}: {', '.join(stale_outputs)}")
+
+    for name in names:
+        command = [sys.executable, "-m", "testbed", "analyze", name, "--no-baseline-update"]
+        if args.base is not None:
+            command += ["--base", args.base]
+        if args.platform_root is not None:
+            command += ["--platform-root", args.platform_root]
+        if args.summary_md is not None:
+            command += ["--summary-md", args.summary_md]
+        if args.verbose:
+            command.append("--verbose")
+        try:
+            subprocess.run(command, check=True)
+        except subprocess.CalledProcessError as exc:
+            sys.exit(f"analyze all: {name} failed with exit code {exc.returncode}; no checked-in Insights were updated")
+
+    outputs = {name: TMP / f"insights_{name}.yaml" for name in names}
+    missing_outputs = [name for name, path in outputs.items() if not path.is_file()]
+    if missing_outputs:
+        sys.exit(
+            "analyze all completed without Insights output for: "
+            + ", ".join(missing_outputs)
+            + "; no checked-in Insights were updated"
+        )
+    if args.no_baseline_update:
+        return
+
+    INSIGHTS_DIR.parent.mkdir(parents=True, exist_ok=True)
+    staged = Path(
+        tempfile.mkdtemp(
+            prefix=f".{INSIGHTS_DIR.name}.staging-",
+            dir=INSIGHTS_DIR.parent,
+        )
+    )
+    try:
+        for name, source in outputs.items():
+            _check_in_insights(name, source, directory=staged)
+        _remove_stale_insights(names, directory=staged)
+        _write_insights_manifest(pins, directory=staged)
+        _swap_insights_directory(staged)
+    finally:
+        if staged.exists():
+            shutil.rmtree(staged)
+    print(f"✓ Checked in complete Insights set to {INSIGHTS_DIR}")
+
+
+def _with_base(subject: Subject, base: str | None, *, drop_auth: bool = True) -> Subject:
     """Rebuild *subject* pointed at *base* (the uniform ``--base`` override); unchanged when None."""
     if base is None:
         return subject
-    return Subject(subject.name, subject.type, {**subject.config, "base_url": base})
+    config = {**subject.config, "base_url": base}
+    if drop_auth:
+        for key in _REMOTE_AUTH_KEYS:
+            config.pop(key, None)
+    return Subject(subject.name, subject.type, config)
 
 
 def _local_source(args: argparse.Namespace) -> str | None:
@@ -212,6 +468,7 @@ def _restore_export_bundle(
     platform_root: str | None,
     tmp_dir: Path,
     backup_dir: Path | None = None,
+    into: str | None = None,
 ) -> tuple[dict, dict[str, str], list[str]]:
     """Re-ingest an export bundle into fixture workspaces.
 
@@ -219,13 +476,15 @@ def _restore_export_bundle(
     run-record files the bundle left in ``tmp_dir`` (callers use it to refuse
     analyzing a subject the bundle carries no run record for).
 
-    Additive + idempotent (``reingest.ingest_bundle`` guards on per-collection counts and
-    warns on stale bundles) — no destructive ceremony. The catalog inversion is
-    loaded up front so a missing nemo-platform checkout fails before any
-    extraction or network I/O. The bundle's ``tmp/`` run records are copied
-    beside the local ones (clobbered locals are backed up into *backup_dir*,
-    the caller's per-invocation destination); insights never travel in
-    bundles, so nothing else lands in ``tmp_dir``.
+    The default fixture-scoped path is additive, idempotent, and healing
+    (``reingest.ingest_bundle`` guards on per-collection counts). Direct
+    ``--into`` restores require a fresh, empty target and are not idempotent
+    into populated workspaces. Both warn on stale bundles. The catalog
+    inversion is loaded up front so a missing nemo-platform checkout fails
+    before any extraction or network I/O. The bundle's ``tmp/`` run records
+    are copied beside the local ones (clobbered locals are backed up into
+    *backup_dir*, the caller's per-invocation destination); insights never
+    travel in bundles, so nothing else lands in ``tmp_dir``.
     """
     catalog = reingest.load_catalog(reingest.resolve_platform_root(platform_root))
     TMP.mkdir(parents=True, exist_ok=True)
@@ -233,13 +492,18 @@ def _restore_export_bundle(
         subprocess.run(["tar", "--zstd", "-xf", str(bundle), "-C", tmp], check=True)
         state = Path(tmp) / "state"
         manifest = json.loads((state / "manifest.json").read_text(encoding="utf-8"))
-        workspace_map = reingest.fixture_workspace_map(manifest["workspaces"], suffix)
+        workspace_map = (
+            reingest.explicit_workspace_map(manifest["workspaces"], into)
+            if into is not None
+            else reingest.fixture_workspace_map(manifest["workspaces"], suffix)
+        )
         outcome = reingest.ingest_bundle(
             base_url,
             state / "export",
             manifest,
             workspace_map=workspace_map,
             catalog=catalog,
+            require_empty=into is not None,
         )
         # seed_records must run inside this `with` block: it copies the bundle's
         # records out of state/tmp (under the tempdir) before teardown.
@@ -435,7 +699,7 @@ def main() -> None:
         help="Generate Insights for a subject (default: restore its pinned state onto the "
         "local platform, then analyze — fully reproducible).",
     )
-    p_ins.add_argument("name", help="Subject name from testbeds.toml.")
+    p_ins.add_argument("name", help="Subject name from testbeds.toml, or 'all'.")
     p_ins_mode = p_ins.add_mutually_exclusive_group()
     p_ins_mode.add_argument(
         "--live",
@@ -480,6 +744,11 @@ def main() -> None:
         action="store_true",
         help="run against the existing local insights (prod-like update flow: updates them and adds new ones); "
         "default is a fresh start with priors moved to backup.",
+    )
+    p_ins.add_argument(
+        "--no-baseline-update",
+        action="store_true",
+        help="leave the generated Insights only in testbed/tmp instead of updating testbed/insights.",
     )
     p_ins.add_argument(
         "--platform-root",
@@ -527,6 +796,14 @@ def main() -> None:
         metavar="STATE-VN",
         help="Restore a published state ref (state-vN); local files go through the positional FILE. "
         "Pins are per-subject: for the pinned state, use `analyze <subject>` instead.",
+    )
+    p_res.add_argument(
+        "--into",
+        default=None,
+        metavar="WORKSPACE",
+        help="Restore a single-workspace bundle directly into this workspace instead of the "
+        "fixture-scoped <ws>-<ref> default. Requires a fresh, empty target and is "
+        "not idempotent into a populated workspace.",
     )
     p_res.add_argument(
         "--base",
@@ -662,7 +939,7 @@ def main() -> None:
         # all-stanzas-must-agree check trivially holds; without it the stanza
         # agreement (or disagreement) stands as-is.
         result = artifact.snapshot_export(
-            [_with_base(subjects[n], args.base) for n in names],
+            [_with_base(subjects[n], args.base, drop_auth=False) for n in names],
             out,
             TMP,
             since=since,
@@ -687,12 +964,16 @@ def main() -> None:
                 f"restore: {bundle_path.name} is a legacy tar bundle (state-v1..v5) — "
                 "restorable only from a pre-migration checkout; see testbed/README.md"
             )
+        if args.into is not None:
+            # Validate the direct target before catalog loading, extraction, or network I/O.
+            reingest.explicit_workspace_map(manifest["workspaces"], args.into)
         _restore_export_bundle(
             bundle_path,
             base_url=args.base or LOCAL_URL,
             suffix=suffix,
             platform_root=args.platform_root,
             tmp_dir=TMP,
+            into=args.into,
         )
         return
 
@@ -718,6 +999,9 @@ def main() -> None:
         return
 
     # args.cmd == "analyze" — pinned/--state mode restores a bundle first; --live doesn't.
+    if args.name == "all":
+        _analyze_all(args, subjects)
+        return
     subject = subjects.get(args.name)
     if subject is None:
         sys.exit(f"Unknown testbed '{args.name}'. Available: {', '.join(sorted(subjects)) or '(none)'}")
@@ -729,7 +1013,11 @@ def main() -> None:
     # Target platform: --base wins everywhere; without it, pinned/state mode
     # restores onto the local platform (reproducible default) and --live reads
     # the stanza's own base_url.
-    subject = _with_base(subject, args.base if args.live else (args.base or LOCAL_URL))
+    subject = _with_base(
+        subject,
+        args.base if args.live else (args.base or LOCAL_URL),
+        drop_auth=not args.live,
+    )
     subject = _apply_overrides(subject, args.sets)
     if not os.environ.get("INFERENCE_API_KEY"):
         sys.exit("Set INFERENCE_API_KEY (NVIDIA Inference Gateway sk-... key) and re-run.")
@@ -861,6 +1149,10 @@ def main() -> None:
     report = asyncio.run(adapter.analyze(record=record, since=since, verbose=args.verbose, out_path=out))
     print(report)
     print(f"\n✓ Insights written to {out}")
+    if not args.no_baseline_update:
+        checked_in, manifest_path = _check_in_single_insights(args.name, out, label)
+        print(f"✓ Checked in to {checked_in}")
+        print(f"✓ Recorded provenance in {manifest_path}")
     if args.summary_md:
         with Path(args.summary_md).open("a", encoding="utf-8") as fh:
             fh.write(render_summary_md(out, args.name))

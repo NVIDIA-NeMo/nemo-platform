@@ -16,7 +16,6 @@
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 from typing import Optional
-from datetime import datetime
 
 from ..._models import BaseModel
 
@@ -24,10 +23,7 @@ __all__ = ["DeleteResponse"]
 
 
 class DeleteResponse(BaseModel):
-    id: Optional[str] = None
+    id: str
     """The ID of the deleted resource."""
-
-    deleted_at: Optional[datetime] = None
-    """The timestamp when the resource was deleted."""
 
     message: Optional[str] = None

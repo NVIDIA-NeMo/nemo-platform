@@ -35,7 +35,12 @@ class SpanListParams(TypedDict, total=False):
     agent_name, prompt_name, prompt_version, and started_at.
     """
 
-    mode: Literal["summary", "detailed"]
+    mode: Literal["summary", "preview", "detailed"]
+    """Response mode.
+
+    summary omits payloads and raw attributes; preview includes input and output
+    truncated to 300 characters; detailed returns full payloads and raw attributes.
+    """
 
     page: int
     """Page number."""

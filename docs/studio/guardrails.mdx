@@ -1,0 +1,40 @@
+---
+title: "NeMo Studio Guardrail Configs"
+description: ""
+---
+Use **Guardrails** in the NeMo Studio workspace sidebar to view and manage NeMo Guardrails configurations for the selected workspace.
+
+## Guardrail Config List
+
+The Guardrail Configs table shows all guardrail configurations in the current workspace. Select a row to open the config detail page.
+
+| Action | Where | Result |
+|--------|-------|--------|
+| View details | Select a row | Opens the guardrail config detail page. |
+| Search | Name search bar | Filters the list to configs whose names match the query. |
+| Delete a config | Row actions > **Delete** | Removes the guardrail configuration from the workspace. |
+
+The table shows each config's name, description, model count, rail count, and last updated time.
+
+Guardrail configurations are created and updated through the `nemo guardrail` CLI or the Guardrails API. NeMo Studio reflects the current workspace state.
+
+## Guardrail Config Detail
+
+The detail page shows the stored properties of a single guardrail configuration.
+
+| Field | Description |
+|-------|-------------|
+| Description | A short summary of the config's purpose, if set. |
+| Models | Number of task models (for example, `content_safety`) attached to the config. |
+| Rails | Total count of input, output, and retrieval flows defined in the config. |
+| Created | When the configuration was first stored. |
+| Updated | When the configuration was last modified. |
+| Config | The full configuration payload as formatted JSON. |
+
+The **Edit** action is not yet available. To modify a configuration, use the `nemo guardrail` CLI or the Guardrails API, then reload the page.
+
+## Delete a Guardrail Config
+
+Select **Delete** from the row actions menu on the list page, or select **Delete** in the detail page header. Confirm the prompt to remove the configuration. Deletion is permanent.
+
+Before deleting a config, check whether it is referenced by any virtual model middleware pipeline. Removing a config that is wired to a virtual model does not automatically remove the middleware reference.

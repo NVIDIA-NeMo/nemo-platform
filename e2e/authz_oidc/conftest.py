@@ -129,16 +129,21 @@ def _uninstall_fixture_plugins(names: list[str]) -> None:
         logger.info("Uninstalled fixture plugins: %s", ", ".join(names))
 
 
-def _platform_env(issuer_url: str, data_dir: Path, extra: dict[str, str]) -> dict[str, str]:
+def _platform_env(issuer_url: str, base_url: str, data_dir: Path, extra: dict[str, str]) -> dict[str, str]:
     env = {k: v for k, v in os.environ.items() if not k.startswith(("NMP_", "DATABASE_"))}
     env.update(
         {
             "NMP_CONFIG_FILE_PATH": str(_PLATFORM_CONFIG),
             "NMP_CONFIG_WARNINGS_DISABLED": "1",
+            "NMP_BASE_URL": base_url,
             "NMP_DATA_DIR": str(data_dir),
             "NMP_SEED_ON_STARTUP": "true",
+            # Authz rows need auth seeding, but the default model-provider seed
+            # requires a real NGC_API_KEY and is unrelated to this matrix.
+            "NMP_PLATFORM_SEED_MODEL_PROVIDER_ENABLED": "false",
             "NMP_AUTH_ENABLED": "true",
             "NMP_AUTH_ALLOW_UNSIGNED_JWT": "false",  # defaults are true; signed JWTs only
+            "NMP_AUTH_POLICY_DECISION_POINT_BASE_URL": base_url,
             "NMP_AUTH_OIDC_ENABLED": "true",
             "NMP_AUTH_OIDC_ISSUER": issuer_url,
             "NMP_AUTH_OIDC_AUDIENCE": DEFAULT_AUDIENCE,
@@ -186,7 +191,7 @@ def _spawn_platform(
         "--port",
         str(port),
     ]
-    env = _platform_env(issuer.issuer_url, data_dir, extra_env)
+    env = _platform_env(issuer.issuer_url, base_url, data_dir, extra_env)
 
     logger.info("Spawning platform [%s] on %s (log: %s)", label, base_url, log_path)
     with open(log_path, "w") as log_file:

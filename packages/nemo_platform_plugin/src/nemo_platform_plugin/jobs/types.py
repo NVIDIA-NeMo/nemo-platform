@@ -87,6 +87,25 @@ class PlatformJobSortField(str, Enum):
         return "desc" if self.value.startswith("-") else "asc"
 
 
+class PlatformJobListSortField(str, Enum):
+    """Sort fields for the job *list* endpoint."""
+
+    # Superset of PlatformJobSortField with `source`; only the job list can sort
+    # by source (steps/results/logs have no source field).
+    CREATED_AT_ASC = "created_at"
+    CREATED_AT_DESC = "-created_at"
+    UPDATED_AT_ASC = "updated_at"
+    UPDATED_AT_DESC = "-updated_at"
+    SOURCE_ASC = "source"
+    SOURCE_DESC = "-source"
+
+    def get_field_name(self) -> str:
+        return self.value.lstrip("-")
+
+    def get_sort_direction(self) -> str:
+        return "desc" if self.value.startswith("-") else "asc"
+
+
 class PlatformJobAttemptSortField(str, Enum):
     SEQ_ASC = "seq"
     SEQ_DESC = "-seq"

@@ -19,10 +19,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from nemo_platform_plugin.client.auth import AuthError
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nemo_platform_plugin.client.oidc import (
     DEFAULT_REFRESH_MARGIN_SECONDS,
     OIDCTokenProvider,
     TokenSet,
+    WorkloadTokenExchangeProvider,
     _discover_oidc_client_settings,
     build_effective_scope,
 )
@@ -209,4 +211,33 @@ def resolve_oidc_provider(
         tokens=tokens,
         refresh_margin_seconds=DEFAULT_REFRESH_MARGIN_SECONDS,
         refresh_scope=refresh_scope,
+    )
+
+
+def resolve_workload_exchange_provider(*, base_url: str, subject_token_file: Path) -> WorkloadTokenExchangeProvider:
+    """Build a workload identity token exchange provider from auth discovery."""
+    oidc_config = _discover_oidc_client_settings(base_url)
+    if not oidc_config.workload_token_exchange_enabled:
+        raise AuthError(
+            f"{WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR} is set but workload token exchange is not enabled by auth discovery"
+        )
+
+    token_endpoint = oidc_config.workload_token_endpoint or oidc_config.token_endpoint or ""
+    client_id = oidc_config.workload_client_id or oidc_config.client_id or ""
+    if not token_endpoint:
+        raise AuthError(
+            "Workload token exchange is enabled but auth discovery did not return workload_token_endpoint or token_endpoint"
+        )
+    if not client_id:
+        raise AuthError(
+            "Workload token exchange is enabled but auth discovery did not return workload_client_id or client_id"
+        )
+
+    return WorkloadTokenExchangeProvider(
+        token_endpoint=token_endpoint,
+        client_id=client_id,
+        subject_token_file=subject_token_file,
+        audience=oidc_config.workload_audience,
+        scope=oidc_config.workload_scope,
+        refresh_margin_seconds=DEFAULT_REFRESH_MARGIN_SECONDS,
     )

@@ -10,6 +10,7 @@ import httpx
 from fastapi import Request, Response
 from nmp.common.config import AuthConfig, get_auth_config
 from nmp.common.observability.context import get_app_ctx
+from nmp.common.platform_endpoint import parse_platform_endpoint
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
@@ -55,8 +56,8 @@ def _embedded_pdp_base_url_hint(config: AuthConfig) -> str:
         return ""
     base = (config.policy_decision_point_base_url or "").strip()
     return (
-        " For embedded PDP, auth.policy_decision_point_base_url must be the HTTP origin where "
-        "this process serves /apis/auth (same as platform base_url / NMP_BASE_URL). "
+        " For embedded PDP, auth.policy_decision_point_base_url must be the typed endpoint where "
+        "this process serves /apis/auth (same as platform base_url / NMP_BASE_URL; HTTP(S) or unix://). "
         f"Absolute PDP URLs ignore the injected ASGI client base_url. Current auth.policy_decision_point_base_url={base!r}."
     )
 
@@ -69,6 +70,8 @@ HEALTH_ENDPOINTS = {
     "/health/ready",
     "/metrics",
     "/apis/auth/discovery",  # Discovery endpoint for CLI/SDK
+    "/apis/auth/jwks",  # Workload identity exchange signing keys
+    "/apis/auth/token",  # Workload identity token exchange validates the subject token itself
 }
 
 # GET requests to these paths bypass authentication (e.g. / -> /studio redirect).
@@ -164,7 +167,8 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             An async HTTP client configured with auth.policy_decision_point_request_timeout_seconds
         """
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=self.config.policy_decision_point_request_timeout_seconds)
+            endpoint = parse_platform_endpoint(self.config.policy_decision_point_base_url)
+            self._client = endpoint.async_http_client(timeout=self.config.policy_decision_point_request_timeout_seconds)
         return self._client
 
     def _update_auth_context(self, principal: Principal) -> None:
@@ -355,8 +359,9 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             )
             return await self._call_next_with_auth_client(request, call_next, auth_client)
 
-        # Auth enabled - perform PDP check
-        return await self._handle_auth_check(request, call_next)
+        # Auth enabled - perform PDP check with the parsed principal headers. The HF-compatible
+        # flow synthesizes these from its Bearer service token without mutating request.headers.
+        return await self._handle_auth_check(request, call_next, headers_dict)
 
     async def _handle_bearer_token_request(self, request: Request, call_next: Callable, auth_header: str) -> Response:
         """Handle requests with Authorization: Bearer tokens.
@@ -548,7 +553,9 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         )
         return await self._call_next_with_auth_client(request, call_next, auth_client)
 
-    async def _handle_auth_check(self, request: Request, call_next: Callable) -> Response:
+    async def _handle_auth_check(
+        self, request: Request, call_next: Callable, headers_dict: dict | None = None
+    ) -> Response:
         """Perform authorization check by calling the Policy Decision Point (PDP).
 
         This is the main authorization flow when auth is enabled and no bypass
@@ -558,6 +565,8 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         Args:
             request: The incoming HTTP request
             call_next: The next middleware/handler in the chain
+            headers_dict: Optional preprocessed headers. HF-compatible requests use this
+                to pass the service principal synthesized from their Bearer token.
 
         Returns:
             - 401 Unauthorized: If no principal and request is denied
@@ -568,7 +577,8 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             - 500 Internal Server Error: For unexpected PDP errors
             - Response from downstream: If authorized
         """
-        headers_dict = dict(request.headers)
+        if not headers_dict:
+            headers_dict = dict(request.headers)
 
         principal, error_response = self._principal_from_headers(headers_dict)
         if error_response is not None:

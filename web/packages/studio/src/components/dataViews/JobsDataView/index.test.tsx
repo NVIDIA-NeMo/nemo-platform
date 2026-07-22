@@ -13,6 +13,7 @@ import { workspace1 } from '@studio/mocks/entity-store/projects';
 import { server } from '@studio/mocks/node';
 import { getWorkspaceJobsRoute } from '@studio/routes/utils';
 import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
+import { fireEvent } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 
 vi.mock('use-debounce', () => ({
@@ -105,6 +106,21 @@ describe('JobsDataView', () => {
     for (const header of ['Name', 'Source', 'Status', 'Created']) {
       expect(await screen.findByRole('columnheader', { name: header })).toBeInTheDocument();
     }
+  });
+
+  it('adds a returned plugin source to the source filter options', async () => {
+    const jobs = [
+      makeJob({ name: 'agents-run-1', source: 'nemo-agents-plugin' }),
+      makeJob({ name: 'eval-run-2', source: 'evaluator-metrics', id: 'job-id-2' }),
+    ];
+    server.use(http.get(JOBS_URL, () => HttpResponse.json(makeJobsPage(jobs))));
+
+    renderComponent();
+
+    fireEvent.click(await screen.findByTestId('open-filters-button'));
+    fireEvent.click(await screen.findByTestId('column-filter-source'));
+
+    expect(await screen.findByRole('option', { name: 'nemo-agents-plugin' })).toBeInTheDocument();
   });
 
   it('shows error panel when API returns an error', async () => {
@@ -210,6 +226,23 @@ describe('JobsDataView', () => {
         expect(params.has('search')).toBe(false);
         expect(Array.from(params.keys()).some((k) => k.startsWith('search['))).toBe(false);
       }
+    });
+
+    it('sends sort=source when the Source header is clicked', async () => {
+      const requestUrls: string[] = [];
+      server.use(
+        http.get(JOBS_URL, ({ request }) => {
+          requestUrls.push(request.url);
+          return HttpResponse.json(makeJobsPage([makeJob()]));
+        })
+      );
+      renderComponent();
+
+      fireEvent.click(await screen.findByRole('button', { name: /^Source/ }));
+
+      await waitFor(() =>
+        expect(requestUrls.some((u) => new URL(u).searchParams.get('sort') === 'source')).toBe(true)
+      );
     });
   });
 });

@@ -20,8 +20,13 @@ paths:
         \ CLI)\n  - `userinfo_endpoint`: UserInfo endpoint\n  - `client_id`: OAuth\
         \ client ID to use\n  - `default_scopes`: OAuth scopes to request during authentication\n\
         \  - `scope_prefix`: Prefix to prepend to custom scopes (those with ':' or\
-        \ '.default')"
-      operationId: get_auth_discovery_apis_auth_discovery_get
+        \ '.default')\n  - `workload_token_exchange_enabled`: Whether SDK workload\
+        \ identity token exchange is enabled\n  - `workload_client_id`: OAuth client\
+        \ ID to use for workload identity token exchange\n  - `workload_token_endpoint`:\
+        \ Token endpoint to use only for workload identity token exchange\n  - `workload_audience`:\
+        \ RFC 8693 audience for exchanged workload tokens\n  - `workload_scope`: OAuth\
+        \ scopes for exchanged workload tokens"
+      operationId: get_auth_discovery_endpoint_apis_auth_discovery_get
       responses:
         '200':
           description: Successful Response
@@ -29,6 +34,89 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthDiscoveryResponse'
+  /apis/auth/jwks:
+    get:
+      tags:
+      - Workload Identity
+      summary: Workload identity token exchange JWKS
+      description: Return the public signing key for workload identity access tokens
+        minted by the NeMo auth service.
+      operationId: jwks_apis_auth_jwks_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonWebKeySetResponse'
+  /apis/auth/token:
+    post:
+      tags:
+      - Workload Identity
+      summary: Exchange a workload identity subject token
+      description: Exchange a configured workload identity subject token for a NeMo
+        Platform access token.
+      operationId: token_exchange_apis_auth_token_post
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              properties:
+                grant_type:
+                  type: string
+                  enum:
+                  - urn:ietf:params:oauth:grant-type:token-exchange
+                  description: OAuth 2.0 token exchange grant type.
+                client_id:
+                  type: string
+                  description: Workload token exchange OAuth client ID.
+                subject_token:
+                  type: string
+                  description: JWT subject token to exchange.
+                subject_token_type:
+                  type: string
+                  enum:
+                  - urn:ietf:params:oauth:token-type:jwt
+                  description: Token type identifier for the subject token.
+                requested_token_type:
+                  type: string
+                  enum:
+                  - urn:ietf:params:oauth:token-type:access_token
+                  description: Requested token type identifier for the issued token.
+                  default: urn:ietf:params:oauth:token-type:access_token
+                audience:
+                  type: string
+                  description: Requested audience for the issued access token.
+                scope:
+                  type: string
+                  description: Space-separated scopes requested for the issued access
+                    token.
+              type: object
+              required:
+              - grant_type
+              - client_id
+              - subject_token
+              - subject_token_type
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkloadTokenExchangeResponse'
+        '400':
+          description: RFC 8693 token exchange error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkloadTokenExchangeErrorResponse'
+        '401':
+          description: OAuth 2.0 invalid_client error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkloadTokenExchangeErrorResponse'
   /apis/auth/v2/iam/role-bindings:
     get:
       tags:
@@ -1111,7 +1199,7 @@ paths:
         required: false
         schema:
           allOf:
-          - $ref: '#/components/schemas/ProjectSortField'
+          - $ref: '#/components/schemas/GenericSortField'
           description: Sort field
           default: -created_at
         description: Sort field
@@ -2365,12 +2453,18 @@ paths:
       tags:
       - Inference Gateway
       summary: OpenAI List Models
-      description: 'This endpoint aggregates models from all model entities and returns
-        them
+      description: 'This endpoint lists the routable VirtualModels in the requested
+        workspace and
 
-        in OpenAI''s list models format. Each model ID is the model entity identifier
+        returns them in OpenAI''s list models format. Each model ID is the VirtualModel
 
-        in format workspace/model_entity_name.'
+        identifier in format workspace/name. This includes both autoprovisioned
+
+        VirtualModels (one per served model entity) and custom VirtualModels, keeping
+
+        the catalog in agreement with the inference proxy, which also resolves
+
+        VirtualModels scoped to the request workspace.'
       operationId: openai_proxy_list_models
       parameters:
       - name: workspace
@@ -2399,9 +2493,13 @@ paths:
       summary: OpenAI Get Model
       description: 'Retrieve information about a specific OpenAI-compatible model.
 
-        Workspace is always taken from the URL path; name may be model_entity_name
+        Workspace is always taken from the URL path; name may be the VirtualModel
 
-        or workspace/model_entity_name (workspace prefix is ignored).'
+        name or workspace/name (workspace prefix is ignored). Resolves against
+
+        routable VirtualModels, including custom ones, so this route agrees with
+
+        the list route and the inference proxy.'
       operationId: openai_proxy_get_model
       parameters:
       - name: workspace
@@ -3402,8 +3500,8 @@ paths:
             \ (the first field dominates); prefix any field with '-' for descending\
             \ \u2014 e.g. '-evaluators.reward.mean,cost_usd.mean'. Each field is an\
             \ evaluation attribute (name, created_at, updated_at, pinned_at) or an\
-            \ aggregate metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or\
-            \ evaluators.<name>.<stat>, where <stat> is one of mean, median, p90,\
+            \ aggregate metric: run_count, test_case_count, cost_usd.<stat>, latency_ms.<stat>,\
+            \ or evaluators.<name>.<stat>, where <stat> is one of mean, median, p90,\
             \ p95, p99, sum, count. When omitted, defaults to -created_at with pinned\
             \ evaluations first."
           title: Sort
@@ -3412,9 +3510,10 @@ paths:
           \ (the first field dominates); prefix any field with '-' for descending\
           \ \u2014 e.g. '-evaluators.reward.mean,cost_usd.mean'. Each field is an\
           \ evaluation attribute (name, created_at, updated_at, pinned_at) or an aggregate\
-          \ metric: run_count, cost_usd.<stat>, latency_ms.<stat>, or evaluators.<name>.<stat>,\
-          \ where <stat> is one of mean, median, p90, p95, p99, sum, count. When omitted,\
-          \ defaults to -created_at with pinned evaluations first."
+          \ metric: run_count, test_case_count, cost_usd.<stat>, latency_ms.<stat>,\
+          \ or evaluators.<name>.<stat>, where <stat> is one of mean, median, p90,\
+          \ p95, p99, sum, count. When omitted, defaults to -created_at with pinned\
+          \ evaluations first."
       - in: query
         name: filter
         style: deepObject
@@ -3517,6 +3616,55 @@ paths:
           description: Evaluation not found
         '409':
           description: Attempt to change an immutable field
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - Evaluations
+      summary: Patch Evaluation
+      description: "Partially update an evaluation: only fields present in the request\
+        \ are changed.\n\nThe common case is curating an evaluation into another ExperimentGroup\
+        \ \u2014 PATCH with the merged\n``experiment_ids``. Membership is replaced\
+        \ (not appended), so send the full desired set; any new\ngroup must exist\
+        \ and the set must be non-empty (an evaluation always belongs to >=1 group).\
+        \ Omitted\nfields are left untouched (unlike the full-body PUT, which overwrites\
+        \ them)."
+      operationId: patch_evaluation_apis_intake_v2_workspaces__workspace__evaluations__name__patch
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationPatchRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResponse'
+        '400':
+          description: A referenced ExperimentGroup does not exist, or experiment_ids
+            is empty
+        '404':
+          description: Evaluation not found
         '422':
           description: Validation Error
           content:
@@ -3631,7 +3779,7 @@ paths:
   /apis/intake/v2/workspaces/{workspace}/evaluations/{name}/sessions:
     get:
       tags:
-      - Evaluations
+      - Experiments
       summary: List Evaluation Sessions
       operationId: list_evaluation_sessions_apis_intake_v2_workspaces__workspace__evaluations__name__sessions_get
       parameters:
@@ -3674,16 +3822,33 @@ paths:
         schema:
           enum:
           - summary
+          - preview
           - detailed
           type: string
-          description: Response payload mode. summary keeps the same session row fields
-            but truncates root-span input to 1000 characters; detailed returns the
-            full root-span input.
+          description: Response mode. summary omits root-span input and output; preview
+            includes both truncated to 300 characters; detailed returns full root-span
+            payloads.
           default: detailed
           title: Mode
-        description: Response payload mode. summary keeps the same session row fields
-          but truncates root-span input to 1000 characters; detailed returns the full
-          root-span input.
+        description: Response mode. summary omits root-span input and output; preview
+          includes both truncated to 300 characters; detailed returns full root-span
+          payloads.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          description: "Comma-separated list of fields to sort by, applied in order\
+            \ (the first field dominates); prefix a field with '-' for descending\
+            \ \u2014 e.g. '-cost_total_usd,latency_ms'. Fields: test_case_id, started_at,\
+            \ ended_at, latency_ms, status, cost_total_usd, tokens. When omitted,\
+            \ sessions are ordered by started_at ascending."
+          title: Sort
+          type: string
+        description: "Comma-separated list of fields to sort by, applied in order\
+          \ (the first field dominates); prefix a field with '-' for descending \u2014\
+          \ e.g. '-cost_total_usd,latency_ms'. Fields: test_case_id, started_at, ended_at,\
+          \ latency_ms, status, cost_total_usd, tokens. When omitted, sessions are\
+          \ ordered by started_at ascending."
       - in: query
         name: filter
         style: deepObject
@@ -3700,9 +3865,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/EvaluationSessionResponsesPage'
         '400':
-          description: Invalid filter value
+          description: Invalid filter value, unsupported sort field, or empty sort
         '404':
           description: Evaluation not found
+        '413':
+          description: Too many sessions to sort by cost or tokens
         '503':
           description: ClickHouse unavailable
         '422':
@@ -4145,6 +4312,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/sessions/{id}:
+    get:
+      tags:
+      - Sessions
+      summary: Get Session
+      operationId: get_session_apis_intake_v2_workspaces__workspace__sessions__id__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '404':
+          description: Session not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/intake/v2/workspaces/{workspace}/spans:
     get:
       tags:
@@ -4192,10 +4393,17 @@ paths:
         schema:
           enum:
           - summary
+          - preview
           - detailed
           type: string
+          description: Response mode. summary omits payloads and raw attributes; preview
+            includes input and output truncated to 300 characters; detailed returns
+            full payloads and raw attributes.
           default: detailed
           title: Mode
+        description: Response mode. summary omits payloads and raw attributes; preview
+          includes input and output truncated to 300 characters; detailed returns
+          full payloads and raw attributes.
       - in: query
         name: filter
         style: deepObject
@@ -4416,14 +4624,17 @@ paths:
         schema:
           enum:
           - summary
+          - preview
           - detailed
           type: string
-          description: Use summary for root-span trace fields only, or detailed to
-            include token, cost, and span-count rollups.
-          default: detailed
+          description: Response mode. summary returns root-span fields without payloads
+            or rollups; preview adds token, cost, and span-count rollups plus 300-character
+            input/output previews; detailed returns rollups and full payloads.
+          default: preview
           title: Mode
-        description: Use summary for root-span trace fields only, or detailed to include
-          token, cost, and span-count rollups.
+        description: Response mode. summary returns root-span fields without payloads
+          or rollups; preview adds token, cost, and span-count rollups plus 300-character
+          input/output previews; detailed returns rollups and full payloads.
       - in: query
         name: filter
         style: deepObject
@@ -4472,14 +4683,17 @@ paths:
         schema:
           enum:
           - summary
+          - preview
           - detailed
           type: string
-          description: Use summary for root-span trace fields only, or detailed to
-            include token, cost, and span-count rollups.
+          description: Response mode. summary returns root-span fields without payloads
+            or rollups; preview adds token, cost, and span-count rollups plus 300-character
+            input/output previews; detailed returns rollups and full payloads.
           default: detailed
           title: Mode
-        description: Use summary for root-span trace fields only, or detailed to include
-          token, cost, and span-count rollups.
+        description: Response mode. summary returns root-span fields without payloads
+          or rollups; preview adds token, cost, and span-count rollups plus 300-character
+          input/output previews; detailed returns rollups and full payloads.
       responses:
         '200':
           description: Successful Response
@@ -4587,7 +4801,7 @@ paths:
         required: false
         schema:
           allOf:
-          - $ref: '#/components/schemas/PlatformJobSortField'
+          - $ref: '#/components/schemas/PlatformJobListSortField'
           description: The field to sort by. To sort in decreasing order, use `-`
             in front of the field name.
           default: -created_at
@@ -9007,9 +9221,12 @@ components:
             Ignored by non-NIM engines.
         override_config:
           title: Override Config
-          description: Raw NIMService spec configuration that takes precedence over
-            generated config (NIM engine on k8s). Allows advanced configuration options
-            directly. Ignored by non-NIM engines.
+          description: 'Partial NIMService Spec fragments deep-merged after generated
+            defaults and k8s_nim_operator_config (NIM engine on k8s only). Supported
+            keys: image, command, args, resources, env, readinessProbe, livenessProbe,
+            startupProbe, nodeSelector, tolerations, userID, groupID, labels, initContainers,
+            sidecarContainers. Unsupported keys are rejected at compile time. Ignored
+            by non-NIM engines and docker runtime.'
           additionalProperties: true
           type: object
       type: object
@@ -9767,15 +9984,12 @@ components:
           title: Message
           default: Resource deleted successfully.
         id:
+          type: string
           title: Id
           description: The ID of the deleted resource.
-          type: string
-        deleted_at:
-          title: Deleted At
-          description: The timestamp when the resource was deleted.
-          type: string
-          format: date-time
       type: object
+      required:
+      - id
       title: DeleteResponse
     DialogRails:
       properties:
@@ -9920,6 +10134,10 @@ components:
           allOf:
           - $ref: '#/components/schemas/DockerJobNetworkConfig'
           description: Docker networking configuration
+        workload_identity:
+          allOf:
+          - $ref: '#/components/schemas/DockerWorkloadIdentityConfig'
+          description: Docker workload identity subject-token issuer configuration.
       type: object
       title: DockerJobExecutionProfileConfig
       description: Configuration for Docker Job execution profile.
@@ -9989,6 +10207,60 @@ components:
       - volume_name
       - mount_path
       title: DockerVolumeMount
+    DockerWorkloadIdentityConfig:
+      properties:
+        enabled:
+          title: Enabled
+          description: Enable Docker workload identity token-file injection. Defaults
+            to auth.oidc.workload_token_exchange_enabled.
+          type: boolean
+        token_endpoint:
+          title: Token Endpoint
+          description: OAuth token endpoint used by the Docker demo issuer. Defaults
+            to auth.oidc.token_endpoint.
+          type: string
+        client_id:
+          title: Client Id
+          description: OAuth client ID used by the Docker demo issuer. Defaults to
+            auth.oidc.workload_client_id or auth.oidc.client_id.
+          type: string
+        client_secret:
+          format: password
+          title: Client Secret
+          description: OAuth client secret for the Docker demo issuer.
+          writeOnly: true
+          type: string
+        username:
+          title: Username
+          description: Username for the Docker demo issuer password grant.
+          type: string
+        password_env_var:
+          type: string
+          title: Password Env Var
+          description: Controller environment variable that contains the Docker demo
+            issuer password grant shared secret.
+          default: AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD
+        scope:
+          title: Scope
+          description: OAuth scope for the Docker demo issuer.
+          type: string
+        subject_token_ttl_seconds:
+          type: integer
+          minimum: 1.0
+          title: Subject Token Ttl Seconds
+          description: Fallback subject-token lifetime when the Docker demo issuer
+            response omits expires_in.
+        refresh_margin_seconds:
+          type: integer
+          minimum: 0.0
+          title: Refresh Margin Seconds
+          description: Seconds before subject-token expiry when the Docker refresher
+            issues a replacement token.
+          default: 60
+      additionalProperties: false
+      type: object
+      title: DockerWorkloadIdentityConfig
+      description: Docker-only subject token issuer configuration for workload identity.
     E2EJobExecutionProfile:
       properties:
         provider:
@@ -10281,17 +10553,75 @@ components:
           type: object
       title: EvaluationFilter
       type: object
+    EvaluationPatchRequest:
+      properties:
+        experiment_ids:
+          title: Experiment Ids
+          description: Replace the ExperimentGroups this Evaluation belongs to. Must
+            be non-empty when provided; each group must already exist. Omit to leave
+            membership unchanged.
+          items:
+            type: string
+          type: array
+        source_link:
+          title: Source Link
+          description: Optional URL for the source evaluation.
+          type: string
+          minLength: 1
+          format: uri
+        metadata:
+          title: Metadata
+          description: Free-form producer metadata.
+          additionalProperties:
+            type: string
+          type: object
+        description:
+          title: Description
+          description: Human-readable description.
+          type: string
+        parent_evaluation_id:
+          title: Parent Evaluation Id
+          description: Entity id of the evaluation this one was derived from (e.g.
+            a variant of a baseline), if any.
+          type: string
+        status:
+          title: Status
+          description: Producer-defined lifecycle status of the evaluation.
+          type: string
+        root_cause:
+          title: Root Cause
+          description: Human- or agent-authored explanation of the evaluation's outcome
+            (e.g. why it was killed).
+          type: string
+      additionalProperties: false
+      type: object
+      title: EvaluationPatchRequest
+      description: "Partial-update body for an Evaluation: only fields present in\
+        \ the request are applied.\n\nUnset fields are left unchanged (PATCH semantics\
+        \ \u2014 same pattern as the models service's PATCH).\nImmutable fields (name,\
+        \ dataset_name, dataset_version) aren't accepted here. ``experiment_ids``,\n\
+        when provided, must be non-empty: an evaluation must always belong to at least\
+        \ one group."
     EvaluationRequest:
       properties:
         name:
           type: string
           title: Name
           description: Producer-supplied, workspace-unique evaluation id.
+        experiment_ids:
+          items:
+            type: string
+          type: array
+          title: Experiment Ids
+          description: Entity ids of the ExperimentGroups this Evaluation belongs
+            to (>=1). Preferred; each group must already exist. When omitted, the
+            deprecated experiment_group_id is used instead.
         experiment_group_id:
-          type: string
           title: Experiment Group Id
-          description: "Entity id of the owning ExperimentGroup. Required \u2014 the\
-            \ group must already exist."
+          description: Deprecated single-group field; provide experiment_ids instead.
+            Coalesced into experiment_ids when experiment_ids is omitted.
+          deprecated: true
+          type: string
         dataset_name:
           type: string
           title: Dataset Name
@@ -10339,7 +10669,6 @@ components:
       type: object
       required:
       - name
-      - experiment_group_id
       - dataset_name
       title: EvaluationRequest
       description: Request body for creating an Evaluation.
@@ -10354,11 +10683,13 @@ components:
         workspace:
           type: string
           title: Workspace
-        experiment_group_id:
-          type: string
-          title: Experiment Group Id
-          description: Entity id of the owning ExperimentGroup. Required for every
-            Evaluation.
+        experiment_ids:
+          items:
+            type: string
+          type: array
+          title: Experiment Ids
+          description: Entity ids of the ExperimentGroups this Evaluation belongs
+            to (>=1).
         dataset_name:
           type: string
           title: Dataset Name
@@ -10442,6 +10773,14 @@ components:
           description: Number of distinct ingested evaluation sessions; one session
             is treated as one run.
           default: 0
+        test_case_count:
+          type: integer
+          title: Test Case Count
+          description: Number of distinct test cases in the evaluation, i.e. distinct
+            test_case_id values (sessions with no test_case_id each count as their
+            own). A test case run k times counts once; the rollup metrics are averaged
+            per test case before pooling across test cases.
+          default: 0
         cost_usd:
           $ref: '#/components/schemas/EvaluatorAggregate'
         latency_ms:
@@ -10452,14 +10791,22 @@ components:
           deprecated: true
           readOnly: true
           type: string
+        experiment_group_id:
+          type: string
+          title: Experiment Group Id
+          description: Deprecated single-group alias; the first of experiment_ids.
+            Use experiment_ids.
+          deprecated: true
+          readOnly: true
       type: object
       required:
       - id
       - name
       - workspace
-      - experiment_group_id
+      - experiment_ids
       - dataset_name
       - parent_experiment_id
+      - experiment_group_id
       title: EvaluationResponse
       description: Evaluation as served by the API, including ClickHouse-hydrated
         rollups.
@@ -10540,8 +10887,13 @@ components:
           description: 'Root-span status: success, error, cancelled, or unknown.'
         input:
           title: Input
-          description: Root-span input text. In summary mode this is truncated to
-            1000 characters.
+          description: Root-span input text. Omitted in summary mode and truncated
+            to 300 characters in preview mode.
+          type: string
+        output:
+          title: Output
+          description: Root-span output text. Omitted in summary mode and truncated
+            to 300 characters in preview mode.
           type: string
         input_tokens:
           title: Input Tokens
@@ -11743,9 +12095,22 @@ components:
       enum:
       - created_at
       - -created_at
+      - updated_at
+      - -updated_at
       - name
       - -name
       title: GenericSortField
+      description: 'Sort options for entity-store-backed list endpoints.
+
+
+        Members map to entity base columns (see ``BASE_FIELDS``), so any
+
+        entity-backed resource (filesets, guardrail configs, workspaces, projects)
+
+        can share this without advertising a sort it cannot honor. Prefix a field
+        with ``-`` for
+
+        descending order.'
     GuardrailCheckRequest:
       properties:
         model:
@@ -12519,6 +12884,25 @@ components:
             these variables.
       type: object
       title: JobExecutionProfileConfig
+    JsonWebKey:
+      properties: {}
+      additionalProperties: true
+      type: object
+      title: JsonWebKey
+      description: JSON Web Key object.
+    JsonWebKeySetResponse:
+      properties:
+        keys:
+          items:
+            $ref: '#/components/schemas/JsonWebKey'
+          type: array
+          title: Keys
+          description: Public signing keys in the JWKS document.
+      type: object
+      required:
+      - keys
+      title: JsonWebKeySetResponse
+      description: JSON Web Key Set document.
     K8sNIMOperatorConfig:
       properties:
         resources:
@@ -12558,6 +12942,31 @@ components:
         These fields provide typed access to commonly-used NIMService Spec fields
 
         and are applied before override_config in the compilation precedence.'
+    KubernetesConfigMapVolume:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: ConfigMap name to mount
+        default_mode:
+          title: Default Mode
+          description: Optional default file mode
+          type: integer
+        optional:
+          title: Optional
+          description: Whether the ConfigMap is optional
+          type: boolean
+        items:
+          items:
+            $ref: '#/components/schemas/KubernetesKeyToPath'
+          type: array
+          title: Items
+          description: Optional ConfigMap keys to project
+      type: object
+      required:
+      - name
+      title: KubernetesConfigMapVolume
+      description: Kubernetes ConfigMap volume definition.
     KubernetesEmptyDirVolume:
       properties:
         medium:
@@ -12715,6 +13124,18 @@ components:
           title: Launcher Image
           description: Container image that contains the jobs-launcher binary.
           default: nvcr.io/nvidia/nemo-microservices/jobs-launcher:latest
+        workload_identity_token_expiration_seconds:
+          type: integer
+          minimum: 600.0
+          title: Workload Identity Token Expiration Seconds
+          description: Requested expirationSeconds for the projected service account
+            token used as the workload identity subject token.
+          default: 600
+        workload_identity_token_audience:
+          title: Workload Identity Token Audience
+          description: Audience for the projected service account token. Defaults
+            to auth.oidc.workload_client_id, auth.oidc.client_id, then 'nemo-platform'.
+          type: string
       type: object
       title: KubernetesJobExecutionProfileConfig
       description: Configuration for Kubernetes execution environment.
@@ -12745,6 +13166,26 @@ components:
       type: object
       title: KubernetesJobStorageConfig
       description: Configuration for persistent storage in Kubernetes jobs.
+    KubernetesKeyToPath:
+      properties:
+        key:
+          type: string
+          title: Key
+          description: Source key to project from the volume source
+        path:
+          type: string
+          title: Path
+          description: Relative file path to write the key to
+        mode:
+          title: Mode
+          description: Optional file mode for this key
+          type: integer
+      type: object
+      required:
+      - key
+      - path
+      title: KubernetesKeyToPath
+      description: Kubernetes volume key-to-path mapping.
     KubernetesObjectMetadata:
       properties:
         labels:
@@ -12775,7 +13216,57 @@ components:
       - claim_name
       title: KubernetesPersistentVolumeClaim
       description: Kubernetes Persistent Volume Claim definition.
+    KubernetesSecretVolume:
+      properties:
+        secret_name:
+          type: string
+          title: Secret Name
+          description: Secret name to mount
+        default_mode:
+          title: Default Mode
+          description: Optional default file mode
+          type: integer
+        optional:
+          title: Optional
+          description: Whether the Secret is optional
+          type: boolean
+        items:
+          items:
+            $ref: '#/components/schemas/KubernetesKeyToPath'
+          type: array
+          title: Items
+          description: Optional Secret keys to project
+      type: object
+      required:
+      - secret_name
+      title: KubernetesSecretVolume
+      description: Kubernetes Secret volume definition.
     KubernetesVolume:
+      oneOf:
+      - properties:
+          persistent_volume_claim:
+            not:
+              type: 'null'
+        required:
+        - persistent_volume_claim
+      - properties:
+          empty_dir:
+            not:
+              type: 'null'
+        required:
+        - empty_dir
+      - properties:
+          secret:
+            not:
+              type: 'null'
+        required:
+        - secret
+      - properties:
+          config_map:
+            not:
+              type: 'null'
+        required:
+        - config_map
       properties:
         name:
           type: string
@@ -12789,11 +13280,19 @@ components:
           allOf:
           - $ref: '#/components/schemas/KubernetesEmptyDirVolume'
           description: EmptyDir Volume configuration
+        secret:
+          allOf:
+          - $ref: '#/components/schemas/KubernetesSecretVolume'
+          description: Secret Volume configuration
+        config_map:
+          allOf:
+          - $ref: '#/components/schemas/KubernetesConfigMapVolume'
+          description: ConfigMap Volume configuration
       type: object
       required:
       - name
       title: KubernetesVolume
-      description: Kubernetes Volume definition.
+      description: Kubernetes Volume definition with secret and config_map support.
     KubernetesVolumeMount:
       properties:
         name:
@@ -14687,6 +15186,22 @@ components:
         scope_prefix:
           title: Scope Prefix
           type: string
+        workload_token_exchange_enabled:
+          type: boolean
+          title: Workload Token Exchange Enabled
+          default: false
+        workload_client_id:
+          title: Workload Client Id
+          type: string
+        workload_token_endpoint:
+          title: Workload Token Endpoint
+          type: string
+        workload_audience:
+          title: Workload Audience
+          type: string
+        workload_scope:
+          title: Workload Scope
+          type: string
       type: object
       required:
       - issuer
@@ -14975,6 +15490,17 @@ components:
       required:
       - data
       title: PlatformJobListResultResponse
+    PlatformJobListSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      - source
+      - -source
+      title: PlatformJobListSortField
+      description: Sort fields for the job *list* endpoint.
     PlatformJobListTaskResponse:
       properties:
         data:
@@ -16093,17 +16619,6 @@ components:
       - name
       title: ProjectInput
       description: Schema for creating a new project.
-    ProjectSortField:
-      type: string
-      enum:
-      - created_at
-      - -created_at
-      - updated_at
-      - -updated_at
-      - name
-      - -name
-      title: ProjectSortField
-      description: Fields available for sorting project results.
     ProjectUpdate:
       properties:
         description:
@@ -17223,6 +17738,71 @@ components:
       - served_model_name
       title: ServedModelMapping
       description: Mapping between a Model Entity and how it's served by this provider.
+    Session:
+      properties:
+        id:
+          type: string
+          title: Id
+        workspace:
+          type: string
+          title: Workspace
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        ended_at:
+          title: Ended At
+          type: string
+          format: date-time
+        duration_ms:
+          title: Duration Ms
+          type: number
+        status:
+          $ref: '#/components/schemas/SpanStatus'
+        input_tokens:
+          title: Input Tokens
+          type: integer
+          minimum: 0.0
+        output_tokens:
+          title: Output Tokens
+          type: integer
+          minimum: 0.0
+        cached_tokens:
+          title: Cached Tokens
+          type: integer
+          minimum: 0.0
+        total_tokens:
+          title: Total Tokens
+          type: integer
+          minimum: 0.0
+        cost_usd:
+          title: Cost Usd
+          type: number
+        cost_input_usd:
+          title: Cost Input Usd
+          type: number
+        cost_output_usd:
+          title: Cost Output Usd
+          type: number
+        trace_count:
+          type: integer
+          minimum: 0.0
+          title: Trace Count
+        span_count:
+          type: integer
+          minimum: 0.0
+          title: Span Count
+      type: object
+      required:
+      - id
+      - workspace
+      - started_at
+      - status
+      - trace_count
+      - span_count
+      title: Session
+      description: Aggregate telemetry for one Intake session; does not include traces
+        or span payloads.
     SingleCallConfig:
       properties:
         enabled:
@@ -17294,8 +17874,8 @@ components:
           type: string
         error_message:
           title: Error Message
-          description: Normalized error message. In summary mode this is truncated
-            to 1000 characters.
+          description: Normalized error message. In summary and preview modes this
+            is truncated to 1000 characters.
           type: string
         provider:
           title: Provider
@@ -17352,9 +17932,13 @@ components:
           title: Cost Details
         input:
           title: Input
+          description: Span input text. Omitted in summary mode and truncated to 300
+            characters in preview mode.
           type: string
         output:
           title: Output
+          description: Span output text. Omitted in summary mode and truncated to
+            300 characters in preview mode.
           type: string
         raw_attributes:
           title: Raw Attributes
@@ -17909,6 +18493,16 @@ components:
           title: Workspace
         name:
           title: Name
+          type: string
+        input:
+          title: Input
+          description: Root-span input text. Omitted in summary mode and truncated
+            to 300 characters in preview mode.
+          type: string
+        output:
+          title: Output
+          description: Root-span output text. Omitted in summary mode and truncated
+            to 300 characters in preview mode.
           type: string
         evaluation_context:
           $ref: '#/components/schemas/EvaluationContext'
@@ -18916,6 +19510,18 @@ components:
           title: Launcher Image
           description: Container image that contains the jobs-launcher binary.
           default: nvcr.io/nvidia/nemo-microservices/jobs-launcher:latest
+        workload_identity_token_expiration_seconds:
+          type: integer
+          minimum: 600.0
+          title: Workload Identity Token Expiration Seconds
+          description: Requested expirationSeconds for the projected service account
+            token used as the workload identity subject token.
+          default: 600
+        workload_identity_token_audience:
+          title: Workload Identity Token Audience
+          description: Audience for the projected service account token. Defaults
+            to auth.oidc.workload_client_id, auth.oidc.client_id, then 'nemo-platform'.
+          type: string
         queue:
           type: string
           title: Queue
@@ -18942,6 +19548,58 @@ components:
       type: object
       title: VolcanoJobExecutionProfileConfig
       description: Configuration for Volcano Job Execution Profile
+    WorkloadTokenExchangeErrorResponse:
+      properties:
+        error:
+          type: string
+          title: Error
+          description: OAuth 2.0 or RFC 8693 token exchange error code, such as invalid_client,
+            invalid_request, invalid_grant, invalid_scope, or invalid_target.
+        error_description:
+          title: Error Description
+          description: Human-readable ASCII text providing additional information
+            about the error.
+          type: string
+        error_uri:
+          title: Error Uri
+          description: URI identifying a human-readable web page with information
+            about the error.
+          type: string
+      type: object
+      required:
+      - error
+      title: WorkloadTokenExchangeErrorResponse
+      description: RFC 8693 token exchange error response.
+    WorkloadTokenExchangeResponse:
+      properties:
+        access_token:
+          type: string
+          title: Access Token
+          description: JWT access token minted for the workload identity.
+        issued_token_type:
+          type: string
+          title: Issued Token Type
+          description: Token type identifier for the issued token.
+        token_type:
+          type: string
+          title: Token Type
+          description: OAuth token type used in Authorization headers.
+        expires_in:
+          type: integer
+          title: Expires In
+          description: Lifetime of the access token in seconds.
+        scope:
+          title: Scope
+          description: Space-separated scopes granted to the access token.
+          type: string
+      type: object
+      required:
+      - access_token
+      - issued_token_type
+      - token_type
+      - expires_in
+      title: WorkloadTokenExchangeResponse
+      description: RFC 8693 token exchange response for workload identity access tokens.
     Workspace:
       properties:
         id:

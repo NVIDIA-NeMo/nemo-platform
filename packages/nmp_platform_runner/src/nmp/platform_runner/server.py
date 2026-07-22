@@ -10,7 +10,9 @@ import inspect
 import logging
 import os
 import threading
+from collections.abc import Callable, Mapping, MutableMapping
 from contextlib import asynccontextmanager
+from typing import cast
 
 import httpx
 import uvicorn
@@ -24,14 +26,46 @@ from nmp.common.observability import initialize_obs, setup_fastapi_instrumentati
 from nmp.common.observability.context import create_app_context_dependency
 from nmp.common.pyleak import detect_blocking
 from nmp.common.service import Service
-from nmp.platform_runner.health import create_platform_health_router, get_platform_resource_attributes
-from nmp.platform_runner.loader import load_controller_run_func, load_service, order_services_by_dependencies
-from nmp.platform_runner.registry import get_available_controllers, get_available_services, get_openapi_service_names
+from nmp.platform_runner.config import PlatformAppConfig
+from nmp.platform_runner.health import ReadinessCheck, create_platform_health_router, get_platform_resource_attributes
+from nmp.platform_runner.loader import (
+    ControllerRunFunc,
+    load_controller_run_func,
+    load_service,
+    order_services_by_dependencies,
+)
+from nmp.platform_runner.registry import (
+    AVAILABLE_SIDECARS,
+    get_available_controllers,
+    get_available_services,
+    get_openapi_service_names,
+)
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
 logger = logging.getLogger(__name__)
+
+
+class _StartupReadinessState:
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self._ready = False
+        self._message = "pending"
+
+    async def is_ready(self) -> bool:
+        return self._ready
+
+    def message(self) -> str:
+        return self._message
+
+    def mark_ready(self) -> None:
+        self._ready = True
+        self._message = "ready"
+
+    def mark_failed(self, message: str) -> None:
+        self._ready = False
+        self._message = message
 
 
 async def platform_global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -103,18 +137,32 @@ def create_platform_openapi_app() -> FastAPI:
 
 def create_app(
     services: list[Service] | None = None,
-    controller_run_funcs: dict[str, object] | None = None,
+    controller_run_funcs: dict[str, ControllerRunFunc] | None = None,
     http_client: httpx.AsyncClient | None = None,
 ) -> FastAPI:
     """Create the FastAPI app from service instances."""
     services = services or []
     controller_run_funcs = controller_run_funcs or {}
     controller_stop_signal = threading.Event()
+    platform_config = get_platform_config()
+    platform_config.services = ",".join(sorted(service.name for service in services))
+    readiness_checks: list[ReadinessCheck] = []
+    platform_seed_state: _StartupReadinessState | None = None
+    if platform_config.seed_on_startup:
+        platform_seed_state = _StartupReadinessState("platform-seed")
+        readiness_checks.append(
+            ReadinessCheck(
+                name=platform_seed_state.name,
+                is_ready=platform_seed_state.is_ready,
+                message=platform_seed_state.message,
+            )
+        )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logger.info("Starting Nemo Platform server")
         controller_threads = []
+        platform_seed_task: asyncio.Task[None] | None = None
         if controller_run_funcs:
             logger.info("Starting controllers in lifespan: %s", list(controller_run_funcs))
             for name, run_func in controller_run_funcs.items():
@@ -127,20 +175,41 @@ def create_app(
                 thread.start()
                 controller_threads.append(thread)
 
-        platform_config = get_platform_config()
-        if platform_config.seed_on_startup:
+        if platform_seed_state is not None:
             try:
                 from nmp.platform_seed import run_platform_seed_from_startup
 
-                asyncio.create_task(run_platform_seed_from_startup())
+                async def run_platform_seed_and_update_readiness() -> None:
+                    try:
+                        ok = await run_platform_seed_from_startup()
+                    except Exception:
+                        logger.exception("Platform seed task failed")
+                        platform_seed_state.mark_failed("platform seed failed")
+                        return
+
+                    if ok:
+                        platform_seed_state.mark_ready()
+                    else:
+                        platform_seed_state.mark_failed("platform seed failed")
+
+                platform_seed_task = asyncio.create_task(run_platform_seed_and_update_readiness())
                 logger.info("Platform seed task scheduled")
             except ImportError as error:
                 logger.warning("platform.seed_on_startup is True but platform_seed is not installed: %s", error)
+                platform_seed_state.mark_failed("platform seed is not installed")
 
         app.state.controller_threads = controller_threads
         app.state.controller_stop_signal = controller_stop_signal
+        app.state.platform_seed_task = platform_seed_task
 
         yield
+
+        if platform_seed_task is not None and not platform_seed_task.done():
+            platform_seed_task.cancel()
+            try:
+                await platform_seed_task
+            except asyncio.CancelledError:
+                pass
 
         controller_stop_signal.set()
         for thread in controller_threads:
@@ -174,9 +243,9 @@ def create_app(
     )
 
     app.state.service_configs = {}
-    app.include_router(create_platform_health_router(services))
+    app.include_router(create_platform_health_router(services, readiness_checks=readiness_checks))
 
-    redirect_root_to_studio = get_platform_config().redirect_root_to_studio
+    redirect_root_to_studio = platform_config.redirect_root_to_studio
 
     @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False, response_model=None)
     async def root_handler() -> Response:
@@ -210,12 +279,85 @@ def create_app(
     return app
 
 
-def run_server(services: list[Service] | None = None, host: str = "0.0.0.0", port: int = 8080) -> None:
+def _load_run_functions(
+    names: list[str],
+    registry: Mapping[str, str | Callable[[threading.Event], object]],
+) -> dict[str, Callable[[threading.Event], object]]:
+    run_funcs: dict[str, Callable[[threading.Event], object]] = {}
+    for name in names:
+        value = registry[name]
+        if isinstance(value, str):
+            run_funcs[name] = load_controller_run_func(name, value)
+        else:
+            run_funcs[name] = value
+    return run_funcs
+
+
+def build_platform_app(
+    config: PlatformAppConfig | None = None,
+    *,
+    http_client: httpx.AsyncClient | None = None,
+    env: MutableMapping[str, str] | None = None,
+) -> FastAPI:
+    """Build a platform FastAPI app without starting uvicorn.
+
+    Args:
+        config: App-build selection and bind configuration. Prefer this over
+            individual service/controller/sidecar keyword arguments for new
+            callers.
+        env: Environment mapping passed to :func:`apply_run_environment`.
+            Defaults to ``None`` which writes to ``os.environ``.  Tests can
+            pass an empty dict to avoid polluting the process environment.
+    """
+    from nmp.platform_runner.config import apply_run_environment, resolve_run_configuration
+
+    resolved = resolve_run_configuration(config)
+    apply_run_environment(resolved, env=env)
+
+    service_instances = []
+    for service_name in sorted(resolved.services):
+        service_value = resolved.available_services[service_name]
+        service_instances.append(
+            service_value if isinstance(service_value, Service) else load_service(service_name, service_value)
+        )
+    service_instances = order_services_by_dependencies(service_instances)
+
+    collisions = resolved.controllers & resolved.sidecars
+    if collisions:
+        raise ValueError(f"Controller/sidecar name collision: {', '.join(sorted(collisions))}")
+
+    controller_run_funcs = _load_run_functions(sorted(resolved.controllers), resolved.available_controllers)
+    sidecar_run_funcs = _load_run_functions(sorted(resolved.sidecars), AVAILABLE_SIDECARS)
+    controller_run_funcs.update(sidecar_run_funcs)
+
+    return create_app(service_instances, controller_run_funcs=controller_run_funcs, http_client=http_client)
+
+
+def run_server(
+    services: list[Service] | None = None,
+    host: str = "0.0.0.0",
+    port: int = 8080,
+    socket_path: str | None = None,
+) -> None:
     """Run the platform API server."""
     preflight_embedded_auth_policy_wasm(get_auth_config())
     app = create_app(services or [])
     setup_fastapi_instrumentations(app)
-    uvicorn.run(app, host=host, port=port, log_config=None)
+    if socket_path:
+        _run_server_on_bound_sockets(app, host=host, port=port, socket_path=socket_path)
+    else:
+        uvicorn.run(app, host=host, port=port, log_config=None)
+
+
+def _run_server_on_bound_sockets(app: FastAPI, *, host: str, port: int, socket_path: str) -> None:
+    tcp_config = uvicorn.Config(app, host=host, port=port, log_config=None)
+    uds_config = uvicorn.Config(app, uds=socket_path, log_config=None)
+    sockets = [tcp_config.bind_socket(), uds_config.bind_socket()]
+    try:
+        asyncio.run(uvicorn.Server(tcp_config).serve(sockets=sockets))
+    finally:
+        for sock in sockets:
+            sock.close()
 
 
 def run_server_with_reload(app_factory: str, host: str = "0.0.0.0", port: int = 8080) -> None:
@@ -283,7 +425,7 @@ def create_default_app() -> FastAPI:
             services.append(load_service(service_name, service_value))
     services = order_services_by_dependencies(services)
 
-    controller_run_funcs = {}
+    controller_run_funcs: dict[str, ControllerRunFunc] = {}
     for controller_name in controller_names:
         controller_value = available_controllers.get(controller_name)
         if controller_value is None:
@@ -293,7 +435,7 @@ def create_default_app() -> FastAPI:
                 % (controller_name, controller_names_env, available)
             )
         if callable(controller_value):
-            controller_run_funcs[controller_name] = controller_value
+            controller_run_funcs[controller_name] = cast(ControllerRunFunc, controller_value)
         else:
             controller_run_funcs[controller_name] = load_controller_run_func(controller_name, controller_value)
 

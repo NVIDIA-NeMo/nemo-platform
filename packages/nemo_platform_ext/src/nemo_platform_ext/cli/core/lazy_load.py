@@ -147,9 +147,6 @@ def _add_unavailable_plugin_primitive(
 def lazy_plugin_loader(plugin_name: str, import_path: str) -> Callable[[], click.Command]:
     """Resolve a plugin CLI from its entry-point import path when needed."""
 
-    def _plugin_placeholder_command(help_text: str) -> click.Command:
-        return click.Group(name=plugin_name, help=help_text)
-
     def _load_plugin_cli() -> click.Command:
         from nemo_platform_ext.cli.app import (
             _add_plugin_function_commands,
@@ -166,8 +163,9 @@ def lazy_plugin_loader(plugin_name: str, import_path: str) -> Callable[[], click
             plugin_app = cli_obj.get_cli()
         except CustomizationContributorDiscoveryError as exc:
             raise click.ClickException(str(exc)) from exc
-        except Exception:
-            return _plugin_placeholder_command(f"Plugin commands for {plugin_name} are unavailable.")
+        except Exception as exc:
+            logger.warning("Failed to load CLI plugin %r from %r", plugin_name, import_path, exc_info=True)
+            raise click.ClickException(f"Failed to load plugin commands for {plugin_name!r}: {exc}") from exc
 
         job_entry_points = _discover_plugin_job_entry_points()
         if job_entry_points is not None:
@@ -220,8 +218,9 @@ def lazy_plugin_loader(plugin_name: str, import_path: str) -> Callable[[], click
 
         try:
             return typer_get_command(plugin_app)
-        except RuntimeError:
-            return _plugin_placeholder_command(plugin_app.info.help or f"Plugin commands for {plugin_name}.")
+        except RuntimeError as exc:
+            logger.warning("Failed to build CLI plugin %r", plugin_name, exc_info=True)
+            raise click.ClickException(f"Failed to build plugin commands for {plugin_name!r}: {exc}") from exc
 
     return _load_plugin_cli
 

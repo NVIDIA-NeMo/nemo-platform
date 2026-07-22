@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 
-from nemo_evaluator.api.schemas import MetricInline, MetricRef, Task, TaskInput
+from nemo_evaluator.api.schemas import MetricInline, MetricRef, Task, TaskInput, parse_entity_ref
 from nemo_evaluator.api.service.metric_service import MetricService
 from nemo_evaluator.entities import TaskEntity
 from nemo_platform_plugin.entities import EntityClient, EntityConflictError, EntityNotFoundError, PaginationInfo
@@ -23,6 +23,10 @@ from nemo_platform_plugin.log_utils import sanitize_for_log
 from nemo_platform_plugin.schema import Page, PaginationData
 
 logger = logging.getLogger(__name__)
+
+
+class MetricRefNotFoundError(ValueError):
+    """A task references a stored metric that does not exist."""
 
 
 def _entity_to_task(entity: TaskEntity) -> Task:
@@ -70,7 +74,14 @@ class TaskService:
         refs: list[MetricRef] = []
         for metric in metrics:
             if isinstance(metric, MetricRef):
-                refs.append(metric)
+                ref_workspace, name = parse_entity_ref(metric.root, workspace)
+                if await self.metric_service.get_metric(ref_workspace, name) is None:
+                    raise MetricRefNotFoundError(
+                        f"Metric reference '{metric.root}' not found. "
+                        f"Ensure a stored metric named '{name}' exists in workspace '{ref_workspace}', "
+                        "or pass an inline metric instead."
+                    )
+                refs.append(MetricRef(f"{ref_workspace}/{name}"))
             else:
                 refs.append(await self.metric_service.store_derived_metric(metric, workspace=workspace))
         return refs

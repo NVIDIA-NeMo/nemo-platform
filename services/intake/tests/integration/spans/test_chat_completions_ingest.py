@@ -117,6 +117,20 @@ def test_chat_completions_ingest_happy_path(client: TestClient):
     assert json.loads(span["input"])["messages"][0]["content"] == "You are a terse calculator."
     assert json.loads(span["output"])["choices"][0]["message"]["content"] == "42"
 
+    summary = client.get(
+        SPANS_URL,
+        params={"filter[session_id]": "session-happy", "mode": "summary", "page_size": 10},
+    ).json()["data"][0]
+    assert "input" not in summary
+    assert "output" not in summary
+
+    preview = client.get(
+        SPANS_URL,
+        params={"filter[session_id]": "session-happy", "mode": "preview", "page_size": 10},
+    ).json()["data"][0]
+    assert len(preview["input"]) <= 300
+    assert len(preview["output"]) <= 300
+
     filtered = client.get(
         SPANS_URL,
         params={"filter[evaluation_id]": EVALUATION_CONTEXT["evaluation_id"], "page_size": 10},

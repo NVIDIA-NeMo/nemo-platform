@@ -141,7 +141,7 @@ class TestProjectCRUD:
 
         assert response.status_code == 200
         result = response.json()
-        assert result["deleted_count"] == 1
+        assert "id" in result
 
         get_response = await client.get("/apis/entities/v2/workspaces/default/projects/delete-me")
         assert get_response.status_code == 404

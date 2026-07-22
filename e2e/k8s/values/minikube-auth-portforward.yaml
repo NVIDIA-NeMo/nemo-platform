@@ -8,9 +8,6 @@
 # is blocked and the ingress addon cannot bootstrap. The chart still keeps split
 # pods on the API service URL while the API pod itself loops back to localhost.
 
-k8s-nim-operator:
-  enabled: false
-
 postgresql:
   persistence:
     storageClass: standard
@@ -35,8 +32,35 @@ platformConfig:
     admin_email: "admin@example.com"
   inference_gateway:
     mock_provider_prefix: igw-mock-
+  jobs:
+    executors:
+      - provider: cpu
+        profile: additional-volume
+        backend: kubernetes_job
+        config:
+          service_account_name: '{{ include "nmp-core.jobsServiceAccountName" . }}'
+          launcher_image: '{{ include "nmp-core.image" . }}'
+          storage:
+            pvc_name: '{{ include "nmp-core.persistentVolumeClaim" . }}'
+            volume_permissions_image: '{{ .Values.core.storage.volumePermissionsImage }}'
+            additional_volumes:
+              - name: nmp-additional-volume
+                persistent_volume_claim:
+                  claim_name: '{{ include "nmp-core.persistentVolumeClaim" . }}'
+            additional_volume_mounts:
+              - name: nmp-additional-volume
+                mount_path: /mnt/additional_storage
   models:
     controller:
       backends:
-        nim_operator:
-          enabled: false
+        deployments_plugin:
+          enabled: true
+          k8s_executor: local-k8s
+          default_executor: local-k8s
+  deployments:
+    executors:
+      - name: local-k8s
+        backend: k8s
+        config:
+          default_namespace: default
+    default_executor: local-k8s

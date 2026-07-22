@@ -33,6 +33,7 @@ Usage (once the SDK hub is wired up)::
 
 from __future__ import annotations
 
+import re
 from typing import Any, List
 
 import httpx
@@ -40,6 +41,19 @@ from nemo_platform_plugin.sdk import NemoPluginSDKResources
 
 _DEFAULT_WORKSPACE = "default"
 _DEFAULT_TIMEOUT = 30
+_DEFAULT_MODEL_PLACEHOLDER = re.compile(r"\$(?:\{NEMO_DEFAULT_MODEL\}|NEMO_DEFAULT_MODEL(?![A-Za-z0-9_]))")
+
+
+def _contains_default_model_placeholder(value: Any) -> bool:
+    """Return True when *value* still contains an unresolved default-model placeholder."""
+    if isinstance(value, str):
+        protected = value.replace("$$", "\0DOLLAR\0")
+        return _DEFAULT_MODEL_PLACEHOLDER.search(protected) is not None
+    if isinstance(value, dict):
+        return any(_contains_default_model_placeholder(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_contains_default_model_placeholder(v) for v in value)
+    return False
 
 
 class AgentsResource:
@@ -65,7 +79,7 @@ class AgentsResource:
         config: dict[str, Any],
         description: str = "",
         config_format: str = "nat-workflow-v1",
-        workspace: str = _DEFAULT_WORKSPACE,
+        workspace: str | None = None,
     ) -> dict[str, Any]:
         """Create a new agent.
 
@@ -74,30 +88,41 @@ class AgentsResource:
             config: NAT workflow config dict.
             description: Optional human-readable description.
             config_format: Config format identifier (default: ``"nat-workflow-v1"``).
-            workspace: Target workspace.
+            workspace: Target workspace. Defaults to the workspace configured
+                on the platform client, or ``"default"`` when the client has no
+                workspace.
 
         Returns:
             The created agent as a dict.
         """
+        from nemo_agents_plugin.utils import inject_default_model
+
+        resolved_config = inject_default_model(config)
+        if _contains_default_model_placeholder(resolved_config):
+            raise ValueError(
+                "Agent config references ${NEMO_DEFAULT_MODEL}, but no default model is selected. "
+                "Run `nemo setup`, set NEMO_DEFAULT_MODEL, or replace the placeholder with an explicit "
+                "VirtualModel name."
+            )
         payload = {
             "name": name,
-            "config": config,
+            "config": resolved_config,
             "description": description,
             "config_format": config_format,
         }
-        return self._post(f"/v2/workspaces/{workspace}/agents", payload)
+        return self._post(f"/v2/workspaces/{self._workspace(workspace)}/agents", payload)
 
-    def list(self, workspace: str = _DEFAULT_WORKSPACE) -> List[dict[str, Any]]:
+    def list(self, workspace: str | None = None) -> List[dict[str, Any]]:
         """List agents in *workspace*."""
-        return self._get(f"/v2/workspaces/{workspace}/agents")
+        return self._get(f"/v2/workspaces/{self._workspace(workspace)}/agents")
 
-    def get(self, name: str, workspace: str = _DEFAULT_WORKSPACE) -> dict[str, Any]:
+    def get(self, name: str, workspace: str | None = None) -> dict[str, Any]:
         """Get an agent by name."""
-        return self._get(f"/v2/workspaces/{workspace}/agents/{name}")
+        return self._get(f"/v2/workspaces/{self._workspace(workspace)}/agents/{name}")
 
-    def delete(self, name: str, workspace: str = _DEFAULT_WORKSPACE) -> None:
+    def delete(self, name: str, workspace: str | None = None) -> None:
         """Delete an agent by name."""
-        self._delete(f"/v2/workspaces/{workspace}/agents/{name}")
+        self._delete(f"/v2/workspaces/{self._workspace(workspace)}/agents/{name}")
 
     # ------------------------------------------------------------------
     # Deployment sub-resource
@@ -120,7 +145,7 @@ class AgentsResource:
         input: str,
         agent: str | None = None,
         deployment: str | None = None,
-        workspace: str = _DEFAULT_WORKSPACE,
+        workspace: str | None = None,
         timeout: int = 300,
     ) -> dict[str, Any]:
         """Send a single request to an agent via the gateway.
@@ -135,10 +160,11 @@ class AgentsResource:
         Returns:
             The agent's response as a dict.
         """
+        resolved_workspace = self._workspace(workspace)
         if agent:
-            path = f"/v2/workspaces/{workspace}/agents/{agent}/-/v1/chat/completions"
+            path = f"/v2/workspaces/{resolved_workspace}/agents/{agent}/-/v1/chat/completions"
         elif deployment:
-            path = f"/v2/workspaces/{workspace}/deployments/{deployment}/-/v1/chat/completions"
+            path = f"/v2/workspaces/{resolved_workspace}/deployments/{deployment}/-/v1/chat/completions"
         else:
             raise ValueError("Provide either agent= or deployment=.")
 
@@ -154,7 +180,7 @@ class AgentsResource:
         eval_config: str,
         agent: str | None = None,
         endpoint: str | None = None,
-        workspace: str = _DEFAULT_WORKSPACE,
+        workspace: str | None = None,
     ) -> dict[str, Any]:
         """Trigger an evaluation run.
 
@@ -181,6 +207,9 @@ class AgentsResource:
     def _base_url(self) -> str:
         base = getattr(self._platform, "base_url", "http://localhost:8000")
         return str(base).rstrip("/")
+
+    def _workspace(self, workspace: str | None) -> str:
+        return workspace or getattr(self._platform, "workspace", None) or _DEFAULT_WORKSPACE
 
     def _agents_url(self, path: str) -> str:
         return self._base_url() + "/apis/agents" + path
@@ -216,7 +245,7 @@ class _DeploymentResource:
         name: str | None = None,
         deployment_mode: str = "subprocess",
         image: str | None = None,
-        workspace: str = _DEFAULT_WORKSPACE,
+        workspace: str | None = None,
     ) -> dict[str, Any]:
         """Create a deployment for *agent*.
 
@@ -242,19 +271,19 @@ class _DeploymentResource:
             payload["name"] = name
         if image:
             payload["image"] = image
-        return self._parent._post(f"/v2/workspaces/{workspace}/deployments", payload)
+        return self._parent._post(f"/v2/workspaces/{self._parent._workspace(workspace)}/deployments", payload)
 
-    def list(self, workspace: str = _DEFAULT_WORKSPACE) -> List[dict[str, Any]]:
+    def list(self, workspace: str | None = None) -> List[dict[str, Any]]:
         """List all deployments in *workspace*."""
-        return self._parent._get(f"/v2/workspaces/{workspace}/deployments")
+        return self._parent._get(f"/v2/workspaces/{self._parent._workspace(workspace)}/deployments")
 
-    def get(self, name: str, workspace: str = _DEFAULT_WORKSPACE) -> dict[str, Any]:
+    def get(self, name: str, workspace: str | None = None) -> dict[str, Any]:
         """Get a deployment by name."""
-        return self._parent._get(f"/v2/workspaces/{workspace}/deployments/{name}")
+        return self._parent._get(f"/v2/workspaces/{self._parent._workspace(workspace)}/deployments/{name}")
 
-    def delete(self, name: str, workspace: str = _DEFAULT_WORKSPACE) -> None:
+    def delete(self, name: str, workspace: str | None = None) -> None:
         """Mark a deployment for deletion."""
-        self._parent._delete(f"/v2/workspaces/{workspace}/deployments/{name}")
+        self._parent._delete(f"/v2/workspaces/{self._parent._workspace(workspace)}/deployments/{name}")
 
 
 agents_sdk_resources = NemoPluginSDKResources(sync_resource=AgentsResource)

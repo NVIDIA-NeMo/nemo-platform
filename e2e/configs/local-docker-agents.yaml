@@ -1,0 +1,68 @@
+# E2E config for docker-mode agent deployments.
+#
+# The platform runs as a normal local process (subprocess harness backend), but
+# it is wired with a nemo-deployments Docker executor so an agent deployed with
+# deployment_mode=docker runs as a real Docker container on the host daemon.
+#
+# platform.base_url below is a placeholder: the e2e harness rewrites it to
+# http://<container_base_url_host>:<the free port it picked> right before launch
+# (see harness={"container_base_url_host": ...} on the test module). That makes
+# the Inference Gateway URL the platform injects into the deployed agent
+# container reachable from *inside* that container (the docker bridge address),
+# instead of a loopback the container cannot reach. The runner seeds NMP_BASE_URL
+# from this platform.base_url host (paired with the actual bind port), so the
+# configured host takes effect instead of the bind-derived loopback default.
+
+platform:
+  runtime: "docker"
+  base_url: "http://0.0.0.0:8080"
+
+service: {}
+
+auth:
+  enabled: false
+  allow_unsigned_jwt: true
+  policy_decision_point_provider: embedded
+  policy_decision_point_base_url: "http://localhost:8080"
+  policy_data_refresh_interval: 2
+  bundle_cache_seconds: 15
+  admin_email: "admin@example.com"
+
+entities: {}
+
+agents:
+  deployments:
+    # Names below must match a deployments.executors[].name.
+    default_executor: local-docker
+    docker_executor: local-docker
+    # Container port the NAT server binds inside the agent container (and the
+    # readiness-probe target).
+    container_port: 8000
+
+deployments:
+  default_executor: local-docker
+  executors:
+    - name: local-docker
+      backend: docker
+      config:
+        # The agent runs from the prebuilt nmp-api image, already present in the
+        # local Docker daemon (pulled by the test's CI job), so disable the
+        # per-run pull and use the image as-is.
+        pull_images: false
+        port_range_start: 9000
+        port_range_end: 9100
+
+models:
+  controller:
+    interval_seconds: 5
+    model_deployment_garbage_collection_ttl_seconds: 30
+
+inference_gateway: {}
+
+secrets:
+  allow_key_creation: true
+
+files:
+  default_storage_config:
+    type: local
+    path: .tmp/e2e/files

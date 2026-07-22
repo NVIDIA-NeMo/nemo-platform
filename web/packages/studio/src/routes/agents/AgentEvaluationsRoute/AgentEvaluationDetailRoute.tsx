@@ -9,7 +9,6 @@ import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import {
-  Badge,
   Block,
   Button,
   Flex,
@@ -20,29 +19,32 @@ import {
   Stack,
   Text,
 } from '@nvidia/foundations-react-core';
+import {
+  aggregateScoresOf,
+  agentNameForJob,
+  cancelAgentEvalJob,
+  fetchAgentEvalBundle,
+  fetchAgentEvalJob,
+  fetchAgentEvalResult,
+  joinBundleByTask,
+} from '@studio/api/evaluation/agent-evaluations';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { StatusLogsContent } from '@studio/components/evaluation/Jobs/StatusLogsContent';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import { AgentEvalScoresPanel } from '@studio/routes/agents/AgentEvaluationsRoute/components/AgentEvalScoresPanel';
+import { AgentEvalTaskResultsPanel } from '@studio/routes/agents/AgentEvaluationsRoute/components/AgentEvalTaskResultsPanel';
 import {
-  cancelAgentEvalJob,
-  fetchAgentEvalJob,
-  fetchEvalConfigFiles,
-  fetchEvaluatorOutputs,
-  fetchWorkflowOutput,
-  outputFilesetForJob,
-} from '@studio/routes/agents/AgentEvaluationsRoute/api';
-import { EvalConfigFilesPanel } from '@studio/routes/agents/AgentEvaluationsRoute/components/EvalConfigFilesPanel';
-import { EvaluatorOutputPanel } from '@studio/routes/agents/AgentEvaluationsRoute/components/EvaluatorOutputPanel';
-import { WorkflowOutputPanel } from '@studio/routes/agents/AgentEvaluationsRoute/components/WorkflowOutputPanel';
-import { formatScore, scoreColor } from '@studio/routes/agents/AgentEvaluationsRoute/evalScores';
-import { fetchEvalAverageScores } from '@studio/routes/agents/AgentSuggestionsRoute/api';
-import { getAgentEvaluationsListRoute, getAgentsListRoute } from '@studio/routes/utils';
+  getAgentEvaluationsListRoute,
+  getAgentsListRoute,
+  getFilesetDetailRoute,
+} from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ClipboardList, FlaskConical, FolderOpen, ScrollText } from 'lucide-react';
+import { ClipboardList, FlaskConical, ScrollText } from 'lucide-react';
 import { type FC } from 'react';
+import { Link } from 'react-router-dom';
 
 const TERMINAL_STATUSES = new Set([
   'completed',
@@ -71,8 +73,8 @@ export const AgentEvaluationDetailRoute: FC = () => {
     ],
   });
 
-  // Job + status — refetched while the job is non-terminal so the badge
-  // stays live without forcing a page reload.
+  // Job + status — refetched while the job is non-terminal so the badge stays
+  // live without forcing a page reload.
   const { data: job, isLoading: isLoadingJob } = useQuery({
     queryKey: ['agent-eval-job', workspace, jobName] as const,
     queryFn: ({ signal }) => fetchAgentEvalJob(workspace, jobName, signal),
@@ -80,44 +82,26 @@ export const AgentEvaluationDetailRoute: FC = () => {
     refetchInterval: (query) => (isTerminal(query.state.data?.status) ? false : 5_000),
   });
 
-  const outputFileset = job ? outputFilesetForJob(job) : null;
   const isJobTerminal = isTerminal(job?.status);
 
-  // Evaluator scores from the output fileset — only fetched once the job is
-  // terminal; otherwise the fileset doesn't exist yet (or is partial).
-  const { data: scores, isLoading: isLoadingScores } = useQuery({
-    queryKey: ['agent-eval-scores', workspace, outputFileset] as const,
-    queryFn: ({ signal }) =>
-      outputFileset
-        ? fetchEvalAverageScores(workspace, outputFileset, signal)
-        : Promise.resolve([]),
-    enabled: !!outputFileset && isJobTerminal,
+  // Aggregate scores (mean/min/max per metric) from the queryable result record.
+  // Only meaningful once the job is terminal. The record is persisted best-effort and
+  // may lag the terminal status, so poll while it is still absent and stop once it loads.
+  const { data: result, isLoading: isLoadingResult } = useQuery({
+    queryKey: ['agent-eval-result', workspace, jobName] as const,
+    queryFn: ({ signal }) => fetchAgentEvalResult(workspace, jobName, signal),
+    enabled: !!workspace && !!jobName && isJobTerminal,
+    refetchInterval: (query) => (query.state.data == null ? 5_000 : false),
   });
 
-  // Per-evaluator output (items + judge reasoning) for inline rendering.
-  // Same terminal-only gating as scores.
-  const { data: evaluatorOutputs, isLoading: isLoadingEvaluatorOutputs } = useQuery({
-    queryKey: ['agent-eval-evaluator-outputs', workspace, outputFileset] as const,
-    queryFn: ({ signal }) =>
-      outputFileset ? fetchEvaluatorOutputs(workspace, outputFileset, signal) : Promise.resolve([]),
-    enabled: !!outputFileset && isJobTerminal,
-  });
-
-  // workflow_output.json — the agent's responses to the dataset.
-  const { data: workflowOutput, isLoading: isLoadingWorkflow } = useQuery({
-    queryKey: ['agent-eval-workflow-output', workspace, outputFileset] as const,
-    queryFn: ({ signal }) =>
-      outputFileset ? fetchWorkflowOutput(workspace, outputFileset, signal) : Promise.resolve(null),
-    enabled: !!outputFileset && isJobTerminal,
-  });
-
-  // config_original.yml / config_effective.yml / config_metadata.json so
-  // the user can audit what actually ran without leaving the page.
-  const { data: configFiles, isLoading: isLoadingConfigFiles } = useQuery({
-    queryKey: ['agent-eval-config-files', workspace, outputFileset] as const,
-    queryFn: ({ signal }) =>
-      outputFileset ? fetchEvalConfigFiles(workspace, outputFileset, signal) : Promise.resolve([]),
-    enabled: !!outputFileset && isJobTerminal,
+  // Per-task detail (agent response + per-task score + diagnostics) from the
+  // result bundle referenced by the record. Gated on the result being loaded; polls
+  // while the bundle is still absent so late-written artifacts are picked up.
+  const { data: bundle, isLoading: isLoadingBundle } = useQuery({
+    queryKey: ['agent-eval-bundle', workspace, jobName, result?.bundle_ref] as const,
+    queryFn: ({ signal }) => fetchAgentEvalBundle(workspace, result?.bundle_ref, signal),
+    enabled: !!workspace && isJobTerminal && !!result?.bundle_ref,
+    refetchInterval: (query) => (query.state.data == null ? 5_000 : false),
   });
 
   const cancelMutation = useMutation({
@@ -152,14 +136,19 @@ export const AgentEvaluationDetailRoute: FC = () => {
     );
   }
 
-  const statusError = job.error_details?.message ?? job.status_details?.message;
+  const statusMessage =
+    typeof job.status_details?.message === 'string' ? job.status_details.message : null;
+  const errorMessage =
+    typeof job.error_details?.message === 'string' ? job.error_details.message : null;
+  const scores = aggregateScoresOf(result ?? null);
+  const taskDetails = joinBundleByTask(bundle ?? null);
 
   return (
     <AccessibleTitle title={`Evaluation - ${jobName}`}>
       <Stack className="w-full p-density-2xl min-h-full" gap="density-2xl">
         <PageHeader
           slotHeading={jobName}
-          slotDescription="Evaluation against a deployed agent. Scores aggregate per evaluator from the eval-output fileset."
+          slotDescription="Agent evaluation via nemo-evaluator. Scores aggregate per metric across the evaluated tasks."
           slotActions={
             !isJobTerminal && (
               <Button
@@ -187,34 +176,41 @@ export const AgentEvaluationDetailRoute: FC = () => {
                 value={<StatusBadge status={job.status} />}
                 loading={isLoadingJob}
               />
-              <KVPair label="Agent" value={job.spec.agent ?? '-'} loading={isLoadingJob} />
+              <KVPair label="Agent" value={agentNameForJob(job) ?? '-'} loading={isLoadingJob} />
               <KVPair
-                label="Eval Config"
-                value={job.spec.eval_config ?? '-'}
+                label="Tasks"
+                value={String(job.spec.tasks?.length ?? '-')}
                 loading={isLoadingJob}
               />
-              <KVPair
-                label="Eval Config Fileset"
-                value={job.spec.eval_config_fileset ?? '-'}
-                loading={isLoadingJob}
-              />
-              <KVPair label="Output Fileset" value={outputFileset ?? '-'} loading={isLoadingJob} />
+              {job.description && (
+                <KVPair
+                  label="Eval Config"
+                  value={
+                    <Link
+                      to={getFilesetDetailRoute(workspace, job.description)}
+                      className="text-primary underline"
+                    >
+                      {job.description}
+                    </Link>
+                  }
+                />
+              )}
               <KVPair
                 label="Created"
-                value={<RelativeTime datetime={job.created_at} />}
+                value={job.created_at ? <RelativeTime datetime={job.created_at} /> : ''}
                 loading={isLoadingJob}
               />
               <KVPair
                 label="Updated"
-                value={<RelativeTime datetime={job.updated_at} />}
+                value={job.updated_at ? <RelativeTime datetime={job.updated_at} /> : ''}
                 loading={isLoadingJob}
               />
-              {statusError && (
+              {(errorMessage ?? statusMessage) && (
                 <KVPair
-                  label="Error"
+                  label="Response"
                   value={
-                    <Text kind="body/regular/sm" color="danger">
-                      {statusError}
+                    <Text kind="body/regular/sm" color={errorMessage ? 'danger' : 'default'}>
+                      {errorMessage ?? statusMessage}
                     </Text>
                   }
                 />
@@ -223,7 +219,7 @@ export const AgentEvaluationDetailRoute: FC = () => {
           </Panel>
 
           <Panel
-            slotHeading="Evaluator Scores"
+            slotHeading="Scores"
             slotIcon={<FlaskConical />}
             elevation="high"
             density="compact"
@@ -233,63 +229,23 @@ export const AgentEvaluationDetailRoute: FC = () => {
                 Scores are computed once the job reaches a terminal state.
               </Block>
             )}
-            {isJobTerminal && isLoadingScores && (
+            {isJobTerminal && isLoadingResult && (
               <Flex justify="center" align="center" className="min-h-[120px] w-full">
                 <Spinner size="small" aria-label="Loading scores..." />
               </Flex>
             )}
-            {isJobTerminal && !isLoadingScores && (scores?.length ?? 0) === 0 && (
-              <Block className="text-subtle">
-                No evaluator scores parsed from the output fileset.
-              </Block>
-            )}
-            {isJobTerminal && !isLoadingScores && (scores?.length ?? 0) > 0 && (
-              <Stack gap="density-md">
-                {scores!.map((s) => (
-                  <Flex key={s.evaluator} justify="between" align="center" gap="density-md">
-                    <Text kind="body/semibold/md" className="capitalize">
-                      {s.evaluator}
-                    </Text>
-                    <Badge kind="solid" color={scoreColor(s.averageScore)}>
-                      {formatScore(s.averageScore)}
-                    </Badge>
-                  </Flex>
-                ))}
-              </Stack>
-            )}
+            {isJobTerminal && !isLoadingResult && <AgentEvalScoresPanel scores={scores} />}
           </Panel>
         </Grid>
 
-        {!isJobTerminal && (
-          <Panel
-            slotHeading="Eval results"
-            slotIcon={<FolderOpen />}
-            elevation="high"
-            density="compact"
-          >
-            <Block className="text-subtle">
-              Per-item scores, agent responses, and the run config appear once the job completes.
-            </Block>
-          </Panel>
+        {isJobTerminal && isLoadingBundle && (
+          <Flex justify="center" align="center" className="min-h-[120px] w-full">
+            <Spinner size="small" aria-label="Loading task results..." />
+          </Flex>
         )}
 
-        {isJobTerminal &&
-          (isLoadingEvaluatorOutputs || isLoadingWorkflow || isLoadingConfigFiles) && (
-            <Flex justify="center" align="center" className="min-h-[120px] w-full">
-              <Spinner size="small" aria-label="Loading eval results..." />
-            </Flex>
-          )}
-
-        {isJobTerminal && !isLoadingEvaluatorOutputs && (evaluatorOutputs ?? []).length > 0 && (
-          <Stack gap="density-2xl">
-            {evaluatorOutputs!.map((output) => (
-              <EvaluatorOutputPanel key={output.evaluator} output={output} />
-            ))}
-          </Stack>
-        )}
-
-        {isJobTerminal && !isLoadingWorkflow && workflowOutput && workflowOutput.length > 0 && (
-          <WorkflowOutputPanel items={workflowOutput} evaluatorOutputs={evaluatorOutputs ?? []} />
+        {isJobTerminal && !isLoadingBundle && taskDetails.length > 0 && (
+          <AgentEvalTaskResultsPanel tasks={taskDetails} />
         )}
 
         <AccordionPanel slotHeading="Logs" slotIcon={<ScrollText />}>
@@ -299,10 +255,6 @@ export const AgentEvaluationDetailRoute: FC = () => {
             jobStatus={job.status as PlatformJobStatus}
           />
         </AccordionPanel>
-
-        {isJobTerminal && !isLoadingConfigFiles && (configFiles ?? []).length > 0 && (
-          <EvalConfigFilesPanel files={configFiles!} />
-        )}
       </Stack>
     </AccessibleTitle>
   );

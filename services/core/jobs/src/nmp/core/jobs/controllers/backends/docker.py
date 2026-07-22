@@ -14,7 +14,7 @@ import uuid
 from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, Self, TypeVar
 
 import docker.types
 from docker.errors import APIError, ImageNotFound, NotFound
@@ -89,12 +89,23 @@ from nmp.core.jobs.app.providers import (
     GPUExecutionProvider,
 )
 from nmp.core.jobs.controllers.backends.base import (
+    NMP_JOB_LAUNCHER_LOGS_EXPORTER_ENVVAR,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS_ENVVAR,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL_ENVVAR,
+    WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
+    WORKLOAD_IDENTITY_TOKEN_FILE_PATH,
+    WORKLOAD_IDENTITY_VOLUME_PATH,
     JobBackend,
     JobUpdate,
+    get_job_runtime_shared_envvars,
     get_logs_endpoint_from_fileset,
+    is_workload_identity_token_exchange_enabled,
     resolve_gpu_job_shm_size,
     resolve_task_image,
     staleness_error_message,
+    validate_no_reserved_managed_job_environment_variable_names,
 )
 from nmp.core.jobs.controllers.backends.exceptions import (
     FailedToScheduleError,
@@ -102,8 +113,16 @@ from nmp.core.jobs.controllers.backends.exceptions import (
     ResourceAllocationError,
     SchedulingDeferred,
 )
+from nmp.core.jobs.controllers.backends.workload_tokens import (
+    DEFAULT_SUBJECT_TOKEN_REFRESH_MARGIN_SECONDS,
+    DEFAULT_SUBJECT_TOKEN_TTL_SECONDS,
+    OAuthPasswordGrantSubjectTokenIssuer,
+    SubjectTokenIssuer,
+    SubjectTokenRefreshLoop,
+    build_token_archive,
+)
 from opentelemetry import trace
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 import docker
 
@@ -135,6 +154,9 @@ NEMO_JOBS_DEFAULT_DOCKER_NETWORK = os.getenv("NEMO_JOBS_DEFAULT_DOCKER_NETWORK",
 # Default is 30 seconds which matches the Kubernetes default grace period for pod termination.
 DOCKER_STOP_TIMEOUT = int(os.getenv("NEMO_JOBS_DEFAULT_DOCKER_STOP_TIMEOUT", "30"))
 NMP_JOBS_DOCKER_OWNER_ID_ENVVAR = "NMP_JOBS_DOCKER_OWNER_ID"
+DOCKER_WORKLOAD_IDENTITY_PASSWORD_ENV_VAR_DEFAULT = "AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD"
+DOCKER_WORKLOAD_IDENTITY_TOKEN_FILE_LABEL = "nmp.nvidia.com/workload_identity_token_file"
+DOCKER_WORKLOAD_IDENTITY_VOLUME_LABEL = "nmp.nvidia.com/workload_identity_volume"
 
 
 ProviderT = TypeVar("ProviderT", bound=ExecutionProviderT)
@@ -170,12 +192,87 @@ class DockerJobNetworkConfig(PluginDockerJobNetworkConfig):
     )
 
 
+class DockerWorkloadIdentityConfig(BaseModel):
+    """Docker-only subject token issuer configuration for workload identity."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool | None = Field(
+        default=None,
+        description="Enable Docker workload identity token-file injection. Defaults to auth.oidc.workload_token_exchange_enabled.",
+    )
+    token_endpoint: str | None = Field(
+        default=None,
+        description="OAuth token endpoint used by the Docker demo issuer. Defaults to auth.oidc.token_endpoint.",
+    )
+    client_id: str | None = Field(
+        default=None,
+        description="OAuth client ID used by the Docker demo issuer. Defaults to auth.oidc.workload_client_id or auth.oidc.client_id.",
+    )
+    client_secret: str | None = Field(
+        default=None,
+        description="OAuth client secret for the Docker demo issuer.",
+        json_schema_extra={"format": "password", "writeOnly": True},
+    )
+    username: str | None = Field(default=None, description="Username for the Docker demo issuer password grant.")
+    password_env_var: str = Field(
+        default=DOCKER_WORKLOAD_IDENTITY_PASSWORD_ENV_VAR_DEFAULT,
+        description="Controller environment variable that contains the Docker demo issuer password grant shared secret.",
+    )
+    scope: str | None = Field(default=None, description="OAuth scope for the Docker demo issuer.")
+    subject_token_ttl_seconds: int = Field(
+        default_factory=lambda: int(
+            os.environ.get("NMP_WORKLOAD_IDENTITY_TOKEN_TTL_SECONDS", DEFAULT_SUBJECT_TOKEN_TTL_SECONDS)
+        ),
+        ge=1,
+        validate_default=True,
+        description="Fallback subject-token lifetime when the Docker demo issuer response omits expires_in.",
+    )
+    refresh_margin_seconds: int = Field(
+        default=DEFAULT_SUBJECT_TOKEN_REFRESH_MARGIN_SECONDS,
+        ge=0,
+        validate_default=True,
+        description="Seconds before subject-token expiry when the Docker refresher issues a replacement token.",
+    )
+
+    @field_validator("password_env_var")
+    @classmethod
+    def validate_password_env_var(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("password_env_var must name a non-empty environment variable")
+        if value[0].isdigit() or not all(char == "_" or char.isalnum() for char in value):
+            raise ValueError("password_env_var must be a valid environment variable name")
+        return value
+
+    @model_validator(mode="after")
+    def validate_refresh_margin_before_expiry(self) -> Self:
+        if self.refresh_margin_seconds >= self.subject_token_ttl_seconds:
+            raise ValueError("refresh_margin_seconds must be less than subject_token_ttl_seconds")
+        return self
+
+
+def _resolve_docker_workload_identity_scope(workload_config: DockerWorkloadIdentityConfig, oidc_config: Any) -> str:
+    return workload_config.scope or getattr(oidc_config, "workload_scope", None) or "openid email groups"
+
+
+def _resolve_docker_workload_identity_password(workload_config: DockerWorkloadIdentityConfig) -> str | None:
+    password = os.environ.get(workload_config.password_env_var)
+    if password:
+        return password
+    return None
+
+
 class DockerJobExecutionProfileConfig(PluginDockerJobExecutionProfileConfig):
     """Configuration for Docker Job execution profile."""
 
     # ``networking`` re-typed to the server ``DockerJobNetworkConfig`` (env-var default).
     networking: DockerJobNetworkConfig = Field(
         default_factory=DockerJobNetworkConfig, description="Docker networking configuration"
+    )
+    workload_identity: DockerWorkloadIdentityConfig = Field(
+        default_factory=DockerWorkloadIdentityConfig,
+        description="Docker workload identity subject-token issuer configuration.",
     )
 
 
@@ -196,6 +293,7 @@ class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], G
         self._jobs_controller_instance_id = _resolve_jobs_controller_instance_id()
         self._container_start_admission = threading.BoundedSemaphore(DOCKER_CONTAINER_START_WORKERS)
         self._container_run_threadpool = ThreadPoolExecutor(max_workers=DOCKER_CONTAINER_START_WORKERS)
+        self._workload_identity_refreshers: dict[str, SubjectTokenRefreshLoop] = {}
         self._client = docker.from_env(timeout=180)
         if NEMO_JOBS_IMAGE_REGISTRY:
             logger.info(
@@ -209,7 +307,216 @@ class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], G
 
     def shutdown(self) -> None:
         self._container_run_threadpool.shutdown(wait=True)
+        self._stop_all_workload_identity_refreshers()
         self._client.close()
+
+    def _is_workload_identity_enabled(self) -> bool:
+        configured = self._execution_profile_config.workload_identity.enabled
+        if configured is not None:
+            return configured
+        return is_workload_identity_token_exchange_enabled()
+
+    def _create_docker_subject_token_issuer(self) -> SubjectTokenIssuer:
+        workload_config = self._execution_profile_config.workload_identity
+        try:
+            from nmp.common.config import get_auth_config
+
+            oidc_config = get_auth_config().oidc
+        except Exception:
+            oidc_config = None
+
+        token_endpoint = workload_config.token_endpoint or getattr(oidc_config, "token_endpoint", None)
+        client_id = (
+            workload_config.client_id
+            or getattr(oidc_config, "workload_client_id", None)
+            or getattr(oidc_config, "client_id", None)
+        )
+        password = _resolve_docker_workload_identity_password(workload_config)
+        scope = _resolve_docker_workload_identity_scope(workload_config, oidc_config)
+        missing = [
+            name
+            for name, value in {
+                "token_endpoint": token_endpoint,
+                "client_id": client_id,
+                "username": workload_config.username,
+                workload_config.password_env_var: password,
+            }.items()
+            if not value
+        ]
+        if missing:
+            raise JobStorageError(
+                "Docker workload identity token exchange is enabled, but the Docker profile is missing issuer "
+                f"configuration: {', '.join(missing)}"
+            )
+
+        assert token_endpoint is not None
+        assert client_id is not None
+        assert workload_config.username is not None
+        assert password is not None
+        return OAuthPasswordGrantSubjectTokenIssuer(
+            token_endpoint=token_endpoint,
+            client_id=client_id,
+            client_secret=workload_config.client_secret,
+            username=workload_config.username,
+            password=password,
+            scope=scope,
+            default_expires_in_seconds=workload_config.subject_token_ttl_seconds,
+        )
+
+    def _write_workload_identity_subject_token(self, volume_name: str, token: str) -> None:
+        storage_config = self._execution_profile_config.storage
+        permissions_image = (
+            storage_config.volume_permissions_image if storage_config is not None else DEFAULT_VOLUME_PERMISSIONS_IMAGE
+        )
+        token_volume_path = "/workload-identity-vol"
+        container_name = f"workload-token-write-{uuid.uuid4().hex[:8]}"
+        finalize_token_command = (
+            f"mv {token_volume_path}/token.tmp {token_volume_path}/token && chmod 0444 {token_volume_path}/token"
+        )
+        try:
+            container = self._client.containers.create(
+                name=container_name,
+                image=permissions_image,
+                command=[
+                    "sh",
+                    "-c",
+                    finalize_token_command,
+                ],
+                volumes={volume_name: {"bind": token_volume_path, "mode": "rw"}},
+                labels={JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER},
+            )
+        except ImageNotFound:
+            self._client.images.pull(permissions_image)
+            container = self._client.containers.create(
+                name=container_name,
+                image=permissions_image,
+                command=[
+                    "sh",
+                    "-c",
+                    finalize_token_command,
+                ],
+                volumes={volume_name: {"bind": token_volume_path, "mode": "rw"}},
+                labels={JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER},
+            )
+        except APIError as exc:
+            raise JobStorageError("Error creating workload identity token writer container") from exc
+
+        try:
+            container.put_archive(path=token_volume_path, data=build_token_archive(token))
+            container.start()
+            exit_status = container.wait()
+            if exit_status["StatusCode"] != 0:
+                raise JobStorageError(
+                    f"Workload identity token writer exited with non-zero status {exit_status['StatusCode']}"
+                )
+        finally:
+            try:
+                container.remove()
+            except Exception:
+                logger.debug("Failed to remove workload identity token writer container", exc_info=True)
+
+    def _build_workload_identity_refresher(self, volume_name: str) -> SubjectTokenRefreshLoop:
+        issuer = self._create_docker_subject_token_issuer()
+        return SubjectTokenRefreshLoop(
+            issuer=issuer,
+            write_token=lambda token: self._write_workload_identity_subject_token(volume_name, token),
+            refresh_margin_seconds=self._execution_profile_config.workload_identity.refresh_margin_seconds,
+        )
+
+    def _start_workload_identity_refresher(
+        self, container_name: str, refresher: SubjectTokenRefreshLoop | None
+    ) -> None:
+        if refresher is None:
+            return
+        old_refresher = self._workload_identity_refreshers.get(container_name)
+        if old_refresher is not None:
+            old_refresher.stop()
+            self._workload_identity_refreshers.pop(container_name, None)
+        refresher.start()
+        self._workload_identity_refreshers[container_name] = refresher
+
+    def _stop_workload_identity_refresher(self, container_name: str) -> None:
+        refresher = self._workload_identity_refreshers.get(container_name)
+        if refresher is not None:
+            refresher.stop()
+            self._workload_identity_refreshers.pop(container_name, None)
+
+    def _stop_all_workload_identity_refreshers(self) -> None:
+        for container_name, refresher in list(self._workload_identity_refreshers.items()):
+            try:
+                refresher.stop()
+            except Exception:
+                logger.warning(
+                    "Failed to stop workload identity subject token refresher for Docker container %s",
+                    container_name,
+                    exc_info=True,
+                )
+            finally:
+                self._workload_identity_refreshers.pop(container_name, None)
+
+    @staticmethod
+    def _get_workload_identity_volume_from_mounts(container: Container) -> str | None:
+        attrs = getattr(container, "attrs", None) or {}
+        mounts = attrs.get("Mounts", []) or []
+        for mount in mounts:
+            if mount.get("Type") != "volume" or mount.get("Destination") != WORKLOAD_IDENTITY_VOLUME_PATH:
+                continue
+            volume_name = mount.get("Name") or mount.get("Source")
+            if isinstance(volume_name, str) and volume_name:
+                return volume_name
+        return None
+
+    def _get_workload_identity_volume_for_container(self, container: Container) -> str | None:
+        labels = getattr(container, "labels", None) or {}
+        token_file = labels.get(DOCKER_WORKLOAD_IDENTITY_TOKEN_FILE_LABEL)
+        if token_file is not None and token_file != WORKLOAD_IDENTITY_TOKEN_FILE_PATH:
+            logger.warning(
+                "Skipping workload identity refresher restore for container with unexpected token file label",
+                extra={
+                    "container_name": getattr(container, "name", None),
+                    "token_file": token_file,
+                },
+            )
+            return None
+
+        volume_name = labels.get(DOCKER_WORKLOAD_IDENTITY_VOLUME_LABEL)
+        if volume_name:
+            return volume_name
+        return self._get_workload_identity_volume_from_mounts(container)
+
+    def _restore_workload_identity_refresher_for_container(self, container: Container) -> None:
+        container_name = getattr(container, "name", None)
+        if not isinstance(container_name, str) or not container_name:
+            return
+        if container_name in self._workload_identity_refreshers:
+            return
+        if container.status != "running":
+            return
+        if not self._is_container_owned_by_this_controller(container):
+            return
+
+        labels = getattr(container, "labels", None) or {}
+        if labels.get(JOB_TYPE_LABEL) != JOB_TYPE_JOB:
+            return
+
+        volume_name = self._get_workload_identity_volume_for_container(container)
+        if volume_name is None:
+            return
+
+        try:
+            self._start_workload_identity_refresher(
+                container_name,
+                self._build_workload_identity_refresher(volume_name),
+            )
+            logger.info(
+                "Restored Docker workload identity refresher for running job container",
+                extra={"container_name": container_name, "volume_name": volume_name},
+            )
+        except Exception:
+            logger.exception(
+                "Failed to restore Docker workload identity refresher for running job container",
+                extra={"container_name": container_name, "volume_name": volume_name},
+            )
 
     @staticmethod
     def get_label_from_container(container: Container, label: str) -> str:
@@ -257,12 +564,17 @@ class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], G
         """Generate a unique volume name for task config space."""
         return f"task-config-{workspace}-{job}-{task}"
 
+    def task_workload_identity_volume_name(self, workspace: str, job: str, task: str) -> str:
+        """Generate a unique volume name for workload identity token material."""
+        return f"task-workload-identity-{workspace}-{job}-{task}"
+
     def cleanup_task_storage_volumes(self, workspace: str, job: str, task: str) -> None:
         """Remove the task storage volume after the container is done."""
 
         volumes_to_delete = [
             self.task_storage_volume_name(workspace, job, task),
             self.task_config_volume_name(workspace, job, task),
+            self.task_workload_identity_volume_name(workspace, job, task),
         ]
         for volume_name in volumes_to_delete:
             try:
@@ -408,6 +720,7 @@ fi
         config_volume_path: str,
         task_volume_name: str,
         task_volume_path: str,
+        workload_identity_volume_name: str | None = None,
         additional_volume_mounts: list[DockerVolumeMount] | None = None,
     ) -> list[Mount]:
         """
@@ -433,6 +746,14 @@ fi
             task_storage_mount,
             config_storage_mount,
         ]
+        if workload_identity_volume_name is not None:
+            workload_identity_mount = docker.types.Mount(
+                type="volume",
+                source=workload_identity_volume_name,
+                target=WORKLOAD_IDENTITY_VOLUME_PATH,
+                read_only=True,
+            )
+            mounts.append(workload_identity_mount)
 
         if job_volume_path != "":
             job_storage_mount = docker.types.Mount(
@@ -465,6 +786,7 @@ fi
         task: str,
         step_config_json: str,
         additional_volumes_mounts: list[DockerVolumeMount] | None = None,
+        workload_identity_volume_name: str | None = None,
     ) -> None:
         """
         Ensure Docker volumes exist for the job and task, with proper permissions.
@@ -492,6 +814,15 @@ fi
         except Exception as exc:
             raise JobStorageError(f"Error creating task config volume {config_volume_name}") from exc
 
+        if workload_identity_volume_name is not None:
+            try:
+                self._client.volumes.create(workload_identity_volume_name)
+                logger.debug("Created workload identity volume", extra={"volume_name": workload_identity_volume_name})
+            except Exception as exc:
+                raise JobStorageError(
+                    f"Error creating workload identity volume {workload_identity_volume_name}"
+                ) from exc
+
         script = f"""#!/bin/sh
 set -ex
 chmod -R 777 {task_vol}
@@ -505,6 +836,12 @@ chmod -R 777 {config_vol}
             task_volume_name: {"bind": task_vol, "mode": "rw"},
             config_volume_name: {"bind": config_vol, "mode": "rw"},
         }
+        if workload_identity_volume_name is not None:
+            volumes[workload_identity_volume_name] = {"bind": "/workload-identity-vol", "mode": "rw"}
+            script += """
+mkdir -p /workload-identity-vol
+chmod -R 777 /workload-identity-vol
+"""
 
         if job_storage_volume_name != "":
             job_vol = "/job-vol"
@@ -599,6 +936,10 @@ chmod -R 777 {job_vol}/{storage_subpath}
 
         # Profile-level env vars first (e.g. HOME=/tmp); system, step, and shared env override these
         env = self._execution_profile_config.env.copy()
+        validate_no_reserved_managed_job_environment_variable_names(
+            (envvar.name for envvar in step.step_spec.environment or []),
+            source="Job step environment keys",
+        )
 
         # identify the task using a uuid.  In docker, there's only one task per step.
         # because parallelism and completions are not supported.
@@ -614,18 +955,21 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 EPHEMERAL_TASK_STORAGE_PATH_ENVVAR: DEFAULT_TASK_STORAGE_PATH,
                 CONFIG_TASK_STORAGE_PATH_ENVVAR: DEFAULT_CONFIG_STORAGE_PATH,
                 NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR: DEFAULT_NEMO_JOB_STEP_CONFIG_FILE_PATH,
-                # Forward OTEL env vars for jobs-launcher to emit telemetry, particularly logs
-                "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": get_logs_endpoint_from_fileset(
+                # Private env vars for jobs-launcher to export captured logs.
+                NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR: get_logs_endpoint_from_fileset(
                     platform_config,
                     step.workspace,
                     step.fileset,
                 ),
-                "OTEL_LOGS_EXPORTER": "otlp",
-                "OTEL_SERVICE_NAME": "nmp-job-task",
+                NMP_JOB_LAUNCHER_LOGS_EXPORTER_ENVVAR: "otlp",
+                NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL_ENVVAR: NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL,
                 # Inject secret environment variable mappings for the jobs-launcher to fetch
                 NEMO_JOB_SECRETS_ENVVAR: self.get_secrets_environment_variable_for_injection(step),
             }
         )
+        workload_identity_enabled = self._is_workload_identity_enabled()
+        if workload_identity_enabled:
+            env[WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR] = WORKLOAD_IDENTITY_TOKEN_FILE_PATH
 
         # Set auth context env var for job containers to make authenticated API calls
         if step.auth_context:
@@ -635,8 +979,8 @@ chmod -R 777 {job_vol}/{storage_subpath}
             env_var_dict = principal.get_env_var()
             for name, value in env_var_dict.items():
                 env[name] = value
-            # Also set OTLP headers for telemetry (logs) to be authenticated
-            env["OTEL_EXPORTER_OTLP_LOGS_HEADERS"] = principal.get_otlp_headers_value()
+            # Also set launcher OTLP headers for authenticated platform log export.
+            env[NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS_ENVVAR] = principal.get_otlp_headers_value()
 
         step_config_json = json.dumps(step.step_spec.config)
 
@@ -660,7 +1004,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
 
         # Thread through shared platform envvars to the job
         # Note: address_override defaults to None, which triggers automatic loopback detection
-        env.update(platform_config.to_shared_envvars())
+        env.update(get_job_runtime_shared_envvars(platform_config))
 
         log_config = LogConfig(
             type=LogConfig.types.JSON,
@@ -725,6 +1069,12 @@ chmod -R 777 {job_vol}/{storage_subpath}
         job_volume_name = storage_config.volume_name if storage_config is not None else ""
         task_volume_name = self.task_storage_volume_name(workspace=step.workspace, job=step.job, task=task_id)
         config_volume_name = self.task_config_volume_name(workspace=step.workspace, job=step.job, task=task_id)
+        workload_identity_enabled = self._is_workload_identity_enabled()
+        workload_identity_volume_name = (
+            self.task_workload_identity_volume_name(workspace=step.workspace, job=step.job, task=task_id)
+            if workload_identity_enabled
+            else None
+        )
         additional_volume_mounts = storage_config.additional_volume_mounts if storage_config else None
         ensure_storage_started_at = time.monotonic()
         self.ensure_job_storage(
@@ -738,7 +1088,16 @@ chmod -R 777 {job_vol}/{storage_subpath}
             task=task_id,
             additional_volumes_mounts=additional_volume_mounts,
             step_config_json=step_config_json,
+            workload_identity_volume_name=workload_identity_volume_name,
         )
+        workload_identity_refresher = None
+        if workload_identity_volume_name is not None:
+            try:
+                workload_identity_refresher = self._build_workload_identity_refresher(workload_identity_volume_name)
+                workload_identity_refresher.refresh_once()
+            except Exception:
+                self.cleanup_task_storage_volumes(step.workspace, step.job, task_id)
+                raise
         logger.debug(
             "Docker job storage ensured",
             extra={
@@ -767,6 +1126,9 @@ chmod -R 777 {job_vol}/{storage_subpath}
             labels[JOB_USES_PERSISTENT_STORAGE_LABEL] = "true"
         else:
             labels[JOB_USES_PERSISTENT_STORAGE_LABEL] = "false"
+        if workload_identity_volume_name is not None:
+            labels[DOCKER_WORKLOAD_IDENTITY_TOKEN_FILE_LABEL] = WORKLOAD_IDENTITY_TOKEN_FILE_PATH
+            labels[DOCKER_WORKLOAD_IDENTITY_VOLUME_LABEL] = workload_identity_volume_name
 
         task_image = resolve_task_image(
             executor_config.container.image, self._execution_profile_config.default_task_image
@@ -790,9 +1152,12 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 config_volume_path=DEFAULT_CONFIG_STORAGE_PATH,
                 task_volume_name=task_volume_name,
                 task_volume_path=task_storage_mount,
+                workload_identity_volume_name=workload_identity_volume_name,
                 additional_volume_mounts=additional_volume_mounts,
             ),
         }
+        if workload_identity_refresher is not None:
+            container_args["_nmp_workload_identity_refresher"] = workload_identity_refresher
 
         container_args["network"] = self._execution_profile_config.networking.job_container_network
         return self.configure_container(container_args, executor_config)
@@ -886,6 +1251,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
     def _run_container_in_thread(self, step: PlatformJobStepWithContext, container_args: dict):
         status_details = {}
         status = PlatformJobStatus.PENDING
+        workload_identity_refresher = container_args.pop("_nmp_workload_identity_refresher", None)
 
         # If a request to pause or cancel came in while we were waiting for scheduling loop,
         # cancel scheduling the container
@@ -1112,6 +1478,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
             max_attempts = 3
             attempts = 0
             start_started_at = time.monotonic()
+            self._start_workload_identity_refresher(container.name, workload_identity_refresher)
             while not started and attempts < max_attempts:
                 attempts += 1
                 try:
@@ -1139,6 +1506,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 },
             )
         except Exception as e:
+            self._stop_workload_identity_refresher(container.name)
             raise FailedToScheduleError(
                 f"Failed to start container {container.name} for job step",
                 error_details={"message": f"Failed to start container: {e}"},
@@ -1394,6 +1762,9 @@ chmod -R 777 {job_vol}/{storage_subpath}
         }
 
     def create_step_update(self, step: PlatformJobStepWithContext, container: Container) -> JobUpdate:
+        if step.status in (PlatformJobStatus.ACTIVE, PlatformJobStatus.PENDING):
+            self._restore_workload_identity_refresher_for_container(container)
+
         status, status_details, error_stack = self.map_docker_container_status_to_platform_status(step, container)
         task_id = self.get_label_from_container(container, JOB_TASK_ID_LABEL)
         error_details = {}
@@ -1649,6 +2020,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
         task = self.get_label_from_container(container, JOB_TASK_ID_LABEL)
         exit_code = container.attrs.get("State", {}).get("ExitCode", 0)
 
+        self._stop_workload_identity_refresher(container.name)
         self.cleanup_container(container)
         logger.debug(
             "Cleaned up container",

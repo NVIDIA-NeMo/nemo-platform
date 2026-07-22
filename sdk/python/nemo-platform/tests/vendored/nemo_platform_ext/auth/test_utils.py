@@ -3,6 +3,7 @@
 
 import base64
 import json
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -18,6 +19,7 @@ from nemo_platform.auth.helpers import (
     normalize_scope_prefix,
     validate_requested_scopes_granted,
 )
+from nemo_platform.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
 from pytest_httpserver import HTTPServer
 
 
@@ -159,6 +161,22 @@ class TestDiscoverNmpConfig:
         httpserver.expect_request("/apis/auth/discovery").respond_with_json({"auth_enabled": False})
         result = discover_nmp_config(httpserver.url_for("") + "/")
         assert result.auth_enabled is False
+
+    @patch("nemo_platform.auth.helpers.httpx.get")
+    def test_uses_nemo_scoped_ca_bundle(self, mock_get, monkeypatch):
+        response = MagicMock()
+        response.json.return_value = {"auth_enabled": False}
+        mock_get.return_value = response
+        monkeypatch.setenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, "/tmp/nemo-ca.pem")
+
+        result = discover_nmp_config("https://nemo.example.com")
+
+        assert result.auth_enabled is False
+        mock_get.assert_called_once_with(
+            "https://nemo.example.com/apis/auth/discovery",
+            timeout=10.0,
+            verify="/tmp/nemo-ca.pem",
+        )
 
 
 class TestBuildEffectiveScope:

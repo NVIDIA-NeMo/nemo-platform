@@ -7,12 +7,16 @@ from __future__ import annotations
 
 import importlib
 import logging
-from typing import Callable
+import threading
+from collections.abc import Callable
+from typing import cast
 
 from nmp.common.service import Service
 from nmp.common.service.deptree import resolve_service_loading_order
 
 logger = logging.getLogger(__name__)
+
+ControllerRunFunc = Callable[[threading.Event], object]
 
 
 def load_service(
@@ -49,7 +53,7 @@ def order_services_by_dependencies(services: list[Service]) -> list[Service]:
     return [services_by_name[name] for name in ordered_names if name in services_by_name]
 
 
-def load_controller_run_func(controller_name: str, import_path: str) -> Callable:
+def load_controller_run_func(controller_name: str, import_path: str) -> ControllerRunFunc:
     """Load a controller run function from an import path."""
     if ":" not in import_path:
         raise ValueError(f"Import path must be in format 'module:function', got: {import_path}")
@@ -62,4 +66,4 @@ def load_controller_run_func(controller_name: str, import_path: str) -> Callable
         raise TypeError(f"Controller {controller_name} must be a callable, got {type(run_func)}")
 
     logger.debug("Loaded controller %s", controller_name)
-    return run_func
+    return cast(ControllerRunFunc, run_func)

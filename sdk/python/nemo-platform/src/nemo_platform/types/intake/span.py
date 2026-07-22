@@ -60,13 +60,20 @@ class Span(BaseModel):
     ended_at: Optional[datetime] = None
 
     error_message: Optional[str] = None
-    """Normalized error message. In summary mode this is truncated to 1000 characters."""
+    """Normalized error message.
+
+    In summary and preview modes this is truncated to 1000 characters.
+    """
 
     error_type: Optional[str] = None
 
     evaluation_context: Optional[SpanEvaluationContext] = None
 
     input: Optional[str] = None
+    """Span input text.
+
+    Omitted in summary mode and truncated to 300 characters in preview mode.
+    """
 
     input_tokens: Optional[int] = None
 
@@ -75,6 +82,10 @@ class Span(BaseModel):
     name: Optional[str] = None
 
     output: Optional[str] = None
+    """Span output text.
+
+    Omitted in summary mode and truncated to 300 characters in preview mode.
+    """
 
     output_tokens: Optional[int] = None
 

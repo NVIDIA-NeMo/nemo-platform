@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nemo_platform_plugin.config import NMP_CONFIG_WARNINGS_DISABLED_ENV_VAR
 from nemo_platform_plugin.jobs.constants import (
     CONFIG_TASK_STORAGE_PATH_ENVVAR,
@@ -39,10 +40,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Default image used to set filesystem permissions on job storage volumes.
 DEFAULT_VOLUME_PERMISSIONS_IMAGE = "busybox"
+JOB_LOGS_ENDPOINT_ENVVAR = "NMP_JOB_LOGS_ENDPOINT"
 
 # Env var names set by the platform during job creation; user-provided profile
 # environment must not conflict.  The job-scoped names come from the shared
-# ``jobs.constants`` leaf; the auth / config / telemetry names are stable env
+# ``jobs.constants`` leaf; the auth / config / logging / telemetry names are stable env
 # var strings kept here to avoid importing server-side auth/config modules.
 RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES: frozenset[str] = frozenset(
     {
@@ -61,6 +63,9 @@ RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES: frozenset[str] = frozenset(
         TASK_CONFIG_ENVVAR,
         # Auth
         "NMP_PRINCIPAL",
+        WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
+        # Platform launcher logs
+        JOB_LOGS_ENDPOINT_ENVVAR,
         # OTEL (telemetry)
         "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
         "OTEL_LOGS_EXPORTER",
@@ -68,6 +73,7 @@ RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES: frozenset[str] = frozenset(
         "OTEL_EXPORTER_OTLP_LOGS_HEADERS",
         # Platform shared envvars (to_shared_envvars with NMP_ prefix)
         NMP_CONFIG_WARNINGS_DISABLED_ENV_VAR,
+        "NMP_AUTH_URL",
         "NMP_BASE_URL",
         "NMP_JOBS_URL",
         "NMP_FILES_URL",

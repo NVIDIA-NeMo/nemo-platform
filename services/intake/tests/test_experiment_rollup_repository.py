@@ -40,8 +40,8 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
     client = _Client(
         [
             _QueryResult(
-                [("exp-a", 3)],
-                ["evaluation_id", "run_count"],
+                [("exp-a", 3, 2)],
+                ["evaluation_id", "run_count", "test_case_count"],
             ),
             _QueryResult(
                 [("exp-a", "reward", 3.0, 0.75, 0.8, 1.0, 1.0, 1.0, 4)],
@@ -99,6 +99,7 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
 
     rollup = rollups["exp-a"]
     assert rollup.run_count == 3
+    assert rollup.test_case_count == 2
     assert rollup.evaluator_names == ["reward"]
     assert rollup.model_names == ["model-a", "model-b"]
     assert rollup.agent_names == ["agent-a"]
@@ -130,6 +131,8 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
     assert len(client.queries) == 3
     assert "FROM trace_index FINAL" in client.queries[0]
     assert "count() AS run_count" in client.queries[0]
+    assert "uniqExactIf(test_case_id, test_case_id != '')" in client.queries[0]
+    assert "AS test_case_count" in client.queries[0]
     assert "evaluation_id IN (%(evaluation_id_0)s)" in client.queries[0]
     assert "ORDER BY root_started_at ASC, root_span_id ASC" in client.queries[0]
     assert "FROM evaluator_results FINAL" in client.queries[1]
@@ -137,9 +140,14 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
     assert "quantileExact(0.99)(value) AS p99" in client.queries[1]
     assert "AND (workspace, session_id) IN (" in client.queries[1]
     assert "sessions.session_id = results.session_id" in client.queries[1]
-    # Scores are reduced to one value per (evaluation, session, evaluator) before the
-    # distribution rollup so count tracks runs and the mean is not span-weighted.
-    assert "GROUP BY sessions.evaluation_id, sessions.session_id, results.name" in client.queries[1]
+    # Scores are reduced to one value per (session, evaluator), then averaged per test case before the
+    # distribution rollup, so the mean is test-case-weighted and count tracks test cases.
+    assert (
+        "GROUP BY sessions.evaluation_id, sessions.session_id, sessions.test_case_id, results.name" in client.queries[1]
+    )
+    assert "test_case_scores AS" in client.queries[1]
+    assert "WHERE sessions.test_case_id != ''" in client.queries[1]
+    assert "test_case_metrics AS" in client.queries[2]
     assert "current_session_spans AS" in client.queries[2]
     assert "(span_versions.workspace, span_versions.session_id) IN" in client.queries[2]
     assert "LEFT JOIN current_session_spans AS spans" in client.queries[2]
@@ -152,3 +160,33 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
     assert "sessions.trace_id = spans.trace_id" not in client.queries[2]
     assert client.parameters[0]["evaluation_id_0"] == "exp-a"
     assert client.parameters[2]["model_key"] == "gen_ai.request.model"
+
+
+def test_score_rollup_cte_builders_compose_the_pipeline():
+    from nmp.intake.spans.evaluation_rollup_repository import (
+        _evaluators_cte,
+        _session_scores_cte,
+        _test_case_scores_cte,
+        _test_case_sessions_cte,
+    )
+
+    # Stage 1: one value per (session, evaluator), averaged and grouped per session.
+    session_scores = _session_scores_cte("evaluator_results")
+    assert "avg(results.value) AS value" in session_scores
+    assert "FROM evaluator_results FINAL" in session_scores
+    assert "GROUP BY sessions.evaluation_id, sessions.session_id, sessions.test_case_id, results.name" in session_scores
+
+    # Fixed denominator: distinct sessions per test case.
+    assert "count(DISTINCT session_id) AS session_count" in _test_case_sessions_cte()
+
+    # Evaluator axis of the grid: distinct evaluators, read from evaluator_results (not session_scores).
+    evaluators = _evaluators_cte("evaluator_results")
+    assert "SELECT DISTINCT" in evaluators
+    assert "FROM evaluator_results FINAL" in evaluators
+    assert "session_scores" not in evaluators
+
+    # Stage 2: zero-filled per-(test case, evaluator) score using the fixed denominator.
+    test_case_scores = _test_case_scores_cte()
+    assert "coalesce(sum(scores.value), 0) / test_cases.session_count AS value" in test_case_scores
+    assert "LEFT JOIN session_scores AS scores" in test_case_scores
+    assert "INNER JOIN evaluators ON evaluators.evaluation_id = test_cases.evaluation_id" in test_case_scores

@@ -6,24 +6,45 @@ from __future__ import annotations
 import datetime
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
+from dataclasses import dataclass
 from enum import Enum
-from typing import Generic, Optional, TypeVar
+from typing import Generic, Literal, Optional, TypeVar
+from urllib.parse import SplitResult, urlsplit
 
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nemo_platform_plugin.jobs import execution_profiles as _execution_profiles
 from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from nemo_platform_plugin.jobs.types import PlatformJobStepResponse, PlatformJobStepWithContext
+from nmp.common.auth.models import NMP_PRINCIPAL_ENVVAR
 from nmp.common.config.base import (
     LOOPBACK_ADDRESSES,
+    NMP_CONFIG_WARNINGS_DISABLED_ENV_VAR,
     PlatformConfig,
     determine_loopback_override,
 )
+from nmp.common.jobs.constants import (
+    CONFIG_TASK_STORAGE_PATH_ENVVAR,
+    EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
+    NEMO_JOB_ATTEMPT_ID_ENVVAR,
+    NEMO_JOB_FILESET_ENVVAR,
+    NEMO_JOB_ID_ENVVAR,
+    NEMO_JOB_SECRETS_ENVVAR,
+    NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR,
+    NEMO_JOB_STEP_ENVVAR,
+    NEMO_JOB_TASK_ENVVAR,
+    NEMO_JOB_WORKSPACE_ENVVAR,
+    PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
+    TASK_CONFIG_ENVVAR,
+)
+from nmp.common.platform_endpoint import parse_platform_endpoint
 from nmp.common.sdk_factory import get_entity_parts
 from nmp.core.jobs.app.providers import ComputeResources
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -32,12 +53,133 @@ ExecutionProfileConfigT = TypeVar("ExecutionProfileConfigT")
 
 DEFAULT_PROFILE = "default"
 DEFAULT_PROVIDER = "cpu"
-JobExecutionProfileConfig = _execution_profiles.JobExecutionProfileConfig
-RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES = _execution_profiles.RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES
 
-# The env-var-name reserved set and the base ``JobExecutionProfileConfig`` now
-# live in the shared plugin leaf node (imported above) so that both the server
-# and the typed HTTP client agree on the wire shape and validation.
+# The base ``JobExecutionProfileConfig`` lives in the shared plugin leaf node
+# (imported above) so that both the server and the typed HTTP client agree on
+# the wire shape.
+
+WORKLOAD_IDENTITY_TOKEN_FILE_PATH = "/var/run/secrets/nemo-platform/workload/token"
+WORKLOAD_IDENTITY_VOLUME_PATH = "/var/run/secrets/nemo-platform/workload"
+WORKLOAD_IDENTITY_VOLUME_NAME = "nmp-workload-identity"
+JOB_LOGS_ENDPOINT_ENVVAR = _execution_profiles.JOB_LOGS_ENDPOINT_ENVVAR
+
+RESERVED_MANAGED_JOB_AUTH_ENVIRONMENT_VARIABLE_NAMES: frozenset[str] = frozenset(
+    {
+        JOB_LOGS_ENDPOINT_ENVVAR,
+        "NMP_ACCESS_TOKEN",
+        "NEMO_WORKLOAD_TOKEN",
+        "NEMO_WORKLOAD_TOKEN_FILE",
+        WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
+    }
+)
+
+RESERVED_MANAGED_JOB_ENVIRONMENT_VARIABLE_PREFIXES: tuple[str, ...] = (
+    "NEMO_WORKLOAD_",
+    "NMP_WORKLOAD_",
+    "NEMO_WORKFLOW_",
+    "NMP_WORKFLOW_",
+)
+
+# Env var names set by the platform during job creation; user-provided profile environment must not conflict.
+RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES: frozenset[str] = (
+    frozenset(
+        {
+            # From nmp.common.jobs.constants
+            CONFIG_TASK_STORAGE_PATH_ENVVAR,
+            EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
+            NEMO_JOB_ATTEMPT_ID_ENVVAR,
+            NEMO_JOB_FILESET_ENVVAR,
+            NEMO_JOB_ID_ENVVAR,
+            NEMO_JOB_SECRETS_ENVVAR,
+            NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR,
+            NEMO_JOB_STEP_ENVVAR,
+            NEMO_JOB_TASK_ENVVAR,
+            NEMO_JOB_WORKSPACE_ENVVAR,
+            PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
+            TASK_CONFIG_ENVVAR,
+            # Auth
+            NMP_PRINCIPAL_ENVVAR,
+            # Platform launcher logs
+            JOB_LOGS_ENDPOINT_ENVVAR,
+            # Platform shared envvars (to_shared_envvars with NMP_ prefix)
+            NMP_CONFIG_WARNINGS_DISABLED_ENV_VAR,
+            "NMP_AUTH_URL",
+            "NMP_BASE_URL",
+            "NMP_JOBS_URL",
+            "NMP_FILES_URL",
+            "NMP_MODELS_URL",
+            "NMP_SECRETS_URL",
+        }
+    )
+    | RESERVED_MANAGED_JOB_AUTH_ENVIRONMENT_VARIABLE_NAMES
+)
+
+
+def find_reserved_managed_job_environment_variable_names(env_names: Iterable[str]) -> list[str]:
+    """Return user-provided managed-job env names reserved for platform-managed injection."""
+    return sorted(
+        {
+            name
+            for name in env_names
+            if name in RESERVED_MANAGED_JOB_AUTH_ENVIRONMENT_VARIABLE_NAMES
+            or name.startswith(RESERVED_MANAGED_JOB_ENVIRONMENT_VARIABLE_PREFIXES)
+        }
+    )
+
+
+def validate_no_reserved_managed_job_environment_variable_names(env_names: Iterable[str], *, source: str) -> None:
+    """Reject user-provided platform-managed env names for managed jobs."""
+    conflicting = find_reserved_managed_job_environment_variable_names(env_names)
+    if conflicting:
+        raise ValueError(f"{source} must not use platform-reserved managed environment keys: {conflicting}")
+
+
+def is_workload_identity_token_exchange_enabled() -> bool:
+    """Return whether managed jobs should inject workload identity token-file config."""
+    try:
+        from nmp.common.config import get_auth_config
+
+        return bool(get_auth_config().oidc.workload_token_exchange_enabled)
+    except Exception:
+        logger.debug("Could not resolve auth config for workload identity token exchange", exc_info=True)
+        return False
+
+
+def get_workload_identity_token_audience() -> str:
+    """Return the Kubernetes projected service-account token audience for workload identity."""
+    try:
+        from nmp.common.config import get_auth_config
+
+        oidc = get_auth_config().oidc
+        return oidc.workload_client_id or oidc.client_id or "nemo-platform"
+    except Exception:
+        logger.debug("Could not resolve auth config for workload identity audience", exc_info=True)
+        return "nemo-platform"
+
+
+NMP_JOB_LAUNCHER_LOGS_EXPORTER_ENVVAR = "NMP_JOB_LAUNCHER_LOGS_EXPORTER"
+NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR = "NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT"
+NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS_ENVVAR = "NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS"
+NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL_ENVVAR = "NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL"
+NMP_JOB_LAUNCHER_OTLP_LOGS_SOCKET_PATH_ENVVAR = "NMP_JOB_LAUNCHER_OTLP_LOGS_SOCKET_PATH"
+NMP_JOB_LAUNCHER_OTLP_LOGS_TRANSPORT_ENVVAR = "NMP_JOB_LAUNCHER_OTLP_LOGS_TRANSPORT"
+NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL = "http/protobuf"
+
+
+@dataclass(frozen=True)
+class OtlpLogsEndpointConfig:
+    endpoint: str
+    transport: Literal["tcp", "uds"]
+    socket_path: str | None = None
+
+    def to_env(self) -> dict[str, str]:
+        env = {
+            NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR: self.endpoint,
+            NMP_JOB_LAUNCHER_OTLP_LOGS_TRANSPORT_ENVVAR: self.transport,
+        }
+        if self.socket_path is not None:
+            env[NMP_JOB_LAUNCHER_OTLP_LOGS_SOCKET_PATH_ENVVAR] = self.socket_path
+        return env
 
 
 class JobUpdate(BaseModel):
@@ -46,7 +188,30 @@ class JobUpdate(BaseModel):
     error_details: dict | None = None
 
 
+class JobExecutionProfileConfig(_execution_profiles.JobExecutionProfileConfig):
+    """Server-side extension adding workload-identity managed-auth env validation."""
+
+    @model_validator(mode="after")
+    def validate_env_no_reserved_names(self) -> JobExecutionProfileConfig:
+        conflicting = [k for k in self.env if k in RESERVED_JOB_ENVIRONMENT_VARIABLE_NAMES]
+        if conflicting:
+            raise ValueError(
+                f"Profile environment keys must not conflict with platform-reserved names: {sorted(conflicting)}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_env_no_reserved_managed_names(self) -> JobExecutionProfileConfig:
+        conflicting = find_reserved_managed_job_environment_variable_names(self.env)
+        if conflicting:
+            raise ValueError(
+                f"Profile environment keys must not conflict with platform-reserved auth environment keys: {sorted(conflicting)}"
+            )
+        return self
+
+
 _DEFAULT_TASK_IMAGE_NAME = "nmp-cpu-tasks"
+JOB_RUNTIME_SERVICE_NAMES = ("auth", "jobs", "files", "models", "secrets")
 
 
 def resolve_task_image(container_image: str | None, default_task_image: str | None) -> str:
@@ -72,6 +237,96 @@ def resolve_gpu_job_shm_size(
         if res is not None and res.shm_size:
             return res.shm_size
     return f"{max(1, num_gpus)}Gi"
+
+
+def _split_url(url: str) -> SplitResult | None:
+    try:
+        parsed = urlsplit(url)
+        parsed.hostname
+        parsed.port
+    except ValueError:
+        return None
+    return parsed
+
+
+def _is_loopback_url(url: str) -> bool:
+    parsed = _split_url(url)
+    return parsed is not None and parsed.hostname in LOOPBACK_ADDRESSES
+
+
+def _format_netloc_with_hostname(parsed: SplitResult, hostname: str) -> str:
+    host = hostname[1:-1] if hostname.startswith("[") and hostname.endswith("]") else hostname
+    if ":" in host:
+        host = f"[{host}]"
+
+    userinfo = ""
+    if parsed.username is not None:
+        userinfo = parsed.username
+        if parsed.password is not None:
+            userinfo = f"{userinfo}:{parsed.password}"
+        userinfo = f"{userinfo}@"
+
+    netloc = userinfo + host
+    if parsed.port is not None:
+        netloc = f"{netloc}:{parsed.port}"
+    return netloc
+
+
+def _replace_loopback_address(url: str, loopback_address: str | None) -> str:
+    if not loopback_address:
+        return url
+
+    parsed = _split_url(url)
+    if parsed is None or parsed.hostname not in LOOPBACK_ADDRESSES:
+        return url
+
+    netloc = _format_netloc_with_hostname(parsed, loopback_address)
+    return parsed._replace(netloc=netloc).geturl()
+
+
+def _contains_loopback_address(url: str) -> bool:
+    return _is_loopback_url(url)
+
+
+def _job_runtime_base_url(platform_config: PlatformConfig) -> str:
+    service_discovery_url = platform_config.service_discovery.get("platform") or platform_config.service_discovery.get(
+        "base"
+    )
+    if service_discovery_url:
+        return service_discovery_url
+
+    return platform_config.base_url
+
+
+def get_job_runtime_shared_envvars(
+    platform_config: PlatformConfig,
+    *,
+    disable_warnings: bool = True,
+    loopback_address: str | None = None,
+) -> dict[str, str]:
+    """Return platform URLs for job containers/pods.
+
+    Jobs run outside the API server process. When services run in-process,
+    PlatformConfig.get_service_url() intentionally returns a local server URL,
+    but job runtimes need URLs reachable from their own network, usually the
+    configured service_discovery gateway.
+    """
+    effective_loopback_address = loopback_address or platform_config.loopback_address or determine_loopback_override()
+    base_url = _job_runtime_base_url(platform_config)
+    base_url = _replace_loopback_address(base_url, effective_loopback_address)
+
+    envvars = {"NMP_BASE_URL": base_url}
+    for service_name in JOB_RUNTIME_SERVICE_NAMES:
+        service_url = platform_config.service_discovery.get(service_name) or base_url
+        envvars[f"NMP_{service_name.upper()}_URL"] = _replace_loopback_address(
+            service_url,
+            effective_loopback_address,
+        )
+
+    if disable_warnings:
+        envvars[NMP_CONFIG_WARNINGS_DISABLED_ENV_VAR] = "1"
+
+    return envvars
 
 
 class JobBackend(Generic[ExecutionProviderConfigT, ExecutionProfileConfigT], ABC):
@@ -286,7 +541,10 @@ def extract_provider_profile(step: PlatformJobStepWithContext) -> tuple[str, str
 
 
 def get_logs_endpoint_from_fileset(
-    platform_config: PlatformConfig, workspace: str, fileset_id: str, loopback_address: str | None = None
+    platform_config: PlatformConfig,
+    workspace: str,
+    fileset_id: str,
+    loopback_address: str | None = None,
 ) -> str:
     """Get the OTLP logs endpoint URL for a fileset.
 
@@ -300,15 +558,41 @@ def get_logs_endpoint_from_fileset(
     Returns:
         Full OTLP logs endpoint URL with appropriate loopback address applied.
     """
-    base_url = platform_config.get_service_url("files")
+    return get_logs_endpoint_config_from_fileset(
+        platform_config,
+        workspace,
+        fileset_id,
+        loopback_address=loopback_address,
+    ).endpoint
+
+
+def get_logs_endpoint_config_from_fileset(
+    platform_config: PlatformConfig, workspace: str, fileset_id: str, loopback_address: str | None = None
+) -> OtlpLogsEndpointConfig:
+    """Get OTLP logs endpoint config, preserving transport metadata for local UDS runtimes.
+
+    Job telemetry is emitted from a separate process/container/pod. When Files
+    runs in-process with the API server, local service URLs are not necessarily
+    routable from job runtime networks, so fall back through the same
+    workload-facing base URL used for job SDK env vars.
+    """
+    # Check service_discovery for a files-specific URL first, then fall back to
+    # the job runtime base URL (service_discovery["platform"] / base_url).
+    files_discovery_url = platform_config.service_discovery.get("files")
+    if files_discovery_url:
+        platform_endpoint = parse_platform_endpoint(files_discovery_url)
+    else:
+        runtime_base = _job_runtime_base_url(platform_config)
+        platform_endpoint = parse_platform_endpoint(runtime_base)
+
+    base_url = platform_endpoint.connect_base_url
 
     # Use configured loopback_address, or fall back to automatic detection
     effective_override = loopback_address or platform_config.loopback_address or determine_loopback_override()
+    base_url = _replace_loopback_address(base_url, effective_override)
 
-    if effective_override:
-        for loopback in LOOPBACK_ADDRESSES:
-            if loopback in base_url:
-                base_url = base_url.replace(loopback, effective_override)
-                break
-
-    return f"{base_url}/apis/files/v2/workspaces/{workspace}/filesets/{fileset_id}/otlp/v1/logs"
+    return OtlpLogsEndpointConfig(
+        endpoint=f"{base_url}/apis/files/v2/workspaces/{workspace}/filesets/{fileset_id}/otlp/v1/logs",
+        transport=platform_endpoint.transport,
+        socket_path=str(platform_endpoint.socket_path) if platform_endpoint.socket_path is not None else None,
+    )

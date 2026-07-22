@@ -22,6 +22,63 @@ def test_stainless_resource_path():
     assert endpoint.approx_resource_path() == ["customization", "configs"]
 
 
+def test_extract_endpoints_skips_auth_utility_routes():
+    spec = {
+        "paths": {
+            "/apis/auth/discovery": {"get": {}},
+            "/apis/auth/jwks": {"get": {}},
+            "/apis/auth/token": {"post": {}},
+            "/apis/auth/v2/iam/role-bindings": {"get": {}},
+            "/apis/entities/v2/workspaces": {"get": {}},
+        },
+        "components": {"schemas": {"Workspace": {"type": "object"}}},
+    }
+
+    endpoints = list(OpenAPI(spec).extract_endpoints())
+
+    assert endpoints == [
+        OpenAPIEndpoint(method="get", path="/apis/auth/v2/iam/role-bindings"),
+        OpenAPIEndpoint(method="get", path="/apis/entities/v2/workspaces"),
+    ]
+
+
+def test_schema_usage_skips_auth_utility_routes():
+    spec = {
+        "paths": {
+            "/apis/auth/token": {
+                "post": {
+                    "responses": {
+                        "200": {
+                            "content": {
+                                "application/json": {"schema": {"$ref": "#/components/schemas/TokenExchangeResponse"}}
+                            }
+                        }
+                    }
+                }
+            },
+            "/apis/entities/v2/workspaces": {
+                "get": {
+                    "responses": {
+                        "200": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Workspace"}}}}
+                    }
+                }
+            },
+        },
+        "components": {
+            "schemas": {
+                "TokenExchangeResponse": {"type": "object"},
+                "Workspace": {"type": "object"},
+            }
+        },
+    }
+
+    schema_usage = OpenAPI(spec).calculate_schema_to_endpoints()
+
+    assert schema_usage == {
+        "Workspace": [OpenAPIEndpoint(method="get", path="/apis/entities/v2/workspaces")],
+    }
+
+
 def test_extract_schema_refs_with_cycle(caplog):
     """Test that _extract_schema_refs handles cycles correctly."""
     # Create a mock OpenAPI spec with circular references

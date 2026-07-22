@@ -274,9 +274,8 @@ async def start_update_model_spec_job(model_entity: ModelEntity):
                 name="model-spec-analysis",
                 executor=CPUExecutionProviderSpec(
                     provider="cpu",
-                    # Profile ``gpu`` selects the Docker CPU executor (see jobs.executors
-                    # in platform config). Avoid ``default``, which is translated to the
-                    # host subprocess backend when subprocess/default is registered.
+                    # Customizer uses the ``gpu`` profile for both CPU preparation
+                    # and GPU training steps. The provider selects CPU resources here.
                     profile="gpu",
                     container=ContainerSpec(
                         image=get_qualified_image("nmp-customizer-tasks"),

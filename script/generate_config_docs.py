@@ -279,7 +279,7 @@ def _collect_section_yaml(key: str, config_class: Any, values: dict[str, Any], i
     if doc:
         lines.append(doc)
         lines.append("")
-    lines.append("```yaml")
+    lines.append("```yaml wordWrap")
     lines.extend(_emit_section_yaml_with_comments(key, values, info_tree))
     lines.append("```")
     lines.append("")
@@ -408,8 +408,6 @@ def generate_markdown(entries: list[tuple[str, Any]]) -> str:
     lines.append('title: "NeMo Platform configuration reference"')
     lines.append('description: ""')
     lines.append("---")
-    lines.append("(platform-config-reference)=")
-    lines.append("")
     lines.append("")
     lines.append(
         "This document describes the structure and defaults for the global config file for the NeMo Platform. "

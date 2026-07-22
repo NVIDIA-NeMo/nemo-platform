@@ -9,8 +9,8 @@ import {
   useAgentsListAgents,
   useAgentsListDeployments,
 } from '@nemo/sdk/generated/agents/api';
+import { agentNameForJob, fetchAgentEvalJobs } from '@studio/api/evaluation/agent-evaluations';
 import { RECENT_EVAL_LIMIT } from '@studio/components/sidePanels/AgentPanels/AgentPanel/constants';
-import { fetchAgentEvalJobs } from '@studio/routes/agents/AgentEvaluationsRoute/api';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
@@ -90,12 +90,7 @@ export const useAgentPanel = ({
     if (!agentName) return [];
     const all = agentEvalsData ?? [];
     // Match either the bare agent name or a workspace-prefixed ref.
-    const matches = all.filter((job) => {
-      const a = job.spec.agent;
-      if (typeof a !== 'string') return false;
-      const bare = a.includes('/') ? a.split('/').pop() : a;
-      return a === agentName || bare === agentName;
-    });
+    const matches = all.filter((job) => agentNameForJob(job) === agentName);
     return matches.slice(0, RECENT_EVAL_LIMIT);
   }, [agentEvalsData, agentName]);
 

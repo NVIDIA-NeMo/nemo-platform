@@ -67,10 +67,14 @@ class _FakeEntityClient:
 
 
 class _FakeMetricService:
-    """Normalizes inline metrics to derived refs; the route tests submit refs only, so it's unused."""
+    """Normalizes inline metrics to derived refs and resolves the ``default/stored-metric`` ref the
+    route bodies submit, so task-create metric-ref validation passes for the happy-path tests."""
 
     async def store_derived_metric(self, metric, *, workspace: str) -> MetricRef:
         return MetricRef(f"{workspace}/derived.{metric.payload.digest}")
+
+    async def get_metric(self, workspace: str, name: str) -> object | None:
+        return object() if (workspace, name) == ("default", "stored-metric") else None
 
 
 @pytest.fixture
@@ -116,6 +120,12 @@ def test_create_rejects_duplicate_metadata_keys(client: TestClient) -> None:
     # metadata is a key→value map as a list; duplicate keys are a 422, not a silent last-wins collapse.
     body = _body()
     body["metadata"] = [{"key": "suite", "value": "smoke"}, {"key": "suite", "value": "regression"}]
+    assert client.post(f"{_BASE}/task-1", json=body).status_code == 422
+
+
+def test_create_missing_metric_ref_returns_422(client: TestClient) -> None:
+    body = _body()
+    body["metrics"] = ["default/missing-metric"]
     assert client.post(f"{_BASE}/task-1", json=body).status_code == 422
 
 

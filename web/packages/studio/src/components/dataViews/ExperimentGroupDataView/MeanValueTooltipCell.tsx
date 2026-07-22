@@ -1,35 +1,47 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getTextWithCount } from '@nemo/common/src/utils/formatters';
 import { Text, Tooltip } from '@nvidia/foundations-react-core';
 import { tooltipClassName } from '@studio/styles/common';
 import { type FC, type ReactNode } from 'react';
 
 const aggregateMetricTooltip = (
   label: string,
-  runNoun: string,
   count: number | null | undefined,
-  runCount: number | null | undefined
+  runCount: number | null | undefined,
+  countsMissingAsZero: boolean
 ): string => {
-  const contributing = count ?? 0;
-  const total = runCount ?? 0;
-  const noun = contributing === 1 ? runNoun : `${runNoun}s`;
-  return `Mean ${label} over ${contributing} ${noun} (of ${total} total).`;
+  // `count` is the number of test cases the mean is taken over; `runCount` is the total attempts. The
+  // rollup is test-case-weighted: each test case is averaged over its attempts first, then averaged
+  // across test cases (so a test case run k times counts once, not k times).
+  const testCases = count ?? 0;
+  const attempts = runCount ?? 0;
+  // When each test case was attempted once, the test-case-weighted mean is just the plain per-attempt
+  // mean, so keep it simple. Otherwise note that each test case's repeats are averaged first.
+  const base =
+    testCases === attempts
+      ? `Mean ${label} over ${getTextWithCount('test case', testCases)}.`
+      : `Mean ${label} over ${getTextWithCount('test case', testCases)} — each test case averaged over its attempts.`;
+  // Scores use a fixed denominator: a run that produced no score counts as 0, so it's included above
+  // rather than dropped. Measurement metrics (cost, latency) instead omit missing values.
+  return countsMissingAsZero ? `${base} Runs with no score count as 0.` : base;
 };
 
 interface MeanValueTooltipCellProps {
   label: string;
-  runNoun: string;
   count: number | null | undefined;
   runCount: number | null | undefined;
+  /** When true, note that errored runs with no score are counted as 0 (score metrics only). */
+  readonly countsMissingAsZero?: boolean;
   children: ReactNode;
 }
 
 export const MeanValueTooltipCell: FC<MeanValueTooltipCellProps> = ({
   label,
-  runNoun,
   count,
   runCount,
+  countsMissingAsZero = false,
   children,
 }) => {
   if (count == null) {
@@ -39,7 +51,7 @@ export const MeanValueTooltipCell: FC<MeanValueTooltipCellProps> = ({
     <Tooltip
       slotContent={
         <Text kind="body/regular/sm">
-          {aggregateMetricTooltip(label, runNoun, count, runCount)}
+          {aggregateMetricTooltip(label, count, runCount, countsMissingAsZero)}
         </Text>
       }
       className={tooltipClassName}

@@ -1,0 +1,3 @@
+.generated/
+helm/Chart.lock
+helm/charts/

@@ -32,10 +32,23 @@ from __future__ import annotations
 from typing import Any, Literal, Self
 
 from nemo_platform_plugin.integrations import IntegrationsSpec
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from nmp.customization_common.schema import NamespacedModel
+from pydantic import Field, model_validator
 
 
-class ModelLoadSpec(BaseModel):
+class UnslothSchema(NamespacedModel):
+    """Backend base: every Unsloth-owned model emits an ``Unsloth``-prefixed
+    OpenAPI schema name (``TrainingSpec`` -> ``UnslothTrainingSpec``), so it
+    can't collide with another backend's same-named model in the merged
+    ``/apis/customization`` spec. ``extra='forbid'`` is inherited from the base.
+
+    Defined here (with the canonical schemas) and re-imported by the plugin's
+    submitter-facing module so both prefix identically."""
+
+    __schema_namespace__ = "Unsloth"
+
+
+class ModelLoadSpec(UnslothSchema):
     """Args to ``FastLanguageModel.from_pretrained``.
 
     ``name`` is a NeMo Platform model entity reference (``"name"`` or
@@ -43,8 +56,6 @@ class ModelLoadSpec(BaseModel):
     entity, downloads its fileset to a local path, and hands that path
     to :func:`train_sft`.
     """
-
-    model_config = ConfigDict(extra="forbid")
 
     name: str = Field(
         description=(
@@ -84,10 +95,8 @@ class ModelLoadSpec(BaseModel):
     )
 
 
-class LoRAParams(BaseModel):
+class LoRAParams(UnslothSchema):
     """Args to ``FastLanguageModel.get_peft_model``."""
-
-    model_config = ConfigDict(extra="forbid")
 
     rank: int = Field(default=16, gt=0, description="LoRA rank.")
     alpha: int = Field(default=16, gt=0, description="LoRA scaling factor (alpha).")
@@ -136,10 +145,8 @@ class LoRAParams(BaseModel):
     )
 
 
-class TrainingSpec(BaseModel):
+class TrainingSpec(UnslothSchema):
     """Algorithm + adapter shape selectors."""
-
-    model_config = ConfigDict(extra="forbid")
 
     training_type: Literal["sft"] = "sft"
     finetuning_type: Literal["lora", "all_weights"] = "lora"
@@ -166,7 +173,7 @@ class TrainingSpec(BaseModel):
         return self
 
 
-class DatasetSpec(BaseModel):
+class DatasetSpec(UnslothSchema):
     """Training data location + shape.
 
     ``path`` and ``validation_path`` are platform fileset references
@@ -174,8 +181,6 @@ class DatasetSpec(BaseModel):
     each fileset before training; ``train_sft`` only ever sees a local
     filesystem path.
     """
-
-    model_config = ConfigDict(extra="forbid")
 
     path: str = Field(
         description=(
@@ -199,10 +204,8 @@ class DatasetSpec(BaseModel):
     packing: bool = Field(default=False, description="trl.SFTTrainer packing flag.")
 
 
-class ScheduleSpec(BaseModel):
+class ScheduleSpec(UnslothSchema):
     """Training schedule, scheduler, logging cadence."""
-
-    model_config = ConfigDict(extra="forbid")
 
     # Consistent with Automodel: train for ``epochs`` (default 1) unless ``max_steps``
     # is set, in which case the trainer caps training at that many steps.
@@ -230,16 +233,12 @@ class ScheduleSpec(BaseModel):
     )
 
 
-class BatchSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class BatchSpec(UnslothSchema):
     per_device_train_batch_size: int = Field(default=1, gt=0)
     gradient_accumulation_steps: int = Field(default=1, gt=0)
 
 
-class OptimizerSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class OptimizerSpec(UnslothSchema):
     learning_rate: float = Field(default=2e-4, gt=0.0)
     weight_decay: float = Field(default=0.0, ge=0.0)
     # Unsloth's notebooks default to adamw_8bit (bitsandbytes-backed) — much
@@ -266,9 +265,7 @@ class OptimizerSpec(BaseModel):
     )
 
 
-class HardwareSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class HardwareSpec(UnslothSchema):
     gpus: str | None = Field(
         default=None,
         description=(
@@ -281,7 +278,7 @@ class HardwareSpec(BaseModel):
     )
 
 
-class OutputResponse(BaseModel):
+class OutputResponse(UnslothSchema):
     """Stored on the canonical UnslothJobOutput. Output naming is resolved during ``to_spec``.
 
     ``type`` is the high-level shape (``adapter`` for a saved LoRA, ``model``
@@ -292,8 +289,6 @@ class OutputResponse(BaseModel):
     this to ``name``).
     """
 
-    model_config = ConfigDict(extra="forbid")
-
     name: str
     type: Literal["adapter", "model"]
     save_method: Literal["lora", "merged_16bit", "merged_4bit"]
@@ -303,10 +298,8 @@ class OutputResponse(BaseModel):
     description: str | None = None
 
 
-class ToolCallParams(BaseModel):
+class ToolCallParams(UnslothSchema):
     """Tool calling configuration for NIM deployments."""
-
-    model_config = ConfigDict(extra="forbid")
 
     tool_call_parser: str | None = Field(
         default=None,
@@ -328,14 +321,12 @@ class ToolCallParams(BaseModel):
     )
 
 
-class DeploymentParams(BaseModel):
+class DeploymentParams(UnslothSchema):
     """Inline deployment parameters for auto-deploying a trained model.
 
     Used in :class:`UnslothJobInput.deployment_config` and passed through to
     the model_entity task at compile time. When unset, no deployment is launched.
     """
-
-    model_config = ConfigDict(extra="forbid")
 
     gpu: int = Field(default=1, description="Number of GPUs required for the deployment.")
     additional_envs: dict[str, str] | None = Field(
@@ -361,7 +352,7 @@ class DeploymentParams(BaseModel):
     )
 
 
-class UnslothJobOutput(BaseModel):
+class UnslothJobOutput(UnslothSchema):
     """Canonical spec stored after the plugin's ``to_spec()`` resolves output naming.
 
     Defaults match :class:`~nemo_unsloth_plugin.schema.UnslothJobInput` so SDK
@@ -369,8 +360,6 @@ class UnslothJobOutput(BaseModel):
     restating every sub-section. The plugin's ``to_spec`` always passes the
     resolved input values through, so these defaults never override real input.
     """
-
-    model_config = ConfigDict(extra="forbid")
 
     name: str | None = None
     model: ModelLoadSpec

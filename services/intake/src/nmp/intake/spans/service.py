@@ -12,6 +12,8 @@ from nmp.intake.spans.domain import (
     AnnotationListFilter,
     EvaluatorResult,
     EvaluatorResultListFilter,
+    IntakeResponseMode,
+    IntakeSession,
     IntakeSpan,
     IntakeTrace,
     SpanGroup,
@@ -21,6 +23,7 @@ from nmp.intake.spans.domain import (
     TraceMode,
 )
 from nmp.intake.spans.evaluator_results_repository import EvaluatorResultsRepository
+from nmp.intake.spans.session_repository import SessionRepository
 from nmp.intake.spans.span_repository import SpanRepository
 from nmp.intake.spans.trace_repository import TraceRepository
 
@@ -46,6 +49,13 @@ class TraceNotFoundError(Exception):
         self.trace_id = trace_id
 
 
+class SessionNotFoundError(Exception):
+    def __init__(self, workspace: str, session_id: str) -> None:
+        super().__init__(f"Session {workspace}/{session_id} not found")
+        self.workspace = workspace
+        self.session_id = session_id
+
+
 class AnnotationNotFoundError(Exception):
     def __init__(self, workspace: str, annotation_id: str) -> None:
         super().__init__(f"Annotation {workspace}/{annotation_id} not found")
@@ -58,11 +68,13 @@ class IntakeSpansService:
         self,
         span_repository: SpanRepository,
         trace_repository: TraceRepository,
+        session_repository: SessionRepository,
         evaluator_results_repository: EvaluatorResultsRepository,
         annotations_repository: AnnotationsRepository,
     ) -> None:
         self._spans = span_repository
         self._traces = trace_repository
+        self._sessions = session_repository
         self._evaluator_results = evaluator_results_repository
         self._annotations = annotations_repository
 
@@ -78,8 +90,15 @@ class IntakeSpansService:
         page: int,
         page_size: int,
         sort: str,
+        mode: IntakeResponseMode,
     ) -> PaginatedResult[IntakeSpan]:
-        return await self._spans.list_spans(filters=filters, page=page, page_size=page_size, sort=sort)
+        return await self._spans.list_spans(
+            filters=filters,
+            page=page,
+            page_size=page_size,
+            sort=sort,
+            mode=mode,
+        )
 
     async def list_span_groups(
         self,
@@ -120,6 +139,12 @@ class IntakeSpansService:
         if trace is None:
             raise TraceNotFoundError(workspace, trace_id)
         return trace
+
+    async def get_session(self, *, workspace: str, session_id: str) -> IntakeSession:
+        session = await self._sessions.get_session(workspace=workspace, session_id=session_id)
+        if session is None:
+            raise SessionNotFoundError(workspace, session_id)
+        return session
 
     async def create_evaluator_result(self, result: EvaluatorResult) -> EvaluatorResult:
         """Persist one evaluator_result. Loose target — no span existence check."""

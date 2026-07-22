@@ -20,8 +20,9 @@ import asyncio
 import copy
 import inspect
 import json
+import os
 import time
-from collections.abc import AsyncIterator, Iterator, Mapping
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from contextlib import asynccontextmanager, contextmanager
 from functools import cache
 from pathlib import Path
@@ -30,6 +31,7 @@ from urllib.parse import quote
 
 import httpx
 from nemo_platform_plugin.client.auth import (
+    AsyncTokenProvider,
     StaticToken,
     TokenProvider,
 )
@@ -170,15 +172,17 @@ class BaseNemoClient:
         *,
         base_url: str,
         workspace: str | None = None,
-        auth: TokenProvider | str | None = None,
+        auth: TokenProvider | AsyncTokenProvider | str | None = None,
         retry: RetryPolicy | None = None,
         default_headers: Mapping[str, str] | None = None,
+        url_resolver: Callable[[str], str | httpx.URL] | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._workspace = workspace
-        self._auth: TokenProvider | None = StaticToken(auth) if isinstance(auth, str) else auth
+        self._auth: TokenProvider | AsyncTokenProvider | None = StaticToken(auth) if isinstance(auth, str) else auth
         self._retry = retry
         self._default_headers = dict(default_headers) if default_headers else {}
+        self._url_resolver = url_resolver
         self._timeout: float | httpx.Timeout | None = None
 
     @property
@@ -215,7 +219,10 @@ class BaseNemoClient:
             path = request.path_template.format_map(encoded_params)
         except KeyError as exc:
             raise ValueError(f"Missing path parameter {exc} for {request.method} {request.path_template}") from exc
-        return self._base_url + path
+        url = self._base_url + path
+        if self._url_resolver is not None:
+            return str(self._url_resolver(url))
+        return url
 
     def _request_headers(self, request: PreparedRequest) -> dict[str, str] | None:
         headers: dict[str, str] = {}
@@ -287,6 +294,8 @@ class BaseNemoClient:
 class NemoClient(BaseNemoClient):
     """Sync HTTP client for NeMo Platform APIs."""
 
+    _auth: TokenProvider | None
+
     def __init__(
         self,
         *,
@@ -297,9 +306,15 @@ class NemoClient(BaseNemoClient):
         timeout: float = DEFAULT_TIMEOUT,
         retry: RetryPolicy | None = None,
         http_client: httpx.Client | None = None,
+        url_resolver: Callable[[str], str | httpx.URL] | None = None,
     ) -> None:
         super().__init__(
-            base_url=base_url, workspace=workspace, auth=auth, retry=retry, default_headers=default_headers
+            base_url=base_url,
+            workspace=workspace,
+            auth=auth,
+            retry=retry,
+            default_headers=default_headers,
+            url_resolver=url_resolver,
         )
         self._http = http_client or httpx.Client(
             headers=dict(default_headers) if default_headers else None,
@@ -316,6 +331,7 @@ class NemoClient(BaseNemoClient):
             default_headers=client._default_headers or None,
             retry=client._retry,
             http_client=client._http,
+            url_resolver=client._url_resolver,
         )
 
     @overload
@@ -533,14 +549,20 @@ class AsyncNemoClient(BaseNemoClient):
         *,
         base_url: str,
         workspace: str | None = None,
-        auth: TokenProvider | str | None = None,
+        auth: TokenProvider | AsyncTokenProvider | str | None = None,
         default_headers: Mapping[str, str] | None = None,
         timeout: float = DEFAULT_TIMEOUT,
         retry: RetryPolicy | None = None,
         http_client: httpx.AsyncClient | None = None,
+        url_resolver: Callable[[str], str | httpx.URL] | None = None,
     ) -> None:
         super().__init__(
-            base_url=base_url, workspace=workspace, auth=auth, retry=retry, default_headers=default_headers
+            base_url=base_url,
+            workspace=workspace,
+            auth=auth,
+            retry=retry,
+            default_headers=default_headers,
+            url_resolver=url_resolver,
         )
         self._http = http_client or httpx.AsyncClient(
             headers=dict(default_headers) if default_headers else None,
@@ -557,6 +579,7 @@ class AsyncNemoClient(BaseNemoClient):
             default_headers=client._default_headers or None,
             retry=client._retry,
             http_client=client._http,
+            url_resolver=client._url_resolver,
         )
 
     @overload
@@ -771,7 +794,8 @@ def _client_from_config(
     """Shared implementation for NemoClient.from_config / AsyncNemoClient.from_config."""
     from nemo_platform_plugin.client.config.config import Config
     from nemo_platform_plugin.client.config.models import ConfigParams, OAuthUser
-    from nemo_platform_plugin.client.oidc_factory import resolve_oidc_provider
+    from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+    from nemo_platform_plugin.client.oidc_factory import resolve_oidc_provider, resolve_workload_exchange_provider
 
     resolved_path = Path(config_path) if isinstance(config_path, str) else config_path
     overrides: ConfigParams | None = None
@@ -786,8 +810,14 @@ def _client_from_config(
     ctx = config.resolve()
 
     auth: TokenProvider | str | None = None
+    workload_identity_token_file = os.environ.get(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR)
 
-    if isinstance(ctx.user, OAuthUser):
+    if workload_identity_token_file and not explicit_access_token:
+        auth = resolve_workload_exchange_provider(
+            base_url=str(ctx.cluster.base_url),
+            subject_token_file=Path(workload_identity_token_file),
+        )
+    elif isinstance(ctx.user, OAuthUser):
         auth = resolve_oidc_provider(
             base_url=str(ctx.cluster.base_url),
             context_name=ctx.context_name,

@@ -20,7 +20,9 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import nemo_platform
+import openai
 import pytest
 import pytest_asyncio
 from nemo_guardrails_plugin.constants import GUARDRAILS_PLUGIN_CONFIG_TYPE
@@ -51,6 +53,7 @@ from nemo_platform_plugin.inference_middleware import (
     InferenceResponse,
     ResponseResult,
 )
+from nemoguardrails.exceptions import LLMCallException
 from nemoguardrails.rails.llm.options import ActivatedRail, GenerationLog, GenerationResponse, GenerationStats
 
 # ---------------------------------------------------------------------------
@@ -1742,13 +1745,13 @@ class TestStreamingLeaseLifecycle:
             }
         ]
 
-        class _BoomOnCloseStream:
+        class _LlmErrorOnCloseStream:
             """Async iterator that yields normally then fails on aclose()."""
 
             def __init__(self) -> None:
                 self._items = iter(chunks_yielded)
 
-            def __aiter__(self) -> "_BoomOnCloseStream":
+            def __aiter__(self) -> "_LlmErrorOnCloseStream":
                 return self
 
             async def __anext__(self) -> dict[str, Any]:
@@ -1766,7 +1769,7 @@ class TestStreamingLeaseLifecycle:
         with patch.object(middleware, "_prepare_lease", new=patched_prepare):
             with patch(
                 "nemo_guardrails_plugin.middleware.handle_streaming_output_check",
-                return_value=_BoomOnCloseStream(),
+                return_value=_LlmErrorOnCloseStream(),
             ):
                 result = await _process_response(
                     middleware,
@@ -2316,12 +2319,117 @@ class TestProcessRequestErrorSurfacing:
             "model": "ws/llama",
         }
 
-        async def _boom(*_args: Any, **_kwargs: Any) -> Any:
+        async def _llm_error(*_args: Any, **_kwargs: Any) -> Any:
             raise RuntimeError("cache exploded")
 
-        with patch.object(middleware, "_prepare_lease", new=_boom):
+        with patch.object(middleware, "_prepare_lease", new=_llm_error):
             with pytest.raises(InferenceMiddlewareUnavailableError) as exc_info:
                 await _process_request(middleware, request_body, {}, _entity_source())
 
         assert isinstance(exc_info.value.__cause__, RuntimeError)
         assert "cache exploded" in str(exc_info.value.__cause__)
+
+    async def test_bracketed_upstream_400_from_rail_task_llm_preserved(self, middleware: GuardrailsMiddleware) -> None:
+        """A rail-task LLM call (e.g. a vision-safety judge, via
+        ``langchain_nvidia_ai_endpoints``) that rejects the request shape
+        with an upstream 400 must surface as a 400, not a 503.
+
+        The outer ``LLMCallException`` nemoguardrails raises never carries
+        the status prefix itself — only its ``inner_exception`` does — so
+        this pins that the middleware unwraps to ``inner_exception`` rather
+        than checking the outer exception alone.
+        """
+        request_body = {
+            "messages": [{"role": "user", "content": "Hi"}],
+            "model": "ws/llama",
+        }
+
+        def _llm_error(*_args: Any, **_kwargs: Any) -> Any:
+            inner = Exception(  # noqa: TRY002 - mirrors langchain_nvidia_ai_endpoints._format_error
+                '[400] Unknown Error {"object":"error","message":'
+                '"At most 1 image(s) may be provided in one request.",'
+                '"type":"BadRequestError","param":null,"code":400}'
+            )
+            raise LLMCallException(inner, detail="Error invoking LLM (model=vision-judge)") from inner
+
+        with patch.object(middleware, "_prepare_lease", new=_patch_prepare_lease()):
+            with patch("nemo_guardrails_plugin.middleware.run_generate_in_new_loop", side_effect=_llm_error):
+                with pytest.raises(InferenceMiddlewareError) as exc_info:
+                    await _process_request(middleware, request_body, {}, _entity_source())
+
+        assert not isinstance(exc_info.value, InferenceMiddlewareUnavailableError)
+        assert exc_info.value.status_code == 400
+        # The outer LLMCallException's ``detail`` (which model/provider/endpoint
+        # failed) is preserved alongside the sanitized upstream message, not
+        # discarded in favor of the inner exception's message alone.
+        assert exc_info.value.detail == (
+            "Error invoking LLM (model=vision-judge): At most 1 image(s) may be provided in one request."
+        )
+
+    async def test_openai_status_error_status_code_preserved(self, middleware: GuardrailsMiddleware) -> None:
+        """An ``openai.APIStatusError`` subclass (``BadRequestError`` here) has
+        a genuine ``status_code`` attribute, so it's picked up directly with
+        no message parsing needed."""
+        request_body = {
+            "messages": [{"role": "user", "content": "Hi"}],
+            "model": "ws/llama",
+        }
+
+        def _llm_error(*_args: Any, **_kwargs: Any) -> Any:
+            response = httpx.Response(422, request=httpx.Request("POST", "http://example.test"))
+            inner = openai.BadRequestError("Unsupported parameter: foo", response=response, body=None)
+            raise LLMCallException(inner, detail="Error invoking LLM") from inner
+
+        with patch.object(middleware, "_prepare_lease", new=_patch_prepare_lease()):
+            with patch("nemo_guardrails_plugin.middleware.run_generate_in_new_loop", side_effect=_llm_error):
+                with pytest.raises(InferenceMiddlewareError) as exc_info:
+                    await _process_request(middleware, request_body, {}, _entity_source())
+
+        assert not isinstance(exc_info.value, InferenceMiddlewareUnavailableError)
+        assert exc_info.value.status_code == 422
+        assert exc_info.value.detail == "Error invoking LLM: Unsupported parameter: foo"
+
+    async def test_upstream_5xx_also_propagated_verbatim(self, middleware: GuardrailsMiddleware) -> None:
+        """A ``[5xx]``-prefixed upstream failure is propagated as-is, same as
+        a 4xx — the middleware's generic 503 fallback is now reserved for
+        failures with no recoverable upstream status at all."""
+        request_body = {
+            "messages": [{"role": "user", "content": "Hi"}],
+            "model": "ws/llama",
+        }
+
+        def _llm_error(*_args: Any, **_kwargs: Any) -> Any:
+            raise Exception("[503] Service temporarily overloaded")  # noqa: TRY002
+
+        with patch.object(middleware, "_prepare_lease", new=_patch_prepare_lease()):
+            with patch("nemo_guardrails_plugin.middleware.run_generate_in_new_loop", side_effect=_llm_error):
+                with pytest.raises(InferenceMiddlewareError) as exc_info:
+                    await _process_request(middleware, request_body, {}, _entity_source())
+
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.detail == "Service temporarily overloaded"
+
+    async def test_no_recoverable_status_still_wraps_to_generic_503(self, middleware: GuardrailsMiddleware) -> None:
+        """When the failure carries no recoverable upstream status at all
+        (e.g. a plain library bug below the lease boundary), the middleware
+        still falls back to its own generic 503 with the fixed ``error_msg``."""
+        request_body = {
+            "messages": [{"role": "user", "content": "Hi"}],
+            "model": "ws/llama",
+        }
+
+        def _llm_error(*_args: Any, **_kwargs: Any) -> Any:
+            raise ValueError("something went wrong")
+
+        with patch.object(middleware, "_prepare_lease", new=_patch_prepare_lease()):
+            with patch("nemo_guardrails_plugin.middleware.run_generate_in_new_loop", side_effect=_llm_error):
+                with pytest.raises(InferenceMiddlewareUnavailableError) as exc_info:
+                    await _process_request(middleware, request_body, {}, _entity_source())
+
+        assert exc_info.value.status_code == 503
+        # Detail is the generic, fixed error_msg — not the raw upstream text.
+        # extract_upstream_error() returned None here, so _run_rails's
+        # fallback (not the status-preserving branch) ran.
+        assert exc_info.value.detail == "Failed to run input rails"
+        assert isinstance(exc_info.value.__cause__, ValueError)
+        assert "something went wrong" in str(exc_info.value.__cause__)

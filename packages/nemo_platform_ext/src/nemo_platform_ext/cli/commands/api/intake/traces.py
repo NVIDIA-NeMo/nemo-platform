@@ -55,10 +55,10 @@ def list_traces(
         str | None, typer.Option("--filter.test-case-id", rich_help_panel="Filter Options")
     ] = None,
     mode: Annotated[
-        Literal["summary", "detailed"] | None,
+        Literal["summary", "preview", "detailed"] | None,
         typer.Option(
             "--mode",
-            help="Use summary for root-span trace fields only, or detailed to include token, cost, and span-count rollups.",
+            help="Response mode. summary returns root-span fields without payloads or rollups; preview adds token, cost, and span-count rollups plus 300-character input/output previews; detailed returns rollups and full payloads.",
         ),
     ] = None,
     page: Annotated[int | None, typer.Option("--page", help="Page number.")] = None,
@@ -136,11 +136,7 @@ def retrieve_traces(
     id: Annotated[str, typer.Argument()],
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
     mode: Annotated[
-        Literal["summary", "detailed"] | None,
-        typer.Option(
-            "--mode",
-            help="Use summary for root-span trace fields only, or detailed to include token, cost, and span-count rollups.",
-        ),
+        Literal["summary", "preview", "detailed"] | None, typer.Option("--mode", help="Response mode.")
     ] = None,
     output_format: EntityOutputFormatOption = None,
 ) -> None:

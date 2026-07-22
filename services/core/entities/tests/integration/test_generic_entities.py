@@ -190,7 +190,7 @@ class TestEntityCRUD:
 
         assert response.status_code == 200
         result = response.json()
-        assert result["deleted_count"] == 1
+        assert "id" in result
 
         get_response = await client.get("/apis/entities/v2/workspaces/default/entities/customization_config/delete-me")
         assert get_response.status_code == 404
@@ -506,7 +506,7 @@ class TestParentScopedEntities:
             params={"parent": parent_id},
         )
         assert response.status_code == 200
-        assert response.json()["deleted_count"] == 1
+        assert "id" in response.json()
 
         # Verify root entity still exists
         root_response = await client.get("/apis/entities/v2/workspaces/default/entities/child_type/delete-child")
