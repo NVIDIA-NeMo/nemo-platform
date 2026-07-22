@@ -537,3 +537,27 @@ benchmark-guardrails: ## Run nemo-guardrails IGW benchmark sweep (set BENCHMARK_
 	@echo "Running nemo-guardrails IGW benchmark..."
 	uv run --frozen --package nemo-guardrails-plugin --extra bench \
 		python -m nemo_guardrails_plugin.benchmarks.run $(BENCHMARK_ARGS)
+
+.PHONY: benchmark-intake
+benchmark-intake: ## Run the Intake OTLP ingest smoke benchmark in workspace load-testing
+	@echo "Running Intake OTLP ingest benchmark in workspace load-testing..."
+	uv run --frozen --package nmp-intake --extra bench \
+		python -m nmp.intake.benchmarks.loadgen $(BENCHMARK_ARGS)
+
+.PHONY: benchmark-intake-read
+benchmark-intake-read: ## Run an Intake read benchmark in workspace load-testing
+	@echo "Running Intake read benchmark in workspace load-testing..."
+	uv run --frozen --package nmp-intake --extra bench \
+		python -m nmp.intake.benchmarks.readgen $(BENCHMARK_ARGS)
+
+.PHONY: benchmark-intake-seed-evaluations
+benchmark-intake-seed-evaluations: ## Seed the Intake Evaluation benchmark corpus in workspace load-testing
+	@echo "Seeding Intake Evaluation benchmark corpus in workspace load-testing..."
+	uv run --frozen --package nmp-intake --extra bench \
+		python -m nmp.intake.benchmarks.evaluation_seed $(BENCHMARK_ARGS)
+
+.PHONY: benchmark-intake-mixed
+benchmark-intake-mixed: ## Run the Intake mixed ingest/read workload in workspace load-testing
+	@echo "Running Intake mixed workload in workspace load-testing..."
+	uv run --frozen --package nmp-intake --extra bench \
+		python -m nmp.intake.benchmarks.mixed $(BENCHMARK_ARGS)

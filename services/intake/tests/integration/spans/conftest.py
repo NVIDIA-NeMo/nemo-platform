@@ -55,7 +55,7 @@ def clickhouse_container():
     from testcontainers.clickhouse import ClickHouseContainer
 
     with ClickHouseContainer(
-        "clickhouse/clickhouse-server:24.3",
+        "clickhouse/clickhouse-server:26.3",
         username="test",
         password="test",
         dbname="default",

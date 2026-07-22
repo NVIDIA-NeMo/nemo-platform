@@ -60,6 +60,22 @@ Start a local ClickHouse container for span and trace storage:
 services/intake/scripts/spans/run_clickhouse.sh
 ```
 
+The script defaults to the ClickHouse 26.3 LTS line. Isolated local instances
+can override the container name, project-local data directory, and host ports:
+
+```bash
+CLICKHOUSE_CONTAINER_NAME=nmp-intake-clickhouse-load-testing \
+CLICKHOUSE_DATA_DIR="$PWD/tmp/intake-clickhouse-load-testing" \
+CLICKHOUSE_HTTP_PORT=8123 \
+CLICKHOUSE_NATIVE_PORT=19000 \
+services/intake/scripts/spans/run_clickhouse.sh
+```
+
+If a container with the selected name already exists on a different image, the
+script stops with an image-mismatch error. Preserve or remove that container and
+its data explicitly before creating the requested version; the script does not
+upgrade a data directory in place.
+
 Start Intake with the platform runner:
 
 ```bash
@@ -136,6 +152,9 @@ Run the full Intake service test suite:
 ```bash
 make test-service SERVICE=intake
 ```
+
+The scoped plan for OTLP ingest, data-volume, Evaluation rollup, and trace-read
+load testing is in [benchmarks/README.md](benchmarks/README.md).
 
 ## Generated API Artifacts
 
