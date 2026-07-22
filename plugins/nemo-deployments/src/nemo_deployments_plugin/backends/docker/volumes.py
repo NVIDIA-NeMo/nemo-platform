@@ -23,6 +23,8 @@ async def create_volume(
     workspace: str,
     name: str,
     driver: str = "local",
+    init_chmod: str | None = None,
+    init_image: str | None = None,
 ) -> VolumeStatusUpdate:
     vol_name = docker_volume_name(workspace, name)
     labels = volume_identity_labels(workspace, name)
@@ -37,8 +39,26 @@ async def create_volume(
         except NotFound:
             return client.volumes.create(name=vol_name, driver=driver, labels=labels)
 
+    def _init_permissions() -> None:
+        # Docker named volumes are created root-owned (0755). Run a one-shot
+        # container to relax the mode so a non-root workload (e.g. the HF
+        # weight-puller running as the image's default user) can write to it.
+        # This is the docker analogue of a k8s fsGroup. chmod is idempotent, so
+        # re-running on a reconcile is harmless.
+        image = init_image or "docker.io/library/busybox"
+        client.containers.run(
+            image,
+            entrypoint=["sh", "-c"],
+            command=[f"chmod {init_chmod} /vol"],
+            volumes={vol_name: {"bind": "/vol", "mode": "rw"}},
+            remove=True,
+            detach=False,
+        )
+
     try:
         await asyncio.to_thread(_create)
+        if init_chmod:
+            await asyncio.to_thread(_init_permissions)
         return VolumeStatusUpdate(status="BOUND", status_message=f"Volume {vol_name} is bound")
     except Exception as exc:
         logger.exception("Failed to create volume %s", vol_name)

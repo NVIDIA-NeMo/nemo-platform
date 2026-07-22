@@ -39,6 +39,26 @@ def test_vllm_weighted_chain_has_on_failure_puller_and_always_server() -> None:
     assert compiled.server_config.containers[0].volume_mounts[0].read_only is True
 
 
+def test_docker_weights_volume_requests_init_chmod() -> None:
+    # Docker named volumes are root-owned with no fs_group, so the weights volume
+    # must be made writable (chmod) for the non-root puller. The compiler requests
+    # this on the volume's docker backend config (docker analogue of k8s fsGroup).
+    compiled = compile_model_deployment(_resolved("vllm", runtime=Runtime.DOCKER), DeploymentsPluginConfig())
+    assert compiled.volume is not None
+    docker_cfg = compiled.volume.backend_config.docker
+    assert docker_cfg is not None
+    assert docker_cfg.init_chmod == "0777"
+    assert docker_cfg.init_image  # busybox image is set
+
+
+def test_k8s_weights_volume_has_no_docker_init_chmod() -> None:
+    # On k8s, pod securityContext/fs_group handles volume ownership, so no docker
+    # init-chmod is emitted.
+    compiled = compile_model_deployment(_resolved("vllm", runtime=Runtime.KUBERNETES), DeploymentsPluginConfig())
+    assert compiled.volume is not None
+    assert compiled.volume.backend_config.docker is None
+
+
 def test_vllm_server_command_image_args_and_gpu() -> None:
     resolved = _resolved("vllm")
     resolved = ResolvedPluginDeployment(

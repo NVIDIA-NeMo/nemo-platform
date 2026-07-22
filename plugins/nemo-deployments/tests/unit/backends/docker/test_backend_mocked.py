@@ -74,6 +74,56 @@ async def test_create_deployment_maps_command_to_entrypoint(
 
 
 @pytest.mark.asyncio
+async def test_create_volume_runs_init_chmod_container(
+    docker_backend: DockerDeploymentBackend,
+    mock_docker_client: MagicMock,
+) -> None:
+    """initChmod/initImage in the docker volume backend_config trigger a one-shot
+    chmod container so a non-root workload (the HF weight-puller) can write the
+    otherwise root-owned named volume. This is the docker analogue of k8s fsGroup.
+    """
+    mock_docker_client.volumes.get.side_effect = NotFound("missing")
+    mock_docker_client.volumes.create.return_value = MagicMock(name="vol")
+
+    update = await docker_backend.create_volume(
+        workspace="default",
+        name="weights",
+        size="40Gi",
+        access_modes=["ReadWriteOnce"],
+        backend_config={"docker": {"initChmod": "0777", "initImage": "docker.io/library/busybox"}},
+    )
+
+    assert update.status == "BOUND"
+    mock_docker_client.containers.run.assert_called_once()
+    args, run_kwargs = mock_docker_client.containers.run.call_args
+    assert args[0] == "docker.io/library/busybox"
+    assert run_kwargs["command"] == ["chmod 0777 /vol"]
+    assert run_kwargs["remove"] is True
+    # the init container must mount the volume it is fixing up
+    assert any(b.get("bind") == "/vol" for b in run_kwargs["volumes"].values())
+
+
+@pytest.mark.asyncio
+async def test_create_volume_without_init_chmod_skips_container(
+    docker_backend: DockerDeploymentBackend,
+    mock_docker_client: MagicMock,
+) -> None:
+    mock_docker_client.volumes.get.side_effect = NotFound("missing")
+    mock_docker_client.volumes.create.return_value = MagicMock(name="vol")
+
+    update = await docker_backend.create_volume(
+        workspace="default",
+        name="weights",
+        size="40Gi",
+        access_modes=["ReadWriteOnce"],
+        backend_config={},
+    )
+
+    assert update.status == "BOUND"
+    mock_docker_client.containers.run.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_read_status_ready_when_running_without_probe(
     docker_backend: DockerDeploymentBackend,
     mock_entities: AsyncMock,
