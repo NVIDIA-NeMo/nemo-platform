@@ -17,7 +17,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, contextmanager
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -39,6 +39,7 @@ from nemo_guardrails_plugin.middleware import (
     STATE_KEY_INPUT_GENERATION_RESPONSE,
     GuardrailsMiddleware,
     handle_streaming_output_check,
+    is_streaming_response_result,
 )
 from nemo_guardrails_plugin.requests import parse_guardrails_request
 from nemo_guardrails_plugin.streaming import close_async_iterator
@@ -241,7 +242,7 @@ async def _process_response(
 
     Returns the inner :data:`ResponseResult` (dict or ``AsyncIterator``)
     instead of the wrapping :class:`InferenceResponse` so existing
-    assertions like ``assert isinstance(result, AsyncIterator)`` keep
+    assertions like ``assert is_streaming_response_result(result)`` keep
     working unchanged.
 
     Pass ``ctx`` explicitly when the test needs to seed cross-hook state
@@ -324,7 +325,7 @@ class TestGetMiddlewareConfig:
         assert isinstance(result, EntityGuardrailConfigSource)
         assert result.workspace == "my-workspace"
         assert result.name == "my-config"
-        assert result.updated_at == entity.updated_at
+        assert result.updated_at == entity.updated_at.isoformat()
         assert result.rails is entity.data
 
     async def test_splits_config_id_correctly(self, middleware: GuardrailsMiddleware) -> None:
@@ -406,7 +407,9 @@ class TestGetMiddlewareConfig:
         with a real entity revision; reject at the resolver boundary."""
         assert middleware._sdk is not None
         entity = _make_entity()
-        entity.updated_at = ""
+        # Deliberately violates the model's ``datetime`` type to exercise the
+        # "empty updated_at" guard against a malformed entity.
+        cast(Any, entity).updated_at = ""
 
         with patch.object(middleware._sdk.guardrail.configs, "retrieve", new=AsyncMock(return_value=entity)):
             with pytest.raises(ValueError, match="empty updated_at"):
@@ -717,7 +720,8 @@ class TestProcessRequest:
             )
 
         assert isinstance(result, ImmediateResponse)
-        data: dict[str, Any] = result.data
+        assert not isinstance(result.data, AsyncIterator)
+        data = cast(dict[str, Any], result.data)
         assert "guardrails_data" not in data
         assert result.response_body_annotations["guardrails_data"]["config_ids"] == ["<inline:my-test>"]
 
@@ -893,7 +897,7 @@ class TestProcessResponse:
             )
 
         assert result is not stream
-        assert isinstance(result, AsyncIterator)
+        assert is_streaming_response_result(result)
         chunks = [chunk async for chunk in result]
 
         assert rails.stream_async.call_count == 1
@@ -965,7 +969,7 @@ class TestProcessResponse:
                 _entity_source(output_flows=["self check output"]),
             )
 
-        assert isinstance(result, AsyncIterator)
+        assert is_streaming_response_result(result)
         assert [chunk async for chunk in result] == [
             {
                 "id": "chatcmpl-123",
@@ -1595,7 +1599,7 @@ class TestStreamingLeaseLifecycle:
                         {},
                         _entity_source(output_flows=["self check output"]),
                     )
-                    assert isinstance(result, AsyncIterator)
+                    assert is_streaming_response_result(result)
                     chunks = [chunk async for chunk in result]
 
         assert chunks == [{"choices": [{"delta": {"content": "checked"}}]}]
@@ -1619,7 +1623,7 @@ class TestStreamingLeaseLifecycle:
                 {},
                 _entity_source(output_flows=["self check output"]),
             )
-            assert isinstance(result, AsyncIterator)
+            assert is_streaming_response_result(result)
             async for _ in result:
                 pass
 
@@ -1647,7 +1651,7 @@ class TestStreamingLeaseLifecycle:
                 {},
                 _entity_source(output_flows=["self check output"]),
             )
-            assert isinstance(result, AsyncIterator)
+            assert is_streaming_response_result(result)
 
             chunks: list[dict[str, Any]] = []
 
@@ -1688,7 +1692,7 @@ class TestStreamingLeaseLifecycle:
                 {},
                 _entity_source(output_flows=["self check output"]),
             )
-            assert isinstance(result, AsyncIterator)
+            assert is_streaming_response_result(result)
             chunks = [c async for c in result]
             assert any("error" in c for c in chunks)
 
@@ -1710,7 +1714,7 @@ class TestStreamingLeaseLifecycle:
                 {},
                 _entity_source(output_flows=["self check output"]),
             )
-            assert isinstance(result, AsyncIterator)
+            assert is_streaming_response_result(result)
             await close_async_iterator(result)
 
         assert pool._leased == 0
@@ -1779,7 +1783,7 @@ class TestStreamingLeaseLifecycle:
                     {},
                     _entity_source(output_flows=["self check output"]),
                 )
-                assert isinstance(result, AsyncIterator)
+                assert is_streaming_response_result(result)
                 received = [c async for c in result]
 
         # All legitimate chunks delivered to the consumer; the close
@@ -1812,8 +1816,8 @@ class TestStreamingLeaseLifecycle:
                 {},
                 _entity_source(output_flows=["self check output"]),
             )
-            assert isinstance(result, AsyncIterator)
-            chunks = [c async for c in result]
+            assert is_streaming_response_result(result)
+            chunks: list[dict[str, Any]] = [c async for c in result]
 
         assert len(chunks) == 1
         assert chunks[0]["error"]["type"] == "RuntimeError"
@@ -1990,7 +1994,7 @@ class TestVirtualModelLifecycle:
         # Provenance is forwarded to the cache as a kw-arg for diagnostics.
         provenance = lifecycle_cache.warm.call_args.kwargs["provenance"]
         assert isinstance(provenance, Provenance)
-        assert provenance.label == f"ws/guard-A@{entity.updated_at}"
+        assert provenance.label == f"ws/guard-A@{entity.updated_at.isoformat()}"
 
     async def test_upsert_dedupes_within_a_single_vm(
         self, middleware: GuardrailsMiddleware, lifecycle_cache: Any
@@ -2041,8 +2045,8 @@ class TestVirtualModelLifecycle:
 
         warmed_labels = {args.kwargs["provenance"].label for args in lifecycle_cache.warm.call_args_list}
         assert warmed_labels == {
-            f"ws/guard-A@{entity_a.updated_at}",
-            f"ws/guard-B@{entity_b.updated_at}",
+            f"ws/guard-A@{entity_a.updated_at.isoformat()}",
+            f"ws/guard-B@{entity_b.updated_at.isoformat()}",
         }
 
     async def test_upsert_ignores_other_plugins(self, middleware: GuardrailsMiddleware, lifecycle_cache: Any) -> None:
@@ -2328,6 +2332,46 @@ class TestProcessRequestErrorSurfacing:
 
         assert isinstance(exc_info.value.__cause__, RuntimeError)
         assert "cache exploded" in str(exc_info.value.__cause__)
+
+    async def test_sdk_not_initialized_wraps_to_503(self, middleware: GuardrailsMiddleware) -> None:
+        """SDK detached after ``on_shutdown`` must map to 503, not a raw
+        ``RuntimeError``, on both the non-streaming and streaming paths.
+
+        ``_ensure_sdk`` lives inside :meth:`_prepare_lease_with_503` so the
+        same lifecycle boundary that wraps cache/stabilize failures also
+        covers SDK validation — without this, a shutdown race escaped as
+        IGW 500.
+        """
+        request_body = {
+            "messages": [{"role": "user", "content": "Hi"}],
+            "model": "ws/llama",
+        }
+
+        middleware._sdk = None
+
+        with patch.object(middleware, "_prepare_lease", new=_patch_prepare_lease()):
+            with pytest.raises(InferenceMiddlewareUnavailableError) as exc_info:
+                await _process_request(middleware, request_body, {}, _entity_source())
+
+        assert isinstance(exc_info.value.__cause__, RuntimeError)
+        assert "SDK is not initialized" in str(exc_info.value.__cause__)
+
+        async def _stream() -> AsyncIterator[dict[str, Any]]:
+            yield {"choices": []}
+
+        with patch.object(middleware, "_prepare_lease", new=_patch_prepare_lease()):
+            with pytest.raises(InferenceMiddlewareUnavailableError) as stream_exc:
+                await _process_response(
+                    middleware,
+                    _stream(),
+                    {**request_body, "stream": True},
+                    {},
+                    {},
+                    _entity_source(output_flows=["self check output"]),
+                )
+
+        assert isinstance(stream_exc.value.__cause__, RuntimeError)
+        assert "SDK is not initialized" in str(stream_exc.value.__cause__)
 
     async def test_bracketed_upstream_400_from_rail_task_llm_preserved(self, middleware: GuardrailsMiddleware) -> None:
         """A rail-task LLM call (e.g. a vision-safety judge, via

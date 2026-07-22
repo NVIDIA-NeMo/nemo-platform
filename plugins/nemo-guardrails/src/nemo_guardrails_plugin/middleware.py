@@ -8,7 +8,6 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import nemo_platform
-from langchain_core.language_models.base import BaseLanguageModel
 from nemo_guardrails_plugin.constants import (
     GUARDRAILS_PLUGIN_CONFIG_TYPE,
     PROCESS_REQUEST_RAIL_TYPES,
@@ -75,12 +74,15 @@ from nemo_platform_plugin.inference_middleware import (
     MiddlewareCall,
     MiddlewareConfigNotFoundError,
     NemoInferenceMiddleware,
+    ResponseResult,
     VirtualModel,
 )
 from nemo_platform_plugin.refs import parse_entity_ref
 from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 from nemoguardrails.rails.llm.llmrails import LLMRails
 from nemoguardrails.rails.llm.options import GenerationResponse
+from nemoguardrails.types import LLMModel
+from typing_extensions import TypeIs
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +112,18 @@ def set_guardrails_library_log_level() -> None:
         library_logger.setLevel(logging.WARNING)
     else:
         library_logger.setLevel(platform_log_level)
+
+
+def is_streaming_response_result(result: ResponseResult) -> TypeIs[AsyncIterator[dict[str, Any]]]:
+    """Discriminate ``ResponseResult`` (``dict[str, Any] | AsyncIterator[dict[str, Any]]``).
+
+    Prefer this over ``isinstance(result, AsyncIterator)`` directly:
+    ``AsyncIterator`` is a runtime-checkable *structural* protocol, so a
+    type checker can't statically rule out ``dict`` also satisfying it;
+    that isinstance check alone leaves an imprecise ``dict & AsyncIterator``
+    intersection type in one of the two narrowed branches.
+    """
+    return not isinstance(result, dict)
 
 
 def handle_streaming_output_check(
@@ -248,9 +262,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         resolved config.
         """
         self._require_supported_config_type(config_type)
-        sdk = self._sdk
-        if sdk is None:
-            raise RuntimeError("NeMo Platform SDK is not initialized. Was on_startup() called?")
+        sdk = self._ensure_sdk()
 
         ref = parse_entity_ref(config_id)
         try:
@@ -272,7 +284,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         return EntityGuardrailConfigSource(
             workspace=entity.workspace,
             name=entity.name,
-            updated_at=entity.updated_at,
+            updated_at=entity.updated_at.isoformat(),
             rails=rails_data,
         )
 
@@ -432,7 +444,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
 
         if not source_has_output_flows(source):
             logger.debug("No output flows configured for %s. Skipping output rails.", provenance.label)
-            if isinstance(response_result, AsyncIterator):
+            if is_streaming_response_result(response_result):
                 return response
 
             return build_inference_response(
@@ -457,7 +469,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
             )
 
         # Streaming: the lease must stay held for the life of the iterator.
-        if isinstance(response_result, AsyncIterator):
+        if is_streaming_response_result(response_result):
             streaming_config = extract_output_rails_streaming_config(source)
             if streaming_config is not None and streaming_config.enabled is False:
                 raise InferenceMiddlewareError(
@@ -477,7 +489,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
             # on a never-iterated generator is a no-op — so an eager lease
             # would leak a Pool slot any time IGW drops the returned
             # iterator without iterating.
-            cache, stable, lease_provenance, main_llm = await self._prepare_lease_with_503(
+            cache, stable, lease_provenance, main_llm, sdk = await self._prepare_lease_with_503(
                 source, request_body, request_headers, "Failed to run streaming output rails"
             )
 
@@ -497,7 +509,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
                     # (built via sdk.with_options(set_default_headers=...)) so the
                     # forwarded headers include the current user's on-behalf-of
                     # identity and OTEL trace context.
-                    with platform_headers_context(self._sdk):
+                    with platform_headers_context(sdk):
                         async with cache.lease(stable, main_llm=main_llm, provenance=lease_provenance) as llm_rails:
                             inner = handle_streaming_output_check(
                                 llm_rails,
@@ -579,6 +591,18 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         if config_type != GUARDRAILS_PLUGIN_CONFIG_TYPE:
             raise ValueError(f"Unsupported config_type {config_type!r}.")
 
+    def _ensure_sdk(self) -> nemo_platform.AsyncNeMoPlatform:
+        """Narrow ``self._sdk`` to non-``None``, raising a clean error otherwise.
+
+        A request arriving before ``on_startup`` ran (or after ``on_shutdown``
+        detached it) is a lifecycle bug, not a per-request failure, so we should
+        surface it as a ``RuntimeError``.
+        """
+        sdk = self._sdk
+        if sdk is None:
+            raise RuntimeError("NeMo Platform SDK is not initialized. Was on_startup() called?")
+        return sdk
+
     async def _resolve_call(self, call: MiddlewareCall) -> GuardrailConfigSource | None:
         """Bridge a ``MiddlewareCall`` to a ``GuardrailConfigSource`` for warming.
 
@@ -653,13 +677,13 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
           propagated so caller-set ``status_code`` survives.
         - Anything else below the lease → 503 with ``error_msg``.
         """
-        cache, stable, provenance, main_llm = await self._prepare_lease_with_503(
+        cache, stable, provenance, main_llm, sdk = await self._prepare_lease_with_503(
             source, request_body, request_headers, error_msg
         )
         try:
             # TODO: same as streaming path — use a request-scoped SDK from ctx
             # once IGW threads one through InferenceMiddlewareContext.
-            with platform_headers_context(self._sdk):
+            with platform_headers_context(sdk):
                 async with cache.lease(stable, main_llm=main_llm, provenance=provenance) as llm_rails:
                     raw_generation_response = await asyncio.to_thread(
                         run_generate_in_new_loop,
@@ -694,7 +718,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         request_body: dict[str, Any],
         request_headers: dict[str, str],
         error_msg: str,
-    ) -> tuple[LLMRailsCache, StableRailsConfig, Provenance, BaseLanguageModel]:
+    ) -> tuple[LLMRailsCache, StableRailsConfig, Provenance, LLMModel, nemo_platform.AsyncNeMoPlatform]:
         """Run :meth:`_prepare_lease` with the plugin's error-mapping policy.
 
         Single source of truth for "lease setup → HTTP status" so non-streaming
@@ -702,12 +726,18 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         stays local to the plugin (IGW only catches
         :class:`InferenceMiddlewareError`).
 
+        Also resolves the SDK via :meth:`_ensure_sdk` inside the same boundary
+        so a request that races ``on_shutdown`` (SDK detached) maps to 503
+        rather than escaping as a raw ``RuntimeError``.
+
         - ``ValueError`` → 400 (caller-shape: missing ``model``, malformed inline config).
         - :class:`InferenceMiddlewareError` → propagated unchanged.
         - Anything else → 503 with ``error_msg``, original as ``__cause__``.
         """
         try:
-            return await self._prepare_lease(source, request_body, request_headers)
+            cache, stable, provenance, main_llm = await self._prepare_lease(source, request_body, request_headers)
+            sdk = self._ensure_sdk()
+            return cache, stable, provenance, main_llm, sdk
         except InferenceMiddlewareError:
             raise
         except ValueError as exc:
@@ -720,7 +750,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         source: GuardrailConfigSource,
         request_body: dict[str, Any],
         request_headers: dict[str, str],
-    ) -> tuple[LLMRailsCache, StableRailsConfig, Provenance, BaseLanguageModel]:
+    ) -> tuple[LLMRailsCache, StableRailsConfig, Provenance, LLMModel]:
         """Run the eager portion of lease setup; return what ``cache.lease`` needs.
 
         Eager stabilize + :func:`build_main_llm` (lease itself is deferred to
