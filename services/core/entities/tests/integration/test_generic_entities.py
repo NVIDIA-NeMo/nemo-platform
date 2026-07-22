@@ -188,10 +188,11 @@ class TestEntityCRUD:
         assert result["group_counts"] == {"insight-a": 2, "insight-b": 1}
         assert len(result["data"]) == 1
 
-    async def test_list_entities_rejects_unsupported_count_field(self, client: AsyncClient, ctx):
+    @pytest.mark.parametrize("count_by", ["name", ""])
+    async def test_list_entities_rejects_unsupported_count_field(self, client: AsyncClient, ctx, count_by: str):
         response = await client.get(
             "/apis/entities/v2/workspaces/default/entities/experiment_group",
-            params={"count_by": "name"},
+            params={"count_by": count_by},
         )
 
         assert response.status_code == 400

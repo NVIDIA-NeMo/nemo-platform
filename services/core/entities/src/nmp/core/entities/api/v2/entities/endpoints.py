@@ -371,7 +371,7 @@ async def list_entities(
         relationship_child_workspaces=accessible_workspaces,
     )
     group_counts = None
-    if count_by:
+    if count_by is not None:
         try:
             group_counts = await repository.count_entities_by(
                 workspace=query_workspace,
