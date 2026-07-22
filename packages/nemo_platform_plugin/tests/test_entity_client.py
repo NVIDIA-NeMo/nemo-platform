@@ -37,6 +37,9 @@ async def test_count_by_returns_grouped_counts_for_shorthand_filter() -> None:
     )
 
     assert counts == {"insight-a": 2}
+    assert mock_api.list.await_args.kwargs["filter"] == (
+        '{"data.insight_id": {"$in": ["insight-a"]}, "data.is_deleted": false}'
+    )
     assert mock_api.list.await_args.kwargs["extra_query"] == {"count_by": "data.insight_id"}
 
 
@@ -53,7 +56,6 @@ async def test_count_by_rejects_response_without_grouped_counts() -> None:
 @pytest.mark.asyncio
 async def test_count_by_rejects_non_direct_field() -> None:
     mock_api = Mock()
-    mock_api.list = AsyncMock(return_value=_entities_page())
     client = EntityClient(mock_api)
 
     with pytest.raises(ValueError, match="direct entity data field"):

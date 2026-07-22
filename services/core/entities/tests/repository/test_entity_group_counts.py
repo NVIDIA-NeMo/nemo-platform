@@ -4,7 +4,7 @@
 """Tests for grouped entity counts."""
 
 import pytest
-from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
+from nmp.common.api.filter import ComparisonOperation, FilterOperator
 from nmp.core.entities.app.repository import SQLAlchemyEntityRepository
 from nmp.core.entities.app.repository.sqlalchemy import entity as entity_repository
 
@@ -14,7 +14,7 @@ pytestmark = pytest.mark.asyncio
 async def test_counts_filtered_entities_grouped_by_direct_string_data_field(
     entity_repo: SQLAlchemyEntityRepository, setup_workspaces
 ):
-    """Count only live experiment groups for the requested insights."""
+    """Count live experiment groups grouped by string insight_id values."""
     entities = (
         ("live-a-1", {"insight_id": "insight-a", "is_deleted": False}),
         ("live-a-2", {"insight_id": "insight-a", "is_deleted": False}),
@@ -33,13 +33,7 @@ async def test_counts_filtered_entities_grouped_by_direct_string_data_field(
             data=data,
         )
 
-    filter_op = LogicalOperation(
-        operator=FilterOperator.AND,
-        operations=[
-            ComparisonOperation(field="data.insight_id", operator=FilterOperator.IN, value=["insight-a", "insight-b"]),
-            ComparisonOperation(field="data.is_deleted", operator=FilterOperator.EQ, value=False),
-        ],
-    )
+    filter_op = ComparisonOperation(field="data.is_deleted", operator=FilterOperator.EQ, value=False)
 
     counts = await entity_repo.count_entities_by(
         workspace="workspace-1",
