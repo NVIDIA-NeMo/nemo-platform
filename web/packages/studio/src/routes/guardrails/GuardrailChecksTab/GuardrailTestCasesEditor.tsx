@@ -15,7 +15,7 @@ import {
 import { getErrorMessage } from '@studio/api/common/utils';
 import { useCreateGuardrailCheck, useRunGuardrailChecks } from '@studio/api/guardrail-checks/hooks';
 import type { GuardrailCheckEntity } from '@studio/api/guardrail-checks/types';
-import { GuardrailChecksDataView } from '@studio/components/dataViews/GuardrailChecksDataView';
+import { GuardrailResultsTable } from '@studio/routes/guardrails/GuardrailChecksTab/GuardrailResultsTable';
 import { GuardrailTestCard } from '@studio/routes/guardrails/GuardrailChecksTab/GuardrailTestCard';
 import { ListChecks, Plus, Settings } from 'lucide-react';
 import { type FC, useState } from 'react';
@@ -25,14 +25,12 @@ type SubTab = 'tests' | 'results';
 interface GuardrailTestCasesEditorProps {
   workspace: string;
   configId: string;
-  configName: string;
   checks: GuardrailCheckEntity[];
 }
 
 export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
   workspace,
   configId,
-  configName,
   checks,
 }) => {
   const toast = useToast();
@@ -124,12 +122,8 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
           </LoadingButton>
         </Stack>
       ) : (
-        /* Test Results tab — reuse the existing data-view table */
-        <GuardrailChecksDataView
-          workspace={workspace}
-          configId={configId}
-          configName={configName}
-        />
+        /* Test Results tab — simple summary + table over the loaded checks */
+        <GuardrailResultsTable checks={checks} />
       )}
     </Stack>
   );

@@ -38,7 +38,6 @@ export const GuardrailChecksTab: FC = () => {
     <GuardrailTestCasesEditor
       workspace={workspace}
       configId={config.id}
-      configName={config.name}
       checks={checksPage?.data ?? []}
     />
   );

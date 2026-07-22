@@ -31,12 +31,6 @@ const GuardrailChecksTab = lazy(() =>
   }))
 );
 
-const GuardrailCheckDetailRoute = lazy(() =>
-  import('@studio/routes/guardrails/GuardrailCheckDetailRoute').then((m) => ({
-    default: m.GuardrailCheckDetailRoute,
-  }))
-);
-
 export const guardrailsRoutes: RouteObject[] = gateGuardrailsRoutes([
   {
     path: ROUTES.workspace.guardrails,
@@ -61,10 +55,5 @@ export const guardrailsRoutes: RouteObject[] = gateGuardrailsRoutes([
         element: <GuardrailChecksTab />,
       },
     ],
-  },
-  {
-    path: ROUTES.workspace.guardrailCheckDetail,
-    element: <GuardrailCheckDetailRoute />,
-    errorElement: <ErrorPanel title="Guardrails" />,
   },
 ]);
