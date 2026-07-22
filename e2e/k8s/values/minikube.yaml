@@ -3,13 +3,6 @@
 #
 # Usage: helm upgrade -i nemo-platform k8s/helm -f e2e/k8s/values/minikube.yaml
 
-# Enable NIM operator for local GPU testing
-k8s-nim-operator:
-  enabled: true
-  operator:
-    admissionController:
-      enabled: false
-
 postgresql:
   image:
     repository: docker.io/library/postgres
@@ -34,5 +27,23 @@ ingress:
 platformConfig:
   inference_gateway:
     mock_provider_prefix: igw-mock-
+  jobs:
+    executors:
+      - provider: cpu
+        profile: additional-volume
+        backend: kubernetes_job
+        config:
+          service_account_name: '{{ include "nmp-core.jobsServiceAccountName" . }}'
+          launcher_image: '{{ include "nmp-core.image" . }}'
+          storage:
+            pvc_name: '{{ include "nmp-core.persistentVolumeClaim" . }}'
+            volume_permissions_image: '{{ .Values.core.storage.volumePermissionsImage }}'
+            additional_volumes:
+              - name: nmp-additional-volume
+                persistent_volume_claim:
+                  claim_name: '{{ include "nmp-core.persistentVolumeClaim" . }}'
+            additional_volume_mounts:
+              - name: nmp-additional-volume
+                mount_path: /mnt/additional_storage
   safe_synthesizer:
     job_mode: container

@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import re
 
+from nemo_platform_plugin.config import ImagePullSecret
 from pydantic import BaseModel, Field, field_validator
 
 _DNS_LABEL_PATTERN = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
@@ -44,6 +45,10 @@ class K8sExecutorConfig(BaseModel):
         default=60,
         ge=1,
         description="Kubernetes API client timeout in seconds.",
+    )
+    image_pull_secrets: list[ImagePullSecret] = Field(
+        default_factory=list,
+        description="Image pull secrets merged with platform image_pull_secrets on every pod.",
     )
 
     @field_validator("default_namespace")

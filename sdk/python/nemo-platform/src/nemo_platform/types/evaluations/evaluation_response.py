@@ -33,7 +33,10 @@ class EvaluationResponse(BaseModel):
     dataset_name: str
 
     experiment_group_id: str
-    """Entity id of the owning ExperimentGroup. Required for every Evaluation."""
+    """Deprecated single-group alias; the first of experiment_ids. Use experiment_ids."""
+
+    experiment_ids: List[str]
+    """Entity ids of the ExperimentGroups this Evaluation belongs to (>=1)."""
 
     name: str
 

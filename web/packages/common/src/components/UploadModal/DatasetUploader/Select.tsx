@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getFileExtension } from '@nemo/common/src/components/DatasetFileSelect/utils';
+import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useUploadModalContext } from '@nemo/common/src/components/UploadModal/Context/useUploadModalContext';
 import { getExistingFileId } from '@nemo/common/src/components/UploadModal/utils';
 import { getEntityReference } from '@nemo/common/src/namedEntity';
@@ -20,14 +21,29 @@ interface Props {
   error?: string;
 }
 
-const filesetToOption = (fileset: FilesetOutput) => ({
+const filesetToOption = (fileset: FilesetOutput, showUpdatedAt?: boolean) => ({
   children: fileset.name ?? '',
   value: getEntityReference(fileset),
+  ...(showUpdatedAt && fileset.updated_at
+    ? {
+        slotEnd: (
+          <Text kind="body/regular/xs" color="secondary">
+            <RelativeTime datetime={fileset.updated_at} />
+          </Text>
+        ),
+      }
+    : {}),
 });
 
 export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
   const [state, dispatch] = useUploadModalContext();
-  const { dataset, allowNewDataset, acceptableFileTypes, autoSelectFirstAcceptable } = state;
+  const {
+    dataset,
+    allowNewDataset,
+    acceptableFileTypes,
+    autoSelectFirstAcceptable,
+    showUpdatedAt,
+  } = state;
   const purpose = state.filesetPurpose ?? 'dataset';
   const label = state.datasetLabel ?? 'Dataset';
 
@@ -105,9 +121,9 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
     return (
       filesets
         ?.sort((filesetA, filesetB) => (filesetA?.name || '').localeCompare(filesetB.name || ''))
-        .map(filesetToOption) || []
+        .map((fileset) => filesetToOption(fileset, showUpdatedAt)) || []
     );
-  }, [filesets, isLoading, isError]);
+  }, [filesets, isLoading, isError, showUpdatedAt]);
 
   return (
     <FormField

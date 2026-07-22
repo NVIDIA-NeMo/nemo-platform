@@ -7,6 +7,7 @@ import type {
   ClaudeCodeChatJobArtifact,
   ClaudeCodeChatLinkArtifact,
   ClaudeCodeChatSelectionArtifact,
+  ClaudeCodeInputRequest,
   ClaudeCodeSessionHistoryItem,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import { getJobProgressDetailRoute } from '@studio/routes/agents/ClaudeCodeChatRoute/utils/jobProgress';
@@ -510,6 +511,35 @@ export const updateClaudeCodeChatArtifactsFromSelections = (
     });
   }
 
+  return next;
+};
+
+export const updateClaudeCodeChatArtifactsFromInputSelection = (
+  current: ClaudeCodeChatArtifacts,
+  request: ClaudeCodeInputRequest,
+  value: Record<string, unknown>
+): ClaudeCodeChatArtifacts => {
+  const next = cloneArtifacts(current);
+  let selection: ClaudeCodeChatSelectionArtifact | undefined;
+
+  if (request.kind === 'agent') {
+    const agent = getString(value.agent);
+    if (agent) selection = { label: 'Agent', value: agent };
+  } else if (request.kind === 'model') {
+    const outputKey = getString(request.input.output_key) ?? 'model';
+    const model = getString(value[outputKey]);
+    if (model) selection = { label: 'Model', value: model };
+  } else if (request.kind === 'dataset_file') {
+    const fileset = getString(value.dataset_fileset);
+    const path = getString(value.dataset_path);
+    if (fileset && path) selection = { label: 'Dataset', value: `${fileset}/${path}` };
+  } else if (request.kind === 'eval_config') {
+    const fileset = getString(value.eval_config_fileset);
+    const path = getString(value.eval_config);
+    if (fileset && path) selection = { label: 'Eval config', value: `${fileset}/${path}` };
+  }
+
+  if (selection) setSelection(next, selection);
   return next;
 };
 

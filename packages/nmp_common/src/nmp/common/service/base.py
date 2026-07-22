@@ -20,6 +20,7 @@ from nmp.common.api.utils import register_query_param_schemas
 from nmp.common.config import Configuration, PlatformConfig, ServiceConfig
 from nmp.common.controller import Controller
 from nmp.common.entities.client import EntityClient
+from nmp.common.platform_endpoint import resolve_service_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -545,39 +546,37 @@ class Service(ABC, Generic[TConfig]):
         import time
 
         from nmp.common.observability import MARK_INTERNAL_REQUEST_HEADERS
+        from nmp.common.service.api.health import service_ready_state_from_status
 
-        status_url = f"{self.platform_config.get_service_url(service_name).rstrip('/')}/status"
-        client = self._dependency_provider.get_http_client()
+        endpoint = resolve_service_endpoint(service_name, self.platform_config)
+        status_url = f"{endpoint.connect_base_url.rstrip('/')}/status"
+        own_client = endpoint.transport == "uds"
+        client = endpoint.async_http_client(timeout=2.0) if own_client else self._dependency_provider.get_http_client()
 
         logger.debug("Waiting for service to be ready", extra={"service": service_name, "url": status_url})
 
         start_time = time.time()
-        while (time.time() - start_time) < timeout:
-            try:
-                response = await client.get(status_url, timeout=2.0, headers=MARK_INTERNAL_REQUEST_HEADERS)
-                if response.status_code == 200:
-                    data = response.json()
-                    services = data.get("services") or {}
-                    ready = services.get("ready") or []
-                    if service_name in ready:
-                        logger.debug("Service is ready", extra={"service": service_name})
-                        return True
-                    # If the service isn't in any list (ready/not_ready), it's not
-                    # part of this deployment — skip waiting rather than timing out.
-                    not_ready = services.get("not_ready") or []
-                    not_ready_names = [
-                        n.get("name", n) if isinstance(n, dict) else getattr(n, "name", n) for n in not_ready
-                    ]
-                    if service_name not in ready and service_name not in not_ready_names:
-                        logger.debug(
-                            "Dependency not present in platform, skipping wait",
-                            extra={"service": service_name},
-                        )
-                        return True
-                    # Service is in not_ready; keep polling
-            except httpx.RequestError:
-                pass
-            await asyncio.sleep(poll_interval)
+        try:
+            while (time.time() - start_time) < timeout:
+                try:
+                    response = await client.get(status_url, timeout=2.0, headers=MARK_INTERNAL_REQUEST_HEADERS)
+                    if response.status_code == 200:
+                        try:
+                            data = response.json()
+                        except ValueError:
+                            data = None
+                        ready = service_ready_state_from_status(data, service_name)
+                        if ready is True:
+                            logger.debug("Service is ready", extra={"service": service_name})
+                            return True
+                        # ``False`` means the service is explicitly not_ready; keep polling.
+                        # ``None`` means the status payload shape was unusable; retry.
+                except httpx.RequestError:
+                    pass
+                await asyncio.sleep(poll_interval)
+        finally:
+            if own_client:
+                await client.aclose()
 
         logger.warning("Timeout waiting for service to be ready", extra={"service": service_name, "timeout": timeout})
         return False

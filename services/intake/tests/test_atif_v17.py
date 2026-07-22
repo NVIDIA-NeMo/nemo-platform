@@ -236,6 +236,7 @@ def test_atif_v17_embedded_subagents_expand_recursively_in_the_parent_trace() ->
         if span.name == "research-agent" and span.external_parent_span_id == research.external_span_id
     )
     review = next(span for span in spans if span.name == "review-agent")
+    failed_tool = next(span for span in spans if span.name == "validate_research")
     external_ref = next(span for span in spans if span.name == "subagent-subagents/external-trajectory.json")
 
     assert len(spans) == 12
@@ -249,11 +250,12 @@ def test_atif_v17_embedded_subagents_expand_recursively_in_the_parent_trace() ->
     assert not any(span.name == "subagent-subagents/review-trajectory.json" for span in spans)
     assert root.start_time == datetime(2026, 5, 18, 10, tzinfo=timezone.utc)
     assert root.end_time == datetime(2026, 5, 18, 10, 0, 8, tzinfo=timezone.utc)
-    # A descendant tool error stays on the trajectory that emitted it. Parent
-    # trajectories successfully delegated, so their AGENT spans remain healthy.
+    # A tool error stays on its TOOL span. No trajectory AGENT span inherits it,
+    # regardless of where that trajectory sits in the embedded subagent tree.
     assert root.status == SpanStatus.SUCCESS
     assert research.status == SpanStatus.SUCCESS
-    assert review.status == SpanStatus.ERROR
+    assert review.status == SpanStatus.SUCCESS
+    assert failed_tool.status == SpanStatus.ERROR
 
     root_raw = json.loads(root.attributes_string["atif.raw"])
     research_raw = json.loads(research.attributes_string["atif.raw"])
@@ -689,7 +691,7 @@ def test_atif_mapping_uses_root_cost_when_step_metrics_have_tokens_only() -> Non
     assert child_response.cost_total_usd is None
 
 
-def test_atif_mapping_marks_trajectory_error_for_own_tool_error() -> None:
+def test_atif_mapping_keeps_tool_error_on_tool_span() -> None:
     trajectory = AtifTrajectory.model_validate(
         {
             "schema_version": "ATIF-v1.7",
@@ -723,10 +725,14 @@ def test_atif_mapping_marks_trajectory_error_for_own_tool_error() -> None:
     )
 
     root = spans[0]
+    llm = next(span for span in spans if span.kind == SpanKind.LLM)
+    tool = next(span for span in spans if span.kind == SpanKind.TOOL)
     assert root.name == "sample-agent"
     assert root.input == "solve the task"
     assert root.output == "final answer"
-    assert root.status == SpanStatus.ERROR
+    assert root.status == SpanStatus.SUCCESS
+    assert llm.status == SpanStatus.SUCCESS
+    assert tool.status == SpanStatus.ERROR
 
 
 def test_atif_mapping_span_ids_are_trace_native_and_ignore_evaluation_run_id() -> None:

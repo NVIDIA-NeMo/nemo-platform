@@ -23,6 +23,7 @@ from .number_filter_param import NumberFilterParam as NumberFilterParam
 from .session_list_params import SessionListParams as SessionListParams
 from .evaluation_list_params import EvaluationListParams as EvaluationListParams
 from .evaluation_filter_param import EvaluationFilterParam as EvaluationFilterParam
+from .evaluation_patch_params import EvaluationPatchParams as EvaluationPatchParams
 from .evaluation_create_params import EvaluationCreateParams as EvaluationCreateParams
 from .evaluation_update_params import EvaluationUpdateParams as EvaluationUpdateParams
 from .evaluation_responses_page import EvaluationResponsesPage as EvaluationResponsesPage

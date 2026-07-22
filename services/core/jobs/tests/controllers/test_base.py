@@ -18,12 +18,16 @@ from nmp.core.jobs.app.providers import ContainerSpec, CPUExecutionProvider
 from nmp.core.jobs.app.schemas import PlatformJobStepSpec, StepLifecycle
 from nmp.core.jobs.controllers.backends.base import (
     JOB_LOGS_ENDPOINT_ENVVAR,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_SOCKET_PATH_ENVVAR,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_TRANSPORT_ENVVAR,
     WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
     JobExecutionProfileConfig,
     _contains_loopback_address,
     _replace_loopback_address,
     find_reserved_managed_job_environment_variable_names,
     get_job_runtime_shared_envvars,
+    get_logs_endpoint_config_from_fileset,
     get_logs_endpoint_from_fileset,
     get_workload_identity_token_audience,
     resolve_task_image,
@@ -340,6 +344,38 @@ class TestGetLogsEndpointFromFileset:
         assert result == (
             "http://host.docker.internal:3000/apis/files/v2/workspaces/default/filesets/job-logs-123/otlp/v1/logs"
         )
+
+    def test_uds_files_url_uses_placeholder_http_origin(self):
+        """UDS files URL is normalized to a valid HTTP URL for OTLP request construction."""
+        config = PlatformConfig(  # type: ignore[abstract]
+            service_discovery={"files": "unix:///tmp/nemo-platform.sock"},
+            loopback_address="host.docker.internal",
+        )
+
+        result = get_logs_endpoint_from_fileset(config, workspace="default", fileset_id="job-logs-123")
+
+        assert result == (
+            "http://nemo-platform.local/apis/files/v2/workspaces/default/filesets/job-logs-123/otlp/v1/logs"
+        )
+
+    def test_uds_files_url_preserves_transport_metadata(self):
+        config = PlatformConfig(  # type: ignore[abstract]
+            service_discovery={"files": "unix:///tmp/nemo-platform.sock"},
+            loopback_address="host.docker.internal",
+        )
+
+        result = get_logs_endpoint_config_from_fileset(config, workspace="default", fileset_id="job-logs-123")
+
+        assert result.endpoint == (
+            "http://nemo-platform.local/apis/files/v2/workspaces/default/filesets/job-logs-123/otlp/v1/logs"
+        )
+        assert result.transport == "uds"
+        assert result.socket_path == "/tmp/nemo-platform.sock"
+        assert result.to_env() == {
+            NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR: result.endpoint,
+            NMP_JOB_LAUNCHER_OTLP_LOGS_TRANSPORT_ENVVAR: "uds",
+            NMP_JOB_LAUNCHER_OTLP_LOGS_SOCKET_PATH_ENVVAR: "/tmp/nemo-platform.sock",
+        }
 
 
 class TestGetJobRuntimeSharedEnvvars:

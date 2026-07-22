@@ -43,11 +43,12 @@ class FakeEntity(Base):
 # plain-column NULL (name on row 5) and an explicit/absent ``k`` for $eq-None
 # coverage are the only nullable bits, and $eq agrees with SQL on both.
 SEED = [
-    dict(id=1, name="llama", data={"score": 5, "tier": "free", "flag": True, "k": None}),
-    dict(id=2, name="Llama-2", data={"score": 9, "tier": "pro", "flag": False}),
-    dict(id=3, name="zephyr", data={"score": 10, "tier": "pro", "flag": True, "k": "v"}),
-    dict(id=4, name="mistral", data={"score": 100, "tier": "enterprise", "flag": False}),
-    dict(id=5, name=None, data={"score": 1, "tier": "free", "flag": False}),
+    dict(id=1, name="llama", data={"score": 5, "tier": "free", "flag": True, "k": None, "tags": ["red", "blue"]}),
+    dict(id=2, name="Llama-2", data={"score": 9, "tier": "pro", "flag": False, "tags": ["red"]}),
+    # "redish" is a deliberate prefix near-miss for "red" — quote-delimited matching must exclude it.
+    dict(id=3, name="zephyr", data={"score": 10, "tier": "pro", "flag": True, "k": "v", "tags": ["green", "redish"]}),
+    dict(id=4, name="mistral", data={"score": 100, "tier": "enterprise", "flag": False, "tags": []}),
+    dict(id=5, name=None, data={"score": 1, "tier": "free", "flag": False, "tags": ["blue"]}),
 ]
 
 
@@ -96,6 +97,14 @@ CASES = [
     ("nin_name", C(FilterOperator.NIN, "name", ["llama"])),
     ("nin_data_tier", C(FilterOperator.NIN, "data.tier", ["pro"])),
     ("nin_data_score", C(FilterOperator.NIN, "data.score", [5, 9])),
+    ("contains_tags_red", C(FilterOperator.CONTAINS, "data.tags", "red")),
+    ("contains_tags_blue", C(FilterOperator.CONTAINS, "data.tags", "blue")),
+    ("contains_tags_absent", C(FilterOperator.CONTAINS, "data.tags", "nope")),
+    ("not_contains_tags_red", NOT(C(FilterOperator.CONTAINS, "data.tags", "red"))),
+    (
+        "and_contains_tags",
+        AND(C(FilterOperator.CONTAINS, "data.tags", "blue"), C(FilterOperator.EQ, "data.tier", "free")),
+    ),
     ("gt_data_score", C(FilterOperator.GT, "data.score", 9)),
     ("gte_data_score", C(FilterOperator.GTE, "data.score", 10)),
     ("lt_data_score", C(FilterOperator.LT, "data.score", 10)),

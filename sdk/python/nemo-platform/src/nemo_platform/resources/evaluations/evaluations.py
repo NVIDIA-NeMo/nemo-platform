@@ -21,7 +21,7 @@ from typing import Dict
 
 import httpx
 
-from ..._types import Body, Omit, Query, Headers, NoneType, NotGiven, omit, not_given
+from ..._types import Body, Omit, Query, Headers, NoneType, NotGiven, SequenceNotStr, omit, not_given
 from ..._utils import path_template, maybe_transform, async_maybe_transform
 from .sessions import (
     SessionsResource,
@@ -43,6 +43,7 @@ from ...pagination import SyncDefaultPagination, AsyncDefaultPagination
 from ..._base_client import AsyncPaginator, make_request_options
 from ...types.evaluations import (
     evaluation_list_params,
+    evaluation_patch_params,
     evaluation_create_params,
     evaluation_update_params,
 )
@@ -82,10 +83,11 @@ class EvaluationsResource(SyncAPIResource):
         *,
         workspace: str | None = None,
         dataset_name: str,
-        experiment_group_id: str,
         name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
+        experiment_group_id: str | Omit = omit,
+        experiment_ids: SequenceNotStr[str] | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         parent_evaluation_id: str | Omit = omit,
         parent_experiment_id: str | Omit = omit,
@@ -106,14 +108,18 @@ class EvaluationsResource(SyncAPIResource):
         Args:
           dataset_name: Producer-supplied dataset name.
 
-          experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
-              exist.
-
           name: Producer-supplied, workspace-unique evaluation id.
 
           dataset_version: Producer-supplied dataset version.
 
           description: Human-readable description.
+
+          experiment_group_id: Deprecated single-group field; provide experiment_ids instead. Coalesced into
+              experiment_ids when experiment_ids is omitted.
+
+          experiment_ids: Entity ids of the ExperimentGroups this Evaluation belongs to (>=1). Preferred;
+              each group must already exist. When omitted, the deprecated experiment_group_id
+              is used instead.
 
           metadata: Free-form producer metadata.
 
@@ -151,10 +157,11 @@ class EvaluationsResource(SyncAPIResource):
                 body=maybe_transform(
                     {
                         "dataset_name": dataset_name,
-                        "experiment_group_id": experiment_group_id,
                         "name": name,
                         "dataset_version": dataset_version,
                         "description": description,
+                        "experiment_group_id": experiment_group_id,
+                        "experiment_ids": experiment_ids,
                         "metadata": metadata,
                         "parent_evaluation_id": parent_evaluation_id,
                         "parent_experiment_id": parent_experiment_id,
@@ -218,10 +225,11 @@ class EvaluationsResource(SyncAPIResource):
         *,
         workspace: str | None = None,
         dataset_name: str,
-        experiment_group_id: str,
         body_name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
+        experiment_group_id: str | Omit = omit,
+        experiment_ids: SequenceNotStr[str] | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         parent_evaluation_id: str | Omit = omit,
         parent_experiment_id: str | Omit = omit,
@@ -241,14 +249,18 @@ class EvaluationsResource(SyncAPIResource):
         Args:
           dataset_name: Producer-supplied dataset name.
 
-          experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
-              exist.
-
           body_name: Producer-supplied, workspace-unique evaluation id.
 
           dataset_version: Producer-supplied dataset version.
 
           description: Human-readable description.
+
+          experiment_group_id: Deprecated single-group field; provide experiment_ids instead. Coalesced into
+              experiment_ids when experiment_ids is omitted.
+
+          experiment_ids: Entity ids of the ExperimentGroups this Evaluation belongs to (>=1). Preferred;
+              each group must already exist. When omitted, the deprecated experiment_group_id
+              is used instead.
 
           metadata: Free-form producer metadata.
 
@@ -287,10 +299,11 @@ class EvaluationsResource(SyncAPIResource):
             body=maybe_transform(
                 {
                     "dataset_name": dataset_name,
-                    "experiment_group_id": experiment_group_id,
                     "body_name": body_name,
                     "dataset_version": dataset_version,
                     "description": description,
+                    "experiment_group_id": experiment_group_id,
+                    "experiment_ids": experiment_ids,
                     "metadata": metadata,
                     "parent_evaluation_id": parent_evaluation_id,
                     "parent_experiment_id": parent_experiment_id,
@@ -418,6 +431,86 @@ class EvaluationsResource(SyncAPIResource):
             cast_to=NoneType,
         )
 
+    def patch(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        description: str | Omit = omit,
+        experiment_ids: SequenceNotStr[str] | Omit = omit,
+        metadata: Dict[str, str] | Omit = omit,
+        parent_evaluation_id: str | Omit = omit,
+        root_cause: str | Omit = omit,
+        source_link: str | Omit = omit,
+        status: str | Omit = omit,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> EvaluationResponse:
+        """
+        Partially update an evaluation: only fields present in the request are changed.
+
+        The common case is curating an evaluation into another ExperimentGroup — PATCH
+        with the merged `experiment_ids`. Membership is replaced (not appended), so send
+        the full desired set; any new group must exist and the set must be non-empty (an
+        evaluation always belongs to >=1 group). Omitted fields are left untouched
+        (unlike the full-body PUT, which overwrites them).
+
+        Args:
+          description: Human-readable description.
+
+          experiment_ids: Replace the ExperimentGroups this Evaluation belongs to. Must be non-empty when
+              provided; each group must already exist. Omit to leave membership unchanged.
+
+          metadata: Free-form producer metadata.
+
+          parent_evaluation_id: Entity id of the evaluation this one was derived from (e.g. a variant of a
+              baseline), if any.
+
+          root_cause: Human- or agent-authored explanation of the evaluation's outcome (e.g. why it
+              was killed).
+
+          source_link: Optional URL for the source evaluation.
+
+          status: Producer-defined lifecycle status of the evaluation.
+
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if workspace is None:
+            workspace = self._client._get_workspace_path_param()
+        if not workspace:
+            raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
+        if not name:
+            raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
+        return self._patch(
+            path_template("/apis/intake/v2/workspaces/{workspace}/evaluations/{name}", workspace=workspace, name=name),
+            body=maybe_transform(
+                {
+                    "description": description,
+                    "experiment_ids": experiment_ids,
+                    "metadata": metadata,
+                    "parent_evaluation_id": parent_evaluation_id,
+                    "root_cause": root_cause,
+                    "source_link": source_link,
+                    "status": status,
+                },
+                evaluation_patch_params.EvaluationPatchParams,
+            ),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=EvaluationResponse,
+        )
+
     def pin(
         self,
         name: str,
@@ -533,10 +626,11 @@ class AsyncEvaluationsResource(AsyncAPIResource):
         *,
         workspace: str | None = None,
         dataset_name: str,
-        experiment_group_id: str,
         name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
+        experiment_group_id: str | Omit = omit,
+        experiment_ids: SequenceNotStr[str] | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         parent_evaluation_id: str | Omit = omit,
         parent_experiment_id: str | Omit = omit,
@@ -557,14 +651,18 @@ class AsyncEvaluationsResource(AsyncAPIResource):
         Args:
           dataset_name: Producer-supplied dataset name.
 
-          experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
-              exist.
-
           name: Producer-supplied, workspace-unique evaluation id.
 
           dataset_version: Producer-supplied dataset version.
 
           description: Human-readable description.
+
+          experiment_group_id: Deprecated single-group field; provide experiment_ids instead. Coalesced into
+              experiment_ids when experiment_ids is omitted.
+
+          experiment_ids: Entity ids of the ExperimentGroups this Evaluation belongs to (>=1). Preferred;
+              each group must already exist. When omitted, the deprecated experiment_group_id
+              is used instead.
 
           metadata: Free-form producer metadata.
 
@@ -602,10 +700,11 @@ class AsyncEvaluationsResource(AsyncAPIResource):
                 body=await async_maybe_transform(
                     {
                         "dataset_name": dataset_name,
-                        "experiment_group_id": experiment_group_id,
                         "name": name,
                         "dataset_version": dataset_version,
                         "description": description,
+                        "experiment_group_id": experiment_group_id,
+                        "experiment_ids": experiment_ids,
                         "metadata": metadata,
                         "parent_evaluation_id": parent_evaluation_id,
                         "parent_experiment_id": parent_experiment_id,
@@ -669,10 +768,11 @@ class AsyncEvaluationsResource(AsyncAPIResource):
         *,
         workspace: str | None = None,
         dataset_name: str,
-        experiment_group_id: str,
         body_name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
+        experiment_group_id: str | Omit = omit,
+        experiment_ids: SequenceNotStr[str] | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         parent_evaluation_id: str | Omit = omit,
         parent_experiment_id: str | Omit = omit,
@@ -692,14 +792,18 @@ class AsyncEvaluationsResource(AsyncAPIResource):
         Args:
           dataset_name: Producer-supplied dataset name.
 
-          experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
-              exist.
-
           body_name: Producer-supplied, workspace-unique evaluation id.
 
           dataset_version: Producer-supplied dataset version.
 
           description: Human-readable description.
+
+          experiment_group_id: Deprecated single-group field; provide experiment_ids instead. Coalesced into
+              experiment_ids when experiment_ids is omitted.
+
+          experiment_ids: Entity ids of the ExperimentGroups this Evaluation belongs to (>=1). Preferred;
+              each group must already exist. When omitted, the deprecated experiment_group_id
+              is used instead.
 
           metadata: Free-form producer metadata.
 
@@ -738,10 +842,11 @@ class AsyncEvaluationsResource(AsyncAPIResource):
             body=await async_maybe_transform(
                 {
                     "dataset_name": dataset_name,
-                    "experiment_group_id": experiment_group_id,
                     "body_name": body_name,
                     "dataset_version": dataset_version,
                     "description": description,
+                    "experiment_group_id": experiment_group_id,
+                    "experiment_ids": experiment_ids,
                     "metadata": metadata,
                     "parent_evaluation_id": parent_evaluation_id,
                     "parent_experiment_id": parent_experiment_id,
@@ -869,6 +974,86 @@ class AsyncEvaluationsResource(AsyncAPIResource):
             cast_to=NoneType,
         )
 
+    async def patch(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        description: str | Omit = omit,
+        experiment_ids: SequenceNotStr[str] | Omit = omit,
+        metadata: Dict[str, str] | Omit = omit,
+        parent_evaluation_id: str | Omit = omit,
+        root_cause: str | Omit = omit,
+        source_link: str | Omit = omit,
+        status: str | Omit = omit,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> EvaluationResponse:
+        """
+        Partially update an evaluation: only fields present in the request are changed.
+
+        The common case is curating an evaluation into another ExperimentGroup — PATCH
+        with the merged `experiment_ids`. Membership is replaced (not appended), so send
+        the full desired set; any new group must exist and the set must be non-empty (an
+        evaluation always belongs to >=1 group). Omitted fields are left untouched
+        (unlike the full-body PUT, which overwrites them).
+
+        Args:
+          description: Human-readable description.
+
+          experiment_ids: Replace the ExperimentGroups this Evaluation belongs to. Must be non-empty when
+              provided; each group must already exist. Omit to leave membership unchanged.
+
+          metadata: Free-form producer metadata.
+
+          parent_evaluation_id: Entity id of the evaluation this one was derived from (e.g. a variant of a
+              baseline), if any.
+
+          root_cause: Human- or agent-authored explanation of the evaluation's outcome (e.g. why it
+              was killed).
+
+          source_link: Optional URL for the source evaluation.
+
+          status: Producer-defined lifecycle status of the evaluation.
+
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if workspace is None:
+            workspace = self._client._get_workspace_path_param()
+        if not workspace:
+            raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
+        if not name:
+            raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
+        return await self._patch(
+            path_template("/apis/intake/v2/workspaces/{workspace}/evaluations/{name}", workspace=workspace, name=name),
+            body=await async_maybe_transform(
+                {
+                    "description": description,
+                    "experiment_ids": experiment_ids,
+                    "metadata": metadata,
+                    "parent_evaluation_id": parent_evaluation_id,
+                    "root_cause": root_cause,
+                    "source_link": source_link,
+                    "status": status,
+                },
+                evaluation_patch_params.EvaluationPatchParams,
+            ),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=EvaluationResponse,
+        )
+
     async def pin(
         self,
         name: str,
@@ -974,6 +1159,9 @@ class EvaluationsResourceWithRawResponse:
         self.delete = to_raw_response_wrapper(
             evaluations.delete,
         )
+        self.patch = to_raw_response_wrapper(
+            evaluations.patch,
+        )
         self.pin = to_raw_response_wrapper(
             evaluations.pin,
         )
@@ -1004,6 +1192,9 @@ class AsyncEvaluationsResourceWithRawResponse:
         )
         self.delete = async_to_raw_response_wrapper(
             evaluations.delete,
+        )
+        self.patch = async_to_raw_response_wrapper(
+            evaluations.patch,
         )
         self.pin = async_to_raw_response_wrapper(
             evaluations.pin,
@@ -1036,6 +1227,9 @@ class EvaluationsResourceWithStreamingResponse:
         self.delete = to_streamed_response_wrapper(
             evaluations.delete,
         )
+        self.patch = to_streamed_response_wrapper(
+            evaluations.patch,
+        )
         self.pin = to_streamed_response_wrapper(
             evaluations.pin,
         )
@@ -1066,6 +1260,9 @@ class AsyncEvaluationsResourceWithStreamingResponse:
         )
         self.delete = async_to_streamed_response_wrapper(
             evaluations.delete,
+        )
+        self.patch = async_to_streamed_response_wrapper(
+            evaluations.patch,
         )
         self.pin = async_to_streamed_response_wrapper(
             evaluations.pin,

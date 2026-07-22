@@ -35,7 +35,7 @@ def _exp(
         id=name,
         name=name,
         workspace="default",
-        experiment_group_id="grp",
+        experiment_ids=["grp"],
         dataset_name="ds",
         cost_usd=EvaluatorAggregate(mean=cost) if cost is not None else None,
         latency_ms=EvaluatorAggregate(mean=latency) if latency is not None else None,

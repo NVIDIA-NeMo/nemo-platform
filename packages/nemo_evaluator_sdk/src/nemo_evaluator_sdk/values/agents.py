@@ -24,6 +24,16 @@ def _require_format_in_json_schema(schema: dict[str, Any]) -> None:
         required.append("format")
 
 
+# How matched data-frame values are combined into one final output when a
+# target is streamed as JSON SSE:
+#   - "last":   keep only the final matched value. Correct for endpoints that
+#               emit a complete response snapshot per frame.
+#   - "concat": join matched string values in arrival order. Correct for
+#               token-delta endpoints (e.g. NAT /generate/full emits one token
+#               per frame), where the last frame is only the final token.
+StreamAggregation: TypeAlias = Literal["last", "concat"]
+
+
 class NatAgentConfig(BaseModel):
     """NeMo Agent Toolkit request and stream handling configuration."""
 
@@ -43,7 +53,15 @@ class NatAgentConfig(BaseModel):
     )
     response_path: str = Field(
         default="$.value",
-        description="JSONPath applied to data-channel payloads; the last match is the final output.",
+        description="JSONPath applied to each data-channel payload to extract its emitted value.",
+    )
+    response_aggregation: StreamAggregation = Field(
+        default="concat",
+        description=(
+            "How to combine matched data-frame values into the final output. NAT /generate/full "
+            "emits token-level deltas, so 'concat' reconstructs the complete response; 'last' keeps "
+            "only the final matched value (for endpoints that emit a full snapshot per frame)."
+        ),
     )
 
 
@@ -91,6 +109,14 @@ class GenericAgent(AgentBase):
     stream: bool = Field(
         default=False,
         description="Read JSON SSE data frames instead of a single JSON response body.",
+    )
+    response_aggregation: StreamAggregation = Field(
+        default="last",
+        description=(
+            "How to combine matched data-frame values when 'stream' is true. 'last' keeps the final "
+            "matched value (endpoints that emit a full snapshot per frame); 'concat' joins matched "
+            "string values in arrival order (token-delta endpoints)."
+        ),
     )
 
 

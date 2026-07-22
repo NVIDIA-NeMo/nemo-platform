@@ -14,7 +14,6 @@ import pytest
 import typer
 from click.exceptions import Exit as ClickExit
 from nemo_platform.resources.inference.providers import ProvidersResource
-from nemo_platform_ext.cli.commands.services._process import PortConflict
 from nemo_platform_ext.cli.commands.setup import (
     _AGENT_API_READINESS_POLL_INTERVAL,
     _AGENT_DEPLOY_POLL_INTERVAL,
@@ -77,6 +76,7 @@ from nemo_platform_ext.config.models import (
     Context,
     ContextDefinition,
 )
+from nemo_platform_ext.local.process import PortConflict
 from nemo_platform_plugin.client.errors import NotFoundError
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest, PlatformSecretUpdateRequest
 
@@ -644,9 +644,10 @@ class TestLocalDataDirHelpers:
             mock_start.return_value = MagicMock(pid=42)
             _start_services_background("http://localhost:9090", data_dir="/chosen/data/dir")
         mock_start.assert_called_once()
-        _, kwargs = mock_start.call_args
+        args, kwargs = mock_start.call_args
+        config = args[0]
         assert kwargs["data_dir"] == "/chosen/data/dir"
-        assert kwargs["port"] == 9090
+        assert config.port == 9090
 
     def test_auto_mode_skips_prompt_and_uses_persisted(self, tmp_path, monkeypatch):
         """`--auto` must not prompt but should still honor any persisted data dir."""

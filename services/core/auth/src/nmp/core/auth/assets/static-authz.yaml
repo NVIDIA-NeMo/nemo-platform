@@ -915,6 +915,12 @@ authz:
         scopes:
         - intake:read
         - platform:read
+      patch:
+        permissions:
+        - intake.evaluations.update
+        scopes:
+        - intake:write
+        - platform:write
       put:
         permissions:
         - intake.evaluations.update

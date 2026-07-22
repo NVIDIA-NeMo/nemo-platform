@@ -46,7 +46,7 @@ uv run pytest services/core/models/tests/integration/ -v -n 4 --dist loadscope
 To run specific tests:
 
 ```bash
-uv run pytest services/core/models/tests/integration/test_models_controller.py::test_docker_deployment_lifecycle -v
+uv run pytest services/core/models/tests/integration/test_deployments_plugin_lifecycle.py::test_deployments_plugin_docker_lifecycle -v
 ```
 
 ### Cleanup

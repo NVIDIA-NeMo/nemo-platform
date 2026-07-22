@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
-from nmp.studio import coding_agent_skills, coding_agents, studio_links
+from nmp.studio import coding_agent_artifacts, coding_agent_skills, coding_agents, studio_links
 from nmp.studio.config import StudioConfig
 from nmp.studio.service import StudioService
 
@@ -47,6 +47,121 @@ def service_client_with_feature_flags(
         lambda: {"studio": {"feature_flags": feature_flags}},
     )
     return TestClient(StudioService().with_config(StudioConfig()).app)
+
+
+def test_history_preserves_distinct_answers_under_an_agent_header():
+    artifacts = coding_agent_artifacts.ChatArtifactsResponse()
+    question_labels_by_tool_use_id: dict[str, dict[str, str]] = {}
+    input_selection_tools_by_tool_use_id: dict[str, coding_agent_artifacts.InputSelectionTool] = {}
+    questions = [
+        {
+            "header": "Agent",
+            "question": "Which framework should the agent use?",
+            "options": [{"label": "LangGraph"}, {"label": "NAT"}],
+        },
+        {
+            "header": "Agent",
+            "question": "How should the agent handle retries?",
+            "options": [{"label": "Retry once"}, {"label": "Fail immediately"}],
+        },
+    ]
+
+    coding_agent_artifacts.record_tool_artifacts(
+        artifacts,
+        "AskUserQuestion",
+        {"questions": questions},
+        "toolu_questions",
+        question_labels_by_tool_use_id,
+        input_selection_tools_by_tool_use_id,
+    )
+    coding_agent_artifacts.record_user_tool_result_artifacts(
+        artifacts,
+        [
+            {
+                "type": "tool_result",
+                "tool_use_id": "toolu_questions",
+                "content": (
+                    "Your questions have been answered: "
+                    '"Which framework should the agent use?"="NAT", '
+                    '"How should the agent handle retries?"="Retry once".'
+                ),
+            }
+        ],
+        question_labels_by_tool_use_id,
+        input_selection_tools_by_tool_use_id,
+    )
+
+    assert [selection.model_dump() for selection in artifacts.selections] == [
+        {"label": "Which framework should the agent use", "value": "NAT"},
+        {"label": "How should the agent handle retries", "value": "Retry once"},
+    ]
+    assert artifacts.agent is None
+
+
+def test_history_records_studio_picker_results_as_selections():
+    artifacts = coding_agent_artifacts.ChatArtifactsResponse()
+    question_labels_by_tool_use_id: dict[str, dict[str, str]] = {}
+    input_selection_tools_by_tool_use_id: dict[str, coding_agent_artifacts.InputSelectionTool] = {}
+    picker_calls = [
+        ("toolu_agent", "mcp__nemo_studio__select_agent", {}, {"agent": "calculator-agent"}),
+        (
+            "toolu_model",
+            "mcp__nemo_studio__select_model",
+            {"output_key": "selected_model"},
+            {"selected_model": "nvidia/llama-3.3-nemotron-super-49b-v1"},
+        ),
+        (
+            "toolu_dataset",
+            "mcp__nemo_studio__select_dataset_file",
+            {},
+            {"dataset_fileset": "evaluation-data", "dataset_path": "inputs/test.jsonl"},
+        ),
+        (
+            "toolu_eval",
+            "mcp__nemo_studio__select_eval_config",
+            {},
+            {"eval_config_fileset": "agent-evals", "eval_config": "configs/default.yml"},
+        ),
+    ]
+
+    for tool_use_id, tool_name, tool_input, _result in picker_calls:
+        coding_agent_artifacts.record_tool_artifacts(
+            artifacts,
+            tool_name,
+            tool_input,
+            tool_use_id,
+            question_labels_by_tool_use_id,
+            input_selection_tools_by_tool_use_id,
+        )
+
+    coding_agent_artifacts.record_user_tool_result_artifacts(
+        artifacts,
+        [
+            {
+                "type": "tool_result",
+                "tool_use_id": tool_use_id,
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps({"status": "submitted", **result}),
+                    }
+                ],
+            }
+            for tool_use_id, _tool_name, _tool_input, result in picker_calls
+        ],
+        question_labels_by_tool_use_id,
+        input_selection_tools_by_tool_use_id,
+    )
+
+    assert [selection.model_dump() for selection in artifacts.selections] == [
+        {"label": "Agent", "value": "calculator-agent"},
+        {"label": "Model", "value": "nvidia/llama-3.3-nemotron-super-49b-v1"},
+        {"label": "Dataset", "value": "evaluation-data/inputs/test.jsonl"},
+        {"label": "Eval config", "value": "agent-evals/configs/default.yml"},
+    ]
+    assert artifacts.agent == "calculator-agent"
+    assert artifacts.model == "nvidia/llama-3.3-nemotron-super-49b-v1"
+    assert artifacts.model_source == "selection"
 
 
 def supported_destinations_from_description(description: str) -> set[str]:
