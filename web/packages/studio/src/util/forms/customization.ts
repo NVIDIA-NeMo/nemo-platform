@@ -1,15 +1,22 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { AutomodelJobInput, UnslothJobInput } from '@nemo/sdk/vendored/customizer/schema';
+import type {
+  AutomodelJobInput,
+  AutomodelJobsJobRequest,
+  UnslothJobInput,
+  UnslothJobsJobRequest,
+} from '@nemo/sdk/generated/customizer/schema';
+import { CustomizationCreateAutomodelJobBody } from '@nemo/sdk/generated/customizer/zod/automodel-jobs';
+import { CustomizationCreateUnslothJobBody } from '@nemo/sdk/generated/customizer/zod/unsloth-jobs';
 import { z } from 'zod';
 
 export interface CustomizationFormFields {
   backend: 'automodel' | 'unsloth';
   outputName: string;
   description: string;
-  automodel: AutomodelJobInput['spec'];
-  unsloth: UnslothJobInput['spec'];
+  automodel: AutomodelJobInput;
+  unsloth: UnslothJobInput;
 }
 
 const UNSLOTH_DEFAULT_TARGET_MODULES = [
@@ -99,55 +106,14 @@ export const FORM_DEFAULTS: CustomizationFormFields = {
   },
 };
 
-const automodelSpecSchema = z
-  .object({
+const automodelBodySpec = CustomizationCreateAutomodelJobBody.shape.spec;
+const automodelSpecSchema = automodelBodySpec
+  .omit({ output: true })
+  .extend({
     model: z.string().min(1, 'Please select a model'),
-    dataset: z.object({
+    dataset: automodelBodySpec.shape.dataset.extend({
       training: z.string().min(1, 'Training dataset is required'),
-      validation: z.string().optional(),
     }),
-    training: z.object({
-      training_type: z.enum(['sft', 'distillation']),
-      finetuning_type: z.enum(['lora', 'all_weights', 'lora_merged']),
-      max_seq_length: z.number().int().positive(),
-      teacher_model: z.string().optional(),
-      lora: z
-        .object({
-          rank: z.number().int().positive(),
-          alpha: z.number().int().positive(),
-          dropout: z.number().min(0).max(1),
-          merge: z.boolean(),
-        })
-        .optional(),
-    }),
-    schedule: z.object({ epochs: z.number().int().positive() }).optional(),
-    batch: z
-      .object({
-        global_batch_size: z.number().int().positive(),
-        micro_batch_size: z.number().int().positive(),
-        sequence_packing: z.boolean(),
-      })
-      .optional(),
-    optimizer: z
-      .object({
-        learning_rate: z.number().positive(),
-        weight_decay: z.number().min(0),
-        warmup_steps: z.number().int().min(0),
-        adam_beta1: z.number(),
-        adam_beta2: z.number(),
-        min_learning_rate: z.number().min(0).optional(),
-      })
-      .optional(),
-    parallelism: z
-      .object({
-        num_nodes: z.number().int().positive(),
-        num_gpus_per_node: z.number().int().positive(),
-        tensor_parallel_size: z.number().int().positive(),
-        pipeline_parallel_size: z.number().int().positive(),
-        context_parallel_size: z.number().int().positive(),
-        sequence_parallel: z.boolean(),
-      })
-      .optional(),
   })
   .superRefine((spec, ctx) => {
     if (spec.training.training_type === 'distillation' && !spec.training.teacher_model) {
@@ -159,66 +125,14 @@ const automodelSpecSchema = z
     }
   });
 
-const unslothSpecSchema = z.object({
-  model: z.object({
+const unslothBodySpec = CustomizationCreateUnslothJobBody.shape.spec;
+const unslothSpecSchema = unslothBodySpec.omit({ output: true }).extend({
+  model: unslothBodySpec.shape.model.extend({
     name: z.string().min(1, 'Please select a model'),
-    max_seq_length: z.number().int().positive(),
-    load_in_4bit: z.boolean(),
-    load_in_8bit: z.boolean(),
-    dtype: z.enum(['auto', 'bfloat16', 'float16', 'float32']),
-    trust_remote_code: z.boolean(),
   }),
-  dataset: z.object({
+  dataset: unslothBodySpec.shape.dataset.extend({
     path: z.string().min(1, 'Training dataset is required'),
-    validation_path: z.string().optional(),
   }),
-  training: z
-    .object({
-      finetuning_type: z.enum(['lora', 'all_weights']),
-      lora: z
-        .object({
-          rank: z.number().int().positive(),
-          alpha: z.number().int().positive(),
-          dropout: z.number().min(0).max(1),
-          target_modules: z.array(z.string()),
-          bias: z.enum(['none', 'all', 'lora_only']),
-          use_rslora: z.boolean(),
-          random_state: z.number().int(),
-        })
-        .optional(),
-    })
-    .optional(),
-  schedule: z
-    .object({
-      epochs: z.number().int().positive(),
-      warmup_steps: z.number().int().min(0),
-      lr_scheduler_type: z.enum([
-        'linear',
-        'cosine',
-        'constant',
-        'constant_with_warmup',
-        'cosine_with_restarts',
-      ]),
-      logging_steps: z.number().int().positive(),
-      seed: z.number().int(),
-    })
-    .optional(),
-  batch: z
-    .object({
-      per_device_train_batch_size: z.number().int().positive(),
-      gradient_accumulation_steps: z.number().int().positive(),
-    })
-    .optional(),
-  optimizer: z
-    .object({
-      learning_rate: z.number().positive(),
-      weight_decay: z.number().min(0),
-      optim: z.enum(['adamw_torch', 'adamw_torch_fused', 'adamw_8bit', 'paged_adamw_8bit', 'sgd']),
-    })
-    .optional(),
-  hardware: z
-    .object({ gpus: z.string().optional(), precision: z.enum(['bf16', 'fp16']) })
-    .optional(),
 });
 
 export const customizationFormSchema = z
@@ -240,7 +154,7 @@ export const customizationFormSchema = z
     }
   });
 
-export const formToAutomodelCreate = (f: CustomizationFormFields): AutomodelJobInput => {
+export const formToAutomodelCreate = (f: CustomizationFormFields): AutomodelJobsJobRequest => {
   const { training } = f.automodel;
   const usesLora =
     training.finetuning_type === 'lora' || training.finetuning_type === 'lora_merged';
@@ -260,7 +174,7 @@ export const formToAutomodelCreate = (f: CustomizationFormFields): AutomodelJobI
   };
 };
 
-export const formToUnslothCreate = (f: CustomizationFormFields): UnslothJobInput => {
+export const formToUnslothCreate = (f: CustomizationFormFields): UnslothJobsJobRequest => {
   const { training } = f.unsloth;
   const usesLora = training?.finetuning_type === 'lora';
   return {

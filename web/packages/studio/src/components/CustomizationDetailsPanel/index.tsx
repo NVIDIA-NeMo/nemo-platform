@@ -20,11 +20,13 @@ import { useCustomizationFilesAsRows } from '@studio/hooks/useCustomizationFiles
 import { useCustomizationJob } from '@studio/hooks/useCustomizationJob';
 import { hasMetrics } from '@studio/types/customization';
 import {
+  formatTrainingPhase,
   getBaseModel,
   getCustomizationTrainingProgress,
   getCustomizationTrainingSteps,
   getDatasetUri,
   getTrainingBatchSize,
+  getTrainingTelemetry,
 } from '@studio/util/customizations';
 import { formatElapsedTime } from '@studio/util/date';
 import { Cog, LayoutList, Play } from 'lucide-react';
@@ -56,6 +58,7 @@ export const CustomizationDetailsPanel: FC<Props> = ({ customizationJobName, wor
     customization?.status && CJobTerminalStatuses.includes(customization.status);
 
   const statusDetails = customization?.status_details;
+  const telemetry = getTrainingTelemetry(customization);
 
   const liveSeconds = useLiveSeconds({
     startDate:
@@ -115,6 +118,34 @@ export const CustomizationDetailsPanel: FC<Props> = ({ customizationJobName, wor
             label="Epochs Completed"
             value={getCustomizationTrainingProgress(customization)}
           />
+          {telemetry.phase && !isTerminalStatus && (
+            <KVPair label="Phase" value={formatTrainingPhase(telemetry.phase)} />
+          )}
+          {telemetry.step !== undefined && (
+            <KVPair
+              label="Step"
+              value={
+                telemetry.maxSteps
+                  ? `${telemetry.step} / ${telemetry.maxSteps}`
+                  : String(telemetry.step)
+              }
+            />
+          )}
+          {telemetry.trainLoss !== undefined && (
+            <KVPair label="Current Training Loss" value={telemetry.trainLoss.toFixed(4)} />
+          )}
+          {telemetry.valLoss !== undefined && (
+            <KVPair label="Current Validation Loss" value={telemetry.valLoss.toFixed(4)} />
+          )}
+          {telemetry.learningRate !== undefined && (
+            <KVPair label="Learning Rate" value={telemetry.learningRate.toExponential(2)} />
+          )}
+          {telemetry.gradNorm !== undefined && (
+            <KVPair label="Gradient Norm" value={telemetry.gradNorm.toFixed(4)} />
+          )}
+          {telemetry.checkpointPath && (
+            <KVPair label="Latest Checkpoint" value={telemetry.checkpointPath} />
+          )}
           <KVPair label="Customization ID" value={customization.id} />
           <KVPair label="Output Model" value={customization.spec?.output?.name ?? '-'} />
           <KVPair label="Configuration" value={getBaseModel(customization) || '-'} />

@@ -5,9 +5,10 @@ import type { FinetuningType } from '@nemo/sdk/generated/platform/schema';
 import type {
   CustomizationJob,
   CustomizationJobStatusDetails,
-} from '@nemo/sdk/vendored/customizer/schema';
+} from '@studio/util/customizationBackend';
 import {
   formatFinetuningType,
+  formatTrainingPhase,
   getBaseModel,
   getCustomizationTrainingProgress,
   getCustomizationTrainingSteps,
@@ -17,6 +18,7 @@ import {
   getFormattedTrainingType,
   getProgressLogs,
   getTrainingBatchSize,
+  getTrainingTelemetry,
 } from '@studio/util/customizations';
 
 /** Minimal automodel job (carries `parallelism`). */
@@ -209,5 +211,81 @@ describe('getCustomizationTrainingSteps', () => {
     expect(getCustomizationTrainingSteps({ epochs: 2, trainingRecords: 95, batchSize: 8 })).toBe(
       22
     );
+  });
+});
+
+describe('getTrainingTelemetry', () => {
+  const jobWithDetails = (details: Record<string, unknown>): CustomizationJob =>
+    ({ status_details: details }) as unknown as CustomizationJob;
+
+  it('returns an empty object when there is no status_details', () => {
+    expect(getTrainingTelemetry(undefined)).toEqual({});
+    expect(getTrainingTelemetry({} as CustomizationJob)).toEqual({});
+  });
+
+  it('coerces the live per-step telemetry keys', () => {
+    expect(
+      getTrainingTelemetry(
+        jobWithDetails({
+          phase: 'training',
+          step: 4,
+          max_steps: 10,
+          num_epochs: 3,
+          epoch: 1,
+          train_loss: 0.42,
+          val_loss: 0.55,
+          lr: 0.000005,
+          grad_norm: 1.25,
+          checkpoint_path: 'ws/fileset/checkpoints/step-4',
+        })
+      )
+    ).toEqual({
+      phase: 'training',
+      step: 4,
+      maxSteps: 10,
+      numEpochs: 3,
+      epoch: 1,
+      trainLoss: 0.42,
+      valLoss: 0.55,
+      learningRate: 0.000005,
+      gradNorm: 1.25,
+      checkpointPath: 'ws/fileset/checkpoints/step-4',
+    });
+  });
+
+  it('drops non-finite numbers, empty strings, and wrong types', () => {
+    expect(
+      getTrainingTelemetry(
+        jobWithDetails({
+          phase: '',
+          step: Number.NaN,
+          lr: null,
+          grad_norm: 'oops',
+          checkpoint_path: '',
+        })
+      )
+    ).toEqual({
+      phase: undefined,
+      step: undefined,
+      maxSteps: undefined,
+      numEpochs: undefined,
+      epoch: undefined,
+      trainLoss: undefined,
+      valLoss: undefined,
+      learningRate: undefined,
+      gradNorm: undefined,
+      checkpointPath: undefined,
+    });
+  });
+});
+
+describe('formatTrainingPhase', () => {
+  it('maps known phases to friendly labels', () => {
+    expect(formatTrainingPhase('checkpoint_saved')).toBe('Checkpoint Saved');
+    expect(formatTrainingPhase('training')).toBe('Training');
+  });
+
+  it('title-cases unknown phases', () => {
+    expect(formatTrainingPhase('some_new_phase')).toBe('Some New Phase');
   });
 });
