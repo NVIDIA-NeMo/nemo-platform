@@ -532,7 +532,7 @@ class TestWithStaticAuthzData:
         )
         assert result["allowed"] is True
 
-    def test_job_runner_can_upload_otlp_logs_without_editor(self, static_authz_data):
+    def test_editor_and_job_runner_can_upload_otlp_logs(self, static_authz_data):
         static_authz_data["authz"]["principals"] = {
             "viewer@test.com": {"workspaces": {"my-ws": ["Viewer"]}},
             "editor@test.com": {"workspaces": {"my-ws": ["Editor"]}},
@@ -567,7 +567,7 @@ class TestWithStaticAuthzData:
         )
 
         assert viewer_result["allowed"] is False
-        assert editor_result["allowed"] is False
+        assert editor_result["allowed"] is True
         assert job_runner_result["allowed"] is True
 
 

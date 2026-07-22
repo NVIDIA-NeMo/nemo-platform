@@ -364,6 +364,7 @@ authz:
       - jobs.cancel
       - jobs.create
       - jobs.delete
+      - jobs.logs.create
       - jobs.update
       - models.adapters.create
       - models.adapters.delete
