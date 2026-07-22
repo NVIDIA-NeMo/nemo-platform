@@ -69,17 +69,21 @@ export const AgentEvaluationsDataView = () => {
   });
 
   const handleDeleteJobs = async (jobsToDelete: AgentEvalJobRow[]) => {
-    await Promise.all(
-      jobsToDelete.map(async (job) => {
-        try {
-          await deleteJobMutation.mutateAsync({ workspace, name: job.name });
-        } catch (error) {
-          throw new Error(
-            `Failed to delete "${job.name}": ${error instanceof Error ? error.message : 'Unknown error'}`
-          );
-        }
-      })
+    const results = await Promise.allSettled(
+      jobsToDelete.map((job) => deleteJobMutation.mutateAsync({ workspace, name: job.name }))
     );
+    const failures = results.flatMap((result, i) =>
+      result.status === 'rejected'
+        ? [
+            `"${jobsToDelete[i].name}": ${result.reason instanceof Error ? result.reason.message : 'Unknown error'}`,
+          ]
+        : []
+    );
+    if (failures.length > 0) {
+      throw new Error(
+        `Failed to delete ${failures.length} evaluation${failures.length !== 1 ? 's' : ''}: ${failures.join('; ')}`
+      );
+    }
   };
 
   const {

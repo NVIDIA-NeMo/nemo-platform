@@ -77,7 +77,7 @@ export interface SubmitSelections {
   workspace: string;
   /** Agent (bare name) to evaluate; used to build the generic target. */
   agent: string;
-  /** Eval-config fileset name, stored under spec.benchmark.eval_config for display. */
+  /** Eval-config fileset name, stored under spec.benchmark.eval_config_fileset for display. */
   filesetName?: string;
 }
 
