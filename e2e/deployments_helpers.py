@@ -311,22 +311,24 @@ def run_service_deployment_lifecycle(
     config_name = unique_name("svc-cfg")
     deployment_name = unique_name("svc")
 
-    create_deployment_config(
-        sdk,
-        workspace=workspace,
-        name=config_name,
-        restart_policy="Always",
-        containers=[
-            {
-                "name": "main",
-                "image": NGINX_IMAGE,
-                "ports": [{"containerPort": 80, "protocol": "TCP", "name": "http"}],
-            }
-        ],
-        backend_config=deployment_backend_config,
-    )
-
+    # Everything that creates a resource lives inside the try so the finally
+    # cleanup runs even if config creation fails partway.
     try:
+        create_deployment_config(
+            sdk,
+            workspace=workspace,
+            name=config_name,
+            restart_policy="Always",
+            containers=[
+                {
+                    "name": "main",
+                    "image": NGINX_IMAGE,
+                    "ports": [{"containerPort": 80, "protocol": "TCP", "name": "http"}],
+                }
+            ],
+            backend_config=deployment_backend_config,
+        )
+
         created = create_deployment(
             sdk,
             workspace=workspace,
@@ -375,22 +377,24 @@ def run_job_deployment_lifecycle(
     config_name = unique_name("job-cfg")
     deployment_name = unique_name("job")
 
-    create_deployment_config(
-        sdk,
-        workspace=workspace,
-        name=config_name,
-        restart_policy="Never",
-        containers=[
-            {
-                "name": "main",
-                "image": ALPINE_IMAGE,
-                "command": ["sh", "-c"],
-                "args": ["echo hello-from-deployments-e2e"],
-            }
-        ],
-    )
-
+    # Everything that creates a resource lives inside the try so the finally
+    # cleanup runs even if config creation fails partway.
     try:
+        create_deployment_config(
+            sdk,
+            workspace=workspace,
+            name=config_name,
+            restart_policy="Never",
+            containers=[
+                {
+                    "name": "main",
+                    "image": ALPINE_IMAGE,
+                    "command": ["sh", "-c"],
+                    "args": ["echo hello-from-deployments-e2e"],
+                }
+            ],
+        )
+
         create_deployment(
             sdk,
             workspace=workspace,
@@ -449,49 +453,53 @@ def run_volume_deployment_round_trip(
     sentinel = f"volume-payload-{uuid.uuid4().hex[:8]}"
     sentinel_file = f"{mount_path.rstrip('/')}/sentinel.txt"
 
-    create_volume(
-        sdk,
-        workspace=workspace,
-        name=volume_name,
-        size="1Gi",
-        access_modes=["ReadWriteOnce"],
-        backend_config=volume_backend_config,
-    )
-
-    # The reconciler gates the mounting deployment on the volume being BOUND, and
-    # this helper only runs on eagerly-binding backends (docker), so require BOUND
-    # up front rather than tolerating a lingering PENDING.
-    wait_for_volume_status(
-        sdk,
-        workspace=workspace,
-        name=volume_name,
-        target_statuses=("BOUND",),
-        timeout_seconds=120,
-    )
-
-    create_deployment_config(
-        sdk,
-        workspace=workspace,
-        name=config_name,
-        restart_policy="Never",
-        volume_mounts=[{"name": volume_name, "mountPath": mount_path}],
-        containers=[
-            {
-                "name": "main",
-                "image": ALPINE_IMAGE,
-                "command": ["sh", "-c"],
-                "args": [
-                    # Write a sentinel to the mounted volume then read it back and
-                    # assert its content, exiting non-zero (=> FAILED) on mismatch.
-                    f"set -e; echo {sentinel} > {sentinel_file}; grep -q {sentinel} {sentinel_file}; "
-                    f"echo mount-verified",
-                ],
-                "volumeMounts": [{"name": volume_name, "mountPath": mount_path}],
-            }
-        ],
-    )
-
+    # Everything that creates a resource lives inside the try so the finally
+    # cleanup runs even if volume creation, polling, or config creation fails
+    # partway (otherwise a created volume/config would leak).
     try:
+        create_volume(
+            sdk,
+            workspace=workspace,
+            name=volume_name,
+            size="1Gi",
+            access_modes=["ReadWriteOnce"],
+            backend_config=volume_backend_config,
+        )
+
+        # The reconciler gates the mounting deployment on the volume being BOUND,
+        # and this helper only runs on eagerly-binding backends (docker), so
+        # require BOUND up front rather than tolerating a lingering PENDING.
+        wait_for_volume_status(
+            sdk,
+            workspace=workspace,
+            name=volume_name,
+            target_statuses=("BOUND",),
+            timeout_seconds=120,
+        )
+
+        create_deployment_config(
+            sdk,
+            workspace=workspace,
+            name=config_name,
+            restart_policy="Never",
+            volume_mounts=[{"name": volume_name, "mountPath": mount_path}],
+            containers=[
+                {
+                    "name": "main",
+                    "image": ALPINE_IMAGE,
+                    "command": ["sh", "-c"],
+                    "args": [
+                        # Write a sentinel to the mounted volume then read it back
+                        # and assert its content, exiting non-zero (=> FAILED) on
+                        # mismatch.
+                        f"set -e; echo {sentinel} > {sentinel_file}; grep -q {sentinel} {sentinel_file}; "
+                        f"echo mount-verified",
+                    ],
+                    "volumeMounts": [{"name": volume_name, "mountPath": mount_path}],
+                }
+            ],
+        )
+
         create_deployment(
             sdk,
             workspace=workspace,
