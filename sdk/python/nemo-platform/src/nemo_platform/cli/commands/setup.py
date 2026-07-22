@@ -332,6 +332,15 @@ def _prompt_remote_base_url() -> str:
         console.print(f"{CROSS} Unable to connect to NeMo Platform at {base_url}.")
 
 
+def _resolve_setup_workspace(ctx: typer.Context, cli_context: CLIContext, workspace: str) -> str:
+    """Prefer an explicit ``--workspace``; otherwise keep the active context workspace."""
+    from click.core import ParameterSource
+
+    if ctx.get_parameter_source("workspace") != ParameterSource.DEFAULT:
+        return workspace
+    return cli_context.get_sdk_context().workspace or workspace
+
+
 def _configure_remote_connection(cli_context: CLIContext, base_url: str, workspace: str) -> None:
     """Persist a remote Platform URL in the active CLI context."""
     context_name = cli_context.get_sdk_context().context_name
@@ -1785,6 +1794,7 @@ def setup_command(
         service_result = _maybe_start_services(base_url, auto, start_services, timeout=effective_timeout)
         if service_result == "connect_remote":
             base_url = _prompt_remote_base_url()
+            workspace = _resolve_setup_workspace(ctx, cli_context, workspace)
             _configure_remote_connection(cli_context, base_url, workspace)
             _ensure_platform_auth(cli_context)
     except UserCancelled:

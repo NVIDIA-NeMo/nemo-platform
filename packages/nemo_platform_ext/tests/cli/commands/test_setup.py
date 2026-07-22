@@ -13,6 +13,7 @@ import httpx
 import nemo_platform_ext.cli.commands.setup as setup_commands
 import pytest
 import typer
+from click.core import ParameterSource
 from click.exceptions import Exit as ClickExit
 from nemo_platform.resources.inference.providers import ProvidersResource
 from nemo_platform_ext.cli.commands.setup import (
@@ -57,6 +58,7 @@ from nemo_platform_ext.cli.commands.setup import (
     _register_provider_interactive,
     _render_onboarding_card,
     _resolve_provider_for_url,
+    _resolve_setup_workspace,
     _run_interactive_mode,
     _save_data_dir,
     _select_default_model,
@@ -746,6 +748,35 @@ class TestRemoteConnection:
         assert str(default_cluster.base_url) == "https://default.example.com/"
         assert str(dev_cluster.base_url) == "https://new-dev.example.com/"
         assert cli_context.overrides["base_url"] == "https://new-dev.example.com"
+
+    def test_preserves_active_workspace_when_flag_not_explicit(self):
+        ctx = MagicMock(spec=typer.Context)
+        ctx.get_parameter_source.return_value = ParameterSource.DEFAULT
+        cli_context = MagicMock()
+        cli_context.get_sdk_context.return_value = Context(
+            context_name="default",
+            cluster=Cluster(name="default-cluster", base_url="http://localhost:8080"),
+            user=NoAuthUser(name="default-user"),
+            workspace="team-a",
+            preferences={},
+        )
+
+        assert _resolve_setup_workspace(ctx, cli_context, "default") == "team-a"
+        ctx.get_parameter_source.assert_called_once_with("workspace")
+
+    def test_uses_explicit_workspace_flag_over_active_context(self):
+        ctx = MagicMock(spec=typer.Context)
+        ctx.get_parameter_source.return_value = ParameterSource.COMMANDLINE
+        cli_context = MagicMock()
+        cli_context.get_sdk_context.return_value = Context(
+            context_name="default",
+            cluster=Cluster(name="default-cluster", base_url="http://localhost:8080"),
+            user=NoAuthUser(name="default-user"),
+            workspace="team-a",
+            preferences={},
+        )
+
+        assert _resolve_setup_workspace(ctx, cli_context, "shared-workspace") == "shared-workspace"
 
     def test_authenticates_when_context_has_no_credentials(self):
         cli_context = MagicMock()
@@ -2518,8 +2549,16 @@ class TestNonTtyEarlyExit:
 class TestSetupCommandRemoteFlow:
     def test_remote_choice_connects_before_continuing_setup(self):
         ctx = MagicMock(spec=typer.Context)
+        ctx.get_parameter_source.return_value = ParameterSource.DEFAULT
         cli_context = MagicMock()
         cli_context.get_base_url.return_value = "http://localhost:8080"
+        cli_context.get_sdk_context.return_value = Context(
+            context_name="default",
+            cluster=Cluster(name="default-cluster", base_url="http://localhost:8080"),
+            user=NoAuthUser(name="default-user"),
+            workspace="default",
+            preferences={},
+        )
         cli_context.get_client.return_value.workspaces.retrieve.return_value = MagicMock()
         ctx.obj = cli_context
 
@@ -2538,6 +2577,67 @@ class TestSetupCommandRemoteFlow:
         mock_configure.assert_called_once_with(cli_context, "https://remote.example.com", "default")
         mock_auth.assert_called_once_with(cli_context)
         assert mock_run.call_args.args[3] == "https://remote.example.com"
+
+    def test_remote_choice_preserves_active_workspace_when_flag_omitted(self):
+        ctx = MagicMock(spec=typer.Context)
+        ctx.get_parameter_source.return_value = ParameterSource.DEFAULT
+        cli_context = MagicMock()
+        cli_context.get_base_url.return_value = "http://localhost:8080"
+        cli_context.get_sdk_context.return_value = Context(
+            context_name="default",
+            cluster=Cluster(name="default-cluster", base_url="http://localhost:8080"),
+            user=NoAuthUser(name="default-user"),
+            workspace="team-a",
+            preferences={},
+        )
+        cli_context.get_client.return_value.workspaces.retrieve.return_value = MagicMock()
+        ctx.obj = cli_context
+
+        with (
+            patch(f"{SETUP_MOD}.is_interactive", return_value=True),
+            patch(f"{SETUP_MOD}._maybe_start_services", return_value="connect_remote"),
+            patch(f"{SETUP_MOD}._prompt_remote_base_url", return_value="https://remote.example.com"),
+            patch(f"{SETUP_MOD}._configure_remote_connection") as mock_configure,
+            patch(f"{SETUP_MOD}._ensure_platform_auth"),
+            patch(f"{SETUP_MOD}._check_platform_reachable_with_retries", return_value=True),
+            patch(f"{SETUP_MOD}._bootstrap_config_if_missing") as mock_bootstrap,
+            patch(f"{SETUP_MOD}._run_interactive_mode") as mock_run,
+        ):
+            setup_command(ctx)
+
+        mock_configure.assert_called_once_with(cli_context, "https://remote.example.com", "team-a")
+        mock_bootstrap.assert_called_once_with("https://remote.example.com", "team-a")
+        assert mock_run.call_args.args[2] == "team-a"
+
+    def test_remote_choice_uses_explicit_workspace_flag(self):
+        ctx = MagicMock(spec=typer.Context)
+        ctx.get_parameter_source.return_value = ParameterSource.COMMANDLINE
+        cli_context = MagicMock()
+        cli_context.get_base_url.return_value = "http://localhost:8080"
+        cli_context.get_sdk_context.return_value = Context(
+            context_name="default",
+            cluster=Cluster(name="default-cluster", base_url="http://localhost:8080"),
+            user=NoAuthUser(name="default-user"),
+            workspace="team-a",
+            preferences={},
+        )
+        cli_context.get_client.return_value.workspaces.retrieve.return_value = MagicMock()
+        ctx.obj = cli_context
+
+        with (
+            patch(f"{SETUP_MOD}.is_interactive", return_value=True),
+            patch(f"{SETUP_MOD}._maybe_start_services", return_value="connect_remote"),
+            patch(f"{SETUP_MOD}._prompt_remote_base_url", return_value="https://remote.example.com"),
+            patch(f"{SETUP_MOD}._configure_remote_connection") as mock_configure,
+            patch(f"{SETUP_MOD}._ensure_platform_auth"),
+            patch(f"{SETUP_MOD}._check_platform_reachable_with_retries", return_value=True),
+            patch(f"{SETUP_MOD}._bootstrap_config_if_missing"),
+            patch(f"{SETUP_MOD}._run_interactive_mode") as mock_run,
+        ):
+            setup_command(ctx, workspace="shared-workspace")
+
+        mock_configure.assert_called_once_with(cli_context, "https://remote.example.com", "shared-workspace")
+        assert mock_run.call_args.args[2] == "shared-workspace"
 
 
 # ---------------------------------------------------------------------------
