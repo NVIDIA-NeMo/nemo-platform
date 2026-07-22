@@ -1,0 +1,55 @@
+# E2E config for the nemo-deployments plugin against a real Docker daemon.
+#
+# The platform runs as a normal local process (subprocess harness backend) with
+# BOTH the deployments service and its reconcile controller enabled (the harness
+# runs `nemo services run --service-group all --controller-group all`). A single
+# Docker executor is registered so DeploymentConfig/Deployment/Volume entities
+# created through the deployments API are reconciled into real Docker containers
+# and volumes on the host daemon.
+#
+# Unlike local-docker-agents.yaml, this config leaves pull_images enabled: the
+# deployment tests deploy small public images (alpine / nginx) that are not
+# guaranteed to be present locally, so the executor must pull them on demand.
+
+platform:
+  runtime: "docker"
+  base_url: "http://0.0.0.0:8080"
+
+service: {}
+
+auth:
+  enabled: false
+  allow_unsigned_jwt: true
+  policy_decision_point_provider: embedded
+  policy_decision_point_base_url: "http://localhost:8080"
+  policy_data_refresh_interval: 2
+  bundle_cache_seconds: 15
+  admin_email: "admin@example.com"
+
+entities: {}
+
+deployments:
+  default_executor: local-docker
+  executors:
+    - name: local-docker
+      backend: docker
+      config:
+        pull_images: true
+        port_range_start: 9200
+        port_range_end: 9300
+  controller:
+    # Tighten the reconcile loop so deployment/volume state converges quickly in
+    # the test window; the defaults are tuned for production, not test latency.
+    interval_seconds: 2
+    orphan_cleanup_interval_seconds: 15
+    # Fail STARTING deployments that never converge within a few minutes rather
+    # than letting a test hang until the outer wait-loop timeout.
+    starting_timeout_seconds: 240
+
+secrets:
+  allow_key_creation: true
+
+files:
+  default_storage_config:
+    type: local
+    path: .tmp/e2e/files
