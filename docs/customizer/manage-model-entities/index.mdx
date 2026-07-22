@@ -11,7 +11,7 @@ Before running a customization job, you need to set up a **Model Entity** that p
 
 <Card title="Create a Model FileSet" href="/documentation/customizer-reference/manage-model-entities/create-a-model-file-set">
 
-Create a FileSet containing your base model checkpoint from HuggingFace, NGC, or local storage.
+Create a FileSet containing your base model checkpoint from Hugging Face, NGC, or local storage.
 
 </Card>
 <Card title="Create a Model Entity" href="/documentation/customizer-reference/manage-model-entities/create-a-model-entity">
@@ -35,7 +35,7 @@ A **FileSet** is a collection of files managed by the platform. For customizatio
 - Tokenizer files (`tokenizer.json`, `tokenizer_config.json`, and so on)
 
 FileSets can be populated from:
--   **HuggingFace Hub** - Download directly from HF repositories
+-   **Hugging Face Hub** - Download directly from HF repositories
 -   **NGC** - Download from NVIDIA NGC catalogs
 -   **Local upload** - Upload files from your local machine
 
@@ -56,7 +56,7 @@ Complete example of setting up a model for customization:
 
 <Tip>
 
-**HuggingFace Token**: If downloading from a gated HuggingFace repository (like Llama models), you will need to create a secret containing your HuggingFace API token first. Refer to [Manage Secrets](/documentation/get-started/core-concepts/manage-secrets) for instructions.
+**Hugging Face Token**: If downloading from a gated Hugging Face repository (like Llama models), you will need to create a secret containing your Hugging Face API token first. Refer to [Manage Secrets](/documentation/get-started/core-concepts/manage-secrets) for instructions.
 
 </Tip>
 ```python
@@ -71,12 +71,12 @@ client = NeMoPlatform(
     workspace="default",
 )
 
-# Step 1: Create FileSet from HuggingFace
+# Step 1: Create FileSet from Hugging Face
 try:
     fileset = client.files.filesets.create(
         workspace="default",
         name="qwen3-1.7b",
-        description="Qwen3 1.7B base model from HuggingFace",
+        description="Qwen3 1.7B base model from Hugging Face",
         storage=HuggingfaceStorageConfigParam(
             type="huggingface",
             repo_id="Qwen/Qwen3-1.7B",

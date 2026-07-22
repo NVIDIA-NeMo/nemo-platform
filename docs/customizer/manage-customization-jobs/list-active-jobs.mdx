@@ -3,7 +3,7 @@ title: "List Active Jobs"
 description: ""
 ---
 <a id="ft-list-active-customization-jobs"></a>
-List customization jobs and their high-level status. Customization jobs run on the platform's Jobs service, so you list them through that service and filter by `source` to scope the results to a backend (`automodel` or `unsloth`). Each entry includes the job definition (model, dataset, training configuration) and overall status.
+List active customization jobs and their high-level status. Customization jobs run on the platform's Jobs service, so you list them through that service and filter by `source` and `status`. The `source` scopes results to a backend (`automodel` or `unsloth`), while `status="active"` excludes completed, failed, and cancelled jobs. Each entry includes the job definition (model, dataset, training configuration) and overall status.
 
 <Tip>
 
@@ -25,7 +25,7 @@ export NMP_BASE_URL="https://your-nmp-base-url"
 
 ## To List Active Customization Jobs
 
-Use the SDK to list jobs, filtering by `source` to scope the results to a customization backend:
+Use the SDK to list jobs, filtering by `source` to scope the results to a customization backend and by `status` to return only active jobs:
 
 ```python
 import os
@@ -37,10 +37,13 @@ client = NeMoPlatform(
     workspace="default",
 )
 
-# List automodel customization jobs
+# List active automodel customization jobs
 jobs = client.jobs.list(
     workspace="default",
-    filter={"source": "automodel"},  # Use "unsloth" for the Unsloth backend
+    filter={
+        "source": "automodel",  # Use "unsloth" for the Unsloth backend
+        "status": "active",
+    },
     page=1,
     page_size=10,
     sort="created_at",
@@ -56,7 +59,8 @@ filtered_jobs = client.jobs.list(
     workspace="default",
     filter={
         "source": "automodel",
-        "status": "active",  # Filter by job status
+        "status": "active",
+        "project": "my-finetuning-project",
     },
     sort="-created_at",  # Sort by created_at descending
 )
@@ -118,7 +122,10 @@ for job in filtered_jobs.data:
     "total_results": 1
   },
   "sort": "created_at",
-  "filter": {},
+  "filter": {
+    "source": "automodel",
+    "status": "active"
+  },
   "search": {}
 }
 ```

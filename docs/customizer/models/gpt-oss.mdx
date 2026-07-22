@@ -8,7 +8,7 @@ This page provides detailed technical specifications for the OpenAI GPT-OSS mode
 
 ## Before You Start
 
-These models require a HuggingFace token to download. Create a secret with your HuggingFace API key, then create a FileSet and Model Entity referencing the model. See [index](/documentation/customizer-reference/manage-model-entities/overview) for setup instructions.
+These models require a Hugging Face token to download. Create a secret with your Hugging Face API key, then create a FileSet and Model Entity referencing the model. See [index](/documentation/customizer-reference/manage-model-entities/overview) for setup instructions.
 
 ---
 
@@ -19,18 +19,24 @@ These models require a HuggingFace token to download. Create a secret with your 
 | Creator | OpenAI |
 | Architecture | Mixture of Experts (MoE) Transformer |
 | Description | GPT-OSS 20B provides lower latency for local or specialized use cases, featuring full chain-of-thought reasoning and agentic capabilities. |
-| Max I/O Tokens | Not specified |
+| Context Length | 131,072 tokens |
 | Parameters | 21B parameters (3.6B active parameters) |
 | Training Data | Trained on harmony response format |
-| Memory Requirements | Runs within 32GB of memory with BFloat16 quantization |
+| Checkpoint Quantization | MXFP4 quantization of the MoE weights |
+| Inference Memory | The official checkpoint can run within 16 GB of memory; Customizer training requires the GPU configurations below |
 | Default Name | openai/gpt-oss-20b |
-| HuggingFace | [openai/gpt-oss-20b](https://huggingface.co/openai/gpt-oss-20b) |
+| Hugging Face | [openai/gpt-oss-20b](https://huggingface.co/openai/gpt-oss-20b) |
 
 ### Training Options (20B)
 
-- **LoRA**: 4x 80GB GPU, tensor parallel size 1, expert parallel size 4, pipeline parallel size 1
-- **Full SFT**: 8x 80GB GPU, tensor parallel size 1, expert parallel size 8, pipeline parallel size 1
-- Sequence Packing: Not supported
+The Automodel contract matrix validates these configurations:
+
+| Fine-Tuning | Dataset Format | GPUs | Sequence Packing |
+| --- | --- | --- | --- |
+| LoRA | Prompt-completion | 1 | Supported |
+| Full SFT | Prompt-completion or chat | 8 | Not supported in the tested configurations |
+
+For the tested Full SFT configuration, tensor and pipeline parallel sizes are `1` and expert parallel size is `8`. The tested LoRA configuration uses one GPU without expert parallelism.
 
 Default training max sequence length: 4096.
 
@@ -81,6 +87,6 @@ GPT-OSS models use the harmony response format and require this format for prope
 
 <Note>
 
-Sequence packing is not supported for GPT-OSS models in NeMo Customizer.
+For GPT-OSS 20B, sequence packing is supported by the tested Automodel LoRA configuration with prompt-completion data. It is not supported by the tested Full SFT or chat configurations.
 
 </Note>
