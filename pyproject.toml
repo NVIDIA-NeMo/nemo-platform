@@ -297,8 +297,8 @@ constraint-dependencies = [
 ]
 
 override-dependencies = [
-  # unsloth requires a later version but will never be used on macos. mostly useful for dev
-  "datasets>=3.3.1, <=4.3.0",
+  # nemo-safe-synthesizer[engine] needs >=4.8.4, trl >=4.7.0; <5 avoids the 5.x bump.
+  "datasets>=4.8.5,<5",
   "jsonpath-ng>=1.6.1",
   "grpcio>=1.71.0",
   "huggingface-hub>=1.0.1,<2.0.0",
@@ -315,7 +315,7 @@ override-dependencies = [
   "jaraco-context>=6.1.0",   # High OOS – auditor-tasks + customizer
   "joserfc>=1.7.2",
   "pyasn1>=0.6.3",           # High OOS – auditor-tasks + customizer
-  "setuptools>=78.1.1",      # High OOS – nmp-cpu-tasks/gpu-tasks/customizer-tasks
+  "setuptools>=78.1.1,<82",  # High OOS floor; <82 required by torch (safe-synthesizer runtime)
   "urllib3>=2.7.0",          # High OOS – auditor-tasks + customizer
   "wheel>=0.46.2",           # High OOS – widespread
   "cbor2>=5.9.0",            # High – customizer + nmp-gpu-tasks
