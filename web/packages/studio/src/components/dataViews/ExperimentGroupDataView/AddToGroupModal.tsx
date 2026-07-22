@@ -47,11 +47,6 @@ export interface AddToGroupModalProps extends Pick<FormModalProps, 'open' | 'onC
   workspace: string;
   /** The evaluations being curated into another group (the bulk row selection). */
   evaluations: EvaluationRow[];
-  /**
-   * The group whose board is currently shown. Its evaluation list is invalidated on success so the
-   * board refreshes.
-   */
-  currentExperimentGroupId: string;
 }
 
 /**
@@ -71,7 +66,6 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
   onSuccess,
   workspace,
   evaluations,
-  currentExperimentGroupId,
 }) => {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -148,12 +142,8 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
     return results.filter((result) => result.status === 'rejected').length;
   };
 
-  const refreshCurrentBoard = () => {
-    queryClient.invalidateQueries({
-      queryKey: getListEvaluationsQueryKey(workspace, {
-        filter: { experiment_group_id: currentExperimentGroupId },
-      }),
-    });
+  const refreshEvaluationBoards = () => {
+    queryClient.invalidateQueries({ queryKey: getListEvaluationsQueryKey(workspace) });
   };
 
   // Shared finish for both paths once the target group's membership writes have settled.
@@ -163,7 +153,7 @@ export const AddToGroupModal: FC<AddToGroupModalProps> = ({
       toast.error(`Failed to add ${countLabel} to "${groupName}".`);
       return;
     }
-    refreshCurrentBoard();
+    refreshEvaluationBoards();
     if (failed > 0) {
       toast.warning(
         `${createdVerb} "${groupName}", but ${failed} of ${count} evaluations couldn't be added.`

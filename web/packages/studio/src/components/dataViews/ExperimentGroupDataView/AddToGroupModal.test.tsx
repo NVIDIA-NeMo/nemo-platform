@@ -69,7 +69,6 @@ function renderModal(evaluations: EvaluationRow[] = EVALUATIONS) {
         onSuccess={onSuccess}
         workspace="default"
         evaluations={evaluations}
-        currentExperimentGroupId="current-group"
       />
     </Wrapper>
   );

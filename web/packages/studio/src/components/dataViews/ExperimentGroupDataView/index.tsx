@@ -536,7 +536,6 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
           onSuccess={() => addToGroupState.clearSelection()}
           workspace={workspace}
           evaluations={addToGroupState.evaluations}
-          currentExperimentGroupId={experimentGroupId}
         />
       )}
     </>
