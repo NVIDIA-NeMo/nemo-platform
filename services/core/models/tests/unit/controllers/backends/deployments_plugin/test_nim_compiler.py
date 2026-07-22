@@ -54,17 +54,6 @@ def test_compile_nim_server_env_sets_ft_model_for_model_specific_image() -> None
     assert env["NIM_CUSTOM_MODEL"] == "/model-store"
 
 
-def test_compile_nim_server_env_injects_ngc_api_key() -> None:
-    env = compile_nim_server_env(
-        _resolved(),
-        DeploymentsPluginConfig(),
-        weighted=False,
-        tool_call_plugin_path=None,
-        ngc_api_key="secret-value",
-    )
-    assert env["NGC_API_KEY"] == "secret-value"
-
-
 def test_compile_nim_server_env_additional_envs_override_ngc_api_key() -> None:
     resolved = _resolved()
     resolved = ResolvedPluginDeployment(
@@ -89,20 +78,8 @@ def test_compile_nim_server_env_additional_envs_override_ngc_api_key() -> None:
         DeploymentsPluginConfig(),
         weighted=False,
         tool_call_plugin_path=None,
-        ngc_api_key="from-platform-secret",
     )
     assert env["NGC_API_KEY"] == "from-additional-envs"
-
-
-def test_compile_nim_server_env_omits_ngc_api_key_when_unset() -> None:
-    env = compile_nim_server_env(
-        _resolved(),
-        DeploymentsPluginConfig(),
-        weighted=False,
-        tool_call_plugin_path=None,
-        ngc_api_key=None,
-    )
-    assert "NGC_API_KEY" not in env
 
 
 def test_compile_nim_server_env_omits_ft_model_for_multi_llm_image() -> None:

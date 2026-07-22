@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from backends.docker.docker_helpers import container_attrs, sample_config
+from docker.errors import APIError
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
 from nemo_deployments_plugin.backends.labels import (
     CONFIG_NAME_LABEL,
@@ -115,3 +116,27 @@ async def test_create_running_one_shot_container_still_returns_status(
     assert update.status == "STARTING"
     mock_docker_client.containers.run.assert_not_called()
     existing.remove.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_exited_one_shot_returns_failed_when_removal_fails(
+    docker_backend: DockerDeploymentBackend,
+    mock_docker_client: MagicMock,
+) -> None:
+    existing = MagicMock()
+    existing.labels = _matching_labels(name="srv-puller", restart_policy="Never")
+    existing.status = "exited"
+    existing.remove.side_effect = APIError("remove failed")
+    mock_docker_client.containers.get.return_value = existing
+
+    update = await docker_backend.create_deployment(
+        workspace="default",
+        name="srv-puller",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "FAILED"
+    assert "remove exited container" in update.status_message
+    mock_docker_client.containers.run.assert_not_called()

@@ -4,6 +4,7 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from nemo_deployments_plugin.entities import SecretRef
 from nemo_platform.types.inference.k8s_nim_operator_config import K8sNIMOperatorConfig
 from nmp.common.config import Runtime
 from nmp.core.models.app import ModelWeightsType
@@ -30,10 +31,10 @@ def _resolved(engine: str, *, lora: bool = False, runtime: Runtime = Runtime.KUB
     )
 
 
-def test_vllm_weighted_chain_has_never_puller_and_always_server() -> None:
+def test_vllm_weighted_chain_has_on_failure_puller_and_always_server() -> None:
     compiled = compile_model_deployment(_resolved("vllm"), DeploymentsPluginConfig())
     assert compiled.volume is not None
-    assert compiled.puller_config is not None and compiled.puller_config.restart_policy == "Never"
+    assert compiled.puller_config is not None and compiled.puller_config.restart_policy == "OnFailure"
     assert compiled.server_config.restart_policy == "Always"
     assert compiled.puller_prerequisite is True
     assert compiled.server_config.containers[0].volume_mounts[0].read_only is True
@@ -98,15 +99,40 @@ def test_nim_gpu_resources_without_override() -> None:
 
 
 def test_nim_weighted_chain_sets_model_path_env() -> None:
-    compiled = compile_model_deployment(_resolved("nim"), DeploymentsPluginConfig())
+    secret_ref = SecretRef(workspace="system", name="ngc-api-key")
+    with patch(
+        "nmp.core.models.controllers.backends.deployments_plugin.compiler.platform_ngc_secret_ref",
+        return_value=secret_ref,
+    ):
+        compiled = compile_model_deployment(_resolved("nim"), DeploymentsPluginConfig())
     assert compiled.volume is not None
     assert compiled.puller_config is not None
-    env = {item.name: item.value for item in compiled.server_config.containers[0].env}
+    env_items = compiled.server_config.containers[0].env
+    env = {item.name: item.value for item in env_items}
     assert env["NIM_MODEL_NAME"] == "/model-store"
     assert env["NIM_MODEL_PATH"] == "/model-store"
     assert env["NIM_SERVED_MODEL_NAME"] == "org/model"
     assert env["NIM_FT_MODEL"] == "/model-store"
     assert env["NIM_CUSTOM_MODEL"] == "/model-store"
+    ngc_env = next(item for item in env_items if item.name == "NGC_API_KEY")
+    assert ngc_env.value is None
+    assert ngc_env.secret_ref == secret_ref
+    assert "resolved-secret" not in compiled.server_config.model_dump_json()
+
+
+def test_nim_explicit_ngc_env_is_not_persisted_as_plaintext() -> None:
+    resolved = _resolved("nim")
+    resolved.view.additional_envs = {"NGC_API_KEY": "explicit-value"}
+    with patch(
+        "nmp.core.models.controllers.backends.deployments_plugin.compiler.platform_ngc_secret_ref",
+        return_value=SecretRef(workspace="system", name="ngc-api-key"),
+    ):
+        compiled = compile_model_deployment(resolved, DeploymentsPluginConfig())
+
+    ngc_env = next(item for item in compiled.server_config.containers[0].env if item.name == "NGC_API_KEY")
+    assert ngc_env.value is None
+    assert ngc_env.secret_ref == SecretRef(workspace="system", name="ngc-api-key")
+    assert "explicit-value" not in compiled.server_config.model_dump_json(by_alias=True)
 
 
 def test_nim_multi_llm_weighted_omits_ft_model_env() -> None:

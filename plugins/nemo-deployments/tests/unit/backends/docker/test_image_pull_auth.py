@@ -12,10 +12,10 @@ from backends.docker.docker_helpers import sample_config
 from docker.errors import NotFound
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
-from nemo_deployments_plugin.entities import Container, DeploymentConfig
+from nemo_deployments_plugin.entities import Container, DeploymentConfig, EnvVar
 
 
-def _nim_config() -> DeploymentConfig:
+def _nim_config(*, ngc_api_key: str | None = None) -> DeploymentConfig:
     return DeploymentConfig(
         name="cfg1",
         workspace="default",
@@ -25,6 +25,7 @@ def _nim_config() -> DeploymentConfig:
                 image="nvcr.io/nim/nvidia/llama-nemotron-embed-1b-v2:1.13.0",
                 command=["nim"],
                 args=["start"],
+                env=[EnvVar(name="NGC_API_KEY", value=ngc_api_key)] if ngc_api_key else [],
             )
         ],
         restart_policy="Always",  # ty: ignore[unknown-argument]
@@ -55,8 +56,8 @@ async def test_create_pulls_nvcr_image_with_ngc_auth(
     mock_docker_client.containers.run.return_value = MagicMock(id="abc123")
 
     with patch(
-        "nemo_deployments_plugin.backends.docker.backend.resolve_ngc_api_key",
-        AsyncMock(return_value="ngc-test-key"),
+        "nemo_deployments_plugin.backends.docker.backend.resolve_deployment_config_secrets",
+        AsyncMock(return_value=_nim_config(ngc_api_key="ngc-test-key")),
     ):
         update = await docker_backend_pull.create_deployment(
             workspace="default",
@@ -81,20 +82,15 @@ async def test_create_pulls_non_ngc_image_without_auth(
     mock_docker_client.containers.get.side_effect = NotFound("missing")
     mock_docker_client.containers.run.return_value = MagicMock(id="abc123")
 
-    with patch(
-        "nemo_deployments_plugin.backends.docker.backend.resolve_ngc_api_key",
-        AsyncMock(return_value="ngc-test-key"),
-    ) as resolve_mock:
-        update = await docker_backend_pull.create_deployment(
-            workspace="default",
-            name="srv",
-            config_name="cfg1",
-            labels={"managed-by": MANAGED_BY_LABEL},
-            backend_config={},
-        )
+    update = await docker_backend_pull.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
 
     assert update.status == "STARTING"
-    resolve_mock.assert_not_awaited()
     args, kwargs = mock_docker_client.images.pull.call_args
     assert args[0] == "alpine:latest"
     assert not kwargs.get("auth_config")

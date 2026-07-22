@@ -53,11 +53,11 @@ from nemo_deployments_plugin.backends.labels import (
 )
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import Container, Deployment, DeploymentConfig
+from nemo_deployments_plugin.secrets import SecretResolutionError, resolve_deployment_config_secrets
 from nemo_deployments_plugin.types import Endpoint, RestartPolicy
 from nemo_platform.resources.entities import AsyncEntitiesResource
 from nemo_platform_plugin.config import LOOPBACK_ADDRESSES
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
-from nemo_platform_plugin.secrets.ngc import resolve_ngc_api_key
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import ReadTimeout
 from urllib3.exceptions import ReadTimeoutError as Urllib3ReadTimeoutError
@@ -76,6 +76,7 @@ NGC_IMAGE_REGISTRY_USER_NAME = os.getenv("NGC_IMAGE_REGISTRY_USER_NAME", "$oauth
 
 
 def _is_ngc_image(image: str) -> bool:
+    """Return whether an image belongs to the configured NGC registry."""
     return image == NGC_IMAGE_REGISTRY or image.startswith(f"{NGC_IMAGE_REGISTRY}/")
 
 
@@ -139,7 +140,13 @@ class DockerDeploymentBackend(DeploymentBackend):
                             "status": existing.status,
                         },
                     )
-                    await asyncio.to_thread(existing.remove, force=True)
+                    try:
+                        await asyncio.to_thread(existing.remove, force=True)
+                    except self._docker_errors.APIError as exc:
+                        return BackendStatusUpdate(
+                            status="FAILED",
+                            status_message=f"Failed to remove exited container before recreate: {exc}",
+                        )
                 else:
                     return await self.read_status(workspace=workspace, name=name)
             else:
@@ -152,8 +159,11 @@ class DockerDeploymentBackend(DeploymentBackend):
 
         try:
             config = await self._load_deployment_config(workspace, config_name)
+            config = await resolve_deployment_config_secrets(self._sdk, config)
             container_spec = validate_config_for_docker(config)
         except DeploymentConfigError as exc:
+            return BackendStatusUpdate(status="FAILED", status_message=str(exc))
+        except SecretResolutionError as exc:
             return BackendStatusUpdate(status="FAILED", status_message=str(exc))
         except NemoEntityNotFoundError:
             return BackendStatusUpdate(
@@ -200,7 +210,10 @@ class DockerDeploymentBackend(DeploymentBackend):
             host_ports[port_spec.container_port] = host_port
 
         if self._executor_config.pull_images:
-            pull_error = await self._pull_image(container_spec.image)
+            pull_error = await self._pull_image(
+                container_spec.image,
+                ngc_api_key=env_dict(container_spec).get("NGC_API_KEY"),
+            )
             if pull_error is not None:
                 if gpu_ids and gpu_pool is not None:
                     gpu_pool.release_gpu(dep_key)
@@ -494,11 +507,10 @@ class DockerDeploymentBackend(DeploymentBackend):
             and labels.get(MANAGED_BY_KEY) == MANAGED_BY_LABEL
         )
 
-    async def _pull_image(self, image: str) -> str | None:
+    async def _pull_image(self, image: str, *, ngc_api_key: str | None) -> str | None:
         """Pull ``image``, authenticating to NGC when needed. Returns an error message or None."""
         pull_kwargs: dict[str, Any] = {}
         if _is_ngc_image(image):
-            ngc_api_key = await resolve_ngc_api_key(self._sdk)
             if ngc_api_key:
                 pull_kwargs["auth_config"] = {
                     "username": NGC_IMAGE_REGISTRY_USER_NAME,

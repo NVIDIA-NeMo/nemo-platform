@@ -30,6 +30,13 @@ router = APIRouter()
 _config_filter_dep = make_filter_obj_dep(DeploymentConfigFilter)
 
 
+def _contains_secret_ref(body: CreateDeploymentConfigRequest) -> bool:
+    """Return whether a public request includes a controller-managed secret reference."""
+    return any(
+        env.secret_ref is not None for container in (*body.init_containers, *body.containers) for env in container.env
+    )
+
+
 @router.post("/deployment-configs", response_model=DeploymentConfig, status_code=201, tags=["Deployment Configs"])
 @scope.write
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[DeploymentConfigPerms.CREATE])
@@ -38,6 +45,8 @@ async def create_deployment_config(
     body: CreateDeploymentConfigRequest,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> DeploymentConfig:
+    if _contains_secret_ref(body):
+        raise HTTPException(status_code=400, detail="secretRef is reserved for controller-managed deployment configs.")
     config = DeploymentConfig(
         name=body.name,
         workspace=workspace,

@@ -19,7 +19,6 @@ from nmp.core.models.controllers.backends.deployments_plugin.compiler import com
 from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
 from nmp.core.models.controllers.backends.deployments_plugin.executor import executor_for_runtime
 from nmp.core.models.controllers.backends.deployments_plugin.naming import entity_names
-from nmp.core.models.controllers.backends.deployments_plugin.ngc import resolve_ngc_api_key
 from nmp.core.models.controllers.backends.deployments_plugin.resolve import resolve_plugin_deployment
 from nmp.core.models.controllers.backends.deployments_plugin.status import (
     aggregate_status,
@@ -106,8 +105,7 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
                 },
             )
         try:
-            ngc_api_key = await resolve_ngc_api_key(self._nmp_sdk)
-            compiled = compile_model_deployment(resolved, self._cfg, ngc_api_key=ngc_api_key)
+            compiled = compile_model_deployment(resolved, self._cfg)
             entities = self._entity_client()
             if compiled.volume is not None:
                 await entities.create(compiled.volume)

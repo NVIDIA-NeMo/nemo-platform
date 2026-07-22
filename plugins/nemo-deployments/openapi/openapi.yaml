@@ -1086,6 +1086,8 @@ components:
           title: Valuefrom
           additionalProperties: true
           type: object
+        secretRef:
+          $ref: '#/components/schemas/SecretRef'
       type: object
       required:
       - name
@@ -1330,6 +1332,20 @@ components:
           title: Requests
       type: object
       title: ResourceRequirements
+    SecretRef:
+      properties:
+        workspace:
+          type: string
+          title: Workspace
+        name:
+          type: string
+          title: Name
+      type: object
+      required:
+      - workspace
+      - name
+      title: SecretRef
+      description: Reference to a Platform secret resolved by the substrate backend.
     StatusEvent:
       properties:
         status:
