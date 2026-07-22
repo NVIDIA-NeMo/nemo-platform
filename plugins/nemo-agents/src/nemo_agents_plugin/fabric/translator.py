@@ -5,9 +5,10 @@
 
 from __future__ import annotations
 
-import importlib
 from typing import Any
 
+# CI type-checks this plugin via ty extra-paths without installing nemo-agents deps.
+import nemo_fabric as fabric  # ty: ignore[unresolved-import]
 from nemo_agents_plugin.agent_config import AgentConfig, HarnessConfig, ModelConfig
 
 HARNESS_ADAPTER_IDS = {
@@ -22,35 +23,22 @@ class FabricTranslationError(ValueError):
     """Raised when Platform agent config cannot be translated to Fabric config."""
 
 
-def translate_agent_config(config: AgentConfig, harness_name: str | None = None) -> Any:
-    """Translate Platform-owned agent config into a typed in-memory FabricConfig.
-
-    The Fabric SDK import is intentionally local to this function so existing
-    NAT-backed NeMo Agents paths do not require Fabric to be installed.
-    """
-
-    (
-        FabricConfig,
-        HarnessConfig_,
-        MetadataConfig,
-        ModelConfig_,
-        EnvironmentConfig,
-    ) = _fabric_model_types()
-
+def translate_agent_config(config: AgentConfig, harness_name: str | None = None) -> fabric.FabricConfig:
+    """Translate Platform-owned agent config into a typed in-memory FabricConfig."""
     selected_harness_name, harness = _select_harness(config, harness_name)
     model = _resolve_model(config, selected_harness_name, harness)
 
-    fabric_config = FabricConfig(
-        metadata=MetadataConfig(name=config.name, description=config.description or None),
-        harness=HarnessConfig_(
+    fabric_config = fabric.FabricConfig(
+        metadata=fabric.MetadataConfig(name=config.name, description=config.description or None),
+        harness=fabric.HarnessConfig(
             adapter_id=_adapter_id_for_harness(harness),
             resolution="preinstalled",
             settings=harness.settings,
         ),
         models={
-            "default": ModelConfig_(**_model_payload(model)),
+            "default": fabric.ModelConfig(**_model_payload(model)),
         },
-        environment=EnvironmentConfig(
+        environment=fabric.EnvironmentConfig(
             provider=config.environment.provider,
             workspace=config.environment.workspace,
             artifacts=config.environment.artifacts,
@@ -60,25 +48,6 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
 
     _apply_telemetry(fabric_config, config, model)
     return fabric_config
-
-
-def _fabric_model_types() -> tuple[type, type, type, type, type]:
-    # TODO(AIRCORE-896): Keep this import lazy until Fabric SDK/runtime wheels
-    # are available to the repo resolver and can be added as plugin dependencies.
-    try:
-        nemo_fabric = importlib.import_module("nemo_fabric")
-    except ImportError as error:
-        raise FabricTranslationError(
-            "NeMo Fabric SDK is required to translate nemo-agents-spec-v1 config to FabricConfig."
-        ) from error
-
-    return (
-        getattr(nemo_fabric, "FabricConfig"),
-        getattr(nemo_fabric, "HarnessConfig"),
-        getattr(nemo_fabric, "MetadataConfig"),
-        getattr(nemo_fabric, "ModelConfig"),
-        getattr(nemo_fabric, "EnvironmentConfig"),
-    )
 
 
 def _select_harness(config: AgentConfig, harness_name: str | None) -> tuple[str, HarnessConfig]:

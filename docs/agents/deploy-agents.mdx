@@ -323,8 +323,10 @@ conventions apply to the agent's workflow YAML:
   credentials.
 - **Reference models by their Inference Gateway entity name**, with slashes and
   dots converted to hyphens (`meta/llama-3.1-8b-instruct` becomes
-  `default/meta-llama-3-1-8b-instruct`). Use `${NEMO_DEFAULT_MODEL}` to defer to
-  the platform's configured default model.
+  `default/meta-llama-3-1-8b-instruct`). Use `${NEMO_DEFAULT_MODEL}` in agent
+  config files to defer to the SDK or CLI context's configured default model at
+  agent registration time. If you call the REST API directly, replace the
+  placeholder with an explicit VirtualModel name before creating the agent.
 
 To make an external model available to the agent, register a provider first —
 see [Deploy Models](/documentation/models-and-inference/tutorials/deploy-models#add-external-providers)

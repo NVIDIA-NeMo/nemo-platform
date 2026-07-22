@@ -68,6 +68,7 @@ class _FakeProvider:
         self._atif = atif
         self.seeded: dict[str, str] = {}
         self.env: dict[str, str] = {}
+        self.image: str | None = None
         self.uploaded_dirs: list[tuple[Path, str]] = []
         self.execs: list[str] = []
         self.closed = 0
@@ -76,6 +77,7 @@ class _FakeProvider:
     async def create(self, spec: SandboxSpec) -> SandboxHandle:
         self.seeded = dict(spec.files)
         self.env = dict(spec.env)
+        self.image = spec.image
         return SandboxHandle(sandbox_id="fake-1", provider_name=self.name, raw=None)
 
     async def exec(self, handle: SandboxHandle, command: str, **kwargs: object) -> SandboxExecResult:
@@ -221,6 +223,45 @@ async def test_secrets_are_resolved_and_injected_as_env(tmp_path: Path) -> None:
     await runtime.resolve_secrets(_FakeResolver("nvapi-xyz"))
     await _run(runtime, [_task()], tmp_path)
     assert provider.env == {"NVIDIA_API_KEY": "nvapi-xyz"}  # resolved value, keyed by the harness env var
+
+
+async def test_supplied_image_is_used_verbatim_without_building(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A caller-supplied image (an escape hatch for sandboxes needing extra tooling, e.g. a
+    # document-processing image) is used verbatim and short-circuits the build-if-missing path.
+    builds: list[bool] = []
+    monkeypatch.setattr(crt, "ensure_fabric_image", lambda **_kwargs: builds.append(True) or "unused")
+    provider = _FakeProvider()
+    (trial,) = await _run(_runtime(provider, image="doc-tools:1.0"), [_task()], tmp_path)
+
+    assert trial.status == AgentEvalTrialStatus.COMPLETED
+    assert builds == []  # the supplied tag is used; ensure_fabric_image is never called
+    assert provider.image == "doc-tools:1.0"  # and it reaches the SandboxSpec
+    assert trial.metadata["image"] == "doc-tools:1.0"  # surfaced on the trial metadata
+
+
+async def test_default_provisions_build_if_missing_image(tmp_path: Path) -> None:
+    # Without an override, the runtime provisions the harness-agnostic Fabric image (build-if-missing);
+    # the autouse fixture stubs that build to "fabric-img:test".
+    provider = _FakeProvider()
+    (trial,) = await _run(_runtime(provider), [_task()], tmp_path)
+    assert provider.image == "fabric-img:test"
+    assert trial.metadata["image"] == "fabric-img:test"
+
+
+async def test_early_failure_trial_carries_image_metadata(tmp_path: Path) -> None:
+    # A failure BEFORE _to_trial (here: download_dir raises) must still stamp the runtime + selected image
+    # on the trial, matching what _to_trial records on the success and late-failure paths.
+    class _BrokenProvider(_FakeProvider):
+        async def download_dir(self, handle: SandboxHandle, source_dir: str, target_dir: Path) -> None:
+            raise RuntimeError("sandbox died mid-download")
+
+    provider = _BrokenProvider()
+    (trial,) = await _run(_runtime(provider, image="doc-tools:1.0"), [_task()], tmp_path)
+    assert trial.status == AgentEvalTrialStatus.FAILED
+    assert trial.metadata["image"] == "doc-tools:1.0"
+    assert trial.metadata["runtime"] == "fabric_container"
 
 
 async def test_no_run_result_fails_trial(tmp_path: Path) -> None:

@@ -11,7 +11,8 @@ from typing import Any
 from nmp.common.api.common import PaginatedResult
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import IntakeTrace, TraceListFilter, TraceMode
-from nmp.intake.spans.span_attribute_catalog import COST_SCALE, SpanAttributeField, spec_for_field
+from nmp.intake.spans.span_attribute_catalog import SpanAttributeField, spec_for_field
+from nmp.intake.spans.span_rollups import METRIC_ATTRIBUTE_FIELDS, metric_aggregate_columns
 from nmp.intake.spans.storage import (
     float_or_none,
     int_or_none,
@@ -24,16 +25,6 @@ from nmp.intake.spans.storage import (
 
 TRACE_SORT_COLUMNS = {
     "started_at": "started_at",
-}
-
-METRIC_ATTRIBUTE_FIELDS = {
-    "input_tokens": SpanAttributeField.INPUT_TOKENS,
-    "output_tokens": SpanAttributeField.OUTPUT_TOKENS,
-    "cached_tokens": SpanAttributeField.CACHED_TOKENS,
-    "total_tokens": SpanAttributeField.TOTAL_TOKENS,
-    "cost_usd": SpanAttributeField.COST_TOTAL_USD,
-    "cost_input_usd": SpanAttributeField.COST_INPUT_USD,
-    "cost_output_usd": SpanAttributeField.COST_OUTPUT_USD,
 }
 
 TRACE_COLUMNS = [
@@ -273,7 +264,7 @@ def _trace_index_sql(
 
 def _trace_aggregates_sql(table: str) -> tuple[str, dict[str, Any]]:
     source_alias = "trace_spans"
-    metric_columns, parameters = _metric_columns(source_alias)
+    metric_columns, parameters = metric_aggregate_columns(source_alias)
 
     model_spec = spec_for_field(SpanAttributeField.MODEL)
     provider_spec = spec_for_field(SpanAttributeField.PROVIDER)
@@ -384,24 +375,6 @@ def current_spans_sql(
             GROUP BY {group_by_sql}
         )
     """
-
-
-def _metric_columns(source_alias: str) -> tuple[str, dict[str, Any]]:
-    parameters: dict[str, Any] = {}
-    columns: list[str] = []
-    for alias, field in METRIC_ATTRIBUTE_FIELDS.items():
-        spec = spec_for_field(field)
-        key_param = f"{alias}_key"
-        parameters[key_param] = spec.bag_key
-        number_bag = f"{source_alias}.attributes_number"
-        has_expr = f"has(mapKeys({number_bag}), %({key_param})s)"
-        sum_expr = f"sumIf({number_bag}[%({key_param})s], {has_expr})"
-        if spec.scale is not None:
-            value_expr = f"{sum_expr} / {COST_SCALE}"
-        else:
-            value_expr = sum_expr
-        columns.append(f"if(countIf({has_expr}) = 0, NULL, {value_expr}) AS {alias}")
-    return ",\n            ".join(columns), parameters
 
 
 def _order_by(sort: str, *, table_alias: str | None = None) -> str:

@@ -758,7 +758,7 @@ print("\nThe fine-tuned model pushes 'Random Forest' down and ranks CRF papers h
 
 **Benchmark Evaluation**
 
-For systematic evaluation, use the NeMo Evaluator service with retrieval benchmarks like SciDocs, BEIR, or MTEB. Refer to the [Evaluator documentation](/documentation/evaluate-models) for details.
+For systematic evaluation of end-to-end retrieval quality in a RAG pipeline, use the NeMo Evaluator [RAG metrics](/documentation/evaluate-models/metrics/rag-metrics) (RAGAS `context_recall`, `context_precision`, and `context_relevance`).
 
 ---
 
@@ -799,6 +799,6 @@ For detailed information on all available hyperparameters, recommended values, a
 ## Next Steps
 
 - [Monitor training metrics](/documentation/customizer-reference/manage-customization-jobs/get-job-status) in detail
-- [Evaluate your model](/documentation/evaluate-models) with retrieval benchmarks
+- [Evaluate your model](/documentation/evaluate-models/metrics/rag-metrics) with RAG metrics
 - Integrate the fine-tuned embedding model into your RAG pipeline
 - Scale up training with the full SPECTER dataset (~684K triplets) for better results

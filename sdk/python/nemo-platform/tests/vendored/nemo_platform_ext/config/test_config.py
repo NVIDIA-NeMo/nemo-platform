@@ -13,6 +13,7 @@ from nemo_platform.config.config import (
     get_context,
 )
 from nemo_platform.config.models import DEFAULT_BASE_URL, ConfigFile, NoAuthUser, OAuthUser
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 
 
 @pytest.fixture
@@ -337,18 +338,17 @@ class TestConfigWithoutFile:
         assert config.user.refresh_token is None
         assert not hasattr(config.user, "token_endpoint")
 
-    def test_config_from_workload_token_env_only(self, monkeypatch: pytest.MonkeyPatch):
-        """NEMO_WORKLOAD_TOKEN should bootstrap OAuth auth without a config file."""
+    def test_legacy_workload_token_env_is_ignored(self, monkeypatch: pytest.MonkeyPatch):
+        """NEMO_WORKLOAD_TOKEN is no longer a runtime auth bootstrap source."""
         monkeypatch.setenv("NMP_BASE_URL", "https://api.example.com")
         monkeypatch.setenv("NEMO_WORKLOAD_TOKEN", "workload-token-123")
 
         config = get_context()
 
-        assert isinstance(config.user, OAuthUser)
-        assert config.user.token.get_secret_value() == "workload-token-123"
+        assert isinstance(config.user, NoAuthUser)
 
-    def test_config_from_workload_token_file_env_only(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        """NEMO_WORKLOAD_TOKEN_FILE should bootstrap OAuth auth without a config file."""
+    def test_legacy_workload_token_file_env_is_ignored(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        """NEMO_WORKLOAD_TOKEN_FILE is no longer read as a bearer-token file."""
         token_path = tmp_path / "workload.token"
         token_path.write_text("workload-token-from-file\n", encoding="utf-8")
         monkeypatch.setenv("NMP_BASE_URL", "https://api.example.com")
@@ -356,25 +356,37 @@ class TestConfigWithoutFile:
 
         config = get_context()
 
-        assert isinstance(config.user, OAuthUser)
-        assert config.user.token.get_secret_value() == "workload-token-from-file"
+        assert isinstance(config.user, NoAuthUser)
 
-    def test_config_from_missing_workload_token_file_reports_configuration_error(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ):
-        """NEMO_WORKLOAD_TOKEN_FILE should fail clearly when the configured token file cannot be read."""
+    def test_missing_legacy_workload_token_file_is_ignored(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        """Legacy workload token file env no longer triggers config-time file reads."""
         token_path = tmp_path / "missing-workload.token"
         monkeypatch.setenv("NMP_BASE_URL", "https://api.example.com")
         monkeypatch.setenv("NEMO_WORKLOAD_TOKEN_FILE", str(token_path))
 
-        with pytest.raises(ValueError, match="NEMO_WORKLOAD_TOKEN_FILE"):
-            get_context()
+        config = get_context()
+
+        assert isinstance(config.user, NoAuthUser)
+
+    def test_workload_identity_token_file_is_not_static_access_token(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """The workload identity token file env var is handled by the client factory, not Config."""
+        token_path = tmp_path / "workload.token"
+        token_path.write_text("subject-token\n", encoding="utf-8")
+        monkeypatch.setenv("NMP_BASE_URL", "https://api.example.com")
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(token_path))
+
+        config = get_context()
+
+        assert isinstance(config.user, NoAuthUser)
 
     def test_nmp_access_token_precedes_workload_token_env(self, monkeypatch: pytest.MonkeyPatch):
         """NMP_ACCESS_TOKEN remains the highest-precedence token env var."""
         monkeypatch.setenv("NMP_BASE_URL", "https://api.example.com")
         monkeypatch.setenv("NMP_ACCESS_TOKEN", "preferred-token")
         monkeypatch.setenv("NEMO_WORKLOAD_TOKEN", "workload-token-123")
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, "/var/run/secrets/nemo-platform/workload/token")
 
         config = get_context()
 
@@ -389,6 +401,7 @@ class TestConfigWithoutFile:
         monkeypatch.setenv("NMP_ACCESS_TOKEN", "preferred-token")
         monkeypatch.setenv("NEMO_WORKLOAD_TOKEN", "workload-token-123")
         monkeypatch.setenv("NEMO_WORKLOAD_TOKEN_FILE", str(missing_token_path))
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(missing_token_path))
 
         assert Config.runtime_access_token_source_label() == "NMP_ACCESS_TOKEN environment override"
 

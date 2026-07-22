@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Testbed subjects for the analyst harness — one table per subject.
 # Top-level keys are shared defaults merged into every subject.
 base_url = "https://nemo-platform-freeplay.dev.aire.nvidia.com"
@@ -6,7 +9,26 @@ base_url = "https://nemo-platform-freeplay.dev.aire.nvidia.com"
 type = "intake"
 agent = "content-dedup"
 workspace = "nvq"
-# since = "7d"   # optional default lookback (Nd/Nh/Nm or an ISO date)
+
+[glamr]
+type = "intake"
+agent = "glamr"                                 # the main GLAMR agent (ux-agent); the only agent_name-tagged one
+workspace = "default"
+base_url = "https://agenthub.aire.nvidia.com"   # host root; the intake prefix is applied by the rewrite
+auth = "basic"                                  # this Intake is gated by HTTP basic auth (VPN-only, aire)
+intake_path_prefix = "/api/intake"              # this deployment mounts intake here, not at the SDK's /apis/intake
+auth_user_env = "GLAMR_INTAKE_USER"             # names the env var holding the basic-auth username (value in testbed/.env)
+auth_password_env = "GLAMR_INTAKE_PASSWORD"     # names the env var holding the basic-auth password (value in testbed/.env)
+since = "7d"                                     # default lookback for --live; override with --since (e.g. --since 1d, or '' for all-time)
+
+[nemo-oo-airline]
+# The reproducible-analysis face of the NeMo OO Agents tau2-airline corpus.
+# Pinned analyze supports benchmark/intake subjects, so this corpus is
+# represented by the intake workspace captured in state-v9.
+type = "intake"
+agent = "nemo-oo-airline"
+workspace = "tau2-airline-20260710-152942-4754"
+base_url = "http://localhost:8080"
 
 [tau2-airline]
 type = "benchmark"
@@ -25,6 +47,24 @@ include_rewards = true            # also ingest a "-oracle" workspace (answer ke
 # tau2_bin = "/custom/tau2"       # optional: override the derived <tau2_repo>/.venv/bin/tau2
 # tau2_data_dir = "/custom/data"  # optional: override the derived <tau2_repo>/data
 # timeout = 600                   # optional per-task timeout (seconds)
+
+[tau2-telecom]
+type = "benchmark"
+domain = "telecom"
+base_url = "http://localhost:8080"
+workspace = "tau2-telecom"
+tau2_repo = "../tau2-bench"
+agent_llm = "openai/nvidia/nvidia/nemotron-3-super-v3"
+user_llm = "openai/nvidia/nvidia/nemotron-3-super-v3"
+task_split_name = "small"  # curated 20-task telecom split
+num_tasks = 20
+num_trials = 1
+max_concurrency = 8
+seed = 300
+include_rewards = true
+# tau2_bin = "/custom/tau2"
+# tau2_data_dir = "/custom/data"
+# timeout = 600
 
 [tau2-retail]
 type = "benchmark"

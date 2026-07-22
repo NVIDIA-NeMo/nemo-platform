@@ -328,6 +328,75 @@ def test_tweak_spec_full_pipeline():
     assert result == expected
 
 
+def _collision_spec():
+    """Two distinct models sharing a class name across modules that normalize to
+    the same bare name with *differing* content."""
+    return {
+        "components": {
+            "schemas": {
+                "automodel__schema__TrainingSpec": {
+                    "type": "object",
+                    "properties": {"finetuning_type": {"type": "string"}},
+                },
+                "unsloth__schemas__TrainingSpec": {
+                    "type": "object",
+                    "properties": {"use_gradient_checkpointing": {"type": "string"}},
+                },
+            }
+        },
+        "paths": {
+            "/a": {
+                "post": {
+                    "requestBody": {
+                        "content": {"application/json": {"schema": {"$ref": REF + "automodel__schema__TrainingSpec"}}}
+                    }
+                }
+            }
+        },
+    }
+
+
+def test_tweak_spec_raises_on_collision():
+    """A differing-content schema-name collision fails the build, rather than
+    silently keeping one model and mis-pointing the other's ``$ref``s (which
+    would ship a wrong contract in the generated SDK)."""
+    with pytest.raises(ValueError, match="schema name collision"):
+        tweak_spec(_collision_spec())
+
+
+def test_tweak_spec_dedups_identical_content_module_qualified_collision():
+    """Two module-qualified keys with *identical* content dedup to one schema —
+    no raise (the fix must not over-trigger on genuinely-shared shapes)."""
+    spec = {
+        "components": {
+            "schemas": {
+                "pkg_a__schema__Shared": {
+                    "type": "object",
+                    "properties": {"value": {"type": "string"}},
+                },
+                "pkg_b__schema__Shared": {
+                    "type": "object",
+                    "properties": {"value": {"type": "string"}},
+                },
+            }
+        },
+        "paths": {
+            "/a": {
+                "post": {
+                    "requestBody": {
+                        "content": {"application/json": {"schema": {"$ref": REF + "pkg_a__schema__Shared"}}}
+                    }
+                }
+            }
+        },
+    }
+
+    result = tweak_spec(spec)
+    assert set(result["components"]["schemas"]) == {"Shared"}
+    ref = result["paths"]["/a"]["post"]["requestBody"]["content"]["application/json"]["schema"]["$ref"]
+    assert ref == REF + "Shared"
+
+
 def test_anyof_null_collapse_preserves_format_and_write_only():
     """Collapsing ``anyOf: [SecretStr, null]`` must keep ``format`` / ``writeOnly`` so
     SDK + docs treat the field as sensitive."""

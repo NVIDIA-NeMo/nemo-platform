@@ -2,9 +2,13 @@
 title: "Hardware and Software Requirements for NeMo Platform"
 description: ""
 ---
-This page lists the requirements for the OSS local-install path for NeMo Platform 0.2.0. For the full compatibility table, see the [Support Matrix](/documentation/reference/support-matrix).
 
-The OSS 0.2.0 documentation is scoped to local setup with the Python package and `nemo setup`. Docker Compose, Helm, Kubernetes, and OpenShift deployment guides are not part of this release scope.
+This page lists the requirements for the OSS local-install path and
+self-managed Kubernetes deployments. For the full compatibility table, see the
+[Support Matrix](/documentation/reference/support-matrix).
+
+For local setup, use the Python package and `nemo setup`. For self-managed
+clusters, use the NeMo Platform Helm chart on Kubernetes.
 
 ## Local Setup Requirements
 
@@ -18,6 +22,15 @@ The OSS 0.2.0 documentation is scoped to local setup with the Python package and
 | Network | Outbound HTTPS access | Required for package installation and hosted model-provider APIs. |
 | Model provider | NVIDIA Build, OpenAI, Anthropic, Google Gemini, Ollama, or a custom OpenAI-compatible endpoint | `nemo setup` configures one provider as part of the setup flow. |
 | Browser | Current Chrome, Edge, Firefox, or Safari | Required for the Studio UI. |
+
+## Self-Managed Kubernetes Requirements
+
+| Component | Requirement | Notes |
+|-----------|-------------|-------|
+| Kubernetes | minikube, kind, EKS, AKS, GKE, OKE, OpenShift, or on-prem Kubernetes | Use a cluster with storage, networking, and image-pull access configured before installing the chart. |
+| Helm | Helm 3 | Required to install and upgrade the NeMo Platform chart. |
+| Storage | ReadWriteMany-capable persistent storage | Required for shared files and job storage in multi-pod deployments. |
+| Image access | NGC credentials and Kubernetes image pull secrets | Required to pull NeMo Platform container images. |
 
 ## GPU Requirements
 

@@ -44,6 +44,8 @@ secrets will not decrypt with a new key.
 | api.autoscaling.targetCPUUtilizationPercentage | int | `80` | The target CPU utilization percentage. |
 | api.enabled | bool | `true` | Specifies whether to enable the api deployment. |
 | api.extraArgs | list | `[]` | Additional arguments to pass to the Platform API service |
+| api.extraVolumeMounts | list | `[]` | Additional volume mounts to add to the Platform API container. |
+| api.extraVolumes | list | `[]` | Additional volumes to add to the Platform API pod. |
 | api.image | object | This object has the following default values for the image configuration. | Container image configuration for the api deployment. |
 | api.image.pullPolicy | string | `"IfNotPresent"` | The image pull policy determining when to pull new images. |
 | api.image.repository | string | `"nvcr.io/nvidia/nemo-platform/nmp-api"` | The registry where the NeMo Platform image is located. |
@@ -166,8 +168,12 @@ secrets will not decrypt with a new key.
 | envoyProxy.autoscaling.maxReplicas | int | `10` | The maximum number of replicas for the deployment. |
 | envoyProxy.autoscaling.minReplicas | int | `1` | The minimum number of replicas for the deployment. |
 | envoyProxy.autoscaling.targetCPUUtilizationPercentage | int | `80` | The target CPU utilization percentage. |
+| envoyProxy.configOverride | string | `""` | Full Envoy config override. When set, this replaces the chart's default passthrough Envoy config. |
 | envoyProxy.enabled | bool | `true` | Specifies whether to enable the Envoy proxy deployment. Rendered only when platform config has auth.enabled: true. |
 | envoyProxy.extraArgs | list | `[]` | Extra arguments to append to the envoy container command. Useful for passing server flags such as concurrency. Example: ["--concurrency", "4"] |
+| envoyProxy.extraVolumeMounts | list | `[]` | Additional volume mounts to add to the Envoy container. |
+| envoyProxy.extraVolumes | list | `[]` | Additional volumes to add to the Envoy pod. |
+| envoyProxy.image.digest | string | `""` | Optional image digest. When set, the Envoy image renders as repository@digest. |
 | envoyProxy.livenessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/ready","port":"admin"},"periodSeconds":10,"timeoutSeconds":5}` | Liveness probe for the Envoy container (admin interface /ready). |
 | envoyProxy.nodeSelector | object | `{}` | Node selector configuration for the Envoy pods. |
 | envoyProxy.podAnnotations | object | `{}` | Annotations to add to the Envoy service pod. |
@@ -231,8 +237,6 @@ secrets will not decrypt with a new key.
 | ingress.enabled | bool | `false` | Specifies whether to enable the ingress. |
 | ingress.hosts[0] | object | `{"name":"","paths":[{"path":"/","pathType":"Exact","port":"{{ include \"nemo-platform.ingressBackendPort\" . }}","service":"{{ include \"nemo-platform.ingressBackendService\" . }}"},{"path":"/apis","pathType":"Prefix","port":"{{ include \"nemo-platform.ingressBackendPort\" . }}","service":"{{ include \"nemo-platform.ingressBackendService\" . }}"},{"path":"/studio","pathType":"Prefix","port":"{{ include \"nemo-platform.ingressBackendPort\" . }}","service":"{{ include \"nemo-platform.ingressBackendService\" . }}"},{"path":"/cluster-info","pathType":"Exact","port":"{{ include \"nemo-platform.ingressBackendPort\" . }}","service":"{{ include \"nemo-platform.ingressBackendService\" . }}"},{"path":"/status","pathType":"Exact","port":"{{ include \"nemo-platform.ingressBackendPort\" . }}","service":"{{ include \"nemo-platform.ingressBackendService\" . }}"}]}` | Hostname used by ingress. If blank, use path-only routing. |
 | ingress.tls | list | `[]` | TLS configurations. |
-| k8s-nim-operator.enabled | bool | `true` | Specifies whether to enable the default NIM Operator installation. To learn more, see [Install NIM Operator](https://docs.nvidia.com/nim-operator/latest/install.html). If you are using an existing NIM Operator installation, set this to false. |
-| k8s-nim-operator.nfd.nodeFeatureRules.deviceID | bool | `false` | Specifies whether to enable device ID feature rules. |
 | multinodeNetworking | object | `{"aws":{"efaDevicesPerGPU":1,"enabled":false},"azure":{"enabled":false,"rdmaDeviceName":"hca_shared_devices_a","rdmaDevicesPerGPU":1},"gcp":{"enabled":false},"oci":{"enabled":false,"rdmaDevicesPerGPU":8}}` | Multi-node networking configuration for distributed GPU training. These settings control Kyverno policies that inject cloud-specific networking and NCCL configurations.  Requirements: - Kyverno policy engine must be installed in your cluster (required for multi-node networking) - Kyverno is NOT included as a subchart dependency and must be installed separately  To install Kyverno:   helm install kyverno kyverno/kyverno --namespace kyverno --create-namespace --version 3.2.0  Documentation: https://kyverno.io/docs/installation/ Helm chart: https://kyverno.github.io/kyverno/  Note: Only enable ONE cloud provider per cluster deployment. |
 | multinodeNetworking.aws | object | `{"efaDevicesPerGPU":1,"enabled":false}` | AWS-specific configuration for EFA device injection |
 | multinodeNetworking.aws.efaDevicesPerGPU | int | `1` | Number of EFA devices to request per GPU (typically 1 or 4) |
@@ -264,7 +268,7 @@ secrets will not decrypt with a new key.
 | openshiftRoute.service | string | `"{{ include \"nemo-platform.ingressBackendService\" . }}"` | Service name to route to. Defaults to Envoy when auth+envoy enabled, otherwise API (tpl-evaluated). |
 | openshiftRoute.targetPort | string | `"{{ include \"nemo-platform.ingressBackendPort\" . }}"` | Target port on the service. Defaults to Envoy or API port depending on auth (tpl-evaluated). |
 | openshiftRoute.tls | object | `{}` | Optional TLS configuration (termination, certificate, key, etc.). See OpenShift Route spec. |
-| platformConfig | object | `{}` | Platform-wide configuration settings Set configuration here to apply custom, structured configuration across all services. Applied after the base platform config is evaluated for templates. Enables adding / overriding YAML-based elements in the evaluated platform config. It is usually recommended to use this config section instead of `basePlatformConfig` unless you need to use templating features. For example, you can set the NIM default StorageClass via models.controller.backends.k8s-nim-operator.config.default_storage_class. For full configuration reference, see the NeMo Platform's config reference: https://docs.nvidia.com/nemo-platform |
+| platformConfig | object | `{}` | Platform-wide configuration settings Set configuration here to apply custom, structured configuration across all services. Applied after the base platform config is evaluated for templates. Enables adding / overriding YAML-based elements in the evaluated platform config. It is usually recommended to use this config section instead of `basePlatformConfig` unless you need to use templating features. For example, you can set the NIM default StorageClass via models.controller.backends.deployments_plugin.default_storage_class. For full configuration reference, see https://docs.nvidia.com/nemo-platform |
 | platformSeedJob | object | This object has the following default values for the platform seed Job configuration. | Platform seed Job (Helm hook: runs after install/upgrade) Runs the platform-seed task (guardrails configs, evaluator system entities, data designer filesets). Uses post-install,post-upgrade hooks so it runs on fresh installs and can be re-triggered on no-op upgrade. |
 | platformSeedJob.activeDeadlineSeconds | int | `600` | Maximum time in seconds the Job can run. |
 | platformSeedJob.affinity | object | `{}` | Affinity for the platform seeding Job pod. |
@@ -297,8 +301,7 @@ secrets will not decrypt with a new key.
 | postgresql.serviceAccount.create | bool | `true` | Specifies whether a service account should be created for the PostgreSQL pod. |
 | postgresql.serviceAccount.name | string | `""` | The name of the service account to use. If not set and create is true, a name is generated from the release fullname. |
 | postgresql.tolerations | list | `[]` | Tolerations for the PostgreSQL pod. |
-| rbac | object | `{"k8sNimOperatorEnabled":true,"volcanoEnabled":true}` | RBAC configuration settings for optional dependencies |
-| rbac.k8sNimOperatorEnabled | bool | `true` | Specifies whether to enable the core Controller to have RBAC permissions to k8s-nim-operator's NIMService for scheduling NIMs. |
+| rbac | object | `{"volcanoEnabled":true}` | RBAC configuration settings for optional dependencies |
 | rbac.volcanoEnabled | bool | `true` | Specifies whether to enable the core Controller to have RBAC permissions to Volcano for scheduling distributed jobs. |
 | secrets | object | `{"defaultEncryptionKey":{"existingSecret":{"key":"NMP_SECRETS_DEFAULT_ENCRYPTION_KEY","name":""},"generated":{"activeDeadlineSeconds":120,"affinity":{},"backoffLimit":3,"enabled":true,"image":{"pullPolicy":"IfNotPresent","repository":"docker.io/library/python","tag":"3.12-slim"},"nodeSelector":{},"podSecurityContext":{},"resources":{},"securityContext":{},"serviceAccount":{"annotations":{},"create":true,"name":""},"tolerations":[],"ttlSecondsAfterFinished":300},"value":""}}` | Secrets service configuration. |
 | secrets.defaultEncryptionKey.existingSecret | object | `{"key":"NMP_SECRETS_DEFAULT_ENCRYPTION_KEY","name":""}` | Existing Kubernetes Secret containing the key for encrypting platform secrets. If name is set, the chart does not create or generate the default api-env Secret. |

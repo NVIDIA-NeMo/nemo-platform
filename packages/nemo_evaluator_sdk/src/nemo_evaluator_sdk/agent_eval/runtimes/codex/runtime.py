@@ -3,6 +3,8 @@
 
 """Codex-backed agent-eval runtimes."""
 
+# ruff: noqa: I001, T201 - the vendored SDK mirror uses different import-order and print settings.
+
 from __future__ import annotations
 
 import asyncio
@@ -11,7 +13,9 @@ import json
 import os
 import shlex
 import shutil
+import stat
 import subprocess
+import tempfile
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from enum import StrEnum
 from pathlib import Path
@@ -92,8 +96,18 @@ class CodexCliAgentRuntime:
     async def _run_task(self, index: int, task: AgentEvalTask, config: AgentEvalRunConfig) -> AgentEvalTrial:
         evidence_dir = self._evidence_dir(index, task, config)
         workspace_dir = evidence_dir / "workspace"
-        evidence_dir.mkdir(parents=True, exist_ok=True)
-        workspace_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            # The task directory is mounted into Docker, but its private parent is not. Keeping that
+            # parent host-owned and 0700 preserves the local confidentiality boundary even when a
+            # container is interrupted before its recursive cleanup completes.
+            _ensure_private_directory(evidence_dir.parent)
+            _ensure_private_directory(evidence_dir)
+            _ensure_private_directory(workspace_dir)
+        except Exception as exc:
+            # The path that failed setup is not safe to use for artifact persistence. In particular,
+            # writing through a rejected evidence-directory symlink would escape the private tree.
+            return _failed_codex_trial(task, None, exc, runtime_name=self._runtime_name)
 
         prompt_path = evidence_dir / "prompt.txt"
         task_path = evidence_dir / "task.json"
@@ -105,7 +119,10 @@ class CodexCliAgentRuntime:
         # this evidence dir into the sandbox (danger-full-access), so serializing `intent` (desired
         # behavior) or `reference` (held-out ground truth) here would let the agent read them back out
         # of `/evidence/task.json` — the same reward-hacking leak the intent-free prompt closes.
-        task_path.write_text(task.model_dump_json(indent=2, exclude={"intent", "reference"}), encoding="utf-8")
+        try:
+            _write_private_text(task_path, task.model_dump_json(indent=2, exclude={"intent", "reference"}))
+        except Exception as exc:
+            return _failed_codex_trial(task, evidence_dir, exc, runtime_name=self._runtime_name)
 
         command = self._command(workspace_dir=workspace_dir, final_output_path=final_output_path)
         process: Any | None = None
@@ -118,13 +135,15 @@ class CodexCliAgentRuntime:
             # Build the prompt after seeding and inside the guarded block: an instruction-less task
             # raises here, failing just this task instead of aborting the run (and seeding wins if both).
             prompt = self._prompt_builder(task)
-            prompt_path.write_text(prompt, encoding="utf-8")
+            _write_private_text(prompt_path, prompt)
             process = await self._process_factory(
                 *command,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )
+            if process is None:
+                raise RuntimeError("process factory failed to create a process")
             stdout, stderr = await asyncio.wait_for(
                 process.communicate(prompt.encode("utf-8")),
                 timeout=self._timeout_s,
@@ -137,8 +156,18 @@ class CodexCliAgentRuntime:
 
         stdout_text = _decode_process_output(stdout)
         stderr_text = _decode_process_output(stderr)
-        stdout_path.write_text(stdout_text, encoding="utf-8")
-        stderr_path.write_text(stderr_text, encoding="utf-8")
+        artifact_persistence_error: str | None = None
+        try:
+            _write_private_text(stdout_path, stdout_text)
+            _write_private_text(stderr_path, stderr_text)
+        except Exception as exc:
+            artifact_persistence_error = f"{exc.__class__.__name__}: {exc}"
+
+        permission_cleanup_error: str | None = None
+        try:
+            self._validate_artifact_permissions(evidence_dir)
+        except Exception as exc:
+            permission_cleanup_error = f"{exc.__class__.__name__}: {exc}"
 
         if process.returncode != 0:
             return _failed_codex_trial(
@@ -146,13 +175,32 @@ class CodexCliAgentRuntime:
                 evidence_dir,
                 RuntimeError(f"codex exec exited with status {process.returncode}: {stderr_text.strip()}"),
                 runtime_name=self._runtime_name,
+                permission_cleanup_error=permission_cleanup_error,
+                artifact_persistence_error=artifact_persistence_error,
             )
 
-        if final_output_path.exists():
-            output_text = final_output_path.read_text(encoding="utf-8")
-        else:
-            output_text = stdout_text
-            final_output_path.write_text(output_text, encoding="utf-8")
+        if artifact_persistence_error is not None:
+            return _failed_codex_trial(
+                task,
+                evidence_dir,
+                RuntimeError(f"failed to persist Codex evidence: {artifact_persistence_error}"),
+                runtime_name=self._runtime_name,
+                permission_cleanup_error=permission_cleanup_error,
+                artifact_persistence_error=artifact_persistence_error,
+            )
+        if permission_cleanup_error is not None:
+            return _failed_codex_trial(
+                task,
+                evidence_dir,
+                PermissionError(f"Codex evidence permission normalization failed: {permission_cleanup_error}"),
+                runtime_name=self._runtime_name,
+                permission_cleanup_error=permission_cleanup_error,
+            )
+
+        try:
+            output_text = _read_private_final_output(final_output_path, fallback=stdout_text)
+        except Exception as exc:
+            return _failed_codex_trial(task, evidence_dir, exc, runtime_name=self._runtime_name)
         return AgentEvalTrial(
             id=f"{task.id}:codex",
             task_id=task.id,
@@ -206,6 +254,9 @@ class CodexCliAgentRuntime:
             command.extend(["--model", self._model])
         command.append("-")
         return command
+
+    def _validate_artifact_permissions(self, evidence_dir: Path) -> None:
+        """Validate runtime-specific artifact postconditions after the process exits."""
 
     def _evidence_dir(self, index: int, task: AgentEvalTask, config: AgentEvalRunConfig) -> Path:
         root = self._work_root
@@ -289,11 +340,31 @@ class CodexDockerCliAgentRuntime(CodexCliAgentRuntime):
         if self._model is not None:
             inner_command.extend(["--model", self._model])
         inner_command.append("-")
+        # Codex intentionally runs as root: the container mounts its auth under /root and coding tasks
+        # may need to install tools. Repair the bind-mounted trees before Docker returns so the host can
+        # score and persist every artifact the agent created without widening access to other host users.
+        # Capture the bind mount's owner as seen inside this container before Codex runs: raw host UID/GID
+        # values are not portable across Docker Desktop and rootless user-namespace mappings. Keep Codex
+        # failures authoritative; only surface the required chmod status when Codex itself succeeded.
+        shell_command = (
+            "host_owner=\"$(stat -c '%u:%g' /evidence 2>/dev/null)\" || true; "
+            f"{shlex.join(inner_command)}; "
+            "codex_status=$?; "
+            'if [ -n "$host_owner" ]; then '
+            'chown -R "$host_owner" /workspace /evidence 2>/dev/null || true; '
+            "fi; "
+            "chmod -R u+rwX,go-rwx /workspace /evidence; "
+            "permissions_status=$?; "
+            'if [ "$codex_status" -ne 0 ]; then exit "$codex_status"; fi; '
+            'exit "$permissions_status"'
+        )
         return [
             self._docker_bin,
             "run",
             "--rm",
             "-i",
+            "-e",
+            "PYTHONDONTWRITEBYTECODE=1",
             "-v",
             f"{self._auth_path.resolve()}:/root/.codex/auth.json:ro",
             "-v",
@@ -303,8 +374,11 @@ class CodexDockerCliAgentRuntime(CodexCliAgentRuntime):
             self._image,
             "sh",
             "-lc",
-            shlex.join(inner_command),
+            shell_command,
         ]
+
+    def _validate_artifact_permissions(self, evidence_dir: Path) -> None:
+        _validate_private_tree(evidence_dir)
 
 
 def resolve_codex_runtime(
@@ -394,32 +468,130 @@ def print_codex_agent_models(*, codex_bin: str = "codex") -> None:
 
 def _failed_codex_trial(
     task: AgentEvalTask,
-    evidence_dir: Path,
+    evidence_dir: Path | None,
     exc: Exception,
     *,
     runtime_name: str = "codex_cli",
+    permission_cleanup_error: str | None = None,
+    artifact_persistence_error: str | None = None,
 ) -> AgentEvalTrial:
-    error_path = evidence_dir / "error.json"
-    error_path.write_text(
-        json.dumps({"error_type": exc.__class__.__name__, "error": str(exc)}) + "\n", encoding="utf-8"
-    )
+    evidence: CandidateEvidence | None = None
+    error_artifact_error: str | None = None
+    if evidence_dir is not None:
+        error_path = evidence_dir / "error.json"
+        try:
+            _write_private_text(
+                error_path, json.dumps({"error_type": exc.__class__.__name__, "error": str(exc)}) + "\n"
+            )
+        except Exception as artifact_exc:
+            error_artifact_error = f"{artifact_exc.__class__.__name__}: {artifact_exc}"
+        else:
+            evidence = CandidateEvidence(
+                descriptors={"error": EvidenceDescriptor(kind="error", format="json", ref=str(error_path))},
+                metadata={"runtime": runtime_name, "agent": "codex"},
+            )
+
+    metadata: dict[str, Any] = {
+        "runtime": runtime_name,
+        "agent": "codex",
+        "agent_ok": False,
+        "error_type": exc.__class__.__name__,
+        "error": str(exc),
+    }
+    if permission_cleanup_error is not None:
+        metadata["permission_cleanup_error"] = permission_cleanup_error
+    if artifact_persistence_error is not None:
+        metadata["artifact_persistence_error"] = artifact_persistence_error
+    if error_artifact_error is not None:
+        metadata["error_artifact_error"] = error_artifact_error
     return AgentEvalTrial(
         id=f"{task.id}:codex",
         task_id=task.id,
         status=AgentEvalTrialStatus.FAILED,
         output=None,
-        evidence=CandidateEvidence(
-            descriptors={"error": EvidenceDescriptor(kind="error", format="json", ref=str(error_path))},
-            metadata={"runtime": runtime_name, "agent": "codex"},
-        ),
-        metadata={
-            "runtime": runtime_name,
-            "agent": "codex",
-            "agent_ok": False,
-            "error_type": exc.__class__.__name__,
-            "error": str(exc),
-        },
+        evidence=evidence,
+        metadata=metadata,
     )
+
+
+def _ensure_private_directory(path: Path) -> None:
+    """Create or repair a host-owned directory without following a leaf symlink."""
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        path_stat = os.fstat(descriptor)
+        if path_stat.st_uid != os.getuid():
+            raise PermissionError(f"directory is not owned by the invoking host user: {path}")
+        os.fchmod(descriptor, 0o700)
+    finally:
+        os.close(descriptor)
+
+
+def _write_private_text(path: Path, content: str) -> None:
+    """Atomically publish a host-created evidence artifact with owner-only access."""
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary_path = Path(temporary_name)
+    try:
+        os.fchmod(descriptor, 0o600)
+        temporary_file = os.fdopen(descriptor, "w", encoding="utf-8")
+        descriptor = -1
+        with temporary_file:
+            temporary_file.write(content)
+        os.replace(temporary_path, path)
+    finally:
+        if descriptor != -1:
+            with contextlib.suppress(OSError):
+                os.close(descriptor)
+        temporary_path.unlink(missing_ok=True)
+
+
+def _read_private_final_output(path: Path, *, fallback: str) -> str:
+    """Read a regular agent-created final output without following it, then republish it privately."""
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        _write_private_text(path, fallback)
+        return fallback
+
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise PermissionError(f"final output is not a regular file: {path}")
+        with os.fdopen(descriptor, "r", encoding="utf-8") as output_file:
+            descriptor = -1
+            output_text = output_file.read()
+    finally:
+        if descriptor != -1:
+            os.close(descriptor)
+
+    _write_private_text(path, output_text)
+    return output_text
+
+
+def _validate_private_tree(root: Path) -> None:
+    """Require a host-owned, owner-only tree without following agent-created symlinks."""
+    expected_uid = os.getuid()
+    pending = [root]
+    while pending:
+        path = pending.pop()
+        path_stat = path.lstat()
+        if stat.S_ISLNK(path_stat.st_mode):
+            continue
+        if path_stat.st_uid != expected_uid:
+            raise PermissionError(f"artifact is not owned by the invoking host user: {path}")
+
+        mode = stat.S_IMODE(path_stat.st_mode)
+        if mode & 0o077:
+            raise PermissionError(f"artifact grants group or other access: {path} ({mode:o})")
+        if stat.S_ISDIR(path_stat.st_mode):
+            if mode & 0o700 != 0o700:
+                raise PermissionError(f"directory is not owner-readable, writable, and traversable: {path} ({mode:o})")
+            with os.scandir(path) as entries:
+                pending.extend(Path(entry.path) for entry in entries)
+        elif stat.S_ISREG(path_stat.st_mode):
+            if mode & 0o600 != 0o600:
+                raise PermissionError(f"file is not owner-readable and writable: {path} ({mode:o})")
+        else:
+            raise PermissionError(f"artifact is not a regular file or directory: {path}")
 
 
 async def _terminate_process(process: Any | None) -> None:

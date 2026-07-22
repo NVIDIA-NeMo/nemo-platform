@@ -155,6 +155,7 @@ def fake_gh(monkeypatch):
 def test_publish_mints_next_ref_uploads_and_prepends_row(fake_gh, tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("getpass.getuser", lambda: "ada")
     monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
+    monkeypatch.delenv("TESTBED_STATE_REPO", raising=False)
     bundle = _make_bundle(tmp_path / "candidate.tar.zst")
     ref = publish.publish(bundle, reason="fresh corpus", env={})
     assert ref == "state-v7"
@@ -166,6 +167,7 @@ def test_publish_mints_next_ref_uploads_and_prepends_row(fake_gh, tmp_path, monk
             "upload",
             release.RELEASE_TAG,
             str(tmp_path / "state-v7.tar.zst"),
+            "--clobber",
             "--repo",
             release.DEFAULT_STATE_REPO,
         )
@@ -364,3 +366,4 @@ def test_workflow_protects_all_secrets_and_exports_state_repository():
     assert "    environment: insights-testbed\n" in produce_job
     assert "    environment: insights-testbed\n" in analyze_job
     assert "TESTBED_STATE_REPO: ${{ vars.TESTBED_STATE_REPO || 'NVIDIA-dev/NeMo-Optimizer' }}" in workflow
+    assert 'testbed analyze "$SUBJECT" ${STATE:+--state "$STATE"} --no-baseline-update ' in analyze_job

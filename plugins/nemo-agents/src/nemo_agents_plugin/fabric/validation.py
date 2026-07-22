@@ -6,10 +6,17 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from nemo_agents_plugin.agent_config import AgentConfig
+from nemo_agents_plugin.fabric.translator import FabricTranslationError, translate_agent_config
+
+# CI type-checks this plugin via ty extra-paths without installing nemo-agents deps.
+from nemo_fabric import Fabric, FabricConfig, FabricConfigError  # ty: ignore[unresolved-import]
+from pydantic import ValidationError
 
 FABRIC_VALIDATION_TIMEOUT_SECONDS = 60.0
 
@@ -20,6 +27,15 @@ class FabricValidationResult:
 
     plan: Any
     doctor_report: Any
+
+
+@dataclass(frozen=True, slots=True)
+class PlatformFabricValidationResult:
+    """Result of Platform config translation and Fabric validation."""
+
+    agent_config: AgentConfig
+    fabric_config: FabricConfig
+    fabric_validation_result: FabricValidationResult
 
 
 class FabricValidationError(ValueError):
@@ -36,8 +52,31 @@ class FabricPreflightError(FabricValidationError):
         super().__init__(f"Fabric preflight failed with status {status!r}: {details}")
 
 
+async def validate_platform_agent_config(
+    config: AgentConfig | Mapping[str, Any],
+    *,
+    base_dir: Path | str,
+    harness_name: str | None = None,
+    fabric: Any | None = None,
+) -> PlatformFabricValidationResult:
+    """Translate and validate a Platform-owned agent config with Fabric."""
+
+    agent_config = _coerce_agent_config(config)
+    try:
+        fabric_config = translate_agent_config(agent_config, harness_name=harness_name)
+    except FabricTranslationError as error:
+        raise FabricValidationError(f"Fabric config translation failed: {error}") from error
+
+    validation_result = await validate_fabric_config(fabric_config, base_dir=base_dir, fabric=fabric)
+    return PlatformFabricValidationResult(
+        agent_config=agent_config,
+        fabric_config=fabric_config,
+        fabric_validation_result=validation_result,
+    )
+
+
 async def validate_fabric_config(
-    fabric_config: Any,
+    fabric_config: FabricConfig,
     *,
     base_dir: Path | str,
     fabric: Any | None = None,
@@ -45,11 +84,9 @@ async def validate_fabric_config(
     """Run Fabric plan and doctor for a translated FabricConfig.
 
     This validates the selected harness and environment without invoking the
-    agent. The Fabric SDK import is intentionally local so NAT-backed paths do
-    not require Fabric to be installed.
+    agent. Fabric is a required dependency of the ``nemo-agents`` plugin.
     """
 
-    Fabric, FabricConfigError = _fabric_validation_types()
     fabric_client = fabric or Fabric()
 
     try:
@@ -71,15 +108,14 @@ async def validate_fabric_config(
     return FabricValidationResult(plan=plan, doctor_report=doctor_report)
 
 
-def _fabric_validation_types() -> tuple[type, type[Exception]]:
-    # TODO(AIRCORE-896): Keep this import lazy until Fabric SDK/runtime wheels
-    # are available to the repo resolver and can be added as plugin dependencies.
-    try:
-        nemo_fabric = importlib.import_module("nemo_fabric")
-    except ImportError as error:
-        raise FabricValidationError("NeMo Fabric SDK is required to plan and preflight FabricConfig.") from error
+def _coerce_agent_config(config: AgentConfig | Mapping[str, Any]) -> AgentConfig:
+    if isinstance(config, AgentConfig):
+        return config
 
-    return getattr(nemo_fabric, "Fabric"), getattr(nemo_fabric, "FabricConfigError")
+    try:
+        return AgentConfig.model_validate(config)
+    except ValidationError as error:
+        raise FabricValidationError(f"Invalid Platform agent config: {error}") from error
 
 
 def _ensure_doctor_passed(report: dict[str, Any]) -> None:

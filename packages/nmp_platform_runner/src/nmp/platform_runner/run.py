@@ -11,14 +11,24 @@ import signal
 import threading
 import time
 from collections.abc import Callable, Mapping
+from typing import cast
 
-from nmp.common.config import get_auth_config, get_common_service_config, get_service_config
+from nmp.common.config import get_auth_config, get_common_service_config, get_platform_config, get_service_config
 from nmp.common.observability import initialize_obs, setup_global_instrumentations
 from nmp.common.observability.otel import settings as otel_settings
 from nmp.common.service import CircularDependencyError, Service
-from nmp.platform_runner.config import apply_run_environment, resolve_run_configuration
+from nmp.platform_runner.config import (
+    PlatformAppConfig,
+    apply_run_environment,
+    resolve_run_configuration,
+)
 from nmp.platform_runner.health import get_platform_resource_attributes
-from nmp.platform_runner.loader import load_controller_run_func, load_service, order_services_by_dependencies
+from nmp.platform_runner.loader import (
+    ControllerRunFunc,
+    load_controller_run_func,
+    load_service,
+    order_services_by_dependencies,
+)
 from nmp.platform_runner.registry import AVAILABLE_SIDECARS
 from nmp.platform_runner.server import run_server, run_server_with_reload
 from nmp.platform_runner.version import get_platform_version
@@ -53,7 +63,7 @@ def _database_display(db_url: str) -> str:
 
 
 def run_controllers_in_threads(
-    controller_run_funcs: dict[str, Callable],
+    controller_run_funcs: dict[str, ControllerRunFunc],
     stop_signal: threading.Event,
 ) -> list[threading.Thread]:
     """Start controller run functions in daemon threads."""
@@ -66,15 +76,8 @@ def run_controllers_in_threads(
 
 
 def run_platform(
+    config: PlatformAppConfig | None = None,
     *,
-    services: list[str] | None = None,
-    service_group: str | None = None,
-    controllers: list[str] | None = None,
-    controller_group: str | None = None,
-    sidecars: list[str] | None = None,
-    config_path: str | None = None,
-    host: str = "0.0.0.0",
-    port: int = 8080,
     reload_app_factory: str | None = None,
     on_shutdown: Callable[[], object] | None = None,
 ) -> None:
@@ -82,16 +85,7 @@ def run_platform(
     t_total = time.perf_counter()
 
     t0 = time.perf_counter()
-    resolved = resolve_run_configuration(
-        services=services,
-        service_group=service_group,
-        controllers=controllers,
-        controller_group=controller_group,
-        sidecars=sidecars,
-        config_path=config_path,
-        host=host,
-        port=port,
-    )
+    resolved = resolve_run_configuration(config)
     apply_run_environment(resolved)
     _startup_phase("resolve_config", t0)
 
@@ -111,6 +105,7 @@ def run_platform(
         raise ValueError(f"Controller/sidecar name collision: {', '.join(sorted(collisions))}")
 
     service_instances = _load_service_instances(sorted(resolved.services), resolved.available_services)
+    get_platform_config().services = ",".join(sorted(service.name for service in service_instances))
     controller_run_funcs = _load_run_functions(
         sorted(resolved.controllers), resolved.available_controllers, "controller"
     )
@@ -156,7 +151,7 @@ def run_platform(
                 controller_threads.extend(run_controllers_in_threads(controller_run_funcs, controller_stop_signal))
             if sidecar_run_funcs:
                 controller_threads.extend(run_controllers_in_threads(sidecar_run_funcs, controller_stop_signal))
-            run_server(service_instances, host=resolved.host, port=resolved.port)
+            run_server(service_instances, host=resolved.host, port=resolved.port, socket_path=resolved.socket_path)
     except ValueError as error:
         logger.error("Configuration error: %s", error)
         raise SystemExit(1) from error
@@ -212,16 +207,16 @@ def _load_service_instances(
 
 def _load_run_functions(
     names: list[str],
-    registry: Mapping[str, str | Callable],
+    registry: Mapping[str, str | ControllerRunFunc],
     kind: str,
-) -> dict[str, Callable]:
-    run_funcs: dict[str, Callable] = {}
+) -> dict[str, ControllerRunFunc]:
+    run_funcs: dict[str, ControllerRunFunc] = {}
     for name in names:
         t0 = time.perf_counter()
         value = registry[name]
         try:
             if callable(value):
-                run_funcs[name] = value
+                run_funcs[name] = cast(ControllerRunFunc, value)
             else:
                 run_funcs[name] = load_controller_run_func(name, value)
         except (ImportError, TypeError, AttributeError, ValueError) as error:

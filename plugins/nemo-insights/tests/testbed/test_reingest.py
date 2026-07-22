@@ -202,6 +202,79 @@ def test_iso_to_ns_treats_naive_as_utc():
 # --- build_trace_request ---
 
 
+def test_build_trace_requests_respects_serialized_size(monkeypatch):
+    """ByteSize() drives batching: a small limit splits spans across requests."""
+    monkeypatch.setattr(reingest, "OTLP_REQUEST_MAX_BYTES", 512)
+    docs = [{**AGENT_DOC, "span_id": f"{i:016x}"} for i in range(5)]
+    requests = reingest.build_trace_requests(docs, CATALOG)
+    assert len(requests) > 1
+    for request in requests:
+        assert request.ByteSize() <= 512
+        assert len(request.resource_spans[0].scope_spans[0].spans) >= 1
+
+
+def test_build_trace_requests_accepts_exact_serialized_size_limit():
+    one_span_size = reingest.build_trace_request([reingest.doc_to_otlp(AGENT_DOC, CATALOG)]).ByteSize()
+
+    requests = reingest.build_trace_requests([AGENT_DOC], CATALOG, max_bytes=one_span_size)
+
+    assert len(requests) == 1
+    assert requests[0].ByteSize() == one_span_size
+    with pytest.raises(RuntimeError, match=rf"exceeds {one_span_size - 1} bytes"):
+        reingest.build_trace_requests([AGENT_DOC], CATALOG, max_bytes=one_span_size - 1)
+
+
+def test_build_trace_requests_respects_span_count_limit(monkeypatch):
+    monkeypatch.setattr(reingest, "OTLP_REQUEST_MAX_SPANS", 2)
+    docs = [{**AGENT_DOC, "span_id": f"{i:016x}"} for i in range(5)]
+    requests = reingest.build_trace_requests(docs, CATALOG)
+    sizes = [len(req.resource_spans[0].scope_spans[0].spans) for req in requests]
+    assert sizes == [2, 2, 1]
+
+
+def test_build_trace_requests_rejects_oversized_single_span():
+    huge = {**AGENT_DOC, "raw_attributes": json.dumps({"payload": "x" * (5 * 1024 * 1024)})}
+    with pytest.raises(RuntimeError, match="exceeds"):
+        reingest.build_trace_requests([huge], CATALOG)
+
+
+def test_ingest_bundle_splits_on_serialized_size(tmp_path, quiet_platform, monkeypatch):
+    """Small byte limit forces multiple OTLP posts even when span count is low."""
+    monkeypatch.setattr(reingest, "OTLP_REQUEST_MAX_BYTES", 512)
+    docs = [{**AGENT_DOC, "span_id": f"{i:016x}"} for i in range(5)]
+    export_dir = _write_export(tmp_path, "ws-a", docs)
+    quiet_platform["span_counts"] = [0, 5]
+    quiet_platform["annotation_counts"] = [0]
+    quiet_platform["result_counts"] = [0]
+    reingest.ingest_bundle(
+        "http://x",
+        export_dir,
+        _manifest("ws-a", 5),
+        workspace_map={"ws-a": "ws-b"},
+        catalog=CATALOG,
+        sleep=lambda s: None,
+    )
+    assert len(quiet_platform["requests"]) > 1
+
+
+def test_ingest_bundle_oversized_span_raises_before_post(tmp_path, quiet_platform):
+    """One span above the byte limit must fail before the first export_trace_request call."""
+    huge = {**AGENT_DOC, "raw_attributes": json.dumps({"payload": "x" * (5 * 1024 * 1024)})}
+    export_dir = _write_export(tmp_path, "ws-a", [huge])
+    quiet_platform["span_counts"] = [0]
+    quiet_platform["annotation_counts"] = [0]
+    quiet_platform["result_counts"] = [0]
+    with pytest.raises(RuntimeError, match="exceeds"):
+        reingest.ingest_bundle(
+            "http://x",
+            export_dir,
+            _manifest("ws-a", 1),
+            workspace_map={"ws-a": "ws-b"},
+            catalog=CATALOG,
+        )
+    assert quiet_platform["requests"] == []
+
+
 def test_build_request_groups_by_scope_and_encodes_protocol_fields():
     spans = [reingest.doc_to_otlp(AGENT_DOC, CATALOG), reingest.doc_to_otlp(LLM_DOC, CATALOG)]
     spans.append({**spans[1], "span_id": "aabbccdd11223344", "scope": None, "status_error": True})
@@ -519,92 +592,11 @@ def test_require_empty_direct_restore_uses_real_http_transport(
     }
 
 
-def test_require_empty_rechecks_spans_before_ingest(tmp_path, quiet_platform) -> None:
-    export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC])
+def test_require_empty_ingests_all_nonempty_collections_in_order(tmp_path, quiet_platform) -> None:
+    export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC], [ANNOTATION_DOC], [RESULT_DOC])
     quiet_platform["span_counts"] = [0, 1]
     quiet_platform["annotation_counts"] = [0]
     quiet_platform["result_counts"] = [0]
-
-    with pytest.raises(RuntimeError, match="spans"):
-        reingest.ingest_bundle(
-            "http://x",
-            export_dir,
-            _manifest("ws-a", 1),
-            workspace_map={"ws-a": "target"},
-            catalog=CATALOG,
-            require_empty=True,
-        )
-
-    assert quiet_platform["events"] == [
-        ("ensure", "target"),
-        ("count", "span", "target"),
-        ("count", "annotation", "target"),
-        ("count", "result", "target"),
-        ("count", "span", "target"),
-    ]
-    assert quiet_platform["requests"] == []
-    assert quiet_platform["posts"] == []
-
-
-def test_require_empty_rechecks_annotations_before_post(tmp_path, quiet_platform) -> None:
-    export_dir = _write_export(tmp_path, "ws-a", [], [ANNOTATION_DOC])
-    quiet_platform["span_counts"] = [0]
-    quiet_platform["annotation_counts"] = [0, 1]
-    quiet_platform["result_counts"] = [0]
-
-    with pytest.raises(RuntimeError, match="annotations"):
-        reingest.ingest_bundle(
-            "http://x",
-            export_dir,
-            _manifest("ws-a", 0, 1),
-            workspace_map={"ws-a": "target"},
-            catalog=CATALOG,
-            require_empty=True,
-        )
-
-    assert quiet_platform["events"] == [
-        ("ensure", "target"),
-        ("count", "span", "target"),
-        ("count", "annotation", "target"),
-        ("count", "result", "target"),
-        ("count", "annotation", "target"),
-    ]
-    assert quiet_platform["requests"] == []
-    assert quiet_platform["posts"] == []
-
-
-def test_require_empty_rechecks_results_before_post(tmp_path, quiet_platform) -> None:
-    export_dir = _write_export(tmp_path, "ws-a", [], [], [RESULT_DOC])
-    quiet_platform["span_counts"] = [0]
-    quiet_platform["annotation_counts"] = [0]
-    quiet_platform["result_counts"] = [0, 1]
-
-    with pytest.raises(RuntimeError, match="evaluator results"):
-        reingest.ingest_bundle(
-            "http://x",
-            export_dir,
-            _manifest("ws-a", 0, 0, 1),
-            workspace_map={"ws-a": "target"},
-            catalog=CATALOG,
-            require_empty=True,
-        )
-
-    assert quiet_platform["events"] == [
-        ("ensure", "target"),
-        ("count", "span", "target"),
-        ("count", "annotation", "target"),
-        ("count", "result", "target"),
-        ("count", "result", "target"),
-    ]
-    assert quiet_platform["requests"] == []
-    assert quiet_platform["posts"] == []
-
-
-def test_require_empty_ingests_all_nonempty_collections_in_order(tmp_path, quiet_platform) -> None:
-    export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC], [ANNOTATION_DOC], [RESULT_DOC])
-    quiet_platform["span_counts"] = [0, 0, 1]
-    quiet_platform["annotation_counts"] = [0, 0]
-    quiet_platform["result_counts"] = [0, 0]
 
     outcome = reingest.ingest_bundle(
         "http://x",
@@ -621,12 +613,9 @@ def test_require_empty_ingests_all_nonempty_collections_in_order(tmp_path, quiet
         ("count", "span", "target"),
         ("count", "annotation", "target"),
         ("count", "result", "target"),
-        ("count", "span", "target"),
         ("write", "span", "target"),
         ("count", "span", "target"),
-        ("count", "annotation", "target"),
         ("write", "annotation", "target"),
-        ("count", "result", "target"),
         ("write", "result", "target"),
     ]
     assert len(quiet_platform["requests"]) == 1
@@ -709,7 +698,7 @@ def test_ingest_bundle_zero_ingests_everything(tmp_path, quiet_platform):
 
 
 def test_ingest_bundle_batches_spans(tmp_path, quiet_platform, monkeypatch):
-    monkeypatch.setattr(reingest, "SPAN_BATCH", 2)
+    monkeypatch.setattr(reingest, "OTLP_REQUEST_MAX_SPANS", 2)
     export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC, LLM_DOC, {**LLM_DOC, "span_id": "aabbccdd11223344"}])
     quiet_platform["span_counts"] = [0, 3]
     quiet_platform["annotation_counts"] = [0]
@@ -1103,6 +1092,26 @@ def test_skip_path_probe_tolerates_started_at_ties(tmp_path, quiet_platform, cap
     export_dir = _write_export(tmp_path, "ws-a", [AGENT_DOC, tied])
     quiet_platform["span_counts"] = [2]
     quiet_platform["first_ids"] = [tied["span_id"]]  # the OTHER member of the tie
+    quiet_platform["annotation_counts"] = [0]
+    quiet_platform["result_counts"] = [0]
+    reingest.ingest_bundle(
+        "http://x",
+        export_dir,
+        _manifest("ws-a", 2),
+        workspace_map={"ws-a": "ws-b"},
+        catalog=CATALOG,
+    )
+    assert "already restored" in capsys.readouterr().out
+
+
+def test_skip_path_probe_compares_started_at_chronologically(tmp_path, quiet_platform, capsys):
+    """Mixed timestamp serializations: the bundle's first span is the chronological min, not the lexicographic one."""
+    # 14:14-05:00 is 19:14 UTC — lexicographically first but chronologically LATER than 18:14 UTC.
+    later_by_offset = {**LLM_DOC, "started_at": "2026-06-26T14:14:41.406179-05:00"}
+    earlier_utc = {**AGENT_DOC, "started_at": "2026-06-26T18:14:41.406179Z"}
+    export_dir = _write_export(tmp_path, "ws-a", [earlier_utc, later_by_offset])
+    quiet_platform["span_counts"] = [2]
+    quiet_platform["first_ids"] = [AGENT_DOC["span_id"]]  # the live first span IS the chronological min
     quiet_platform["annotation_counts"] = [0]
     quiet_platform["result_counts"] = [0]
     reingest.ingest_bundle(

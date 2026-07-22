@@ -465,11 +465,14 @@ def format_markdown_table(
             # Format timestamps if this is a timestamp field
             if is_timestamp_field(col.field):
                 value = format_timestamp(value, format_type=timestamp_format)
-            # Escape pipe characters in values
-            value = value.replace("|", "\\|")
+            # Normalize all newline forms before truncating so Markdown escape
+            # sequences are always added in full.
+            value = value.replace("\r\n", "\n").replace("\r", "\n")
             # Truncate long values if requested (unless it's a protected field)
             if truncate and should_truncate_field(col.field) and len(value) > max_width:
                 value = value[: max_width - 3] + "..."
+            # Keep each item on a single Markdown table row and escape cell delimiters.
+            value = value.replace("\n", "<br>").replace("|", "\\|")
             row_values.append(value)
         all_rows.append(row_values)
 
@@ -497,7 +500,7 @@ def format_markdown_table(
     # Separator row with proper width
     separator_parts = []
     for width in col_widths:
-        separator_parts.append("-" * width)
+        separator_parts.append("-" * max(3, width))
     separator = "| " + " | ".join(separator_parts) + " |"
     lines.append(separator)
 

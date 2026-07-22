@@ -45,6 +45,28 @@ def test_missing_inference_key_is_required_failure(tmp_path: Path) -> None:
     assert required_failures(results)
 
 
+def test_check_environment_without_profile_skips_workspace_probe(tmp_path: Path) -> None:
+    results = asyncio.run(
+        check_environment(
+            agent=None,
+            workspace=None,
+            base_url="http://localhost:8080",
+            profile_dir=None,
+            probes=AnalysisProbes(
+                env={"INFERENCE_API_KEY": "k"},
+                http_ok=lambda base_url: True,
+                workspace_ok=never_queryable,
+            ),
+        )
+    )
+
+    assert [result.name for result in results] == ["INFERENCE_API_KEY", "platform-reachable"]
+
+
+def test_default_http_probe_treats_invalid_base_url_as_unreachable() -> None:
+    assert preflight._default_http_ok("http://localhost:not-a-port") is False
+
+
 def test_workspace_query_failure_is_advisory(tmp_path: Path) -> None:
     results = asyncio.run(
         check_environment(

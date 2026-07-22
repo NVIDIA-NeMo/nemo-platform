@@ -38,7 +38,10 @@ def discover_profile(start: Path | None = None) -> Path | None:
 
 def resolve_profile_path(value: str, profile_dir: Path) -> Path:
     """Resolve an absolute, home-relative, or profile-relative path."""
-    path = Path(value).expanduser()
+    try:
+        path = Path(value).expanduser()
+    except RuntimeError as exc:
+        raise ProfileError(f"Could not resolve path {value!r}: {exc}") from None
     return path.resolve() if path.is_absolute() else (profile_dir / path).resolve()
 
 
@@ -80,7 +83,9 @@ def load_env_file(path: Path, env: MutableMapping[str, str] = os.environ) -> lis
             continue
         key, _, value = line.removeprefix("export ").partition("=")
         key = key.strip()
-        value = value.strip().strip("'\"")
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
         if key and key not in env:
             env[key] = value
             loaded.append(key)
@@ -103,4 +108,7 @@ def resolve_agent_spec_path(profile_dir: Path, configured: str | None) -> Path |
 
 def resolve_base_url(explicit: str | None, env: Mapping[str, str] = os.environ) -> str:
     """Apply explicit, NMP_BASE_URL, then localhost precedence."""
-    return explicit or env.get("NMP_BASE_URL") or DEFAULT_BASE_URL
+    if explicit is not None:
+        return explicit
+    env_url = env.get("NMP_BASE_URL")
+    return env_url if env_url is not None else DEFAULT_BASE_URL

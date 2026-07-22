@@ -508,12 +508,10 @@ def test_plugin_loader_registers_unavailable_command_for_broken_jobs():
     assert "No such option: --spec" not in result.output
 
 
-def test_plugin_loader_returns_placeholder_help_for_broken_cli():
+def test_plugin_loader_surfaces_broken_cli_error():
     with patch("nemo_platform_ext.cli.core.lazy_load.resolve_name", side_effect=RuntimeError("broken")):
-        loaded = lazy_plugin_loader("example", "fake.module:PluginCLI")()
-
-    assert isinstance(loaded, click.Command)
-    assert loaded.help == "Plugin commands for example are unavailable."
+        with pytest.raises(click.ClickException, match="Failed to load plugin commands for 'example': broken"):
+            lazy_plugin_loader("example", "fake.module:PluginCLI")()
 
 
 def test_plugin_loader_surfaces_customization_contributor_discovery_error():

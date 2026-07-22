@@ -78,6 +78,11 @@ def test_resolve_profile_path_handles_relative_absolute_and_home(tmp_path: Path)
     assert absolute == (tmp_path / "agent").resolve()
 
 
+def test_resolve_profile_path_wraps_unresolvable_home_as_profile_error(tmp_path: Path) -> None:
+    with pytest.raises(ProfileError, match="no-such-user-anywhere"):
+        resolve_profile_path("~no-such-user-anywhere/agent", tmp_path)
+
+
 def test_load_env_file_parses_without_overriding(tmp_path: Path) -> None:
     path = tmp_path / ".env"
     path.write_text(
@@ -89,6 +94,26 @@ def test_load_env_file_parses_without_overriding(tmp_path: Path) -> None:
     assert load_env_file(path, env) == ["PLAIN", "EXPORTED", "QUOTED"]
     assert env == {"SET": "process", "PLAIN": "value", "EXPORTED": "ok", "QUOTED": "with spaces"}
     assert load_env_file(tmp_path / "missing.env", env) == []
+
+
+def test_load_env_file_strips_exactly_one_matched_quote_pair(tmp_path: Path) -> None:
+    path = tmp_path / ".env"
+    path.write_text(
+        "SINGLE='quoted'\nAPOSTROPHE=\"it's\"\nMISMATCHED=\"value'\nTRAILING=value'\nNESTED=\"\"twice\"\"\nEMPTY=''\n",
+        encoding="utf-8",
+    )
+    env: dict[str, str] = {}
+
+    load_env_file(path, env)
+
+    assert env == {
+        "SINGLE": "quoted",
+        "APOSTROPHE": "it's",
+        "MISMATCHED": "\"value'",
+        "TRAILING": "value'",
+        "NESTED": '"twice"',
+        "EMPTY": "",
+    }
 
 
 def test_load_env_file_wraps_read_failures_without_raw_chain(tmp_path: Path) -> None:
@@ -142,3 +167,4 @@ def test_resolve_base_url_uses_only_explicit_nmp_and_default() -> None:
     assert resolve_base_url("http://flag", env) == "http://flag"
     assert resolve_base_url(None, env) == "http://nmp"
     assert resolve_base_url(None, {"NEMO_BASE_URL": "http://ignored"}) == DEFAULT_BASE_URL
+    assert resolve_base_url("", env) == ""  # explicit empty string is not silently replaced

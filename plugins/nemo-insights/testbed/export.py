@@ -77,7 +77,14 @@ class _StartBounds:
             self.max = ts
 
 
-def export_workspaces(base_url: str, workspaces: list[str], out_dir: Path, *, since: datetime | None) -> dict:
+def export_workspaces(
+    base_url: str,
+    workspaces: list[str],
+    out_dir: Path,
+    *,
+    since: datetime | None,
+    client: AsyncNeMoPlatform | None = None,
+) -> dict:
     """Drain spans/annotations/evaluator-results per workspace into JSONL files.
 
     Writes ``out_dir/export/<workspace>/{spans,annotations,evaluator_results}.jsonl``
@@ -85,14 +92,21 @@ def export_workspaces(base_url: str, workspaces: list[str], out_dir: Path, *, si
     "max_start_time": ...}`` (time bounds from span ``started_at``; ISO strings or
     None when no spans matched).
     """
-    return asyncio.run(_export_workspaces(base_url, workspaces, out_dir, since=since))
+    return asyncio.run(_export_workspaces(base_url, workspaces, out_dir, since=since, client=client))
 
 
-async def _export_workspaces(base_url: str, workspaces: list[str], out_dir: Path, *, since: datetime | None) -> dict:
+async def _export_workspaces(
+    base_url: str,
+    workspaces: list[str],
+    out_dir: Path,
+    *,
+    since: datetime | None,
+    client: AsyncNeMoPlatform | None = None,
+) -> dict:
     lower = (since or EPOCH).isoformat()
     bounds = _StartBounds()
     counts: dict[str, dict[str, int]] = {}
-    client = make_client(base_url)
+    client = client if client is not None else make_client(base_url)
     try:
         for workspace in workspaces:
             ws_dir = out_dir / "export" / workspace

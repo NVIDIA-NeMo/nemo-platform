@@ -72,6 +72,8 @@ export interface UploadModalProps {
   datasetLabel?: string;
   /** Auto-select the first root-level accepted file on fileset selection. */
   autoSelectFirstAcceptable?: boolean;
+  /** Show each fileset's updated-at date in the picker options (opt-in). */
+  showUpdatedAt?: boolean;
   attributes?: {
     ModalRoot?: React.ComponentProps<typeof ModalRoot>;
     ModalContent?: React.ComponentProps<typeof ModalContent>;

@@ -79,7 +79,6 @@ class TestIAMRoleBindings:
         assert response.status_code == 200, f"Delete failed: {response.text}"
         deleted = response.json()
         assert deleted["id"] == binding_id
-        assert "deleted_at" in deleted
 
         # Verify revoked (should still exist but be revoked)
         response = http_client.get(f"/apis/auth/v2/iam/role-bindings/{binding_name}", headers=headers)

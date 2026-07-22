@@ -26,6 +26,7 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentTarget,
     CodexRunnerTarget,
     FabricRunnerTarget,
+    HarborRunnerTarget,
     ModelTarget,
     Target,
 )
@@ -37,6 +38,7 @@ from nemo_evaluator.tasks.runner import SDK_INITIALIZATION_EXIT_CODE
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary
 from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import CodexCliAgentRuntime
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
+from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import HarborAgentTaskRunner
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import (
     AgentEvalTarget,
@@ -232,6 +234,30 @@ def test_resolve_target_builds_fabric_runtime_from_runner_target(tmp_path: Path)
     assert params is None
 
 
+def test_resolve_target_builds_harbor_runtime_from_runner_target(tmp_path: Path) -> None:
+    ctx = _job_context(tmp_path)
+    harbor_target = HarborRunnerTarget(
+        agent_name="oracle",
+        agent_model_name="openai/gpt-5.4",
+        n_attempts=2,
+        n_concurrent_trials=8,
+        max_retries=1,
+        reward_key="score",
+    )
+    target, prompt_template, params = AgentEvalJob._resolve_target(harbor_target, ctx)
+    assert isinstance(target, HarborAgentTaskRunner)
+    # The runtime-only jobs directory is injected from the job's persistent storage.
+    assert target._config is not None
+    assert target._config.jobs_dir == ctx.storage.persistent / "harbor"
+    # Spec knobs are forwarded onto the Harbor runtime config.
+    assert target._config.agent_model_name == "openai/gpt-5.4"
+    assert target._config.n_attempts == 2
+    assert target._config.reward_key == "score"
+    # A runner shapes its own request, so it contributes no prompt template or inference params.
+    assert prompt_template is None
+    assert params is None
+
+
 def test_resolve_target_unpacks_model_target_request_config(tmp_path: Path) -> None:
     ctx = _job_context(tmp_path)
     model = Model(url="http://model.test/v1/chat/completions", name="m")
@@ -261,6 +287,25 @@ def test_resolve_target_resolves_none_to_no_target(tmp_path: Path) -> None:
 def test_runner_target_is_accepted(tmp_path: Path) -> None:
     spec = AgentEvalSpec(tasks=[_task_spec()], target=CodexRunnerTarget(model="gpt-5.5"))
     assert isinstance(spec.target, CodexRunnerTarget)
+
+
+def test_harbor_runner_target_is_accepted() -> None:
+    spec = AgentEvalSpec(tasks=[_task_spec()], target=HarborRunnerTarget(agent_name="oracle"))
+    assert isinstance(spec.target, HarborRunnerTarget)
+
+
+def test_agent_eval_job_source_is_distinct_from_evaluate_job() -> None:
+    """The two evaluator job types must not share a ``source`` (mixed-list-crash regression).
+
+    A shared source makes the agent-evaluate and evaluate list endpoints return each other's jobs and
+    500 rendering the foreign spec. ``service.py`` passes ``AGENT_EVAL_JOB_SOURCE`` as the agent-eval
+    routes' ``service_name`` so it lands a distinct ``source`` from EvaluateJob's derived default.
+    """
+    from nemo_evaluator.jobs.evaluate import EvaluateJob
+    from nemo_evaluator.service import AGENT_EVAL_JOB_SOURCE
+    from nemo_platform_plugin.jobs.routes import _derive_service_name
+
+    assert AGENT_EVAL_JOB_SOURCE != _derive_service_name(EvaluateJob)
 
 
 def _sdk_with_identity(sdk_cls: type[NeMoPlatform | AsyncNeMoPlatform]) -> NeMoPlatform | AsyncNeMoPlatform:
@@ -398,6 +443,7 @@ def _assert_agent_eval_step_entrypoint(job_spec: PlatformJobSpec) -> None:
             "test-model",
         ),
         (AgentTarget(agent=_agent(), params=RunConfigOnline()), "agent", "test-agent"),
+        (HarborRunnerTarget(agent_name="oracle"), "harbor", None),
     ],
 )
 async def test_compile_produces_cpu_task_step_carrying_each_target(
@@ -476,6 +522,7 @@ async def test_compile_rejects_reserved_secret_env_name() -> None:
         ),
         AgentTarget(agent=_agent(), params=RunConfigOnline()),
         CodexRunnerTarget(model="gpt-5.5"),
+        HarborRunnerTarget(agent_name="oracle"),
     ],
 )
 def test_run_local_executes_each_target_type(target: Target, mocker: MockerFixture) -> None:
@@ -500,6 +547,8 @@ def test_run_local_executes_each_target_type(target: Target, mocker: MockerFixtu
     assert fake.received_trials is None  # online generation, not precomputed
     if isinstance(target, CodexRunnerTarget):
         assert isinstance(fake.received_target, CodexCliAgentRuntime)
+    elif isinstance(target, HarborRunnerTarget):
+        assert isinstance(fake.received_target, HarborAgentTaskRunner)
     elif isinstance(target, ModelTarget):
         assert getattr(fake.received_target, "name", None) == target.model.name
     else:

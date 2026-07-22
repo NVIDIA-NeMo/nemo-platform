@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { SAMPLE_EVAL_CONFIG_PATH } from '@studio/api/evaluation/eval-config-fileset';
 import { EvalConfigBlockingInput } from '@studio/components/agents/AgentBlockingInput/EvalConfigBlockingInput';
 import type {
   AgentBlockingInputRequest,
   AgentBlockingInputSecondaryAction,
   AgentBlockingInputSubmission,
 } from '@studio/components/agents/AgentBlockingInput/types';
-import { SAMPLE_EVAL_CONFIG_PATH } from '@studio/routes/agents/AgentSuggestionsRoute/constants';
 import { render } from '@testing-library/react';
 
 interface CapturedFilesetProps {

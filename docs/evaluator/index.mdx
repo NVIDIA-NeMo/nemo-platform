@@ -1,127 +1,169 @@
 ---
-title: "About Evaluating"
-description: ""
+title: "Evaluate Agents & Models"
+description: "Score agents and models in NeMo Platform — dataset-driven metrics over labeled data and task-driven agent evaluation — with the same scoring interface across local and platform execution."
 ---
 
 <a id="nemo-ms-evaluator-about"></a>
 
-Evaluation is powered by NeMo Platform, a cloud-native platform for evaluating large language models (LLMs), RAG pipelines, and AI agents at enterprise scale. The evaluation API provides LLM-as-a-judge scoring, deterministic and similarity metrics, and specialized metrics for RAG and agent systems.
-
-NeMo Platform enables real-time evaluations of your LLM application through APIs, guiding you in refining and optimizing LLMs for enhanced performance and real-world applicability. The NeMo Evaluator APIs can be seamlessly automated within development pipelines, enabling faster iterations without the need for live data. It is cost-effective and suitable for pre-deployment checks and regression testing.
+NeMo Evaluator scores how well your models, RAG pipelines, and agents actually do their job. You
+define **what** to score and **how** to score it once, then run it where you need to — in a local
+Python process for fast iteration, or as a durable platform job for production and regression
+tracking. Scoring covers deterministic and similarity checks, LLM-as-a-judge, and specialized
+metrics for RAG and agentic behavior.
 
 <Button href="/documentation/evaluate-models/tutorials" variant="secondary">**Tutorials**</Button>
 <Button href="https://github.com/NVIDIA-NeMo/evaluator" variant="secondary">**Open Source SDK**</Button>
 
 ---
 
-## How It Works: Library + Platform
+## Two shapes of evaluation
 
-Evaluator separates **evaluation definition** from **execution**.
+Evaluation comes in two shapes, told apart by what produces the thing you score:
+
+- **Dataset-driven evaluation** — score a model or pipeline over a fixed dataset. Metrics compare each
+  output against a reference, and the same metric set applies to every row. Reach for it for model
+  quality checks, RAG pipelines, and regression testing against a labeled set. Entry point:
+  [Evaluation Metrics](/documentation/evaluate-models/metrics).
+- **Task-driven evaluation (agent evaluation)** — score an agent that performs *tasks*. Each task
+  produces a *trial* — the agent's final output **and** how it got there (its trajectory, tool calls,
+  and other evidence) — and carries its own metrics, so one suite can grade heterogeneous work. Reach
+  for it when the system under test *acts* and the process matters as much as the outcome. Entry
+  point: [Agent Evaluation](/documentation/evaluate-models/agent-eval).
 
 <Note>
 
-The code snippets below are for conceptual demonstration purposes only.
-For runnable examples see the [tutorials](/documentation/evaluate-models/tutorials) and [SDK resources](/documentation/evaluate-models/sdk-resources).
+**Metrics are the shared scorer, not a third mode.** The same deterministic and LLM-as-a-judge
+scorers work in either shape — what changes is the input being scored, not the scorer.
 
 </Note>
-### 1. Build RunConfig with the Library
 
-Use the `nemo_evaluator_sdk` package to define your metric, dataset rows, runtime configuration, and optional model or agent target:
+For how the two shapes differ in detail — the evidence each exposes, an at-a-glance comparison, and
+guidance on choosing — see
+[Dataset-Driven vs Task-Driven Evaluation](/documentation/evaluate-models/dataset-driven-vs-task-driven-evaluation).
 
+---
 
+## How evaluation runs
+
+<a id="how-evaluation-runs"></a>
+
+Evaluator separates **evaluation definition** from **execution**. You define the metric, the dataset,
+and the runtime configuration once, then choose where that definition runs. The definition is
+portable; only the caller changes.
+
+<Note>
+
+The snippets below are conceptual. For runnable examples see the
+[tutorials](/documentation/evaluate-models/tutorials) and
+[SDK Resources](/documentation/evaluate-models/sdk-resources).
+
+</Note>
+
+### 1. Define the evaluation
+
+Use the `nemo_evaluator_sdk` package to define your metric, dataset rows, and runtime configuration —
+these objects are context-agnostic and identical across every execution mode below:
 
 ```python
 from nemo_evaluator_sdk import RunConfig, ExactMatchMetric
 
-
-# Define metric logic
+# How to score: compare the output to the expected reference.
 metric = ExactMatchMetric(
     reference="{{item.expected}}",
     candidate="{{item.output}}",
 )
 
-# Build evaluation input
+# What to score: the rows (inline here; a fileset or local path also works).
 dataset = [
     {"expected": "Paris", "output": "Paris"},
     {"expected": "Berlin", "output": "Munich"},
 ]
+
+# Runtime settings: sample limits and parallelism.
 config = RunConfig(limit_samples=100, parallelism=8)
 ```
 
+### 2. Run it — three dataset-driven modes
 
+The same `metric`, `dataset`, and `config` run in three places. What changes is the **caller** — a
+bare SDK evaluator for local iteration, or the platform's `client.evaluator` resource for
+plugin-backed and durable execution.
 
-**The library handles:** Metric definitions, dataset row schemas, prompt templates, model and agent targets, runtime parameters, retries, aggregation, and typed result objects.
+| Mode | Caller | Call | Best for |
+|------|--------|------|----------|
+| **Local SDK** | `Evaluator()` (`nemo_evaluator_sdk`) | `await evaluator.run(metrics=metric, dataset=dataset, config=config)` | Fast in-process iteration with no platform services. |
+| **Local plugin** | `client.evaluator` | `evaluator.run(metric=metric, dataset=dataset, config=config)` | Local runs through the platform runtime and Inference Gateway. |
+| **Remote job** | `client.evaluator` | `evaluator.submit(metric=metric, dataset=dataset, config=config)` | Durable, monitored platform jobs for production and regressions. |
 
-
-### 2. Execute on the Platform
-
-Submit your evaluation to the Evaluator service using the NeMo Platform SDK:
+The platform caller is mounted on a `NeMoPlatform` client:
 
 ```python
+import os
+
 from nemo_evaluator.sdk import Evaluator
 from nemo_platform import NeMoPlatform
 
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
+evaluator: Evaluator = client.evaluator
 
-sdk = NeMoPlatform(base_url="...", workspace="default")
-evaluator: Evaluator = sdk.evaluator
-
-# Fast local iteration through the plugin runtime
+# Fast local iteration through the plugin runtime.
 local_result = evaluator.run(metric=metric, dataset=dataset, config=config)
 
-# Production evaluation as a durable platform job
-job = evaluator.submit(
-    metric=metric,
-    dataset=dataset,
-    config=config,
-)
+# Production evaluation as a durable platform job.
+job = evaluator.submit(metric=metric, dataset=dataset, config=config)
 job.wait_until_done()
 result = job.get_result()
 ```
 
-**The platform handles:** Job orchestration, inference routing through NeMo Platform's Inference Gateway, Fileset-based datasets, distributed execution, artifact storage, status monitoring, and result download.
+<Note>
 
-## Key Differences from Standalone Library
+**Agent evaluation runs from the SDK today.** Task-driven runs use the local SDK
+(`AgentEvaluator().run()`); running them as durable platform jobs — the way dataset-driven metrics
+already can — is [in progress](/documentation/evaluate-models/agent-eval). Use the local SDK path for
+now.
 
-When using Evaluator as a NeMo Platform plugin :
+</Note>
 
-| Feature | Standalone Library | NeMo Platform Plugin |
-|---------|-------------------|-------------|
-| **Execution** | Local Python process | Local plugin runs for local experimentation and durable platform jobs for production |
-| **Inference** | Direct model or agent endpoint calls | The same as standalone and can also route through NeMo Platform Inference Gateway and platform-managed endpoints |
+### What the platform adds
+
+When you move from the local SDK to the platform caller (`client.evaluator`), the definition stays
+the same and execution gains platform capabilities:
+
+| Capability | Local SDK | Platform (`client.evaluator`) |
+|------------|-----------|-------------------------------|
+| **Execution** | Local in-process run | Local plugin runs, plus durable platform jobs |
+| **Inference** | Direct model or agent endpoint calls | The same, and can route through the NeMo Platform [Inference Gateway](/documentation/models-and-inference) and platform-managed endpoints |
 | **Datasets** | Inline rows and local files | Inline rows, local paths resolved at submission time, and NeMo Platform [Filesets](/documentation/get-started/core-concepts/manage-files) |
-| **Results Artifacts** | Results stored in memory  | NeMo Platform artifact storage with typed result download |
-| **Authentication** | Local environment variables | Local environment variables for local runs and NeMo Platform Secrets service for remote jobs |
+| **Results** | Returned in memory | Platform artifact storage with typed result download |
+| **Authentication** | Local environment variables | Local env vars for local runs; NeMo Platform [Secrets](/documentation/get-started/core-concepts/manage-secrets) for remote jobs |
 
----
+### Live vs. jobs, online vs. offline
 
-## Evaluation Concepts
+Two more distinctions cut across the modes above:
 
-NeMo Platform supports two shapes of evaluation (see [Dataset-Driven vs Task-Driven Evaluation](/documentation/evaluate-models/dataset-driven-vs-task-driven-evaluation)):
-
--   **Metrics (dataset-driven)**: Scoring logic that evaluates model outputs over a dataset. Use metrics when you need flexible, reusable scoring for your own datasets and task-specific criteria.
--   **Agent evaluation (task-driven)**: Score an agent that performs tasks — its final output and how it got there. See [Agent Evaluation](/documentation/evaluate-models/agent-eval).
-
-There are two execution modes and two evaluation patterns:
-
--   **Live evaluation (synchronous)**: Submit a request and get results immediately. Best for fast iteration, metric development, and small payloads.
--   **Jobs (asynchronous)**: Submit work, monitor status, and fetch results when complete. Best for production workloads, larger datasets, and recurring regression checks.
-
--   **Offline evaluation**: Score existing dataset rows (for example, model outputs already generated).
--   **Online evaluation**: Generate outputs from a model as part of evaluation, then score them.
-
-For deeper details, see [Evaluation Metrics](/documentation/evaluate-models/metrics).
+- **Live (synchronous) vs. jobs (asynchronous).** `run()` returns results immediately — best for fast
+  iteration, metric development, and small payloads. `submit()` creates a durable job you monitor and
+  fetch results from — best for production workloads, larger datasets, and recurring regression
+  checks.
+- **Offline vs. online.** *Offline* scores dataset rows that already contain outputs. *Online*
+  generates outputs from a `target` model or agent as part of the evaluation, then scores them — pass
+  `target` (and a `prompt_template`) to any of the modes above.
 
 ---
 
 ## Tutorials
 
-After [setting up a local instance of the platform](/documentation/get-started), use the following tutorials to learn how to accomplish common evaluation tasks. These step-by-step guides help you evaluate models using different metrics.
+After [setting up a local instance of the platform](/documentation/get-started), use these
+step-by-step guides to run common evaluations.
 
 <Cards>
 
 <Card title="Run an LLM Judge Eval" href="/documentation/evaluate-models/tutorials/run-llm-as-a-judge-evaluation">
 
-Learn how to evaluate a fine-tuned model using the LLM Judge metric with a custom dataset.
+Evaluate a fine-tuned model using the LLM-as-a-judge metric with a custom dataset.
 
 <small><span class="md-tag">custom-dataset</span></small>
 
@@ -129,7 +171,7 @@ Learn how to evaluate a fine-tuned model using the LLM Judge metric with a custo
 
 <Card title="Define and Run Custom Python Metrics" href="/documentation/evaluate-models/tutorials/define-and-run-custom-python-metrics">
 
-Learn how to write a domain-specific Python metric, test it locally, and run it through the Evaluator service.
+Write a domain-specific Python metric, test it locally, and run it through the Evaluator service.
 
 <small><span class="md-tag">custom-metric</span></small>
 
@@ -139,37 +181,28 @@ Learn how to write a domain-specific Python metric, test it locally, and run it 
 
 ---
 
-## Recommended Evaluation Journey
+## A recommended path
 
-Most teams get the best results by starting metric-first:
+Most teams get the best results by starting metric-first and scaling up:
 
-1. **Develop and validate your metrics first**
- - Start with [Metrics](/documentation/evaluate-models/metrics) to define how quality should be scored for your use case.
- - Use live evaluation (`POST /v2/workspaces/{workspace}/evaluation/metric-evaluate`) with small `DatasetRows` payloads to iterate quickly.
-
-1. **Scale metric evaluation to jobs**
- - When metrics are validated, run async metric jobs (`/evaluation/metric-jobs`) on larger datasets.
- - Use filesets for production-scale inputs. See [Manage Files](/documentation/get-started/core-concepts/manage-files).
-
-1. **Monitor and analyze results**
- - Track job status and progress with job management APIs.
- - Retrieve results and artifacts for analysis, reporting, and regression tracking.
+1. **Develop and validate your metrics.** Start with [Metrics](/documentation/evaluate-models/metrics)
+   to define how quality should be scored for your use case, and iterate quickly with local `run()`
+   over small inline datasets.
+2. **Scale to durable jobs.** When your metrics are validated, run them with `submit()` on larger
+   datasets, using [Filesets](/documentation/get-started/core-concepts/manage-files) for
+   production-scale inputs.
+3. **Add agent evaluation where behavior matters.** For systems that act — tool use, multi-step
+   reasoning — layer in [Agent Evaluation](/documentation/evaluate-models/agent-eval) to score the
+   trajectory alongside the outcome.
 
 ---
 
-## Where to Go Next
+## Where to go next
 
-- For metric workflows, see [Metric Jobs](/documentation/evaluate-models/metrics) and Metric Results.
-- For full endpoint details, see the [Evaluator API Reference](/documentation/reference/api-reference).
-
----
-
-### Available Evaluations
-
-Review configurations, data formats, and result examples for each evaluation.
-
--   **Retrieval** — Evaluate document retrieval pipelines on standard or custom datasets.
--   **RAG** — Evaluate Retrieval Augmented Generation pipelines (retrieval plus generation).
--   **Agentic** — Assess agent-based and multi-step reasoning models, including topic adherence and tool use.
--   **LLM-as-a-Judge** — Use another LLM to evaluate outputs with flexible scoring criteria. Define custom rubrics or numerical ranges.
--   **Similarity Metrics** — Create metrics for text similarity, exact matching, and standard NLP evaluations using Jinja2 templating.
+- **Define scoring:** [Evaluation Metrics](/documentation/evaluate-models/metrics) — built-in and
+  custom metrics, dataset sources, and how scores aggregate.
+- **Evaluate agents:** [Agent Evaluation](/documentation/evaluate-models/agent-eval) — the task-driven
+  model, targets, and runners.
+- **Run it in code:** [SDK Resources](/documentation/evaluate-models/sdk-resources) — the `run()` and
+  `submit()` calling surface.
+- **Full API:** [Evaluator API Reference](/documentation/reference/api-reference).

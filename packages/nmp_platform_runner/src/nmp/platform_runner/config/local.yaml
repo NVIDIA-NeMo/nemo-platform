@@ -61,14 +61,26 @@ models:
     interval_seconds: 5
     model_deployment_garbage_collection_ttl_seconds: 30
     backends:
-      docker:
+      deployments_plugin:
         enabled: true
+        docker_executor: local-docker
+        default_executor: local-docker
         # LoRA adapter-download sidecar for deployments with lora_enabled. The
         # docker backend has no separate args field (unlike k8s) and keeps the
         # image ENTRYPOINT — nmp-customizer-tasks is `/opt/venv/bin/python`, so
         # the module goes in lora_sidecar_command (runs `python -m <module>`).
         lora_sidecar_image_name: nmp-customizer-tasks
         lora_sidecar_command: ["-m", "nmp.core.models.sidecars.adapters.main"]
+
+deployments:
+  executors:
+    - name: local-docker
+      backend: docker
+      config:
+        pull_images: false
+        port_range_start: 9000
+        port_range_end: 9100
+  default_executor: local-docker
 
 inference_gateway: {}
 

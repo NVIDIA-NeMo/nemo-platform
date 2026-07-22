@@ -136,13 +136,16 @@ def read_policy(data_dir: Path, domain: str) -> str | None:
     """Return the domain policy markdown (the analyst's agent_spec), or None.
 
     A tau2 checkout nests domains under ``tau2/domains/<domain>/``; some data
-    dirs are flat (``domains/<domain>/``). Tries both and returns the first
-    ``policy.md`` found, else ``None`` (the analyst then runs without the spec).
+    dirs are flat (``domains/<domain>/``). For each layout, tries ``policy.md``
+    then ``main_policy.md`` (Telecom uses the latter). Returns the first file
+    found, else ``None`` (the analyst then runs without the spec).
     """
     for base in (data_dir / "tau2" / "domains", data_dir / "domains"):
-        path = base / domain / "policy.md"
-        if path.exists():
-            return path.read_text(encoding="utf-8")
+        domain_dir = base / domain
+        for filename in ("policy.md", "main_policy.md"):
+            path = domain_dir / filename
+            if path.exists():
+                return path.read_text(encoding="utf-8")
     return None
 
 

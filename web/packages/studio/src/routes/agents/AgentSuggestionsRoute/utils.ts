@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ModelEntity } from '@nemo/sdk/generated/platform/schema/ModelEntity';
+import { SAMPLE_EVAL_CONFIG_PATH } from '@studio/api/evaluation/eval-config-fileset';
 import type { AgentConfig } from '@studio/components/dataViews/AgentsDataView';
-import { SAMPLE_EVAL_CONFIG_PATH } from '@studio/routes/agents/AgentSuggestionsRoute/constants';
 import type {
   AgentListing,
   AnalyzeInput,
