@@ -211,7 +211,7 @@ print("HF_TOKEN secret:")
 print(hf_secret.model_dump_json(indent=2))
 
 # Create NGC API key secret
-# Uncomment the line below if you have NGC API Key and want to fine-tune NGC models
+# Uncomment the line below if you have NGC API Key and want to finetune NGC models
 # ngc_api_key = create_or_get_secret("ngc-api-key", NGC_API_KEY, "NGC_API_KEY")
 ```
 
@@ -818,3 +818,9 @@ Sequence packed version should have a higher GPU utilization.
 #### GPU Memory Allocation
 Sequence packed version should have a higher GPU Memory Allocation.
 ![GPU memory allocation chart illustrating increased memory utilization efficiency with sequence packing enabled](../_images/gpu_memory.png)
+
+## Next Steps
+
+- [Monitor customization metrics](/documentation/customizer-reference/tutorials/metrics) for training and validation loss.
+- [Create a LoRA customization job](/documentation/customizer-reference/tutorials/lora-customization-job).
+- [Create a Full SFT customization job](/documentation/customizer-reference/tutorials/sft-customization-job).
