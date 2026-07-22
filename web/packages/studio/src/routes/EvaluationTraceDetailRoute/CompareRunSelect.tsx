@@ -106,6 +106,9 @@ export const CompareRunSelect: FC<CompareRunSelectProps> = ({
                       {/* Indent the content (not the item) — SelectItem's own padding
                           wins over a className on the item itself. */}
                       <Text kind="label/bold/sm" className="pl-density-lg">
+                        <span className="text-secondary font-normal" aria-hidden>
+                          ↳{' '}
+                        </span>
                         {trialLabel(run)}
                       </Text>
                     </SelectItem>
