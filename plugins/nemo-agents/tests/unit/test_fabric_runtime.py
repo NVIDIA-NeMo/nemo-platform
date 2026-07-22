@@ -61,6 +61,7 @@ class _FakeRuntime:
         self.invoke_delay = invoke_delay
         self.entered = False
         self.exited = False
+        self.runtime_id = "runtime-1"
         self.invoke_requests: list[Any] = []
 
     async def __aenter__(self) -> "_FakeRuntime":

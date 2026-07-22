@@ -124,6 +124,22 @@ class TestStartDeployment:
         assert kwargs["image"] == "agent:latest"
 
     @pytest.mark.asyncio
+    async def test_start_accepts_backend_running_status(self) -> None:
+        ctrl = _make_controller()
+        dep = _make_deployment(status="pending")
+        ctrl.backend.create_deployment.return_value = DeploymentInfo(
+            name="test-dep",
+            status="running",
+            extra={"runtime": "fabric", "prepared": True},
+        )
+
+        await ctrl._start_deployment(dep)
+
+        assert dep.status == "running"
+        assert dep.endpoint == ""
+        assert _key(dep) not in ctrl._starting_since
+
+    @pytest.mark.asyncio
     async def test_start_failure_transitions_to_failed(self) -> None:
         ctrl = _make_controller()
         dep = _make_deployment(status="pending")

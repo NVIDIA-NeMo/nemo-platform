@@ -21,7 +21,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nemo_agents_plugin.api.v2 import agents as agents_router_module
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
-from nemo_agents_plugin.entities import Agent, AgentDeployment, DeploymentStatus
+from nemo_agents_plugin.entities import (
+    NAT_WORKFLOW_CONFIG_FORMAT,
+    NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+    Agent,
+    AgentDeployment,
+    DeploymentStatus,
+)
 from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError, NemoPaginationInfo
 
 NOW = datetime.now(timezone.utc)
@@ -36,6 +42,7 @@ def _make_agent(
     workspace: str = "default",
     description: str = "",
     config: dict | None = None,
+    config_format: str = NAT_WORKFLOW_CONFIG_FORMAT,
 ) -> Agent:
     """Return a populated Agent entity (simulates what the entity store returns)."""
     a = Agent(
@@ -43,7 +50,7 @@ def _make_agent(
         workspace=workspace,
         description=description,
         config=config or {},
-        config_format="nat-workflow-v1",
+        config_format=config_format,
     )
     # Simulate fields set by the entity store
     a._id = f"agent-{name}-id"
@@ -63,6 +70,26 @@ def _list_response(items: list[Any]) -> MagicMock:
         total_results=len(items),
     )
     return resp
+
+
+def _fabric_agent_config() -> dict[str, Any]:
+    return {
+        "config_format": NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+        "name": "fabric-agent",
+        "description": "Fabric-backed agent",
+        "default_harness": "hermes",
+        "harnesses": {
+            "hermes": {
+                "kind": "hermes",
+            },
+        },
+        "models": {
+            "default": {
+                "provider": "openai",
+                "model": "openai/gpt-5.4",
+            },
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +177,63 @@ class TestCreateAgent:
         created_entity: Agent = mock_entity_client.create.call_args[0][0]
         assert created_entity.name == "calc"
         assert created_entity.workspace == "default"
+
+    def test_create_validates_platform_agent_config(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        async def _save_agent(agent: Agent) -> Agent:
+            agent._id = f"agent-{agent.name}-id"
+            agent._created_at = NOW
+            return agent
+
+        mock_entity_client.create = AsyncMock(side_effect=_save_agent)
+        config = _fabric_agent_config()
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents",
+            json={
+                "name": "fabric-agent",
+                "description": "Fabric-backed agent",
+                "config": config,
+                "config_format": NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+            },
+        )
+
+        assert resp.status_code == 201
+        created_entity: Agent = mock_entity_client.create.call_args[0][0]
+        assert created_entity.config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT
+        assert created_entity.config["config_format"] == NEMO_AGENTS_SPEC_CONFIG_FORMAT
+        assert created_entity.config["environment"]["provider"] == "local"
+        assert resp.json()["config_format"] == NEMO_AGENTS_SPEC_CONFIG_FORMAT
+
+    def test_create_invalid_platform_agent_config_returns_400(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        config = _fabric_agent_config()
+        config["default_harness"] = "missing"
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents",
+            json={
+                "name": "fabric-agent",
+                "config": config,
+                "config_format": NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+            },
+        )
+
+        assert resp.status_code == 400
+        assert "Invalid agent config" in resp.json()["detail"]
+        mock_entity_client.create.assert_not_called()
+
+    def test_create_unsupported_config_format_returns_400(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/agents",
+            json={"name": "custom-agent", "config": {}, "config_format": "custom-v2"},
+        )
+
+        assert resp.status_code == 400
+        assert "Unsupported config_format" in resp.json()["detail"]
+        mock_entity_client.create.assert_not_called()
 
     def test_create_conflict_returns_409(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         mock_entity_client.create = AsyncMock(side_effect=NemoEntityConflictError("already exists"))
