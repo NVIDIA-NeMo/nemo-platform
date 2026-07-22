@@ -378,12 +378,15 @@ def _message_text(message: Any) -> str:
     """Extract text from one OpenAI message (``content`` may be str or parts)."""
     if not isinstance(message, dict):
         return ""
-    content = message.get("content")
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return "".join(part["text"] for part in content if isinstance(part, dict) and isinstance(part.get("text"), str))
-    return ""
+    match message.get("content"):
+        case str() as content:
+            return content
+        case list() as content:
+            return "".join(
+                part["text"] for part in content if isinstance(part, dict) and isinstance(part.get("text"), str)
+            )
+        case _:
+            return ""
 
 
 def _conversation_prompt(messages: Any) -> str:
