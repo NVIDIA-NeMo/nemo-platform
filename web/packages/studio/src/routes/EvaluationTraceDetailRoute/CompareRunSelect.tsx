@@ -91,7 +91,7 @@ export const CompareRunSelect: FC<CompareRunSelectProps> = ({
               ) : (
                 <Fragment key={evaluationName}>
                   <DropdownHeading>
-                    <Text kind="label/regular/sm" className="text-color-subtle">
+                    <Text kind="label/regular/sm" className="text-color-secondary">
                       {evaluationName}
                     </Text>
                   </DropdownHeading>
