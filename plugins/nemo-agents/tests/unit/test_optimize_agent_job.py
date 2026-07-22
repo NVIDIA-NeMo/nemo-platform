@@ -15,7 +15,6 @@ import yaml
 from nemo_agents_plugin.jobs.optimize_agent import OptimizeAgentJob, OptimizeAgentSpec
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.refs import FilesetRef
-from nemo_platform_plugin.run_dependencies import LocalRunError
 
 
 def test_run_repoints_outputs_to_persistent_results(tmp_path: Path, ctx: JobContext) -> None:
@@ -64,109 +63,147 @@ optimizer:
     )
 
 
-def test_resolve_optimize_config_local_path_pass_through(tmp_path: Path, ctx: JobContext) -> None:
-    job = OptimizeAgentJob()
-    spec = OptimizeAgentSpec(optimize_config=str(tmp_path / "config.yml"), optimize_config_fileset=None)
-    with job._resolve_optimize_config(spec, ctx=ctx, sdk=None) as resolved:
-        assert resolved == Path(str(tmp_path / "config.yml"))
+_MINIMAL_OPTIMIZE_YAML = """
+llms:
+  llm:
+    _type: openai
+    model_name: test-model
+eval:
+  general:
+    output_dir: eval/calculator
+optimizer:
+  output_path: optimizer_results/calculator
+""".strip()
 
 
-def test_resolve_optimize_config_fileset_downloads_via_sdk(tmp_path: Path, ctx: JobContext) -> None:
-    job = OptimizeAgentJob()
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("optimize_config_fileset", ""),
+        ("optimize_config_fileset", "workspace/"),
+        ("output", ""),
+        ("output", "workspace/"),
+    ],
+)
+def test_spec_rejects_invalid_fileset_refs(field: str, value: str) -> None:
+    with pytest.raises(ValueError, match="invalid entity reference"):
+        OptimizeAgentSpec.model_validate({"optimize_config": "/tmp/optimize.yml", field: value})
+
+
+def test_spec_allows_local_output_path() -> None:
+    spec = OptimizeAgentSpec.model_validate({"optimize_config": "/tmp/optimize.yml", "output": "./results"})
+    assert str(spec.output) == "./results"
+
+
+@pytest.mark.asyncio
+async def test_compile_requires_absolute_without_fileset() -> None:
+    spec = OptimizeAgentSpec(optimize_config="relative.yml", workspace="default")
+    with pytest.raises(Exception, match="absolute"):
+        await OptimizeAgentJob.compile(
+            workspace="default",
+            spec=spec,
+            entity_client=MagicMock(),
+            job_name=None,
+            async_sdk=MagicMock(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_compile_allows_relative_config_with_fileset() -> None:
     spec = OptimizeAgentSpec(
-        optimize_config="config.yml",
-        optimize_config_fileset=FilesetRef("nemo-agent-optimizer-configs"),
+        optimize_config="optimize.yml",
+        optimize_config_fileset=FilesetRef("nemo-agent-optimize-calc"),
         workspace="default",
     )
+    platform_spec = await OptimizeAgentJob.compile(
+        workspace="default",
+        spec=spec,
+        entity_client=MagicMock(),
+        job_name=None,
+        async_sdk=MagicMock(),
+    )
+    config = next(iter(platform_spec["steps"]))["config"]
+    assert config["optimize_config"] == "optimize.yml"
+    assert config["optimize_config_fileset"] == "nemo-agent-optimize-calc"
 
+
+def test_run_stages_config_from_fileset(tmp_path: Path, ctx: JobContext) -> None:
     sdk = MagicMock()
 
     def _fake_download(local_path: str, fileset: str, workspace: str) -> None:
-        Path(local_path, "config.yml").write_text("optimizer: {}")
+        Path(local_path, "optimize.yml").write_text(_MINIMAL_OPTIMIZE_YAML)
 
     sdk.files.download.side_effect = _fake_download
 
-    with job._resolve_optimize_config(spec, ctx=ctx, sdk=sdk) as resolved:
-        assert resolved.exists()
-        assert resolved.name == "config.yml"
-        assert resolved.read_text() == "optimizer: {}"
+    captured: dict[str, Any] = {}
 
+    def _fake_run(cmd: list[str], *, check: bool, cwd: Path) -> subprocess.CompletedProcess[str]:
+        captured["cwd"] = cwd
+        return subprocess.CompletedProcess(cmd, 0)
+
+    with (
+        patch("nemo_agents_plugin.jobs.optimize_agent.subprocess.run", side_effect=_fake_run),
+        patch("nemo_agents_plugin.jobs.optimize_agent.preflight_validate_llm_models"),
+    ):
+        result = OptimizeAgentJob().run(
+            {
+                "optimize_config": "optimize.yml",
+                "optimize_config_fileset": "nemo-agent-optimize-calc",
+                "workspace": "default",
+            },
+            ctx=ctx,
+            sdk=sdk,
+        )
+
+    assert result == {"status": "completed", "returncode": 0}
     sdk.files.download.assert_called_once()
-    kwargs = sdk.files.download.call_args.kwargs
-    assert kwargs["fileset"] == "nemo-agent-optimizer-configs"
-    assert kwargs["workspace"] == "default"
+    # nat optimize ran with cwd inside the downloaded fileset tempdir, not the source tree.
+    assert str(captured["cwd"]).startswith(str(ctx.storage.ephemeral))
 
 
-def test_resolve_optimize_config_fileset_without_sdk_raises(tmp_path: Path, ctx: JobContext) -> None:
-    job = OptimizeAgentJob()
-    spec = OptimizeAgentSpec(
-        optimize_config="config.yml",
-        optimize_config_fileset=FilesetRef("nemo-agent-optimizer-configs"),
-    )
-    with pytest.raises(LocalRunError, match="sdk"):
-        with job._resolve_optimize_config(spec, ctx=ctx, sdk=None):
-            pass
+def test_run_uploads_output_to_fileset_on_success(tmp_path: Path, ctx: JobContext) -> None:
+    optimize_yaml = tmp_path / "optimize.yml"
+    optimize_yaml.write_text(_MINIMAL_OPTIMIZE_YAML)
+
+    sdk = MagicMock()
+    sdk.files.upload.return_value = MagicMock(name="fake-fileset")
+
+    with (
+        patch(
+            "nemo_agents_plugin.jobs.optimize_agent.subprocess.run",
+            side_effect=lambda cmd, *, check, cwd: subprocess.CompletedProcess(cmd, 0),
+        ),
+        patch("nemo_agents_plugin.jobs.optimize_agent.preflight_validate_llm_models"),
+    ):
+        result = OptimizeAgentJob().run(
+            {"optimize_config": str(optimize_yaml), "output": "optimizer-out", "workspace": "default"},
+            ctx=ctx,
+            sdk=sdk,
+        )
+
+    assert result == {"status": "completed", "returncode": 0}
+    sdk.files.upload.assert_called_once()
+    assert sdk.files.upload.call_args.kwargs["fileset"] == "optimizer-out"
 
 
-def test_resolve_optimize_config_fileset_tempdir_lands_under_ctx_ephemeral(tmp_path: Path, ctx: JobContext) -> None:
-    job = OptimizeAgentJob()
-    spec = OptimizeAgentSpec(
-        optimize_config="config.yml",
-        optimize_config_fileset=FilesetRef("nemo-agent-optimizer-configs"),
-        workspace="default",
-    )
+def test_run_failed_subprocess_skips_output_upload(tmp_path: Path, ctx: JobContext) -> None:
+    optimize_yaml = tmp_path / "optimize.yml"
+    optimize_yaml.write_text(_MINIMAL_OPTIMIZE_YAML)
+
     sdk = MagicMock()
 
-    seen: dict[str, Path] = {}
+    def _boom(cmd: list[str], *, check: bool, cwd: Path) -> subprocess.CompletedProcess[str]:
+        raise subprocess.CalledProcessError(returncode=2, cmd=cmd)
 
-    def _fake_download(local_path: str, fileset: str, workspace: str) -> None:
-        seen["local_path"] = Path(local_path)
-        Path(local_path, "config.yml").write_text("optimizer: {}")
+    with (
+        patch("nemo_agents_plugin.jobs.optimize_agent.subprocess.run", side_effect=_boom),
+        patch("nemo_agents_plugin.jobs.optimize_agent.preflight_validate_llm_models"),
+    ):
+        result = OptimizeAgentJob().run(
+            {"optimize_config": str(optimize_yaml), "output": "optimizer-out", "workspace": "default"},
+            ctx=ctx,
+            sdk=sdk,
+        )
 
-    sdk.files.download.side_effect = _fake_download
-
-    with job._resolve_optimize_config(spec, ctx=ctx, sdk=sdk):
-        pass
-
-    assert seen["local_path"].parent == ctx.storage.ephemeral
-
-
-def test_resolve_optimize_config_fileset_rejects_path_traversal(tmp_path: Path, ctx: JobContext) -> None:
-    job = OptimizeAgentJob()
-    spec = OptimizeAgentSpec(
-        optimize_config="../escape.yml",
-        optimize_config_fileset=FilesetRef("nemo-agent-optimizer-configs"),
-        workspace="default",
-    )
-    sdk = MagicMock()
-
-    def _fake_download(local_path: str, fileset: str, workspace: str) -> None:
-        # Plant the traversal target outside the download dir so the guard,
-        # not a missing file, is what rejects it.
-        Path(local_path).parent.joinpath("escape.yml").write_text("optimizer: {}")
-
-    sdk.files.download.side_effect = _fake_download
-
-    with pytest.raises(ValueError, match="resolves outside the downloaded fileset"):
-        with job._resolve_optimize_config(spec, ctx=ctx, sdk=sdk):
-            pass
-
-
-def test_resolve_optimize_config_fileset_missing_file_raises(tmp_path: Path, ctx: JobContext) -> None:
-    job = OptimizeAgentJob()
-    spec = OptimizeAgentSpec(
-        optimize_config="config.yml",
-        optimize_config_fileset=FilesetRef("nemo-agent-optimizer-configs"),
-        workspace="default",
-    )
-    sdk = MagicMock()
-
-    def _fake_download(local_path: str, fileset: str, workspace: str) -> None:
-        # Fileset downloads, but the requested config isn't among its files.
-        Path(local_path, "other.yml").write_text("optimizer: {}")
-
-    sdk.files.download.side_effect = _fake_download
-
-    with pytest.raises(FileNotFoundError, match="was not found in fileset"):
-        with job._resolve_optimize_config(spec, ctx=ctx, sdk=sdk):
-            pass
+    assert result == {"status": "failed", "returncode": 2}
+    sdk.files.upload.assert_not_called()
