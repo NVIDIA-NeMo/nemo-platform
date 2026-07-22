@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import httpx
 import nemo_platform_ext.cli.commands.setup as setup_commands
@@ -164,17 +164,44 @@ class TestResolveProviderForUrl:
 
 
 class TestCheckPlatformReachable:
-    def test_reachable(self):
+    def test_reachable_via_status(self):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        with patch("nemo_platform_ext.cli.commands.setup.httpx.get", return_value=mock_resp):
+        with patch("nemo_platform_ext.cli.commands.setup.httpx.get", return_value=mock_resp) as mock_get:
             assert _check_platform_reachable("http://localhost:8080") is True
+        mock_get.assert_called_once_with(
+            "http://localhost:8080/status",
+            timeout=5.0,
+            verify=mock_get.call_args.kwargs["verify"],
+        )
+
+    def test_reachable_via_cluster_info_when_status_missing(self):
+        status_resp = MagicMock()
+        status_resp.status_code = 404
+        cluster_resp = MagicMock()
+        cluster_resp.status_code = 200
+
+        def _get(url, **kwargs):
+            if url.endswith("/status"):
+                return status_resp
+            if url.endswith("/cluster-info"):
+                return cluster_resp
+            raise AssertionError(f"unexpected url: {url}")
+
+        with patch("nemo_platform_ext.cli.commands.setup.httpx.get", side_effect=_get):
+            assert _check_platform_reachable("https://nemo-platform-freeplay.dev.aire.nvidia.com") is True
+
+    def test_unreachable_when_all_probes_fail(self):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 404
+        with patch("nemo_platform_ext.cli.commands.setup.httpx.get", return_value=mock_resp):
+            assert _check_platform_reachable("http://localhost:8080") is False
 
     def test_unreachable(self):
         with patch("nemo_platform_ext.cli.commands.setup.httpx.get", side_effect=Exception("conn refused")):
             assert _check_platform_reachable("http://localhost:8080") is False
 
-    def test_non_200_status(self):
+    def test_non_200_status_without_cluster_info_fallback(self):
         mock_resp = MagicMock()
         mock_resp.status_code = 503
         with patch("nemo_platform_ext.cli.commands.setup.httpx.get", return_value=mock_resp):
@@ -2606,7 +2633,10 @@ class TestSetupCommandRemoteFlow:
             setup_command(ctx)
 
         mock_configure.assert_called_once_with(cli_context, "https://remote.example.com", "team-a")
-        mock_bootstrap.assert_called_once_with("https://remote.example.com", "team-a")
+        assert mock_bootstrap.call_args_list == [
+            call("https://remote.example.com", "default"),
+            call("https://remote.example.com", "team-a"),
+        ]
         assert mock_run.call_args.args[2] == "team-a"
 
     def test_remote_choice_uses_explicit_workspace_flag(self):
@@ -2711,6 +2741,14 @@ class TestCheckControllerHealth:
             ok, _ = _check_controller_health("http://localhost:8080")
         assert ok is False
 
+    def test_status_not_published_on_hosted_deployment(self):
+        resp = MagicMock()
+        resp.status_code = 404
+        with patch(f"{SETUP_MOD}.httpx.get", return_value=resp):
+            ok, msg = _check_controller_health("https://nemo-platform-freeplay.dev.aire.nvidia.com")
+        assert ok is True
+        assert "does not publish /status" in msg
+
     def test_invalid_json_response(self):
         resp = MagicMock()
         resp.status_code = 200
@@ -2747,6 +2785,19 @@ class TestVerifyPlatformHealth:
         with patch(f"{SETUP_MOD}._check_controller_health", return_value=(True, "")):
             result = _verify_platform_health("http://localhost:8080")
         assert result is True
+
+    def test_missing_status_endpoint_returns_true_with_warning(self):
+        with (
+            patch(
+                f"{SETUP_MOD}._check_controller_health",
+                return_value=(True, "Hosted deployment does not publish /status."),
+            ),
+            patch(f"{SETUP_MOD}.console") as mock_console,
+        ):
+            result = _verify_platform_health("https://nemo-platform-freeplay.dev.aire.nvidia.com")
+        assert result is True
+        printed = " ".join(str(c) for c in mock_console.print.call_args_list)
+        assert "does not publish /status" in printed
 
     def test_unhealthy_prints_red_error(self):
         with (

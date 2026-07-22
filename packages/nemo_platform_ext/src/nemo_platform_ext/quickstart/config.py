@@ -18,6 +18,15 @@ from typing_extensions import Self
 from ._registry import image_registry_host
 from .gpu_config import parse_comma_separated_non_negative_integers
 
+
+def _secure_chmod(path: Path, mode: int) -> None:
+    """Apply filesystem permissions, ignoring failures on dirs we do not own (e.g. /tmp)."""
+    try:
+        os.chmod(path, mode)
+    except PermissionError:
+        pass
+
+
 InferenceProviderType = Literal["nvidia-build", "host-gpu"]
 
 # Registry and repo placeholder for SDK-stamped nightly/milestone tags.
@@ -228,7 +237,7 @@ class QuickstartConfig(BaseModel):
 
         # Ensure parent directory exists with secure permissions (owner-only access)
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        os.chmod(config_path.parent, stat.S_IRWXU)  # 700
+        _secure_chmod(config_path.parent, stat.S_IRWXU)  # 700
 
         # Serialize with secrets revealed
         config_data = self.model_dump(
@@ -250,7 +259,7 @@ class QuickstartConfig(BaseModel):
             yaml.safe_dump(config_data, f, default_flow_style=False, sort_keys=False)
 
         # Set secure file permissions (owner read/write only)
-        os.chmod(config_path, stat.S_IRUSR | stat.S_IWUSR)  # 600
+        _secure_chmod(config_path, stat.S_IRUSR | stat.S_IWUSR)  # 600
 
     @classmethod
     def remove(cls) -> None:

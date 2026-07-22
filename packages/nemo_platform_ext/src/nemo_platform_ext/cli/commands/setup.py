@@ -41,6 +41,7 @@ from nemo_platform_ext.cli.commands.skills.base import Scope, Skill
 from nemo_platform_ext.cli.commands.skills.registry import get_installer, load_skills
 from nemo_platform_ext.cli.core.context import CLIContext
 from nemo_platform_ext.cli.core.errors import handle_errors
+from nemo_platform_ext.client.tls import client_verify_from_env
 from nemo_platform_ext.config.config import Config
 from nemo_platform_ext.config.models import DEFAULT_BASE_URL, ConfigFile, ConfigParams, LocalServicesConfig
 from nemo_platform_ext.local.process import (
@@ -285,13 +286,25 @@ def _bootstrap_config_if_missing(base_url: str, workspace: str) -> None:
     Config.write(params)
 
 
+_PLATFORM_REACHABILITY_PATHS = ("/status", "/cluster-info")
+
+
 def _check_platform_reachable(base_url: str, timeout: float = 5.0) -> bool:
-    """Return True if the platform health endpoint responds."""
-    try:
-        resp = httpx.get(f"{base_url.rstrip('/')}/status", timeout=timeout)
-        return resp.status_code == 200
-    except Exception:
-        return False
+    """Return True if a platform health endpoint responds.
+
+    Local ``nemo services run`` publishes ``/status``. Hosted deployments may
+    only expose ``/cluster-info`` on ingress, so try both.
+    """
+    verify = client_verify_from_env()
+    root = base_url.rstrip("/")
+    for path in _PLATFORM_REACHABILITY_PATHS:
+        try:
+            resp = httpx.get(f"{root}{path}", timeout=timeout, verify=verify)
+            if resp.status_code == 200:
+                return True
+        except Exception:
+            continue
+    return False
 
 
 def _check_platform_reachable_with_retries(
@@ -385,14 +398,18 @@ def _check_controller_health(base_url: str, timeout: float = 5.0) -> tuple[bool,
     """Query ``/status`` and assess controller health.
 
     Returns ``(True, "")`` when controllers are populated and all healthy.
+    Returns ``(True, detail)`` when ``/status`` is not published (hosted ingress).
     Returns ``(False, detail)`` when unhealthy, unreachable, or empty after retry.
 
     If ``controllers.status`` is empty on the first call (startup timing race),
     waits ``_CONTROLLER_HEALTH_RETRY_DELAY`` seconds and retries once.
     """
+    verify = client_verify_from_env()
     for attempt in range(2):
         try:
-            resp = httpx.get(f"{base_url.rstrip('/')}/status", timeout=timeout)
+            resp = httpx.get(f"{base_url.rstrip('/')}/status", timeout=timeout, verify=verify)
+            if resp.status_code == 404:
+                return True, "Hosted deployment does not publish /status."
             if resp.status_code != 200:
                 return False, f"Unexpected status {resp.status_code} from /status endpoint."
             data = resp.json()
@@ -428,6 +445,9 @@ def _verify_platform_health(base_url: str) -> bool:
     """
     ok, detail = _check_controller_health(base_url)
     if ok:
+        if detail:
+            console.print(f"\n{WARN} [yellow]{detail}[/yellow]")
+            console.print("  Setup may have succeeded, but controller health could not be verified.")
         return True
 
     if "no controllers" in detail.lower():
@@ -1794,6 +1814,8 @@ def setup_command(
         service_result = _maybe_start_services(base_url, auto, start_services, timeout=effective_timeout)
         if service_result == "connect_remote":
             base_url = _prompt_remote_base_url()
+            _bootstrap_config_if_missing(base_url, workspace)
+            cli_context.reset_sdk_context()
             workspace = _resolve_setup_workspace(ctx, cli_context, workspace)
             _configure_remote_connection(cli_context, base_url, workspace)
             _ensure_platform_auth(cli_context)

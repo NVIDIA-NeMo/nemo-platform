@@ -5,29 +5,37 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import stat
-from dataclasses import dataclass
+import logging
 from pathlib import Path
-
-import yaml
-from pydantic import BaseModel, Field, HttpUrl, PrivateAttr, SecretStr
+from dataclasses import dataclass
 from typing_extensions import Self
 
+import yaml
+from pydantic import Field, HttpUrl, BaseModel, SecretStr, PrivateAttr
+
 from .models import (
-    DEFAULT_BASE_URL,
     DEFAULT_CONTEXT,
+    DEFAULT_BASE_URL,
     DEFAULT_WORKSPACE,
-    ConfigFile,
-    ConfigParams,
     Context,
     OAuthUser,
+    ConfigFile,
+    ConfigParams,
     OutputFormat,
     TimestampFormat,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _secure_chmod(path: Path, mode: int) -> None:
+    """Apply filesystem permissions, ignoring failures on dirs we do not own (e.g. /tmp)."""
+    try:
+        os.chmod(path, mode)
+    except PermissionError:
+        pass
 
 
 @dataclass(frozen=True)
@@ -266,7 +274,7 @@ class Config(BaseModel):
 
         # Ensure parent directory exists with secure permissions (owner-only access)
         path.parent.mkdir(parents=True, exist_ok=True)
-        os.chmod(path.parent, stat.S_IRWXU)  # 700
+        _secure_chmod(path.parent, stat.S_IRWXU)  # 700
 
         # Serialize with secrets revealed using context
         config_data = self._config_file.model_dump(
@@ -279,7 +287,7 @@ class Config(BaseModel):
             yaml.safe_dump(config_data, f, default_flow_style=False, sort_keys=False)
 
         # Set secure file permissions (owner read/write only)
-        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)  # 600
+        _secure_chmod(path, stat.S_IRUSR | stat.S_IWUSR)  # 600
 
         # Update stored path if we saved to a new location
         self._config_path = path
