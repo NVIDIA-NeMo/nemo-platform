@@ -11,6 +11,7 @@ import type {
   SnapshotShape,
   SuggestionApplySpec,
 } from '@studio/routes/agents/AgentSuggestionsRoute/types';
+import { isExternalEndpointAgent } from '@studio/routes/agents/agentTypes';
 import { logger } from '@studio/util/logger';
 
 /** Fileset name for an agent's eval bundle. */
@@ -386,14 +387,15 @@ export const analyze = ({
   workspace,
 }: AnalyzeInput): OptimizationSuggestion[] => {
   const suggestions: OptimizationSuggestion[] = [];
+  const managedAgents = agents.filter((agent) => !isExternalEndpointAgent(agent));
 
-  for (const agent of agents) {
+  for (const agent of managedAgents) {
     if (!agent.config || agentHasGuardrails(agent.config)) continue;
     suggestions.push(...buildGuardrailsSuggestions(agent));
   }
 
   // One suggestion per oversized LLM per agent.
-  for (const agent of agents) {
+  for (const agent of managedAgents) {
     for (const modelName of extractAgentModelNames(agent.config)) {
       const params = extractBillionParams(modelName);
       if (params === null || params <= SMALL_MODEL_THRESHOLD_B) continue;

@@ -10,7 +10,7 @@ import { FormModal, type FormModalProps } from '@nemo/common/src/components/Form
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { customFetch } from '@nemo/sdk/generated/fetchers/platform';
 import { filesCreateFileset } from '@nemo/sdk/generated/platform/api';
-import { SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
+import { Banner, SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
 import { fetchSampleText } from '@studio/api/agents/fetchSampleText';
 import { type Agent } from '@studio/components/dataViews/AgentsDataView';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
@@ -38,6 +38,10 @@ import {
   ensureEvalConfigFileset,
   type EvalSeedFile,
 } from '@studio/routes/agents/AgentSuggestionsRoute/api';
+import {
+  getAgentEvaluationTarget,
+  isExternalEndpointAgent,
+} from '@studio/routes/agents/agentTypes';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type FC, useEffect, useMemo, useRef } from 'react';
 import { type SubmitHandler, useForm, useWatch } from 'react-hook-form';
@@ -52,6 +56,12 @@ const EVAL_CONFIG_MODE_ITEMS = [
 const bareName = (value?: string | null): string | null => {
   if (typeof value !== 'string' || value.length === 0) return null;
   return value.includes('/') ? (value.split('/').pop() ?? null) : value;
+};
+
+const sameAgentTarget = (left?: string | null, right?: string | null): boolean => {
+  if (!left || !right) return false;
+  if (left.startsWith('http://') || left.startsWith('https://')) return left === right;
+  return bareName(left) === bareName(right);
 };
 
 const submitEvaluationSchema = z
@@ -138,7 +148,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       const json = (await response.json()) as { data: Agent[] };
       return json.data;
     },
-    enabled: open && !agentProp,
+    enabled: open,
   });
 
   // Prior eval jobs — the source for the "existing eval config" dropdown.
@@ -174,7 +184,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       }
       // Pre-create the output fileset so it carries a description; the job's
       // auto-create no-ops once it exists. Best-effort — never block submission.
-      const outputFileset = generateOutputFilesetName(spec.agent);
+      const outputFileset = generateOutputFilesetName(spec.outputName ?? spec.agent);
       try {
         await filesCreateFileset(workspace, {
           name: outputFileset,
@@ -223,22 +233,31 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   const evalConfig = useWatch({ control, name: 'evalConfig' });
   const mode = useWatch({ control, name: 'mode' });
   const selectedAgent = useWatch({ control, name: 'agent' });
+  const selectedAgentEntity = useMemo(
+    () => agents.find((agent) => agent.name === selectedAgent),
+    [agents, selectedAgent]
+  );
+  const selectedAgentTarget = selectedAgentEntity
+    ? (getAgentEvaluationTarget(selectedAgentEntity) ?? selectedAgent)
+    : selectedAgent;
+  const selectedAgentIsExternal = selectedAgentEntity
+    ? isExternalEndpointAgent(selectedAgentEntity)
+    : false;
 
   // Existing eval configs for the agent: distinct config filesets from prior
   // jobs, mapped to the YAML each ran.
   const existingConfigs = useMemo(() => {
     const map = new Map<string, string>();
-    const agentKey = bareName(selectedAgent);
-    if (!agentKey) return map;
+    if (!selectedAgentTarget) return map;
     for (const job of jobs as AgentEvalJob[]) {
-      if (bareName(job.spec.agent) !== agentKey) continue;
+      if (!sameAgentTarget(job.spec.agent, selectedAgentTarget)) continue;
       const fileset = job.spec.eval_config_fileset;
       if (typeof fileset === 'string' && fileset.length > 0 && !map.has(fileset)) {
         map.set(fileset, job.spec.eval_config ?? '');
       }
     }
     return map;
-  }, [jobs, selectedAgent]);
+  }, [jobs, selectedAgentTarget]);
 
   const evalConfigItems = useMemo(
     () => [
@@ -294,7 +313,10 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
 
   const onSubmit: SubmitHandler<SubmitEvaluationFormData> = async (formData) => {
     try {
-      await submitEvaluation(buildSubmitSpec(formData, existingConfigs));
+      const spec = buildSubmitSpec(formData, existingConfigs);
+      spec.agent = selectedAgentTarget || formData.agent;
+      spec.outputName = formData.agent;
+      await submitEvaluation(spec);
     } catch {
       // Error rendered via errorText prop.
     }
@@ -331,13 +353,28 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
             useControllerProps={{ control, name: 'agent' }}
             loading={isAgentsLoading}
             items={agents.flatMap((agent) =>
-              agent.name ? [{ value: agent.name, children: agent.name }] : []
+              agent.name
+                ? [
+                    {
+                      value: agent.name,
+                      children: isExternalEndpointAgent(agent)
+                        ? `${agent.name} (External endpoint)`
+                        : agent.name,
+                    },
+                  ]
+                : []
             )}
             formFieldProps={{
               slotLabel: 'Agent',
               slotError: errors.agent?.message,
             }}
           />
+        )}
+        {selectedAgentIsExternal && (
+          <Banner kind="inline" status="info">
+            This evaluation will call the registered external endpoint directly. NeMo Platform will
+            not deploy or modify the agent.
+          </Banner>
         )}
         {selectedAgent ? (
           <Stack gap="density-xl">

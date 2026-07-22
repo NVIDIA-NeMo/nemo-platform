@@ -196,6 +196,21 @@ describe('analyze — guardrails', () => {
     }
   });
 
+  it('does not inspect externally managed endpoint agents as NAT configs', () => {
+    const agents: AgentListing[] = [
+      {
+        name: 'remote-agent',
+        config_format: 'external-endpoint-v1',
+        config: {
+          endpoint_url: 'https://agents.example.com/v1',
+          protocol: 'nat-http-v1',
+        },
+      },
+    ];
+
+    expect(analyze({ ...baseAnalyzeInput, agents })).toEqual([]);
+  });
+
   it('shows the unguarded model(s) — not the first configured one — for mixed configs', () => {
     const agents: AgentListing[] = [
       {

@@ -32,6 +32,7 @@ const SOURCE_AGENT: AgentTableRow = {
     workflow: { _type: 'react_agent', llm_name: 'llm', tool_names: ['calculator'] },
   },
   config_format: 'nat',
+  agentType: 'NAT workflow',
   created_at: '2026-04-01T00:00:00Z',
   models: ['old-model'],
   deploymentsStatus: 'No Deployments',

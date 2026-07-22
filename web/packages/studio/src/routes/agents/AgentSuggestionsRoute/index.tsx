@@ -24,15 +24,18 @@ import {
   EmptyState,
   NoAgentsEmptyState,
 } from '@studio/routes/agents/AgentSuggestionsRoute/components/EmptyState';
+import { RunOptimizationModal } from '@studio/routes/agents/AgentSuggestionsRoute/components/RunOptimizationModal';
 import { SectionHeading } from '@studio/routes/agents/AgentSuggestionsRoute/components/SectionHeading';
 import { StatsSection } from '@studio/routes/agents/AgentSuggestionsRoute/components/StatsSection';
 import { SuggestionTile } from '@studio/routes/agents/AgentSuggestionsRoute/components/SuggestionTile';
 import { useAgentOptimizations } from '@studio/routes/agents/AgentSuggestionsRoute/useAgentOptimizations';
 import { suggestionIdentity } from '@studio/routes/agents/AgentSuggestionsRoute/utils';
 import { Filter, Search } from 'lucide-react';
-import { type FC } from 'react';
+import { type FC, useState } from 'react';
 
 export const AgentOptimizationsRoute: FC = () => {
+  const [isTuningOpen, setTuningOpen] = useState(false);
+  const [submittedTuningJob, setSubmittedTuningJob] = useState<string | null>(null);
   const {
     workspace,
     isSuggestionsLoading,
@@ -75,17 +78,29 @@ export const AgentOptimizationsRoute: FC = () => {
         <PageHeader
           className="p-0"
           slotHeading="Optimization Suggestions"
-          slotDescription="Analyze your agents for model sizing opportunities, missing guardrails, data safety issues, and new model availability."
+          slotDescription="Tune registered agents, review optimization opportunities, and use evaluations to validate improvements before promotion."
           slotActions={
-            <Button kind="primary" onClick={() => void run()} disabled={isRunning}>
-              {isRunning
-                ? 'Running…'
-                : phase === 'done' || phase === 'failed'
-                  ? 'Re-run'
-                  : 'Generate suggestions'}
-            </Button>
+            <Flex gap="density-sm">
+              <Button kind="secondary" onClick={() => setTuningOpen(true)}>
+                Tune hyperparameters
+              </Button>
+              <Button kind="primary" onClick={() => void run()} disabled={isRunning}>
+                {isRunning
+                  ? 'Running…'
+                  : phase === 'done' || phase === 'failed'
+                    ? 'Re-run'
+                    : 'Generate suggestions'}
+              </Button>
+            </Flex>
           }
         />
+
+        {submittedTuningJob && (
+          <Banner kind="inline" status="success">
+            Hyperparameter tuning job “{submittedTuningJob}” was submitted. Compare its chosen
+            configuration against the same evaluation baseline before promoting a sibling agent.
+          </Banner>
+        )}
 
         {showStats && (
           <StatsSection
@@ -248,6 +263,12 @@ export const AgentOptimizationsRoute: FC = () => {
         workspace={workspace}
         suggestionTitle={pendingApply?.title ?? ''}
         onConfirm={handleEvalConfigChosen}
+      />
+      <RunOptimizationModal
+        open={isTuningOpen}
+        onClose={() => setTuningOpen(false)}
+        workspace={workspace}
+        onSubmitted={setSubmittedTuningJob}
       />
     </AccessibleTitle>
   );

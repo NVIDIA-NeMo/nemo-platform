@@ -15,6 +15,7 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { CreateDeploymentModal } from '@studio/routes/agents/AgentDeploymentsListRoute/CreateDeploymentModal';
 import { CloneAgentModal } from '@studio/routes/agents/AgentsListRoute/CloneAgentModal';
 import { CreateExampleAgentModal } from '@studio/routes/agents/AgentsListRoute/CreateExampleAgentModal';
+import { RegisterAgentModal } from '@studio/routes/agents/AgentsListRoute/RegisterAgentModal';
 import { getAgentDetailRoute, getAgentsListRoute } from '@studio/routes/utils';
 import { type FC, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -27,6 +28,7 @@ export const AgentsListRoute: FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [createDeploymentAgent, setCreateDeploymentAgent] = useState<string | null>(null);
   const [isCreateExampleOpen, setCreateExampleOpen] = useState(false);
+  const [isRegisterOpen, setRegisterOpen] = useState(false);
   const [cloneSource, setCloneSource] = useState<AgentTableRow | null>(null);
   const [loadedAgents, setLoadedAgents] = useState<Agent[]>([]);
   const { [ROUTE_PARAMS.agentName]: agentNameParam } = useParams<{ agentName?: string }>();
@@ -53,11 +55,16 @@ export const AgentsListRoute: FC = () => {
         <PageHeader
           className="p-0"
           slotHeading="Agents"
-          slotDescription="View and manage AI agents and their deployments."
+          slotDescription="Register managed NAT workflows or externally hosted agents for evaluation and optimization."
           slotActions={
-            <Button color="brand" onClick={() => setCreateExampleOpen(true)}>
-              Create Example Agent
-            </Button>
+            <Stack direction="row" gap="density-sm">
+              <Button kind="secondary" onClick={() => setCreateExampleOpen(true)}>
+                Create Example Agent
+              </Button>
+              <Button color="brand" onClick={() => setRegisterOpen(true)}>
+                Register Agent
+              </Button>
+            </Stack>
           }
         />
         <AgentsTable
@@ -72,6 +79,11 @@ export const AgentsListRoute: FC = () => {
         onClose={() => setCreateExampleOpen(false)}
         workspace={workspace}
         existingAgents={loadedAgents}
+      />
+      <RegisterAgentModal
+        open={isRegisterOpen}
+        onClose={() => setRegisterOpen(false)}
+        workspace={workspace}
       />
       <CloneAgentModal
         open={cloneSource !== null}

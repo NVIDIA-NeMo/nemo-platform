@@ -36,6 +36,9 @@ export interface EvalSeedSource {
 
 export interface SubmitSpec {
   agent: string;
+  /** Stable registered name used for output fileset naming when ``agent`` is
+   *  an external endpoint URL. */
+  outputName?: string;
   evalConfig: string;
   evalConfigFileset: string;
   /** Files to seed into ``evalConfigFileset`` before submitting. Omitted when
@@ -115,7 +118,7 @@ export const generateOutputFilesetName = (agent: string): string =>
 
 /** Description stamped on the eval output fileset. */
 export const evalOutputDescription = (spec: SubmitSpec): string =>
-  `Agent Evaluation output, agent: ${spec.agent}, config: ${spec.evalConfigFileset}`;
+  `Agent Evaluation output, agent: ${spec.outputName ?? spec.agent}, config: ${spec.evalConfigFileset}`;
 
 /** POST body for ``/jobs/evaluate``. */
 export const evaluateRequestBody = (spec: SubmitSpec, output: string) => ({

@@ -54,6 +54,7 @@ export interface SuggestionTileProps {
 
 export interface AgentListing {
   name: string;
+  config_format?: string;
   config?: AgentConfig;
 }
 

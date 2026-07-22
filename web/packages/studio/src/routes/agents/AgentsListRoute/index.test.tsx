@@ -61,8 +61,82 @@ describe('AgentsListRoute', () => {
     renderList();
     expect(await screen.findByText('Agents')).toBeInTheDocument();
     expect(
-      screen.getByText('View and manage AI agents and their deployments.')
+      screen.getByText(
+        'Register managed NAT workflows or externally hosted agents for evaluation and optimization.'
+      )
     ).toBeInTheDocument();
+  });
+
+  it('registers an agent from a NAT workflow YAML', async () => {
+    const user = userEvent.setup();
+    let captured: { name?: string; description?: string; config?: Record<string, unknown> } = {};
+    server.use(
+      http.post(CREATE_AGENT_URL, async ({ request, params }) => {
+        captured = (await request.json()) as typeof captured;
+        return HttpResponse.json({ ...captured, workspace: params['workspace'] });
+      })
+    );
+
+    renderList();
+    await user.click(await screen.findByRole('button', { name: 'Register Agent' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('radio', { name: 'NAT workflow' }));
+    await user.type(within(dialog).getByRole('textbox', { name: 'Agent name' }), 'support-agent');
+    await user.type(
+      within(dialog).getByRole('textbox', { name: 'Description' }),
+      'Handles support questions'
+    );
+    await user.type(
+      within(dialog).getByRole('textbox', { name: 'NAT workflow YAML' }),
+      'llms:\n  llm:\n    _type: openai\n    model_name: nvidia-nemotron\nworkflow:\n  _type: react_agent\n  llm_name: llm'
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Register' }));
+
+    expect(await screen.findByText('Agent detail page')).toBeInTheDocument();
+    expect(captured).toMatchObject({
+      name: 'support-agent',
+      description: 'Handles support questions',
+      config: {
+        llms: { llm: { _type: 'openai', model_name: 'nvidia-nemotron' } },
+        workflow: { _type: 'react_agent', llm_name: 'llm' },
+      },
+      config_format: 'nat-workflow-v1',
+    });
+  });
+
+  it('registers an externally hosted agent endpoint', async () => {
+    const user = userEvent.setup();
+    let captured: {
+      name?: string;
+      config?: Record<string, unknown>;
+      config_format?: string;
+    } = {};
+    server.use(
+      http.post(CREATE_AGENT_URL, async ({ request, params }) => {
+        captured = (await request.json()) as typeof captured;
+        return HttpResponse.json({ ...captured, workspace: params['workspace'] });
+      })
+    );
+
+    renderList();
+    await user.click(await screen.findByRole('button', { name: 'Register Agent' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Agent name' }), 'remote-agent');
+    await user.type(
+      within(dialog).getByRole('textbox', { name: 'Agent endpoint URL' }),
+      'https://agents.example.com/v1'
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Register' }));
+
+    expect(await screen.findByText('Agent detail page')).toBeInTheDocument();
+    expect(captured).toMatchObject({
+      name: 'remote-agent',
+      config: {
+        endpoint_url: 'https://agents.example.com/v1',
+        protocol: 'nat-http-v1',
+      },
+      config_format: 'external-endpoint-v1',
+    });
   });
 
   it('opens the modal with the suggested model preselected', async () => {

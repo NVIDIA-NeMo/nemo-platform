@@ -32,6 +32,7 @@ import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { MODEL_COMPARE_ENABLED } from '@studio/constants/environment';
 import { LINK_DOCS_STUDIO } from '@studio/constants/links';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { isExternalEndpointAgent } from '@studio/routes/agents/agentTypes';
 import { getModelCompareRoute } from '@studio/routes/utils';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
 import { HatGlasses, Trash, X } from 'lucide-react';
@@ -41,6 +42,8 @@ import { useNavigate } from 'react-router-dom';
 export type { Agent, AgentDeployment };
 
 export interface AgentConfig {
+  endpoint_url?: string;
+  protocol?: string;
   functions?: Record<string, { _type: string }>;
   llms?: Record<
     string,
@@ -73,6 +76,7 @@ export type AgentTableRow = {
   description?: string;
   config?: AgentConfig;
   config_format?: string;
+  agentType: 'NAT workflow' | 'External endpoint';
   created_at?: string;
   models: string[];
   deploymentsStatus: string;
@@ -154,13 +158,18 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
   const tableData = useMemo<AgentTableRow[]>(() => {
     const deployments = deploymentsData ?? [];
     return (agentsData ?? []).map((agent) => {
+      const isExternal = isExternalEndpointAgent(agent);
       const agentDeployments = deployments.filter((d) => d.agent === agent.name);
       const total = agentDeployments.length;
       const healthy = agentDeployments.filter((d) => d.status === 'running').length;
       const deploymentsDeploying = agentDeployments.some(
         (d) => d.status && !TERMINAL_DEPLOYMENT_STATUSES.has(d.status) && d.status !== 'deleting'
       );
-      const deploymentsStatus = total === 0 ? 'No Deployments' : `${healthy}/${total} Healthy`;
+      const deploymentsStatus = isExternal
+        ? 'Externally managed'
+        : total === 0
+          ? 'No Deployments'
+          : `${healthy}/${total} Healthy`;
       const config = agent.config as AgentConfig | undefined;
       return {
         id: agent.id ?? agent.name ?? '',
@@ -169,6 +178,7 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
         description: agent.description,
         config,
         config_format: agent.config_format,
+        agentType: isExternal ? 'External endpoint' : 'NAT workflow',
         created_at: agent.created_at,
         models: getAgentModelNames(config),
         deploymentsStatus,
@@ -254,6 +264,10 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
       enableSorting: false,
       cell: ({ row }) => <Text>{row.original.description || '-'}</Text>,
     }),
+    accessor('agentType', {
+      header: 'Type',
+      enableSorting: false,
+    }),
     accessor('models', {
       header: 'Model',
       enableSorting: false,
@@ -284,11 +298,15 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
       size: ROW_ACTIONS_COLUMN_SIZE,
       enableResizing: false,
       rowActions: (row: AgentTableRow) => [
-        {
-          children: 'Deploy',
-          onSelect: () => onCreateDeployment?.(row.name),
-        },
-        ...(canTestModels
+        ...(row.agentType === 'NAT workflow'
+          ? [
+              {
+                children: 'Deploy',
+                onSelect: () => onCreateDeployment?.(row.name),
+              },
+            ]
+          : []),
+        ...(canTestModels && row.agentType === 'NAT workflow'
           ? [
               {
                 children: 'Test models',

@@ -39,13 +39,14 @@ const LocationProbe = () => {
 
 describe('CombinedAgentsTable', () => {
   describe('columns', () => {
-    it('renders Name, Description, Model, Deployments, and Created column headers', async () => {
+    it('renders Name, Description, Type, Model, Deployments, and Created column headers', async () => {
       renderTable();
 
       await waitFor(() => expect(screen.queryByTestId('spinner')).not.toBeInTheDocument());
 
       expect(screen.getByRole('columnheader', { name: 'Name' })).toBeInTheDocument();
       expect(screen.getByRole('columnheader', { name: 'Description' })).toBeInTheDocument();
+      expect(screen.getByRole('columnheader', { name: 'Type' })).toBeInTheDocument();
       expect(screen.getByRole('columnheader', { name: 'Model' })).toBeInTheDocument();
       expect(screen.getByRole('columnheader', { name: 'Deployments' })).toBeInTheDocument();
       expect(screen.getByRole('columnheader', { name: 'Created' })).toBeInTheDocument();
@@ -206,6 +207,45 @@ describe('CombinedAgentsTable', () => {
         0
       );
       expect(screen.queryByRole('menuitem', { name: 'Test models' })).not.toBeInTheDocument();
+    });
+
+    it('marks external endpoints as externally managed and hides deployment actions', async () => {
+      const user = userEvent.setup();
+      server.use(
+        http.get(`${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/agents`, () =>
+          HttpResponse.json({
+            data: [
+              {
+                name: 'remote-agent',
+                workspace: WORKSPACE,
+                description: 'Hosted elsewhere',
+                config_format: 'external-endpoint-v1',
+                config: { endpoint_url: 'https://agents.example.com/v1' },
+              },
+            ],
+            pagination: {
+              page: 1,
+              page_size: 50,
+              current_page_size: 1,
+              total_pages: 1,
+              total_results: 1,
+            },
+          })
+        ),
+        http.get(`${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/deployments`, () =>
+          HttpResponse.json({ data: [], pagination: { total_results: 0 } })
+        )
+      );
+      renderTable();
+
+      expect(await screen.findByText('External endpoint')).toBeInTheDocument();
+      expect(screen.getByText('Externally managed')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /actions/i }));
+
+      expect(screen.queryByRole('menuitem', { name: 'Deploy' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: 'Test models' })).not.toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'Clone' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument();
     });
 
     it('calls onCloneAgent with the row when Clone is selected', async () => {
