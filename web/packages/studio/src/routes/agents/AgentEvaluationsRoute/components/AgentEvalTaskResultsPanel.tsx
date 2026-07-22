@@ -2,22 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { AccordionPanel } from '@nemo/common/src/components/AccordionPanel';
+import * as DataView from '@nemo/common/src/components/DataView/internal';
+import {
+  TableExpandableCell,
+  type TableExpandableCellState,
+} from '@nemo/common/src/components/DataView/TableExpandableCell';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
-import { Badge, Block, Card, Flex, Stack, Text } from '@nvidia/foundations-react-core';
+import { Badge, Block, Button, Flex, Modal, Stack, Text } from '@nvidia/foundations-react-core';
 import type { AgentEvalTaskDetail } from '@studio/api/evaluation/agent-evaluations';
-import { formatScore, scoreColor } from '@studio/routes/agents/AgentEvaluationsRoute/evalScores';
+import { formatScore } from '@studio/routes/agents/AgentEvaluationsRoute/evalScores';
 import { ListChecks } from 'lucide-react';
-import { type FC } from 'react';
+import { type ComponentProps, type FC, useCallback, useState } from 'react';
 
 interface AgentEvalTaskResultsPanelProps {
   tasks: AgentEvalTaskDetail[];
 }
-
-const headingFor = (task: AgentEvalTaskDetail): string => {
-  const firstLine = (task.instruction ?? '').split('\n', 1)[0] ?? '';
-  const match = /^\s*subject:\s*(.+)$/i.exec(firstLine);
-  return match ? match[1].trim() : task.taskId;
-};
 
 const referenceText = (reference?: Record<string, unknown>): string | null => {
   if (!reference || Object.keys(reference).length === 0) return null;
@@ -26,107 +25,150 @@ const referenceText = (reference?: Record<string, unknown>): string | null => {
   return JSON.stringify(reference);
 };
 
-const metadataEntries = (metadata?: Record<string, unknown>): Array<[string, string]> =>
-  Object.entries(metadata ?? {}).map(([k, v]) => [
-    k,
-    typeof v === 'string' ? v : JSON.stringify(v),
-  ]);
+const diagnosticsText = (diagnostics: unknown[]): string =>
+  diagnostics.map((d) => JSON.stringify(d)).join('\n');
+
+const LongCell: FC<{
+  content: string;
+  title: string;
+  onExpand: (state: TableExpandableCellState) => void;
+}> = ({ content, title, onExpand }) =>
+  content ? (
+    <TableExpandableCell content={content} title={title} onExpand={onExpand} />
+  ) : (
+    <Text kind="body/regular/sm" color="secondary">
+      —
+    </Text>
+  );
 
 export const AgentEvalTaskResultsPanel: FC<AgentEvalTaskResultsPanelProps> = ({ tasks }) => {
+  const [expandedCell, setExpandedCell] = useState<TableExpandableCellState | null>(null);
+  const dataViewState = DataView.useDataViewState();
+
+  const makeColumns = useCallback<
+    ComponentProps<typeof DataView.Root<AgentEvalTaskDetail>>['makeColumns']
+  >(
+    (col) => [
+      col.display({
+        id: 'task',
+        header: 'Task',
+        size: 80,
+        cell: ({ row }) => <Text kind="body/semibold/sm">{row.index + 1}</Text>,
+      }),
+      col.display({
+        id: 'score',
+        header: 'Score',
+        size: 150,
+        cell: ({ row }) => (
+          <Stack gap="density-xs">
+            {row.original.scores.map((s) => (
+              <Text key={s.name} kind="body/semibold/md" className="whitespace-nowrap">
+                {s.name}: {formatScore(s.value)}
+              </Text>
+            ))}
+          </Stack>
+        ),
+      }),
+      col.display({
+        id: 'input',
+        header: 'Input',
+        size: 280,
+        cell: ({ row }) => (
+          <LongCell
+            content={row.original.instruction ?? ''}
+            title={`Task ${row.index + 1} — Input`}
+            onExpand={setExpandedCell}
+          />
+        ),
+      }),
+      col.display({
+        id: 'expected',
+        header: 'Expected',
+        size: 140,
+        cell: ({ row }) => {
+          const expected = referenceText(row.original.reference);
+          return expected ? (
+            <Badge kind="outline" color="gray">
+              {expected}
+            </Badge>
+          ) : (
+            <Text kind="body/regular/sm" color="secondary">
+              —
+            </Text>
+          );
+        },
+      }),
+      col.display({
+        id: 'response',
+        header: 'Agent Response',
+        size: 280,
+        cell: ({ row }) => (
+          <LongCell
+            content={row.original.responseText ?? ''}
+            title={`Task ${row.index + 1} — Agent Response`}
+            onExpand={setExpandedCell}
+          />
+        ),
+      }),
+      col.display({
+        id: 'status',
+        header: 'Status',
+        size: 110,
+        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+      }),
+      col.display({
+        id: 'diagnostics',
+        header: 'Diagnostics',
+        size: 220,
+        cell: ({ row }) => (
+          <LongCell
+            content={diagnosticsText(row.original.diagnostics)}
+            title={`Task ${row.index + 1} — Diagnostics`}
+            onExpand={setExpandedCell}
+          />
+        ),
+      }),
+    ],
+    []
+  );
+
   if (tasks.length === 0) {
     return <Block className="text-subtle">No per-task results recorded for this evaluation.</Block>;
   }
 
   return (
     <AccordionPanel slotHeading={`Task Results (${tasks.length})`} slotIcon={<ListChecks />}>
-      <Stack gap="density-lg">
-        {tasks.map((task) => {
-          const expected = referenceText(task.reference);
-          const metadata = metadataEntries(task.metadata);
-          return (
-            <Card key={task.taskId} className="relative">
-              <Flex
-                gap="density-sm"
-                className="absolute right-density-lg top-density-lg"
-                wrap="wrap"
-              >
-                {task.scores.map((s) => (
-                  <Badge key={s.name} kind="solid" color={scoreColor(s.value)}>
-                    {s.name}: {formatScore(s.value)}
-                  </Badge>
-                ))}
-              </Flex>
-
-              <Stack gap="density-md" className="pr-density-3xl">
-                <Stack gap="density-xs">
-                  <Text kind="body/semibold/md" className="min-w-0 break-words">
-                    {headingFor(task)}
-                  </Text>
-                  <Flex gap="density-sm" align="center" wrap="wrap">
-                    {expected && (
-                      <Badge kind="outline" color="gray">
-                        Expected: {expected}
-                      </Badge>
-                    )}
-                    <StatusBadge status={task.status} />
-                  </Flex>
-                </Stack>
-
-                <Stack gap="density-xs">
-                  <Text kind="label/bold/sm" color="secondary">
-                    Agent response
-                  </Text>
-                  <Text kind="body/regular/sm" className="whitespace-pre-wrap">
-                    {task.responseText ?? '—'}
-                  </Text>
-                </Stack>
-
-                {task.instruction && (
-                  <Stack gap="density-xs">
-                    <Text kind="label/bold/sm" color="secondary">
-                      Input
-                    </Text>
-                    <Text kind="body/regular/sm" color="secondary" className="whitespace-pre-wrap">
-                      {task.instruction}
-                    </Text>
-                  </Stack>
-                )}
-
-                {metadata.length > 0 && (
-                  <Stack gap="density-xs">
-                    <Text kind="label/bold/sm" color="secondary">
-                      Metadata
-                    </Text>
-                    <Stack gap="density-xs">
-                      {metadata.map(([key, value]) => (
-                        <Flex key={key} gap="density-sm" wrap="wrap">
-                          <Text kind="body/semibold/sm" color="secondary">
-                            {key}:
-                          </Text>
-                          <Text kind="body/regular/sm" color="secondary" className="break-words">
-                            {value}
-                          </Text>
-                        </Flex>
-                      ))}
-                    </Stack>
-                  </Stack>
-                )}
-
-                {task.diagnostics.length > 0 && (
-                  <Stack gap="density-xs">
-                    <Text kind="label/bold/sm" color="secondary">
-                      Diagnostics
-                    </Text>
-                    <Text kind="body/regular/sm" color="danger" className="whitespace-pre-wrap">
-                      {task.diagnostics.map((d) => JSON.stringify(d)).join('\n')}
-                    </Text>
-                  </Stack>
-                )}
-              </Stack>
-            </Card>
-          );
-        })}
-      </Stack>
+      <div className="border border-base rounded-md overflow-hidden">
+        <DataView.Root
+          data={tasks}
+          state={dataViewState}
+          makeColumns={makeColumns}
+          reactTableOptions={{ getRowId: (row) => row.taskId }}
+        >
+          <DataView.TableContent />
+        </DataView.Root>
+      </div>
+      <Modal
+        open={expandedCell !== null}
+        onOpenChange={(open) => {
+          if (!open) setExpandedCell(null);
+        }}
+        slotHeading={expandedCell?.title ?? 'Cell Content'}
+        className="w-[90vw] max-w-[1000px]"
+        slotFooter={
+          <Flex justify="end" align="center" className="w-full">
+            <Button kind="tertiary" onClick={() => setExpandedCell(null)}>
+              Close
+            </Button>
+          </Flex>
+        }
+      >
+        <div className="max-h-[70vh] overflow-auto">
+          <Text kind="body/regular/md" className="whitespace-pre-wrap">
+            {expandedCell?.content}
+          </Text>
+        </div>
+      </Modal>
     </AccordionPanel>
   );
 };

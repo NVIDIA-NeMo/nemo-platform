@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { withOperators } from '@nemo/common/src/api/filterOperators';
 import {
   evaluatorCancelAgentEvaluateJob,
   evaluatorCreateAgentEvaluateJob,
   evaluatorGetAgentEvalResult,
   evaluatorGetAgentEvaluateJob,
+  evaluatorListAgentEvalResults,
   evaluatorListAgentEvaluateJobs,
 } from '@nemo/sdk/generated/evaluator/api';
 import type {
@@ -15,6 +17,7 @@ import type {
   AgentEvaluateJobRequest,
   AgentEvalResult,
   AgentEvaluateJobsSortField,
+  ResultFilter,
 } from '@nemo/sdk/generated/evaluator/schema';
 import { filesDownloadFile } from '@nemo/sdk/generated/platform/api';
 
@@ -30,12 +33,21 @@ export type { AgentEvalResult };
  *  Strips only this job's own ``workspace/`` prefix so the result compares equal to a
  *  bare agent name; any other ``/`` in the name is left intact. */
 export const agentNameForJob = (job: AgentEvaluateJob): string | null => {
-  const target = job.spec.target as { kind?: string; agent?: { name?: string } } | null | undefined;
+  const target = job.spec?.target as
+    | { kind?: string; agent?: { name?: string } }
+    | null
+    | undefined;
   if (!target || target.kind !== 'agent') return null;
   const name = target.agent?.name;
   if (typeof name !== 'string' || name.length === 0) return null;
   const prefix = job.workspace ? `${job.workspace}/` : '';
   return prefix && name.startsWith(prefix) ? name.slice(prefix.length) : name;
+};
+
+export const evalConfigName = (job: AgentEvaluateJob): string | null => {
+  const benchmark = job.spec?.benchmark as { eval_config_fileset?: unknown } | null | undefined;
+  const name = benchmark?.eval_config_fileset;
+  return typeof name === 'string' && name.length > 0 ? name : null;
 };
 
 export const fetchAgentEvalJobs = async (
@@ -106,6 +118,26 @@ export const fetchAgentEvalResult = async (
     if (e?.response?.status === 404 || e?.status === 404) return null;
     throw err;
   }
+};
+
+const RESULTS_PAGE_MAX = 100;
+
+export const fetchAgentEvalResultsForJobs = async (
+  workspace: string,
+  jobNames: string[],
+  signal: AbortSignal
+): Promise<Map<string, AgentEvalResult>> => {
+  if (jobNames.length === 0) return new Map();
+  const page = await evaluatorListAgentEvalResults(
+    workspace,
+    {
+      page: 1,
+      page_size: Math.min(jobNames.length, RESULTS_PAGE_MAX),
+      filter: withOperators<ResultFilter>({ name: { $in: jobNames } }),
+    },
+    signal
+  );
+  return new Map((page?.data ?? []).map((result) => [result.name, result]));
 };
 
 /** One trial row from trials.jsonl — the agent's response to a task. */

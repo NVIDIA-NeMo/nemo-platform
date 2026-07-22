@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { FILESET_NAME_MAX_LENGTH, toValidFilesetName } from '@nemo/common/src/utils/filesetName';
 import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 
@@ -15,6 +16,14 @@ export const generateEvalConfigName = (): string => generateDefaultName({ length
 
 /** Default parallelism for a submitted eval (Studio default; the config value is a hint). */
 export const DEFAULT_MAX_CONCURRENT_TASKS = 1;
+
+export const buildEvalJobName = (filesetName: string): string => {
+  const suffix = Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+  const base = toValidFilesetName(filesetName)
+    .slice(0, FILESET_NAME_MAX_LENGTH - suffix.length - 1)
+    .replace(/-+$/, '');
+  return `${base}-${suffix}`;
+};
 
 // ---------------------------------------------------------------------------
 // eval-config.json shape (stored in a fileset, read at submit)
@@ -68,7 +77,7 @@ export interface SubmitSelections {
   workspace: string;
   /** Agent (bare name) to evaluate; used to build the generic target. */
   agent: string;
-  /** Eval-config fileset name, stored as the job description for display in the detail view. */
+  /** Eval-config fileset name, stored under spec.benchmark.eval_config for display. */
   filesetName?: string;
 }
 
@@ -127,11 +136,14 @@ export const buildAgentEvalRequestBody = (
   spec: PersistedEvalSpec,
   selections: SubmitSelections
 ) => ({
-  ...(selections.filesetName ? { description: selections.filesetName } : {}),
+  ...(selections.filesetName ? { name: buildEvalJobName(selections.filesetName) } : {}),
   spec: {
     tasks: spec.tasks,
     target: buildAgentTarget(selections.workspace, selections.agent),
     max_concurrent_tasks: spec.max_concurrent_tasks ?? DEFAULT_MAX_CONCURRENT_TASKS,
+    ...(selections.filesetName
+      ? { benchmark: { eval_config_fileset: selections.filesetName } }
+      : {}),
   },
 });
 
