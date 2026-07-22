@@ -16,6 +16,7 @@ from nmp.testing import MockProviderResponse, add_mock_provider
 pytestmark = [pytest.mark.e2e_config("e2e/configs/local-subprocess.yaml")]
 
 _TEST_AGENT_RESPONSE = "The answer to your question is 42."
+_NEMO_AGENTS_SPEC_CONFIG_FORMAT = "nemo-agents-spec-v1"
 
 
 def _unique_name(prefix: str) -> str:
@@ -64,6 +65,20 @@ def _agent_config(label: str) -> dict[str, Any]:
             "_type": "e2e-placeholder-agent",
             "label": label,
         }
+    }
+
+
+def _platform_agent_config(label: str) -> dict[str, Any]:
+    """Return a minimal Platform-owned agent config for API persistence tests."""
+    return {
+        "config_format": _NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+        "name": label,
+        "default_harness": "hermes",
+        "harnesses": {
+            "hermes": {
+                "kind": "hermes",
+            }
+        },
     }
 
 
@@ -257,8 +272,8 @@ def test_agent_list_pagination_sorting_and_filtering(sdk: NeMoPlatform, workspac
         sdk.agents.create(
             workspace=workspace,
             name=alternate_name,
-            config=_agent_config(alternate_name),
-            config_format="e2e-other-format",
+            config=_platform_agent_config(alternate_name),
+            config_format=_NEMO_AGENTS_SPEC_CONFIG_FORMAT,
         )
 
         first_page = _get_agents_page(sdk, workspace, params={"page": 1, "page_size": 2, "sort": "name"})
@@ -274,7 +289,7 @@ def test_agent_list_pagination_sorting_and_filtering(sdk: NeMoPlatform, workspac
         filtered_page = _get_agents_page(
             sdk,
             workspace,
-            params={"page_size": 100, "filter[config_format]": "e2e-other-format"},
+            params={"page_size": 100, "filter[config_format]": _NEMO_AGENTS_SPEC_CONFIG_FORMAT},
         )
         filtered_names = {agent["name"] for agent in _page_data(filtered_page)}
         assert alternate_name in filtered_names
