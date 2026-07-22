@@ -12,6 +12,10 @@ platform data is fixed to the `load-testing` workspace. The mixed workload is
 also available; the ClickHouse query-log collector and report generator remain
 to be implemented.
 
+The current high-level characterization is in [RESULTS.md](RESULTS.md). Per-run
+request and resource artifacts remain local and are intentionally ignored by
+Git.
+
 Run the current ingest-only layer with its smoke defaults:
 
 ```bash
