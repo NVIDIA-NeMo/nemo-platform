@@ -41,7 +41,8 @@ def _try_secure_chmod_dir(path: Path) -> None:
 def _write_secure_yaml(path: Path, config_data: dict) -> None:
     """Write YAML atomically with owner read/write permissions (600).
 
-    File permission failures remain fatal so credentials are never left world-readable.
+    A failure to lock down the file's permissions raises instead of being
+    swallowed, so credentials are never left readable by other users.
     """
     mode = stat.S_IRUSR | stat.S_IWUSR  # 600
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)

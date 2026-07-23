@@ -638,7 +638,10 @@ class TestMaybeStartServices:
 
         assert result == "ready"
         mock_prompt.assert_called_once()
-        assert "remote.example.com" in mock_prompt.call_args.kwargs["message"]
+        assert (
+            mock_prompt.call_args.kwargs["message"]
+            == "Platform reachable at remote.example.com (https://remote.example.com). What would you like to do?"
+        )
 
     def test_reachable_remote_start_local(self):
         with (

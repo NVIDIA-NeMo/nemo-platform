@@ -16,6 +16,7 @@ import os
 import subprocess
 import time
 from dataclasses import dataclass
+from enum import StrEnum
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 from pathlib import Path
@@ -743,22 +744,30 @@ def _platform_host_label(base_url: str) -> str:
     return parsed.hostname or base_url.rstrip("/")
 
 
+class _RemoteConnectionChoice(StrEnum):
+    """Options offered when a configured remote Platform is already reachable."""
+
+    CONTINUE = "continue"
+    START_LOCAL = "local"
+    CHANGE_REMOTE = "change"
+
+
 def _prompt_reachable_remote_connection(base_url: str) -> Literal["ready", "connect_remote", "start_local"]:
     """Ask how to proceed when a configured remote Platform is already reachable."""
     hostname = _platform_host_label(base_url)
     action = prompt_choice(
         message=f"Platform reachable at {hostname} ({base_url}). What would you like to do?",
         options=[
-            ("continue", "Continue with this remote Platform"),
-            ("local", "Start local services instead"),
-            ("change", "Connect to a different remote URL"),
+            (_RemoteConnectionChoice.CONTINUE, "Continue with this remote Platform"),
+            (_RemoteConnectionChoice.START_LOCAL, "Start local services instead"),
+            (_RemoteConnectionChoice.CHANGE_REMOTE, "Connect to a different remote URL"),
         ],
-        default="continue",
+        default=_RemoteConnectionChoice.CONTINUE,
     )
-    if action == "continue":
+    if action == _RemoteConnectionChoice.CONTINUE:
         console.print(f"{CHECK} Platform already running at {base_url}\n")
         return "ready"
-    if action == "change":
+    if action == _RemoteConnectionChoice.CHANGE_REMOTE:
         return "connect_remote"
     return "start_local"
 

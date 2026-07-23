@@ -74,12 +74,12 @@ from nemo_platform.cli.commands.skills.base import Scope, Skill
 from nemo_platform.cli.commands.skills.registry import UnsupportedAgentError
 from nemo_platform.config.config import Config
 from nemo_platform.config.models import (
+    DEFAULT_BASE_URL,
     Cluster,
     ConfigFile,
     ConfigParams,
     Context,
     ContextDefinition,
-    DEFAULT_BASE_URL,
     NoAuthUser,
     OAuthUser,
 )
@@ -638,7 +638,10 @@ class TestMaybeStartServices:
 
         assert result == "ready"
         mock_prompt.assert_called_once()
-        assert "remote.example.com" in mock_prompt.call_args.kwargs["message"]
+        assert (
+            mock_prompt.call_args.kwargs["message"]
+            == "Platform reachable at remote.example.com (https://remote.example.com). What would you like to do?"
+        )
 
     def test_reachable_remote_start_local(self):
         with (
