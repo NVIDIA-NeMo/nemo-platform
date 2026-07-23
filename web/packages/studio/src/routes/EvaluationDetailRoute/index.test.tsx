@@ -25,7 +25,7 @@ const evaluation = {
   workspace: WORKSPACE,
   experiment_group_id: 'group-id',
   dataset_name: 'dataset',
-  description: 'Evaluation description',
+  description: 'Actual evaluation description',
 } satisfies Partial<EvaluationResponse>;
 
 const group = {
@@ -38,7 +38,7 @@ const group = {
 } satisfies Partial<ExperimentGroupResponse>;
 
 describe('EvaluationDetailRoute with Optimizer enabled', () => {
-  it('renders the originating insight description instead of relabeling the evaluation description', async () => {
+  it('renders both the evaluation description and the originating insight description side by side', async () => {
     server.use(
       http.get('*/apis/intake/v2/workspaces/:workspace/evaluations/:name', () =>
         HttpResponse.json(evaluation)
@@ -83,7 +83,8 @@ describe('EvaluationDetailRoute with Optimizer enabled', () => {
 
     expect(await screen.findByText('Actual insight description')).toBeInTheDocument();
     expect(screen.getByText('Insight description')).toBeInTheDocument();
-    expect(screen.queryByText('Evaluation description')).not.toBeInTheDocument();
+    expect(screen.getByText('Actual evaluation description')).toBeInTheDocument();
+    expect(screen.getByText('Evaluation description')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /originating insight/i })).toHaveAttribute(
       'href',
       `/workspaces/${WORKSPACE}/optimizer/insight-id`

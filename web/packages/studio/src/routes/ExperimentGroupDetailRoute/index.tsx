@@ -7,7 +7,6 @@ import {
   Anchor,
   Badge,
   Button,
-  Card,
   Flex,
   PageHeader,
   Stack,
@@ -16,6 +15,7 @@ import {
 import { useOptimizerGetInsight } from '@studio/api/optimizer';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { ExperimentGroupDataView } from '@studio/components/dataViews/ExperimentGroupDataView';
+import { DescriptionPanel } from '@studio/components/DescriptionPanel';
 import { ExperimentGroupEditModal } from '@studio/components/ExperimentGroupEditModal';
 import { OriginatingInsightLink } from '@studio/components/OriginatingInsightLink';
 import { OPTIMIZER_ENABLED } from '@studio/constants/environment';
@@ -80,25 +80,16 @@ export const ExperimentGroupDetailRoute: FC = () => {
               />
             )}
             <ExperimentGroupMetrics experimentGroupName={experimentGroupName} />
-            <div className="flex items-start gap-density-lg">
+            <Flex className="items-start gap-density-lg">
               {insight?.description ? (
-                <Card className="min-w-0 flex-1">
-                  <Flex className="items-start gap-density-md">
-                    <OriginatingInsightLink insightId={insight.id} />
-                    <Stack className="min-w-0 flex-1 gap-density-md">
-                      <Text kind="label/bold/lg">Insight description</Text>
-                      <Text kind="body/regular/md">{insight.description}</Text>
-                    </Stack>
-                  </Flex>
-                </Card>
+                <DescriptionPanel
+                  title="Insight description"
+                  description={insight.description}
+                  slotTitleEnd={<OriginatingInsightLink insightId={insight.id} />}
+                />
               ) : null}
-              <Card className="min-w-0 flex-1">
-                <Stack className="gap-density-md">
-                  <Text kind="title/sm">Summary</Text>
-                  <Text kind="body/regular/md">{group?.summary || '—'}</Text>
-                </Stack>
-              </Card>
-            </div>
+              <DescriptionPanel title="Summary" description={group?.summary || '—'} />
+            </Flex>
             <div className="flex flex-col gap-4">
               <div className="flex items-center gap-3">
                 <Text kind="title/sm">Evaluations</Text>

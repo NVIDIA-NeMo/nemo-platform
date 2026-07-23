@@ -25,7 +25,7 @@ const evaluation = {
   workspace: WORKSPACE,
   experiment_group_id: 'group-id',
   dataset_name: 'dataset',
-  description: 'Evaluation description',
+  description: 'Actual evaluation description',
 } satisfies Partial<EvaluationResponse>;
 
 const group = {
@@ -75,7 +75,7 @@ describe('EvaluationDetailRoute with Optimizer disabled', () => {
       ],
     });
 
-    expect(await screen.findByText('Evaluation description')).toBeInTheDocument();
+    expect(await screen.findByText('Actual evaluation description')).toBeInTheDocument();
     expect(insightRequest).not.toHaveBeenCalled();
     expect(screen.queryByText('Insight description')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /originating insight/i })).not.toBeInTheDocument();

@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useGetEvaluation, useGetExperimentGroup } from '@nemo/sdk/generated/platform/api';
-import { Badge, Card, Flex, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
+import { Badge, Flex, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
 import { useOptimizerGetInsight } from '@studio/api/optimizer';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { EvaluationSessionsDataView } from '@studio/components/dataViews/EvaluationSessionsDataView';
+import { DescriptionPanel } from '@studio/components/DescriptionPanel';
 import { OriginatingInsightLink } from '@studio/components/OriginatingInsightLink';
 import { OPTIMIZER_ENABLED } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
@@ -45,22 +46,24 @@ export const EvaluationDetailRoute: FC = () => {
   return (
     <AccessibleTitle title={evaluationName}>
       <Stack className="h-full overflow-auto" gap="density-2xl" padding="density-2xl">
-        <PageHeader
-          className="p-0"
-          slotHeading={evaluationName}
-          slotDescription={showInsightCard ? undefined : evaluation?.description || undefined}
-        />
+        <PageHeader className="p-0" slotHeading={evaluationName} />
         <EvaluationDetailMetrics evaluationName={evaluationName} />
-        {showInsightCard ? (
-          <Card className="!h-fit">
-            <Flex className="items-start gap-density-md">
-              <OriginatingInsightLink insightId={insightId} />
-              <Stack className="min-w-0 flex-1 gap-density-md">
-                <Text kind="label/bold/lg">Insight description</Text>
-                <Text kind="body/regular/md">{insight?.description}</Text>
-              </Stack>
-            </Flex>
-          </Card>
+        {evaluation?.description || showInsightCard ? (
+          <Flex className="items-start gap-density-lg">
+            {evaluation?.description ? (
+              <DescriptionPanel
+                title="Evaluation description"
+                description={evaluation.description}
+              />
+            ) : null}
+            {showInsightCard ? (
+              <DescriptionPanel
+                title="Insight description"
+                description={insight?.description ?? ''}
+                slotTitleEnd={<OriginatingInsightLink insightId={insightId} />}
+              />
+            ) : null}
+          </Flex>
         ) : null}
         <div className="flex flex-col gap-4 border-t border-base pt-4">
           <div className="flex items-center gap-3">
