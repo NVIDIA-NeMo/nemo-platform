@@ -1,16 +1,15 @@
 # Hyperparameters
 
-Three backend job schemas live in this skill. Each backend has its own field reference file — **pick by plugin**:
+Two backend job schemas live in this skill. Each backend has its own field reference file — **pick by plugin**:
 
 | Plugin | Schema class | Schema dump | Field reference |
 |--------|--------------|-------------|-----------------|
 | `automodel` | `AutomodelJobInput` (`plugins/nemo-automodel/src/nemo_automodel_plugin/schema.py`) | `nemo customization automodel explain` | **`hyperparameters-automodel.md`** |
 | `unsloth` | `UnslothJobInput` (`plugins/nemo-unsloth/src/nemo_unsloth_plugin/schema.py`) | `nemo customization unsloth explain` | **`hyperparameters-unsloth.md`** |
-| `rl` (DPO) | `RlJobInput` (`plugins/nemo-rl/src/nemo_rl_plugin/schema.py`) | `nemo customization rl explain` | **`hyperparameters-rl.md`** |
 
-All three schemas use `extra="forbid"` — unknown keys raise validation errors. Field names are **not** interchangeable across backends (e.g. automodel uses `micro_batch_size` / `global_batch_size` / `parallelism`; unsloth uses `per_device_train_batch_size` / `gradient_accumulation_steps` / `hardware`; rl uses `batch_size` / `micro_batch_size` under `training` and takes `model` / `dataset` as plain strings). Use the right schema for the chosen plugin.
+Both schemas use `extra="forbid"` — unknown keys raise validation errors. Field names are **not** interchangeable across backends (e.g. automodel uses `micro_batch_size` / `global_batch_size` / `parallelism`; unsloth uses `per_device_train_batch_size` / `gradient_accumulation_steps` / `hardware`). Use the right schema for the chosen plugin.
 
-**Batch sizing, 48 GB VRAM tables, multi-GPU (data parallel vs tensor parallel), and throughput tuning** live in **`batch-sizing.md`** (automodel + unsloth). These per-backend files are the **field glossary**, full JSON template per backend, distillation/KD (automodel), and DPO knobs (rl) — not the place to pick batch sizes for production runs.
+**Batch sizing, 48 GB VRAM tables, multi-GPU (data parallel vs tensor parallel), and throughput tuning** live in **`batch-sizing.md`** (automodel + unsloth). These per-backend files are the **field glossary**, full JSON template per backend, and distillation/KD (automodel) — not the place to pick batch sizes for production runs.
 
 ## Table of contents
 
@@ -18,16 +17,15 @@ All three schemas use `extra="forbid"` — unknown keys raise validation errors.
 |----------------|-----|
 | **`hyperparameters-automodel.md`** | Automodel job JSON layout, full template, `training` / `schedule` / `batch` / `optimizer` / `parallelism` field reference, LR & LoRA-rank tuning, presets, distillation/KD |
 | **`hyperparameters-unsloth.md`** | Unsloth job JSON layout, full template, `model` / `dataset` / `training` / `schedule` / `batch` / `optimizer` / `hardware` / `output` field reference, LR & LoRA-rank tuning, save-method picker |
-| **`hyperparameters-rl.md`** | NeMo-RL (DPO) job JSON layout, `training` (DPOTraining) field reference — shared knobs + DPO-specific (`ref_policy_kl_penalty` = β, `sft_loss_weight`), `parallelism`, DPO tuning guide |
 | **`batch-sizing.md`** | ≥48 GB VRAM batch tables, multi-GPU (data vs tensor parallel), OOM / throughput tuning (automodel + unsloth) |
-| **Integrations** (below) | W&B / MLflow `integrations` object — all three backends (automodel, unsloth, rl) |
+| **Integrations** (below) | W&B / MLflow `integrations` object — both backends (automodel, unsloth) |
 | **Source of truth** (below) | Schema source files, compiler mappings, fixtures per backend |
 
 ---
 
 ## Integrations (all backends)
 
-**All three backends** (automodel, unsloth, rl) accept the same `integrations` object on job JSON (`IntegrationsSpec` in `nemo_platform_plugin.integrations`) — **W&B** and **MLflow**. A non-null `wandb` / `mlflow` block **requests** that integration; the training runtime **activates** it only when credentials/URIs are available (W&B needs `WANDB_API_KEY`, MLflow needs a tracking URI). Omit the field or set a block to `null` to disable. There is no `enabled` flag and no `report_to` on input — `report_to` is derived at runtime from activated integrations. The compiler logs a warning when W&B is requested without `api_key_secret` or MLflow without `tracking_uri`.
+**Both backends** (automodel, unsloth) accept the same `integrations` object on job JSON (`IntegrationsSpec` in `nemo_platform_plugin.integrations`) — **W&B** and **MLflow**. A non-null `wandb` / `mlflow` block **requests** that integration; the training runtime **activates** it only when credentials/URIs are available (W&B needs `WANDB_API_KEY`, MLflow needs a tracking URI). Omit the field or set a block to `null` to disable. There is no `enabled` flag and no `report_to` on input — `report_to` is derived at runtime from activated integrations. The compiler logs a warning when W&B is requested without `api_key_secret` or MLflow without `tracking_uri`.
 
 ```json
 "integrations": {
@@ -65,11 +63,9 @@ All three schemas use `extra="forbid"` — unknown keys raise validation errors.
 | `mlflow.name` | MLflow run name; defaults to job ID. Legacy `run_name` is accepted with a deprecation warning. |
 | `mlflow.tags` / `mlflow.description` | Optional run metadata. |
 
-Set `"integrations": null` or omit the field when tracking is not needed. Fixtures per backend: automodel → `plugins/nemo-automodel/tests/fixtures/integrations_wandb_mlflow.json`; unsloth → `plugins/nemo-unsloth/tests/fixtures/integrations_wandb_mlflow.json`; rl → `plugins/nemo-rl/tests/fixtures/integrations_wandb_mlflow.json`.
+Set `"integrations": null` or omit the field when tracking is not needed. Fixtures per backend: automodel → `plugins/nemo-automodel/tests/fixtures/integrations_wandb_mlflow.json`; unsloth → `plugins/nemo-unsloth/tests/fixtures/integrations_wandb_mlflow.json`.
 
 **Local setup (MLflow server, `docker0` tracking URI, jobs-launcher, W&B secret) — Docker-runtime (automodel / unsloth):** `references/integrations-setup.md`.
-
-**rl (DPO) note:** rl supports **W&B and MLflow** through this object exactly like automodel and unsloth. Two rl specifics: the run name defaults to the **job id** (stable across pause/resume) and NeMo-RL auto-adds tags (`service:rl`, `framework:…`, plus workspace / job / task / model); and because rl runs on **Kubernetes / Ray** (not the Docker executor), point `tracking_uri` and any self-hosted W&B `base_url` at an endpoint **reachable from the cluster** — the `docker0` local-MLflow recipe above is Docker-runtime only. (NeMo-RL's TensorBoard / SwanLab logger slots aren't exposed via `integrations`, same as the other backends — `IntegrationsSpec` carries only `wandb` + `mlflow`.)
 
 **Unsloth note:** HuggingFace `TrainingArguments.run_name` is shared by W&B and MLflow. When both backends are active, `wandb.name` wins if set; otherwise `mlflow.name` is used. If both names are set to different values, a runtime warning is logged and W&B's name is used.
 
@@ -91,9 +87,3 @@ Set `"integrations": null` or omit the field when tracking is not needed. Fixtur
 | JSON example (unsloth) | `plugins/nemo-unsloth/tests/fixtures/minimal_unsloth_sft.json` | Smoke-test template (ignore `max_steps` for real runs) |
 | Full spec doc (automodel) | `plugins/nemo-automodel/SCOPE.md` (simplified JSON section) | Design notes |
 | Plugin README (unsloth) | `plugins/nemo-unsloth/README.md` | Submit-only CLI, 4-step container job, GPU selection |
-| Submit schema (rl / DPO) | `plugins/nemo-rl/src/nemo_rl_plugin/schema.py` | Allowed JSON fields (`RlJobInput` / `DPOTraining`) |
-| Canonical schema (rl / DPO) | `services/rl/src/nmp/rl/schemas.py` | Post-transform shape (`RlJobOutput`); divisibility validator |
-| DPO config builder (rl) | `services/rl/src/nmp/rl/tasks/training/backends/nemo_rl/dpo_config.py` | Field → NeMo-RL YAML mapping |
-| JSON fixture (rl / DPO) | `plugins/nemo-rl/tests/fixtures/minimal_dpo.json` | Minimal template (ignore `max_steps` for real runs) |
-| Plugin README (rl / DPO) | `plugins/nemo-rl/README.md` | Submit-only CLI, Kubernetes/Ray runtime, constraints |
-| Plugin design doc (rl / DPO) | `docs/customizer/nemo-rl-dpo-plugin-design.md` | Architecture, 4-step job, image split |

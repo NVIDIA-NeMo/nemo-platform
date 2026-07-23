@@ -18,11 +18,18 @@ dependencies = [
 # image, not installed by the plugin. The plugin process only needs the
 # lightweight compile-side imports.
 
-[project.entry-points."nemo.customization.contributors"]
-rl = "nemo_rl_plugin.contributor:RlContributor"
-
-[project.entry-points."nemo.jobs"]
-"customization.rl.jobs" = "nemo_rl_plugin.jobs.jobs:RlJob"
+# RL customization backend temporarily disabled pending CVE remediation of the
+# nmp-rl-training container image (20 Critical / 135 High as of the 2026-07 scan).
+# The plugin code, the `nmp-rl` service, and the Dockerfiles are intentionally
+# left intact so re-enabling is a one-step revert: uncomment the two entry-point
+# blocks below and run `uv sync` (entry points are read from installed dist
+# metadata, so a re-sync is required for the change to take effect). No other
+# code changes are required.
+# [project.entry-points."nemo.customization.contributors"]
+# rl = "nemo_rl_plugin.contributor:RlContributor"
+#
+# [project.entry-points."nemo.jobs"]
+# "customization.rl.jobs" = "nemo_rl_plugin.jobs.jobs:RlJob"
 
 [build-system]
 requires = ["hatchling"]
