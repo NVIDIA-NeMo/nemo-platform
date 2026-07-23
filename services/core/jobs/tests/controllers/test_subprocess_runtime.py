@@ -7,12 +7,14 @@ from io import StringIO
 from unittest.mock import MagicMock, patch
 
 import pytest
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nmp.common.auth import Principal
 from nmp.common.auth.models import NMP_PRINCIPAL_ENVVAR
 from nmp.common.jobs.constants import NEMO_JOB_SECRETS_ENVVAR
 from nmp.core.jobs.controllers.backends.subprocess_runtime import (
     NMP_JOB_LAUNCHER_OTLP_LOGS_SOCKET_PATH_ENVVAR,
     NMP_JOB_LAUNCHER_OTLP_LOGS_TRANSPORT_ENVVAR,
+    SERVICE_JOBS_BEARER_HEADERS,
     SubprocessOtelLogger,
     _build_otlp_log_exporter,
     _UnixSocketOTLPSession,
@@ -130,10 +132,42 @@ def test_local_otel_logger_close_flushes_and_shuts_down():
 
 def test_build_otlp_log_exporter_keeps_default_http_exporter_for_tcp():
     with patch("nmp.core.jobs.controllers.backends.subprocess_runtime.OTLPLogExporter") as exporter:
-        result = _build_otlp_log_exporter({}, "http://files.example/otlp/v1/logs", {"x-test": "yes"})
+        result = _build_otlp_log_exporter({}, "http://files.example/otlp/v1/logs")
 
     assert result is exporter.return_value
-    exporter.assert_called_once_with(endpoint="http://files.example/otlp/v1/logs", headers={"x-test": "yes"})
+    exporter.assert_called_once_with(
+        endpoint="http://files.example/otlp/v1/logs",
+        headers=SERVICE_JOBS_BEARER_HEADERS,
+    )
+
+
+def test_build_otlp_log_exporter_uses_workload_identity_headers_when_configured(tmp_path):
+    subject_token_file = tmp_path / "subject.jwt"
+    subject_token_file.write_text("subject-token", encoding="utf-8")
+    env = {
+        WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR: str(subject_token_file),
+        "NMP_AUTH_URL": "http://auth.example",
+        "NMP_BASE_URL": "http://base.example",
+    }
+    provider = MagicMock()
+    provider.get_access_token.return_value = "access-token"
+
+    with (
+        patch("nmp.core.jobs.controllers.backends.subprocess_runtime.OTLPLogExporter") as exporter,
+        patch(
+            "nmp.core.jobs.controllers.backends.subprocess_runtime.resolve_workload_exchange_provider",
+            return_value=provider,
+        ) as resolve_provider,
+    ):
+        result = _build_otlp_log_exporter(env, "http://files.example/otlp/v1/logs")
+
+    assert result is exporter.return_value
+    resolve_provider.assert_called_once_with(base_url="http://auth.example", subject_token_file=subject_token_file)
+    provider.get_access_token.assert_called_once_with()
+    exporter.assert_called_once_with(
+        endpoint="http://files.example/otlp/v1/logs",
+        headers={"Authorization": "Bearer access-token"},
+    )
 
 
 def test_build_otlp_log_exporter_uses_unix_socket_session_for_uds():
@@ -143,12 +177,12 @@ def test_build_otlp_log_exporter_uses_unix_socket_session_for_uds():
     }
 
     with patch("nmp.core.jobs.controllers.backends.subprocess_runtime.OTLPLogExporter") as exporter:
-        result = _build_otlp_log_exporter(env, "http://nemo-platform.local/otlp/v1/logs", {})
+        result = _build_otlp_log_exporter(env, "http://nemo-platform.local/otlp/v1/logs")
 
     assert result is exporter.return_value
     kwargs = exporter.call_args.kwargs
     assert kwargs["endpoint"] == "http://nemo-platform.local/otlp/v1/logs"
-    assert kwargs["headers"] is None
+    assert kwargs["headers"] == SERVICE_JOBS_BEARER_HEADERS
     assert isinstance(kwargs["session"], _UnixSocketOTLPSession)
     kwargs["session"].close()
 
@@ -158,5 +192,4 @@ def test_build_otlp_log_exporter_rejects_uds_without_socket_path():
         _build_otlp_log_exporter(
             {NMP_JOB_LAUNCHER_OTLP_LOGS_TRANSPORT_ENVVAR: "uds"},
             "http://nemo-platform.local/otlp/v1/logs",
-            {},
         )
