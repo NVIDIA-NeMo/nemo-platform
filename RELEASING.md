@@ -84,10 +84,10 @@ America/Los_Angeles.
 2. Checks out the selected source and validates the selected wheel paths,
    Docker Bake targets, and NGC overview files.
 3. Optionally synchronizes NGC metadata, when requested on a non-dry-run.
-4. Dispatches selected container and stable wheel work to the configured
-   internal release repository. Stable releases also dispatch registration.
-   The selected source SHA, release type, version, and selected IDs are passed
-   with the dispatch.
+4. For non-dry-run releases, dispatches selected container and stable wheel
+   work to the configured internal release repository. Stable releases also
+   dispatch registration. The selected source SHA, release type, version, and
+   selected IDs are passed with the dispatch.
 5. Packages the Helm chart with the planned chart version. A nightly chart uses
    the latest release or RC Git tag core reachable from the selected source with
    `-nightly-<UTC timestamp>` appended, falling back to the `Chart.yaml`
