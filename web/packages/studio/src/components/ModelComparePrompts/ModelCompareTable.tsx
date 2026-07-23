@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
+import { TableExpandableCell } from '@nemo/common/src/components/DataView/TableExpandableCell';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import type { FileSampleMethod } from '@nemo/common/src/utils/sampleTextLines';
 import { Button, Flex, Select, Text } from '@nvidia/foundations-react-core';
 import { StatsBadge } from '@studio/components/chat/StatsBadge';
 import type { DatasetInputFileResult } from '@studio/components/DatasetInputFile';
 import { FileSamplingMethodSelect } from '@studio/components/FileSamplingSnippet/FileSamplingMethodSelect';
-import { ExpandableCell } from '@studio/components/ModelComparePrompts/ExpandableCell';
 import { ModelColumnSelect } from '@studio/components/ModelComparePrompts/ModelColumnSelect';
 import type {
   ExpandedCellState,
@@ -221,7 +221,7 @@ export const ModelCompareTable: FC<ModelCompareTableProps> = ({
           return (
             <tr key={row.sourceIndex} className="bg-surface-raised">
               <td className={`${rowBottom}border-r border-base p-0 align-top`}>
-                <ExpandableCell
+                <TableExpandableCell
                   content={row.prompt}
                   title={`Prompt (dataset row ${row.sourceIndex})`}
                   onExpand={setExpandedCell}
@@ -258,7 +258,7 @@ export const ModelCompareTable: FC<ModelCompareTableProps> = ({
                 }
                 return (
                   <td key={m.id} className={`${rowBottom}${colBorder}border-base p-0 align-top`}>
-                    <ExpandableCell
+                    <TableExpandableCell
                       content={response.text}
                       title={`${modelName} response (dataset row ${row.sourceIndex})`}
                       onExpand={(state) => setExpandedCell({ ...state, stats: response.stats })}

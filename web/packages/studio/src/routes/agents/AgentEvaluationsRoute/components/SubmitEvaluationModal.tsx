@@ -9,6 +9,7 @@ import { ControlledTextInput } from '@nemo/common/src/components/form/Controlled
 import { FormModal, type FormModalProps } from '@nemo/common/src/components/FormModal';
 import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { FILESET_NAME_REGEXP } from '@nemo/common/src/utils/filesetName';
 import { useAgentsListAgents } from '@nemo/sdk/generated/agents/api';
 import type { AgentEvaluateJobRequest } from '@nemo/sdk/generated/evaluator/schema';
 import { filesDownloadFile, filesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
@@ -37,6 +38,7 @@ import {
   parsePersistedSpec,
   type PersistedEvalSpec,
 } from '@studio/routes/agents/AgentEvaluationsRoute/components/submitEvaluationSpec';
+import { DATASET_NAME_PATTERN_MESSAGE } from '@studio/routes/FilesetNewRoute/constants';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type FC, useEffect, useRef, useState } from 'react';
 import { FormProvider, type SubmitHandler, useForm, useWatch } from 'react-hook-form';
@@ -78,10 +80,10 @@ const makeSubmitEvaluationSchema = (requiresJudgeModel: () => boolean) =>
           message: 'Name is required',
           path: ['newName'],
         });
-      } else if (!/^[a-zA-Z0-9_.-]+$/.test(name)) {
+      } else if (!FILESET_NAME_REGEXP.test(name)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'Use only letters, digits, dots, hyphens, and underscores',
+          message: DATASET_NAME_PATTERN_MESSAGE,
           path: ['newName'],
         });
       }

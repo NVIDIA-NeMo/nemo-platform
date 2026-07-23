@@ -5,6 +5,7 @@ import {
   bareName,
   buildAgentEvalRequestBody,
   buildAgentTarget,
+  buildEvalJobName,
   buildPersistedSpec,
   type EvalConfig,
   fanMetricOntoTasks,
@@ -132,13 +133,42 @@ describe('buildAgentEvalRequestBody', () => {
     expect(body.spec.tasks[0].metrics[0].payload.metric.model).toBe('ws-a/judge');
   });
 
-  it('sets the fileset name as the job description when provided', () => {
+  it('sets benchmark and a fileset-prefixed job name when provided', () => {
     const body = buildAgentEvalRequestBody(persisted(), {
       workspace: 'ws-a',
       agent: 'a',
       filesetName: 'wise-blue',
     });
-    expect(body.description).toBe('wise-blue');
+    expect(body.spec.benchmark).toEqual({ eval_config_fileset: 'wise-blue' });
+    expect(body.name).toMatch(/^wise-blue-[a-z0-9]{8}$/);
+  });
+
+  it('omits benchmark and name when no fileset name is provided', () => {
+    const body = buildAgentEvalRequestBody(persisted(), { workspace: 'ws-a', agent: 'a' });
+    expect(body.spec.benchmark).toBeUndefined();
+    expect(body.name).toBeUndefined();
+  });
+});
+
+describe('buildEvalJobName', () => {
+  it('prefixes with the fileset name and appends a random suffix', () => {
+    expect(buildEvalJobName('wise-blue')).toMatch(/^wise-blue-[a-z0-9]{8}$/);
+  });
+
+  it('lowercases and preserves valid characters', () => {
+    expect(buildEvalJobName('My_Config.v2')).toMatch(/^my_config\.v2-[a-z0-9]{8}$/);
+  });
+
+  it('strips leading non-letter characters so the name starts with a letter', () => {
+    expect(buildEvalJobName('123-config')).toMatch(/^config-[a-z0-9]{8}$/);
+  });
+
+  it('collapses double hyphens and trims edges', () => {
+    expect(buildEvalJobName('--a--b--')).toMatch(/^a-b-[a-z0-9]{8}$/);
+  });
+
+  it('stays within the 63-character limit', () => {
+    expect(buildEvalJobName('a'.repeat(200)).length).toBeLessThanOrEqual(63);
   });
 });
 
