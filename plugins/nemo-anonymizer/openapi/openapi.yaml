@@ -1,0 +1,1481 @@
+openapi: 3.1.0
+info:
+  title: anonymizer (plugin)
+  version: 0.0.0
+paths:
+  /apis/anonymizer/v2/workspaces/{workspace}/jobs/run:
+    post:
+      tags:
+      - Anonymizer
+      summary: Create Job
+      operationId: create_job_apis_anonymizer_v2_workspaces__workspace__jobs_run_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunJobRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Anonymizer
+      summary: List Jobs
+      operationId: list_jobs_apis_anonymizer_v2_workspaces__workspace__jobs_run_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/RunJobsSortField'
+          description: The field to sort by. To sort in decreasing order, use `-`
+            in front of the field name.
+          default: -created_at
+        description: The field to sort by. To sort in decreasing order, use `-` in
+          front of the field name.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/RunJobsListFilter'
+        description: Filter jobs on various criteria.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunJobsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/anonymizer/v2/workspaces/{workspace}/jobs/run/{job}/results/{name}:
+    get:
+      tags:
+      - Anonymizer
+      summary: Get Job Result
+      operationId: get_job_result_apis_anonymizer_v2_workspaces__workspace__jobs_run__job__results__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/anonymizer/v2/workspaces/{workspace}/jobs/run/{job}/results/{name}/download:
+    get:
+      tags:
+      - Anonymizer
+      summary: Download Job Result
+      operationId: download_job_result_apis_anonymizer_v2_workspaces__workspace__jobs_run__job__results__name__download_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Not Found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/anonymizer/v2/workspaces/{workspace}/jobs/run/{name}:
+    get:
+      tags:
+      - Anonymizer
+      summary: Get Job
+      operationId: get_job_apis_anonymizer_v2_workspaces__workspace__jobs_run__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Anonymizer
+      summary: Delete Job
+      operationId: delete_job_apis_anonymizer_v2_workspaces__workspace__jobs_run__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/anonymizer/v2/workspaces/{workspace}/jobs/run/{name}/cancel:
+    post:
+      tags:
+      - Anonymizer
+      summary: Cancel Job
+      operationId: cancel_job_apis_anonymizer_v2_workspaces__workspace__jobs_run__name__cancel_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/anonymizer/v2/workspaces/{workspace}/jobs/run/{name}/logs:
+    get:
+      tags:
+      - Anonymizer
+      summary: Get Job Logs
+      operationId: get_job_logs_apis_anonymizer_v2_workspaces__workspace__jobs_run__name__logs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: limit
+        in: query
+        required: false
+        schema:
+          title: Limit
+          type: integer
+      - name: page_cursor
+        in: query
+        required: false
+        schema:
+          title: Page Cursor
+          type: string
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobLogPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/anonymizer/v2/workspaces/{workspace}/jobs/run/{name}/results:
+    get:
+      tags:
+      - Anonymizer
+      summary: List Job Results
+      operationId: list_job_results_apis_anonymizer_v2_workspaces__workspace__jobs_run__name__results_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobListResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/anonymizer/v2/workspaces/{workspace}/jobs/run/{name}/status:
+    get:
+      tags:
+      - Anonymizer
+      summary: Get Job Status
+      operationId: get_job_status_apis_anonymizer_v2_workspaces__workspace__jobs_run__name__status_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobStatusResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/anonymizer/v2/workspaces/{workspace}/preview:
+    post:
+      tags:
+      - Anonymizer
+      summary: Streaming preview of an Anonymizer config.
+      description: Streaming preview of an Anonymizer config.
+      operationId: PreviewFunction__route_apis_anonymizer_v2_workspaces__workspace__preview_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          title: X-Request-Id
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreviewRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    Annotate:
+      properties:
+        format_template:
+          type: string
+          title: Format Template
+          description: Template with {text} and {label} placeholders.
+          default: <{text}, {label}>
+      type: object
+      title: Annotate
+      description: Tag each entity with a readable label token.
+    AnonymizerConfigInput:
+      properties:
+        detect:
+          allOf:
+          - $ref: '#/components/schemas/Detect'
+          description: Entity detection configuration.
+        replace:
+          title: Replace
+          description: Replacement method (Substitute(), Redact(), Annotate(), or
+            Hash()).
+          oneOf:
+          - $ref: '#/components/schemas/Annotate'
+          - $ref: '#/components/schemas/Redact'
+          - $ref: '#/components/schemas/Hash'
+          - $ref: '#/components/schemas/Substitute'
+        rewrite:
+          allOf:
+          - $ref: '#/components/schemas/Rewrite'
+          description: 'Optional rewrite-mode parameters. '
+        emit_telemetry:
+          type: boolean
+          title: Emit Telemetry
+          description: Whether to emit anonymous Anonymizer telemetry events. See
+            the Telemetry section in the README for what is collected and how to opt
+            out at the environment or CLI level.
+          default: true
+      type: object
+      title: AnonymizerConfigInput
+      description: Primary user-facing config for anonymization behavior.
+    AnonymizerInputSpec:
+      properties:
+        source:
+          type: string
+          title: Source
+          description: Local path, HTTP(S) URL, or fileset reference for a CSV/Parquet
+            input file.
+        text_column:
+          type: string
+          minLength: 1
+          title: Text Column
+          description: Column containing text to anonymize.
+          default: text
+        id_column:
+          title: Id Column
+          description: Optional column to use as record identifier.
+          type: string
+        data_summary:
+          title: Data Summary
+          description: Short description of the data.
+          type: string
+      type: object
+      required:
+      - source
+      title: AnonymizerInputSpec
+      description: 'Plugin boundary input spec.
+
+
+        The upstream ``AnonymizerInput`` validates local path existence at model
+
+        construction time. The plugin keeps this looser shape at the API boundary
+
+        so fileset refs can be accepted and materialized before the upstream model
+
+        is constructed.'
+    AnonymizerRequest:
+      properties:
+        config:
+          $ref: '#/components/schemas/AnonymizerConfigInput'
+        data:
+          $ref: '#/components/schemas/AnonymizerInputSpec'
+        model_configs:
+          title: Model Configs
+          items:
+            $ref: '#/components/schemas/ModelConfig'
+          type: array
+        selected_models:
+          $ref: '#/components/schemas/SelectedModelsOverrides'
+      type: object
+      required:
+      - config
+      - data
+      title: AnonymizerRequest
+      description: "User-facing anonymizer execution request.\n\nFields:\n  config:\
+        \           AnonymizerConfig \u2014 replace/rewrite mode + detection params.\n\
+        \  data:             AnonymizerInputSpec \u2014 source URL/path/fileset +\
+        \ text/id columns.\n  model_configs:    DD ``ModelConfig`` list. ``provider``\
+        \ on each entry must\n                    reference a NeMo Platform inference\
+        \ provider name (optionally\n                    ``workspace/provider``).\
+        \ When omitted, the upstream\n                    library defaults are used\
+        \ (which point at\n                    ``build.nvidia.com``); supplying this\
+        \ is the recommended\n                    path on NeMo Platform.\n  selected_models:\
+        \  Optional role->alias overrides. Omitted roles fall back\n             \
+        \       to the upstream library YAML defaults."
+    AnonymizerStepConfig:
+      properties:
+        request:
+          $ref: '#/components/schemas/AnonymizerRequest'
+        model_configs_yaml:
+          type: string
+          title: Model Configs Yaml
+        dd_model_providers:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Dd Model Providers
+      type: object
+      required:
+      - request
+      - model_configs_yaml
+      - dd_model_providers
+      title: AnonymizerStepConfig
+      description: Internal carrier passed to the task container for ``anonymizer.run``.
+    ChatCompletionInferenceParams:
+      properties:
+        generation_type:
+          type: string
+          const: chat-completion
+          title: Generation Type
+          default: chat-completion
+        max_parallel_requests:
+          type: integer
+          minimum: 1.0
+          title: Max Parallel Requests
+          default: 4
+        timeout:
+          title: Timeout
+          type: integer
+          minimum: 1.0
+        extra_body:
+          title: Extra Body
+          additionalProperties: true
+          type: object
+        temperature:
+          anyOf:
+          - type: number
+          - $ref: '#/components/schemas/UniformDistribution'
+          - $ref: '#/components/schemas/ManualDistribution'
+          title: Temperature
+        top_p:
+          anyOf:
+          - type: number
+          - $ref: '#/components/schemas/UniformDistribution'
+          - $ref: '#/components/schemas/ManualDistribution'
+          title: Top P
+        max_tokens:
+          title: Max Tokens
+          type: integer
+          minimum: 1.0
+      additionalProperties: false
+      type: object
+      title: ChatCompletionInferenceParams
+      description: "Configuration for LLM inference parameters.\n\nAttributes:\n \
+        \   generation_type: Type of generation, always \"chat-completion\" for this\
+        \ class.\n    temperature: Sampling temperature (0.0-2.0). Can be a fixed\
+        \ value or a distribution for dynamic sampling.\n    top_p: Nucleus sampling\
+        \ probability (0.0-1.0). Can be a fixed value or a distribution for dynamic\
+        \ sampling.\n    max_tokens: Maximum number of tokens to generate in the response."
+    DatetimeFilter:
+      additionalProperties: false
+      properties:
+        $gte:
+          description: Filter for results greater than or equal to this datetime.
+          title: $Gte
+          format: date-time
+          type: string
+        $lte:
+          description: Filter for results less than or equal to this datetime.
+          title: $Lte
+          format: date-time
+          type: string
+      title: DatetimeFilter
+      type: object
+    Detect:
+      properties:
+        entity_labels:
+          title: Entity Labels
+          description: Labels to detect. None uses the built-in default detection
+            label set. To inspect the default set, use `from anonymizer import DEFAULT_ENTITY_LABELS`.
+          items:
+            type: string
+          type: array
+        gliner_threshold:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Gliner Threshold
+          description: GLiNER detection confidence threshold (0.0-1.0).
+          default: 0.3
+        validation_max_entities_per_call:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Validation Max Entities Per Call
+          description: Maximum number of candidate entities included in a single validator
+            LLM call. When a row has more candidates than this, validation is split
+            into chunks that are dispatched (round-robin) across the validator pool.
+          default: 100
+        validation_excerpt_window_chars:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Validation Excerpt Window Chars
+          description: Number of characters to include before and after a chunk's
+            entity span when building the text excerpt sent to the validator. Bounds
+            the prompt context the validator sees per chunk; it is NOT the LLM's context
+            window limit.
+          default: 500
+      type: object
+      title: Detect
+      description: Configuration for the entity detection stage.
+    DistributionType:
+      type: string
+      enum:
+      - uniform
+      - manual
+      title: DistributionType
+      description: Types of distributions for sampling inference parameters.
+    EmbeddingInferenceParams:
+      properties:
+        generation_type:
+          type: string
+          const: embedding
+          title: Generation Type
+          default: embedding
+        max_parallel_requests:
+          type: integer
+          minimum: 1.0
+          title: Max Parallel Requests
+          default: 4
+        timeout:
+          title: Timeout
+          type: integer
+          minimum: 1.0
+        extra_body:
+          title: Extra Body
+          additionalProperties: true
+          type: object
+        encoding_format:
+          type: string
+          enum:
+          - float
+          - base64
+          title: Encoding Format
+          default: float
+        dimensions:
+          title: Dimensions
+          type: integer
+      additionalProperties: false
+      type: object
+      title: EmbeddingInferenceParams
+      description: "Configuration for embedding generation parameters.\n\nAttributes:\n\
+        \    generation_type: Type of generation, always \"embedding\" for this class.\n\
+        \    encoding_format: Format of the embedding encoding (\"float\" or \"base64\"\
+        ).\n    dimensions: Number of dimensions for the embedding."
+    FileStorageType:
+      type: string
+      enum:
+      - fileset
+      title: FileStorageType
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    Hash:
+      properties:
+        algorithm:
+          type: string
+          enum:
+          - sha256
+          - sha1
+          - md5
+          title: Algorithm
+          description: Hash algorithm.
+          default: sha256
+        digest_length:
+          type: integer
+          maximum: 64.0
+          minimum: 6.0
+          title: Digest Length
+          description: Number of hex characters to keep from the hash digest.
+          default: 12
+        format_template:
+          type: string
+          title: Format Template
+          description: Template with {digest} required and optional {label}.
+          default: <HASH_{label}_{digest}>
+      type: object
+      title: Hash
+      description: Replace each entity with a deterministic hash token.
+    ImageInferenceParams:
+      properties:
+        generation_type:
+          type: string
+          const: image
+          title: Generation Type
+          default: image
+        max_parallel_requests:
+          type: integer
+          minimum: 1.0
+          title: Max Parallel Requests
+          default: 4
+        timeout:
+          title: Timeout
+          type: integer
+          minimum: 1.0
+        extra_body:
+          title: Extra Body
+          additionalProperties: true
+          type: object
+      additionalProperties: false
+      type: object
+      title: ImageInferenceParams
+      description: "Configuration for image generation models.\n\nWorks for both diffusion\
+        \ and autoregressive image generation models. Pass all model-specific image\
+        \ options via `extra_body`.\n\nAttributes:\n    generation_type: Type of generation,\
+        \ always \"image\" for this class.\n\nExample:\n    ```python\n    # OpenAI-style\
+        \ (DALL\xB7E): quality and size in extra_body or as top-level kwargs\n   \
+        \ dd.ImageInferenceParams(\n        extra_body={\"size\": \"1024x1024\", \"\
+        quality\": \"hd\"}\n    )\n\n    # Gemini-style: generationConfig.imageConfig\n\
+        \    dd.ImageInferenceParams(\n        extra_body={\n            \"generationConfig\"\
+        : {\n                \"imageConfig\": {\n                    \"aspectRatio\"\
+        : \"1:1\",\n                    \"imageSize\": \"1024\"\n                }\n\
+        \            }\n        }\n    )\n    ```"
+    ManualDistribution:
+      properties:
+        distribution_type:
+          allOf:
+          - $ref: '#/components/schemas/DistributionType'
+          default: manual
+        params:
+          $ref: '#/components/schemas/ManualDistributionParams'
+      additionalProperties: false
+      type: object
+      required:
+      - params
+      title: ManualDistribution
+      description: "Manual (discrete) distribution for sampling inference parameters.\n\
+        \nSamples from a discrete set of values with optional weights. Useful for\
+        \ testing\nspecific values or creating custom probability distributions for\
+        \ temperature or top_p.\n\nAttributes:\n    distribution_type: Type of distribution\
+        \ (\"manual\").\n    params: Distribution parameters (values, weights)."
+    ManualDistributionParams:
+      properties:
+        values:
+          items:
+            type: number
+          type: array
+          minItems: 1
+          title: Values
+        weights:
+          title: Weights
+          items:
+            type: number
+          type: array
+      additionalProperties: false
+      type: object
+      required:
+      - values
+      title: ManualDistributionParams
+      description: "Parameters for manual distribution sampling.\n\nAttributes:\n\
+        \    values: List of possible values to sample from.\n    weights: Optional\
+        \ list of weights for each value. If not provided, all values have equal probability."
+    ModelConfig:
+      properties:
+        alias:
+          type: string
+          title: Alias
+        model:
+          type: string
+          title: Model
+        inference_parameters:
+          oneOf:
+          - $ref: '#/components/schemas/ChatCompletionInferenceParams'
+          - $ref: '#/components/schemas/EmbeddingInferenceParams'
+          - $ref: '#/components/schemas/ImageInferenceParams'
+          title: Inference Parameters
+          discriminator:
+            propertyName: generation_type
+            mapping:
+              chat-completion: '#/components/schemas/ChatCompletionInferenceParams'
+              embedding: '#/components/schemas/EmbeddingInferenceParams'
+              image: '#/components/schemas/ImageInferenceParams'
+        provider:
+          type: string
+          title: Provider
+        skip_health_check:
+          type: boolean
+          title: Skip Health Check
+          default: false
+      additionalProperties: false
+      type: object
+      required:
+      - alias
+      - model
+      - provider
+      title: ModelConfig
+      description: "Configuration for a model used for generation.\n\nAttributes:\n\
+        \    alias: User-defined alias to reference in column configurations.\n  \
+        \  model: Model identifier (e.g., from build.nvidia.com or other providers).\n\
+        \    inference_parameters: Inference parameters for the model (temperature,\
+        \ top_p, max_tokens, etc.).\n        The generation_type is determined by\
+        \ the type of inference_parameters.\n    provider: Name of the model provider.\
+        \ Must match the ``name`` field of a\n        ``ModelProvider`` registered\
+        \ with the surrounding ``DataDesigner`` instance.\n    skip_health_check:\
+        \ Whether to skip the health check for this model. Defaults to False."
+    PaginationData:
+      properties:
+        page:
+          type: integer
+          title: Page
+          description: The current page number.
+        page_size:
+          type: integer
+          title: Page Size
+          description: The page size used for the query.
+        current_page_size:
+          type: integer
+          title: Current Page Size
+          description: The size for the current page.
+        total_pages:
+          type: integer
+          title: Total Pages
+          description: The total number of pages.
+        total_results:
+          type: integer
+          title: Total Results
+          description: The total number of results.
+      type: object
+      required:
+      - page
+      - page_size
+      - current_page_size
+      - total_pages
+      - total_results
+      title: PaginationData
+    PlatformJobListResultResponse:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/PlatformJobResultResponse'
+          type: array
+          title: Data
+      type: object
+      required:
+      - data
+      title: PlatformJobListResultResponse
+    PlatformJobLog:
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          title: Timestamp
+        job:
+          type: string
+          title: Job
+        job_step:
+          type: string
+          title: Job Step
+        job_task:
+          type: string
+          title: Job Task
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - timestamp
+      - job
+      - job_step
+      - job_task
+      - message
+      title: PlatformJobLog
+    PlatformJobLogPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/PlatformJobLog'
+          type: array
+          title: Data
+        total:
+          type: integer
+          title: Total
+        next_page:
+          title: Next Page
+          type: string
+        prev_page:
+          title: Prev Page
+          type: string
+      type: object
+      required:
+      - data
+      - total
+      - next_page
+      - prev_page
+      title: PlatformJobLogPage
+    PlatformJobResultResponse:
+      properties:
+        name:
+          type: string
+          title: Name
+        job:
+          type: string
+          title: Job
+        workspace:
+          type: string
+          title: Workspace
+        project:
+          title: Project
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+        artifact_url:
+          type: string
+          title: Artifact Url
+        artifact_storage_type:
+          $ref: '#/components/schemas/FileStorageType'
+        download_url:
+          title: Download Url
+          type: string
+      type: object
+      required:
+      - name
+      - job
+      - workspace
+      - artifact_url
+      - artifact_storage_type
+      title: PlatformJobResultResponse
+    PlatformJobStatus:
+      type: string
+      enum:
+      - created
+      - pending
+      - active
+      - cancelled
+      - cancelling
+      - error
+      - completed
+      - paused
+      - pausing
+      - resuming
+      title: PlatformJobStatus
+      description: 'Enumeration of possible job statuses.
+
+
+        This enum represents the various states a job can be in during its lifecycle,
+
+        from creation to a terminal state.'
+    PlatformJobStatusResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          additionalProperties: true
+          type: object
+          title: Status Details
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        steps:
+          items:
+            $ref: '#/components/schemas/PlatformJobStepStatusResponse'
+          type: array
+          title: Steps
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - name
+      - status
+      - status_details
+      - error_details
+      - steps
+      - created_at
+      - updated_at
+      title: PlatformJobStatusResponse
+    PlatformJobStepStatusResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          additionalProperties: true
+          type: object
+          title: Status Details
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        tasks:
+          items:
+            $ref: '#/components/schemas/PlatformJobTaskStatusResponse'
+          type: array
+          title: Tasks
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - name
+      - status
+      - status_details
+      - error_details
+      - tasks
+      - created_at
+      - updated_at
+      title: PlatformJobStepStatusResponse
+    PlatformJobTaskStatusResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          additionalProperties: true
+          type: object
+          title: Status Details
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        error_stack:
+          title: Error Stack
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - name
+      - status
+      - status_details
+      - error_details
+      - error_stack
+      - created_at
+      - updated_at
+      title: PlatformJobTaskStatusResponse
+    PreviewRequest:
+      properties:
+        config:
+          $ref: '#/components/schemas/AnonymizerConfigInput'
+        data:
+          $ref: '#/components/schemas/AnonymizerInputSpec'
+        model_configs:
+          title: Model Configs
+          items:
+            $ref: '#/components/schemas/ModelConfig'
+          type: array
+        selected_models:
+          $ref: '#/components/schemas/SelectedModelsOverrides'
+        num_records:
+          type: integer
+          minimum: 1.0
+          title: Num Records
+          default: 10
+      type: object
+      required:
+      - config
+      - data
+      title: PreviewRequest
+    PrivacyGoal:
+      properties:
+        protect:
+          type: string
+          maxLength: 1000
+          minLength: 10
+          title: Protect
+          description: What to protect (e.g. direct identifiers, quasi-identifiers).
+        preserve:
+          type: string
+          maxLength: 1000
+          minLength: 10
+          title: Preserve
+          description: What to preserve (e.g. utility, semantic meaning).
+      type: object
+      required:
+      - protect
+      - preserve
+      title: PrivacyGoal
+      description: Structured privacy and utility goal for rewrite mode.
+    Redact:
+      properties:
+        format_template:
+          type: string
+          title: Format Template
+          description: Template with optional {label} placeholder.
+          default: '[REDACTED_{label}]'
+        normalize_label:
+          type: boolean
+          title: Normalize Label
+          description: Uppercase and clean label before substitution.
+          default: true
+      type: object
+      title: Redact
+      description: Replace each entity with a configurable redaction template.
+    Rewrite:
+      properties:
+        privacy_goal:
+          allOf:
+          - $ref: '#/components/schemas/PrivacyGoal'
+          description: Structured privacy goal. Auto-populated with defaults if not
+            provided.
+        instructions:
+          title: Instructions
+          description: Additional instructions for the rewrite LLM.
+          type: string
+        risk_tolerance:
+          allOf:
+          - $ref: '#/components/schemas/RiskTolerance'
+          description: Preset controlling repair thresholds and review flagging.
+          default: low
+        max_repair_iterations:
+          type: integer
+          minimum: 0.0
+          title: Max Repair Iterations
+          description: Maximum repair rounds. Set to 0 to disable repair.
+          default: 3
+        strict_entity_protection:
+          type: boolean
+          title: Strict Entity Protection
+          description: If True, requires every entity to receive a protective disposition
+            during sensitivity analysis.
+          default: false
+      type: object
+      title: Rewrite
+      description: Configuration for rewrite-mode execution.
+    RiskTolerance:
+      type: string
+      enum:
+      - minimal
+      - low
+      - moderate
+      - high
+      title: RiskTolerance
+      description: "Risk tolerance presets for leakage mass thresholds.\n\nEach preset\
+        \ bundles a coherent set of repair and review thresholds:\n\n- **minimal**\
+        \ \u2014 Tight leakage threshold (0.6), flags for review aggressively.\n \
+        \ Good for medical, legal, and financial data.\n- **low** \u2014 Default.\
+        \ Moderate leakage threshold (1.0).\n  Good for most privacy-sensitive data.\n\
+        - **moderate** \u2014 Relaxed leakage threshold (1.5), lower review bar.\n\
+        - **high** \u2014 High leakage threshold (2.0), does not auto-repair\n  individual\
+        \ high-sensitivity leaks."
+    RunJob:
+      properties:
+        id:
+          title: Id
+          type: string
+        name:
+          type: string
+          title: Name
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        workspace:
+          title: Workspace
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        spec:
+          $ref: '#/components/schemas/AnonymizerStepConfig'
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          title: Status Details
+          additionalProperties: true
+          type: object
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - name
+      - spec
+      title: RunJob
+    RunJobRequest:
+      properties:
+        name:
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        spec:
+          $ref: '#/components/schemas/AnonymizerRequest'
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - spec
+      title: RunJobRequest
+    RunJobsListFilter:
+      additionalProperties: false
+      properties:
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs created at 'gte' datetime or 'lte' datetime.
+        name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
+          description: Name of the job.
+          title: Name
+        workspace:
+          description: Workspace of the job.
+          title: Workspace
+          type: string
+        project:
+          description: Project containing the job.
+          title: Project
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/PlatformJobStatus'
+          description: The current status.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs updated at 'gte' datetime or 'lte' datetime.
+      title: RunJobsListFilter
+      type: object
+    RunJobsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/RunJob'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: RunJobsPage
+    RunJobsSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: RunJobsSortField
+    SelectedModelsOverrides:
+      properties:
+        detection:
+          title: Detection
+          additionalProperties:
+            anyOf:
+            - type: string
+            - items:
+                type: string
+              type: array
+          type: object
+        replace:
+          title: Replace
+          additionalProperties:
+            type: string
+          type: object
+        rewrite:
+          title: Rewrite
+          additionalProperties:
+            type: string
+          type: object
+      type: object
+      title: SelectedModelsOverrides
+      description: 'Partial role -> alias overrides for the three workflows.
+
+
+        Each section is optional and is merged onto the bundled YAML defaults at
+
+        parse time by upstream''s ``anonymizer/engine/ndd/model_loader.py::_merge_selections``.
+
+        Validation of the merged result still happens upstream and is also run
+
+        early at the plugin boundary by ``build_model_configs_yaml``.'
+    StringFilter:
+      additionalProperties: false
+      properties:
+        $eq:
+          description: Filter for results equal to this value.
+          title: $Eq
+          type: string
+        $like:
+          description: Filter for results matching this pattern.
+          title: $Like
+          type: string
+        $in:
+          description: Filter for results in this list of values.
+          title: $In
+          items:
+            type: string
+          type: array
+        $nin:
+          description: Filter for results not in this list of values.
+          title: $Nin
+          items:
+            type: string
+          type: array
+      title: StringFilter
+      type: object
+    Substitute:
+      properties:
+        instructions:
+          title: Instructions
+          description: Additional instructions for the LLM replacement generator.
+          type: string
+      type: object
+      title: Substitute
+      description: Replace entities with LLM-generated synthetic values.
+    UniformDistribution:
+      properties:
+        distribution_type:
+          allOf:
+          - $ref: '#/components/schemas/DistributionType'
+          default: uniform
+        params:
+          $ref: '#/components/schemas/UniformDistributionParams'
+      additionalProperties: false
+      type: object
+      required:
+      - params
+      title: UniformDistribution
+      description: "Uniform distribution for sampling inference parameters.\n\nSamples\
+        \ values uniformly between low and high bounds. Useful for exploring\na continuous\
+        \ range of values for temperature or top_p.\n\nAttributes:\n    distribution_type:\
+        \ Type of distribution (\"uniform\").\n    params: Distribution parameters\
+        \ (low, high)."
+    UniformDistributionParams:
+      properties:
+        low:
+          type: number
+          title: Low
+        high:
+          type: number
+          title: High
+      additionalProperties: false
+      type: object
+      required:
+      - low
+      - high
+      title: UniformDistributionParams
+      description: "Parameters for uniform distribution sampling.\n\nAttributes:\n\
+        \    low: Lower bound (inclusive).\n    high: Upper bound (exclusive)."
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+          additionalProperties: true
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
