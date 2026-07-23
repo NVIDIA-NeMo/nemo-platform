@@ -79,6 +79,7 @@ from nemo_platform.config.models import (
     ConfigParams,
     Context,
     ContextDefinition,
+    DEFAULT_BASE_URL,
     NoAuthUser,
     OAuthUser,
 )
@@ -626,6 +627,45 @@ class TestMaybeStartServices:
             result = _maybe_start_services("https://remote.example.com", auto=False, start_services=None)
 
         assert result == "connect_remote"
+        mock_prompt.assert_not_called()
+
+    def test_reachable_remote_prompts_continue(self):
+        with (
+            patch(f"{SETUP_MOD}._check_platform_reachable", return_value=True),
+            patch(f"{SETUP_MOD}.prompt_choice", return_value="continue") as mock_prompt,
+        ):
+            result = _maybe_start_services("https://remote.example.com", auto=False, start_services=None)
+
+        assert result == "ready"
+        mock_prompt.assert_called_once()
+        assert "remote.example.com" in mock_prompt.call_args.kwargs["message"]
+
+    def test_reachable_remote_start_local(self):
+        with (
+            patch(f"{SETUP_MOD}._check_platform_reachable", return_value=True),
+            patch(f"{SETUP_MOD}.prompt_choice", return_value="local"),
+        ):
+            result = _maybe_start_services("https://remote.example.com", auto=False, start_services=None)
+
+        assert result == "start_local"
+
+    def test_reachable_remote_change_remote(self):
+        with (
+            patch(f"{SETUP_MOD}._check_platform_reachable", return_value=True),
+            patch(f"{SETUP_MOD}.prompt_choice", return_value="change"),
+        ):
+            result = _maybe_start_services("https://remote.example.com", auto=False, start_services=None)
+
+        assert result == "connect_remote"
+
+    def test_reachable_remote_auto_skips_prompt(self):
+        with (
+            patch(f"{SETUP_MOD}._check_platform_reachable", return_value=True),
+            patch(f"{SETUP_MOD}.prompt_choice") as mock_prompt,
+        ):
+            result = _maybe_start_services("https://remote.example.com", auto=True, start_services=None)
+
+        assert result == "ready"
         mock_prompt.assert_not_called()
 
     def test_rejects_start_services_for_remote_url(self):
@@ -2604,7 +2644,7 @@ class TestSetupCommandRemoteFlow:
         with (
             patch(f"{SETUP_MOD}.is_interactive", return_value=True),
             patch(f"{SETUP_MOD}._maybe_start_services", return_value="connect_remote"),
-            patch(f"{SETUP_MOD}._prompt_remote_base_url", return_value="https://remote.example.com"),
+            patch(f"{SETUP_MOD}._prompt_remote_base_url", return_value="https://remote.example.com") as mock_prompt,
             patch(f"{SETUP_MOD}._configure_remote_connection") as mock_configure,
             patch(f"{SETUP_MOD}._ensure_platform_auth") as mock_auth,
             patch(f"{SETUP_MOD}._check_platform_reachable_with_retries", return_value=True),
@@ -2613,6 +2653,7 @@ class TestSetupCommandRemoteFlow:
         ):
             setup_command(ctx)
 
+        mock_prompt.assert_called_once_with(default_url="http://localhost:8080")
         mock_configure.assert_called_once_with(cli_context, "https://remote.example.com", "default")
         mock_auth.assert_called_once_with(cli_context)
         assert mock_run.call_args.args[3] == "https://remote.example.com"
@@ -2680,6 +2721,48 @@ class TestSetupCommandRemoteFlow:
 
         mock_configure.assert_called_once_with(cli_context, "https://remote.example.com", "shared-workspace")
         assert mock_run.call_args.args[2] == "shared-workspace"
+
+    def test_start_local_persists_default_url_and_starts_services(self):
+        ctx = MagicMock(spec=typer.Context)
+        ctx.get_parameter_source.return_value = ParameterSource.DEFAULT
+        cli_context = MagicMock()
+        cli_context.overrides = {}
+        cli_context.get_base_url.return_value = "https://remote.example.com"
+        cli_context.get_sdk_context.return_value = Context(
+            context_name="default",
+            cluster=Cluster(name="default-cluster", base_url="https://remote.example.com"),
+            user=NoAuthUser(name="default-user"),
+            workspace="default",
+            preferences={},
+        )
+        cli_context.get_client.return_value.workspaces.retrieve.return_value = MagicMock()
+        ctx.obj = cli_context
+
+        with (
+            patch(f"{SETUP_MOD}.is_interactive", return_value=True),
+            patch(
+                f"{SETUP_MOD}._maybe_start_services",
+                side_effect=["start_local", "ready"],
+            ) as mock_start,
+            patch(f"{SETUP_MOD}.Config.write") as mock_write,
+            patch(f"{SETUP_MOD}._bootstrap_config_if_missing") as mock_bootstrap,
+            patch(f"{SETUP_MOD}._check_platform_reachable_with_retries", return_value=True),
+            patch(f"{SETUP_MOD}._run_interactive_mode") as mock_run,
+        ):
+            setup_command(ctx)
+
+        assert mock_start.call_count == 2
+        assert mock_start.call_args_list[1] == call(
+            DEFAULT_BASE_URL,
+            False,
+            start_services=True,
+            timeout=_SERVICE_STARTUP_TIMEOUT_SECONDS,
+        )
+        mock_bootstrap.assert_any_call(DEFAULT_BASE_URL, "default")
+        mock_write.assert_called_once_with({"base_url": DEFAULT_BASE_URL}, context_name="default")
+        assert cli_context.overrides["base_url"] == DEFAULT_BASE_URL
+        cli_context.reset_sdk_context.assert_called()
+        assert mock_run.call_args.args[3] == DEFAULT_BASE_URL
 
 
 # ---------------------------------------------------------------------------

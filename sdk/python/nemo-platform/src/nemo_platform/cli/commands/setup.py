@@ -326,11 +326,12 @@ def _check_platform_reachable_with_retries(
     return False
 
 
-def _prompt_remote_base_url() -> str:
+def _prompt_remote_base_url(*, default_url: str = "") -> str:
     """Prompt until the user provides a reachable remote Platform URL."""
     while True:
         base_url = prompt_text(
             "Enter the remote Platform base URL: ",
+            default=default_url,
             validator=non_empty_validator("Base URL"),
         ).strip()
         parsed = urlparse(base_url)
@@ -736,6 +737,32 @@ def _is_local_base_url(base_url: str) -> bool:
     return parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
 
 
+def _platform_host_label(base_url: str) -> str:
+    """Return a human-friendly host label for connection prompts."""
+    parsed = urlparse(base_url)
+    return parsed.hostname or base_url.rstrip("/")
+
+
+def _prompt_reachable_remote_connection(base_url: str) -> Literal["ready", "connect_remote", "start_local"]:
+    """Ask how to proceed when a configured remote Platform is already reachable."""
+    hostname = _platform_host_label(base_url)
+    action = prompt_choice(
+        message=f"Platform reachable at {hostname} ({base_url}). What would you like to do?",
+        options=[
+            ("continue", "Continue with this remote Platform"),
+            ("local", "Start local services instead"),
+            ("change", "Connect to a different remote URL"),
+        ],
+        default="continue",
+    )
+    if action == "continue":
+        console.print(f"{CHECK} Platform already running at {base_url}\n")
+        return "ready"
+    if action == "change":
+        return "connect_remote"
+    return "start_local"
+
+
 def _start_services_background(base_url: str, data_dir: str | None = None) -> subprocess.Popen:
     """Launch ``nemo services run`` as a background process.
 
@@ -819,7 +846,7 @@ def _maybe_start_services(
     auto: bool,
     start_services: bool | None,
     timeout: int = _SERVICE_STARTUP_TIMEOUT_SECONDS,
-) -> Literal["ready", "connect_remote"]:
+) -> Literal["ready", "connect_remote", "start_local"]:
     """Start services if requested, restarting if already running.
 
     In interactive mode (auto=False), prompts the user if start_services is None.
@@ -839,8 +866,10 @@ def _maybe_start_services(
     already_running = _check_platform_reachable(base_url)
 
     if already_running and start_services is not True:
-        console.print(f"{CHECK} Platform already running at {base_url}\n")
-        return "ready"
+        if _is_local_base_url(base_url) or auto:
+            console.print(f"{CHECK} Platform already running at {base_url}\n")
+            return "ready"
+        return _prompt_reachable_remote_connection(base_url)
 
     should_start = start_services
     if should_start is None:
@@ -1797,6 +1826,16 @@ def setup_command(
     inference provider, picks a default model, installs coding agent skills,
     and optionally deploys a demo agent.
 
+    The active config context remembers the Platform URL. When a remote
+    deployment is already reachable, setup asks whether to continue with it,
+    start local services instead, or connect to a different remote URL.
+
+    To override the URL for one run only:
+      nemo --base-url http://localhost:8080 setup
+
+    To persist a different URL:
+      nemo config set --base-url http://localhost:8080
+
     Requires an interactive terminal (TTY). In non-interactive contexts
     (CI, piped input), pass --auto to use environment variables instead.
 
@@ -1813,6 +1852,7 @@ def setup_command(
       NMP_BASE_URL=https://nmp.example.com NMP_ACCESS_TOKEN=... nemo setup --auto --no-start-services
       nemo setup --workspace my-workspace
       nemo setup --no-install-skills --no-deploy-agent
+      nemo --base-url http://localhost:8080 setup
     """
     cli_context: CLIContext = ctx.obj
     base_url = cli_context.get_base_url() or DEFAULT_BASE_URL
@@ -1827,9 +1867,23 @@ def setup_command(
     if effective_timeout <= 0:
         raise typer.BadParameter("--ready-timeout must be greater than 0", param_hint="--ready-timeout")
     try:
+        configured_base_url = base_url
         service_result = _maybe_start_services(base_url, auto, start_services, timeout=effective_timeout)
+        if service_result == "start_local":
+            context_name = cli_context.get_sdk_context().context_name
+            _bootstrap_config_if_missing(DEFAULT_BASE_URL, workspace)
+            Config.write({"base_url": DEFAULT_BASE_URL}, context_name=context_name)
+            cli_context.overrides["base_url"] = DEFAULT_BASE_URL
+            cli_context.reset_sdk_context()
+            base_url = DEFAULT_BASE_URL
+            service_result = _maybe_start_services(
+                base_url,
+                auto,
+                start_services=True,
+                timeout=effective_timeout,
+            )
         if service_result == "connect_remote":
-            base_url = _prompt_remote_base_url()
+            base_url = _prompt_remote_base_url(default_url=configured_base_url)
             _bootstrap_config_if_missing(base_url, workspace)
             cli_context.reset_sdk_context()
             workspace = _resolve_setup_workspace(ctx, cli_context, workspace)
