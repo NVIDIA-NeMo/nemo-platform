@@ -47,36 +47,86 @@ class NmpErrorHandlingMixin:
         standalone_mode: bool = True,
         **extra: Any,
     ) -> Any:
-        """Override main to use custom error handling."""
-        from nemo_platform.cli.core.errors import handle_exception
+        """Override main to use custom error handling and emit one telemetry event.
 
+        This is the single path every command type flows through (hand-registered,
+        OpenAPI-generated, plugin entry points), and Click only calls ``main()`` on the
+        root command object, so this is the natural choke point for a per-invocation
+        ``command_invoked`` event. The outcome->status mapping and the emit both live in
+        a ``finally`` so telemetry fires even when a command fails, and the emit body is
+        best-effort (never raises) so a telemetry bug can never change a command's exit
+        code or output.
+        """
+        import time
+
+        from nemo_platform.cli.core.errors import handle_exception
+        from nemo_platform.cli.telemetry import runtime
+        from nemo_platform.cli.telemetry.events import TaskStatusEnum
+
+        # Only the root group (the app-level ManifestBackedNmpGroup) drives telemetry.
+        # Nested groups never have main() called during dispatch, but this guard keeps
+        # the single-emit contract explicit and cheap without an import cycle.
+        is_telemetry_root = type(self).__name__ == "ManifestBackedNmpGroup"
+        if is_telemetry_root:
+            runtime.reset()
+            # Reading help (e.g. ``nemo docs --help``) is not usage, so it must not emit
+            # a command_invoked event. Detect a help request from the resolved args; the
+            # help option names are the same ones every command registers via
+            # ``_context_settings_with_help``.
+            import sys
+
+            resolved_args = args if args is not None else sys.argv[1:]
+            if any(arg in HELP_OPTION_NAMES for arg in resolved_args):
+                runtime.state.help_requested = True
+
+        start = time.monotonic()
+        status: TaskStatusEnum | None = None
         try:
-            result = super().main(  # type: ignore[misc]
-                args=args,
-                prog_name=prog_name,
-                complete_var=complete_var,
-                standalone_mode=False,
-                **extra,
-            )
-            # When standalone_mode=False, Click returns the exit code instead of raising
-            # SystemExit. We need to convert non-zero exit codes back to SystemExit
-            # when the original caller expected standalone_mode=True behavior.
-            if standalone_mode and isinstance(result, int) and result != 0:
-                raise SystemExit(result)
-            return result
-        except click.UsageError as e:
-            if standalone_mode:
-                handle_exception(e, e.ctx)
+            try:
+                result = super().main(  # type: ignore[misc]
+                    args=args,
+                    prog_name=prog_name,
+                    complete_var=complete_var,
+                    standalone_mode=False,
+                    **extra,
+                )
+                # When standalone_mode=False, Click returns the exit code instead of
+                # raising. A non-zero code is an error regardless of how the outer caller
+                # ultimately surfaces it.
+                status = TaskStatusEnum.ERROR if isinstance(result, int) and result != 0 else TaskStatusEnum.COMPLETED
+                # Convert non-zero exit codes back to SystemExit when the original caller
+                # expected standalone_mode=True behavior.
+                if standalone_mode and isinstance(result, int) and result != 0:
+                    raise SystemExit(result)
+                return result
+            except click.UsageError as e:
+                status = TaskStatusEnum.ERROR
+                if standalone_mode:
+                    handle_exception(e, e.ctx)
+                raise
+            except click.exceptions.Exit as e:
+                status = TaskStatusEnum.COMPLETED if e.exit_code == 0 else TaskStatusEnum.ERROR
+                if standalone_mode:
+                    raise SystemExit(e.exit_code)
+                raise
+            except click.Abort:
+                status = TaskStatusEnum.CANCELED
+                if standalone_mode:
+                    click.echo("Aborted!", err=True)
+                    raise SystemExit(1)
+                raise
+        except SystemExit as e:
+            if status is None:
+                code = e.code
+                status = TaskStatusEnum.COMPLETED if code in (0, None) else TaskStatusEnum.ERROR
             raise
-        except click.exceptions.Exit as e:
-            if standalone_mode:
-                raise SystemExit(e.exit_code)
+        except BaseException:
+            if status is None:
+                status = TaskStatusEnum.ERROR
             raise
-        except click.Abort:
-            if standalone_mode:
-                click.echo("Aborted!", err=True)
-                raise SystemExit(1)
-            raise
+        finally:
+            if is_telemetry_root:
+                runtime.emit_command_invoked(status or TaskStatusEnum.COMPLETED, time.monotonic() - start)
 
 
 def _get_terminal_width() -> int:
@@ -524,6 +574,14 @@ class NmpGroup(NmpErrorHandlingMixin, TyperGroup):
         if "cls" not in kwargs:
             kwargs["cls"] = NmpCommand
         return super().command(*args, **kwargs)
+
+    def resolve_command(self, ctx: click.Context, args: list[str]) -> tuple[str | None, Command | None, list[str]]:
+        """Record the resolved subcommand name for telemetry, then resolve as usual."""
+        cmd_name, cmd, remaining = super().resolve_command(ctx, args)
+        from nemo_platform.cli.telemetry import runtime
+
+        runtime.note_subcommand(cmd_name)
+        return cmd_name, cmd, remaining
 
     def get_command(self, ctx: click.Context, cmd_name: str) -> Command | None:
         """Override to patch command classes to use NeMo Platform formatting."""

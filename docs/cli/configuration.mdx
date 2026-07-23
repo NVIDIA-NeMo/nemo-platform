@@ -131,3 +131,77 @@ nemo models <Tab>
 ```
 
 If completion isn't working, make sure you've restarted your shell and that your shell supports programmable completion. For Bash, ensure `bash-completion` is installed on your system.
+
+## Telemetry
+
+NeMo Platform collects anonymous usage data to improve the product. On your first run, the CLI prints a notice to standard error explaining what data is collected and how to opt out.
+
+### What Data Is Collected
+
+The CLI and bundled plugins emit anonymous usage events. No prompts, user data, personal information, or file contents leave your machine.
+
+Collected data includes:
+
+- Command and job names you invoke
+- Completion status and duration of commands and jobs
+- Plugin and tool names you use
+- Provider type and model counts (bucketed, not exact)
+- Input and output token counts per model (where available)
+- Package version and CPU architecture
+
+The events are batched and sent to NVIDIA's telemetry endpoint with no user or device identifiers attached.
+
+A random per-run session identifier groups the events from a single invocation. It is generated fresh each time you run a `nemo` command, carries no user or device identity, and is discarded when the process exits.
+
+### What Data Is Not Collected
+
+- User data, prompts, or model outputs
+- File contents or references
+- Usernames, email addresses, IP addresses, or hostnames
+- Machine fingerprints or unique identifiers
+
+### Opting Out
+
+Disable telemetry using any of these three methods (they all work):
+
+#### 1. Environment Variable
+
+```bash
+export NEMO_TELEMETRY_ENABLED=false
+```
+
+Then run any `nemo` command. This disables telemetry for the CLI and all bundled plugins for that session and all future sessions (until you unset it).
+
+#### 2. Configuration File
+
+Add this to your configuration file at `~/.config/nmp/config.yaml`:
+
+```yaml
+telemetry_enabled: false
+```
+
+#### 3. Per-Command Flag
+
+```bash
+nemo --no-telemetry workspaces list
+```
+
+The `--no-telemetry` flag disables telemetry for a single command only.
+
+<Note>
+
+These three layers are independent. NeMo Platform sends telemetry only when you have not disabled it in any of them. Setting any one layer to off disables telemetry, and no layer turns it back on. For example, if you leave the environment variable unset but set `telemetry_enabled: false` in your config file, telemetry stays off.
+
+</Note>
+
+### Bundled Plugins
+
+NeMo Platform ships with plugins that emit their own anonymous usage telemetry. The `NEMO_TELEMETRY_ENABLED` environment variable is the recommended single off switch: set it to `false` to disable telemetry for the CLI and for NeMo tools that share this telemetry system. The config file setting and the `--no-telemetry` flag apply to the CLI.
+
+### First-Run Notice
+
+On your first run, the CLI writes this notice to standard error:
+
+> NeMo Platform collects anonymous usage data to improve the product. No prompts, data, or personal information leave your machine. Turn it off any time with NEMO_TELEMETRY_ENABLED=false.
+
+The notice appears only once, and you can opt out at any time using one of the methods above.
