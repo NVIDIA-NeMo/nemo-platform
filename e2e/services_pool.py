@@ -586,7 +586,7 @@ def with_e2e_instance_paths(config_data: dict[str, Any], data_dir: Path) -> dict
 # session, so a pool platform spawned afterward would otherwise discover them too — and
 # with the ``on_invalid_plugin=hard_fail`` default an unruled fixture aborts the whole OPA
 # bundle ("Policy data not loaded — refusing to evaluate"), 502-ing every request and
-# wedging unrelated auth tests (e.g. test_jobs_auth). Pool platforms therefore pin the
+# wedging unrelated auth job integration tests. Pool platforms therefore pin the
 # service-plugin allowlist to the real installed plugins, fencing the fixtures out.
 # (authz_oidc spawns its own platforms with their own env, opting into the fixtures with
 # deny_route/quarantine, so it is unaffected by this.)
