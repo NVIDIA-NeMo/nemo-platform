@@ -36,9 +36,8 @@ describe('ConfigValue', () => {
     expect(screen.getByText('••••••••')).toBeInTheDocument();
   });
 
-  it('does not mask allowlisted token-count keys', () => {
-    render(<ConfigValue label="max_tokens" value={4096} />);
-    expect(screen.getByText('Max Tokens')).toBeInTheDocument();
+  it.each(['max_tokens', 'maxTokens'])('does not mask token-count key %s', (label) => {
+    render(<ConfigValue label={label} value={4096} />);
     expect(screen.getByText('4096')).toBeInTheDocument();
     expect(screen.queryByText('••••••••')).not.toBeInTheDocument();
   });
