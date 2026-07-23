@@ -47,7 +47,10 @@ async def create_job_with_attempt(
 
 
 async def create_test_job_data(
-    store: EntityClient, job_name: str = "test-job-123", fileset: str = "test-logs-fileset"
+    store: EntityClient,
+    job_name: str = "test-job-123",
+    fileset: str = "test-logs-fileset",
+    output_location: str | None = None,
 ) -> tuple[str, str, str, str, str, str]:
     """Create test data for a job with all related entities using EntityStore.
 
@@ -65,6 +68,7 @@ async def create_test_job_data(
         spec={},
         platform_spec=platform_spec,
         fileset=fileset,
+        output_location=output_location,
     )
     saved_job = await store.add(job)
 
@@ -194,9 +198,8 @@ async def test_delete_job_missing_fileset_succeeds(mock_dispatcher: JobDispatche
 
     from nemo_platform_plugin.client.errors import NotFoundError
 
-    job_id, job_name, _, _, _, _ = await create_test_job_data(
-        mock_store, "delete-missing-fileset-job", fileset="job-fileset-delete-missing-fileset-job"
-    )
+    # output_location defaults to None -> job owns its fileset -> delete_fileset is attempted.
+    job_id, job_name, _, _, _, _ = await create_test_job_data(mock_store, "delete-missing-fileset-job")
 
     # Simulate the fileset already being gone by making the mock files client raise NotFoundError
     mock_files = AsyncMock()
@@ -213,10 +216,11 @@ async def test_delete_job_missing_fileset_succeeds(mock_dispatcher: JobDispatche
 @pytest.mark.asyncio
 async def test_create_job_uses_existing_output_location(
     mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
     _mock_files_client,
     sample_platform_job_request: CreatePlatformJobRequest,
 ):
-    """A supplied output_location that exists becomes the job's fileset; nothing is created."""
+    """A supplied output_location becomes the fileset and is persisted as provenance; nothing created."""
     request = sample_platform_job_request.model_copy(update={"output_location": "my-eval-fileset"})
 
     job = await mock_dispatcher.create_job(request, DEFAULT_WORKSPACE)
@@ -224,6 +228,9 @@ async def test_create_job_uses_existing_output_location(
     assert job.fileset == "my-eval-fileset"
     _mock_files_client.get_fileset.assert_awaited_once()
     _mock_files_client.create_fileset.assert_not_called()
+
+    stored = await mock_store.get(PlatformJob, job.name, workspace=DEFAULT_WORKSPACE)
+    assert stored.output_location == "my-eval-fileset"
 
 
 @pytest.mark.asyncio
@@ -264,7 +271,7 @@ async def test_delete_job_leaves_caller_supplied_fileset(
 ):
     """Deleting a job whose fileset was caller-supplied removes the job but leaves the fileset."""
     job_id, job_name, _, _, _, _ = await create_test_job_data(
-        mock_store, "delete-shared-fs-job", fileset="shared-eval-fileset"
+        mock_store, "delete-shared-fs-job", fileset="shared-eval-fileset", output_location="shared-eval-fileset"
     )
 
     deleted = await mock_dispatcher.delete_job(job_name, DEFAULT_WORKSPACE)
@@ -278,7 +285,7 @@ async def test_delete_job_leaves_caller_supplied_fileset(
 async def test_delete_job_deletes_owned_fileset(
     mock_dispatcher: JobDispatcher, mock_store: EntityClient, _mock_files_client
 ):
-    """Deleting a job whose fileset is the auto-created per-job one removes that fileset too."""
+    """Deleting a job that owns its fileset (output_location unset) removes that fileset too."""
     job_id, job_name, _, _, _, _ = await create_test_job_data(
         mock_store, "delete-owned-job", fileset="job-fileset-delete-owned-job"
     )
@@ -287,6 +294,29 @@ async def test_delete_job_deletes_owned_fileset(
 
     assert deleted is True
     _mock_files_client.delete_fileset.assert_awaited_once()
+    await verify_job_data_exists(mock_store, job_id, should_exist=False)
+
+
+@pytest.mark.asyncio
+async def test_delete_job_leaves_caller_fileset_named_like_owned(
+    mock_dispatcher: JobDispatcher, mock_store: EntityClient, _mock_files_client
+):
+    """A caller-supplied fileset named exactly like an auto-created one is still left intact.
+
+    Regression for the name-collision the old name-heuristic was vulnerable to: ownership comes
+    from the persisted output_location, not from matching ``job-fileset-<name>``.
+    """
+    job_id, job_name, _, _, _, _ = await create_test_job_data(
+        mock_store,
+        "collide-job",
+        fileset="job-fileset-collide-job",
+        output_location="job-fileset-collide-job",
+    )
+
+    deleted = await mock_dispatcher.delete_job(job_name, DEFAULT_WORKSPACE)
+
+    assert deleted is True
+    _mock_files_client.delete_fileset.assert_not_called()
     await verify_job_data_exists(mock_store, job_id, should_exist=False)
 
 

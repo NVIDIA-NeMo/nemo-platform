@@ -311,6 +311,7 @@ class JobDispatcher:
                     spec=job_req.spec,
                     platform_spec=platform_spec,
                     fileset=fileset_name,
+                    output_location=job_req.output_location,
                     ownership=job_req.ownership,
                     custom_fields=job_req.custom_fields,
                 )
@@ -486,8 +487,10 @@ class JobDispatcher:
             await self.store.delete_by_id(PlatformJob, job_entity.id)
 
             # Delete only the fileset the job owns (auto-created); a caller-supplied output_location
-            # fileset is left for the caller to manage. Tolerate the owned fileset already being gone.
-            if job_entity.fileset == f"job-fileset-{job_entity.name}":
+            # fileset is left for the caller to manage. Ownership is recorded at create time, so a
+            # caller cannot fool this by naming their fileset like an auto-created one. Tolerate the
+            # owned fileset already being gone.
+            if job_entity.output_location is None:
                 try:
                     files = client_from_platform(self.sdk, AsyncFilesClient)
                     await files.delete_fileset(name=job_entity.fileset, workspace=workspace)
