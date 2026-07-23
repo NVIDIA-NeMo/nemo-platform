@@ -167,7 +167,7 @@ class SafeSynthesizerJobBuilder:
             data_source_path = Path(self._data_source)
             match data_source_path.suffix.lower():
                 case ".parquet":
-                    df = cast(pd.DataFrame, pd.read_parquet(data_source_path, **kwargs))
+                    df = pd.read_parquet(data_source_path, **kwargs)
                 case ".jsonl":
                     df = cast(pd.DataFrame, pd.read_json(data_source_path, lines=True, **kwargs))
                 case ".json":

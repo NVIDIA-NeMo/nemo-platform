@@ -40,6 +40,23 @@ def test_create_deployment_config_201(client: TestClient, mock_entity_client: As
     assert resp.json()["name"] == "cfg1"
 
 
+def test_create_deployment_config_rejects_zero_backoff_limit(
+    client: TestClient,
+    mock_entity_client: AsyncMock,
+) -> None:
+    resp = client.post(
+        "/apis/deployments/v2/workspaces/default/deployment-configs",
+        json={
+            "name": "cfg1",
+            "containers": [{"name": "main", "image": "nginx"}],
+            "backoff_limit": 0,
+        },
+    )
+
+    assert resp.status_code == 422
+    mock_entity_client.create.assert_not_awaited()
+
+
 def test_get_deployment_config_404(client: TestClient, mock_entity_client: AsyncMock) -> None:
     mock_entity_client.get.side_effect = NemoEntityNotFoundError("missing")
     resp = client.get("/apis/deployments/v2/workspaces/default/deployment-configs/missing")

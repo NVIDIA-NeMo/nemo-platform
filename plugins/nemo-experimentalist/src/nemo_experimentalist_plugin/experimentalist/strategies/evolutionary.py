@@ -460,10 +460,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                         result=validation_candidate_results[candidate.label],
                     )
             if config.trajectory_scorer is not None:
-                scorer = cast(
-                    "roles.TrajectoryScorer",
-                    self._trajectory_scorer(ctx, config),
-                )
+                scorer = self._trajectory_scorer(ctx, config)
                 # round_num - 1: the counter has already advanced past the round this
                 # analysis describes, and the scorer names its state after that round.
                 scored = await scorer.run(ctx, candidates=candidates, round_num=round_num - 1, analysis=analysis)

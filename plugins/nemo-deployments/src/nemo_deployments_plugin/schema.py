@@ -86,7 +86,11 @@ class CreateDeploymentConfigRequest(BaseModel):
     volume_mounts: list[VolumeMount] = Field(default_factory=list)
     config_files: list[ConfigFile] = Field(default_factory=list)
     restart_policy: RestartPolicy = "Always"
-    backoff_limit: int = 6
+    backoff_limit: int = Field(
+        default=6,
+        ge=1,
+        description="Retry limit for OnFailure deployments; must be positive. Never deployments disable retries internally.",
+    )
     drift_recovery: DriftRecoveryPolicy | None = None
     labels: dict[str, str] = Field(default_factory=dict)
     backend_config: DeploymentBackendConfig = Field(default_factory=DeploymentBackendConfig)

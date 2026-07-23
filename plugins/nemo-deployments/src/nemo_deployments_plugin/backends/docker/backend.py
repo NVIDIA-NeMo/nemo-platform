@@ -78,7 +78,7 @@ from nemo_deployments_plugin.secrets import (
     SecretResolutionError,
     resolve_deployment_config_secrets,
 )
-from nemo_deployments_plugin.types import Endpoint, RestartPolicy
+from nemo_deployments_plugin.types import NON_TERMINAL_DEPLOYMENT_STATUSES, Endpoint, RestartPolicy
 from nemo_platform_plugin.capabilities import docker_from_env_kwargs, probe_docker
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.config import LOOPBACK_ADDRESSES
@@ -137,6 +137,21 @@ def _config_files_tar(config_files: list[ConfigFile]) -> bytes:
             info.mode = 0o644
             tar.addfile(info, io.BytesIO(data))
     return buf.getvalue()
+
+
+def _docker_inspect_attrs(container: DockerContainer) -> dict[str, Any]:
+    return container.attrs or {}
+
+
+def _docker_inspect_exit_code(container: DockerContainer) -> int:
+    state = _docker_inspect_attrs(container).get("State") or {}
+    if not isinstance(state, dict):
+        return 1
+    return int(state.get("ExitCode", 1))
+
+
+def _docker_inspect_restart_count(container: DockerContainer) -> int:
+    return int(_docker_inspect_attrs(container).get("RestartCount", 0))
 
 
 class DockerDeploymentBackend(DeploymentBackend):
@@ -676,12 +691,15 @@ class DockerDeploymentBackend(DeploymentBackend):
             container = await asyncio.to_thread(self._client.containers.get, c_name)
             if not self._container_matches_deployment_group(container, workspace, name):
                 restart_policy = await self._resolve_restart_policy(workspace, name)
-                return missing_container_status(restart_policy, container_name=c_name)
+                status_update = missing_container_status(restart_policy, container_name=c_name)
+                if status_update.status not in NON_TERMINAL_DEPLOYMENT_STATUSES and self._gpu_pool is not None:
+                    self._gpu_pool.release_gpu(dep_key)
+                return status_update
             await asyncio.to_thread(container.reload)
         except self._docker_errors.NotFound:
             restart_policy = await self._resolve_restart_policy(workspace, name)
             status_update = missing_container_status(restart_policy, container_name=c_name)
-            if restart_policy in _ONE_SHOT_RESTART_POLICIES and self._gpu_pool is not None:
+            if status_update.status not in NON_TERMINAL_DEPLOYMENT_STATUSES and self._gpu_pool is not None:
                 self._gpu_pool.release_gpu(dep_key)
             return status_update
         except (
@@ -751,8 +769,8 @@ class DockerDeploymentBackend(DeploymentBackend):
             )
 
         if state in ("exited", "dead"):
-            exit_code = int(container.attrs.get("State", {}).get("ExitCode", 1))
-            restart_count = int(container.attrs.get("RestartCount", 0))
+            exit_code = _docker_inspect_exit_code(container)
+            restart_count = _docker_inspect_restart_count(container)
             return self._status_from_exited_container(
                 exit_code=exit_code,
                 restart_policy=restart_policy,
@@ -805,6 +823,13 @@ class DockerDeploymentBackend(DeploymentBackend):
             )
         if restart_policy == "OnFailure":
             backoff_limit = int(labels.get(BACKOFF_LIMIT_LABEL, "6"))
+            if backoff_limit == 0:
+                return BackendStatusUpdate(
+                    status="STARTING",
+                    status_message=(f"Container exited (code {exit_code}); retry {restart_count}/unlimited"),
+                    exit_code=exit_code,
+                    endpoints=resolved_endpoints,
+                )
             if restart_count < backoff_limit:
                 return BackendStatusUpdate(
                     status="STARTING",
@@ -887,9 +912,8 @@ class DockerDeploymentBackend(DeploymentBackend):
                 endpoints=endpoints,
             )
         if container.status in _EXITED_CONTAINER_STATES:
-            attrs = container.attrs or {}
-            exit_code = int(attrs.get("State", {}).get("ExitCode", 1))
-            restart_count = int(attrs.get("RestartCount", 0))
+            exit_code = _docker_inspect_exit_code(container)
+            restart_count = _docker_inspect_restart_count(container)
             return self._status_from_exited_container(
                 exit_code=exit_code,
                 restart_policy=restart_policy,

@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import pytest
-from nemo_deployments_plugin.backends.docker.containers import restart_policy_kwargs
+from nemo_deployments_plugin.backends.docker.containers import DeploymentConfigError, restart_policy_kwargs
 
 
 @pytest.mark.parametrize(
@@ -19,3 +19,8 @@ from nemo_deployments_plugin.backends.docker.containers import restart_policy_kw
 )
 def test_restart_policy_kwargs(policy: str, backoff: int, expected: dict) -> None:
     assert restart_policy_kwargs(policy, backoff) == expected  # type: ignore[arg-type]
+
+
+def test_restart_policy_kwargs_rejects_zero_on_failure_backoff() -> None:
+    with pytest.raises(DeploymentConfigError, match="backoff_limit"):
+        restart_policy_kwargs("OnFailure", 0)
