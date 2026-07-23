@@ -394,22 +394,34 @@ def _platform_request_headers(cli_context: CLIContext) -> dict[str, str] | None:
     return {key: value for key, value in headers.items() if isinstance(key, str) and isinstance(value, str)}
 
 
+def _hosted_platform_without_status(base_url: str, *, timeout: float, verify: str | bool) -> bool:
+    """Return True when ``/cluster-info`` confirms a hosted platform that omits ``/status``."""
+    try:
+        resp = httpx.get(f"{base_url.rstrip('/')}/cluster-info", timeout=timeout, verify=verify)
+    except Exception:
+        return False
+    return resp.status_code == 200
+
+
 def _check_controller_health(base_url: str, timeout: float = 5.0) -> tuple[bool, str]:
     """Query ``/status`` and assess controller health.
 
     Returns ``(True, "")`` when controllers are populated and all healthy.
-    Returns ``(True, detail)`` when ``/status`` is not published (hosted ingress).
+    Returns ``(True, detail)`` when ``/status`` is absent but ``/cluster-info`` confirms a hosted platform.
     Returns ``(False, detail)`` when unhealthy, unreachable, or empty after retry.
 
     If ``controllers.status`` is empty on the first call (startup timing race),
     waits ``_CONTROLLER_HEALTH_RETRY_DELAY`` seconds and retries once.
     """
     verify = client_verify_from_env()
+    root = base_url.rstrip("/")
     for attempt in range(2):
         try:
-            resp = httpx.get(f"{base_url.rstrip('/')}/status", timeout=timeout, verify=verify)
+            resp = httpx.get(f"{root}/status", timeout=timeout, verify=verify)
             if resp.status_code == 404:
-                return True, "Hosted deployment does not publish /status."
+                if _hosted_platform_without_status(root, timeout=timeout, verify=verify):
+                    return True, "Hosted deployment does not publish /status."
+                return False, "Unexpected status 404 from /status endpoint."
             if resp.status_code != 200:
                 return False, f"Unexpected status {resp.status_code} from /status endpoint."
             data = resp.json()
@@ -446,8 +458,12 @@ def _verify_platform_health(base_url: str) -> bool:
     ok, detail = _check_controller_health(base_url)
     if ok:
         if detail:
-            console.print(f"\n{WARN} [yellow]{detail}[/yellow]")
-            console.print("  Setup may have succeeded, but controller health could not be verified.")
+            if "does not publish /status" in detail.lower():
+                # Expected for hosted ingress that only exposes /cluster-info.
+                console.print(f"\n{CHECK} {detail}")
+            else:
+                console.print(f"\n{WARN} [yellow]{detail}[/yellow]")
+                console.print("  Setup may have succeeded, but controller health could not be verified.")
         return True
 
     if "no controllers" in detail.lower():

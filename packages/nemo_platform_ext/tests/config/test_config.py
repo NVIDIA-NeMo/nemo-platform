@@ -868,7 +868,7 @@ class TestConfigFilePermissions:
         assert file_mode == 0o600, f"Expected 600, got {oct(file_mode)}"
 
     def test_save_tolerates_unowned_parent_directory(self, tmp_path: Path):
-        """Saving under a world-writable parent (e.g. /tmp) should not fail on chmod."""
+        """Saving under a world-writable parent (e.g. /tmp) should not fail on dir chmod."""
         config_path = tmp_path / "config.yaml"
 
         real_chmod = os.chmod
@@ -886,6 +886,29 @@ class TestConfigFilePermissions:
             )
 
         assert config_path.exists()
+        file_mode = config_path.stat().st_mode & 0o777
+        assert file_mode == 0o600, f"Expected 600, got {oct(file_mode)}"
+
+    def test_save_raises_when_file_chmod_fails(self, tmp_path: Path):
+        """Credential file permission failures must remain fatal."""
+        config_path = tmp_path / "config.yaml"
+
+        real_chmod = os.chmod
+
+        def chmod_side_effect(path, mode):
+            if Path(path) == config_path:
+                raise PermissionError("Operation not permitted")
+            real_chmod(path, mode)
+
+        with (
+            patch("nemo_platform_ext.config.config.os.chmod", side_effect=chmod_side_effect),
+            pytest.raises(PermissionError),
+        ):
+            Config.write(
+                {"base_url": "http://test.example.com"},
+                context_name="default",
+                config_path=config_path,
+            )
 
 
 class TestUserTypeDiscriminator:

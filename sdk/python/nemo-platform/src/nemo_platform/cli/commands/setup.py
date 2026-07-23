@@ -10,60 +10,60 @@ Supports both interactive and non-interactive (``--auto``) modes.
 
 from __future__ import annotations
 
-import os
-import time
-import logging
-import subprocess
 import importlib.util
-from typing import Literal, Annotated
-from pathlib import Path
+import logging
+import os
+import subprocess
+import time
 from dataclasses import dataclass
-from urllib.parse import urlparse
 from importlib.resources import files
 from importlib.resources.abc import Traversable
+from pathlib import Path
+from typing import Annotated, Literal
+from urllib.parse import urlparse
 
-import yaml as _yaml
 import httpx
 import typer
-from rich import box
-from pydantic import SecretStr
-from rich.panel import Panel
-from rich.console import Console
-from nmp.common.config import nmp_user_data_dir
-from nmp.platform_runner.config import DEFAULT_LOCAL_SERVICES_BIND_HOST, PlatformAppConfig
-from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest, PlatformSecretUpdateRequest
+import yaml as _yaml
+from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest, PlatformSecretUpdateRequest
+from nmp.common.config import nmp_user_data_dir
+from nmp.platform_runner.config import DEFAULT_LOCAL_SERVICES_BIND_HOST, PlatformAppConfig
+from pydantic import SecretStr
+from rich import box
+from rich.console import Console
+from rich.panel import Panel
 
-from nemo_platform import NeMoPlatform
+from nemo_platform.cli.commands.skills import registry as skills_registry
+from nemo_platform.cli.commands.skills.base import Scope, Skill
+from nemo_platform.cli.commands.skills.registry import get_installer, load_skills
+from nemo_platform.cli.core.context import CLIContext
+from nemo_platform.cli.core.errors import handle_errors
 from nemo_platform.client.tls import client_verify_from_env
-from nemo_platform.ui.prompts import (
-    UserCancelled,
-    prompt_text,
-    prompt_choice,
-    prompt_select,
-    is_interactive,
-    prompt_confirm,
-    prompt_password,
-    prompt_multiselect,
-    non_empty_validator,
-    provider_name_validator,
-)
 from nemo_platform.config.config import Config
 from nemo_platform.config.models import DEFAULT_BASE_URL, ConfigFile, ConfigParams, LocalServicesConfig
 from nemo_platform.local.process import (
-    log_path_for,
-    compute_scope,
-    stop_instance,
-    start_background,
-    format_port_conflict,
     check_port_available_for_start,
+    compute_scope,
+    format_port_conflict,
+    log_path_for,
+    start_background,
+    stop_instance,
 )
-from nemo_platform.cli.core.errors import handle_errors
-from nemo_platform.cli.core.context import CLIContext
-from nemo_platform.cli.commands.skills import registry as skills_registry
-from nemo_platform.cli.commands.skills.base import Scope, Skill
-from nemo_platform.cli.commands.skills.registry import load_skills, get_installer
+from nemo_platform.ui.prompts import (
+    UserCancelled,
+    is_interactive,
+    non_empty_validator,
+    prompt_choice,
+    prompt_confirm,
+    prompt_multiselect,
+    prompt_password,
+    prompt_select,
+    prompt_text,
+    provider_name_validator,
+)
 
 logger = logging.getLogger(__name__)
 console = Console(stderr=True)
@@ -394,22 +394,34 @@ def _platform_request_headers(cli_context: CLIContext) -> dict[str, str] | None:
     return {key: value for key, value in headers.items() if isinstance(key, str) and isinstance(value, str)}
 
 
+def _hosted_platform_without_status(base_url: str, *, timeout: float, verify: str | bool) -> bool:
+    """Return True when ``/cluster-info`` confirms a hosted platform that omits ``/status``."""
+    try:
+        resp = httpx.get(f"{base_url.rstrip('/')}/cluster-info", timeout=timeout, verify=verify)
+    except Exception:
+        return False
+    return resp.status_code == 200
+
+
 def _check_controller_health(base_url: str, timeout: float = 5.0) -> tuple[bool, str]:
     """Query ``/status`` and assess controller health.
 
     Returns ``(True, "")`` when controllers are populated and all healthy.
-    Returns ``(True, detail)`` when ``/status`` is not published (hosted ingress).
+    Returns ``(True, detail)`` when ``/status`` is absent but ``/cluster-info`` confirms a hosted platform.
     Returns ``(False, detail)`` when unhealthy, unreachable, or empty after retry.
 
     If ``controllers.status`` is empty on the first call (startup timing race),
     waits ``_CONTROLLER_HEALTH_RETRY_DELAY`` seconds and retries once.
     """
     verify = client_verify_from_env()
+    root = base_url.rstrip("/")
     for attempt in range(2):
         try:
-            resp = httpx.get(f"{base_url.rstrip('/')}/status", timeout=timeout, verify=verify)
+            resp = httpx.get(f"{root}/status", timeout=timeout, verify=verify)
             if resp.status_code == 404:
-                return True, "Hosted deployment does not publish /status."
+                if _hosted_platform_without_status(root, timeout=timeout, verify=verify):
+                    return True, "Hosted deployment does not publish /status."
+                return False, "Unexpected status 404 from /status endpoint."
             if resp.status_code != 200:
                 return False, f"Unexpected status {resp.status_code} from /status endpoint."
             data = resp.json()
@@ -446,8 +458,12 @@ def _verify_platform_health(base_url: str) -> bool:
     ok, detail = _check_controller_health(base_url)
     if ok:
         if detail:
-            console.print(f"\n{WARN} [yellow]{detail}[/yellow]")
-            console.print("  Setup may have succeeded, but controller health could not be verified.")
+            if "does not publish /status" in detail.lower():
+                # Expected for hosted ingress that only exposes /cluster-info.
+                console.print(f"\n{CHECK} {detail}")
+            else:
+                console.print(f"\n{WARN} [yellow]{detail}[/yellow]")
+                console.print("  Setup may have succeeded, but controller health could not be verified.")
         return True
 
     if "no controllers" in detail.lower():

@@ -5,24 +5,24 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import stat
-import logging
-from pathlib import Path
 from dataclasses import dataclass
-from typing_extensions import Self
+from pathlib import Path
 
 import yaml
-from pydantic import Field, HttpUrl, BaseModel, SecretStr, PrivateAttr
+from pydantic import BaseModel, Field, HttpUrl, PrivateAttr, SecretStr
+from typing_extensions import Self
 
 from .models import (
-    DEFAULT_CONTEXT,
     DEFAULT_BASE_URL,
+    DEFAULT_CONTEXT,
     DEFAULT_WORKSPACE,
-    Context,
-    OAuthUser,
     ConfigFile,
     ConfigParams,
+    Context,
+    OAuthUser,
     OutputFormat,
     TimestampFormat,
 )
@@ -30,12 +30,30 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 
-def _secure_chmod(path: Path, mode: int) -> None:
-    """Apply filesystem permissions, ignoring failures on dirs we do not own (e.g. /tmp)."""
+def _try_secure_chmod_dir(path: Path) -> None:
+    """Best-effort owner-only permissions on a directory (e.g. ``/tmp`` may reject chmod)."""
     try:
-        os.chmod(path, mode)
+        os.chmod(path, stat.S_IRWXU)  # 700
     except PermissionError:
         pass
+
+
+def _write_secure_yaml(path: Path, config_data: dict) -> None:
+    """Write YAML atomically with owner read/write permissions (600).
+
+    File permission failures remain fatal so credentials are never left world-readable.
+    """
+    mode = stat.S_IRUSR | stat.S_IWUSR  # 600
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    try:
+        with os.fdopen(fd, "w") as f:
+            fd = -1
+            yaml.safe_dump(config_data, f, default_flow_style=False, sort_keys=False)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+    # Existing files keep prior mode under O_TRUNC; enforce 600 after write.
+    os.chmod(path, mode)
 
 
 @dataclass(frozen=True)
@@ -274,7 +292,7 @@ class Config(BaseModel):
 
         # Ensure parent directory exists with secure permissions (owner-only access)
         path.parent.mkdir(parents=True, exist_ok=True)
-        _secure_chmod(path.parent, stat.S_IRWXU)  # 700
+        _try_secure_chmod_dir(path.parent)
 
         # Serialize with secrets revealed using context
         config_data = self._config_file.model_dump(
@@ -283,11 +301,7 @@ class Config(BaseModel):
             context={"include_secrets": True},
         )
 
-        with open(path, "w") as f:
-            yaml.safe_dump(config_data, f, default_flow_style=False, sort_keys=False)
-
-        # Set secure file permissions (owner read/write only)
-        _secure_chmod(path, stat.S_IRUSR | stat.S_IWUSR)  # 600
+        _write_secure_yaml(path, config_data)
 
         # Update stored path if we saved to a new location
         self._config_path = path

@@ -167,12 +167,15 @@ class TestCheckPlatformReachable:
     def test_reachable_via_status(self):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        with patch("nemo_platform_ext.cli.commands.setup.httpx.get", return_value=mock_resp) as mock_get:
+        with (
+            patch(f"{SETUP_MOD}.client_verify_from_env", return_value="/tmp/custom-ca.pem"),
+            patch(f"{SETUP_MOD}.httpx.get", return_value=mock_resp) as mock_get,
+        ):
             assert _check_platform_reachable("http://localhost:8080") is True
         mock_get.assert_called_once_with(
             "http://localhost:8080/status",
             timeout=5.0,
-            verify=mock_get.call_args.kwargs["verify"],
+            verify="/tmp/custom-ca.pem",
         )
 
     def test_reachable_via_cluster_info_when_status_missing(self):
@@ -180,31 +183,40 @@ class TestCheckPlatformReachable:
         status_resp.status_code = 404
         cluster_resp = MagicMock()
         cluster_resp.status_code = 200
+        calls: list[tuple[str, object]] = []
 
         def _get(url, **kwargs):
+            calls.append((url, kwargs.get("verify")))
             if url.endswith("/status"):
                 return status_resp
             if url.endswith("/cluster-info"):
                 return cluster_resp
             raise AssertionError(f"unexpected url: {url}")
 
-        with patch("nemo_platform_ext.cli.commands.setup.httpx.get", side_effect=_get):
+        with (
+            patch(f"{SETUP_MOD}.client_verify_from_env", return_value="/tmp/custom-ca.pem"),
+            patch(f"{SETUP_MOD}.httpx.get", side_effect=_get),
+        ):
             assert _check_platform_reachable("https://nemo-platform-freeplay.dev.aire.nvidia.com") is True
+        assert calls == [
+            ("https://nemo-platform-freeplay.dev.aire.nvidia.com/status", "/tmp/custom-ca.pem"),
+            ("https://nemo-platform-freeplay.dev.aire.nvidia.com/cluster-info", "/tmp/custom-ca.pem"),
+        ]
 
     def test_unreachable_when_all_probes_fail(self):
         mock_resp = MagicMock()
         mock_resp.status_code = 404
-        with patch("nemo_platform_ext.cli.commands.setup.httpx.get", return_value=mock_resp):
+        with patch(f"{SETUP_MOD}.httpx.get", return_value=mock_resp):
             assert _check_platform_reachable("http://localhost:8080") is False
 
     def test_unreachable(self):
-        with patch("nemo_platform_ext.cli.commands.setup.httpx.get", side_effect=Exception("conn refused")):
+        with patch(f"{SETUP_MOD}.httpx.get", side_effect=Exception("conn refused")):
             assert _check_platform_reachable("http://localhost:8080") is False
 
     def test_non_200_status_without_cluster_info_fallback(self):
         mock_resp = MagicMock()
         mock_resp.status_code = 503
-        with patch("nemo_platform_ext.cli.commands.setup.httpx.get", return_value=mock_resp):
+        with patch(f"{SETUP_MOD}.httpx.get", return_value=mock_resp):
             assert _check_platform_reachable("http://localhost:8080") is False
 
 
@@ -2742,12 +2754,40 @@ class TestCheckControllerHealth:
         assert ok is False
 
     def test_status_not_published_on_hosted_deployment(self):
-        resp = MagicMock()
-        resp.status_code = 404
-        with patch(f"{SETUP_MOD}.httpx.get", return_value=resp):
+        status_resp = MagicMock()
+        status_resp.status_code = 404
+        cluster_resp = MagicMock()
+        cluster_resp.status_code = 200
+
+        def _get(url, **kwargs):
+            if url.endswith("/status"):
+                return status_resp
+            if url.endswith("/cluster-info"):
+                return cluster_resp
+            raise AssertionError(f"unexpected url: {url}")
+
+        with patch(f"{SETUP_MOD}.httpx.get", side_effect=_get):
             ok, msg = _check_controller_health("https://nemo-platform-freeplay.dev.aire.nvidia.com")
         assert ok is True
         assert "does not publish /status" in msg
+
+    def test_status_404_without_cluster_info_is_unhealthy(self):
+        status_resp = MagicMock()
+        status_resp.status_code = 404
+        cluster_resp = MagicMock()
+        cluster_resp.status_code = 404
+
+        def _get(url, **kwargs):
+            if url.endswith("/status"):
+                return status_resp
+            if url.endswith("/cluster-info"):
+                return cluster_resp
+            raise AssertionError(f"unexpected url: {url}")
+
+        with patch(f"{SETUP_MOD}.httpx.get", side_effect=_get):
+            ok, msg = _check_controller_health("http://localhost:8080")
+        assert ok is False
+        assert "404" in msg
 
     def test_invalid_json_response(self):
         resp = MagicMock()
@@ -2786,7 +2826,7 @@ class TestVerifyPlatformHealth:
             result = _verify_platform_health("http://localhost:8080")
         assert result is True
 
-    def test_missing_status_endpoint_returns_true_with_warning(self):
+    def test_missing_status_endpoint_returns_true_with_info(self):
         with (
             patch(
                 f"{SETUP_MOD}._check_controller_health",
@@ -2798,6 +2838,8 @@ class TestVerifyPlatformHealth:
         assert result is True
         printed = " ".join(str(c) for c in mock_console.print.call_args_list)
         assert "does not publish /status" in printed
+        assert "could not be verified" not in printed
+        assert "yellow" not in printed.lower()
 
     def test_unhealthy_prints_red_error(self):
         with (
