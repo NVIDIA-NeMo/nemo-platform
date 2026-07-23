@@ -65,6 +65,19 @@ def test_experiment_group_crud(client: TestClient) -> None:
     assert missing.status_code == 404
 
 
+def test_filter_groups_by_insight_id(client: TestClient) -> None:
+    """The groups list can be filtered server-side by the seeding insight id."""
+    seeded = client.post(GROUPS, json={"name": "seeded-group", "insight_id": "insight-abc"})
+    assert seeded.status_code == 201, seeded.text
+    other = client.post(GROUPS, json={"name": "unseeded-group"})
+    assert other.status_code == 201, other.text
+
+    listed = client.get(GROUPS, params={"filter[insight_id]": "insight-abc"})
+    assert listed.status_code == 200, listed.text
+    names = {g["name"] for g in listed.json()["data"]}
+    assert names == {"seeded-group"}
+
+
 def test_experiment_group_update_description(client: TestClient) -> None:
     client.post(GROUPS, json={"name": "grp", "description": "old"})
     updated = client.put(f"{GROUPS}/grp", json={"name": "grp", "description": "new"})

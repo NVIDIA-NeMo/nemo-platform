@@ -168,7 +168,9 @@ async def create_experiment_group(
     openapi_extra=generate_openapi_extra_params(
         filter_schema=ExperimentGroupFilter,
         filter_description=(
-            "Filter experiment groups by name, or by a metadata key/value: filter[metadata.<key>]=<value>."
+            "Filter experiment groups by name, insight_id, is_deleted, or a metadata key/value "
+            "(filter[metadata.<key>]=<value>). "
+            "Pass is_deleted=true to return only soft-deleted groups; omit to see only live ones."
         ),
     ),
 )

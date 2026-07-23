@@ -11,6 +11,7 @@ from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from clickhouse_connect.driver.external import ExternalData
 from fastapi import HTTPException, Request
 from nmp.intake.config import IntakeConfig
 from nmp.intake.spans.clickhouse_migrations import (
@@ -83,10 +84,16 @@ class ClickHouseSpanClient:
         *,
         parameters: Sequence[Any] | dict[str, Any] | None = None,
         settings: dict[str, Any] | None = None,
+        external_data: ExternalData | None = None,
     ) -> Any:
         await self.bootstrap_schema()
         raw_client = await self._get_raw_client()
-        return await raw_client.query(query, parameters=parameters, settings=settings)
+        return await raw_client.query(
+            query,
+            parameters=parameters,
+            settings=settings,
+            external_data=external_data,
+        )
 
     async def insert(
         self,
