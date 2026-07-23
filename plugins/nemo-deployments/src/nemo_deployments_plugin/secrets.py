@@ -6,9 +6,9 @@
 from __future__ import annotations
 
 import os
-from typing import Any
 
 from nemo_deployments_plugin.entities import DeploymentConfig, EnvVar, SecretRef
+from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NemoClientError, NotFoundError
 from nemo_platform_plugin.config import get_platform_config
@@ -28,7 +28,7 @@ def platform_ngc_secret_ref() -> SecretRef | None:
     return SecretRef(workspace=parts[0], name=parts[1])
 
 
-async def resolve_secret_ref(sdk: Any, secret_ref: SecretRef) -> str | None:
+async def resolve_secret_ref(sdk: AsyncNeMoPlatform, secret_ref: SecretRef) -> str | None:
     """Resolve a Platform secret value without logging reference or value data."""
     try:
         secrets = client_from_platform(sdk, AsyncSecretsClient)
@@ -42,7 +42,7 @@ async def resolve_secret_ref(sdk: Any, secret_ref: SecretRef) -> str | None:
     return None
 
 
-async def resolve_deployment_config_secrets(sdk: Any, config: DeploymentConfig) -> DeploymentConfig:
+async def resolve_deployment_config_secrets(sdk: AsyncNeMoPlatform, config: DeploymentConfig) -> DeploymentConfig:
     """Return an execution-only copy whose secret references have resolved values."""
     resolved = config.model_copy(deep=True)
     for container in (*resolved.init_containers, *resolved.containers):
@@ -50,7 +50,7 @@ async def resolve_deployment_config_secrets(sdk: Any, config: DeploymentConfig) 
     return resolved
 
 
-async def _resolve_env_var(sdk: Any, item: EnvVar) -> EnvVar:
+async def _resolve_env_var(sdk: AsyncNeMoPlatform, item: EnvVar) -> EnvVar:
     """Resolve an authorized secret-backed environment variable."""
     if item.secret_ref is None:
         return item

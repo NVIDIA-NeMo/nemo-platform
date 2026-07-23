@@ -10,14 +10,17 @@ from typing import Any
 from nemo_deployments_plugin.entities import (
     AccessMode,
     ConfigFile,
-    Container,
+    ContainerPort,
     Deployment,
     DeploymentBackendConfig,
     DeploymentConfig,
     DeploymentStatus,
     DesiredState,
     DriftRecoveryPolicy,
+    EnvVar,
     Prerequisite,
+    Probe,
+    ResourceRequirements,
     RestartPolicy,
     Volume,
     VolumeBackendConfig,
@@ -25,13 +28,54 @@ from nemo_deployments_plugin.entities import (
     VolumeStatus,
 )
 from nemo_platform_plugin.schema import NemoFilter, NemoListResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+def _default_request_access_modes() -> list[AccessMode]:
+    return ["ReadWriteOnce"]
+
+
+class RequestEnvVar(BaseModel):
+    """Public request env vars; secretRef is controller-managed and response-only."""
+
+    name: str
+    value: str | None = None
+    value_from: dict[str, Any] | None = Field(default=None, alias="valueFrom")
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    @model_validator(mode="after")
+    def validate_single_source(self) -> RequestEnvVar:
+        if self.value is not None and self.value_from is not None:
+            raise ValueError("EnvVar may define only one of value or valueFrom")
+        return self
+
+    def to_entity(self) -> EnvVar:
+        return EnvVar(name=self.name, value=self.value, valueFrom=self.value_from)
+
+
+class RequestContainer(BaseModel):
+    """Public request container; env entries cannot carry secretRef."""
+
+    name: str
+    image: str
+    command: list[str] = Field(default_factory=list)
+    args: list[str] = Field(default_factory=list)
+    env: list[RequestEnvVar] = Field(default_factory=list)
+    ports: list[ContainerPort] = Field(default_factory=list)
+    resources: ResourceRequirements = Field(default_factory=ResourceRequirements)
+    volume_mounts: list[VolumeMount] = Field(default_factory=list, alias="volumeMounts")
+    liveness_probe: Probe | None = Field(default=None, alias="livenessProbe")
+    readiness_probe: Probe | None = Field(default=None, alias="readinessProbe")
+    restart_policy: RestartPolicy | None = Field(default=None, alias="restartPolicy")
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class CreateDeploymentConfigRequest(BaseModel):
     name: str
-    containers: list[Container] = Field(default_factory=list)
-    init_containers: list[Container] = Field(default_factory=list)
+    containers: list[RequestContainer] = Field(default_factory=list)
+    init_containers: list[RequestContainer] = Field(default_factory=list)
     volume_mounts: list[VolumeMount] = Field(default_factory=list)
     config_files: list[ConfigFile] = Field(default_factory=list)
     restart_policy: RestartPolicy = "Always"
@@ -54,7 +98,7 @@ class CreateDeploymentRequest(BaseModel):
 class CreateVolumeRequest(BaseModel):
     name: str
     size: str = "1Gi"
-    access_modes: list[AccessMode] = Field(default_factory=lambda: ["ReadWriteOnce"])
+    access_modes: list[AccessMode] = Field(default_factory=_default_request_access_modes)
     backend_config: VolumeBackendConfig = Field(default_factory=VolumeBackendConfig)
 
 

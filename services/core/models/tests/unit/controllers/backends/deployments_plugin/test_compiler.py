@@ -4,6 +4,7 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from nemo_deployments_plugin.entities import SecretRef
 from nemo_platform.types.inference.k8s_nim_operator_config import K8sNIMOperatorConfig
 from nmp.common.config import Runtime
@@ -133,6 +134,19 @@ def test_nim_explicit_ngc_env_is_not_persisted_as_plaintext() -> None:
     assert ngc_env.value is None
     assert ngc_env.secret_ref == SecretRef(workspace="system", name="ngc-api-key")
     assert "explicit-value" not in compiled.server_config.model_dump_json(by_alias=True)
+
+
+def test_nim_explicit_ngc_env_fails_without_platform_secret_ref() -> None:
+    resolved = _resolved("nim")
+    resolved.view.additional_envs = {"NGC_API_KEY": "explicit-value"}
+    with (
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.platform_ngc_secret_ref",
+            return_value=None,
+        ),
+        pytest.raises(ValueError, match="platform.ngc_api_key_secret"),
+    ):
+        compile_model_deployment(resolved, DeploymentsPluginConfig())
 
 
 def test_nim_multi_llm_weighted_omits_ft_model_env() -> None:

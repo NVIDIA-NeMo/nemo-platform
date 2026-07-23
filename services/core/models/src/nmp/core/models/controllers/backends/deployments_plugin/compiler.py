@@ -121,10 +121,14 @@ def _server_env(engine: str, values: dict[str, str]) -> list[EnvVar]:
     if engine != ENGINE_NIM:
         return _env(values)
 
+    has_ngc_api_key = "NGC_API_KEY" in values
     env = _env({name: value for name, value in values.items() if name != "NGC_API_KEY"})
     secret_ref = platform_ngc_secret_ref()
-    if secret_ref is not None:
-        env.append(EnvVar(name="NGC_API_KEY", secretRef=secret_ref))
+    if secret_ref is None:
+        if has_ngc_api_key:
+            raise ValueError("NIM NGC_API_KEY requires a valid platform.ngc_api_key_secret reference")
+        return env
+    env.append(EnvVar(name="NGC_API_KEY", secretRef=secret_ref))
     return env
 
 
