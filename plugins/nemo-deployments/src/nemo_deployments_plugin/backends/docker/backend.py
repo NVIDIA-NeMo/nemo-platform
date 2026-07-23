@@ -53,6 +53,7 @@ from nemo_deployments_plugin.backends.labels import (
 )
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import Container, Deployment, DeploymentConfig
+from nemo_deployments_plugin.secrets import SecretResolutionError, resolve_deployment_config_secrets
 from nemo_deployments_plugin.types import Endpoint, RestartPolicy
 from nemo_platform.resources.entities import AsyncEntitiesResource
 from nemo_platform_plugin.config import LOOPBACK_ADDRESSES
@@ -67,6 +68,16 @@ if TYPE_CHECKING:
     import docker
 
 logger = logging.getLogger(__name__)
+
+_ONE_SHOT_RESTART_POLICIES = frozenset({"Never", "OnFailure"})
+_EXITED_CONTAINER_STATES = frozenset({"exited", "dead"})
+NGC_IMAGE_REGISTRY = os.getenv("NGC_IMAGE_REGISTRY", "nvcr.io")
+NGC_IMAGE_REGISTRY_USER_NAME = os.getenv("NGC_IMAGE_REGISTRY_USER_NAME", "$oauthtoken")
+
+
+def _is_ngc_image(image: str) -> bool:
+    """Return whether an image belongs to the configured NGC registry."""
+    return image == NGC_IMAGE_REGISTRY or image.startswith(f"{NGC_IMAGE_REGISTRY}/")
 
 
 class DockerDeploymentBackend(DeploymentBackend):
@@ -119,18 +130,40 @@ class DockerDeploymentBackend(DeploymentBackend):
         try:
             existing = await asyncio.to_thread(self._client.containers.get, c_name)
             if self._container_matches_deployment(existing, workspace, name, config_name):
-                return await self.read_status(workspace=workspace, name=name)
-            return BackendStatusUpdate(
-                status="FAILED",
-                status_message=f"Container name collision: {c_name} exists with different labels",
-            )
+                restart_policy = (existing.labels or {}).get(RESTART_POLICY_LABEL, "Always")
+                if restart_policy in _ONE_SHOT_RESTART_POLICIES and existing.status in _EXITED_CONTAINER_STATES:
+                    logger.info(
+                        "Removing exited one-shot container before recreate",
+                        extra={
+                            "container": c_name,
+                            "restart_policy": restart_policy,
+                            "status": existing.status,
+                        },
+                    )
+                    try:
+                        await asyncio.to_thread(existing.remove, force=True)
+                    except self._docker_errors.APIError as exc:
+                        return BackendStatusUpdate(
+                            status="FAILED",
+                            status_message=f"Failed to remove exited container before recreate: {exc}",
+                        )
+                else:
+                    return await self.read_status(workspace=workspace, name=name)
+            else:
+                return BackendStatusUpdate(
+                    status="FAILED",
+                    status_message=f"Container name collision: {c_name} exists with different labels",
+                )
         except self._docker_errors.NotFound:
             pass
 
         try:
             config = await self._load_deployment_config(workspace, config_name)
+            config = await resolve_deployment_config_secrets(self._sdk, config)
             container_spec = validate_config_for_docker(config)
         except DeploymentConfigError as exc:
+            return BackendStatusUpdate(status="FAILED", status_message=str(exc))
+        except SecretResolutionError as exc:
             return BackendStatusUpdate(status="FAILED", status_message=str(exc))
         except NemoEntityNotFoundError:
             return BackendStatusUpdate(
@@ -147,15 +180,16 @@ class DockerDeploymentBackend(DeploymentBackend):
 
         dep_key = deployment_key(workspace, name)
         gpu_ids: list[int] = []
+        gpu_pool = self._gpu_pool
         gpu_count = gpu_count_from_container(container_spec)
         if gpu_count > 0:
-            if self._gpu_pool is None:
+            if gpu_pool is None:
                 return BackendStatusUpdate(
                     status="FAILED",
                     status_message="GPU requested but no GPUs detected on this host",
                 )
             try:
-                gpu_ids = self._gpu_pool.allocate_gpu(dep_key, num_requested=gpu_count)
+                gpu_ids = gpu_pool.allocate_gpu(dep_key, num_requested=gpu_count)
             except GPUAllocationError as exc:
                 return BackendStatusUpdate(status="FAILED", status_message=str(exc))
 
@@ -168,20 +202,22 @@ class DockerDeploymentBackend(DeploymentBackend):
                 exclude_ports=set(host_ports.values()),
             )
             if host_port is None:
-                if gpu_ids:
-                    self._gpu_pool.release_gpu(dep_key)  # type: ignore[union-attr]
+                if gpu_ids and gpu_pool is not None:
+                    gpu_pool.release_gpu(dep_key)
                 return BackendStatusUpdate(
                     status="FAILED", status_message="No host ports available in configured range"
                 )
             host_ports[port_spec.container_port] = host_port
 
         if self._executor_config.pull_images:
-            try:
-                await asyncio.to_thread(self._client.images.pull, container_spec.image)
-            except (self._docker_errors.APIError, self._docker_errors.ImageNotFound) as exc:
-                if gpu_ids:
-                    self._gpu_pool.release_gpu(dep_key)  # type: ignore[union-attr]
-                return BackendStatusUpdate(status="FAILED", status_message=f"Failed to pull image: {exc}")
+            pull_error = await self._pull_image(
+                container_spec.image,
+                ngc_api_key=env_dict(container_spec).get("NGC_API_KEY"),
+            )
+            if pull_error is not None:
+                if gpu_ids and gpu_pool is not None:
+                    gpu_pool.release_gpu(dep_key)
+                return BackendStatusUpdate(status="FAILED", status_message=pull_error)
 
         all_labels = {
             **labels,
@@ -230,8 +266,8 @@ class DockerDeploymentBackend(DeploymentBackend):
         try:
             await asyncio.to_thread(self._client.containers.run, **run_kwargs)
         except Exception as exc:
-            if gpu_ids:
-                self._gpu_pool.release_gpu(dep_key)  # type: ignore[union-attr]
+            if gpu_ids and gpu_pool is not None:
+                gpu_pool.release_gpu(dep_key)
             logger.exception("Failed to start container %s", c_name)
             return BackendStatusUpdate(status="FAILED", status_message=f"Failed to start container: {exc}")
 
@@ -470,6 +506,31 @@ class DockerDeploymentBackend(DeploymentBackend):
             and labels.get(CONFIG_NAME_LABEL) == config_name
             and labels.get(MANAGED_BY_KEY) == MANAGED_BY_LABEL
         )
+
+    async def _pull_image(self, image: str, *, ngc_api_key: str | None) -> str | None:
+        """Pull ``image``, authenticating to NGC when needed. Returns an error message or None."""
+        pull_kwargs: dict[str, Any] = {}
+        if _is_ngc_image(image):
+            if ngc_api_key:
+                pull_kwargs["auth_config"] = {
+                    "username": NGC_IMAGE_REGISTRY_USER_NAME,
+                    "password": ngc_api_key,
+                }
+            else:
+                logger.warning(
+                    "Pulling NGC image without NGC credentials",
+                    extra={"image": image},
+                )
+        try:
+            await asyncio.to_thread(self._client.images.pull, image, **pull_kwargs)
+        except (self._docker_errors.APIError, self._docker_errors.ImageNotFound) as exc:
+            message = f"Failed to pull image {image}: {exc}"
+            if _is_ngc_image(image):
+                message += (
+                    ". Ensure the image exists and NGC_API_KEY (or platform.ngc_api_key_secret) is set correctly."
+                )
+            return message
+        return None
 
     async def _resolve_restart_policy(self, workspace: str, name: str) -> RestartPolicy:
         config = await self._load_config_for_deployment_entity(workspace, name)
