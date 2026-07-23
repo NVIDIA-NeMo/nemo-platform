@@ -14,7 +14,7 @@ import {
   QuickActionsMenuRoot,
 } from '@studio/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { getDataDesignerJobDetailsRoute, getNewDataDesignerJobRoute } from '@studio/routes/utils';
+import { getDataDesignerJobBuildRoute, getDataDesignerJobDetailsRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { type FC, useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -62,7 +62,7 @@ export const DataDesignerJobActionsMenu: FC<DataDesignerJobActionsMenuProps> = (
   const handleClone = useCallback(() => {
     const cloneJobRequest = buildClonedJobRequest(job);
     if (!cloneJobRequest) return;
-    navigate(getNewDataDesignerJobRoute(workspace), {
+    navigate(getDataDesignerJobBuildRoute(workspace), {
       state: { cloneJobRequest },
     });
   }, [job, navigate, workspace]);
