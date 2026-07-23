@@ -10,7 +10,12 @@ import {
 } from '@assistant-ui/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { getCompletionText, isAbortError, isChatCompletionStream } from './completionUtils';
+import {
+  getCompletionImages,
+  getCompletionText,
+  isAbortError,
+  isChatCompletionStream,
+} from './completionUtils';
 import { CANCELLED_STATUS, COMPLETE_STATUS, RUNNING_STATUS } from './constants';
 import {
   appendMessageToThreadMessage,
@@ -70,13 +75,18 @@ export const useAssistantChatRuntime = ({
   }, []);
 
   const updateAssistantMessage = useCallback(
-    (assistantMessageId: string, text: string, status: MessageStatus) => {
+    (
+      assistantMessageId: string,
+      text: string,
+      images: readonly { type: 'image'; image: string }[],
+      status: MessageStatus
+    ) => {
       setThreadMessages(
         messagesRef.current.map((message) =>
           message.id === assistantMessageId
             ? {
                 ...message,
-                content: [{ type: 'text', text }],
+                content: [{ type: 'text', text }, ...images],
                 status,
               }
             : message
@@ -99,6 +109,7 @@ export const useAssistantChatRuntime = ({
       setThreadMessages([...conversationMessages, assistantMessage]);
       setIsRunning(true);
       let responseText = '';
+      const responseImages: { type: 'image'; image: string }[] = [];
       // Timing for per-message metrics (TTFT, total, tokens/sec). Emitted via
       // onMessageComplete so callers (e.g. Studio's Chat route) can render a
       // stats badge without owning the runtime.
@@ -121,7 +132,12 @@ export const useAssistantChatRuntime = ({
         });
 
         if (runController.signal.aborted || !isCurrentRun()) {
-          updateAssistantMessage(assistantMessage.id!, responseText, CANCELLED_STATUS);
+          updateAssistantMessage(
+            assistantMessage.id!,
+            responseText,
+            responseImages,
+            CANCELLED_STATUS
+          );
           return;
         }
 
@@ -134,16 +150,24 @@ export const useAssistantChatRuntime = ({
           for await (const chunk of result) {
             if (runController.signal.aborted || !isCurrentRun()) break;
             const delta = chunk.choices[0]?.delta.content ?? '';
-            if (delta) {
+            const images = getCompletionImages(chunk);
+            if (delta || images.length > 0) {
               if (ttftMs === 0) ttftMs = Math.round(performance.now() - startMs);
               responseText += delta;
+              responseImages.push(...images);
               chunkCount += 1;
-              updateAssistantMessage(assistantMessage.id!, responseText, RUNNING_STATUS);
+              updateAssistantMessage(
+                assistantMessage.id!,
+                responseText,
+                responseImages,
+                RUNNING_STATUS
+              );
             }
           }
           updateAssistantMessage(
             assistantMessage.id!,
             responseText,
+            responseImages,
             runController.signal.aborted ? CANCELLED_STATUS : COMPLETE_STATUS
           );
           if (!runController.signal.aborted && onMessageComplete) {
@@ -166,7 +190,12 @@ export const useAssistantChatRuntime = ({
           }
         } else {
           const text = getCompletionText(result);
-          updateAssistantMessage(assistantMessage.id!, text, COMPLETE_STATUS);
+          updateAssistantMessage(
+            assistantMessage.id!,
+            text,
+            getCompletionImages(result),
+            COMPLETE_STATUS
+          );
           if (onMessageComplete) {
             const totalMs = Math.round(performance.now() - startMs);
             const completionTokens = Math.round(text.length / 4);
@@ -183,7 +212,12 @@ export const useAssistantChatRuntime = ({
         }
       } catch (error: unknown) {
         if (runController.signal.aborted || isAbortError(error)) {
-          updateAssistantMessage(assistantMessage.id!, responseText, CANCELLED_STATUS);
+          updateAssistantMessage(
+            assistantMessage.id!,
+            responseText,
+            responseImages,
+            CANCELLED_STATUS
+          );
           return;
         }
 
@@ -193,7 +227,7 @@ export const useAssistantChatRuntime = ({
           reason: 'error',
           error: errorMessage,
         };
-        updateAssistantMessage(assistantMessage.id!, errorMessage, status);
+        updateAssistantMessage(assistantMessage.id!, errorMessage, responseImages, status);
         onError?.(error instanceof Error ? error : new Error(errorMessage));
       } finally {
         if (abortControllerRef.current === runController) {
