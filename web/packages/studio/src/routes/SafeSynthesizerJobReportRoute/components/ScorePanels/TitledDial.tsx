@@ -3,7 +3,7 @@
 
 import { ScoreGauge } from '@nemo/common/src/components/ScoreGauge';
 import { Divider, Flex, Stack, Tag, Text } from '@nvidia/foundations-react-core';
-import { FC } from 'react';
+import type { FC } from 'react';
 
 interface TitledDialProps {
   title: string;

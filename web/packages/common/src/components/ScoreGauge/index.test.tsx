@@ -62,4 +62,9 @@ describe('ScoreGauge', () => {
     expect(screen.queryByTestId('gauge-gradient-segment')).not.toBeInTheDocument();
     expect(screen.queryByTestId('gauge-marker')).not.toBeInTheDocument();
   });
+
+  it('clamps an out-of-range score to 10', () => {
+    render(<ScoreGauge score={15} size="lg" />);
+    expect(screen.getByTestId('gauge-display')).toHaveTextContent('10.0');
+  });
 });
