@@ -20,6 +20,7 @@ import { useParams } from 'react-router-dom';
 const WORKSPACE = 'workspace-a';
 const INSIGHT_ID = 'insight-a';
 const INSIGHT_URL = `${PLATFORM_BASE_URL}/apis/insights/v2/workspaces/:workspace/insights/:insightId`;
+const RUNS_URL = `${PLATFORM_BASE_URL}/apis/insights/v2/workspaces/:workspace/eval-author-runs`;
 const GROUPS_URL = `${PLATFORM_BASE_URL}${getListExperimentGroupsQueryKey(':workspace')[0]}`;
 const EVALUATIONS_URL = `${PLATFORM_BASE_URL}${getListEvaluationsQueryKey(':workspace')[0]}`;
 
@@ -90,6 +91,7 @@ describe('OptimizerInsightRoute experiments', () => {
   beforeEach(() => {
     server.use(
       http.get(INSIGHT_URL, () => HttpResponse.json(insight)),
+      http.get(RUNS_URL, () => HttpResponse.json({ data: [], pagination: pagination() })),
       http.get(GROUPS_URL, () => HttpResponse.json({ data: [], pagination: pagination() }))
     );
   });

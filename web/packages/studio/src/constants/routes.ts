@@ -39,6 +39,7 @@ export const ROUTE_PARAMS = {
   benchmarkName: 'benchmarkName',
   experimentGroupName: 'experimentGroupName',
   insightId: 'insightId',
+  evalAuthorRunId: 'evalAuthorRunId',
   evaluationName: 'evaluationName',
   guardrailConfigName: 'guardrailConfigName',
 } as const;
@@ -113,6 +114,7 @@ export const ROUTES = {
     guardrails: `/workspaces/:${P.workspace}/guardrails`,
     optimizer: `/workspaces/:${P.workspace}/optimizer`,
     optimizerInsight: `/workspaces/:${P.workspace}/optimizer/:${P.insightId}`,
+    optimizerEvalAuthorRun: `/workspaces/:${P.workspace}/optimizer/:${P.insightId}/eval-author-runs/:${P.evalAuthorRunId}`,
     guardrailDetail: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}`,
     settings: `/workspaces/:${P.workspace}/settings`,
     /** Workspace members and role-based access (Entities role bindings) */

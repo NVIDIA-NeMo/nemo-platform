@@ -33,6 +33,7 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { InsightOpenModal } from '@studio/routes/optimizer/InsightOpenModal';
 import { insightActions, insightStatusColor } from '@studio/routes/optimizer/insightStatus';
 import { InsightTracesTable } from '@studio/routes/optimizer/InsightTracesTable';
+import { InsightEvalAuthorRuns } from '@studio/routes/optimizer/OptimizerInsightRoute/InsightEvalAuthorRuns';
 import { InsightExperimentGroups } from '@studio/routes/optimizer/OptimizerInsightRoute/InsightExperimentGroups';
 import { getOptimizerRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
@@ -199,6 +200,11 @@ export const OptimizerInsightRoute: FC = () => {
             />
           </Card>
         </div>
+
+        <Stack className="gap-density-sm">
+          <Text kind="label/bold/md">Eval Author runs</Text>
+          <InsightEvalAuthorRuns workspace={workspace} insightId={insightId} />
+        </Stack>
 
         <Stack className="gap-density-sm">
           <Text kind="label/bold/md">Observed Sessions ({traceRefs.length})</Text>
