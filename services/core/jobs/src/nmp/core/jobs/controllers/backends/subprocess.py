@@ -38,10 +38,6 @@ from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.app.providers import SubprocessExecutionProvider
 from nmp.core.jobs.app.schemas import BaseExecutionProfile
 from nmp.core.jobs.controllers.backends.base import (
-    NMP_JOB_LAUNCHER_LOGS_EXPORTER_ENVVAR,
-    NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS_ENVVAR,
-    NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL,
-    NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL_ENVVAR,
     JobBackend,
     JobExecutionProfileConfig,
     JobUpdate,
@@ -449,8 +445,6 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
                 CONFIG_TASK_STORAGE_PATH_ENVVAR: str(config_dir),
                 PERSISTENT_JOB_STORAGE_PATH_ENVVAR: str(persistent_dir),
                 NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR: str(config_path),
-                NMP_JOB_LAUNCHER_LOGS_EXPORTER_ENVVAR: "otlp",
-                NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL_ENVVAR: NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL,
                 NEMO_JOB_SECRETS_ENVVAR: self.get_secrets_environment_variable_for_injection(step),
             }
         )
@@ -481,7 +475,6 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
             auth_context = AuthContext.model_validate(step.auth_context.model_dump(mode="python", exclude_none=True))
             principal = auth_context.to_principal()
             env.update(principal.get_env_var())
-            env[NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS_ENVVAR] = principal.get_otlp_headers_value()
 
         inject_secret_env_vars(env)
         return env, task_id, work_dir, log_path, persistent_dir

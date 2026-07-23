@@ -3,7 +3,7 @@
 
 import pytest
 
-from e2e.test_jobs_auth import _job_exists_in_pages, _managed_admin_workspace
+from tests.auth.integration.jobs_auth_helpers import job_exists_in_pages, managed_admin_workspace
 
 
 class _StubWorkspaces:
@@ -41,7 +41,7 @@ class _StubPage:
 def test_managed_admin_workspace_deletes_workspace_after_success() -> None:
     sdk = _StubSDK()
 
-    with _managed_admin_workspace(sdk, "workspace-a") as workspace_name:
+    with managed_admin_workspace(sdk, "workspace-a") as workspace_name:
         assert workspace_name == "workspace-a"
 
     assert sdk.workspaces.created == ["workspace-a"]
@@ -52,7 +52,7 @@ def test_managed_admin_workspace_deletes_workspace_after_failure() -> None:
     sdk = _StubSDK()
 
     with pytest.raises(RuntimeError, match="boom"):
-        with _managed_admin_workspace(sdk, "workspace-b"):
+        with managed_admin_workspace(sdk, "workspace-b"):
             raise RuntimeError("boom")
 
     assert sdk.workspaces.created == ["workspace-b"]
@@ -64,4 +64,4 @@ def test_job_exists_in_pages_checks_later_pages() -> None:
     page_one = _StubPage([], ["other-job"])
     page_one._pages = [page_one, page_two]
 
-    assert _job_exists_in_pages(page_one, "target-job") is True
+    assert job_exists_in_pages(page_one, "target-job") is True

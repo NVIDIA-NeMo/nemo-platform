@@ -5,18 +5,16 @@
 # Two images, both pinned to BASE_TAG_PYTHON:
 #
 # nmp-python-base         - minimal runtime base (API, CPU tasks)
-# nmp-python-dev-base     - runtime base + dev tools for building native extensions (auditor)
+# nmp-python-dev-base     - runtime base + dev tools for building native extensions
 #######
 
-# Registry stages: set USE_PREBUILT_BASES or PYTHON_*_BASE_TARGET in bake to
-# consume pre-built images instead of the local builder stages.
-ARG BASE_TAG_PYTHON=local
 ARG BASE_REGISTRY=my-registry
+ARG BASE_TAG_PYTHON=local
+ARG NMP_PYTHON_IMAGE=python:3.13.14-slim-trixie
 FROM ${BASE_REGISTRY}/nmp-python-base:${BASE_TAG_PYTHON} AS nmp-python-base
 FROM ${BASE_REGISTRY}/nmp-python-dev-base:${BASE_TAG_PYTHON} AS nmp-python-dev-base
 
-# nmp-python-base-builder: Builds the minimal runtime base from scratch.
-FROM python:3.11.15-slim-bookworm AS nmp-python-base-builder
+FROM ${NMP_PYTHON_IMAGE} AS nmp-python-base-builder
 
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     build-essential \
@@ -39,8 +37,7 @@ WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /bin/uv
 
-# python 3.11 required
-RUN uv venv --seed --python=3.11 /app/.venv
+RUN uv venv --seed --python=3.13 /app/.venv
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -49,15 +46,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     VIRTUAL_ENV=/app/.venv \
     PATH=/app/.venv/bin:$PATH
 
-# nmp-python-dev-base-builder: Extends the runtime base with development tools.
-# Used as the builder base for services that compile native extensions (e.g., auditor).
 FROM nmp-python-base-builder AS nmp-python-dev-base-builder
 ARG TARGETARCH
 ARG RUSTUP_VERSION=1.28.2
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     binutils \
-    g++-11 \
+    g++ \
+    gcc \
     libisl23 \
     libgmp10 \
     libmpc3 \
@@ -67,9 +63,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
-
-RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 60 \
-    && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 60
 
 ENV CARGO_HOME="/etc/cargo" \
     RUSTUP_HOME="/etc/rustup"

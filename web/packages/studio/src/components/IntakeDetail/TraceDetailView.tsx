@@ -12,7 +12,10 @@ import {
   buildTraceSummaryEntries,
 } from '@studio/components/IntakeDetail/IntakeComponents/traceKeyValues';
 import { TraceSummaryHeader } from '@studio/components/IntakeDetail/TraceDetailSummaryHeader';
-import { TraceSpanAccordions } from '@studio/components/IntakeDetail/TraceSpanAccordions';
+import {
+  TraceSpanAccordions,
+  type SlotHeaderRenderProp,
+} from '@studio/components/IntakeDetail/TraceSpanAccordions';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { NotFound } from '@studio/components/Layouts/NotFound';
 import {
@@ -34,6 +37,22 @@ interface IntakeTraceDetailViewProps {
   parentBreadcrumbs?: BreadcrumbsItemProps[];
   /** When true, shows "Test case: <test_case_id>" as the header instead of "Trace <name>". Falls back to "Trace <name>" when test_case_id is absent. */
   showTestCaseTitle?: boolean;
+  /** When true, this instance does not update the breadcrumb trail. Use in compare mode where the parent controls breadcrumbs. */
+  disableBreadcrumbs?: boolean;
+  /** Currently linked (selected) span id, owned by the caller. Single view binds this to ?spanId=; compare view keeps one slot per column. */
+  linkedSpanId: string | null;
+  /** Called when the span selection changes. */
+  onLinkedSpanIdChange: (spanId: string | null) => void;
+  /** Rendered in the PageHeader's slotActions (e.g. a "Compare to…" selector). */
+  slotPageHeaderActions?: React.ReactNode;
+  /** When true, the PageHeader (trace title) is not rendered. Use in compare columns where the column card header serves that role. */
+  hidePageHeader?: boolean;
+  /** When true, forces list view in the span explorer and hides the Tree/List toggle. Pass in compare mode. */
+  forceListView?: boolean;
+  /** When true, opens the first span accordion by default once spans load. Pass in compare mode. */
+  defaultOpenFirst?: boolean;
+  /** Render prop receiving expandAll/collapseAll; replaces TraceSummaryHeader and is passed to TraceSpanAccordions as slotHeader. */
+  slotSpanHeader?: SlotHeaderRenderProp;
 }
 
 /**
@@ -44,6 +63,14 @@ export const IntakeTraceDetailView: FC<IntakeTraceDetailViewProps> = ({
   traceId,
   parentBreadcrumbs,
   showTestCaseTitle,
+  disableBreadcrumbs = false,
+  linkedSpanId,
+  onLinkedSpanIdChange,
+  slotPageHeaderActions,
+  hidePageHeader = false,
+  forceListView = false,
+  defaultOpenFirst = false,
+  slotSpanHeader,
 }) => {
   const {
     data: trace,
@@ -66,11 +93,12 @@ export const IntakeTraceDetailView: FC<IntakeTraceDetailViewProps> = ({
   );
 
   useEffect(() => {
+    if (disableBreadcrumbs) return;
     const parent = parentBreadcrumbs ?? [
       { slotLabel: 'Intake', href: getIntakeTracesRoute(workspace) },
     ];
     setBreadcrumbs([...parent, { slotLabel: `Trace ${traceBreadcrumbLabel}` }]);
-  }, [setBreadcrumbs, traceBreadcrumbLabel, workspace, parentBreadcrumbs]);
+  }, [disableBreadcrumbs, setBreadcrumbs, traceBreadcrumbLabel, workspace, parentBreadcrumbs]);
 
   if (error?.response?.status === 404) {
     return (
@@ -109,9 +137,19 @@ export const IntakeTraceDetailView: FC<IntakeTraceDetailViewProps> = ({
   return (
     <AccessibleTitle title={title}>
       <Stack gap="density-2xl" padding="density-2xl" className="h-full overflow-auto">
-        <PageHeader className="p-0" slotHeading={title} />
-        <TraceSummaryHeader trace={trace} />
-        <TraceSpanAccordions workspace={workspace} trace={trace} />
+        {!hidePageHeader && (
+          <PageHeader className="p-0" slotHeading={title} slotActions={slotPageHeaderActions} />
+        )}
+        {!slotSpanHeader && <TraceSummaryHeader trace={trace} />}
+        <TraceSpanAccordions
+          workspace={workspace}
+          trace={trace}
+          linkedSpanId={linkedSpanId}
+          onLinkedSpanIdChange={onLinkedSpanIdChange}
+          forceListView={forceListView}
+          defaultOpenFirst={defaultOpenFirst}
+          slotHeader={slotSpanHeader}
+        />
         <IntakeAccordion
           variant="section"
           defaultValue={[]}

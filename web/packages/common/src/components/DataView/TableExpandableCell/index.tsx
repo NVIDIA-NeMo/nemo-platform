@@ -2,15 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Text } from '@nvidia/foundations-react-core';
-import type { ExpandedCellState } from '@studio/components/ModelComparePrompts/types';
 import { Maximize2 } from 'lucide-react';
 import type { FC, ReactNode } from 'react';
 
-/** Table cell with vertical scroll and an expand-to-modal button */
-export const ExpandableCell: FC<{
+export interface TableExpandableCellState {
+  title: string;
+  content: string;
+}
+
+export const TableExpandableCell: FC<{
   content: string;
   title: string;
-  onExpand: (state: ExpandedCellState) => void;
+  onExpand: (state: TableExpandableCellState) => void;
   footer?: ReactNode;
   boldContent?: boolean;
 }> = ({ content, title, onExpand, footer, boldContent }) => {

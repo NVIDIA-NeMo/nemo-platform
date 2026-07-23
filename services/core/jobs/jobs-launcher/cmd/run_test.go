@@ -354,83 +354,18 @@ func TestRunExecWithoutSecrets(t *testing.T) {
 	}
 }
 
-func TestConfigureOTELHeadersFromWorkloadToken(t *testing.T) {
-	testCases := []struct {
-		name            string
-		token           string
-		existingHeaders string
-		expectedHeaders string
-	}{
-		{
-			name:            "adds_authorization_header",
-			token:           "token.with-symbols_123",
-			expectedHeaders: "Authorization=Bearer%20token.with-symbols_123",
-		},
-		{
-			name:            "preserves_existing_headers",
-			token:           "abc.def",
-			existingHeaders: "X-NMP-Principal-Id=nemo-user",
-			expectedHeaders: "X-NMP-Principal-Id=nemo-user,Authorization=Bearer%20abc.def",
-		},
-		{
-			name:            "keeps_existing_authorization_header",
-			token:           "abc.def",
-			existingHeaders: "authorization=Bearer+explicit",
-			expectedHeaders: "authorization=Bearer+explicit",
-		},
-		{
-			name:            "does_nothing_without_token",
-			existingHeaders: "X-Test=value",
-			expectedHeaders: "X-Test=value",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			origEnvVars := map[string]envVarState{
-				"NEMO_WORKLOAD_TOKEN":             getEnvState("NEMO_WORKLOAD_TOKEN"),
-				launcherOTLPLogsHeadersEnv:        getEnvState(launcherOTLPLogsHeadersEnv),
-				"OTEL_EXPORTER_OTLP_LOGS_HEADERS": getEnvState("OTEL_EXPORTER_OTLP_LOGS_HEADERS"),
-			}
-			defer restoreEnvVars(origEnvVars)
-
-			if tc.token != "" {
-				os.Setenv("NEMO_WORKLOAD_TOKEN", tc.token)
-			} else {
-				os.Unsetenv("NEMO_WORKLOAD_TOKEN")
-			}
-			if tc.existingHeaders != "" {
-				os.Setenv(launcherOTLPLogsHeadersEnv, tc.existingHeaders)
-			} else {
-				os.Unsetenv(launcherOTLPLogsHeadersEnv)
-			}
-			os.Setenv("OTEL_EXPORTER_OTLP_LOGS_HEADERS", "user-owned=value")
-
-			configureOTELHeadersFromWorkloadToken()
-
-			got := os.Getenv(launcherOTLPLogsHeadersEnv)
-			if got != tc.expectedHeaders {
-				t.Errorf("Expected launcher OTLP headers %q, got %q", tc.expectedHeaders, got)
-			}
-			if got := os.Getenv("OTEL_EXPORTER_OTLP_LOGS_HEADERS"); got != "user-owned=value" {
-				t.Errorf("Expected user OTEL headers to be preserved, got %q", got)
-			}
-		})
-	}
-}
-
 func TestWorkloadEnvFromParentFiltersLauncherPrivateVars(t *testing.T) {
 	origEnvVars := map[string]envVarState{
-		"NMP_JOB_LAUNCHER_LOGS_EXPORTER": getEnvState("NMP_JOB_LAUNCHER_LOGS_EXPORTER"),
-		"OTEL_LOGS_EXPORTER":             getEnvState("OTEL_LOGS_EXPORTER"),
+		"NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT": getEnvState("NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT"),
+		"OTEL_LOGS_EXPORTER":                  getEnvState("OTEL_LOGS_EXPORTER"),
 	}
 	defer restoreEnvVars(origEnvVars)
 
-	os.Setenv("NMP_JOB_LAUNCHER_LOGS_EXPORTER", "otlp")
+	os.Setenv("NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT", "http://platform.example/v1/logs")
 	os.Setenv("OTEL_LOGS_EXPORTER", "otlp")
 
 	env := strings.Join(workloadEnvFromParent(), "\n")
-	if strings.Contains(env, "NMP_JOB_LAUNCHER_LOGS_EXPORTER=") {
+	if strings.Contains(env, "NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT=") {
 		t.Fatal("expected launcher-private env var to be filtered")
 	}
 	if !strings.Contains(env, "OTEL_LOGS_EXPORTER=otlp") {

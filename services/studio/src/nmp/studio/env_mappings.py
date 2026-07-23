@@ -141,7 +141,7 @@ ENV_MAPPINGS: list[EnvMapping] = [
     EnvMapping(
         marker="STUDIO_UI_VITE_FF_SAFE_SYNTHESIZER_ENABLED",
         config_path="studio.feature_flags.safe_synthesizer_enabled",
-        default="false",
+        default="true",
     ),
     EnvMapping(
         marker="STUDIO_UI_VITE_FF_SECRETS_ENABLED", config_path="studio.feature_flags.secrets_enabled", default="true"

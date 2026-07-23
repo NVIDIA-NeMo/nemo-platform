@@ -14,7 +14,7 @@ For fine-tuning and deployment tutorials, see the [Tutorials](/documentation/cus
 </Note>
 ## Before You Start
 
-If downloading models hosted on Hugging Face, create a secret with your HuggingFace API key, then create a FileSet and Model Entity referencing the model. See [index](/documentation/customizer-reference/manage-model-entities/overview) for setup instructions.
+If downloading models hosted on Hugging Face, create a secret with your Hugging Face API key, then create a FileSet and Model Entity referencing the model. See [index](/documentation/customizer-reference/manage-model-entities/overview) for setup instructions.
 
 ---
 
@@ -63,7 +63,7 @@ View the available Mistral models, including Mistral and Ministral variants for 
 
 ## Tested Models
 
-The following table lists models that NVIDIA tested and their available features. This is a list of *known-good* combinations, not a list of limits: NeMo Customizer can fine-tune many models and regimes beyond those listed, including additional Hugging Face checkpoints, other fine-tuning regimes (LoRA, merged-LoRA, full-weight, distillation), and either training backend (Automodel or Unsloth). Models and regimes outside this table may work but have not been formally validated.
+The following table lists models that NVIDIA tested and their available features. This is a list of *known-good* combinations, not a list of limits: NeMo Customizer can fine-tune additional Hugging Face checkpoints and regimes when their architectures are supported by the selected training backend. Compatibility varies by architecture and fine-tuning method—for example, Automodel LoRA does not support Conv1D-based models. Models and regimes outside this table may work but have not been formally validated; test them before relying on them in production.
 
 For detailed technical specifications of each model such as architecture, parameters, and token limits, refer to the [model family](#model-families) pages.
 
@@ -81,7 +81,7 @@ The following models support both chat and completion model training.
 | [nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16) | No | Full SFT, LoRA | No | Supported (only Full SFT) | Yes |
 | [nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16) | No | LoRA | No | Supported | Yes |
 | [microsoft/phi-4](https://huggingface.co/microsoft/phi-4) | No | Full SFT, LoRA | No | Supported | No |
-| [openai/gpt-oss-20b](https://huggingface.co/openai/gpt-oss-20b) | Yes | Full SFT, LoRA | No | Supported | Yes |
+| [openai/gpt-oss-20b](https://huggingface.co/openai/gpt-oss-20b) | Yes | Full SFT, LoRA | LoRA with prompt-completion data | Supported | Yes |
 | [Qwen/Qwen2.5-1.5B-Instruct](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct) | No | Full SFT, LoRA | No| Supported | Yes |
 | [Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B) | No | Full SFT, LoRA | No | Supported | Yes |
 | [mistralai/Mistral-7B-Instruct-v0.3](https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.3) | No | Full SFT, LoRA | No | Supported | No |

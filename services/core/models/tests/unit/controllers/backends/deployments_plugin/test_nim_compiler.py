@@ -54,6 +54,34 @@ def test_compile_nim_server_env_sets_ft_model_for_model_specific_image() -> None
     assert env["NIM_CUSTOM_MODEL"] == "/model-store"
 
 
+def test_compile_nim_server_env_additional_envs_override_ngc_api_key() -> None:
+    resolved = _resolved()
+    resolved = ResolvedPluginDeployment(
+        deployment=resolved.deployment,
+        config=resolved.config,
+        model_entity=resolved.model_entity,
+        view=DeploymentConfigView(
+            model_namespace="org",
+            model_name="model",
+            additional_envs={"NGC_API_KEY": "from-additional-envs"},
+        ),
+        weights_type=resolved.weights_type,
+        model_namespace=resolved.model_namespace,
+        model_name=resolved.model_name,
+        model_revision=resolved.model_revision,
+        files_hf_url=resolved.files_hf_url,
+        huggingface_model_puller=resolved.huggingface_model_puller,
+        runtime=resolved.runtime,
+    )
+    env = compile_nim_server_env(
+        resolved,
+        DeploymentsPluginConfig(),
+        weighted=False,
+        tool_call_plugin_path=None,
+    )
+    assert env["NGC_API_KEY"] == "from-additional-envs"
+
+
 def test_compile_nim_server_env_omits_ft_model_for_multi_llm_image() -> None:
     resolved = _resolved()
     resolved = ResolvedPluginDeployment(

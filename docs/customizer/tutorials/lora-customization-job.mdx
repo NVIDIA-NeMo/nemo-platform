@@ -5,8 +5,6 @@ description: ""
 
 [Run in Google Colab](https://colab.research.google.com/github/NVIDIA-NeMo/nemo-platform/blob/main/docs/customizer/tutorials/lora-customization-job.ipynb)
 
-# LoRA Model Customization Job
-
 Learn how to use the NeMo Platform to create a LoRA (Low-Rank Adaptation) customization job using a custom dataset. In this tutorial we use LoRA to fine-tune a **question-answering model** from the SQuAD dataset.
 
 LoRA is a parameter-efficient fine-tuning method that requires fewer computational resources than full fine-tuning. If you need full model fine-tuning instead, see the [Full SFT Customization Job](/documentation/customizer-reference/tutorials/sft-customization-job) tutorial.
@@ -20,7 +18,7 @@ Before starting this tutorial, ensure you have:
 1. **Completed the [Quickstart](/documentation/get-started)** to install and deploy NeMo Platform locally
 2. **Installed the Python SDK** (PyPI wrapper: `pip install "nemo-platform[all]"`; source checkout: run `make bootstrap` from the repository root)
 3. **Installed the `datasets` package** for loading SQuAD: `pip install datasets`
-4. **At least one GPU with CUDA 12.8+**
+4. **At least one GPU with CUDA 13+**
 
 ## Quick Start
 
@@ -164,9 +162,9 @@ print(client.files.list(fileset=DATASET_NAME, workspace="default"))
 
 ### 4. Secrets Setup
 
-For Huggingface models that require authentication, create a secret with your HF token. Get a token from [Huggingface Settings](https://huggingface.co/settings/tokens) and accept the model terms.
+For Hugging Face models that require authentication, create a secret with your HF token. Get a token from [Hugging Face Settings](https://huggingface.co/settings/tokens) and accept the model terms.
 
-This is generally true for LLaMa based models (e.g. [Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct)).
+This is generally true for Llama-based models (for example, [Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct)).
 
 ```sh
 export HF_TOKEN=<your-huggingface-token>
@@ -213,7 +211,7 @@ try:
     base_model_fs = client.files.filesets.create(
         workspace="default",
         name=MODEL_NAME,
-        description="Qwen3 0.6b base model from Huggingface",
+        description="Qwen3 0.6b base model from Hugging Face",
         storage=storage,
         cache=True,
     )
@@ -408,12 +406,13 @@ question = "Who was the first person to walk on the Moon?"
 messages = [
     {"role": "user", "content": f"Based on the following context, answer the question.\n\nContext: {context}\n\nQuestion: {question}"}
 ]
+INFERENCE_MODEL_NAME = f"default--{OUTPUT_NAME}"
 response = client.inference.gateway.provider.post(
     "v1/chat/completions",
     name=deployment_name,
     workspace="default",
     body={
-        "model": OUTPUT_NAME,
+        "model": INFERENCE_MODEL_NAME,
         "messages": messages,
         "temperature": 0,
         "max_tokens": 256,

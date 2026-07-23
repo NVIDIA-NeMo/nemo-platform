@@ -11,7 +11,7 @@ import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { formatDurationMs } from '@nemo/common/src/utils/date';
-import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
+import { formatEvaluatorScore, snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import {
   listEvaluationSessions,
   useGetEvaluation,
@@ -44,8 +44,6 @@ interface EvaluationSessionsDataViewProps {
 
 const mapStatusForBadge = (status: EvaluationSessionResponse['status']) =>
   status === 'success' ? 'completed' : status;
-
-const formatScore = (value: number): string => `${(value * 100).toFixed(1)}%`;
 
 const isUnsupportedModeError = (error: unknown): boolean => {
   if (!isAxiosError(error)) return false;
@@ -289,7 +287,7 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
         meta: { alignment: 'right' },
         cell: ({ row }) => {
           const value = row.original.evaluator_scores?.[name];
-          return <Text>{value != null ? formatScore(value) : '-'}</Text>;
+          return <Text>{formatEvaluatorScore(value)}</Text>;
         },
       })
     ),

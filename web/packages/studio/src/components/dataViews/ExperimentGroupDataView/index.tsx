@@ -16,7 +16,7 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { formatDurationMs } from '@nemo/common/src/utils/date';
-import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
+import { formatEvaluatorScore, snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import type {
   EvaluationFilter,
   ExperimentGroupResponse,
@@ -130,16 +130,6 @@ interface ExperimentGroupDataViewProps {
    * render — the sorting state is initialized once and not reactive. */
   group: ExperimentGroupResponse;
 }
-
-/**
- * Formats an evaluator's mean score for display. Scores in the normalized 0–1 range read
- * best as percentages; values outside that range are on a different scale (e.g. a 1–5 or
- * 1–10 rubric), so they're shown as a raw number rather than a misleading percentage.
- */
-const formatEvaluatorScore = (mean: number | null | undefined): string => {
-  if (mean == null || !Number.isFinite(mean)) return '-';
-  return mean >= 0 && mean <= 1 ? `${(mean * 100).toFixed(1)}%` : mean.toFixed(3);
-};
 
 /** Lists the experiments that belong to a single experiment group. */
 export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ group }) => {

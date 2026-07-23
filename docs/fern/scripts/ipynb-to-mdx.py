@@ -29,6 +29,7 @@ DOWNLOAD_LINK_RE = re.compile(
     r'<a href="[^"]+\.ipynb" download="[^"]+\.ipynb">Download this tutorial as a Jupyter notebook</a>\s*',
     re.IGNORECASE,
 )
+FIRST_H1_RE = re.compile(r"\A# [^\n]+\n+")
 
 _LINK_REWRITES: list[tuple[re.Pattern[str], str]] = [
     (
@@ -50,6 +51,10 @@ _LINK_REWRITES: list[tuple[re.Pattern[str], str]] = [
     (
         re.compile(r"\]\(\.\./\.\./evaluator/index(?:\.md)?\)"),
         "](/documentation/evaluate-models)",
+    ),
+    (
+        re.compile(r"\]\(\.\./\.\./evaluator/metrics/rag\.md?\)"),
+        "](/documentation/evaluate-models/metrics/rag-metrics)",
     ),
     (
         re.compile(r"\]\(\./distillation-customization-job(?:\.ipynb)?\)"),
@@ -108,6 +113,7 @@ def colab_link_for(ipynb_path: Path) -> str:
 def convert_notebook_to_mdx(ipynb_path: Path, *, title: str) -> str:
     body = NotebookConverter().convert(ipynb_path)
     body = DOWNLOAD_LINK_RE.sub("", body).lstrip("\n")
+    body = FIRST_H1_RE.sub("", body, count=1)
     body = rewrite_links(body)
 
     return (
