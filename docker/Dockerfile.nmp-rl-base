@@ -35,6 +35,14 @@ RUN chmod 755 /root /root/.cache /root/.cache/uv /root/.local /root/.local/share
 # Read-only is enough — nothing writes back into the editable tree at runtime.
 RUN chmod -R a+rX /opt/nemo-rl
 
+# CVE remediation for inherited Ubuntu packages in the NeMo-RL base.
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends --only-upgrade \
+        openssl \
+        libssl3t64 \
+        rsync && \
+    rm -rf /var/lib/apt/lists/*
+
 # CVE remediation: remove vLLM from the main venv and any pre-built Ray worker
 # venvs (NeMo-RL rebuilds those at runtime). vLLM is unused by DPO/SFT/LoRA.
 # Add it back when adding GRPO.
@@ -46,6 +54,13 @@ RUN set -e; \
         rm -rf "$venv_dir"/lib/python*/site-packages/vllm \
                "$venv_dir"/lib/python*/site-packages/vllm-*.dist-info; \
     done
+
+# NGC ships Nsight Systems profiler helpers; NeMo-RL training does not invoke
+# them, and scans report vulnerabilities in the unused nic_sampler binary.
+RUN rm -rf \
+    /usr/local/cuda/NsightSystems-cli-* \
+    /usr/local/bin/nsys \
+    /usr/local/cuda/bin/nsys
 
 # Drop to a non-root user by default so DIRECT consumers of this published base do
 # not run with container root. The build steps above intentionally run as root (the

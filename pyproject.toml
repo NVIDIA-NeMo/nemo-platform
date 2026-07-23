@@ -257,7 +257,7 @@ environments = [
 ]
 
 constraint-dependencies = [
-  "GitPython>=3.1.49",
+  "GitPython>=3.1.52",
   "Mako>=1.3.12",
   "Pygments>=2.20.0",
   "aiohttp>=3.14.1",                      # High/Medium/Low OOS – auditor-tasks + customizer
@@ -286,7 +286,7 @@ constraint-dependencies = [
   "nltk>=3.10.0",
   "pillow>=12.3.0",
   "postcss>=8.5.10",
-  "pyasn1>=0.6.3",
+  "pyasn1>=0.6.4",
   "python-multipart>=0.0.27",
   "regex>=2025.10.22",
   "safetensors>=0.8.0rc0",                # explicit prerelease so uv allows the rc
@@ -314,7 +314,7 @@ override-dependencies = [
   "aiohttp>=3.14.1",         # High/Medium/Low OOS – auditor-tasks + customizer
   "jaraco-context>=6.1.0",   # High OOS – auditor-tasks + customizer
   "joserfc>=1.7.2",
-  "pyasn1>=0.6.3",           # High OOS – auditor-tasks + customizer
+  "pyasn1>=0.6.4",           # High OOS – auditor-tasks + customizer
   "setuptools>=78.1.1",      # High OOS – nmp-cpu-tasks/gpu-tasks/customizer-tasks
   "urllib3>=2.7.0",          # High OOS – auditor-tasks + customizer
   "wheel>=0.46.2",           # High OOS – widespread
