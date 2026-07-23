@@ -5,12 +5,14 @@ import type { ChatCompletion, ChatCompletionChunk } from 'openai/resources/index
 import type { Stream } from 'openai/streaming.mjs';
 
 interface ImageResponsePart {
-  type: 'image';
-  image: string;
+  readonly type: 'image';
+  readonly image: string;
 }
 
+const IMAGE_DATA_URL_PATTERN = /^data:image\/[a-z0-9.+-]+;base64,([A-Za-z0-9+/]+={0,2})$/i;
+
 const isImageDataUrl = (value: unknown): value is string =>
-  typeof value === 'string' && /^data:image\/[a-z0-9.+-]+;base64,/i.test(value);
+  typeof value === 'string' && IMAGE_DATA_URL_PATTERN.test(value);
 
 /**
  * Extracts image data URLs from OpenAI-compatible image-model extensions.

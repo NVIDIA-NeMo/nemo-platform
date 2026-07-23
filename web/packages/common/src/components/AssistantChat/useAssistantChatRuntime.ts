@@ -8,24 +8,27 @@ import {
   SimpleImageAttachmentAdapter,
   useExternalStoreRuntime,
 } from '@assistant-ui/react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-
 import {
   getCompletionImages,
   getCompletionText,
   isAbortError,
   isChatCompletionStream,
-} from './completionUtils';
-import { CANCELLED_STATUS, COMPLETE_STATUS, RUNNING_STATUS } from './constants';
+} from '@nemo/common/src/components/AssistantChat/completionUtils';
+import {
+  CANCELLED_STATUS,
+  COMPLETE_STATUS,
+  RUNNING_STATUS,
+} from '@nemo/common/src/components/AssistantChat/constants';
 import {
   appendMessageToThreadMessage,
   createTextMessage,
   getEditedMessageIndex,
   getOpenAIMessages,
   getUserMessageContent,
-} from './messageUtils';
-import type { AssistantChatProps } from './types';
-import { useChatCompletion } from '../../hooks/useChatCompletion';
+} from '@nemo/common/src/components/AssistantChat/messageUtils';
+import type { AssistantChatProps } from '@nemo/common/src/components/AssistantChat/types';
+import { useChatCompletion } from '@nemo/common/src/hooks/useChatCompletion';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const imageAttachmentAdapter = new SimpleImageAttachmentAdapter();
 
