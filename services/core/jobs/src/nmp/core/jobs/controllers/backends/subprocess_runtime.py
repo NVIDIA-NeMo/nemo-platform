@@ -13,11 +13,13 @@ from pathlib import Path
 from time import time_ns
 from typing import IO, Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
 import httpx
 import requests
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+from nemo_platform_plugin.client.oidc_factory import resolve_workload_exchange_provider
 from nmp.common.auth.models import NMP_PRINCIPAL_ENVVAR, Principal
 from nmp.common.jobs.constants import NEMO_JOB_SECRETS_ENVVAR
 from opentelemetry._logs import Logger
@@ -30,9 +32,9 @@ from opentelemetry.sdk.resources import Resource
 logger = logging.getLogger(__name__)
 
 NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR = "NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT"
-NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS_ENVVAR = "NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS"
 NMP_JOB_LAUNCHER_OTLP_LOGS_SOCKET_PATH_ENVVAR = "NMP_JOB_LAUNCHER_OTLP_LOGS_SOCKET_PATH"
 NMP_JOB_LAUNCHER_OTLP_LOGS_TRANSPORT_ENVVAR = "NMP_JOB_LAUNCHER_OTLP_LOGS_TRANSPORT"
+SERVICE_JOBS_BEARER_HEADERS = {"Authorization": "Bearer service:jobs"}
 
 
 @dataclass(frozen=True)
@@ -240,7 +242,6 @@ def create_otel_logger(
     if not endpoint:
         return None
 
-    headers = _parse_otel_headers(env.get(NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS_ENVVAR, ""))
     resource = Resource.create(
         {
             "workspace": workspace,
@@ -251,15 +252,16 @@ def create_otel_logger(
         }
     )
     logger_provider = LoggerProvider(resource=resource)
-    logger_provider.add_log_record_processor(BatchLogRecordProcessor(_build_otlp_log_exporter(env, endpoint, headers)))
+    logger_provider.add_log_record_processor(BatchLogRecordProcessor(_build_otlp_log_exporter(env, endpoint)))
     logger.info("Created local OTEL logger", extra={"endpoint": endpoint, "job": job, "step": step})
     return SubprocessOtelLogger(logger_provider.get_logger("nmp.jobs.subprocess"), logger_provider)
 
 
-def _build_otlp_log_exporter(env: dict[str, str], endpoint: str, headers: dict[str, str]) -> OTLPLogExporter:
+def _build_otlp_log_exporter(env: dict[str, str], endpoint: str) -> OTLPLogExporter:
+    headers = _otlp_log_auth_headers(env)
     transport = env.get(NMP_JOB_LAUNCHER_OTLP_LOGS_TRANSPORT_ENVVAR, "tcp")
     if transport == "tcp":
-        return OTLPLogExporter(endpoint=endpoint, headers=headers or None)
+        return OTLPLogExporter(endpoint=endpoint, headers=headers)
     if transport != "uds":
         raise ValueError(f"unsupported OTLP logs transport: {transport!r}")
 
@@ -268,25 +270,25 @@ def _build_otlp_log_exporter(env: dict[str, str], endpoint: str, headers: dict[s
         raise ValueError(f"{NMP_JOB_LAUNCHER_OTLP_LOGS_SOCKET_PATH_ENVVAR} is required for UDS OTLP logs")
     return OTLPLogExporter(
         endpoint=endpoint,
-        headers=headers or None,
+        headers=headers,
         session=_UnixSocketOTLPSession(socket_path),
     )
 
 
-def _parse_otel_headers(headers_env: str) -> dict[str, str]:
-    if not headers_env:
-        return {}
+def _otlp_log_auth_headers(env: dict[str, str]) -> dict[str, str]:
+    subject_token_file = env.get(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR)
+    if not subject_token_file:
+        return dict(SERVICE_JOBS_BEARER_HEADERS)
 
-    headers: dict[str, str] = {}
-    for item in headers_env.split(","):
-        item = item.strip()
-        if not item:
-            continue
-        key, sep, value = item.partition("=")
-        if sep != "=" or not key:
-            continue
-        headers[key] = unquote(value)
-    return headers
+    base_url = env.get("NMP_AUTH_URL") or env.get("NMP_BASE_URL")
+    if not base_url:
+        raise ValueError(f"NMP_AUTH_URL or NMP_BASE_URL is required when {WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR} is set")
+
+    provider = resolve_workload_exchange_provider(
+        base_url=base_url,
+        subject_token_file=Path(subject_token_file),
+    )
+    return {"Authorization": f"Bearer {provider.get_access_token()}"}
 
 
 def _principal_from_env(env: dict[str, str]) -> Principal | None:

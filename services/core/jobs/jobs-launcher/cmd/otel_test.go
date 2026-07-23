@@ -3,27 +3,12 @@
 
 package cmd
 
-import (
-	"testing"
-	"time"
-)
+import "testing"
 
-func TestLauncherOTLPHTTPClientSetsUDSTimeout(t *testing.T) {
+func TestLauncherOTLPHTTPClientUsesUDSEndpoint(t *testing.T) {
 	t.Setenv("NMP_BASE_URL", "unix:///tmp/nemo-platform.sock")
 
-	client := launcherOTLPHTTPClient(250*time.Millisecond, true)
-	if client == nil {
-		t.Fatal("expected UDS HTTP client")
-	}
-	if client.Timeout != 250*time.Millisecond {
-		t.Fatalf("expected UDS HTTP client timeout 250ms, got %s", client.Timeout)
-	}
-}
-
-func TestLauncherOTLPHTTPClientLeavesUDSTimeoutUnset(t *testing.T) {
-	t.Setenv("NMP_BASE_URL", "unix:///tmp/nemo-platform.sock")
-
-	client := launcherOTLPHTTPClient(250*time.Millisecond, false)
+	client := launcherOTLPHTTPClient()
 	if client == nil {
 		t.Fatal("expected UDS HTTP client")
 	}
@@ -35,7 +20,7 @@ func TestLauncherOTLPHTTPClientLeavesUDSTimeoutUnset(t *testing.T) {
 func TestLauncherOTLPHTTPClientSkipsTCP(t *testing.T) {
 	t.Setenv("NMP_BASE_URL", "http://127.0.0.1:8080")
 
-	if client := launcherOTLPHTTPClient(250*time.Millisecond, true); client != nil {
+	if client := launcherOTLPHTTPClient(); client != nil {
 		t.Fatal("expected no custom HTTP client for TCP endpoint")
 	}
 }

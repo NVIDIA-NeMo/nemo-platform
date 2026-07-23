@@ -96,6 +96,11 @@ export const SeedDatasetConfig: FC<SeedDatasetConfigProps> = ({ columnIndex }) =
     }
   }, [availableColumns, availableColumnsPath, availableColumnsValue, setValue]);
 
+  const samplingItems = SAMPLING_STRATEGY_OPTIONS.map((option) => ({
+    children: option.label,
+    value: option.value,
+  }));
+
   return (
     <>
       <FilesetSearchableSelect
@@ -159,10 +164,7 @@ export const SeedDatasetConfig: FC<SeedDatasetConfigProps> = ({ columnIndex }) =
 
       <ControlledSelect
         aria-label="Sampling strategy"
-        items={SAMPLING_STRATEGY_OPTIONS.map((option) => ({
-          children: option.label,
-          value: option.value,
-        }))}
+        items={samplingItems}
         useControllerProps={{ name: samplingStrategyPath }}
         formFieldProps={{
           slotLabel: 'Sampling strategy',

@@ -675,7 +675,24 @@ const columnDependencies = (column: BuilderColumn, knownNames: Set<string>): Set
   return deps;
 };
 
-export const buildGraph = (columns: BuilderColumn[]): { nodes: DagNode[]; edges: DagEdge[] } => {
+/**
+ * The names of existing columns this column references (the same dependencies that draw
+ * edges in {@link buildGraph}). Used by the schema-list renderer to show each column's
+ * relationships inline instead of as graph edges.
+ */
+export const getColumnReferences = (column: BuilderColumn, knownNames: Set<string>): string[] => [
+  ...columnDependencies(column, knownNames),
+];
+
+/**
+ * The set of referenceable column names and the name→id lookup used to resolve
+ * dependencies. Seed-dataset columns also contribute the names they provide, mapped back
+ * to the seed column. Shared by {@link buildGraph} and {@link topologicalSortColumns} so
+ * both agree on what counts as a dependency.
+ */
+const buildNameMaps = (
+  columns: BuilderColumn[]
+): { knownNames: Set<string>; idByName: Map<string, string> } => {
   const knownNames = new Set(columns.map((column) => column.name).filter(Boolean));
   const idByName = new Map(columns.filter((c) => c.name).map((c) => [c.name, c.id]));
 
@@ -686,6 +703,52 @@ export const buildGraph = (columns: BuilderColumn[]): { nodes: DagNode[]; edges:
       if (!idByName.has(name)) idByName.set(name, column.id);
     }
   }
+  return { knownNames, idByName };
+};
+
+/**
+ * Orders columns into dependency layers: each column's depth is the longest chain of
+ * references beneath it (a column with no references is depth 0), and columns are sorted by
+ * that depth ascending. So every column still comes after everything it references, and
+ * shallower columns group above deeper ones regardless of the order they were added — a
+ * column that depends only on a root sits above one that depends on a mid-chain column.
+ * Equal-depth ties keep their original relative order; reference cycles resolve to a finite
+ * depth without looping.
+ */
+export const topologicalSortColumns = (columns: BuilderColumn[]): BuilderColumn[] => {
+  const { knownNames, idByName } = buildNameMaps(columns);
+  const depsById = new Map<string, string[]>(
+    columns.map((column) => [
+      column.id,
+      [...columnDependencies(column, knownNames)]
+        .map((name) => idByName.get(name))
+        .filter((id): id is string => !!id && id !== column.id),
+    ])
+  );
+
+  const depthById = new Map<string, number>();
+  const onPath = new Set<string>();
+  const depthOf = (id: string): number => {
+    const cached = depthById.get(id);
+    if (cached !== undefined) return cached;
+    if (onPath.has(id)) return 0; // cycle edge: stop descending, contribute no depth
+    onPath.add(id);
+    const deps = depsById.get(id) ?? [];
+    const depth = deps.length === 0 ? 0 : 1 + Math.max(...deps.map(depthOf));
+    onPath.delete(id);
+    depthById.set(id, depth);
+    return depth;
+  };
+
+  // Stable sort by depth, then by original index, so ties keep their input order.
+  return columns
+    .map((column, index) => ({ column, index, depth: depthOf(column.id) }))
+    .sort((a, b) => a.depth - b.depth || a.index - b.index)
+    .map((entry) => entry.column);
+};
+
+export const buildGraph = (columns: BuilderColumn[]): { nodes: DagNode[]; edges: DagEdge[] } => {
+  const { knownNames, idByName } = buildNameMaps(columns);
 
   const nodes: DagNode[] = [];
   const edges: DagEdge[] = [];
