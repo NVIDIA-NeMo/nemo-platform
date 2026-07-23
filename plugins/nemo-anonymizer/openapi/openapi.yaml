@@ -3,6 +3,33 @@ info:
   title: anonymizer (plugin)
   version: 0.0.0
 paths:
+  /apis/anonymizer/v2/workspaces/{workspace}/entity-labels:
+    get:
+      tags:
+      - Anonymizer
+      summary: List Default Entity Labels
+      description: Return the default entity labels detected when a config omits ``entity_labels``.
+      operationId: list_entity_labels_apis_anonymizer_v2_workspaces__workspace__entity_labels_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      responses:
+        '200':
+          description: The default entity labels used by the detection stage
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntityLabelsResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/anonymizer/v2/workspaces/{workspace}/jobs/run:
     post:
       tags:
@@ -680,6 +707,18 @@ components:
         \    generation_type: Type of generation, always \"embedding\" for this class.\n\
         \    encoding_format: Format of the embedding encoding (\"float\" or \"base64\"\
         ).\n    dimensions: Number of dimensions for the embedding."
+    EntityLabelsResponse:
+      properties:
+        data:
+          items:
+            type: string
+          type: array
+          title: Data
+      type: object
+      required:
+      - data
+      title: EntityLabelsResponse
+      description: The default GLiNER entity labels detected when none are supplied.
     FileStorageType:
       type: string
       enum:
