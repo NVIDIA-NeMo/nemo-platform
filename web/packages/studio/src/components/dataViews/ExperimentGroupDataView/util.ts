@@ -13,14 +13,3 @@ export const deriveEvaluatorNames = (
     .filter((name): name is string => name != null);
   return [...new Set([...fromData, ...fromFilters])].sort();
 };
-
-/**
- * Formats an evaluator's mean score for display. Scores in the normalized 0–1 range read best as
- * percentages; values outside that range are on a different scale (e.g. a 1–5 or 1–10 rubric), so
- * they're shown as a raw number rather than a misleading percentage. Missing/invalid means render
- * `emptyValue` — callers pass the placeholder their surface uses (e.g. `-` vs `—`).
- */
-export const formatEvaluatorScore = (mean: number | null | undefined, emptyValue = '—'): string => {
-  if (mean == null || !Number.isFinite(mean)) return emptyValue;
-  return mean >= 0 && mean <= 1 ? `${(mean * 100).toFixed(1)}%` : mean.toFixed(3);
-};

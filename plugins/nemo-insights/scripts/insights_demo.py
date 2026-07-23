@@ -8,8 +8,8 @@ From the repository root::
 
     uv sync --group insights
     services/intake/scripts/spans/run_clickhouse.sh
-    cd web && pnpm --filter nemo-studio-ui build:fastapi && cd ..
-    NMP_STUDIO_FEATURE_FLAGS_OPTIMIZER_ENABLED=preview uv run nemo services run \
+    cd web && VITE_FF_OPTIMIZER_ENABLED=preview pnpm --filter nemo-studio-ui build:fastapi && cd ..
+    uv run nemo services run \
       --service-group all --config packages/nmp_platform/config/local.yaml
     uv run plugins/nemo-insights/scripts/insights_demo.py seed
 
