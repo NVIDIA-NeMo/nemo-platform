@@ -42,7 +42,14 @@ class RequestEnvVar(BaseModel):
     value: str | None = None
     value_from: dict[str, Any] | None = Field(default=None, alias="valueFrom")
 
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(
+        populate_by_name=True,
+        extra="forbid",
+        json_schema_extra={
+            # Keep the OpenAPI contract aligned with validate_single_source.
+            "not": {"required": ["value", "valueFrom"]},
+        },
+    )
 
     @model_validator(mode="after")
     def validate_single_source(self) -> RequestEnvVar:

@@ -22,6 +22,14 @@ def test_request_env_var_rejects_secret_ref() -> None:
         )
 
 
+def test_request_env_var_schema_forbids_value_and_value_from_together() -> None:
+    schema = RequestEnvVar.model_json_schema(by_alias=True)
+    assert schema["not"] == {"required": ["value", "valueFrom"]}
+
+    with pytest.raises(ValidationError, match="only one"):
+        RequestEnvVar(name="FOO", value="bar", valueFrom={"fieldRef": {"fieldPath": "metadata.name"}})
+
+
 def test_create_request_accepts_plain_env_values() -> None:
     body = CreateDeploymentConfigRequest(
         name="config",

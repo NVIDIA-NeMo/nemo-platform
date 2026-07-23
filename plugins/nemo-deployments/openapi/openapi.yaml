@@ -1318,6 +1318,10 @@ components:
       title: RequestContainer
       description: Public request container; env entries cannot carry secretRef.
     RequestEnvVar:
+      not:
+        required:
+        - value
+        - valueFrom
       properties:
         name:
           type: string
