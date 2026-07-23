@@ -11,7 +11,7 @@ import { server } from '@studio/mocks/node';
 import { IntakeSessionDetailRoute } from '@studio/routes/IntakeSessionDetailRoute';
 import { renderRoute, screen, waitFor, within } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
-import { delay, http, HttpResponse } from 'msw';
+import { http, HttpResponse } from 'msw';
 import { useLocation } from 'react-router-dom';
 
 const LocationProbe = () => {
@@ -213,17 +213,25 @@ describe('IntakeSessionDetailRoute', () => {
   });
 
   it('keeps the trajectory sidebar mounted while span summaries load and fail', async () => {
-    server.use(
-      http.get('*/apis/intake/v2/workspaces/:workspace/spans', async () => {
-        await delay(100);
-        return HttpResponse.json({ detail: 'Could not load span summaries' }, { status: 500 });
-      })
-    );
+    // Hold the spans request open so the loading state is observed deterministically
+    // (rather than racing a fixed delay that can unmount the spinner mid-assertion),
+    // then fail it explicitly.
+    let failSpans = () => {};
+    const spansResponse = new Promise<Response>((resolve) => {
+      failSpans = () =>
+        resolve(HttpResponse.json({ detail: 'Could not load span summaries' }, { status: 500 }));
+    });
+    server.use(http.get('*/apis/intake/v2/workspaces/:workspace/spans', () => spansResponse));
 
     renderSessionDetail('session-agent-run-001', '?traceId=trace-agent-run-001');
 
+    // Sidebar mounts immediately and the spinner shows while spans load.
     expect(await screen.findByLabelText('Loading spans')).toBeInTheDocument();
     expect(screen.getByTestId('trace-trajectory-sidebar')).toBeInTheDocument();
+
+    failSpans();
+
+    // After the failure the error shows and the sidebar is still mounted.
     expect(await screen.findByText('Could not load span summaries')).toBeInTheDocument();
     expect(screen.getByTestId('trace-trajectory-sidebar')).toBeInTheDocument();
   });
