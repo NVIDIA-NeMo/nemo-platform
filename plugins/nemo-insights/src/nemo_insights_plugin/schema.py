@@ -57,6 +57,10 @@ class InsightListItem(Insight, entity_type="insights_insight"):
         default=None,
         description="Number of live experiment groups linked to this insight.",
     )
+    last_seen_at: datetime | None = Field(
+        default=None,
+        description="Newest start timestamp among the insight's currently referenced traces.",
+    )
 
 
 InsightPage = NemoListResponse[InsightListItem]

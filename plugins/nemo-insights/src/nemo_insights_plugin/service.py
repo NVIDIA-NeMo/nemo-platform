@@ -44,6 +44,7 @@ from nemo_platform_plugin.jobs.routes import add_job_routes
 from nemo_platform_plugin.schema import PaginationData
 from nemo_platform_plugin.service import NemoService, RouterSpec
 from nmp.intake.entities.experiments import ExperimentGroup
+from nmp.intake.spans.api.dependencies import SpansServiceDep
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,7 @@ class InsightsService(NemoService):
     """
 
     name: ClassVar[str] = "insights"
-    dependencies: ClassVar[list[str]] = ["entities", "jobs"]
+    dependencies: ClassVar[list[str]] = ["entities", "jobs", "intake"]
 
     def get_routers(self) -> list[RouterSpec]:
         return [
@@ -138,6 +139,7 @@ def _build_insights_router() -> APIRouter:
     @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[InsightPerms.LIST])
     async def list_insights(
         workspace: str,
+        spans_service: SpansServiceDep,
         page: int = Query(default=1, ge=1, description="Page number (1-indexed)."),
         page_size: int = Query(default=20, ge=1, le=100, description="Items per page."),
         sort: str = Query(
@@ -186,6 +188,17 @@ def _build_insights_router() -> APIRouter:
             else:
                 for item in items:
                     item.experiment_group_count = counts.get(item.id, 0)
+
+            try:
+                last_seen_at = await spans_service.latest_trace_started_at_by_group(
+                    workspace=workspace,
+                    trace_refs_by_group={item.id: item.trace_refs for item in items},
+                )
+            except Exception:
+                logger.exception("Failed to find latest traces for insights")
+            else:
+                for item in items:
+                    item.last_seen_at = last_seen_at.get(item.id)
 
         pagination = PaginationData.model_validate(result.pagination.model_dump()) if result.pagination else None
         return InsightPage(

@@ -47,6 +47,8 @@ export interface Insight {
 export interface InsightListItem extends Insight {
   /** Number of experiment groups linked to this insight, or null when unknown. */
   experiment_group_count: number | null;
+  /** Newest start timestamp among the insight's currently referenced traces. */
+  last_seen_at?: string | null;
 }
 
 export type OptimizerListInsightsParams = Record<string, unknown> & {

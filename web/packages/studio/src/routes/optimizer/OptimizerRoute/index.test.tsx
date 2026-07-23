@@ -44,23 +44,25 @@ const renderList = () =>
     routes: [{ path: ROUTES.workspace.optimizer, element: <OptimizerRoute /> }],
   });
 
-const findExperimentsCell = async (insightTitle: string): Promise<HTMLElement> => {
+const findCell = async (insightTitle: string, columnName: string): Promise<HTMLElement> => {
   const row = await screen.findByRole('row', { name: new RegExp(insightTitle) });
 
   const headers = screen.getAllByRole('columnheader');
-  const experimentColumn = headers.findIndex((header) =>
-    header.textContent?.includes('Experiments')
-  );
-  if (experimentColumn < 0) throw new Error('Experiments column not found');
+  const column = headers.findIndex((header) => header.textContent?.includes(columnName));
+  if (column < 0) throw new Error(`${columnName} column not found`);
 
-  return within(row).getAllByRole('cell')[experimentColumn];
+  return within(row).getAllByRole('cell')[column];
 };
 
 describe('OptimizerRoute', () => {
-  it('renders server-provided experiment counts without requesting experiment groups', async () => {
+  it('renders server-provided list metadata without per-row requests', async () => {
     const experimentGroupRequest = vi.fn(() => HttpResponse.json({}));
     const insights = [
-      { ...makeInsight('positive', 'Positive count'), experiment_group_count: 7 },
+      {
+        ...makeInsight('positive', 'Positive count'),
+        experiment_group_count: 7,
+        last_seen_at: '2026-07-21T12:00:00Z',
+      },
       { ...makeInsight('zero', 'Zero count'), experiment_group_count: 0 },
       makeInsight('null', 'Null count'),
     ];
@@ -71,9 +73,14 @@ describe('OptimizerRoute', () => {
 
     renderList();
 
-    expect(await findExperimentsCell('Positive count')).toHaveTextContent('7');
-    expect(await findExperimentsCell('Zero count')).toHaveTextContent('0');
-    expect(await findExperimentsCell('Null count')).toHaveTextContent('—');
+    expect(await findCell('Positive count', 'Experiments')).toHaveTextContent('7');
+    expect(await findCell('Zero count', 'Experiments')).toHaveTextContent('0');
+    expect(await findCell('Null count', 'Experiments')).toHaveTextContent('—');
+    expect((await findCell('Positive count', 'Last Seen')).querySelector('time')).toHaveAttribute(
+      'datetime',
+      '2026-07-21T12:00:00Z'
+    );
+    expect(await findCell('Zero count', 'Last Seen')).toHaveTextContent('—');
     expect(experimentGroupRequest).not.toHaveBeenCalled();
   });
 });

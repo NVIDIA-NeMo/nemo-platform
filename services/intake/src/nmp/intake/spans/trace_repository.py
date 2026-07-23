@@ -5,9 +5,11 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import Any
 
+from clickhouse_connect.driver.external import ExternalData
 from nmp.common.api.common import PaginatedResult
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import IntakeTrace, TraceListFilter, TraceMode
@@ -147,6 +149,56 @@ class TraceRepository:
             mode=mode,
         )
         return result.data[0] if result.data else None
+
+    async def latest_trace_started_at_by_group(
+        self,
+        *,
+        workspace: str,
+        trace_refs_by_group: dict[str, list[str]],
+    ) -> dict[str, datetime]:
+        pairs = [
+            (group_id, trace_id)
+            for group_id, trace_ids in trace_refs_by_group.items()
+            for trace_id in dict.fromkeys(trace_ids)
+        ]
+        if not pairs:
+            return {}
+
+        trace_index_table = self._client.table("trace_index")
+        result = await self._client.query(
+            f"""
+            WITH
+            refs AS (
+                SELECT group_id, trace_id
+                FROM trace_refs
+            ),
+            traces AS (
+                SELECT
+                    trace_roots.trace_id AS id,
+                    trace_roots.root_started_at AS started_at
+                FROM {trace_index_table} AS trace_roots FINAL
+                WHERE trace_roots.workspace = %(workspace)s
+                    AND trace_roots.is_deleted = 0
+                    AND trace_roots.trace_id IN (SELECT trace_id FROM refs)
+                ORDER BY trace_roots.root_started_at ASC, trace_roots.root_span_id ASC
+                LIMIT 1 BY trace_roots.workspace, trace_roots.source_format, trace_roots.trace_id
+            )
+            SELECT refs.group_id, max(traces.started_at) AS started_at
+            FROM refs
+            INNER JOIN traces ON traces.id = refs.trace_id
+            GROUP BY refs.group_id
+            """,
+            parameters={"workspace": workspace},
+            external_data=ExternalData(
+                file_name="trace_refs.jsonl",
+                data=b"\n".join(
+                    json.dumps({"group_id": group_id, "trace_id": trace_id}).encode() for group_id, trace_id in pairs
+                ),
+                fmt="JSONEachRow",
+                structure="group_id String, trace_id String",
+            ),
+        )
+        return {str(group_id): started_at for group_id, started_at in result.result_rows}
 
 
 def _trace_rows_sql(

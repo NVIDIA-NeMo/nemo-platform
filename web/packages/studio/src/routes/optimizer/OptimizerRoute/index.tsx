@@ -111,13 +111,13 @@ export const OptimizerRoute: FC = () => {
         );
       },
     }),
-    accessor('updated_at', {
-      header: 'Updated',
-      enableSorting: true,
+    accessor('last_seen_at', {
+      header: 'Last Seen',
+      enableSorting: false,
       size: 140,
       cell({ row }) {
-        return row.original.updated_at ? (
-          <RelativeTime datetime={row.original.updated_at} />
+        return row.original.last_seen_at ? (
+          <RelativeTime datetime={row.original.last_seen_at} />
         ) : (
           <Text>—</Text>
         );
