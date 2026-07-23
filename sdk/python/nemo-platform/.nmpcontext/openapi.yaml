@@ -699,6 +699,16 @@ paths:
           default: -created_at
           title: Sort
         description: Sort field
+      - name: count_by
+        in: query
+        required: false
+        schema:
+          description: Optional direct string data field whose matching values should
+            be counted.
+          title: Count By
+          type: string
+        description: Optional direct string data field whose matching values should
+          be counted.
       - name: filter
         in: query
         required: false
@@ -10275,6 +10285,11 @@ components:
           title: Filter
           description: Filtering information.
           additionalProperties: true
+          type: object
+        group_counts:
+          title: Group Counts
+          additionalProperties:
+            type: integer
           type: object
       type: object
       required:

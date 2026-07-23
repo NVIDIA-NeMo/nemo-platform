@@ -19,6 +19,7 @@ async def test_counts_filtered_entities_grouped_by_direct_string_data_field(
         ("live-a-1", {"insight_id": "insight-a", "is_deleted": False}),
         ("live-a-2", {"insight_id": "insight-a", "is_deleted": False}),
         ("live-b", {"insight_id": "insight-b", "is_deleted": False}),
+        ("escaped", {"insight_id": 'insight-"quoted"\\path', "is_deleted": False}),
         ("deleted", {"insight_id": "insight-a", "is_deleted": True}),
         ("missing", {"is_deleted": False}),
         ("null", {"insight_id": None, "is_deleted": False}),
@@ -42,7 +43,7 @@ async def test_counts_filtered_entities_grouped_by_direct_string_data_field(
         filter_op=filter_op,
     )
 
-    assert counts == {"insight-a": 2, "insight-b": 1}
+    assert counts == {'insight-"quoted"\\path': 1, "insight-a": 2, "insight-b": 1}
 
 
 @pytest.mark.parametrize("field", ["name", "data.nested.value", "data.", "data.not-valid"])

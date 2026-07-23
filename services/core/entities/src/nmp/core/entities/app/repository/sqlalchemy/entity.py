@@ -15,7 +15,7 @@ from nmp.core.entities.app.repository.sqlalchemy.filter import SQLAlchemyFilterR
 from nmp.core.entities.app.repository.sqlalchemy.models import DBEntity
 from nmp.core.entities.entities import Entity
 from nmp.core.entities.utils.identifiers import generate_entity_id
-from sqlalchemy import String, cast, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm.exc import StaleDataError
 
@@ -217,7 +217,7 @@ class SQLAlchemyEntityRepository(EntityRepositoryInterface):
 
             field = parts[1]
             raw_group_column = DBEntity.data[field]
-            group_column = func.trim(cast(raw_group_column, String), '"')
+            group_column = raw_group_column.as_string()
             if self._is_sqlite(sess):
                 json_type = func.json_type(DBEntity.data, f"$.{field}")
                 string_type = "text"
