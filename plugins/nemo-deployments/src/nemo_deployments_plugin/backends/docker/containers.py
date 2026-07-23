@@ -34,6 +34,7 @@ class DockerDeploymentPlan:
 
     @property
     def is_multi_container(self) -> bool:
+        """True when the plan has any init containers or sidecars beyond the primary."""
         return bool(self.init_containers or self.sidecars)
 
 

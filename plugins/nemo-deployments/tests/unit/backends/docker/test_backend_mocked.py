@@ -353,6 +353,91 @@ async def test_read_status_ready_when_running_without_probe(
     assert update.status == "READY"
 
 
+def _running_server_container() -> MagicMock:
+    container = MagicMock()
+    container.id = "abc123def456"
+    container.status = "running"
+    container.labels = {
+        "managed-by": MANAGED_BY_LABEL,
+        RESTART_POLICY_LABEL: "Always",
+        CONFIG_NAME_LABEL: "cfg1",
+    }
+    container.ports = {}
+    container.attrs = container_attrs()
+    return container
+
+
+def _sidecar_container(role: str, status: str) -> MagicMock:
+    sidecar = MagicMock()
+    sidecar.status = status
+    sidecar.labels = {
+        "managed-by": MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "srv",
+        CONTAINER_ROLE_LABEL: role,
+    }
+    return sidecar
+
+
+@pytest.mark.asyncio
+async def test_read_status_ready_when_sidecar_running(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    """Server ready + adapters sidecar running => READY."""
+    mock_docker_client.containers.get.return_value = _running_server_container()
+    mock_entities.get.return_value = lora_config()  # server + lora-adapters sidecar
+    mock_docker_client.containers.list.return_value = [_sidecar_container("lora-adapters", "running")]
+
+    update = await docker_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "READY"
+
+
+@pytest.mark.asyncio
+async def test_read_status_starting_when_sidecar_stopped(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    """Server ready but the adapters sidecar is stopped => drop back to STARTING.
+
+    Locks in the readiness gating: a present-but-not-running sidecar keeps the
+    deployment out of READY.
+    """
+    mock_docker_client.containers.get.return_value = _running_server_container()
+    mock_entities.get.return_value = lora_config()
+    mock_docker_client.containers.list.return_value = [_sidecar_container("lora-adapters", "exited")]
+
+    update = await docker_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "STARTING"
+    assert "sidecar" in update.status_message.lower()
+
+
+@pytest.mark.asyncio
+async def test_read_status_starting_when_sidecar_removed(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    """Server ready but the expected adapters sidecar is entirely gone => STARTING.
+
+    A removed (not merely exited) sidecar is detected by comparing the expected
+    sidecar roles from the config against the containers actually present.
+    """
+    mock_docker_client.containers.get.return_value = _running_server_container()
+    mock_entities.get.return_value = lora_config()
+    # The sidecar container has been removed: only unrelated containers remain.
+    mock_docker_client.containers.list.return_value = []
+
+    update = await docker_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "STARTING"
+    assert "sidecar" in update.status_message.lower()
+
+
 @pytest.mark.asyncio
 async def test_read_status_lost_when_missing_always(
     docker_backend: DockerDeploymentBackend,

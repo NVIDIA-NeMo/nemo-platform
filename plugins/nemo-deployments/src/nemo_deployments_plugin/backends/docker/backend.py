@@ -225,10 +225,13 @@ class DockerDeploymentBackend(DeploymentBackend):
                     # present locally. Locally-built/loaded images (e.g. the LoRA
                     # adapters sidecar `nmp-api:local`) are not pullable from a
                     # registry, so fall back to the local copy when it exists.
+                    # Only a genuine "not found locally" is fatal here; other
+                    # docker client errors from images.get propagate rather than
+                    # being masked as "image present".
                     try:
                         await asyncio.to_thread(self._client.images.get, container.image)
                         logger.info("Image %s not pullable but present locally; using local copy", container.image)
-                    except Exception:
+                    except (self._docker_errors.ImageNotFound, self._docker_errors.NotFound):
                         if gpu_ids and gpu_pool is not None:
                             gpu_pool.release_gpu(dep_key)
                         return BackendStatusUpdate(status="FAILED", status_message=pull_error)
@@ -279,6 +282,17 @@ class DockerDeploymentBackend(DeploymentBackend):
             return BackendStatusUpdate(status="FAILED", status_message=f"Failed to start container: {exc}")
 
         # 3) Sidecars share the primary's network namespace + volumes; no ports/GPU.
+        #
+        # Known limitation: a sidecar joins ``network=container:<server>``, so it
+        # is tied to *this* server container instance. Docker's Always restart
+        # policy restarts the same server container in place (netns preserved), so
+        # ordinary server crashes are fine. But if the server container is ever
+        # replaced by a *new* container (a fresh create rather than an in-place
+        # restart), the sidecar's netns reference dangles and nothing re-runs the
+        # sidecars. Today a full recreate goes through delete_model_deployment
+        # (which tears down the whole group) before create, so the sidecars are
+        # re-run together; a future partial/primary-only recreate would need to
+        # recreate the whole group to stay consistent.
         for sidecar in plan.sidecars:
             sidecar_name = companion_container_name(workspace, name, sidecar.name)
             sidecar_run_kwargs = self._build_run_kwargs(
@@ -383,6 +397,11 @@ class DockerDeploymentBackend(DeploymentBackend):
         except Exception:
             logger.warning("Failed to remove stale init container %s", init_name, exc_info=True)
 
+        # Init containers are intentionally CPU-only: no device_requests is set,
+        # so they never receive a GPU. This suits the current init workload
+        # (lora-cache-init prepares the scratch dir). If the models compiler ever
+        # emits a GPU-needing init container, this would need to plumb GPUs
+        # through here.
         run_kwargs: dict[str, Any] = {
             "image": init.image,
             "name": init_name,
@@ -471,7 +490,7 @@ class DockerDeploymentBackend(DeploymentBackend):
                 host_ports=host_ports,
             )
             if ready and restart_policy == "Always":
-                sidecar_ok, sidecar_reason = await self._sidecars_healthy(workspace, name)
+                sidecar_ok, sidecar_reason = await self._sidecars_healthy(workspace, name, config)
                 if not sidecar_ok:
                     return BackendStatusUpdate(
                         status="STARTING",
@@ -541,14 +560,23 @@ class DockerDeploymentBackend(DeploymentBackend):
 
         return BackendStatusUpdate(status="STARTING", status_message=f"Container state: {state}")
 
-    async def _sidecars_healthy(self, workspace: str, name: str) -> tuple[bool, str]:
-        """Return (all_running, reason) for companion sidecar containers of a group.
+    async def _sidecars_healthy(self, workspace: str, name: str, config: DeploymentConfig | None) -> tuple[bool, str]:
+        """Return (all_healthy, reason) for a deployment's expected sidecar containers.
 
-        Sidecars carry the deployment identity labels plus a container-role label
-        that is neither the server role nor an init role. A sidecar is healthy
-        while it is running; an exited/missing sidecar is not (its Always restart
-        policy will recreate it, so we report not-ready rather than terminal).
+        The set of expected sidecars is derived from the deployment ``config``
+        (every container after the primary), so a sidecar that has been *removed*
+        entirely — not just exited — is still detected as not-ready. A sidecar is
+        healthy only when a container for its role is present AND running; an
+        exited or missing sidecar keeps the deployment out of READY (its Always
+        restart policy recreates an exited one; a missing one signals a broken
+        group).
+
+        Deployments with no sidecars (the common single-container case) skip the
+        Docker enumeration entirely.
         """
+        expected_roles = {sidecar.name for sidecar in build_docker_plan(config).sidecars} if config else set()
+        if not expected_roles:
+            return True, "no sidecars"
 
         def _list() -> list[Any]:
             return self._client.containers.list(
@@ -569,12 +597,18 @@ class DockerDeploymentBackend(DeploymentBackend):
             logger.warning("Failed to list sidecars for %s/%s", workspace, name, exc_info=True)
             return True, "sidecar check skipped"
 
+        running_roles: set[str] = set()
         for container in containers:
             role = (container.labels or {}).get(CONTAINER_ROLE_LABEL, "")
-            if not role or role == CONTAINER_ROLE_SERVER or role.startswith("init-"):
+            if role not in expected_roles:
                 continue
             if container.status != "running":
                 return False, f"sidecar '{role}' is {container.status}"
+            running_roles.add(role)
+
+        missing = expected_roles - running_roles
+        if missing:
+            return False, f"sidecar '{sorted(missing)[0]}' is missing"
         return True, "sidecars running"
 
     async def delete_deployment(self, workspace: str, name: str) -> BackendStatusUpdate:

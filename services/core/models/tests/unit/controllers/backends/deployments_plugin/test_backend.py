@@ -134,7 +134,7 @@ def _resolved_docker_lora() -> ResolvedPluginDeployment:
         deployment=SimpleNamespace(name="my-dep", workspace="default"),
         config=SimpleNamespace(engine="vllm"),
         model_entity=None,
-        view=DeploymentConfigView(model_namespace="org", model_name="model", lora_enabled=True),
+        view=DeploymentConfigView(model_namespace="org", model_name="model", lora_enabled=True, gpu=1),
         weights_type=ModelWeightsType.FILES_SERVICE,
         model_namespace="org",
         model_name="model",
@@ -180,6 +180,29 @@ async def test_docker_lora_creates_substrate() -> None:
     # Substrate is created (volume(s) + puller + server configs/deployments),
     # not rejected. The server config carries the multi-container LoRA shape.
     assert any(isinstance(item, Deployment) and item.name == "my-dep-server" for item in created)
+
+    # Assert the full multi-container LoRA contract on the server DeploymentConfig,
+    # so a regression that drops the adapters sidecar / init / its port/GPU
+    # settings fails here rather than silently passing.
+    server_config = next(
+        item for item in created if isinstance(item, DeploymentConfig) and item.name.endswith("-server")
+    )
+    container_names = [c.name for c in server_config.containers]
+    assert container_names == ["server", "lora-adapters"]
+
+    server_container = server_config.containers[0]
+    sidecar_container = server_config.containers[1]
+
+    # The adapters sidecar publishes no ports and requests no GPU (it shares the
+    # server's network namespace and GPU); only the server owns those.
+    assert not sidecar_container.ports
+    assert not sidecar_container.resources.limits.get("nvidia.com/gpu")
+    assert server_container.ports  # server exposes the inference port
+    assert server_container.resources.limits.get("nvidia.com/gpu") == "1"
+
+    # The lora-cache-init init container prepares the shared scratch volume.
+    init_names = [c.name for c in server_config.init_containers]
+    assert "lora-cache-init" in init_names
 
 
 @pytest.mark.asyncio
