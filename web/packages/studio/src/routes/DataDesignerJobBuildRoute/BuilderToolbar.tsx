@@ -3,8 +3,7 @@
 
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
-import { Button, Flex, SegmentedControl, Tag, Text } from '@nvidia/foundations-react-core';
-import type { StartOptionTag } from '@studio/components/CreateFilesetStart/types';
+import { Button, Flex, SegmentedControl, Text } from '@nvidia/foundations-react-core';
 import type { JobBuilderFormValues } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
 import { FileJson, ListTree, Pencil, SplinePointer } from 'lucide-react';
 import { type FC, useState } from 'react';
@@ -14,8 +13,6 @@ import { useFormContext, useWatch } from 'react-hook-form';
 export type BuilderViewMode = 'list' | 'canvas';
 
 export interface BuilderToolbarProps {
-  /** The template's badge (recipe use case), shown when building from a template. */
-  templateTag?: StartOptionTag;
   columnCount: number;
   /** Which renderer the center pane shows. */
   viewMode: BuilderViewMode;
@@ -27,7 +24,6 @@ export interface BuilderToolbarProps {
 }
 
 export const BuilderToolbar: FC<BuilderToolbarProps> = ({
-  templateTag,
   columnCount,
   viewMode,
   onViewModeChange,
@@ -74,14 +70,6 @@ export const BuilderToolbar: FC<BuilderToolbarProps> = ({
         >
           <Pencil size={14} aria-hidden />
         </Button>
-        {templateTag && (
-          <Tag color={templateTag.color} kind={templateTag.kind} readOnly>
-            {templateTag.label}
-          </Tag>
-        )}
-        <Text className="text-secondary" aria-hidden>
-          ·
-        </Text>
         <Text kind="body/regular/sm" className="text-secondary whitespace-nowrap">
           {columnCount} {columnCount === 1 ? 'column' : 'columns'}
         </Text>

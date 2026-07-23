@@ -7,17 +7,21 @@ import { DEFAULT_BUILD_MODEL_NAME, DEFAULT_EMBEDDER_MODEL_NAME } from '@studio/c
 import {
   Braces,
   Code2,
+  Database,
   FlaskConical,
   GraduationCap,
+  PackageSearch,
   Scale,
   SearchCode,
   SquareFunction,
+  Wrench,
 } from 'lucide-react';
 
 /**
  * The ready-made recipes shown as cards in the secondary area when "Start from a
- * template" is selected. One recipe today; add entries here as more are authored —
- * the card grid and selection flow scale to any number without further changes.
+ * template" is selected. Add entries here as more are authored — the card grid and
+ * selection flow scale to any number without further changes. Each recipe carries one
+ * or more use-case tags (see {@link FilesetTemplate.tags}).
  */
 export const FILESET_TEMPLATES: FilesetTemplate[] = [
   {
@@ -26,7 +30,11 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
     description:
       'Instruction–response pairs for supervised fine-tuning: a sampled topic, an LLM-generated user instruction, and a model answer.',
     icon: GraduationCap,
-    tag: { label: 'Fine-tuning', color: 'blue', kind: 'outline' },
+    tags: [
+      { label: 'Fine-tuning', color: 'blue', kind: 'outline' },
+      { label: 'SFT', color: 'purple', kind: 'outline' },
+      { label: 'Text', color: 'gray', kind: 'outline' },
+    ],
     columns: [
       {
         columnType: 'sampler',
@@ -64,7 +72,11 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
     description:
       'A column for each previewable sampler sub-type — UUID, category, subcategory, uniform, gaussian, Bernoulli, Bernoulli mixture, binomial, Poisson, scipy, datetime, and timedelta — seeded with valid params for QA.',
     icon: FlaskConical,
-    tag: { label: 'Showcase', color: 'green', kind: 'outline' },
+    tags: [
+      { label: 'Showcase', color: 'green', kind: 'outline' },
+      { label: 'Samplers', color: 'gray', kind: 'outline' },
+      { label: 'No LLM', color: 'teal', kind: 'outline' },
+    ],
     columns: [
       {
         columnType: 'sampler',
@@ -154,7 +166,11 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
     description:
       'Python coding challenges with LLM-generated solutions and automatic code validation: exercises a sampled topic, an LLM task description, a code answer, and a pass/fail validation column.',
     icon: Code2,
-    tag: { label: 'Fine-tuning', color: 'green', kind: 'outline' },
+    tags: [
+      { label: 'Fine-tuning', color: 'green', kind: 'outline' },
+      { label: 'Code', color: 'blue', kind: 'outline' },
+      { label: 'Validation', color: 'red', kind: 'outline' },
+    ],
     columns: [
       {
         columnType: 'sampler',
@@ -202,7 +218,11 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
     description:
       'Free-form text paired with its structured JSON representation — for training extraction and information-retrieval models. An LLM writes a description; a second call extracts it into a typed schema.',
     icon: Braces,
-    tag: { label: 'Fine-tuning', color: 'purple', kind: 'outline' },
+    tags: [
+      { label: 'Fine-tuning', color: 'purple', kind: 'outline' },
+      { label: 'Extraction', color: 'blue', kind: 'outline' },
+      { label: 'Structured', color: 'gray', kind: 'outline' },
+    ],
     columns: [
       {
         columnType: 'sampler',
@@ -241,7 +261,11 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
     description:
       'An instruction with a high-quality chosen answer, a lower-quality rejected answer, and an LLM judge score — for DPO fine-tuning and reward model training.',
     icon: Scale,
-    tag: { label: 'Alignment', color: 'yellow', kind: 'outline' },
+    tags: [
+      { label: 'Alignment', color: 'yellow', kind: 'outline' },
+      { label: 'DPO', color: 'purple', kind: 'outline' },
+      { label: 'Reward model', color: 'blue', kind: 'outline' },
+    ],
     columns: [
       {
         columnType: 'sampler',
@@ -297,7 +321,11 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
     description:
       'Query–passage pairs with vector embeddings for retrieval, RAG evaluation, and semantic similarity benchmarks. Requires an embedding model configured under the "embedder" alias.',
     icon: SearchCode,
-    tag: { label: 'Retrieval', color: 'blue', kind: 'outline' },
+    tags: [
+      { label: 'Retrieval', color: 'blue', kind: 'outline' },
+      { label: 'RAG', color: 'teal', kind: 'outline' },
+      { label: 'Embeddings', color: 'purple', kind: 'outline' },
+    ],
     columns: [
       {
         columnType: 'sampler',
@@ -348,12 +376,245 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
     ],
   },
   {
+    // Recipe: Code Generation → Text to SQL
+    // https://docs.nvidia.com/nemo/datadesigner/recipes/code-generation/text-to-sql
+    id: 'text-to-sql',
+    title: 'Text to SQL',
+    description:
+      'Natural-language instructions paired with SQL, across industries and complexity levels. Samples a domain, topic, and SQL concept; an LLM writes the task, a schema, and the query; then code validation and a multi-dimension judge score the result.',
+    icon: Database,
+    tags: [
+      { label: 'Code', color: 'blue', kind: 'outline' },
+      { label: 'Fine-tuning', color: 'green', kind: 'outline' },
+      { label: 'SQL', color: 'purple', kind: 'outline' },
+      { label: 'Validation', color: 'red', kind: 'outline' },
+    ],
+    columns: [
+      {
+        columnType: 'sampler',
+        samplerType: SamplerType.category,
+        name: 'industry_sector',
+        values: { values: 'Healthcare, Finance, Technology' },
+      },
+      {
+        columnType: 'sampler',
+        samplerType: SamplerType.subcategory,
+        name: 'topic',
+        values: {
+          category: 'industry_sector',
+          values:
+            '{ "Healthcare": ["Electronic Health Records (EHR) Systems", "Telemedicine Platforms", "AI-Powered Diagnostic Tools"], "Finance": ["Fraud Detection Software", "Automated Trading Systems", "Personal Finance Apps"], "Technology": ["Cloud Computing Platforms", "AI and Machine Learning Platforms", "DevOps and CI/CD Tools"] }',
+        },
+      },
+      {
+        columnType: 'sampler',
+        samplerType: SamplerType.category,
+        name: 'sql_complexity',
+        values: { values: 'Beginner, Intermediate, Advanced' },
+      },
+      {
+        columnType: 'sampler',
+        samplerType: SamplerType.subcategory,
+        name: 'sql_concept',
+        values: {
+          category: 'sql_complexity',
+          values:
+            '{ "Beginner": ["Basic SELECT Statements", "WHERE Clauses", "Basic JOINs", "INSERT/UPDATE/DELETE"], "Intermediate": ["Aggregation Functions", "Multiple JOINs", "Subqueries", "Views"], "Advanced": ["Window Functions", "CTEs", "Stored Procedures", "Query Optimization"] }',
+        },
+      },
+      {
+        columnType: 'sampler',
+        samplerType: SamplerType.category,
+        name: 'sql_task_type',
+        values: {
+          values: 'Data Retrieval, Data Manipulation, Analytics and Reporting, Data Transformation',
+        },
+      },
+      {
+        columnType: 'sampler',
+        samplerType: SamplerType.category,
+        name: 'instruction_phrase',
+        values: {
+          values:
+            'Write an SQL query that, Create an SQL statement to, Develop an SQL query to, Can you write SQL that, Formulate an SQL query that',
+        },
+      },
+      {
+        columnType: 'llm-text',
+        name: 'sql_prompt',
+        values: {
+          prompt:
+            'Generate a natural-language {{ sql_task_type }} task for the {{ industry_sector }} domain, specifically about {{ topic }}. It should require {{ sql_complexity }}-level SQL using {{ sql_concept }}. Begin the task with the phrase: "{{ instruction_phrase }}". Return only the task description.',
+          system_prompt: 'You are an expert at generating clear, specific SQL tasks.',
+          model_alias: 'default',
+        },
+      },
+      {
+        columnType: 'llm-code',
+        name: 'sql_context',
+        values: {
+          prompt:
+            'Write the SQL DDL (CREATE TABLE statements, plus a few INSERTs of sample data) for a database schema that supports the following task. Return only SQL.\n\n{{ sql_prompt }}',
+          system_prompt:
+            'You are an expert SQL database designer who writes clean, efficient schemas.',
+          model_alias: 'default',
+          code_lang: 'sql:ansi',
+        },
+      },
+      {
+        columnType: 'llm-code',
+        name: 'sql',
+        values: {
+          prompt:
+            'Given the schema below, write a single {{ sql_complexity }}-level SQL query using {{ sql_concept }} that accomplishes the task. Return only the SQL query — no prose, no markdown fences.\n\nTask:\n{{ sql_prompt }}\n\nSchema:\n{{ sql_context }}',
+          system_prompt: 'You are an expert SQL programmer who writes clean, efficient queries.',
+          model_alias: 'default',
+          code_lang: 'sql:ansi',
+        },
+      },
+      {
+        columnType: 'validation',
+        name: 'code_validity_result',
+        values: {
+          target_columns: 'sql',
+          validator_type: 'code',
+          validator_params: '{ "code_lang": "sql:ansi" }',
+        },
+      },
+      {
+        columnType: 'llm-judge',
+        name: 'code_judge_result',
+        values: {
+          prompt:
+            'Evaluate the SQL query below against the task and schema.\n\nTask:\n{{ sql_prompt }}\n\nSchema:\n{{ sql_context }}\n\nQuery:\n{{ sql }}',
+          model_alias: 'default',
+          scores:
+            '[{ "name": "Relevance", "description": "Does the query address the task?", "options": { "1": "Off-topic", "4": "Fully on-topic" } }, { "name": "SQL Correctness", "description": "Is the SQL valid and does it return the right result?", "options": { "1": "Broken", "4": "Correct" } }, { "name": "Readability", "description": "Is the query clear and well-formatted?", "options": { "1": "Unreadable", "4": "Very clear" } }, { "name": "Efficiency", "description": "Is the query performant for the schema?", "options": { "1": "Inefficient", "4": "Efficient" } }]',
+        },
+      },
+    ],
+    models: [{ alias: 'default', model: DEFAULT_BUILD_MODEL_NAME }],
+  },
+  {
+    // Recipe: QA and Chat → Product Info QA
+    // https://docs.nvidia.com/nemo/datadesigner/recipes/qa-and-chat/product-info-qa
+    id: 'product-info-qa',
+    title: 'Product info Q&A',
+    description:
+      'Synthetic product records paired with a question and answer — with a controlled fraction of hallucinated answers and an LLM judge scoring completeness and accuracy. Useful for training and evaluating grounded product-support assistants.',
+    icon: PackageSearch,
+    tags: [
+      { label: 'QA & chat', color: 'teal', kind: 'outline' },
+      { label: 'Grounding', color: 'blue', kind: 'outline' },
+      { label: 'LLM judge', color: 'yellow', kind: 'outline' },
+    ],
+    columns: [
+      {
+        columnType: 'sampler',
+        samplerType: SamplerType.category,
+        name: 'category',
+        values: {
+          values:
+            'Electronics, Clothing, Home Appliances, Groceries, Toiletries, Sports Equipment, Toys, Books, Pet Supplies, Tools & Home Improvement, Beauty, Health & Wellness, Outdoor Gear, Automotive, Office Supplies, Baby & Kids, Video Games, Software, Tech Devices',
+        },
+      },
+      {
+        columnType: 'sampler',
+        samplerType: SamplerType.uniform,
+        name: 'price_tens_of_dollars',
+        values: { low: '1', high: '200', decimal_places: '0' },
+      },
+      {
+        columnType: 'expression',
+        name: 'product_price',
+        values: {
+          expr: '{{ (price_tens_of_dollars * 10) - 0.01 | round(2) }}',
+          dtype: 'float',
+        },
+      },
+      {
+        columnType: 'sampler',
+        samplerType: SamplerType.category,
+        name: 'first_letter',
+        values: {
+          values: 'A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z',
+        },
+      },
+      {
+        columnType: 'sampler',
+        samplerType: SamplerType.bernoulli,
+        name: 'is_hallucination',
+        values: { p: '0.5' },
+      },
+      {
+        columnType: 'llm-structured',
+        name: 'product_info',
+        values: {
+          prompt:
+            'Generate a realistic product description for a product in the {{ category }} category that costs {{ product_price }}. The name of the product MUST start with the letter {{ first_letter }}.',
+          model_alias: 'default',
+          output_format:
+            '{ "type": "object", "properties": { "product_name": { "type": "string" }, "key_features": { "type": "array", "items": { "type": "string" } }, "description": { "type": "string" }, "price_usd": { "type": "number" } }, "required": ["product_name", "key_features", "description", "price_usd"] }',
+        },
+      },
+      {
+        columnType: 'llm-text',
+        name: 'question',
+        values: {
+          prompt: 'Ask a single question about the following product:\n\n{{ product_info }}',
+          model_alias: 'default',
+        },
+      },
+      {
+        columnType: 'llm-text',
+        name: 'answer',
+        values: {
+          prompt:
+            '{% if is_hallucination == 0 %}Answer the question accurately using only the product information below.\n\nProduct:\n{{ product_info }}\n\nQuestion:\n{{ question }}{% else %}Answer the question below with a confident but fabricated response. Invent plausible-sounding details that are NOT supported by any product information. Do not mention that you are making it up.\n\nQuestion:\n{{ question }}{% endif %}',
+          model_alias: 'default',
+        },
+      },
+      {
+        columnType: 'llm-judge',
+        name: 'llm_answer_metrics',
+        values: {
+          prompt:
+            'Judge the answer against the product information and question.\n\nProduct:\n{{ product_info }}\n\nQuestion:\n{{ question }}\n\nAnswer:\n{{ answer }}',
+          model_alias: 'default',
+          scores:
+            '[{ "name": "Completeness", "description": "Does the answer fully address the question?", "options": { "1": "Ignores the question", "5": "Fully complete" } }, { "name": "Accuracy", "description": "Is the answer grounded in the product information (no fabrication)?", "options": { "1": "Fabricated", "5": "Fully grounded" } }]',
+        },
+      },
+      {
+        columnType: 'expression',
+        name: 'completeness_result',
+        values: {
+          expr: '{{ llm_answer_metrics.Completeness.score }}',
+          dtype: 'int',
+        },
+      },
+      {
+        columnType: 'expression',
+        name: 'accuracy_result',
+        values: {
+          expr: '{{ llm_answer_metrics.Accuracy.score }}',
+          dtype: 'int',
+        },
+      },
+    ],
+    models: [{ alias: 'default', model: DEFAULT_BUILD_MODEL_NAME }],
+  },
+  {
     id: 'expression-transforms',
     title: 'Expression transforms (no LLM)',
     description:
       'Derived columns computed via Jinja2 expressions — full-name concatenation, score banding into letter grades. No LLM calls; previews instantly.',
     icon: SquareFunction,
-    tag: { label: 'Transform', color: 'teal', kind: 'outline' },
+    tags: [
+      { label: 'Transform', color: 'teal', kind: 'outline' },
+      { label: 'No LLM', color: 'green', kind: 'outline' },
+      { label: 'Jinja2', color: 'gray', kind: 'outline' },
+    ],
     columns: [
       {
         columnType: 'sampler',
@@ -389,6 +650,89 @@ export const FILESET_TEMPLATES: FilesetTemplate[] = [
         },
       },
     ],
+  },
+  {
+    // Recipe: MCP and Tool Use → tool/function-calling training data.
+    // Purely LLM-generated (no live MCP server): a domain toolbox, a user query
+    // that needs a tool, the correct call, a grounded reply, and a judge check.
+    // https://docs.nvidia.com/nemo/datadesigner/recipes/mcp-and-tool-use/basic-mcp-tool-use
+    id: 'tool-calling',
+    title: 'Tool / function calling',
+    description:
+      'Function-calling training data: a sampled domain, an LLM-generated toolbox of function schemas, a user query that requires a tool, the correct structured tool call, a grounded assistant reply, and an LLM judge verifying the call.',
+    icon: Wrench,
+    tags: [
+      { label: 'Tool calling', color: 'blue', kind: 'outline' },
+      { label: 'Agents', color: 'teal', kind: 'outline' },
+      { label: 'Fine-tuning', color: 'green', kind: 'outline' },
+      { label: 'Structured', color: 'purple', kind: 'outline' },
+    ],
+    columns: [
+      {
+        columnType: 'sampler',
+        samplerType: SamplerType.category,
+        name: 'domain',
+        values: {
+          values:
+            'weather, travel booking, e-commerce orders, calendar scheduling, personal finance, smart home, messaging, food delivery, IT support, fitness tracking',
+        },
+      },
+      {
+        columnType: 'llm-structured',
+        name: 'available_tools',
+        values: {
+          prompt:
+            'Design a small toolbox of 2–4 functions that an AI assistant for the {{ domain }} domain could call. Each function needs a snake_case name, a one-sentence description, and a JSON Schema for its parameters (with realistic property names and types).',
+          system_prompt:
+            'You are an API designer who writes clean, minimal function schemas for LLM tool use.',
+          model_alias: 'default',
+          output_format:
+            '{ "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "description": { "type": "string" }, "parameters": { "type": "object" } }, "required": ["name", "description", "parameters"] } }',
+        },
+      },
+      {
+        columnType: 'llm-text',
+        name: 'user_query',
+        values: {
+          prompt:
+            'Write a single, natural user request for a {{ domain }} assistant that can be fully satisfied by calling exactly one of these tools. Do not mention the tools or their names. Return only the request.\n\nTools:\n{{ available_tools }}',
+          model_alias: 'default',
+        },
+      },
+      {
+        columnType: 'llm-structured',
+        name: 'tool_call',
+        values: {
+          prompt:
+            "Select the single correct tool for the user request and produce the call. Use only a tool name present in the toolbox, and fill arguments that conform to that tool's parameter schema, drawing values from the request.\n\nRequest:\n{{ user_query }}\n\nTools:\n{{ available_tools }}",
+          system_prompt: 'You are a precise function-calling engine. Emit only a valid tool call.',
+          model_alias: 'default',
+          output_format:
+            '{ "type": "object", "properties": { "name": { "type": "string" }, "arguments": { "type": "object" } }, "required": ["name", "arguments"] }',
+        },
+      },
+      {
+        columnType: 'llm-text',
+        name: 'assistant_response',
+        values: {
+          prompt:
+            "Assume the tool call below was executed and returned a plausible successful result. Write the assistant's final natural-language reply to the user. Do not restate the raw JSON.\n\nUser request:\n{{ user_query }}\n\nTool call:\n{{ tool_call }}",
+          model_alias: 'default',
+        },
+      },
+      {
+        columnType: 'llm-judge',
+        name: 'tool_call_quality',
+        values: {
+          prompt:
+            'Evaluate the tool call against the user request and the available tools.\n\nRequest:\n{{ user_query }}\n\nTools:\n{{ available_tools }}\n\nTool call:\n{{ tool_call }}',
+          model_alias: 'default',
+          scores:
+            '[{ "name": "Tool Selection", "description": "Is the chosen tool the right one for the request and present in the toolbox?", "options": { "1": "Wrong or missing tool", "5": "Correct tool" } }, { "name": "Argument Validity", "description": "Do the arguments match the tool schema and the request?", "options": { "1": "Invalid arguments", "5": "Fully valid" } }]',
+        },
+      },
+    ],
+    models: [{ alias: 'default', model: DEFAULT_BUILD_MODEL_NAME }],
   },
 ];
 

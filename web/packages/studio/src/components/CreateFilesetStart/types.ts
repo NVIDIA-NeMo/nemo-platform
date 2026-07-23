@@ -57,7 +57,8 @@ export interface FilesetTemplate {
   title: string;
   description: string;
   icon: LucideIcon;
-  tag: StartOptionTag;
+  /** One or more use-case badges shown on the recipe card. */
+  tags: StartOptionTag[];
   columns: TemplateColumnSpec[];
   /** Models preloaded into the job config, referenced by the columns' `model_alias`. */
   models?: TemplateModelSpec[];

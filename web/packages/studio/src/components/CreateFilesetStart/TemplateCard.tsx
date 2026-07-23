@@ -47,9 +47,13 @@ export const TemplateCard: FC<TemplateCardProps> = ({ template, selected, onSele
 
       <div className="flex-1" />
 
-      <Badge color={template.tag.color} kind={template.tag.kind}>
-        {template.tag.label}
-      </Badge>
+      <Flex gap="density-xs" wrap="wrap">
+        {template.tags.map((tag) => (
+          <Badge key={tag.label} color={tag.color} kind={tag.kind}>
+            {tag.label}
+          </Badge>
+        ))}
+      </Flex>
     </button>
   );
 };

@@ -169,7 +169,6 @@ export const DataDesignerJobBuildRoute: FC = () => {
       <FormProvider {...builder.form}>
         <Stack className=" h-full">
           <BuilderToolbar
-            templateTag={template?.tag}
             columnCount={builder.columnCount}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
