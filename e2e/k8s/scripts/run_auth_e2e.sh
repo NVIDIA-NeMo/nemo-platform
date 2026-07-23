@@ -23,7 +23,7 @@ fi
 if [ "$#" -gt 0 ]; then
     PYTEST_TARGETS=("$@")
 else
-    PYTEST_TARGETS=("e2e/test_workspaces.py" "e2e/test_jobs_auth.py")
+    PYTEST_TARGETS=()
 fi
 
 wait_for_url() {
@@ -73,6 +73,9 @@ fi
 echo "Authenticated request check passed"
 
 export NMP_E2E_CLUSTER_URL="${BASE_URL}"
+export NMP_BASE_URL="${BASE_URL}"
 
 cd "${REPO_ROOT}"
-uv run --project "${UV_PROJECT}" --frozen pytest "${PYTEST_TARGETS[@]}" --kubernetes --feature auth -v
+if [ "${#PYTEST_TARGETS[@]}" -gt 0 ]; then
+    uv run --project "${UV_PROJECT}" --frozen pytest "${PYTEST_TARGETS[@]}" --run-e2e --feature auth -v
+fi
