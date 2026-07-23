@@ -3,6 +3,7 @@
 
 import { Button, PageHeader, Stack } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
+import { AnonymizerJobsDataView } from '@studio/components/dataViews/AnonymizerJobsDataView';
 import { ANONYMIZER_ENABLED } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -29,6 +30,7 @@ export const AnonymizerListRoute: FC | null = ANONYMIZER_ENABLED
                 </Button>
               }
             />
+            <AnonymizerJobsDataView />
           </Stack>
           <Outlet />
         </AccessibleTitle>
