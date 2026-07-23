@@ -462,14 +462,25 @@ class DockerDeploymentBackend(DeploymentBackend):
     ) -> VolumeStatusUpdate:
         del size, access_modes
         driver = "local"
+        init_chmod: str | None = None
+        init_image: str | None = None
         docker_section = backend_config.get("docker") or {}
-        if isinstance(docker_section, dict) and docker_section.get("driver"):
-            driver = str(docker_section["driver"])
+        if isinstance(docker_section, dict):
+            if docker_section.get("driver"):
+                driver = str(docker_section["driver"])
+            # initChmod/initImage let the compiler request the volume be made
+            # writable by non-root workloads (docker analogue of k8s fsGroup).
+            if docker_section.get("initChmod"):
+                init_chmod = str(docker_section["initChmod"])
+            if docker_section.get("initImage"):
+                init_image = str(docker_section["initImage"])
         return await volume_ops.create_volume(
             self._client,
             workspace=workspace,
             name=name,
             driver=driver,
+            init_chmod=init_chmod,
+            init_image=init_image,
         )
 
     async def read_volume_status(
