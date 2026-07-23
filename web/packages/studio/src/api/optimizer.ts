@@ -64,8 +64,95 @@ export interface InsightPage {
   [key: string]: unknown;
 }
 
+export type EvalAuthorRunStatus = 'created' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+
+export type EvalAuthorRunStage =
+  | 'initializing'
+  | 'materializing_traces'
+  | 'analyzing_traces'
+  | 'discovering_runner'
+  | 'authoring_verifier'
+  | 'validating'
+  | 'publishing'
+  | 'completed';
+
+export type EvalAuthorCaptureStatus = 'complete' | 'partial' | 'unavailable';
+
+export interface EvalAuthorRun {
+  id: string;
+  name: string;
+  workspace: string;
+  insight_id: string;
+  status: EvalAuthorRunStatus;
+  stage: EvalAuthorRunStage;
+  evaluator_type: string;
+  config: {
+    max_traces: number;
+    max_summary_tokens: number;
+    max_validation_repair_attempts: number;
+  };
+  inputs: {
+    agent: string;
+    task_template: string;
+    train_dataset: string;
+    validation_dataset: string;
+    trace_refs: string[];
+  };
+  models: {
+    smart: string;
+    fast: string;
+  };
+  provenance: {
+    optimizer_branch: string;
+    optimizer_commit: string;
+    runner: string;
+  };
+  outputs: {
+    artifact_fileset?: string | null;
+    insight_suite?: string | null;
+    train_dataset?: string | null;
+    validation_dataset?: string | null;
+    metric_names: string[];
+    train_task_count: number;
+    validation_task_count: number;
+  };
+  capture: {
+    prompt: EvalAuthorCaptureStatus;
+    trajectory: EvalAuthorCaptureStatus;
+    redactions: boolean;
+    redacted_fields: string[];
+  };
+  validation: {
+    status: string;
+    attempt_count: number;
+  };
+  summary: string;
+  error?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface EvalAuthorRunPage {
+  data?: EvalAuthorRun[];
+  pagination?: PaginationData;
+}
+
+export interface OptimizerListEvalAuthorRunsParams extends Record<string, unknown> {
+  page?: number;
+  page_size?: number;
+  sort?: string;
+  insight_id?: string;
+  status?: EvalAuthorRunStatus;
+  created_at?: string;
+}
+
 const optimizerInsightsPath = (workspace: string, path = '') =>
   `/apis/insights/v2/workspaces/${encodeURIComponent(String(workspace))}/insights${path}`;
+
+const optimizerEvalAuthorRunsPath = (workspace: string, path = '') =>
+  `/apis/insights/v2/workspaces/${encodeURIComponent(String(workspace))}/eval-author-runs${path}`;
 
 type QueryOptions<TData, TError> = {
   query?: Partial<UseQueryOptions<TData, TError, TData>>;
@@ -175,6 +262,64 @@ export const useOptimizerUpdateInsight = <
       mutationFn: ({ workspace, insightId, data }) =>
         optimizerUpdateInsight(workspace, insightId, data),
       ...options?.mutation,
+    },
+    queryClient
+  );
+
+export const optimizerListEvalAuthorRuns = (
+  workspace: string,
+  params?: OptimizerListEvalAuthorRunsParams,
+  signal?: AbortSignal
+) =>
+  customFetch<EvalAuthorRunPage>({
+    url: optimizerEvalAuthorRunsPath(workspace),
+    method: 'GET',
+    params,
+    signal,
+  });
+
+export const getOptimizerListEvalAuthorRunsQueryKey = (
+  workspace: string,
+  params?: OptimizerListEvalAuthorRunsParams
+) => [optimizerEvalAuthorRunsPath(workspace), ...(params ? [params] : [])] as const;
+
+export const useOptimizerListEvalAuthorRuns = <TError = ErrorType<HTTPValidationError>>(
+  workspace: string,
+  params?: OptimizerListEvalAuthorRunsParams,
+  options?: QueryOptions<Awaited<ReturnType<typeof optimizerListEvalAuthorRuns>>, TError>,
+  queryClient?: QueryClient
+): UseQueryResult<Awaited<ReturnType<typeof optimizerListEvalAuthorRuns>>, TError> =>
+  useQuery(
+    {
+      queryKey: getOptimizerListEvalAuthorRunsQueryKey(workspace, params),
+      queryFn: ({ signal }) => optimizerListEvalAuthorRuns(workspace, params, signal),
+      ...options?.query,
+    },
+    queryClient
+  );
+
+export const optimizerGetEvalAuthorRun = (workspace: string, runId: string, signal?: AbortSignal) =>
+  customFetch<EvalAuthorRun>({
+    url: optimizerEvalAuthorRunsPath(workspace, `/${encodeURIComponent(runId)}`),
+    method: 'GET',
+    signal,
+  });
+
+export const getOptimizerGetEvalAuthorRunQueryKey = (workspace: string, runId: string) =>
+  [optimizerEvalAuthorRunsPath(workspace, `/${encodeURIComponent(runId)}`)] as const;
+
+export const useOptimizerGetEvalAuthorRun = <TError = ErrorType<HTTPValidationError>>(
+  workspace: string,
+  runId: string,
+  options?: QueryOptions<Awaited<ReturnType<typeof optimizerGetEvalAuthorRun>>, TError>,
+  queryClient?: QueryClient
+): UseQueryResult<Awaited<ReturnType<typeof optimizerGetEvalAuthorRun>>, TError> =>
+  useQuery(
+    {
+      queryKey: getOptimizerGetEvalAuthorRunQueryKey(workspace, runId),
+      queryFn: ({ signal }) => optimizerGetEvalAuthorRun(workspace, runId, signal),
+      enabled: !!runId,
+      ...options?.query,
     },
     queryClient
   );

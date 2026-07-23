@@ -24,8 +24,16 @@ const OptimizerInsightRoute =
     }))
   );
 
+const OptimizerEvalAuthorRunRoute =
+  OPTIMIZER_ENABLED &&
+  lazy(() =>
+    import('@studio/routes/optimizer/OptimizerEvalAuthorRunRoute').then((m) => ({
+      default: m.OptimizerEvalAuthorRunRoute,
+    }))
+  );
+
 export const optimizerRoutes: RouteObject[] = gateOptimizerRoutes(
-  OptimizerRoute && OptimizerInsightRoute
+  OptimizerRoute && OptimizerInsightRoute && OptimizerEvalAuthorRunRoute
     ? [
         {
           path: ROUTES.workspace.optimizer,
@@ -36,6 +44,11 @@ export const optimizerRoutes: RouteObject[] = gateOptimizerRoutes(
           path: ROUTES.workspace.optimizerInsight,
           element: <OptimizerInsightRoute />,
           errorElement: <ErrorPanel title="Insight" />,
+        },
+        {
+          path: ROUTES.workspace.optimizerEvalAuthorRun,
+          element: <OptimizerEvalAuthorRunRoute />,
+          errorElement: <ErrorPanel title="Eval Author run" />,
         },
       ]
     : []

@@ -133,7 +133,7 @@ def create_experiment(
         "experiment_group_id": experiment_group_id,
         "dataset_name": dataset_name,
         "dataset_version": dataset_version,
-        "metadata": metadata,
+        "metadata": {key: str(value) for key, value in metadata.items() if value is not None},
     }
     owns_client = client is None
     client = client or httpx.Client(timeout=30.0)

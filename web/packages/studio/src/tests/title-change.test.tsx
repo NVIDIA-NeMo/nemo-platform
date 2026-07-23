@@ -36,6 +36,7 @@ const pathParams = {
   [RP.experimentGroupName]: 'test-experiment-group',
   [RP.evaluationName]: 'test-experiment',
   [RP.insightId]: 'test-insight',
+  [RP.evalAuthorRunId]: 'test-eval-author-run',
   [RP.guardrailConfigName]: 'test-guardrail-config',
 };
 

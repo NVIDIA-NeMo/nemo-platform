@@ -8,14 +8,24 @@ Discovered by the platform via the ``nemo.services`` entry-point.
 """
 
 import logging
+from datetime import datetime, timezone
 from typing import ClassVar
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from nemo_insights_plugin._perms import AnalysisConfigPerms, AnalysisRunStatusPerms, InsightPerms
+from nemo_insights_plugin._perms import (
+    AnalysisConfigPerms,
+    AnalysisRunStatusPerms,
+    EvalAuthorRunPerms,
+    InsightPerms,
+)
 from nemo_insights_plugin.authz import scope
 from nemo_insights_plugin.entities import (
     AnalysisConfig,
     AnalysisRunStatus,
+    EvalAuthorRun,
+    EvalAuthorRunStage,
+    EvalAuthorRunStatus,
     Insight,
     InsightStatus,
 )
@@ -23,11 +33,14 @@ from nemo_insights_plugin.jobs.analyze import AnalyzeJob
 from nemo_insights_plugin.schema import (
     AnalysisConfigPage,
     AnalysisRunStatusPage,
+    CreateEvalAuthorRunRequest,
     CreateInsightRequest,
+    EvalAuthorRunPage,
     InsightListItem,
     InsightPage,
     UpdateAnalysisConfigRequest,
     UpdateAnalysisRunStatusRequest,
+    UpdateEvalAuthorRunRequest,
     UpdateInsightRequest,
 )
 from nemo_platform_plugin.authz import CallerKind, path_rule
@@ -47,6 +60,29 @@ from nmp.intake.entities.experiments import ExperimentGroup
 from nmp.intake.spans.api.dependencies import SpansServiceDep
 
 logger = logging.getLogger(__name__)
+
+_TERMINAL_EVAL_AUTHOR_STATUSES = frozenset(
+    {
+        EvalAuthorRunStatus.SUCCEEDED,
+        EvalAuthorRunStatus.FAILED,
+        EvalAuthorRunStatus.CANCELLED,
+    }
+)
+_EVAL_AUTHOR_STATUS_TRANSITIONS = {
+    EvalAuthorRunStatus.CREATED: frozenset(
+        {
+            EvalAuthorRunStatus.RUNNING,
+            EvalAuthorRunStatus.SUCCEEDED,
+            EvalAuthorRunStatus.FAILED,
+            EvalAuthorRunStatus.CANCELLED,
+        }
+    ),
+    EvalAuthorRunStatus.RUNNING: _TERMINAL_EVAL_AUTHOR_STATUSES,
+    EvalAuthorRunStatus.SUCCEEDED: frozenset(),
+    EvalAuthorRunStatus.FAILED: frozenset(),
+    EvalAuthorRunStatus.CANCELLED: frozenset(),
+}
+_EVAL_AUTHOR_STAGE_INDEX = {stage: index for index, stage in enumerate(EvalAuthorRunStage)}
 
 
 def _to_list_item(insight: Insight) -> InsightListItem:
@@ -79,6 +115,12 @@ class InsightsService(NemoService):
                 _build_analysis_configs_router(),
                 tag="Insights Analysis Configs",
                 description="Per-agent opt-in state for periodic insights analysis.",
+                prefix="/v2/workspaces/{workspace}",
+            ),
+            RouterSpec(
+                _build_eval_author_runs_router(),
+                tag="Insights Eval Author Runs",
+                description="Lifecycle and artifact indexes for externally executed Eval Author runs.",
                 prefix="/v2/workspaces/{workspace}",
             ),
             RouterSpec(
@@ -306,6 +348,234 @@ def _build_insights_router() -> APIRouter:
         except Exception as exc:
             logger.exception("Failed to delete insight")
             raise HTTPException(status_code=500, detail="Failed to delete insight.") from exc
+
+    return router
+
+
+async def _get_workspace_insight(
+    entity_client: NemoEntitiesClient,
+    *,
+    workspace: str,
+    insight_id: str,
+) -> Insight:
+    try:
+        insight = await entity_client.get_by_id(Insight, entity_id=insight_id)
+    except NemoEntityNotFoundError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Insight '{insight_id}' does not exist in workspace '{workspace}'.",
+        ) from exc
+    if insight.workspace != workspace:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Insight '{insight_id}' does not exist in workspace '{workspace}'.",
+        )
+    return insight
+
+
+async def _get_workspace_eval_author_run(
+    entity_client: NemoEntitiesClient,
+    *,
+    workspace: str,
+    run_id: str,
+) -> EvalAuthorRun:
+    try:
+        run = await entity_client.get_by_id(EvalAuthorRun, entity_id=run_id)
+    except NemoEntityNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Eval Author run '{run_id}' not found in workspace '{workspace}'.",
+        ) from exc
+    if run.workspace != workspace:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Eval Author run '{run_id}' not found in workspace '{workspace}'.",
+        )
+    return run
+
+
+def _validate_eval_author_update(
+    run: EvalAuthorRun,
+    body: UpdateEvalAuthorRunRequest,
+) -> None:
+    if body.status is not None and body.status != run.status:
+        allowed = _EVAL_AUTHOR_STATUS_TRANSITIONS[run.status]
+        if body.status not in allowed:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Illegal Eval Author run status transition: {run.status.value} -> {body.status.value}.",
+            )
+    if body.stage is not None and body.stage != run.stage:
+        if run.status in _TERMINAL_EVAL_AUTHOR_STATUSES:
+            raise HTTPException(status_code=409, detail="A terminal Eval Author run cannot change stage.")
+        if _EVAL_AUTHOR_STAGE_INDEX[body.stage] < _EVAL_AUTHOR_STAGE_INDEX[run.stage]:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Eval Author run stage cannot regress: {run.stage.value} -> {body.stage.value}.",
+            )
+    next_status = body.status or run.status
+    next_stage = body.stage or run.stage
+    if next_status == EvalAuthorRunStatus.SUCCEEDED and next_stage != EvalAuthorRunStage.COMPLETED:
+        raise HTTPException(
+            status_code=422,
+            detail="A succeeded Eval Author run must be in the completed stage.",
+        )
+
+
+def _build_eval_author_runs_router() -> APIRouter:
+    router = APIRouter()
+
+    @router.post(
+        "/eval-author-runs",
+        response_model=EvalAuthorRun,
+        status_code=201,
+        tags=["Insights Eval Author Runs"],
+    )
+    @scope.write
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[EvalAuthorRunPerms.CREATE])
+    async def create_eval_author_run(
+        workspace: str,
+        body: CreateEvalAuthorRunRequest,
+        entity_client: NemoEntitiesClient = Depends(get_entity_client),
+    ) -> EvalAuthorRun:
+        await _get_workspace_insight(entity_client, workspace=workspace, insight_id=body.insight_id)
+        if body.status == EvalAuthorRunStatus.SUCCEEDED and body.stage != EvalAuthorRunStage.COMPLETED:
+            raise HTTPException(
+                status_code=422,
+                detail="A succeeded Eval Author run must be in the completed stage.",
+            )
+        now = datetime.now(timezone.utc)
+        run = EvalAuthorRun(
+            name=body.name or f"eval-author-run-{uuid4().hex[:12]}",
+            workspace=workspace,
+            insight_id=body.insight_id,
+            status=body.status,
+            stage=body.stage,
+            evaluator_type=body.evaluator_type,
+            config=body.config,
+            inputs=body.inputs,
+            models=body.models,
+            provenance=body.provenance,
+            outputs=body.outputs,
+            capture=body.capture,
+            validation=body.validation,
+            summary=body.summary,
+            error=body.error,
+            started_at=now if body.status != EvalAuthorRunStatus.CREATED else None,
+            completed_at=now if body.status in _TERMINAL_EVAL_AUTHOR_STATUSES else None,
+        )
+        try:
+            return await entity_client.create(run)
+        except NemoEntityValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.exception("Failed to create Eval Author run")
+            raise HTTPException(status_code=500, detail="Failed to create Eval Author run.") from exc
+
+    @router.get(
+        "/eval-author-runs",
+        response_model=EvalAuthorRunPage,
+        tags=["Insights Eval Author Runs"],
+    )
+    @scope.read
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[EvalAuthorRunPerms.LIST])
+    async def list_eval_author_runs(
+        workspace: str,
+        page: int = Query(default=1, ge=1),
+        page_size: int = Query(default=20, ge=1, le=100),
+        sort: str = Query(default="-created_at"),
+        insight_id: str | None = Query(default=None),
+        status: EvalAuthorRunStatus | None = Query(default=None),
+        created_at: datetime | None = Query(default=None, description="Return runs created at or after this time."),
+        entity_client: NemoEntitiesClient = Depends(get_entity_client),
+    ) -> EvalAuthorRunPage:
+        filter_obj: dict[str, object] = {}
+        if insight_id is not None:
+            filter_obj["insight_id"] = insight_id
+        if status is not None:
+            filter_obj["status"] = status.value
+        if created_at is not None:
+            filter_obj["created_at"] = {"$gte": created_at}
+        try:
+            result = await entity_client.list(
+                EvalAuthorRun,
+                workspace=workspace,
+                page=page,
+                page_size=page_size,
+                sort=sort,
+                filter_obj=filter_obj or None,
+            )
+        except Exception as exc:
+            logger.exception("Failed to list Eval Author runs")
+            raise HTTPException(status_code=500, detail="Failed to list Eval Author runs.") from exc
+        pagination = PaginationData.model_validate(result.pagination.model_dump()) if result.pagination else None
+        return EvalAuthorRunPage(
+            data=result.data,
+            pagination=pagination,
+            sort=sort,
+            filter=filter_obj or None,
+        )
+
+    @router.get(
+        "/eval-author-runs/{run_id}",
+        response_model=EvalAuthorRun,
+        tags=["Insights Eval Author Runs"],
+    )
+    @scope.read
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[EvalAuthorRunPerms.READ])
+    async def get_eval_author_run(
+        workspace: str,
+        run_id: str,
+        entity_client: NemoEntitiesClient = Depends(get_entity_client),
+    ) -> EvalAuthorRun:
+        return await _get_workspace_eval_author_run(entity_client, workspace=workspace, run_id=run_id)
+
+    @router.patch(
+        "/eval-author-runs/{run_id}",
+        response_model=EvalAuthorRun,
+        tags=["Insights Eval Author Runs"],
+    )
+    @scope.write
+    @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[EvalAuthorRunPerms.UPDATE])
+    async def update_eval_author_run(
+        workspace: str,
+        run_id: str,
+        body: UpdateEvalAuthorRunRequest,
+        entity_client: NemoEntitiesClient = Depends(get_entity_client),
+    ) -> EvalAuthorRun:
+        run = await _get_workspace_eval_author_run(entity_client, workspace=workspace, run_id=run_id)
+        _validate_eval_author_update(run, body)
+        now = datetime.now(timezone.utc)
+        if body.status is not None:
+            if body.status == EvalAuthorRunStatus.RUNNING and run.started_at is None:
+                run.started_at = now
+            if body.status in _TERMINAL_EVAL_AUTHOR_STATUSES and run.completed_at is None:
+                run.completed_at = now
+            run.status = body.status
+        if body.stage is not None:
+            run.stage = body.stage
+        if body.outputs is not None:
+            run.outputs = body.outputs
+        if body.capture is not None:
+            run.capture = body.capture
+        if body.validation is not None:
+            run.validation = body.validation
+        if body.summary is not None:
+            run.summary = body.summary
+        if "error" in body.model_fields_set:
+            run.error = body.error
+        try:
+            return await entity_client.update(run)
+        except NemoEntityNotFoundError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Eval Author run '{run_id}' not found in workspace '{workspace}'.",
+            ) from exc
+        except NemoEntityValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.exception("Failed to update Eval Author run")
+            raise HTTPException(status_code=500, detail="Failed to update Eval Author run.") from exc
 
     return router
 

@@ -9,11 +9,21 @@ from nemo_insights_plugin.entities import (
     AnalysisConfig,
     AnalysisConfigStatus,
     AnalysisRunStatus,
+    EvalAuthorCapture,
+    EvalAuthorConfigDetails,
+    EvalAuthorInputs,
+    EvalAuthorModels,
+    EvalAuthorOutputs,
+    EvalAuthorProvenance,
+    EvalAuthorRun,
+    EvalAuthorRunStage,
+    EvalAuthorRunStatus,
+    EvalAuthorValidation,
     Insight,
     InsightStatus,
 )
 from nemo_platform_plugin.schema import NemoListResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CreateInsightRequest(BaseModel):
@@ -64,6 +74,47 @@ class InsightListItem(Insight, entity_type="insights_insight"):
 
 
 InsightPage = NemoListResponse[InsightListItem]
+
+
+class CreateEvalAuthorRunRequest(BaseModel):
+    """Body for ``POST /eval-author-runs``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(
+        default=None,
+        description="Optional producer name. The service generates a short unique name when omitted.",
+    )
+    insight_id: str
+    status: EvalAuthorRunStatus = EvalAuthorRunStatus.CREATED
+    stage: EvalAuthorRunStage = EvalAuthorRunStage.INITIALIZING
+    evaluator_type: str = "harbor"
+    config: EvalAuthorConfigDetails
+    inputs: EvalAuthorInputs
+    models: EvalAuthorModels
+    provenance: EvalAuthorProvenance
+    outputs: EvalAuthorOutputs = Field(default_factory=EvalAuthorOutputs)
+    capture: EvalAuthorCapture = Field(default_factory=EvalAuthorCapture)
+    validation: EvalAuthorValidation = Field(default_factory=EvalAuthorValidation)
+    summary: str = ""
+    error: str | None = None
+
+
+class UpdateEvalAuthorRunRequest(BaseModel):
+    """Body for ``PATCH /eval-author-runs/{run_id}``; omitted fields are unchanged."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: EvalAuthorRunStatus | None = None
+    stage: EvalAuthorRunStage | None = None
+    outputs: EvalAuthorOutputs | None = None
+    capture: EvalAuthorCapture | None = None
+    validation: EvalAuthorValidation | None = None
+    summary: str | None = None
+    error: str | None = None
+
+
+EvalAuthorRunPage = NemoListResponse[EvalAuthorRun]
 
 
 class UpdateAnalysisConfigRequest(BaseModel):

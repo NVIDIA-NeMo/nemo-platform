@@ -379,6 +379,18 @@ export const getOptimizerInsightRoute = (workspace: string, insightId: string) =
   return generatePath(ROUTES.workspace.optimizerInsight, { workspace, insightId });
 };
 
+export const getOptimizerEvalAuthorRunRoute = (
+  workspace: string,
+  insightId: string,
+  evalAuthorRunId: string
+) => {
+  return generatePath(ROUTES.workspace.optimizerEvalAuthorRun, {
+    workspace,
+    insightId,
+    evalAuthorRunId,
+  });
+};
+
 export const getGuardrailDetailRoute = (workspace: string, guardrailConfigName: string) => {
   return generatePath(ROUTES.workspace.guardrailDetail, {
     workspace,

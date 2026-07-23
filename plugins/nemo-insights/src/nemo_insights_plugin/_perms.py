@@ -14,6 +14,13 @@ class InsightPerms(PermissionSet, namespace="insights.insights"):
     DELETE = perm("Delete insights")
 
 
+class EvalAuthorRunPerms(PermissionSet, namespace="insights.eval-author-runs"):
+    CREATE = perm("Create Eval Author runs")
+    LIST = perm("List Eval Author runs")
+    READ = perm("Read Eval Author runs")
+    UPDATE = perm("Update Eval Author runs")
+
+
 class AnalysisConfigPerms(PermissionSet, namespace="insights.analysis-configs"):
     ENABLE = perm("Enable periodic analysis")
     DISABLE = perm("Disable periodic analysis")
