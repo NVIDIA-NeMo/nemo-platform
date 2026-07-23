@@ -1,78 +1,18 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ARC_START, ARC_SWEEP, CENTER } from '@nemo/common/src/components/ScoreGauge/consts';
+import {
+  arcPath,
+  gradientSegments,
+  point,
+  scoreColor,
+} from '@nemo/common/src/components/ScoreGauge/utils';
+
+export * from '@nemo/common/src/components/ScoreGauge/consts';
+export * from '@nemo/common/src/components/ScoreGauge/utils';
+
 type ScoreGaugeSize = 'lg' | 'sm';
-
-export const SCORE_TIER_COLORS = {
-  Excellent: '#22c55e',
-  'Very Good': '#84cc16',
-  Good: '#eab308',
-  Moderate: '#f97316',
-  Poor: '#ef4444',
-} as const;
-
-export type ScoreTier = keyof typeof SCORE_TIER_COLORS | 'Unavailable';
-
-const UNAVAILABLE_COLOR = '#888888';
-
-const GRADIENT_PALETTE: [number, number, number][] = [
-  [239, 68, 68],
-  [249, 115, 22],
-  [234, 179, 8],
-  [132, 204, 22],
-  [34, 197, 94],
-];
-
-export function scoreTier(score: number): ScoreTier {
-  if (!Number.isFinite(score) || score <= 0) return 'Unavailable';
-  if (score >= 8) return 'Excellent';
-  if (score >= 6) return 'Very Good';
-  if (score >= 4) return 'Good';
-  if (score >= 2) return 'Moderate';
-  return 'Poor';
-}
-
-export function scoreColor(score: number): string {
-  const tier = scoreTier(score);
-  return tier === 'Unavailable' ? UNAVAILABLE_COLOR : SCORE_TIER_COLORS[tier];
-}
-
-const CENTER = 50;
-const RADIUS = 38;
-const ARC_START = 135;
-const ARC_SWEEP = 270;
-
-function point(angleDeg: number): { x: number; y: number } {
-  const rad = (angleDeg * Math.PI) / 180;
-  return { x: CENTER + RADIUS * Math.cos(rad), y: CENTER + RADIUS * Math.sin(rad) };
-}
-
-function arcPath(fromPct: number, toPct: number): string {
-  const a0 = ARC_START + (ARC_SWEEP * fromPct) / 100;
-  const a1 = ARC_START + (ARC_SWEEP * toPct) / 100;
-  const p0 = point(a0);
-  const p1 = point(a1);
-  const largeArc = a1 - a0 > 180 ? 1 : 0;
-  return `M ${p0.x} ${p0.y} A ${RADIUS} ${RADIUS} 0 ${largeArc} 1 ${p1.x} ${p1.y}`;
-}
-
-function interpolate(t: number): string {
-  const position = t * (GRADIENT_PALETTE.length - 1);
-  const low = Math.floor(position);
-  const high = Math.min(low + 1, GRADIENT_PALETTE.length - 1);
-  const ratio = position - low;
-  const [r, g, b] = GRADIENT_PALETTE[low].map((value, index) =>
-    Math.round(value + (GRADIENT_PALETTE[high][index] - value) * ratio)
-  );
-  return `rgb(${r}, ${g}, ${b})`;
-}
-
-const GRADIENT_SEGMENTS = 120;
-
-const gradientSegments = Array.from({ length: GRADIENT_SEGMENTS }, (_, index) => ({
-  d: arcPath((index / GRADIENT_SEGMENTS) * 100, ((index + 1) / GRADIENT_SEGMENTS) * 100),
-  stroke: interpolate(index / (GRADIENT_SEGMENTS - 1)),
-}));
 
 interface ScoreGaugeProps {
   /** Raw score on a 0-10 scale. Falsy / non-finite renders as unavailable. */
