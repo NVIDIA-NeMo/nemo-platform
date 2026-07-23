@@ -73,7 +73,7 @@ export const AddColumnPalette: FC<AddColumnPaletteProps> = ({
         attributes={{ Input: { 'aria-label': 'Search column types' } }}
       />
 
-      <Stack gap="density-lg" className="min-h-0 flex-1 overflow-y-auto">
+      <Stack gap="density-lg" className="min-h-0 flex-1 overflow-y-auto" paddingX="1">
         {filteredGroups.length === 0 ? (
           <Text kind="body/regular/sm" className="text-secondary">
             No column types match “{search}”.
