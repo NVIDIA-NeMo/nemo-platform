@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       release-type:
-        description: "Release type."
+        description: "Release type. Nightlies publish containers and Helm only."
         required: false
         type: choice
         default: nightly
@@ -29,7 +29,7 @@ on:
         type: string
         default: ""
       release-scope:
-        description: "Release artifact scope."
+        description: "Artifact scope. Nightly all means containers and Helm; wheels are stable-only."
         required: false
         type: choice
         default: all
@@ -41,7 +41,7 @@ on:
           - custom
       wheel-ids:
         description: >-
-          Custom only. Comma-separated wheel IDs.
+          Stable custom releases only. Comma-separated wheel IDs.
           Allowed: nemo-platform, nemo-platform-plugin.
         required: false
         type: string
@@ -220,7 +220,11 @@ jobs:
             sourceSha = sourceSha.toLowerCase();
 
             const presets = {
-              all: { wheels: allWheels, containers: allContainers, includeHelm: true },
+              all: {
+                wheels: releaseType === "stable" ? allWheels : [],
+                containers: allContainers,
+                includeHelm: true,
+              },
               wheels: { wheels: allWheels, containers: [], includeHelm: false },
               containers: { wheels: [], containers: allContainers, includeHelm: false },
               helm: { wheels: [], containers: [], includeHelm: true },
@@ -285,6 +289,12 @@ jobs:
             }
 
             const { wheels, containers, includeHelm } = selection;
+            if (releaseType === "nightly" && wheels.length > 0) {
+              throw new Error(
+                "Nightly releases do not publish wheels. Select containers or Helm, or use a stable release.",
+              );
+            }
+
             const wheelIds = wheels.map((wheel) => wheel.id);
             const containerIds = containers.map((container) => container.id);
 

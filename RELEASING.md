@@ -1,14 +1,15 @@
 # Releasing NeMo Platform
 
 [`release.yaml`](.github/workflows/release.yaml) is the single release workflow
-for NeMo Platform. It handles scheduled nightlies and manually dispatched
-nightly or stable releases. The release catalog is deliberately defined in that
-workflow so contributors can see and validate every releasable artifact in one
-place.
+for NeMo Platform. It handles scheduled container-and-Helm nightlies and
+manually dispatched nightly or stable releases. The release catalog is
+deliberately defined in that workflow so contributors can see and validate
+every releasable artifact in one place.
 
 Anyone with permission to run repository workflows can start a release. A
 stable release requires a specific source commit and version; a nightly can use
-the default branch head.
+the default branch head. Nightlies publish containers and Helm only; wheels are
+stable-only.
 
 ## Before starting a stable release
 
@@ -50,11 +51,12 @@ and select **Run workflow**. The form shows the allowed custom artifact IDs.
 
 | Input | Use |
 | --- | --- |
-| `release-type` | `nightly` by default. Select `stable` for a full release. |
+| `release-type` | `nightly` by default, publishing containers and Helm only. Select `stable` to enable wheel releases. |
 | `source-sha` | Required for stable releases. Optional for nightlies; a normal nightly with no SHA uses the current default-branch head. A dry-run nightly with no SHA uses the workflow commit so a branch can be validated. |
 | `version` | Required for stable releases. Enter the `MAJOR.MINOR.PATCH` release version. |
-| `release-scope` | `all` by default. Select `wheels`, `containers`, `helm`, or `custom` for a subset. |
-| `wheel-ids`, `container-ids` | Comma-separated IDs used only with `release-scope: custom`. Each ID must be in the catalog above; duplicates and empty entries fail validation. |
+| `release-scope` | `all` by default. For nightlies, `all` means containers and Helm. Wheel selections require `release-type: stable`. |
+| `wheel-ids` | Stable custom releases only. Comma-separated wheel IDs used with `release-scope: custom`. |
+| `container-ids` | Comma-separated container IDs used with `release-scope: custom`. |
 | `include-helm` | Includes the Helm chart in a custom release. |
 | `helm-version` | Optional exact SemVer Helm chart version for stable Helm-only releases. The stable release label still comes from `version`. |
 | `update-ngc-metadata` | Also runs the reusable NGC metadata workflow for `nemo-platform` and `nemo-platform-dev`. It checks out the workflow ref, normally `main`. |
@@ -65,7 +67,7 @@ Examples:
 
 | Goal | Inputs |
 | --- | --- |
-| Scheduled-style nightly | Leave `release-type` as `nightly` and use the default `all` scope. |
+| Scheduled-style nightly | Leave `release-type` as `nightly` and use the default `all` scope to publish containers and Helm. |
 | Stable full release | `release-type: stable`, `source-sha: <40-character SHA>`, `version: <MAJOR.MINOR.PATCH>`, `release-scope: all`. |
 | One container | `release-scope: custom`, `container-ids: nmp-customizer-tasks`. |
 | Helm-only validation | `release-scope: helm`, `dry-run: true`. |
@@ -76,16 +78,16 @@ America/Los_Angeles.
 
 ## What the workflow does
 
-1. Resolves the source, release label, selected artifacts, wheel version, and
-   Helm chart version. Stable versions use the supplied release version.
-   Nightly labels use `nightly-<UTC timestamp>` and the wheel version is
-   resolved by `.github/scripts/stamp_sdk_version.py`.
+1. Resolves the source, release label, selected artifacts, and their versions.
+   Stable versions use the supplied release version. Nightly labels use
+   `nightly-<UTC timestamp>`.
 2. Checks out the selected source and validates the selected wheel paths,
    Docker Bake targets, and NGC overview files.
 3. Optionally synchronizes NGC metadata, when requested on a non-dry-run.
-4. Dispatches wheel, container, and stable-release registration work to the
-   configured internal release repository. The selected source SHA, release
-   type, version, and selected IDs are passed with the dispatch.
+4. Dispatches selected container and stable wheel work to the configured
+   internal release repository. Stable releases also dispatch registration.
+   The selected source SHA, release type, version, and selected IDs are passed
+   with the dispatch.
 5. Packages the Helm chart with the planned chart version. A nightly chart uses
    the latest release or RC Git tag core reachable from the selected source with
    `-nightly-<UTC timestamp>` appended, falling back to the `Chart.yaml`
@@ -107,9 +109,12 @@ America/Los_Angeles.
 
 | Artifact | Nightly | Stable |
 | --- | --- | --- |
-| Wheels | [`pypi.nvidia.com`](https://pypi.nvidia.com) | [PyPI](https://pypi.org) |
+| Wheels | Not published | [PyPI](https://pypi.org) |
 | Containers | `ghcr.io/nvidia-nemo/nemo-platform/<id>:nightly-...` | `nvcr.io/nvidia/nemo-platform/<id>:<version>` and the public NGC catalog |
 | Helm chart | OCI chart at `oci://ghcr.io/nvidia-nemo/nemo-platform` | Initially staged at `0921617854601259/nemo-platform`, then promoted to the public [NGC Helm repository](https://helm.ngc.nvidia.com/nvidia/nemo-platform) |
+
+Selecting wheels for a nightly fails during release planning, before any
+external release work is dispatched.
 
 The stable Helm promotion is external to this workflow. The workflow polls the
 public NGC Helm repository, not the internal staging endpoint, before it marks
