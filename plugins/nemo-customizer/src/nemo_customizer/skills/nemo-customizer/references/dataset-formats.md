@@ -1,6 +1,6 @@
 # Dataset formats
 
-Both backends read JSONL from a platform fileset, but the **row shape and the job-JSON dataset block differ**. Pick the section that matches your plugin (automodel or unsloth).
+All backends read JSONL from a platform fileset, but the **row shape and the job-JSON dataset block differ**. Pick the section that matches your plugin. 
 
 Upload the JSONL files at the **fileset root**, then reference the fileset from the job JSON `dataset` block:
 
@@ -68,4 +68,3 @@ Eval rows must use the **same CHAT `messages` shape** as training. Do not flatte
 LoRA inference and eval use the **provider** gateway on the **base** entity (`/provider/<name>/-/v1`, `model: default--<adapter>`). Base model uses the model-entity path. Full SFT / merged checkpoints use the **output** model entity's model-entity URL — deploy first. See `post-training-eval.md` and the **Using the adapter** / **Using the fine-tuned model** sections in `reporting.md`.
 
 Shared helpers and compare CLI: `references/eval_helpers.py`. Full workflow: `references/post-training-eval.md`.
-

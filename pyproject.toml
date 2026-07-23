@@ -178,7 +178,6 @@ enabled-plugins = [
   "nemo-customizer-plugin",
   "nemo-automodel-plugin",
   "nemo-unsloth-plugin",
-  "nemo-rl-plugin",
 ]
 
 # Legacy runtime needed specifically for task images that still invoke
