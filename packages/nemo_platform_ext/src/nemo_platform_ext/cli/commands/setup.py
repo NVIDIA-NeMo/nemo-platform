@@ -16,10 +16,11 @@ import os
 import subprocess
 import time
 from dataclasses import dataclass
+from enum import StrEnum
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import urlparse
 
 import httpx
@@ -41,8 +42,9 @@ from nemo_platform_ext.cli.commands.skills.base import Scope, Skill
 from nemo_platform_ext.cli.commands.skills.registry import get_installer, load_skills
 from nemo_platform_ext.cli.core.context import CLIContext
 from nemo_platform_ext.cli.core.errors import handle_errors
+from nemo_platform_ext.client.tls import client_verify_from_env
 from nemo_platform_ext.config.config import Config
-from nemo_platform_ext.config.models import ConfigFile, ConfigParams, LocalServicesConfig
+from nemo_platform_ext.config.models import DEFAULT_BASE_URL, ConfigFile, ConfigParams, LocalServicesConfig
 from nemo_platform_ext.local.process import (
     check_port_available_for_start,
     compute_scope,
@@ -285,13 +287,25 @@ def _bootstrap_config_if_missing(base_url: str, workspace: str) -> None:
     Config.write(params)
 
 
+_PLATFORM_REACHABILITY_PATHS = ("/status", "/cluster-info")
+
+
 def _check_platform_reachable(base_url: str, timeout: float = 5.0) -> bool:
-    """Return True if the platform health endpoint responds."""
-    try:
-        resp = httpx.get(f"{base_url.rstrip('/')}/status", timeout=timeout)
-        return resp.status_code == 200
-    except Exception:
-        return False
+    """Return True if a platform health endpoint responds.
+
+    Local ``nemo services run`` publishes ``/status``. Hosted deployments may
+    only expose ``/cluster-info`` on ingress, so try both.
+    """
+    verify = client_verify_from_env()
+    root = base_url.rstrip("/")
+    for path in _PLATFORM_REACHABILITY_PATHS:
+        try:
+            resp = httpx.get(f"{root}{path}", timeout=timeout, verify=verify)
+            if resp.status_code == 200:
+                return True
+        except Exception:
+            continue
+    return False
 
 
 def _check_platform_reachable_with_retries(
@@ -313,18 +327,103 @@ def _check_platform_reachable_with_retries(
     return False
 
 
+def _prompt_remote_base_url(*, default_url: str = "") -> str:
+    """Prompt until the user provides a reachable remote Platform URL."""
+    while True:
+        base_url = prompt_text(
+            "Enter the remote Platform base URL: ",
+            default=default_url,
+            validator=non_empty_validator("Base URL"),
+        ).strip()
+        parsed = urlparse(base_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            console.print(f"{CROSS} Enter a valid HTTP or HTTPS URL.")
+            continue
+
+        base_url = base_url.rstrip("/")
+        if _check_platform_reachable_with_retries(base_url):
+            return base_url
+
+        console.print(f"{CROSS} Unable to connect to NeMo Platform at {base_url}.")
+
+
+def _resolve_setup_workspace(ctx: typer.Context, cli_context: CLIContext, workspace: str) -> str:
+    """Prefer an explicit ``--workspace``; otherwise keep the active context workspace."""
+    from click.core import ParameterSource
+
+    if ctx.get_parameter_source("workspace") != ParameterSource.DEFAULT:
+        return workspace
+    return cli_context.get_sdk_context().workspace or workspace
+
+
+def _configure_remote_connection(cli_context: CLIContext, base_url: str, workspace: str) -> None:
+    """Persist a remote Platform URL in the active CLI context."""
+    context_name = cli_context.get_sdk_context().context_name
+    Config.write(
+        {"base_url": base_url, "workspace": workspace},
+        context_name=context_name,
+    )
+    cli_context.overrides["base_url"] = base_url
+    cli_context.reset_sdk_context()
+
+
+def _ensure_platform_auth(cli_context: CLIContext) -> None:
+    """Authenticate the active context when it lacks usable credentials."""
+    from nemo_platform_ext.cli.commands.auth import _login_with_oidc, _runtime_token_source_label
+
+    context = cli_context.get_sdk_context()
+    if runtime_token_source := _runtime_token_source_label():
+        console.print(f"{CHECK} Using {runtime_token_source}\n")
+        return
+
+    authenticated = _login_with_oidc(cli_context, selected_context=context.context_name)
+    if not authenticated:
+        Config.write(
+            {"access_token": None, "refresh_token": None},
+            context_name=context.context_name,
+        )
+    cli_context.reset_sdk_context()
+
+
+def _platform_request_headers(cli_context: CLIContext) -> dict[str, str] | None:
+    """Return authentication headers for direct Platform HTTP requests."""
+    context = cli_context.get_sdk_context()
+    if context.user is None:
+        return None
+    headers = context.user.get_client_config().get("default_headers")
+    if not isinstance(headers, dict):
+        return None
+    return {key: value for key, value in headers.items() if isinstance(key, str) and isinstance(value, str)}
+
+
+def _hosted_platform_without_status(base_url: str, *, timeout: float, verify: str | bool) -> bool:
+    """Return True when ``/cluster-info`` confirms a hosted platform that omits ``/status``."""
+    try:
+        resp = httpx.get(f"{base_url.rstrip('/')}/cluster-info", timeout=timeout, verify=verify)
+    except Exception:
+        return False
+    return resp.status_code == 200
+
+
 def _check_controller_health(base_url: str, timeout: float = 5.0) -> tuple[bool, str]:
     """Query ``/status`` and assess controller health.
 
     Returns ``(True, "")`` when controllers are populated and all healthy.
+    Returns ``(True, detail)`` when ``/status`` is absent but ``/cluster-info`` confirms a hosted platform.
     Returns ``(False, detail)`` when unhealthy, unreachable, or empty after retry.
 
     If ``controllers.status`` is empty on the first call (startup timing race),
     waits ``_CONTROLLER_HEALTH_RETRY_DELAY`` seconds and retries once.
     """
+    verify = client_verify_from_env()
+    root = base_url.rstrip("/")
     for attempt in range(2):
         try:
-            resp = httpx.get(f"{base_url.rstrip('/')}/status", timeout=timeout)
+            resp = httpx.get(f"{root}/status", timeout=timeout, verify=verify)
+            if resp.status_code == 404:
+                if _hosted_platform_without_status(root, timeout=timeout, verify=verify):
+                    return True, "Hosted deployment does not publish /status."
+                return False, "Unexpected status 404 from /status endpoint."
             if resp.status_code != 200:
                 return False, f"Unexpected status {resp.status_code} from /status endpoint."
             data = resp.json()
@@ -360,6 +459,13 @@ def _verify_platform_health(base_url: str) -> bool:
     """
     ok, detail = _check_controller_health(base_url)
     if ok:
+        if detail:
+            if "does not publish /status" in detail.lower():
+                # Expected for hosted ingress that only exposes /cluster-info.
+                console.print(f"\n{CHECK} {detail}")
+            else:
+                console.print(f"\n{WARN} [yellow]{detail}[/yellow]")
+                console.print("  Setup may have succeeded, but controller health could not be verified.")
         return True
 
     if "no controllers" in detail.lower():
@@ -626,6 +732,46 @@ def _resolve_services_port(base_url: str) -> int:
     return parsed.port or 8080
 
 
+def _is_local_base_url(base_url: str) -> bool:
+    """Return whether *base_url* points at the local machine."""
+    parsed = urlparse(base_url)
+    return parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+
+
+def _platform_host_label(base_url: str) -> str:
+    """Return a human-friendly host label for connection prompts."""
+    parsed = urlparse(base_url)
+    return parsed.hostname or base_url.rstrip("/")
+
+
+class _RemoteConnectionChoice(StrEnum):
+    """Options offered when a configured remote Platform is already reachable."""
+
+    CONTINUE = "continue"
+    START_LOCAL = "local"
+    CHANGE_REMOTE = "change"
+
+
+def _prompt_reachable_remote_connection(base_url: str) -> Literal["ready", "connect_remote", "start_local"]:
+    """Ask how to proceed when a configured remote Platform is already reachable."""
+    hostname = _platform_host_label(base_url)
+    action = prompt_choice(
+        message=f"Platform reachable at {hostname} ({base_url}). What would you like to do?",
+        options=[
+            (_RemoteConnectionChoice.CONTINUE, "Continue with this remote Platform"),
+            (_RemoteConnectionChoice.START_LOCAL, "Start local services instead"),
+            (_RemoteConnectionChoice.CHANGE_REMOTE, "Connect to a different remote URL"),
+        ],
+        default=_RemoteConnectionChoice.CONTINUE,
+    )
+    if action == _RemoteConnectionChoice.CONTINUE:
+        console.print(f"{CHECK} Platform already running at {base_url}\n")
+        return "ready"
+    if action == _RemoteConnectionChoice.CHANGE_REMOTE:
+        return "connect_remote"
+    return "start_local"
+
+
 def _start_services_background(base_url: str, data_dir: str | None = None) -> subprocess.Popen:
     """Launch ``nemo services run`` as a background process.
 
@@ -709,7 +855,7 @@ def _maybe_start_services(
     auto: bool,
     start_services: bool | None,
     timeout: int = _SERVICE_STARTUP_TIMEOUT_SECONDS,
-) -> None:
+) -> Literal["ready", "connect_remote", "start_local"]:
     """Start services if requested, restarting if already running.
 
     In interactive mode (auto=False), prompts the user if start_services is None.
@@ -720,11 +866,19 @@ def _maybe_start_services(
     (including any newly installed plugins) is picked up. Data lives in
     SQLite so nothing is lost across restarts.
     """
+    if start_services is True and not _is_local_base_url(base_url):
+        raise typer.BadParameter(
+            "--start-services requires a local Platform URL",
+            param_hint="--start-services",
+        )
+
     already_running = _check_platform_reachable(base_url)
 
     if already_running and start_services is not True:
-        console.print(f"{CHECK} Platform already running at {base_url}\n")
-        return
+        if _is_local_base_url(base_url) or auto:
+            console.print(f"{CHECK} Platform already running at {base_url}\n")
+            return "ready"
+        return _prompt_reachable_remote_connection(base_url)
 
     should_start = start_services
     if should_start is None:
@@ -734,14 +888,20 @@ def _maybe_start_services(
             console.print("    [cyan]nemo setup --auto --start-services[/cyan]")
             console.print("    [cyan]nemo services run[/cyan]")
             raise typer.Exit(1)
-        should_start = (
-            prompt_choice(
-                message=f"Platform not reachable at {base_url}. Start local services?",
-                options=[("yes", "Yes, start services now"), ("no", "No, I'll start them myself")],
-                default="yes",
-            )
-            == "yes"
+        if not _is_local_base_url(base_url):
+            return "connect_remote"
+        action = prompt_choice(
+            message=f"Platform not reachable at {base_url}. Start local services?",
+            options=[
+                ("yes", "Yes, start services now"),
+                ("remote", "No, I want to connect to a remote Platform instance"),
+                ("manual", "No, I'll start them myself"),
+            ],
+            default="yes",
         )
+        if action == "remote":
+            return "connect_remote"
+        should_start = action == "yes"
 
     if not should_start:
         console.print(f"{CROSS} Cannot reach platform at {base_url}")
@@ -789,6 +949,7 @@ def _maybe_start_services(
         raise typer.Exit(1)
 
     console.print(f"{CHECK} Platform running at {base_url} (pid {proc.pid})\n")
+    return "ready"
 
 
 # ---------------------------------------------------------------------------
@@ -1142,11 +1303,12 @@ def _agent_config_path() -> Traversable | None:
     return None
 
 
-def _agent_exists(base_url: str, workspace: str) -> bool:
+def _agent_exists(base_url: str, workspace: str, headers: dict[str, str] | None = None) -> bool:
     """Return True if the demo agent already exists on the platform."""
     try:
         resp = httpx.get(
             f"{base_url.rstrip('/')}/apis/agents/v2/workspaces/{workspace}/agents/{_DEMO_AGENT_NAME}",
+            headers=headers,
             timeout=10.0,
         )
         return resp.status_code == 200
@@ -1154,11 +1316,12 @@ def _agent_exists(base_url: str, workspace: str) -> bool:
         return False
 
 
-def _agents_api_ready(base_url: str, workspace: str) -> bool:
+def _agents_api_ready(base_url: str, workspace: str, headers: dict[str, str] | None = None) -> bool:
     """Return True if the agents API is responding."""
     try:
         resp = httpx.get(
             f"{base_url.rstrip('/')}/apis/agents/v2/workspaces/{workspace}/agents",
+            headers=headers,
             timeout=3.0,
         )
         return resp.status_code == 200
@@ -1166,19 +1329,26 @@ def _agents_api_ready(base_url: str, workspace: str) -> bool:
         return False
 
 
-def _deploy_demo_agent(base_url: str, workspace: str, config_path: Traversable, default_model: str) -> bool:
+def _deploy_demo_agent(
+    base_url: str,
+    workspace: str,
+    config_path: Traversable,
+    default_model: str,
+    headers: dict[str, str] | None = None,
+) -> bool:
     """Create and deploy the demo calculator agent. Returns True on success."""
     # Optional plugin: import here so ``nemo setup`` works without nemo-agents installed.
     from nemo_agents_plugin.utils import expand_env_vars
 
     api_base = base_url.rstrip("/")
 
-    if not _agent_exists(base_url, workspace):
+    if not _agent_exists(base_url, workspace, headers=headers):
         config_dict = _yaml.safe_load(config_path.read_text(encoding="utf-8"))
         config_dict = expand_env_vars(config_dict, vars_dict={"NEMO_DEFAULT_MODEL": default_model})
         payload = {"name": _DEMO_AGENT_NAME, "description": "Demo calculator agent", "config": config_dict}
         resp = httpx.post(
             f"{api_base}/apis/agents/v2/workspaces/{workspace}/agents",
+            headers=headers,
             json=payload,
             timeout=30.0,
         )
@@ -1189,6 +1359,7 @@ def _deploy_demo_agent(base_url: str, workspace: str, config_path: Traversable, 
 
     resp = httpx.post(
         f"{api_base}/apis/agents/v2/workspaces/{workspace}/deployments",
+        headers=headers,
         json={"agent": _DEMO_AGENT_NAME},
         timeout=30.0,
     )
@@ -1212,6 +1383,7 @@ def _deploy_demo_agent(base_url: str, workspace: str, config_path: Traversable, 
             try:
                 dep_resp = httpx.get(
                     f"{api_base}/apis/agents/v2/workspaces/{workspace}/deployments/{deployment_name}",
+                    headers=headers,
                     timeout=3.0,
                 )
                 if dep_resp.status_code == 200:
@@ -1235,6 +1407,7 @@ def _maybe_deploy_agent(
     auto: bool,
     deploy_agent: bool | None,
     default_model: str | None = None,
+    headers: dict[str, str] | None = None,
 ) -> bool:
     """Optionally deploy the demo calculator agent.
 
@@ -1289,7 +1462,7 @@ def _maybe_deploy_agent(
         while time.monotonic() < deadline:
             elapsed = int(time.monotonic() - start)
             spinner.update(f"[bold cyan]Waiting for agents API... ({elapsed}s)")
-            if _agents_api_ready(base_url, workspace):
+            if _agents_api_ready(base_url, workspace, headers=headers):
                 api_ready = True
                 break
             _pause(_AGENT_API_READINESS_POLL_INTERVAL)
@@ -1299,7 +1472,13 @@ def _maybe_deploy_agent(
         return False
 
     try:
-        return _deploy_demo_agent(base_url, workspace, config_path, default_model=default_model)
+        return _deploy_demo_agent(
+            base_url,
+            workspace,
+            config_path,
+            default_model=default_model,
+            headers=headers,
+        )
     except Exception as exc:
         console.print(f"  {WARN} Agent deployment failed: {exc}")
         return False
@@ -1373,9 +1552,9 @@ def _register_provider_interactive(
     default_extra_headers: dict[str, str] | None = None,
 ) -> None:
     """Create or update secret + provider for idempotent re-runs."""
-    secret_name = f"{provider_name}-api-key" if api_key else None
-
-    if secret_name:
+    secret_name: str | None = None
+    if api_key:
+        secret_name = f"{provider_name}-api-key"
         if _secret_exists(client, secret_name, workspace):
             _update_secret(client, secret_name, api_key, workspace)
             console.print(f"  {CHECK} Updated secret '{secret_name}'")
@@ -1649,12 +1828,22 @@ def setup_command(
         ),
     ] = None,
 ) -> None:
-    """Set up NeMo Platform: start services, configure a provider, install skills.
+    """Set up NeMo Platform: connect or start services, configure a provider, install skills.
 
-    Walks through starting local services, selecting a provider, entering
-    credentials, registering the provider with the platform, picking a
-    default model, installing coding agent skills, and optionally deploying
-    a demo agent.
+    Uses an already-running platform, starts local services, or connects the
+    CLI to an existing remote deployment. Then selects and registers an
+    inference provider, picks a default model, installs coding agent skills,
+    and optionally deploys a demo agent.
+
+    The active config context remembers the Platform URL. When a remote
+    deployment is already reachable, setup asks whether to continue with it,
+    start local services instead, or connect to a different remote URL.
+
+    To override the URL for one run only:
+      nemo --base-url http://localhost:8080 setup
+
+    To persist a different URL:
+      nemo config set --base-url http://localhost:8080
 
     Requires an interactive terminal (TTY). In non-interactive contexts
     (CI, piped input), pass --auto to use environment variables instead.
@@ -1669,11 +1858,13 @@ def setup_command(
       nemo setup --auto
       nemo setup --auto --start-services --install-skills --deploy-agent
       nemo setup --auto --start-services --ready-timeout 360
+      NMP_BASE_URL=https://nmp.example.com NMP_ACCESS_TOKEN=... nemo setup --auto --no-start-services
       nemo setup --workspace my-workspace
       nemo setup --no-install-skills --no-deploy-agent
+      nemo --base-url http://localhost:8080 setup
     """
     cli_context: CLIContext = ctx.obj
-    base_url = cli_context.get_base_url()
+    base_url = cli_context.get_base_url() or DEFAULT_BASE_URL
 
     console.print("\n[bold cyan]NeMo Platform Setup[/bold cyan]\n")
 
@@ -1684,7 +1875,32 @@ def setup_command(
     effective_timeout = _SERVICE_STARTUP_TIMEOUT_SECONDS if ready_timeout is None else ready_timeout
     if effective_timeout <= 0:
         raise typer.BadParameter("--ready-timeout must be greater than 0", param_hint="--ready-timeout")
-    _maybe_start_services(base_url, auto, start_services, timeout=effective_timeout)
+    try:
+        configured_base_url = base_url
+        service_result = _maybe_start_services(base_url, auto, start_services, timeout=effective_timeout)
+        if service_result == "start_local":
+            context_name = cli_context.get_sdk_context().context_name
+            _bootstrap_config_if_missing(DEFAULT_BASE_URL, workspace)
+            Config.write({"base_url": DEFAULT_BASE_URL}, context_name=context_name)
+            cli_context.overrides["base_url"] = DEFAULT_BASE_URL
+            cli_context.reset_sdk_context()
+            base_url = DEFAULT_BASE_URL
+            service_result = _maybe_start_services(
+                base_url,
+                auto,
+                start_services=True,
+                timeout=effective_timeout,
+            )
+        if service_result == "connect_remote":
+            base_url = _prompt_remote_base_url(default_url=configured_base_url)
+            _bootstrap_config_if_missing(base_url, workspace)
+            cli_context.reset_sdk_context()
+            workspace = _resolve_setup_workspace(ctx, cli_context, workspace)
+            _configure_remote_connection(cli_context, base_url, workspace)
+            _ensure_platform_auth(cli_context)
+    except UserCancelled:
+        console.print(f"\n{WARN} Setup cancelled.")
+        raise typer.Exit(0) from None
 
     if not _check_platform_reachable_with_retries(base_url):
         console.print(f"\n{CROSS} Cannot reach platform at {base_url}")
@@ -1797,7 +2013,14 @@ def _run_auto_mode(
         skills_scope=skills_scope,
         skills_from=skills_from,
     )
-    _maybe_deploy_agent(base_url, workspace, auto=True, deploy_agent=deploy_agent, default_model=default_model)
+    _maybe_deploy_agent(
+        base_url,
+        workspace,
+        auto=True,
+        deploy_agent=deploy_agent,
+        default_model=default_model,
+        headers=_platform_request_headers(cli_context),
+    )
 
     if _verify_platform_health(base_url):
         console.print(f"\n{CHECK} [green]Setup complete![/green]")
@@ -1882,7 +2105,12 @@ def _run_interactive_mode(
 
         console.print("\n[bold]Step 7: Demo agent (optional)[/bold]\n")
         demo_deployed = _maybe_deploy_agent(
-            base_url, workspace, auto=False, deploy_agent=deploy_agent, default_model=default_model
+            base_url,
+            workspace,
+            auto=False,
+            deploy_agent=deploy_agent,
+            default_model=default_model,
+            headers=_platform_request_headers(cli_context),
         )
 
         _print_onboarding(base_url, provider_name, default_model, demo_deployed=demo_deployed)
