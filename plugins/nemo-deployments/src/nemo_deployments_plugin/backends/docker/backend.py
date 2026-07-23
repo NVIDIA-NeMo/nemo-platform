@@ -20,6 +20,7 @@ from nemo_deployments_plugin.backends.docker import volumes as volume_ops
 from nemo_deployments_plugin.backends.docker.config import DockerExecutorConfig
 from nemo_deployments_plugin.backends.docker.containers import (
     DeploymentConfigError,
+    build_docker_plan,
     build_port_bindings,
     build_volume_bindings,
     device_requests_for_gpus,
@@ -28,7 +29,6 @@ from nemo_deployments_plugin.backends.docker.containers import (
     merged_volume_mounts,
     parse_docker_backend_config,
     restart_policy_kwargs,
-    validate_config_for_docker,
 )
 from nemo_deployments_plugin.backends.docker.gpu import GPUAllocationError, get_shared_gpu_pool
 from nemo_deployments_plugin.backends.docker.ports import find_available_port
@@ -42,10 +42,13 @@ from nemo_deployments_plugin.backends.docker.status import (
 from nemo_deployments_plugin.backends.labels import (
     BACKOFF_LIMIT_LABEL,
     CONFIG_NAME_LABEL,
+    CONTAINER_ROLE_LABEL,
+    CONTAINER_ROLE_SERVER,
     DEPLOYMENT_NAME_LABEL,
     DEPLOYMENT_WORKSPACE_LABEL,
     MANAGED_BY_KEY,
     RESTART_POLICY_LABEL,
+    companion_container_name,
     container_name,
     deployment_identity_labels,
     deployment_key,
@@ -160,7 +163,7 @@ class DockerDeploymentBackend(DeploymentBackend):
         try:
             config = await self._load_deployment_config(workspace, config_name)
             config = await resolve_deployment_config_secrets(self._sdk, config)
-            container_spec = validate_config_for_docker(config)
+            plan = build_docker_plan(config)
         except DeploymentConfigError as exc:
             return BackendStatusUpdate(status="FAILED", status_message=str(exc))
         except SecretResolutionError as exc:
@@ -174,6 +177,7 @@ class DockerDeploymentBackend(DeploymentBackend):
             logger.exception("Failed to load deployment config %s/%s", workspace, config_name)
             return BackendStatusUpdate(status="FAILED", status_message=f"Failed to load deployment config: {exc}")
 
+        container_spec = plan.primary
         docker_cfg = parse_docker_backend_config(backend_config)
         if config.backend_config.docker is not None:
             docker_cfg = config.backend_config.docker
@@ -209,17 +213,30 @@ class DockerDeploymentBackend(DeploymentBackend):
                 )
             host_ports[port_spec.container_port] = host_port
 
+        # Pull all images in the group (init + primary + sidecars) up front.
         if self._executor_config.pull_images:
-            pull_error = await self._pull_image(
-                container_spec.image,
-                ngc_api_key=env_dict(container_spec).get("NGC_API_KEY"),
-            )
-            if pull_error is not None:
-                if gpu_ids and gpu_pool is not None:
-                    gpu_pool.release_gpu(dep_key)
-                return BackendStatusUpdate(status="FAILED", status_message=pull_error)
+            for container in [*plan.init_containers, container_spec, *plan.sidecars]:
+                pull_error = await self._pull_image(
+                    container.image,
+                    ngc_api_key=env_dict(container).get("NGC_API_KEY"),
+                )
+                if pull_error is not None:
+                    # A pull failure is only fatal if the image is not already
+                    # present locally. Locally-built/loaded images (e.g. the LoRA
+                    # adapters sidecar `nmp-api:local`) are not pullable from a
+                    # registry, so fall back to the local copy when it exists.
+                    # Only a genuine "not found locally" is fatal here; other
+                    # docker client errors from images.get propagate rather than
+                    # being masked as "image present".
+                    try:
+                        await asyncio.to_thread(self._client.images.get, container.image)
+                        logger.info("Image %s not pullable but present locally; using local copy", container.image)
+                    except (self._docker_errors.ImageNotFound, self._docker_errors.NotFound):
+                        if gpu_ids and gpu_pool is not None:
+                            gpu_pool.release_gpu(dep_key)
+                        return BackendStatusUpdate(status="FAILED", status_message=pull_error)
 
-        all_labels = {
+        base_labels = {
             **labels,
             **config.labels,
             **deployment_identity_labels(
@@ -230,12 +247,100 @@ class DockerDeploymentBackend(DeploymentBackend):
                 backoff_limit=config.backoff_limit,
             ),
         }
+
+        # 1) Init containers run to completion, in order, before the group starts.
+        for init in plan.init_containers:
+            init_status = await self._run_init_container(
+                workspace=workspace,
+                name=name,
+                config=config,
+                init=init,
+                base_labels=base_labels,
+                dep_key=dep_key,
+                gpu_ids=gpu_ids,
+            )
+            if init_status is not None:
+                return init_status
+
+        # 2) Primary (server) container: publishes ports, owns GPUs.
+        server_run_kwargs = self._build_run_kwargs(
+            workspace=workspace,
+            config=config,
+            container=container_spec,
+            name=c_name,
+            labels={**base_labels, CONTAINER_ROLE_LABEL: CONTAINER_ROLE_SERVER},
+            host_ports=host_ports,
+            gpu_ids=gpu_ids,
+            network=docker_cfg.network,
+        )
+        try:
+            await asyncio.to_thread(self._client.containers.run, **server_run_kwargs)
+        except Exception as exc:
+            if gpu_ids and gpu_pool is not None:
+                gpu_pool.release_gpu(dep_key)
+            logger.exception("Failed to start container %s", c_name)
+            return BackendStatusUpdate(status="FAILED", status_message=f"Failed to start container: {exc}")
+
+        # 3) Sidecars share the primary's network namespace + volumes; no ports/GPU.
+        #
+        # Known limitation: a sidecar joins ``network=container:<server>``, so it
+        # is tied to *this* server container instance. Docker's Always restart
+        # policy restarts the same server container in place (netns preserved), so
+        # ordinary server crashes are fine. But if the server container is ever
+        # replaced by a *new* container (a fresh create rather than an in-place
+        # restart), the sidecar's netns reference dangles and nothing re-runs the
+        # sidecars. Today a full recreate goes through delete_model_deployment
+        # (which tears down the whole group) before create, so the sidecars are
+        # re-run together; a future partial/primary-only recreate would need to
+        # recreate the whole group to stay consistent.
+        for sidecar in plan.sidecars:
+            sidecar_name = companion_container_name(workspace, name, sidecar.name)
+            sidecar_run_kwargs = self._build_run_kwargs(
+                workspace=workspace,
+                config=config,
+                container=sidecar,
+                name=sidecar_name,
+                labels={**base_labels, CONTAINER_ROLE_LABEL: sidecar.name},
+                host_ports={},
+                gpu_ids=[],
+                network=f"container:{c_name}",
+            )
+            try:
+                await asyncio.to_thread(self._client.containers.run, **sidecar_run_kwargs)
+            except Exception as exc:
+                logger.exception("Failed to start sidecar container %s", sidecar_name)
+                # Tear the whole group down so we don't leave a half-started deployment.
+                await self.delete_deployment(workspace, name)
+                return BackendStatusUpdate(
+                    status="FAILED", status_message=f"Failed to start sidecar {sidecar.name}: {exc}"
+                )
+
+        endpoints = self._build_endpoints(container_spec, host_ports)
+        return BackendStatusUpdate(
+            status="STARTING",
+            status_message=f"Container {c_name} created",
+            endpoints=endpoints,
+        )
+
+    def _build_run_kwargs(
+        self,
+        *,
+        workspace: str,
+        config: DeploymentConfig,
+        container: Container,
+        name: str,
+        labels: dict[str, str],
+        host_ports: dict[int, int],
+        gpu_ids: list[int],
+        network: str | None,
+    ) -> dict[str, Any]:
+        """Build docker ``containers.run`` kwargs for one container in a group."""
         run_kwargs: dict[str, Any] = {
-            "image": container_spec.image,
-            "name": c_name,
+            "image": container.image,
+            "name": name,
             "detach": True,
-            "labels": all_labels,
-            "environment": env_dict(container_spec),
+            "labels": labels,
+            "environment": env_dict(container),
             **restart_policy_kwargs(config.restart_policy, config.backoff_limit),
         }
         # Mirror Kubernetes semantics (see the k8s compiler): a container spec's
@@ -244,39 +349,100 @@ class DockerDeploymentBackend(DeploymentBackend):
         # kwargs so a driven container overrides the image's baked-in ENTRYPOINT
         # instead of appending to it. Conflating both into docker ``command``
         # leaves the image ENTRYPOINT in force and silently drops the spec.
-        if container_spec.command:
-            run_kwargs["entrypoint"] = list(container_spec.command)
-        if container_spec.args:
-            run_kwargs["command"] = list(container_spec.args)
+        if container.command:
+            run_kwargs["entrypoint"] = list(container.command)
+        if container.args:
+            run_kwargs["command"] = list(container.args)
 
-        volume_bindings = build_volume_bindings(workspace, merged_volume_mounts(config, container_spec))
+        volume_bindings = build_volume_bindings(workspace, merged_volume_mounts(config, container))
         if volume_bindings:
             run_kwargs["volumes"] = volume_bindings
 
-        if container_spec.ports:
-            run_kwargs["ports"] = build_port_bindings(container_spec, host_ports)
+        # When joining another container's network namespace, docker forbids
+        # publishing ports (they belong to the primary). Only the primary maps
+        # host ports.
+        if network is not None and network.startswith("container:"):
+            run_kwargs["network"] = network
+        else:
+            if container.ports:
+                run_kwargs["ports"] = build_port_bindings(container, host_ports)
+            if network:
+                run_kwargs["network"] = network
 
         device_requests = device_requests_for_gpus(gpu_ids)
         if device_requests:
             run_kwargs["device_requests"] = device_requests
 
-        if docker_cfg.network:
-            run_kwargs["network"] = docker_cfg.network
+        return run_kwargs
+
+    async def _run_init_container(
+        self,
+        *,
+        workspace: str,
+        name: str,
+        config: DeploymentConfig,
+        init: Container,
+        base_labels: dict[str, str],
+        dep_key: str,
+        gpu_ids: list[int],
+    ) -> BackendStatusUpdate | None:
+        """Run one init container to completion. Return an error status or None on success."""
+        init_name = companion_container_name(workspace, name, f"init-{init.name}")
+        # Best-effort clean any stale init container from a prior attempt.
+        try:
+            stale = await asyncio.to_thread(self._client.containers.get, init_name)
+            await asyncio.to_thread(stale.remove, force=True)
+        except self._docker_errors.NotFound:
+            pass
+        except Exception:
+            logger.warning("Failed to remove stale init container %s", init_name, exc_info=True)
+
+        # Init containers are intentionally CPU-only: no device_requests is set,
+        # so they never receive a GPU. This suits the current init workload
+        # (lora-cache-init prepares the scratch dir). If the models compiler ever
+        # emits a GPU-needing init container, this would need to plumb GPUs
+        # through here.
+        run_kwargs: dict[str, Any] = {
+            "image": init.image,
+            "name": init_name,
+            "detach": True,
+            "labels": {**base_labels, CONTAINER_ROLE_LABEL: f"init-{init.name}"},
+            "environment": env_dict(init),
+        }
+        if init.command:
+            run_kwargs["entrypoint"] = list(init.command)
+        if init.args:
+            run_kwargs["command"] = list(init.args)
+        volume_bindings = build_volume_bindings(workspace, merged_volume_mounts(config, init))
+        if volume_bindings:
+            run_kwargs["volumes"] = volume_bindings
+
+        def _run_and_wait() -> int:
+            container = self._client.containers.run(**run_kwargs)
+            result = container.wait(timeout=self._executor_config.docker_timeout)
+            exit_code = int(result.get("StatusCode", 1)) if isinstance(result, dict) else int(result)
+            try:
+                container.remove(force=True)
+            except Exception:
+                logger.warning("Failed to remove init container %s", init_name, exc_info=True)
+            return exit_code
 
         try:
-            await asyncio.to_thread(self._client.containers.run, **run_kwargs)
+            exit_code = await asyncio.to_thread(_run_and_wait)
         except Exception as exc:
-            if gpu_ids and gpu_pool is not None:
-                gpu_pool.release_gpu(dep_key)
-            logger.exception("Failed to start container %s", c_name)
-            return BackendStatusUpdate(status="FAILED", status_message=f"Failed to start container: {exc}")
+            if gpu_ids and self._gpu_pool is not None:
+                self._gpu_pool.release_gpu(dep_key)
+            logger.exception("Init container %s failed to run", init_name)
+            return BackendStatusUpdate(status="FAILED", status_message=f"Init container {init.name} failed: {exc}")
 
-        endpoints = self._build_endpoints(container_spec, host_ports)
-        return BackendStatusUpdate(
-            status="STARTING",
-            status_message=f"Container {c_name} created",
-            endpoints=endpoints,
-        )
+        if exit_code != 0:
+            if gpu_ids and self._gpu_pool is not None:
+                self._gpu_pool.release_gpu(dep_key)
+            return BackendStatusUpdate(
+                status="FAILED",
+                status_message=f"Init container {init.name} exited with code {exit_code}",
+            )
+        return None
 
     async def read_status(self, *, workspace: str, name: str) -> BackendStatusUpdate:
         c_name = container_name(workspace, name)
@@ -324,6 +490,13 @@ class DockerDeploymentBackend(DeploymentBackend):
                 host_ports=host_ports,
             )
             if ready and restart_policy == "Always":
+                sidecar_ok, sidecar_reason = await self._sidecars_healthy(workspace, name, config)
+                if not sidecar_ok:
+                    return BackendStatusUpdate(
+                        status="STARTING",
+                        status_message=f"Server ready but sidecar not ready ({sidecar_reason})",
+                        endpoints=endpoints,
+                    )
                 return BackendStatusUpdate(
                     status="READY",
                     status_message=f"Container running and ready ({reason})",
@@ -387,17 +560,92 @@ class DockerDeploymentBackend(DeploymentBackend):
 
         return BackendStatusUpdate(status="STARTING", status_message=f"Container state: {state}")
 
+    async def _sidecars_healthy(self, workspace: str, name: str, config: DeploymentConfig | None) -> tuple[bool, str]:
+        """Return (all_healthy, reason) for a deployment's expected sidecar containers.
+
+        The set of expected sidecars is derived from the deployment ``config``
+        (every container after the primary), so a sidecar that has been *removed*
+        entirely — not just exited — is still detected as not-ready. A sidecar is
+        healthy only when a container for its role is present AND running; an
+        exited or missing sidecar keeps the deployment out of READY (its Always
+        restart policy recreates an exited one; a missing one signals a broken
+        group).
+
+        Deployments with no sidecars (the common single-container case) skip the
+        Docker enumeration entirely.
+        """
+        expected_roles = {sidecar.name for sidecar in build_docker_plan(config).sidecars} if config else set()
+        if not expected_roles:
+            return True, "no sidecars"
+
+        def _list() -> list[Any]:
+            return self._client.containers.list(
+                all=True,
+                filters={
+                    "label": [
+                        f"{MANAGED_BY_KEY}={MANAGED_BY_LABEL}",
+                        f"{DEPLOYMENT_WORKSPACE_LABEL}={workspace}",
+                        f"{DEPLOYMENT_NAME_LABEL}={name}",
+                    ]
+                },
+            )
+
+        try:
+            containers = await asyncio.to_thread(_list)
+        except Exception:
+            # If we cannot enumerate the group, do not block readiness on it.
+            logger.warning("Failed to list sidecars for %s/%s", workspace, name, exc_info=True)
+            return True, "sidecar check skipped"
+
+        running_roles: set[str] = set()
+        for container in containers:
+            role = (container.labels or {}).get(CONTAINER_ROLE_LABEL, "")
+            if role not in expected_roles:
+                continue
+            if container.status != "running":
+                return False, f"sidecar '{role}' is {container.status}"
+            running_roles.add(role)
+
+        missing = expected_roles - running_roles
+        if missing:
+            return False, f"sidecar '{sorted(missing)[0]}' is missing"
+        return True, "sidecars running"
+
     async def delete_deployment(self, workspace: str, name: str) -> BackendStatusUpdate:
         c_name = container_name(workspace, name)
         dep_key = deployment_key(workspace, name)
 
         def _delete() -> None:
+            # Remove every container in the deployment group: the primary
+            # (dep-<hash>) plus any companion sidecar/init containers, which are
+            # discoverable by the shared deployment identity labels.
+            group: dict[str, Any] = {}
             try:
-                container = self._client.containers.get(c_name)
-                container.stop(timeout=30)
-                container.remove(force=True)
-            except self._docker_errors.NotFound:
-                return
+                for container in self._client.containers.list(
+                    all=True,
+                    filters={
+                        "label": [
+                            f"{MANAGED_BY_KEY}={MANAGED_BY_LABEL}",
+                            f"{DEPLOYMENT_WORKSPACE_LABEL}={workspace}",
+                            f"{DEPLOYMENT_NAME_LABEL}={name}",
+                        ]
+                    },
+                ):
+                    group[container.name] = container
+            except Exception:
+                logger.warning("Failed to list group containers for %s; falling back to primary", c_name, exc_info=True)
+            # Ensure the primary is included even if the label list query missed it.
+            if c_name not in group:
+                try:
+                    group[c_name] = self._client.containers.get(c_name)
+                except self._docker_errors.NotFound:
+                    pass
+            for container in group.values():
+                try:
+                    container.stop(timeout=30)
+                    container.remove(force=True)
+                except self._docker_errors.NotFound:
+                    continue
 
         try:
             await asyncio.to_thread(_delete)
@@ -462,14 +710,25 @@ class DockerDeploymentBackend(DeploymentBackend):
     ) -> VolumeStatusUpdate:
         del size, access_modes
         driver = "local"
+        init_chmod: str | None = None
+        init_image: str | None = None
         docker_section = backend_config.get("docker") or {}
-        if isinstance(docker_section, dict) and docker_section.get("driver"):
-            driver = str(docker_section["driver"])
+        if isinstance(docker_section, dict):
+            if docker_section.get("driver"):
+                driver = str(docker_section["driver"])
+            # initChmod/initImage let the compiler request the volume be made
+            # writable by non-root workloads (docker analogue of k8s fsGroup).
+            if docker_section.get("initChmod"):
+                init_chmod = str(docker_section["initChmod"])
+            if docker_section.get("initImage"):
+                init_image = str(docker_section["initImage"])
         return await volume_ops.create_volume(
             self._client,
             workspace=workspace,
             name=name,
             driver=driver,
+            init_chmod=init_chmod,
+            init_image=init_image,
         )
 
     async def read_volume_status(

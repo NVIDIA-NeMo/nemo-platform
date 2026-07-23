@@ -3,17 +3,23 @@
 
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
-import { Button, Flex, Tag, Text } from '@nvidia/foundations-react-core';
+import { Button, Flex, SegmentedControl, Tag, Text } from '@nvidia/foundations-react-core';
 import type { StartOptionTag } from '@studio/components/CreateFilesetStart/types';
 import type { JobBuilderFormValues } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
-import { FileJson, Pencil } from 'lucide-react';
+import { FileJson, ListTree, Pencil, SplinePointer } from 'lucide-react';
 import { type FC, useState } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
+
+/** Which renderer the center pane shows: the flat schema list or the DAG canvas. */
+export type BuilderViewMode = 'list' | 'canvas';
 
 export interface BuilderToolbarProps {
   /** The template's badge (recipe use case), shown when building from a template. */
   templateTag?: StartOptionTag;
   columnCount: number;
+  /** Which renderer the center pane shows. */
+  viewMode: BuilderViewMode;
+  onViewModeChange: (mode: BuilderViewMode) => void;
   onPreview: () => void;
   isPreviewing: boolean;
   onSubmit: () => void;
@@ -23,6 +29,8 @@ export interface BuilderToolbarProps {
 export const BuilderToolbar: FC<BuilderToolbarProps> = ({
   templateTag,
   columnCount,
+  viewMode,
+  onViewModeChange,
   onPreview,
   isPreviewing,
   onSubmit,
@@ -47,6 +55,7 @@ export const BuilderToolbar: FC<BuilderToolbarProps> = ({
           <ControlledTextInput
             autoFocus
             useControllerProps={{ name: 'name' }}
+            value={name}
             onBlur={() => setIsEditingName(false)}
             formFieldProps={{ className: 'w-[220px]' }}
             attributes={{ Input: { 'aria-label': 'Fileset name' } }}
@@ -79,6 +88,15 @@ export const BuilderToolbar: FC<BuilderToolbarProps> = ({
       </Flex>
 
       <Flex align="center" gap="density-md">
+        <SegmentedControl
+          size="tiny"
+          value={viewMode}
+          onValueChange={(value) => onViewModeChange(value as BuilderViewMode)}
+          items={[
+            { value: 'list', children: <ListTree /> },
+            { value: 'canvas', children: <SplinePointer /> },
+          ]}
+        />
         <Flex align="center" gap="density-sm">
           <Text kind="body/regular/sm" className="text-secondary whitespace-nowrap">
             Rows

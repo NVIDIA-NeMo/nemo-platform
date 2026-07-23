@@ -17,7 +17,10 @@ import { BuilderCanvas } from '@studio/routes/DataDesignerJobBuildRoute/BuilderC
 import { BuilderConfigPane } from '@studio/routes/DataDesignerJobBuildRoute/BuilderConfigPane';
 import { BuilderDetailsPanel } from '@studio/routes/DataDesignerJobBuildRoute/BuilderDetailsPanel';
 import { BuilderPalette } from '@studio/routes/DataDesignerJobBuildRoute/BuilderPalette';
-import { BuilderToolbar } from '@studio/routes/DataDesignerJobBuildRoute/BuilderToolbar';
+import {
+  BuilderToolbar,
+  type BuilderViewMode,
+} from '@studio/routes/DataDesignerJobBuildRoute/BuilderToolbar';
 import {
   buildDataDesignerConfig,
   validateColumns,
@@ -26,6 +29,7 @@ import {
   buildServedModelNames,
   validateModels,
 } from '@studio/routes/DataDesignerJobBuildRoute/models';
+import { SchemaList } from '@studio/routes/DataDesignerJobBuildRoute/SchemaList';
 import { useJobBuilder } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
 import {
   getDataDesignerJobDetailsRoute,
@@ -89,6 +93,7 @@ export const DataDesignerJobBuildRoute: FC = () => {
     [providersPage?.data]
   );
 
+  const [viewMode, setViewMode] = useState<BuilderViewMode>('list');
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
@@ -161,6 +166,8 @@ export const DataDesignerJobBuildRoute: FC = () => {
           <BuilderToolbar
             templateTag={template?.tag}
             columnCount={builder.columnCount}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
             onPreview={handlePreview}
             isPreviewing={isPreviewing}
             onSubmit={handleSubmit}
@@ -188,11 +195,19 @@ export const DataDesignerJobBuildRoute: FC = () => {
             />
 
             <div className="relative min-w-0 flex-1">
-              <BuilderCanvas
-                focusNodeId={builder.focusId}
-                onNodeClick={builder.selectColumn}
-                onNodeDelete={builder.removeColumn}
-              />
+              {viewMode === 'list' ? (
+                <SchemaList
+                  selectedId={builder.selectedColumnId}
+                  onSelect={builder.selectColumn}
+                  onDelete={builder.removeColumn}
+                />
+              ) : (
+                <BuilderCanvas
+                  focusNodeId={builder.focusId}
+                  onNodeClick={builder.selectColumn}
+                  onNodeDelete={builder.removeColumn}
+                />
+              )}
             </div>
 
             <BuilderConfigPane

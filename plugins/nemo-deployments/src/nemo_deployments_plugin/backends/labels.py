@@ -25,6 +25,14 @@ CONFIG_NAME_LABEL = "nemo.nvidia.com/deployment-config"
 VOLUME_WORKSPACE_LABEL = "nemo.nvidia.com/volume-workspace"
 VOLUME_NAME_LABEL = "nemo.nvidia.com/volume-name"
 BACKOFF_LIMIT_LABEL = "nemo.nvidia.com/backoff-limit"
+# Role of a docker container within a multi-container deployment group
+# (e.g. "server" or a sidecar container name). Used to discover companion
+# containers (LoRA adapters sidecar) that share the primary server container.
+CONTAINER_ROLE_LABEL = "nemo.nvidia.com/container-role"
+
+# The primary container in a deployment group keeps the canonical deployment
+# name (``container_name``); companions derive their names from it plus role.
+CONTAINER_ROLE_SERVER = "server"
 
 
 def deployment_key(workspace: str, name: str) -> str:
@@ -33,8 +41,22 @@ def deployment_key(workspace: str, name: str) -> str:
 
 
 def container_name(workspace: str, deployment_name: str) -> str:
-    """Docker container name for a deployment (``dep-`` prefix, hashed identity)."""
+    """Docker container name for a deployment (``dep-`` prefix, hashed identity).
+
+    This is the *primary* (server) container of a deployment group. Companion
+    containers (init/sidecar) derive their names from it via
+    :func:`companion_container_name`.
+    """
     return k8s_deployment_resource_name(workspace, deployment_name)
+
+
+def companion_container_name(workspace: str, deployment_name: str, role: str) -> str:
+    """Docker container name for a companion (sidecar/init) container in a group.
+
+    Derived from the primary container name so the whole group shares the
+    ``dep-<hash>`` stem and is easy to discover/tear down together.
+    """
+    return f"{container_name(workspace, deployment_name)}-{role}"
 
 
 def docker_volume_name(workspace: str, volume_name: str) -> str:

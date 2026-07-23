@@ -74,7 +74,7 @@ nemo setup
 
 The wizard walks through each stage:
 
-1. **Start services** — launches the platform locally
+1. **Connect to the platform** — uses a running platform, starts services locally, or connects to a remote instance
 2. **Choose a provider** — select your model provider and enter your API key
 3. **Register the provider** — connects the provider to the platform
 4. **Discover models** — finds available models from your provider
@@ -83,6 +83,21 @@ The wizard walks through each stage:
 7. **Deploy agent** — optionally deploys a demo calculator agent on the platform
 
 Each stage is idempotent — you can re-run `nemo setup` at any time to add more providers or update your configuration.
+
+### Connect to an existing deployment
+
+When the configured platform is not reachable, the setup wizard offers three choices:
+
+```text
+Platform not reachable at http://localhost:8080. Start local services?
+  1. Yes, start services now
+  2. No, I want to connect to a remote Platform instance
+  3. No, I'll start them myself
+```
+
+Choose the remote option and enter the deployment's base URL. Setup verifies the URL, saves it to the active CLI context, and starts the existing OIDC login flow when the deployment has authentication enabled. It then continues with provider, model, skills, and demo-agent setup.
+
+This connects the local CLI to an existing deployment; it does not install the platform on a remote host.
 
 ### Auth and OIDC source installs
 
@@ -182,6 +197,12 @@ nemo setup --auto --start-services --install-skills --deploy-agent
 # Provider only (platform already running)
 export OPENAI_API_KEY=sk-...
 nemo setup --auto
+
+# Connect to an authenticated remote platform without prompts
+export NMP_BASE_URL=https://nmp.example.com
+export NMP_ACCESS_TOKEN=...
+export OPENAI_API_KEY=sk-...
+nemo setup --auto --no-start-services
 
 # Skip skills and agent
 nemo setup --no-install-skills --no-deploy-agent

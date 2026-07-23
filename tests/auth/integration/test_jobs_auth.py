@@ -1,13 +1,16 @@
-"""E2E tests for jobs with auth enabled.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 
-Local E2E runs translate ``cpu/default`` container steps to the subprocess
-backend, so these tests intentionally omit ``container.image`` and rely only on
-the command shape that subprocess consumes.
+"""Integration tests for jobs with auth enabled.
+
+These tests run against the auth-enabled subprocess services pool. The job steps
+use the local cpu/default -> subprocess translation, so the suite does not
+require a container runtime or Kubernetes cluster.
 """
 
 import logging
-from collections.abc import Iterator
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack
+from uuid import uuid4
 
 import pytest
 from nemo_platform import NeMoPlatform
@@ -27,7 +30,9 @@ from nmp.core.jobs.controllers.diagnostics import collect_job_diagnostics
 from nmp.testing import TEST_ADMIN_EMAIL, grant_workspace_role, short_unique_name, unique_email
 from nmp.testing.e2e import wait_for_platform_job
 
-JOB_SOURCE = "e2e-auth-test"
+from tests.auth.integration.jobs_auth_helpers import job_exists_in_pages, managed_admin_workspace
+
+JOB_SOURCE = "integration-auth-test"
 logger = logging.getLogger(__name__)
 
 pytestmark = [
@@ -40,14 +45,20 @@ def _as_bearer_user(
     sdk: NeMoPlatform,
     email: str,
     *,
+    principal_id: str | None = None,
     groups: list[str] | None = None,
 ) -> NeMoPlatform:
     token = generate_unsigned_jwt(
-        principal_id=email,
+        principal_id=principal_id or email,
         email=email,
         groups=groups,
     )
     return sdk.with_options(set_default_headers={"Authorization": f"Bearer {token}"})
+
+
+def _oidc_subject() -> str:
+    """Return an IdP-style subject id distinct from the user's email."""
+    return str(uuid4())
 
 
 def _log_auth_job_diagnostics(
@@ -76,28 +87,15 @@ def _log_auth_job_diagnostics(
     )
 
 
-@contextmanager
-def _managed_admin_workspace(admin_sdk: NeMoPlatform, workspace_name: str) -> Iterator[str]:
-    admin_sdk.workspaces.create(name=workspace_name)
-    try:
-        yield workspace_name
-    finally:
-        admin_sdk.workspaces.delete(workspace_name)
-
-
-def _job_exists_in_pages(jobs_page: object, job_name: str) -> bool:
-    return any(item.name == job_name for page in jobs_page.iter_pages() for item in page.data)
-
-
-def test_job_principal_propagation(sdk: NeMoPlatform):
-    admin_sdk = _as_bearer_user(sdk, TEST_ADMIN_EMAIL, groups=["admin"])
+def test_job_principal_propagation(services_pool_sdk: NeMoPlatform):
+    admin_sdk = _as_bearer_user(services_pool_sdk, TEST_ADMIN_EMAIL, groups=["admin"])
     user_email = unique_email("job-creator")
     workspace_name = short_unique_name("job-auth-test")
 
-    with _managed_admin_workspace(admin_sdk, workspace_name):
+    with managed_admin_workspace(admin_sdk, workspace_name):
         grant_workspace_role(admin_sdk, workspace=workspace_name, principal=user_email, roles=["Editor"])
 
-        user_sdk = _as_bearer_user(sdk, user_email)
+        user_sdk = _as_bearer_user(services_pool_sdk, user_email, principal_id=_oidc_subject())
         job = user_sdk.jobs.create(
             workspace=workspace_name,
             source=JOB_SOURCE,
@@ -136,8 +134,8 @@ def test_job_principal_propagation(sdk: NeMoPlatform):
         assert file_content == b"auth propagation test"
 
 
-def test_job_cannot_access_unauthorized_workspace(sdk: NeMoPlatform):
-    admin_sdk = _as_bearer_user(sdk, TEST_ADMIN_EMAIL, groups=["admin"])
+def test_job_cannot_access_unauthorized_workspace(services_pool_sdk: NeMoPlatform):
+    admin_sdk = _as_bearer_user(services_pool_sdk, TEST_ADMIN_EMAIL, groups=["admin"])
     owner_email = unique_email("owner")
     other_email = unique_email("other")
 
@@ -145,13 +143,13 @@ def test_job_cannot_access_unauthorized_workspace(sdk: NeMoPlatform):
     runner_workspace = short_unique_name("runner")
 
     with ExitStack() as stack:
-        stack.enter_context(_managed_admin_workspace(admin_sdk, restricted_workspace))
-        stack.enter_context(_managed_admin_workspace(admin_sdk, runner_workspace))
+        stack.enter_context(managed_admin_workspace(admin_sdk, restricted_workspace))
+        stack.enter_context(managed_admin_workspace(admin_sdk, runner_workspace))
         grant_workspace_role(admin_sdk, workspace=restricted_workspace, principal=owner_email, roles=["Editor"])
         grant_workspace_role(admin_sdk, workspace=runner_workspace, principal=other_email, roles=["Editor"])
 
-        owner_sdk = _as_bearer_user(sdk, owner_email)
-        other_sdk = _as_bearer_user(sdk, other_email)
+        owner_sdk = _as_bearer_user(services_pool_sdk, owner_email, principal_id=_oidc_subject())
+        other_sdk = _as_bearer_user(services_pool_sdk, other_email, principal_id=_oidc_subject())
 
         fileset_name = "private-data"
         files = client_from_platform(owner_sdk, FilesClient)
@@ -215,15 +213,15 @@ def test_job_cannot_access_unauthorized_workspace(sdk: NeMoPlatform):
         assert "403" in task.error_stack and "Forbidden" in task.error_stack
 
 
-def test_job_admin_can_list_jobs_in_all_workspaces(sdk: NeMoPlatform):
-    admin_sdk = _as_bearer_user(sdk, TEST_ADMIN_EMAIL, groups=["admin"])
+def test_job_admin_can_list_jobs_in_all_workspaces(services_pool_sdk: NeMoPlatform):
+    admin_sdk = _as_bearer_user(services_pool_sdk, TEST_ADMIN_EMAIL, groups=["admin"])
     user_email = unique_email("member")
     workspace_name = short_unique_name("admin-list-jobs")
 
-    with _managed_admin_workspace(admin_sdk, workspace_name):
+    with managed_admin_workspace(admin_sdk, workspace_name):
         grant_workspace_role(admin_sdk, workspace=workspace_name, principal=user_email, roles=["Editor"])
 
-        user_sdk = _as_bearer_user(sdk, user_email)
+        user_sdk = _as_bearer_user(services_pool_sdk, user_email, principal_id=_oidc_subject())
         job = user_sdk.jobs.create(
             workspace=workspace_name,
             source=JOB_SOURCE,
@@ -248,4 +246,4 @@ def test_job_admin_can_list_jobs_in_all_workspaces(sdk: NeMoPlatform):
 
         jobs = admin_sdk.jobs.list(workspace=ALL_WORKSPACES)
         assert jobs.pagination is not None
-        assert _job_exists_in_pages(jobs, job.name)
+        assert job_exists_in_pages(jobs, job.name)

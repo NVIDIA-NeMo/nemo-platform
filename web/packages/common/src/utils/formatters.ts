@@ -126,6 +126,18 @@ export const toScientificNotation = (value: number) => {
   return value.toString();
 };
 
+/**
+ * Formats an evaluator score for display as a raw number. Evaluator values are stored as bare
+ * floats with no scale metadata, so we cannot know whether one is a ratio, a pass/fail flag, or a
+ * point count — rendering everything as a percentage (the old behavior) turned an integer `1` into
+ * a misleading `100%`. Show the number as-is instead: `toFixed(3)` bounds the precision, then
+ * trailing zeros are stripped so integers stay integers (`1`) and fractions read cleanly (`0.603`).
+ */
+export const formatEvaluatorScore = (value: number | null | undefined): string => {
+  if (value == null || !Number.isFinite(value)) return '-';
+  return value.toFixed(3).replace(/\.?0+$/, '');
+};
+
 const COLORS = ['#76b900', '#9525c6', '#ef9100', '#d2308e', '#1dbba4'];
 /**
  * Returns a color array of length N using the secondary color palette from KUI. Repeats past 5 colors.
