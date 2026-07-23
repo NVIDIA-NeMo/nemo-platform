@@ -146,23 +146,40 @@ def _resolved_docker_lora() -> ResolvedPluginDeployment:
 
 
 @pytest.mark.asyncio
-async def test_docker_lora_fails_fast_before_touching_substrate() -> None:
+async def test_docker_lora_creates_substrate() -> None:
+    """Docker + LoRA is now supported: it creates substrate like any other deploy.
+
+    The docker backend runs the LoRA shape as a multi-container group (server +
+    adapters sidecar) so there is no longer a fast-fail guardrail.
+    """
     backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
     backend.init()
     backend._entities = AsyncMock()
+    created: list[object] = []
+
+    async def _create(entity: object) -> object:
+        created.append(entity)
+        return entity
+
+    backend._entities.create = AsyncMock(side_effect=_create)
+    backend._entities.get = AsyncMock(side_effect=NemoEntityNotFoundError("missing"))
+    backend._entities.delete = AsyncMock(side_effect=NemoEntityNotFoundError("missing"))
     with (
         patch(
             "nmp.core.models.controllers.backends.deployments_plugin.backend.resolve_plugin_deployment",
             return_value=_resolved_docker_lora(),
         ),
-        patch.object(backend, "delete_model_deployment", AsyncMock()) as delete_mock,
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.backend.executor_for_runtime",
+            return_value="local-docker",
+        ),
     ):
         result = await backend.create_model_deployment(_ctx())
-    assert result.status == "ERROR"
-    assert "docker" in result.status_message.lower()
-    assert "lora" in result.status_message.lower()
-    delete_mock.assert_not_called()
-    backend._entities.create.assert_not_called()
+
+    assert result.status == "PENDING"
+    # Substrate is created (volume(s) + puller + server configs/deployments),
+    # not rejected. The server config carries the multi-container LoRA shape.
+    assert any(isinstance(item, Deployment) and item.name == "my-dep-server" for item in created)
 
 
 @pytest.mark.asyncio
