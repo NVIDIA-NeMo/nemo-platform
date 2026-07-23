@@ -6,6 +6,7 @@ import type { SafeSynthesizerJobRequest } from '@nemo/sdk/generated/safe-synthes
 import {
   DEFAULT_PRETRAINED_MODEL,
   MAX_NUM_RECORDS,
+  PRETRAINED_MODEL_OPTIONS,
 } from '@studio/routes/SafeSynthesizerNewRoute/constants';
 import { z } from 'zod';
 
@@ -103,7 +104,7 @@ export const safeSynthesizerJobRequestSchema = z.object({
               }
             ),
           rope_scaling_factor: z.union([z.literal('auto'), z.number().int().min(1).max(6)]),
-          pretrained_model: z.string().optional(),
+          pretrained_model: z.enum(PRETRAINED_MODEL_OPTIONS).optional(),
         })
         .optional(),
       generation: z
