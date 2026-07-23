@@ -3384,23 +3384,21 @@ components:
         optimize_config:
           type: string
           title: Optimize Config
-          description: Path to the NAT optimization YAML config file.  When ``optimize_config_fileset``
-            is set, this is interpreted relative to the downloaded fileset's contents.
+          description: Path to the NAT optimization YAML config file, interpreted
+            relative to the downloaded fileset when ``optimize_config_fileset`` is
+            set.
         optimize_config_fileset:
           title: Optimize Config Fileset
-          description: Optional fileset reference (``name`` or ``workspace/name``)
-            that pre-stages the optimize YAML and any sibling files (e.g. dataset).  Used
-            by platform-managed submissions where the config is uploaded to a fileset
-            before the job is submitted; local CLI runs leave this ``None`` and let
-            ``optimize_config`` be a real local path.
+          description: Optional fileset (``name`` or ``workspace/name``) that pre-stages
+            the optimize YAML and its sibling inputs for remote submissions; leave
+            unset for local CLI runs where ``optimize_config`` is a real path.
           type: string
         output:
           title: Output
-          description: "Where to write optimizer outputs (best params, per-trial results)\
-            \ \u2014 either a local directory (path-shaped: starts with '/', './',\
-            \ '../', '~/') or a NeMo Platform fileset reference ('name' or 'workspace/name').\
-            \  Filesets are created on demand if missing.  Defaults to <ctx.storage.persistent>/results\
-            \ (the platform-injected persistent volume) when not provided."
+          description: "Where to write optimizer outputs \u2014 a local directory\
+            \ (path-shaped: '/', './', '../', '~/') or a NeMo Platform fileset ('name'\
+            \ or 'workspace/name', auto-created), defaulting to the platform-persistent\
+            \ results dir when unset."
           type: string
         workspace:
           type: string

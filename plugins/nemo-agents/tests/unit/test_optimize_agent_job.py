@@ -127,6 +127,23 @@ async def test_compile_allows_relative_config_with_fileset() -> None:
     assert config["optimize_config_fileset"] == "nemo-agent-optimize-calc"
 
 
+@pytest.mark.asyncio
+async def test_compile_rejects_absolute_config_with_fileset() -> None:
+    spec = OptimizeAgentSpec(
+        optimize_config="/abs/optimize.yml",
+        optimize_config_fileset=FilesetRef("nemo-agent-optimize-calc"),
+        workspace="default",
+    )
+    with pytest.raises(ValueError, match="relative"):
+        await OptimizeAgentJob.compile(
+            workspace="default",
+            spec=spec,
+            entity_client=MagicMock(),
+            job_name=None,
+            async_sdk=MagicMock(),
+        )
+
+
 def test_run_stages_config_from_fileset(tmp_path: Path, ctx: JobContext) -> None:
     sdk = MagicMock()
 
