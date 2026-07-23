@@ -25,7 +25,7 @@ const pathParams = {
   [RP.evalConfigName]: '',
   [RP.safeSynthesizerJobName]: '',
   [RP.dataDesignerJobName]: '',
-  [RP.traceId]: 'trace-1',
+  [RP.sessionId]: 'session-1',
   [RP.deploymentName]: '',
   [RP.deploymentPanelView]: '',
   [RP.agentName]: '',

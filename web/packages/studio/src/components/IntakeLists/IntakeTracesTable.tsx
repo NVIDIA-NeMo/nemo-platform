@@ -21,7 +21,7 @@ import {
 import { IntakePayloadPreviewCell } from '@studio/components/IntakeLists/IntakePayloadPreviewCell';
 import { IntakeTelemetryDataView } from '@studio/components/IntakeLists/IntakeTelemetryDataView';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
-import { getIntakeTraceRoute } from '@studio/routes/utils';
+import { getIntakeSessionTraceRoute } from '@studio/routes/utils';
 import {
   formatCost,
   formatDurationMs,
@@ -217,7 +217,9 @@ const SeededIntakeTracesTable: FC<
           </>
         </EditColumnsMenu>
       }
-      onRowClick={(trace) => navigate(getIntakeTraceRoute(requestWorkspace, trace.id))}
+      onRowClick={(trace) =>
+        navigate(getIntakeSessionTraceRoute(requestWorkspace, trace.session_id, trace.id))
+      }
       attributes={{
         DataViewRoot: {
           data: tracesResponse?.data ?? [],
