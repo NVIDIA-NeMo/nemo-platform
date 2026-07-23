@@ -10,11 +10,10 @@ from data_designer.engine.resources.seed_reader import (
     SeedReaderError,
     SeedReaderFileSystemContext,
 )
-from data_designer_nemo.sdk_translation import async_to_sync_sdk
+from data_designer_nemo.filesystem import make_filesystem
 from fsspec.implementations.dirfs import DirFileSystem
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform.filesets import FilesetFileSystem, FilesetPathError, build_fileset_ref, parse_fileset_ref
-from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 
 
@@ -56,10 +55,8 @@ class FilesetFileSystemProvider:
         workspace: str,
         validated_roots: set[str] | None = None,
     ) -> None:
-        self._async_sdk: AsyncNeMoPlatform | None = sdk if isinstance(sdk, AsyncNeMoPlatform) else None
-        if isinstance(sdk, AsyncNeMoPlatform):
-            sdk = async_to_sync_sdk(sdk)
         self._sdk = sdk
+        self._filesystem: FilesetFileSystem | None = None
         self._files_client: FilesClient | None = None
         self._async_files_client: AsyncFilesClient | None = None
         self._workspace = workspace
@@ -67,7 +64,7 @@ class FilesetFileSystemProvider:
 
     def create_context(self, *, runtime_path: str) -> SeedReaderFileSystemContext:
         root = self._canonical_root(runtime_path)
-        fs = self._make_filesystem()
+        fs = self._get_filesystem()
         rooted_fs = _FilesetDirFileSystem(path=root, fs=fs)
         return SeedReaderFileSystemContext(fs=rooted_fs, root_path=PurePosixPath(root))
 
@@ -77,7 +74,7 @@ class FilesetFileSystemProvider:
         if root in self._validated_roots:
             return
 
-        fs = self._make_filesystem()
+        fs = self._get_filesystem()
         if fs.exists(root):
             self._validated_roots.add(root)
             return
@@ -92,23 +89,13 @@ class FilesetFileSystemProvider:
         workspace, fileset, fragment = self._parse(runtime_path)
         return build_fileset_ref(fragment, workspace=workspace, fileset=fileset)
 
-    def _make_filesystem(self) -> FilesetFileSystem:
-        return FilesetFileSystem(client=self._get_files_client(), async_client=self._get_async_files_client())
+    def _get_filesystem(self) -> FilesetFileSystem:
+        if self._filesystem is not None:
+            return self._filesystem
 
-    def _get_files_client(self) -> FilesClient:
-        if self._files_client is not None:
-            return self._files_client
-
-        self._files_client = client_from_platform(self._sdk, FilesClient)
-
-        return self._files_client
-
-    def _get_async_files_client(self) -> AsyncFilesClient | None:
-        if self._async_sdk is None:
-            return None
-        if self._async_files_client is None:
-            self._async_files_client = client_from_platform(self._async_sdk, AsyncFilesClient)
-        return self._async_files_client
+        filesystem = make_filesystem(self._sdk)
+        self._filesystem = filesystem
+        return filesystem
 
     def _parse(self, runtime_path: str) -> tuple[str, str, str]:
         try:

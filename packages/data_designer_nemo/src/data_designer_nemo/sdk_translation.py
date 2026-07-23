@@ -1,19 +1,20 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+"""Helpers for bridging sync and async NeMo Platform SDK entry points.
+
+``sync_to_async_sdk`` exists because Data Designer validation and provider
+resolution are async-first: they call platform services to validate filesets,
+secrets, personas, and model providers before handing work to the upstream
+Data Designer engine, and in the case of preview this work happens within the
+FastAPI process with an injected ``AsyncNeMoPlatform``. However, some legitimate
+callers still start with a sync ``NeMoPlatform`` instance, notably sync SDK/CLI
+validation and job-container runtime code, so those paths need an async sibling
+that preserves the same base URL, workspace, headers, query defaults, timeout,
+and retry settings.
+"""
+
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-
-
-def async_to_sync_sdk(async_sdk: AsyncNeMoPlatform) -> NeMoPlatform:
-    """Build a sync :class:`NeMoPlatform` mirroring the async SDK's config."""
-    return NeMoPlatform(
-        base_url=async_sdk.base_url,
-        default_headers=dict(async_sdk._custom_headers) if async_sdk._custom_headers else None,
-        default_query=dict(async_sdk._custom_query) if async_sdk._custom_query else None,
-        timeout=async_sdk.timeout,
-        max_retries=async_sdk.max_retries,
-        workspace=async_sdk.workspace,
-    )
 
 
 def sync_to_async_sdk(sdk: NeMoPlatform) -> AsyncNeMoPlatform:
