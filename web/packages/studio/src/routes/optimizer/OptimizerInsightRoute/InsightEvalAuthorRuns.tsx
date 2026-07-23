@@ -5,11 +5,11 @@ import * as DataView from '@nemo/common/src/components/DataView/internal';
 import { useRowClick } from '@nemo/common/src/components/DataView/useRowClick';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { DEFAULT_PAGE_SIZE_OPTIONS } from '@nemo/common/src/constants/pagination';
 import { Button, Text } from '@nvidia/foundations-react-core';
 import { type EvalAuthorRun, useOptimizerListEvalAuthorRuns } from '@studio/api/optimizer';
+import { EvalAuthorRunStatusBadge } from '@studio/routes/optimizer/EvalAuthorRunStatusBadge';
 import { getOptimizerEvalAuthorRunRoute } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
 import { FileCode2 } from 'lucide-react';
@@ -53,7 +53,7 @@ const makeColumns: ComponentProps<typeof DataView.Root<EvalAuthorRun>>['makeColu
     header: 'Status',
     enableSorting: false,
     size: 110,
-    cell: ({ getValue }) => <StatusBadge status={getValue()} />,
+    cell: ({ getValue }) => <EvalAuthorRunStatusBadge status={getValue()} />,
   }),
   accessor('stage', {
     header: 'Stage',

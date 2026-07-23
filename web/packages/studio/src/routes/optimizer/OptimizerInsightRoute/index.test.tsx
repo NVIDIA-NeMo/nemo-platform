@@ -191,4 +191,28 @@ describe('OptimizerInsightRoute experiments', () => {
 
     expect(await screen.findByText('Failed to update insight.')).toBeInTheDocument();
   });
+
+  it('renders Eval Author lifecycle statuses with their domain labels', async () => {
+    server.use(
+      http.get(RUNS_URL, () =>
+        HttpResponse.json({
+          data: [
+            {
+              id: 'run-a',
+              name: 'run-a',
+              status: 'succeeded',
+              stage: 'completed',
+              outputs: { metric_names: ['groundedness'] },
+            },
+          ],
+          pagination: pagination({ currentPageSize: 1, totalResults: 1 }),
+        })
+      )
+    );
+
+    renderInsight();
+
+    expect(await screen.findByText('Succeeded')).toBeInTheDocument();
+    expect(screen.queryByText('Unknown')).not.toBeInTheDocument();
+  });
 });

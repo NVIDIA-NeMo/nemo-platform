@@ -6,7 +6,6 @@ import { ContentType } from '@nemo/common/src/components/CodeEditor/constants';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { KVPair } from '@nemo/common/src/components/KVPair';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
 import {
   Anchor,
@@ -34,6 +33,7 @@ import { FilesetFilePreviewContent } from '@studio/components/FilesetFilePreview
 import { Loading } from '@studio/components/Layouts/Loading';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import { EvalAuthorRunStatusBadge } from '@studio/routes/optimizer/EvalAuthorRunStatusBadge';
 import {
   ArtifactCode,
   DownloadArtifactButton,
@@ -121,7 +121,7 @@ const OverviewTab: FC<{ run: EvalAuthorRun }> = ({ run }) => (
     <Grid cols={{ base: 1, xl: 2 }} gap="density-xl">
       <Panel slotHeading="Run" elevation="high" density="compact">
         <Stack gap="density-md">
-          <KVPair label="Status" value={<StatusBadge status={run.status} />} />
+          <KVPair label="Status" value={<EvalAuthorRunStatusBadge status={run.status} />} />
           <KVPair label="Stage" value={run.stage.replaceAll('_', ' ')} />
           <KVPair label="Evaluator" value={run.evaluator_type} />
           <KVPair label="Duration" value={duration(run)} />
@@ -582,7 +582,7 @@ export const OptimizerEvalAuthorRunRoute: FC = () => {
           className="p-0"
           slotHeading={run.name}
           slotDescription="Verifier-authoring lifecycle, model request, trajectory, generated code, and datasets."
-          slotActions={<StatusBadge status={run.status} />}
+          slotActions={<EvalAuthorRunStatusBadge status={run.status} />}
         />
         <TabsRoot defaultValue="overview" className="min-h-0">
           <TabsList>
