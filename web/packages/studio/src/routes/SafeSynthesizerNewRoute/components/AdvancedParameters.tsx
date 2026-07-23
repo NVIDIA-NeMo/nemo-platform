@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { ControlledSliderWithTextInput } from '@nemo/common/src/components/form/ControlledSliderWithTextInput';
 import { ControlledSwitch } from '@nemo/common/src/components/form/ControlledSwitch';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
@@ -13,7 +14,10 @@ import {
   Tooltip,
   Button,
 } from '@nvidia/foundations-react-core';
-import { DEFAULT_NUM_INPUT_RECORDS_TO_SAMPLE } from '@studio/routes/SafeSynthesizerNewRoute/constants';
+import {
+  DEFAULT_NUM_INPUT_RECORDS_TO_SAMPLE,
+  PRETRAINED_MODEL_OPTIONS,
+} from '@studio/routes/SafeSynthesizerNewRoute/constants';
 import {
   SafeSynthesizerFormData,
   getSafeSynthesizerFormDefaults,
@@ -158,6 +162,34 @@ export const AdvancedParameters = () => {
       <Divider orientation="horizontal" width="small" />
       <Stack gap="density-2xl">
         <Text kind="label/bold/lg">Training Data Configuration</Text>
+        <ControlledSelect
+          useControllerProps={{
+            name: 'spec.config.training.pretrained_model',
+            control,
+          }}
+          items={PRETRAINED_MODEL_OPTIONS.map((model) => ({
+            value: model,
+            children: model,
+          }))}
+          formFieldProps={{
+            slotLabel: (
+              <>
+                model
+                <Tooltip
+                  slotContent="Model that gets fine-tuned to generate synthetic data."
+                  side="bottom"
+                >
+                  <Info className="inline ml-density-sm" />
+                </Tooltip>
+              </>
+            ),
+            labelPosition: 'left',
+            attributes: {
+              FormFieldLabelGroup: { className: '!w-[225px]' },
+              FormFieldHelper: { className: '!ml-[235px]' },
+            },
+          }}
+        />
         <Stack gap="density-md">
           <ControlledTextInput
             useControllerProps={{

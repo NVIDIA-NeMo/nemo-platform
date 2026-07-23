@@ -8,7 +8,14 @@ import {
 } from '@studio/routes/SafeSynthesizerNewRoute/schema';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { FormProvider, useForm } from 'react-hook-form';
+import { FormProvider, useForm, useWatch } from 'react-hook-form';
+
+const PretrainedModelProbe = () => {
+  const value = useWatch<SafeSynthesizerFormData>({
+    name: 'spec.config.training.pretrained_model',
+  });
+  return <div data-testid="pretrained-model-value">{value}</div>;
+};
 
 // Test wrapper component that provides form context
 const TestWrapper = ({
@@ -772,6 +779,75 @@ describe('AdvancedParameters', () => {
       await waitFor(() => {
         expect(Number(numberInput.value)).toBeLessThanOrEqual(6);
       });
+    });
+  });
+
+  describe('Model Selector', () => {
+    it('renders the model selector under Training Data Configuration', async () => {
+      render(
+        <TestWrapper>
+          <AdvancedParameters />
+        </TestWrapper>
+      );
+
+      expect(await screen.findByText('model')).toBeInTheDocument();
+      expect(screen.getByTestId('nv-select-trigger')).toHaveTextContent('HuggingFaceTB/SmolLM3-3B');
+    });
+
+    it('defaults to SmolLM3 when the user does not interact', async () => {
+      render(
+        <TestWrapper>
+          <AdvancedParameters />
+          <PretrainedModelProbe />
+        </TestWrapper>
+      );
+
+      await waitFor(() =>
+        expect(screen.getByTestId('pretrained-model-value')).toHaveTextContent(
+          'HuggingFaceTB/SmolLM3-3B'
+        )
+      );
+    });
+
+    it('lists the three supported models in order', async () => {
+      const user = userEvent.setup();
+      render(
+        <TestWrapper>
+          <AdvancedParameters />
+        </TestWrapper>
+      );
+
+      await user.click(screen.getByTestId('nv-select-trigger'));
+
+      await waitFor(() => {
+        const options = screen.getAllByRole('option');
+        expect(options.map((option) => option.textContent)).toEqual([
+          'HuggingFaceTB/SmolLM3-3B',
+          'mistralai/Mistral-7B-Instruct-v0.3',
+          'TinyLlama/TinyLlama-1.1B-Chat-v1.0',
+        ]);
+      });
+    });
+
+    it('updates the configuration when a different model is selected', async () => {
+      const user = userEvent.setup();
+      render(
+        <TestWrapper>
+          <AdvancedParameters />
+          <PretrainedModelProbe />
+        </TestWrapper>
+      );
+
+      await user.click(screen.getByTestId('nv-select-trigger'));
+      await user.click(
+        await screen.findByRole('option', { name: 'mistralai/Mistral-7B-Instruct-v0.3' })
+      );
+
+      await waitFor(() =>
+        expect(screen.getByTestId('pretrained-model-value')).toHaveTextContent(
+          'mistralai/Mistral-7B-Instruct-v0.3'
+        )
+      );
     });
   });
 
