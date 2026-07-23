@@ -517,3 +517,117 @@ def test_sort_by_pinned_at_most_recent_first(client: TestClient) -> None:
     assert pinned_asc.status_code == 200, pinned_asc.text
     names_asc = [e["name"] for e in pinned_asc.json()["data"]]
     assert names_asc.index("exp-old-pin") < names_asc.index("exp-new-pin")
+
+
+def test_evaluation_belongs_to_multiple_groups(client: TestClient) -> None:
+    """An evaluation created with multiple experiment_ids appears in each group's leaderboard."""
+    group_a = client.post(GROUPS, json={"name": "multi-a"}).json()
+    group_b = client.post(GROUPS, json={"name": "multi-b"}).json()
+    body = _evaluation_body(name="multi-member", experiment_group_id="placeholder")
+    body.pop("experiment_group_id")
+    body["experiment_ids"] = [group_a["id"], group_b["id"]]
+
+    created = client.post(EVALUATIONS, json=body)
+    assert created.status_code == 201, created.text
+    assert set(created.json()["experiment_ids"]) == {group_a["id"], group_b["id"]}
+    # Deprecated single-group alias still resolves (to the first membership).
+    assert created.json()["experiment_group_id"] == group_a["id"]
+
+    for gid in (group_a["id"], group_b["id"]):
+        listed = client.get(EVALUATIONS, params={"filter[experiment_group_id]": gid})
+        assert listed.status_code == 200, listed.text
+        assert any(e["name"] == "multi-member" for e in listed.json()["data"])
+
+
+def test_evaluation_create_rejects_empty_experiment_ids(client: TestClient) -> None:
+    """The >=1-group invariant: an empty experiment_ids list is rejected."""
+    body = _evaluation_body(name="no-groups", experiment_group_id="placeholder")
+    body.pop("experiment_group_id")
+    body["experiment_ids"] = []
+    resp = client.post(EVALUATIONS, json=body)
+    assert resp.status_code == 422, resp.text
+
+
+def test_delete_group_reference_counted_cascade(client: TestClient) -> None:
+    """Deleting a group deletes only its sole-membership members; shared members survive elsewhere."""
+    group_a = client.post(GROUPS, json={"name": "rc-a"}).json()
+    group_b = client.post(GROUPS, json={"name": "rc-b"}).json()
+
+    shared = _evaluation_body(name="rc-shared", experiment_group_id="placeholder")
+    shared.pop("experiment_group_id")
+    shared["experiment_ids"] = [group_a["id"], group_b["id"]]
+    client.post(EVALUATIONS, json=shared)
+    client.post(EVALUATIONS, json=_evaluation_body(name="rc-sole", experiment_group_id=group_a["id"]))
+
+    assert client.delete(f"{GROUPS}/rc-a").status_code == 204
+
+    # Sole member gone; shared member survives, now only in group b.
+    assert client.get(f"{EVALUATIONS}/rc-sole").status_code == 404
+    survivor = client.get(f"{EVALUATIONS}/rc-shared")
+    assert survivor.status_code == 200, survivor.text
+    assert survivor.json()["experiment_ids"] == [group_b["id"]]
+
+    in_b = client.get(EVALUATIONS, params={"filter[experiment_group_id]": group_b["id"]})
+    assert any(e["name"] == "rc-shared" for e in in_b.json()["data"])
+
+
+def test_patch_evaluation_adds_to_group(client: TestClient) -> None:
+    """PATCH .../evaluations/{name} with a merged experiment_ids adds a membership; the run shows on the board."""
+    group_a = client.post(GROUPS, json={"name": "add-a"}).json()
+    group_b = client.post(GROUPS, json={"name": "add-b"}).json()
+    client.post(EVALUATIONS, json=_evaluation_body(name="add-eval", experiment_group_id=group_a["id"]))
+
+    added = client.patch(f"{EVALUATIONS}/add-eval", json={"experiment_ids": [group_a["id"], group_b["id"]]})
+    assert added.status_code == 200, added.text
+    assert set(added.json()["experiment_ids"]) == {group_a["id"], group_b["id"]}
+
+    in_b = client.get(EVALUATIONS, params={"filter[experiment_group_id]": group_b["id"]})
+    assert any(e["name"] == "add-eval" for e in in_b.json()["data"])
+
+
+def test_patch_evaluation_unknown_group_rejected(client: TestClient) -> None:
+    group = client.post(GROUPS, json={"name": "add-known"}).json()
+    client.post(EVALUATIONS, json=_evaluation_body(name="add-eval-2", experiment_group_id=group["id"]))
+    resp = client.patch(f"{EVALUATIONS}/add-eval-2", json={"experiment_ids": [group["id"], "experiment_group-nope"]})
+    assert resp.status_code == 400, resp.text
+
+
+def test_patch_evaluation_rejects_empty_experiment_ids(client: TestClient) -> None:
+    group = client.post(GROUPS, json={"name": "empty-ids"}).json()
+    client.post(EVALUATIONS, json=_evaluation_body(name="empty-ids-eval", experiment_group_id=group["id"]))
+    resp = client.patch(f"{EVALUATIONS}/empty-ids-eval", json={"experiment_ids": []})
+    assert resp.status_code == 400, resp.text
+    # The >=1-group invariant holds: membership is unchanged.
+    assert client.get(f"{EVALUATIONS}/empty-ids-eval").json()["experiment_ids"] == [group["id"]]
+
+
+def test_patch_evaluation_leaves_omitted_fields_unchanged(client: TestClient) -> None:
+    """Partial semantics: PATCHing experiment_ids alone must not clobber omitted fields (e.g. description)."""
+    group_a = client.post(GROUPS, json={"name": "patch-a"}).json()
+    group_b = client.post(GROUPS, json={"name": "patch-b"}).json()
+    body = _evaluation_body(name="patch-eval", experiment_group_id=group_a["id"])
+    body["description"] = "keep me"
+    body["metadata"] = {"team": "switchyard"}
+    client.post(EVALUATIONS, json=body)
+
+    patched = client.patch(f"{EVALUATIONS}/patch-eval", json={"experiment_ids": [group_a["id"], group_b["id"]]})
+    assert patched.status_code == 200, patched.text
+    data = patched.json()
+    assert set(data["experiment_ids"]) == {group_a["id"], group_b["id"]}
+    assert data["description"] == "keep me"  # omitted from the PATCH -> unchanged
+    assert data["metadata"] == {"team": "switchyard"}
+
+
+def test_patch_evaluation_dedupes_experiment_ids(client: TestClient) -> None:
+    """Membership is a set: duplicate ids are stored once, so a group can't double-count an evaluation."""
+    group = client.post(GROUPS, json={"name": "dedupe-grp"}).json()
+    client.post(EVALUATIONS, json=_evaluation_body(name="dedupe-eval", experiment_group_id=group["id"]))
+
+    patched = client.patch(f"{EVALUATIONS}/dedupe-eval", json={"experiment_ids": [group["id"], group["id"]]})
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["experiment_ids"] == [group["id"]]
+
+    # The group counts the evaluation once, not twice.
+    listed = client.get(GROUPS)
+    grp = next(g for g in listed.json()["data"] if g["id"] == group["id"])
+    assert grp["evaluation_count"] == 1

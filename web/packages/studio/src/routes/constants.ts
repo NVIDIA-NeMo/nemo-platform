@@ -10,6 +10,7 @@ export const QUERY_PARAMETERS = {
   exportJobId: 'exportJobId',
   project: 'project',
   spanId: 'spanId',
+  compareWith: 'compareWith',
   tab: 'tab',
 } as const;
 

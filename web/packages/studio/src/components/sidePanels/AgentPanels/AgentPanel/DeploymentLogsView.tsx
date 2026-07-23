@@ -19,9 +19,18 @@ interface DeploymentLogsViewProps {
   workspace: string;
   /** All known deployments for the active agent — any status. */
   deployments: AgentDeployment[];
+  /** Controlled selection — when provided, the picker reflects this deployment. */
+  selectedDeploymentName?: string;
+  /** Called when the user (or a caller) changes the selected deployment. */
+  onSelectDeployment?: (name: string) => void;
 }
 
-export const DeploymentLogsView: FC<DeploymentLogsViewProps> = ({ workspace, deployments }) => {
+export const DeploymentLogsView: FC<DeploymentLogsViewProps> = ({
+  workspace,
+  deployments,
+  selectedDeploymentName,
+  onSelectDeployment,
+}) => {
   const sortedDeployments = useMemo(
     () =>
       [...deployments].sort((a, b) => {
@@ -31,18 +40,25 @@ export const DeploymentLogsView: FC<DeploymentLogsViewProps> = ({ workspace, dep
       }),
     [deployments]
   );
-  const [selectedName, setSelectedName] = useState<string | undefined>(
-    () => sortedDeployments[0]?.name
+  const [internalName, setInternalName] = useState<string | undefined>(
+    () => selectedDeploymentName ?? sortedDeployments[0]?.name
   );
+  const isControlled = selectedDeploymentName !== undefined;
+  const selectedName = isControlled ? selectedDeploymentName : internalName;
+  const setSelectedName = (name: string) => {
+    if (!isControlled) setInternalName(name);
+    onSelectDeployment?.(name);
+  };
 
   useEffect(() => {
-    if (!selectedName) {
-      setSelectedName(sortedDeployments[0]?.name);
+    if (isControlled) return;
+    if (!internalName) {
+      setInternalName(sortedDeployments[0]?.name);
       return;
     }
-    const stillPresent = sortedDeployments.some((d) => d.name === selectedName);
-    if (!stillPresent) setSelectedName(sortedDeployments[0]?.name);
-  }, [sortedDeployments, selectedName]);
+    const stillPresent = sortedDeployments.some((d) => d.name === internalName);
+    if (!stillPresent) setInternalName(sortedDeployments[0]?.name);
+  }, [sortedDeployments, internalName, isControlled]);
 
   if (sortedDeployments.length === 0) {
     return (
@@ -53,11 +69,12 @@ export const DeploymentLogsView: FC<DeploymentLogsViewProps> = ({ workspace, dep
       </Stack>
     );
   }
+  const pOffset = '2';
 
   return (
-    <Stack className="h-full min-h-0" gap="0">
+    <Stack className="h-full min-h-0 w-full" gap="2">
       {sortedDeployments.length > 1 && (
-        <Block padding="4" className="border-b border-base shrink-0">
+        <Block className="shrink-0" paddingX={pOffset}>
           <Select
             value={selectedName ?? ''}
             items={sortedDeployments.flatMap((d) =>
@@ -74,7 +91,7 @@ export const DeploymentLogsView: FC<DeploymentLogsViewProps> = ({ workspace, dep
           />
         </Block>
       )}
-      <Block className="flex-1 min-h-0 overflow-auto" padding="4">
+      <Block className="flex-1 min-h-0" paddingX={pOffset}>
         {selectedName ? (
           <LogsForDeployment workspace={workspace} deploymentName={selectedName} />
         ) : null}
@@ -89,7 +106,6 @@ interface LogsForDeploymentProps {
 }
 
 const TAIL_LINES = 500;
-// Cap the live buffer so a long-lived, noisy stream can't grow state unbounded.
 const MAX_STREAMED_LINES = 5000;
 
 const LogsForDeployment: FC<LogsForDeploymentProps> = ({ workspace, deploymentName }) => {
@@ -97,24 +113,18 @@ const LogsForDeployment: FC<LogsForDeploymentProps> = ({ workspace, deploymentNa
     workspace,
     deploymentName,
     { tail: TAIL_LINES },
-    // Short staleTime: the live SSE stream keeps logs current after mount, so we
-    // only need a fresh tail baseline, not a refetch on every quick tab toggle.
     { query: { staleTime: 5000 } }
   );
 
   const [streamedLines, setStreamedLines] = useState<PlatformJobLog[]>([]);
-  // Reset on deployment change so we don't stitch one process's tail onto another.
   useEffect(() => {
     setStreamedLines([]);
   }, [deploymentName]);
 
   const accessToken = useAuth()?.user?.access_token;
-  // Byte offset just past the tail; resume the stream from here so lines written
-  // between the tail fetch and the stream opening aren't dropped.
   const tailOffset = data?.next_offset;
 
   useEffect(() => {
-    // Wait for the tail query to settle so the stream can resume from tailOffset.
     if (!deploymentName || isLoading) return;
     const url = `${PLATFORM_BASE_URL}${getAgentsStreamDeploymentLogsQueryKey(workspace, deploymentName)[0]}`;
     const controller = new AbortController();

@@ -34,6 +34,7 @@ import {
 } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { ExperimentGroupCreateModal } from '@studio/components/ExperimentGroupCreateModal';
+import { FeatureFlagBadge } from '@studio/components/FeatureFlagBadge';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -116,7 +117,12 @@ export const ExperimentRoute: FC = () => {
       <Stack className="h-full min-h-0" gap="density-2xl" padding="density-2xl">
         <PageHeader
           className="p-0 shrink-0"
-          slotHeading="Experiment groups"
+          slotHeading={
+            <>
+              Experiment groups
+              <FeatureFlagBadge flag="experiment" />
+            </>
+          }
           slotDescription="Manage groups for online optimization. Review reports down to the frame level."
           slotActions={
             <Button color="brand" onClick={() => setIsCreateModalOpen(true)}>

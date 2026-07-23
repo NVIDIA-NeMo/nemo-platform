@@ -41,7 +41,7 @@ from nmp.core.jobs.controllers.backends.base import (
     JobBackend,
     JobExecutionProfileConfig,
     JobUpdate,
-    get_logs_endpoint_from_fileset,
+    get_logs_endpoint_config_from_fileset,
 )
 from nmp.core.jobs.controllers.backends.subprocess_runtime import (
     SubprocessOtelLogger,
@@ -428,6 +428,9 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
         log_path.touch()
 
         platform_config = get_platform_config()
+        otlp_logs_endpoint = get_logs_endpoint_config_from_fileset(
+            platform_config, step.workspace, step.fileset, loopback_address="localhost"
+        )
         env = {name: value for name, value in os.environ.items() if name in SUBPROCESS_INHERITED_ENV_ALLOWLIST}
         env.update(self._execution_profile_config.env)
         env.update(
@@ -442,17 +445,10 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
                 CONFIG_TASK_STORAGE_PATH_ENVVAR: str(config_dir),
                 PERSISTENT_JOB_STORAGE_PATH_ENVVAR: str(persistent_dir),
                 NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR: str(config_path),
-                "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": get_logs_endpoint_from_fileset(
-                    platform_config,
-                    step.workspace,
-                    step.fileset,
-                    loopback_address="localhost",
-                ),
-                "OTEL_LOGS_EXPORTER": "otlp",
-                "OTEL_SERVICE_NAME": "nmp-job-task",
                 NEMO_JOB_SECRETS_ENVVAR: self.get_secrets_environment_variable_for_injection(step),
             }
         )
+        env.update(otlp_logs_endpoint.to_env())
 
         if spec and spec.environment:
             for envvar in spec.environment:
@@ -479,7 +475,6 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
             auth_context = AuthContext.model_validate(step.auth_context.model_dump(mode="python", exclude_none=True))
             principal = auth_context.to_principal()
             env.update(principal.get_env_var())
-            env["OTEL_EXPORTER_OTLP_LOGS_HEADERS"] = principal.get_otlp_headers_value()
 
         inject_secret_env_vars(env)
         return env, task_id, work_dir, log_path, persistent_dir

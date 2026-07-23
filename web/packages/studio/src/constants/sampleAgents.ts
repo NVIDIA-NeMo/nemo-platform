@@ -6,8 +6,8 @@ import { z } from 'zod';
 // Registry of canned example agents. Each entry references curated static assets
 // under public/sample-agents/<dir>/ by path (fetched on demand, never bundled) —
 // mirroring src/constants/sampleDatasets.ts. Used by both the Create Example Agent
-// modal (fetch + parse agent.yml, inject model, POST) and the Run Evaluation modal
-// (seed eval.yml + dataset into the {agent}-eval fileset).
+// modal (fetch + parse agent.yml, inject model, POST). Samples with an
+// evalConfigPath also appear in the Run Evaluation modal.
 //
 // INVARIANT: an entry whose agent.yml uses a custom NAT `_type` requires that
 // tool's Python package to be installed in the deploy venv, or the deployment
@@ -23,12 +23,9 @@ export interface SampleAgent {
   namePrefix: string;
   /** Public path to the NAT workflow config (parsed + model-injected at create). */
   agentConfigPath: string;
-  /** Public path to the NAT eval config (seeded verbatim into the eval fileset
-   *  under its basename). */
-  evalConfigPath: string;
-  /** Public path to the eval dataset, seeded alongside the eval config under its
-   *  basename. That basename MUST equal the eval config's dataset file_path. */
-  evalDataPath: string;
+  /** Public path to a reusable nemo-evaluator eval-config.json. Samples without
+   *  one remain available for agent creation but not evaluation seeding. */
+  evalConfigPath?: string;
 }
 
 export const SAMPLE_AGENTS: SampleAgent[] = [
@@ -38,8 +35,7 @@ export const SAMPLE_AGENTS: SampleAgent[] = [
     description: 'A ReAct agent with a calculator and datetime tool.',
     namePrefix: 'calculator-demo-agent',
     agentConfigPath: 'sample-agents/calculator/agent.yml',
-    evalConfigPath: 'sample-agents/calculator/eval.yml',
-    evalDataPath: 'sample-agents/calculator/calculator-eval-data.json',
+    evalConfigPath: 'sample-agents/calculator/eval-config.json',
   },
   {
     key: 'email_phishing_analyzer',
@@ -47,15 +43,30 @@ export const SAMPLE_AGENTS: SampleAgent[] = [
     description: 'A ReAct agent that inspects an email body for phishing signals.',
     namePrefix: 'email-phishing-demo-agent',
     agentConfigPath: 'sample-agents/email-phishing-analyzer/agent.yml',
-    evalConfigPath: 'sample-agents/email-phishing-analyzer/eval.yml',
-    evalDataPath: 'sample-agents/email-phishing-analyzer/smaller_test.csv',
+    evalConfigPath: 'sample-agents/email-phishing-analyzer/eval-config.json',
   },
 ];
+
+export type EvaluationSampleAgent = SampleAgent & { evalConfigPath: string };
+
+export const EVALUATION_SAMPLE_AGENTS = SAMPLE_AGENTS.filter(
+  (agent): agent is EvaluationSampleAgent => typeof agent.evalConfigPath === 'string'
+);
 
 export const DEFAULT_SAMPLE_AGENT_KEY = SAMPLE_AGENTS[0].key;
 
 export const getSampleAgent = (key: string): SampleAgent =>
   SAMPLE_AGENTS.find((agent) => agent.key === key) ?? SAMPLE_AGENTS[0];
+
+export const getEvaluationSampleAgent = (key: string): EvaluationSampleAgent =>
+  EVALUATION_SAMPLE_AGENTS.find((agent) => agent.key === key) ?? EVALUATION_SAMPLE_AGENTS[0];
+
+export const evaluationSampleAgentKeyForAgentName = (
+  name: string | undefined
+): string | undefined => {
+  const key = sampleAgentKeyForAgentName(name);
+  return EVALUATION_SAMPLE_AGENTS.some((agent) => agent.key === key) ? key : undefined;
+};
 
 export const buildSampleAgentName = (namePrefix: string): string =>
   `${namePrefix}-${Math.random().toString(36).slice(2, 8)}`;

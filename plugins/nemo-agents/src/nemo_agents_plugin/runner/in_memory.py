@@ -36,7 +36,7 @@ from typing import Any
 import httpx
 import yaml
 from nemo_agents_plugin.config import AgentsConfig, ControllerConfig
-from nemo_agents_plugin.entities import DeploymentMode
+from nemo_agents_plugin.entities import NEMO_AGENTS_SPEC_CONFIG_FORMAT, DeploymentMode
 from nemo_agents_plugin.runner.backend import DeploymentInfo, LocalLog, LogLocation, NotYetAvailable, RunnerBackend
 
 # Match characters not safe for filesystem paths.  Deployment names are
@@ -82,6 +82,14 @@ def _resolve_nat_bin() -> str:
     if sibling.is_file():
         return str(sibling)
     return "/app/.venv/bin/nat"
+
+
+async def validate_platform_agent_config(config: dict[str, Any], *, base_dir: Path) -> Any:
+    """Validate Fabric configs lazily so NAT/container deployments do not import Fabric."""
+    # TODO(AIRCORE-902): Hoist once Fabric runtime is installed in the default Platform image.
+    from nemo_agents_plugin.fabric.validation import validate_platform_agent_config as _validate_platform_agent_config
+
+    return await _validate_platform_agent_config(config, base_dir=base_dir)
 
 
 def system_dir(workspace_dir: Path | None = None) -> Path:
@@ -202,8 +210,11 @@ class InMemoryRunnerBackend(RunnerBackend):
         image: str | None = None,
         deployment_mode: DeploymentMode = "subprocess",
     ) -> DeploymentInfo:
-        """Write config to a deterministic file and spawn ``nat serve``."""
+        """Start a local deployment for NAT workflows or Platform-owned agent specs."""
         del image, deployment_mode
+        if config.get("config_format") == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+            return await self._create_fabric_deployment(workspace, name, config)
+
         key = (workspace, name)
         config_path = await asyncio.to_thread(self._write_config, workspace, name, config)
         log_path = self.log_path_for(workspace, name)
@@ -234,11 +245,46 @@ class InMemoryRunnerBackend(RunnerBackend):
         )
         return info
 
+    async def _create_fabric_deployment(self, workspace: str, name: str, config: dict[str, Any]) -> DeploymentInfo:
+        """Validate and prepare a Platform-owned Fabric-backed deployment."""
+        base_dir = self._fabric_base_dir_for(workspace, name)
+        await asyncio.to_thread(base_dir.mkdir, parents=True, exist_ok=True)
+        try:
+            validation_result = await validate_platform_agent_config(config, base_dir=base_dir)
+        except Exception:
+            await asyncio.to_thread(shutil.rmtree, base_dir, ignore_errors=True)
+            raise
+
+        log_path = self.log_path_for(workspace, name)
+        await asyncio.to_thread(self._write_fabric_validation_log, workspace, name, log_path, validation_result)
+
+        info = DeploymentInfo(
+            name=name,
+            status="running",
+            log_path=str(log_path),
+            extra={
+                "runtime": "fabric",
+                "base_dir": str(base_dir),
+                "prepared": True,
+            },
+        )
+        self._deployments[(workspace, name)] = info
+        logger.info(
+            "Prepared Fabric-backed deployment for '%s/%s' (base_dir=%s)",
+            workspace,
+            name,
+            base_dir,
+        )
+        return info
+
     async def get_deployment_status(self, workspace: str, name: str) -> DeploymentInfo | None:
         key = (workspace, name)
         info = self._deployments.get(key)
         if info is None:
             return None
+        if info.extra.get("runtime") == "fabric":
+            return info
+
         proc = self._processes.get(key)
         if proc is not None and proc.poll() is not None:
             info.status = "failed"
@@ -260,6 +306,9 @@ class InMemoryRunnerBackend(RunnerBackend):
 
         if config_path is not None:
             config_path.unlink(missing_ok=True)
+
+        if info is not None and (base_dir := info.extra.get("base_dir")):
+            await asyncio.to_thread(shutil.rmtree, base_dir, ignore_errors=True)
 
         logger.info("Deleted agent deployment '%s/%s'", workspace, name)
         return True
@@ -291,10 +340,10 @@ class InMemoryRunnerBackend(RunnerBackend):
             *(asyncio.to_thread(self._terminate, f"{ws}/{nm}", proc) for (ws, nm), proc in items),
             return_exceptions=True,
         )
+        self._processes.clear()
         for label, result in zip(labels, results, strict=False):
             if isinstance(result, Exception):
                 logger.warning("Error terminating '%s' during shutdown", label, exc_info=result)
-        self._processes.clear()
         self._deployments.clear()
         for path in self._temp_files.values():
             path.unlink(missing_ok=True)
@@ -315,6 +364,30 @@ class InMemoryRunnerBackend(RunnerBackend):
             yaml.safe_dump(config, fh)
         tmp_path.replace(config_path)
         return config_path
+
+    def _fabric_base_dir_for(self, workspace: str, name: str) -> Path:
+        """Return the local base directory used for Fabric validation/preparation."""
+        return self.system_dir / _sanitize_filename(workspace) / f"{_sanitize_filename(name)}-fabric"
+
+    def _write_fabric_validation_log(
+        self,
+        workspace: str,
+        name: str,
+        log_path: Path,
+        validation_result: Any,
+    ) -> None:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text(
+            "\n".join(
+                [
+                    f"Validated Fabric-backed deployment for {workspace}/{name}.",
+                    f"agent={validation_result.agent_config.name}",
+                    f"base_dir={self._fabric_base_dir_for(workspace, name)}",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
 
     def _spawn(
         self,

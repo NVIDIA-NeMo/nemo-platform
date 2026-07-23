@@ -1,10 +1,10 @@
 ---
-title: "Import and Fine-Tune Private HuggingFace Models"
+title: "Import and Fine-Tune Private Hugging Face Models"
 description: ""
 ---
 <a id="ft-tut-private-reg"></a>
 
-Use this tutorial to learn how to import a private HuggingFace model into NeMo Customizer, fine-tune it with LoRA, and deploy it for inference.
+Use this tutorial to learn how to import a private Hugging Face model into NeMo Customizer, fine-tune it with LoRA, and deploy it for inference.
 
 ## Prerequisites
 
@@ -14,8 +14,8 @@ Use this tutorial to learn how to import a private HuggingFace model into NeMo C
 
 - Completed the [Quickstart](/documentation/get-started) to install and deploy NeMo Platform locally.
 - Installed the Python SDK and any tutorial packages you need in your environment.
-- A HuggingFace token with access to the private or gated model repository.
-- A HuggingFace model with a compatible architecture. This tutorial uses `google/gemma-2-2b-it` as an example, but success depends on architectural compatibility.
+- A Hugging Face token with access to the private or gated model repository.
+- A Hugging Face model with a compatible architecture. This tutorial uses `google/gemma-2-2b-it` as an example, but success depends on architectural compatibility.
 - Sufficient GPU memory for the model and LoRA training job.
 
 <Note>
@@ -100,9 +100,9 @@ NMP_BASE_URL = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
 client = NeMoPlatform(base_url=NMP_BASE_URL, workspace="default")
 ```
 
-### 2. Store the HuggingFace Token
+### 2. Store the Hugging Face Token
 
-Private and gated HuggingFace repositories require a token. Store it as a NeMo Platform secret and reference that secret from the HuggingFace fileset.
+Private and gated Hugging Face repositories require a token. Store it as a NeMo Platform secret and reference that secret from the Hugging Face fileset.
 
 ```python
 def create_or_get_secret(name: str, value: str | None, label: str) -> PlatformSecretResponse:
@@ -126,7 +126,7 @@ hf_secret = create_or_get_secret("hf-token", os.getenv("HF_TOKEN"), "HF_TOKEN")
 
 ### 3. Create a Model FileSet and Model Entity
 
-Create a HuggingFace-backed fileset for the private model, then register a Model Entity that points to that fileset. Model files are downloaded by the platform when training or deployment needs them.
+Create a Hugging Face-backed fileset for the private model, then register a Model Entity that points to that fileset. Model files are downloaded by the platform when training or deployment needs them.
 
 ```python
 HF_REPO_ID = "google/gemma-2-2b-it"
@@ -142,18 +142,18 @@ try:
     base_model_fs = client.files.filesets.create(
         workspace="default",
         name=MODEL_NAME,
-        description=f"Private HuggingFace model {HF_REPO_ID}",
+        description=f"Private Hugging Face model {HF_REPO_ID}",
         storage=model_storage,
         cache=True,
     )
     print(f"Created model fileset: {base_model_fs.name}")
 except ConflictError:
-    print(f"Model fileset '{MODEL_NAME}' already exists, refreshing HuggingFace settings...")
+    print(f"Model fileset '{MODEL_NAME}' already exists, refreshing Hugging Face settings...")
     client.files.filesets.delete(workspace="default", name=MODEL_NAME)
     base_model_fs = client.files.filesets.create(
         workspace="default",
         name=MODEL_NAME,
-        description=f"Private HuggingFace model {HF_REPO_ID}",
+        description=f"Private Hugging Face model {HF_REPO_ID}",
         storage=model_storage,
         cache=True,
     )
@@ -258,7 +258,7 @@ try:
     client.files.filesets.create(
         workspace="default",
         name=DATASET_NAME,
-        description="Private HuggingFace model LoRA training data",
+        description="Private Hugging Face model LoRA training data",
         cache=True,
     )
     print(f"Created dataset fileset: {DATASET_NAME}")
@@ -442,8 +442,10 @@ def chat(model_id: str):
     )
 
 
-base_response = chat(f"default/{MODEL_NAME}")
-lora_response = chat(f"default--{OUTPUT_NAME}")
+BASE_INFERENCE_MODEL_NAME = f"default/{MODEL_NAME}"
+INFERENCE_MODEL_NAME = f"default--{OUTPUT_NAME}"
+base_response = chat(BASE_INFERENCE_MODEL_NAME)
+lora_response = chat(INFERENCE_MODEL_NAME)
 
 print("Base model response:")
 print(base_response["choices"][0]["message"]["content"])
@@ -457,11 +459,12 @@ print(lora_response["choices"][0]["message"]["content"])
 
 ```bash
 export OUTPUT_NAME="<output adapter name from the Python job block>"
+export INFERENCE_MODEL_NAME="default--${OUTPUT_NAME}"
 
 curl -s "${NMP_BASE_URL}/apis/inference-gateway/v2/workspaces/default/openai/-/v1/chat/completions" \
   -H 'Content-Type: application/json' \
   -d '{
-    "model": "'${OUTPUT_NAME}'",
+    "model": "'${INFERENCE_MODEL_NAME}'",
     "messages": [
       {"role": "user", "content": "Can you summarize what LoRA fine-tuning does?"}
     ],

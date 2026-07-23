@@ -13,7 +13,8 @@ from typing import Annotated, NoReturn
 
 import httpx
 import typer
-from nemo_platform.cli.commands.services._process import (
+from nemo_platform.cli.core.help_formatter import create_typer_app
+from nemo_platform.local.process import (
     ForegroundInstanceError,
     InstanceAlreadyRunningError,
     InstanceDescriptor,
@@ -24,7 +25,6 @@ from nemo_platform.cli.commands.services._process import (
     check_port_available_for_start,
     compute_scope,
     format_port_conflict,
-    get_create_time,
     instance_log_bytes,
     is_instance_alive,
     list_instances,
@@ -37,7 +37,7 @@ from nemo_platform.cli.commands.services._process import (
     stop_instance,
     write_descriptor,
 )
-from nemo_platform.cli.core.help_formatter import create_typer_app
+from nmp.platform_runner.config import DEFAULT_LOCAL_SERVICES_BIND_HOST, PlatformAppConfig
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,6 @@ services_app = create_typer_app(name="services", help="Run platform services loc
 
 _HEALTH_TIMEOUT_SECONDS = 60
 _HEALTH_POLL_INTERVAL = 2.0
-_DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_PORT = 8080
 _DEFAULT_STOP_TIMEOUT = 30.0
 
@@ -60,7 +59,7 @@ def services_callback(ctx: typer.Context) -> None:
         for info in running:
             desc = info.descriptor
             assert desc is not None
-            typer.echo(f"\nRunning: {info.scope} (pid {desc.pid}, {desc.host}:{desc.port}, {desc.mode})")
+            typer.echo(f"\nRunning: {info.scope} (pid {desc.pid}, {desc.config.host}:{desc.config.port}, {desc.mode})")
 
 
 def _require_services_extra() -> None:
@@ -92,7 +91,7 @@ def _parse_csv_option(value: str | None) -> list[str] | None:
 def _wait_for_healthy(
     host: str,
     port: int,
-    timeout: int = _HEALTH_TIMEOUT_SECONDS,
+    timeout: float = _HEALTH_TIMEOUT_SECONDS,
     poll_interval: float = _HEALTH_POLL_INTERVAL,
 ) -> bool:
     """Poll the platform status endpoint until it responds or timeout."""
@@ -124,15 +123,8 @@ def _effective_base_dir() -> str | None:
 
 
 def _find_sole_running_scope(base_dir: Path | None) -> str:
-    """Find the scope of the single running instance for this working directory.
-
-    When the user runs ``restart`` without ``--instance`` or ``--port``, we
-    can't know which scope to target because the scope includes the port.
-    This function scans all running instances whose scope starts with the
-    same git-root hash prefix.  If exactly one matches, return it.
-    Otherwise fall back to the default scope (hash-DEFAULT_PORT).
-    """
-    prefix = compute_scope(port=0, instance_name=None).rsplit("-", 1)[0]
+    """Return the only running scope for this working directory, or the default scope."""
+    prefix = compute_scope(port=0).rsplit("-", 1)[0]
     running = [i for i in list_instances(base_dir=base_dir) if i.alive and i.scope.startswith(prefix + "-")]
     if len(running) == 1:
         return running[0].scope
@@ -213,7 +205,7 @@ def run_services(
         str | None,
         typer.Option("--config", help="Path to a platform configuration YAML file."),
     ] = None,
-    host: Annotated[str, typer.Option("--host", help="Host to bind to.")] = _DEFAULT_HOST,
+    host: Annotated[str, typer.Option("--host", help="Host to bind to.")] = DEFAULT_LOCAL_SERVICES_BIND_HOST,
     port: Annotated[int, typer.Option("--port", help="Port to bind to.")] = _DEFAULT_PORT,
     instance: Annotated[
         str | None,
@@ -226,7 +218,7 @@ def run_services(
     _require_services_extra()
     _warn_bind_all(host)
 
-    scope = compute_scope(port=port, instance_name=instance)
+    scope = compute_scope(port=port, explicit_scope=instance)
     base_dir_str = _effective_base_dir()
     base_dir = Path(base_dir_str) if base_dir_str else None
 
@@ -242,20 +234,23 @@ def run_services(
     # "foreground", which protects interactive ``run`` sessions from being
     # killed by ``stop``.
     mode = "background" if os.environ.get("_NMP_LAUNCH_MODE") == "background" else "foreground"
-
-    desc = InstanceDescriptor(
-        pid=os.getpid(),
-        scope=scope,
-        host=host,
-        port=port,
-        mode=mode,
-        create_time=get_create_time(os.getpid()),
+    platform_config = PlatformAppConfig(
         services=_parse_csv_option(services),
-        controllers=_parse_csv_option(controllers),
         service_group=service_group,
+        controllers=_parse_csv_option(controllers),
         controller_group=controller_group,
         sidecars=_parse_csv_option(sidecars),
         config_path=config,
+        scope=scope,
+        host=host,
+        port=port,
+        state_root=base_dir,
+    )
+
+    desc = InstanceDescriptor.from_config(
+        platform_config,
+        mode=mode,
+        pid=os.getpid(),
     )
     write_descriptor(desc, base_dir=base_dir)
 
@@ -269,14 +264,7 @@ def run_services(
     from nmp.platform_runner.run import run_platform
 
     run_platform(
-        services=_parse_csv_option(services),
-        service_group=service_group,
-        controllers=_parse_csv_option(controllers),
-        controller_group=controller_group,
-        sidecars=_parse_csv_option(sidecars),
-        config_path=config,
-        host=host,
-        port=port,
+        config=platform_config,
         on_shutdown=_cleanup,
     )
 
@@ -327,7 +315,7 @@ def start_services(
         str | None,
         typer.Option("--config", help="Path to a platform configuration YAML file."),
     ] = None,
-    host: Annotated[str, typer.Option("--host", help="Host to bind to.")] = _DEFAULT_HOST,
+    host: Annotated[str, typer.Option("--host", help="Host to bind to.")] = DEFAULT_LOCAL_SERVICES_BIND_HOST,
     port: Annotated[int, typer.Option("--port", help="Port to bind to.")] = _DEFAULT_PORT,
     instance: Annotated[
         str | None,
@@ -351,7 +339,7 @@ def start_services(
         raise typer.BadParameter("Cannot combine --controllers with --controller-group.")
     _warn_bind_all(host)
 
-    scope = compute_scope(port=port, instance_name=instance)
+    scope = compute_scope(port=port, explicit_scope=instance)
     base_dir_str = _effective_base_dir()
     base_dir = Path(base_dir_str) if base_dir_str else None
 
@@ -360,19 +348,21 @@ def start_services(
 
     _ensure_port_available(host, port, scope, base_dir=base_dir)
 
-    typer.echo("Starting platform services...")
-    proc = start_background(
-        scope=scope,
+    platform_config = PlatformAppConfig(
         services=_parse_csv_option(services),
         service_group=service_group,
         controllers=_parse_csv_option(controllers),
         controller_group=controller_group,
         sidecars=_parse_csv_option(sidecars),
         config_path=config,
+        scope=scope,
         host=host,
         port=port,
-        base_dir=base_dir,
+        state_root=base_dir,
     )
+
+    typer.echo("Starting platform services...")
+    proc = start_background(platform_config)
 
     if not _wait_for_healthy(host, port):
         exit_code = proc.poll()
@@ -426,7 +416,7 @@ def stop_services_cmd(
       nemo services stop
       nemo services stop --timeout 60
     """
-    scope = compute_scope(port=port, instance_name=instance)
+    scope = compute_scope(port=port, explicit_scope=instance)
     base_dir_str = _effective_base_dir()
     base_dir = Path(base_dir_str) if base_dir_str else None
 
@@ -496,7 +486,10 @@ def restart_services(
     ] = None,
     host: Annotated[
         str | None,
-        typer.Option("--host", help="Host to bind to. Defaults to previous value or 127.0.0.1."),
+        typer.Option(
+            "--host",
+            help=f"Host to bind to. Defaults to previous value or {DEFAULT_LOCAL_SERVICES_BIND_HOST}.",
+        ),
     ] = None,
     port: Annotated[
         int | None,
@@ -529,8 +522,8 @@ def restart_services(
     base_dir = Path(base_dir_str) if base_dir_str else None
 
     if instance is not None or port is not None:
-        effective_port = port if port is not None else _DEFAULT_PORT
-        scope = compute_scope(port=effective_port, instance_name=instance)
+        effective_scope_port = port if port is not None else _DEFAULT_PORT
+        scope = compute_scope(port=effective_scope_port, explicit_scope=instance)
     else:
         scope = _find_sole_running_scope(base_dir)
 
@@ -547,36 +540,46 @@ def restart_services(
     # appropriate even for foreground targets.
     stop_instance(scope, base_dir=base_dir, force=True)
 
-    effective_services = _parse_csv_option(services) if services is not None else (prev.services if prev else None)
-    effective_service_group = service_group if service_group is not None else (prev.service_group if prev else None)
-    effective_controllers = (
-        _parse_csv_option(controllers) if controllers is not None else (prev.controllers if prev else None)
+    previous_config = prev.config if prev else None
+    effective_services = _parse_csv_option(services) if services is not None else None
+    if services is None and previous_config is not None:
+        effective_services = previous_config.services
+    effective_service_group = service_group if service_group is not None else None
+    if service_group is None and previous_config is not None:
+        effective_service_group = previous_config.service_group
+    effective_controllers = _parse_csv_option(controllers) if controllers is not None else None
+    if controllers is None and previous_config is not None:
+        effective_controllers = previous_config.controllers
+    effective_controller_group = controller_group if controller_group is not None else None
+    if controller_group is None and previous_config is not None:
+        effective_controller_group = previous_config.controller_group
+    effective_sidecars = _parse_csv_option(sidecars) if sidecars is not None else None
+    if sidecars is None and previous_config is not None:
+        effective_sidecars = previous_config.sidecars
+    effective_config = config if config is not None else (previous_config.config_path if previous_config else None)
+    effective_host = (
+        host if host is not None else (previous_config.host if previous_config else DEFAULT_LOCAL_SERVICES_BIND_HOST)
     )
-    effective_controller_group = (
-        controller_group if controller_group is not None else (prev.controller_group if prev else None)
-    )
-    effective_sidecars = _parse_csv_option(sidecars) if sidecars is not None else (prev.sidecars if prev else None)
-    effective_config = config if config is not None else (prev.config_path if prev else None)
-    effective_host = host if host is not None else (prev.host if prev else _DEFAULT_HOST)
-    effective_port = port if port is not None else (prev.port if prev else _DEFAULT_PORT)
+    effective_port = port if port is not None else (previous_config.port if previous_config else _DEFAULT_PORT)
 
     _warn_bind_all(effective_host)
 
     _ensure_port_available(effective_host, effective_port, scope, base_dir=base_dir)
-
-    typer.echo("Starting platform services...")
-    proc = start_background(
-        scope=scope,
+    platform_config = PlatformAppConfig(
         services=effective_services,
         service_group=effective_service_group,
         controllers=effective_controllers,
         controller_group=effective_controller_group,
         sidecars=effective_sidecars,
         config_path=effective_config,
+        scope=scope,
         host=effective_host,
         port=effective_port,
-        base_dir=base_dir,
+        state_root=base_dir,
     )
+
+    typer.echo("Starting platform services...")
+    proc = start_background(platform_config)
 
     if not _wait_for_healthy(effective_host, effective_port):
         exit_code = proc.poll()
@@ -613,7 +616,7 @@ def status_services(
     ] = _DEFAULT_PORT,
 ) -> None:
     """Show status of the platform services instance for this scope."""
-    scope = compute_scope(port=port, instance_name=instance)
+    scope = compute_scope(port=port, explicit_scope=instance)
     base_dir_str = _effective_base_dir()
     base_dir = Path(base_dir_str) if base_dir_str else None
 
@@ -641,13 +644,13 @@ def status_services(
         except ValueError:
             uptime = "unknown"
 
-    healthy = _wait_for_healthy(desc.host, desc.port, timeout=3, poll_interval=0.5)
+    healthy = _wait_for_healthy(desc.config.host, desc.config.port, timeout=3, poll_interval=0.5)
     health_str = "healthy" if healthy else "unhealthy"
 
-    typer.echo(f"Scope:    {desc.scope}")
+    typer.echo(f"Scope:    {desc.config.scope}")
     typer.echo(f"PID:      {desc.pid}")
     typer.echo(f"Mode:     {desc.mode}")
-    typer.echo(f"Address:  {desc.host}:{desc.port}")
+    typer.echo(f"Address:  {desc.config.host}:{desc.config.port}")
     typer.echo(f"Uptime:   {uptime}")
     typer.echo(f"Health:   {health_str}")
     log = log_path_for(scope, base_dir=base_dir)
@@ -668,7 +671,7 @@ def _print_instance_table(instances: list[InstanceInfo]) -> None:
         pid = addr = mode = "-"
         if info.descriptor:
             pid = str(info.descriptor.pid)
-            addr = f"{info.descriptor.host}:{info.descriptor.port}"
+            addr = f"{info.descriptor.config.host}:{info.descriptor.config.port}"
             mode = info.descriptor.mode
         typer.echo(f"{info.scope:<25} {status:<10} {pid:<10} {addr:<25} {mode:<12}")
 
@@ -872,7 +875,7 @@ def logs_services(
       nemo services logs --path
       nemo services logs -n 100
     """
-    scope = compute_scope(port=port, instance_name=instance)
+    scope = compute_scope(port=port, explicit_scope=instance)
     base_dir_str = _effective_base_dir()
     base_dir = Path(base_dir_str) if base_dir_str else None
 

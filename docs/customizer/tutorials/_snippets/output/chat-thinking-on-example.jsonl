@@ -1,5 +1,0 @@
-{"messages": [
-  {"role": "system", "content": "detailed thinking on"},
-  {"role": "user", "content": "What is 2 + 2?"},
-  {"role": "assistant", "content": "<think>To solve 2 + 2, add 2 and 2 together.</think> The answer is 4."}
-]}

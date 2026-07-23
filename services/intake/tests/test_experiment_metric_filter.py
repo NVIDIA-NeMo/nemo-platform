@@ -31,7 +31,7 @@ def _exp(name: str, *, run_count: int = 0, cost_mean: float | None = None) -> Ev
         id=name,
         name=name,
         workspace="default",
-        experiment_group_id="grp",
+        experiment_ids=["grp"],
         dataset_name="ds",
         run_count=run_count,
         cost_usd=EvaluatorAggregate(mean=cost_mean) if cost_mean is not None else None,

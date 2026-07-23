@@ -1,23 +1,19 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
-import { Button, Flex, Tag, Text, TextInput } from '@nvidia/foundations-react-core';
+import { Button, Flex, Tag, Text } from '@nvidia/foundations-react-core';
 import type { StartOptionTag } from '@studio/components/CreateFilesetStart/types';
+import type { JobBuilderFormValues } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
 import { FileJson, Pencil } from 'lucide-react';
 import { type FC, useState } from 'react';
+import { useFormContext, useWatch } from 'react-hook-form';
 
 export interface BuilderToolbarProps {
-  /** The fileset name; shown read-only until the pencil icon is clicked. */
-  name: string;
-  onNameChange: (name: string) => void;
-  /** Number of columns currently on the canvas. */
-  columnCount: number;
   /** The template's badge (recipe use case), shown when building from a template. */
   templateTag?: StartOptionTag;
-  /** Full-run record count, as a raw digit string (no thousands separators). */
-  rows: string;
-  onRowsChange: (rows: string) => void;
+  columnCount: number;
   onPreview: () => void;
   isPreviewing: boolean;
   onSubmit: () => void;
@@ -25,18 +21,17 @@ export interface BuilderToolbarProps {
 }
 
 export const BuilderToolbar: FC<BuilderToolbarProps> = ({
-  name,
-  onNameChange,
-  columnCount,
   templateTag,
-  rows,
-  onRowsChange,
+  columnCount,
   onPreview,
   isPreviewing,
   onSubmit,
   isSubmitting,
 }) => {
   const [isEditingName, setIsEditingName] = useState(false);
+  const { control } = useFormContext<JobBuilderFormValues>();
+  const name = useWatch({ control, name: 'name' }) ?? '';
+  const rows = useWatch({ control, name: 'rows' }) ?? '';
   const previewRows = Number(rows) > 0 ? Math.min(Number(rows), 10) : 10;
 
   return (
@@ -49,12 +44,12 @@ export const BuilderToolbar: FC<BuilderToolbarProps> = ({
       <Flex align="center" gap="density-sm" className="min-w-0">
         <FileJson size={20} className="shrink-0 text-secondary" aria-hidden />
         {isEditingName ? (
-          <TextInput
+          <ControlledTextInput
             autoFocus
-            value={name}
-            onValueChange={onNameChange}
+            useControllerProps={{ name: 'name' }}
             onBlur={() => setIsEditingName(false)}
-            attributes={{ Input: { 'aria-label': 'Fileset name', className: 'w-[220px]' } }}
+            formFieldProps={{ className: 'w-[220px]' }}
+            attributes={{ Input: { 'aria-label': 'Fileset name' } }}
           />
         ) : (
           <Text kind="label/bold/md" className="whitespace-nowrap">
@@ -88,13 +83,17 @@ export const BuilderToolbar: FC<BuilderToolbarProps> = ({
           <Text kind="body/regular/sm" className="text-secondary whitespace-nowrap">
             Rows
           </Text>
-          <TextInput
-            type="number"
-            min={1}
-            step={1}
-            value={rows}
-            onValueChange={onRowsChange}
-            attributes={{ Input: { 'aria-label': 'Records to generate', className: 'w-[96px]' } }}
+          <ControlledTextInput
+            useControllerProps={{ name: 'rows' }}
+            formFieldProps={{ className: 'w-[96px]' }}
+            attributes={{
+              Input: {
+                'aria-label': 'Records to generate',
+                min: 1,
+                step: 1,
+                type: 'number',
+              },
+            }}
           />
         </Flex>
         <LoadingButton

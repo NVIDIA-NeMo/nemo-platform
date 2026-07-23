@@ -8,20 +8,30 @@ import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { MemoryRouter } from 'react-router-dom';
+import { type ReactNode } from 'react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 // These match mock agent names in handlers.ts
 const MOCK_AGENT_WITH_DEPLOYMENTS = 'react-agent'; // has rag-agent-prod (running) + sql-agent-dev (stopped)
 const MOCK_AGENT_WITH_ERROR_DEPLOYMENT = 'react-agent2'; // has chat-agent-staging (error)
 const MOCK_AGENT_UNKNOWN = 'unknown-agent';
 
-const renderPanel = (agentName?: string, open = true) =>
+// Render under a workspace route so route-aware hooks (e.g. useWorkspaceFromPath
+// in the modal's JudgeModelSelect) resolve the ":workspace" param.
+const renderInWorkspace = (node: ReactNode) =>
   render(
     <TestProviders>
-      <MemoryRouter>
-        <AgentPanel agentName={agentName} workspace="default" open={open} onOpenChange={vi.fn()} />
+      <MemoryRouter initialEntries={['/workspaces/default']}>
+        <Routes>
+          <Route path="/workspaces/:workspace" element={node} />
+        </Routes>
       </MemoryRouter>
     </TestProviders>
+  );
+
+const renderPanel = (agentName?: string, open = true) =>
+  renderInWorkspace(
+    <AgentPanel agentName={agentName} workspace="default" open={open} onOpenChange={vi.fn()} />
   );
 
 describe('AgentPanel', () => {
@@ -145,18 +155,14 @@ describe('AgentPanel', () => {
 
   describe('defaultTab prop', () => {
     it('opens on the Chat Playground tab when defaultTab is chat-playground', () => {
-      render(
-        <TestProviders>
-          <MemoryRouter>
-            <AgentPanel
-              agentName={MOCK_AGENT_WITH_DEPLOYMENTS}
-              workspace="default"
-              open
-              defaultTab="chat-playground"
-              onOpenChange={vi.fn()}
-            />
-          </MemoryRouter>
-        </TestProviders>
+      renderInWorkspace(
+        <AgentPanel
+          agentName={MOCK_AGENT_WITH_DEPLOYMENTS}
+          workspace="default"
+          open
+          defaultTab="chat-playground"
+          onOpenChange={vi.fn()}
+        />
       );
 
       expect(screen.getByRole('radio', { name: 'Chat Playground' })).toBeChecked();
@@ -167,18 +173,14 @@ describe('AgentPanel', () => {
     it('shows a Deploy this Agent action when the agent has no healthy deployments', async () => {
       const user = userEvent.setup();
       // react-agent2 has only chat-agent-staging (status=error) → no healthy deployments
-      render(
-        <TestProviders>
-          <MemoryRouter>
-            <AgentPanel
-              agentName={MOCK_AGENT_WITH_ERROR_DEPLOYMENT}
-              workspace="default"
-              open
-              defaultTab="chat-playground"
-              onOpenChange={vi.fn()}
-            />
-          </MemoryRouter>
-        </TestProviders>
+      renderInWorkspace(
+        <AgentPanel
+          agentName={MOCK_AGENT_WITH_ERROR_DEPLOYMENT}
+          workspace="default"
+          open
+          defaultTab="chat-playground"
+          onOpenChange={vi.fn()}
+        />
       );
 
       expect(
@@ -213,18 +215,14 @@ describe('AgentPanel', () => {
         )
       );
 
-      render(
-        <TestProviders>
-          <MemoryRouter>
-            <AgentPanel
-              agentName={MOCK_AGENT_WITH_ERROR_DEPLOYMENT}
-              workspace="default"
-              open
-              defaultTab="chat-playground"
-              onOpenChange={vi.fn()}
-            />
-          </MemoryRouter>
-        </TestProviders>
+      renderInWorkspace(
+        <AgentPanel
+          agentName={MOCK_AGENT_WITH_ERROR_DEPLOYMENT}
+          workspace="default"
+          open
+          defaultTab="chat-playground"
+          onOpenChange={vi.fn()}
+        />
       );
 
       expect(
@@ -239,17 +237,13 @@ describe('AgentPanel', () => {
       const user = userEvent.setup();
       const onOpenChange = vi.fn();
 
-      render(
-        <TestProviders>
-          <MemoryRouter>
-            <AgentPanel
-              agentName={MOCK_AGENT_WITH_DEPLOYMENTS}
-              workspace="default"
-              open
-              onOpenChange={onOpenChange}
-            />
-          </MemoryRouter>
-        </TestProviders>
+      renderInWorkspace(
+        <AgentPanel
+          agentName={MOCK_AGENT_WITH_DEPLOYMENTS}
+          workspace="default"
+          open
+          onOpenChange={onOpenChange}
+        />
       );
 
       const closeButton = screen.getByRole('button', { name: /close/i });
