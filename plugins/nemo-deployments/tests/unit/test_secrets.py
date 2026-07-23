@@ -107,10 +107,13 @@ async def test_resolve_deployment_config_secrets_uses_environment_fallback(
 
 
 @pytest.mark.asyncio
-async def test_resolve_deployment_config_secrets_fails_without_value() -> None:
+async def test_resolve_deployment_config_secrets_omits_unresolved_ngc_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     config = _config(SecretRef(workspace="system", name="ngc-api-key"))
     secrets = AsyncMock()
     secrets.access_secret.side_effect = _not_found()
+    monkeypatch.delenv("NGC_API_KEY", raising=False)
 
     platform = SimpleNamespace(
         ngc_api_key_secret="system/ngc-api-key",
@@ -119,9 +122,11 @@ async def test_resolve_deployment_config_secrets_fails_without_value() -> None:
     with (
         patch("nemo_deployments_plugin.secrets.client_from_platform", return_value=secrets),
         patch("nemo_deployments_plugin.secrets.get_platform_config", return_value=platform),
-        pytest.raises(SecretResolutionError, match="NGC_API_KEY"),
     ):
-        await resolve_deployment_config_secrets(MagicMock(), config)
+        resolved = await resolve_deployment_config_secrets(MagicMock(), config)
+
+    assert all(item.name != "NGC_API_KEY" for item in resolved.containers[0].env)
+    assert config.containers[0].env[0].secret_ref == SecretRef(workspace="system", name="ngc-api-key")
 
 
 @pytest.mark.asyncio

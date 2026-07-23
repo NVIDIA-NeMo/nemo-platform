@@ -46,12 +46,23 @@ async def resolve_deployment_config_secrets(sdk: AsyncNeMoPlatform, config: Depl
     """Return an execution-only copy whose secret references have resolved values."""
     resolved = config.model_copy(deep=True)
     for container in (*resolved.init_containers, *resolved.containers):
-        container.env = [await _resolve_env_var(sdk, item) for item in container.env]
+        env: list[EnvVar] = []
+        for item in container.env:
+            resolved_item = await _resolve_env_var(sdk, item)
+            if resolved_item is not None:
+                env.append(resolved_item)
+        container.env = env
     return resolved
 
 
-async def _resolve_env_var(sdk: AsyncNeMoPlatform, item: EnvVar) -> EnvVar:
-    """Resolve an authorized secret-backed environment variable."""
+async def _resolve_env_var(sdk: AsyncNeMoPlatform, item: EnvVar) -> EnvVar | None:
+    """Resolve an authorized secret-backed environment variable.
+
+    NGC credentials are best-effort: when neither the configured secret nor the
+    process-environment fallback is available, omit the variable so mock/local
+    NIM images can still start. Unauthorized references and secret-service
+    access failures remain hard errors.
+    """
     if item.secret_ref is None:
         return item
     ngc_secret_ref = platform_ngc_secret_ref()
@@ -61,5 +72,5 @@ async def _resolve_env_var(sdk: AsyncNeMoPlatform, item: EnvVar) -> EnvVar:
     if value is None:
         value = os.environ.get(get_platform_config().ngc_api_key_env_var)
     if value is None:
-        raise SecretResolutionError(f"Unable to resolve secret for environment variable {item.name!r}")
+        return None
     return EnvVar(name=item.name, value=value)
