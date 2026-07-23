@@ -4,6 +4,7 @@
 import { getPartsFromNamedEntityRef, NamedEntityRef } from '@nemo/common/src/namedEntity';
 import {
   AGENTS_ENABLED,
+  ANONYMIZER_ENABLED,
   BASE_MODELS_ENABLED,
   CODING_AGENT_STUDIO_ENABLED,
   CUSTOMIZER_ENABLED,
@@ -64,6 +65,9 @@ export const gateSafeSynthesizerRoutes = (routes: RouteObject | RouteObject[]) =
 
 export const gateDataDesignerRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(DATA_DESIGNER_ENABLED, routes);
+
+export const gateAnonymizerRoutes = (routes: RouteObject | RouteObject[]) =>
+  gateRoutes(ANONYMIZER_ENABLED, routes);
 
 export const gateEvaluationRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(EVALUATOR_ENABLED, routes);
@@ -527,6 +531,18 @@ export const getDataDesignerJobBuildRoute = (workspace: string) => {
 /** Not linked from any UI — reachable only by typing the URL. */
 export const getLegacyNewDataDesignerJobRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.dataDesignerJobNewLegacy, { workspace });
+};
+
+export const getWorkspaceAnonymizerRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.anonymizer, { workspace });
+};
+
+export const getNewAnonymizerRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.anonymizerNew, { workspace });
+};
+
+export const getAnonymizerJobRoute = (workspace: string, anonymizerJobName: string) => {
+  return generatePath(ROUTES.workspace.anonymizerJob, { workspace, anonymizerJobName });
 };
 
 export const getModelChatRoute = (model: NamedEntityRef) => {
