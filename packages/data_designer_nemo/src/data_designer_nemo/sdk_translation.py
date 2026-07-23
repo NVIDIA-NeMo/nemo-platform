@@ -24,20 +24,6 @@ import httpx
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 
 
-def sync_to_async_sdk(sdk: NeMoPlatform) -> AsyncNeMoPlatform:
-    """Build an async :class:`AsyncNeMoPlatform` mirroring the sync SDK's config."""
-    async_sdk = AsyncNeMoPlatform(
-        base_url=sdk.base_url,
-        default_headers=dict(sdk._custom_headers) if sdk._custom_headers else None,
-        default_query=dict(sdk._custom_query) if sdk._custom_query else None,
-        timeout=sdk.timeout,
-        max_retries=sdk.max_retries,
-        workspace=sdk.workspace,
-    )
-    _attach_transport_and_router(original=sdk, clone=async_sdk)
-    return async_sdk
-
-
 def async_to_sync_sdk(async_sdk: AsyncNeMoPlatform) -> NeMoPlatform:
     """Build a sync :class:`NeMoPlatform` mirroring an async SDK's config."""
     sdk = NeMoPlatform(
@@ -50,6 +36,20 @@ def async_to_sync_sdk(async_sdk: AsyncNeMoPlatform) -> NeMoPlatform:
     )
     _attach_transport_and_router(original=async_sdk, clone=sdk)
     return sdk
+
+
+def sync_to_async_sdk(sdk: NeMoPlatform) -> AsyncNeMoPlatform:
+    """Build an async :class:`AsyncNeMoPlatform` mirroring the sync SDK's config."""
+    async_sdk = AsyncNeMoPlatform(
+        base_url=sdk.base_url,
+        default_headers=dict(sdk._custom_headers) if sdk._custom_headers else None,
+        default_query=dict(sdk._custom_query) if sdk._custom_query else None,
+        timeout=sdk.timeout,
+        max_retries=sdk.max_retries,
+        workspace=sdk.workspace,
+    )
+    _attach_transport_and_router(original=sdk, clone=async_sdk)
+    return async_sdk
 
 
 def _attach_transport_and_router(
