@@ -5,8 +5,6 @@ description: ""
 
 [Run in Google Colab](https://colab.research.google.com/github/NVIDIA-NeMo/nemo-platform/blob/main/docs/customizer/tutorials/distillation-customization-job.ipynb)
 
-# Knowledge Distillation Customization
-
 Learn how to train a smaller student model to mimic a larger teacher model using knowledge distillation (KD).
 
 ## About
@@ -66,6 +64,8 @@ Before starting this tutorial, ensure you have:
 ```sh
 pip install evaluate rouge_score datasets
 ```
+
+4. **At least one GPU with CUDA 13+**
 
 ## Quick Start
 
@@ -189,16 +189,16 @@ print(json.dumps([f.model_dump() for f in client.files.list(fileset=DATASET_NAME
 
 ### 3. Secrets Setup
 
-In this tutorial we use two Llama 3.2 Instruct models from HuggingFace:
+In this tutorial we use two Llama 3.2 Instruct models from Hugging Face:
 - **Teacher:** [meta-llama/Llama-3.2-3B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct) (3B parameters)
 - **Student:** [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct) (1B parameters)
 
 Both models share the same tokenizer/vocabulary (required for knowledge distillation) and include a chat template for deployment with `/chat/completions`.
 
-**HuggingFace Authentication:**
-- For gated models (Llama, Gemma), you must provide a HuggingFace token via the `token_secret` parameter
-- Get your token from [HuggingFace Settings](https://huggingface.co/settings/tokens) (requires Read access)
-- Accept the model's terms on the HuggingFace model page before using it:
+**Hugging Face Authentication:**
+- For gated models (Llama, Gemma), you must provide a Hugging Face token via the `token_secret` parameter
+- Get your token from [Hugging Face Settings](https://huggingface.co/settings/tokens) (requires Read access)
+- Accept the model's terms on the Hugging Face model page before using it:
   - [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct)
   - [meta-llama/Llama-3.2-3B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct)
 
@@ -433,18 +433,45 @@ def wait_for_deployment(deployment_name: str, timeout_minutes: int = 30):
 
         if dep.status == "READY":
             print("\nDeployment is ready!")
+            remaining = int(timeout - elapsed)
+            if remaining <= 0:
+                raise TimeoutError(f"Deployment timeout after {timeout_minutes} minutes")
+            if not client.models.wait_for_status(
+                deployment_name=deployment_name,
+                desired_status="READY",
+                workspace="default",
+                timeout=remaining,
+                check_gateway=True,
+            ):
+                raise TimeoutError("Inference gateway did not become ready")
             return dep
         if dep.status in ("FAILED", "ERROR", "TERMINATED", "LOST"):
-            print(f"\nDeployment failed: {dep.status}")
-            return dep
+            raise RuntimeError(f"Deployment failed with status: {dep.status}")
         if elapsed > timeout:
-            print(f"\nTimeout ({timeout_minutes}m). Check status manually.")
-            return dep
+            raise TimeoutError(f"Deployment timeout after {timeout_minutes} minutes")
         time.sleep(15)
 
 
-dep_status = wait_for_deployment(BASELINE_DEPLOYMENT_NAME)
-assert dep_status.status == "READY"
+try:
+    dep_status = wait_for_deployment(BASELINE_DEPLOYMENT_NAME)
+    assert dep_status.status == "READY"
+except Exception:
+    # Free GPUs if readiness fails before the later baseline-cleanup cell runs.
+    try:
+        client.inference.deployments.delete(name=BASELINE_DEPLOYMENT_NAME, workspace="default")
+        if not client.models.wait_for_status(
+            deployment_name=BASELINE_DEPLOYMENT_NAME,
+            desired_status="DELETED",
+            workspace="default",
+            timeout=600,
+        ):
+            raise TimeoutError(
+                f"Deployment {BASELINE_DEPLOYMENT_NAME} was not deleted within timeout"
+            )
+        client.inference.deployment_configs.delete(name=BASELINE_DEPLOYMENT_CONFIG, workspace="default")
+    except Exception as cleanup_error:
+        print(f"Baseline cleanup after readiness failure also failed: {cleanup_error}")
+    raise
 ```
 
 ### 7. Generate Baseline Predictions on Test Set
@@ -694,7 +721,7 @@ For detailed information on all available hyperparameters, recommended values, a
 
 **Job fails during model download:**
 - Verify authentication secrets are configured (refer to [Managing Secrets](/documentation/get-started/core-concepts/manage-secrets))
-- For gated HuggingFace models (Llama, Gemma), accept the license on the model page
+- For gated Hugging Face models (Llama, Gemma), accept the license on the model page
 - Check both `model` (student) and `teacher_model` URNs are correct
 - Ensure both model entities exist: `client.models.retrieve(name=..., workspace="default")`
 

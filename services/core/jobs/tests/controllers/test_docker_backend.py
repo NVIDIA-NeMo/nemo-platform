@@ -2504,13 +2504,10 @@ def test_docker_job_schedule_with_auth_context(docker_job, docker_client_mock, t
         "groups": ["engineering", "ml-team"],
     }
 
-    # Verify launcher OTLP headers env var is set for authenticated telemetry
-    assert "NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS" in env
-    otlp_headers = env["NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS"]
-    # URL-encoded: @ -> %40, , -> %2C
-    assert "X-NMP-Principal-Id=creator%40example.com" in otlp_headers
-    assert "X-NMP-Principal-Email=creator%40example.com" in otlp_headers
-    assert "X-NMP-Principal-Groups=engineering%2Cml-team" in otlp_headers
+    # Verify launcher application log auth is not configured through env headers.
+    assert "NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS" not in env
+    assert "NMP_JOB_LAUNCHER_LOGS_EXPORTER" not in env
+    assert "NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL" not in env
 
     # Verify no globally scoped OTEL header environment variables are set
     assert "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT" not in env
@@ -2538,6 +2535,8 @@ def test_docker_job_schedule_without_auth_context(docker_job, docker_client_mock
     env = kwargs["environment"]
     assert NMP_PRINCIPAL_ENVVAR not in env
     assert "NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS" not in env
+    assert "NMP_JOB_LAUNCHER_LOGS_EXPORTER" not in env
+    assert "NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL" not in env
 
 
 def test_docker_job_schedule_with_auth_context_empty_groups():
