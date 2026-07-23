@@ -78,7 +78,7 @@ async def test_create_volume_runs_init_chmod_container(
     docker_backend: DockerDeploymentBackend,
     mock_docker_client: MagicMock,
 ) -> None:
-    """initChmod/initImage in the docker volume backend_config trigger a one-shot
+    """initChmod/initImage in the docker volume backend_config trigger an init
     chmod container so a non-root workload (the HF weight-puller) can write the
     otherwise root-owned named volume. This is the docker analogue of k8s fsGroup.
     """
@@ -97,7 +97,9 @@ async def test_create_volume_runs_init_chmod_container(
     mock_docker_client.containers.run.assert_called_once()
     args, run_kwargs = mock_docker_client.containers.run.call_args
     assert args[0] == "docker.io/library/busybox"
-    assert run_kwargs["command"] == ["chmod 0777 /vol"]
+    # chmod is invoked directly (no `sh -c`) so the mode is never shell-interpolated
+    assert run_kwargs["entrypoint"] == ["chmod"]
+    assert run_kwargs["command"] == ["0777", "/vol"]
     assert run_kwargs["remove"] is True
     # the init container must mount the volume it is fixing up
     assert any(b.get("bind") == "/vol" for b in run_kwargs["volumes"].values())
@@ -120,6 +122,29 @@ async def test_create_volume_without_init_chmod_skips_container(
     )
 
     assert update.status == "BOUND"
+    mock_docker_client.containers.run.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_volume_skips_init_chmod_when_volume_exists(
+    docker_backend: DockerDeploymentBackend,
+    mock_docker_client: MagicMock,
+) -> None:
+    """The init chmod container runs only on a fresh create, not when reusing an
+    already-initialized volume — otherwise every reconcile would spin one up.
+    """
+    mock_docker_client.volumes.get.return_value = MagicMock(name="vol")  # already exists
+
+    update = await docker_backend.create_volume(
+        workspace="default",
+        name="weights",
+        size="40Gi",
+        access_modes=["ReadWriteOnce"],
+        backend_config={"docker": {"initChmod": "0777", "initImage": "docker.io/library/busybox"}},
+    )
+
+    assert update.status == "BOUND"
+    mock_docker_client.volumes.create.assert_not_called()
     mock_docker_client.containers.run.assert_not_called()
 
 

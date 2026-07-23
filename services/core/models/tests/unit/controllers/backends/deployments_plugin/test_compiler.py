@@ -8,7 +8,7 @@ from nemo_platform.types.inference.k8s_nim_operator_config import K8sNIMOperator
 from nmp.common.config import Runtime
 from nmp.core.models.app import ModelWeightsType
 from nmp.core.models.controllers.backends.common import DeploymentConfigView
-from nmp.core.models.controllers.backends.deployments_plugin.compiler import compile_model_deployment
+from nmp.core.models.controllers.backends.deployments_plugin.compiler import _busybox_image, compile_model_deployment
 from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
 from nmp.core.models.controllers.backends.deployments_plugin.resolve import ResolvedPluginDeployment
 from nmp.core.models.controllers.backends.vllm_compiler import MODEL_STORE_PATH
@@ -43,12 +43,13 @@ def test_docker_weights_volume_requests_init_chmod() -> None:
     # Docker named volumes are root-owned with no fs_group, so the weights volume
     # must be made writable (chmod) for the non-root puller. The compiler requests
     # this on the volume's docker backend config (docker analogue of k8s fsGroup).
-    compiled = compile_model_deployment(_resolved("vllm", runtime=Runtime.DOCKER), DeploymentsPluginConfig())
+    config = DeploymentsPluginConfig()
+    compiled = compile_model_deployment(_resolved("vllm", runtime=Runtime.DOCKER), config)
     assert compiled.volume is not None
     docker_cfg = compiled.volume.backend_config.docker
     assert docker_cfg is not None
     assert docker_cfg.init_chmod == "0777"
-    assert docker_cfg.init_image  # busybox image is set
+    assert docker_cfg.init_image == _busybox_image(config)
 
 
 def test_k8s_weights_volume_has_no_docker_init_chmod() -> None:

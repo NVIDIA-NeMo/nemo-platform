@@ -170,16 +170,15 @@ class DockerVolumeConfig(BaseModel):
         default=None,
         alias="initChmod",
         description=(
-            "When set, the docker backend runs a one-shot init container to `chmod` "
-            "the freshly created (root-owned) named volume to this mode (e.g. '0777'). "
-            "This is the docker analogue of a k8s fsGroup: it lets a non-root "
-            "container (e.g. the HF weight-puller) write to the volume. No-op on k8s."
+            "When set, an init container chmods the freshly created (root-owned) "
+            "named volume to this mode (e.g. '0777') so a non-root workload (e.g. "
+            "the HF weight-puller) can write to it — the docker analogue of a k8s fsGroup."
         ),
     )
     init_image: str | None = Field(
         default=None,
         alias="initImage",
-        description="Image used for the init_chmod one-shot container (e.g. busybox).",
+        description="Image used for the init_chmod container (e.g. busybox).",
     )
 
     model_config = {"populate_by_name": True}
