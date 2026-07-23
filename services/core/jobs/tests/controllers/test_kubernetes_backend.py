@@ -2183,13 +2183,10 @@ def test_kubernetes_job_schedule_with_auth_context(
         "groups": ["engineering", "ml-team"],
     }
 
-    # Verify launcher OTLP headers env var is set for authenticated telemetry
-    assert "NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS" in env_vars
-    otlp_headers = env_vars["NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS"]
-    # URL-encoded: @ -> %40, , -> %2C
-    assert "X-NMP-Principal-Id=creator%40example.com" in otlp_headers
-    assert "X-NMP-Principal-Email=creator%40example.com" in otlp_headers
-    assert "X-NMP-Principal-Groups=engineering%2Cml-team" in otlp_headers
+    # Verify launcher application log auth is not configured through env headers.
+    assert "NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS" not in env_var_names
+    assert "NMP_JOB_LAUNCHER_LOGS_EXPORTER" not in env_var_names
+    assert "NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL" not in env_var_names
 
     # Verify no globally scoped OTEL header environment variables are set
     assert "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT" not in env_var_names
@@ -2218,9 +2215,13 @@ def test_kubernetes_job_schedule_without_auth_context(kubernetes_job, cpu_execut
     main_container = pod_spec.containers[0]
     env_vars = {env.name: env.value for env in main_container.env if env.value is not None}
 
+    env_var_names = {env.name for env in main_container.env}
+
     # Verify auth env vars are NOT set
     assert NMP_PRINCIPAL_ENVVAR not in env_vars
-    assert "NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS" not in env_vars
+    assert "NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS" not in env_var_names
+    assert "NMP_JOB_LAUNCHER_LOGS_EXPORTER" not in env_var_names
+    assert "NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL" not in env_var_names
 
 
 def test_cleanup_steps_with_multi_step_job_only_first_step_complete(kubernetes_job):

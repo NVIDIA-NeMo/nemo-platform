@@ -78,11 +78,7 @@ from nmp.core.jobs.app.constants import (
 )
 from nmp.core.jobs.app.providers import ComputeResources, ContainerSpec
 from nmp.core.jobs.controllers.backends.base import (
-    NMP_JOB_LAUNCHER_LOGS_EXPORTER_ENVVAR,
     NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR,
-    NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS_ENVVAR,
-    NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL,
-    NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL_ENVVAR,
     WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
     WORKLOAD_IDENTITY_TOKEN_FILE_PATH,
     WORKLOAD_IDENTITY_VOLUME_NAME,
@@ -1012,8 +1008,6 @@ def create_pod_template_spec(
                     step.fileset,
                 ),
             ),
-            client.V1EnvVar(name=NMP_JOB_LAUNCHER_LOGS_EXPORTER_ENVVAR, value="otlp"),
-            client.V1EnvVar(name=NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL_ENVVAR, value=NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL),
             client.V1EnvVar(name=NEMO_JOB_SECRETS_ENVVAR, value=secret_env_var_str),
         ]
     )
@@ -1028,10 +1022,6 @@ def create_pod_template_spec(
         env_var_dict = principal.get_env_var()
         for name, value in env_var_dict.items():
             env.append(client.V1EnvVar(name=name, value=value))
-        # Also set launcher OTLP headers for authenticated platform log export.
-        env.append(
-            client.V1EnvVar(name=NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS_ENVVAR, value=principal.get_otlp_headers_value())
-        )
 
     # Thread through shared platform envvars to the job
     shared_envvars = get_job_runtime_shared_envvars(platform_config)

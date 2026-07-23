@@ -11,7 +11,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -181,30 +180,6 @@ func runExecWithStdin(args []string) (exitCode int, err error) {
 
 	return runExec(args, os.Stdin)
 }
-
-func configureOTELHeadersFromWorkloadToken() {
-	token := os.Getenv("NEMO_WORKLOAD_TOKEN")
-	if token == "" {
-		return
-	}
-
-	const headersEnv = launcherOTLPLogsHeadersEnv
-	headers := os.Getenv(headersEnv)
-	for _, item := range strings.Split(headers, ",") {
-		key, _, _ := strings.Cut(strings.TrimSpace(item), "=")
-		if strings.EqualFold(key, "authorization") {
-			return
-		}
-	}
-
-	authHeader := "Authorization=" + url.PathEscape("Bearer "+token)
-	if headers == "" {
-		os.Setenv(headersEnv, authHeader)
-		return
-	}
-	os.Setenv(headersEnv, headers+","+authHeader)
-}
-
 
 // runExec runs the specified command with arguments, injecting secrets as environment variables if specified
 func runExec(args []string, stdinReader io.Reader) (int, error) {
