@@ -195,9 +195,9 @@ describe('Routes', () => {
       vi.stubEnv('VITE_FF_OPTIMIZER_ENABLED', 'preview');
       const { routes } = await import('./index');
 
-      optimizerRoutes.forEach((route) => {
-        expect(findIfRouteExists(routes, route)).toBe(true);
-      });
+      const missingRoutes = optimizerRoutes.filter((route) => !findIfRouteExists(routes, route));
+
+      expect(missingRoutes).toHaveLength(0);
     });
   });
 });
