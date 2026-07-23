@@ -288,9 +288,9 @@ class JobDispatcher:
             if job_req.output_location is not None:
                 try:
                     await files.get_fileset(name=job_req.output_location, workspace=workspace)
-                except ClientNotFoundError as exc:
+                except (ClientNotFoundError, ClientPermissionDeniedError) as exc:
                     raise JobOutputLocationError(
-                        f"fileset '{job_req.output_location}' not found in workspace '{workspace}'"
+                        f"fileset '{job_req.output_location}' not found or not accessible in workspace '{workspace}'"
                     ) from exc
                 fileset_name = job_req.output_location
             else:

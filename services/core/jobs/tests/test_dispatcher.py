@@ -253,6 +253,25 @@ async def test_create_job_output_location_not_found_raises(
 
 
 @pytest.mark.asyncio
+async def test_create_job_output_location_forbidden_raises(
+    mock_dispatcher: JobDispatcher,
+    _mock_files_client,
+    sample_platform_job_request: CreatePlatformJobRequest,
+):
+    """A supplied output_location the caller cannot access is rejected, never auto-created."""
+    from nemo_platform_plugin.client.errors import PermissionDeniedError
+    from nmp.core.jobs.app.dispatcher import JobOutputLocationError
+
+    _mock_files_client.get_fileset.side_effect = PermissionDeniedError.__new__(PermissionDeniedError)
+    request = sample_platform_job_request.model_copy(update={"output_location": "forbidden-fileset"})
+
+    with pytest.raises(JobOutputLocationError):
+        await mock_dispatcher.create_job(request, DEFAULT_WORKSPACE)
+
+    _mock_files_client.create_fileset.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_create_job_without_output_location_auto_creates_fileset(
     mock_dispatcher: JobDispatcher,
     _mock_files_client,
