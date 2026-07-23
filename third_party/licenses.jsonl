@@ -152,11 +152,6 @@
 {"name": "multiprocess", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "mypy-extensions", "license": "MIT", "compatible": true}
 {"name": "nemo-anonymizer", "license": "APACHE-2.0", "compatible": true}
-{"name": "nemo-fabric", "license": "APACHE-2.0", "compatible": true}
-{"name": "nemo-fabric-adapters-codex", "license": "APACHE-2.0", "compatible": true}
-{"name": "nemo-fabric-adapters-common", "license": "APACHE-2.0", "compatible": true}
-{"name": "nemo-fabric-adapters-hermes", "license": "APACHE-2.0", "compatible": true}
-{"name": "nemo-fabric-runtime", "license": "APACHE-2.0", "compatible": true}
 {"name": "nemo-relay", "license": "APACHE-2.0", "compatible": true}
 {"name": "nemo-safe-synthesizer", "license": "APACHE-2.0", "compatible": true}
 {"name": "nemoguardrails", "license": "APACHE-2.0", "compatible": true}
@@ -178,8 +173,6 @@
 {"name": "oci-openai", "license": "UPL-1.0", "compatible": true}
 {"name": "onnxruntime", "license": "MIT", "compatible": true}
 {"name": "openai", "license": "APACHE-2.0", "compatible": true}
-{"name": "openai-codex", "license": "APACHE-2.0", "compatible": true}
-{"name": "openai-codex-cli-bin", "license": "APACHE-2.0", "compatible": true}
 {"name": "openapi-pydantic", "license": "MIT", "compatible": true}
 {"name": "openevals", "license": "MIT", "compatible": true}
 {"name": "openinference-semantic-conventions", "license": "APACHE-2.0", "compatible": true}
@@ -291,7 +284,6 @@
 {"name": "tenacity", "license": "APACHE-2.0", "compatible": true}
 {"name": "tiktoken", "license": "MIT", "compatible": true}
 {"name": "tokenizers", "license": "APACHE-2.0", "compatible": true}
-{"name": "tomli-w", "license": "MIT", "compatible": true}
 {"name": "tomlkit", "license": "MIT", "compatible": true}
 {"name": "tornado", "license": "APACHE-2.0", "compatible": true}
 {"name": "tqdm", "license": "MIT", "compatible": true}
