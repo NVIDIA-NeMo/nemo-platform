@@ -65,6 +65,10 @@ class JobSecretValidationError(ValueError):
     """Exception raised when a job's secret references cannot be validated."""
 
 
+class JobOutputLocationError(ValueError):
+    """Exception raised when a job's output_location references a fileset that does not exist."""
+
+
 operations_counter = create_counter(
     meter=meter,
     subsystem="jobs",
@@ -279,13 +283,22 @@ class JobDispatcher:
                 source_prefix = job_req.source[:20]
                 job_name = f"{source_prefix}-{short_id}"
 
-            # Create a fileset to store job artifacts
+            # Resolve the fileset for job artifacts (caller-supplied output_location or auto-created).
             files = client_from_platform(self.sdk, AsyncFilesClient)
-            fileset_resp = await files.create_fileset(
-                body=CreateFilesetRequest(name=f"job-fileset-{job_name}"),
-                workspace=workspace,
-            )
-            fileset = fileset_resp.data()
+            if job_req.output_location is not None:
+                try:
+                    await files.get_fileset(name=job_req.output_location, workspace=workspace)
+                except ClientNotFoundError as exc:
+                    raise JobOutputLocationError(
+                        f"fileset '{job_req.output_location}' not found in workspace '{workspace}'"
+                    ) from exc
+                fileset_name = job_req.output_location
+            else:
+                fileset_resp = await files.create_fileset(
+                    body=CreateFilesetRequest(name=f"job-fileset-{job_name}"),
+                    workspace=workspace,
+                )
+                fileset_name = fileset_resp.data().name
 
             # Create job (ID is assigned by entity store)
             job = await self.store.create(
@@ -297,7 +310,7 @@ class JobDispatcher:
                     source=job_req.source,
                     spec=job_req.spec,
                     platform_spec=platform_spec,
-                    fileset=fileset.name,
+                    fileset=fileset_name,
                     ownership=job_req.ownership,
                     custom_fields=job_req.custom_fields,
                 )
@@ -472,13 +485,16 @@ class JobDispatcher:
             # Delete job
             await self.store.delete_by_id(PlatformJob, job_entity.id)
 
-            # Delete job fileset via sdk to properly clean up storage.
-            # Tolerate fileset already being gone (e.g. cleaned up by workspace cleanup).
-            try:
-                files = client_from_platform(self.sdk, AsyncFilesClient)
-                await files.delete_fileset(name=job_entity.fileset, workspace=workspace)
-            except ClientNotFoundError:
-                logger.warning("Job fileset not found during deletion, may have been cleaned up already", extra=extras)
+            # Delete only the fileset the job owns (auto-created); a caller-supplied output_location
+            # fileset is left for the caller to manage. Tolerate the owned fileset already being gone.
+            if job_entity.fileset == f"job-fileset-{job_entity.name}":
+                try:
+                    files = client_from_platform(self.sdk, AsyncFilesClient)
+                    await files.delete_fileset(name=job_entity.fileset, workspace=workspace)
+                except ClientNotFoundError:
+                    logger.warning(
+                        "Job fileset not found during deletion, may have been cleaned up already", extra=extras
+                    )
 
             logger.info(
                 "Deleted job and all associated data for job",

@@ -73,7 +73,7 @@ from nemo_platform_plugin.jobs.types import (
     PlatformJobResponse as PlatformJob,
 )
 from nemo_platform_plugin.schema import DatetimeFilter, Filter, Page, PaginationData, StringFilter
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, Field, TypeAdapter, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +128,21 @@ class BaseJobRequest(BaseModel, Generic[JobConfigT]):
     spec: JobConfigT
     ownership: dict | None = None
     custom_fields: dict | None = None
+    output_location: str | None = None
+
+    @field_validator("output_location")
+    @classmethod
+    def _validate_output_location(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("output_location must not be empty")
+        if "#" in stripped:
+            raise ValueError("subpath in output_location is not yet supported")
+        if "/" in stripped:
+            raise ValueError("output_location must be a bare fileset name; the workspace is implied by the request")
+        return stripped
 
 
 class BaseJob(BaseModel, Generic[JobConfigT]):
@@ -900,6 +915,8 @@ def job_route_factory(
                 create_fields["custom_fields"] = request.custom_fields
             if request.project:
                 create_fields["project"] = request.project
+            if request.output_location is not None:
+                create_fields["output_location"] = request.output_location
 
             jobs = client_from_platform(sdk, AsyncJobsClient)
             job_resp = (

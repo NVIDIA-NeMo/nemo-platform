@@ -51,6 +51,7 @@ from nmp.core.jobs.app.ctx import JobContext
 from nmp.core.jobs.app.dispatcher import (
     JobAlreadyExistsError,
     JobDispatcher,
+    JobOutputLocationError,
     JobSecretValidationError,
     StateTransitionConflictError,
 )
@@ -268,6 +269,12 @@ async def create_job(
             auth_context=AuthContext.from_principal(auth_client.principal),
             sdk=sdk,
         )
+    except JobOutputLocationError as exc:
+        logger.info("Invalid output_location for workspace '%s'", sanitize_for_log(workspace), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
     except ValueError as exc:
         logger.info(
             "Failed to create job '%s' in workspace '%s'",

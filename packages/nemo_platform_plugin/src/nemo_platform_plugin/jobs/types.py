@@ -230,6 +230,7 @@ class CreatePlatformJobRequest(BaseModel):
     source: str
     ownership: Optional[dict] = None
     custom_fields: Optional[dict] = None
+    output_location: Optional[str] = None
 
 
 class PlatformJobTaskUpdate(BaseModel):
