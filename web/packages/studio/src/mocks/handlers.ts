@@ -22,6 +22,11 @@ import { sampleDatasetsHandlers } from '@studio/mocks/handlers/sampleDatasets';
 import { secretsHandlers } from '@studio/mocks/handlers/secrets';
 import { workspacesHandlers } from '@studio/mocks/handlers/workspaces';
 import {
+  mockEvaluationSessionsPage,
+  mockEvaluationsPage,
+  mockExperimentGroup,
+} from '@studio/mocks/intake/experiments';
+import {
   createMockAnnotation,
   deleteMockAnnotation,
   mockAnnotationsPage,
@@ -480,6 +485,19 @@ export const handlers = [
     const session = mockSessionById(String(params['sessionId']));
     return session ? HttpResponse.json(session) : new HttpResponse(null, { status: 404 });
   }),
+  http.get('*/apis/intake/v2/workspaces/:workspace/experiment-groups/:name', ({ params }) =>
+    HttpResponse.json(mockExperimentGroup(String(params['name'])))
+  ),
+  http.get('*/apis/intake/v2/workspaces/:workspace/evaluations', () =>
+    HttpResponse.json(mockEvaluationsPage())
+  ),
+  http.get(
+    '*/apis/intake/v2/workspaces/:workspace/evaluations/:name/sessions',
+    ({ request, params }) => {
+      const testCaseId = new URL(request.url).searchParams.get('filter[test_case_id]');
+      return HttpResponse.json(mockEvaluationSessionsPage(String(params['name']), testCaseId));
+    }
+  ),
   http.get('*/apis/intake/v2/workspaces/:workspace/traces', ({ request }) => {
     const url = new URL(request.url);
     const sessionId = url.searchParams.get('filter[session_id]');

@@ -1,22 +1,18 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useGetSession, useListSpans, useListTraces } from '@nemo/sdk/generated/platform/api';
-import type { Span } from '@nemo/sdk/generated/platform/schema';
 import { PageHeader, Stack, StatusMessage } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { TraceDetailLayout } from '@studio/components/IntakeDetail/TraceDetailLayout';
 import { TraceSpanTree } from '@studio/components/IntakeDetail/TraceDetailSpanTree';
 import { SessionSummaryHeader } from '@studio/components/IntakeDetail/TraceDetailSummaryHeader';
 import { TraceDetailView } from '@studio/components/IntakeDetail/TraceDetailView';
-import {
-  type SessionExplorerData,
-  TraceSpanAccordions,
-} from '@studio/components/IntakeDetail/TraceSpanAccordions';
+import { TraceSpanAccordions } from '@studio/components/IntakeDetail/TraceSpanAccordions';
 import {
   type TraceViewMode,
   TraceViewToolbar,
 } from '@studio/components/IntakeDetail/TraceViewToolbar';
+import { useSessionTrajectories } from '@studio/components/IntakeDetail/useSessionTrajectories';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { NotFound } from '@studio/components/Layouts/NotFound';
 import {
@@ -25,12 +21,9 @@ import {
 } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { QUERY_PARAMETERS } from '@studio/routes/constants';
 import { getIntakeSessionRoute, getIntakeTracesRoute } from '@studio/routes/utils';
-import { buildSpanTree, type SessionTrajectory } from '@studio/util/intakeTelemetry';
 import { CircleAlert } from 'lucide-react';
-import { type FC, useCallback, useEffect, useMemo, useState } from 'react';
+import { type FC, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-
-const SESSION_TRACES_PAGE_SIZE = 1000;
 
 export type SessionDetailRouteContext =
   | { readonly kind: 'intake' }
@@ -38,6 +31,7 @@ export type SessionDetailRouteContext =
       readonly kind: 'evaluation';
       readonly parentBreadcrumbs: BreadcrumbsItemProps[];
       readonly getSessionHref: (sessionId: string) => string;
+      readonly headerActions?: ReactNode;
     };
 
 interface SessionDetailViewProps {
@@ -64,60 +58,15 @@ export const SessionDetailView: FC<SessionDetailViewProps> = ({
     routeContext?.kind === 'evaluation' ? routeContext.getSessionHref : defaultGetSessionHref;
 
   const {
-    data: session,
-    error: sessionError,
-    isLoading: isSessionLoading,
-  } = useGetSession(workspace, sessionId);
-
-  const {
-    data: tracesResponse,
-    error: tracesError,
-    isLoading: isTracesLoading,
-  } = useListTraces(workspace, {
-    filter: { session_id: sessionId },
-    mode: 'summary',
-    page: 1,
-    page_size: SESSION_TRACES_PAGE_SIZE,
-    sort: 'started_at',
-  });
-  const traces = useMemo(() => tracesResponse?.data ?? [], [tracesResponse?.data]);
-  const {
-    data: sessionSpansResponse,
-    error: sessionSpansError,
-    isFetching: isSessionSpansFetching,
-  } = useListSpans(workspace, {
-    filter: { session_id: sessionId },
-    mode: 'summary',
-    page: 1,
-    page_size: SESSION_TRACES_PAGE_SIZE,
-    sort: 'started_at',
-  });
-  const trajectories = useMemo<SessionTrajectory[]>(() => {
-    const groupedSpans = new Map<string, Span[]>();
-    for (const span of sessionSpansResponse?.data ?? []) {
-      if (!span.trace_id) continue;
-      const traceSpans = groupedSpans.get(span.trace_id) ?? [];
-      traceSpans.push(span);
-      groupedSpans.set(span.trace_id, traceSpans);
-    }
-    return traces.map((trace) => {
-      const spans = groupedSpans.get(trace.id) ?? [];
-      return { trace, spans, spanTree: buildSpanTree(spans) };
-    });
-  }, [sessionSpansResponse?.data, traces]);
-  const explorer = useMemo<SessionExplorerData>(
-    () => ({
-      trajectories,
-      spansLoaded: sessionSpansResponse !== undefined,
-      spansError: sessionSpansError,
-      isSpansFetching: isSessionSpansFetching,
-      spanPageSize: SESSION_TRACES_PAGE_SIZE,
-      spanTotal: sessionSpansResponse?.pagination?.total_results ?? 0,
-    }),
-    [isSessionSpansFetching, sessionSpansError, sessionSpansResponse, trajectories]
-  );
-  const testCaseId = traces.find((trace) => trace.evaluation_context?.test_case_id)
-    ?.evaluation_context?.test_case_id;
+    session,
+    sessionError,
+    isSessionLoading,
+    tracesError,
+    isTracesLoading,
+    trajectories,
+    explorer,
+    testCaseId,
+  } = useSessionTrajectories(workspace, sessionId);
   const title =
     routeContext?.kind === 'evaluation' && testCaseId
       ? `Test case: ${testCaseId}`
@@ -216,7 +165,11 @@ export const SessionDetailView: FC<SessionDetailViewProps> = ({
   return (
     <AccessibleTitle title={title}>
       <Stack gap="density-2xl" padding="density-2xl" className="h-full overflow-auto">
-        <PageHeader className="p-0" slotHeading={title} />
+        <PageHeader
+          className="p-0"
+          slotHeading={title}
+          slotActions={routeContext?.kind === 'evaluation' ? routeContext.headerActions : undefined}
+        />
         <div data-testid="session-summary-header" className="w-full min-w-0">
           <SessionSummaryHeader session={session} />
         </div>

@@ -55,4 +55,14 @@ describe('EvaluationSessionDetailRoute', () => {
     expect(screen.getByText('Evaluation Context')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Intake' })).not.toBeInTheDocument();
   });
+
+  it('offers the "Compare against evaluation run" entry point on the single session view', async () => {
+    renderSessionDetail();
+
+    // The selector enables once the test case's sibling runs resolve.
+    const trigger = await screen.findByRole('combobox', {
+      name: 'Compare against evaluation run',
+    });
+    await waitFor(() => expect(trigger).not.toHaveAttribute('data-disabled'));
+  });
 });
