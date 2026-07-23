@@ -61,14 +61,13 @@ PY
     printf '# Regenerate with: script/compile-wheel-constraints.sh <dir-with-built-wheels>\n#\n'
     while read -r name; do
       [[ -n "${name}" ]] || continue
-      ver=$("${venv}/bin/python" -c "import importlib.metadata as m; print(m.version('${name}'))" 2>/dev/null || true)
+      ver="$("${venv}/bin/python" -c "import importlib.metadata as m; print(m.version('${name}'))" 2>/dev/null || true)
       [[ -n "${ver}" ]] && printf '%s==%s\n' "${name}" "${ver}"
     done <"${meta}/names.txt" | sort
     printf '%s\n' "${LITELLM_CAP}"
   } >"${out}"
   rm -rf "${venv}" "${meta}"
-  pin_count=$(grep -cE '^[a-z0-9].*(==|<[0-9])' "${out}")
-  echo "wrote ${out} (${pin_count} pins)"
+  echo "wrote ${out} ($(grep -cE '^[a-z0-9].*(==|<[0-9])' "${out}") pins)"
 }
 
 np_wheel="$(find "${WHEEL_DIR}" -name 'nemo_platform-*.whl' | head -1)"
