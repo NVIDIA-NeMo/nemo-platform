@@ -8,14 +8,17 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from backends.docker.docker_helpers import container_attrs, sample_config
+from backends.docker.docker_helpers import container_attrs, lora_config, sample_config
 from docker.errors import APIError, NotFound
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
 from nemo_deployments_plugin.backends.labels import (
     CONFIG_NAME_LABEL,
+    CONTAINER_ROLE_LABEL,
     DEPLOYMENT_NAME_LABEL,
     DEPLOYMENT_WORKSPACE_LABEL,
     RESTART_POLICY_LABEL,
+    companion_container_name,
+    container_name,
 )
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import Deployment
@@ -71,6 +74,184 @@ async def test_create_deployment_maps_command_to_entrypoint(
     _, run_kwargs = mock_docker_client.containers.run.call_args
     assert run_kwargs["entrypoint"] == ["echo"]
     assert run_kwargs["command"] == ["hello"]
+
+
+@pytest.mark.asyncio
+async def test_create_lora_group_runs_init_server_and_sidecar(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    """A LoRA-shaped config runs init-to-completion, then server, then sidecar.
+
+    The sidecar shares the server's network namespace (network=container:<server>)
+    and publishes no host ports; only the server maps ports.
+    """
+    mock_entities.get.return_value = lora_config()
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+
+    # Init container is run+waited: containers.run returns a container whose
+    # wait() reports success.
+    init_container = MagicMock()
+    init_container.wait.return_value = {"StatusCode": 0}
+    server_container = MagicMock(id="server123")
+    sidecar_container = MagicMock(id="sidecar123")
+    mock_docker_client.containers.run.side_effect = [init_container, server_container, sidecar_container]
+
+    update = await docker_backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "STARTING"
+    calls = mock_docker_client.containers.run.call_args_list
+    assert len(calls) == 3
+
+    # 1) init container ran to completion (detached then waited + removed)
+    init_container.wait.assert_called_once()
+    init_container.remove.assert_called_once()
+
+    # 2) server publishes ports, no shared netns
+    server_kwargs = calls[1].kwargs
+    assert server_kwargs["name"] == container_name("default", "srv")
+    assert server_kwargs["labels"][CONTAINER_ROLE_LABEL] == "server"
+    assert "ports" in server_kwargs
+    assert server_kwargs.get("network", "") == ""
+
+    # 3) sidecar shares the server netns, publishes no ports
+    sidecar_kwargs = calls[2].kwargs
+    assert sidecar_kwargs["name"] == companion_container_name("default", "srv", "lora-adapters")
+    assert sidecar_kwargs["labels"][CONTAINER_ROLE_LABEL] == "lora-adapters"
+    assert sidecar_kwargs["network"] == f"container:{container_name('default', 'srv')}"
+    assert "ports" not in sidecar_kwargs
+
+
+@pytest.mark.asyncio
+async def test_create_lora_group_fails_when_init_nonzero(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    """A non-zero init container fails the deployment before the server starts."""
+    mock_entities.get.return_value = lora_config()
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+
+    init_container = MagicMock()
+    init_container.wait.return_value = {"StatusCode": 1}
+    mock_docker_client.containers.run.return_value = init_container
+
+    update = await docker_backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "FAILED"
+    assert "init" in update.status_message.lower()
+    # only the init container was run (server/sidecar never started)
+    assert mock_docker_client.containers.run.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_create_falls_back_to_local_image_when_pull_fails(
+    mock_sdk: MagicMock,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    """A pull failure is tolerated when the image is already present locally.
+
+    Local-only images (e.g. the LoRA adapters sidecar ``nmp-api:local``) are not
+    pullable from a registry; the backend uses the local copy instead of failing.
+    """
+    from unittest.mock import patch
+
+    with (
+        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
+        patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
+        patch("docker.from_env", return_value=mock_docker_client),
+    ):
+        # pull_images enabled so the pull path runs
+        backend = DockerDeploymentBackend(mock_sdk, {"docker_timeout": 60, "pull_images": True})
+        backend._client = mock_docker_client
+
+    mock_entities.get.return_value = sample_config()
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    mock_docker_client.images.pull.side_effect = APIError("404 not found")
+    mock_docker_client.images.get.return_value = MagicMock()  # present locally
+    mock_docker_client.containers.run.return_value = MagicMock(id="abc123")
+
+    update = await backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "STARTING"
+    mock_docker_client.images.get.assert_called_once()
+    mock_docker_client.containers.run.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_create_fails_when_pull_fails_and_no_local_image(
+    mock_sdk: MagicMock,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    """If the image cannot be pulled AND is not present locally, create fails."""
+    from unittest.mock import patch
+
+    with (
+        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
+        patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
+        patch("docker.from_env", return_value=mock_docker_client),
+    ):
+        backend = DockerDeploymentBackend(mock_sdk, {"docker_timeout": 60, "pull_images": True})
+        backend._client = mock_docker_client
+
+    mock_entities.get.return_value = sample_config()
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    mock_docker_client.images.pull.side_effect = APIError("404 not found")
+    mock_docker_client.images.get.side_effect = NotFound("missing locally")
+
+    update = await backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "FAILED"
+    assert "pull image" in update.status_message.lower()
+    mock_docker_client.containers.run.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_delete_removes_whole_group(
+    docker_backend: DockerDeploymentBackend,
+    mock_docker_client: MagicMock,
+) -> None:
+    """delete_deployment stops+removes every container in the group."""
+    server = MagicMock()
+    server.name = container_name("default", "srv")
+    sidecar = MagicMock()
+    sidecar.name = companion_container_name("default", "srv", "lora-adapters")
+    mock_docker_client.containers.list.return_value = [server, sidecar]
+
+    update = await docker_backend.delete_deployment("default", "srv")
+
+    assert update.status == "SUCCEEDED"
+    server.remove.assert_called_once()
+    sidecar.remove.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -170,6 +351,91 @@ async def test_read_status_ready_when_running_without_probe(
     update = await docker_backend.read_status(workspace="default", name="srv")
 
     assert update.status == "READY"
+
+
+def _running_server_container() -> MagicMock:
+    container = MagicMock()
+    container.id = "abc123def456"
+    container.status = "running"
+    container.labels = {
+        "managed-by": MANAGED_BY_LABEL,
+        RESTART_POLICY_LABEL: "Always",
+        CONFIG_NAME_LABEL: "cfg1",
+    }
+    container.ports = {}
+    container.attrs = container_attrs()
+    return container
+
+
+def _sidecar_container(role: str, status: str) -> MagicMock:
+    sidecar = MagicMock()
+    sidecar.status = status
+    sidecar.labels = {
+        "managed-by": MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "srv",
+        CONTAINER_ROLE_LABEL: role,
+    }
+    return sidecar
+
+
+@pytest.mark.asyncio
+async def test_read_status_ready_when_sidecar_running(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    """Server ready + adapters sidecar running => READY."""
+    mock_docker_client.containers.get.return_value = _running_server_container()
+    mock_entities.get.return_value = lora_config()  # server + lora-adapters sidecar
+    mock_docker_client.containers.list.return_value = [_sidecar_container("lora-adapters", "running")]
+
+    update = await docker_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "READY"
+
+
+@pytest.mark.asyncio
+async def test_read_status_starting_when_sidecar_stopped(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    """Server ready but the adapters sidecar is stopped => drop back to STARTING.
+
+    Locks in the readiness gating: a present-but-not-running sidecar keeps the
+    deployment out of READY.
+    """
+    mock_docker_client.containers.get.return_value = _running_server_container()
+    mock_entities.get.return_value = lora_config()
+    mock_docker_client.containers.list.return_value = [_sidecar_container("lora-adapters", "exited")]
+
+    update = await docker_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "STARTING"
+    assert "sidecar" in update.status_message.lower()
+
+
+@pytest.mark.asyncio
+async def test_read_status_starting_when_sidecar_removed(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    """Server ready but the expected adapters sidecar is entirely gone => STARTING.
+
+    A removed (not merely exited) sidecar is detected by comparing the expected
+    sidecar roles from the config against the containers actually present.
+    """
+    mock_docker_client.containers.get.return_value = _running_server_container()
+    mock_entities.get.return_value = lora_config()
+    # The sidecar container has been removed: only unrelated containers remain.
+    mock_docker_client.containers.list.return_value = []
+
+    update = await docker_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "STARTING"
+    assert "sidecar" in update.status_message.lower()
 
 
 @pytest.mark.asyncio

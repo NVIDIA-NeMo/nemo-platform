@@ -25,7 +25,6 @@ from nmp.core.models.controllers.backends.deployments_plugin.status import (
     apply_deleting_timeout,
     apply_pending_timeout,
 )
-from nmp.core.models.controllers.backends.engine import ENGINE_GENERIC, config_engine
 from nmp.core.models.controllers.context import ModelContext
 
 logger = logging.getLogger(__name__)
@@ -71,18 +70,6 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
         if resolved.runtime == Runtime.NONE:
             return DeploymentStatusUpdate(
                 status="UNKNOWN", status_message="Deployments plugin is unavailable for runtime none."
-            )
-        lora_enabled = resolved.view.lora_enabled and config_engine(resolved.config) != ENGINE_GENERIC
-        if resolved.runtime == Runtime.DOCKER and lora_enabled:
-            # Fail fast: the plugin docker runtime is single-container today, so a
-            # LoRA deployment (server + adapters sidecar) cannot run there yet.
-            return DeploymentStatusUpdate(
-                status="ERROR",
-                status_message=(
-                    "LoRA serving is not supported on the docker runtime yet "
-                    "(deployments-plugin docker is single-container). Deploy LoRA "
-                    "models on the kubernetes runtime instead."
-                ),
             )
         teardown = await self.delete_model_deployment(resolved.deployment.workspace, resolved.deployment.name)
         if teardown.status == "DELETING":
