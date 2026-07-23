@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Badge, Flex, Stack, Tag, Text } from '@nvidia/foundations-react-core';
+import { Badge, Button, Flex, Stack, Tag, Text } from '@nvidia/foundations-react-core';
 import { CardIconBadge } from '@studio/components/common/SelectableCard';
 import type { BuilderColumn } from '@studio/routes/DataDesignerJobBuildRoute/columns';
 import { describeColumn } from '@studio/routes/DataDesignerJobBuildRoute/describeColumn';
@@ -88,14 +88,18 @@ export const SchemaRow: FC<SchemaRowProps> = ({
         </Stack>
       </button>
 
-      <button
-        type="button"
-        onClick={onDelete}
-        aria-label={`Delete ${column.name || option.label}`}
-        className="flex shrink-0 items-center border-l border-base px-density-md text-secondary opacity-0 transition-opacity hover:text-(--text-color-feedback-danger) focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--color-brand,#76b900) group-hover:opacity-100 cursor-pointer"
-      >
-        <Trash2 size={16} aria-hidden />
-      </button>
+      <Flex align="center" className="shrink-0 border-l border-base">
+        <Button
+          kind="tertiary"
+          color="danger"
+          size="tiny"
+          onClick={onDelete}
+          aria-label={`Delete ${column.name || option.label}`}
+          className="h-full rounded-none opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
+        >
+          <Trash2 size={16} aria-hidden />
+        </Button>
+      </Flex>
     </Flex>
   );
 };
