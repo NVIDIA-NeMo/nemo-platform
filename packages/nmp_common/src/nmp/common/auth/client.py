@@ -11,6 +11,7 @@ from typing import List, Optional
 
 import httpx
 from nmp.common.config import AuthConfig
+from nmp.common.platform_endpoint import parse_platform_endpoint
 from pydantic import BaseModel, Field
 
 from .authz_format import validate_permission_strings, validate_runtime_authorize_scopes
@@ -68,6 +69,10 @@ class AuthClient(BaseModel):
     def policy_decision_point_base_url(self) -> Optional[str]:
         """Policy Decision Point (PDP) base URL for permission checks."""
         return self.config.policy_decision_point_base_url
+
+    def _new_pdp_http_client(self) -> httpx.AsyncClient:
+        endpoint = parse_platform_endpoint(self.config.policy_decision_point_base_url)
+        return endpoint.async_http_client(timeout=self.config.policy_decision_point_request_timeout_seconds)
 
     @property
     def _pdp_request_headers(self) -> dict[str, str]:
@@ -154,9 +159,7 @@ class AuthClient(BaseModel):
         if client:
             response = await client.post(auth_url, json={"input": auth_input}, headers=pdp_headers)
         else:
-            async with httpx.AsyncClient(
-                timeout=self.config.policy_decision_point_request_timeout_seconds
-            ) as temp_client:
+            async with self._new_pdp_http_client() as temp_client:
                 response = await temp_client.post(auth_url, json={"input": auth_input}, headers=pdp_headers)
 
         response.raise_for_status()
@@ -222,7 +225,7 @@ class AuthClient(BaseModel):
         client = self.http_client
         should_close = False
         if client is None:
-            client = httpx.AsyncClient(timeout=self.config.policy_decision_point_request_timeout_seconds)
+            client = self._new_pdp_http_client()
             should_close = True
 
         try:
@@ -401,6 +404,9 @@ class AuthClient(BaseModel):
         if not self.auth_enabled:
             return True
 
+        if not self.policy_decision_point_base_url:
+            raise RuntimeError("Policy Decision Point URL not configured for role checks")
+
         if poll_interval is None:
             poll_interval = self.config.propagation_poll_interval_seconds
         start_time = asyncio.get_event_loop().time()
@@ -408,11 +414,7 @@ class AuthClient(BaseModel):
 
         # Use provided http_client, instance http_client (from middleware), or create a new one
         # See architecture/docs/http-client-injection.md for injection patterns.
-        client = (
-            http_client
-            or self.http_client
-            or httpx.AsyncClient(timeout=self.config.policy_decision_point_request_timeout_seconds)
-        )
+        client = http_client or self.http_client or self._new_pdp_http_client()
         should_close = http_client is None and self.http_client is None
 
         try:

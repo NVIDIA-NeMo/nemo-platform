@@ -23,10 +23,12 @@ import {
   aggregateScoresOf,
   agentNameForJob,
   cancelAgentEvalJob,
+  evalConfigName,
   fetchAgentEvalBundle,
   fetchAgentEvalJob,
   fetchAgentEvalResult,
   joinBundleByTask,
+  parseBundleRef,
 } from '@studio/api/evaluation/agent-evaluations';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { StatusLogsContent } from '@studio/components/evaluation/Jobs/StatusLogsContent';
@@ -142,6 +144,9 @@ export const AgentEvaluationDetailRoute: FC = () => {
     typeof job.error_details?.message === 'string' ? job.error_details.message : null;
   const scores = aggregateScoresOf(result ?? null);
   const taskDetails = joinBundleByTask(bundle ?? null);
+  const artifactsFileset = result?.bundle_ref
+    ? (parseBundleRef(result.bundle_ref)?.fileset ?? null)
+    : null;
 
   return (
     <AccessibleTitle title={`Evaluation - ${jobName}`}>
@@ -182,15 +187,15 @@ export const AgentEvaluationDetailRoute: FC = () => {
                 value={String(job.spec.tasks?.length ?? '-')}
                 loading={isLoadingJob}
               />
-              {job.description && (
+              {evalConfigName(job) && (
                 <KVPair
                   label="Eval Config"
                   value={
                     <Link
-                      to={getFilesetDetailRoute(workspace, job.description)}
+                      to={getFilesetDetailRoute(workspace, evalConfigName(job) ?? '')}
                       className="text-primary underline"
                     >
-                      {job.description}
+                      {evalConfigName(job)}
                     </Link>
                   }
                 />
@@ -205,6 +210,19 @@ export const AgentEvaluationDetailRoute: FC = () => {
                 value={job.updated_at ? <RelativeTime datetime={job.updated_at} /> : ''}
                 loading={isLoadingJob}
               />
+              {artifactsFileset && (
+                <KVPair
+                  label="Artifacts"
+                  value={
+                    <Link
+                      to={getFilesetDetailRoute(workspace, artifactsFileset)}
+                      className="text-primary underline"
+                    >
+                      View files
+                    </Link>
+                  }
+                />
+              )}
               {(errorMessage ?? statusMessage) && (
                 <KVPair
                   label="Response"

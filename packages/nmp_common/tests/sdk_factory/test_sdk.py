@@ -119,6 +119,15 @@ def test_get_platform_sdk_routes_local_service_path_to_process_listener(monkeypa
     assert prepared.path == "/apis/auth/v2/authz/allow"
 
 
+def test_get_platform_sdk_uses_uds_endpoint_from_base_url():
+    config = PlatformConfig(base_url="unix:///tmp/nemo-platform.sock")  # type: ignore[abstract]
+
+    with patch("nmp.common.sdk_factory.Configuration.get_platform_config", return_value=config):
+        sdk = get_platform_sdk()
+
+    assert sdk.base_url == "http://nemo-platform.local"
+
+
 def test_get_platform_sdk_with_service_principal():
     """Test get_platform_sdk with as_service parameter."""
     sdk = get_platform_sdk(as_service="my-service")
@@ -157,6 +166,15 @@ def test_get_async_platform_sdk():
     # Normalize to str: SDK may expose URL object, config may be str; both environments
     expected = Configuration.get_platform_config().base_url
     assert str(sdk.base_url).rstrip("/") == str(expected).rstrip("/")
+
+
+def test_get_async_platform_sdk_uses_uds_endpoint_from_base_url():
+    config = PlatformConfig(base_url="unix:///tmp/nemo-platform.sock")  # type: ignore[abstract]
+
+    with patch("nmp.common.sdk_factory.Configuration.get_platform_config", return_value=config):
+        sdk = get_async_platform_sdk()
+
+    assert str(sdk.base_url).rstrip("/") == "http://nemo-platform.local"
 
 
 def test_get_async_platform_sdk_with_service_principal():
@@ -588,6 +606,24 @@ def test_get_platform_sdk_routes_entities_path_to_entities_service(
     assert prepared.port == 8080
     assert prepared.scheme == "http"
     assert "/apis/entities/v2/workspaces" in str(prepared.path)
+
+
+def test_get_platform_sdk_routes_service_path_to_env_override(
+    monkeypatch: pytest.MonkeyPatch,
+    platform_config_with_service_discovery,
+):
+    monkeypatch.setenv("NMP_ENTITIES_URL", "http://entities-env:9090")
+    with patch(
+        "nmp.common.sdk_factory.Configuration.get_platform_config",
+        return_value=platform_config_with_service_discovery,
+    ):
+        sdk = get_platform_sdk()
+        request_url = "http://platform:8080/apis/entities/v2/workspaces"
+        prepared = sdk._prepare_url(request_url)
+
+    assert prepared.host == "entities-env"
+    assert prepared.port == 9090
+    assert prepared.scheme == "http"
 
 
 def test_get_platform_sdk_routes_jobs_path_to_jobs_service(

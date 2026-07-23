@@ -14,6 +14,7 @@ from nemo_deployments_plugin.entities import (
     ContainerPort,
     DeploymentBackendConfig,
     DeploymentConfig,
+    DockerVolumeConfig,
     EnvVar,
     HTTPGetAction,
     K8sVolumeConfig,
@@ -22,6 +23,7 @@ from nemo_deployments_plugin.entities import (
     VolumeBackendConfig,
     VolumeMount,
 )
+from nemo_deployments_plugin.secrets import platform_ngc_secret_ref
 from nemo_platform_plugin.config import get_platform_config
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.common.config import Runtime
@@ -62,12 +64,13 @@ from nmp.core.models.controllers.backends.vllm_compiler import (
 _WEIGHTS_MOUNT = "/model-store"
 _SCRATCH_MOUNT = "/scratch"
 _LORA_MOUNT = "/scratch/loras"
-# The adapters sidecar's `nemo services run` writes instance state under $XDG_STATE_HOME
-# (default ~/.local/state), but the pod runs it as the vLLM uid (2000), which does not own
-# the nmp-api image's $HOME (/home/nvs, uid 1000) -- so the default path is unwritable and
-# the sidecar crash-loops. Redirect it to the writable scratch volume, outside the
+# The adapters sidecar's `nemo services run` writes state under $XDG_STATE_HOME (default
+# ~/.local/state) and its local data dir under $XDG_DATA_HOME (default ~/.local/share, via
+# nmp_user_data_dir()). The pod runs it as the vLLM uid (2000), which does not own the
+# nmp-api image's $HOME (/home/nvs, uid 1000), so both defaults are unwritable and the
+# sidecar crash-loops. Redirect both to the writable scratch volume, outside the
 # /scratch/loras subtree the adapters controller GCs.
-_LORA_SIDECAR_STATE_DIR = f"{_SCRATCH_MOUNT}/.nmp-state"
+_LORA_SIDECAR_XDG_HOME = f"{_SCRATCH_MOUNT}/.local"
 _SCRATCH_VOLUME_SIZE = "1Gi"
 
 
@@ -114,6 +117,22 @@ def _env(values: dict[str, str]) -> list[EnvVar]:
     return [EnvVar(name=name, value=value) for name, value in values.items()]
 
 
+def _server_env(engine: str, values: dict[str, str]) -> list[EnvVar]:
+    """Compile server env while replacing raw NGC credentials with a secret reference."""
+    if engine != ENGINE_NIM:
+        return _env(values)
+
+    has_ngc_api_key = "NGC_API_KEY" in values
+    env = _env({name: value for name, value in values.items() if name != "NGC_API_KEY"})
+    secret_ref = platform_ngc_secret_ref()
+    if secret_ref is None:
+        if has_ngc_api_key:
+            raise ValueError("NIM NGC_API_KEY requires a valid platform.ngc_api_key_secret reference")
+        return env
+    env.append(EnvVar(name="NGC_API_KEY", secretRef=secret_ref))
+    return env
+
+
 def _apply_gpu_resources(container: Container, gpu: int) -> None:
     """Map executor_config.gpu to nvidia.com/gpu requests and limits."""
     if gpu < 1:
@@ -151,7 +170,8 @@ def _lora_sidecar(
         "NMP_MODEL_ENTITY_WORKSPACE": entity_workspace,
         "NMP_MODEL_ENTITY_NAME": entity_name,
         "NMP_BASE_URL": platform.base_url,
-        "XDG_STATE_HOME": _LORA_SIDECAR_STATE_DIR,
+        "XDG_STATE_HOME": _LORA_SIDECAR_XDG_HOME,
+        "XDG_DATA_HOME": _LORA_SIDECAR_XDG_HOME,
     }
     if engine == ENGINE_VLLM:
         sidecar_env["VLLM_LORA_BASE_MODEL_OVERRIDE"] = MODEL_STORE_PATH
@@ -172,7 +192,8 @@ def _lora_sidecar(
 
 
 def compile_model_deployment(
-    resolved: ResolvedPluginDeployment, config: DeploymentsPluginConfig
+    resolved: ResolvedPluginDeployment,
+    config: DeploymentsPluginConfig,
 ) -> CompiledModelDeployment:
     """Compile a model deployment into deployments-plugin entity specifications.
 
@@ -196,11 +217,25 @@ def compile_model_deployment(
     scratch_volume = None
     puller_config = None
     if weighted:
+        # On docker, a freshly created named volume is root-owned (0755) and there
+        # is no fs_group equivalent, so the puller image's default non-root user
+        # (e.g. `nvs`/uid 1000) cannot create its HF cache under --local-dir
+        # (/model-store/.cache). Ask the docker backend to make the volume
+        # world-writable on create (busybox `chmod 0777`), the docker analogue of
+        # k8s fs_group. No-op on k8s, where pod securityContext/fs_group handles it.
+        docker_volume_config = (
+            DockerVolumeConfig(initChmod="0777", initImage=_busybox_image(config))
+            if resolved.runtime == Runtime.DOCKER
+            else None
+        )
         volume = Volume(
             name=names.volume,
             workspace=resolved.deployment.workspace,
             size=resolved.view.disk_size or config.default_pvc_size,
-            backendConfig=VolumeBackendConfig(k8s=K8sVolumeConfig(storageClass=config.default_storage_class)),
+            backendConfig=VolumeBackendConfig(
+                docker=docker_volume_config,
+                k8s=K8sVolumeConfig(storageClass=config.default_storage_class),
+            ),
         )
         puller_env = {"HF_ENDPOINT": resolved.files_hf_url, "HF_TOKEN": "service:models"}
         puller_args = ["download", f"{resolved.model_namespace}/{resolved.model_name}", "--local-dir", _WEIGHTS_MOUNT]
@@ -292,7 +327,7 @@ def compile_model_deployment(
             image=_image(image_name, image_tag),
             command=vllm_command or [],
             args=args,
-            env=_env(env),
+            env=_server_env(engine, env),
             ports=[ContainerPort(name="http", containerPort=8000)],
             volumeMounts=mounts,
             readinessProbe=readiness_probe,
@@ -316,7 +351,7 @@ def compile_model_deployment(
             image=_image(image_name, image_tag),
             command=vllm_command or [],
             args=args,
-            env=_env(env),
+            env=_server_env(engine, env),
             ports=[ContainerPort(name="http", containerPort=8000)],
             volumeMounts=mounts,
             readinessProbe=readiness_probe,

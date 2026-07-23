@@ -1,40 +1,38 @@
 # Report to user
 
-After polling reaches a **terminal** status (`completed`, `error`, or `cancelled`), report using this template for **all** backends (automodel, unsloth, rl). Fill fields from the job JSON and `nemo jobs get-status`.
+After polling reaches a **terminal** status (`completed`, `error`, or `cancelled`), report using this template for **both** backends (automodel, unsloth). Fill fields from the job JSON and `nemo jobs get-status`.
 
 ## Result template
 
 ```markdown
 ## Fine-tune result
 
-- **Job:** <automodel-|unsloth-|rl-><id>
-- **Backend:** <automodel|unsloth|rl>
+- **Job:** <automodel-|unsloth-><id>
+- **Backend:** <automodel|unsloth>
 - **Model entity:** default/<model-entity>
 - **Dataset fileset:** default/<dataset-fileset>
-- **Output fileset:** <output.name from job JSON>   <!-- adapter for automodel/unsloth LoRA; full-weight model for rl (DPO) and full SFT -->
+- **Output fileset:** <output.name from job JSON>   <!-- adapter for automodel/unsloth LoRA; full-weight model for full SFT -->
 - **Status:** <completed|error|cancelled>
 - **Final train loss:** <last value in metrics.train_loss, or "n/a">
 - **Final validation loss:** <last value in metrics.val_loss, or "n/a (no validation run)">
 - **Notes:** <see below>
 ```
 
-For **rl (DPO)** the output is a **full-weight model entity** (no adapter): label the line **Output model entity**, **skip Using the adapter**, and use **Using the fine-tuned model** (below) — confirm with `nemo models get <output.name> --workspace default`. The DPO loss series lands in `status_details.metrics` like the other backends.
-
 ## Field guidance
 
 | Field | Source |
 |-------|--------|
-| **Job** | Job id from submit or poll (`automodel-…` / `unsloth-…` / `rl-…`) |
+| **Job** | Job id from submit or poll (`automodel-…` / `unsloth-…`) |
 | **Backend** | Plugin used for submit |
-| **Model entity** | `model` in job JSON (automodel & rl: string ref; unsloth: `model.name`) |
-| **Dataset fileset** | automodel: `dataset.training`; unsloth: `dataset.path`; rl: `dataset` (single preference-fileset string) |
+| **Model entity** | `model` in job JSON (automodel: string ref; unsloth: `model.name`) |
+| **Dataset fileset** | automodel: `dataset.training`; unsloth: `dataset.path` |
 | **Output adapter fileset** | `output.name` from job JSON. Label **Output adapter fileset (planned):** when status is `error` or `cancelled` and no output was registered |
 | **Status** | Top-level `status` from `nemo jobs get-status` — not step-level status |
 | **Final train loss** | Last entry in `status_details.metrics.train_loss` (or nested under a step's `status_details.metrics`). Use the **last** `value` in the list — not `status_details.train_loss` alone (that is the most recent logged step, which may differ from epoch-average loss on some backends). Round to 3 decimal places. |
 | **Final validation loss** | Last entry in `status_details.metrics.val_loss`. If the list is empty, report `n/a (no validation run)` and note whether validation data was configured. Automodel validates once per epoch by default. Unsloth validates once per epoch when `dataset.validation_path` is set and `schedule.eval_steps` is omitted (platform default: `max(1, effective_steps - 1)`). |
 | **Notes** | See **Notes by status** below |
 
-**Metrics extraction** — after polling, always run `nemo jobs get-status <job-id>` and read `status_details.metrics` (all backends accumulate `train_loss` and `val_loss` time series there). Include both final losses in the report even when status is `error` if training completed before the failure (e.g. entity registration failed after upload).
+**Metrics extraction** — after polling, always run `nemo jobs get-status <job-id>` and read `status_details.metrics` (both backends accumulate `train_loss` and `val_loss` time series there). Include both final losses in the report even when status is `error` if training completed before the failure (e.g. entity registration failed after upload).
 
 ## Notes by status
 
@@ -64,7 +62,7 @@ Append a `### Training configuration` table after the header block (before **Usi
 | GPU | `parallelism.num_gpus_per_node` (and `tensor_parallel_size` when >1) | `hardware.gpus` |
 | Output save method | `output.type` (e.g. `adapter`) | `output.save_method` (e.g. `lora`) |
 
-The three examples below show the filled-in table per backend.
+The two examples below show the filled-in table per backend.
 
 ## Automodel example
 
@@ -111,29 +109,6 @@ The three examples below show the filled-in table per backend.
 | Output save method | lora |
 ```
 
-## RL (DPO) example
-
-Map rows from the `training` (DPOTraining) block; there is no LoRA/save-method. Add DPO-specific rows (`ref_policy_kl_penalty` = β, `sft_loss_weight`):
-
-```markdown
-### Training configuration
-
-| Setting | Value |
-|---------|-------|
-| Training type | DPO (full-weight) |
-| Reference KL penalty (β) | 0.05 |
-| SFT loss weight | 0.0 |
-| Max sequence length | 1024 |
-| Epochs | 1 |
-| Micro batch size | 1 |
-| Global batch size | 32 |
-| Learning rate | 5e-6 |
-| Optimizer | AdamW + cosine annealing |
-| Precision | bf16 |
-| GPU | 1 node × 1 GPU |
-| Output | full-weight model entity |
-```
-
 ## Using the output (`completed` only)
 
 After **Training configuration**, branch on output type:
@@ -141,11 +116,11 @@ After **Training configuration**, branch on output type:
 | Output | When | Report section |
 |--------|------|----------------|
 | LoRA adapter | `save_method: lora` (default) | **Using the adapter** — below |
-| Full model | `finetuning_type: all_weights`, `save_method: merged_16bit` / `merged_4bit`, or **rl (DPO)** (always full-weight) | **Using the fine-tuned model** — below |
+| Full model | `finetuning_type: all_weights`, `save_method: merged_16bit` / `merged_4bit` | **Using the fine-tuned model** — below |
 
 ### Using the adapter (LoRA / `save_method: lora`)
 
-**Automodel / unsloth LoRA only** — DPO (rl) never produces an adapter; for rl output use **Using the fine-tuned model** below. Run these discovery commands (parse stdout only; do not pipe `2>&1` into JSON parsers):
+**Automodel / unsloth LoRA only.** Run these discovery commands (parse stdout only; do not pipe `2>&1` into JSON parsers):
 
 1. `nemo models get <model-entity> --workspace default` — confirm `<output.name>` appears under `adapters` with `enabled: true`.
 2. `nemo inference providers list --workspace default -f json` — pick a **READY** provider whose `served_models` includes `default/<model-entity>` (base entity). Record its `name` as `<provider>` (often matches the deployment name).
@@ -222,9 +197,9 @@ uv run python plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer
 Uses CHAT `messages` rows unchanged from the training fileset (`messages[:-1]` at inference). Repeat `--adapter` for multi-adapter compare. `--provider` is optional when a READY provider is auto-discovered. Set `NMP_BASE_URL` (or pass `--base-url`) when the platform is not localhost. LoRA only — full SFT / merged outputs need a deployed model entity (see **Using the fine-tuned model**).
 ```
 
-### Using the fine-tuned model (full SFT / merged checkpoint / DPO)
+### Using the fine-tuned model (full SFT / merged checkpoint)
 
-When `finetuning_type: all_weights`, `save_method` is `merged_16bit` / `merged_4bit`, or the backend is **rl (DPO)**, the job registers a **model** entity at `output.name` with full fine-tuned weights. **Deploy that entity before inference or eval** — full checkpoints are not hot-reloaded onto the base model's LoRA deployment.
+When `finetuning_type: all_weights` or `save_method` is `merged_16bit` / `merged_4bit`, the job registers a **model** entity at `output.name` with full fine-tuned weights. **Deploy that entity before inference or eval** — full checkpoints are not hot-reloaded onto the base model's LoRA deployment.
 
 1. `nemo models get <output.name> --workspace default` — confirm the fine-tuned model entity exists.
 2. Create or update an inference deployment / provider that serves `default/<output.name>` (same workflow as deploying any model entity).
@@ -242,7 +217,7 @@ Fine-tuned weights are on model entity `default/<output.name>`. Unlike LoRA adap
 Use the same chat settings as LoRA inference (`messages[:-1]`, `max_tokens`, `temperature`, `enable_thinking` as appropriate). Post-training eval: run generation eval against this model-entity URL (not `eval_helpers.py --adapter`, which is LoRA-specific).
 ```
 
-Use the user's platform URL in `NMP_BASE_URL` when they overrode it; omit the export line for default `http://127.0.0.1:8080`. Substitute `<provider>`, concrete URLs, and entity names with values from discovery — do not leave generic placeholders in the user-facing report. For **LoRA**, do **not** tell the user to update the deployment before calling the adapter — registration on the base model entity is sufficient. For **full SFT / merged / DPO**, tell the user they must deploy `<output.name>` before inference.
+Use the user's platform URL in `NMP_BASE_URL` when they overrode it; omit the export line for default `http://127.0.0.1:8080`. Substitute `<provider>`, concrete URLs, and entity names with values from discovery — do not leave generic placeholders in the user-facing report. For **LoRA**, do **not** tell the user to update the deployment before calling the adapter — registration on the base model entity is sufficient. For **full SFT / merged**, tell the user they must deploy `<output.name>` before inference.
 
 **Save report to `/tmp`** — unless the user opts out, write the full Markdown report (header, **Training configuration**, **Using the adapter** or **Using the fine-tuned model** when `completed`, and **Resources created** when a slug or new filesets were used) to `/tmp/fine-tune-result-<slug-or-job-suffix>.md`. Use the random slug from the run when one was assigned; otherwise use the job id suffix (e.g. `a925b07ff678`).
 

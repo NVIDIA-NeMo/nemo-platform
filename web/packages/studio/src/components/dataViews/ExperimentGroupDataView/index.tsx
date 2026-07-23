@@ -7,18 +7,23 @@ import {
   Root as DataViewRoot,
   EditColumnsMenu,
 } from '@nemo/common/src/components/DataView/internal';
-import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
+import {
+  ROW_SELECTION_COLUMN_SIZE,
+  StudioDataView,
+} from '@nemo/common/src/components/DataView/StudioDataView';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { formatDurationMs } from '@nemo/common/src/utils/date';
-import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
+import { formatEvaluatorScore, snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import type {
   EvaluationFilter,
   ExperimentGroupResponse,
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
+import { AddToGroupModal } from '@studio/components/dataViews/ExperimentGroupDataView/AddToGroupModal';
+import '@studio/components/dataViews/ExperimentGroupDataView/ExperimentGroupDataView.css';
 import { Empty } from '@studio/components/dataViews/ExperimentGroupDataView/Empty';
 import { MeanValueTooltipCell } from '@studio/components/dataViews/ExperimentGroupDataView/MeanValueTooltipCell';
 import {
@@ -32,8 +37,8 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getEvaluationDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
-import { Columns3, Pin } from 'lucide-react';
-import { type ComponentProps, type FC, useCallback, useEffect, useMemo } from 'react';
+import { Columns3, FolderPlus, Pin } from 'lucide-react';
+import { type ComponentProps, type FC, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export type { EvaluationRow };
@@ -126,16 +131,6 @@ interface ExperimentGroupDataViewProps {
   group: ExperimentGroupResponse;
 }
 
-/**
- * Formats an evaluator's mean score for display. Scores in the normalized 0–1 range read
- * best as percentages; values outside that range are on a different scale (e.g. a 1–5 or
- * 1–10 rubric), so they're shown as a raw number rather than a misleading percentage.
- */
-const formatEvaluatorScore = (mean: number | null | undefined): string => {
-  if (mean == null || !Number.isFinite(mean)) return '-';
-  return mean >= 0 && mean <= 1 ? `${(mean * 100).toFixed(1)}%` : mean.toFixed(3);
-};
-
 /** Lists the experiments that belong to a single experiment group. */
 export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ group }) => {
   const workspace = useWorkspaceFromPath();
@@ -143,6 +138,13 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
   const toast = useToast();
   const experimentGroupName = group.name;
   const experimentGroupId = group.id;
+
+  // The bulk "Add to group" modal state: the selected evaluations plus a way to clear the row
+  // selection on success. Null when the modal is closed.
+  const [addToGroupState, setAddToGroupState] = useState<{
+    evaluations: EvaluationRow[];
+    clearSelection: () => void;
+  } | null>(null);
 
   // Persist column order to localStorage, keyed by experiment group ID.
   const [savedColumnOrder, saveColumnOrder] = useLocalStorage<string[]>(
@@ -159,8 +161,8 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
     // The evaluations leaderboard supports multi-column sort (shift-click) — score vs. cost etc.
     multiSort: true,
     columnVisibility: { created_by: false, updated_at: false },
-    // Keep the pin toggle reachable while horizontally scrolling this wide table.
-    columnPinning: { left: ['pin'] },
+    // Keep the pin toggle and row selection reachable while horizontally scrolling this wide table.
+    columnPinning: { left: ['pin', 'row-selection'] },
     filterFieldMap: getEvaluationFilterField,
     columnOrder: savedColumnOrder ?? [],
   });
@@ -225,16 +227,17 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
   const makeColumns = useCallback<
     ComponentProps<typeof DataViewRoot<EvaluationRow>>['makeColumns']
   >(
-    ({ accessor, display }) => [
+    ({ accessor, display }, { rowSelectionColumn }) => [
+      rowSelectionColumn({ size: ROW_SELECTION_COLUMN_SIZE }),
       display({
         id: 'pin',
         header: () => <span className="sr-only">Pinned</span>,
         enableSorting: false,
         enableHiding: false,
         enableResizing: false,
-        size: 48,
-        minSize: 48,
-        maxSize: 48,
+        size: 40,
+        minSize: 40,
+        maxSize: 40,
         meta: { alignment: 'center', _isPrebuiltColumn: true, _isSizeInitialized: true },
         cell: ({ row }) => {
           const { pinned_at } = row.original;
@@ -451,41 +454,69 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
   }
 
   return (
-    <StudioDataView
-      dataViewState={dataViewState}
-      makeColumns={makeColumns}
-      searchField="name"
-      onRowClick={(row) =>
-        navigate(getEvaluationDetailRoute(workspace, experimentGroupName, row.name))
-      }
-      toolbarSlotEnd={
-        <EditColumnsMenu
-          kind="secondary"
-          showChevron={false}
-          // EditColumnsMenu exposes no width control for its dropdown, so this zero-height
-          // spacer sets a min width on the menu (which sizes to its widest child).
-          slotContent={<div aria-hidden className="h-0 w-[230px]" />}
-        >
-          <>
-            <Columns3 />
-            <span className="hide-mobile">Columns</span>
-          </>
-        </EditColumnsMenu>
-      }
-      attributes={{
-        DataViewRoot: {
-          data: orderedData,
-          totalCount,
-          requestStatus: isLoading ? 'loading' : undefined,
-        },
-        DataViewTableContent: {
-          enableColumnReordering: true,
-          renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
-            hasFiltersApplied || hasSearchApplied ? null : (
-              <Empty experimentGroupName={experimentGroupName} />
-            ),
-        },
-      }}
-    />
+    <>
+      <StudioDataView
+        dataViewState={dataViewState}
+        makeColumns={makeColumns}
+        searchField="name"
+        onRowClick={(row) =>
+          navigate(getEvaluationDetailRoute(workspace, experimentGroupName, row.name))
+        }
+        renderBulkActions={({ selectedRows, table }) => (
+          <Button
+            kind="tertiary"
+            color="neutral"
+            size="small"
+            onClick={() =>
+              setAddToGroupState({
+                evaluations: selectedRows,
+                clearSelection: () => table.resetRowSelection(),
+              })
+            }
+          >
+            <FolderPlus />
+            Add to experiment group
+          </Button>
+        )}
+        toolbarSlotEnd={
+          <EditColumnsMenu
+            kind="secondary"
+            showChevron={false}
+            // EditColumnsMenu exposes no width control for its dropdown, so this zero-height
+            // spacer sets a min width on the menu (which sizes to its widest child).
+            slotContent={<div aria-hidden className="h-0 w-[230px]" />}
+          >
+            <>
+              <Columns3 />
+              <span className="hide-mobile">Columns</span>
+            </>
+          </EditColumnsMenu>
+        }
+        attributes={{
+          DataViewRoot: {
+            data: orderedData,
+            totalCount,
+            requestStatus: isLoading ? 'loading' : undefined,
+            className: 'experiment-group-data-view',
+          },
+          DataViewTableContent: {
+            enableColumnReordering: true,
+            renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
+              hasFiltersApplied || hasSearchApplied ? null : (
+                <Empty experimentGroupName={experimentGroupName} />
+              ),
+          },
+        }}
+      />
+      {addToGroupState && (
+        <AddToGroupModal
+          open
+          onClose={() => setAddToGroupState(null)}
+          onSuccess={() => addToGroupState.clearSelection()}
+          workspace={workspace}
+          evaluations={addToGroupState.evaluations}
+        />
+      )}
+    </>
   );
 };

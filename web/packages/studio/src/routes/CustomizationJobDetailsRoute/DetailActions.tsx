@@ -4,14 +4,17 @@
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { CJobCancellableStatuses, CJobLaunchableStatuses } from '@nemo/common/src/constants/query';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import {
+  useCustomizationCancelAutomodelJob,
+  useCustomizationCancelUnslothJob,
+} from '@nemo/sdk/generated/customizer/api';
 import { getJobsGetJobQueryKey } from '@nemo/sdk/generated/platform/api';
 import { PlatformJobStatus, type PlatformJobResponse } from '@nemo/sdk/generated/platform/schema';
-import { useCustomizationCancelJob } from '@nemo/sdk/vendored/customizer/api';
-import type { CustomizationBackend } from '@nemo/sdk/vendored/customizer/schema';
 import { Button } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getNewEvaluationMetricRoute } from '@studio/routes/utils';
+import { CustomizationBackend } from '@studio/util/customizationBackend';
 import { useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
 import { FC } from 'react';
@@ -34,32 +37,37 @@ export const DetailActions: FC<DetailActionsProps> = ({ model, status, backend, 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const workspace = useWorkspaceFromPath();
-  const { mutateAsync, isPending } = useCustomizationCancelJob({
-    mutation: {
-      onSuccess: () => {
-        toast.success('Job cancelled successfully.');
-        // Optimistically update the cached (generic) job status to cancelled
-        queryClient.setQueryData(
-          getJobsGetJobQueryKey(workspace, name),
-          (oldData: PlatformJobResponse | undefined) => {
-            if (!oldData) return oldData;
-            return {
-              ...oldData,
-              status: PlatformJobStatus.cancelled,
-            };
-          }
-        );
-      },
+  const cancelMutation = {
+    onSuccess: () => {
+      toast.success('Job cancelled successfully.');
+      // Optimistically update the cached (generic) job status to cancelled
+      queryClient.setQueryData(
+        getJobsGetJobQueryKey(workspace, name),
+        (oldData: PlatformJobResponse | undefined) => {
+          if (!oldData) return oldData;
+          return {
+            ...oldData,
+            status: PlatformJobStatus.cancelled,
+          };
+        }
+      );
     },
-  });
+  };
+  const automodelCancel = useCustomizationCancelAutomodelJob({ mutation: cancelMutation });
+  const unslothCancel = useCustomizationCancelUnslothJob({ mutation: cancelMutation });
+  const isPending = automodelCancel.isPending || unslothCancel.isPending;
 
   const cancelJob = async () => {
     if (!backend) {
       toast.error('Unable to determine the training backend for this job.');
       return;
     }
+    const cancel =
+      backend === CustomizationBackend.automodel
+        ? automodelCancel.mutateAsync
+        : unslothCancel.mutateAsync;
     try {
-      await mutateAsync({ workspace, backend, name });
+      await cancel({ workspace, name });
     } catch (e) {
       if (e instanceof AxiosError || e instanceof Error) {
         toast.error(`Failed to cancel job: ${getErrorMessage(e)}`);

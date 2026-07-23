@@ -21,6 +21,7 @@ from nemo_deployments_plugin.backends.k8s.client import KubernetesClients
 from nemo_deployments_plugin.backends.k8s.config import K8sExecutorConfig
 from nemo_deployments_plugin.backends.labels import deployment_identity_labels
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig
+from nemo_deployments_plugin.secrets import SecretResolutionError, resolve_deployment_config_secrets
 from nemo_platform.resources.entities import AsyncEntitiesResource
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 
@@ -101,11 +102,14 @@ class K8sDeploymentBackend(DeploymentBackend):
     ) -> BackendStatusUpdate:
         try:
             config = await self._load_deployment_config(workspace, config_name)
+            config = await resolve_deployment_config_secrets(self._sdk, config)
         except NemoEntityNotFoundError:
             return BackendStatusUpdate(
                 status="FAILED",
                 status_message=f"DeploymentConfig '{config_name}' not found in workspace '{workspace}'",
             )
+        except SecretResolutionError as exc:
+            return BackendStatusUpdate(status="FAILED", status_message=str(exc))
         except Exception as exc:
             logger.exception("Failed to load deployment config %s/%s", workspace, config_name)
             return BackendStatusUpdate(status="FAILED", status_message=f"Failed to load deployment config: {exc}")

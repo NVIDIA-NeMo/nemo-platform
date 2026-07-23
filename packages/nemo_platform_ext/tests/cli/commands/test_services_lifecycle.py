@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pytest
 from nemo_platform_ext.cli.app import app
-from nemo_platform_ext.cli.commands.services._process import (
+from nemo_platform_ext.local.process import (
     InstanceDescriptor,
     PortConflict,
     acquire_lock,
@@ -43,6 +43,7 @@ from nemo_platform_ext.cli.commands.services._process import (
     stop_instance,
     write_descriptor,
 )
+from nmp.platform_runner.config import PlatformAppConfig
 from typer.testing import CliRunner
 
 _runner = CliRunner()
@@ -70,18 +71,14 @@ fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
 import psutil as _psutil
 desc = {
     "pid": os.getpid(),
-    "scope": scope,
-    "host": "127.0.0.1",
-    "port": 8080,
+    "config": {
+        "scope": scope,
+        "host": "127.0.0.1",
+        "port": 8080,
+    },
     "mode": "background",
     "create_time": _psutil.Process(os.getpid()).create_time(),
     "started_at": "test",
-    "services": None,
-    "controllers": None,
-    "service_group": None,
-    "controller_group": None,
-    "sidecars": None,
-    "config_path": None,
     "log_path": None,
 }
 desc_path = os.path.join(inst_dir, "instance.json")
@@ -291,9 +288,7 @@ class TestPidReuseProtection:
             # Write a descriptor with the sleeper's PID but wrong create_time
             desc = InstanceDescriptor(
                 pid=sleeper.pid,
-                scope=scope,
-                host="127.0.0.1",
-                port=8080,
+                config=PlatformAppConfig(scope=scope),
                 mode="background",
                 create_time=0.0,  # intentionally wrong
             )
@@ -363,7 +358,7 @@ class TestLogSurvivesRestart:
         log = d / "services.log"
         log.write_text("first boot log content\n")
 
-        from nemo_platform_ext.cli.commands.services._process import rotate_log
+        from nemo_platform_ext.local.process import rotate_log
 
         new_log = rotate_log(scope, base_dir=base_dir)
         new_log.write_text("second boot log content\n")
@@ -399,15 +394,15 @@ fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
 import psutil as _psutil
 desc = {
     "pid": os.getpid(),
-    "scope": scope,
-    "host": "127.0.0.1",
-    "port": port,
+    "config": {
+        "scope": scope,
+        "host": "127.0.0.1",
+        "port": port,
+    },
     "mode": "background",
     "create_time": _psutil.Process(os.getpid()).create_time(),
     "started_at": "test",
-    "services": None, "controllers": None,
-    "service_group": None, "controller_group": None,
-    "sidecars": None, "config_path": None, "log_path": None,
+    "log_path": None,
 }
 desc_path = os.path.join(inst_dir, "instance.json")
 with open(desc_path, "w") as f:
@@ -523,7 +518,7 @@ class TestEndToEndHealthPolling:
             assert is_instance_alive(scope, base_dir=base_dir)
             desc = read_descriptor(scope, base_dir=base_dir)
             assert desc is not None
-            assert desc.port == port
+            assert desc.config.port == port
 
             result = stop_instance(scope, base_dir=base_dir, timeout=5.0)
             assert proc.pid in result.stopped_pids
@@ -536,7 +531,7 @@ class TestEndToEndHealthPolling:
 
 
 class TestInstanceCleanup:
-    """Integration tests for rm/prune and post-stop instance directories."""
+    """Integration tests for rm/prune and post-stop scope directories."""
 
     def test_stop_leaves_record_until_rm(self, tmp_path: Path, monkeypatch) -> None:
         base_dir = tmp_path / "state"
@@ -668,9 +663,7 @@ class TestPortAvailability:
             write_descriptor(
                 InstanceDescriptor(
                     pid=os.getpid(),
-                    scope=scope,
-                    host="127.0.0.1",
-                    port=port,
+                    config=PlatformAppConfig(scope=scope, host="127.0.0.1", port=port),
                     mode="background",
                     create_time=1.0,
                 ),
@@ -704,9 +697,7 @@ class TestPortAvailability:
             write_descriptor(
                 InstanceDescriptor(
                     pid=os.getpid(),
-                    scope=scope,
-                    host="127.0.0.1",
-                    port=nemo_port,
+                    config=PlatformAppConfig(scope=scope, host="127.0.0.1", port=nemo_port),
                     mode="background",
                     create_time=1.0,
                 ),

@@ -22,7 +22,7 @@ from datetime import datetime
 from typing import Any, ClassVar
 
 from nmp.common.entities.client import EntityBase
-from pydantic import AnyUrl, Field, field_validator
+from pydantic import AnyUrl, Field, field_validator, model_validator
 
 
 def _stringify_metadata(value: Any) -> Any:
@@ -94,12 +94,29 @@ class Experiment(EntityBase):
 
     __entity_type__: ClassVar[str] = "experiment"
 
-    experiment_group_id: str = Field(
+    experiment_ids: list[str] = Field(
+        min_length=1,
         description=(
-            "Entity id of the owning ExperimentGroup. Required — every Experiment must belong to a Group. "
-            "Validated at create/update time; deleting a Group cascades to its Experiments."
+            "Entity ids of the ExperimentGroups this Experiment belongs to (>=1). An Experiment "
+            "always belongs to at least one group. Validated at create/update time. Deleting a Group "
+            "removes it from this set; an Experiment whose sole membership was that Group is deleted "
+            "with it, while one shared with another Group survives there."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_group_membership(cls, data: Any) -> Any:
+        """Schema-on-read: coerce a legacy single ``experiment_group_id`` into ``experiment_ids``.
+
+        Rows written before many-to-many membership stored a scalar ``experiment_group_id`` and no
+        ``experiment_ids``. Synthesize the one-element list so old rows read back unchanged, with no
+        data migration. When ``experiment_ids`` is already present it wins (a re-saved row drops the
+        stale scalar). Non-dict input passes through for pydantic to handle.
+        """
+        if isinstance(data, dict) and not data.get("experiment_ids") and data.get("experiment_group_id"):
+            return {**data, "experiment_ids": [data["experiment_group_id"]]}
+        return data
 
     dataset_name: str = Field(description="Producer-supplied dataset name.")
     dataset_version: str | None = Field(default=None, description="Producer-supplied dataset version.")

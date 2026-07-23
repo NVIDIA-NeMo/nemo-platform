@@ -26,12 +26,28 @@ from nemo_platform_plugin.entity import NemoEntity
 from pydantic import BaseModel, Field, model_validator
 
 
+class SecretRef(BaseModel):
+    """Reference to a Platform secret resolved by the substrate backend."""
+
+    workspace: str
+    name: str
+
+
 class EnvVar(BaseModel):
     name: str
     value: str | None = None
     value_from: dict[str, Any] | None = Field(default=None, alias="valueFrom")
+    secret_ref: SecretRef | None = Field(default=None, alias="secretRef")
 
     model_config = {"populate_by_name": True}
+
+    @model_validator(mode="after")
+    def validate_single_source(self) -> EnvVar:
+        """Reject ambiguous environment variables with multiple value sources."""
+        sources = (self.value, self.value_from, self.secret_ref)
+        if sum(source is not None for source in sources) > 1:
+            raise ValueError("EnvVar may define only one of value, valueFrom, or secretRef")
+        return self
 
 
 class ContainerPort(BaseModel):
@@ -166,6 +182,22 @@ class DeploymentBackendConfig(BaseModel):
 class DockerVolumeConfig(BaseModel):
     driver: str = "local"
     mount_point: str | None = None
+    init_chmod: str | None = Field(
+        default=None,
+        alias="initChmod",
+        description=(
+            "When set, an init container chmods the freshly created (root-owned) "
+            "named volume to this mode (e.g. '0777') so a non-root workload (e.g. "
+            "the HF weight-puller) can write to it — the docker analogue of a k8s fsGroup."
+        ),
+    )
+    init_image: str | None = Field(
+        default=None,
+        alias="initImage",
+        description="Image used for the init_chmod container (e.g. busybox).",
+    )
+
+    model_config = {"populate_by_name": True}
 
 
 class K8sVolumeConfig(BaseModel):

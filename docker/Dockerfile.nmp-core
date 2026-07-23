@@ -26,7 +26,7 @@ COPY --chown=nvs:nvs --from=builder /root/.duckdb /root/.duckdb
 COPY --chown=nvs:nvs --from=builder /root/.duckdb /home/nvs/.duckdb
 COPY --chown=nvs:nvs --from=builder /app/.venv /app/.venv
 # Authz evaluates the packaged policy WASM from nmp.core.auth.assets at runtime.
-COPY --chown=nvs:nvs --from=policy-wasm-artifacts /artifacts/policy.wasm /app/.venv/lib/python3.11/site-packages/nmp/core/auth/assets/policy.wasm
+COPY --chown=nvs:nvs --from=policy-wasm-artifacts /artifacts/policy.wasm /app/.venv/lib/python3.13/site-packages/nmp/core/auth/assets/policy.wasm
 ENV PATH="/app/.venv/bin:$PATH"
 COPY --chown=nvs:nvs --from=nmp-jobs-launcher /artifacts/jobs-launcher /tools/jobs-launcher
 ENTRYPOINT ["nemo", "services", "run"]

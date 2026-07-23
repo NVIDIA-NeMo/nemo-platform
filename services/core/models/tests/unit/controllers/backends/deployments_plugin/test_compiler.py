@@ -4,11 +4,13 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+from nemo_deployments_plugin.entities import SecretRef
 from nemo_platform.types.inference.k8s_nim_operator_config import K8sNIMOperatorConfig
 from nmp.common.config import Runtime
 from nmp.core.models.app import ModelWeightsType
 from nmp.core.models.controllers.backends.common import DeploymentConfigView
-from nmp.core.models.controllers.backends.deployments_plugin.compiler import compile_model_deployment
+from nmp.core.models.controllers.backends.deployments_plugin.compiler import _busybox_image, compile_model_deployment
 from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
 from nmp.core.models.controllers.backends.deployments_plugin.resolve import ResolvedPluginDeployment
 from nmp.core.models.controllers.backends.vllm_compiler import MODEL_STORE_PATH
@@ -37,6 +39,27 @@ def test_vllm_weighted_chain_has_on_failure_puller_and_always_server() -> None:
     assert compiled.server_config.restart_policy == "Always"
     assert compiled.puller_prerequisite is True
     assert compiled.server_config.containers[0].volume_mounts[0].read_only is True
+
+
+def test_docker_weights_volume_requests_init_chmod() -> None:
+    # Docker named volumes are root-owned with no fs_group, so the weights volume
+    # must be made writable (chmod) for the non-root puller. The compiler requests
+    # this on the volume's docker backend config (docker analogue of k8s fsGroup).
+    config = DeploymentsPluginConfig()
+    compiled = compile_model_deployment(_resolved("vllm", runtime=Runtime.DOCKER), config)
+    assert compiled.volume is not None
+    docker_cfg = compiled.volume.backend_config.docker
+    assert docker_cfg is not None
+    assert docker_cfg.init_chmod == "0777"
+    assert docker_cfg.init_image == _busybox_image(config)
+
+
+def test_k8s_weights_volume_has_no_docker_init_chmod() -> None:
+    # On k8s, pod securityContext/fs_group handles volume ownership, so no docker
+    # init-chmod is emitted.
+    compiled = compile_model_deployment(_resolved("vllm", runtime=Runtime.KUBERNETES), DeploymentsPluginConfig())
+    assert compiled.volume is not None
+    assert compiled.volume.backend_config.docker is None
 
 
 def test_vllm_server_command_image_args_and_gpu() -> None:
@@ -98,15 +121,53 @@ def test_nim_gpu_resources_without_override() -> None:
 
 
 def test_nim_weighted_chain_sets_model_path_env() -> None:
-    compiled = compile_model_deployment(_resolved("nim"), DeploymentsPluginConfig())
+    secret_ref = SecretRef(workspace="system", name="ngc-api-key")
+    with patch(
+        "nmp.core.models.controllers.backends.deployments_plugin.compiler.platform_ngc_secret_ref",
+        return_value=secret_ref,
+    ):
+        compiled = compile_model_deployment(_resolved("nim"), DeploymentsPluginConfig())
     assert compiled.volume is not None
     assert compiled.puller_config is not None
-    env = {item.name: item.value for item in compiled.server_config.containers[0].env}
+    env_items = compiled.server_config.containers[0].env
+    env = {item.name: item.value for item in env_items}
     assert env["NIM_MODEL_NAME"] == "/model-store"
     assert env["NIM_MODEL_PATH"] == "/model-store"
     assert env["NIM_SERVED_MODEL_NAME"] == "org/model"
     assert env["NIM_FT_MODEL"] == "/model-store"
     assert env["NIM_CUSTOM_MODEL"] == "/model-store"
+    ngc_env = next(item for item in env_items if item.name == "NGC_API_KEY")
+    assert ngc_env.value is None
+    assert ngc_env.secret_ref == secret_ref
+    assert "resolved-secret" not in compiled.server_config.model_dump_json()
+
+
+def test_nim_explicit_ngc_env_is_not_persisted_as_plaintext() -> None:
+    resolved = _resolved("nim")
+    resolved.view.additional_envs = {"NGC_API_KEY": "explicit-value"}
+    with patch(
+        "nmp.core.models.controllers.backends.deployments_plugin.compiler.platform_ngc_secret_ref",
+        return_value=SecretRef(workspace="system", name="ngc-api-key"),
+    ):
+        compiled = compile_model_deployment(resolved, DeploymentsPluginConfig())
+
+    ngc_env = next(item for item in compiled.server_config.containers[0].env if item.name == "NGC_API_KEY")
+    assert ngc_env.value is None
+    assert ngc_env.secret_ref == SecretRef(workspace="system", name="ngc-api-key")
+    assert "explicit-value" not in compiled.server_config.model_dump_json(by_alias=True)
+
+
+def test_nim_explicit_ngc_env_fails_without_platform_secret_ref() -> None:
+    resolved = _resolved("nim")
+    resolved.view.additional_envs = {"NGC_API_KEY": "explicit-value"}
+    with (
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.platform_ngc_secret_ref",
+            return_value=None,
+        ),
+        pytest.raises(ValueError, match="platform.ngc_api_key_secret"),
+    ):
+        compile_model_deployment(resolved, DeploymentsPluginConfig())
 
 
 def test_nim_multi_llm_weighted_omits_ft_model_env() -> None:
@@ -300,9 +361,12 @@ def test_lora_uses_native_sidecar_on_k8s_and_container_on_docker() -> None:
     assert sidecar.image == "registry/nmp-api:tag"
     env = {item.name: item.value for item in sidecar.env}
     assert env["NIM_PEFT_SOURCE"] == "/scratch/loras"
-    # Sidecar `nemo services run` state must land on the writable scratch volume, not the
-    # nmp-api image's $HOME (unwritable under the pod's vLLM uid). See _lora_sidecar.
-    assert env["XDG_STATE_HOME"] == "/scratch/.nmp-state"
+    # Sidecar `nemo services run` writes both its instance state ($XDG_STATE_HOME) and its
+    # local data dir ($XDG_DATA_HOME, via nmp_user_data_dir) -- both must land on the
+    # writable scratch volume, not the nmp-api image's $HOME (unwritable under the pod's
+    # vLLM uid, so the sidecar crash-loops on PermissionError). See _lora_sidecar.
+    assert env["XDG_STATE_HOME"] == "/scratch/.local"
+    assert env["XDG_DATA_HOME"] == "/scratch/.local"
     assert env["VLLM_LORA_BASE_MODEL_OVERRIDE"] == "/model-store"
     assert env["NMP_BASE_URL"] == "http://platform.example:8080"
     assert env["VLLM_ENDPOINT"] == "http://127.0.0.1:8000"

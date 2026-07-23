@@ -14,6 +14,7 @@ from nmp.common.config import Configuration, PlatformConfig
 from nmp.common.http_clients import shared_async_http_client, shared_sync_http_client
 from nmp.common.observability import MARK_INTERNAL_REQUEST_HEADERS
 from nmp.common.observability.otel import get_otel_headers
+from nmp.common.platform_endpoint import PlatformEndpoint, resolve_platform_endpoint, resolve_service_endpoint
 
 logger = logging.getLogger(__name__)
 PlatformSDKT = TypeVar("PlatformSDKT", NeMoPlatform, AsyncNeMoPlatform)
@@ -61,7 +62,18 @@ def resolve_platform_request_url(
         return request_url
 
     api_name = match.group(1)
-    service_url = httpx.URL(platform_config.get_service_url(api_name))
+    svc_endpoint = resolve_service_endpoint(api_name, platform_config)
+    if svc_endpoint.transport == "uds":
+        logger.debug(
+            "Routing URL to UDS service",
+            extra={
+                "service": api_name,
+                "path": request_url.path,
+                "transport": svc_endpoint.transport,
+            },
+        )
+        return request_url.copy_with(scheme="http", host="nemo-platform.local", port=None)
+    service_url = httpx.URL(svc_endpoint.connect_base_url)
     routed_url = request_url.copy_with(
         scheme=service_url.scheme,
         host=service_url.host,
@@ -118,6 +130,30 @@ def with_options_preserving_request_router(base_sdk: PlatformSDKT, **kwargs: Any
         setattr(scoped_sdk, "_nmp_request_router", router)
         scoped_sdk._prepare_url = router.resolve
     return scoped_sdk
+
+
+def _sync_http_client_for_endpoint(
+    endpoint: PlatformEndpoint,
+    http_client: httpx.Client | None,
+) -> httpx.Client:
+    if http_client is not None:
+        return http_client
+    if endpoint.transport == "uds":
+        return endpoint.sync_http_client()
+    return shared_sync_http_client()
+
+
+def _async_http_client_for_endpoint(
+    endpoint: PlatformEndpoint,
+    http_client: httpx.AsyncClient | None,
+) -> httpx.AsyncClient:
+    if http_client is not None:
+        return http_client
+    if _test_http_client is not None:
+        return _test_http_client
+    if endpoint.transport == "uds":
+        return endpoint.async_http_client()
+    return shared_async_http_client()
 
 
 def _get_default_headers(
@@ -206,9 +242,10 @@ def get_platform_sdk(
         Configured NeMoPlatform SDK instance.
     """
     headers = _get_default_headers(as_service, internal, on_behalf_of)
+    endpoint = resolve_platform_endpoint()
     sdk = NeMoPlatform(
-        base_url=base_url or _base_url_from_config(),
-        http_client=http_client or shared_sync_http_client(),
+        base_url=base_url or endpoint.connect_base_url,
+        http_client=_sync_http_client_for_endpoint(endpoint, http_client),
         default_headers=headers if headers else None,
     )
     return attach_platform_request_router(sdk)
@@ -295,13 +332,14 @@ def get_async_platform_sdk(
         Configured AsyncNeMoPlatform SDK instance.
     """
     headers = _get_default_headers(as_service, internal, on_behalf_of)
+    endpoint = resolve_platform_endpoint()
 
     # Use explicitly provided http_client (from DependencyProvider) or fall back to
     # module-level _test_http_client for backward compatibility with direct callers.
-    effective_client = http_client or _test_http_client or shared_async_http_client()
+    effective_client = _async_http_client_for_endpoint(endpoint, http_client)
 
     sdk = AsyncNeMoPlatform(
-        base_url=base_url or _base_url_from_config(),
+        base_url=base_url or endpoint.connect_base_url,
         http_client=effective_client,
         default_headers=headers if headers else None,
     )

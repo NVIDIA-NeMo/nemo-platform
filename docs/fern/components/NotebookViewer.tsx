@@ -6,7 +6,6 @@
 import type { ReactNode } from "react";
 
 import distillationCustomizationJob from "./notebooks/distillation-customization-job";
-import dpoCustomizationJob from "./notebooks/dpo-customization-job";
 import embeddingCustomizationJob from "./notebooks/embedding-customization-job";
 import loraCustomizationJob from "./notebooks/lora-customization-job";
 import optimizeThroughput from "./notebooks/optimize-throughput";
@@ -18,7 +17,6 @@ import toolCalling from "./notebooks/tool-calling";
 // pages look it up by name: `<NotebookViewer name="sft-customization-job" />`.
 const notebooks: Record<string, unknown> = {
   "distillation-customization-job": distillationCustomizationJob,
-  "dpo-customization-job": dpoCustomizationJob,
   "embedding-customization-job": embeddingCustomizationJob,
   "lora-customization-job": loraCustomizationJob,
   "optimize-throughput": optimizeThroughput,
