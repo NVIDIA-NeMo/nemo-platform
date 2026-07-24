@@ -5,7 +5,7 @@ import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { ANONYMIZER_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { gateAnonymizerRoutes } from '@studio/routes/utils';
-import { FC, lazy } from 'react';
+import { lazy, type FC } from 'react';
 import type { RouteObject } from 'react-router-dom';
 
 const AnonymizerListRoute =
@@ -22,6 +22,13 @@ const AnonymizerBuilderRoute =
       default: m.AnonymizerBuilderRoute as FC,
     }))
   );
+const AnonymizerJobDetailRoute =
+  ANONYMIZER_ENABLED &&
+  lazy(() =>
+    import('@studio/routes/AnonymizerJobDetailRoute').then((m) => ({
+      default: m.AnonymizerJobDetailRoute as FC,
+    }))
+  );
 
 export const anonymizerRoutes: RouteObject[] = gateAnonymizerRoutes([
   {
@@ -36,7 +43,7 @@ export const anonymizerRoutes: RouteObject[] = gateAnonymizerRoutes([
   },
   {
     path: ROUTES.workspace.anonymizerJob,
-    element: AnonymizerBuilderRoute ? <AnonymizerBuilderRoute /> : null,
+    element: AnonymizerJobDetailRoute ? <AnonymizerJobDetailRoute /> : null,
     errorElement: <ErrorPanel title="Anonymizer" />,
   },
 ]);
