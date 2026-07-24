@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
+import { ControlledSearchableSelect } from '@nemo/common/src/components/form/ControlledSearchableSelect';
 import { useModelsListProviders } from '@nemo/sdk/generated/platform/api';
 import { Divider, Stack, Text } from '@nvidia/foundations-react-core';
 import { modelsFromProviders } from '@studio/components/NewDataDesignerJobForm/utils';
@@ -75,12 +75,14 @@ export const ModelSettingsSection: FC = () => {
         <Stack key={role} gap="density-lg">
           {index > 0 && <Divider orientation="horizontal" width="small" />}
           <Text kind="label/bold/lg">{ROLE_LABELS[role] ?? role}</Text>
-          <ControlledSelect
+          <ControlledSearchableSelect
             aria-label={ROLE_LABELS[role] ?? role}
-            items={items}
-            loading={isLoading}
-            placeholder="Select a model"
-            onChange={(value) => applyModel(role, value as string)}
+            options={items}
+            isLoading={isLoading}
+            triggerPlaceholder="Select a model"
+            searchPlaceholder="Search models..."
+            emptyMessage={isLoading ? 'Loading models...' : 'No models in this workspace.'}
+            onChange={(value) => applyModel(role, value)}
             useControllerProps={{
               name: `roleModels.${role}.modelId` as Path<AnonymizerFormData>,
               control,
