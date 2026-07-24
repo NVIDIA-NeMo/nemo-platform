@@ -8,8 +8,16 @@ force other Fabric consumers onto the `0.1.0a20260724` SDK API before they migra
 Install them explicitly before local Fabric smoke tests:
 
 ```bash
-uv pip install -e "plugins/nemo-agents[fabric]"
+uvx uv@0.9.14 pip install \
+  --python .venv/bin/python \
+  -e "plugins/nemo-agents[fabric]"
 ```
+
+The example bundles matching `0.1.0a1` adapter descriptors under `adapters/`.
+The alpha Fabric planner discovers descriptors from the config directory but
+does not yet discover the copies installed in the virtual environment's shared
+data directory. Adapter implementations still come from the packages installed
+by the `fabric` extra.
 
 ## Codex
 

@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from nemo_agents_plugin.agent_config import AgentConfig, load_agent_config
 from nemo_agents_plugin.fabric.translator import FabricTranslationError, translate_agent_config
+from nemo_fabric import Fabric
 
 
 def _example_yaml_config() -> dict[str, Any]:
@@ -82,6 +83,10 @@ class TestTranslateAgentConfig:
         assert "skip_git_repo_check" not in codex_config.harness.settings
         assert hermes_config.harness.adapter_id == "nvidia.fabric.hermes"
         assert hermes_config.harness.settings["python_env"] == "HERMES_ADAPTER_PYTHON"
+
+        fabric = Fabric()
+        assert fabric.plan(codex_config, base_dir=example_path.parent).adapter.adapter_id == "nvidia.fabric.codex"
+        assert fabric.plan(hermes_config, base_dir=example_path.parent).adapter.adapter_id == "nvidia.fabric.hermes"
 
     def test_translates_default_harness(self) -> None:
         config = AgentConfig.model_validate(_example_yaml_config())
