@@ -28,8 +28,6 @@ export const DataSourceSection: FC = () => {
         items={SOURCE_TYPE_OPTIONS}
         useControllerProps={{ name: 'sourceType', control }}
         onChange={() => {
-          // A URL and a fileset ref aren't interchangeable — reset the shared
-          // source field (and its error) when the source type changes.
           setValue('source', '');
           clearErrors('source');
         }}

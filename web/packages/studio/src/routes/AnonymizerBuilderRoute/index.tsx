@@ -51,8 +51,6 @@ export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
       const [activeTab, setActiveTab] = useState<string>(TAB_SOURCE);
       const [submitError, setSubmitError] = useState<string | undefined>(undefined);
 
-      // Shared with ModelSettingsSection (react-query dedups) — gate submit until
-      // the model list has loaded and its role defaults have been seeded.
       const { isLoading: isLoadingModels } = useModelsListProviders(
         workspace,
         { page_size: DEFAULT_LARGE_PAGE_SIZE },
@@ -72,8 +70,6 @@ export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
       const createJob = useAnonymizerCreateRunJob({
         mutation: {
           onSuccess: (job: RunJob) =>
-            // Anonymizer jobs are platform jobs; route to the generic job
-            // detail until the dedicated Anonymizer job page (ASTD-330) lands.
             navigate(
               job.name
                 ? getWorkspaceJobDetailRoute(workspace, job.name)
@@ -90,7 +86,6 @@ export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
           createJob.mutate({ workspace, data: buildAnonymizerJobRequest(values) });
         },
         (errors) => {
-          // Jump to whichever tab holds the first error so it's never hidden.
           const onlyModelErrors = Object.keys(errors).every((key) => key === 'roleModels');
           setActiveTab(onlyModelErrors ? TAB_MODEL_SETTINGS : TAB_SOURCE);
           setSubmitError('Please complete the required fields highlighted below.');
@@ -143,8 +138,6 @@ export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
                       </Banner>
                     )}
 
-                    {/* Both panels stay mounted so Model Settings can seed its
-                        defaults even before the tab is opened. */}
                     <div className={activeTab === TAB_SOURCE ? undefined : 'hidden'}>
                       <Stack gap="density-2xl">
                         <DataSourceSection />

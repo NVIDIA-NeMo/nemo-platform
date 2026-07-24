@@ -70,7 +70,6 @@ export const ColumnsSection: FC = () => {
   );
   const useColumnDropdown = canIntrospect && columns.length > 0;
 
-  // Auto-select the only column when there's exactly one.
   useEffect(() => {
     if (useColumnDropdown && columns.length === 1 && textColumn !== columns[0]) {
       setValue('textColumn', columns[0], { shouldValidate: true });

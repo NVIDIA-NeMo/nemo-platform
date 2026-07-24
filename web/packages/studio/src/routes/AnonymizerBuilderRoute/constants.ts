@@ -24,7 +24,6 @@ export type Strategy =
   | typeof STRATEGY_HASH
   | typeof STRATEGY_REWRITE;
 
-/** Rewrite is applied via `config.rewrite`; the other four via `config.replace`. */
 export const REWRITE_STRATEGY: Strategy = STRATEGY_REWRITE;
 
 export const STRATEGY_OPTIONS: { label: string; value: Strategy }[] = [
@@ -60,24 +59,12 @@ export const ENTITY_MODE_OPTIONS: { value: EntityMode; children: string }[] = [
 
 export const DEFAULT_PREVIEW_ROWS = 1;
 
-/** Above this file size, skip column introspection and fall back to a text input. */
 export const MAX_COLUMN_INTROSPECTION_BYTES = 50 * 1024 * 1024;
 
-/**
- * Default per-request model timeout (seconds). Generous so slower reasoning
- * models don't hit ModelTimeoutError during entity validation. User-supplied
- * inference params override it.
- */
 export const DEFAULT_MODEL_TIMEOUT_SECONDS = 500;
 
-/**
- * Default per-request max output tokens. High enough for reasoning models to
- * finish their structured-output response without truncation. User-supplied
- * inference params override it.
- */
 export const DEFAULT_MODEL_MAX_TOKENS = 16384;
 
-/** Role names the anonymizer workflows resolve against `model_configs` aliases. */
 export const DETECTION_ROLES = [
   'entity_detector',
   'entity_validator',
@@ -110,10 +97,8 @@ export const ROLE_LABELS: Record<string, string> = {
   evaluator: 'Evaluator',
 };
 
-/** The role that expects a GLiNER PII detection model rather than an LLM. */
 export const GLINER_ROLE = 'entity_detector';
 
-/** Roles configured for a given strategy: detection always, plus the strategy's generator roles. */
 export const activeRolesForStrategy = (strategy: Strategy): string[] => {
   if (strategy === STRATEGY_REWRITE) return [...DETECTION_ROLES, ...REWRITE_ROLES];
   if (strategy === STRATEGY_SUBSTITUTE) return [...DETECTION_ROLES, REPLACE_ROLE];

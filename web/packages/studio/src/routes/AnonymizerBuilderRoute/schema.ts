@@ -78,24 +78,12 @@ const trimToUndefined = (value: string | undefined): string | undefined => {
   return trimmed ? trimmed : undefined;
 };
 
-/**
- * Build the create-job request. The strategy is applied via `config.rewrite`
- * for Rewrite and `config.replace` for the other four. `replace` is a
- * `kind`-discriminated union server-side, so the tag must be sent even though
- * it isn't a modelled field on the SDK types.
- *
- * Each active role's model is deduplicated into a `model_configs` pool (one
- * entry per unique model+provider) and `selected_models` maps every role of
- * the strategy's workflow(s) to the matching alias.
- */
 export const buildAnonymizerJobRequest = (form: AnonymizerFormData): RunJobRequest => {
   const config: AnonymizerConfigInput =
     form.strategy === REWRITE_STRATEGY
       ? { rewrite: {} }
       : { replace: { kind: form.strategy } as AnonymizerConfigInput['replace'] };
 
-  // Custom mode with a specific label set restricts detection; otherwise the
-  // library default set is used (detect omitted).
   const useCustomLabels =
     form.entityMode === ENTITY_MODE_CUSTOM &&
     !form.includeDefaultEntities &&
@@ -112,7 +100,6 @@ export const buildAnonymizerJobRequest = (form: AnonymizerFormData): RunJobReque
     const roleModel = form.roleModels[role];
     const model = roleModel?.model.trim() ?? '';
     const provider = roleModel?.provider.trim() ?? '';
-    // Default a generous timeout and max_tokens; user params override.
     const params = {
       timeout: DEFAULT_MODEL_TIMEOUT_SECONDS,
       max_tokens: DEFAULT_MODEL_MAX_TOKENS,

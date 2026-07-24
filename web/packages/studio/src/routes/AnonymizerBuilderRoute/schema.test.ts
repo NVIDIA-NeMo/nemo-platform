@@ -124,7 +124,6 @@ describe('buildAnonymizerJobRequest', () => {
       params: { temperature: 0.1 },
     };
     const req = buildAnonymizerJobRequest(form({ strategy: 'substitute', roleModels: models }));
-    // Same model+provider but one role has params → two distinct configs.
     expect(req.spec.model_configs).toHaveLength(2);
     const withTemp = req.spec.model_configs?.find(
       (c) => (c.inference_parameters as { temperature?: number })?.temperature != null

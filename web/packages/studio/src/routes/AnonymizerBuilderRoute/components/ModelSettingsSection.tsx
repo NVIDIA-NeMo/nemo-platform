@@ -55,8 +55,6 @@ export const ModelSettingsSection: FC = () => {
     });
   };
 
-  // Seed sensible defaults once models load: GLiNER for the detector, a
-  // suggested chat model for the rest (avoids defaulting to a flaky first model).
   useEffect(() => {
     if (!models.length) return;
     const suggestedName = pickDefaultModelName(
