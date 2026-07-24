@@ -27,11 +27,7 @@ const getMetric = (metrics: ParetoMetric[], id: string): ParetoMetric => {
   return metric;
 };
 
-const frontierNames = (
-  points: ParetoMetricPoint[],
-  x: ParetoMetric,
-  y: ParetoMetric
-): string[] =>
+const frontierNames = (points: ParetoMetricPoint[], x: ParetoMetric, y: ParetoMetric): string[] =>
   buildParetoPoints(points, x, y)
     .filter((p) => p.onFrontier)
     .map((p) => p.name)
@@ -70,11 +66,9 @@ describe('buildParetoPoints', () => {
       point({ name: 'D', cost: 3, latency: 3 }), // dominated by B
     ];
     const metrics = deriveParetoMetrics(points);
-    expect(frontierNames(points, getMetric(metrics, 'cost_usd'), getMetric(metrics, 'latency_ms'))).toEqual([
-      'A',
-      'B',
-      'C',
-    ]);
+    expect(
+      frontierNames(points, getMetric(metrics, 'cost_usd'), getMetric(metrics, 'latency_ms'))
+    ).toEqual(['A', 'B', 'C']);
   });
 
   it('respects mixed directions: minimize cost, maximize an evaluator score', () => {
@@ -95,7 +89,11 @@ describe('buildParetoPoints', () => {
       point({ name: 'B', cost: 2 }), // no latency -> excluded
     ];
     const metrics = deriveParetoMetrics(points);
-    const plotted = buildParetoPoints(points, getMetric(metrics, 'cost_usd'), getMetric(metrics, 'latency_ms'));
+    const plotted = buildParetoPoints(
+      points,
+      getMetric(metrics, 'cost_usd'),
+      getMetric(metrics, 'latency_ms')
+    );
     expect(plotted.map((p) => p.name)).toEqual(['A']);
   });
 });

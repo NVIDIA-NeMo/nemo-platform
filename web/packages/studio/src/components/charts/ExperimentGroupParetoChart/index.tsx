@@ -157,7 +157,9 @@ export const ExperimentGroupParetoChart: FC<ExperimentGroupParetoChartProps> = (
     mutation: {
       onSuccess: () => {
         toast.success('Saved the group default Pareto view.');
-        queryClient.invalidateQueries({ queryKey: getGetExperimentGroupQueryKey(workspace, group.name) });
+        queryClient.invalidateQueries({
+          queryKey: getGetExperimentGroupQueryKey(workspace, group.name),
+        });
         queryClient.invalidateQueries({
           queryKey: getGetExperimentGroupParetoQueryKey(workspace, group.name),
         });
@@ -270,8 +272,18 @@ export const ExperimentGroupParetoChart: FC<ExperimentGroupParetoChartProps> = (
       <div className="flex flex-wrap items-start justify-between gap-3">
         <Text kind="title/xs">{`${metricLabel(xMetricId)} vs. ${metricLabel(yMetricId)}`}</Text>
         <div className="flex flex-wrap items-center gap-4">
-          <MetricSelect label="X axis" value={xMetric?.id ?? ''} metrics={metrics} onChange={handleXChange} />
-          <MetricSelect label="Y axis" value={yMetric?.id ?? ''} metrics={metrics} onChange={handleYChange} />
+          <MetricSelect
+            label="X axis"
+            value={xMetric?.id ?? ''}
+            metrics={metrics}
+            onChange={handleXChange}
+          />
+          <MetricSelect
+            label="Y axis"
+            value={yMetric?.id ?? ''}
+            metrics={metrics}
+            onChange={handleYChange}
+          />
           <Button
             kind="primary"
             size="small"
