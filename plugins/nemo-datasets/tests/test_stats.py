@@ -4,7 +4,7 @@
 """Tests for per-column statistics."""
 
 from nemo_datasets_plugin.profiler.stats import derive_stats
-from nemo_platform_plugin.files.dataset_profile import FeatureSchema
+from nemo_platform_plugin.files.dataset_profile import ColumnStats, FeatureSchema
 
 
 def _feature(name, dtype):
@@ -56,6 +56,20 @@ def test_numeric_cardinality_values_withheld_when_not_exhaustive():
     stats = derive_stats([_feature("n", "int64")], _rows("n", [1, 2, 3]), exhaustive=False)["n"]
     assert stats.categorical.distinct_count == 3
     assert stats.categorical.values is None  # a sample cannot prove the enumeration
+
+
+def test_numeric_stats_ignore_non_finite_values():
+    # NaN / +-inf poison min/max/mean and serialize to JSON null, which then fails to re-validate
+    # against NumericStats' required floats -- making the whole profile unreadable. Drop them.
+    values = [1.0, float("nan"), 3.0, float("inf"), float("-inf"), 5.0]
+    stats = derive_stats([_feature("n", "float64")], _rows("n", values), exhaustive=True)["n"]
+    assert (stats.numeric.min, stats.numeric.max, stats.numeric.mean) == (1.0, 5.0, 3.0)
+    ColumnStats.model_validate_json(stats.model_dump_json())  # round-trips: no NaN/inf leaked into JSON
+
+
+def test_numeric_all_non_finite_yields_no_numeric_summary():
+    stats = derive_stats([_feature("n", "float64")], _rows("n", [float("nan"), float("inf")]), exhaustive=True)
+    assert stats.get("n") is None or stats["n"].numeric is None
 
 
 # --- messages ------------------------------------------------------------------------------------
