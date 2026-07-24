@@ -188,8 +188,6 @@ export const JobDatasetEditorSection: FC = () => {
 
   const isResolving = isResultsLoading || isFilesLoading;
 
-  // Rendered inside the editor's header (as `slotFileName`) so the file picker and the file
-  // identity share one row; falls back to a slim bar above the centered states below.
   const fileSelector =
     dataFiles.length > 1 ? (
       <SelectRoot

@@ -49,7 +49,9 @@ export const DataDesignerJobDetailsRoute: FC = () => {
   const { filesetWorkspace, filesetName, files } = useDataDesignerArtifactsFileset();
   const splitDatasetId =
     filesetWorkspace && filesetName ? `${filesetWorkspace}/${filesetName}` : undefined;
-  const splitFileOptions = files.map((file) => file.path);
+  const splitFileOptions = files
+    .map((file) => file.path)
+    .filter((path) => /\.(json|jsonl|parquet)$/i.test(path));
   const canSplit = Boolean(splitDatasetId) && splitFileOptions.length > 0;
 
   useBreadcrumbs({

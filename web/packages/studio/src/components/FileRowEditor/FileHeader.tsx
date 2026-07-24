@@ -9,10 +9,6 @@ import { type ChangeEvent, type FC, type ReactNode, type RefObject } from 'react
 
 export interface FileHeaderProps {
   fileName: string;
-  /**
-   * Replaces the static file name with a custom node (e.g. a file picker) so the header
-   * doubles as the file selector. The format tag and stats still reflect {@link fileName}.
-   */
   slotFileName?: ReactNode;
   fileFormat: DataFileFormat;
   rowCount: number;

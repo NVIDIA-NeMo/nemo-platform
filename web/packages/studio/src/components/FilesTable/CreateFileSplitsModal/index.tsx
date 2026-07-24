@@ -32,17 +32,8 @@ import { ComponentProps, FC, useMemo } from 'react';
 import { FormProvider, useForm, useWatch } from 'react-hook-form';
 
 interface Props extends Pick<ComponentProps<typeof FormModal>, 'open' | 'onClose'> {
-  /** Fixed source file. When set, the file is shown read-only. */
   filepath?: string;
-  /**
-   * Dataset/fileset reference (`workspace/name`) whose files are being split.
-   * Falls back to the route's selected dataset when omitted.
-   */
   datasetId?: string;
-  /**
-   * Selectable source files. When provided (and no fixed `filepath`), the modal
-   * renders a picker so the user chooses which file to split.
-   */
   fileOptions?: string[];
 }
 
