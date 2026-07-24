@@ -69,12 +69,9 @@ spec:
             {{- end }}
             - name: NMP_CONFIG_FILE_PATH
               value: /etc/nmp/config.yaml
+            {{- /* Service address, not loopback: copied into agent configs that run in another container. */}}
             - name: NMP_BASE_URL
-              {{- if include "nemo-platform.embeddedPdpEnabled" . }}
-              value: {{ include "nemo-platform.apiLoopbackBaseUrl" . | quote }}
-              {{- else }}
               value: {{ include "nemo-platform.internalBaseUrl" . | quote }}
-              {{- end }}
             - name: NMP_AUTOMODEL_DEFAULT_TRAINING_EXECUTION_PROFILE
               value: {{ dig "automodel" "default_training_execution_profile" "default" $platformConfig | quote }}
             - name: NMP_UNSLOTH_DEFAULT_TRAINING_EXECUTION_PROFILE
