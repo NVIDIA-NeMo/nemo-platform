@@ -62,11 +62,9 @@ NeMo Platform loads `fabric/agent.yaml`, translates it into an in-memory
 `FabricConfig`, and starts an ephemeral Codex runtime through NeMo Fabric. The
 runtime uses `fabric/workspace` as its working directory.
 
-The example bundles the `0.1.0a1` Codex adapter descriptor under
-`fabric/adapters`. The alpha Fabric planner discovers descriptors from the
-config's `base_dir`, but does not yet discover the copy installed under the
-virtual environment's shared-data directory. The adapter implementation still
-comes from the separately installed `nemo-fabric-adapters-codex` package.
+NeMo Fabric discovers the Codex adapter descriptor installed by
+`nemo-fabric-adapters-codex` in the active Python environment. No agent-local
+descriptor is required.
 
 The config's Codex developer instructions require the agent to invoke
 `workspace/calculator.py` instead of doing arithmetic itself. The script

@@ -13,11 +13,8 @@ uvx uv@0.9.14 pip install \
   -e "plugins/nemo-agents[fabric]"
 ```
 
-The example bundles matching `0.1.0a1` adapter descriptors under `adapters/`.
-The alpha Fabric planner discovers descriptors from the config directory but
-does not yet discover the copies installed in the virtual environment's shared
-data directory. Adapter implementations still come from the packages installed
-by the `fabric` extra.
+NeMo Fabric discovers the Codex and Hermes adapter descriptors installed by the
+packages in the `fabric` extra. No agent-local descriptors are required.
 
 ## Codex
 
