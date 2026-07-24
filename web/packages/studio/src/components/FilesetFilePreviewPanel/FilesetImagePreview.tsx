@@ -3,7 +3,7 @@
 
 import { useFilesDownloadFile } from '@nemo/sdk/generated/platform/api';
 import { Flex, Spinner, Text } from '@nvidia/foundations-react-core';
-import { useState, type FC } from 'react';
+import { useEffect, useState, type FC } from 'react';
 
 interface FilesetImagePreviewProps {
   workspace: string;
@@ -23,6 +23,10 @@ const ImagePreview: FC<ImagePreviewProps> = ({ imageUrl, filePath }) => {
   const [imageLoadError, setImageLoadError] = useState(false);
 
   const revokeImageUrl = () => URL.revokeObjectURL(imageUrl);
+
+  useEffect(() => {
+    return () => URL.revokeObjectURL(imageUrl);
+  }, [imageUrl]);
 
   if (imageLoadError) {
     return (
