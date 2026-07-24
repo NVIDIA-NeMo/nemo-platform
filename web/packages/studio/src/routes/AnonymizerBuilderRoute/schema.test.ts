@@ -79,6 +79,7 @@ describe('buildAnonymizerJobRequest', () => {
         alias: 'model-1',
         model: 'openai/gpt-oss-120b',
         provider: 'default/nvidia',
+        skip_health_check: true,
         inference_parameters: { timeout: 500, max_tokens: 16384 },
       },
     ]);

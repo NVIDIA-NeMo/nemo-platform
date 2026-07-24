@@ -159,6 +159,7 @@ export const buildAnonymizerJobRequest = (form: AnonymizerFormData): RunJobReque
         alias,
         model,
         provider,
+        skip_health_check: true,
         inference_parameters: params as ModelConfig['inference_parameters'],
       });
     }
