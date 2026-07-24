@@ -21,6 +21,7 @@ import {
   SOURCE_TYPE_DATASET,
   STRATEGY_SUBSTITUTE,
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
+import { trimToUndefined } from '@studio/util/strings';
 import { z } from 'zod';
 
 const roleModelSchema = z.object({
@@ -72,11 +73,6 @@ export const getAnonymizerFormDefaults = (): AnonymizerFormData => ({
   entityLabels: [],
   roleModels: {},
 });
-
-const trimToUndefined = (value: string | undefined): string | undefined => {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : undefined;
-};
 
 export const buildAnonymizerJobRequest = (form: AnonymizerFormData): RunJobRequest => {
   const config: AnonymizerConfigInput =
