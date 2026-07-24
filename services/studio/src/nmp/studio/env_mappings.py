@@ -60,6 +60,11 @@ ENV_MAPPINGS: list[EnvMapping] = [
         marker="STUDIO_UI_VITE_FF_AGENTS_ENABLED", config_path="studio.feature_flags.agents_enabled", default="true"
     ),
     EnvMapping(
+        marker="STUDIO_UI_VITE_FF_ANONYMIZER_ENABLED",
+        config_path="studio.feature_flags.anonymizer_enabled",
+        default="false",
+    ),
+    EnvMapping(
         marker="STUDIO_UI_VITE_FF_BASE_MODELS_ENABLED",
         config_path="studio.feature_flags.base_models_enabled",
         default="true",

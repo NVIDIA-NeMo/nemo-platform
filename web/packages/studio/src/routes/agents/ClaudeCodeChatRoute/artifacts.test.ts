@@ -211,7 +211,7 @@ describe('Claude Code chat artifacts', () => {
     ]);
   });
 
-  it('links intake spans through the trace detail route', () => {
+  it('links intake spans through the canonical session route', () => {
     const artifacts = updateClaudeCodeChatArtifactsFromEvent(
       { ...createEmptyClaudeCodeChatArtifacts(), workspace: 'default' },
       {
@@ -224,6 +224,7 @@ describe('Claude Code chat artifacts', () => {
               input: {
                 destination: 'intake_span',
                 label: 'Span',
+                session_id: 'session-agent-run-001',
                 trace_id: 'trace-agent-run-001',
                 span_id: 'span-root-001',
               },
@@ -237,7 +238,7 @@ describe('Claude Code chat artifacts', () => {
       {
         label: 'Span',
         destination: 'intake_span',
-        href: '/workspaces/default/intake/traces/trace-agent-run-001?spanId=span-root-001',
+        href: '/workspaces/default/intake/sessions/session-agent-run-001?traceId=trace-agent-run-001&spanId=span-root-001',
       },
     ]);
   });

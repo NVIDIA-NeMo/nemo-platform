@@ -19,6 +19,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm.exc import StaleDataError
 
+MAX_GROUP_COUNT_ROWS = 1000
+
 
 class SQLAlchemyEntityRepository(EntityRepositoryInterface):
     """SQLAlchemy implementation of Entity repository."""
@@ -196,6 +198,53 @@ class SQLAlchemyEntityRepository(EntityRepositoryInterface):
             entities = [e.to_pydantic() for e in db_entities]
 
             return entities, total
+
+    async def count_entities_by(
+        self,
+        *,
+        workspace: str,
+        entity_type: str,
+        group_by: str,
+        filter_op: FilterOperation | None = None,
+        relationship_child_workspaces: set[str] | None = None,
+        session: AsyncSession | None = None,
+    ) -> dict[str, int]:
+        """Count filtered entities grouped by a direct string data field."""
+        async with self._get_session(session) as sess:
+            parts = group_by.split(".")
+            if len(parts) != 2 or parts[0] != "data" or not parts[1].isidentifier():
+                raise ValueError(f"Field '{group_by}' is not a direct string data field")
+
+            field = parts[1]
+            raw_group_column = DBEntity.data[field]
+            group_column = raw_group_column.as_string()
+            if self._is_sqlite(sess):
+                json_type = func.json_type(DBEntity.data, f"$.{field}")
+                string_type = "text"
+            else:
+                json_type = func.json_typeof(raw_group_column)
+                string_type = "string"
+
+            filter_repo = SQLAlchemyFilterRepository(
+                DBEntity, relationship_child_workspaces=relationship_child_workspaces
+            )
+            query = select(group_column, func.count()).select_from(DBEntity).where(DBEntity.entity_type == entity_type)
+
+            if workspace != ALL_WORKSPACES:
+                query = query.where(DBEntity.workspace == workspace)
+
+            if filter_op is not None:
+                query = query.where(filter_op.apply(filter_repo))
+
+            query = query.where(json_type == string_type)
+
+            rows = (await sess.execute(query.group_by(group_column).limit(MAX_GROUP_COUNT_ROWS + 1))).all()
+            if len(rows) > MAX_GROUP_COUNT_ROWS:
+                raise ValueError(
+                    f"Grouped count has more than {MAX_GROUP_COUNT_ROWS} distinct values; "
+                    "narrow the filter or choose a lower-cardinality field."
+                )
+            return {str(key): int(count) for key, count in rows}
 
     async def update_entity(
         self,

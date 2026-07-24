@@ -31,6 +31,7 @@ export const PLATFORM_BASE_URL = resolveBrowserBaseUrl(getEnvVar('VITE_PLATFORM_
 // Vars to indicate whether certain microservices should be turned off, to
 // distinguish that logic from code that calls the URL itself
 export const AGENTS_ENABLED = featureFlags.agentsEnabled !== false;
+export const ANONYMIZER_ENABLED = featureFlags.anonymizerEnabled !== false;
 export const BASE_MODELS_ENABLED = featureFlags.baseModelsEnabled !== false;
 export const CODING_AGENT_STUDIO_ENABLED = featureFlags.codingAgentStudioEnabled !== false;
 export const CUSTOMIZER_ENABLED = featureFlags.customizerEnabled !== false;
