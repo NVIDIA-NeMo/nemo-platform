@@ -34,7 +34,7 @@ export const anonymizerFormSchema = z
   .object({
     name: z.string().optional(),
     sourceType: z.enum(['url', 'dataset']),
-    source: z.string().min(1, 'A data source is required'),
+    source: z.string().trim().min(1, 'A data source is required'),
     strategy: z.enum(['substitute', 'redact', 'annotate', 'hash', 'rewrite']),
     previewRows: z.number().int().min(1),
     textColumn: z.string().optional(),

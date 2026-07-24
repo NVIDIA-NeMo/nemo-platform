@@ -15,7 +15,7 @@ import { FC } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 
 export const DataSourceSection: FC = () => {
-  const { control, setError, clearErrors } = useFormContext<AnonymizerFormData>();
+  const { control, setValue, setError, clearErrors } = useFormContext<AnonymizerFormData>();
   const workspace = useWorkspaceFromPath();
   const sourceType = useWatch({ control, name: 'sourceType' });
   const isDataset = sourceType === SOURCE_TYPE_DATASET;
@@ -27,6 +27,12 @@ export const DataSourceSection: FC = () => {
         aria-label="Source type"
         items={SOURCE_TYPE_OPTIONS}
         useControllerProps={{ name: 'sourceType', control }}
+        onChange={() => {
+          // A URL and a fileset ref aren't interchangeable — reset the shared
+          // source field (and its error) when the source type changes.
+          setValue('source', '');
+          clearErrors('source');
+        }}
         formFieldProps={{ slotLabel: 'Source', required: true }}
       />
       {isDataset ? (
