@@ -8,7 +8,7 @@ force other Fabric consumers onto the prerelease SDK API before they migrate.
 Install them explicitly before local Fabric smoke tests:
 
 ```bash
-uvx uv@0.9.14 pip install -e "plugins/nemo-agents[fabric]"
+uv pip install -e "plugins/nemo-agents[fabric]"
 ```
 
 ## Codex
@@ -30,8 +30,8 @@ Hermes Agent has dependencies that conflict with the Platform environment, so
 install it with the Fabric adapter in a separate Python 3.12 environment:
 
 ```bash
-uvx uv@0.9.14 venv --python 3.12 .venv-hermes
-uvx uv@0.9.14 --no-config pip install \
+uv venv --python 3.12 .venv-hermes
+uv --no-config pip install \
   --python .venv-hermes/bin/python \
   "nemo-fabric-adapters-hermes==0.1.0a20260724" \
   "hermes-agent==0.19.0"

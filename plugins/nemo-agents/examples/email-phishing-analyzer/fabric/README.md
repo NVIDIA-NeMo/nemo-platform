@@ -6,7 +6,7 @@ the Platform-owned NAT Fabric adapter.
 From the repository root:
 
 ```bash
-uvx uv@0.9.14 pip install -e "plugins/nemo-agents[fabric]"
+uv pip install -e "plugins/nemo-agents[fabric]"
 export NVIDIA_API_KEY="<your NVIDIA API key>"
 
 nemo agents invoke \
