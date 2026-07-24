@@ -85,7 +85,10 @@ export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
           createJob.mutate({ workspace, data: buildAnonymizerJobRequest(values) });
         },
         (errors) => {
-          if (errors.roleModels) setActiveTab(TAB_MODEL_SETTINGS);
+          // Jump to whichever tab holds the first error so it's never hidden.
+          const onlyModelErrors = Object.keys(errors).every((key) => key === 'roleModels');
+          setActiveTab(onlyModelErrors ? TAB_MODEL_SETTINGS : TAB_SOURCE);
+          setSubmitError('Please complete the required fields highlighted below.');
         }
       );
 
