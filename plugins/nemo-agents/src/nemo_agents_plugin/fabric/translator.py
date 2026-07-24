@@ -13,7 +13,7 @@ from nemo_agents_plugin.agent_config import AgentConfig, HarnessConfig, ModelCon
 
 HARNESS_ADAPTER_IDS = {
     "claude": "nvidia.fabric.claude",
-    "codex": "nvidia.fabric.codex.cli",
+    "codex": "nvidia.fabric.codex",
     "deepagents": "nvidia.fabric.langchain.deepagents",
     "hermes": "nvidia.fabric.hermes",
 }
