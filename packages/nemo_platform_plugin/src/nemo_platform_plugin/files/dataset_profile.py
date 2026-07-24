@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # Semver of THIS contract. Gates consumer compatibility: new detectors or vocabulary values are a
 # minor bump; a change to the fields below is a major bump.
@@ -61,6 +61,8 @@ class Verifiability(BaseModel):
     )
     coverage: float | None = Field(
         default=None,
+        ge=0.0,
+        le=1.0,
         description="Fraction of sampled rows with a usable verification target.",
     )
     evidence: list[Evidence] = Field(default_factory=list)
@@ -119,9 +121,11 @@ class MessageStats(BaseModel):
         description='e.g. ["system", "user", "assistant", "tool"].',
     )
     ends_with_assistant_rate: float = Field(
+        ge=0.0,
+        le=1.0,
         description="Key signal separating an SFT target (conversation ends on an assistant turn) from a prompt-only row.",
     )
-    valid_alternation_rate: float
+    valid_alternation_rate: float = Field(ge=0.0, le=1.0)
     has_tool_calls: bool = False
 
 
@@ -138,9 +142,9 @@ class TextQuality(BaseModel):
     toxicity / PII.
     """
 
-    whitespace_ratio: float = Field(description="Padding / bad scraping.")
-    non_ascii_ratio: float = Field(description="Encoding / non-Latin signal.")
-    repetition_score: float = Field(description="Degenerate repeated-substring loops.")
+    whitespace_ratio: float = Field(ge=0.0, le=1.0, description="Padding / bad scraping.")
+    non_ascii_ratio: float = Field(ge=0.0, le=1.0, description="Encoding / non-Latin signal.")
+    repetition_score: float = Field(ge=0.0, le=1.0, description="Degenerate repeated-substring loops.")
 
 
 class FeatureSchema(BaseModel):
@@ -211,7 +215,7 @@ class ColumnStats(BaseModel):
     with one gated exception: ``categorical.values``, a proven small enumeration.
     """
 
-    null_rate: float = 0.0
+    null_rate: float = Field(default=0.0, ge=0.0, le=1.0)
     text: TextStats | None = Field(default=None, description="dtype == string")
     numeric: NumericStats | None = Field(default=None, description="dtype in {int*, uint*, float*}")
     messages: MessageStats | None = Field(default=None, description="dtype == messages (list of {role, content})")
@@ -295,6 +299,15 @@ class PartitionProfile(BaseModel):
         ),
     )
     classification: PartitionClassification
+
+    @model_validator(mode="after")
+    def _stats_keys_subset_of_features(self) -> "PartitionProfile":
+        """``stats`` is keyed by top-level column name, so every key must name a top-level feature
+        (the producer keys stats by ``feature.name``); a stray key is a malformed profile."""
+        unknown = set(self.stats) - {feature.name for feature in self.features}
+        if unknown:
+            raise ValueError(f"stats keys must name top-level features; unknown columns: {sorted(unknown)}")
+        return self
 
 
 # ---- envelope ----------------------------------------------------------------------------------
