@@ -6,7 +6,7 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
@@ -14,9 +14,9 @@ import anthropic.types as anthropic_types
 import openai.types.chat as openai_chat_types
 import pytest
 import pytest_asyncio
-from aiohttp import ClientError
+from aiohttp import ClientError, ClientPayloadError
 from fastapi import HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from multidict import CIMultiDict, CIMultiDictProxy
 from nemo_platform.types.inference import ModelProvider, ServedModelMapping
 from nemo_platform.types.inference.virtual_model import VirtualModel as SDKVirtualModel
@@ -41,6 +41,7 @@ from nmp.core.inference_gateway.api.proxy import (
     _rewrite_model_field,
     _rewrite_model_field_in_stream,
     build_next_request,
+    fetch_proxy_response,
     normalize_proxy_url,
     proxy_request,
     stream_response_result,
@@ -65,7 +66,10 @@ async def next_request_info(mock_request):
     return await build_next_request(mock_request, "http://example.com", "api")
 
 
-async def _read_streaming_response(response: StreamingResponse) -> bytes:
+async def _read_streaming_response(response: Response) -> bytes:
+    if not isinstance(response, StreamingResponse):
+        return bytes(response.body)
+
     chunks: list[bytes] = []
     async for chunk in response.body_iterator:
         if isinstance(chunk, str):
@@ -78,6 +82,81 @@ async def _read_streaming_response(response: StreamingResponse) -> bytes:
 def _json_request_body(result: NextRequestInfo) -> dict[str, Any]:
     assert result.body is not None
     return json.loads(result.body)
+
+
+def _virtual_model_backend(
+    workspace: str,
+    vm_name: str,
+    *,
+    provider_name: str = "nim",
+) -> tuple[ModelCache, SDKVirtualModel, str, str]:
+    model_entity_id = f"{workspace}/model"
+    served_model_name = "served-model"
+    model_cache = ModelCache()
+    model_cache.update_model_info(
+        ModelProviderInfo(
+            model_provider=ModelProvider(
+                workspace="default",
+                name=provider_name,
+                host_url=f"http://{provider_name}.local",
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+                served_models=[
+                    ServedModelMapping(
+                        model_entity_id=model_entity_id,
+                        served_model_name=served_model_name,
+                    )
+                ],
+                status="READY",
+            )
+        )
+    )
+    model_cache.rebuild_model_entity_map()
+    virtual_model = SDKVirtualModel(
+        id=f"{workspace}/{vm_name}",
+        entity_id=f"{workspace}/{vm_name}",
+        name=vm_name,
+        workspace=workspace,
+        parent=workspace,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+        default_model_entity=model_entity_id,
+    )
+    return model_cache, virtual_model, model_entity_id, served_model_name
+
+
+def _mock_inference_request() -> Mock:
+    request = Mock(spec=Request)
+    request.method = "POST"
+    request.headers = {"content-type": "application/json"}
+    request.query_params = {}
+    return request
+
+
+def _unexpected_response_middleware_registry(
+    workspace: str,
+    vm_name: str,
+    middleware_calls: list[str],
+) -> MiddlewareRegistry:
+    class _UnexpectedResponsePlugin(NemoInferenceMiddleware):
+        async def process_response(
+            self,
+            ctx: InferenceMiddlewareContext,
+            response: InferenceResponse,
+            middleware_config: object,
+        ) -> InferenceResponse:
+            middleware_calls.append("called")
+            return response
+
+    registry = MiddlewareRegistry(plugins={"unexpected-plugin": _UnexpectedResponsePlugin()})
+    middleware_call = ResolvedMiddlewareCall(
+        plugin_name="unexpected-plugin",
+        config_type="t",
+        resolved_config={},
+    )
+    registry.response_middleware_calls[(workspace, vm_name)] = [middleware_call]
+    registry.post_response_middleware_calls[(workspace, vm_name)] = [middleware_call]
+    return registry
 
 
 @pytest.mark.asyncio
@@ -1019,6 +1098,7 @@ async def test_proxy_request_client_error(mock_proxy_client, next_request_info):
 @pytest.mark.asyncio
 async def test_proxy_request_streaming_closes_connection(mock_proxy_client, mock_proxy_response, next_request_info):
     response = await proxy_request(mock_proxy_client, next_request_info)
+    assert isinstance(response, StreamingResponse)
 
     # Consume the streaming response to trigger cleanup
     async for _ in response.body_iterator:
@@ -1347,13 +1427,315 @@ def test_normalize_proxy_url(host_url, trailing_uri, expected):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("status_code", [401, 403, 404])
-async def test_proxy_request_wraps_certain_errors_in_502(mock_proxy_client, next_request_info, status_code):
-    """Test that certain backend errors (401/403/404) are wrapped in 502."""
+@pytest.mark.parametrize("status_code", [401, 403])
+async def test_proxy_request_propagates_backend_auth_errors(
+    mock_proxy_client, mock_proxy_response, next_request_info, status_code
+):
+    """Backend auth errors retain status, body, and authentication headers."""
+    error_body = json.dumps(
+        {"status": status_code, "title": "Unauthorized", "detail": "Authentication failed"},
+        separators=(",", ":"),
+    ).encode()
+    mock_proxy_response.status = status_code
+    mock_proxy_response.headers = CIMultiDictProxy(
+        CIMultiDict(
+            [
+                ("content-type", "application/problem+json"),
+                ("content-length", "999"),
+                ("content-encoding", "gzip"),
+                ("www-authenticate", 'Bearer realm="inference"'),
+            ]
+        )
+    )
+    mock_proxy_response.read = AsyncMock(return_value=error_body)
+
+    response = await proxy_request(mock_proxy_client, next_request_info)
+
+    assert response.status_code == status_code
+    assert await _read_streaming_response(response) == error_body
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.headers["content-length"] == str(len(error_body))
+    assert response.headers["www-authenticate"] == 'Bearer realm="inference"'
+    assert "content-encoding" not in response.headers
+    assert "transfer-encoding" not in response.headers
+
+
+@pytest.mark.asyncio
+async def test_proxy_request_preserves_non_json_backend_auth_body(
+    mock_proxy_client,
+    mock_proxy_response,
+    next_request_info,
+):
+    """Direct provider auth failures preserve intermediary HTML responses."""
+    error_body = b"<html>Authentication failed</html>"
+    mock_proxy_response.status = 401
+    mock_proxy_response.headers = CIMultiDictProxy(CIMultiDict([("content-type", "text/html")]))
+    mock_proxy_response.read = AsyncMock(return_value=error_body)
+
+    response = await proxy_request(mock_proxy_client, next_request_info)
+
+    assert response.status_code == 401
+    assert await _read_streaming_response(response) == error_body
+    assert response.headers["content-type"] == "text/html"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [401, 403])
+async def test_fetch_proxy_response_propagates_backend_auth_errors(
+    mock_proxy_client, mock_proxy_response, next_request_info, status_code
+):
+    """Buffered virtual-model requests retain backend auth response bytes unchanged."""
+    error_body = json.dumps(
+        {"status": status_code, "title": "Unauthorized", "detail": "Authentication failed"},
+        separators=(",", ":"),
+    ).encode()
+    mock_proxy_response.status = status_code
+    mock_proxy_response.headers = CIMultiDictProxy(
+        CIMultiDict(
+            [
+                ("content-type", "application/problem+json"),
+                ("www-authenticate", 'Bearer realm="inference"'),
+            ]
+        )
+    )
+    mock_proxy_response.read = AsyncMock(return_value=error_body)
+
+    result, response_headers, response_status = await fetch_proxy_response(mock_proxy_client, next_request_info)
+
+    assert response_status == status_code
+    assert result == error_body
+    assert response_headers["content-type"] == "application/problem+json"
+    assert response_headers["www-authenticate"] == 'Bearer realm="inference"'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error_body",
+    [
+        b"",
+        b"<html>Authentication failed</html>",
+        b"x" * 4096,
+    ],
+)
+async def test_fetch_proxy_response_preserves_arbitrary_backend_auth_bodies(
+    mock_proxy_client, mock_proxy_response, next_request_info, error_body
+):
+    """Buffered auth failures preserve empty, non-JSON, and long bodies."""
+    mock_proxy_response.status = 401
+    mock_proxy_response.read = AsyncMock(return_value=error_body)
+
+    result, _, response_status = await fetch_proxy_response(mock_proxy_client, next_request_info)
+
+    assert response_status == 401
+    assert result == error_body
+
+
+@pytest.mark.asyncio
+async def test_proxy_request_auth_status_survives_error_body_read_failure(
+    mock_proxy_client,
+    mock_proxy_response,
+    next_request_info,
+):
+    """A malformed upstream body cannot turn a known authentication failure into 502."""
+    mock_proxy_response.status = 401
+    mock_proxy_response.read = AsyncMock(side_effect=ClientPayloadError("truncated body"))
+
+    result = await proxy_request(mock_proxy_client, next_request_info)
+
+    assert isinstance(result, Response)
+    assert result.status_code == 401
+    assert await _read_streaming_response(result) == b""
+
+
+@pytest.mark.asyncio
+async def test_fetch_proxy_response_auth_status_survives_error_body_read_failure(
+    mock_proxy_client,
+    mock_proxy_response,
+    next_request_info,
+):
+    """A malformed upstream body cannot turn a known authentication failure into 502."""
+    mock_proxy_response.status = 401
+    mock_proxy_response.read = AsyncMock(side_effect=ClientPayloadError("truncated body"))
+
+    body, _, response_status = await fetch_proxy_response(mock_proxy_client, next_request_info)
+
+    assert response_status == 401
+    assert body == b""
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [401, 403])
+async def test_virtual_model_proxy_auth_errors_bypass_response_middleware_and_model_rewrite(
+    mock_proxy_client, mock_proxy_response, status_code
+):
+    """Auth failures are returned as transport errors, not typed inference responses."""
+    middleware_calls: list[str] = []
+
+    workspace = "e2e-test"
+    vm_name = "auth-error-router"
+    model_cache, virtual_model, _, served_model_name = _virtual_model_backend(workspace, vm_name)
+    error_body = {
+        "error": {"message": "Authentication failed"},
+        "model": served_model_name,
+    }
+    mock_proxy_response.status = status_code
+    raw_error_body = json.dumps(error_body, separators=(",", ":")).encode()
+    mock_proxy_response.headers = CIMultiDictProxy(
+        CIMultiDict(
+            [
+                ("content-type", "application/problem+json"),
+                ("www-authenticate", 'Bearer realm="inference"'),
+            ]
+        )
+    )
+    mock_proxy_response.read = AsyncMock(return_value=raw_error_body)
+
+    response = await virtual_model_proxy(
+        request=_mock_inference_request(),
+        workspace=workspace,
+        vm_name=vm_name,
+        virtual_model=virtual_model,
+        trailing_uri="v1/chat/completions",
+        json_body={"model": vm_name, "messages": []},
+        http_client=mock_proxy_client,
+        model_cache=model_cache,
+        registry=_unexpected_response_middleware_registry(workspace, vm_name, middleware_calls),
+    )
+
+    assert response.status_code == status_code
+    assert await _read_streaming_response(response) == raw_error_body
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.headers["www-authenticate"] == 'Bearer realm="inference"'
+    assert middleware_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [401, 403])
+async def test_virtual_model_proxy_mock_provider_auth_errors_bypass_response_middleware(mocker, status_code):
+    """Mock-provider auth failures follow the same short-circuit as real backends."""
+    middleware_calls: list[str] = []
+
+    workspace = "e2e-test"
+    vm_name = "mock-auth-error-router"
+    model_cache, virtual_model, _, served_model_name = _virtual_model_backend(
+        workspace, vm_name, provider_name="mock-provider"
+    )
+    error_body = {
+        "error": {"message": "Authentication failed"},
+        "model": served_model_name,
+    }
+    mocker.patch("nmp.core.inference_gateway.api.proxy.is_mock_provider", return_value=True)
+    mocker.patch(
+        "nmp.core.inference_gateway.api.proxy.handle_mock_request",
+        new=AsyncMock(
+            return_value=JSONResponse(
+                error_body,
+                status_code=status_code,
+                headers={"www-authenticate": 'Bearer realm="inference"'},
+            )
+        ),
+    )
+
+    response = await virtual_model_proxy(
+        request=_mock_inference_request(),
+        workspace=workspace,
+        vm_name=vm_name,
+        virtual_model=virtual_model,
+        trailing_uri="v1/chat/completions",
+        json_body={"model": vm_name, "messages": []},
+        http_client=Mock(),
+        model_cache=model_cache,
+        registry=_unexpected_response_middleware_registry(workspace, vm_name, middleware_calls),
+    )
+
+    assert response.status_code == status_code
+    assert json.loads(await _read_streaming_response(response)) == error_body
+    assert response.headers["www-authenticate"] == 'Bearer realm="inference"'
+    assert middleware_calls == []
+
+
+@pytest.mark.asyncio
+async def test_virtual_model_proxy_mock_streaming_auth_error_is_returned_unchanged(mocker):
+    """Mock streaming auth failures bypass SSE parsing and response middleware."""
+    workspace = "e2e-test"
+    vm_name = "mock-streaming-auth-error-router"
+    model_cache, virtual_model, _, _ = _virtual_model_backend(workspace, vm_name, provider_name="mock-provider")
+
+    async def error_body():
+        yield b"Authentication failed"
+
+    mock_response = StreamingResponse(
+        error_body(),
+        status_code=401,
+        media_type="text/plain",
+        headers={"www-authenticate": 'Bearer realm="inference"'},
+    )
+    mocker.patch("nmp.core.inference_gateway.api.proxy.is_mock_provider", return_value=True)
+    mocker.patch(
+        "nmp.core.inference_gateway.api.proxy.handle_mock_request",
+        new=AsyncMock(return_value=mock_response),
+    )
+
+    response = await virtual_model_proxy(
+        request=_mock_inference_request(),
+        workspace=workspace,
+        vm_name=vm_name,
+        virtual_model=virtual_model,
+        trailing_uri="v1/chat/completions",
+        json_body={"model": vm_name, "messages": []},
+        http_client=Mock(),
+        model_cache=model_cache,
+        registry=MiddlewareRegistry(),
+    )
+
+    assert response is mock_response
+    assert response.status_code == 401
+    assert await _read_streaming_response(response) == b"Authentication failed"
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.headers["www-authenticate"] == 'Bearer realm="inference"'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [422, 429, 500])
+async def test_virtual_model_proxy_mock_provider_raises_non_auth_errors(mocker, status_code):
+    """Mock providers retain the same non-auth error behavior as real backends."""
+    workspace = "e2e-test"
+    vm_name = "mock-error-router"
+    model_cache, virtual_model, _, _ = _virtual_model_backend(workspace, vm_name, provider_name="mock-provider")
+    mocker.patch("nmp.core.inference_gateway.api.proxy.is_mock_provider", return_value=True)
+    mocker.patch(
+        "nmp.core.inference_gateway.api.proxy.handle_mock_request",
+        new=AsyncMock(return_value=JSONResponse({"error": "backend failed"}, status_code=status_code)),
+    )
+
+    request = Mock(spec=Request)
+    request.method = "POST"
+    request.headers = {"content-type": "application/json"}
+    request.query_params = {}
+
+    with pytest.raises(HTTPException) as exc_info:
+        await virtual_model_proxy(
+            request=request,
+            workspace=workspace,
+            vm_name=vm_name,
+            virtual_model=virtual_model,
+            trailing_uri="v1/chat/completions",
+            json_body={"model": vm_name, "messages": []},
+            http_client=Mock(),
+            model_cache=model_cache,
+            registry=MiddlewareRegistry(),
+        )
+
+    assert exc_info.value.status_code == status_code
+
+
+@pytest.mark.asyncio
+async def test_proxy_request_wraps_backend_not_found_in_502(mock_proxy_client, next_request_info):
+    """A backend 404 remains a gateway routing failure."""
     import aiohttp
 
     mock_response = Mock(spec=aiohttp.ClientResponse)
-    mock_response.status = status_code
+    mock_response.status = 404
     mock_response.closed = False
     mock_response.read = AsyncMock(return_value=b'{"error": "model not found on backend"}')
     mock_proxy_client.request = AsyncMock(return_value=mock_response)
@@ -1362,7 +1744,7 @@ async def test_proxy_request_wraps_certain_errors_in_502(mock_proxy_client, next
         await proxy_request(mock_proxy_client, next_request_info)
 
     assert exc_info.value.status_code == 502
-    assert f"Backend returned {status_code}" in exc_info.value.detail
+    assert "Backend returned 404" in exc_info.value.detail
     assert "model not found on backend" in exc_info.value.detail
 
 
@@ -1448,6 +1830,7 @@ async def test_compressed_response_bytes_passed_through(mock_proxy_client, mock_
     mock_proxy_response.content.iter_chunked = Mock(return_value=compressed_chunk_iterator())
 
     response = await proxy_request(mock_proxy_client, next_request_info)
+    assert isinstance(response, StreamingResponse)
 
     # Verify Content-Encoding header is preserved
     assert response.headers.get("content-encoding") == "gzip"

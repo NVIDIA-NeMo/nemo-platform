@@ -4,9 +4,11 @@
 """Tests for provider router endpoints."""
 
 import json
+from unittest.mock import AsyncMock
 
+import pytest
 from fastapi.testclient import TestClient
-from multidict import CIMultiDict
+from multidict import CIMultiDict, CIMultiDictProxy
 from nmp.core.inference_gateway.api.model_cache import ModelCache
 
 
@@ -20,6 +22,39 @@ def test_provider_proxy_endpoint(client: TestClient, mock_proxy_client, mock_pro
     mock_proxy_client.request.assert_called_once()
     assert response.status_code == 200
     assert response.content == content
+
+
+@pytest.mark.parametrize("status_code", [401, 403])
+def test_provider_proxy_propagates_backend_auth_error(
+    client: TestClient,
+    mock_proxy_response,
+    status_code: int,
+):
+    """The provider route preserves backend auth status, body, and challenge headers."""
+    body = json.dumps(
+        {"status": status_code, "title": "Unauthorized", "detail": "Authentication failed"},
+        separators=(",", ":"),
+    ).encode()
+    mock_proxy_response.status = status_code
+    mock_proxy_response.headers = CIMultiDictProxy(
+        CIMultiDict(
+            [
+                ("content-type", "application/problem+json"),
+                ("www-authenticate", 'Bearer realm="inference"'),
+            ]
+        )
+    )
+    mock_proxy_response.read = AsyncMock(return_value=body)
+
+    response = client.post(
+        "/v2/workspaces/default/provider/ollama/-/v1/chat/completions",
+        json={"model": "example-model", "messages": [{"role": "user", "content": "Hello"}]},
+    )
+
+    assert response.status_code == status_code
+    assert response.content == body
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.headers["www-authenticate"] == 'Bearer realm="inference"'
 
 
 def test_provider_proxy_with_headers(client: TestClient, mock_proxy_client):
