@@ -97,7 +97,7 @@ export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
       return (
         <AccessibleTitle title="Anonymize Data">
           <FormProvider {...form}>
-            <form className="h-full" onSubmit={onSubmit}>
+            <form className="h-full" noValidate onSubmit={onSubmit}>
               <Flex className="h-full" gap="0">
                 <Panel
                   className="w-[400px] h-full overflow-auto"
