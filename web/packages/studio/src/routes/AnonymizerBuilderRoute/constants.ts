@@ -60,6 +60,9 @@ export const ENTITY_MODE_OPTIONS: { value: EntityMode; children: string }[] = [
 
 export const DEFAULT_PREVIEW_ROWS = 1;
 
+/** Above this file size, skip column introspection and fall back to a text input. */
+export const MAX_COLUMN_INTROSPECTION_BYTES = 50 * 1024 * 1024;
+
 /** Role names the anonymizer workflows resolve against `model_configs` aliases. */
 export const DETECTION_ROLES = [
   'entity_detector',
