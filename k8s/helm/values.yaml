@@ -473,6 +473,9 @@ openshiftRoute:
 # # -- OpenTelemetry configuration settings for all services.
 # @default -- This object has the following default values for the OpenTelemetry configuration.
 telemetry:
+  # -- Log output format for all services. Set here as an environment variable, rather than only
+  # via `config.service.log_format`, so that logging is configured before the config file is read.
+  LOG_FORMAT: "json"
   # -- Disable OpenTelemetry instrumentation and exporting for all services.
   OTEL_SDK_DISABLED: false
   # -- The OpenTelemetry grpc collector endpoint to export traces and metrics to.

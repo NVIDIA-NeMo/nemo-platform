@@ -94,3 +94,49 @@ def test_run_platform_marks_loaded_services_local_before_starting_controllers(mo
         Configuration.clear_cache()
 
     assert captured["services"] == "entities,jobs"
+
+
+def test_run_platform_initializes_logging_before_resolving_config(monkeypatch):
+    """Logging must be configured before any config loading happens.
+
+    Config resolution logs (missing config file, Docker runtime fallback, ...). If those records
+    are emitted before handlers are installed, Python falls back to ``logging.lastResort``, which
+    prints bare text to stderr and drops everything below WARNING. That is how unstructured lines
+    ended up interleaved with the JSON log stream.
+    """
+    Configuration.clear_cache()
+    call_order: list[str] = []
+
+    resolved = ResolvedRunConfiguration(
+        services=set(),
+        controllers=set(),
+        sidecars=set(),
+        host="127.0.0.1",
+        port=8080,
+        config_path="",
+    )
+
+    def record_resolve(*_args, **_kwargs):
+        call_order.append("resolve_run_configuration")
+        return resolved
+
+    def record_initialize_obs(*, resource_attributes):
+        call_order.append("initialize_obs")
+
+    monkeypatch.setattr(runner, "initialize_obs", record_initialize_obs)
+    monkeypatch.setattr(runner, "resolve_run_configuration", record_resolve)
+    monkeypatch.setattr(runner, "apply_run_environment", lambda config: None)
+    monkeypatch.setattr(runner, "setup_global_instrumentations", lambda: None)
+    monkeypatch.setattr(runner, "_load_service_instances", lambda service_names, available_services: [])
+    monkeypatch.setattr(runner, "_load_run_functions", lambda names, registry, kind: {})
+    monkeypatch.setattr(runner, "_display_banner", lambda **_: None)
+    monkeypatch.setattr(runner, "run_server", lambda services, host, port, socket_path=None: None)
+    monkeypatch.setattr(runner, "run_controllers_in_threads", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(runner.signal, "signal", lambda *args: None)
+
+    try:
+        runner.run_platform()
+    finally:
+        Configuration.clear_cache()
+
+    assert call_order == ["initialize_obs", "resolve_run_configuration"]

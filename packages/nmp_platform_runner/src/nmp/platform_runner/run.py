@@ -16,6 +16,7 @@ from typing import cast
 from nmp.common.config import get_auth_config, get_common_service_config, get_platform_config, get_service_config
 from nmp.common.observability import initialize_obs, setup_global_instrumentations
 from nmp.common.observability.otel import settings as otel_settings
+from nmp.common.observability.structured_logging import initialize_logging
 from nmp.common.service import CircularDependencyError, Service
 from nmp.platform_runner.config import (
     PlatformAppConfig,
@@ -84,21 +85,27 @@ def run_platform(
     """Start the platform API and selected controllers in-process."""
     t_total = time.perf_counter()
 
+    # Configure logging before resolving config so that config-loading logs are structured.
+    # otel_settings is env-only (LOG_FORMAT / LOG_LEVEL), so this needs no config file. Without
+    # it, anything logged during config resolution falls back to logging.lastResort, which emits
+    # bare text and drops everything below WARNING.
+    t0 = time.perf_counter()
+    initialize_obs(resource_attributes=get_platform_resource_attributes())
+    setup_global_instrumentations()
+    _startup_phase("observability_init", t0)
+
     t0 = time.perf_counter()
     resolved = resolve_run_configuration(config)
     apply_run_environment(resolved)
     _startup_phase("resolve_config", t0)
 
+    # The config file may still override the environment (local / CLI use), so re-initialize
+    # logging when it disagrees with what the environment already configured.
     service_config = get_common_service_config()
-    if otel_settings.log_format != service_config.log_format:
+    if (otel_settings.log_format, otel_settings.log_level) != (service_config.log_format, service_config.log_level):
         otel_settings.log_format = service_config.log_format
-    if otel_settings.log_level != service_config.log_level:
         otel_settings.log_level = service_config.log_level
-
-    t0 = time.perf_counter()
-    initialize_obs(resource_attributes=get_platform_resource_attributes())
-    setup_global_instrumentations()
-    _startup_phase("observability_init", t0)
+        initialize_logging()
 
     collisions = resolved.controllers & resolved.sidecars
     if collisions:
