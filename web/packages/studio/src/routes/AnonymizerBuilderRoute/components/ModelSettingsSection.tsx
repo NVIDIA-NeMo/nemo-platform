@@ -15,6 +15,7 @@ import {
   ROLE_LABELS,
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import type { AnonymizerFormData } from '@studio/routes/AnonymizerBuilderRoute/schema';
+import { pickDefaultModelName } from '@studio/util/buildSuggestedModelOptions';
 import { FC, useEffect, useMemo, useState } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 
@@ -46,23 +47,26 @@ export const ModelSettingsSection: FC = () => {
 
   const applyModel = (role: string, id: string) => {
     const selected = models.find((model) => model.id === id);
-    setValue(
-      `roleModels.${role}.model`,
-      selected?.served_model_name ?? '',
-      { shouldValidate: true }
-    );
-    setValue(
-      `roleModels.${role}.provider`,
-      selected?.model_providers?.[0] ?? '',
-      { shouldValidate: true }
-    );
+    setValue(`roleModels.${role}.model`, selected?.served_model_name ?? '', {
+      shouldValidate: true,
+    });
+    setValue(`roleModels.${role}.provider`, selected?.model_providers?.[0] ?? '', {
+      shouldValidate: true,
+    });
   };
 
-  // Seed sensible defaults once models load: GLiNER for the detector, an LLM for the rest.
+  // Seed sensible defaults once models load: GLiNER for the detector, a
+  // suggested chat model for the rest (avoids defaulting to a flaky first model).
   useEffect(() => {
     if (!models.length) return;
-    const gliner = models.find((model) => isGliner(model.name)) ?? models[0];
-    const llm = models.find((model) => !isGliner(model.name)) ?? models[0];
+    const suggestedName = pickDefaultModelName(
+      models.map((model) => ({ name: model.served_model_name ?? model.name }))
+    );
+    const llm =
+      models.find((model) => (model.served_model_name ?? model.name) === suggestedName) ??
+      models.find((model) => !isGliner(model.name)) ??
+      models[0];
+    const gliner = models.find((model) => isGliner(model.name)) ?? llm;
     for (const role of roles) {
       const current = getValues(`roleModels.${role}.modelId`);
       if (current) continue;
@@ -101,10 +105,7 @@ export const ModelSettingsSection: FC = () => {
               onOpenChange={(next) => setOpenParamsRole(next ? role : null)}
               inferenceParams={roleModelsValue?.[role]?.params as Partial<InferenceParams>}
               onInferenceParamsChange={(params) =>
-                setValue(
-                  `roleModels.${role}.params`,
-                  params as Record<string, unknown>
-                )
+                setValue(`roleModels.${role}.params`, params as Record<string, unknown>)
               }
             />
           </Flex>
