@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { formatAbsoluteTimestamp } from '@nemo/common/src/components/RelativeTime/util';
-import type { Trace } from '@nemo/sdk/generated/platform/schema';
+import type { Session } from '@nemo/sdk/generated/platform/schema';
 import { Flex, Stack, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { IntakeTelemetryStatusBadge } from '@studio/components/IntakeDetail/IntakeComponents/IntakeTelemetryStatusBadge';
-import type { HighlightMetricDetail } from '@studio/components/IntakeDetail/IntakeComponents/keyValueTypes';
-import { buildTraceHighlightMetrics } from '@studio/components/IntakeDetail/IntakeComponents/traceKeyValues';
+import type {
+  HighlightMetric,
+  HighlightMetricDetail,
+} from '@studio/components/IntakeDetail/IntakeComponents/keyValueTypes';
+import { buildSessionHighlightMetrics } from '@studio/components/IntakeDetail/IntakeComponents/traceKeyValues';
 import { type FC, type ReactNode, useMemo } from 'react';
 
 const TraceSummaryMetricItem: FC<{
@@ -73,22 +76,27 @@ const dateValue = (value: string) => (
   </Text>
 );
 
-interface TraceSummaryHeaderProps {
-  trace: Trace;
+interface SummaryTelemetry {
+  started_at: string;
+  ended_at?: string;
+  status: Session['status'];
 }
 
-/** Inline summary strip below the page title: status, timing, and headline metrics. */
-export const TraceSummaryHeader: FC<TraceSummaryHeaderProps> = ({ trace }) => {
-  const metrics = useMemo(() => buildTraceHighlightMetrics(trace), [trace]);
-  const started = trace.started_at ? formatAbsoluteTimestamp(trace.started_at) : undefined;
-  const ended = trace.ended_at ? formatAbsoluteTimestamp(trace.ended_at) : undefined;
+interface SummaryHeaderProps {
+  telemetry: SummaryTelemetry;
+  metrics: readonly HighlightMetric[];
+}
+
+const SummaryHeader: FC<SummaryHeaderProps> = ({ telemetry, metrics }) => {
+  const started = telemetry.started_at ? formatAbsoluteTimestamp(telemetry.started_at) : undefined;
+  const ended = telemetry.ended_at ? formatAbsoluteTimestamp(telemetry.ended_at) : undefined;
 
   return (
     <Flex align="stretch" gap="density-2xl" className="w-full min-w-0">
       <Flex gap="density-2xl" align="start" className="shrink-0">
         <TraceSummaryMetricItem
           label="Status"
-          value={<IntakeTelemetryStatusBadge status={trace.status} />}
+          value={<IntakeTelemetryStatusBadge status={telemetry.status} />}
         />
         {started ? <TraceSummaryMetricItem label="Started" value={dateValue(started)} /> : null}
         {ended ? <TraceSummaryMetricItem label="Ended" value={dateValue(ended)} /> : null}
@@ -105,4 +113,14 @@ export const TraceSummaryHeader: FC<TraceSummaryHeaderProps> = ({ trace }) => {
       </div>
     </Flex>
   );
+};
+
+interface SessionSummaryHeaderProps {
+  session: Session;
+}
+
+/** Inline session summary strip backed only by the session detail response. */
+export const SessionSummaryHeader: FC<SessionSummaryHeaderProps> = ({ session }) => {
+  const metrics = useMemo(() => buildSessionHighlightMetrics(session), [session]);
+  return <SummaryHeader telemetry={session} metrics={metrics} />;
 };

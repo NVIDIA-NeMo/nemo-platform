@@ -97,11 +97,12 @@ def _anyof_null_visitor(key: str, value: Any, parent: Dict):
     if len(value) == 1:
         non_null = value[0]
         del parent["anyOf"]
-        if "type" not in non_null and "$ref" not in non_null:
+        if not non_null.keys() & {"type", "$ref", "oneOf", "anyOf"}:
             raise ValueError(f"Unsupported anyOf member format: {non_null}")
         # Hoist every key from the non-null branch (type, format, writeOnly,
-        # readOnly, items, pattern, enum, examples, $ref, ...) onto the parent
-        # without overwriting parent-provided metadata like title/description.
+        # readOnly, items, pattern, enum, examples, $ref, oneOf, anyOf, ...) onto
+        # the parent without overwriting parent-provided metadata like
+        # title/description. An Optional[Union[...]] collapses to a bare oneOf.
         for k, v in non_null.items():
             parent.setdefault(k, v)
 

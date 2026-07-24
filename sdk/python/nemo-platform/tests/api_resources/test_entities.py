@@ -121,6 +121,7 @@ class TestEntities:
         entity = client.entities.list(
             entity_type="entity_type",
             workspace="workspace",
+            count_by="count_by",
             filter="filter",
             page=1,
             page_size=1,
@@ -539,6 +540,7 @@ class TestAsyncEntities:
         entity = await async_client.entities.list(
             entity_type="entity_type",
             workspace="workspace",
+            count_by="count_by",
             filter="filter",
             page=1,
             page_size=1,

@@ -2,21 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { EvaluationSessionResponse } from '@nemo/sdk/generated/platform/schema';
-import { CompareRunSelect } from '@studio/routes/EvaluationTraceDetailRoute/CompareRunSelect';
+import { CompareRunSelect } from '@studio/routes/EvaluationSessionDetailRoute/CompareRunSelect';
 import { render, screen } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 
-const run = (
-  evaluationName: string,
-  sessionId: string,
-  traceId: string
-): EvaluationSessionResponse =>
+const run = (evaluationName: string, sessionId: string): EvaluationSessionResponse =>
   ({
     workspace: 'default',
     evaluation_name: evaluationName,
     session_id: sessionId,
-    trace_id: traceId,
-    root_span_id: `span-${traceId}`,
+    trace_id: `trace-${sessionId}`,
+    root_span_id: `span-${sessionId}`,
     started_at: '2026-01-01T00:00:00Z',
     status: 'success',
   }) as EvaluationSessionResponse;
@@ -33,7 +29,7 @@ describe('CompareRunSelect', () => {
     render(
       <CompareRunSelect
         runs={[]}
-        currentTraceId="trace-0"
+        currentSessionId="sess-0"
         value={null}
         onChange={onChange}
         isLoading
@@ -44,11 +40,11 @@ describe('CompareRunSelect', () => {
   });
 
   it('is disabled with an empty placeholder when there are no other runs', () => {
-    // The only run is the primary trace, which is never an option.
+    // The only run is the primary session, which is never an option.
     render(
       <CompareRunSelect
-        runs={[run('eval-a', 'sess-0', 'trace-0')]}
-        currentTraceId="trace-0"
+        runs={[run('eval-a', 'sess-0')]}
+        currentSessionId="sess-0"
         value={null}
         onChange={onChange}
       />
@@ -60,8 +56,8 @@ describe('CompareRunSelect', () => {
   it('is enabled with the fixed compare label once other runs exist', () => {
     render(
       <CompareRunSelect
-        runs={[run('eval-a', 'sess-0', 'trace-0'), run('eval-b', 'sess-1', 'trace-1')]}
-        currentTraceId="trace-0"
+        runs={[run('eval-a', 'sess-0'), run('eval-b', 'sess-1')]}
+        currentSessionId="sess-0"
         value={null}
         onChange={onChange}
       />
@@ -69,17 +65,18 @@ describe('CompareRunSelect', () => {
     expect(screen.getByText('Compare against evaluation run')).toBeInTheDocument();
     expect(screen.getByRole('combobox')).toBeEnabled();
   });
+
   it('collapses single-trial evaluations and nests multi-trial ones', async () => {
     const user = userEvent.setup();
     render(
       <CompareRunSelect
         runs={[
-          run('primary-eval', 'sess-prim', 'trace-0'), // current — excluded
-          run('solo-eval', 'sess-SOLO1', 'trace-solo'), // 1 trial → collapsed
-          run('multi-eval', 'sess-MULTA', 'trace-m1'), // 2 trials → nested
-          run('multi-eval', 'sess-MULTB', 'trace-m2'),
+          run('primary-eval', 'sess-prim'), // current — excluded
+          run('solo-eval', 'sess-SOLO1'), // 1 trial → collapsed
+          run('multi-eval', 'sess-MULTA'), // 2 trials → nested
+          run('multi-eval', 'sess-MULTB'),
         ]}
-        currentTraceId="trace-0"
+        currentSessionId="sess-prim"
         value={null}
         onChange={onChange}
       />

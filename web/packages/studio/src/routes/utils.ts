@@ -4,6 +4,7 @@
 import { getPartsFromNamedEntityRef, NamedEntityRef } from '@nemo/common/src/namedEntity';
 import {
   AGENTS_ENABLED,
+  ANONYMIZER_ENABLED,
   BASE_MODELS_ENABLED,
   CODING_AGENT_STUDIO_ENABLED,
   CUSTOMIZER_ENABLED,
@@ -64,6 +65,9 @@ export const gateSafeSynthesizerRoutes = (routes: RouteObject | RouteObject[]) =
 
 export const gateDataDesignerRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(DATA_DESIGNER_ENABLED, routes);
+
+export const gateAnonymizerRoutes = (routes: RouteObject | RouteObject[]) =>
+  gateRoutes(ANONYMIZER_ENABLED, routes);
 
 export const gateEvaluationRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(EVALUATOR_ENABLED, routes);
@@ -325,18 +329,37 @@ export const getEvaluationDetailRoute = (
   });
 };
 
-export const getEvaluationTraceDetailRoute = (
+export const getEvaluationSessionDetailRoute = (
   workspace: string,
   experimentGroupName: string,
   evaluationName: string,
-  traceId: string
+  sessionId: string
 ): string => {
-  return generatePath(ROUTES.workspace.evaluationTraceDetail, {
+  return generatePath(ROUTES.workspace.evaluationSessionDetail, {
     workspace,
     experimentGroupName: encodeURIComponent(experimentGroupName),
     evaluationName: encodeURIComponent(evaluationName),
-    traceId,
+    sessionId: encodeURIComponent(sessionId),
   });
+};
+
+export const getEvaluationSessionTraceDetailRoute = (
+  workspace: string,
+  experimentGroupName: string,
+  evaluationName: string,
+  sessionId: string,
+  traceId: string,
+  options?: { spanId?: string }
+): string => {
+  const path = getEvaluationSessionDetailRoute(
+    workspace,
+    experimentGroupName,
+    evaluationName,
+    sessionId
+  );
+  const searchParams = new URLSearchParams({ [QUERY_PARAMETERS.traceId]: traceId });
+  if (options?.spanId) searchParams.set(QUERY_PARAMETERS.spanId, options.spanId);
+  return `${path}?${searchParams.toString()}`;
 };
 
 export const getPromptTuningFormRoute = (workspace: string, options?: { model?: string }) => {
@@ -350,7 +373,7 @@ export const getPromptTuningFormRoute = (workspace: string, options?: { model?: 
 export const getNewCustomizationJobRoute = (workspace: string, options?: { model?: string }) => {
   const basePath = generatePath(ROUTES.workspace.newCustomizationJob, { workspace });
   if (options?.model) {
-    return `${basePath}?model=${encodeURIComponent(options.model)}`;
+    return `${basePath}?${QUERY_PARAMETERS.model}=${encodeURIComponent(options.model)}`;
   }
   return basePath;
 };
@@ -443,13 +466,22 @@ export const getIntakeSpansRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.intakeSpans, { workspace });
 };
 
-export const getIntakeTraceRoute = (workspace: string, traceId: string) => {
-  return generatePath(ROUTES.workspace.intakeTrace, { workspace, traceId });
+export const getIntakeSessionRoute = (workspace: string, sessionId: string) => {
+  return generatePath(ROUTES.workspace.intakeSession, {
+    workspace,
+    sessionId: encodeURIComponent(sessionId),
+  });
 };
 
-export const getIntakeTraceSpanRoute = (workspace: string, traceId: string, spanId: string) => {
-  const searchParams = new URLSearchParams({ [QUERY_PARAMETERS.spanId]: spanId });
-  return `${getIntakeTraceRoute(workspace, traceId)}?${searchParams.toString()}`;
+export const getIntakeSessionTraceRoute = (
+  workspace: string,
+  sessionId: string,
+  traceId: string,
+  options?: { spanId?: string }
+) => {
+  const searchParams = new URLSearchParams({ [QUERY_PARAMETERS.traceId]: traceId });
+  if (options?.spanId) searchParams.set(QUERY_PARAMETERS.spanId, options.spanId);
+  return `${getIntakeSessionRoute(workspace, sessionId)}?${searchParams.toString()}`;
 };
 
 export const getSafeSynthesizerRoute = (workspace: string) => {
@@ -501,6 +533,18 @@ export const getLegacyNewDataDesignerJobRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.dataDesignerJobNewLegacy, { workspace });
 };
 
+export const getWorkspaceAnonymizerRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.anonymizer, { workspace });
+};
+
+export const getNewAnonymizerRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.anonymizerNew, { workspace });
+};
+
+export const getAnonymizerJobRoute = (workspace: string, anonymizerJobName: string) => {
+  return generatePath(ROUTES.workspace.anonymizerJob, { workspace, anonymizerJobName });
+};
+
 export const getModelChatRoute = (model: NamedEntityRef) => {
   const { modelNamespace, modelName } = getModelRouteParamsFromEntityRef(model);
   return generatePath(ROUTES.models.modelChat, { modelNamespace, modelName });
@@ -527,10 +571,6 @@ export const getAgentDeploymentDetailRoute = (workspace: string, agentDeployment
     workspace,
     agentDeploymentName,
   });
-};
-
-export const getAgentOptimizationsRoute = (workspace: string) => {
-  return generatePath(ROUTES.workspace.agentOptimizations, { workspace });
 };
 
 export const getAgentMonitorRoute = (workspace: string) => {
