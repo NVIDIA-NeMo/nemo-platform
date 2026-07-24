@@ -12,16 +12,6 @@ from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.span_attribute_catalog import COST_SCALE, SpanAttributeField, spec_for_field
 from nmp.intake.spans.storage import float_or_none, result_rows
 
-# Let large rollups spill to disk instead of OOMing the server (ClickHouse code 241). With the lean
-# span projection below these thresholds aren't reached for normal groups; they're a safety net for
-# very large ones (many sessions/spans) so a heavy group degrades gracefully rather than erroring.
-_ROLLUP_QUERY_SETTINGS = {
-    "max_bytes_before_external_group_by": 2_000_000_000,
-    "max_bytes_before_external_sort": 2_000_000_000,
-    "join_algorithm": "auto",
-    "max_bytes_in_join": 2_000_000_000,
-}
-
 
 @dataclass(frozen=True)
 class ScoreRollup:
@@ -82,7 +72,6 @@ class EvaluationRollupRepository:
                     evaluation_names_sql=evaluation_names_sql,
                 ),
                 parameters=parameters,
-                settings=_ROLLUP_QUERY_SETTINGS,
             )
         ):
             rollups[row["evaluation_id"]].evaluator_scores[row["evaluator_name"]] = ScoreRollup(
@@ -109,7 +98,6 @@ class EvaluationRollupRepository:
                     "agent_name_key": spec_for_field(SpanAttributeField.AGENT_NAME).bag_key,
                     "agent_version_key": spec_for_field(SpanAttributeField.AGENT_VERSION).bag_key,
                 },
-                settings=_ROLLUP_QUERY_SETTINGS,
             )
         ):
             rollup = rollups[row["evaluation_id"]]

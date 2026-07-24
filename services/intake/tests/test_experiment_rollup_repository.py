@@ -25,9 +25,7 @@ class _Client:
     def table(self, name: str) -> str:
         return name
 
-    async def query(
-        self, query: str, *, parameters: dict[str, object], settings: dict[str, object] | None = None
-    ) -> _QueryResult:
+    async def query(self, query: str, *, parameters: dict[str, object]) -> _QueryResult:
         self.queries.append(query)
         self.parameters.append(parameters)
         return self.query_results.pop(0)

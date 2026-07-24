@@ -42,15 +42,15 @@ interface ExperimentGroupParetoChartProps {
   workspace: string;
   group: ExperimentGroupResponse;
   /**
-   * The group's full evaluation set, when the caller already has it loaded (e.g. the leaderboard fit
-   * the whole group on one page). Supplying it lets the chart skip its own all-evaluations fetch —
-   * which re-runs the same server-side rollup — and render from the shared rows instead.
+   * The group's full evaluation set, when the caller already has it loaded (a small group that fit on
+   * the leaderboard's first page). Supplying it lets the chart render from the shared rows and skip its
+   * own all-evaluations fetch — which re-runs the same server-side rollup.
    */
   preloadedEvaluations?: EvaluationRow[];
   /**
-   * True while the caller is still loading and is expected to supply `preloadedEvaluations` once done
-   * (page 1 of an unfiltered group). The chart shows a loading state and holds off its own fetch,
-   * rather than briefly rendering empty before the shared rows arrive.
+   * True while the caller is still loading rows it will supply via `preloadedEvaluations`. The chart
+   * shows a loading state and holds off its own fetch, rather than briefly rendering empty. Only set
+   * for groups known (from `evaluation_count`) to fit one page — larger groups fetch immediately.
    */
   preloadPending?: boolean;
 }
@@ -161,7 +161,7 @@ export const ExperimentGroupParetoChart: FC<ExperimentGroupParetoChartProps> = (
 
   // Reuse the caller's rows when it already has the whole group loaded. While it's still loading and
   // about to supply them (`preloadPending`), hold off our own fetch and show a loading state instead of
-  // rendering empty. Otherwise fetch the evaluations ourselves.
+  // rendering empty. Otherwise fetch the evaluations ourselves (in parallel — see the `enabled` flag).
   const hasPreloaded = preloadedEvaluations !== undefined;
   const {
     rows: fetchedRows,

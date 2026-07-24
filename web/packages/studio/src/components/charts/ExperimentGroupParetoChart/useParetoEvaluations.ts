@@ -26,9 +26,9 @@ export function useParetoEvaluations(
   experimentGroupId: string,
   options?: { enabled?: boolean }
 ): ParetoEvaluations {
-  // Callers can disable the fetch (e.g. the leaderboard already loaded the whole group on one page,
-  // so its rows are reused and this extra all-evaluations request — which re-runs the same server-side
-  // rollup — is redundant).
+  // Callers disable the fetch when they already have the whole group loaded (a small group that fit on
+  // the leaderboard's first page), so this all-evaluations request — which re-runs the same server-side
+  // rollup — is skipped entirely.
   const enabled = (options?.enabled ?? true) && !!experimentGroupId;
   const { data, isLoading, isError } = useListEvaluations(
     workspace,

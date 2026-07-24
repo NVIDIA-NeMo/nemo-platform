@@ -460,18 +460,20 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     return <ErrorMessage message="Failed to load experiments." />;
   }
 
-  // When the whole (unfiltered) group already fits on the first page, the loaded rows ARE the complete
-  // evaluation set — hand them to the Pareto chart so it can skip its own all-evaluations fetch (which
-  // re-runs the same server-side rollup). We only know the group fits one page once the list has
-  // loaded (`totalCount` is 0 mid-load), so gate on `!isLoading`; while loading on page 1 we signal
-  // `preloadPending` so the chart shows a loading state instead of the empty set. Any search/filter,
-  // or a group larger than one page, falls back to the chart fetching for itself.
+  // When the whole group fits on the leaderboard's first page and isn't filtered, those loaded rows are
+  // the complete evaluation set — reuse them for the Pareto chart instead of refetching every
+  // evaluation. `evaluation_count` lets us decide this without waiting on the list query. While the
+  // page loads, `preloadPending` keeps the chart in its loading state; otherwise the chart fetches its
+  // own data in parallel.
   const hasActiveFilter = Object.keys(dataViewState.apiFilter.filter ?? {}).length > 0;
-  const onFirstUnfilteredPage =
-    page === 1 && !dataViewState.debouncedSearchBar && !hasActiveFilter;
-  const completeEvaluationSet =
-    onFirstUnfilteredPage && !isLoading && totalCount <= pageSize ? orderedData : undefined;
-  const preloadPending = onFirstUnfilteredPage && isLoading;
+  const groupFitsOnePage =
+    group.evaluation_count != null &&
+    group.evaluation_count <= pageSize &&
+    page === 1 &&
+    !dataViewState.debouncedSearchBar &&
+    !hasActiveFilter;
+  const completeEvaluationSet = groupFitsOnePage && !isLoading ? orderedData : undefined;
+  const preloadPending = groupFitsOnePage && isLoading;
 
   return (
     <>
