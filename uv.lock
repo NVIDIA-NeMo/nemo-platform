@@ -3687,7 +3687,6 @@ dependencies = [
     { name = "nemo-agents-example-calculator", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-agents-example-email-phishing", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-deployments-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nemo-fabric", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nvidia-nat-config-optimizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -3701,6 +3700,11 @@ dependencies = [
 container = [
     { name = "jinja2", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "python-on-whales", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+fabric = [
+    { name = "nemo-fabric", extra = ["runtime"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-fabric-adapters-codex", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-fabric-adapters-hermes", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 test = [
     { name = "fastapi", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -3724,7 +3728,9 @@ requires-dist = [
     { name = "nemo-agents-example-calculator", editable = "plugins/nemo-agents/examples/calculator-agent" },
     { name = "nemo-agents-example-email-phishing", editable = "plugins/nemo-agents/examples/email-phishing-analyzer" },
     { name = "nemo-deployments-plugin", editable = "plugins/nemo-deployments" },
-    { name = "nemo-fabric", specifier = ">=0.1.0a20260717,<0.2.0" },
+    { name = "nemo-fabric", extras = ["runtime"], marker = "extra == 'fabric'", specifier = ">=0.1.0a20260724,<0.2.0" },
+    { name = "nemo-fabric-adapters-codex", marker = "extra == 'fabric'", specifier = ">=0.1.0a20260724,<0.2.0" },
+    { name = "nemo-fabric-adapters-hermes", marker = "python_full_version < '3.14' and extra == 'fabric'", specifier = ">=0.1.0a20260724,<0.2.0" },
     { name = "nemo-platform", editable = "packages/nemo_platform" },
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
     { name = "nvidia-nat-config-optimizer", specifier = ">=1.8.0,<1.9" },
@@ -3736,7 +3742,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rich", specifier = ">=13.7.1" },
 ]
-provides-extras = ["container", "test"]
+provides-extras = ["fabric", "container", "test"]
 
 [[package]]
 name = "nemo-anonymizer"
@@ -4148,9 +4154,54 @@ dev = [
 
 [[package]]
 name = "nemo-fabric"
-version = "0.1.0a20260717"
+version = "0.1.0a20260724"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/85/7a/971dfffaa98f245904cb6b753d40725023e4fc74e3245120ec5a1e79f63a/nemo_fabric-0.1.0a20260717.tar.gz", hash = "sha256:55b850fd03bb54e1559039504048cf5c2b7fd96903f91fd8e517a4c5cfff395f", size = 6149, upload-time = "2026-07-17T15:23:14.982Z" }
+dependencies = [
+    { name = "nemo-fabric-runtime", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/bf/02/6553d9b6612f2dd3464060e1afbaf849c124cd8c845530914b4cbcd462b1/nemo_fabric-0.1.0a20260724.tar.gz", hash = "sha256:7134673f3d7c63f2aaec59ce36b640e1700a63375bbdbe2809a137617d109f40", size = 6291, upload-time = "2026-07-24T09:11:45.053Z" }
+
+[package.optional-dependencies]
+runtime = [
+    { name = "nemo-fabric-runtime", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+
+[[package]]
+name = "nemo-fabric-adapters-codex"
+version = "0.1.0a20260724"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "nemo-fabric-adapters-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "openai-codex", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "tomli-w", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/65/6b/f6949c2e9350e5eb15fd171f775e50ed0565cd8ff08bf68157855475ac5f/nemo_fabric_adapters_codex-0.1.0a20260724.tar.gz", hash = "sha256:246e43bf6222560d63167fa89c27e9e03a152ea47cfe156601cb4a6100b9b656", size = 7567, upload-time = "2026-07-24T09:11:35.44Z" }
+
+[[package]]
+name = "nemo-fabric-adapters-common"
+version = "0.1.0a20260724"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6c/17/057fa7330912ec05e9950169fe3c5990f8fe58bce23dda8b1397e32d2df2/nemo_fabric_adapters_common-0.1.0a20260724.tar.gz", hash = "sha256:965fad6446b42e85271b93e66491b188fadeabefa0d899ddf589e3d99537b61d", size = 5800, upload-time = "2026-07-24T09:11:32.409Z" }
+
+[[package]]
+name = "nemo-fabric-adapters-hermes"
+version = "0.1.0a20260724"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "nemo-fabric-adapters-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "pyyaml", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8b/5b/a67590fe64bc71ceeab17fc35a1b01309016acf3fa7a5d5a4406b8be2bfc/nemo_fabric_adapters_hermes-0.1.0a20260724.tar.gz", hash = "sha256:1a4dbb3a985453435833cf3fee80f9a69f11786189a712d8c895ca33b8fb3976", size = 6215, upload-time = "2026-07-24T09:11:42.582Z" }
+
+[[package]]
+name = "nemo-fabric-runtime"
+version = "0.1.0a20260724"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic", extra = ["email"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "typing-extensions", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3c/fe/0256c408a5d6c5e8a1576c8d2672252d85f1537dac7aa08584cef11ef5d2/nemo_fabric_runtime-0.1.0a20260724.tar.gz", hash = "sha256:b9a5eb4de344d981863f76b2d8f586e6fbcbc3c69ed6cdc333167b78f64e6331", size = 5275, upload-time = "2026-07-24T09:11:23.379Z" }
 
 [[package]]
 name = "nemo-guardrails-plugin"
@@ -4308,7 +4359,6 @@ all = [
     { name = "nemo-anonymizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-auditor-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-evaluator-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nemo-fabric", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-safe-synthesizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -4527,7 +4577,6 @@ nemo-agents-plugin = [
     { name = "httpx", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "langchain-aws", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-agents-example-calculator", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nemo-fabric", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nvidia-nat-config-optimizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nvidia-nat-core", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -4699,7 +4748,6 @@ plugins = [
     { name = "nemo-agents-example-calculator", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-anonymizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-evaluator-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nemo-fabric", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-safe-synthesizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -4761,7 +4809,6 @@ services = [
     { name = "nemo-anonymizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-auditor-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-evaluator-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nemo-fabric", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-safe-synthesizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -5050,10 +5097,6 @@ requires-dist = [
     { name = "nemo-evaluator-sdk", marker = "extra == 'nemo-evaluator-plugin'", editable = "packages/nemo_evaluator_sdk" },
     { name = "nemo-evaluator-sdk", marker = "extra == 'plugins'", editable = "packages/nemo_evaluator_sdk" },
     { name = "nemo-evaluator-sdk", marker = "extra == 'services'", editable = "packages/nemo_evaluator_sdk" },
-    { name = "nemo-fabric", marker = "extra == 'all'", specifier = ">=0.1.0a20260717,<0.2.0" },
-    { name = "nemo-fabric", marker = "extra == 'nemo-agents-plugin'", specifier = ">=0.1.0a20260717,<0.2.0" },
-    { name = "nemo-fabric", marker = "extra == 'plugins'", specifier = ">=0.1.0a20260717,<0.2.0" },
-    { name = "nemo-fabric", marker = "extra == 'services'", specifier = ">=0.1.0a20260717,<0.2.0" },
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
     { name = "nemo-platform-plugin", marker = "extra == 'all'", editable = "packages/nemo_platform_plugin" },
     { name = "nemo-platform-plugin", marker = "extra == 'core-service'", editable = "packages/nemo_platform_plugin" },
@@ -7876,6 +7919,31 @@ docker = [
 ]
 
 [[package]]
+name = "openai-codex"
+version = "0.144.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "openai-codex-cli-bin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "pydantic", extra = ["email"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b9/7d/4b999b0ddd05c22d83cc2e879c95e1e92e3b7808b58ac561c4ea91fca1c4/openai_codex-0.144.4.tar.gz", hash = "sha256:91c63a7cb213441569f130e593386b34657ab9e726ae88af255f0ecb8de08ea5", size = 68324, upload-time = "2026-07-17T23:42:17.013Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/17/35/5d2a13e38d91278019f18757ac10426d2649b7ec6f031818c792f64559e9/openai_codex-0.144.4-py3-none-any.whl", hash = "sha256:de1513a6e94b9a8d7728a3b74298bc1469428ade10ba0ef2d5db47dd1cb606f5", size = 76244, upload-time = "2026-07-17T23:42:15.658Z" },
+]
+
+[[package]]
+name = "openai-codex-cli-bin"
+version = "0.144.4"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/65/eb/64c180514a2cc3e2500e486813f5a8d7f7e349342e9bebd78d99ddd9791a/openai_codex_cli_bin-0.144.4-py3-none-macosx_11_0_arm64.whl", hash = "sha256:05db505a9c7f020f58b70837a94e00d32a50086986c267bcc44ea97b573d4a05", size = 116474758, upload-time = "2026-07-15T00:14:08.177Z" },
+    { url = "https://files.pythonhosted.org/packages/85/34/921ab692c7ed140941a91e39b84c6deafddb45072793f3a5f6dcbf86f59a/openai_codex_cli_bin-0.144.4-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:cd4bb31b8a477a3adba22139c8c493693fa5292ba21e86eef08ace3e96c41294", size = 119437596, upload-time = "2026-07-15T00:14:17.418Z" },
+    { url = "https://files.pythonhosted.org/packages/25/62/39e630cf8b7b2e2444a5a6669235a6cd88004869a25bb7f3f629ed35638c/openai_codex_cli_bin-0.144.4-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:4106229c38f37245c3eea8d904426afd45b8bf19831765715647f5402f757c06", size = 128817757, upload-time = "2026-07-15T00:14:30.539Z" },
+    { url = "https://files.pythonhosted.org/packages/23/24/318f91a95baaff845307e529d138d42a7202e6bd0e626556058eab3dead5/openai_codex_cli_bin-0.144.4-py3-none-musllinux_1_1_aarch64.whl", hash = "sha256:d2d3fada11731938e3d3e3660819d5324b7f92e825a0ed5aede63100b36ffc9a", size = 119437594, upload-time = "2026-07-15T00:14:39.327Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/a0/65e6fd3a6fba52639937801d9ce517b0c48026458723bb9f08eb07a1dd35/openai_codex_cli_bin-0.144.4-py3-none-musllinux_1_1_x86_64.whl", hash = "sha256:70fb62ed7755e332dd8b00ed48e22ee16df10f4a977335039e237cd330490df3", size = 128817755, upload-time = "2026-07-15T00:14:47.849Z" },
+]
+
+[[package]]
 name = "openapi-pydantic"
 version = "0.5.1"
 source = { registry = "https://pypi.org/simple" }
@@ -10456,6 +10524,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/e3/f1/dbeeb9116715abee2485bf0a12d07a8f31af94d71608c171c45f64c0469d/tomli-2.4.1-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:d312ef37c91508b0ab2cee7da26ec0b3ed2f03ce12bd87a588d771ae15dcf82d", size = 247180, upload-time = "2026-03-25T20:21:37.136Z" },
     { url = "https://files.pythonhosted.org/packages/d3/74/16336ffd19ed4da28a70959f92f506233bd7cfc2332b20bdb01591e8b1d1/tomli-2.4.1-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:51529d40e3ca50046d7606fa99ce3956a617f9b36380da3b7f0dd3dd28e68cb5", size = 251674, upload-time = "2026-03-25T20:21:38.298Z" },
     { url = "https://files.pythonhosted.org/packages/7b/61/cceae43728b7de99d9b847560c262873a1f6c98202171fd5ed62640b494b/tomli-2.4.1-py3-none-any.whl", hash = "sha256:0d85819802132122da43cb86656f8d1f8c6587d54ae7dcaf30e90533028b49fe", size = 14583, upload-time = "2026-03-25T20:22:03.012Z" },
+]
+
+[[package]]
+name = "tomli-w"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/19/75/241269d1da26b624c0d5e110e8149093c759b7a286138f4efd61a60e75fe/tomli_w-1.2.0.tar.gz", hash = "sha256:2dd14fac5a47c27be9cd4c976af5a12d87fb1f0b4512f81d69cce3b35ae25021", size = 7184, upload-time = "2025-01-15T12:07:24.262Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c7/18/c86eb8e0202e32dd3df50d43d7ff9854f8e0603945ff398974c1d91ac1ef/tomli_w-1.2.0-py3-none-any.whl", hash = "sha256:188306098d013b691fcadc011abd66727d3c414c571bb01b1a174ba8c983cf90", size = 6675, upload-time = "2025-01-15T12:07:22.074Z" },
 ]
 
 [[package]]
