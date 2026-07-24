@@ -25,6 +25,7 @@ harnesses:
     kind: codex
     settings:
       sandbox: workspace-write
+      system_prompt: You are a concise test assistant.
       config_overrides:
         model_reasoning_effort: high
 
@@ -33,10 +34,14 @@ models:
     provider: openai
     model: openai/gpt-5.4
 
-prompts:
-  system: prompts/system.md
-
 skills:
+  paths: []
+
+mcp:
+  servers: {}
+
+tools:
+  blocked: []
 
 environment:
   workspace: ./workspace
