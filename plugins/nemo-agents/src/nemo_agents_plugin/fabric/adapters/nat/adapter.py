@@ -15,8 +15,8 @@ from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Any
 
-import nemo_fabric_adapters.common.utils as common_utils
-from nemo_fabric_adapters.common import lifecycle
+import nemo_fabric_adapters.common.utils as common_utils  # ty: ignore[unresolved-import]
+from nemo_fabric_adapters.common import lifecycle  # ty: ignore[unresolved-import]
 from pydantic_core import to_jsonable_python
 
 LOGGER = logging.getLogger(__name__)

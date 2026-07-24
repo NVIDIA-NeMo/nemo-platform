@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 from nemo_agents_plugin.fabric.adapters.nat import adapter as nat_adapter
-from nemo_fabric_adapters.common import lifecycle
+from nemo_fabric_adapters.common import lifecycle  # ty: ignore[unresolved-import]
 
 
 class _FakeRunner:
