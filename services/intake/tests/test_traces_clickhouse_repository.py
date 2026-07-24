@@ -3,6 +3,7 @@
 
 """Trace repository tests."""
 
+import json
 from datetime import datetime, timedelta, timezone
 from typing import cast
 
@@ -22,14 +23,22 @@ class _Client:
     def __init__(self, query_results: list[_QueryResult] | None = None) -> None:
         self.queries: list[str] = []
         self.parameters: list[dict[str, object]] = []
+        self.external_data: list[object | None] = []
         self.query_results = query_results or []
 
     def table(self, name: str) -> str:
         return name
 
-    async def query(self, query: str, *, parameters: dict[str, object]) -> _QueryResult:
+    async def query(
+        self,
+        query: str,
+        *,
+        parameters: dict[str, object],
+        external_data: object | None = None,
+    ) -> _QueryResult:
         self.queries.append(query)
         self.parameters.append(parameters)
+        self.external_data.append(external_data)
         if self.query_results:
             return self.query_results.pop(0)
         if query.lstrip().startswith("SELECT count()"):
@@ -57,7 +66,7 @@ async def test_summary_mode_reads_root_spans_without_metric_aggregates():
     repository = _repository(client)
 
     await repository.list_traces(
-        filters=TraceListFilter(workspace="workspace-a"),
+        filters=TraceListFilter(workspace="workspace-a", trace_ids=["trace-a", "trace-b"]),
         page=1,
         page_size=10,
         sort="started_at",
@@ -71,6 +80,8 @@ async def test_summary_mode_reads_root_spans_without_metric_aggregates():
     assert "trace_roots.root_output" not in client.queries[0]
     assert "LIMIT 1 BY trace_roots.workspace, trace_roots.source_format, trace_roots.trace_id" in client.queries[0]
     assert "span_versions" not in client.queries[0]
+    assert "trace_roots.trace_id IN %(trace_ids)s" in client.queries[0]
+    assert client.parameters[0]["trace_ids"] == ["trace-a", "trace-b"]
     assert "sumIf" not in client.queries[1]
     assert "groupUniqArrayIf" not in client.queries[1]
     assert "span_versions" not in client.queries[1]
@@ -79,6 +90,40 @@ async def test_summary_mode_reads_root_spans_without_metric_aggregates():
     assert "'' AS input" in client.queries[1]
     assert "'' AS output" in client.queries[1]
     assert "payload_char_limit" not in client.parameters[1]
+
+
+@pytest.mark.asyncio
+async def test_latest_trace_started_at_by_group_aggregates_all_references_in_one_query():
+    latest = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    client = _Client(query_results=[_QueryResult([("insight-a", latest)])])
+    repository = _repository(client)
+
+    result = await repository.latest_trace_started_at_by_group(
+        workspace="workspace-a",
+        trace_refs_by_group={
+            "insight-a": ["trace-old", "trace-new"],
+            "insight-empty": [],
+            "insight-missing": ["trace-missing"],
+        },
+    )
+
+    assert result == {"insight-a": latest}
+    assert len(client.queries) == 1
+    assert "FROM trace_refs" in client.queries[0]
+    assert "max(traces.started_at) AS started_at" in client.queries[0]
+    assert "GROUP BY refs.group_id" in client.queries[0]
+    assert client.parameters[0] == {"workspace": "workspace-a"}
+    external_data = client.external_data[0]
+    assert external_data is not None
+    assert external_data.query_params == {
+        "trace_refs_format": "JSONEachRow",
+        "trace_refs_structure": "group_id String, trace_id String",
+    }
+    assert [json.loads(line) for line in external_data.form_data["trace_refs"][1].splitlines()] == [
+        {"group_id": "insight-a", "trace_id": "trace-old"},
+        {"group_id": "insight-a", "trace_id": "trace-new"},
+        {"group_id": "insight-missing", "trace_id": "trace-missing"},
+    ]
 
 
 @pytest.mark.asyncio
