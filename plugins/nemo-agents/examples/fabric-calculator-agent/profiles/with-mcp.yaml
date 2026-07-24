@@ -1,8 +1,0 @@
-profile_format: nemo-agents-profile-v1
-name: with-mcp
-
-mcp:
-  servers:
-    calculator:
-      transport: stdio
-      command: fabric-calculator-mcp

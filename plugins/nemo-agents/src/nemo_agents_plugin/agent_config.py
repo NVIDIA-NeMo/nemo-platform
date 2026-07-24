@@ -114,50 +114,6 @@ class AgentConfig(BaseModel):
         return self
 
 
-class AgentProfileConfig(BaseModel):
-    """A named overlay applied to a Platform-owned agent config."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    profile_format: Literal["nemo-agents-profile-v1"]
-    name: str = Field(min_length=1)
-    mcp: McpConfig | None = None
-
-
-def apply_agent_profiles(config: AgentConfig, profiles: list[AgentProfileConfig]) -> AgentConfig:
-    """Apply profile overlays in order, with later profiles taking precedence."""
-    resolved = config.model_copy(deep=True)
-    for profile in profiles:
-        if profile.mcp is not None:
-            resolved.mcp = profile.mcp.model_copy(deep=True)
-    return resolved
-
-
-def load_agent_profile(path: str | Path) -> AgentProfileConfig:
-    """Load a Platform-owned agent profile YAML file."""
-    profile_path = Path(path)
-
-    try:
-        raw_profile = profile_path.read_text(encoding="utf-8")
-    except OSError as error:
-        raise AgentConfigLoadError(f"Unable to read agent profile {profile_path}: {error}") from error
-    except UnicodeDecodeError as error:
-        raise AgentConfigLoadError(f"Agent profile {profile_path} is not valid UTF-8: {error}") from error
-
-    try:
-        data = yaml.safe_load(raw_profile)
-    except yaml.YAMLError as error:
-        raise AgentConfigLoadError(f"YAML parse error in agent profile {profile_path}: {error}") from error
-
-    if not isinstance(data, dict):
-        raise AgentConfigLoadError(f"Agent profile {profile_path} root must be a YAML mapping.")
-
-    try:
-        return AgentProfileConfig.model_validate(data)
-    except ValidationError as error:
-        raise AgentConfigLoadError(f"Invalid agent profile {profile_path}: {error}") from error
-
-
 def load_agent_config(path: str | Path) -> AgentConfig:
     """Load a Platform-owned agent.yaml file as an AgentConfig."""
     config_path = Path(path)

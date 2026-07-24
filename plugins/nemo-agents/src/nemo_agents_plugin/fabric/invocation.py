@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from nemo_agents_plugin.agent_config import AgentConfig, AgentProfileConfig, apply_agent_profiles
+from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.fabric.runtime import FabricRuntimeRequest, FabricRuntimeResult, run_fabric_agent_once
 from nemo_agents_plugin.fabric.translator import translate_agent_config
 
@@ -20,12 +20,10 @@ async def invoke_agent_config_once(
     inputs: Sequence[Any],
     *,
     base_dir: Path,
-    profiles: Sequence[AgentProfileConfig] = (),
 ) -> list[FabricRuntimeResult]:
     """Translate a Platform agent config and run each input through Fabric once."""
-    resolved_config = apply_agent_profiles(agent_config, list(profiles))
-    fabric_config = translate_agent_config(resolved_config)
-    await asyncio.to_thread(_ensure_local_workspace_dir, resolved_config, base_dir)
+    fabric_config = translate_agent_config(agent_config)
+    await asyncio.to_thread(_ensure_local_workspace_dir, agent_config, base_dir)
 
     results: list[FabricRuntimeResult] = []
     for item in inputs:

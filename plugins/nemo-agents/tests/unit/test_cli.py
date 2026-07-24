@@ -250,34 +250,12 @@ def test_local_invoke_runs_fabric_config_once(tmp_path: Path) -> None:
             ]
         )
     )
-    profile = tmp_path / "with-mcp.yaml"
-    profile.write_text(
-        "\n".join(
-            [
-                "profile_format: nemo-agents-profile-v1",
-                "name: with-mcp",
-                "mcp:",
-                "  servers:",
-                "    calculator:",
-                "      transport: stdio",
-                "      command: calculator-mcp",
-                "",
-            ]
-        )
-    )
     captured: dict[str, Any] = {}
 
-    async def _invoke_agent_config_once(
-        agent_config: Any,
-        inputs: list[Any],
-        *,
-        base_dir: Path,
-        profiles: list[Any],
-    ):
+    async def _invoke_agent_config_once(agent_config: Any, inputs: list[Any], *, base_dir: Path):
         captured["agent_config"] = agent_config
         captured["inputs"] = inputs
         captured["base_dir"] = base_dir
-        captured["profiles"] = profiles
         return [
             FabricRuntimeResult(
                 status="succeeded",
@@ -291,23 +269,11 @@ def test_local_invoke_runs_fabric_config_once(tmp_path: Path) -> None:
 
     app = AgentsCLI().get_cli()
     with patch("nemo_agents_plugin.fabric.invocation.invoke_agent_config_once", _invoke_agent_config_once):
-        result = CliRunner().invoke(
-            app,
-            [
-                "invoke",
-                "--agent-config",
-                str(config),
-                "--profile",
-                str(profile),
-                "--input",
-                "hello",
-            ],
-        )
+        result = CliRunner().invoke(app, ["invoke", "--agent-config", str(config), "--input", "hello"])
 
     assert result.exit_code == 0, result.stderr
     assert captured["base_dir"] == tmp_path
     assert captured["inputs"] == ["hello"]
-    assert [profile.name for profile in captured["profiles"]] == ["with-mcp"]
     assert captured["agent_config"].config_format == "nemo-agents-spec-v1"
     assert captured["agent_config"].name == "fabric-agent"
     parsed = _json.loads(result.stdout)
@@ -338,14 +304,8 @@ def test_local_invoke_fabric_config_exits_nonzero_on_failed_result(tmp_path: Pat
         )
     )
 
-    async def _invoke_agent_config_once(
-        agent_config: Any,
-        inputs: list[Any],
-        *,
-        base_dir: Path,
-        profiles: list[Any],
-    ):
-        del agent_config, inputs, base_dir, profiles
+    async def _invoke_agent_config_once(agent_config: Any, inputs: list[Any], *, base_dir: Path):
+        del agent_config, inputs, base_dir
         return [
             FabricRuntimeResult(
                 status="failed",

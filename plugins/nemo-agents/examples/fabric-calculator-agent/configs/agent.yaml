@@ -1,6 +1,6 @@
 config_format: nemo-agents-spec-v1
 name: fabric-calculator-agent
-description: Calculator agent executed through NeMo Fabric and Codex
+description: Calculator agent executed through NeMo Fabric and Codex without MCP
 
 default_harness: codex
 
@@ -10,10 +10,8 @@ harnesses:
     settings:
       sandbox: read-only
       developer_instructions: |
-        You are a concise calculator agent. If calculator MCP tools are
-        available, you must use the appropriate tool for every arithmetic or
-        numeric comparison request and base your answer on its result. If no
-        calculator tools are available, solve the request yourself.
+        You are a concise calculator agent. Solve arithmetic and numeric
+        comparison requests yourself and return only the answer.
       config_overrides:
         model_reasoning_effort: high
 
@@ -23,13 +21,13 @@ models:
     model: openai/gpt-5.4
 
 environment:
-  workspace: .
-  artifacts: ./artifacts
+  workspace: ..
+  artifacts: ../.tmp/artifacts
 
 telemetry:
   enabled: true
   provider: relay
-  output_dir: ./artifacts/relay
+  output_dir: ../.tmp/artifacts/relay
   project: fabric-calculator-agent
   atif:
     enabled: true

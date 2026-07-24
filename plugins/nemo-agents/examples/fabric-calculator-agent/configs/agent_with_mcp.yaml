@@ -1,0 +1,45 @@
+config_format: nemo-agents-spec-v1
+name: fabric-calculator-agent
+description: Calculator agent executed through NeMo Fabric and Codex with MCP
+
+default_harness: codex
+
+harnesses:
+  codex:
+    kind: codex
+    settings:
+      sandbox: read-only
+      developer_instructions: |
+        You are a concise calculator agent. You must use the appropriate
+        calculator MCP tool for every arithmetic or numeric comparison request
+        and base your answer on its result.
+      config_overrides:
+        model_reasoning_effort: high
+
+models:
+  default:
+    provider: openai
+    model: openai/gpt-5.4
+
+mcp:
+  servers:
+    calculator:
+      transport: stdio
+      url: fabric-calculator-mcp
+
+environment:
+  workspace: ..
+  artifacts: ../.tmp/artifacts
+
+telemetry:
+  enabled: true
+  provider: relay
+  output_dir: ../.tmp/artifacts/relay
+  project: fabric-calculator-agent
+  atif:
+    enabled: true
+    filename_template: trajectory-{session_id}.atif.json
+  atof:
+    enabled: true
+    filename: events.atof.jsonl
+    mode: append
