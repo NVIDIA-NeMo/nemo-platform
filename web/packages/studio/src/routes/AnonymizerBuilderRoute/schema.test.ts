@@ -15,7 +15,7 @@ import {
 
 const ALL_ROLES = [...DETECTION_ROLES, REPLACE_ROLE, ...REWRITE_ROLES];
 
-const roleModels = (model: string, provider: string) =>
+const roleModels = (model: string, provider: string): AnonymizerFormData['roleModels'] =>
   Object.fromEntries(ALL_ROLES.map((role) => [role, { modelId: role, model, provider }]));
 
 const form = (overrides: Partial<AnonymizerFormData> = {}): AnonymizerFormData => ({

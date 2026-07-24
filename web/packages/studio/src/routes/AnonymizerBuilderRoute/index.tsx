@@ -132,7 +132,9 @@ export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
                       </Banner>
                     )}
 
-                    {activeTab === TAB_SOURCE ? (
+                    {/* Both panels stay mounted so Model Settings can seed its
+                        defaults even before the tab is opened. */}
+                    <div className={activeTab === TAB_SOURCE ? undefined : 'hidden'}>
                       <Stack gap="density-2xl">
                         <DataSourceSection />
                         <Divider orientation="horizontal" width="small" />
@@ -142,9 +144,10 @@ export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
                         <Divider orientation="horizontal" width="small" />
                         <EntitiesSection />
                       </Stack>
-                    ) : (
+                    </div>
+                    <div className={activeTab === TAB_MODEL_SETTINGS ? undefined : 'hidden'}>
                       <ModelSettingsSection />
-                    )}
+                    </div>
                   </Stack>
                 </Panel>
 
