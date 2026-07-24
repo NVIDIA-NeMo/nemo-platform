@@ -15,14 +15,15 @@ import {
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import type { AnonymizerFormData } from '@studio/routes/AnonymizerBuilderRoute/schema';
 import { getContentColumns, getFileExtension } from '@studio/util/files';
-import { FC, useMemo } from 'react';
+import { FC, useEffect, useMemo } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 
 export const ColumnsSection: FC = () => {
-  const { control } = useFormContext<AnonymizerFormData>();
+  const { control, setValue } = useFormContext<AnonymizerFormData>();
   const workspace = useWorkspaceFromPath();
   const source = useWatch({ control, name: 'source' });
   const sourceType = useWatch({ control, name: 'sourceType' });
+  const textColumn = useWatch({ control, name: 'textColumn' });
 
   const parsed = useMemo(
     () =>
@@ -64,6 +65,13 @@ export const ColumnsSection: FC = () => {
   }, [fileContent, filePath, isParquet]);
 
   const useColumnDropdown = canIntrospect && columns.length > 0;
+
+  // Auto-select the only column when there's exactly one.
+  useEffect(() => {
+    if (useColumnDropdown && columns.length === 1 && textColumn !== columns[0]) {
+      setValue('textColumn', columns[0], { shouldValidate: true });
+    }
+  }, [useColumnDropdown, columns, textColumn, setValue]);
 
   return (
     <Stack gap="density-lg">
