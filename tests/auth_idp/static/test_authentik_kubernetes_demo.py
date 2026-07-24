@@ -1178,6 +1178,25 @@ def test_nemo_platform_controller_uses_internal_api_service_url_for_embedded_pdp
     ) in template
 
 
+def test_nemo_platform_api_uses_internal_api_service_url_for_agent_configs() -> None:
+    """NMP_BASE_URL on the API pod must be the Service address, never loopback.
+
+    The API copies this value into agent workflow configs, which run in a different
+    container -- loopback there resolves to the agent itself, not the platform.
+    Embedded PDP gets its loopback from NMP_AUTH_POLICY_DECISION_POINT_BASE_URL instead.
+    """
+    template = Path("k8s/helm/templates/api/api-deployment.yaml").read_text(encoding="utf-8")
+
+    assert (
+        'name: NMP_BASE_URL\n              value: {{ include "nemo-platform.internalBaseUrl" . | quote }}'
+    ) in template
+    assert "nemo-platform.apiLoopbackBaseUrl" not in template.split("NMP_AUTOMODEL")[0]
+    assert (
+        "name: NMP_AUTH_POLICY_DECISION_POINT_BASE_URL\n              value: "
+        '{{ include "nemo-platform.apiLoopbackBaseUrl" . | quote }}'
+    ) in template
+
+
 def test_authentik_helm_demo_does_not_inject_legacy_workload_token_envs() -> None:
     template_files = sorted(path for path in (HELM_DIR / "templates").rglob("*") if path.is_file())
     text_files = [
