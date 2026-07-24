@@ -2,18 +2,13 @@
 #######
 # NMP Python Base Images
 #
-# Two images, both pinned to BASE_TAG_PYTHON:
+# Two builder stages:
 #
-# nmp-python-base         - minimal runtime base (API, CPU tasks)
-# nmp-python-dev-base     - runtime base + dev tools for building native extensions
+# nmp-python-base-builder     - minimal runtime base (API, CPU tasks)
+# nmp-python-dev-base-builder - runtime base + dev tools for building native extensions
 #######
 
-ARG BASE_REGISTRY=my-registry
-ARG BASE_TAG_PYTHON=local
 ARG NMP_PYTHON_IMAGE=python:3.13.14-slim-trixie
-FROM ${BASE_REGISTRY}/nmp-python-base:${BASE_TAG_PYTHON} AS nmp-python-base
-FROM ${BASE_REGISTRY}/nmp-python-dev-base:${BASE_TAG_PYTHON} AS nmp-python-dev-base
-
 FROM ${NMP_PYTHON_IMAGE} AS nmp-python-base-builder
 
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
