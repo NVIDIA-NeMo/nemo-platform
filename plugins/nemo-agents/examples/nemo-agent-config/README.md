@@ -1,4 +1,4 @@
-# Fabric-Backed Agent Config
+# Fabric-Backed Agent Examples
 
 These Platform-owned configs invoke Codex, Hermes, or NAT through NeMo Fabric.
 Run the commands below from the repository root.
@@ -18,8 +18,11 @@ should be configured under `harnesses.<name>.settings`.
 ## NAT
 
 The plugin install includes the Platform-packaged calculator and email phishing
-NAT components. Their workflow YAML remains the source of truth; the adjacent
-`agent.yaml` only selects the Platform-owned NAT Fabric adapter.
+NAT components. Each integration has its own `agent.yaml` because calculator
+and email phishing are distinct NAT workflows, not alternative harnesses for
+the Codex and Hermes test agent. In each directory, `workflow.yml` remains the
+NAT source of truth and `agent.yaml` selects the Platform-owned NAT Fabric
+adapter.
 
 Run the calculator workflow:
 
@@ -27,7 +30,7 @@ Run the calculator workflow:
 export NVIDIA_API_KEY="<your NVIDIA API key>"
 
 nemo agents invoke \
-  --agent-config plugins/nemo-agents/examples/calculator-agent/fabric/agent.yaml \
+  --agent-config plugins/nemo-agents/examples/nemo-agent-config/nat-calculator/agent.yaml \
   --input "What is 12 multiplied by 8?"
 ```
 
@@ -37,7 +40,7 @@ Run the email phishing analyzer:
 export NVIDIA_API_KEY="<your NVIDIA API key>"
 
 nemo agents invoke \
-  --agent-config plugins/nemo-agents/examples/email-phishing-analyzer/fabric/agent.yaml \
+  --agent-config plugins/nemo-agents/examples/nemo-agent-config/nat-email-phishing/agent.yaml \
   --input "Subject: Verify your account. Send your password immediately."
 ```
 

@@ -83,6 +83,19 @@ class TestTranslateAgentConfig:
         assert hermes_config.harness.adapter_id == "nvidia.fabric.hermes"
         assert hermes_config.harness.settings["python_env"] == "HERMES_ADAPTER_PYTHON"
 
+    @pytest.mark.parametrize("example_name", ["nat-calculator", "nat-email-phishing"])
+    def test_repository_nat_examples_reference_colocated_workflows(self, example_name: str) -> None:
+        example_dir = Path(__file__).parents[2] / "examples/nemo-agent-config" / example_name
+        config = load_agent_config(example_dir / "agent.yaml")
+
+        fabric_config = translate_agent_config(config)
+        config_file = fabric_config.harness.settings["config_file"]
+        workflow_path = (example_dir / config_file).resolve()
+
+        assert fabric_config.harness.adapter_id == "nvidia.nemo.platform.nat"
+        assert workflow_path.is_file()
+        workflow_path.relative_to(example_dir.resolve())
+
     def test_translates_default_harness(self) -> None:
         config = AgentConfig.model_validate(_example_yaml_config())
 
