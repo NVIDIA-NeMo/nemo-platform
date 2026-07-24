@@ -23,6 +23,8 @@ interface DataDesignerJobActionsMenuProps {
   job: DataDesignerJob;
   /** Include a "View details" entry. Used in the table row, omitted on the details page. */
   includeViewDetails?: boolean;
+  /** When provided, adds a "View config" entry that invokes this callback. */
+  onViewConfig?: () => void;
   /** Called after the job is successfully deleted, e.g. to navigate away from the details page. */
   onDeleted?: () => void;
   /** Surface a cancel error (or `undefined` to clear) so the caller can render it. */
@@ -37,6 +39,7 @@ interface DataDesignerJobActionsMenuProps {
 export const DataDesignerJobActionsMenu: FC<DataDesignerJobActionsMenuProps> = ({
   job,
   includeViewDetails = false,
+  onViewConfig,
   onDeleted,
   onCancelError,
 }) => {
@@ -89,6 +92,14 @@ export const DataDesignerJobActionsMenu: FC<DataDesignerJobActionsMenuProps> = (
                 navigate(getDataDesignerJobDetailsRoute(workspace, job.name));
               }
             },
+          },
+        ]
+      : []),
+    ...(onViewConfig
+      ? [
+          {
+            label: 'View config',
+            onSelect: onViewConfig,
           },
         ]
       : []),
