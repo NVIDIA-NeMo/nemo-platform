@@ -86,23 +86,27 @@ def _serialize_chunks(resource_spans: list[dict], max_bytes: int) -> list[bytes]
     Re-ingesting OTLP is idempotent per span_id, so splitting one trace's spans across
     several requests is safe: Intake merges them back into the same trace.
     """
+
+    def encode(entries: list[dict]) -> bytes:
+        req = ExportTraceServiceRequest()
+        ParseDict({"resourceSpans": entries}, req)
+        return req.SerializeToString()
+
     payloads: list[bytes] = []
     batch: list[dict] = []
+    # Each entry is encoded once and its size accumulated. Summing the individual
+    # encodings slightly over-estimates the batch (repeated-field framing is counted
+    # per entry), which only ever splits earlier than strictly necessary.
+    batch_bytes = 0
     for rs in resource_spans:
+        rs_bytes = len(encode([rs]))
+        if batch and batch_bytes + rs_bytes > max_bytes:
+            payloads.append(encode(batch))
+            batch, batch_bytes = [], 0
         batch.append(rs)
-        req = ExportTraceServiceRequest()
-        ParseDict({"resourceSpans": batch}, req)
-        payload = req.SerializeToString()
-        if len(payload) > max_bytes and len(batch) > 1:
-            batch.pop()
-            prev = ExportTraceServiceRequest()
-            ParseDict({"resourceSpans": batch}, prev)
-            payloads.append(prev.SerializeToString())
-            batch = [rs]
+        batch_bytes += rs_bytes
     if batch:
-        req = ExportTraceServiceRequest()
-        ParseDict({"resourceSpans": batch}, req)
-        payload = req.SerializeToString()
+        payload = encode(batch)
         if len(payload) > max_bytes:
             logger.warning(
                 f"Single span exceeds Intake limit ({len(payload)} > {max_bytes} bytes); upload will likely fail"

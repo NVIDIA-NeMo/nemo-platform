@@ -115,9 +115,11 @@ class GroupLeafScorer(Agent):
         - "trace shows the agent covered the required domains"
 
         Also populate `span_ids` with the IDs of the spans that contain the key evidence you cited.
-        Span IDs MUST be retrieved from TraceExplorer (e.g. `await explorer.get_spans()`) and
-        copied verbatim from the returned objects — never abbreviated, guessed, or constructed from
-        the overview text.  Include only spans that directly support the score — not every span.
+        Span IDs MUST be retrieved from TraceExplorer — `await explorer.get_span_id(session_id, turn_index)`
+        for a single turn, or `await explorer.get_turn_data(session_id, turn_index)` when you also need
+        the turn's contents — and copied verbatim from the returned values, never abbreviated, guessed,
+        or constructed from the overview text.  Include only spans that directly support the score —
+        not every span.
 
         Returns:
             dict[str, GroupLeafScore]: scores indexed by agent ID; each entry includes a numeric

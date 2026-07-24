@@ -295,7 +295,7 @@ class RemoteExperimentalistBackend(ExperimentalistBackend):
         self._files = LocalExperimentalistBackend(client=client, path=path, storage=self.storage)
 
     async def get_insight(self, *, workspace: str, insight_id: str) -> Insight:
-        raise NotImplementedError
+        return await self._files.get_insight(workspace=workspace, insight_id=insight_id)
 
     async def create_run(self, *, workspace: str, run: ExperimentRun) -> ExperimentRun:
         return await self._files.create_run(workspace=workspace, run=run)

@@ -32,7 +32,7 @@ Use this skill when the user wants to:
 
 ```bash
 uv tool install "deepagents-cli>=0.2.2"
-pip install managed-deepagents
+uv add managed-deepagents
 npm install @langchain/managed-deepagents @langchain/react
 ```
 

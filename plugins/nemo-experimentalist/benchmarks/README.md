@@ -58,21 +58,21 @@ to both the LangChain AUT and optimizer, using
 Validate provenance and task IDs without Docker or model calls:
 
 ```bash
-uv run python benchmarks/experimentalist/run.py --validate-only
+uv run python benchmarks/run.py --validate-only
 ```
 
 Run the bounded fast benchmark:
 
 ```bash
-uv run python benchmarks/experimentalist/run.py \
-  --config benchmarks/experimentalist/configs/smoke.yaml
+uv run python benchmarks/run.py \
+  --config benchmarks/configs/smoke.yaml
 ```
 
 Run the reproducible quality benchmark:
 
 ```bash
-uv run python benchmarks/experimentalist/run.py \
-  --config benchmarks/experimentalist/configs/quality.yaml
+uv run python benchmarks/run.py \
+  --config benchmarks/configs/quality.yaml
 ```
 
 Both setup and agent execution require network access. The AUT installs a

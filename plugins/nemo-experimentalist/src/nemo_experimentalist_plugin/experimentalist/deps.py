@@ -12,13 +12,13 @@ coordinates.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluatorType
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     ExperimentalistBackend,
 )
+from nemo_experimentalist_plugin.resolve import EvolutionaryOptimizerConfig
 from pydantic import BaseModel, model_validator
 
 
@@ -56,7 +56,7 @@ class ExperimentalistDeps(BaseModel):
     evaluator_type: EvaluatorType = "harbor"
     agent_spec: str | None = None
     backend: ExperimentalistBackend | None = None
-    config: Any = None  # EvolutionaryOptimizerConfig | None, avoids circular import
+    config: EvolutionaryOptimizerConfig | None = None
 
     @model_validator(mode="after")
     def _require_insight_or_agent(self) -> ExperimentalistDeps:

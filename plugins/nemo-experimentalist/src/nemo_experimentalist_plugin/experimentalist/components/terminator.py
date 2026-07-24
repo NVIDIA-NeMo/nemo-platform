@@ -12,8 +12,11 @@ loop's job (``backend.publish_candidate``), not the Terminator's.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+# Imported from `resolve` rather than `.loop`, which merely re-exports it: `loop` imports
+# this module, so going through it would be circular.
+from nemo_experimentalist_plugin.resolve import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.skills import skills_dir
 from nooa import Agent, CodeActStrategy, TextSkill, hidden, strategy
 from nooa.agentdoc import doc
@@ -21,11 +24,7 @@ from nooa.config import CodeActConfig
 from pydantic import BaseModel
 
 from .model_config import get_fast_model
-from .models import pareto_front
-
-if TYPE_CHECKING:
-    from .loop import EvolutionaryOptimizerConfig
-    from .models import EvolutionTree
+from .models import EvolutionTree, pareto_front
 
 logger = logging.getLogger(__name__)
 
