@@ -7,3 +7,9 @@ pnpm-lock.yaml
 # Build output
 dist/
 packages/*/dist/
+packages/**/.test-reports/
+packages/**/test-results/
+packages/**/playwright-report/
+
+# Ignore generated style
+packages/studio/src/generated/*
