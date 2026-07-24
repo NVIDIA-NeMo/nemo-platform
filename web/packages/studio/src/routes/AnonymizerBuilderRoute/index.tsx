@@ -39,6 +39,11 @@ import { useNavigate } from 'react-router-dom';
 const TAB_SOURCE = 'source';
 const TAB_MODEL_SETTINGS = 'model-settings';
 
+const PANEL_TABS = [
+  { value: TAB_SOURCE, children: 'Source' },
+  { value: TAB_MODEL_SETTINGS, children: 'Model Settings' },
+];
+
 export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
   ? () => {
       const navigate = useNavigate();
@@ -129,10 +134,7 @@ export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
                       className="w-full"
                       value={activeTab}
                       onValueChange={setActiveTab}
-                      items={[
-                        { value: TAB_SOURCE, children: 'Source' },
-                        { value: TAB_MODEL_SETTINGS, children: 'Model Settings' },
-                      ]}
+                      items={PANEL_TABS}
                     />
 
                     {submitError && (

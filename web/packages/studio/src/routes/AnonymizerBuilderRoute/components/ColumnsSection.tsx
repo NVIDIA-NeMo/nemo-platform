@@ -64,6 +64,10 @@ export const ColumnsSection: FC = () => {
     return getContentColumns(fileContent, fileType);
   }, [fileContent, filePath, isParquet]);
 
+  const columnItems = useMemo(
+    () => columns.map((column) => ({ label: column, value: column })),
+    [columns]
+  );
   const useColumnDropdown = canIntrospect && columns.length > 0;
 
   // Auto-select the only column when there's exactly one.
@@ -79,7 +83,7 @@ export const ColumnsSection: FC = () => {
       {useColumnDropdown ? (
         <ControlledSelect
           aria-label="Text column"
-          items={columns.map((column) => ({ label: column, value: column }))}
+          items={columnItems}
           useControllerProps={{ name: 'textColumn', control }}
           formFieldProps={{
             slotLabel: 'Text Column',
