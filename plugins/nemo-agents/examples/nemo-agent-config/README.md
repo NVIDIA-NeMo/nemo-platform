@@ -1,7 +1,7 @@
 # Fabric-Backed Agent Config
 
-This Platform-owned config invokes Codex or Hermes through NeMo Fabric. Run the
-commands below from the repository root.
+These Platform-owned configs invoke Codex, Hermes, or NAT through NeMo Fabric.
+Run the commands below from the repository root.
 
 Fabric dependencies are currently optional so the default workspace does not
 force other Fabric consumers onto the `0.1.0a20260724` SDK API before they migrate.
@@ -14,6 +14,38 @@ uv pip install -e "plugins/nemo-agents[fabric]"
 Top-level `skills`, `mcp`, and `tools` are Platform-owned shared fields that
 translate into `FabricConfig`. Prompt settings are harness-specific for now and
 should be configured under `harnesses.<name>.settings`.
+
+## NAT
+
+The plugin install includes the Platform-packaged calculator and email phishing
+NAT components. Their workflow YAML remains the source of truth; the adjacent
+`agent.yaml` only selects the Platform-owned NAT Fabric adapter.
+
+Run the calculator workflow:
+
+```bash
+export NVIDIA_API_KEY="<your NVIDIA API key>"
+
+nemo agents invoke \
+  --agent-config plugins/nemo-agents/examples/calculator-agent/fabric/agent.yaml \
+  --input "What is 12 multiplied by 8?"
+```
+
+Run the email phishing analyzer:
+
+```bash
+export NVIDIA_API_KEY="<your NVIDIA API key>"
+
+nemo agents invoke \
+  --agent-config plugins/nemo-agents/examples/email-phishing-analyzer/fabric/agent.yaml \
+  --input "Subject: Verify your account. Send your password immediately."
+```
+
+To use another NAT workflow, keep its config and relative resources under the
+Platform `agent.yaml` directory and set `harness.settings.config_file` to that
+workflow. Install any package that exposes workflow-specific `nat.components`
+into the same Python environment. Keep those packages on the same NAT release
+as the `nvidia-nat-*` packages installed by NeMo Agents.
 
 ## Codex
 
