@@ -24,6 +24,7 @@ import {
   type ParetoPlotPoint,
 } from '@studio/components/charts/ExperimentGroupParetoChart/paretoMetrics';
 import { useParetoEvaluations } from '@studio/components/charts/ExperimentGroupParetoChart/useParetoEvaluations';
+import type { EvaluationRow } from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupEvaluations';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, Save } from 'lucide-react';
 import { type FC, useMemo, useState } from 'react';
@@ -40,6 +41,18 @@ import {
 interface ExperimentGroupParetoChartProps {
   workspace: string;
   group: ExperimentGroupResponse;
+  /**
+   * The group's full evaluation set, when the caller already has it loaded (e.g. the leaderboard fit
+   * the whole group on one page). Supplying it lets the chart skip its own all-evaluations fetch —
+   * which re-runs the same server-side rollup — and render from the shared rows instead.
+   */
+  preloadedEvaluations?: EvaluationRow[];
+  /**
+   * True while the caller is still loading and is expected to supply `preloadedEvaluations` once done
+   * (page 1 of an unfiltered group). The chart shows a loading state and holds off its own fetch,
+   * rather than briefly rendering empty before the shared rows arrive.
+   */
+  preloadPending?: boolean;
 }
 
 const CHART_HEIGHT = 360;
@@ -140,11 +153,23 @@ const MetricSelect: FC<MetricSelectProps> = ({ label, value, metrics, onChange }
 export const ExperimentGroupParetoChart: FC<ExperimentGroupParetoChartProps> = ({
   workspace,
   group,
+  preloadedEvaluations,
+  preloadPending = false,
 }) => {
   const queryClient = useQueryClient();
   const toast = useToast();
 
-  const { rows: points, isLoading, isError } = useParetoEvaluations(workspace, group.id);
+  // Reuse the caller's rows when it already has the whole group loaded. While it's still loading and
+  // about to supply them (`preloadPending`), hold off our own fetch and show a loading state instead of
+  // rendering empty. Otherwise fetch the evaluations ourselves.
+  const hasPreloaded = preloadedEvaluations !== undefined;
+  const {
+    rows: fetchedRows,
+    isLoading: isFetching,
+    isError,
+  } = useParetoEvaluations(workspace, group.id, { enabled: !hasPreloaded && !preloadPending });
+  const points = hasPreloaded ? preloadedEvaluations : fetchedRows;
+  const isLoading = hasPreloaded ? false : preloadPending || isFetching;
   const metrics = useMemo(() => deriveParetoMetrics(points), [points]);
 
   // Selected axes are optimistic local state seeded from the group's saved config (available

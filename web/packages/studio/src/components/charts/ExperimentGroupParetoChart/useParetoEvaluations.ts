@@ -23,8 +23,13 @@ export interface ParetoEvaluations {
  */
 export function useParetoEvaluations(
   workspace: string,
-  experimentGroupId: string
+  experimentGroupId: string,
+  options?: { enabled?: boolean }
 ): ParetoEvaluations {
+  // Callers can disable the fetch (e.g. the leaderboard already loaded the whole group on one page,
+  // so its rows are reused and this extra all-evaluations request — which re-runs the same server-side
+  // rollup — is redundant).
+  const enabled = (options?.enabled ?? true) && !!experimentGroupId;
   const { data, isLoading, isError } = useListEvaluations(
     workspace,
     {
@@ -32,7 +37,7 @@ export function useParetoEvaluations(
       page_size: MAX_EVALUATIONS,
       filter: { experiment_group_id: experimentGroupId } as EvaluationFilter,
     },
-    { query: { enabled: !!experimentGroupId } }
+    { query: { enabled } }
   );
 
   const rows = useMemo<EvaluationRow[]>(

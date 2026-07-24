@@ -11,7 +11,16 @@ from typing import Any
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.span_attribute_catalog import COST_SCALE, SpanAttributeField, spec_for_field
 from nmp.intake.spans.storage import float_or_none, result_rows
-from nmp.intake.spans.trace_repository import current_spans_sql
+
+# Let large rollups spill to disk instead of OOMing the server (ClickHouse code 241). With the lean
+# span projection below these thresholds aren't reached for normal groups; they're a safety net for
+# very large ones (many sessions/spans) so a heavy group degrades gracefully rather than erroring.
+_ROLLUP_QUERY_SETTINGS = {
+    "max_bytes_before_external_group_by": 2_000_000_000,
+    "max_bytes_before_external_sort": 2_000_000_000,
+    "join_algorithm": "auto",
+    "max_bytes_in_join": 2_000_000_000,
+}
 
 
 @dataclass(frozen=True)
@@ -73,6 +82,7 @@ class EvaluationRollupRepository:
                     evaluation_names_sql=evaluation_names_sql,
                 ),
                 parameters=parameters,
+                settings=_ROLLUP_QUERY_SETTINGS,
             )
         ):
             rollups[row["evaluation_id"]].evaluator_scores[row["evaluator_name"]] = ScoreRollup(
@@ -99,6 +109,7 @@ class EvaluationRollupRepository:
                     "agent_name_key": spec_for_field(SpanAttributeField.AGENT_NAME).bag_key,
                     "agent_version_key": spec_for_field(SpanAttributeField.AGENT_VERSION).bag_key,
                 },
+                settings=_ROLLUP_QUERY_SETTINGS,
             )
         ):
             rollup = rollups[row["evaluation_id"]]
@@ -316,6 +327,35 @@ def _test_case_scores_cte() -> str:
                 test_cases.evaluation_id, test_cases.test_case_key, evaluators.evaluator_name, test_cases.session_count"""
 
 
+def _current_session_span_metrics_sql(spans_table: str) -> str:
+    """Latest-version spans for the scoped sessions, projected to *only* the metric inputs.
+
+    The shared ``current_spans_sql`` emits every span column, including the full ``attributes_*`` Maps.
+    The metric rollup then joins that to the sessions, so the join hash table would hold every deduped
+    span with its maps — gigabytes on real agent workloads (long trajectories × many spans), which is
+    what trips ClickHouse's memory limit. Here we ``argMax`` just the cost value (plus a present-flag,
+    to keep an absent cost distinct from a real 0) and the model/agent strings, so the join carries a
+    handful of scalars per span instead. Deduping by span identity picks each span's latest version.
+    """
+    return f"""
+        (
+            SELECT
+                workspace,
+                argMax(session_id, (event_ts, is_deleted)) AS dedup_session_id,
+                argMax(attributes_number[%(cost_key)s], (event_ts, is_deleted)) AS cost_value,
+                argMax(has(mapKeys(attributes_number), %(cost_key)s), (event_ts, is_deleted)) AS cost_present,
+                argMax(attributes_string[%(model_key)s], (event_ts, is_deleted)) AS model_name,
+                argMax(attributes_string[%(agent_name_key)s], (event_ts, is_deleted)) AS agent_name,
+                argMax(attributes_string[%(agent_version_key)s], (event_ts, is_deleted)) AS agent_version,
+                argMax(is_deleted, (event_ts, is_deleted)) AS del_flag
+            FROM {spans_table}
+            WHERE workspace = %(workspace)s
+                AND (workspace, session_id) IN (SELECT DISTINCT workspace, session_id FROM scoped_sessions)
+            GROUP BY workspace, source_format, trace_id, external_span_id, id
+        )
+    """
+
+
 def _metric_rollups_sql(*, trace_index_table: str, spans_table: str, evaluation_names_sql: str) -> str:
     # Two-level rollup: per-attempt cost/latency, then averaged per test case (avg per attempt — the
     # number must not scale with k), then the distribution across test cases (test-case-weighted).
@@ -326,50 +366,25 @@ def _metric_rollups_sql(*, trace_index_table: str, spans_table: str, evaluation_
         scoped_sessions AS (
             {_scoped_sessions_sql(trace_index_table, evaluation_names_sql)}
         ),
-        current_session_spans AS (
-            {
-        current_spans_sql(
-            spans_table,
-            extra_where_sql=(
-                "(span_versions.workspace, span_versions.session_id) IN "
-                "(SELECT DISTINCT workspace, session_id FROM scoped_sessions)"
-            ),
-        )
-    }
-        ),
+        current_session_spans AS {_current_session_span_metrics_sql(spans_table)},
         session_costs AS (
             SELECT
                 sessions.evaluation_id AS evaluation_id,
                 sessions.test_case_id AS test_case_key,
                 sessions.latency_ms AS latency_ms,
                 if(
-                    countIf(has(mapKeys(spans.attributes_number), %(cost_key)s)) = 0,
+                    countIf(spans.cost_present) = 0,
                     NULL,
-                    sumIf(
-                        spans.attributes_number[%(cost_key)s],
-                        has(mapKeys(spans.attributes_number), %(cost_key)s)
-                    ) / {COST_SCALE}
+                    sumIf(spans.cost_value, spans.cost_present) / {COST_SCALE}
                 ) AS cost_usd,
-                groupUniqArrayIf(
-                    spans.attributes_string[%(model_key)s],
-                    has(mapKeys(spans.attributes_string), %(model_key)s)
-                        AND spans.attributes_string[%(model_key)s] != ''
-                ) AS model_names,
-                groupUniqArrayIf(
-                    spans.attributes_string[%(agent_name_key)s],
-                    has(mapKeys(spans.attributes_string), %(agent_name_key)s)
-                        AND spans.attributes_string[%(agent_name_key)s] != ''
-                ) AS agent_names,
-                groupUniqArrayIf(
-                    spans.attributes_string[%(agent_version_key)s],
-                    has(mapKeys(spans.attributes_string), %(agent_version_key)s)
-                        AND spans.attributes_string[%(agent_version_key)s] != ''
-                ) AS agent_versions
+                groupUniqArrayIf(spans.model_name, spans.model_name != '') AS model_names,
+                groupUniqArrayIf(spans.agent_name, spans.agent_name != '') AS agent_names,
+                groupUniqArrayIf(spans.agent_version, spans.agent_version != '') AS agent_versions
             FROM scoped_sessions AS sessions
             LEFT JOIN current_session_spans AS spans
                 ON sessions.workspace = spans.workspace
-                AND sessions.session_id = spans.session_id
-                AND spans.is_deleted = 0
+                AND sessions.session_id = spans.dedup_session_id
+                AND spans.del_flag = 0
             WHERE sessions.test_case_id != ''
             GROUP BY sessions.evaluation_id, sessions.session_id, sessions.test_case_id, sessions.latency_ms
         ),

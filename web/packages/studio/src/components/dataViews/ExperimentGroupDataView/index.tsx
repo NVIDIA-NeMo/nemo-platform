@@ -460,13 +460,32 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     return <ErrorMessage message="Failed to load experiments." />;
   }
 
+  // When the whole (unfiltered) group already fits on the first page, the loaded rows ARE the complete
+  // evaluation set — hand them to the Pareto chart so it can skip its own all-evaluations fetch (which
+  // re-runs the same server-side rollup). We only know the group fits one page once the list has
+  // loaded (`totalCount` is 0 mid-load), so gate on `!isLoading`; while loading on page 1 we signal
+  // `preloadPending` so the chart shows a loading state instead of the empty set. Any search/filter,
+  // or a group larger than one page, falls back to the chart fetching for itself.
+  const hasActiveFilter = Object.keys(dataViewState.apiFilter.filter ?? {}).length > 0;
+  const onFirstUnfilteredPage =
+    page === 1 && !dataViewState.debouncedSearchBar && !hasActiveFilter;
+  const completeEvaluationSet =
+    onFirstUnfilteredPage && !isLoading && totalCount <= pageSize ? orderedData : undefined;
+  const preloadPending = onFirstUnfilteredPage && isLoading;
+
   return (
     <>
       {paretoVisible && (
         <div className="mb-4">
           {/* Key by group id so the axis selection resets (re-seeds from the new group's saved
               config) when navigating between groups without a route remount. */}
-          <ExperimentGroupParetoChart key={group.id} workspace={workspace} group={group} />
+          <ExperimentGroupParetoChart
+            key={group.id}
+            workspace={workspace}
+            group={group}
+            preloadedEvaluations={completeEvaluationSet}
+            preloadPending={preloadPending}
+          />
         </div>
       )}
       <StudioDataView
