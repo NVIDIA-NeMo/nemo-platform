@@ -27,7 +27,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --reinstall-package annoy --refresh-package annoy --no-binary-package annoy --no-cache
 
 # Fail the image build if the installed auth package cannot see its generated policy.
-RUN python -c 'from nmp.core.auth.app.embedded_pdp.policy_wasm import ensure_embedded_policy_wasm; ensure_embedded_policy_wasm(auto_build=False)'
+RUN /app/.venv/bin/python -c 'from nmp.core.auth.app.embedded_pdp.policy_wasm import ensure_embedded_policy_wasm; ensure_embedded_policy_wasm(auto_build=False)'
 
 # Pre-install DuckDB aws + httpfs so OTLP log ingestion works without outbound network.
 # Download the extension artifacts directly over HTTPS and install from local files

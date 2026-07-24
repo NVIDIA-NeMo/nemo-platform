@@ -25,3 +25,22 @@ def test_policy_wasm_is_added_before_workspace_install(dockerfile: str) -> None:
     assert policy_copy < workspace_install
     assert "site-packages/nmp/core/auth/assets/policy.wasm" not in contents
     assert "ensure_embedded_policy_wasm(auto_build=False)" in contents
+
+
+@pytest.mark.parametrize(
+    "dockerfile",
+    [
+        "docker/Dockerfile.nmp-api",
+        "docker/Dockerfile.nmp-core",
+    ],
+)
+def test_policy_wasm_is_validated_with_installed_venv_after_workspace_install(dockerfile: str) -> None:
+    contents = (REPO_ROOT / dockerfile).read_text()
+
+    workspace_install = contents.index("uv sync --frozen")
+    policy_validation = contents.index(
+        "/app/.venv/bin/python -c 'from nmp.core.auth.app.embedded_pdp.policy_wasm "
+        "import ensure_embedded_policy_wasm; ensure_embedded_policy_wasm(auto_build=False)'"
+    )
+
+    assert workspace_install < policy_validation

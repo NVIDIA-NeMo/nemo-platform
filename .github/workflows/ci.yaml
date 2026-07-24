@@ -111,6 +111,10 @@ jobs:
       - name: Print bake groups
         shell: bash
         run: |
+          default_python_base_target="$(docker buildx bake --print docker-cpu | jq -r '.target["nmp-python-base"].target')"
+          prebuilt_python_base_target="$(USE_PREBUILT_BASES=1 docker buildx bake --print docker-cpu | jq -r '.target["nmp-python-base"].target')"
+          test "${default_python_base_target}" = "nmp-python-base-builder"
+          test "${prebuilt_python_base_target}" = "${default_python_base_target}"
           make docker-print TARGET=docker-cpu
           make docker-print TARGET=docker-gpu
           make docker-print TARGET=docker-auditor
