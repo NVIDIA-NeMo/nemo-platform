@@ -39,6 +39,17 @@ export interface JobBuilderValues {
 }
 
 /**
+ * Fully-formed initial builder state used to clone an existing job. When present it seeds the
+ * form instead of the template, so the canvas opens pre-filled with the source job's schema.
+ */
+export interface JobBuilderSeed {
+  name: string;
+  rows: string;
+  columns: BuilderColumn[];
+  models: BuilderModel[];
+}
+
+/**
  * Column/model state for the recipe builder. Selecting a column and selecting a model are
  * mutually exclusive — only one config panel shows at a time.
  *
@@ -47,20 +58,26 @@ export interface JobBuilderValues {
  *
  * `modelGroups` auto-fills a template's seeded models once the platform model list loads.
  * `modelsSettled` gates that auto-fill on the full (all-pages) model list being available.
+ *
+ * `seed`, when provided (cloning a job), takes precedence over the template and pre-fills the
+ * form with the source job's columns, models, name, and row count.
  */
 export const useJobBuilder = (
   template: FilesetTemplate | null,
   modelGroups: ModelWorkspaceGroup[],
-  modelsSettled: boolean
+  modelsSettled: boolean,
+  seed: JobBuilderSeed | null = null
 ) => {
-  // Seed once from the template (if any). `useForm` keeps these values outside the route's
-  // render cycle, so a field edit notifies only components that subscribe to that field.
-  const initialColumns = useRef(template ? buildColumnsFromTemplate(template.columns) : []);
-  const initialModels = useRef(buildModelsFromTemplate(template?.models));
+  // Seed once from the clone source, else the template (if any). `useForm` keeps these values
+  // outside the route's render cycle, so a field edit notifies only subscribing components.
+  const initialColumns = useRef(
+    seed ? seed.columns : template ? buildColumnsFromTemplate(template.columns) : []
+  );
+  const initialModels = useRef(seed ? seed.models : buildModelsFromTemplate(template?.models));
   const form = useForm<JobBuilderFormValues>({
     defaultValues: {
-      name: template?.id ?? 'untitled-dataset',
-      rows: '100',
+      name: seed?.name ?? template?.id ?? 'untitled-dataset',
+      rows: seed?.rows ?? '100',
       columns: initialColumns.current,
       models: initialModels.current,
     },

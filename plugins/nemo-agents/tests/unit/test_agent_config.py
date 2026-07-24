@@ -34,6 +34,7 @@ def _example_yaml_config() -> dict:
                     "temperature": 0.0,
                 },
                 "settings": {
+                    "python_env": "HERMES_ADAPTER_PYTHON",
                     "base_url": "https://integrate.api.nvidia.com/v1",
                     "max_iterations": 1,
                     "max_tokens": 512,
@@ -46,7 +47,6 @@ def _example_yaml_config() -> dict:
                 "kind": "codex",
                 "settings": {
                     "sandbox": "workspace-write",
-                    "skip_git_repo_check": True,
                     "config_overrides": {"model_reasoning_effort": "high"},
                 },
             },
@@ -92,6 +92,7 @@ class TestAgentConfig:
         assert config.default_harness == "hermes"
         assert config.harnesses["hermes"].model is not None
         assert config.harnesses["hermes"].model.provider == "nvidia"
+        assert config.harnesses["hermes"].settings["python_env"] == "HERMES_ADAPTER_PYTHON"
         assert config.harnesses["codex"].settings["sandbox"] == "workspace-write"
         assert config.models["default"].model == "openai/gpt-5.4"
         assert config.skills is None
@@ -113,10 +114,36 @@ class TestAgentConfig:
         assert config.description == ""
         assert config.models == {}
         assert config.prompts == {}
+        assert config.skills is None
+        assert config.mcp is None
+        assert config.tools is None
         assert config.environment.provider == "local"
         assert config.environment.workspace == "./workspace"
         assert config.environment.artifacts == "./artifacts"
         assert config.telemetry.enabled is False
+
+    def test_shared_capability_sections_validate(self) -> None:
+        payload = _example_yaml_config()
+        payload["skills"] = {"paths": ["skills/review"]}
+        payload["mcp"] = {
+            "servers": {
+                "repo": {
+                    "transport": "stdio",
+                    "url": "repo-mcp --root .",
+                }
+            }
+        }
+        payload["tools"] = {"blocked": ["shell", "browser"]}
+
+        config = AgentConfig.model_validate(payload)
+
+        assert config.skills is not None
+        assert config.skills.paths == ["skills/review"]
+        assert config.mcp is not None
+        assert config.mcp.servers["repo"].transport == "stdio"
+        assert config.mcp.servers["repo"].exposure == "harness_native"
+        assert config.tools is not None
+        assert config.tools.blocked == ["shell", "browser"]
 
     def test_default_harness_must_reference_configured_harness(self) -> None:
         with pytest.raises(ValidationError, match="default_harness must reference one of harnesses: codex"):

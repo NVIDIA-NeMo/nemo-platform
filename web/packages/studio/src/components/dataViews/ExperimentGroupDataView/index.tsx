@@ -16,12 +16,13 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { formatDurationMs } from '@nemo/common/src/utils/date';
-import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
+import { formatEvaluatorScore, snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
 import type {
   EvaluationFilter,
   ExperimentGroupResponse,
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
+import { ExperimentGroupParetoChart } from '@studio/components/charts/ExperimentGroupParetoChart';
 import { AddToGroupModal } from '@studio/components/dataViews/ExperimentGroupDataView/AddToGroupModal';
 import '@studio/components/dataViews/ExperimentGroupDataView/ExperimentGroupDataView.css';
 import { Empty } from '@studio/components/dataViews/ExperimentGroupDataView/Empty';
@@ -129,20 +130,16 @@ interface ExperimentGroupDataViewProps {
   /** The loaded group, so the table's initial sort can seed from `default_sort` at first
    * render — the sorting state is initialized once and not reactive. */
   group: ExperimentGroupResponse;
+  /** Whether the Pareto (cost-vs-accuracy) chart is shown. The toggle lives in the parent
+   * route header (next to the "Evaluations" title); this component only renders the chart. */
+  paretoVisible: boolean;
 }
 
-/**
- * Formats an evaluator's mean score for display. Scores in the normalized 0–1 range read
- * best as percentages; values outside that range are on a different scale (e.g. a 1–5 or
- * 1–10 rubric), so they're shown as a raw number rather than a misleading percentage.
- */
-const formatEvaluatorScore = (mean: number | null | undefined): string => {
-  if (mean == null || !Number.isFinite(mean)) return '-';
-  return mean >= 0 && mean <= 1 ? `${(mean * 100).toFixed(1)}%` : mean.toFixed(3);
-};
-
 /** Lists the experiments that belong to a single experiment group. */
-export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ group }) => {
+export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
+  group,
+  paretoVisible,
+}) => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
   const toast = useToast();
@@ -463,8 +460,36 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
     return <ErrorMessage message="Failed to load experiments." />;
   }
 
+  // When the whole group fits on the leaderboard's first page and isn't filtered, those loaded rows are
+  // the complete evaluation set — reuse them for the Pareto chart instead of refetching every
+  // evaluation. `evaluation_count` lets us decide this without waiting on the list query. While the
+  // page loads, `preloadPending` keeps the chart in its loading state; otherwise the chart fetches its
+  // own data in parallel.
+  const hasActiveFilter = Object.keys(dataViewState.apiFilter.filter ?? {}).length > 0;
+  const groupFitsOnePage =
+    group.evaluation_count != null &&
+    group.evaluation_count <= pageSize &&
+    page === 1 &&
+    !dataViewState.debouncedSearchBar &&
+    !hasActiveFilter;
+  const completeEvaluationSet = groupFitsOnePage && !isLoading ? orderedData : undefined;
+  const preloadPending = groupFitsOnePage && isLoading;
+
   return (
     <>
+      {paretoVisible && (
+        <div className="mb-4">
+          {/* Key by group id so the axis selection resets (re-seeds from the new group's saved
+              config) when navigating between groups without a route remount. */}
+          <ExperimentGroupParetoChart
+            key={group.id}
+            workspace={workspace}
+            group={group}
+            preloadedEvaluations={completeEvaluationSet}
+            preloadPending={preloadPending}
+          />
+        </div>
+      )}
       <StudioDataView
         dataViewState={dataViewState}
         makeColumns={makeColumns}

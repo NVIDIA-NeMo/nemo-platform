@@ -178,7 +178,6 @@ enabled-plugins = [
   "nemo-customizer-plugin",
   "nemo-automodel-plugin",
   "nemo-unsloth-plugin",
-  "nemo-rl-plugin",
 ]
 
 # Legacy runtime needed specifically for task images that still invoke
@@ -557,6 +556,12 @@ extra-paths = [
   # on sys.path in tests/conftest.py.
   "tests/agentic-use",
   "tests/agentic-use/shared",
+  # nemo-rl is a workspace member but is temporarily excluded from enabled-plugins
+  # (RL/DPO backend disabled pending nmp-rl-training CVE remediation), so it is not
+  # installed in the default env. Add its src + the services/rl src so ty can still
+  # resolve nemo_rl_plugin / nmp.rl imports when checking the RL source and tests.
+  "plugins/nemo-rl/src",
+  "services/rl/src",
 ]
 
 [tool.ty.src]

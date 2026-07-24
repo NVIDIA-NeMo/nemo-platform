@@ -9,7 +9,7 @@ Use the following guidelines to prepare your training dataset for the supported 
 ## Dataset Preparation Guidelines
 
 - **File Format**: Save your training data as `.jsonl` files (one JSON object per line).
-- **Validation**: Each record is automatically validated against the appropriate schema when training begins. The required format depends on `training.type` (for example, `sft`) specified in your job configuration.
+- **Validation**: Each record is automatically validated against the appropriate schema when training begins. The required format depends on `training.training_type` (for example, `sft`) specified in your job configuration.
 
 For dataset creation tutorials, refer to [Format Training Dataset](/documentation/customizer-reference/tutorials/format-training-dataset).
 
@@ -51,20 +51,27 @@ Each line in your JSONL file must contain a JSON object with these required fiel
 Each line in your JSONL file must contain a JSON object with these required fields:
 
 - **`messages`** (array of objects): The messages in the conversation.
- - **`role`** (string): The role of the message.
- - **`content`** (string): The content of the message.
+  - **`role`** (string): The role of the message.
+  - **`content`** (string): The content of the message.
 
 #### Example Dataset Entry
 
-```
+```json
 {
- "messages": [
- {
- "role": "system",
- "content": "You are an email writing assistant. Please help people write cogent emails."
- },
- ...
- ]
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are an email writing assistant. Please help people write cogent emails."
+    },
+    {
+      "role": "user",
+      "content": "Write a concise follow-up after a project review."
+    },
+    {
+      "role": "assistant",
+      "content": "Thank you for reviewing the project. Please let me know if you have any additional feedback."
+    }
+  ]
 }
 ```
 
@@ -158,10 +165,10 @@ Each line in your JSONL file must contain a JSON object with these required fiel
 
 #### Example Dataset Entry
 
-```
+```json
 {
- "prompt": "your string",
- "completion": "your expected response"
+  "prompt": "What is the capital of France?",
+  "completion": "Paris."
 }
 ```
 
@@ -173,17 +180,23 @@ Each line in your JSONL file must contain a JSON object with these required fiel
 
 - **`system`** (string): The system message that defines the assistant's role or behavior.
 - **`conversations`** (array of objects): The conversation turns between user and assistant.
- - **`from`** (string): The role of the message sender ("User" or "Assistant").
- - **`value`** (string): The content of the message.
+  - **`from`** (string): The role of the message sender (`User` or `Assistant`).
+  - **`value`** (string): The content of the message.
 
 #### Example Dataset Entry
 
-```
+```json
 {
- "system": "you are a robot",
- "conversations": [
- {"from": "User", "value": "Choose a number that is greater than 0 and less than 2\n"},
- {"from": "Assistant", "value": "1"}
- ]
+  "system": "You are a helpful assistant.",
+  "conversations": [
+    {
+      "from": "User",
+      "value": "Choose a number that is greater than 0 and less than 2."
+    },
+    {
+      "from": "Assistant",
+      "value": "1"
+    }
+  ]
 }
 ```

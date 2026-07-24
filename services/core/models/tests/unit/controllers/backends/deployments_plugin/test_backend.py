@@ -134,7 +134,7 @@ def _resolved_docker_lora() -> ResolvedPluginDeployment:
         deployment=SimpleNamespace(name="my-dep", workspace="default"),
         config=SimpleNamespace(engine="vllm"),
         model_entity=None,
-        view=DeploymentConfigView(model_namespace="org", model_name="model", lora_enabled=True),
+        view=DeploymentConfigView(model_namespace="org", model_name="model", lora_enabled=True, gpu=1),
         weights_type=ModelWeightsType.FILES_SERVICE,
         model_namespace="org",
         model_name="model",
@@ -146,23 +146,63 @@ def _resolved_docker_lora() -> ResolvedPluginDeployment:
 
 
 @pytest.mark.asyncio
-async def test_docker_lora_fails_fast_before_touching_substrate() -> None:
+async def test_docker_lora_creates_substrate() -> None:
+    """Docker + LoRA is now supported: it creates substrate like any other deploy.
+
+    The docker backend runs the LoRA shape as a multi-container group (server +
+    adapters sidecar) so there is no longer a fast-fail guardrail.
+    """
     backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
     backend.init()
     backend._entities = AsyncMock()
+    created: list[object] = []
+
+    async def _create(entity: object) -> object:
+        created.append(entity)
+        return entity
+
+    backend._entities.create = AsyncMock(side_effect=_create)
+    backend._entities.get = AsyncMock(side_effect=NemoEntityNotFoundError("missing"))
+    backend._entities.delete = AsyncMock(side_effect=NemoEntityNotFoundError("missing"))
     with (
         patch(
             "nmp.core.models.controllers.backends.deployments_plugin.backend.resolve_plugin_deployment",
             return_value=_resolved_docker_lora(),
         ),
-        patch.object(backend, "delete_model_deployment", AsyncMock()) as delete_mock,
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.backend.executor_for_runtime",
+            return_value="local-docker",
+        ),
     ):
         result = await backend.create_model_deployment(_ctx())
-    assert result.status == "ERROR"
-    assert "docker" in result.status_message.lower()
-    assert "lora" in result.status_message.lower()
-    delete_mock.assert_not_called()
-    backend._entities.create.assert_not_called()
+
+    assert result.status == "PENDING"
+    # Substrate is created (volume(s) + puller + server configs/deployments),
+    # not rejected. The server config carries the multi-container LoRA shape.
+    assert any(isinstance(item, Deployment) and item.name == "my-dep-server" for item in created)
+
+    # Assert the full multi-container LoRA contract on the server DeploymentConfig,
+    # so a regression that drops the adapters sidecar / init / its port/GPU
+    # settings fails here rather than silently passing.
+    server_config = next(
+        item for item in created if isinstance(item, DeploymentConfig) and item.name.endswith("-server")
+    )
+    container_names = [c.name for c in server_config.containers]
+    assert container_names == ["server", "lora-adapters"]
+
+    server_container = server_config.containers[0]
+    sidecar_container = server_config.containers[1]
+
+    # The adapters sidecar publishes no ports and requests no GPU (it shares the
+    # server's network namespace and GPU); only the server owns those.
+    assert not sidecar_container.ports
+    assert not sidecar_container.resources.limits.get("nvidia.com/gpu")
+    assert server_container.ports  # server exposes the inference port
+    assert server_container.resources.limits.get("nvidia.com/gpu") == "1"
+
+    # The lora-cache-init init container prepares the shared scratch volume.
+    init_names = [c.name for c in server_config.init_containers]
+    assert "lora-cache-init" in init_names
 
 
 @pytest.mark.asyncio

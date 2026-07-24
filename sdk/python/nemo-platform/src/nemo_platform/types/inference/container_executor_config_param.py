@@ -76,9 +76,12 @@ class ContainerExecutorConfigParam(TypedDict, total=False):
 
     override_config: Dict[str, object]
     """
-    Raw NIMService spec configuration that takes precedence over generated config
-    (NIM engine on k8s). Allows advanced configuration options directly. Ignored by
-    non-NIM engines.
+    Partial NIMService Spec fragments deep-merged after generated defaults and
+    k8s_nim_operator_config (NIM engine on k8s only). Supported keys: image,
+    command, args, resources, env, readinessProbe, livenessProbe, startupProbe,
+    nodeSelector, tolerations, userID, groupID, labels, initContainers,
+    sidecarContainers. Unsupported keys are rejected at compile time. Ignored by
+    non-NIM engines and docker runtime.
     """
 
     run_as_group: int

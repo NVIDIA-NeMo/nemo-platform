@@ -145,6 +145,7 @@ class EntitiesResource(SyncAPIResource):
         entity_type: str,
         *,
         workspace: str | None = None,
+        count_by: str | Omit = omit,
         filter: str | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
@@ -176,6 +177,8 @@ class EntitiesResource(SyncAPIResource):
         ```
 
         Args:
+          count_by: Optional direct string data field whose matching values should be counted.
+
           filter:
               Query filter expression. Supports text and JSON syntaxes:
 
@@ -221,6 +224,7 @@ class EntitiesResource(SyncAPIResource):
                 timeout=timeout,
                 query=maybe_transform(
                     {
+                        "count_by": count_by,
                         "filter": filter,
                         "page": page,
                         "page_size": page_size,
@@ -580,6 +584,7 @@ class AsyncEntitiesResource(AsyncAPIResource):
         entity_type: str,
         *,
         workspace: str | None = None,
+        count_by: str | Omit = omit,
         filter: str | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
@@ -611,6 +616,8 @@ class AsyncEntitiesResource(AsyncAPIResource):
         ```
 
         Args:
+          count_by: Optional direct string data field whose matching values should be counted.
+
           filter:
               Query filter expression. Supports text and JSON syntaxes:
 
@@ -656,6 +663,7 @@ class AsyncEntitiesResource(AsyncAPIResource):
                 timeout=timeout,
                 query=maybe_transform(
                     {
+                        "count_by": count_by,
                         "filter": filter,
                         "page": page,
                         "page_size": page_size,

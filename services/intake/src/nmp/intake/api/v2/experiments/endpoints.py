@@ -148,6 +148,7 @@ async def create_experiment_group(
         summary=body.summary,
         metadata=body.metadata,
         default_sort=body.default_sort,
+        pareto=body.pareto,
     )
     try:
         created = await entity_client.create(entity)
@@ -265,6 +266,10 @@ async def update_experiment_group(
     existing.summary = body.summary
     existing.metadata = body.metadata
     existing.default_sort = body.default_sort
+    # Only overwrite the saved axes when the client actually sent them; an omitted `pareto` (older
+    # clients) must not silently reset customized axes to the cost/latency default.
+    if body.pareto is not None:
+        existing.pareto = body.pareto
     updated = await entity_client.update(existing)
     response = ExperimentGroupResponse.from_entity(updated)
     response.evaluation_count = await _count_live_evaluations_in_group(

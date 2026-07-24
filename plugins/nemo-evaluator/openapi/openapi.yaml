@@ -3123,6 +3123,17 @@ components:
           description: Read JSON SSE data frames instead of a single JSON response
             body.
           default: false
+        response_aggregation:
+          type: string
+          enum:
+          - last
+          - concat
+          title: Response Aggregation
+          description: How to combine matched data-frame values when 'stream' is true.
+            'last' keeps the final matched value (endpoints that emit a full snapshot
+            per frame); 'concat' joins matched string values in arrival order (token-delta
+            endpoints).
+          default: last
       additionalProperties: false
       type: object
       required:
@@ -3721,9 +3732,20 @@ components:
         response_path:
           type: string
           title: Response Path
-          description: JSONPath applied to data-channel payloads; the last match is
-            the final output.
+          description: JSONPath applied to each data-channel payload to extract its
+            emitted value.
           default: $.value
+        response_aggregation:
+          type: string
+          enum:
+          - last
+          - concat
+          title: Response Aggregation
+          description: How to combine matched data-frame values into the final output.
+            NAT /generate/full emits token-level deltas, so 'concat' reconstructs
+            the complete response; 'last' keeps only the final matched value (for
+            endpoints that emit a full snapshot per frame).
+          default: concat
       additionalProperties: false
       type: object
       title: NatAgentConfig

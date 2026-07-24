@@ -21,6 +21,9 @@ uv run python docs/fern/scripts/ipynb-to-fern-json.py \
 Writes both `<name>.json` (canonical data) and `<name>.ts` (default-export wrapper
 that MDX imports). Re-run whenever the source `.ipynb` changes.
 
+`npm run validate-notebook-viewer` (part of `npm run check`) fails if a
+NotebookViewer registry entry is missing its generated `.ts` / `.json` pair.
+
 ### MDX usage
 
 After writing the `.ts` module, register it in `fern/components/NotebookViewer.tsx`

@@ -7,8 +7,10 @@ import {
   type AgentEvalResult,
   agentNameForJob,
   aggregateScoresOf,
+  evalConfigName,
   fetchAgentEvalJob,
   fetchAgentEvalJobs,
+  fetchAgentEvalResultsForJobs,
   joinBundleByTask,
   parseBundleRef,
 } from '@studio/api/evaluation/agent-evaluations';
@@ -85,6 +87,48 @@ describe('agentNameForJob', () => {
 
   it('returns null when no target agent is set', () => {
     expect(agentNameForJob(baseJob({ spec: {} as AgentEvaluateJob['spec'] }))).toBeNull();
+  });
+});
+
+describe('evalConfigName', () => {
+  it('reads the fileset name from spec.benchmark.eval_config', () => {
+    const job = baseJob({
+      spec: {
+        target: { kind: 'agent', agent: { name: 'a' } },
+        tasks: [{}],
+        benchmark: { eval_config_fileset: 'wise-blue' },
+      } as unknown as AgentEvaluateJob['spec'],
+    });
+    expect(evalConfigName(job)).toBe('wise-blue');
+  });
+
+  it('returns null when benchmark is absent, ignoring any description', () => {
+    expect(evalConfigName(baseJob({ description: 'legacy-desc' }))).toBeNull();
+  });
+});
+
+describe('fetchAgentEvalResultsForJobs', () => {
+  it('returns an empty map without fetching when there are no job names', async () => {
+    const map = await fetchAgentEvalResultsForJobs('ws-a', [], new AbortController().signal);
+    expect(map.size).toBe(0);
+    expect(customFetchMock).not.toHaveBeenCalled();
+  });
+
+  it('keys results by name for the requested jobs', async () => {
+    customFetchMock.mockResolvedValue({
+      data: [
+        { name: 'eval-1', scores: { scores: [] } },
+        { name: 'eval-2', scores: { scores: [] } },
+      ],
+    });
+    const map = await fetchAgentEvalResultsForJobs(
+      'ws-a',
+      ['eval-1', 'eval-2'],
+      new AbortController().signal
+    );
+    expect(map.get('eval-1')?.name).toBe('eval-1');
+    expect(map.get('eval-2')?.name).toBe('eval-2');
+    expect(map.size).toBe(2);
   });
 });
 

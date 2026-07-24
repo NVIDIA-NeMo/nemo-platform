@@ -22,8 +22,8 @@ The time to complete this tutorial is approximately 10 minutes.
 <Markdown src="/snippets/customizer/tutorials/_snippets/customizer-prereqs.mdx" />
 ### Tutorial-Specific Prerequisites
 
-- Completed customization job with a valid ID
-- (Optional) Access to NeMo with MLflow tracking enabled
+- Completed customization job with a valid job name
+- (Optional) A job created with `spec.integrations.mlflow` and access to its configured MLflow tracking server
 
 ## Available Metrics
 
@@ -62,7 +62,7 @@ for step in status.steps or []:
             print(f"Training Phase: {details.get('phase')}")
             print(f"Step: {details.get('step')}/{details.get('max_steps')}")
             print(f"Epoch: {details.get('epoch')}/{details.get('num_epochs')}")
-            print(f"Training Loss: {details.get('loss')}")
+            print(f"Training Loss: {details.get('train_loss')}")
             print(f"Validation Loss: {details.get('val_loss')}")
             print(f"Learning Rate: {details.get('lr')}")
             print(f"Gradient Norm: {details.get('grad_norm')}")
@@ -72,16 +72,16 @@ The response includes training progress and metrics including loss, learning rat
 
 ### Using MLflow
 
-If your deployment has MLflow tracking enabled:
+If your customization job was created with an `integrations.mlflow` configuration (see [MLflow Integration](/documentation/customizer-reference/manage-customization-jobs/customization-job-reference#mlflow-integration)):
 
-1. Access the MLflow UI at your cluster's MLflow tracking URL
-2. Locate your experiment by the output model name
-3. Find the run using your customization job ID
+1. Access the MLflow UI at the configured `tracking_uri`
+2. Locate the configured `experiment_name` (defaults to the output model name)
+3. Find the configured run `name` (defaults to the customization job ID)
 4. View detailed metrics, including training and validation loss curves, under the "Metrics" tab
 
 <Note>
 
-MLflow integration is configured at the cluster level. Contact your administrator if you need access to the MLflow UI or if MLflow tracking is not enabled for your deployment.
+MLflow tracking is requested per job through `spec.integrations.mlflow`; it is not automatically enabled for every job in a cluster. The tracking server can be selected with `tracking_uri` in the job spec or the platform-side `MLFLOW_TRACKING_URI` environment variable. Contact your administrator if you need access to that server.
 
 </Note>
 

@@ -7,7 +7,9 @@ import {
   getEvaluationMetricDetailsRoute,
   getEvaluationMetricRunRoute,
   getEvaluationMetricsRunRoute,
-  getIntakeTraceSpanRoute,
+  getEvaluationSessionDetailRoute,
+  getIntakeSessionRoute,
+  getIntakeSessionTraceRoute,
   getPromptTuningFormRoute,
   getWorkspaceBaseModelsRoute,
   getWorkspaceInferenceProvidersRoute,
@@ -150,10 +152,32 @@ describe('getPromptTuningFormRoute', () => {
   });
 });
 
-describe('getIntakeTraceSpanRoute', () => {
-  it('deep-links to a span inside the trace detail route', () => {
-    expect(getIntakeTraceSpanRoute('my-workspace', 'trace-1', 'span-1')).toBe(
-      '/workspaces/my-workspace/intake/traces/trace-1?spanId=span-1'
+describe('intake session detail routes', () => {
+  it('builds session, trace, and span links', () => {
+    expect(getIntakeSessionRoute('my-workspace', 'session-1')).toBe(
+      '/workspaces/my-workspace/intake/sessions/session-1'
+    );
+    expect(getIntakeSessionTraceRoute('my-workspace', 'session-1', 'trace-1')).toBe(
+      '/workspaces/my-workspace/intake/sessions/session-1?traceId=trace-1'
+    );
+    expect(
+      getIntakeSessionTraceRoute('my-workspace', 'session-1', 'trace-1', { spanId: 'span-1' })
+    ).toBe('/workspaces/my-workspace/intake/sessions/session-1?traceId=trace-1&spanId=span-1');
+  });
+
+  it('encodes session IDs in Intake and Evaluation paths', () => {
+    expect(getIntakeSessionRoute('my-workspace', 'session / 1')).toBe(
+      '/workspaces/my-workspace/intake/sessions/session%20%2F%201'
+    );
+    expect(
+      getEvaluationSessionDetailRoute(
+        'my-workspace',
+        'experiment-group',
+        'evaluation',
+        'session / 1'
+      )
+    ).toBe(
+      '/workspaces/my-workspace/experiment/experiment-group/evaluation/sessions/session%20%2F%201'
     );
   });
 });

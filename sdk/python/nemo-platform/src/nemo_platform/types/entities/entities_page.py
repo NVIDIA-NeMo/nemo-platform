@@ -30,6 +30,8 @@ class EntitiesPage(BaseModel):
     filter: Optional[Dict[str, object]] = None
     """Filtering information."""
 
+    group_counts: Optional[Dict[str, int]] = None
+
     pagination: Optional[PaginationData] = None
     """Pagination information."""
 
