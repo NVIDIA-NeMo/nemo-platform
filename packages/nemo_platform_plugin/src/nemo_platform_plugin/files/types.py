@@ -166,6 +166,7 @@ class OtlpLogQueryRequest(BaseModel):
     filters: dict[str, str] = Field(default_factory=dict)
     limit: int | None = None
     page_cursor: str | None = None
+    subpath: str | None = None
 
 
 class OtlpExportLogsPartialSuccess(BaseModel):

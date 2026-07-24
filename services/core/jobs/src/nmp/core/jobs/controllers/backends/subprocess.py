@@ -429,7 +429,7 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
 
         platform_config = get_platform_config()
         otlp_logs_endpoint = get_logs_endpoint_config_from_fileset(
-            platform_config, step.workspace, step.fileset, loopback_address="localhost"
+            platform_config, step.workspace, step.fileset, loopback_address="localhost", subpath=step.log_subpath
         )
         env = {name: value for name, value in os.environ.items() if name in SUBPROCESS_INHERITED_ENV_ALLOWLIST}
         env.update(self._execution_profile_config.env)

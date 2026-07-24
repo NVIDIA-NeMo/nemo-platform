@@ -60,5 +60,5 @@ from nemo_platform.types.files.otlp import (
 
 Methods:
 
-- <code title="post /apis/files/v2/workspaces/{workspace}/filesets/{name}/otlp/v1/logs">client.files.otlp.logs.<a href="./src/nemo_platform/resources/files/otlp/logs.py">create</a>(name, \*, workspace) -> <a href="./src/nemo_platform/types/files/otlp/otel_export_logs_service_response.py">OtelExportLogsServiceResponse</a></code>
+- <code title="post /apis/files/v2/workspaces/{workspace}/filesets/{name}/otlp/v1/logs">client.files.otlp.logs.<a href="./src/nemo_platform/resources/files/otlp/logs.py">create</a>(name, \*, workspace, \*\*<a href="src/nemo_platform/types/files/otlp/log_create_params.py">params</a>) -> <a href="./src/nemo_platform/types/files/otlp/otel_export_logs_service_response.py">OtelExportLogsServiceResponse</a></code>
 - <code title="post /apis/files/v2/workspaces/{workspace}/filesets/{name}/otlp/v1/logs/query">client.files.otlp.logs.<a href="./src/nemo_platform/resources/files/otlp/logs.py">query</a>(name, \*, workspace, \*\*<a href="src/nemo_platform/types/files/otlp/log_query_params.py">params</a>) -> <a href="./src/nemo_platform/types/shared/platform_job_log_page.py">PlatformJobLogPage</a></code>

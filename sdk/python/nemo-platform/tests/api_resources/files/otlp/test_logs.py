@@ -44,6 +44,16 @@ class TestLogs:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
+    def test_method_create_with_all_params(self, client: NeMoPlatform) -> None:
+        log = client.files.otlp.logs.create(
+            name="name",
+            workspace="workspace",
+            base="base",
+        )
+        assert_matches_type(OtelExportLogsServiceResponse, log, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
     def test_raw_response_create(self, client: NeMoPlatform) -> None:
         response = client.files.otlp.logs.with_raw_response.create(
             name="name",
@@ -103,6 +113,7 @@ class TestLogs:
             filters={"foo": "string"},
             limit=1,
             page_cursor="page_cursor",
+            subpath="subpath",
         )
         assert_matches_type(PlatformJobLogPage, log, path=["response"])
 
@@ -161,6 +172,16 @@ class TestAsyncLogs:
         log = await async_client.files.otlp.logs.create(
             name="name",
             workspace="workspace",
+        )
+        assert_matches_type(OtelExportLogsServiceResponse, log, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_create_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
+        log = await async_client.files.otlp.logs.create(
+            name="name",
+            workspace="workspace",
+            base="base",
         )
         assert_matches_type(OtelExportLogsServiceResponse, log, path=["response"])
 
@@ -225,6 +246,7 @@ class TestAsyncLogs:
             filters={"foo": "string"},
             limit=1,
             page_cursor="page_cursor",
+            subpath="subpath",
         )
         assert_matches_type(PlatformJobLogPage, log, path=["response"])
 

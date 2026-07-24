@@ -135,6 +135,9 @@ class PlatformJobResponse(BaseModel):
     spec: dict[str, Any] = Field(default_factory=dict, description="Job Spec")
     platform_spec: PlatformJobSpec
     fileset: str = Field(..., description="Fileset ID for storing job artifacts")
+    output_location: Optional[str] = Field(
+        default=None, description="Caller-supplied artifact fileset; None when the fileset was auto-created"
+    )
     status: PlatformJobStatus
     status_details: dict[str, Any] = Field(default_factory=dict, description="Details about the job status")
     error_details: dict[str, Any] | None = None
@@ -171,6 +174,7 @@ class PlatformJobStepWithContext(BaseModel):
     job: str
     attempt_id: str
     fileset: str
+    log_subpath: str | None = None
     workspace: str
     name: str
     step_spec: PlatformJobStepSpec | None = None

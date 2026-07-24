@@ -32,7 +32,7 @@ from ...._response import (
     async_to_streamed_response_wrapper,
 )
 from ...._base_client import make_request_options
-from ....types.files.otlp import log_query_params
+from ....types.files.otlp import log_query_params, log_create_params
 from ....types.shared.platform_job_log_page import PlatformJobLogPage
 from ....types.files.otlp.otel_export_logs_service_response import OtelExportLogsServiceResponse
 
@@ -64,6 +64,7 @@ class LogsResource(SyncAPIResource):
         name: str,
         *,
         workspace: str | None = None,
+        base: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -77,6 +78,8 @@ class LogsResource(SyncAPIResource):
         Supports both application/json and application/x-protobuf content types.
 
         Args:
+          base: Per-job artifact subfolder to nest logs under
+
           extra_headers: Send extra headers
 
           extra_query: Add additional query parameters to the request
@@ -96,7 +99,11 @@ class LogsResource(SyncAPIResource):
                 "/apis/files/v2/workspaces/{workspace}/filesets/{name}/otlp/v1/logs", workspace=workspace, name=name
             ),
             options=make_request_options(
-                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+                extra_headers=extra_headers,
+                extra_query=extra_query,
+                extra_body=extra_body,
+                timeout=timeout,
+                query=maybe_transform({"base": base}, log_create_params.LogCreateParams),
             ),
             cast_to=OtelExportLogsServiceResponse,
         )
@@ -109,6 +116,7 @@ class LogsResource(SyncAPIResource):
         filters: Dict[str, str] | Omit = omit,
         limit: int | Omit = omit,
         page_cursor: str | Omit = omit,
+        subpath: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -128,6 +136,9 @@ class LogsResource(SyncAPIResource):
           limit: Maximum number of results to return
 
           page_cursor: Cursor for pagination
+
+          subpath: Per-job artifact subfolder the logs were nested under (must match the write
+              side)
 
           extra_headers: Send extra headers
 
@@ -154,6 +165,7 @@ class LogsResource(SyncAPIResource):
                     "filters": filters,
                     "limit": limit,
                     "page_cursor": page_cursor,
+                    "subpath": subpath,
                 },
                 log_query_params.LogQueryParams,
             ),
@@ -189,6 +201,7 @@ class AsyncLogsResource(AsyncAPIResource):
         name: str,
         *,
         workspace: str | None = None,
+        base: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -202,6 +215,8 @@ class AsyncLogsResource(AsyncAPIResource):
         Supports both application/json and application/x-protobuf content types.
 
         Args:
+          base: Per-job artifact subfolder to nest logs under
+
           extra_headers: Send extra headers
 
           extra_query: Add additional query parameters to the request
@@ -221,7 +236,11 @@ class AsyncLogsResource(AsyncAPIResource):
                 "/apis/files/v2/workspaces/{workspace}/filesets/{name}/otlp/v1/logs", workspace=workspace, name=name
             ),
             options=make_request_options(
-                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+                extra_headers=extra_headers,
+                extra_query=extra_query,
+                extra_body=extra_body,
+                timeout=timeout,
+                query=await async_maybe_transform({"base": base}, log_create_params.LogCreateParams),
             ),
             cast_to=OtelExportLogsServiceResponse,
         )
@@ -234,6 +253,7 @@ class AsyncLogsResource(AsyncAPIResource):
         filters: Dict[str, str] | Omit = omit,
         limit: int | Omit = omit,
         page_cursor: str | Omit = omit,
+        subpath: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -253,6 +273,9 @@ class AsyncLogsResource(AsyncAPIResource):
           limit: Maximum number of results to return
 
           page_cursor: Cursor for pagination
+
+          subpath: Per-job artifact subfolder the logs were nested under (must match the write
+              side)
 
           extra_headers: Send extra headers
 
@@ -279,6 +302,7 @@ class AsyncLogsResource(AsyncAPIResource):
                     "filters": filters,
                     "limit": limit,
                     "page_cursor": page_cursor,
+                    "subpath": subpath,
                 },
                 log_query_params.LogQueryParams,
             ),

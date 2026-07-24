@@ -14,6 +14,7 @@ TODO: Right now, this is very Jobs logs specific; in a future MR we should try t
 """
 
 import logging
+import os
 import re
 import uuid
 from datetime import datetime
@@ -136,10 +137,13 @@ class LogStorage:
         filters: dict[str, str] | None = None,
         page_size: int = 100,
         page_cursor: str | None = None,
+        subpath: str | None = None,
     ) -> PlatformJobLogPage:
         """Query logs from parquet files using direct storage access.
 
         Runs DuckDB queries in a thread pool to avoid blocking the event loop.
+        When ``subpath`` is set, logs are read from ``<subpath>/logs`` (must match
+        the ``subpath`` used at insert time).
         """
         direction = PaginationDirection.FORWARD
         current_page = 1
@@ -151,7 +155,7 @@ class LogStorage:
             except ValueError:
                 raise InvalidPageCursorError("Invalid page cursor")
 
-        base_path = storage.get_duckdb_path("logs")
+        base_path = storage.get_duckdb_path(f"{subpath}/logs" if subpath else "logs")
 
         return await to_thread.run_sync(
             self._query_logs_sync,
@@ -306,16 +310,16 @@ class LogStorage:
         finally:
             conn.close()
 
-    async def insert_logs(self, storage: StorageImpl, log_entries: list[LogEntry]) -> int:
+    async def insert_logs(self, storage: StorageImpl, log_entries: list[LogEntry], subpath: str | None = None) -> int:
         """Insert log entries into the Parquet storage.
 
         Uses DuckDB to write Hive-partitioned parquet files directly to the
-        storage path.
+        storage path. When ``subpath`` is set, logs nest under ``<subpath>/logs``.
         """
         if not log_entries:
             return 0
 
-        base_path = storage.get_duckdb_path("logs")
+        base_path = storage.get_duckdb_path(f"{subpath}/logs" if subpath else "logs")
 
         return await to_thread.run_sync(
             self._insert_logs_sync,
@@ -331,7 +335,13 @@ class LogStorage:
         table_name = f"temp_logs_{uuid.uuid4().hex[:8]}"
 
         try:
+            from nmp.core.files.app.backends.local import LocalStorageImpl
             from nmp.core.files.app.backends.s3 import S3StorageImpl
+
+            # DuckDB COPY creates the leaf + partition dirs but not intermediate parents, so a
+            # nested subpath base (e.g. <root>/<job>/logs) needs its parents created first.
+            if isinstance(storage, LocalStorageImpl):
+                os.makedirs(base_path, exist_ok=True)
 
             if isinstance(storage, S3StorageImpl):
                 cls._load_s3_extensions(conn)

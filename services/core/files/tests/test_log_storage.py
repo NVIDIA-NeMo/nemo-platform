@@ -129,6 +129,25 @@ async def test_insert_and_query_logs_roundtrip(log_storage, local_storage, sampl
         assert f"Log message {i}" in messages
 
 
+async def test_insert_and_query_logs_with_subpath_roundtrip(log_storage, local_storage, sample_log_entries):
+    """Logs written under a per-job subpath are nested there and only readable with the same subpath."""
+    insert_count = await log_storage.insert_logs(local_storage, sample_log_entries, subpath="job-123")
+    assert insert_count == 25
+
+    # Files land under <base>/job-123/logs/, not the root logs/ prefix.
+    base_path = get_path(local_storage)
+    assert (base_path / "job-123" / "logs").exists()
+    assert not (base_path / "logs").exists()
+
+    # Readable only with the matching subpath (symmetry invariant).
+    nested = await log_storage.query_logs(local_storage, filters={"job": "job-123"}, page_size=100, subpath="job-123")
+    assert nested.total == 25
+
+    # Querying the root (no subpath) finds nothing — proves the nesting isolates the logs.
+    flat = await log_storage.query_logs(local_storage, filters={"job": "job-123"}, page_size=100)
+    assert flat.total == 0
+
+
 async def test_query_logs_with_filters(log_storage, local_storage):
     """Test querying logs with different filter combinations."""
     # Insert logs with different partitions

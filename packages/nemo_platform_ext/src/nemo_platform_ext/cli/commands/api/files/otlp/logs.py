@@ -27,6 +27,7 @@ def create_logs(
     ctx: typer.Context,
     name: Annotated[str, typer.Argument()],
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
+    base: Annotated[str | None, typer.Option("--base", help="Per-job artifact subfolder to nest logs under")] = None,
     input_file: Annotated[
         str | None,
         typer.Option("--input-file", help="Path to JSON file (use '-' for stdin)", rich_help_panel="Input Options"),
@@ -56,6 +57,8 @@ def create_logs(
     # Apply CLI flag overrides (flags take precedence)
     if workspace is not None:
         input_payload["workspace"] = workspace
+    if base is not None:
+        input_payload["base"] = base
 
     all_kwargs = {"name": name, **input_payload}
     state: CLIContext = ctx.obj
@@ -86,6 +89,12 @@ def query_logs(
     filters: Annotated[str | None, typer.Option("--filters", help="Key-value filters to apply to the query")] = None,
     limit: Annotated[int | None, typer.Option("--limit", help="Maximum number of results to return")] = None,
     page_cursor: Annotated[str | None, typer.Option("--page-cursor", help="Cursor for pagination")] = None,
+    subpath: Annotated[
+        str | None,
+        typer.Option(
+            "--subpath", help="Per-job artifact subfolder the logs were nested under (must match the write side)"
+        ),
+    ] = None,
     output_format: EntityOutputFormatOption = None,
 ) -> None:
     """Query logs from parquet files in a fileset.
@@ -100,6 +109,7 @@ def query_logs(
         filters=filters,
         limit=limit,
         page_cursor=page_cursor,
+        subpath=subpath,
     )
     if handle_code_generation(["files", "otlp", "logs"], "query", kwargs, output_format, state):
         return

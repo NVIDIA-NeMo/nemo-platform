@@ -59,19 +59,20 @@ class BaseResultManager(Generic[FileManagerClsT, PlatformSDKT], ABC):
 
         return artifact_local_path
 
-    def _result_remote_path(self, attempt_id: str, result_name: str) -> str:
-        """Build the remote path for a result artifact."""
-        return f"results/{attempt_id}/{result_name}"
+    def _result_remote_path(self, attempt_id: str, result_name: str, base: str | None = None) -> str:
+        """Build the remote path for a result artifact, optionally nested under a per-job base folder."""
+        prefix = f"{base}/" if base else ""
+        return f"{prefix}results/{attempt_id}/{result_name}"
 
 
 @dataclass
 class ResultManager(BaseResultManager[Type[FilesetFileManager], NeMoPlatform]):
-    def _fetch_job_metadata(self) -> tuple[str, str]:
-        """Fetch job and return (attempt_id, fileset_name)."""
+    def _fetch_job_metadata(self) -> tuple[str, str, str | None]:
+        """Fetch job and return (attempt_id, fileset_name, output_location)."""
         jobs = client_from_platform(self.jobs_sdk, JobsClient)
         job = jobs.get_job(name=self.job_name, workspace=self.workspace).data()
         attempt_id = self.attempt_id if self.attempt_id is not None else job.attempt_id
-        return attempt_id, job.fileset
+        return attempt_id, job.fileset, getattr(job, "output_location", None)
 
     def _create_file_manager(self, fileset_name: str) -> FilesetFileManager:
         """Create a file manager for the given fileset."""
@@ -87,11 +88,11 @@ class ResultManager(BaseResultManager[Type[FilesetFileManager], NeMoPlatform]):
         artifact_local_path: str | Path,
         ignore_patterns: list[str] | str | None = None,
     ) -> PlatformJobResultResponse:
-        attempt_id, fileset_name = self._fetch_job_metadata()
+        attempt_id, fileset_name, output_location = self._fetch_job_metadata()
         file_manager = self._create_file_manager(fileset_name)
         file_manager.validate_storage()
         artifact_local_path = self._validate_local_path(artifact_local_path)
-        remote_path = self._result_remote_path(attempt_id, result_name)
+        remote_path = self._result_remote_path(attempt_id, result_name, base=self.job_name if output_location else None)
         artifact_url = file_manager.upload(
             local_path=artifact_local_path, remote_path=remote_path, ignore_patterns=ignore_patterns
         )
@@ -131,12 +132,12 @@ class ResultManager(BaseResultManager[Type[FilesetFileManager], NeMoPlatform]):
 
 @dataclass
 class AsyncResultManager(BaseResultManager[Type[AsyncFilesetFileManager], AsyncNeMoPlatform]):
-    async def _fetch_job_metadata(self) -> tuple[str, str]:
-        """Fetch job and return (attempt_id, fileset_name)."""
+    async def _fetch_job_metadata(self) -> tuple[str, str, str | None]:
+        """Fetch job and return (attempt_id, fileset_name, output_location)."""
         jobs = client_from_platform(self.jobs_sdk, AsyncJobsClient)
         job = (await jobs.get_job(name=self.job_name, workspace=self.workspace)).data()
         attempt_id = self.attempt_id if self.attempt_id is not None else job.attempt_id
-        return attempt_id, job.fileset
+        return attempt_id, job.fileset, getattr(job, "output_location", None)
 
     def _create_file_manager(self, fileset_name: str) -> AsyncFilesetFileManager:
         """Create a file manager for the given fileset."""
@@ -152,11 +153,11 @@ class AsyncResultManager(BaseResultManager[Type[AsyncFilesetFileManager], AsyncN
         artifact_local_path: str | Path,
         ignore_patterns: list[str] | str | None = None,
     ) -> PlatformJobResultResponse:
-        attempt_id, fileset_name = await self._fetch_job_metadata()
+        attempt_id, fileset_name, output_location = await self._fetch_job_metadata()
         file_manager = self._create_file_manager(fileset_name)
         await file_manager.validate_storage()
         artifact_local_path = self._validate_local_path(artifact_local_path)
-        remote_path = self._result_remote_path(attempt_id, result_name)
+        remote_path = self._result_remote_path(attempt_id, result_name, base=self.job_name if output_location else None)
         artifact_url = await file_manager.upload(
             local_path=artifact_local_path, remote_path=remote_path, ignore_patterns=ignore_patterns
         )

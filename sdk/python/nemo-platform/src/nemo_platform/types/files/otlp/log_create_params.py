@@ -17,26 +17,13 @@
 
 from __future__ import annotations
 
-from typing import Dict
 from typing_extensions import TypedDict
 
-__all__ = ["LogQueryParams"]
+__all__ = ["LogCreateParams"]
 
 
-class LogQueryParams(TypedDict, total=False):
+class LogCreateParams(TypedDict, total=False):
     workspace: str
 
-    filters: Dict[str, str]
-    """Key-value filters to apply to the query"""
-
-    limit: int
-    """Maximum number of results to return"""
-
-    page_cursor: str
-    """Cursor for pagination"""
-
-    subpath: str
-    """
-    Per-job artifact subfolder the logs were nested under (must match the write
-    side)
-    """
+    base: str
+    """Per-job artifact subfolder to nest logs under"""

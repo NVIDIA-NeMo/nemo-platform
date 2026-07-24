@@ -6,7 +6,7 @@
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from nemo_platform import AsyncNeMoPlatform
 from nmp.common.auth import AuthClient, get_auth_client
 from nmp.common.entities.client import (
@@ -55,6 +55,10 @@ class LogQueryRequest(BaseModel):
         default=None,
         description="Cursor for pagination",
     )
+    subpath: str | None = Field(
+        default=None,
+        description="Per-job artifact subfolder the logs were nested under (must match the write side)",
+    )
 
 
 router = APIRouter()
@@ -95,6 +99,7 @@ async def query_otlp_logs(
             filters=request.filters,
             page_size=request.limit,
             page_cursor=request.page_cursor,
+            subpath=request.subpath,
         )
     except InvalidFilterError as e:
         logger.error(f"Invalid filter: {str(e)}")
@@ -115,6 +120,7 @@ async def upload_otlp_logs(
     name: str,
     raw_request: Request,
     content_type: str = Header(default="application/json"),
+    base: str | None = Query(default=None, description="Per-job artifact subfolder to nest logs under"),
     entity_store: EntityClient = Depends(get_entity_client),
     log_storage: LogStorage = Depends(dep_log_storage),
     sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
@@ -222,7 +228,7 @@ async def upload_otlp_logs(
         # Insert logs into database
         logger.debug("Inserting %d log entries", len(log_entries))
         if log_entries:
-            inserted_count = await log_storage.insert_logs(storage, log_entries=log_entries)
+            inserted_count = await log_storage.insert_logs(storage, log_entries=log_entries, subpath=base)
             logger.debug(f"Successfully ingested {inserted_count} log entries")
         # Prepare response
         if rejected_count > 0:

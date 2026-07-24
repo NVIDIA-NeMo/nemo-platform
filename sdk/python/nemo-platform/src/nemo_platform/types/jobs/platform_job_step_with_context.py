@@ -52,6 +52,8 @@ class PlatformJobStepWithContext(BaseModel):
 
     error_details: Optional[Dict[str, object]] = None
 
+    log_subpath: Optional[str] = None
+
     status: Optional[PlatformJobStatus] = None
     """Enumeration of possible job statuses.
 

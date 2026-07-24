@@ -1885,6 +1885,14 @@ paths:
         schema:
           type: string
           title: Name
+      - name: base
+        in: query
+        required: false
+        schema:
+          description: Per-job artifact subfolder to nest logs under
+          title: Base
+          type: string
+        description: Per-job artifact subfolder to nest logs under
       - name: content-type
         in: header
         required: false
@@ -13645,6 +13653,11 @@ components:
           title: Page Cursor
           description: Cursor for pagination
           type: string
+        subpath:
+          title: Subpath
+          description: Per-job artifact subfolder the logs were nested under (must
+            match the write side)
+          type: string
       type: object
       title: LogQueryRequest
       description: Request body for querying logs from a fileset.
@@ -15639,6 +15652,11 @@ components:
           type: string
           title: Fileset
           description: Fileset ID for storing job artifacts
+        output_location:
+          title: Output Location
+          description: Caller-supplied artifact fileset; None when the fileset was
+            auto-created
+          type: string
         status:
           $ref: '#/components/schemas/PlatformJobStatus'
         status_details:
@@ -16134,6 +16152,9 @@ components:
         fileset:
           type: string
           title: Fileset
+        log_subpath:
+          title: Log Subpath
+          type: string
         workspace:
           type: string
           title: Workspace

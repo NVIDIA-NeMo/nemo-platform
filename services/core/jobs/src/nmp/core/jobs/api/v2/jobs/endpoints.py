@@ -547,8 +547,14 @@ async def page_job_logs(
                 filters["job_step"] = step_id
             if task_id:
                 filters["job_task"] = task_id
+            log_subpath = name if getattr(job, "output_location", None) else None
             return await logs_client.query_logs(
-                job.fileset, workspace=workspace, filters=filters, page_size=limit, page_cursor=page_cursor
+                job.fileset,
+                workspace=workspace,
+                filters=filters,
+                page_size=limit,
+                page_cursor=page_cursor,
+                subpath=log_subpath,
             )
         except InvalidPageCursorError as e:
             logger.error(f"Invalid page cursor: {str(e)}")

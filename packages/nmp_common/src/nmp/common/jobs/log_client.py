@@ -45,6 +45,7 @@ class JobLogsClient:
         filters: dict[str, str] | None = None,
         page_size: int = 100,
         page_cursor: str | None = None,
+        subpath: str | None = None,
     ) -> PlatformJobLogPage:
         """Query job logs via Files service OTLP endpoint.
 
@@ -63,6 +64,7 @@ class JobLogsClient:
                 filters=filters or {},
                 limit=page_size,
                 page_cursor=page_cursor,
+                subpath=subpath,
             )
             resp = await self._files_client.query_otlp_logs(
                 name=fileset,
