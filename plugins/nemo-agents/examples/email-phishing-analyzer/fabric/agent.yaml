@@ -1,0 +1,18 @@
+config_format: nemo-agents-spec-v1
+name: nat-email-phishing-analyzer
+description: Invoke the NAT email phishing analyzer through NeMo Fabric.
+
+default_harness: nat
+
+harnesses:
+  nat:
+    kind: nat
+    settings:
+      config_file: ./workflow.yml
+
+environment:
+  workspace: ./workspace
+  artifacts: ./artifacts
+
+telemetry:
+  enabled: false

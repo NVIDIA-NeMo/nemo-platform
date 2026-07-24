@@ -118,6 +118,7 @@ class TestTranslateAgentConfig:
             ("codex", "nvidia.fabric.codex"),
             ("deepagents", "nvidia.fabric.langchain.deepagents"),
             ("hermes", "nvidia.fabric.hermes"),
+            ("nat", "nvidia.nemo.platform.nat"),
         ],
     )
     def test_supported_harness_kinds_translate_to_adapter_ids(
@@ -127,12 +128,114 @@ class TestTranslateAgentConfig:
     ) -> None:
         payload = _example_yaml_config()
         payload["default_harness"] = "selected"
-        payload["harnesses"] = {"selected": {"kind": kind}}
+        payload["harnesses"] = {
+            "selected": {
+                "kind": kind,
+                "settings": {"config_file": "./workflow.yml"} if kind == "nat" else {},
+            }
+        }
+        if kind == "nat":
+            payload["models"] = {}
         config = AgentConfig.model_validate(payload)
 
         fabric_config = translate_agent_config(config)
 
         assert fabric_config.harness.adapter_id == adapter_id
+
+    def test_nat_harness_uses_native_config_without_platform_model(self) -> None:
+        payload = _example_yaml_config()
+        payload["default_harness"] = "nat"
+        payload["harnesses"] = {
+            "nat": {
+                "kind": "nat",
+                "settings": {"config_file": "./workflow.yml"},
+            }
+        }
+        payload["models"] = {}
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        assert fabric_config.harness.adapter_id == "nvidia.nemo.platform.nat"
+        assert fabric_config.harness.settings == {"config_file": "./workflow.yml"}
+        assert fabric_config.models == {}
+        assert fabric_config.telemetry is None
+        assert fabric_config.relay is None
+
+    def test_nat_harness_requires_config_file(self) -> None:
+        payload = _example_yaml_config()
+        payload["default_harness"] = "nat"
+        payload["harnesses"] = {"nat": {"kind": "nat"}}
+        payload["models"] = {}
+        config = AgentConfig.model_validate(payload)
+
+        with pytest.raises(FabricTranslationError, match="requires a non-empty harness.settings.config_file"):
+            translate_agent_config(config)
+
+    def test_nat_harness_rejects_inline_platform_model(self) -> None:
+        payload = _example_yaml_config()
+        payload["default_harness"] = "nat"
+        payload["harnesses"] = {
+            "nat": {
+                "kind": "nat",
+                "model": {
+                    "provider": "nvidia",
+                    "model": "nvidia/example-model",
+                },
+                "settings": {"config_file": "./workflow.yml"},
+            }
+        }
+        payload["models"] = {}
+        config = AgentConfig.model_validate(payload)
+
+        with pytest.raises(FabricTranslationError, match="cannot define Platform models"):
+            translate_agent_config(config)
+
+    def test_nat_harness_rejects_top_level_platform_models(self) -> None:
+        payload = _example_yaml_config()
+        payload["default_harness"] = "nat"
+        payload["harnesses"] = {
+            "nat": {
+                "kind": "nat",
+                "settings": {"config_file": "./workflow.yml"},
+            }
+        }
+        config = AgentConfig.model_validate(payload)
+
+        with pytest.raises(FabricTranslationError, match="cannot define Platform models"):
+            translate_agent_config(config)
+
+    def test_nat_harness_rejects_platform_skills(self) -> None:
+        payload = _example_yaml_config()
+        payload["default_harness"] = "nat"
+        payload["harnesses"] = {
+            "nat": {
+                "kind": "nat",
+                "settings": {"config_file": "./workflow.yml"},
+            }
+        }
+        payload["models"] = {}
+        payload["skills"] = [{"path": "./skills/example"}]
+        config = AgentConfig.model_validate(payload)
+
+        with pytest.raises(FabricTranslationError, match="does not map Platform skills"):
+            translate_agent_config(config)
+
+    def test_nat_harness_rejects_platform_telemetry(self) -> None:
+        payload = _example_yaml_config()
+        payload["default_harness"] = "nat"
+        payload["harnesses"] = {
+            "nat": {
+                "kind": "nat",
+                "settings": {"config_file": "./workflow.yml"},
+            }
+        }
+        payload["models"] = {}
+        payload["telemetry"]["enabled"] = True
+        config = AgentConfig.model_validate(payload)
+
+        with pytest.raises(FabricTranslationError, match="does not map Platform telemetry"):
+            translate_agent_config(config)
 
     def test_unknown_selected_harness_rejected(self) -> None:
         config = AgentConfig.model_validate(_example_yaml_config())

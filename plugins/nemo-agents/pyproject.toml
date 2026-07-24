@@ -64,9 +64,11 @@ fabric = [
     # to the 0.1.0a1+ config-first SDK API and Fabric packaging is stable across Platform environments.
     # TODO(AIRCORE-897): Move this to a stable Fabric version before release once available.
     # TODO(AIRCORE-897): Add the `relay` extra once nemo-evaluator-sdk's nemo-relay pin allows >=0.5.
-    "nemo-fabric[runtime]==0.1.0a1",
-    "nemo-fabric-adapters-codex==0.1.0a1",
-    "nemo-fabric-adapters-hermes==0.1.0a1; python_version < '3.14'",
+    # Installed third-party adapter discovery requires the first Fabric build after NVIDIA/NeMo-Fabric#108.
+    "nemo-fabric[runtime]==0.1.0a20260724",
+    "nemo-fabric-adapters-common==0.1.0a20260724",
+    "nemo-fabric-adapters-codex==0.1.0a20260724",
+    "nemo-fabric-adapters-hermes==0.1.0a20260724; python_version < '3.14'",
 ]
 container = [
     "jinja2>=3.1",
@@ -94,6 +96,9 @@ packages = [
     "vendor/openclaw_agent_adapter/src/nat_openclaw_agent_adapter",
 ]
 
+[tool.hatch.build.targets.wheel.shared-data]
+"src/nemo_agents_plugin/fabric/adapters/nat/fabric-adapter.json" = "share/nemo-fabric/adapters/nemo-platform-nat/fabric-adapter.json"
+
 
 [tool.uv.sources]
 nemo-platform = { workspace = true }
@@ -105,6 +110,9 @@ nemo-agents-example-email-phishing = { workspace = true }
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: high-level tests that exercise installed runtime boundaries",
+]
 # "src" puts nemo_agents_plugin on sys.path.  nemo-platform is resolved
 # from the workspace — run `uv sync` at the repo root before running these tests.
 pythonpath = ["src"]
