@@ -1,0 +1,18 @@
+config_format: nemo-agents-spec-v1
+name: nat-simple-calculator
+description: Invoke the NAT simple calculator workflow through NeMo Fabric.
+
+default_harness: nat
+
+harnesses:
+  nat:
+    kind: nat
+    settings:
+      config_file: ./workflow.yml
+
+environment:
+  workspace: ./workspace
+  artifacts: ./artifacts
+
+telemetry:
+  enabled: false
