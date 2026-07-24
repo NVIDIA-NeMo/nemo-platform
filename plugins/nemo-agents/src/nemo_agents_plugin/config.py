@@ -77,9 +77,17 @@ class DeploymentsRunnerConfig(BaseModel):
     gateway_url_override: str | None = Field(
         default=None,
         description=(
-            "Optional container-reachable platform base URL. When unset, docker mode rewrites "
-            "loopback hosts to host.docker.internal; k8s mode leaves the host base URL as-is "
-            "(in-cluster IGW DNS is AIRCORE-863)."
+            "Platform base URL baked into deployed agents as their inference endpoint, used verbatim "
+            "for both docker and k8s. When unset, the deploy path derives a container-reachable URL: "
+            "docker rewrites loopback hosts to host.docker.internal; k8s uses k8s_internal_base_url."
+        ),
+    )
+    k8s_internal_base_url: str | None = Field(
+        default=None,
+        description=(
+            "In-cluster platform base URL (the API Service DNS, e.g. http://<release>-nmp-api:8080) "
+            "used as the inference endpoint for k8s-mode agents. Set automatically by the Helm chart. "
+            "Read from NEMO_INTERNAL_BASE_URL, then NMP_INTERNAL_BASE_URL, when unset."
         ),
     )
     plugin_wheels_init_image: str | None = Field(
