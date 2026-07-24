@@ -6,7 +6,7 @@ import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { ANONYMIZER_ENABLED } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { FC } from 'react';
+import type { FC } from 'react';
 import { useParams } from 'react-router-dom';
 
 export const AnonymizerJobDetailRoute: FC | null = ANONYMIZER_ENABLED
