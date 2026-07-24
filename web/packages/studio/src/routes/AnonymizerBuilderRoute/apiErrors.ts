@@ -28,8 +28,9 @@ const fieldForLoc = (loc: (string | number)[]): FormField | null => {
   const segments = loc.map(String);
   const last = segments[segments.length - 1];
 
-  if (segments.includes('replace')) {
-    const kind = segments[segments.indexOf('replace') + 1];
+  const replaceIndex = segments.indexOf('replace');
+  if (replaceIndex !== -1) {
+    const kind = segments[replaceIndex + 1];
     if (last === 'format_template') {
       if (kind === 'redact') return 'redactTemplate';
       if (kind === 'annotate') return 'annotateTemplate';
