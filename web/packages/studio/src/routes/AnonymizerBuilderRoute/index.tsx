@@ -4,6 +4,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useAnonymizerCreateRunJob } from '@nemo/sdk/generated/anonymizer/api';
 import type { RunJob } from '@nemo/sdk/generated/anonymizer/schema';
+import { useModelsListProviders } from '@nemo/sdk/generated/platform/api';
 import {
   Banner,
   Button,
@@ -18,6 +19,7 @@ import {
 } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
+import { DEFAULT_LARGE_PAGE_SIZE } from '@studio/constants/constants';
 import { ANONYMIZER_ENABLED } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -45,6 +47,14 @@ export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
       const workspace = useWorkspaceFromPath();
       const [activeTab, setActiveTab] = useState<string>(TAB_SOURCE);
       const [submitError, setSubmitError] = useState<string | undefined>(undefined);
+
+      // Shared with ModelSettingsSection (react-query dedups) — gate submit until
+      // the model list has loaded and its role defaults have been seeded.
+      const { isLoading: isLoadingModels } = useModelsListProviders(
+        workspace,
+        { page_size: DEFAULT_LARGE_PAGE_SIZE },
+        { query: {} }
+      );
 
       useBreadcrumbs({
         items: [{ slotLabel: 'Anonymizer' }, { slotLabel: 'Anonymize Data' }],
@@ -104,7 +114,7 @@ export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
                         kind="primary"
                         color="brand"
                         type="submit"
-                        disabled={createJob.isPending}
+                        disabled={createJob.isPending || isLoadingModels}
                       >
                         Full Run
                       </Button>
