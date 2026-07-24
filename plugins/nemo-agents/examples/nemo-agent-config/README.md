@@ -8,7 +8,7 @@ force other Fabric consumers onto the `0.1.0a20260724` SDK API before they migra
 Install them explicitly before local Fabric smoke tests:
 
 ```bash
-uv pip install -e "plugins/nemo-agents[fabric]"
+uvx uv@0.9.14 pip install -e "plugins/nemo-agents[fabric]"
 ```
 
 Top-level `skills`, `mcp`, and `tools` are Platform-owned shared fields that

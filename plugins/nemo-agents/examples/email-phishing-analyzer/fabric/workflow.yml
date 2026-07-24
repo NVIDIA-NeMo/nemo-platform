@@ -1,0 +1,23 @@
+functions:
+  email_phishing_analyzer:
+    _type: email_phishing_analyzer
+    llm: llm
+
+llms:
+  llm:
+    _type: openai
+    api_key: ${NVIDIA_API_KEY}
+    base_url: https://integrate.api.nvidia.com/v1
+    model_name: nvidia/nemotron-3-nano-30b-a3b
+    temperature: 0.0
+    max_tokens: 1024
+
+workflow:
+  _type: react_agent
+  tool_names:
+    - email_phishing_analyzer
+  llm_name: llm
+  verbose: false
+  parse_agent_response_max_retries: 3
+  additional_instructions: The final response should indicate that the email is either "phishing" or "benign".
+  use_native_tool_calling: true

@@ -1,0 +1,18 @@
+{
+  "contract_version": "fabric.adapter/v1alpha1",
+  "adapter_id": "nvidia.nemo.platform.nat",
+  "harness": "nat",
+  "adapter_kind": "python",
+  "runner": {
+    "module": "nemo_agents_plugin.fabric.adapters.nat.adapter"
+  },
+  "config": {
+    "accepts": []
+  },
+  "capabilities": {
+    "cancellation": false,
+    "service": false,
+    "streaming": false,
+    "updates": false
+  }
+}

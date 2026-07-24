@@ -3703,6 +3703,7 @@ container = [
 ]
 fabric = [
     { name = "nemo-fabric", extra = ["runtime"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-fabric-adapters-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-fabric-adapters-codex", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-fabric-adapters-hermes", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
@@ -3729,6 +3730,7 @@ requires-dist = [
     { name = "nemo-agents-example-email-phishing", editable = "plugins/nemo-agents/examples/email-phishing-analyzer" },
     { name = "nemo-deployments-plugin", editable = "plugins/nemo-deployments" },
     { name = "nemo-fabric", extras = ["runtime"], marker = "extra == 'fabric'", specifier = ">=0.1.0a20260724,<0.2.0" },
+    { name = "nemo-fabric-adapters-common", marker = "extra == 'fabric'", specifier = ">=0.1.0a20260724,<0.2.0" },
     { name = "nemo-fabric-adapters-codex", marker = "extra == 'fabric'", specifier = ">=0.1.0a20260724,<0.2.0" },
     { name = "nemo-fabric-adapters-hermes", marker = "python_full_version < '3.14' and extra == 'fabric'", specifier = ">=0.1.0a20260724,<0.2.0" },
     { name = "nemo-platform", editable = "packages/nemo_platform" },

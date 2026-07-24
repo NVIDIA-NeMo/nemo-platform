@@ -16,6 +16,7 @@ HARNESS_ADAPTER_IDS = {
     "codex": "nvidia.fabric.codex",
     "deepagents": "nvidia.fabric.langchain.deepagents",
     "hermes": "nvidia.fabric.hermes",
+    "nat": "nvidia.nemo.platform.nat",
 }
 
 
@@ -26,8 +27,14 @@ class FabricTranslationError(ValueError):
 def translate_agent_config(config: AgentConfig, harness_name: str | None = None) -> fabric.FabricConfig:
     """Translate Platform-owned agent config into a typed in-memory FabricConfig."""
     selected_harness_name, harness = _select_harness(config, harness_name)
-    model = _resolve_model(config, selected_harness_name, harness)
     _validate_untranslated_shared_fields(config)
+    model: ModelConfig | None = None
+    models: dict[str, fabric.ModelConfig | dict[str, Any]] = {}
+    if harness.kind == "nat":
+        _validate_nat_harness(config, selected_harness_name, harness)
+    else:
+        model = _resolve_model(config, selected_harness_name, harness)
+        models["default"] = fabric.ModelConfig(**_model_payload(model))
 
     fabric_config = fabric.FabricConfig(
         metadata=fabric.MetadataConfig(name=config.name, description=config.description or None),
@@ -36,9 +43,7 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
             resolution="preinstalled",
             settings=harness.settings,
         ),
-        models={
-            "default": fabric.ModelConfig(**_model_payload(model)),
-        },
+        models=models,
         environment=fabric.EnvironmentConfig(
             provider=config.environment.provider,
             workspace=config.environment.workspace,
@@ -50,7 +55,8 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
         tools=_tools_config(config),
     )
 
-    _apply_telemetry(fabric_config, config, model)
+    if model is not None:
+        _apply_telemetry(fabric_config, config, model)
     return fabric_config
 
 
@@ -83,6 +89,27 @@ def _resolve_model(config: AgentConfig, harness_name: str, harness: HarnessConfi
             f"Harness {harness_name!r} does not define a model and no models.default is configured."
         )
     return model
+
+
+def _validate_nat_harness(config: AgentConfig, harness_name: str, harness: HarnessConfig) -> None:
+    if harness.model is not None or config.models:
+        raise FabricTranslationError(
+            f"NAT harness {harness_name!r} cannot define Platform models; configure models in the NAT config file."
+        )
+
+    if config.skills:
+        raise FabricTranslationError(
+            f"NAT harness {harness_name!r} does not map Platform skills; configure skills in the NAT config file."
+        )
+
+    config_file = harness.settings.get("config_file")
+    if not isinstance(config_file, str) or not config_file.strip():
+        raise FabricTranslationError(f"NAT harness {harness_name!r} requires a non-empty harness.settings.config_file.")
+
+    if config.telemetry.enabled:
+        raise FabricTranslationError(
+            f"NAT harness {harness_name!r} does not map Platform telemetry; configure telemetry in the NAT config file."
+        )
 
 
 def _model_payload(model: ModelConfig) -> dict[str, Any]:
