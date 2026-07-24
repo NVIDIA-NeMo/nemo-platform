@@ -11,6 +11,7 @@ import type {
 import {
   activeRolesForStrategy,
   DETECTION_ROLES,
+  DEFAULT_MODEL_TIMEOUT_SECONDS,
   DEFAULT_PREVIEW_ROWS,
   ENTITY_MODE_CUSTOM,
   REPLACE_ROLE,
@@ -110,9 +111,9 @@ export const buildAnonymizerJobRequest = (form: AnonymizerFormData): RunJobReque
     const roleModel = form.roleModels[role];
     const model = roleModel?.model.trim() ?? '';
     const provider = roleModel?.provider.trim() ?? '';
-    const params = roleModel?.params;
-    const hasParams = params != null && Object.keys(params).length > 0;
-    const key = `${provider}::${model}::${hasParams ? JSON.stringify(params) : ''}`;
+    // Default a generous timeout; user-supplied params override it.
+    const params = { timeout: DEFAULT_MODEL_TIMEOUT_SECONDS, ...(roleModel?.params ?? {}) };
+    const key = `${provider}::${model}::${JSON.stringify(params)}`;
     let alias = aliasByModel.get(key);
     if (!alias) {
       alias = `model-${aliasByModel.size + 1}`;
@@ -121,9 +122,7 @@ export const buildAnonymizerJobRequest = (form: AnonymizerFormData): RunJobReque
         alias,
         model,
         provider,
-        ...(hasParams
-          ? { inference_parameters: params as ModelConfig['inference_parameters'] }
-          : {}),
+        inference_parameters: params as ModelConfig['inference_parameters'],
       });
     }
     aliasForRole[role] = alias;

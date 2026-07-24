@@ -47,10 +47,15 @@ describe('buildAnonymizerJobRequest', () => {
     expect(req.spec.data.data_summary).toBeUndefined();
   });
 
-  it('deduplicates identical role models into a single model_config', () => {
+  it('deduplicates identical role models into a single model_config with a default timeout', () => {
     const req = buildAnonymizerJobRequest(form({ strategy: 'substitute' }));
     expect(req.spec.model_configs).toEqual([
-      { alias: 'model-1', model: 'openai/gpt-oss-120b', provider: 'default/nvidia' },
+      {
+        alias: 'model-1',
+        model: 'openai/gpt-oss-120b',
+        provider: 'default/nvidia',
+        inference_parameters: { timeout: 300 },
+      },
     ]);
   });
 
@@ -121,7 +126,9 @@ describe('buildAnonymizerJobRequest', () => {
     const req = buildAnonymizerJobRequest(form({ strategy: 'substitute', roleModels: models }));
     // Same model+provider but one role has params → two distinct configs.
     expect(req.spec.model_configs).toHaveLength(2);
-    const withParams = req.spec.model_configs?.find((c) => c.inference_parameters);
-    expect(withParams?.inference_parameters).toEqual({ temperature: 0.1 });
+    const withTemp = req.spec.model_configs?.find(
+      (c) => (c.inference_parameters as { temperature?: number })?.temperature != null
+    );
+    expect(withTemp?.inference_parameters).toEqual({ timeout: 300, temperature: 0.1 });
   });
 });

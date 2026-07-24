@@ -63,6 +63,13 @@ export const DEFAULT_PREVIEW_ROWS = 1;
 /** Above this file size, skip column introspection and fall back to a text input. */
 export const MAX_COLUMN_INTROSPECTION_BYTES = 50 * 1024 * 1024;
 
+/**
+ * Default per-request model timeout (seconds). Generous so slower reasoning
+ * models don't hit ModelTimeoutError during entity validation. User-supplied
+ * inference params override it.
+ */
+export const DEFAULT_MODEL_TIMEOUT_SECONDS = 300;
+
 /** Role names the anonymizer workflows resolve against `model_configs` aliases. */
 export const DETECTION_ROLES = [
   'entity_detector',
