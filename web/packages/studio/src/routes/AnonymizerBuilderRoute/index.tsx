@@ -31,7 +31,7 @@ import {
   buildAnonymizerJobRequest,
   getAnonymizerFormDefaults,
 } from '@studio/routes/AnonymizerBuilderRoute/schema';
-import { getAnonymizerJobRoute, getWorkspaceAnonymizerRoute } from '@studio/routes/utils';
+import { getWorkspaceAnonymizerRoute, getWorkspaceJobDetailRoute } from '@studio/routes/utils';
 import { FC, useState } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
@@ -67,9 +67,11 @@ export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
       const createJob = useAnonymizerCreateRunJob({
         mutation: {
           onSuccess: (job: RunJob) =>
+            // Anonymizer jobs are platform jobs; route to the generic job
+            // detail until the dedicated Anonymizer job page (ASTD-330) lands.
             navigate(
               job.name
-                ? getAnonymizerJobRoute(workspace, job.name)
+                ? getWorkspaceJobDetailRoute(workspace, job.name)
                 : getWorkspaceAnonymizerRoute(workspace)
             ),
           onError: (error) =>
