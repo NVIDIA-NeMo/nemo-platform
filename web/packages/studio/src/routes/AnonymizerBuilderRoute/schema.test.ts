@@ -129,6 +129,10 @@ describe('buildAnonymizerJobRequest', () => {
     const withTemp = req.spec.model_configs?.find(
       (c) => (c.inference_parameters as { temperature?: number })?.temperature != null
     );
-    expect(withTemp?.inference_parameters).toEqual({ timeout: 500, max_tokens: 16384, temperature: 0.1 });
+    expect(withTemp?.inference_parameters).toEqual({
+      timeout: 500,
+      max_tokens: 16384,
+      temperature: 0.1,
+    });
   });
 });
