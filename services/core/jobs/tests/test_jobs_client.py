@@ -253,8 +253,8 @@ async def test_logs_round_trip(
         "job_task": "task-1",
     }
     assert logs_client.query_logs.await_args_list == [
-        call(job.fileset, workspace="default", filters=filters, page_size=5, page_cursor=None),
-        call(job.fileset, workspace="default", filters=filters, page_size=5, page_cursor="cursor-2"),
+        call(job.fileset, workspace="default", filters=filters, page_size=5, page_cursor=None, subpath=None),
+        call(job.fileset, workspace="default", filters=filters, page_size=5, page_cursor="cursor-2", subpath=None),
     ]
 
 
