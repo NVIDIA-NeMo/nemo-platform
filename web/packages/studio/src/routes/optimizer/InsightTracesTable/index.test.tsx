@@ -20,24 +20,28 @@ const makeTrace = (sequence: number): Trace => ({
 
 const installTraceHandler = ({
   traces,
-  failedIds = [],
+  missingIds = [],
 }: {
   traces: Trace[];
-  failedIds?: string[];
+  missingIds?: string[];
 }) => {
-  const requests: Array<{ id: string; mode: string | null }> = [];
+  const requests: URL[] = [];
   const tracesById = new Map(traces.map((trace) => [trace.id, trace]));
 
   server.use(
-    http.get('*/apis/intake/v2/workspaces/:workspace/traces/:traceId', ({ params, request }) => {
-      const id = String(params['traceId']);
-      requests.push({ id, mode: new URL(request.url).searchParams.get('mode') });
+    http.get('*/apis/intake/v2/workspaces/:workspace/traces', ({ request }) => {
+      const url = new URL(request.url);
+      requests.push(url);
+      const requestedIds = url.searchParams.getAll('filter[id][$in]');
+      const data = requestedIds
+        .filter((id) => !missingIds.includes(id))
+        .flatMap((id) => {
+          const trace = tracesById.get(id);
+          return trace ? [trace] : [];
+        })
+        .reverse();
 
-      if (failedIds.includes(id)) {
-        return HttpResponse.json({ detail: `Could not load ${id}` }, { status: 500 });
-      }
-
-      return HttpResponse.json(tracesById.get(id));
+      return HttpResponse.json({ data });
     })
   );
 
@@ -49,21 +53,21 @@ describe('InsightTracesTable', () => {
     const user = userEvent.setup();
     const traces = Array.from({ length: 11 }, (_, index) => makeTrace(index + 1));
     const traceIds = traces.map((trace) => trace.id);
-    const requests = installTraceHandler({ traces });
+    const missingId = traces[9].id;
+    const requests = installTraceHandler({ traces, missingIds: [missingId] });
 
     renderRoute(<InsightTracesTable workspace={DEFAULT_WORKSPACE} traceIds={traceIds} />, {
       history: '/optimizer?page_size=10',
     });
 
+    expect(screen.queryByText("10 of 10 traces couldn't be loaded.")).not.toBeInTheDocument();
+
     await screen.findByText('Trace 01');
-    await waitFor(() =>
-      expect(requests).toEqual(
-        traceIds.slice(0, 10).map((id) => ({
-          id,
-          mode: 'preview',
-        }))
-      )
-    );
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0].searchParams.get('mode')).toBe('preview');
+    expect(requests[0].searchParams.getAll('filter[id][$in]')).toEqual(traceIds.slice(0, 10));
+    expect(screen.getByText("1 of 10 traces couldn't be loaded.")).toBeInTheDocument();
+    expect(screen.queryByText('Trace 10')).not.toBeInTheDocument();
     expect(screen.queryByText('Trace 11')).not.toBeInTheDocument();
     const rows = screen.getAllByRole('row');
     expect(rows[1]).toHaveTextContent('Trace 01');
@@ -73,36 +77,21 @@ describe('InsightTracesTable', () => {
     await user.click(screen.getByRole('button', { name: /next page/i }));
 
     expect(await screen.findByText('Trace 11')).toBeInTheDocument();
-    await waitFor(() => expect(requests.map(({ id }) => id)).toEqual(traceIds));
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests[1].searchParams.getAll('filter[id][$in]')).toEqual(['trace-11']);
     expect(screen.queryByText('Trace 01')).not.toBeInTheDocument();
     expect(screen.getByText('11-11 of 11 items')).toBeInTheDocument();
   });
 
-  it('keeps successful rows visible when part of the current page fails', async () => {
-    const traces = [makeTrace(1), makeTrace(2)];
-    installTraceHandler({ traces, failedIds: [traces[1].id] });
-
-    renderRoute(
-      <InsightTracesTable
-        workspace={DEFAULT_WORKSPACE}
-        traceIds={traces.map((trace) => trace.id)}
-      />
+  it('shows an error instead of an empty state when the list request fails', async () => {
+    server.use(
+      http.get('*/apis/intake/v2/workspaces/:workspace/traces', () =>
+        HttpResponse.json({ detail: 'Could not load traces' }, { status: 500 })
+      )
     );
 
-    expect(await screen.findByText('Trace 01')).toBeInTheDocument();
-    expect(screen.getByText("1 of 2 traces couldn't be loaded.")).toBeInTheDocument();
-    expect(screen.getByText('1-2 of 2 items')).toBeInTheDocument();
-  });
-
-  it('shows an error instead of an empty state when every current-page request fails', async () => {
-    const traces = [makeTrace(1), makeTrace(2)];
-    installTraceHandler({ traces, failedIds: traces.map((trace) => trace.id) });
-
     renderRoute(
-      <InsightTracesTable
-        workspace={DEFAULT_WORKSPACE}
-        traceIds={traces.map((trace) => trace.id)}
-      />
+      <InsightTracesTable workspace={DEFAULT_WORKSPACE} traceIds={[makeTrace(1).id]} />
     );
 
     expect(await screen.findByText('Error')).toBeInTheDocument();

@@ -38,6 +38,16 @@ def require_string_value(comparison: ComparisonOperation) -> str:
     return value
 
 
+def require_string_or_list_value(comparison: ComparisonOperation) -> list[str]:
+    """Accept an equality string or an `$in` list of strings, normalized to a list."""
+    if comparison.operator != FilterOperator.IN:
+        return [require_string_value(comparison)]
+    value = comparison.value
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise _bad_filter(f"Filter field {comparison.field!r} with $in must be a list of strings.")
+    return value
+
+
 def require_enum_value(comparison: ComparisonOperation, enum_type: type[_TEnum]) -> _TEnum:
     value = require_eq_value(comparison)
     try:

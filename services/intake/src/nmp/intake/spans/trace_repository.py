@@ -142,7 +142,7 @@ class TraceRepository:
 
     async def get_trace(self, *, workspace: str, trace_id: str, mode: TraceMode) -> IntakeTrace | None:
         result = await self.list_traces(
-            filters=TraceListFilter(workspace=workspace, trace_id=trace_id),
+            filters=TraceListFilter(workspace=workspace, trace_ids=[trace_id]),
             page=1,
             page_size=1,
             sort="-started_at",
@@ -370,9 +370,9 @@ def _trace_index_where(filters: TraceListFilter, *, qualifier: str) -> tuple[str
     clauses = [f"{column('workspace')} = %(workspace)s", f"{column('is_deleted')} = 0"]
     parameters: dict[str, Any] = {"workspace": filters.workspace}
 
-    if filters.trace_id is not None:
-        clauses.append(f"{column('trace_id')} = %(trace_id)s")
-        parameters["trace_id"] = filters.trace_id
+    if filters.trace_ids is not None:
+        clauses.append(f"{column('trace_id')} IN %(trace_ids)s")
+        parameters["trace_ids"] = filters.trace_ids
     if filters.session_id is not None:
         clauses.append(f"{column('session_id')} = %(session_id)s")
         parameters["session_id"] = filters.session_id

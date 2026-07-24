@@ -1,23 +1,21 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { withOperators } from '@nemo/common/src/api/filterOperators';
 import { EditColumnsMenu } from '@nemo/common/src/components/DataView/internal';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
-import { getGetTraceQueryKey, getTrace } from '@nemo/sdk/generated/platform/api';
-import type { Trace } from '@nemo/sdk/generated/platform/schema';
+import { useListTraces } from '@nemo/sdk/generated/platform/api';
+import type { Trace, TraceFilter } from '@nemo/sdk/generated/platform/schema';
 import { Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { IntakeTelemetryDataView } from '@studio/components/IntakeLists/IntakeTelemetryDataView';
 import { makeIntakeTraceColumns } from '@studio/components/IntakeLists/intakeTraceColumns';
 import { getIntakeSessionTraceRoute } from '@studio/routes/utils';
-import { useQueries } from '@tanstack/react-query';
 import { Columns3, TriangleAlert } from 'lucide-react';
 import { type FC } from 'react';
 import { useNavigate } from 'react-router-dom';
-
-const TRACE_PREVIEW_PARAMS = { mode: 'preview' } as const;
 
 export interface InsightTracesTableProps {
   workspace: string;
@@ -37,24 +35,30 @@ export const InsightTracesTable: FC<InsightTracesTableProps> = ({ workspace, tra
   const firstVisibleIndex = pageIndex * pageSize;
   const visibleTraceIds = traceIds.slice(firstVisibleIndex, firstVisibleIndex + pageSize);
 
-  const results = useQueries({
-    queries: visibleTraceIds.map((id) => ({
-      queryKey: getGetTraceQueryKey(workspace, id, TRACE_PREVIEW_PARAMS),
-      queryFn: ({ signal }) => getTrace(workspace, id, TRACE_PREVIEW_PARAMS, signal),
-      enabled: Boolean(workspace) && Boolean(id),
-    })),
-  });
+  const { data, error, isFetching } = useListTraces(
+    workspace,
+    {
+      filter: withOperators<TraceFilter>({ id: { $in: visibleTraceIds } }),
+      mode: 'preview',
+      page: 1,
+      page_size: pageSize,
+    },
+    {
+      query: {
+        enabled: Boolean(workspace) && visibleTraceIds.length > 0,
+      },
+    }
+  );
 
-  const traces = results.map((r) => r.data).filter((t): t is Trace => Boolean(t));
-  const isFetching = results.some((r) => r.isFetching);
-  const failedCount = results.filter((r) => r.isError).length;
-  const allFailed =
-    visibleTraceIds.length > 0 && failedCount === visibleTraceIds.length && !isFetching;
-  const firstError = results.find((r) => r.error)?.error;
+  const tracesById = new Map((data?.data ?? []).map((trace) => [trace.id, trace]));
+  const traces = visibleTraceIds
+    .map((id) => tracesById.get(id))
+    .filter((trace): trace is Trace => trace !== undefined);
+  const failedCount = visibleTraceIds.length - traces.length;
 
   return (
     <Stack className="gap-density-sm">
-      {failedCount > 0 && !allFailed ? (
+      {failedCount > 0 && !error && !isFetching ? (
         <Flex className="items-center gap-density-sm">
           <TriangleAlert aria-hidden className="size-4 shrink-0 text-danger" />
           <Text kind="body/regular/sm" className="text-danger">
@@ -84,7 +88,7 @@ export const InsightTracesTable: FC<InsightTracesTableProps> = ({ workspace, tra
           DataViewRoot: {
             data: traces,
             totalCount: traceIds.length,
-            requestStatus: allFailed ? 'error' : isFetching ? 'loading' : undefined,
+            requestStatus: error ? 'error' : isFetching ? 'loading' : undefined,
           },
           DataViewTableContent: {
             renderEmptyState: () => (
@@ -94,9 +98,7 @@ export const InsightTracesTable: FC<InsightTracesTableProps> = ({ workspace, tra
               />
             ),
             renderErrorState: () => (
-              <ErrorMessage
-                message={getErrorMessage(firstError ?? new Error('Failed to load traces'))}
-              />
+              <ErrorMessage message={getErrorMessage(error ?? new Error('Failed to load traces'))} />
             ),
           },
         }}

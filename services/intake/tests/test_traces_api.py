@@ -19,7 +19,7 @@ def test_trace_filter_maps_public_fields_to_repository_filter():
         "workspace-a",
         _parsed_filter(
             {
-                "id": "trace-a",
+                "id": {"$in": ["trace-a", "trace-b"]},
                 "session_id": "session-a",
                 "status": "error",
                 "started_at": {"$gte": started_at.isoformat()},
@@ -30,7 +30,7 @@ def test_trace_filter_maps_public_fields_to_repository_filter():
     )
 
     assert filters.workspace == "workspace-a"
-    assert filters.trace_id == "trace-a"
+    assert filters.trace_ids == ["trace-a", "trace-b"]
     assert filters.session_id == "session-a"
     assert filters.status == SpanStatus.ERROR
     assert filters.started_at_gte == started_at
@@ -69,6 +69,7 @@ def test_trace_filter_schema_exposes_evaluation_id_with_deprecated_experiment_id
 def test_trace_filter_applies_no_implicit_time_bound():
     filters = _trace_filter("workspace-a", _parsed_filter({"id": "trace-a"}))
 
+    assert filters.trace_ids == ["trace-a"]
     assert filters.started_at_gte is None
     assert filters.started_at_lte is None
 

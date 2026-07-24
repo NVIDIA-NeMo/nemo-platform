@@ -66,7 +66,7 @@ async def test_summary_mode_reads_root_spans_without_metric_aggregates():
     repository = _repository(client)
 
     await repository.list_traces(
-        filters=TraceListFilter(workspace="workspace-a"),
+        filters=TraceListFilter(workspace="workspace-a", trace_ids=["trace-a", "trace-b"]),
         page=1,
         page_size=10,
         sort="started_at",
@@ -80,6 +80,8 @@ async def test_summary_mode_reads_root_spans_without_metric_aggregates():
     assert "trace_roots.root_output" not in client.queries[0]
     assert "LIMIT 1 BY trace_roots.workspace, trace_roots.source_format, trace_roots.trace_id" in client.queries[0]
     assert "span_versions" not in client.queries[0]
+    assert "trace_roots.trace_id IN %(trace_ids)s" in client.queries[0]
+    assert client.parameters[0]["trace_ids"] == ["trace-a", "trace-b"]
     assert "sumIf" not in client.queries[1]
     assert "groupUniqArrayIf" not in client.queries[1]
     assert "span_versions" not in client.queries[1]
