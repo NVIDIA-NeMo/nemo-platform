@@ -70,6 +70,13 @@ export const MAX_COLUMN_INTROSPECTION_BYTES = 50 * 1024 * 1024;
  */
 export const DEFAULT_MODEL_TIMEOUT_SECONDS = 500;
 
+/**
+ * Default per-request max output tokens. High enough for reasoning models to
+ * finish their structured-output response without truncation. User-supplied
+ * inference params override it.
+ */
+export const DEFAULT_MODEL_MAX_TOKENS = 16384;
+
 /** Role names the anonymizer workflows resolve against `model_configs` aliases. */
 export const DETECTION_ROLES = [
   'entity_detector',

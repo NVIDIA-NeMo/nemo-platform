@@ -11,6 +11,7 @@ import type {
 import {
   activeRolesForStrategy,
   DETECTION_ROLES,
+  DEFAULT_MODEL_MAX_TOKENS,
   DEFAULT_MODEL_TIMEOUT_SECONDS,
   DEFAULT_PREVIEW_ROWS,
   ENTITY_MODE_CUSTOM,
@@ -111,8 +112,12 @@ export const buildAnonymizerJobRequest = (form: AnonymizerFormData): RunJobReque
     const roleModel = form.roleModels[role];
     const model = roleModel?.model.trim() ?? '';
     const provider = roleModel?.provider.trim() ?? '';
-    // Default a generous timeout; user-supplied params override it.
-    const params = { timeout: DEFAULT_MODEL_TIMEOUT_SECONDS, ...(roleModel?.params ?? {}) };
+    // Default a generous timeout and max_tokens; user params override.
+    const params = {
+      timeout: DEFAULT_MODEL_TIMEOUT_SECONDS,
+      max_tokens: DEFAULT_MODEL_MAX_TOKENS,
+      ...(roleModel?.params ?? {}),
+    };
     const key = `${provider}::${model}::${JSON.stringify(params)}`;
     let alias = aliasByModel.get(key);
     if (!alias) {
