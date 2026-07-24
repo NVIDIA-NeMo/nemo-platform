@@ -94,4 +94,19 @@ describe('buildAnonymizerJobRequest', () => {
       expect(ROLE_LABELS[role]).toBeTruthy();
     }
   });
+
+  it('attaches inference_parameters and splits configs when params differ', () => {
+    const models = roleModels('openai/gpt-oss-120b', 'default/nvidia');
+    models[DETECTION_ROLES[0]] = {
+      modelId: 'gpt',
+      model: 'openai/gpt-oss-120b',
+      provider: 'default/nvidia',
+      params: { temperature: 0.1 },
+    };
+    const req = buildAnonymizerJobRequest(form({ strategy: 'substitute', roleModels: models }));
+    // Same model+provider but one role has params → two distinct configs.
+    expect(req.spec.model_configs).toHaveLength(2);
+    const withParams = req.spec.model_configs?.find((c) => c.inference_parameters);
+    expect(withParams?.inference_parameters).toEqual({ temperature: 0.1 });
+  });
 });

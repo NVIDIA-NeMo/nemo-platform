@@ -25,6 +25,7 @@ const roleModelSchema = z.object({
   modelId: z.string(),
   model: z.string(),
   provider: z.string(),
+  params: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const anonymizerFormSchema = z
@@ -94,14 +95,24 @@ export const buildAnonymizerJobRequest = (form: AnonymizerFormData): RunJobReque
   const aliasForRole: Record<string, string> = {};
 
   for (const role of activeRolesForStrategy(form.strategy)) {
-    const model = form.roleModels[role]?.model.trim() ?? '';
-    const provider = form.roleModels[role]?.provider.trim() ?? '';
-    const key = `${provider}::${model}`;
+    const roleModel = form.roleModels[role];
+    const model = roleModel?.model.trim() ?? '';
+    const provider = roleModel?.provider.trim() ?? '';
+    const params = roleModel?.params;
+    const hasParams = params != null && Object.keys(params).length > 0;
+    const key = `${provider}::${model}::${hasParams ? JSON.stringify(params) : ''}`;
     let alias = aliasByModel.get(key);
     if (!alias) {
       alias = `model-${aliasByModel.size + 1}`;
       aliasByModel.set(key, alias);
-      modelConfigs.push({ alias, model, provider });
+      modelConfigs.push({
+        alias,
+        model,
+        provider,
+        ...(hasParams
+          ? { inference_parameters: params as ModelConfig['inference_parameters'] }
+          : {}),
+      });
     }
     aliasForRole[role] = alias;
   }
