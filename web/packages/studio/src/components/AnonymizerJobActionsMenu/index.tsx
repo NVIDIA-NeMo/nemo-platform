@@ -15,7 +15,7 @@ import {
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getAnonymizerJobRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
-import { type FC, useCallback, useState } from 'react';
+import { type FC, useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 interface AnonymizerJobActionsMenuProps {
@@ -50,45 +50,50 @@ export const AnonymizerJobActionsMenu: FC<AnonymizerJobActionsMenuProps> = ({
     },
   });
 
+  const { mutateAsync: cancelJob } = cancelJobMutation;
+
   const handleCancel = useCallback(async () => {
     if (!job.workspace || !job.name) return;
     try {
       onCancelError?.(undefined);
-      await cancelJobMutation.mutateAsync({ workspace: job.workspace, name: job.name });
+      await cancelJob({ workspace: job.workspace, name: job.name });
     } catch {
       // Error is surfaced via the mutation's onError callback.
     }
-  }, [job.workspace, job.name, cancelJobMutation, onCancelError]);
+  }, [job.workspace, job.name, cancelJob, onCancelError]);
 
   const isCancellable = job.status != null && CJobCancellableStatuses.includes(job.status);
 
-  const actions: QuickActionItem[] = [
-    ...(includeViewDetails
-      ? [
-          {
-            label: 'View details',
-            onSelect: () => {
-              if (job.name) {
-                navigate(getAnonymizerJobRoute(workspace, job.name));
-              }
+  const actions = useMemo<QuickActionItem[]>(
+    () => [
+      ...(includeViewDetails
+        ? [
+            {
+              label: 'View details',
+              onSelect: () => {
+                if (job.name) {
+                  navigate(getAnonymizerJobRoute(workspace, job.name));
+                }
+              },
             },
-          },
-        ]
-      : []),
-    ...(isCancellable
-      ? [
-          {
-            label: 'Cancel',
-            onSelect: handleCancel,
-          },
-        ]
-      : []),
-    {
-      label: 'Delete',
-      onSelect: () => setShowDeleteModal(true),
-      danger: true,
-    },
-  ];
+          ]
+        : []),
+      ...(isCancellable
+        ? [
+            {
+              label: 'Cancel',
+              onSelect: handleCancel,
+            },
+          ]
+        : []),
+      {
+        label: 'Delete',
+        onSelect: () => setShowDeleteModal(true),
+        danger: true,
+      },
+    ],
+    [includeViewDetails, isCancellable, handleCancel, navigate, workspace, job.name]
+  );
 
   return (
     <>

@@ -119,73 +119,70 @@ export const AnonymizerJobsDataView: FC = () => {
   const hasActiveFilters =
     Boolean(dataViewState.debouncedSearchBar) || dataViewState.debouncedColumnFilters.length > 0;
 
-  const resetFilters = useCallback(() => {
-    dataViewState.resetFilters();
-  }, [dataViewState]);
-
-  const makeColumns: ComponentProps<typeof StudioDataView<AnonymizerJobWithId>>['makeColumns'] = (
-    { accessor },
-    { rowSelectionColumn, rowActionsColumn }
-  ) => [
-    rowSelectionColumn({ size: ROW_SELECTION_COLUMN_SIZE }),
-    accessor('name', {
-      header: 'Name',
-      cell: ({ row }) => row.original.name,
-    }),
-    accessor('description', {
-      header: 'Description',
-      cell: ({ row }) => (
-        <Text className="max-w-[200px] truncate" kind="body/regular/md">
-          {row.original.description ?? '-'}
-        </Text>
-      ),
-    }),
-    accessor('created_at', {
-      id: 'created_at',
-      header: 'Created',
-      enableSorting: true,
-      size: 150,
-      meta: {
-        filter: dateTimeFilter('Created At'),
-      },
-      cell: ({ row }) =>
-        row.original.created_at ? <RelativeTime datetime={row.original.created_at} /> : null,
-    }),
-    accessor('status', {
-      header: 'Status',
-      size: 125,
-      meta: {
-        filter: {
-          type: 'single-select' as const,
-          label: 'Status',
-          options: STATUS_FILTER_OPTIONS,
-        },
-      },
-      cell: ({ row }) =>
-        row.original.status ? <StatusBadge status={row.original.status} /> : null,
-    }),
-    accessor('updated_at', {
-      id: 'updated_at',
-      header: 'Updated',
-      enableSorting: false,
-      meta: {
-        filter: dateTimeFilter('Updated At'),
-      },
-      cell: ({ row }) =>
-        row.original?.updated_at ? <RelativeTime datetime={row.original.updated_at} /> : null,
-    }),
-    rowActionsColumn({
-      size: 70,
-      enableResizing: false,
-      cell: ({ row }) => (
-        <AnonymizerJobActionsMenu
-          job={row.original}
-          includeViewDetails
-          onCancelError={setCancelError}
-        />
-      ),
-    }),
-  ];
+  const makeColumns: ComponentProps<typeof StudioDataView<AnonymizerJobWithId>>['makeColumns'] =
+    useCallback(
+      ({ accessor }, { rowSelectionColumn, rowActionsColumn }) => [
+        rowSelectionColumn({ size: ROW_SELECTION_COLUMN_SIZE }),
+        accessor('name', {
+          header: 'Name',
+          cell: ({ row }) => row.original.name,
+        }),
+        accessor('description', {
+          header: 'Description',
+          cell: ({ row }) => (
+            <Text className="max-w-[200px] truncate" kind="body/regular/md">
+              {row.original.description ?? '-'}
+            </Text>
+          ),
+        }),
+        accessor('created_at', {
+          id: 'created_at',
+          header: 'Created',
+          enableSorting: true,
+          size: 150,
+          meta: {
+            filter: dateTimeFilter('Created At'),
+          },
+          cell: ({ row }) =>
+            row.original.created_at ? <RelativeTime datetime={row.original.created_at} /> : null,
+        }),
+        accessor('status', {
+          header: 'Status',
+          size: 125,
+          meta: {
+            filter: {
+              type: 'single-select' as const,
+              label: 'Status',
+              options: STATUS_FILTER_OPTIONS,
+            },
+          },
+          cell: ({ row }) =>
+            row.original.status ? <StatusBadge status={row.original.status} /> : null,
+        }),
+        accessor('updated_at', {
+          id: 'updated_at',
+          header: 'Updated',
+          enableSorting: false,
+          meta: {
+            filter: dateTimeFilter('Updated At'),
+          },
+          cell: ({ row }) =>
+            row.original?.updated_at ? <RelativeTime datetime={row.original.updated_at} /> : null,
+        }),
+        rowActionsColumn({
+          size: 70,
+          enableResizing: false,
+          cell: ({ row }) => (
+            <AnonymizerJobActionsMenu
+              job={row.original}
+              includeViewDetails
+              onCancelError={setCancelError}
+            />
+          ),
+        }),
+      ],
+      []
+    );
 
   const totalResults = anonymizerResponse?.pagination?.total_results ?? 0;
 
@@ -227,7 +224,7 @@ export const AnonymizerJobsDataView: FC = () => {
                   header="No Results Found"
                   emptyMessage="No jobs match your search criteria"
                   actions={
-                    <Button kind="tertiary" onClick={resetFilters}>
+                    <Button kind="tertiary" onClick={dataViewState.resetFilters}>
                       Clear Filters
                     </Button>
                   }
