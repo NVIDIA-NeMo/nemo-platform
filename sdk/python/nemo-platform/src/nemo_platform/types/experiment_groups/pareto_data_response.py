@@ -15,41 +15,23 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Dict, Optional
-from datetime import datetime
+from typing import List
 
 from ..._models import BaseModel
 from .pareto_config import ParetoConfig
+from .pareto_metric_point import ParetoMetricPoint
 
-__all__ = ["ExperimentGroupResponse"]
+__all__ = ["ParetoDataResponse"]
 
 
-class ExperimentGroupResponse(BaseModel):
-    """ExperimentGroup as served by the API."""
+class ParetoDataResponse(BaseModel):
+    """
+    Everything the Pareto chart needs for a group: the configured default axes plus one point per
+    evaluation (cost/latency/evaluator means). Unpaginated and slim — the client plots the whole set
+    and computes the frontier from any two metrics without refetching.
+    """
 
-    id: str
-
-    default_sort: str
-
-    experiment_count: int
-    """Deprecated alias for evaluation_count."""
-
-    name: str
-
-    workspace: str
-
-    created_at: Optional[datetime] = None
-
-    description: Optional[str] = None
-
-    evaluation_count: Optional[int] = None
-    """Number of live (non-soft-deleted) evaluations in this group."""
-
-    insight_id: Optional[str] = None
-
-    metadata: Optional[Dict[str, str]] = None
-
-    pareto: Optional[ParetoConfig] = None
+    pareto: ParetoConfig
     """Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
 
     Metric ids use the same vocabulary as the evaluations list sort/filter fields —
@@ -58,6 +40,5 @@ class ExperimentGroupResponse(BaseModel):
     render before anyone customizes it.
     """
 
-    summary: Optional[str] = None
-
-    updated_at: Optional[datetime] = None
+    points: List[ParetoMetricPoint]
+    """One point per live evaluation in the group."""

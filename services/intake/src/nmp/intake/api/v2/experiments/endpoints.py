@@ -37,6 +37,8 @@ from nmp.intake.api.v2.experiments.schemas import (
     ExperimentGroupFilter,
     ExperimentGroupRequest,
     ExperimentGroupResponse,
+    ParetoDataResponse,
+    ParetoMetricPoint,
 )
 
 # The API/Studio expose this as an "Evaluation", but it is still stored as the Experiment entity
@@ -149,6 +151,7 @@ async def create_experiment_group(
         summary=body.summary,
         metadata=body.metadata,
         default_sort=body.default_sort,
+        pareto=body.pareto,
     )
     try:
         created = await entity_client.create(entity)
@@ -266,12 +269,93 @@ async def update_experiment_group(
     existing.summary = body.summary
     existing.metadata = body.metadata
     existing.default_sort = body.default_sort
+    existing.pareto = body.pareto
     updated = await entity_client.update(existing)
     response = ExperimentGroupResponse.from_entity(updated)
     response.evaluation_count = await _count_live_evaluations_in_group(
         entity_client, workspace=workspace, group_id=updated.id
     )
     return response
+
+
+@router.get(
+    "/v2/workspaces/{workspace}/experiment-groups/{name}/pareto",
+    response_model=ParetoDataResponse,
+    tags=[GROUPS_TAG],
+    responses={
+        404: {"description": "Experiment group not found"},
+        413: {"description": "Group exceeds the per-request evaluation cap"},
+        503: {"description": "Telemetry store unavailable for metric data"},
+    },
+)
+async def get_experiment_group_pareto(
+    workspace: str,
+    name: str,
+    entity_client: EntityClientDep,
+    rollup_repository: EvaluationRollupRepositoryDep,
+) -> ParetoDataResponse:
+    """Cost/latency/evaluator means for every evaluation in the group, plus the group's default axes.
+
+    Purpose-built for the Pareto chart: a slim, unpaginated projection of the same rollups the
+    leaderboard shows, so the client plots the full point set in one call and computes the frontier
+    from any two metrics without refetching (and without paging the full evaluations list).
+    """
+    group = await _get_or_404(entity_client, ExperimentGroup, workspace=workspace, name=name, label="Experiment group")
+    _reject_if_deleted(group, workspace=workspace, name=name, label="Experiment group")
+
+    live_in_group = LogicalOperation(
+        operator=FilterOperator.AND,
+        operations=[
+            _group_membership_filter(group.id),
+            LogicalOperation(
+                operator=FilterOperator.NOT,
+                operations=[
+                    ComparisonOperation(operator=FilterOperator.EQ, field="data.is_deleted", value=True),
+                ],
+            ),
+        ],
+    )
+    result = await entity_client.list(
+        Evaluation,
+        workspace=workspace,
+        filter_operation=live_in_group,
+        page=1,
+        page_size=_MAX_GROUP_EVALUATIONS,
+    )
+    if result.pagination.total_results > _MAX_GROUP_EVALUATIONS:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                f"This group has {result.pagination.total_results} evaluations, exceeding the maximum of "
+                f"{_MAX_GROUP_EVALUATIONS} the Pareto view can plot in one request."
+            ),
+        )
+
+    responses = [EvaluationResponse.from_entity(e) for e in result.data]
+    hydrated = await _hydrate_rollups(workspace=workspace, responses=responses, rollup_repository=rollup_repository)
+    # The Pareto view is metric data by definition; without rollups every point would be empty, so
+    # fail loudly rather than return a chart with nothing to plot.
+    if not hydrated:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Cannot build the Pareto view: the telemetry store is unavailable.",
+        )
+
+    points = [
+        ParetoMetricPoint(
+            name=response.name,
+            evaluation_id=response.id,
+            cost_usd=response.cost_usd.mean if response.cost_usd else None,
+            latency_ms=response.latency_ms.mean if response.latency_ms else None,
+            evaluators={
+                evaluator: aggregate.mean
+                for evaluator, aggregate in (response.aggregate_scores or {}).items()
+                if aggregate.mean is not None
+            },
+        )
+        for response in responses
+    ]
+    return ParetoDataResponse(pareto=group.pareto, points=points)
 
 
 @router.delete(

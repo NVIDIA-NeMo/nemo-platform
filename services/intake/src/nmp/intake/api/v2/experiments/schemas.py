@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Annotated, Self
 
 from nmp.common.entities.values import DatetimeFilter, Filter, NumberFilter, map_entity_field
-from nmp.intake.entities.experiments import Experiment, ExperimentGroup
+from nmp.intake.entities.experiments import Experiment, ExperimentGroup, ParetoConfig
 from nmp.intake.spans.domain import (
     INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT,
     IntakeResponseMode,
@@ -47,6 +47,10 @@ class ExperimentGroupRequest(BaseModel):
             "'-created_at'. Accepts any field the evaluations list `sort` param does; clients apply it as "
             "the list `sort` param."
         ),
+    )
+    pareto: ParetoConfig = Field(
+        default_factory=ParetoConfig,
+        description="Default X/Y metrics for the group's Pareto view. Defaults to cost vs. latency.",
     )
 
 
@@ -165,6 +169,7 @@ class ExperimentGroupResponse(BaseModel):
     summary: str | None = None
     metadata: dict[str, str] | None = None
     default_sort: str
+    pareto: ParetoConfig = Field(default_factory=ParetoConfig)
     created_at: datetime | None = None
     updated_at: datetime | None = None
     evaluation_count: int = Field(
@@ -188,9 +193,31 @@ class ExperimentGroupResponse(BaseModel):
             summary=entity.summary,
             metadata=entity.metadata,
             default_sort=entity.default_sort,
+            pareto=entity.pareto,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
         )
+
+
+class ParetoMetricPoint(BaseModel):
+    """One evaluation's plottable metric means for the Pareto view."""
+
+    name: str = Field(description="Evaluation name — the leaderboard row id and rollup key.")
+    evaluation_id: str = Field(description="Evaluation entity id, for navigation.")
+    cost_usd: float | None = Field(default=None, description="Mean cost (USD) across the evaluation's runs.")
+    latency_ms: float | None = Field(default=None, description="Mean latency (ms) across the evaluation's runs.")
+    evaluators: dict[str, float] = Field(
+        default_factory=dict, description="Per-evaluator mean score, keyed by evaluator name."
+    )
+
+
+class ParetoDataResponse(BaseModel):
+    """Everything the Pareto chart needs for a group: the configured default axes plus one point per
+    evaluation (cost/latency/evaluator means). Unpaginated and slim — the client plots the whole set
+    and computes the frontier from any two metrics without refetching."""
+
+    pareto: ParetoConfig = Field(description="The group's configured default X/Y metrics.")
+    points: list[ParetoMetricPoint] = Field(description="One point per live evaluation in the group.")
 
 
 class EvaluatorAggregate(BaseModel):

@@ -970,6 +970,17 @@ components:
         mount_point:
           title: Mount Point
           type: string
+        initChmod:
+          title: Initchmod
+          description: "When set, an init container chmods the freshly created (root-owned)\
+            \ named volume to this mode (e.g. '0777') so a non-root workload (e.g.\
+            \ the HF weight-puller) can write to it \u2014 the docker analogue of\
+            \ a k8s fsGroup."
+          type: string
+        initImage:
+          title: Initimage
+          description: Image used for the init_chmod container (e.g. busybox).
+          type: string
       type: object
       title: DockerVolumeConfig
     DriftRecoveryPolicy:

@@ -22,6 +22,7 @@ import type {
   ExperimentGroupResponse,
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
+import { ExperimentGroupParetoChart } from '@studio/components/charts/ExperimentGroupParetoChart';
 import { AddToGroupModal } from '@studio/components/dataViews/ExperimentGroupDataView/AddToGroupModal';
 import '@studio/components/dataViews/ExperimentGroupDataView/ExperimentGroupDataView.css';
 import { Empty } from '@studio/components/dataViews/ExperimentGroupDataView/Empty';
@@ -37,7 +38,7 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getEvaluationDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
-import { Columns3, FolderPlus, Pin } from 'lucide-react';
+import { ChartScatter, Columns3, FolderPlus, Pin } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -150,6 +151,12 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
   const [savedColumnOrder, saveColumnOrder] = useLocalStorage<string[]>(
     `nemo-studio:experiment-group-columns:${experimentGroupId}`,
     []
+  );
+
+  // Pareto (cost-vs-accuracy) view visibility, persisted per group. Hidden by default.
+  const [paretoVisible, setParetoVisible] = useLocalStorage<boolean>(
+    `nemo-studio:experiment-group-pareto:${experimentGroupId}`,
+    false
   );
 
   // Seed the sort from default_sort so its column header reflects the order on load. Memoized so the
@@ -455,6 +462,11 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
 
   return (
     <>
+      {paretoVisible && (
+        <div className="mb-4">
+          <ExperimentGroupParetoChart workspace={workspace} group={group} />
+        </div>
+      )}
       <StudioDataView
         dataViewState={dataViewState}
         makeColumns={makeColumns}
@@ -479,18 +491,28 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
           </Button>
         )}
         toolbarSlotEnd={
-          <EditColumnsMenu
-            kind="secondary"
-            showChevron={false}
-            // EditColumnsMenu exposes no width control for its dropdown, so this zero-height
-            // spacer sets a min width on the menu (which sizes to its widest child).
-            slotContent={<div aria-hidden className="h-0 w-[230px]" />}
-          >
-            <>
-              <Columns3 />
-              <span className="hide-mobile">Columns</span>
-            </>
-          </EditColumnsMenu>
+          <>
+            <EditColumnsMenu
+              kind="secondary"
+              showChevron={false}
+              // EditColumnsMenu exposes no width control for its dropdown, so this zero-height
+              // spacer sets a min width on the menu (which sizes to its widest child).
+              slotContent={<div aria-hidden className="h-0 w-[230px]" />}
+            >
+              <>
+                <Columns3 />
+                <span className="hide-mobile">Columns</span>
+              </>
+            </EditColumnsMenu>
+            <Button
+              kind="secondary"
+              aria-pressed={paretoVisible}
+              onClick={() => setParetoVisible(!paretoVisible)}
+            >
+              <ChartScatter width={12} height={12} />
+              <span className="hide-mobile">{paretoVisible ? 'Hide Pareto' : 'Pareto view'}</span>
+            </Button>
+          </>
         }
         attributes={{
           DataViewRoot: {

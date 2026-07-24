@@ -39,6 +39,8 @@ from ...types.experiment_groups import (
     experiment_group_create_params,
     experiment_group_update_params,
 )
+from ...types.experiment_groups.pareto_config_param import ParetoConfigParam
+from ...types.experiment_groups.pareto_data_response import ParetoDataResponse
 from ...types.experiment_groups.experiment_group_response import ExperimentGroupResponse
 from ...types.experiment_groups.experiment_group_filter_param import ExperimentGroupFilterParam
 from ..._exceptions import ConflictError
@@ -75,6 +77,7 @@ class ExperimentGroupsResource(SyncAPIResource):
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
+        pareto: ParetoConfigParam | Omit = omit,
         summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -102,6 +105,13 @@ class ExperimentGroupsResource(SyncAPIResource):
           insight_id: Reference to an external insight that seeded this group, if any.
 
           metadata: Free-form producer metadata for the group.
+
+          pareto: Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
+
+              Metric ids use the same vocabulary as the evaluations list sort/filter fields —
+              `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs
+              latency (y): both exist for every group, so the chart always has something to
+              render before anyone customizes it.
 
           summary: Human- or agent-authored summary of the group's findings.
 
@@ -131,6 +141,7 @@ class ExperimentGroupsResource(SyncAPIResource):
                         "description": description,
                         "insight_id": insight_id,
                         "metadata": metadata,
+                        "pareto": pareto,
                         "summary": summary,
                     },
                     experiment_group_create_params.ExperimentGroupCreateParams,
@@ -195,6 +206,7 @@ class ExperimentGroupsResource(SyncAPIResource):
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
+        pareto: ParetoConfigParam | Omit = omit,
         summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -221,6 +233,13 @@ class ExperimentGroupsResource(SyncAPIResource):
           insight_id: Reference to an external insight that seeded this group, if any.
 
           metadata: Free-form producer metadata for the group.
+
+          pareto: Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
+
+              Metric ids use the same vocabulary as the evaluations list sort/filter fields —
+              `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs
+              latency (y): both exist for every group, so the chart always has something to
+              render before anyone customizes it.
 
           summary: Human- or agent-authored summary of the group's findings.
 
@@ -251,6 +270,7 @@ class ExperimentGroupsResource(SyncAPIResource):
                     "description": description,
                     "insight_id": insight_id,
                     "metadata": metadata,
+                    "pareto": pareto,
                     "summary": summary,
                 },
                 experiment_group_update_params.ExperimentGroupUpdateParams,
@@ -364,6 +384,52 @@ class ExperimentGroupsResource(SyncAPIResource):
             cast_to=NoneType,
         )
 
+    def pareto(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> ParetoDataResponse:
+        """
+        Cost/latency/evaluator means for every evaluation in the group, plus the group's
+        default axes.
+
+        Purpose-built for the Pareto chart: a slim, unpaginated projection of the same
+        rollups the leaderboard shows, so the client plots the full point set in one
+        call and computes the frontier from any two metrics without refetching (and
+        without paging the full evaluations list).
+
+        Args:
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if workspace is None:
+            workspace = self._client._get_workspace_path_param()
+        if not workspace:
+            raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
+        if not name:
+            raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
+        return self._get(
+            path_template(
+                "/apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}/pareto", workspace=workspace, name=name
+            ),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=ParetoDataResponse,
+        )
+
 
 class AsyncExperimentGroupsResource(AsyncAPIResource):
     @cached_property
@@ -394,6 +460,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
+        pareto: ParetoConfigParam | Omit = omit,
         summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -421,6 +488,13 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
           insight_id: Reference to an external insight that seeded this group, if any.
 
           metadata: Free-form producer metadata for the group.
+
+          pareto: Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
+
+              Metric ids use the same vocabulary as the evaluations list sort/filter fields —
+              `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs
+              latency (y): both exist for every group, so the chart always has something to
+              render before anyone customizes it.
 
           summary: Human- or agent-authored summary of the group's findings.
 
@@ -450,6 +524,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
                         "description": description,
                         "insight_id": insight_id,
                         "metadata": metadata,
+                        "pareto": pareto,
                         "summary": summary,
                     },
                     experiment_group_create_params.ExperimentGroupCreateParams,
@@ -514,6 +589,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
+        pareto: ParetoConfigParam | Omit = omit,
         summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -540,6 +616,13 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
           insight_id: Reference to an external insight that seeded this group, if any.
 
           metadata: Free-form producer metadata for the group.
+
+          pareto: Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
+
+              Metric ids use the same vocabulary as the evaluations list sort/filter fields —
+              `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs
+              latency (y): both exist for every group, so the chart always has something to
+              render before anyone customizes it.
 
           summary: Human- or agent-authored summary of the group's findings.
 
@@ -570,6 +653,7 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
                     "description": description,
                     "insight_id": insight_id,
                     "metadata": metadata,
+                    "pareto": pareto,
                     "summary": summary,
                 },
                 experiment_group_update_params.ExperimentGroupUpdateParams,
@@ -683,6 +767,52 @@ class AsyncExperimentGroupsResource(AsyncAPIResource):
             cast_to=NoneType,
         )
 
+    async def pareto(
+        self,
+        name: str,
+        *,
+        workspace: str | None = None,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> ParetoDataResponse:
+        """
+        Cost/latency/evaluator means for every evaluation in the group, plus the group's
+        default axes.
+
+        Purpose-built for the Pareto chart: a slim, unpaginated projection of the same
+        rollups the leaderboard shows, so the client plots the full point set in one
+        call and computes the frontier from any two metrics without refetching (and
+        without paging the full evaluations list).
+
+        Args:
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        if workspace is None:
+            workspace = self._client._get_workspace_path_param()
+        if not workspace:
+            raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
+        if not name:
+            raise ValueError(f"Expected a non-empty value for `name` but received {name!r}")
+        return await self._get(
+            path_template(
+                "/apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}/pareto", workspace=workspace, name=name
+            ),
+            options=make_request_options(
+                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+            ),
+            cast_to=ParetoDataResponse,
+        )
+
 
 class ExperimentGroupsResourceWithRawResponse:
     def __init__(self, experiment_groups: ExperimentGroupsResource) -> None:
@@ -702,6 +832,9 @@ class ExperimentGroupsResourceWithRawResponse:
         )
         self.delete = to_raw_response_wrapper(
             experiment_groups.delete,
+        )
+        self.pareto = to_raw_response_wrapper(
+            experiment_groups.pareto,
         )
 
 
@@ -724,6 +857,9 @@ class AsyncExperimentGroupsResourceWithRawResponse:
         self.delete = async_to_raw_response_wrapper(
             experiment_groups.delete,
         )
+        self.pareto = async_to_raw_response_wrapper(
+            experiment_groups.pareto,
+        )
 
 
 class ExperimentGroupsResourceWithStreamingResponse:
@@ -745,6 +881,9 @@ class ExperimentGroupsResourceWithStreamingResponse:
         self.delete = to_streamed_response_wrapper(
             experiment_groups.delete,
         )
+        self.pareto = to_streamed_response_wrapper(
+            experiment_groups.pareto,
+        )
 
 
 class AsyncExperimentGroupsResourceWithStreamingResponse:
@@ -765,4 +904,7 @@ class AsyncExperimentGroupsResourceWithStreamingResponse:
         )
         self.delete = async_to_streamed_response_wrapper(
             experiment_groups.delete,
+        )
+        self.pareto = async_to_streamed_response_wrapper(
+            experiment_groups.pareto,
         )

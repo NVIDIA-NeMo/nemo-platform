@@ -17,6 +17,10 @@
 
 from __future__ import annotations
 
+from .pareto_config import ParetoConfig as ParetoConfig
+from .pareto_config_param import ParetoConfigParam as ParetoConfigParam
+from .pareto_metric_point import ParetoMetricPoint as ParetoMetricPoint
+from .pareto_data_response import ParetoDataResponse as ParetoDataResponse
 from .experiment_group_response import ExperimentGroupResponse as ExperimentGroupResponse
 from .experiment_group_list_params import ExperimentGroupListParams as ExperimentGroupListParams
 from .experiment_group_filter_param import ExperimentGroupFilterParam as ExperimentGroupFilterParam

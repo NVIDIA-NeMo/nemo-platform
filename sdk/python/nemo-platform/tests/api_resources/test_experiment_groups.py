@@ -26,6 +26,7 @@ from tests.utils import assert_matches_type
 from nemo_platform import NeMoPlatform, AsyncNeMoPlatform
 from nemo_platform.pagination import SyncDefaultPagination, AsyncDefaultPagination
 from nemo_platform.types.experiment_groups import (
+    ParetoDataResponse,
     ExperimentGroupResponse,
 )
 
@@ -54,6 +55,10 @@ class TestExperimentGroups:
             description="description",
             insight_id="insight_id",
             metadata={"foo": "string"},
+            pareto={
+                "x_metric": "x_metric",
+                "y_metric": "y_metric",
+            },
             summary="summary",
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
@@ -168,6 +173,10 @@ class TestExperimentGroups:
             description="description",
             insight_id="insight_id",
             metadata={"foo": "string"},
+            pareto={
+                "x_metric": "x_metric",
+                "y_metric": "y_metric",
+            },
             summary="summary",
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
@@ -329,6 +338,58 @@ class TestExperimentGroups:
                 workspace="workspace",
             )
 
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_method_pareto(self, client: NeMoPlatform) -> None:
+        experiment_group = client.experiment_groups.pareto(
+            name="name",
+            workspace="workspace",
+        )
+        assert_matches_type(ParetoDataResponse, experiment_group, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_raw_response_pareto(self, client: NeMoPlatform) -> None:
+        response = client.experiment_groups.with_raw_response.pareto(
+            name="name",
+            workspace="workspace",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        experiment_group = response.parse()
+        assert_matches_type(ParetoDataResponse, experiment_group, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_streaming_response_pareto(self, client: NeMoPlatform) -> None:
+        with client.experiment_groups.with_streaming_response.pareto(
+            name="name",
+            workspace="workspace",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            experiment_group = response.parse()
+            assert_matches_type(ParetoDataResponse, experiment_group, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_path_params_pareto(self, client: NeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
+            client.experiment_groups.with_raw_response.pareto(
+                name="name",
+                workspace="",
+            )
+
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
+            client.experiment_groups.with_raw_response.pareto(
+                name="",
+                workspace="workspace",
+            )
+
 
 class TestAsyncExperimentGroups:
     parametrize = pytest.mark.parametrize(
@@ -354,6 +415,10 @@ class TestAsyncExperimentGroups:
             description="description",
             insight_id="insight_id",
             metadata={"foo": "string"},
+            pareto={
+                "x_metric": "x_metric",
+                "y_metric": "y_metric",
+            },
             summary="summary",
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
@@ -468,6 +533,10 @@ class TestAsyncExperimentGroups:
             description="description",
             insight_id="insight_id",
             metadata={"foo": "string"},
+            pareto={
+                "x_metric": "x_metric",
+                "y_metric": "y_metric",
+            },
             summary="summary",
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
@@ -625,6 +694,58 @@ class TestAsyncExperimentGroups:
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             await async_client.experiment_groups.with_raw_response.delete(
+                name="",
+                workspace="workspace",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_pareto(self, async_client: AsyncNeMoPlatform) -> None:
+        experiment_group = await async_client.experiment_groups.pareto(
+            name="name",
+            workspace="workspace",
+        )
+        assert_matches_type(ParetoDataResponse, experiment_group, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_raw_response_pareto(self, async_client: AsyncNeMoPlatform) -> None:
+        response = await async_client.experiment_groups.with_raw_response.pareto(
+            name="name",
+            workspace="workspace",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        experiment_group = await response.parse()
+        assert_matches_type(ParetoDataResponse, experiment_group, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_streaming_response_pareto(self, async_client: AsyncNeMoPlatform) -> None:
+        async with async_client.experiment_groups.with_streaming_response.pareto(
+            name="name",
+            workspace="workspace",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            experiment_group = await response.parse()
+            assert_matches_type(ParetoDataResponse, experiment_group, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_path_params_pareto(self, async_client: AsyncNeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
+            await async_client.experiment_groups.with_raw_response.pareto(
+                name="name",
+                workspace="",
+            )
+
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
+            await async_client.experiment_groups.with_raw_response.pareto(
                 name="",
                 workspace="workspace",
             )
