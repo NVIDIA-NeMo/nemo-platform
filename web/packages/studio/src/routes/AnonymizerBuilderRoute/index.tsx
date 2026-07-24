@@ -21,6 +21,7 @@ import { DEFAULT_LARGE_PAGE_SIZE } from '@studio/constants/constants';
 import { ANONYMIZER_ENABLED } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import { parseAnonymizerApiError } from '@studio/routes/AnonymizerBuilderRoute/apiErrors';
 import { ColumnsSection } from '@studio/routes/AnonymizerBuilderRoute/components/ColumnsSection';
 import { DataSourceSection } from '@studio/routes/AnonymizerBuilderRoute/components/DataSourceSection';
 import { EntitiesSection } from '@studio/routes/AnonymizerBuilderRoute/components/EntitiesSection';
@@ -75,8 +76,20 @@ export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
                 ? getWorkspaceJobDetailRoute(workspace, job.name)
                 : getWorkspaceAnonymizerRoute(workspace)
             ),
-          onError: (error) =>
-            setSubmitError(getErrorMessage(error, 'Failed to create anonymizer job')),
+          onError: (error) => {
+            const { fieldErrors, generalMessages } = parseAnonymizerApiError(error);
+            fieldErrors.forEach(({ field, message }) =>
+              form.setError(field, { type: 'server', message })
+            );
+            if (fieldErrors.length) setActiveTab(TAB_SOURCE);
+            setSubmitError(
+              generalMessages.length
+                ? generalMessages.join(' ')
+                : fieldErrors.length
+                  ? undefined
+                  : getErrorMessage(error, 'Failed to create anonymizer job')
+            );
+          },
         },
       });
 

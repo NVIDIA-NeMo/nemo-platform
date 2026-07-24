@@ -4,9 +4,10 @@
 import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { Stack, Text } from '@nvidia/foundations-react-core';
+import { StrategyParamsSection } from '@studio/routes/AnonymizerBuilderRoute/components/StrategyParamsSection';
 import {
+  AVAILABLE_STRATEGY_OPTIONS,
   STRATEGY_DESCRIPTIONS,
-  STRATEGY_OPTIONS,
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import type { AnonymizerFormData } from '@studio/routes/AnonymizerBuilderRoute/schema';
 import { FC } from 'react';
@@ -21,16 +22,12 @@ export const GenerationSection: FC = () => {
       <Text kind="label/bold/lg">Generation</Text>
       <ControlledSelect
         aria-label="Anonymization strategy"
-        disabled
-        items={STRATEGY_OPTIONS}
+        items={AVAILABLE_STRATEGY_OPTIONS}
         useControllerProps={{ name: 'strategy', control }}
-        formFieldProps={{
-          slotLabel: 'Anonymization Strategy',
-          required: true,
-          slotInfo: 'Only Substitute is available today. Other strategies are coming soon.',
-        }}
+        formFieldProps={{ slotLabel: 'Anonymization Strategy', required: true }}
       />
       <Text kind="body/regular/md">{STRATEGY_DESCRIPTIONS[strategy]}</Text>
+      <StrategyParamsSection />
       <ControlledTextInput
         type="number"
         min={1}

@@ -34,6 +34,10 @@ export const STRATEGY_OPTIONS: { label: string; value: Strategy }[] = [
   { label: 'Rewrite', value: STRATEGY_REWRITE },
 ];
 
+export const AVAILABLE_STRATEGY_OPTIONS = STRATEGY_OPTIONS.filter(
+  (option) => option.value !== STRATEGY_REWRITE
+);
+
 export const STRATEGY_DESCRIPTIONS: Record<Strategy, string> = {
   [STRATEGY_SUBSTITUTE]:
     'Replace detected entities with LLM-generated synthetic values for names, cities, dates, etc.',
@@ -46,6 +50,19 @@ export const STRATEGY_DESCRIPTIONS: Record<Strategy, string> = {
   [STRATEGY_REWRITE]:
     'Transform the entire text to produce a privacy-safe version that reduces explicit and inferable identifiers.',
 };
+
+export const REDACT_DEFAULT_TEMPLATE = '[REDACTED_{label}]';
+export const ANNOTATE_DEFAULT_TEMPLATE = '<{text}, {label}>';
+export const HASH_DEFAULT_TEMPLATE = '<{label}_{digest}>';
+export const HASH_DEFAULT_DIGEST_LENGTH = 8;
+
+export type HashAlgorithmOption = 'sha256' | 'sha1' | 'md5';
+export const HASH_ALGORITHM_DEFAULT: HashAlgorithmOption = 'sha256';
+export const HASH_ALGORITHM_OPTIONS: { label: string; value: HashAlgorithmOption }[] = [
+  { label: 'SHA-256', value: 'sha256' },
+  { label: 'SHA-1', value: 'sha1' },
+  { label: 'MD5', value: 'md5' },
+];
 
 export const ENTITY_MODE_CUSTOM = 'custom';
 export const ENTITY_MODE_AUTO = 'auto';
