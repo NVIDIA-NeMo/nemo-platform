@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -240,6 +241,99 @@ async def test_normalized_fabric_fields_are_rejected(nat_config: Path) -> None:
 
     assert error_info.value.code == "nat_unsupported_fabric_config"
     assert error_info.value.metadata == {"fields": ["models"]}
+
+
+def test_native_mcp_server_is_added_to_workflow_tools() -> None:
+    config = SimpleNamespace(
+        workflow=SimpleNamespace(tool_names=["current_datetime"]),
+        functions={},
+        function_groups={},
+    )
+    payload = {
+        "capability_plan": {
+            "native": {
+                "mcp_servers": {
+                    "repo": {
+                        "transport": "stdio",
+                        "url": "repo-mcp --root .",
+                        "exposure": "harness_native",
+                    }
+                }
+            }
+        }
+    }
+
+    nat_adapter.apply_nat_capabilities(config, payload)
+
+    mcp_group = config.function_groups["repo"]
+    assert config.workflow.tool_names == ["current_datetime", "repo"]
+    assert mcp_group.server.transport == "stdio"
+    assert mcp_group.server.command == "repo-mcp"
+    assert mcp_group.server.args == ["--root", "."]
+
+
+def test_blocked_tools_remove_functions_and_filter_group_members() -> None:
+    calculator = SimpleNamespace(include=[], exclude=[])
+    config = SimpleNamespace(
+        workflow=SimpleNamespace(tool_names=["current_datetime", "calculator"]),
+        functions={"current_datetime": object()},
+        function_groups={"calculator": calculator},
+    )
+    payload = {
+        "config": {
+            "tools": {
+                "blocked": ["current_datetime", "calculator__divide"],
+            }
+        }
+    }
+
+    nat_adapter.apply_nat_capabilities(config, payload)
+
+    assert config.workflow.tool_names == ["calculator"]
+    assert config.functions == {}
+    assert calculator.exclude == ["divide"]
+
+
+@pytest.mark.asyncio
+async def test_skill_paths_remain_explicitly_unsupported(nat_config: Path) -> None:
+    payload = _start_payload(nat_config.parent)
+    payload["config"]["skills"] = {"paths": ["./skills/review"]}
+    payload["capability_plan"] = {
+        "unsupported": {
+            "skill_paths": [str(nat_config.parent / "skills/review")],
+        }
+    }
+
+    with pytest.raises(lifecycle.LifecycleError) as error_info:
+        await nat_adapter.NatRuntime().start(payload)
+
+    assert error_info.value.code == "nat_unsupported_fabric_config"
+    assert error_info.value.metadata == {"fields": ["skills"]}
+
+
+@pytest.mark.asyncio
+async def test_fabric_managed_mcp_remains_explicitly_unsupported(nat_config: Path) -> None:
+    payload = _start_payload(nat_config.parent)
+    payload["config"]["mcp"] = {
+        "servers": {
+            "repo": {
+                "transport": "streamable-http",
+                "url": "http://localhost:9901/mcp",
+                "exposure": "fabric_managed",
+            }
+        }
+    }
+    payload["capability_plan"] = {
+        "unsupported": {
+            "mcp_servers": payload["config"]["mcp"]["servers"],
+        }
+    }
+
+    with pytest.raises(lifecycle.LifecycleError) as error_info:
+        await nat_adapter.NatRuntime().start(payload)
+
+    assert error_info.value.code == "nat_unsupported_fabric_config"
+    assert error_info.value.metadata == {"fields": ["mcp"]}
 
 
 @pytest.mark.asyncio

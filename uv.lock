@@ -311,6 +311,15 @@ wheels = [
 ]
 
 [[package]]
+name = "aiorwlock"
+version = "1.5.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6b/65/316cdc82c1b92953235ced1c71a3763f0cd9273c3bec5db60bdb5ad59bfe/aiorwlock-1.5.1.tar.gz", hash = "sha256:2729c77ec736c8d85ec305aa3827a50394fd8c6d823f4404d301cc8c59a4b7f5", size = 7288, upload-time = "2026-02-20T17:42:17.164Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e7/23/dc60c00fb9178e356d7f5fb009aabae4625ce79c3e63ed4ef3bcc73d949c/aiorwlock-1.5.1-py3-none-any.whl", hash = "sha256:a28e534a5fce4dabe437055db141369a0803c69fe61c406b6fc5cdfa8f3dda13", size = 8016, upload-time = "2026-02-20T17:42:18.095Z" },
+]
+
+[[package]]
 name = "aiosignal"
 version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3692,6 +3701,7 @@ dependencies = [
     { name = "nvidia-nat-config-optimizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nvidia-nat-core", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nvidia-nat-langchain", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nvidia-nat-mcp", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "pyyaml", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "rich", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
@@ -3738,6 +3748,7 @@ requires-dist = [
     { name = "nvidia-nat-config-optimizer", specifier = ">=1.8.0,<1.9" },
     { name = "nvidia-nat-core", specifier = ">=1.8.0,<1.9" },
     { name = "nvidia-nat-langchain", specifier = ">=1.8.0,<1.9" },
+    { name = "nvidia-nat-mcp", specifier = ">=1.8.0,<1.9" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=0.23" },
     { name = "python-on-whales", marker = "extra == 'container'", specifier = ">=0.60" },
@@ -7761,6 +7772,19 @@ dependencies = [
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f0/49/eee7d8f68568e4c994a67ee0def4070e8fdeb0d603a7ef580050b3ee3d34/nvidia_nat_langchain-1.8.0-py3-none-any.whl", hash = "sha256:8120ad2b972ce2d90fae1e7f95b3daf6b463310e0105fc330896bfb069a5d403", size = 197395, upload-time = "2026-06-17T00:27:13.69Z" },
+]
+
+[[package]]
+name = "nvidia-nat-mcp"
+version = "1.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiorwlock", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "mcp", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nvidia-nat-core", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/08/c5/1cf428635978b8a705d7c35e816ee91278414d1607e91f211e6aa2de6507/nvidia_nat_mcp-1.8.0-py3-none-any.whl", hash = "sha256:b38983d9d94f5f47ead7acc395c86409d19533f0bf0643489bbde01f35603f71", size = 132635, upload-time = "2026-06-17T00:22:22.383Z" },
 ]
 
 [[package]]

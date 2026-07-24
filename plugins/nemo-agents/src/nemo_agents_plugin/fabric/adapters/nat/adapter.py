@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from contextlib import AsyncExitStack
+import os
+import shlex
+from collections.abc import AsyncIterator
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +25,7 @@ from pydantic_core import to_jsonable_python
 LOGGER = logging.getLogger(__name__)
 HARNESS = "nat"
 MODE = "nat_workflow"
+FUNCTION_GROUP_SEPARATOR = "__"
 
 
 def main() -> None:
@@ -74,18 +78,201 @@ def resolve_config_file(payload: dict[str, Any]) -> Path:
 
 
 def validate_supported_fabric_config(payload: dict[str, Any]) -> None:
-    """Reject normalized config surfaces this config-file adapter does not map."""
+    """Reject normalized config surfaces this adapter cannot map."""
 
     config = common_utils.fabric_config(payload)
-    unsupported = [field for field in ("models", "mcp", "skills", "tools", "telemetry", "relay") if config.get(field)]
+    unsupported = [field for field in ("models", "telemetry", "relay") if config.get(field)]
+    skills = config.get("skills") or {}
+    if isinstance(skills, dict) and skills.get("paths"):
+        unsupported.append("skills")
+
+    unsupported_plan = common_utils.capability_plan(payload).get("unsupported") or {}
+    if unsupported_plan.get("mcp_servers"):
+        unsupported.append("mcp")
+    if unsupported_plan.get("skill_paths") and "skills" not in unsupported:
+        unsupported.append("skills")
+
     if unsupported:
-        fields = ", ".join(sorted(unsupported))
+        fields = sorted(set(unsupported))
         raise lifecycle.LifecycleError(
             "nat_unsupported_fabric_config",
-            f"NAT adapter does not map normalized Fabric config fields: {fields}; "
+            f"NAT adapter does not map normalized Fabric config fields: {', '.join(fields)}; "
             "configure them in the NAT config file",
-            metadata={"fields": sorted(unsupported)},
+            metadata={"fields": fields},
         )
+
+
+def _native_capabilities(payload: dict[str, Any]) -> dict[str, Any]:
+    native = common_utils.capability_plan(payload).get("native") or {}
+    return native if isinstance(native, dict) else {}
+
+
+def _nat_mcp_server_config(name: str, server: Any) -> Any:
+    if not isinstance(server, dict):
+        raise lifecycle.LifecycleError(
+            "nat_invalid_mcp_server",
+            f"NAT MCP server {name!r} must be a mapping",
+        )
+
+    transport = str(server.get("transport") or "").strip().lower().replace("_", "-")
+    target = os.path.expandvars(str(server.get("url") or "")).strip()
+    if not target:
+        raise lifecycle.LifecycleError(
+            "nat_invalid_mcp_server",
+            f"NAT MCP server {name!r} requires a non-empty url",
+        )
+
+    try:
+        from nat.plugins.mcp.client.client_config import MCPServerConfig
+    except ImportError as error:
+        raise lifecycle.LifecycleError(
+            "nat_mcp_dependency_missing",
+            "NAT MCP mapping requires the nvidia-nat-mcp package",
+        ) from error
+
+    if transport in {"stdio", "command", "process"}:
+        try:
+            command = shlex.split(target)
+        except ValueError as error:
+            raise lifecycle.LifecycleError(
+                "nat_invalid_mcp_server",
+                f"NAT MCP server {name!r} has an invalid stdio command",
+            ) from error
+        if not command:
+            raise lifecycle.LifecycleError(
+                "nat_invalid_mcp_server",
+                f"NAT MCP server {name!r} has an empty stdio command",
+            )
+        return MCPServerConfig(transport="stdio", command=command[0], args=command[1:])
+
+    if transport in {"", "http", "streamable-http", "streamablehttp"}:
+        transport = "streamable-http"
+    if transport not in {"sse", "streamable-http"}:
+        raise lifecycle.LifecycleError(
+            "nat_unsupported_mcp_transport",
+            f"NAT MCP server {name!r} has unsupported transport {transport!r}",
+        )
+    return MCPServerConfig.model_validate({"transport": transport, "url": target})
+
+
+def _workflow_tool_names(config: Any) -> list[Any]:
+    tool_names = getattr(config.workflow, "tool_names", None)
+    if not isinstance(tool_names, list):
+        raise lifecycle.LifecycleError(
+            "nat_workflow_tools_unsupported",
+            "NAT MCP mapping requires a workflow with a tool_names field",
+        )
+    return tool_names
+
+
+def _apply_mcp_servers(config: Any, payload: dict[str, Any]) -> None:
+    servers = _native_capabilities(payload).get("mcp_servers") or {}
+    if not servers:
+        return
+    if not isinstance(servers, dict):
+        raise lifecycle.LifecycleError(
+            "nat_invalid_mcp_config",
+            "NAT native MCP capability plan must be a mapping",
+        )
+
+    try:
+        from nat.plugins.mcp.client.client_config import MCPClientConfig
+    except ImportError as error:
+        raise lifecycle.LifecycleError(
+            "nat_mcp_dependency_missing",
+            "NAT MCP mapping requires the nvidia-nat-mcp package",
+        ) from error
+
+    tool_names = _workflow_tool_names(config)
+    for name, server in sorted(servers.items()):
+        if not isinstance(name, str) or not name:
+            raise lifecycle.LifecycleError(
+                "nat_invalid_mcp_server",
+                "NAT MCP server names must be non-empty strings",
+            )
+        if name in config.functions or name in config.function_groups:
+            raise lifecycle.LifecycleError(
+                "nat_mcp_name_conflict",
+                f"NAT MCP server {name!r} conflicts with an existing function or function group",
+            )
+        config.function_groups[name] = MCPClientConfig(server=_nat_mcp_server_config(name, server))
+        if name not in {str(tool_name) for tool_name in tool_names}:
+            tool_names.append(name)
+
+
+def _exclude_group_member(config: Any, group_name: str, member_name: str, tool_names: list[Any] | None) -> None:
+    group = config.function_groups.get(group_name)
+    if group is None:
+        return
+
+    included = list(getattr(group, "include", []))
+    if included:
+        if member_name not in included:
+            return
+        remaining = [name for name in included if name != member_name]
+        if remaining:
+            group.include = remaining
+            return
+        config.function_groups.pop(group_name, None)
+        if tool_names is not None:
+            tool_names[:] = [tool_name for tool_name in tool_names if str(tool_name) != group_name]
+        return
+
+    excluded = list(getattr(group, "exclude", []))
+    if member_name not in excluded:
+        group.exclude = [*excluded, member_name]
+
+
+def _apply_blocked_tools(config: Any, payload: dict[str, Any]) -> None:
+    blocked = set(common_utils.blocked_tools(payload))
+    if not blocked:
+        return
+
+    tool_names = getattr(config.workflow, "tool_names", None)
+    if isinstance(tool_names, list):
+        tool_names[:] = [tool_name for tool_name in tool_names if str(tool_name) not in blocked]
+    else:
+        tool_names = None
+
+    for name in blocked:
+        config.functions.pop(name, None)
+        config.function_groups.pop(name, None)
+        if FUNCTION_GROUP_SEPARATOR in name:
+            group_name, member_name = name.split(FUNCTION_GROUP_SEPARATOR, 1)
+            _exclude_group_member(config, group_name, member_name, tool_names)
+
+
+def apply_nat_capabilities(config: Any, payload: dict[str, Any]) -> None:
+    """Map routed Fabric capabilities into a loaded NAT config."""
+
+    _apply_mcp_servers(config, payload)
+    _apply_blocked_tools(config, payload)
+
+
+@asynccontextmanager
+async def load_nat_workflow(config_file: Path, payload: dict[str, Any]) -> AsyncIterator[Any]:
+    """Load one NAT workflow, applying Fabric capabilities before it is built."""
+
+    native = _native_capabilities(payload)
+    if not native.get("mcp_servers") and not common_utils.blocked_tools(payload):
+        from nat.runtime.loader import load_workflow
+
+        async with load_workflow(config_file) as sessions:
+            yield sessions
+        return
+
+    from nat.builder.workflow_builder import WorkflowBuilder
+    from nat.runtime.loader import load_config
+    from nat.runtime.session import SessionManager
+
+    config = load_config(config_file)
+    apply_nat_capabilities(config, payload)
+    async with WorkflowBuilder.from_config(config=config) as builder:
+        sessions = await SessionManager.create(config=config, shared_builder=builder)
+        try:
+            yield sessions
+        finally:
+            await sessions.shutdown()
 
 
 def _runtime_id(payload: dict[str, Any]) -> str:
@@ -176,10 +363,11 @@ class NatRuntime:
         stack = AsyncExitStack()
 
         try:
-            from nat.runtime.loader import load_workflow
-
-            sessions = await stack.enter_async_context(load_workflow(config_file))
+            sessions = await stack.enter_async_context(load_nat_workflow(config_file, payload))
         except asyncio.CancelledError:
+            await _close_after_failed_start(stack)
+            raise
+        except lifecycle.LifecycleError:
             await _close_after_failed_start(stack)
             raise
         except Exception as error:

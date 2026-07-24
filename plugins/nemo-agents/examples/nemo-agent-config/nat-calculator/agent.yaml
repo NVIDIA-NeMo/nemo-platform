@@ -10,6 +10,10 @@ harnesses:
     settings:
       config_file: ./workflow.yml
 
+tools:
+  blocked:
+    - calculator__divide
+
 environment:
   workspace: ./workspace
   artifacts: ./artifacts

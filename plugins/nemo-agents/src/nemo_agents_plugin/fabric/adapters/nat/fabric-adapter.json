@@ -7,7 +7,7 @@
     "module": "nemo_agents_plugin.fabric.adapters.nat.adapter"
   },
   "config": {
-    "accepts": []
+    "accepts": ["mcp", "tools", "tools.blocked"]
   },
   "capabilities": {
     "cancellation": false,

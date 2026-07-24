@@ -10,6 +10,7 @@ dependencies = [
     "nemo-agents-example-email-phishing",
     "nvidia-nat-core>=1.8.0,<1.9",
     "nvidia-nat-langchain>=1.8.0,<1.9",
+    "nvidia-nat-mcp>=1.8.0,<1.9",
     "nvidia-nat-config-optimizer>=1.8.0,<1.9",
     # ASTD-164: tight pins avoid pip ResolutionTooDeep via aioboto3/langchain-aws.
     "langchain-aws==1.1.0",

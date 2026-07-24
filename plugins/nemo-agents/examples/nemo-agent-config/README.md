@@ -50,6 +50,27 @@ workflow. Install any package that exposes workflow-specific `nat.components`
 into the same Python environment. Keep those packages on the same NAT release
 as the `nvidia-nat-*` packages installed by NeMo Agents.
 
+For NAT, `harness_native` MCP servers become `mcp_client` function groups and
+are added to workflows that expose `tool_names`. `tools.blocked` removes named
+NAT functions or function groups and can exclude a group member by its
+`<group>__<function>` name. For example:
+
+```yaml
+mcp:
+  servers:
+    math:
+      transport: streamable-http
+      url: http://localhost:9901/mcp
+      exposure: harness_native
+tools:
+  blocked:
+    - calculator__divide
+```
+
+NAT 1.8 does not expose a runtime contract for `SKILL.md` directories, so the
+NAT adapter rejects non-empty `skills.paths` rather than silently ignoring
+them. Keep workflow instructions in the NAT config.
+
 ## Codex
 
 Authenticate Codex, leave `default_harness: codex` in `agent.yaml`, and run:

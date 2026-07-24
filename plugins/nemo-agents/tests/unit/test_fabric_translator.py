@@ -249,7 +249,7 @@ class TestTranslateAgentConfig:
         with pytest.raises(FabricTranslationError, match="cannot define Platform models"):
             translate_agent_config(config)
 
-    def test_nat_harness_rejects_platform_skills(self) -> None:
+    def test_nat_harness_translates_shared_capabilities_without_platform_model(self) -> None:
         payload = _example_yaml_config()
         payload["default_harness"] = "nat"
         payload["harnesses"] = {
@@ -259,11 +259,24 @@ class TestTranslateAgentConfig:
             }
         }
         payload["models"] = {}
-        payload["skills"] = [{"path": "./skills/example"}]
+        payload["skills"] = {"paths": ["./skills/example"]}
+        payload["mcp"] = {
+            "servers": {
+                "repo": {
+                    "transport": "streamable-http",
+                    "url": "http://localhost:9901/mcp",
+                }
+            }
+        }
+        payload["tools"] = {"blocked": ["calculator__divide"]}
         config = AgentConfig.model_validate(payload)
 
-        with pytest.raises(FabricTranslationError, match="does not map Platform skills"):
-            translate_agent_config(config)
+        fabric_config = translate_agent_config(config)
+
+        assert fabric_config.models == {}
+        assert fabric_config.skills.paths == ["./skills/example"]
+        assert fabric_config.mcp.servers["repo"].url == "http://localhost:9901/mcp"
+        assert fabric_config.tools.blocked == ["calculator__divide"]
 
     def test_nat_harness_rejects_platform_telemetry(self) -> None:
         payload = _example_yaml_config()

@@ -97,11 +97,6 @@ def _validate_nat_harness(config: AgentConfig, harness_name: str, harness: Harne
             f"NAT harness {harness_name!r} cannot define Platform models; configure models in the NAT config file."
         )
 
-    if config.skills:
-        raise FabricTranslationError(
-            f"NAT harness {harness_name!r} does not map Platform skills; configure skills in the NAT config file."
-        )
-
     config_file = harness.settings.get("config_file")
     if not isinstance(config_file, str) or not config_file.strip():
         raise FabricTranslationError(f"NAT harness {harness_name!r} requires a non-empty harness.settings.config_file.")
@@ -123,13 +118,13 @@ def _validate_untranslated_shared_fields(config: AgentConfig) -> None:
         )
 
 
-def _skills_config(config: AgentConfig) -> Any:
+def _skills_config(config: AgentConfig) -> fabric.SkillConfig | None:
     if config.skills is None:
         return None
-    return fabric.SkillConfig(paths=config.skills.paths)
+    return fabric.SkillConfig.model_validate({"paths": config.skills.paths})
 
 
-def _mcp_config(config: AgentConfig) -> Any:
+def _mcp_config(config: AgentConfig) -> fabric.McpConfig | None:
     if config.mcp is None:
         return None
     return fabric.McpConfig(
@@ -137,7 +132,7 @@ def _mcp_config(config: AgentConfig) -> Any:
     )
 
 
-def _tools_config(config: AgentConfig) -> Any:
+def _tools_config(config: AgentConfig) -> fabric.ToolsConfig | None:
     if config.tools is None:
         return None
     return fabric.ToolsConfig(blocked=config.tools.blocked)
