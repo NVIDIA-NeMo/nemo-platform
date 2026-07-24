@@ -21,9 +21,14 @@ export const GenerationSection: FC = () => {
       <Text kind="label/bold/lg">Generation</Text>
       <ControlledSelect
         aria-label="Anonymization strategy"
+        disabled
         items={STRATEGY_OPTIONS}
         useControllerProps={{ name: 'strategy', control }}
-        formFieldProps={{ slotLabel: 'Anonymization Strategy', required: true }}
+        formFieldProps={{
+          slotLabel: 'Anonymization Strategy',
+          required: true,
+          slotInfo: 'Only Substitute is available today. Other strategies are coming soon.',
+        }}
       />
       <Text kind="body/regular/md">{STRATEGY_DESCRIPTIONS[strategy]}</Text>
       <ControlledTextInput
