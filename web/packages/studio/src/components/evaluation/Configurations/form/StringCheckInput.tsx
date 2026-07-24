@@ -50,22 +50,20 @@ export const StringCheckInput: FC<StringCheckInputProps> = ({
               slotError={fieldState.error?.message}
               status={fieldState.error ? 'error' : undefined}
             >
-              {({ ...args }) => (
-                <SelectRoot
-                  value={field.value || 'equals'}
-                  onValueChange={field.onChange}
-                  disabled={disabled}
-                >
-                  <SelectTrigger placeholder="Select operator" {...args} />
-                  <SelectContent>
-                    {STRING_CHECK_OPERATORS.map((operator) => (
-                      <SelectItem key={operator} value={operator}>
-                        {operator}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </SelectRoot>
-              )}
+              <SelectRoot
+                value={field.value || 'equals'}
+                onValueChange={field.onChange}
+                disabled={disabled}
+              >
+                <SelectTrigger placeholder="Select operator" />
+                <SelectContent>
+                  {STRING_CHECK_OPERATORS.map((operator) => (
+                    <SelectItem key={operator} value={operator}>
+                      {operator}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </SelectRoot>
             </FormField>
           )}
         />

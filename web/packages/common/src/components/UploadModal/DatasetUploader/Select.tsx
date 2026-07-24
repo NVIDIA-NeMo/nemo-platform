@@ -138,40 +138,37 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
       }
       status={error ? 'error' : undefined}
     >
-      {(props) => (
-        <Select
-          {...props}
-          aria-label="dataset-select"
-          className="motion-safe:[&.nv-input:not(.nv-input--disabled):not(.nv-input--readonly)]:transition-[margin,color,background-color,border-color,outline-color,text-decoration-color,fill,stroke] duration-250 data-[state=open]:mb-24"
-          disabled={disabled}
-          items={[
-            ...(allowNewDataset
-              ? [
-                  {
-                    slotHeading: 'Create Dataset',
-                    attributes: {
-                      MenuHeading: { className: 'hidden', 'aria-hidden': true },
-                    },
-                    items: [
-                      {
-                        children: 'New Dataset',
-                        value: 'new',
-                      },
-                    ],
+      <Select
+        aria-label="dataset-select"
+        className="motion-safe:[&.nv-input:not(.nv-input--disabled):not(.nv-input--readonly)]:transition-[margin,color,background-color,border-color,outline-color,text-decoration-color,fill,stroke] duration-250 data-[state=open]:mb-24"
+        disabled={disabled}
+        items={[
+          ...(allowNewDataset
+            ? [
+                {
+                  slotHeading: 'Create Dataset',
+                  attributes: {
+                    MenuHeading: { className: 'hidden', 'aria-hidden': true },
                   },
-                ]
-              : []),
-            {
-              slotHeading: `Existing ${label}s`,
-              attributes: { MenuHeading: { className: 'hidden', 'aria-hidden': true } },
-              items: datasetOptions,
-            },
-          ]}
-          value={selectedDatasetOption}
-          onValueChange={handleDatasetSelect}
-          placeholder={`Select a ${label.toLowerCase()}`}
-        />
-      )}
+                  items: [
+                    {
+                      children: 'New Dataset',
+                      value: 'new',
+                    },
+                  ],
+                },
+              ]
+            : []),
+          {
+            slotHeading: `Existing ${label}s`,
+            attributes: { MenuHeading: { className: 'hidden', 'aria-hidden': true } },
+            items: datasetOptions,
+          },
+        ]}
+        value={selectedDatasetOption}
+        onValueChange={handleDatasetSelect}
+        placeholder={`Select a ${label.toLowerCase()}`}
+      />
     </FormField>
   );
 };

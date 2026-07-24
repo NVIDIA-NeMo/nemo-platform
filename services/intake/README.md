@@ -104,7 +104,7 @@ Seed an Experiment rollup and read it back:
 
 ```bash
 uv run services/intake/scripts/spans/seed_experiment_rollup_data.py
-curl -s "http://127.0.0.1:8000/apis/intake/v2/workspaces/default/experiments/rollup-smoke-exp" | jq
+curl -s "http://127.0.0.1:8000/apis/intake/v2/workspaces/default/evaluations/rollup-smoke-exp" | jq
 
 # Optional larger local workload.
 uv run services/intake/scripts/spans/seed_experiment_rollup_data.py \

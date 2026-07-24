@@ -22,7 +22,7 @@ export const ResourcesSection: FC = () => {
 
   const helpItems = [
     { id: 'report-bug', children: 'Report a Bug', href: LINK_GITHUB_ISSUES },
-    ...(TELEMETRY_ENABLED ? [{ id: 'report-trace', children: 'Report a Trace' }] : []),
+    ...(TELEMETRY_ENABLED ? [{ id: 'report-trace', children: 'Report a Trace', href: '#' }] : []),
   ];
 
   return (

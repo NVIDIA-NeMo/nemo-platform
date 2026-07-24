@@ -5,7 +5,7 @@ import { AgentPanel } from '@studio/components/sidePanels/AgentPanels/AgentPanel
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { server } from '@studio/mocks/node';
 import { TestProviders } from '@studio/tests/util/TestProviders';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { type ReactNode } from 'react';
@@ -249,7 +249,7 @@ describe('AgentPanel', () => {
       const closeButton = screen.getByRole('button', { name: /close/i });
       await user.click(closeButton);
 
-      expect(onOpenChange).toHaveBeenCalledWith(false);
+      await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     });
   });
 });

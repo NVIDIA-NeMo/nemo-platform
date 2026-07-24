@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from nmp.common.api.common import PaginatedResult
 from nmp.intake.spans.annotations_repository import AnnotationsRepository
 from nmp.intake.spans.domain import (
@@ -139,6 +141,17 @@ class IntakeSpansService:
         if trace is None:
             raise TraceNotFoundError(workspace, trace_id)
         return trace
+
+    async def latest_trace_started_at_by_group(
+        self,
+        *,
+        workspace: str,
+        trace_refs_by_group: dict[str, list[str]],
+    ) -> dict[str, datetime]:
+        return await self._traces.latest_trace_started_at_by_group(
+            workspace=workspace,
+            trace_refs_by_group=trace_refs_by_group,
+        )
 
     async def get_session(self, *, workspace: str, session_id: str) -> IntakeSession:
         session = await self._sessions.get_session(workspace=workspace, session_id=session_id)

@@ -241,6 +241,7 @@ class TestExperimentGroups:
         experiment_group = client.experiment_groups.list(
             workspace="workspace",
             filter={
+                "insight_id": "insight_id",
                 "is_deleted": True,
                 "metadata": {"foo": "string"},
                 "name": "name",
@@ -549,6 +550,7 @@ class TestAsyncExperimentGroups:
         experiment_group = await async_client.experiment_groups.list(
             workspace="workspace",
             filter={
+                "insight_id": "insight_id",
                 "is_deleted": True,
                 "metadata": {"foo": "string"},
                 "name": "name",

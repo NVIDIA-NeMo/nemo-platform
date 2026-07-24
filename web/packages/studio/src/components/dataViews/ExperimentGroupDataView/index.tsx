@@ -22,6 +22,7 @@ import type {
   ExperimentGroupResponse,
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text, Tooltip } from '@nvidia/foundations-react-core';
+import { ChangesetBadge } from '@studio/components/ChangesetBadge';
 import { ExperimentGroupParetoChart } from '@studio/components/charts/ExperimentGroupParetoChart';
 import { AddToGroupModal } from '@studio/components/dataViews/ExperimentGroupDataView/AddToGroupModal';
 import '@studio/components/dataViews/ExperimentGroupDataView/ExperimentGroupDataView.css';
@@ -301,6 +302,16 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
               <Text className="cursor-default border-b border-dotted border-brand">{name}</Text>
             </Tooltip>
           );
+        },
+      }),
+      accessor('source_link', {
+        header: 'Source',
+        enableSorting: false,
+        size: 140,
+        cell: ({ row }) => {
+          const { source_link } = row.original;
+          if (!source_link) return <Text>-</Text>;
+          return <ChangesetBadge href={source_link} />;
         },
       }),
       accessor((original) => original.agent_names?.join(', '), {
