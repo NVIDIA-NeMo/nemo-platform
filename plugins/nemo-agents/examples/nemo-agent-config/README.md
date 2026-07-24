@@ -4,7 +4,7 @@ This Platform-owned config invokes Codex or Hermes through NeMo Fabric. Run the
 commands below from the repository root.
 
 Fabric dependencies are currently optional so the default workspace does not
-force other Fabric consumers onto the `0.1.0a1` SDK API before they migrate.
+force other Fabric consumers onto the `0.1.0a20260724` SDK API before they migrate.
 Install them explicitly before local Fabric smoke tests:
 
 ```bash
@@ -33,7 +33,7 @@ install it with the Fabric adapter in a separate Python 3.12 environment:
 uvx uv@0.9.14 venv --python 3.12 .venv-hermes
 uvx uv@0.9.14 --no-config pip install \
   --python .venv-hermes/bin/python \
-  "nemo-fabric-adapters-hermes==0.1.0a1" \
+  "nemo-fabric-adapters-hermes>=0.1.0a20260724,<0.2.0" \
   "hermes-agent==0.19.0"
 
 export HERMES_ADAPTER_PYTHON="$PWD/.venv-hermes/bin/python"

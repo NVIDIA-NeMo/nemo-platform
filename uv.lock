@@ -3960,9 +3960,9 @@ requires-dist = [
     { name = "nemo-agents-example-calculator", editable = "plugins/nemo-agents/examples/calculator-agent" },
     { name = "nemo-agents-example-email-phishing", editable = "plugins/nemo-agents/examples/email-phishing-analyzer" },
     { name = "nemo-deployments-plugin", editable = "plugins/nemo-deployments" },
-    { name = "nemo-fabric", extras = ["runtime"], marker = "extra == 'fabric'", specifier = "==0.1.0a1" },
-    { name = "nemo-fabric-adapters-codex", marker = "extra == 'fabric'", specifier = "==0.1.0a1" },
-    { name = "nemo-fabric-adapters-hermes", marker = "python_full_version < '3.14' and extra == 'fabric'", specifier = "==0.1.0a1" },
+    { name = "nemo-fabric", extras = ["runtime"], marker = "extra == 'fabric'", specifier = ">=0.1.0a20260724,<0.2.0" },
+    { name = "nemo-fabric-adapters-codex", marker = "extra == 'fabric'", specifier = ">=0.1.0a20260724,<0.2.0" },
+    { name = "nemo-fabric-adapters-hermes", marker = "python_full_version < '3.14' and extra == 'fabric'", specifier = ">=0.1.0a20260724,<0.2.0" },
     { name = "nemo-platform", editable = "packages/nemo_platform" },
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
     { name = "nvidia-nat-config-optimizer", specifier = ">=1.8.0,<1.9" },
@@ -4386,12 +4386,12 @@ dev = [
 
 [[package]]
 name = "nemo-fabric"
-version = "0.1.0a1"
+version = "0.1.0a20260724"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nemo-fabric-runtime", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0a/35/40d7b662e94150748ea05bf2728d4885237b89accaeb8e6090c9c00c74ae/nemo_fabric-0.1.0a1.tar.gz", hash = "sha256:20969a6fa74b2a5ec2d99e9c53c784b37c4c63f109da5593a37b2fb0c0bc79c3", size = 6268, upload-time = "2026-07-22T19:14:21.221Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bf/02/6553d9b6612f2dd3464060e1afbaf849c124cd8c845530914b4cbcd462b1/nemo_fabric-0.1.0a20260724.tar.gz", hash = "sha256:7134673f3d7c63f2aaec59ce36b640e1700a63375bbdbe2809a137617d109f40", size = 6291, upload-time = "2026-07-24T09:11:45.053Z" }
 
 [package.optional-dependencies]
 runtime = [
@@ -4400,40 +4400,40 @@ runtime = [
 
 [[package]]
 name = "nemo-fabric-adapters-codex"
-version = "0.1.0a1"
+version = "0.1.0a20260724"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nemo-fabric-adapters-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "openai-codex", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "tomli-w", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1b/00/72808b79cdc70d2abe80e4019ddb2a93020d6fc3bfd13be018f8f5762122/nemo_fabric_adapters_codex-0.1.0a1.tar.gz", hash = "sha256:b36ab92bb8c9cb77230954a046c95bf9363c661bcce820d0d6c61cba5b5742a5", size = 7557, upload-time = "2026-07-22T19:14:11.47Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/65/6b/f6949c2e9350e5eb15fd171f775e50ed0565cd8ff08bf68157855475ac5f/nemo_fabric_adapters_codex-0.1.0a20260724.tar.gz", hash = "sha256:246e43bf6222560d63167fa89c27e9e03a152ea47cfe156601cb4a6100b9b656", size = 7567, upload-time = "2026-07-24T09:11:35.44Z" }
 
 [[package]]
 name = "nemo-fabric-adapters-common"
-version = "0.1.0a1"
+version = "0.1.0a20260724"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/5f/d8/9311537d9ec1900e6018edf76030334f7a1deb469e3bc4c38da2d725c11e/nemo_fabric_adapters_common-0.1.0a1.tar.gz", hash = "sha256:74c3ba61169a1f721efe7500cc23e9b01d6d30d05d517764df6062052c4534f5", size = 5776, upload-time = "2026-07-22T19:14:18.918Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6c/17/057fa7330912ec05e9950169fe3c5990f8fe58bce23dda8b1397e32d2df2/nemo_fabric_adapters_common-0.1.0a20260724.tar.gz", hash = "sha256:965fad6446b42e85271b93e66491b188fadeabefa0d899ddf589e3d99537b61d", size = 5800, upload-time = "2026-07-24T09:11:32.409Z" }
 
 [[package]]
 name = "nemo-fabric-adapters-hermes"
-version = "0.1.0a1"
+version = "0.1.0a20260724"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nemo-fabric-adapters-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "pyyaml", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b8/62/79cdd277c74fc374bae02c26bc5a9a10e7e1fea03114758213dbe032e53d/nemo_fabric_adapters_hermes-0.1.0a1.tar.gz", hash = "sha256:c630be6e01e24c357c0bdc19a5a5eb602fb615cb6720272324931349d65024e3", size = 6200, upload-time = "2026-07-22T19:14:15.651Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8b/5b/a67590fe64bc71ceeab17fc35a1b01309016acf3fa7a5d5a4406b8be2bfc/nemo_fabric_adapters_hermes-0.1.0a20260724.tar.gz", hash = "sha256:1a4dbb3a985453435833cf3fee80f9a69f11786189a712d8c895ca33b8fb3976", size = 6215, upload-time = "2026-07-24T09:11:42.582Z" }
 
 [[package]]
 name = "nemo-fabric-runtime"
-version = "0.1.0a1"
+version = "0.1.0a20260724"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic", extra = ["email"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "typing-extensions", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e7/26/41248ffb1ac89f5004ec09fc15216cd15aaa18620ac3e80c5ae704c3217a/nemo_fabric_runtime-0.1.0a1.tar.gz", hash = "sha256:f659d0202a8a156ce898a887c67578aa576198220f2186d397607f8ae7314466", size = 5272, upload-time = "2026-07-22T19:14:09.773Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3c/fe/0256c408a5d6c5e8a1576c8d2672252d85f1537dac7aa08584cef11ef5d2/nemo_fabric_runtime-0.1.0a20260724.tar.gz", hash = "sha256:b9a5eb4de344d981863f76b2d8f586e6fbcbc3c69ed6cdc333167b78f64e6331", size = 5275, upload-time = "2026-07-24T09:11:23.379Z" }
 
 [[package]]
 name = "nemo-guardrails-plugin"
