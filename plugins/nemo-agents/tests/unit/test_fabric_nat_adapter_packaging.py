@@ -25,7 +25,7 @@ def test_nat_adapter_descriptor_is_narrow_and_platform_owned() -> None:
             "module": "nemo_agents_plugin.fabric.adapters.nat.adapter",
         },
         "config": {
-            "accepts": ["mcp", "tools", "tools.blocked"],
+            "accepts": ["models", "mcp", "tools", "tools.blocked"],
         },
         "capabilities": {
             "cancellation": False,

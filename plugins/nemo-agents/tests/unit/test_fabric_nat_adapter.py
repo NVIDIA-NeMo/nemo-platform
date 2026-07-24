@@ -227,20 +227,157 @@ async def test_config_file_must_stay_within_agent_directory(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
-async def test_normalized_fabric_fields_are_rejected(nat_config: Path) -> None:
+async def test_unsupported_normalized_fabric_fields_are_rejected(nat_config: Path) -> None:
     payload = _start_payload(nat_config.parent)
-    payload["config"]["models"] = {
-        "default": {
-            "provider": "nvidia",
-            "model": "example-model",
-        }
-    }
+    payload["config"]["telemetry"] = {"providers": {"custom": {"enabled": True}}}
 
     with pytest.raises(lifecycle.LifecycleError) as error_info:
         await nat_adapter.NatRuntime().start(payload)
 
     assert error_info.value.code == "nat_unsupported_fabric_config"
-    assert error_info.value.metadata == {"fields": ["models"]}
+    assert error_info.value.metadata == {"fields": ["telemetry"]}
+
+
+def test_fabric_model_overrides_existing_typed_nat_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nat.llm.nim_llm import NIMModelConfig
+
+    native_llm = NIMModelConfig(
+        model_name="native-model",
+        base_url="https://native.example/v1",
+        max_tokens=777,
+        temperature=0.8,
+        chat_template_kwargs={"enable_thinking": False},
+    )
+    config = SimpleNamespace(llms={"llm": native_llm})
+    payload = {
+        "config": {
+            "models": {
+                "llm": {
+                    "provider": "nvidia",
+                    "model": "platform-model",
+                    "api_key_env": "NVIDIA_API_KEY",
+                    "temperature": 0.1,
+                    "settings": {
+                        "base_url": "https://platform.example/v1",
+                        "top_p": 0.7,
+                    },
+                }
+            }
+        }
+    }
+    monkeypatch.setenv("NVIDIA_API_KEY", "secret-value")
+
+    nat_adapter.apply_nat_models(config, payload)
+
+    updated = config.llms["llm"]
+    assert isinstance(updated, NIMModelConfig)
+    assert updated is not native_llm
+    assert updated.model_name == "platform-model"
+    assert updated.api_key.get_secret_value() == "secret-value"
+    assert updated.temperature == 0.1
+    assert updated.base_url == "https://platform.example/v1"
+    assert updated.top_p == 0.7
+    assert updated.max_tokens == 777
+    assert updated.chat_template_kwargs == {"enable_thinking": False}
+
+
+def test_fabric_model_requires_existing_nat_llm_alias() -> None:
+    config = SimpleNamespace(llms={})
+    payload = {
+        "config": {
+            "models": {
+                "missing": {
+                    "provider": "nvidia",
+                    "model": "platform-model",
+                }
+            }
+        }
+    }
+
+    with pytest.raises(lifecycle.LifecycleError) as error_info:
+        nat_adapter.apply_nat_models(config, payload)
+
+    assert error_info.value.code == "nat_model_alias_not_found"
+    assert error_info.value.metadata == {"llm": "missing"}
+
+
+def test_fabric_model_requires_configured_api_key_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nat.llm.nim_llm import NIMModelConfig
+
+    config = SimpleNamespace(llms={"llm": NIMModelConfig(model_name="native-model")})
+    payload = {
+        "config": {
+            "models": {
+                "llm": {
+                    "provider": "nvidia",
+                    "model": "platform-model",
+                    "api_key_env": "MISSING_API_KEY",
+                }
+            }
+        }
+    }
+    monkeypatch.delenv("MISSING_API_KEY", raising=False)
+
+    with pytest.raises(lifecycle.LifecycleError) as error_info:
+        nat_adapter.apply_nat_models(config, payload)
+
+    assert error_info.value.code == "nat_model_api_key_missing"
+    assert error_info.value.metadata == {
+        "llm": "llm",
+        "api_key_env": "MISSING_API_KEY",
+    }
+
+
+def test_fabric_model_settings_cannot_replace_native_llm_contract() -> None:
+    from nat.llm.nim_llm import NIMModelConfig
+
+    config = SimpleNamespace(llms={"llm": NIMModelConfig(model_name="native-model")})
+    payload = {
+        "config": {
+            "models": {
+                "llm": {
+                    "provider": "nvidia",
+                    "model": "platform-model",
+                    "settings": {
+                        "_type": "openai",
+                        "model_name": "settings-model",
+                    },
+                }
+            }
+        }
+    }
+
+    with pytest.raises(lifecycle.LifecycleError) as error_info:
+        nat_adapter.apply_nat_models(config, payload)
+
+    assert error_info.value.code == "nat_model_settings_reserved"
+    assert error_info.value.metadata == {
+        "llm": "llm",
+        "fields": ["_type", "model_name"],
+    }
+
+
+def test_invalid_fabric_model_override_is_normalized() -> None:
+    from nat.llm.nim_llm import NIMModelConfig
+
+    config = SimpleNamespace(llms={"llm": NIMModelConfig(model_name="native-model")})
+    payload = {
+        "config": {
+            "models": {
+                "llm": {
+                    "provider": "nvidia",
+                    "model": "platform-model",
+                    "temperature": -1.0,
+                }
+            }
+        }
+    }
+
+    with pytest.raises(lifecycle.LifecycleError) as error_info:
+        nat_adapter.apply_nat_models(config, payload)
+
+    assert error_info.value.code == "nat_model_override_invalid"
+    assert error_info.value.metadata == {"llm": "llm"}
 
 
 def test_native_mcp_server_is_added_to_workflow_tools() -> None:

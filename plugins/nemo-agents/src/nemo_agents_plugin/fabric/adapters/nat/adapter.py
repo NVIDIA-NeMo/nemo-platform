@@ -20,12 +20,25 @@ from typing import Any
 
 import nemo_fabric_adapters.common.utils as common_utils  # ty: ignore[unresolved-import]
 from nemo_fabric_adapters.common import lifecycle  # ty: ignore[unresolved-import]
+from pydantic import ValidationError
 from pydantic_core import to_jsonable_python
 
 LOGGER = logging.getLogger(__name__)
 HARNESS = "nat"
 MODE = "nat_workflow"
 FUNCTION_GROUP_SEPARATOR = "__"
+RESERVED_MODEL_SETTINGS = frozenset(
+    {
+        "_type",
+        "type",
+        "provider",
+        "model",
+        "model_name",
+        "api_key",
+        "api_key_env",
+        "temperature",
+    }
+)
 
 
 def main() -> None:
@@ -81,7 +94,7 @@ def validate_supported_fabric_config(payload: dict[str, Any]) -> None:
     """Reject normalized config surfaces this adapter cannot map."""
 
     config = common_utils.fabric_config(payload)
-    unsupported = [field for field in ("models", "telemetry", "relay") if config.get(field)]
+    unsupported = [field for field in ("telemetry", "relay") if config.get(field)]
     skills = config.get("skills") or {}
     if isinstance(skills, dict) and skills.get("paths"):
         unsupported.append("skills")
@@ -105,6 +118,92 @@ def validate_supported_fabric_config(payload: dict[str, Any]) -> None:
 def _native_capabilities(payload: dict[str, Any]) -> dict[str, Any]:
     native = common_utils.capability_plan(payload).get("native") or {}
     return native if isinstance(native, dict) else {}
+
+
+def _fabric_models(payload: dict[str, Any]) -> dict[str, Any]:
+    models = common_utils.fabric_config(payload).get("models") or {}
+    if not isinstance(models, dict):
+        raise lifecycle.LifecycleError(
+            "nat_invalid_models",
+            "Fabric models must be a mapping",
+        )
+    return models
+
+
+def apply_nat_models(config: Any, payload: dict[str, Any]) -> None:
+    """Overlay normalized Fabric models onto existing typed NAT LLM entries."""
+
+    for llm_alias, model in sorted(_fabric_models(payload).items()):
+        if not isinstance(llm_alias, str) or not llm_alias or not isinstance(model, dict):
+            raise lifecycle.LifecycleError(
+                "nat_invalid_models",
+                "Fabric model aliases must be non-empty strings with model configurations",
+            )
+
+        native_llm = config.llms.get(llm_alias)
+        if native_llm is None:
+            raise lifecycle.LifecycleError(
+                "nat_model_alias_not_found",
+                f"Fabric model alias {llm_alias!r} does not match an existing NAT llms entry",
+                metadata={"llm": llm_alias},
+            )
+
+        model_name = model.get("model")
+        if not isinstance(model_name, str) or not model_name:
+            raise lifecycle.LifecycleError(
+                "nat_invalid_models",
+                f"Fabric model alias {llm_alias!r} requires a non-empty model",
+                metadata={"llm": llm_alias},
+            )
+
+        settings = model.get("settings") or {}
+        if not isinstance(settings, dict):
+            raise lifecycle.LifecycleError(
+                "nat_invalid_models",
+                f"Fabric model alias {llm_alias!r} settings must be a mapping",
+                metadata={"llm": llm_alias},
+            )
+        reserved = sorted(RESERVED_MODEL_SETTINGS.intersection(settings))
+        if reserved:
+            raise lifecycle.LifecycleError(
+                "nat_model_settings_reserved",
+                f"Fabric model alias {llm_alias!r} settings cannot replace normalized or NAT type fields",
+                metadata={"llm": llm_alias, "fields": reserved},
+            )
+
+        values = native_llm.model_dump(mode="python", by_alias=True)
+        values.update(settings)
+        values["model"] = model_name
+
+        temperature = model.get("temperature")
+        if temperature is not None:
+            values["temperature"] = temperature
+
+        api_key_env = model.get("api_key_env")
+        if api_key_env is not None:
+            if not isinstance(api_key_env, str) or not api_key_env:
+                raise lifecycle.LifecycleError(
+                    "nat_invalid_models",
+                    f"Fabric model alias {llm_alias!r} api_key_env must be a non-empty string",
+                    metadata={"llm": llm_alias},
+                )
+            api_key = os.environ.get(api_key_env)
+            if not api_key:
+                raise lifecycle.LifecycleError(
+                    "nat_model_api_key_missing",
+                    f"Fabric model alias {llm_alias!r} requires environment variable {api_key_env!r}",
+                    metadata={"llm": llm_alias, "api_key_env": api_key_env},
+                )
+            values["api_key"] = api_key
+
+        try:
+            config.llms[llm_alias] = type(native_llm).model_validate(values)
+        except ValidationError as error:
+            raise lifecycle.LifecycleError(
+                "nat_model_override_invalid",
+                f"Fabric model alias {llm_alias!r} is invalid for the existing NAT LLM type",
+                metadata={"llm": llm_alias},
+            ) from error
 
 
 def _nat_mcp_server_config(name: str, server: Any) -> Any:
@@ -254,7 +353,7 @@ async def load_nat_workflow(config_file: Path, payload: dict[str, Any]) -> Async
     """Load one NAT workflow, applying Fabric capabilities before it is built."""
 
     native = _native_capabilities(payload)
-    if not native.get("mcp_servers") and not common_utils.blocked_tools(payload):
+    if not _fabric_models(payload) and not native.get("mcp_servers") and not common_utils.blocked_tools(payload):
         from nat.runtime.loader import load_workflow
 
         async with load_workflow(config_file) as sessions:
@@ -266,6 +365,7 @@ async def load_nat_workflow(config_file: Path, payload: dict[str, Any]) -> Async
     from nat.runtime.session import SessionManager
 
     config = load_config(config_file)
+    apply_nat_models(config, payload)
     apply_nat_capabilities(config, payload)
     async with WorkflowBuilder.from_config(config=config) as builder:
         sessions = await SessionManager.create(config=config, shared_builder=builder)

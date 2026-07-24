@@ -84,7 +84,9 @@ class TestTranslateAgentConfig:
         assert hermes_config.harness.adapter_id == "nvidia.fabric.hermes"
         assert hermes_config.harness.settings["python_env"] == "HERMES_ADAPTER_PYTHON"
         assert nat_config.harness.adapter_id == "nvidia.nemo.platform.nat"
-        assert nat_config.models == {}
+        assert nat_config.models["llm"].provider == "nvidia"
+        assert nat_config.models["llm"].model == "nvidia/nemotron-3-nano-30b-a3b"
+        assert "llm_map" not in nat_config.harness.settings
         nat_workflow = (example_path.parent / nat_config.harness.settings["config_file"]).resolve()
         assert nat_workflow.is_file()
         nat_workflow.relative_to(example_path.parent.resolve())
@@ -238,7 +240,7 @@ class TestTranslateAgentConfig:
         payload["models"] = {}
         config = AgentConfig.model_validate(payload)
 
-        with pytest.raises(FabricTranslationError, match="cannot define a Platform model"):
+        with pytest.raises(FabricTranslationError, match="cannot define an inline Platform model"):
             translate_agent_config(config)
 
     def test_nat_harness_ignores_top_level_models_owned_by_other_harnesses(self) -> None:
@@ -255,6 +257,73 @@ class TestTranslateAgentConfig:
         fabric_config = translate_agent_config(config)
 
         assert fabric_config.models == {}
+
+    def test_nat_harness_maps_platform_models_to_nat_llm_aliases(self) -> None:
+        payload = _example_yaml_config()
+        payload["default_harness"] = "nat"
+        payload["harnesses"] = {
+            "nat": {
+                "kind": "nat",
+                "settings": {
+                    "config_file": "./workflow.yml",
+                    "llm_map": {
+                        "primary": "default",
+                        "judge": "default",
+                    },
+                },
+            }
+        }
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        assert set(fabric_config.models) == {"primary", "judge"}
+        assert fabric_config.models["primary"].provider == "openai"
+        assert fabric_config.models["primary"].model == "openai/gpt-5.4"
+        assert fabric_config.models["judge"] == fabric_config.models["primary"]
+        assert fabric_config.harness.settings == {"config_file": "./workflow.yml"}
+
+    def test_nat_harness_rejects_unknown_platform_model_alias(self) -> None:
+        payload = _example_yaml_config()
+        payload["default_harness"] = "nat"
+        payload["harnesses"] = {
+            "nat": {
+                "kind": "nat",
+                "settings": {
+                    "config_file": "./workflow.yml",
+                    "llm_map": {"llm": "missing"},
+                },
+            }
+        }
+        config = AgentConfig.model_validate(payload)
+
+        with pytest.raises(FabricTranslationError, match="references unknown Platform model 'missing'"):
+            translate_agent_config(config)
+
+    @pytest.mark.parametrize(
+        "llm_map",
+        [
+            "default",
+            {"": "default"},
+            {"llm": ""},
+        ],
+    )
+    def test_nat_harness_rejects_invalid_llm_map(self, llm_map: Any) -> None:
+        payload = _example_yaml_config()
+        payload["default_harness"] = "nat"
+        payload["harnesses"] = {
+            "nat": {
+                "kind": "nat",
+                "settings": {
+                    "config_file": "./workflow.yml",
+                    "llm_map": llm_map,
+                },
+            }
+        }
+        config = AgentConfig.model_validate(payload)
+
+        with pytest.raises(FabricTranslationError, match="llm_map"):
+            translate_agent_config(config)
 
     def test_nat_harness_translates_shared_capabilities_without_platform_model(self) -> None:
         payload = _example_yaml_config()

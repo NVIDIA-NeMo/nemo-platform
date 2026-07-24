@@ -32,6 +32,7 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
     models: dict[str, fabric.ModelConfig | dict[str, Any]] = {}
     if harness.kind == "nat":
         _validate_nat_harness(config, selected_harness_name, harness)
+        models.update(_nat_models(config, selected_harness_name, harness))
     else:
         model = _resolve_model(config, selected_harness_name, harness)
         models["default"] = fabric.ModelConfig(**_model_payload(model))
@@ -41,7 +42,7 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
         harness=fabric.HarnessConfig(
             adapter_id=_adapter_id_for_harness(harness),
             resolution="preinstalled",
-            settings=harness.settings,
+            settings=_harness_settings(harness),
         ),
         models=models,
         environment=fabric.EnvironmentConfig(
@@ -94,7 +95,8 @@ def _resolve_model(config: AgentConfig, harness_name: str, harness: HarnessConfi
 def _validate_nat_harness(config: AgentConfig, harness_name: str, harness: HarnessConfig) -> None:
     if harness.model is not None:
         raise FabricTranslationError(
-            f"NAT harness {harness_name!r} cannot define a Platform model; configure models in the NAT config file."
+            f"NAT harness {harness_name!r} cannot define an inline Platform model; "
+            "use settings.llm_map to reference top-level models."
         )
 
     config_file = harness.settings.get("config_file")
@@ -105,6 +107,44 @@ def _validate_nat_harness(config: AgentConfig, harness_name: str, harness: Harne
         raise FabricTranslationError(
             f"NAT harness {harness_name!r} does not map Platform telemetry; configure telemetry in the NAT config file."
         )
+
+
+def _nat_models(
+    config: AgentConfig,
+    harness_name: str,
+    harness: HarnessConfig,
+) -> dict[str, fabric.ModelConfig]:
+    llm_map = harness.settings.get("llm_map")
+    if llm_map is None:
+        return {}
+    if not isinstance(llm_map, dict):
+        raise FabricTranslationError(f"NAT harness {harness_name!r} settings.llm_map must be a mapping.")
+
+    models: dict[str, fabric.ModelConfig] = {}
+    for llm_alias, model_alias in llm_map.items():
+        if not isinstance(llm_alias, str) or not llm_alias:
+            raise FabricTranslationError(
+                f"NAT harness {harness_name!r} settings.llm_map keys must be non-empty NAT LLM aliases."
+            )
+        if not isinstance(model_alias, str) or not model_alias:
+            raise FabricTranslationError(
+                f"NAT harness {harness_name!r} settings.llm_map values must be non-empty Platform model aliases."
+            )
+
+        model = config.models.get(model_alias)
+        if model is None:
+            raise FabricTranslationError(
+                f"NAT harness {harness_name!r} settings.llm_map references unknown Platform model {model_alias!r}."
+            )
+        models[llm_alias] = fabric.ModelConfig(**_model_payload(model))
+    return models
+
+
+def _harness_settings(harness: HarnessConfig) -> dict[str, Any]:
+    settings = dict(harness.settings)
+    if harness.kind == "nat":
+        settings.pop("llm_map", None)
+    return settings
 
 
 def _model_payload(model: ModelConfig) -> dict[str, Any]:

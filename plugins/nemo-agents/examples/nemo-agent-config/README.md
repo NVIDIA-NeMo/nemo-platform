@@ -11,7 +11,7 @@ Install them explicitly before local Fabric smoke tests:
 uv pip install -e "plugins/nemo-agents[fabric]"
 ```
 
-Top-level `skills`, `mcp`, and `tools` are Platform-owned shared fields that
+Top-level `models`, `skills`, `mcp`, and `tools` are Platform-owned fields that
 translate into `FabricConfig`. Prompt settings are harness-specific for now and
 should be configured under `harnesses.<name>.settings`.
 
@@ -25,7 +25,34 @@ NAT components. Each has a dedicated `agent.yaml` because they are distinct NAT
 workflows. For the harness comparison, the shared `agent.yaml` uses calculator
 as its representative NAT harness so all three harness kinds can be exercised
 from one Platform config. In every case, `workflow.yml` remains the NAT source
-of truth.
+of truth for workflow structure and native LLM client configuration.
+
+For NAT model overrides, `harness.settings.llm_map` maps each NAT `llms` alias
+to a Platform `models` alias. The adapter preserves the existing NAT LLM type
+and settings, then applies the Platform model name, temperature, credential
+environment variable, and explicit model settings during runtime start. The
+Platform model provider does not replace the NAT `_type`; the referenced native
+LLM entry remains responsible for selecting a compatible client.
+
+```yaml
+harnesses:
+  nat:
+    kind: nat
+    settings:
+      config_file: ./nat-calculator/workflow.yml
+      llm_map:
+        llm: nat_default
+
+models:
+  nat_default:
+    provider: nvidia
+    model: nvidia/nemotron-3-nano-30b-a3b
+    api_key_env: NVIDIA_API_KEY
+    temperature: 0.0
+```
+
+Without `llm_map`, the adapter leaves the NAT workflow's native `llms`
+configuration unchanged.
 
 Set `default_harness: nat` in the shared `agent.yaml`, then run:
 
