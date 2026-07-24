@@ -77,6 +77,44 @@ def test_experiment_group_update_description(client: TestClient) -> None:
     assert missing.status_code == 404
 
 
+def test_experiment_group_pareto_defaults_and_round_trips(client: TestClient) -> None:
+    # Omitting pareto defaults to cost (x) vs latency (y), so the chart always has something to render.
+    created = client.post(GROUPS, json={"name": "pareto-cfg"})
+    assert created.status_code == 201, created.text
+    assert created.json()["pareto"] == {"x_metric": "cost_usd", "y_metric": "latency_ms"}
+    assert client.get(f"{GROUPS}/pareto-cfg").json()["pareto"] == {
+        "x_metric": "cost_usd",
+        "y_metric": "latency_ms",
+    }
+
+    # A custom selection round-trips through PUT.
+    updated = client.put(
+        f"{GROUPS}/pareto-cfg",
+        json={"name": "pareto-cfg", "pareto": {"x_metric": "cost_usd", "y_metric": "evaluators.reward"}},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["pareto"] == {"x_metric": "cost_usd", "y_metric": "evaluators.reward"}
+
+    # An update that omits pareto preserves the saved axes rather than resetting them to the default.
+    preserved = client.put(f"{GROUPS}/pareto-cfg", json={"name": "pareto-cfg", "summary": "unrelated edit"})
+    assert preserved.status_code == 200, preserved.text
+    assert preserved.json()["pareto"] == {"x_metric": "cost_usd", "y_metric": "evaluators.reward"}
+
+
+def test_experiment_group_pareto_rejects_unknown_metric(client: TestClient) -> None:
+    # Studio can only plot cost_usd, latency_ms, or evaluators.<name>; anything else is rejected so it
+    # can't be persisted as an unusable chart default.
+    rejected = client.post(
+        GROUPS, json={"name": "bad-pareto", "pareto": {"x_metric": "made_up", "y_metric": "latency_ms"}}
+    )
+    assert rejected.status_code == 422, rejected.text
+    # A dynamic evaluator metric is allowed.
+    ok = client.post(
+        GROUPS, json={"name": "ok-pareto", "pareto": {"x_metric": "evaluators.safety", "y_metric": "cost_usd"}}
+    )
+    assert ok.status_code == 201, ok.text
+
+
 def test_evaluation_update_moves_between_groups_and_edits(client: TestClient) -> None:
     group_a = client.post(GROUPS, json={"name": "grp-a"}).json()
     group_b = client.post(GROUPS, json={"name": "grp-b"}).json()

@@ -22,7 +22,7 @@ from datetime import datetime
 from typing import Any, ClassVar
 
 from nmp.common.entities.client import EntityBase
-from pydantic import AnyUrl, Field, field_validator, model_validator
+from pydantic import AnyUrl, BaseModel, Field, field_validator, model_validator
 
 
 def _stringify_metadata(value: Any) -> Any:
@@ -32,6 +32,31 @@ def _stringify_metadata(value: Any) -> Any:
     if not isinstance(value, dict):
         return value
     return {key: val if isinstance(val, str) else json.dumps(val) for key, val in value.items()}
+
+
+class ParetoConfig(BaseModel):
+    """Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
+
+    Metric ids use the same vocabulary as the evaluations list sort/filter fields — ``cost_usd``,
+    ``latency_ms``, or ``evaluators.<name>``. Defaults to cost (x) vs latency (y): both exist for
+    every group, so the chart always has something to render before anyone customizes it.
+    """
+
+    x_metric: str = Field(default="cost_usd", description="Metric plotted on the Pareto X axis.")
+    y_metric: str = Field(default="latency_ms", description="Metric plotted on the Pareto Y axis.")
+
+    @field_validator("x_metric", "y_metric")
+    @classmethod
+    def _validate_metric(cls, value: str) -> str:
+        """Restrict axes to metrics Studio can actually plot: the two fixed metrics or a dynamic
+        ``evaluators.<name>``. Evaluator names are customer-specific, so only the prefix is checked."""
+        if value in ("cost_usd", "latency_ms"):
+            return value
+        if value.startswith("evaluators.") and value != "evaluators.":
+            return value
+        raise ValueError(
+            f"Unsupported Pareto metric {value!r}; expected 'cost_usd', 'latency_ms', or 'evaluators.<name>'."
+        )
 
 
 class ExperimentGroup(EntityBase):
@@ -73,6 +98,21 @@ class ExperimentGroup(EntityBase):
         stored ``default_sort`` as ``null`` (or, earlier, a ``SortCriterion`` list); the entity store is
         schema-on-read, so coerce anything that isn't a usable string to the default on read."""
         return value if isinstance(value, str) else "-created_at"
+
+    pareto: ParetoConfig = Field(
+        default_factory=ParetoConfig,
+        description=(
+            "Default X/Y metrics for this group's cost-vs-accuracy Pareto view. Defaults to cost (x) "
+            "vs latency (y) so the chart always renders before it's customized."
+        ),
+    )
+
+    @field_validator("pareto", mode="before")
+    @classmethod
+    def _pareto_fallback(cls, value: Any) -> Any:
+        """Schema-on-read: groups persisted before this field stored no ``pareto`` (or ``null``);
+        coerce anything that isn't a config mapping to the cost-vs-latency default."""
+        return value if isinstance(value, dict | ParetoConfig) else ParetoConfig()
 
     is_deleted: bool = Field(
         default=False,

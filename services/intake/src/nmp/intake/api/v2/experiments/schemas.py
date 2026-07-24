@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Annotated, Self
 
 from nmp.common.entities.values import DatetimeFilter, Filter, NumberFilter, map_entity_field
-from nmp.intake.entities.experiments import Experiment, ExperimentGroup
+from nmp.intake.entities.experiments import Experiment, ExperimentGroup, ParetoConfig
 from nmp.intake.spans.domain import (
     INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT,
     IntakeResponseMode,
@@ -46,6 +46,13 @@ class ExperimentGroupRequest(BaseModel):
             "'-' on a field = descending), e.g. '-evaluators.reward.mean,cost_usd.mean'. Defaults to "
             "'-created_at'. Accepts any field the evaluations list `sort` param does; clients apply it as "
             "the list `sort` param."
+        ),
+    )
+    pareto: ParetoConfig | None = Field(
+        default=None,
+        description=(
+            "Default X/Y metrics for the group's Pareto view. Omit to preserve the existing value on "
+            "update; on create, defaults to cost vs. latency."
         ),
     )
 
@@ -165,6 +172,7 @@ class ExperimentGroupResponse(BaseModel):
     summary: str | None = None
     metadata: dict[str, str] | None = None
     default_sort: str
+    pareto: ParetoConfig = Field(default_factory=ParetoConfig)
     created_at: datetime | None = None
     updated_at: datetime | None = None
     evaluation_count: int = Field(
@@ -188,6 +196,7 @@ class ExperimentGroupResponse(BaseModel):
             summary=entity.summary,
             metadata=entity.metadata,
             default_sort=entity.default_sort,
+            pareto=entity.pareto,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
         )

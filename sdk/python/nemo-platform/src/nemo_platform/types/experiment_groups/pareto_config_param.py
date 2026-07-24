@@ -17,11 +17,21 @@
 
 from __future__ import annotations
 
-from .pareto_config import ParetoConfig as ParetoConfig
-from .pareto_config_param import ParetoConfigParam as ParetoConfigParam
-from .experiment_group_response import ExperimentGroupResponse as ExperimentGroupResponse
-from .experiment_group_list_params import ExperimentGroupListParams as ExperimentGroupListParams
-from .experiment_group_filter_param import ExperimentGroupFilterParam as ExperimentGroupFilterParam
-from .experiment_group_create_params import ExperimentGroupCreateParams as ExperimentGroupCreateParams
-from .experiment_group_update_params import ExperimentGroupUpdateParams as ExperimentGroupUpdateParams
-from .experiment_group_responses_page import ExperimentGroupResponsesPage as ExperimentGroupResponsesPage
+from typing_extensions import TypedDict
+
+__all__ = ["ParetoConfigParam"]
+
+
+class ParetoConfigParam(TypedDict, total=False):
+    """Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
+
+    Metric ids use the same vocabulary as the evaluations list sort/filter fields — ``cost_usd``,
+    ``latency_ms``, or ``evaluators.<name>``. Defaults to cost (x) vs latency (y): both exist for
+    every group, so the chart always has something to render before anyone customizes it.
+    """
+
+    x_metric: str
+    """Metric plotted on the Pareto X axis."""
+
+    y_metric: str
+    """Metric plotted on the Pareto Y axis."""

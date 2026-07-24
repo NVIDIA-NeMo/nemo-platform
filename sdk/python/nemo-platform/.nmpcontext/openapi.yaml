@@ -11285,6 +11285,11 @@ components:
             Accepts any field the evaluations list `sort` param does; clients apply
             it as the list `sort` param.'
           default: -created_at
+        pareto:
+          allOf:
+          - $ref: '#/components/schemas/ParetoConfig'
+          description: Default X/Y metrics for the group's Pareto view. Omit to preserve
+            the existing value on update; on create, defaults to cost vs. latency.
       additionalProperties: false
       type: object
       required:
@@ -11319,6 +11324,8 @@ components:
         default_sort:
           type: string
           title: Default Sort
+        pareto:
+          $ref: '#/components/schemas/ParetoConfig'
         created_at:
           title: Created At
           type: string
@@ -15399,6 +15406,25 @@ components:
       - recipe
       title: PangeaRailOptions
       description: Configuration data for the Pangea AI Guard API
+    ParetoConfig:
+      properties:
+        x_metric:
+          type: string
+          title: X Metric
+          description: Metric plotted on the Pareto X axis.
+          default: cost_usd
+        y_metric:
+          type: string
+          title: Y Metric
+          description: Metric plotted on the Pareto Y axis.
+          default: latency_ms
+      type: object
+      title: ParetoConfig
+      description: "Default X/Y metrics for a group's cost-vs-accuracy Pareto view.\n\
+        \nMetric ids use the same vocabulary as the evaluations list sort/filter fields\
+        \ \u2014 ``cost_usd``,\n``latency_ms``, or ``evaluators.<name>``. Defaults\
+        \ to cost (x) vs latency (y): both exist for\nevery group, so the chart always\
+        \ has something to render before anyone customizes it."
     PatronusEvaluateApiParams:
       properties:
         success_strategy:
