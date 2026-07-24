@@ -14,8 +14,8 @@ clusters, use the NeMo Platform Helm chart on Kubernetes.
 
 | Component | Requirement | Notes |
 |-----------|-------------|-------|
-| Python | 3.11, 3.12, 3.13, or 3.14 (`>=3.11,<3.15`) | Use an isolated virtual environment. On Python 3.14, prefix `pip install "nemo-platform[all]"` with `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` while the transitive `litellm` Rust extension catches up to Python 3.14. Python 3.15 and later are not part of the OSS local-install support range. |
-| Package installer | `uv` recommended; `pip` supported | The one-line installer sets up `uv` automatically when needed. |
+| Python | 3.11, 3.12, or 3.13 for the documented local setup path | Use an isolated virtual environment. Base SDK and CLI packages retain the package-supported Python 3.11-3.14 range, but `nemo-platform[all]` includes `nemo-safe-synthesizer`, which does not yet support Python 3.14. |
+| Package installer | `uv>=0.9.14,<0.10.0` recommended; `pip` supported | The one-line installer sets up `uv` automatically when needed. |
 | Operating system | Recent Linux or macOS release | See the [Support Matrix](/documentation/reference/support-matrix) for the supported OS list. |
 | Memory | 8 GB RAM minimum | 16 GB or more is recommended for larger local workflows. |
 | Disk space | 16 GB free disk space minimum | Additional space is needed for datasets, job outputs, and local model artifacts. |

@@ -19,9 +19,11 @@ NeMo Platform brings NVIDIA NeMo libraries together under one CLI, Python SDK, a
 
 ## Install
 
-**Prerequisites:** Python 3.11–3.14 and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance).
+**Full local setup prerequisites:** Python 3.11–3.13 and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance).
 
 The `nemo-platform` distribution is a convenience wrapper that bundles the SDK, shared runtime packages, default first-party plugins, and platform services into a single wheel. Install just the SDK and CLI, or install everything needed to run the platform locally:
+
+Use Python 3.11–3.13 for `nemo-platform[all]` and `nemo setup`; that local setup path includes `nemo-safe-synthesizer`, which does not yet support Python 3.14.
 
 ```bash
 # SDK + CLI only
@@ -29,14 +31,6 @@ pip install nemo-platform
 
 # SDK + CLI + all platform services and default plugins (recommended)
 pip install "nemo-platform[all]"
-```
-
-On Python 3.14, prefix the `nemo-platform[all]` install with
-`PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` while the transitive `litellm` Rust
-extension catches up to Python 3.14:
-
-```bash
-PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 pip install "nemo-platform[all]"
 ```
 
 Then bring up the platform:

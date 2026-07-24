@@ -4,7 +4,7 @@ A plugin with an HTTP endpoint, a CLI command, a scheduled job, and typed config
 
 ## Prerequisites
 
-Python 3.11+, `uv`, `export NMP_BASE_URL=http://localhost:8080` (Steps 2–5), running NeMo Platform (Step 6).
+Python 3.11+, `uv`, `export NMP_BASE_URL=http://localhost:8080` (Steps 2–5), running NeMo Platform (Step 6). Use Python 3.11–3.13 when you run the full local platform with `nemo-platform[all]`; that path includes `nemo-safe-synthesizer`, which does not yet support Python 3.14.
 
 ## Step 1: Create the package structure
 
