@@ -1323,6 +1323,9 @@ components:
           title: Custom Fields
           additionalProperties: true
           type: object
+        output_location:
+          title: Output Location
+          type: string
       type: object
       required:
       - spec

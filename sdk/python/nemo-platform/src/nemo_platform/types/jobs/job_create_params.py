@@ -41,6 +41,8 @@ class JobCreateParams(TypedDict, total=False):
 
     name: str
 
+    output_location: str
+
     ownership: Dict[str, object]
 
     project: str

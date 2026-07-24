@@ -112,6 +112,7 @@ class TestJobs:
             custom_fields={"foo": "bar"},
             description="description",
             name="name",
+            output_location="output_location",
             ownership={"foo": "bar"},
             project="project",
         )
@@ -806,6 +807,7 @@ class TestAsyncJobs:
             custom_fields={"foo": "bar"},
             description="description",
             name="name",
+            output_location="output_location",
             ownership={"foo": "bar"},
             project="project",
         )
