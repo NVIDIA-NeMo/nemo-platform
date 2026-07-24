@@ -11273,8 +11273,8 @@ components:
         pareto:
           allOf:
           - $ref: '#/components/schemas/ParetoConfig'
-          description: Default X/Y metrics for the group's Pareto view. Defaults to
-            cost vs. latency.
+          description: Default X/Y metrics for the group's Pareto view. Omit to preserve
+            the existing value on update; on create, defaults to cost vs. latency.
       additionalProperties: false
       type: object
       required:

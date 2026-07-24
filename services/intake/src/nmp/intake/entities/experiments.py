@@ -45,6 +45,19 @@ class ParetoConfig(BaseModel):
     x_metric: str = Field(default="cost_usd", description="Metric plotted on the Pareto X axis.")
     y_metric: str = Field(default="latency_ms", description="Metric plotted on the Pareto Y axis.")
 
+    @field_validator("x_metric", "y_metric")
+    @classmethod
+    def _validate_metric(cls, value: str) -> str:
+        """Restrict axes to metrics Studio can actually plot: the two fixed metrics or a dynamic
+        ``evaluators.<name>``. Evaluator names are customer-specific, so only the prefix is checked."""
+        if value in ("cost_usd", "latency_ms"):
+            return value
+        if value.startswith("evaluators.") and value != "evaluators.":
+            return value
+        raise ValueError(
+            f"Unsupported Pareto metric {value!r}; expected 'cost_usd', 'latency_ms', or 'evaluators.<name>'."
+        )
+
 
 class ExperimentGroup(EntityBase):
     """A named container of Experiments pursuing a single optimization goal.

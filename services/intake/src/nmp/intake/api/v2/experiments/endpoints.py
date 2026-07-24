@@ -267,7 +267,10 @@ async def update_experiment_group(
     existing.summary = body.summary
     existing.metadata = body.metadata
     existing.default_sort = body.default_sort
-    existing.pareto = body.pareto
+    # Only overwrite the saved axes when the client actually sent them; an omitted `pareto` (older
+    # clients) must not silently reset customized axes to the cost/latency default.
+    if body.pareto is not None:
+        existing.pareto = body.pareto
     updated = await entity_client.update(existing)
     response = ExperimentGroupResponse.from_entity(updated)
     response.evaluation_count = await _count_live_evaluations_in_group(

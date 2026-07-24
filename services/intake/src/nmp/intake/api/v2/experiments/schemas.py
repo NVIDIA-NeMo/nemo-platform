@@ -48,9 +48,12 @@ class ExperimentGroupRequest(BaseModel):
             "the list `sort` param."
         ),
     )
-    pareto: ParetoConfig = Field(
-        default_factory=ParetoConfig,
-        description="Default X/Y metrics for the group's Pareto view. Defaults to cost vs. latency.",
+    pareto: ParetoConfig | None = Field(
+        default=None,
+        description=(
+            "Default X/Y metrics for the group's Pareto view. Omit to preserve the existing value on "
+            "update; on create, defaults to cost vs. latency."
+        ),
     )
 
 
