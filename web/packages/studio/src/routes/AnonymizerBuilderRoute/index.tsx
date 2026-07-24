@@ -11,10 +11,8 @@ import {
   Divider,
   Flex,
   Panel,
+  SegmentedControl,
   Stack,
-  TabsList,
-  TabsRoot,
-  TabsTrigger,
   Text,
 } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
@@ -125,19 +123,15 @@ export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
                   }
                 >
                   <Stack gap="density-2xl">
-                    <TabsRoot value={activeTab}>
-                      <TabsList>
-                        <TabsTrigger value={TAB_SOURCE} onClick={() => setActiveTab(TAB_SOURCE)}>
-                          Source
-                        </TabsTrigger>
-                        <TabsTrigger
-                          value={TAB_MODEL_SETTINGS}
-                          onClick={() => setActiveTab(TAB_MODEL_SETTINGS)}
-                        >
-                          Model Settings
-                        </TabsTrigger>
-                      </TabsList>
-                    </TabsRoot>
+                    <SegmentedControl
+                      className="w-full"
+                      value={activeTab}
+                      onValueChange={setActiveTab}
+                      items={[
+                        { value: TAB_SOURCE, children: 'Source' },
+                        { value: TAB_MODEL_SETTINGS, children: 'Model Settings' },
+                      ]}
+                    />
 
                     {submitError && (
                       <Banner kind="inline" status="error">
