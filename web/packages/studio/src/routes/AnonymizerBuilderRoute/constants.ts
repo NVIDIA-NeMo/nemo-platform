@@ -59,3 +59,24 @@ export const ENTITY_MODE_OPTIONS: { value: EntityMode; children: string }[] = [
 ];
 
 export const DEFAULT_PREVIEW_ROWS = 1;
+
+/** Alias assigned to the single user-selected model in `model_configs`. */
+export const MODEL_ALIAS = 'anonymizer-model';
+
+/** Role names the anonymizer workflows resolve against `model_configs` aliases. */
+export const DETECTION_ROLES = [
+  'entity_detector',
+  'entity_validator',
+  'entity_augmenter',
+  'latent_detector',
+];
+export const REPLACE_ROLE = 'replacement_generator';
+export const REWRITE_ROLES = [
+  'domain_classifier',
+  'disposition_analyzer',
+  'meaning_extractor',
+  'qa_generator',
+  'rewriter',
+  'repairer',
+  'evaluator',
+];

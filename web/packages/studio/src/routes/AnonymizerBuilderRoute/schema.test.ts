@@ -10,6 +10,9 @@ import {
 const form = (overrides: Partial<AnonymizerFormData> = {}): AnonymizerFormData => ({
   ...getAnonymizerFormDefaults(),
   source: 'https://example.com/data.csv',
+  modelId: 'default/gpt',
+  model: 'openai/gpt-oss-120b',
+  provider: 'default/nvidia',
   ...overrides,
 });
 
@@ -42,5 +45,33 @@ describe('buildAnonymizerJobRequest', () => {
     expect(req.name).toBe('job-1');
     expect(req.spec.data.text_column).toBe('biography');
     expect(req.spec.data.data_summary).toBe('profiles');
+  });
+
+  it('emits a single model_config from the selected model and provider', () => {
+    const req = buildAnonymizerJobRequest(form());
+    expect(req.spec.model_configs).toEqual([
+      { alias: 'anonymizer-model', model: 'openai/gpt-oss-120b', provider: 'default/nvidia' },
+    ]);
+  });
+
+  it('maps detection + replace roles for substitute, detection + rewrite for rewrite', () => {
+    const sub = buildAnonymizerJobRequest(form({ strategy: 'substitute' })).spec.selected_models;
+    expect(sub?.detection?.entity_detector).toBe('anonymizer-model');
+    expect(sub?.replace?.replacement_generator).toBe('anonymizer-model');
+    expect(sub?.rewrite).toBeUndefined();
+
+    const rew = buildAnonymizerJobRequest(form({ strategy: 'rewrite' })).spec.selected_models;
+    expect(rew?.detection?.entity_detector).toBe('anonymizer-model');
+    expect(rew?.rewrite?.rewriter).toBe('anonymizer-model');
+    expect(rew?.replace).toBeUndefined();
+  });
+
+  it('maps only detection roles for redact/annotate/hash', () => {
+    for (const strategy of ['redact', 'annotate', 'hash'] as const) {
+      const selected = buildAnonymizerJobRequest(form({ strategy })).spec.selected_models;
+      expect(selected?.detection?.entity_detector).toBe('anonymizer-model');
+      expect(selected?.replace).toBeUndefined();
+      expect(selected?.rewrite).toBeUndefined();
+    }
   });
 });

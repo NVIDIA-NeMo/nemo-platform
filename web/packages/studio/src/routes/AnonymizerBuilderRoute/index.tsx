@@ -25,6 +25,7 @@ import { ColumnsSection } from '@studio/routes/AnonymizerBuilderRoute/components
 import { DataSourceSection } from '@studio/routes/AnonymizerBuilderRoute/components/DataSourceSection';
 import { EntitiesSection } from '@studio/routes/AnonymizerBuilderRoute/components/EntitiesSection';
 import { GenerationSection } from '@studio/routes/AnonymizerBuilderRoute/components/GenerationSection';
+import { ModelSettingsSection } from '@studio/routes/AnonymizerBuilderRoute/components/ModelSettingsSection';
 import {
   anonymizerFormSchema,
   buildAnonymizerJobRequest,
@@ -68,10 +69,15 @@ export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
         },
       });
 
-      const onSubmit = form.handleSubmit((values) => {
-        setSubmitError(undefined);
-        createJob.mutate({ workspace, data: buildAnonymizerJobRequest(values) });
-      });
+      const onSubmit = form.handleSubmit(
+        (values) => {
+          setSubmitError(undefined);
+          createJob.mutate({ workspace, data: buildAnonymizerJobRequest(values) });
+        },
+        (errors) => {
+          if (errors.modelId) setActiveTab(TAB_MODEL_SETTINGS);
+        }
+      );
 
       const handleCancel = () => navigate(getWorkspaceAnonymizerRoute(workspace));
 
@@ -137,7 +143,7 @@ export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
                         <EntitiesSection />
                       </Stack>
                     ) : (
-                      <Text kind="body/regular/md">Model settings coming soon.</Text>
+                      <ModelSettingsSection />
                     )}
                   </Stack>
                 </Panel>
