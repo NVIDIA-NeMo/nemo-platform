@@ -13,8 +13,8 @@ interface OriginatingInsightLinkProps {
 }
 
 /**
- * The Voyager artwork above an "Originating insight" label, both linking to the insight detail page.
- * Shared by the experiment group detail page and the experiment detail root-cause card.
+ * The Voyager mark and an "Originating insight" label on one line, both linking to the insight
+ * detail page. Sits in the top-right corner of the insight cards that reference it.
  */
 export const OriginatingInsightLink: FC<OriginatingInsightLinkProps> = ({ insightId }) => {
   const workspace = useWorkspaceFromPath();
@@ -22,13 +22,12 @@ export const OriginatingInsightLink: FC<OriginatingInsightLinkProps> = ({ insigh
     <Anchor asChild>
       <Link
         to={getOptimizerInsightRoute(workspace, insightId)}
-        className="flex w-[90px] shrink-0 flex-col items-center gap-density-md text-center no-underline hover:!bg-transparent hover:underline"
+        className="flex shrink-0 items-center gap-density-sm no-underline hover:!bg-transparent hover:underline"
       >
-        <img src={voyagerArt} alt="" aria-hidden className="h-[78px] w-[90px]" />
-        <Text kind="body/bold/md" color="brand" className="text-center">
-          Originating
-          <br />
-          insight
+        {/* The artwork is authored at 90x78 and stretches to its box, so keep that ratio. */}
+        <img src={voyagerArt} alt="" aria-hidden className="h-6 w-[28px]" />
+        <Text kind="body/bold/md" color="brand">
+          Originating insight
         </Text>
       </Link>
     </Anchor>

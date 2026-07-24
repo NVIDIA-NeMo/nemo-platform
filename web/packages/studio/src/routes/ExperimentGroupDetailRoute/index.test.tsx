@@ -26,44 +26,57 @@ const group = {
   evaluation_count: 0,
 } satisfies Partial<ExperimentGroupResponse>;
 
-describe('ExperimentGroupDetailRoute', () => {
-  it('renders the summary without requesting Optimizer when disabled', async () => {
-    const insightRequest = vi.fn();
-    server.use(
-      http.get('*/apis/intake/v2/workspaces/:workspace/experiment-groups/:name', () =>
-        HttpResponse.json(group)
-      ),
-      http.get('*/apis/intake/v2/workspaces/:workspace/evaluations', () =>
-        HttpResponse.json({
-          data: [],
-          pagination: {
-            page: 1,
-            page_size: 25,
-            current_page_size: 0,
-            total_pages: 0,
-            total_results: 0,
-          },
-        })
-      ),
-      http.get('*/apis/insights/v2/workspaces/:workspace/insights/:insightId', () => {
-        insightRequest();
-        return HttpResponse.json({});
-      })
-    );
-
-    renderRoute(<ExperimentGroupDetailRoute />, {
-      history: `/workspaces/${WORKSPACE}/experiment/${GROUP_NAME}`,
-      routes: [
-        {
-          path: ROUTES.workspace.experimentGroupDetail,
-          element: <ExperimentGroupDetailRoute />,
+const mockGroup = (overrides?: Partial<ExperimentGroupResponse>) => {
+  const insightRequest = vi.fn();
+  server.use(
+    http.get('*/apis/intake/v2/workspaces/:workspace/experiment-groups/:name', () =>
+      HttpResponse.json({ ...group, ...overrides })
+    ),
+    http.get('*/apis/intake/v2/workspaces/:workspace/evaluations', () =>
+      HttpResponse.json({
+        data: [],
+        pagination: {
+          page: 1,
+          page_size: 25,
+          current_page_size: 0,
+          total_pages: 0,
+          total_results: 0,
         },
-      ],
-    });
+      })
+    ),
+    http.get('*/apis/insights/v2/workspaces/:workspace/insights/:insightId', () => {
+      insightRequest();
+      return HttpResponse.json({});
+    })
+  );
 
-    expect(await screen.findByText('Generated group summary')).toBeInTheDocument();
-    expect(screen.queryByText('Editable group description')).not.toBeInTheDocument();
+  renderRoute(<ExperimentGroupDetailRoute />, {
+    history: `/workspaces/${WORKSPACE}/experiment/${GROUP_NAME}`,
+    routes: [
+      {
+        path: ROUTES.workspace.experimentGroupDetail,
+        element: <ExperimentGroupDetailRoute />,
+      },
+    ],
+  });
+
+  return insightRequest;
+};
+
+describe('ExperimentGroupDetailRoute', () => {
+  it('renders the group description and summary without requesting Optimizer when disabled', async () => {
+    const insightRequest = mockGroup();
+
+    expect(await screen.findByText('Editable group description')).toBeInTheDocument();
+    expect(screen.getByText('Generated group summary')).toBeInTheDocument();
     expect(insightRequest).not.toHaveBeenCalled();
     expect(screen.queryByRole('link', { name: /originating insight/i })).not.toBeInTheDocument();
+  });
+
+  it('omits the summary panel for groups no producer has summarized', async () => {
+    mockGroup({ summary: undefined });
+
+    expect(await screen.findByText('Editable group description')).toBeInTheDocument();
+    expect(screen.queryByText('Summary')).not.toBeInTheDocument();
   });
 });

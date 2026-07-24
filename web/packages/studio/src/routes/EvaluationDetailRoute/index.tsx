@@ -53,13 +53,13 @@ export const EvaluationDetailRoute: FC = () => {
         <EvaluationDetailMetrics evaluationName={evaluationName} />
         {showInsightCard ? (
           <Card className="!h-fit">
-            <Flex className="items-start gap-density-md">
-              <OriginatingInsightLink insightId={insightId} />
-              <Stack className="min-w-0 flex-1 gap-density-md">
+            <Stack className="gap-density-md">
+              <Flex className="items-start justify-between gap-density-md">
                 <Text kind="label/bold/lg">Insight description</Text>
-                <Text kind="body/regular/md">{insight?.description}</Text>
-              </Stack>
-            </Flex>
+                <OriginatingInsightLink insightId={insightId} />
+              </Flex>
+              <Text kind="body/regular/md">{insight?.description}</Text>
+            </Stack>
           </Card>
         ) : null}
         <div className="flex flex-col gap-4 border-t border-base pt-4">

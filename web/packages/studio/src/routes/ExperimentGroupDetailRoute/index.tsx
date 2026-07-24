@@ -3,22 +3,13 @@
 
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { useGetExperimentGroup } from '@nemo/sdk/generated/platform/api';
-import {
-  Anchor,
-  Button,
-  Card,
-  Flex,
-  PageHeader,
-  Stack,
-  Text,
-} from '@nvidia/foundations-react-core';
+import { Button, Card, Flex, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
 import { useOptimizerGetInsight } from '@studio/api/optimizer';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { ExperimentGroupDataView } from '@studio/components/dataViews/ExperimentGroupDataView';
 import { ExperimentGroupEditModal } from '@studio/components/ExperimentGroupEditModal';
 import { OriginatingInsightLink } from '@studio/components/OriginatingInsightLink';
 import { OPTIMIZER_ENABLED } from '@studio/constants/environment';
-import { LINK_DOCS_STUDIO_EVALUATION } from '@studio/constants/links';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -59,14 +50,7 @@ export const ExperimentGroupDetailRoute: FC = () => {
         <PageHeader
           className="p-0"
           slotHeading={experimentGroupName}
-          slotDescription={
-            <>
-              An experiment is a group of evaluation runs aligned toward a common objective.{' '}
-              <Anchor href={LINK_DOCS_STUDIO_EVALUATION} target="_blank">
-                Learn more
-              </Anchor>
-            </>
-          }
+          slotDescription={group?.description || undefined}
           slotActions={
             <Button kind="secondary" disabled={!group} onClick={() => setEditOpen(true)}>
               <Pencil />
@@ -87,26 +71,30 @@ export const ExperimentGroupDetailRoute: FC = () => {
               />
             )}
             <ExperimentGroupMetrics experimentGroupName={experimentGroupName} />
-            <div className="flex items-start gap-density-lg">
-              {insight?.description ? (
-                <Card className="min-w-0 flex-1">
-                  <Flex className="items-start gap-density-md">
-                    <OriginatingInsightLink insightId={insight.id} />
-                    <Stack className="min-w-0 flex-1 gap-density-md">
-                      <Text kind="label/bold/lg">Insight description</Text>
+            {(insight?.description || group?.summary) && (
+              <div className="flex items-start gap-density-lg">
+                {insight?.description ? (
+                  <Card className="min-w-0 flex-1">
+                    <Stack className="gap-density-md">
+                      <Flex className="items-start justify-between gap-density-md">
+                        <Text kind="label/bold/lg">Insight description</Text>
+                        <OriginatingInsightLink insightId={insight.id} />
+                      </Flex>
                       <Text kind="body/regular/md">{insight.description}</Text>
                     </Stack>
-                  </Flex>
-                </Card>
-              ) : null}
-              <Card className="min-w-0 flex-1">
-                <Stack className="gap-density-md">
-                  <Text kind="title/sm">Summary</Text>
-                  <Text kind="body/regular/md">{group?.summary || '—'}</Text>
-                </Stack>
-              </Card>
-            </div>
-            <div className="flex flex-col gap-4">
+                  </Card>
+                ) : null}
+                {group?.summary ? (
+                  <Card className="min-w-0 flex-1">
+                    <Stack className="gap-density-md">
+                      <Text kind="title/sm">Summary</Text>
+                      <Text kind="body/regular/md">{group.summary}</Text>
+                    </Stack>
+                  </Card>
+                ) : null}
+              </div>
+            )}
+            <div className="flex flex-col gap-4 border-t border-base pt-4">
               <div className="flex items-center gap-3">
                 <Text kind="title/sm">Evaluations</Text>
                 {group && (
