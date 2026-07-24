@@ -3,6 +3,7 @@
 
 """Unit tests for the fileset-profiling job helper and endpoints."""
 
+import re
 from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -13,6 +14,7 @@ from nemo_platform_plugin.files.dataset_profile import DatasetProfile, SamplingI
 from nemo_platform_plugin.files.metadata import DatasetMetadataContent, FilesetMetadata
 from nemo_platform_plugin.files.types import UpdateFilesetRequest
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
+from nemo_platform_plugin.jobs.spec import NAME_PATTERN
 from nmp.common.entities.client import EntityNotFoundError
 from nmp.common.files.storage_config import LocalStorageConfig
 from nmp.core.files.api.v2.filesets.endpoints import (
@@ -25,7 +27,12 @@ from nmp.core.files.api.v2.filesets.schemas import (
     SubmitProfileJobResponse,
     fileset_output_from_entity,
 )
-from nmp.core.files.app.profile_job import _build_platform_spec, _is_active, submit_profile_job
+from nmp.core.files.app.profile_job import (
+    _build_platform_spec,
+    _is_active,
+    _job_name_for_fileset,
+    submit_profile_job,
+)
 from nmp.core.files.entities import Fileset, FilesetPurpose
 
 
@@ -93,6 +100,18 @@ async def test_submit_profile_job_creates_job_with_expected_spec():
     assert kwargs["source"] == "files"
     assert kwargs["spec"] == {"fileset": "fs1"}
     assert kwargs["name"].startswith("profile-fs1-")
+
+
+def test_job_name_slugs_the_fileset_name():
+    assert _job_name_for_fileset("GSM8K").startswith("profile-gsm8k-")
+
+
+@pytest.mark.parametrize("fileset_name", ["GSM8K", "My_Dataset.v2", "-leading", "a--b", "Ünïcødé", "x" * 80, "___"])
+def test_job_name_is_valid_for_gnarly_fileset_names(fileset_name):
+    # Fileset names permit characters the Jobs name pattern forbids (uppercase, . / _, -- runs,
+    # leading/trailing punctuation, length); the slugged job name must still satisfy it.
+    name = _job_name_for_fileset(fileset_name)
+    assert re.match(NAME_PATTERN, name), name
 
 
 # --- POST /profile -----------------------------------------------------------

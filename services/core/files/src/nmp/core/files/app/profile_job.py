@@ -16,6 +16,7 @@ references it by task module name.
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from typing import NamedTuple
 
@@ -139,6 +140,19 @@ def _build_platform_spec(workspace: str, fileset_name: str) -> PlatformJobSpecPa
     )
 
 
+def _job_name_for_fileset(fileset_name: str) -> str:
+    """Build a valid, unique job name for profiling ``fileset_name``.
+
+    Fileset names permit characters the Jobs name pattern forbids (uppercase, ``.``/``_``, ``--``
+    runs, leading/trailing punctuation, over-length), so the fileset name is slugged into the
+    readable middle of the job name while the ``profile-`` prefix and uuid suffix keep it valid and
+    unique. A name with no alphanumerics slugs to empty and falls back to just prefix + suffix.
+    """
+    slug = re.sub(r"[^a-z0-9]+", "-", fileset_name.lower()).strip("-")[:40].strip("-")
+    suffix = uuid.uuid4().hex[:8]
+    return f"profile-{slug}-{suffix}" if slug else f"profile-{suffix}"
+
+
 async def submit_profile_job(
     sdk: AsyncNeMoPlatform,
     *,
@@ -146,7 +160,7 @@ async def submit_profile_job(
     fileset_name: str,
 ) -> PlatformJobResponse:
     """Submit a profiling job for ``workspace/fileset_name`` and return it."""
-    job_name = f"profile-{fileset_name}-{uuid.uuid4().hex[:8]}"
+    job_name = _job_name_for_fileset(fileset_name)
     platform_spec = _build_platform_spec(workspace, fileset_name)
     logger.info("Submitting profile job %s for fileset %s/%s", job_name, workspace, fileset_name)
     return await sdk.jobs.create(
