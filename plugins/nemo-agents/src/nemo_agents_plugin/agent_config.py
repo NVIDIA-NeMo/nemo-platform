@@ -62,42 +62,30 @@ class TelemetryConfig(BaseModel):
     atof: dict[str, Any] | None = None
 
 
-class MCPServerConfig(BaseModel):
-    """Platform-owned MCP server configuration."""
-
+class SkillsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    transport: Literal["stdio", "http", "streamable-http"]
-    command: str | None = None
-    args: list[str] = Field(default_factory=list)
-    url: str | None = None
+    paths: list[str] = Field(default_factory=list)
+
+
+class McpServerConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    transport: str
+    url: str
     exposure: Literal["harness_native", "fabric_managed"] = "harness_native"
 
-    @model_validator(mode="after")
-    def _validate_transport_target(self) -> Self:
-        if self.transport == "stdio":
-            if not self.command:
-                raise ValueError("stdio MCP servers require command")
-            if self.url is not None:
-                raise ValueError("stdio MCP servers do not accept url")
-        else:
-            if not self.url:
-                raise ValueError(f"{self.transport} MCP servers require url")
-            if self.command is not None or self.args:
-                raise ValueError(f"{self.transport} MCP servers do not accept command or args")
-        return self
 
-
-class MCPConfig(BaseModel):
+class McpConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
+    servers: dict[str, McpServerConfig] = Field(default_factory=dict)
 
-    @model_validator(mode="after")
-    def _validate_server_names(self) -> Self:
-        if any(not name.strip() for name in self.servers):
-            raise ValueError("MCP server names must not be empty")
-        return self
+
+class ToolsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    blocked: list[str] = Field(default_factory=list)
 
 
 class AgentConfig(BaseModel):
@@ -112,8 +100,9 @@ class AgentConfig(BaseModel):
     harnesses: dict[str, HarnessConfig]
     models: dict[str, ModelConfig] = Field(default_factory=dict)
     prompts: dict[str, str] = Field(default_factory=dict)
-    skills: dict[str, Any] | list[Any] | None = None
-    mcp: MCPConfig = Field(default_factory=MCPConfig)
+    skills: SkillsConfig | None = None
+    mcp: McpConfig | None = None
+    tools: ToolsConfig | None = None
     environment: EnvironmentConfig = Field(default_factory=EnvironmentConfig)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
 
@@ -132,7 +121,7 @@ class AgentProfileConfig(BaseModel):
 
     profile_format: Literal["nemo-agents-profile-v1"]
     name: str = Field(min_length=1)
-    mcp: MCPConfig | None = None
+    mcp: McpConfig | None = None
 
 
 def apply_agent_profiles(config: AgentConfig, profiles: list[AgentProfileConfig]) -> AgentConfig:

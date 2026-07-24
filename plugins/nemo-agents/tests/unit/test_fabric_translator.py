@@ -116,6 +116,37 @@ class TestTranslateAgentConfig:
         assert fabric_config.models["default"].provider == "openai"
         assert fabric_config.models["default"].model == "openai/gpt-5.4"
 
+    def test_translates_shared_capability_sections(self) -> None:
+        payload = copy.deepcopy(_example_yaml_config())
+        payload["skills"] = {"paths": ["skills/review"]}
+        payload["mcp"] = {
+            "servers": {
+                "repo": {
+                    "transport": "stdio",
+                    "url": "repo-mcp --root .",
+                    "exposure": "fabric_managed",
+                }
+            }
+        }
+        payload["tools"] = {"blocked": ["shell", "browser"]}
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        assert fabric_config.skills.paths == ["skills/review"]
+        assert fabric_config.mcp.servers["repo"].transport == "stdio"
+        assert fabric_config.mcp.servers["repo"].url == "repo-mcp --root ."
+        assert fabric_config.mcp.servers["repo"].exposure == "fabric_managed"
+        assert fabric_config.tools.blocked == ["shell", "browser"]
+
+    def test_top_level_prompts_rejected_until_shared_prompt_contract_exists(self) -> None:
+        payload = copy.deepcopy(_example_yaml_config())
+        payload["prompts"] = {"system": "prompts/system.md"}
+        config = AgentConfig.model_validate(payload)
+
+        with pytest.raises(FabricTranslationError, match="Top-level prompts are not translated yet"):
+            translate_agent_config(config)
+
     @pytest.mark.parametrize(
         ("kind", "adapter_id"),
         [
@@ -189,19 +220,3 @@ class TestTranslateAgentConfig:
                 "output_directory": "./artifacts/relay",
             },
         }
-
-    def test_translates_quoted_stdio_command_and_arguments(self) -> None:
-        payload = _example_yaml_config()
-        payload["mcp"] = {
-            "servers": {
-                "calculator": {
-                    "transport": "stdio",
-                    "command": "/path with spaces/calculator",
-                    "args": ["--label", "two words"],
-                }
-            }
-        }
-
-        fabric_config = translate_agent_config(AgentConfig.model_validate(payload))
-
-        assert fabric_config.mcp.servers["calculator"].url == ("'/path with spaces/calculator' --label 'two words'")

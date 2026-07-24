@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import shlex
 from typing import Any
 
 # CI type-checks this plugin via ty extra-paths without installing nemo-agents deps.
@@ -28,6 +27,7 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
     """Translate Platform-owned agent config into a typed in-memory FabricConfig."""
     selected_harness_name, harness = _select_harness(config, harness_name)
     model = _resolve_model(config, selected_harness_name, harness)
+    _validate_untranslated_shared_fields(config)
 
     fabric_config = fabric.FabricConfig(
         metadata=fabric.MetadataConfig(name=config.name, description=config.description or None),
@@ -45,31 +45,13 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
             artifacts=config.environment.artifacts,
             settings=config.environment.settings,
         ),
-        mcp=_translate_mcp(config),
+        skills=_skills_config(config),
+        mcp=_mcp_config(config),
+        tools=_tools_config(config),
     )
 
     _apply_telemetry(fabric_config, config, model)
     return fabric_config
-
-
-def _translate_mcp(config: AgentConfig) -> fabric.McpConfig | None:
-    if not config.mcp.servers:
-        return None
-
-    servers: dict[str, fabric.McpServerConfig] = {}
-    for name, server in config.mcp.servers.items():
-        if server.transport == "stdio":
-            assert server.command is not None
-            target = shlex.join([server.command, *server.args])
-        else:
-            assert server.url is not None
-            target = server.url
-        servers[name] = fabric.McpServerConfig(
-            transport=server.transport,
-            url=target,
-            exposure=server.exposure,
-        )
-    return fabric.McpConfig(servers=servers)
 
 
 def _select_harness(config: AgentConfig, harness_name: str | None) -> tuple[str, HarnessConfig]:
@@ -105,6 +87,33 @@ def _resolve_model(config: AgentConfig, harness_name: str, harness: HarnessConfi
 
 def _model_payload(model: ModelConfig) -> dict[str, Any]:
     return model.model_dump(exclude_none=True)
+
+
+def _validate_untranslated_shared_fields(config: AgentConfig) -> None:
+    if config.prompts:
+        raise FabricTranslationError(
+            "Top-level prompts are not translated yet. Configure prompt settings under the selected harness instead."
+        )
+
+
+def _skills_config(config: AgentConfig) -> Any:
+    if config.skills is None:
+        return None
+    return fabric.SkillConfig(paths=config.skills.paths)
+
+
+def _mcp_config(config: AgentConfig) -> Any:
+    if config.mcp is None:
+        return None
+    return fabric.McpConfig(
+        servers={name: fabric.McpServerConfig(**server.model_dump()) for name, server in config.mcp.servers.items()}
+    )
+
+
+def _tools_config(config: AgentConfig) -> Any:
+    if config.tools is None:
+        return None
+    return fabric.ToolsConfig(blocked=config.tools.blocked)
 
 
 def _apply_telemetry(fabric_config: Any, config: AgentConfig, model: ModelConfig) -> None:

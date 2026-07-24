@@ -16,6 +16,10 @@ uvx uv@0.9.14 pip install \
 NeMo Fabric discovers the Codex and Hermes adapter descriptors installed by the
 packages in the `fabric` extra. No agent-local descriptors are required.
 
+Top-level `skills`, `mcp`, and `tools` are Platform-owned shared fields that
+translate into `FabricConfig`. Prompt settings are harness-specific for now and
+should be configured under `harnesses.<name>.settings`.
+
 ## Codex
 
 Authenticate Codex, leave `default_harness: codex` in `agent.yaml`, and run:
