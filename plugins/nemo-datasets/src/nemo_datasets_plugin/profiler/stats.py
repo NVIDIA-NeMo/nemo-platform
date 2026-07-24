@@ -57,7 +57,14 @@ def _column_stats(feature: FeatureSchema, values: list[Any], total: int, exhaust
         if counts is not None and counts.distinct_count <= _MAX_ENUM_VALUES:
             categorical = counts  # a bounded string enumeration, not free text
     elif _is_numeric(feature.dtype):
-        numbers = [float(value) for value in present if isinstance(value, (int, float)) and not isinstance(value, bool)]
+        # Drop non-finite floats (NaN / +-inf): they serialize to JSON null and then fail to
+        # re-validate against NumericStats' required floats, which would make the whole profile
+        # unreadable on the next load.
+        numbers = [
+            float(value)
+            for value in present
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+        ]
         if numbers:
             numeric = NumericStats(min=min(numbers), max=max(numbers), mean=sum(numbers) / len(numbers))
         categorical = _cardinality(present, exhaustive)
