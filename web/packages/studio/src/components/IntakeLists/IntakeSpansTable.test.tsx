@@ -41,7 +41,7 @@ describe('IntakeSpansTable', () => {
     expect(requestedModes).toContain('preview');
   });
 
-  it('opens span rows in the trace detail route with the span deep link', async () => {
+  it('opens span rows in the session detail route with trace and span deep links', async () => {
     const user = userEvent.setup();
 
     renderRoute(undefined, {
@@ -52,7 +52,7 @@ describe('IntakeSpansTable', () => {
           element: <IntakeSpansTable workspace="default" />,
         },
         {
-          path: '/workspaces/:workspace/intake/traces/:traceId',
+          path: '/workspaces/:workspace/intake/sessions/:sessionId',
           element: <LocationProbe />,
         },
       ],
@@ -61,7 +61,7 @@ describe('IntakeSpansTable', () => {
     await user.click(await screen.findByText('Answer customer policy question'));
 
     expect(await screen.findByTestId('trace-detail-location')).toHaveTextContent(
-      '/workspaces/default/intake/traces/trace-agent-run-001?spanId=span-root-001'
+      '/workspaces/default/intake/sessions/session-agent-run-001?traceId=trace-agent-run-001&spanId=span-root-001'
     );
   });
 

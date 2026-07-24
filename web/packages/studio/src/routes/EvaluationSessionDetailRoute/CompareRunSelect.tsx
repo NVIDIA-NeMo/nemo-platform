@@ -11,18 +11,18 @@ import {
   SelectTrigger,
   Text,
 } from '@nvidia/foundations-react-core';
-import { runLabel, trialLabel } from '@studio/routes/EvaluationTraceDetailRoute/runLabel';
+import { runLabel, trialLabel } from '@studio/routes/EvaluationSessionDetailRoute/runLabel';
 import { Fragment, type FC, useMemo } from 'react';
 
 interface CompareRunSelectProps {
   /** Every run of the current test case across the group's evaluations. */
   runs: EvaluationSessionResponse[];
-  /** trace_id of the run shown in the primary column — never offered as an option. */
-  currentTraceId: string;
-  /** trace_id of the currently selected comparison run, or null when none. */
+  /** session_id of the run shown in the primary column — never offered as an option. */
+  currentSessionId: string;
+  /** session_id of the currently selected comparison run, or null when none. */
   value: string | null;
-  /** Called with the selected run's trace_id. */
-  onChange: (traceId: string) => void;
+  /** Called with the selected run's session_id. */
+  onChange: (sessionId: string) => void;
   /** Keeps the control disabled with a loading placeholder until the runs resolve. */
   isLoading?: boolean;
 }
@@ -35,7 +35,7 @@ interface CompareRunSelectProps {
  */
 export const CompareRunSelect: FC<CompareRunSelectProps> = ({
   runs,
-  currentTraceId,
+  currentSessionId,
   value,
   onChange,
   isLoading = false,
@@ -43,13 +43,13 @@ export const CompareRunSelect: FC<CompareRunSelectProps> = ({
   const groups = useMemo(() => {
     const byEvaluation = new Map<string, EvaluationSessionResponse[]>();
     for (const run of runs) {
-      if (run.trace_id === currentTraceId) continue;
+      if (run.session_id === currentSessionId) continue;
       const existing = byEvaluation.get(run.evaluation_name);
       if (existing) existing.push(run);
       else byEvaluation.set(run.evaluation_name, [run]);
     }
     return [...byEvaluation.entries()];
-  }, [runs, currentTraceId]);
+  }, [runs, currentSessionId]);
 
   const isEmpty = groups.length === 0;
   const disabled = isLoading || isEmpty;
@@ -82,8 +82,8 @@ export const CompareRunSelect: FC<CompareRunSelectProps> = ({
               evaluationRuns.length === 1 ? (
                 // Single trial: collapse run + trial onto one selectable line.
                 <SelectItem
-                  key={evaluationRuns[0].trace_id}
-                  value={evaluationRuns[0].trace_id}
+                  key={evaluationRuns[0].session_id}
+                  value={evaluationRuns[0].session_id}
                   aria-label={runLabel(evaluationRuns[0])}
                 >
                   <Text kind="label/bold/sm">{runLabel(evaluationRuns[0])}</Text>
@@ -97,8 +97,8 @@ export const CompareRunSelect: FC<CompareRunSelectProps> = ({
                   </DropdownHeading>
                   {evaluationRuns.map((run) => (
                     <SelectItem
-                      key={run.trace_id}
-                      value={run.trace_id}
+                      key={run.session_id}
+                      value={run.session_id}
                       // Screen readers get the full "<evaluation> · Trial XXXXX"; the
                       // visible label stays "Trial XXXXX" indented under the heading.
                       aria-label={runLabel(run)}

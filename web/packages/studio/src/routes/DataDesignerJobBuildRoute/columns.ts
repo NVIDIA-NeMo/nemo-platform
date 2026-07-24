@@ -4,7 +4,9 @@
 import {
   type DataDesignerConfig,
   DatetimeSamplerParamsUnit,
+  type FilesetFileSeedSource,
   PersonSamplerParamsSex,
+  type SamplerColumnConfig,
   SamplerType,
   type SamplingStrategy,
   type SeedConfig,
@@ -972,4 +974,125 @@ export const buildDataDesignerConfig = (
   const seedConfig = buildSeedConfig(columns);
   if (seedConfig) config.seed_config = seedConfig;
   return config;
+};
+
+/**
+ * Inverse of {@link serializeFieldValue}: renders a column config's stored value back into
+ * the string form the builder edits. Mirrors the same {@link ColumnField.dataType} branches
+ * so a config → builder → config round-trip reproduces the original value. JSON fields are
+ * pretty-printed for readability in the textarea.
+ */
+const deserializeFieldValue = (field: ColumnField, raw: unknown): string => {
+  if (raw == null) return '';
+  if (field.dataType === 'json' || field.key === 'output_format') {
+    return JSON.stringify(raw, null, 2);
+  }
+  switch (field.dataType) {
+    case 'number':
+      return String(raw);
+    case 'boolean':
+      return raw ? 'true' : 'false';
+    case 'number-list':
+      return Array.isArray(raw) ? raw.join(', ') : String(raw);
+    default:
+      return field.list || field.reference === 'list'
+        ? Array.isArray(raw)
+          ? raw.join(', ')
+          : String(raw)
+        : String(raw);
+  }
+};
+
+/**
+ * Reconstructs a column's `values` record from its SDK config. Sampler param fields are read
+ * from the nested `params` object; every other field (including a sampler's `convert_to`)
+ * reads from the config's top level, matching how {@link toColumnConfig}/{@link toSamplerConfig}
+ * wrote them.
+ */
+const valuesFromConfig = (
+  option: ColumnTypeOption,
+  columnConfig: Record<string, unknown>
+): Record<string, string> => {
+  const values: Record<string, string> = {};
+  const paramKeys =
+    option.columnType === 'sampler'
+      ? new Set(getSamplerParamFields(option.samplerType).map((field) => field.key))
+      : null;
+  const params = (columnConfig.params as Record<string, unknown> | undefined) ?? {};
+
+  for (const field of getColumnFields(option)) {
+    const source = paramKeys?.has(field.key) ? params : columnConfig;
+    const value = deserializeFieldValue(field, source[field.key]);
+    if (value !== '') values[field.key] = value;
+  }
+  return values;
+};
+
+/** Inverse of {@link buildSeedFilesetPath}: splits `{fileset}#{file}` back into its parts. */
+const parseSeedFilesetPath = (path: string): { filesetRef: string; filePath: string } => {
+  const hashIndex = path.indexOf('#');
+  if (hashIndex === -1) return { filesetRef: path, filePath: '' };
+  return { filesetRef: path.slice(0, hashIndex), filePath: path.slice(hashIndex + 1) };
+};
+
+/**
+ * Rebuilds the builder's seed-dataset column from `seed_config` (which is where
+ * {@link buildDataDesignerConfig} moves seed columns — they never live in `config.columns`).
+ * Only NMP fileset sources map back; other seed source kinds aren't builder-editable. The
+ * seed file's discovered columns aren't recoverable from the config, so `available_columns`
+ * stays empty until the fileset is re-inspected.
+ */
+const seedColumnFromConfig = (
+  seedConfig: SeedConfig | undefined,
+  id: string
+): BuilderColumn | null => {
+  const source = seedConfig?.source as FilesetFileSeedSource | undefined;
+  if (!source || source.seed_type !== 'nmp' || typeof source.path !== 'string') return null;
+  const option = findColumnOption({ columnType: 'seed-dataset' });
+  if (!option) return null;
+
+  const { filesetRef, filePath } = parseSeedFilesetPath(source.path);
+  const values: Record<string, string> = {
+    [SEED_FILESET_REF_KEY]: filesetRef,
+    [SEED_FILE_PATH_KEY]: filePath,
+  };
+  if (seedConfig?.sampling_strategy) {
+    values[SEED_SAMPLING_STRATEGY_KEY] = seedConfig.sampling_strategy;
+  }
+  return { id, option, name: 'seed', values };
+};
+
+/**
+ * Reverses {@link buildDataDesignerConfig} into builder columns so an existing job's config
+ * can pre-fill the build canvas (used when cloning a job). Column configs whose type isn't in
+ * the palette are skipped; the seed column is reconstructed from `seed_config`.
+ */
+export const buildColumnsFromConfig = (
+  config: DataDesignerConfig,
+  startId = 0
+): BuilderColumn[] => {
+  const columns: BuilderColumn[] = [];
+  let nextId = startId;
+
+  const seedColumn = seedColumnFromConfig(config.seed_config, `col-${nextId}`);
+  if (seedColumn) {
+    columns.push(seedColumn);
+    nextId++;
+  }
+
+  for (const columnConfig of config.columns) {
+    if (columnConfig.column_type === 'seed-dataset') continue;
+    const option = findColumnOption({
+      columnType: columnConfig.column_type,
+      samplerType: (columnConfig as SamplerColumnConfig).sampler_type,
+    });
+    if (!option) continue;
+    columns.push({
+      id: `col-${nextId++}`,
+      option,
+      name: columnConfig.name,
+      values: valuesFromConfig(option, columnConfig as unknown as Record<string, unknown>),
+    });
+  }
+  return columns;
 };

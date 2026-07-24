@@ -207,3 +207,42 @@ export const buildModelConfigs = (
   servedModelNames: Map<string, string> = new Map()
 ): ModelConfig[] | undefined =>
   models.length > 0 ? models.map((model) => toModelConfig(model, servedModelNames)) : undefined;
+
+/**
+ * Inverse of {@link toInferenceParameters}: maps an SDK inference-parameter object back into
+ * the loose {@link InferenceParams} shape the builder edits, keeping the `generation_type`
+ * marker so embedding models round-trip through {@link toInferenceParameters} unchanged.
+ */
+const inferenceParamsFromConfig = (
+  params: ModelConfig['inference_parameters']
+): Partial<InferenceParams> => {
+  if (!params) return {};
+  if (params.generation_type === 'embedding') {
+    const inference: Partial<InferenceParams> = { generation_type: 'embedding' };
+    if (params.encoding_format) inference.encoding_format = params.encoding_format;
+    if (params.extra_body) inference.extra_body = params.extra_body;
+    if (typeof params.dimensions === 'number') inference.dimensions = params.dimensions;
+    return inference;
+  }
+
+  const chat = params as ChatCompletionInferenceParams;
+  const inference: Partial<InferenceParams> = { generation_type: 'chat-completion' };
+  if (typeof chat.temperature === 'number') inference.temperature = chat.temperature;
+  if (typeof chat.top_p === 'number') inference.top_p = chat.top_p;
+  if (typeof chat.max_tokens === 'number') inference.max_tokens = chat.max_tokens;
+  return inference;
+};
+
+/**
+ * Reverses {@link buildModelConfigs} into builder models so an existing job's `model_configs`
+ * can pre-fill the build canvas (used when cloning a job). The stored `model` is the served
+ * model name; it is preserved verbatim so the cloned job submits the same config.
+ */
+export const buildModelsFromConfig = (configs: ModelConfig[] = [], startId = 0): BuilderModel[] =>
+  configs.map((config, index) => ({
+    id: `model-${startId + index}`,
+    alias: config.alias,
+    model: config.model,
+    provider: config.provider ?? '',
+    inferenceParams: inferenceParamsFromConfig(config.inference_parameters),
+  }));

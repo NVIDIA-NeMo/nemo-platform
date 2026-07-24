@@ -34,9 +34,9 @@ const IntakeSpansTableRoute = lazy(() =>
     return { default: IntakeSpansTableRouteComponent };
   })
 );
-const IntakeTraceDetailRoute = lazy(() =>
-  import('@studio/routes/IntakeTraceDetailRoute').then((module) => ({
-    default: module.IntakeTraceDetailRoute,
+const IntakeSessionDetailRoute = lazy(() =>
+  import('@studio/routes/IntakeSessionDetailRoute').then((module) => ({
+    default: module.IntakeSessionDetailRoute,
   }))
 );
 
@@ -61,8 +61,8 @@ export const intakeRoutes: RouteObject[] = gateIntakeRoutes([
     ],
   },
   {
-    path: ROUTES.workspace.intakeTrace,
-    element: <IntakeTraceDetailRoute />,
+    path: ROUTES.workspace.intakeSession,
+    element: <IntakeSessionDetailRoute />,
     errorElement: <ErrorPanel title="Intake" />,
   },
 ]);

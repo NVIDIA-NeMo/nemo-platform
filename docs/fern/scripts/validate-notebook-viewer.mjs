@@ -28,10 +28,6 @@ const SOURCE_NOTEBOOKS = {
     ROOT,
     "../../customizer/tutorials/distillation-customization-job.ipynb",
   ),
-  "dpo-customization-job": join(
-    ROOT,
-    "../../customizer/tutorials/dpo-customization-job.ipynb",
-  ),
   "embedding-customization-job": join(
     ROOT,
     "../../customizer/tutorials/embedding-customization-job.ipynb",

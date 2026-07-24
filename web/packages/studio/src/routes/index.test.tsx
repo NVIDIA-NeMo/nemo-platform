@@ -75,7 +75,7 @@ const intakeRoutes = [
   ROUTES.workspace.intake,
   ROUTES.workspace.intakeTraces,
   ROUTES.workspace.intakeSpans,
-  ROUTES.workspace.intakeTrace,
+  ROUTES.workspace.intakeSession,
 ];
 
 const safeSynthesizerRoutes = [

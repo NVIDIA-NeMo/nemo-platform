@@ -63,3 +63,24 @@ def test_sdk_run_uses_run_job_collection_path() -> None:
         ("POST", "https://platform.test/apis/anonymizer/v2/workspaces/default/jobs/run"),
         ("GET", "https://platform.test/apis/anonymizer/v2/workspaces/default/jobs/run/anonymizer-run-1"),
     ]
+
+
+def test_service_mounts_entity_labels_route() -> None:
+    paths = {
+        route.path
+        for spec in AnonymizerService().get_routers()
+        for route in spec.router.routes
+        if hasattr(route, "path")
+    }
+
+    assert "/entity-labels" in paths
+
+
+async def test_entity_labels_route_returns_default_labels() -> None:
+    from anonymizer import DEFAULT_ENTITY_LABELS
+    from nemo_anonymizer_plugin.app.entity_labels import list_entity_labels
+
+    result = await list_entity_labels(workspace="default")
+
+    assert result.data == list(DEFAULT_ENTITY_LABELS)
+    assert result.data
