@@ -54,7 +54,7 @@ describe('buildAnonymizerJobRequest', () => {
         alias: 'model-1',
         model: 'openai/gpt-oss-120b',
         provider: 'default/nvidia',
-        inference_parameters: { timeout: 300 },
+        inference_parameters: { timeout: 500 },
       },
     ]);
   });
@@ -129,6 +129,6 @@ describe('buildAnonymizerJobRequest', () => {
     const withTemp = req.spec.model_configs?.find(
       (c) => (c.inference_parameters as { temperature?: number })?.temperature != null
     );
-    expect(withTemp?.inference_parameters).toEqual({ timeout: 300, temperature: 0.1 });
+    expect(withTemp?.inference_parameters).toEqual({ timeout: 500, temperature: 0.1 });
   });
 });

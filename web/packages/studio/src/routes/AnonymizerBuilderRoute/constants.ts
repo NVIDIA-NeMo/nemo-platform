@@ -68,7 +68,7 @@ export const MAX_COLUMN_INTROSPECTION_BYTES = 50 * 1024 * 1024;
  * models don't hit ModelTimeoutError during entity validation. User-supplied
  * inference params override it.
  */
-export const DEFAULT_MODEL_TIMEOUT_SECONDS = 300;
+export const DEFAULT_MODEL_TIMEOUT_SECONDS = 500;
 
 /** Role names the anonymizer workflows resolve against `model_configs` aliases. */
 export const DETECTION_ROLES = [
