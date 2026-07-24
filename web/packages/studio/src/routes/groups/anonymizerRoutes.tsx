@@ -5,8 +5,7 @@ import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { ANONYMIZER_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { gateAnonymizerRoutes } from '@studio/routes/utils';
-import { lazy } from 'react';
-import type { FC } from 'react';
+import { lazy, type FC } from 'react';
 import type { RouteObject } from 'react-router-dom';
 
 const AnonymizerListRoute =
