@@ -373,7 +373,7 @@ export const getPromptTuningFormRoute = (workspace: string, options?: { model?: 
 export const getNewCustomizationJobRoute = (workspace: string, options?: { model?: string }) => {
   const basePath = generatePath(ROUTES.workspace.newCustomizationJob, { workspace });
   if (options?.model) {
-    return `${basePath}?model=${encodeURIComponent(options.model)}`;
+    return `${basePath}?${QUERY_PARAMETERS.model}=${encodeURIComponent(options.model)}`;
   }
   return basePath;
 };
