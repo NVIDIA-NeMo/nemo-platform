@@ -3,9 +3,7 @@
 
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
-  getGetExperimentGroupParetoQueryKey,
   getGetExperimentGroupQueryKey,
-  useGetExperimentGroupPareto,
   useUpdateExperimentGroup,
 } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
@@ -25,6 +23,7 @@ import {
   type ParetoMetric,
   type ParetoPlotPoint,
 } from '@studio/components/charts/ExperimentGroupParetoChart/paretoMetrics';
+import { useParetoEvaluations } from '@studio/components/charts/ExperimentGroupParetoChart/useParetoEvaluations';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, Save } from 'lucide-react';
 import { type FC, useMemo, useState } from 'react';
@@ -132,7 +131,8 @@ const MetricSelect: FC<MetricSelectProps> = ({ label, value, metrics, onChange }
 
 /**
  * Cost-vs-accuracy Pareto view for an experiment group: one point per evaluation with the Pareto
- * frontier highlighted. Points come from the group's `/pareto` endpoint. The two axes are chosen from
+ * frontier highlighted. Points come from the group's evaluations (the existing list endpoint, which
+ * already carries each evaluation's cost/latency/evaluator rollup means). The two axes are chosen from
  * the group's available metrics (cost, latency, and each evaluator) and are **persisted on the group**
  * — changing a picker saves the selection so it survives reloads and is shared across viewers. Seeds
  * from the group's saved axes, defaulting to cost vs. latency (present for every group).
@@ -144,8 +144,7 @@ export const ExperimentGroupParetoChart: FC<ExperimentGroupParetoChartProps> = (
   const queryClient = useQueryClient();
   const toast = useToast();
 
-  const { data, isLoading, isError } = useGetExperimentGroupPareto(workspace, group.name);
-  const points = useMemo(() => data?.points ?? [], [data]);
+  const { rows: points, isLoading, isError } = useParetoEvaluations(workspace, group.id);
   const metrics = useMemo(() => deriveParetoMetrics(points), [points]);
 
   // Selected axes are optimistic local state seeded from the group's saved config (available
@@ -159,9 +158,6 @@ export const ExperimentGroupParetoChart: FC<ExperimentGroupParetoChartProps> = (
         toast.success('Saved the group default Pareto view.');
         queryClient.invalidateQueries({
           queryKey: getGetExperimentGroupQueryKey(workspace, group.name),
-        });
-        queryClient.invalidateQueries({
-          queryKey: getGetExperimentGroupParetoQueryKey(workspace, group.name),
         });
       },
       onError: () => toast.error('Failed to save the Pareto metrics.'),

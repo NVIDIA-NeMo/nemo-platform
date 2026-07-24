@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ParetoMetricPoint } from '@nemo/sdk/generated/platform/schema';
+import type { EvaluationRow } from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupEvaluations';
 
 /** Which direction on an axis counts as "better": cost/latency minimize, evaluator scores maximize. */
 export type MetricDirection = 'min' | 'max';
@@ -14,7 +14,7 @@ export interface ParetoMetric {
   readonly id: string;
   readonly label: string;
   readonly direction: MetricDirection;
-  readonly accessor: (point: ParetoMetricPoint) => number | null | undefined;
+  readonly accessor: (row: EvaluationRow) => number | null | undefined;
 }
 
 const capitalize = (value: string): string =>
@@ -36,30 +36,30 @@ const COST_METRIC: ParetoMetric = {
   id: 'cost_usd',
   label: metricLabel('cost_usd'),
   direction: 'min',
-  accessor: (point) => point.cost_usd,
+  accessor: (row) => row.cost_usd?.mean,
 };
 
 const LATENCY_METRIC: ParetoMetric = {
   id: 'latency_ms',
   label: metricLabel('latency_ms'),
   direction: 'min',
-  accessor: (point) => point.latency_ms,
+  accessor: (row) => row.latency_ms?.mean,
 };
 
 /**
  * The metrics a user may plot on either axis: cost and latency (always present, minimized), plus one
- * option per evaluator seen across the group's points (maximized). Evaluator names are dynamic — they
- * differ per customer — so they're derived from the data rather than hardcoded.
+ * option per evaluator seen across the group's evaluations (maximized). Evaluator names are dynamic —
+ * they differ per customer — so they're derived from the data rather than hardcoded.
  */
-export function deriveParetoMetrics(points: readonly ParetoMetricPoint[]): ParetoMetric[] {
+export function deriveParetoMetrics(rows: readonly EvaluationRow[]): ParetoMetric[] {
   const evaluatorNames = [
-    ...new Set(points.flatMap((point) => Object.keys(point.evaluators ?? {}))),
+    ...new Set(rows.flatMap((row) => Object.keys(row.aggregate_scores ?? {}))),
   ].sort();
   const evaluatorMetrics = evaluatorNames.map<ParetoMetric>((name) => ({
     id: `evaluators.${name}`,
     label: metricLabel(`evaluators.${name}`),
     direction: 'max',
-    accessor: (point) => point.evaluators?.[name],
+    accessor: (row) => row.aggregate_scores?.[name]?.mean,
   }));
   return [COST_METRIC, LATENCY_METRIC, ...evaluatorMetrics];
 }
@@ -95,16 +95,16 @@ function dominates(a: Coords, b: Coords, xDir: MetricDirection, yDir: MetricDire
  * dominated by any other on both axes. Points missing either metric (non-finite) are dropped.
  */
 export function buildParetoPoints(
-  points: readonly ParetoMetricPoint[],
+  rows: readonly EvaluationRow[],
   xMetric: ParetoMetric,
   yMetric: ParetoMetric
 ): ParetoPlotPoint[] {
-  const coords = points
-    .map((point): { name: string; x: number; y: number } | null => {
-      const x = xMetric.accessor(point);
-      const y = yMetric.accessor(point);
+  const coords = rows
+    .map((row): { name: string; x: number; y: number } | null => {
+      const x = xMetric.accessor(row);
+      const y = yMetric.accessor(row);
       if (x == null || y == null || !Number.isFinite(x) || !Number.isFinite(y)) return null;
-      return { name: point.name, x, y };
+      return { name: row.name, x, y };
     })
     .filter((point): point is { name: string; x: number; y: number } => point !== null);
 

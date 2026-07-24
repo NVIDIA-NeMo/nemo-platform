@@ -96,50 +96,6 @@ def test_experiment_group_pareto_defaults_and_round_trips(client: TestClient) ->
     assert updated.json()["pareto"] == {"x_metric": "cost_usd", "y_metric": "evaluators.reward"}
 
 
-def test_experiment_group_pareto_endpoint_projects_rollup_means(client: TestClient) -> None:
-    from nmp.intake.spans.evaluation_rollup_repository import EvaluationRollup, ScoreRollup
-
-    def score(mean: float) -> ScoreRollup:
-        return ScoreRollup(sum=mean, mean=mean, median=mean, p90=mean, p95=mean, p99=mean, count=1)
-
-    group = _create_group(client, name="pareto-points")
-    for name in ("eval-a", "eval-b"):
-        response = client.post(EVALUATIONS, json=_evaluation_body(name=name, experiment_group_id=group["id"]))
-        assert response.status_code == 201, response.text
-
-    class StubRollupRepository:
-        async def get_rollups(self, *, workspace: str, evaluation_ids: list[str]) -> dict:
-            return {
-                "eval-a": EvaluationRollup(
-                    evaluation_id="eval-a",
-                    cost_usd=score(0.10),
-                    latency_ms=score(200.0),
-                    evaluator_scores={"reward": score(0.9)},
-                ),
-                "eval-b": EvaluationRollup(
-                    evaluation_id="eval-b",
-                    cost_usd=score(0.30),
-                    latency_ms=score(150.0),
-                    evaluator_scores={"reward": score(0.8)},
-                ),
-            }
-
-    app = cast(FastAPI, client.app)
-    app.dependency_overrides[get_evaluation_rollup_repository] = lambda: StubRollupRepository()
-    try:
-        response = client.get(f"{GROUPS}/pareto-points/pareto")
-        assert response.status_code == 200, response.text
-        body = response.json()
-        assert body["pareto"] == {"x_metric": "cost_usd", "y_metric": "latency_ms"}
-        points = {point["name"]: point for point in body["points"]}
-        assert set(points) == {"eval-a", "eval-b"}
-        assert points["eval-a"]["cost_usd"] == 0.10
-        assert points["eval-a"]["latency_ms"] == 200.0
-        assert points["eval-a"]["evaluators"] == {"reward": 0.9}
-    finally:
-        app.dependency_overrides.pop(get_evaluation_rollup_repository, None)
-
-
 def test_evaluation_update_moves_between_groups_and_edits(client: TestClient) -> None:
     group_a = client.post(GROUPS, json={"name": "grp-a"}).json()
     group_b = client.post(GROUPS, json={"name": "grp-b"}).json()

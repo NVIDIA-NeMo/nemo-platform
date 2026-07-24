@@ -4213,56 +4213,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}/pareto:
-    get:
-      tags:
-      - Experiment Groups
-      summary: Get Experiment Group Pareto
-      description: 'Cost/latency/evaluator means for every evaluation in the group,
-        plus the group''s default axes.
-
-
-        Purpose-built for the Pareto chart: a slim, unpaginated projection of the
-        same rollups the
-
-        leaderboard shows, so the client plots the full point set in one call and
-        computes the frontier
-
-        from any two metrics without refetching (and without paging the full evaluations
-        list).'
-      operationId: get_experiment_group_pareto_apis_intake_v2_workspaces__workspace__experiment_groups__name__pareto_get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ParetoDataResponse'
-        '404':
-          description: Experiment group not found
-        '413':
-          description: Group exceeds the per-request evaluation cap
-        '503':
-          description: Telemetry store unavailable for metric data
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
   /apis/intake/v2/workspaces/{workspace}/ingest/atif:
     post:
       tags:
@@ -15460,57 +15410,6 @@ components:
         \ \u2014 ``cost_usd``,\n``latency_ms``, or ``evaluators.<name>``. Defaults\
         \ to cost (x) vs latency (y): both exist for\nevery group, so the chart always\
         \ has something to render before anyone customizes it."
-    ParetoDataResponse:
-      properties:
-        pareto:
-          allOf:
-          - $ref: '#/components/schemas/ParetoConfig'
-          description: The group's configured default X/Y metrics.
-        points:
-          items:
-            $ref: '#/components/schemas/ParetoMetricPoint'
-          type: array
-          title: Points
-          description: One point per live evaluation in the group.
-      type: object
-      required:
-      - pareto
-      - points
-      title: ParetoDataResponse
-      description: "Everything the Pareto chart needs for a group: the configured\
-        \ default axes plus one point per\nevaluation (cost/latency/evaluator means).\
-        \ Unpaginated and slim \u2014 the client plots the whole set\nand computes\
-        \ the frontier from any two metrics without refetching."
-    ParetoMetricPoint:
-      properties:
-        name:
-          type: string
-          title: Name
-          description: "Evaluation name \u2014 the leaderboard row id and rollup key."
-        evaluation_id:
-          type: string
-          title: Evaluation Id
-          description: Evaluation entity id, for navigation.
-        cost_usd:
-          title: Cost Usd
-          description: Mean cost (USD) across the evaluation's runs.
-          type: number
-        latency_ms:
-          title: Latency Ms
-          description: Mean latency (ms) across the evaluation's runs.
-          type: number
-        evaluators:
-          additionalProperties:
-            type: number
-          type: object
-          title: Evaluators
-          description: Per-evaluator mean score, keyed by evaluator name.
-      type: object
-      required:
-      - name
-      - evaluation_id
-      title: ParetoMetricPoint
-      description: One evaluation's plottable metric means for the Pareto view.
     PatronusEvaluateApiParams:
       properties:
         success_strategy:

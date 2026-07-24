@@ -920,15 +920,12 @@ resources:
       experiment_group_response: ExperimentGroupResponse
       experiment_group_responses_page: ExperimentGroupResponsesPage
       pareto_config: ParetoConfig
-      pareto_data_response: ParetoDataResponse
-      pareto_metric_point: ParetoMetricPoint
     methods:
       create: post /apis/intake/v2/workspaces/{workspace}/experiment-groups
       list: get /apis/intake/v2/workspaces/{workspace}/experiment-groups
       retrieve: get /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}
       update: put /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}
       delete: delete /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}
-      pareto: get /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}/pareto
   evaluations:
     standalone_api: true
     models:
