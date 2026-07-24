@@ -11,6 +11,10 @@ Install them explicitly before local Fabric smoke tests:
 uv pip install -e "plugins/nemo-agents[fabric]"
 ```
 
+Top-level `skills`, `mcp`, and `tools` are Platform-owned shared fields that
+translate into `FabricConfig`. Prompt settings are harness-specific for now and
+should be configured under `harnesses.<name>.settings`.
+
 ## Codex
 
 Authenticate Codex, leave `default_harness: codex` in `agent.yaml`, and run:
