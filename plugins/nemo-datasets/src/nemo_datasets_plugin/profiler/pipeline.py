@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 
 from nemo_datasets_plugin.profiler.classify import classify
 from nemo_datasets_plugin.profiler.digest import content_digest
-from nemo_datasets_plugin.profiler.file_source import FileSource
+from nemo_datasets_plugin.profiler.file_source import FileEntry, FileSource
 from nemo_datasets_plugin.profiler.partition import group_partitions
 from nemo_datasets_plugin.profiler.readers.base import detect_format, get_reader
 from nemo_datasets_plugin.profiler.schema import derive_features
@@ -61,69 +61,17 @@ def profile(source: FileSource, *, created_at: datetime | None = None) -> Datase
     all_scanned = True
 
     for partition_name, partition_entries in group_partitions(data_entries):
-        partition_rows: list[dict] = []
-        arrow_schema = None
-        partition_scanned = True
-        split_profiles: list[SplitProfile] = []
-        for split in resolve_splits(partition_entries):
-            file_records: list[FileRecord] = []
-            split_examples = 0
-            split_counts_known = True  # every file's exact total row count is known (footer or full scan)
-            split_scanned = True  # every row of every file was actually parsed
-            for entry in split.entries:
-                try:
-                    result = get_reader(_format_of(entry.path)).read(source, entry)
-                except Exception:
-                    # Failure isolation: an unreadable file (or missing reader) keeps its identity,
-                    # skips its rows, and does not abort the profile.
-                    result = None
-                if result is None:
-                    num_rows = None
-                    scanned_all = False
-                else:
-                    num_rows = result.num_rows
-                    rows_scanned += result.rows_scanned
-                    partition_rows.extend(result.rows)
-                    if arrow_schema is None:
-                        arrow_schema = result.arrow_schema
-                    # Exhaustive requires parsing every row; a known footer count alone is not enough.
-                    scanned_all = num_rows is not None and result.rows_scanned >= num_rows
-                file_records.append(
-                    FileRecord(
-                        path=entry.path,
-                        size_bytes=entry.size_bytes,
-                        checksum=entry.checksum,
-                        num_rows=num_rows,
-                    )
-                )
-                if num_rows is None:
-                    split_counts_known = False
-                else:
-                    split_examples += num_rows
-                if not scanned_all:
-                    split_scanned = False
-            all_scanned = all_scanned and split_scanned
-            partition_scanned = partition_scanned and split_scanned
-            split_profiles.append(
-                SplitProfile(
-                    name=split.name,
-                    canonical=split.canonical,
-                    files=file_records,
-                    num_examples=split_examples if split_counts_known else None,
-                )
+        format_groups = _split_by_format(partition_entries)
+        for file_format, format_entries in format_groups:
+            # A directory that holds more than one format yields one partition per format; qualify
+            # the name so the partitions stay distinct. A single-format directory keeps its bare name.
+            name = f"{partition_name}:{file_format}" if len(format_groups) > 1 else partition_name
+            partition, partition_rows_scanned, partition_scanned = _profile_partition(
+                source, name, file_format, format_entries
             )
-        features = derive_features(partition_rows, arrow_schema)
-        stats = derive_stats(features, partition_rows, exhaustive=partition_scanned)
-        partitions.append(
-            PartitionProfile(
-                name=partition_name,
-                file_format=_format_of(partition_entries[0].path),
-                splits=split_profiles,
-                features=features,
-                stats=stats,
-                classification=classify(features, stats, partition_rows),
-            )
-        )
+            partitions.append(partition)
+            rows_scanned += partition_rows_scanned
+            all_scanned = all_scanned and partition_scanned
 
     sampling = SamplingInfo(
         exhaustive=all_scanned,
@@ -142,3 +90,90 @@ def profile(source: FileSource, *, created_at: datetime | None = None) -> Datase
         sampling=sampling,
         partitions=partitions,
     )
+
+
+def _split_by_format(entries: list[FileEntry]) -> list[tuple[str, list[FileEntry]]]:
+    """Sub-group a directory's files by format so each profiled partition is format-homogeneous.
+
+    ``group_partitions`` groups by directory only, but one directory can hold more than one format
+    (a stray ``.jsonl`` beside ``.parquet`` shards). Left mixed, a partition would derive its schema
+    from whichever format was read first and then measure rows from both. Sorted for deterministic
+    partition order; ``entries`` are pre-filtered ``data_entries`` so every format is registered.
+    """
+    by_format: dict[str, list[FileEntry]] = {}
+    for entry in entries:
+        by_format.setdefault(_format_of(entry.path), []).append(entry)
+    return sorted(by_format.items())
+
+
+def _profile_partition(
+    source: FileSource, name: str, file_format: str, entries: list[FileEntry]
+) -> tuple[PartitionProfile, int, bool]:
+    """Profile one format-homogeneous partition.
+
+    Returns the partition plus its ``(rows_scanned, scanned_all)`` contribution to the dataset-level
+    sampling envelope. An unreadable file (or a format with no registered reader) is isolated: it
+    keeps its FileRecord, contributes no rows, and flips ``scanned_all`` off — it never aborts.
+    """
+    partition_rows: list[dict] = []
+    arrow_schema = None
+    rows_scanned = 0
+    partition_scanned = True
+    split_profiles: list[SplitProfile] = []
+    for split in resolve_splits(entries):
+        file_records: list[FileRecord] = []
+        split_examples = 0
+        split_counts_known = True  # every file's exact total row count is known (footer or full scan)
+        split_scanned = True  # every row of every file was actually parsed
+        for entry in split.entries:
+            try:
+                result = get_reader(file_format).read(source, entry)
+            except Exception:
+                # Failure isolation: an unreadable file (or missing reader) keeps its identity,
+                # skips its rows, and does not abort the profile.
+                result = None
+            if result is None:
+                num_rows = None
+                scanned_all = False
+            else:
+                num_rows = result.num_rows
+                rows_scanned += result.rows_scanned
+                partition_rows.extend(result.rows)
+                if arrow_schema is None:
+                    arrow_schema = result.arrow_schema
+                # Exhaustive requires parsing every row; a known footer count alone is not enough.
+                scanned_all = num_rows is not None and result.rows_scanned >= num_rows
+            file_records.append(
+                FileRecord(
+                    path=entry.path,
+                    size_bytes=entry.size_bytes,
+                    checksum=entry.checksum,
+                    num_rows=num_rows,
+                )
+            )
+            if num_rows is None:
+                split_counts_known = False
+            else:
+                split_examples += num_rows
+            if not scanned_all:
+                split_scanned = False
+        partition_scanned = partition_scanned and split_scanned
+        split_profiles.append(
+            SplitProfile(
+                name=split.name,
+                canonical=split.canonical,
+                files=file_records,
+                num_examples=split_examples if split_counts_known else None,
+            )
+        )
+    features = derive_features(partition_rows, arrow_schema)
+    stats = derive_stats(features, partition_rows, exhaustive=partition_scanned)
+    partition = PartitionProfile(
+        name=name,
+        file_format=file_format,
+        splits=split_profiles,
+        features=features,
+        stats=stats,
+        classification=classify(features, stats, partition_rows),
+    )
+    return partition, rows_scanned, partition_scanned
