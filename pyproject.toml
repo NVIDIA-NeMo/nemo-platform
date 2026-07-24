@@ -641,3 +641,12 @@ include = ["plugins/nemo-experimentalist/src/**"]
 
 [tool.ty.overrides.rules]
 empty-body = "ignore"
+
+# The Experimentalist's agent framework (nooa) and evaluator (harbor) are both
+# 3.12-only, so uv skips them when the lint job resolves on 3.11 and every import
+# of them goes unresolved. Everything else about the plugin still gets checked.
+[[tool.ty.overrides]]
+include = ["plugins/nemo-experimentalist/**"]
+
+[tool.ty.overrides.rules]
+unresolved-import = "ignore"
