@@ -4,7 +4,7 @@
 """NeMo Agent Toolkit adapter for NeMo Fabric.
 
 One adapter host owns one entered NAT workflow context for the lifetime of a
-Fabric runtime. The NAT configuration file remains the workflow source of truth.
+Fabric runtime. Platform's normalized Fabric config is the source of truth.
 """
 
 from __future__ import annotations
@@ -15,10 +15,10 @@ import os
 import shlex
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack, asynccontextmanager
-from pathlib import Path
 from typing import Any
 
 import nemo_fabric_adapters.common.utils as common_utils  # ty: ignore[unresolved-import]
+from nemo_agents_plugin.agent_config import NatHarnessSettings
 from nemo_fabric_adapters.common import lifecycle  # ty: ignore[unresolved-import]
 from pydantic import ValidationError
 from pydantic_core import to_jsonable_python
@@ -27,6 +27,23 @@ LOGGER = logging.getLogger(__name__)
 HARNESS = "nat"
 MODE = "nat_workflow"
 FUNCTION_GROUP_SEPARATOR = "__"
+DEFAULT_LLM_NAME = "default"
+PROVIDER_TO_NAT_LLM = {
+    "nim": "nim",
+    "nvidia": "nim",
+    "openai": "openai",
+}
+TOOL_COMPONENTS: dict[str, tuple[str, dict[str, Any]]] = {
+    "calculator": ("function_groups", {"_type": "calculator"}),
+    "current_datetime": ("functions", {"_type": "current_datetime"}),
+    "email_phishing_analyzer": (
+        "functions",
+        {
+            "_type": "email_phishing_analyzer",
+            "llm": DEFAULT_LLM_NAME,
+        },
+    ),
+}
 RESERVED_MODEL_SETTINGS = frozenset(
     {
         "_type",
@@ -45,49 +62,6 @@ def main() -> None:
     """Serve the persistent local-host lifecycle protocol."""
 
     lifecycle.serve(NatRuntime)
-
-
-def resolve_config_file(payload: dict[str, Any]) -> Path:
-    """Resolve and validate the NAT config selected by harness settings."""
-
-    settings = common_utils.settings_payload(payload)
-    configured = settings.get("config_file")
-    if not isinstance(configured, str) or not configured.strip():
-        raise lifecycle.LifecycleError(
-            "nat_config_file_required",
-            "harness.settings.config_file must be a non-empty string",
-        )
-
-    base_dir = Path(common_utils.base_dir(payload)).resolve()
-    candidate = Path(configured.strip())
-    if not candidate.is_absolute():
-        candidate = base_dir / candidate
-
-    try:
-        config_file = candidate.resolve(strict=True)
-    except OSError as error:
-        raise lifecycle.LifecycleError(
-            "nat_config_file_not_found",
-            "NAT config file does not exist",
-            metadata={"config_file": configured},
-        ) from error
-
-    try:
-        config_file.relative_to(base_dir)
-    except ValueError as error:
-        raise lifecycle.LifecycleError(
-            "nat_config_file_outside_base_dir",
-            "NAT config file must resolve within the agent config directory",
-            metadata={"config_file": configured},
-        ) from error
-
-    if not config_file.is_file():
-        raise lifecycle.LifecycleError(
-            "nat_config_file_not_file",
-            "NAT config file must be a regular file",
-            metadata={"config_file": configured},
-        )
-    return config_file
 
 
 def validate_supported_fabric_config(payload: dict[str, Any]) -> None:
@@ -109,8 +83,7 @@ def validate_supported_fabric_config(payload: dict[str, Any]) -> None:
         fields = sorted(set(unsupported))
         raise lifecycle.LifecycleError(
             "nat_unsupported_fabric_config",
-            f"NAT adapter does not map normalized Fabric config fields: {', '.join(fields)}; "
-            "configure them in the NAT config file",
+            f"NAT adapter does not map normalized Fabric config fields: {', '.join(fields)}",
             metadata={"fields": fields},
         )
 
@@ -130,80 +103,144 @@ def _fabric_models(payload: dict[str, Any]) -> dict[str, Any]:
     return models
 
 
-def apply_nat_models(config: Any, payload: dict[str, Any]) -> None:
-    """Overlay normalized Fabric models onto existing typed NAT LLM entries."""
+def _nat_settings(payload: dict[str, Any]) -> NatHarnessSettings:
+    """Validate the Platform-owned NAT harness contract."""
 
-    for llm_alias, model in sorted(_fabric_models(payload).items()):
-        if not isinstance(llm_alias, str) or not llm_alias or not isinstance(model, dict):
+    try:
+        return NatHarnessSettings.model_validate(common_utils.settings_payload(payload))
+    except ValidationError as error:
+        raise lifecycle.LifecycleError(
+            "nat_invalid_harness_settings",
+            "NAT harness settings are invalid",
+        ) from error
+
+
+def _nat_llm_config(payload: dict[str, Any]) -> dict[str, Any]:
+    """Translate the normalized default Fabric model into a native NAT LLM config."""
+
+    models = _fabric_models(payload)
+    if set(models) != {DEFAULT_LLM_NAME}:
+        raise lifecycle.LifecycleError(
+            "nat_invalid_models",
+            "NAT react workflows require exactly one Fabric model named 'default'",
+            metadata={"models": sorted(models)},
+        )
+
+    model = models[DEFAULT_LLM_NAME]
+    if not isinstance(model, dict):
+        raise lifecycle.LifecycleError(
+            "nat_invalid_models",
+            "Fabric model 'default' must be a mapping",
+        )
+
+    provider = model.get("provider")
+    if not isinstance(provider, str) or provider not in PROVIDER_TO_NAT_LLM:
+        raise lifecycle.LifecycleError(
+            "nat_model_provider_unsupported",
+            "NAT supports Fabric model providers: nim, nvidia, openai",
+            metadata={"provider": provider},
+        )
+
+    model_name = model.get("model")
+    if not isinstance(model_name, str) or not model_name:
+        raise lifecycle.LifecycleError(
+            "nat_invalid_models",
+            "Fabric model 'default' requires a non-empty model",
+        )
+
+    settings = model.get("settings") or {}
+    if not isinstance(settings, dict):
+        raise lifecycle.LifecycleError(
+            "nat_invalid_models",
+            "Fabric model 'default' settings must be a mapping",
+        )
+    reserved = sorted(RESERVED_MODEL_SETTINGS.intersection(settings))
+    if reserved:
+        raise lifecycle.LifecycleError(
+            "nat_model_settings_reserved",
+            "Fabric model 'default' settings cannot replace normalized or NAT type fields",
+            metadata={"llm": DEFAULT_LLM_NAME, "fields": reserved},
+        )
+
+    values = dict(settings)
+    values["_type"] = PROVIDER_TO_NAT_LLM[provider]
+    values["model_name"] = model_name
+
+    temperature = model.get("temperature")
+    if temperature is not None:
+        values["temperature"] = temperature
+
+    api_key_env = model.get("api_key_env")
+    if api_key_env is not None:
+        if not isinstance(api_key_env, str) or not api_key_env:
             raise lifecycle.LifecycleError(
                 "nat_invalid_models",
-                "Fabric model aliases must be non-empty strings with model configurations",
+                "Fabric model 'default' api_key_env must be a non-empty string",
             )
-
-        native_llm = config.llms.get(llm_alias)
-        if native_llm is None:
+        api_key = os.environ.get(api_key_env)
+        if not api_key:
             raise lifecycle.LifecycleError(
-                "nat_model_alias_not_found",
-                f"Fabric model alias {llm_alias!r} does not match an existing NAT llms entry",
-                metadata={"llm": llm_alias},
+                "nat_model_api_key_missing",
+                f"Fabric model 'default' requires environment variable {api_key_env!r}",
+                metadata={"llm": DEFAULT_LLM_NAME, "api_key_env": api_key_env},
             )
+        values["api_key"] = api_key
+    return values
 
-        model_name = model.get("model")
-        if not isinstance(model_name, str) or not model_name:
+
+def build_nat_config(payload: dict[str, Any]) -> Any:
+    """Translate normalized Fabric config into a validated typed NAT Config."""
+
+    settings = _nat_settings(payload)
+    raw_config: dict[str, Any] = {}
+
+    if settings.workflow == "current_timezone":
+        if _fabric_models(payload):
             raise lifecycle.LifecycleError(
                 "nat_invalid_models",
-                f"Fabric model alias {llm_alias!r} requires a non-empty model",
-                metadata={"llm": llm_alias},
+                "NAT current_timezone workflow does not accept Fabric models",
             )
+        raw_config["workflow"] = {"_type": "current_timezone"}
+    else:
+        functions: dict[str, Any] = {}
+        function_groups: dict[str, Any] = {}
+        for tool_name in settings.tools:
+            section, component = TOOL_COMPONENTS[tool_name]
+            target = functions if section == "functions" else function_groups
+            target[tool_name] = dict(component)
 
-        settings = model.get("settings") or {}
-        if not isinstance(settings, dict):
-            raise lifecycle.LifecycleError(
-                "nat_invalid_models",
-                f"Fabric model alias {llm_alias!r} settings must be a mapping",
-                metadata={"llm": llm_alias},
-            )
-        reserved = sorted(RESERVED_MODEL_SETTINGS.intersection(settings))
-        if reserved:
-            raise lifecycle.LifecycleError(
-                "nat_model_settings_reserved",
-                f"Fabric model alias {llm_alias!r} settings cannot replace normalized or NAT type fields",
-                metadata={"llm": llm_alias, "fields": reserved},
-            )
+        raw_config.update(
+            {
+                "functions": functions,
+                "function_groups": function_groups,
+                "llms": {
+                    DEFAULT_LLM_NAME: _nat_llm_config(payload),
+                },
+                "workflow": {
+                    "_type": "react_agent",
+                    "tool_names": list(settings.tools),
+                    "llm_name": DEFAULT_LLM_NAME,
+                    "verbose": False,
+                    "parse_agent_response_max_retries": 3,
+                    "use_native_tool_calling": True,
+                },
+            }
+        )
+        if settings.instructions is not None:
+            raw_config["workflow"]["additional_instructions"] = settings.instructions
 
-        values = native_llm.model_dump(mode="python", by_alias=True)
-        values.update(settings)
-        values["model"] = model_name
+    from nat.data_models.config import Config
+    from nat.runtime.loader import PluginTypes, discover_and_register_plugins
+    from nat.utils.data_models.schema_validator import validate_schema
 
-        temperature = model.get("temperature")
-        if temperature is not None:
-            values["temperature"] = temperature
-
-        api_key_env = model.get("api_key_env")
-        if api_key_env is not None:
-            if not isinstance(api_key_env, str) or not api_key_env:
-                raise lifecycle.LifecycleError(
-                    "nat_invalid_models",
-                    f"Fabric model alias {llm_alias!r} api_key_env must be a non-empty string",
-                    metadata={"llm": llm_alias},
-                )
-            api_key = os.environ.get(api_key_env)
-            if not api_key:
-                raise lifecycle.LifecycleError(
-                    "nat_model_api_key_missing",
-                    f"Fabric model alias {llm_alias!r} requires environment variable {api_key_env!r}",
-                    metadata={"llm": llm_alias, "api_key_env": api_key_env},
-                )
-            values["api_key"] = api_key
-
-        try:
-            config.llms[llm_alias] = type(native_llm).model_validate(values)
-        except ValidationError as error:
-            raise lifecycle.LifecycleError(
-                "nat_model_override_invalid",
-                f"Fabric model alias {llm_alias!r} is invalid for the existing NAT LLM type",
-                metadata={"llm": llm_alias},
-            ) from error
+    discover_and_register_plugins(PluginTypes.CONFIG_OBJECT)
+    try:
+        return validate_schema(raw_config, Config)
+    except ValueError as error:
+        raise lifecycle.LifecycleError(
+            "nat_config_translation_failed",
+            "Normalized Fabric config could not be translated into a valid NAT config",
+        ) from error
 
 
 def _nat_mcp_server_config(name: str, server: Any) -> Any:
@@ -349,23 +386,13 @@ def apply_nat_capabilities(config: Any, payload: dict[str, Any]) -> None:
 
 
 @asynccontextmanager
-async def load_nat_workflow(config_file: Path, payload: dict[str, Any]) -> AsyncIterator[Any]:
-    """Load one NAT workflow, applying Fabric capabilities before it is built."""
-
-    native = _native_capabilities(payload)
-    if not _fabric_models(payload) and not native.get("mcp_servers") and not common_utils.blocked_tools(payload):
-        from nat.runtime.loader import load_workflow
-
-        async with load_workflow(config_file) as sessions:
-            yield sessions
-        return
+async def load_nat_workflow(payload: dict[str, Any]) -> AsyncIterator[Any]:
+    """Build one NAT workflow from normalized Fabric config."""
 
     from nat.builder.workflow_builder import WorkflowBuilder
-    from nat.runtime.loader import load_config
     from nat.runtime.session import SessionManager
 
-    config = load_config(config_file)
-    apply_nat_models(config, payload)
+    config = build_nat_config(payload)
     apply_nat_capabilities(config, payload)
     async with WorkflowBuilder.from_config(config=config) as builder:
         sessions = await SessionManager.create(config=config, shared_builder=builder)
@@ -459,11 +486,10 @@ class NatRuntime:
 
         runtime_id = _runtime_id(payload)
         validate_supported_fabric_config(payload)
-        config_file = resolve_config_file(payload)
         stack = AsyncExitStack()
 
         try:
-            sessions = await stack.enter_async_context(load_nat_workflow(config_file, payload))
+            sessions = await stack.enter_async_context(load_nat_workflow(payload))
         except asyncio.CancelledError:
             await _close_after_failed_start(stack)
             raise
@@ -476,7 +502,6 @@ class NatRuntime:
             raise lifecycle.LifecycleError(
                 "nat_workflow_start_failed",
                 "NAT workflow failed to load; inspect adapter stderr for details",
-                metadata={"config_file": str(config_file)},
             ) from error
 
         self._runtime_id = runtime_id

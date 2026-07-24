@@ -16,23 +16,7 @@ from nemo_agents_plugin.fabric.invocation import invoke_agent_config_once
 @pytest.mark.asyncio
 async def test_platform_invokes_installed_nat_adapter_without_local_descriptor(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    (tmp_path / "workflow.yml").write_text(
-        "\n".join(
-            [
-                "llms:",
-                "  llm:",
-                "    _type: nim",
-                "    model_name: native-model",
-                "workflow:",
-                "  _type: current_timezone",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("NVIDIA_API_KEY", "test-key")
     agent_config = AgentConfig.model_validate(
         {
             "config_format": "nemo-agents-spec-v1",
@@ -42,19 +26,8 @@ async def test_platform_invokes_installed_nat_adapter_without_local_descriptor(
                 "nat": {
                     "kind": "nat",
                     "settings": {
-                        "config_file": "./workflow.yml",
-                        "llm_map": {
-                            "llm": "nat_default",
-                        },
+                        "workflow": "current_timezone",
                     },
-                }
-            },
-            "models": {
-                "nat_default": {
-                    "provider": "nvidia",
-                    "model": "platform-model",
-                    "api_key_env": "NVIDIA_API_KEY",
-                    "temperature": 0.0,
                 }
             },
             "environment": {

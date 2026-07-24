@@ -42,6 +42,24 @@ class HarnessConfig(BaseModel):
     settings: dict[str, Any] = Field(default_factory=dict)
 
 
+class NatHarnessSettings(BaseModel):
+    """Platform-owned NAT workflow settings supported by the Fabric adapter."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workflow: Literal["react", "current_timezone"]
+    tools: list[Literal["calculator", "current_datetime", "email_phishing_analyzer"]] = Field(default_factory=list)
+    instructions: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def _validate_workflow(self) -> Self:
+        if len(self.tools) != len(set(self.tools)):
+            raise ValueError("tools must not contain duplicates")
+        if self.workflow == "current_timezone" and (self.tools or self.instructions):
+            raise ValueError("current_timezone does not accept tools or instructions")
+        return self
+
+
 class EnvironmentConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

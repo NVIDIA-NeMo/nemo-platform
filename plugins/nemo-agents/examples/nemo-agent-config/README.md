@@ -24,35 +24,40 @@ The plugin install includes the Platform-packaged calculator and email phishing
 NAT components. Each has a dedicated `agent.yaml` because they are distinct NAT
 workflows. For the harness comparison, the shared `agent.yaml` uses calculator
 as its representative NAT harness so all three harness kinds can be exercised
-from one Platform config. In every case, `workflow.yml` remains the NAT source
-of truth for workflow structure and native LLM client configuration.
+from one Platform config. `agent.yaml` is the only configuration source: the
+adapter translates its normalized Fabric model and NAT harness settings into an
+in-memory typed NAT configuration.
 
-For NAT model overrides, `harness.settings.llm_map` maps each NAT `llms` alias
-to a Platform `models` alias. The adapter preserves the existing NAT LLM type
-and settings, then applies the Platform model name, temperature, credential
-environment variable, and explicit model settings during runtime start. The
-Platform model provider does not replace the NAT `_type`; the referenced native
-LLM entry remains responsible for selecting a compatible client.
+The initial NAT contract supports `react` and `current_timezone` workflows. A
+`react` workflow accepts the Platform-packaged `calculator`,
+`current_datetime`, and `email_phishing_analyzer` tools. The adapter maps those
+names to NAT functions and function groups; those native details are not part of
+the public Platform config.
 
 ```yaml
 harnesses:
   nat:
     kind: nat
     settings:
-      config_file: ./nat-calculator/workflow.yml
-      llm_map:
-        llm: nat_default
+      workflow: react
+      tools:
+        - calculator
+        - current_datetime
 
 models:
-  nat_default:
+  default:
     provider: nvidia
     model: nvidia/nemotron-3-nano-30b-a3b
     api_key_env: NVIDIA_API_KEY
     temperature: 0.0
+    settings:
+      max_tokens: 1024
 ```
 
-Without `llm_map`, the adapter leaves the NAT workflow's native `llms`
-configuration unchanged.
+For `react`, the adapter translates `models.default` into NAT's `default` LLM.
+The `nvidia` and `nim` providers select NAT's NIM client, while `openai` selects
+its OpenAI-compatible client. Provider-specific fields such as `base_url` and
+`max_tokens` belong in `models.default.settings`.
 
 Set `default_harness: nat` in the shared `agent.yaml`, then run:
 
@@ -84,11 +89,9 @@ nemo agents invoke \
   --input "Subject: Verify your account. Send your password immediately."
 ```
 
-To use another NAT workflow, keep its config and relative resources under the
-Platform `agent.yaml` directory and set `harness.settings.config_file` to that
-workflow. Install any package that exposes workflow-specific `nat.components`
-into the same Python environment. Keep those packages on the same NAT release
-as the `nvidia-nat-*` packages installed by NeMo Agents.
+Unsupported workflow and tool names fail during Platform translation. Expanding
+the supported set requires an explicit Platform-to-NAT mapping in the adapter;
+the adapter does not accept arbitrary native NAT configuration.
 
 For NAT, `harness_native` MCP servers become `mcp_client` function groups and
 are added to workflows that expose `tool_names`. `tools.blocked` removes named
@@ -109,7 +112,8 @@ tools:
 
 NAT 1.8 does not expose a runtime contract for `SKILL.md` directories, so the
 NAT adapter rejects non-empty `skills.paths` rather than silently ignoring
-them. Keep workflow instructions in the NAT config.
+them. Put React-specific instructions in
+`harnesses.<name>.settings.instructions`.
 
 ## Codex
 

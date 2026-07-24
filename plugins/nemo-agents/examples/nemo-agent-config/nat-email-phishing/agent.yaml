@@ -8,7 +8,20 @@ harnesses:
   nat:
     kind: nat
     settings:
-      config_file: ./workflow.yml
+      workflow: react
+      tools:
+        - email_phishing_analyzer
+      instructions: The final response should indicate that the email is either "phishing" or "benign".
+
+models:
+  default:
+    provider: openai
+    model: nvidia/nemotron-3-nano-30b-a3b
+    api_key_env: NVIDIA_API_KEY
+    temperature: 0.0
+    settings:
+      base_url: https://integrate.api.nvidia.com/v1
+      max_tokens: 1024
 
 environment:
   workspace: ./workspace

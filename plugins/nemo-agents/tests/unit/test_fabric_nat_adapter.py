@@ -10,7 +10,9 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from nemo_agents_plugin.agent_config import load_agent_config
 from nemo_agents_plugin.fabric.adapters.nat import adapter as nat_adapter
+from nemo_agents_plugin.fabric.translator import translate_agent_config
 from nemo_fabric_adapters.common import lifecycle  # ty: ignore[unresolved-import]
 
 
@@ -19,7 +21,7 @@ class _FakeRunner:
         self.result_value = result
         self.error = error
 
-    async def __aenter__(self) -> "_FakeRunner":
+    async def __aenter__(self) -> _FakeRunner:
         return self
 
     async def __aexit__(
@@ -37,10 +39,10 @@ class _FakeRunner:
 
 
 class _FakeSession:
-    def __init__(self, sessions: "_FakeSessions") -> None:
+    def __init__(self, sessions: _FakeSessions) -> None:
         self.sessions = sessions
 
-    async def __aenter__(self) -> "_FakeSession":
+    async def __aenter__(self) -> _FakeSession:
         return self
 
     async def __aexit__(
@@ -89,20 +91,51 @@ class _FakeWorkflowContext:
         self.exited = True
 
 
-def _start_payload(base_dir: Path, *, runtime_id: str = "runtime-1") -> dict[str, Any]:
+def _start_payload(
+    *,
+    settings: dict[str, Any] | None = None,
+    models: dict[str, Any] | None = None,
+    runtime_id: str = "runtime-1",
+) -> dict[str, Any]:
     return {
-        "base_dir": str(base_dir),
+        "base_dir": "/tmp/agent",
         "config": {
             "harness": {
-                "settings": {
-                    "config_file": "./workflow.yml",
-                }
-            }
+                "settings": settings or {"workflow": "current_timezone"},
+            },
+            "models": models or {},
         },
         "runtime_context": {
             "runtime_id": runtime_id,
         },
     }
+
+
+def _react_payload(
+    *,
+    tools: list[str],
+    provider: str = "nvidia",
+    model_settings: dict[str, Any] | None = None,
+    instructions: str | None = None,
+) -> dict[str, Any]:
+    settings: dict[str, Any] = {
+        "workflow": "react",
+        "tools": tools,
+    }
+    if instructions is not None:
+        settings["instructions"] = instructions
+    return _start_payload(
+        settings=settings,
+        models={
+            "default": {
+                "provider": provider,
+                "model": "platform-model",
+                "api_key_env": "NVIDIA_API_KEY",
+                "temperature": 0.1,
+                "settings": model_settings or {},
+            }
+        },
+    )
 
 
 def _invoke_payload(*, runtime_id: str = "runtime-1") -> dict[str, Any]:
@@ -121,24 +154,14 @@ def _invoke_payload(*, runtime_id: str = "runtime-1") -> dict[str, Any]:
     }
 
 
-@pytest.fixture()
-def nat_config(tmp_path: Path) -> Path:
-    config = tmp_path / "workflow.yml"
-    config.write_text("workflow:\n  _type: current_timezone\n", encoding="utf-8")
-    return config
-
-
 @pytest.mark.asyncio
-async def test_runtime_owns_nat_workflow_across_invoke(
-    nat_config: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_runtime_owns_nat_workflow_across_invoke(monkeypatch: pytest.MonkeyPatch) -> None:
     sessions = _FakeSessions(runner=_FakeRunner(result={"answer": "hello"}))
     workflow = _FakeWorkflowContext(sessions)
-    monkeypatch.setattr("nat.runtime.loader.load_workflow", lambda path: workflow)
+    monkeypatch.setattr(nat_adapter, "load_nat_workflow", lambda payload: workflow)
     runtime = nat_adapter.NatRuntime()
 
-    await runtime.start(_start_payload(nat_config.parent))
+    await runtime.start(_start_payload())
     output = await runtime.invoke(_invoke_payload())
     await runtime.stop()
 
@@ -171,16 +194,13 @@ async def test_runtime_owns_nat_workflow_across_invoke(
 
 
 @pytest.mark.asyncio
-async def test_invoke_failure_is_normalized_without_exception_details(
-    nat_config: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_invoke_failure_is_normalized_without_exception_details(monkeypatch: pytest.MonkeyPatch) -> None:
     sessions = _FakeSessions(runner=_FakeRunner(error=RuntimeError("credential secret")))
     workflow = _FakeWorkflowContext(sessions)
-    monkeypatch.setattr("nat.runtime.loader.load_workflow", lambda path: workflow)
+    monkeypatch.setattr(nat_adapter, "load_nat_workflow", lambda payload: workflow)
     runtime = nat_adapter.NatRuntime()
 
-    await runtime.start(_start_payload(nat_config.parent))
+    await runtime.start(_start_payload())
     output = await runtime.invoke(_invoke_payload())
     await runtime.stop()
 
@@ -195,16 +215,13 @@ async def test_invoke_failure_is_normalized_without_exception_details(
 
 
 @pytest.mark.asyncio
-async def test_start_failure_is_actionable_and_stop_remains_safe(
-    nat_config: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_start_failure_is_actionable_and_stop_remains_safe(monkeypatch: pytest.MonkeyPatch) -> None:
     workflow = _FakeWorkflowContext(_FakeSessions(), enter_error=RuntimeError("invalid workflow"))
-    monkeypatch.setattr("nat.runtime.loader.load_workflow", lambda path: workflow)
+    monkeypatch.setattr(nat_adapter, "load_nat_workflow", lambda payload: workflow)
     runtime = nat_adapter.NatRuntime()
 
     with pytest.raises(lifecycle.LifecycleError) as error_info:
-        await runtime.start(_start_payload(nat_config.parent))
+        await runtime.start(_start_payload())
 
     assert error_info.value.code == "nat_workflow_start_failed"
     assert "invalid workflow" not in error_info.value.message
@@ -212,23 +229,22 @@ async def test_start_failure_is_actionable_and_stop_remains_safe(
 
 
 @pytest.mark.asyncio
-async def test_config_file_must_stay_within_agent_directory(tmp_path: Path) -> None:
-    base_dir = tmp_path / "agent"
-    base_dir.mkdir()
-    outside = tmp_path / "workflow.yml"
-    outside.write_text("workflow: {}\n", encoding="utf-8")
-    payload = _start_payload(base_dir)
-    payload["config"]["harness"]["settings"]["config_file"] = str(outside)
+async def test_runtime_rejects_second_start(monkeypatch: pytest.MonkeyPatch) -> None:
+    workflow = _FakeWorkflowContext(_FakeSessions())
+    monkeypatch.setattr(nat_adapter, "load_nat_workflow", lambda payload: workflow)
+    runtime = nat_adapter.NatRuntime()
+    await runtime.start(_start_payload())
 
     with pytest.raises(lifecycle.LifecycleError) as error_info:
-        await nat_adapter.NatRuntime().start(payload)
+        await runtime.start(_start_payload())
 
-    assert error_info.value.code == "nat_config_file_outside_base_dir"
+    assert error_info.value.code == "nat_runtime_already_started"
+    await runtime.stop()
 
 
 @pytest.mark.asyncio
-async def test_unsupported_normalized_fabric_fields_are_rejected(nat_config: Path) -> None:
-    payload = _start_payload(nat_config.parent)
+async def test_unsupported_normalized_fabric_fields_are_rejected() -> None:
+    payload = _start_payload()
     payload["config"]["telemetry"] = {"providers": {"custom": {"enabled": True}}}
 
     with pytest.raises(lifecycle.LifecycleError) as error_info:
@@ -238,146 +254,145 @@ async def test_unsupported_normalized_fabric_fields_are_rejected(nat_config: Pat
     assert error_info.value.metadata == {"fields": ["telemetry"]}
 
 
-def test_fabric_model_overrides_existing_typed_nat_llm(monkeypatch: pytest.MonkeyPatch) -> None:
-    from nat.llm.nim_llm import NIMModelConfig
-
-    native_llm = NIMModelConfig(
-        model_name="native-model",
-        base_url="https://native.example/v1",
-        max_tokens=777,
-        temperature=0.8,
-        chat_template_kwargs={"enable_thinking": False},
+def test_calculator_config_is_built_from_fabric(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "secret-value")
+    payload = _react_payload(
+        tools=["calculator", "current_datetime"],
+        model_settings={
+            "base_url": "https://platform.example/v1",
+            "max_tokens": 777,
+            "chat_template_kwargs": {"enable_thinking": False},
+        },
     )
-    config = SimpleNamespace(llms={"llm": native_llm})
-    payload = {
-        "config": {
-            "models": {
-                "llm": {
-                    "provider": "nvidia",
-                    "model": "platform-model",
-                    "api_key_env": "NVIDIA_API_KEY",
-                    "temperature": 0.1,
-                    "settings": {
-                        "base_url": "https://platform.example/v1",
-                        "top_p": 0.7,
-                    },
-                }
-            }
-        }
-    }
+
+    config = nat_adapter.build_nat_config(payload)
+
+    assert set(config.function_groups) == {"calculator"}
+    assert set(config.functions) == {"current_datetime"}
+    assert config.workflow.tool_names == ["calculator", "current_datetime"]
+    assert config.workflow.llm_name == "default"
+    assert config.workflow.use_native_tool_calling is True
+    llm = config.llms["default"]
+    assert llm.model_name == "platform-model"
+    assert llm.api_key.get_secret_value() == "secret-value"
+    assert llm.temperature == 0.1
+    assert llm.base_url == "https://platform.example/v1"
+    assert llm.max_tokens == 777
+    assert llm.chat_template_kwargs == {"enable_thinking": False}
+
+
+def test_phishing_config_is_built_from_fabric(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "secret-value")
+    payload = _react_payload(
+        tools=["email_phishing_analyzer"],
+        provider="openai",
+        model_settings={
+            "base_url": "https://integrate.api.nvidia.com/v1",
+            "max_tokens": 1024,
+        },
+        instructions='Classify the email as "phishing" or "benign".',
+    )
+
+    config = nat_adapter.build_nat_config(payload)
+
+    assert set(config.functions) == {"email_phishing_analyzer"}
+    assert config.functions["email_phishing_analyzer"].llm == "default"
+    assert config.workflow.tool_names == ["email_phishing_analyzer"]
+    assert config.workflow.additional_instructions == 'Classify the email as "phishing" or "benign".'
+    assert config.llms["default"].base_url == "https://integrate.api.nvidia.com/v1"
+
+
+@pytest.mark.parametrize(
+    ("example_name", "expected_tools"),
+    [
+        ("nat-calculator", ["calculator", "current_datetime"]),
+        ("nat-email-phishing", ["email_phishing_analyzer"]),
+    ],
+)
+def test_repository_agent_yaml_builds_typed_nat_config(
+    example_name: str,
+    expected_tools: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    example_path = Path(__file__).parents[2] / "examples/nemo-agent-config" / example_name / "agent.yaml"
+    agent_config = load_agent_config(example_path)
+    fabric_config = translate_agent_config(agent_config)
     monkeypatch.setenv("NVIDIA_API_KEY", "secret-value")
 
-    nat_adapter.apply_nat_models(config, payload)
+    nat_config = nat_adapter.build_nat_config({"config": fabric_config.to_mapping()})
 
-    updated = config.llms["llm"]
-    assert isinstance(updated, NIMModelConfig)
-    assert updated is not native_llm
-    assert updated.model_name == "platform-model"
-    assert updated.api_key.get_secret_value() == "secret-value"
-    assert updated.temperature == 0.1
-    assert updated.base_url == "https://platform.example/v1"
-    assert updated.top_p == 0.7
-    assert updated.max_tokens == 777
-    assert updated.chat_template_kwargs == {"enable_thinking": False}
+    assert nat_config.workflow.tool_names == expected_tools
+    assert set(nat_config.llms) == {"default"}
 
 
-def test_fabric_model_requires_existing_nat_llm_alias() -> None:
-    config = SimpleNamespace(llms={})
-    payload = {
-        "config": {
-            "models": {
-                "missing": {
-                    "provider": "nvidia",
-                    "model": "platform-model",
-                }
-            }
-        }
-    }
+def test_native_nat_config_fields_are_rejected() -> None:
+    payload = _start_payload(settings={"config_file": "./workflow.yml"})
 
     with pytest.raises(lifecycle.LifecycleError) as error_info:
-        nat_adapter.apply_nat_models(config, payload)
+        nat_adapter.build_nat_config(payload)
 
-    assert error_info.value.code == "nat_model_alias_not_found"
-    assert error_info.value.metadata == {"llm": "missing"}
+    assert error_info.value.code == "nat_invalid_harness_settings"
+
+
+def test_current_timezone_rejects_fabric_models() -> None:
+    payload = _start_payload(
+        models={
+            "default": {
+                "provider": "nvidia",
+                "model": "unused",
+            }
+        }
+    )
+
+    with pytest.raises(lifecycle.LifecycleError) as error_info:
+        nat_adapter.build_nat_config(payload)
+
+    assert error_info.value.code == "nat_invalid_models"
 
 
 def test_fabric_model_requires_configured_api_key_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    from nat.llm.nim_llm import NIMModelConfig
-
-    config = SimpleNamespace(llms={"llm": NIMModelConfig(model_name="native-model")})
-    payload = {
-        "config": {
-            "models": {
-                "llm": {
-                    "provider": "nvidia",
-                    "model": "platform-model",
-                    "api_key_env": "MISSING_API_KEY",
-                }
-            }
-        }
-    }
-    monkeypatch.delenv("MISSING_API_KEY", raising=False)
+    payload = _react_payload(tools=["calculator"])
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
 
     with pytest.raises(lifecycle.LifecycleError) as error_info:
-        nat_adapter.apply_nat_models(config, payload)
+        nat_adapter.build_nat_config(payload)
 
     assert error_info.value.code == "nat_model_api_key_missing"
     assert error_info.value.metadata == {
-        "llm": "llm",
-        "api_key_env": "MISSING_API_KEY",
+        "llm": "default",
+        "api_key_env": "NVIDIA_API_KEY",
     }
 
 
-def test_fabric_model_settings_cannot_replace_native_llm_contract() -> None:
-    from nat.llm.nim_llm import NIMModelConfig
-
-    config = SimpleNamespace(llms={"llm": NIMModelConfig(model_name="native-model")})
-    payload = {
-        "config": {
-            "models": {
-                "llm": {
-                    "provider": "nvidia",
-                    "model": "platform-model",
-                    "settings": {
-                        "_type": "openai",
-                        "model_name": "settings-model",
-                    },
-                }
-            }
-        }
-    }
+def test_fabric_model_settings_cannot_replace_nat_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = _react_payload(
+        tools=["calculator"],
+        model_settings={
+            "_type": "openai",
+            "model_name": "settings-model",
+        },
+    )
+    monkeypatch.setenv("NVIDIA_API_KEY", "secret-value")
 
     with pytest.raises(lifecycle.LifecycleError) as error_info:
-        nat_adapter.apply_nat_models(config, payload)
+        nat_adapter.build_nat_config(payload)
 
     assert error_info.value.code == "nat_model_settings_reserved"
     assert error_info.value.metadata == {
-        "llm": "llm",
+        "llm": "default",
         "fields": ["_type", "model_name"],
     }
 
 
-def test_invalid_fabric_model_override_is_normalized() -> None:
-    from nat.llm.nim_llm import NIMModelConfig
-
-    config = SimpleNamespace(llms={"llm": NIMModelConfig(model_name="native-model")})
-    payload = {
-        "config": {
-            "models": {
-                "llm": {
-                    "provider": "nvidia",
-                    "model": "platform-model",
-                    "temperature": -1.0,
-                }
-            }
-        }
-    }
+def test_unsupported_fabric_model_provider_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = _react_payload(tools=["calculator"], provider="anthropic")
+    monkeypatch.setenv("NVIDIA_API_KEY", "secret-value")
 
     with pytest.raises(lifecycle.LifecycleError) as error_info:
-        nat_adapter.apply_nat_models(config, payload)
+        nat_adapter.build_nat_config(payload)
 
-    assert error_info.value.code == "nat_model_override_invalid"
-    assert error_info.value.metadata == {"llm": "llm"}
+    assert error_info.value.code == "nat_model_provider_unsupported"
+    assert error_info.value.metadata == {"provider": "anthropic"}
 
 
 def test_native_mcp_server_is_added_to_workflow_tools() -> None:
@@ -432,12 +447,12 @@ def test_blocked_tools_remove_functions_and_filter_group_members() -> None:
 
 
 @pytest.mark.asyncio
-async def test_skill_paths_remain_explicitly_unsupported(nat_config: Path) -> None:
-    payload = _start_payload(nat_config.parent)
+async def test_skill_paths_remain_explicitly_unsupported() -> None:
+    payload = _start_payload()
     payload["config"]["skills"] = {"paths": ["./skills/review"]}
     payload["capability_plan"] = {
         "unsupported": {
-            "skill_paths": [str(nat_config.parent / "skills/review")],
+            "skill_paths": ["/tmp/agent/skills/review"],
         }
     }
 
@@ -449,8 +464,8 @@ async def test_skill_paths_remain_explicitly_unsupported(nat_config: Path) -> No
 
 
 @pytest.mark.asyncio
-async def test_fabric_managed_mcp_remains_explicitly_unsupported(nat_config: Path) -> None:
-    payload = _start_payload(nat_config.parent)
+async def test_fabric_managed_mcp_remains_explicitly_unsupported() -> None:
+    payload = _start_payload()
     payload["config"]["mcp"] = {
         "servers": {
             "repo": {
@@ -474,14 +489,11 @@ async def test_fabric_managed_mcp_remains_explicitly_unsupported(nat_config: Pat
 
 
 @pytest.mark.asyncio
-async def test_runtime_rejects_mismatched_invocation(
-    nat_config: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_runtime_rejects_mismatched_invocation(monkeypatch: pytest.MonkeyPatch) -> None:
     workflow = _FakeWorkflowContext(_FakeSessions())
-    monkeypatch.setattr("nat.runtime.loader.load_workflow", lambda path: workflow)
+    monkeypatch.setattr(nat_adapter, "load_nat_workflow", lambda payload: workflow)
     runtime = nat_adapter.NatRuntime()
-    await runtime.start(_start_payload(nat_config.parent))
+    await runtime.start(_start_payload())
 
     with pytest.raises(lifecycle.LifecycleError) as error_info:
         await runtime.invoke(_invoke_payload(runtime_id="runtime-2"))
@@ -491,14 +503,11 @@ async def test_runtime_rejects_mismatched_invocation(
 
 
 @pytest.mark.asyncio
-async def test_stop_is_idempotent(
-    nat_config: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_stop_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
     workflow = _FakeWorkflowContext(_FakeSessions())
-    monkeypatch.setattr("nat.runtime.loader.load_workflow", lambda path: workflow)
+    monkeypatch.setattr(nat_adapter, "load_nat_workflow", lambda payload: workflow)
     runtime = nat_adapter.NatRuntime()
-    await runtime.start(_start_payload(nat_config.parent))
+    await runtime.start(_start_payload())
 
     await runtime.stop()
     await runtime.stop()

@@ -84,25 +84,26 @@ class TestTranslateAgentConfig:
         assert hermes_config.harness.adapter_id == "nvidia.fabric.hermes"
         assert hermes_config.harness.settings["python_env"] == "HERMES_ADAPTER_PYTHON"
         assert nat_config.harness.adapter_id == "nvidia.nemo.platform.nat"
-        assert nat_config.models["llm"].provider == "nvidia"
-        assert nat_config.models["llm"].model == "nvidia/nemotron-3-nano-30b-a3b"
-        assert "llm_map" not in nat_config.harness.settings
-        nat_workflow = (example_path.parent / nat_config.harness.settings["config_file"]).resolve()
-        assert nat_workflow.is_file()
-        nat_workflow.relative_to(example_path.parent.resolve())
+        assert nat_config.models["default"].provider == "nvidia"
+        assert nat_config.models["default"].model == "nvidia/nemotron-3-nano-30b-a3b"
+        assert nat_config.harness.settings == {
+            "workflow": "react",
+            "tools": ["calculator", "current_datetime"],
+        }
 
     @pytest.mark.parametrize("example_name", ["nat-calculator", "nat-email-phishing"])
-    def test_repository_nat_examples_reference_colocated_workflows(self, example_name: str) -> None:
+    def test_repository_nat_examples_are_self_contained_agent_configs(self, example_name: str) -> None:
         example_dir = Path(__file__).parents[2] / "examples/nemo-agent-config" / example_name
         config = load_agent_config(example_dir / "agent.yaml")
 
         fabric_config = translate_agent_config(config)
-        config_file = fabric_config.harness.settings["config_file"]
-        workflow_path = (example_dir / config_file).resolve()
 
         assert fabric_config.harness.adapter_id == "nvidia.nemo.platform.nat"
-        assert workflow_path.is_file()
-        workflow_path.relative_to(example_dir.resolve())
+        assert fabric_config.harness.settings["workflow"] == "react"
+        assert "config_file" not in fabric_config.harness.settings
+        assert "llm_map" not in fabric_config.harness.settings
+        assert not (example_dir / "workflow.yml").exists()
+        assert set(fabric_config.models) == {"default"}
 
     def test_translates_default_harness(self) -> None:
         config = AgentConfig.model_validate(_example_yaml_config())
@@ -183,7 +184,7 @@ class TestTranslateAgentConfig:
         payload["harnesses"] = {
             "selected": {
                 "kind": kind,
-                "settings": {"config_file": "./workflow.yml"} if kind == "nat" else {},
+                "settings": {"workflow": "current_timezone"} if kind == "nat" else {},
             }
         }
         if kind == "nat":
@@ -194,13 +195,13 @@ class TestTranslateAgentConfig:
 
         assert fabric_config.harness.adapter_id == adapter_id
 
-    def test_nat_harness_uses_native_config_without_platform_model(self) -> None:
+    def test_nat_current_timezone_does_not_require_model(self) -> None:
         payload = _example_yaml_config()
         payload["default_harness"] = "nat"
         payload["harnesses"] = {
             "nat": {
                 "kind": "nat",
-                "settings": {"config_file": "./workflow.yml"},
+                "settings": {"workflow": "current_timezone"},
             }
         }
         payload["models"] = {}
@@ -209,22 +210,40 @@ class TestTranslateAgentConfig:
         fabric_config = translate_agent_config(config)
 
         assert fabric_config.harness.adapter_id == "nvidia.nemo.platform.nat"
-        assert fabric_config.harness.settings == {"config_file": "./workflow.yml"}
+        assert fabric_config.harness.settings == {"workflow": "current_timezone"}
         assert fabric_config.models == {}
         assert fabric_config.telemetry is None
         assert fabric_config.relay is None
 
-    def test_nat_harness_requires_config_file(self) -> None:
+    def test_nat_current_timezone_rejects_inline_model(self) -> None:
+        payload = _example_yaml_config()
+        payload["default_harness"] = "nat"
+        payload["harnesses"] = {
+            "nat": {
+                "kind": "nat",
+                "model": {
+                    "provider": "nvidia",
+                    "model": "unused",
+                },
+                "settings": {"workflow": "current_timezone"},
+            }
+        }
+        config = AgentConfig.model_validate(payload)
+
+        with pytest.raises(FabricTranslationError, match="does not accept a model"):
+            translate_agent_config(config)
+
+    def test_nat_harness_requires_supported_workflow(self) -> None:
         payload = _example_yaml_config()
         payload["default_harness"] = "nat"
         payload["harnesses"] = {"nat": {"kind": "nat"}}
         payload["models"] = {}
         config = AgentConfig.model_validate(payload)
 
-        with pytest.raises(FabricTranslationError, match="requires a non-empty harness.settings.config_file"):
+        with pytest.raises(FabricTranslationError, match="invalid settings"):
             translate_agent_config(config)
 
-    def test_nat_harness_rejects_inline_platform_model(self) -> None:
+    def test_nat_react_harness_uses_inline_platform_model(self) -> None:
         payload = _example_yaml_config()
         payload["default_harness"] = "nat"
         payload["harnesses"] = {
@@ -234,42 +253,29 @@ class TestTranslateAgentConfig:
                     "provider": "nvidia",
                     "model": "nvidia/example-model",
                 },
-                "settings": {"config_file": "./workflow.yml"},
+                "settings": {
+                    "workflow": "react",
+                    "tools": ["calculator"],
+                },
             }
         }
         payload["models"] = {}
         config = AgentConfig.model_validate(payload)
 
-        with pytest.raises(FabricTranslationError, match="cannot define an inline Platform model"):
-            translate_agent_config(config)
-
-    def test_nat_harness_ignores_top_level_models_owned_by_other_harnesses(self) -> None:
-        payload = _example_yaml_config()
-        payload["default_harness"] = "nat"
-        payload["harnesses"] = {
-            "nat": {
-                "kind": "nat",
-                "settings": {"config_file": "./workflow.yml"},
-            }
-        }
-        config = AgentConfig.model_validate(payload)
-
         fabric_config = translate_agent_config(config)
 
-        assert fabric_config.models == {}
+        assert fabric_config.models["default"].provider == "nvidia"
+        assert fabric_config.models["default"].model == "nvidia/example-model"
 
-    def test_nat_harness_maps_platform_models_to_nat_llm_aliases(self) -> None:
+    def test_nat_react_harness_uses_top_level_default_model(self) -> None:
         payload = _example_yaml_config()
         payload["default_harness"] = "nat"
         payload["harnesses"] = {
             "nat": {
                 "kind": "nat",
                 "settings": {
-                    "config_file": "./workflow.yml",
-                    "llm_map": {
-                        "primary": "default",
-                        "judge": "default",
-                    },
+                    "workflow": "react",
+                    "tools": ["calculator", "current_datetime"],
                 },
             }
         }
@@ -277,64 +283,64 @@ class TestTranslateAgentConfig:
 
         fabric_config = translate_agent_config(config)
 
-        assert set(fabric_config.models) == {"primary", "judge"}
-        assert fabric_config.models["primary"].provider == "openai"
-        assert fabric_config.models["primary"].model == "openai/gpt-5.4"
-        assert fabric_config.models["judge"] == fabric_config.models["primary"]
-        assert fabric_config.harness.settings == {"config_file": "./workflow.yml"}
+        assert set(fabric_config.models) == {"default"}
+        assert fabric_config.models["default"].provider == "openai"
+        assert fabric_config.models["default"].model == "openai/gpt-5.4"
 
-    def test_nat_harness_rejects_unknown_platform_model_alias(self) -> None:
+    def test_nat_react_harness_requires_platform_model(self) -> None:
         payload = _example_yaml_config()
         payload["default_harness"] = "nat"
         payload["harnesses"] = {
             "nat": {
                 "kind": "nat",
                 "settings": {
-                    "config_file": "./workflow.yml",
-                    "llm_map": {"llm": "missing"},
+                    "workflow": "react",
+                    "tools": ["calculator"],
                 },
             }
         }
+        payload["models"] = {}
         config = AgentConfig.model_validate(payload)
 
-        with pytest.raises(FabricTranslationError, match="references unknown Platform model 'missing'"):
+        with pytest.raises(FabricTranslationError, match="no models.default is configured"):
             translate_agent_config(config)
 
     @pytest.mark.parametrize(
-        "llm_map",
+        "settings",
         [
-            "default",
-            {"": "default"},
-            {"llm": ""},
+            {"config_file": "./workflow.yml"},
+            {"workflow": "react", "llm_map": {"llm": "default"}},
+            {"workflow": "native_workflow"},
+            {"workflow": "react", "tools": ["unknown"]},
+            {"workflow": "react", "tools": ["calculator", "calculator"]},
         ],
     )
-    def test_nat_harness_rejects_invalid_llm_map(self, llm_map: Any) -> None:
+    def test_nat_harness_rejects_native_or_invalid_settings(self, settings: dict[str, Any]) -> None:
+        payload = _example_yaml_config()
+        payload["default_harness"] = "nat"
+        payload["harnesses"] = {
+            "nat": {
+                "kind": "nat",
+                "settings": settings,
+            }
+        }
+        config = AgentConfig.model_validate(payload)
+
+        with pytest.raises(FabricTranslationError, match="invalid settings"):
+            translate_agent_config(config)
+
+    def test_nat_harness_translates_shared_capabilities(self) -> None:
         payload = _example_yaml_config()
         payload["default_harness"] = "nat"
         payload["harnesses"] = {
             "nat": {
                 "kind": "nat",
                 "settings": {
-                    "config_file": "./workflow.yml",
-                    "llm_map": llm_map,
+                    "workflow": "react",
+                    "tools": ["calculator"],
                 },
             }
         }
-        config = AgentConfig.model_validate(payload)
-
-        with pytest.raises(FabricTranslationError, match="llm_map"):
-            translate_agent_config(config)
-
-    def test_nat_harness_translates_shared_capabilities_without_platform_model(self) -> None:
-        payload = _example_yaml_config()
-        payload["default_harness"] = "nat"
-        payload["harnesses"] = {
-            "nat": {
-                "kind": "nat",
-                "settings": {"config_file": "./workflow.yml"},
-            }
-        }
-        payload["models"] = {}
         payload["skills"] = {"paths": ["./skills/example"]}
         payload["mcp"] = {
             "servers": {
@@ -349,7 +355,7 @@ class TestTranslateAgentConfig:
 
         fabric_config = translate_agent_config(config)
 
-        assert fabric_config.models == {}
+        assert set(fabric_config.models) == {"default"}
         assert fabric_config.skills.paths == ["./skills/example"]
         assert fabric_config.mcp.servers["repo"].url == "http://localhost:9901/mcp"
         assert fabric_config.tools.blocked == ["calculator__divide"]
@@ -360,7 +366,7 @@ class TestTranslateAgentConfig:
         payload["harnesses"] = {
             "nat": {
                 "kind": "nat",
-                "settings": {"config_file": "./workflow.yml"},
+                "settings": {"workflow": "current_timezone"},
             }
         }
         payload["models"] = {}

@@ -8,7 +8,21 @@ harnesses:
   nat:
     kind: nat
     settings:
-      config_file: ./workflow.yml
+      workflow: react
+      tools:
+        - calculator
+        - current_datetime
+
+models:
+  default:
+    provider: nvidia
+    model: nvidia/nemotron-3-nano-30b-a3b
+    api_key_env: NVIDIA_API_KEY
+    temperature: 0.0
+    settings:
+      max_tokens: 1024
+      chat_template_kwargs:
+        enable_thinking: false
 
 tools:
   blocked:
