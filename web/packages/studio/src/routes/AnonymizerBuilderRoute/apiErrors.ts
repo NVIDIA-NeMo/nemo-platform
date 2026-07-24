@@ -6,13 +6,13 @@ import type { AnonymizerFormData } from '@studio/routes/AnonymizerBuilderRoute/s
 type FormField = keyof AnonymizerFormData;
 
 interface PydanticError {
-  loc: (string | number)[];
-  msg: string;
+  readonly loc: (string | number)[];
+  readonly msg: string;
 }
 
 export interface ParsedApiError {
-  fieldErrors: { field: FormField; message: string }[];
-  generalMessages: string[];
+  readonly fieldErrors: { field: FormField; message: string }[];
+  readonly generalMessages: string[];
 }
 
 const extractDetail = (error: unknown): PydanticError[] => {

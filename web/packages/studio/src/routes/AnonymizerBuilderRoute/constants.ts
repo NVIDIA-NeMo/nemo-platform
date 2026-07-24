@@ -56,13 +56,16 @@ export const ANNOTATE_DEFAULT_TEMPLATE = '<{text}, {label}>';
 export const HASH_DEFAULT_TEMPLATE = '<{label}_{digest}>';
 export const HASH_DEFAULT_DIGEST_LENGTH = 8;
 
-export type HashAlgorithmOption = 'sha256' | 'sha1' | 'md5';
+export const HASH_ALGORITHM_VALUES = ['sha256', 'sha1', 'md5'] as const;
+export type HashAlgorithmOption = (typeof HASH_ALGORITHM_VALUES)[number];
 export const HASH_ALGORITHM_DEFAULT: HashAlgorithmOption = 'sha256';
-export const HASH_ALGORITHM_OPTIONS: { label: string; value: HashAlgorithmOption }[] = [
-  { label: 'SHA-256', value: 'sha256' },
-  { label: 'SHA-1', value: 'sha1' },
-  { label: 'MD5', value: 'md5' },
-];
+const HASH_ALGORITHM_LABELS: Record<HashAlgorithmOption, string> = {
+  sha256: 'SHA-256',
+  sha1: 'SHA-1',
+  md5: 'MD5',
+};
+export const HASH_ALGORITHM_OPTIONS: { label: string; value: HashAlgorithmOption }[] =
+  HASH_ALGORITHM_VALUES.map((value) => ({ label: HASH_ALGORITHM_LABELS[value], value }));
 
 export const ENTITY_MODE_CUSTOM = 'custom';
 export const ENTITY_MODE_AUTO = 'auto';
