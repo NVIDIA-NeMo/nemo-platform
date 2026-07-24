@@ -213,7 +213,14 @@ export const ExperimentGroupParetoChart: FC<ExperimentGroupParetoChartProps> = (
       return <Text kind="body/regular/sm">Could not load the Pareto data for this group.</Text>;
     }
     if (isLoading) {
-      return <div aria-busy className="h-[360px] animate-pulse rounded bg-subtle/10" />;
+      return (
+        <div aria-busy className="flex h-[360px] items-center justify-center gap-2">
+          <Loader2 width={20} height={20} className="animate-spin text-brand" />
+          <Text kind="body/regular/sm" color="subtle">
+            Loading evaluations…
+          </Text>
+        </div>
+      );
     }
     if (plotPoints.length === 0 || !xMetric || !yMetric) {
       return (
