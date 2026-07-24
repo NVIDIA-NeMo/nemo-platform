@@ -130,10 +130,16 @@ interface ExperimentGroupDataViewProps {
   /** The loaded group, so the table's initial sort can seed from `default_sort` at first
    * render — the sorting state is initialized once and not reactive. */
   group: ExperimentGroupResponse;
+  /** Whether the Pareto (cost-vs-accuracy) chart is shown. The toggle lives in the parent
+   * route header (next to the "Evaluations" title); this component only renders the chart. */
+  paretoVisible: boolean;
 }
 
 /** Lists the experiments that belong to a single experiment group. */
-export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ group }) => {
+export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
+  group,
+  paretoVisible,
+}) => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
   const toast = useToast();
@@ -151,12 +157,6 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
   const [savedColumnOrder, saveColumnOrder] = useLocalStorage<string[]>(
     `nemo-studio:experiment-group-columns:${experimentGroupId}`,
     []
-  );
-
-  // Pareto (cost-vs-accuracy) view visibility, persisted per group. Hidden by default.
-  const [paretoVisible, setParetoVisible] = useLocalStorage<boolean>(
-    `nemo-studio:experiment-group-pareto:${experimentGroupId}`,
-    false
   );
 
   // Seed the sort from default_sort so its column header reflects the order on load. Memoized so the
@@ -491,28 +491,18 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({ grou
           </Button>
         )}
         toolbarSlotEnd={
-          <>
-            <EditColumnsMenu
-              kind="secondary"
-              showChevron={false}
-              // EditColumnsMenu exposes no width control for its dropdown, so this zero-height
-              // spacer sets a min width on the menu (which sizes to its widest child).
-              slotContent={<div aria-hidden className="h-0 w-[230px]" />}
-            >
-              <>
-                <Columns3 />
-                <span className="hide-mobile">Columns</span>
-              </>
-            </EditColumnsMenu>
-            <Button
-              kind="secondary"
-              aria-pressed={paretoVisible}
-              onClick={() => setParetoVisible(!paretoVisible)}
-            >
-              <ChartScatter width={12} height={12} />
-              <span className="hide-mobile">{paretoVisible ? 'Hide Pareto' : 'Pareto view'}</span>
-            </Button>
-          </>
+          <EditColumnsMenu
+            kind="secondary"
+            showChevron={false}
+            // EditColumnsMenu exposes no width control for its dropdown, so this zero-height
+            // spacer sets a min width on the menu (which sizes to its widest child).
+            slotContent={<div aria-hidden className="h-0 w-[230px]" />}
+          >
+            <>
+              <Columns3 />
+              <span className="hide-mobile">Columns</span>
+            </>
+          </EditColumnsMenu>
         }
         attributes={{
           DataViewRoot: {

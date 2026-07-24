@@ -87,7 +87,7 @@ const ParetoTooltip: FC<ParetoTooltipProps> = ({ active, payload, xMetric, yMetr
           {yMetric.label}: {formatMetricValue(yMetric, point.y)}
         </Text>
         {point.onFrontier && (
-          <Text kind="body/regular/xs" color="accent-blue">
+          <Text kind="body/regular/xs" color="brand">
             On the Pareto frontier
           </Text>
         )}
@@ -253,14 +253,14 @@ export const ExperimentGroupParetoChart: FC<ExperimentGroupParetoChartProps> = (
           <Scatter
             name="Evaluations"
             data={dominatedPoints}
-            fill="var(--text-color-subtle)"
-            fillOpacity={0.5}
+            fill="var(--text-color-secondary)"
+            fillOpacity={0.7}
           />
           <Scatter
             name="Pareto frontier"
             data={frontierPoints}
-            fill="var(--border-color-accent-blue)"
-            line={{ stroke: 'var(--border-color-accent-blue)' }}
+            fill="var(--border-color-brand)"
+            line={{ stroke: 'var(--border-color-brand)' }}
           />
         </ScatterChart>
       </ResponsiveContainer>

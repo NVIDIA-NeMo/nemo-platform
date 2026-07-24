@@ -3,7 +3,7 @@
 
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { useGetExperimentGroup } from '@nemo/sdk/generated/platform/api';
-import { Badge, Button, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
+import { Button, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { ExperimentGroupDataView } from '@studio/components/dataViews/ExperimentGroupDataView';
 import { ExperimentGroupEditModal } from '@studio/components/ExperimentGroupEditModal';
@@ -12,8 +12,9 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { ExperimentGroupMetrics } from '@studio/routes/ExperimentGroupDetailRoute/ExperimentGroupMetrics';
 import { getExperimentRoute } from '@studio/routes/utils';
+import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
-import { Pencil } from 'lucide-react';
+import { ChartScatter, Pencil } from 'lucide-react';
 import { type FC, useState } from 'react';
 
 export const ExperimentGroupDetailRoute: FC = () => {
@@ -21,6 +22,13 @@ export const ExperimentGroupDetailRoute: FC = () => {
   const { experimentGroupName } = useRequiredPathParams([ROUTE_PARAMS.experimentGroupName]);
   const { data: group, error } = useGetExperimentGroup(workspace, experimentGroupName);
   const [editOpen, setEditOpen] = useState(false);
+
+  // Pareto (cost-vs-accuracy) view visibility, persisted per group. Hidden by default.
+  const [storedParetoVisible, setParetoVisible] = useLocalStorage<boolean>(
+    `nemo-studio:experiment-group-pareto:${group?.id ?? ''}`,
+    false
+  );
+  const paretoVisible = storedParetoVisible ?? false;
 
   useBreadcrumbs({
     items: [
@@ -59,13 +67,18 @@ export const ExperimentGroupDetailRoute: FC = () => {
             <div className="flex flex-col gap-4 border-t border-base pt-4">
               <div className="flex items-center gap-3">
                 <Text kind="title/sm">Evaluations</Text>
-                {group?.evaluation_count !== undefined && (
-                  <Badge color="gray" kind="solid" className="text-sm">
-                    {group.evaluation_count}
-                  </Badge>
+                {group && (
+                  <Button
+                    kind="tertiary"
+                    aria-pressed={paretoVisible}
+                    onClick={() => setParetoVisible(!paretoVisible)}
+                  >
+                    <ChartScatter width={12} height={12} className="text-brand" />
+                    {paretoVisible ? 'Hide Pareto' : 'Pareto view'}
+                  </Button>
                 )}
               </div>
-              {group && <ExperimentGroupDataView group={group} />}
+              {group && <ExperimentGroupDataView group={group} paretoVisible={paretoVisible} />}
             </div>
           </>
         )}
