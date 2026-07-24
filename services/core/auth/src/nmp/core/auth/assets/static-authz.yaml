@@ -1003,13 +1003,6 @@ authz:
         scopes:
         - intake:write
         - platform:write
-    /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}/pareto:
-      get:
-        permissions:
-        - intake.experiment-groups.read
-        scopes:
-        - intake:read
-        - platform:read
     /apis/intake/v2/workspaces/{workspace}/experiments:
       get:
         permissions:
