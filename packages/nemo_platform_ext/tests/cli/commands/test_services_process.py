@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -14,7 +15,8 @@ from unittest.mock import MagicMock, patch
 
 import psutil
 import pytest
-from nemo_platform_ext.cli.commands.services._process import (
+from nemo_platform_ext.local import process as process_module
+from nemo_platform_ext.local.process import (
     ForegroundInstanceError,
     InstanceAlreadyRunningError,
     InstanceDescriptor,
@@ -40,6 +42,7 @@ from nemo_platform_ext.cli.commands.services._process import (
     validate_pid,
     write_descriptor,
 )
+from nmp.platform_runner.config import DEFAULT_LOCAL_SERVICES_BIND_HOST, PlatformAppConfig
 
 
 @pytest.fixture()
@@ -48,67 +51,23 @@ def base_dir(tmp_path: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Scope computation
+# Scope resolution
 # ---------------------------------------------------------------------------
 
 
 class TestComputeScope:
-    def test_explicit_instance_name(self) -> None:
-        assert compute_scope(port=8080, instance_name="myapp") == "myapp"
+    def test_explicit_scope(self) -> None:
+        assert compute_scope(port=1234, explicit_scope="myapp") == "myapp"
 
-    def test_default_scope_includes_port(self) -> None:
-        scope = compute_scope(port=9090)
-        assert scope.endswith("-9090")
-
-    def test_default_scope_is_deterministic(self) -> None:
-        a = compute_scope(port=8080)
-        b = compute_scope(port=8080)
-        assert a == b
-
-    def test_different_ports_different_scopes(self) -> None:
-        a = compute_scope(port=8080)
-        b = compute_scope(port=9090)
-        assert a != b
-
-    def test_hash_prefix_is_8_chars(self) -> None:
+    def test_default_scope_is_stable_for_port(self) -> None:
         scope = compute_scope(port=8080)
-        prefix = scope.rsplit("-", 1)[0]
-        assert len(prefix) == 8
 
-    def test_git_failure_falls_back_to_cwd(self) -> None:
-        import nemo_platform_ext.cli.commands.services._process as proc_mod
-
-        proc_mod._scope_prefix_cache = None
-        try:
-            with patch.object(proc_mod, "_find_git_root", return_value="/no/git/here"):
-                scope = compute_scope(port=8080)
-            assert scope.endswith("-8080")
-            assert len(scope.rsplit("-", 1)[0]) == 8
-        finally:
-            proc_mod._scope_prefix_cache = None
-
-    def test_different_git_roots_produce_different_prefixes(self) -> None:
-        """Two different working directories (worktrees) produce distinct scopes."""
-        import nemo_platform_ext.cli.commands.services._process as proc_mod
-
-        with patch.object(proc_mod, "_find_git_root", return_value="/workspace/project-a"):
-            scope_a = compute_scope(port=8080)
-
-        proc_mod._scope_prefix_cache = None
-
-        with patch.object(proc_mod, "_find_git_root", return_value="/workspace/project-b"):
-            scope_b = compute_scope(port=8080)
-
-        assert scope_a != scope_b
-        assert scope_a.endswith("-8080")
-        assert scope_b.endswith("-8080")
-        prefix_a = scope_a.rsplit("-", 1)[0]
-        prefix_b = scope_b.rsplit("-", 1)[0]
-        assert prefix_a != prefix_b
+        assert scope == compute_scope(port=8080)
+        assert scope.endswith("-8080")
 
 
 # ---------------------------------------------------------------------------
-# Instance directory
+# Scope directory
 # ---------------------------------------------------------------------------
 
 
@@ -168,26 +127,27 @@ class TestDescriptorRoundTrip:
     def test_write_and_read(self, base_dir: Path) -> None:
         desc = InstanceDescriptor(
             pid=12345,
-            scope="test-8080",
-            host="127.0.0.1",
-            port=8080,
+            config=PlatformAppConfig(
+                scope="test-8080",
+                services=["entities", "models"],
+                controllers=["jobs"],
+                host="127.0.0.1",
+            ),
             mode="background",
             create_time=1000.0,
-            services=["entities", "models"],
-            controllers=["jobs"],
         )
         write_descriptor(desc, base_dir=base_dir)
         recovered = read_descriptor("test-8080", base_dir=base_dir)
 
         assert recovered is not None
         assert recovered.pid == 12345
-        assert recovered.scope == "test-8080"
-        assert recovered.host == "127.0.0.1"
-        assert recovered.port == 8080
+        assert recovered.config.scope == "test-8080"
+        assert recovered.config.host == "127.0.0.1"
+        assert recovered.config.port == 8080
         assert recovered.mode == "background"
         assert recovered.create_time == 1000.0
-        assert recovered.services == ["entities", "models"]
-        assert recovered.controllers == ["jobs"]
+        assert recovered.config.services == ["entities", "models"]
+        assert recovered.config.controllers == ["jobs"]
 
     def test_read_missing_returns_none(self, base_dir: Path) -> None:
         assert read_descriptor("no-such-scope", base_dir=base_dir) is None
@@ -200,9 +160,7 @@ class TestDescriptorRoundTrip:
     def test_remove_descriptor(self, base_dir: Path) -> None:
         desc = InstanceDescriptor(
             pid=1,
-            scope="rm-test",
-            host="127.0.0.1",
-            port=8080,
+            config=PlatformAppConfig(scope="rm-test"),
             mode="background",
             create_time=1.0,
         )
@@ -245,9 +203,7 @@ class TestListInstances:
         fd = acquire_lock("alive-one", base_dir=base_dir)
         desc = InstanceDescriptor(
             pid=os.getpid(),
-            scope="alive-one",
-            host="127.0.0.1",
-            port=8080,
+            config=PlatformAppConfig(scope="alive-one"),
             mode="foreground",
             create_time=1.0,
         )
@@ -265,9 +221,7 @@ class TestListInstances:
         d = instance_dir("dead-scope", base_dir=base_dir)
         desc = InstanceDescriptor(
             pid=999999,
-            scope="dead-scope",
-            host="127.0.0.1",
-            port=8080,
+            config=PlatformAppConfig(scope="dead-scope"),
             mode="background",
             create_time=1.0,
         )
@@ -281,9 +235,7 @@ class TestListInstances:
         d = instance_dir("dead-with-logs", base_dir=base_dir)
         desc = InstanceDescriptor(
             pid=999999,
-            scope="dead-with-logs",
-            host="127.0.0.1",
-            port=8080,
+            config=PlatformAppConfig(scope="dead-with-logs"),
             mode="background",
             create_time=1.0,
         )
@@ -370,7 +322,7 @@ class TestRemoveInstance:
             os.close(fd)
 
     def test_rejects_invalid_scope(self, base_dir: Path) -> None:
-        with pytest.raises(ValueError, match="Invalid instance scope"):
+        with pytest.raises(ValueError, match="Invalid scope"):
             remove_instance("../escape", base_dir=base_dir)
 
     def test_returns_false_when_rmtree_fails(self, base_dir: Path) -> None:
@@ -378,7 +330,7 @@ class TestRemoveInstance:
         (d / "services.log").write_text("logs\n")
 
         with patch(
-            "nemo_platform_ext.cli.commands.services._process.shutil.rmtree",
+            "nemo_platform_ext.local.process.shutil.rmtree",
             side_effect=OSError("permission denied"),
         ):
             assert remove_instance("rmtree-fail", base_dir=base_dir) is False
@@ -489,9 +441,7 @@ class TestStopInstance:
             fd = acquire_lock(scope, base_dir=base_dir)
             desc = InstanceDescriptor(
                 pid=proc.pid,
-                scope=scope,
-                host="127.0.0.1",
-                port=8080,
+                config=PlatformAppConfig(scope=scope),
                 mode="background",
                 create_time=psutil.Process(proc.pid).create_time(),
             )
@@ -512,9 +462,7 @@ class TestStopInstance:
         scope = "stale"
         desc = InstanceDescriptor(
             pid=999999999,
-            scope=scope,
-            host="127.0.0.1",
-            port=8080,
+            config=PlatformAppConfig(scope=scope),
             mode="background",
             create_time=0.0,
         )
@@ -529,9 +477,7 @@ class TestStopInstance:
         try:
             desc = InstanceDescriptor(
                 pid=os.getpid(),
-                scope=scope,
-                host="127.0.0.1",
-                port=8080,
+                config=PlatformAppConfig(scope=scope),
                 mode="foreground",
                 create_time=1.0,
             )
@@ -555,9 +501,7 @@ class TestStopInstance:
         try:
             desc = InstanceDescriptor(
                 pid=proc.pid,
-                scope=scope,
-                host="127.0.0.1",
-                port=8080,
+                config=PlatformAppConfig(scope=scope),
                 mode="foreground",
                 create_time=psutil.Process(proc.pid).create_time(),
             )
@@ -571,6 +515,34 @@ class TestStopInstance:
                 proc.kill()
                 proc.wait(timeout=5)
 
+    def test_preserves_descriptor_when_sigkill_does_not_stop_parent(self, base_dir: Path, monkeypatch) -> None:
+        scope = "sigkill-still-alive"
+        desc = InstanceDescriptor(
+            pid=12345,
+            config=PlatformAppConfig(scope=scope),
+            mode="background",
+            create_time=1.0,
+        )
+        write_descriptor(desc, base_dir=base_dir)
+        kill_signals: list[int] = []
+
+        def fake_kill(_pid: int, sig: int) -> None:
+            kill_signals.append(sig)
+
+        monkeypatch.setattr(process_module, "validate_pid", lambda _pid, _create_time: True)
+        monkeypatch.setattr(process_module, "_pid_alive", lambda _pid: True)
+        monkeypatch.setattr(process_module, "_snapshot_children", lambda _pid: [object()])
+        monkeypatch.setattr(process_module, "_sweep_orphans", lambda _children: [222])
+        monkeypatch.setattr(process_module, "_SIGKILL_WAIT_TIMEOUT", 0.0)
+        monkeypatch.setattr(process_module.os, "kill", fake_kill)
+
+        result = stop_instance(scope, base_dir=base_dir, timeout=0.0)
+
+        assert kill_signals == [signal.SIGTERM, signal.SIGKILL]
+        assert result.stopped_pids == []
+        assert result.swept_children == [222]
+        assert read_descriptor(scope, base_dir=base_dir) is not None
+
 
 # ---------------------------------------------------------------------------
 # start_background
@@ -578,21 +550,49 @@ class TestStopInstance:
 
 
 class TestStartBackground:
+    def test_uses_default_platform_app_config(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        mock_proc = MagicMock()
+        mock_proc.pid = 99998
+        captured_args: list[str] = []
+        captured_env: dict[str, str] = {}
+
+        def fake_popen(args, **kwargs):
+            captured_args.extend(args)
+            captured_env.update(kwargs["env"])
+            return mock_proc
+
+        with patch(
+            "nemo_platform_ext.local.process.subprocess.Popen",
+            side_effect=fake_popen,
+        ):
+            proc = start_background()
+
+        assert proc.pid == 99998
+        assert captured_args[captured_args.index("--instance") + 1] == "default"
+        assert captured_args[captured_args.index("--host") + 1] == "127.0.0.1"
+        assert captured_args[captured_args.index("--port") + 1] == "8080"
+        assert captured_env["XDG_STATE_HOME"] == str(tmp_path)
+        assert "_NMP_STATE_DIR" not in captured_env
+        assert (tmp_path / "nmp" / "instances" / "default" / "services.log").exists()
+
     def test_launches_detached_subprocess(self, base_dir: Path) -> None:
         mock_proc = MagicMock()
         mock_proc.pid = 99999
 
         with patch(
-            "nemo_platform_ext.cli.commands.services._process.subprocess.Popen",
+            "nemo_platform_ext.local.process.subprocess.Popen",
             return_value=mock_proc,
         ) as mock_popen:
             proc = start_background(
-                scope="bg-test",
-                services=["entities", "models"],
-                controllers=["jobs"],
-                host="127.0.0.1",
-                port=8080,
-                base_dir=base_dir,
+                PlatformAppConfig(
+                    scope="bg-test",
+                    services=["entities", "models"],
+                    controllers=["jobs"],
+                    host="127.0.0.1",
+                    port=8080,
+                    state_root=base_dir,
+                ),
             )
 
         assert proc.pid == 99999
@@ -612,13 +612,16 @@ class TestStartBackground:
             return mock_proc
 
         with patch(
-            "nemo_platform_ext.cli.commands.services._process.subprocess.Popen",
+            "nemo_platform_ext.local.process.subprocess.Popen",
             side_effect=fake_popen,
         ):
             start_background(
-                scope="data-dir-test",
+                PlatformAppConfig(
+                    scope="data-dir-test",
+                    host=DEFAULT_LOCAL_SERVICES_BIND_HOST,
+                    state_root=base_dir,
+                ),
                 data_dir="/chosen/data/dir",
-                base_dir=base_dir,
             )
 
         assert captured_env.get("NMP_DATA_DIR") == "/chosen/data/dir"
@@ -634,13 +637,16 @@ class TestStartBackground:
             return mock_proc
 
         with patch(
-            "nemo_platform_ext.cli.commands.services._process.subprocess.Popen",
+            "nemo_platform_ext.local.process.subprocess.Popen",
             side_effect=fake_popen,
         ):
             start_background(
-                scope="shell-env-test",
+                PlatformAppConfig(
+                    scope="shell-env-test",
+                    host=DEFAULT_LOCAL_SERVICES_BIND_HOST,
+                    state_root=base_dir,
+                ),
                 data_dir="/chosen/data/dir",
-                base_dir=base_dir,
             )
 
         assert captured_env.get("NMP_DATA_DIR") == "/shell/wins"
@@ -654,16 +660,22 @@ class TestStartBackground:
         mock_proc.pid = 5555
 
         with patch(
-            "nemo_platform_ext.cli.commands.services._process.subprocess.Popen",
+            "nemo_platform_ext.local.process.subprocess.Popen",
             return_value=mock_proc,
         ):
-            start_background(scope="rotate-test", base_dir=base_dir)
+            start_background(
+                PlatformAppConfig(
+                    scope="rotate-test",
+                    host=DEFAULT_LOCAL_SERVICES_BIND_HOST,
+                    state_root=base_dir,
+                ),
+            )
 
         rotated = list(d.glob("services.log.*"))
         assert len(rotated) == 1
         assert rotated[0].read_text() == "old log content\n"
 
-    def test_forwards_instance_scope_to_child(self, base_dir: Path) -> None:
+    def test_forwards_scope_to_child(self, base_dir: Path) -> None:
         mock_proc = MagicMock()
         mock_proc.pid = 7777
         captured_args: list[str] = []
@@ -673,20 +685,22 @@ class TestStartBackground:
             return mock_proc
 
         with patch(
-            "nemo_platform_ext.cli.commands.services._process.subprocess.Popen",
+            "nemo_platform_ext.local.process.subprocess.Popen",
             side_effect=fake_popen,
         ):
             start_background(
-                scope="custom-scope",
-                services=["entities"],
-                host="127.0.0.1",
-                port=9090,
-                base_dir=base_dir,
+                PlatformAppConfig(
+                    scope="custom-key",
+                    services=["entities"],
+                    host="127.0.0.1",
+                    port=9090,
+                    state_root=base_dir,
+                ),
             )
 
         assert "--instance" in captured_args
         idx = captured_args.index("--instance")
-        assert captured_args[idx + 1] == "custom-scope"
+        assert captured_args[idx + 1] == "custom-key"
 
     def test_sets_launch_mode_background_in_child_env(self, base_dir: Path) -> None:
         mock_proc = MagicMock()
@@ -698,10 +712,16 @@ class TestStartBackground:
             return mock_proc
 
         with patch(
-            "nemo_platform_ext.cli.commands.services._process.subprocess.Popen",
+            "nemo_platform_ext.local.process.subprocess.Popen",
             side_effect=fake_popen,
         ):
-            start_background(scope="mode-test", base_dir=base_dir)
+            start_background(
+                PlatformAppConfig(
+                    scope="mode-test",
+                    host=DEFAULT_LOCAL_SERVICES_BIND_HOST,
+                    state_root=base_dir,
+                ),
+            )
 
         assert captured_env.get("_NMP_LAUNCH_MODE") == "background"
 
@@ -846,9 +866,7 @@ class TestStopInstanceChildSweep:
             fd = acquire_lock(scope, base_dir=base_dir)
             desc = InstanceDescriptor(
                 pid=parent.pid,
-                scope=scope,
-                host="127.0.0.1",
-                port=8080,
+                config=PlatformAppConfig(scope=scope),
                 mode="background",
                 create_time=psutil.Process(parent.pid).create_time(),
             )
@@ -883,9 +901,7 @@ class TestStopInstanceChildSweep:
             fd = acquire_lock(scope, base_dir=base_dir)
             desc = InstanceDescriptor(
                 pid=proc.pid,
-                scope=scope,
-                host="127.0.0.1",
-                port=8080,
+                config=PlatformAppConfig(scope=scope),
                 mode="background",
                 create_time=psutil.Process(proc.pid).create_time(),
             )
@@ -917,9 +933,7 @@ class TestStopInstanceChildSweep:
             fd = acquire_lock(scope, base_dir=base_dir)
             desc = InstanceDescriptor(
                 pid=parent.pid,
-                scope=scope,
-                host="127.0.0.1",
-                port=8080,
+                config=PlatformAppConfig(scope=scope),
                 mode="foreground",
                 create_time=psutil.Process(parent.pid).create_time(),
             )

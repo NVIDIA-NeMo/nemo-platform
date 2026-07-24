@@ -38,7 +38,7 @@ from nmp.core.jobs.app.schemas import (
     PlatformJobStepSpec,
 )
 from nmp.core.jobs.controllers.backends.base import (
-    JOB_LOGS_ENDPOINT_ENVVAR,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR,
     WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
     WORKLOAD_IDENTITY_TOKEN_FILE_PATH,
     WORKLOAD_IDENTITY_VOLUME_NAME,
@@ -884,7 +884,7 @@ def test_kubernetes_job_uses_service_discovery_urls_for_job_runtime(
     assert env_vars["NMP_FILES_URL"] == "https://nemo-gateway:8080"
     assert env_vars["NMP_MODELS_URL"] == "https://nemo-gateway:8080"
     assert env_vars["NMP_SECRETS_URL"] == "https://nemo-gateway:8080"
-    assert env_vars[JOB_LOGS_ENDPOINT_ENVVAR].startswith("https://nemo-gateway:8080/apis/files/")
+    assert env_vars[NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR].startswith("https://nemo-gateway:8080/apis/files/")
 
 
 def test_kubernetes_job_execution_profile_config_rejects_reserved_env_vars():
@@ -2145,12 +2145,11 @@ def test_step_pending_with_auth_context() -> PlatformJobStepWithContext:
 def test_kubernetes_job_schedule_with_auth_context(
     kubernetes_job, cpu_execution_provider, test_step_pending_with_auth_context
 ):
-    """Test that scheduling sets NMP_PRINCIPAL without injecting OTEL log headers.
+    """Test that scheduling sets NMP_PRINCIPAL and launcher OTLP headers when auth_context is present.
 
     Verifies GitLab issue #3390 Gap 2: job tasks should run with the creating
-    user's auth context, propagated via the NMP_PRINCIPAL environment variable.
-    Job log upload auth is handled by jobs-launcher workload token exchange,
-    not by globally scoped OTEL header environment variables.
+    user's auth context, propagated via the NMP_PRINCIPAL environment variable
+    and private launcher OTLP headers for authenticated telemetry export.
     """
     import json
 
@@ -2184,12 +2183,13 @@ def test_kubernetes_job_schedule_with_auth_context(
         "groups": ["engineering", "ml-team"],
     }
 
-    assert env_vars[JOB_LOGS_ENDPOINT_ENVVAR].endswith(
-        "/apis/files/v2/workspaces/default/filesets/test-logs-fileset/otlp/v1/logs"
-    )
+    # Verify launcher application log auth is not configured through env headers.
+    assert "NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS" not in env_var_names
+    assert "NMP_JOB_LAUNCHER_LOGS_EXPORTER" not in env_var_names
+    assert "NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL" not in env_var_names
+
+    # Verify no globally scoped OTEL header environment variables are set
     assert "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT" not in env_var_names
-    assert "OTEL_EXPORTER_OTLP_PROTOCOL" not in env_var_names
-    assert "OTEL_EXPORTER_OTLP_LOGS_PROTOCOL" not in env_var_names
     assert "OTEL_LOGS_EXPORTER" not in env_var_names
     assert "OTEL_SERVICE_NAME" not in env_var_names
     assert "OTEL_EXPORTER_OTLP_LOGS_HEADERS" not in env_var_names
@@ -2215,9 +2215,13 @@ def test_kubernetes_job_schedule_without_auth_context(kubernetes_job, cpu_execut
     main_container = pod_spec.containers[0]
     env_vars = {env.name: env.value for env in main_container.env if env.value is not None}
 
+    env_var_names = {env.name for env in main_container.env}
+
     # Verify auth env vars are NOT set
     assert NMP_PRINCIPAL_ENVVAR not in env_vars
-    assert "OTEL_EXPORTER_OTLP_LOGS_HEADERS" not in env_vars
+    assert "NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS" not in env_var_names
+    assert "NMP_JOB_LAUNCHER_LOGS_EXPORTER" not in env_var_names
+    assert "NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL" not in env_var_names
 
 
 def test_cleanup_steps_with_multi_step_job_only_first_step_complete(kubernetes_job):

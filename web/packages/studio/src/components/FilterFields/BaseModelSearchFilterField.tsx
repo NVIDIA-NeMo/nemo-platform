@@ -39,7 +39,7 @@ const BaseModelSearchFilterFieldSingle: FC<
 
   const { models, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useBaseModels({
     workspace,
-    filter: searchInput.trim() ? { name: searchInput.trim() } : undefined,
+    filter: searchInput.trim() ? { name: { $like: searchInput.trim() } } : undefined,
     sort: ModelEntitySortField.name,
   });
 
@@ -52,7 +52,11 @@ const BaseModelSearchFilterFieldSingle: FC<
   }, [selectedBaseModel, form]);
 
   const options = useMemo(
-    () => models.map((model) => ({ value: model.name ?? '', label: model.name ?? '' })),
+    () =>
+      models.map((model) => ({
+        value: `${model.workspace}/${model.name ?? ''}`,
+        label: model.name ?? '',
+      })),
     [models]
   );
 

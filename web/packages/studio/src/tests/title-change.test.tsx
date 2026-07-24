@@ -25,7 +25,8 @@ const pathParams = {
   [RP.evalConfigName]: '',
   [RP.safeSynthesizerJobName]: '',
   [RP.dataDesignerJobName]: '',
-  [RP.traceId]: 'trace-1',
+  [RP.sessionId]: 'session-1',
+  [RP.anonymizerJobName]: 'test-anonymizer-job',
   [RP.deploymentName]: '',
   [RP.deploymentPanelView]: '',
   [RP.agentName]: '',
@@ -35,6 +36,7 @@ const pathParams = {
   [RP.benchmarkName]: 'test-benchmark',
   [RP.experimentGroupName]: 'test-experiment-group',
   [RP.evaluationName]: 'test-experiment',
+  [RP.insightId]: 'test-insight',
   [RP.guardrailConfigName]: 'test-guardrail-config',
 };
 

@@ -32,10 +32,12 @@ COPY web/packages/sdk/generateAll.ts packages/sdk/generateAll.ts
 COPY web/packages/sdk/orval.config.ts packages/sdk/orval.config.ts
 COPY web/packages/sdk/orval packages/sdk/orval
 COPY openapi /app/openapi
+COPY plugins/nemo-anonymizer/openapi /app/plugins/nemo-anonymizer/openapi
 COPY plugins/nemo-data-designer/openapi /app/plugins/nemo-data-designer/openapi
 COPY plugins/nemo-agents/openapi /app/plugins/nemo-agents/openapi
 COPY plugins/nemo-safe-synthesizer/openapi /app/plugins/nemo-safe-synthesizer/openapi
 COPY plugins/nemo-evaluator/openapi /app/plugins/nemo-evaluator/openapi
+COPY plugins/nemo-customizer/openapi /app/plugins/nemo-customizer/openapi
 
 # Install pnpm modules and generate SDK artifacts during postinstall.
 RUN pnpm install --frozen-lockfile

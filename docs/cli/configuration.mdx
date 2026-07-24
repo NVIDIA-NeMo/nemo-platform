@@ -13,6 +13,8 @@ The quickest way to connect to an existing deployment is:
 nemo auth login --base-url https://nmp.example.com
 ```
 
+During interactive onboarding, `nemo setup` also offers to connect to a remote deployment when the currently configured platform is unreachable. It verifies and saves the new URL in the active context, then runs the same authentication flow.
+
 To configure a named context:
 
 ```bash

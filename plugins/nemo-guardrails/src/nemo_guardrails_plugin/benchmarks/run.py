@@ -193,7 +193,7 @@ def _smoke_test(client: NeMoPlatform, seeded: SeededResources) -> None:
     """Verify the VirtualModel is reachable and returns a chat completion,
     before running the AIPerf sweep.
     """
-    payload = {
+    payload: dict[str, object] = {
         "model": seeded.vm_ref,
         "messages": [{"role": "user", "content": "Hello"}],
         "max_tokens": 16,

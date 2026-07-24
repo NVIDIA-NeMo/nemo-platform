@@ -5,7 +5,7 @@
 // produce JSX such as status badges and links. Not a component module.
 /* eslint-disable react-refresh/only-export-components */
 
-import type { EvaluationContext, Trace } from '@nemo/sdk/generated/platform/schema';
+import type { EvaluationContext, Session, Trace } from '@nemo/sdk/generated/platform/schema';
 import {
   formatUnknownKeyValue,
   isMeaningfulValue,
@@ -14,7 +14,7 @@ import type {
   HighlightMetric,
   KeyValueEntry,
 } from '@studio/components/IntakeDetail/IntakeComponents/keyValueTypes';
-import { getIntakeTraceSpanRoute } from '@studio/routes/utils';
+import { getIntakeSessionTraceRoute } from '@studio/routes/utils';
 import {
   EMPTY_VALUE,
   formatCost,
@@ -100,7 +100,9 @@ const TRACE_SUMMARY_DESCRIPTORS: readonly TraceFieldDescriptor[] = [
     resolve: (trace, { workspace }) =>
       trace.root_span_id ? (
         <Link
-          to={getIntakeTraceSpanRoute(workspace, trace.id, trace.root_span_id)}
+          to={getIntakeSessionTraceRoute(workspace, trace.session_id, trace.id, {
+            spanId: trace.root_span_id,
+          })}
           className="break-all"
         >
           {trace.root_span_id}
@@ -187,42 +189,53 @@ export const buildTraceSummaryEntries = (
  * their totals; the per-direction breakdown rides along as `details`, surfaced
  * in a hover popover.
  */
-export const buildTraceHighlightMetrics = (trace: Trace): TraceHighlightMetric[] => [
+export const buildSessionHighlightMetrics = (session: Session): TraceHighlightMetric[] => [
   {
     id: 'span_count',
     label: 'Spans',
-    value: trace.span_count != null ? formatInteger(trace.span_count) : EMPTY_VALUE,
-  },
-  {
-    id: 'error_count',
-    label: 'Errors',
-    value: trace.error_count != null ? formatInteger(trace.error_count) : EMPTY_VALUE,
+    value: session.span_count != null ? formatInteger(session.span_count) : EMPTY_VALUE,
   },
   {
     id: 'duration_ms',
     label: 'Duration',
-    value: trace.duration_ms != null ? formatDurationMs(trace.duration_ms) : EMPTY_VALUE,
+    value: session.duration_ms != null ? formatDurationMs(session.duration_ms) : EMPTY_VALUE,
   },
   {
     id: 'total_tokens',
     label: 'Total Tokens',
-    value: formatTokens(trace.total_tokens),
+    value: formatTokens(session.total_tokens),
     details: [
-      { id: 'input_tokens', label: 'Input Tokens', value: formatTokens(trace.input_tokens) },
-      { id: 'output_tokens', label: 'Output Tokens', value: formatTokens(trace.output_tokens) },
-      { id: 'cached_tokens', label: 'Cached Tokens', value: formatTokens(trace.cached_tokens) },
+      {
+        id: 'input_tokens',
+        label: 'Input Tokens',
+        value: formatTokens(session.input_tokens),
+      },
+      {
+        id: 'output_tokens',
+        label: 'Output Tokens',
+        value: formatTokens(session.output_tokens),
+      },
+      {
+        id: 'cached_tokens',
+        label: 'Cached Tokens',
+        value: formatTokens(session.cached_tokens),
+      },
     ],
   },
   {
     id: 'cost_usd',
     label: 'Total Cost',
-    value: formatCostValue(trace.cost_usd),
+    value: formatCostValue(session.cost_usd),
     details: [
-      { id: 'cost_input_usd', label: 'Input Cost', value: formatCostValue(trace.cost_input_usd) },
+      {
+        id: 'cost_input_usd',
+        label: 'Input Cost',
+        value: formatCostValue(session.cost_input_usd),
+      },
       {
         id: 'cost_output_usd',
         label: 'Output Cost',
-        value: formatCostValue(trace.cost_output_usd),
+        value: formatCostValue(session.cost_output_usd),
       },
     ],
   },

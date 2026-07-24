@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 import e2e.services_pool as services_pool
+import e2e.services_pool_fixtures as services_pool_fixtures
 
 
 def test_render_e2e_config_for_docker_preserves_container_paths(tmp_path) -> None:
@@ -488,3 +489,19 @@ def test_describe_active_module_binding_ignores_stale_active_key() -> None:
     )
 
     assert pool.describe_active_module_binding(module_id) is None
+
+
+def test_read_services_log_tail_streams_last_failure_lines(tmp_path, monkeypatch) -> None:
+    log_path = tmp_path / "services.log"
+    lines = [f"line {index}\n" for index in range(services_pool_fixtures._TAIL_LINES_ON_FAILURE + 3)]
+    log_path.write_text("".join(lines), encoding="utf-8")
+
+    def fail_read_text(*args, **kwargs) -> str:
+        raise AssertionError("services log tail should not materialize the full log with read_text")
+
+    monkeypatch.setattr(type(log_path), "read_text", fail_read_text)
+
+    assert (
+        services_pool_fixtures._read_services_log_tail(log_path)
+        == lines[-services_pool_fixtures._TAIL_LINES_ON_FAILURE :]
+    )

@@ -6,7 +6,6 @@ import type { FeatureFlags } from '@studio/constants/featureFlags/featureFlags';
 import {
   getAgentEvaluationsListRoute,
   getAgentMonitorRoute,
-  getAgentOptimizationsRoute,
   getAgentsListRoute,
   getDataDesignerJobListRoute,
   getEvaluationResultsRoute,
@@ -71,20 +70,6 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
       /\bevaluat(e|ing|ion)s? (an? )?agent\b/i,
       /\brun (an? )?(eval|evaluation) (for|on) (an? )?agent\b/i,
       /\b(agent|agents).*\b(eval|evaluation|evaluations) jobs?\b/i,
-    ],
-  },
-  {
-    id: 'agent-optimizations',
-    title: 'Open Agent Suggestions',
-    description: 'Studio has a UI for generating optimization suggestions for deployed agents.',
-    getHref: getAgentOptimizationsRoute,
-    requiredFeatureFlags: ['agentsEnabled'],
-    patterns: [
-      /\boptimi[sz]e (an? )?agent\b/i,
-      /\b(agent|agents).*\b(cheaper|faster|smaller|right[-\s]?size)\b/i,
-      /\b(agent|agents).*\bmodel sizing\b/i,
-      /\bmodel sizing (for|on|of) (an? )?agent\b/i,
-      /\bsuggestions? for (an? )?agent\b/i,
     ],
   },
   {

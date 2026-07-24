@@ -14,6 +14,10 @@ interface Props
   attributes?: {
     Flex?: ComponentProps<typeof Flex>;
   };
+  /** Converts the stored form value to the switch's boolean checked state. */
+  toChecked?: (value: unknown) => boolean;
+  /** Converts the switch's boolean value before storing it in the form. */
+  toFormValue?: (checked: boolean) => unknown;
 }
 
 export const ControlledSwitch: FC<Props> = ({
@@ -21,13 +25,15 @@ export const ControlledSwitch: FC<Props> = ({
   formFieldProps,
   onChange,
   attributes,
+  toChecked,
+  toFormValue,
   ...props
 }) => {
   const { field } = useController(useControllerProps);
 
   const wrappedOnChange = (checked: boolean) => {
     onChange?.(checked);
-    field.onChange(checked);
+    field.onChange(toFormValue ? toFormValue(checked) : checked);
   };
 
   return (
@@ -39,7 +45,7 @@ export const ControlledSwitch: FC<Props> = ({
             name={field.name}
             ref={field.ref}
             onBlur={field.onBlur}
-            checked={field.value}
+            checked={toChecked ? toChecked(field.value) : Boolean(field.value)}
             onCheckedChange={wrappedOnChange}
             {...props}
           />

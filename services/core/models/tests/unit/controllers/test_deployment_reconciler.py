@@ -233,6 +233,27 @@ async def test_reconcile_individual_deployment_error_fallback_conflict_is_noop(
 
 
 @pytest.mark.asyncio
+async def test_reconcile_created_backend_error_persisted(reconciler, mock_backend_registry, make_deployment):
+    """CREATED + backend ERROR is persisted verbatim to the deployment status."""
+    deployment = make_deployment(status="CREATED")
+    mock_backend = MagicMock()
+    mock_backend.create_model_deployment = AsyncMock(
+        return_value=DeploymentStatusUpdate(
+            status="ERROR",
+            status_message="Backend create failed for some reason",
+        )
+    )
+    mock_backend_registry.get_backend.return_value = mock_backend
+    reconciler._models_sdk.inference.deployments.update_status = AsyncMock()
+
+    await reconciler._reconcile_individual_deployment(deployment, mock_backend.create_model_deployment, "create")
+
+    call_kwargs = reconciler._models_sdk.inference.deployments.update_status.call_args.kwargs
+    assert call_kwargs["status"] == "ERROR"
+    assert call_kwargs["status_message"] == "Backend create failed for some reason"
+
+
+@pytest.mark.asyncio
 async def test_reconcile_deployments_with_created_status(reconciler, mock_backend_registry, make_deployment):
     """Test processing deployments calls handler for CREATED deployments."""
     created_deployment = make_deployment(

@@ -374,6 +374,131 @@ class TestSyncRun:
 
 
 # ---------------------------------------------------------------------------
+# Job submission: submit / list_jobs / get_job
+# ---------------------------------------------------------------------------
+
+_JOB_PAYLOAD = {
+    "name": "audit-job-abc123",
+    "workspace": "default",
+    "status": "created",
+}
+
+_JOBS_LIST_PAYLOAD = {
+    "data": [_JOB_PAYLOAD],
+    "pagination": {"page": 1, "page_size": 20, "total_pages": 1, "total_results": 1},
+}
+
+
+class TestSyncJobMethods:
+    def test_submit_with_string_refs_posts_correct_url_and_body(self) -> None:
+        platform = _SyncPlatform()
+        platform._client.post.return_value = _ok_response(_JOB_PAYLOAD, status_code=201)
+        resource = AuditorPluginResource(cast(NeMoPlatform, platform))
+
+        result = resource.submit(config="ws/my-cfg", target="ws/my-tgt", workspace="ws")
+
+        assert result == _JOB_PAYLOAD
+        platform._client.post.assert_called_once()
+        url = platform._client.post.call_args.args[0]
+        body = platform._client.post.call_args.kwargs["json"]
+        assert url == "http://test:8000/apis/auditor/v2/workspaces/ws/jobs/audit"
+        assert body["spec"]["config"] == "ws/my-cfg"
+        assert body["spec"]["target"] == "ws/my-tgt"
+        assert body["spec"]["max_probe_retries"] == 0
+        assert body["spec"]["fail_job_on_retries_exhausted"] is True
+
+    def test_submit_with_inline_entities_serialises_full_dict(self) -> None:
+        platform = _SyncPlatform()
+        platform._client.post.return_value = _ok_response(_JOB_PAYLOAD, status_code=201)
+        resource = AuditorPluginResource(cast(NeMoPlatform, platform))
+
+        cfg = AuditConfig(name="cfg-1", workspace="default")
+        tgt = AuditTarget(name="tgt-1", workspace="default", type="nim", model="llama")
+        resource.submit(config=cfg, target=tgt, workspace="default")
+
+        body = platform._client.post.call_args.kwargs["json"]
+        assert isinstance(body["spec"]["config"], dict)
+        assert body["spec"]["config"]["name"] == "cfg-1"
+        assert isinstance(body["spec"]["target"], dict)
+        assert body["spec"]["target"]["model"] == "llama"
+
+    def test_submit_defaults_workspace_to_default(self) -> None:
+        platform = _SyncPlatform()
+        platform._client.post.return_value = _ok_response(_JOB_PAYLOAD, status_code=201)
+        resource = AuditorPluginResource(cast(NeMoPlatform, platform))
+
+        resource.submit(config="my-cfg", target="my-tgt")
+
+        url = platform._client.post.call_args.args[0]
+        assert "/workspaces/default/" in url
+
+    def test_list_jobs_hits_collection_url_with_pagination(self) -> None:
+        platform = _SyncPlatform()
+        platform._client.get.return_value = _ok_response(_JOBS_LIST_PAYLOAD)
+        resource = AuditorPluginResource(cast(NeMoPlatform, platform))
+
+        result = resource.list_jobs(workspace="ws", page=2, page_size=5)
+
+        assert result == _JOBS_LIST_PAYLOAD
+        url = platform._client.get.call_args.args[0]
+        params = platform._client.get.call_args.kwargs["params"]
+        assert url == "http://test:8000/apis/auditor/v2/workspaces/ws/jobs/audit"
+        assert params == {"page": 2, "page_size": 5}
+
+    def test_get_job_hits_named_url(self) -> None:
+        platform = _SyncPlatform()
+        platform._client.get.return_value = _ok_response(_JOB_PAYLOAD)
+        resource = AuditorPluginResource(cast(NeMoPlatform, platform))
+
+        result = resource.get_job("audit-job-abc123", workspace="ws")
+
+        assert result == _JOB_PAYLOAD
+        platform._client.get.assert_called_once_with(
+            "http://test:8000/apis/auditor/v2/workspaces/ws/jobs/audit/audit-job-abc123",
+        )
+
+
+@pytest.mark.asyncio
+class TestAsyncJobMethods:
+    async def test_submit_posts_correct_url_and_body(self) -> None:
+        platform = _AsyncPlatform()
+        platform._client.post.return_value = _ok_response(_JOB_PAYLOAD, status_code=201)
+        resource = AsyncAuditorPluginResource(cast(AsyncNeMoPlatform, platform))
+
+        result = await resource.submit(config="ws/my-cfg", target="ws/my-tgt", workspace="ws")
+
+        assert result == _JOB_PAYLOAD
+        url = platform._client.post.call_args.args[0]
+        body = platform._client.post.call_args.kwargs["json"]
+        assert url == "http://test:8000/apis/auditor/v2/workspaces/ws/jobs/audit"
+        assert body["spec"]["config"] == "ws/my-cfg"
+        assert body["spec"]["target"] == "ws/my-tgt"
+
+    async def test_list_jobs_hits_collection_url(self) -> None:
+        platform = _AsyncPlatform()
+        platform._client.get.return_value = _ok_response(_JOBS_LIST_PAYLOAD)
+        resource = AsyncAuditorPluginResource(cast(AsyncNeMoPlatform, platform))
+
+        result = await resource.list_jobs(workspace="ws")
+
+        assert result == _JOBS_LIST_PAYLOAD
+        url = platform._client.get.call_args.args[0]
+        assert url == "http://test:8000/apis/auditor/v2/workspaces/ws/jobs/audit"
+
+    async def test_get_job_hits_named_url(self) -> None:
+        platform = _AsyncPlatform()
+        platform._client.get.return_value = _ok_response(_JOB_PAYLOAD)
+        resource = AsyncAuditorPluginResource(cast(AsyncNeMoPlatform, platform))
+
+        result = await resource.get_job("audit-job-abc123", workspace="ws")
+
+        assert result == _JOB_PAYLOAD
+        platform._client.get.assert_called_once_with(
+            "http://test:8000/apis/auditor/v2/workspaces/ws/jobs/audit/audit-job-abc123",
+        )
+
+
+# ---------------------------------------------------------------------------
 # Async smoke tests
 # ---------------------------------------------------------------------------
 

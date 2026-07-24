@@ -31,6 +31,7 @@ class AnonymizerService(NemoService):
     ]
 
     def get_routers(self) -> list[RouterSpec]:
+        from nemo_anonymizer_plugin.app import entity_labels
         from nemo_anonymizer_plugin.functions.preview import PreviewFunction
         from nemo_anonymizer_plugin.jobs.run import RunJob
         from nemo_platform_plugin.authz import AuthzScope
@@ -54,6 +55,12 @@ class AnonymizerService(NemoService):
                 prefix="/v2/workspaces/{workspace}",
                 tag="Anonymizer",
                 description="Job endpoints",
+            ),
+            RouterSpec(
+                entity_labels.router,
+                prefix="/v2/workspaces/{workspace}",
+                tag="Anonymizer",
+                description="List the default Anonymizer entity labels.",
             ),
         ]
 

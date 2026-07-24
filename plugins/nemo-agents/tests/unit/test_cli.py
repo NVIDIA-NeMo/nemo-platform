@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -12,6 +13,14 @@ import httpx
 import pytest
 from nemo_agents_plugin.cli import AgentsCLI
 from typer.testing import CliRunner
+
+
+class _ValidatedAgentConfig:
+    def __init__(self, config: dict[str, Any]) -> None:
+        self._config = config
+
+    def model_dump(self, *, exclude_none: bool = False) -> dict[str, Any]:
+        return self._config
 
 
 def _install_mock_transport(
@@ -85,6 +94,78 @@ def test_create_resolves_default_model_placeholder(tmp_path, placeholder: str) -
     assert result.exit_code == 0, result.stderr
     sent = _json.loads(captured["body"])
     assert sent["config"]["llms"]["llm"]["model_name"] == "nvidia-nemotron-3-super-v3"
+    assert sent["config_format"] == "nat-workflow-v1"
+
+
+def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
+    import json as _json
+
+    config = tmp_path / "agent.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "config_format: nemo-agents-spec-v1",
+                "name: fabric-agent",
+                "default_harness: hermes",
+                "harnesses:",
+                "  hermes:",
+                "    kind: hermes",
+                "",
+            ]
+        )
+    )
+    normalized_config = {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "fabric-agent",
+        "default_harness": "hermes",
+        "harnesses": {"hermes": {"kind": "hermes", "settings": {}}},
+        "environment": {"provider": "local"},
+    }
+    captured: dict[str, Any] = {}
+
+    async def _validate_platform_agent_config(config_dict: dict[str, Any], *, base_dir: Path):
+        captured["validated_config"] = config_dict
+        captured["base_dir"] = base_dir
+        return type("ValidationResult", (), {"agent_config": _ValidatedAgentConfig(normalized_config)})()
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = req.read()
+        return httpx.Response(200, json={"name": "fabric-agent"})
+
+    app = AgentsCLI().get_cli()
+    with (
+        _install_mock_transport(handler),
+        patch("nemo_agents_plugin.fabric.validation.validate_platform_agent_config", _validate_platform_agent_config),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["create", "--name", "fabric-agent", "--agent-config", str(config), "--base-url", "http://test"],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    sent = _json.loads(captured["body"])
+    assert captured["base_dir"] == tmp_path
+    assert captured["validated_config"]["config_format"] == "nemo-agents-spec-v1"
+    assert sent["config"] == normalized_config
+    assert sent["config_format"] == "nemo-agents-spec-v1"
+
+
+def test_create_rejects_unsupported_config_format(tmp_path) -> None:
+    config = tmp_path / "agent.yaml"
+    config.write_text("config_format: custom-v2\nname: custom-agent\n")
+
+    def handler(_req: httpx.Request) -> httpx.Response:
+        raise AssertionError("should not POST unsupported config_format")
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            ["create", "--name", "custom-agent", "--agent-config", str(config), "--base-url", "http://test"],
+        )
+
+    assert result.exit_code == 1
+    assert "unsupported config_format 'custom-v2'" in result.stderr
 
 
 @pytest.mark.parametrize("placeholder", ["${NEMO_DEFAULT_MODEL}", "$NEMO_DEFAULT_MODEL"])
@@ -144,6 +225,110 @@ def test_invoke_timeout_error_message() -> None:
     assert result.exit_code == 1
     assert "timed out" in result.stderr.lower()
     assert "--timeout" in result.stderr
+
+
+def test_local_invoke_runs_fabric_config_once(tmp_path: Path) -> None:
+    import json as _json
+
+    from nemo_agents_plugin.fabric.runtime import FabricRuntimeResult
+
+    config = tmp_path / "agent.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "config_format: nemo-agents-spec-v1",
+                "name: fabric-agent",
+                "default_harness: hermes",
+                "harnesses:",
+                "  hermes:",
+                "    kind: hermes",
+                "models:",
+                "  default:",
+                "    provider: openai",
+                "    model: openai/gpt-5.4",
+                "",
+            ]
+        )
+    )
+    captured: dict[str, Any] = {}
+
+    async def _invoke_agent_config_once(agent_config: Any, inputs: list[Any], *, base_dir: Path):
+        captured["agent_config"] = agent_config
+        captured["inputs"] = inputs
+        captured["base_dir"] = base_dir
+        return [
+            FabricRuntimeResult(
+                status="succeeded",
+                output={"response": "hello"},
+                response="hello",
+                runtime_id="runtime-1",
+                invocation_id="invocation-1",
+                request_id="request-1",
+            )
+        ]
+
+    app = AgentsCLI().get_cli()
+    with patch("nemo_agents_plugin.fabric.invocation.invoke_agent_config_once", _invoke_agent_config_once):
+        result = CliRunner().invoke(app, ["invoke", "--agent-config", str(config), "--input", "hello"])
+
+    assert result.exit_code == 0, result.stderr
+    assert captured["base_dir"] == tmp_path
+    assert captured["inputs"] == ["hello"]
+    assert captured["agent_config"].config_format == "nemo-agents-spec-v1"
+    assert captured["agent_config"].name == "fabric-agent"
+    parsed = _json.loads(result.stdout)
+    assert parsed["status"] == "succeeded"
+    assert parsed["response"] == "hello"
+    assert parsed["runtime_id"] == "runtime-1"
+
+
+def test_local_invoke_fabric_config_exits_nonzero_on_failed_result(tmp_path: Path) -> None:
+    from nemo_agents_plugin.fabric.runtime import FabricRuntimeResult
+
+    config = tmp_path / "agent.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "config_format: nemo-agents-spec-v1",
+                "name: fabric-agent",
+                "default_harness: hermes",
+                "harnesses:",
+                "  hermes:",
+                "    kind: hermes",
+                "models:",
+                "  default:",
+                "    provider: openai",
+                "    model: openai/gpt-5.4",
+                "",
+            ]
+        )
+    )
+
+    async def _invoke_agent_config_once(agent_config: Any, inputs: list[Any], *, base_dir: Path):
+        del agent_config, inputs, base_dir
+        return [
+            FabricRuntimeResult(
+                status="failed",
+                error={"stage": "invoke", "message": "adapter failed"},
+                events=[{"kind": "invocation_end"}],
+                request_id="request-1",
+            ),
+            FabricRuntimeResult(
+                status="succeeded",
+                response="later result",
+                request_id="request-2",
+            ),
+        ]
+
+    app = AgentsCLI().get_cli()
+    with patch("nemo_agents_plugin.fabric.invocation.invoke_agent_config_once", _invoke_agent_config_once):
+        result = CliRunner().invoke(app, ["invoke", "--agent-config", str(config), "--input", "hello"])
+
+    assert result.exit_code == 1
+    assert '"status": "failed"' in result.stdout
+    assert "adapter failed" in result.stdout
+    assert "later result" in result.stdout
+    assert "request-2" in result.stdout
 
 
 def test_platform_invoke_writes_clean_json_to_stdout() -> None:

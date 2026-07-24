@@ -46,6 +46,11 @@ class ControllerConfig(BaseModel):
         ge=0,
         description="Max seconds in STARTING before FAILED (0 disables).",
     )
+    deleting_timeout_seconds: int = Field(
+        default=300,
+        ge=0,
+        description="Max seconds in DELETING before FAILED (0 disables).",
+    )
 
     @model_validator(mode="after")
     def _validate_backoff(self) -> ControllerConfig:

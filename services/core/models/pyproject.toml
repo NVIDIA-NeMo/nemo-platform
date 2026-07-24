@@ -20,12 +20,10 @@ dependencies = [
     "pydantic-settings>=2.8.1",
     "sqlmodel>=0.0.22",
     "pyyaml>=6.0.2",
-    "kubernetes>=31.0.0",
     "urllib3>=2.7.0",
     "nmp-common",
     "nemo-platform-plugin",
-    "docker>=7.1.0",
-    "tenacity>=8.5.0",  # Retry logic for Docker backend operations
+    "tenacity>=8.5.0",
 ]
 version = "0.0.0"
 
@@ -49,7 +47,6 @@ dev = [
     "aiosqlite>=0.20.0",
     "ruff>=0.11.8",
     "ty>=0.0.1a14",
-    "types-docker>=7.1.0",
     "pytest-xdist>=3.8.0",
     "datamodel-code-generator>=0.35.0",
     "openai>=1.0.0",  # For e2e testing of sdk.models helper methods

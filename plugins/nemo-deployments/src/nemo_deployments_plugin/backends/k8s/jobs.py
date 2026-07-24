@@ -113,6 +113,7 @@ def build_job_body(
     workspace: str,
     deployment_name: str,
     k8s_config: K8sDeploymentConfig | None,
+    executor_image_pull_secrets: list | None = None,
 ) -> BuiltJob:
     """Build a ``batch/v1.Job`` for create."""
     k8s = k8s_client_module()
@@ -123,6 +124,7 @@ def build_job_body(
         labels=labels,
         k8s_config=k8s_config,
         pod_restart_policy=config.restart_policy,
+        executor_image_pull_secrets=executor_image_pull_secrets,
     )
     job = k8s.client.V1Job(
         api_version="batch/v1",
@@ -183,6 +185,7 @@ async def create_job(
     labels: dict[str, str],
     backend_config: dict[str, Any],
     config: DeploymentConfig,
+    executor_image_pull_secrets: list | None = None,
 ) -> BackendStatusUpdate:
     job_name = k8s_deployment_resource_name(workspace, name)
     try:
@@ -204,6 +207,7 @@ async def create_job(
             workspace=workspace,
             deployment_name=name,
             k8s_config=k8s_config,
+            executor_image_pull_secrets=executor_image_pull_secrets,
         )
         body = built.job
         compiled = built.compiled

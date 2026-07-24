@@ -1317,8 +1317,13 @@ class TestNATAgentExecutor:
 
     @pytest.mark.asyncio
     async def test_uses_last_value_from_stream(self):
-        """When multiple chunks have 'value', the last one wins."""
-        agent = NemoAgentToolkitAgent(url="http://nat.test", name="nat-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+        """With ``response_aggregation='last'``, the last chunk with 'value' wins."""
+        agent = NemoAgentToolkitAgent(
+            url="http://nat.test",
+            name="nat-agent",
+            format=AgentFormat.NEMO_AGENT_TOOLKIT,
+            nat=NatAgentConfig(response_aggregation="last"),
+        )
 
         sse_lines = [
             'data: {"value": "partial answer"}',
@@ -1355,6 +1360,110 @@ class TestNATAgentExecutor:
             result = await _make_nat_agent_request(agent, {"prompt": "hi"})
 
         assert result["choices"][0]["message"]["content"] == "complete final answer"
+
+    def test_default_nat_aggregation_is_concat(self):
+        """NAT targets reconstruct token deltas by default (see NVBug 6486650)."""
+        assert NatAgentConfig().response_aggregation == "concat"
+
+    @pytest.mark.asyncio
+    async def test_concat_reconstructs_token_delta_stream(self):
+        """NAT /generate/full emits one token per frame; concat rebuilds the full answer.
+
+        Regression test for NVBug 6486650: a correct answer ``15.0`` was previously
+        persisted as only the final delta token ``"0"``.
+        """
+        agent = NemoAgentToolkitAgent(url="http://nat.test", name="nat-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+
+        def handle(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                content=(
+                    'data: {"value": "Final Answer: "}\n'
+                    'data: {"value": "15"}\n'
+                    'data: {"value": "."}\n'
+                    'data: {"value": "0"}\n'
+                    "data: [DONE]\n"
+                ),
+                headers={"content-type": "text/event-stream"},
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+            result = await invoke_agent(agent, {"prompt": "Calculate 7 + 8."}, client=client)
+
+        assert result.status is AgentInvocationStatus.COMPLETED
+        assert result.output_text == "Final Answer: 15.0"
+        assert result.response["choices"][0]["message"]["content"] == "Final Answer: 15.0"
+
+    @pytest.mark.asyncio
+    async def test_concat_stream_error_frame_yields_partial(self):
+        """A terminal error frame keeps the trial PARTIAL even when deltas were seen."""
+        agent = NemoAgentToolkitAgent(url="http://nat.test", name="nat-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+
+        def handle(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                content=(
+                    'data: {"value": "15"}\n'
+                    'data: {"value": "."}\n'
+                    'data: {"error": {"code": "workflow_error", "message": "boom"}}\n'
+                ),
+                headers={"content-type": "text/event-stream"},
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+            result = await invoke_agent(agent, {"prompt": "hi"}, client=client)
+
+        assert result.status is AgentInvocationStatus.PARTIAL
+        assert result.metadata["stream_error"] == "workflow_error: boom"
+
+    @pytest.mark.asyncio
+    async def test_generic_agent_opts_into_concat_aggregation(self):
+        """GenericAgent can reconstruct token-delta endpoints via response_aggregation='concat'."""
+        agent = GenericAgent(
+            url="http://agent.test/invoke",
+            name="streaming-generic",
+            body={"question": "{{ prompt }}"},
+            response_path="$.value",
+            stream=True,
+            response_aggregation="concat",
+        )
+
+        def handle(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                content=('data: {"value": "4"}\ndata: {"value": "2"}\ndata: [DONE]\n'),
+                headers={"content-type": "text/event-stream"},
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+            result = await invoke_agent(agent, {"prompt": "answer"}, client=client)
+
+        assert result.status is AgentInvocationStatus.COMPLETED
+        assert result.output_text == "42"
+
+    @pytest.mark.asyncio
+    async def test_generic_agent_defaults_to_last_aggregation(self):
+        """GenericAgent keeps snapshot-per-frame ('last') semantics by default."""
+        agent = GenericAgent(
+            url="http://agent.test/invoke",
+            name="streaming-generic",
+            body={"question": "{{ prompt }}"},
+            response_path="$.answer",
+            stream=True,
+        )
+        assert agent.response_aggregation == "last"
+
+        def handle(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                content=('data: {"answer": "draft"}\ndata: {"answer": "final"}\ndata: [DONE]\n'),
+                headers={"content-type": "text/event-stream"},
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+            result = await invoke_agent(agent, {"prompt": "answer"}, client=client)
+
+        assert result.output_text == "final"
 
     @pytest.mark.asyncio
     async def test_nat_agent_request_includes_default_headers(self):
@@ -1406,8 +1515,13 @@ class TestNATAgentExecutor:
         ],
     )
     async def test_preserves_non_string_value_type(self, data_line, expected_content):
-        """Default ``$.value`` path keeps the raw value type in OpenAI content."""
-        agent = NemoAgentToolkitAgent(url="http://nat.test", name="nat-agent", format=AgentFormat.NEMO_AGENT_TOOLKIT)
+        """The ``last`` aggregation on ``$.value`` keeps the raw value type in OpenAI content."""
+        agent = NemoAgentToolkitAgent(
+            url="http://nat.test",
+            name="nat-agent",
+            format=AgentFormat.NEMO_AGENT_TOOLKIT,
+            nat=NatAgentConfig(response_aggregation="last"),
+        )
 
         async def fake_aiter_lines():
             yield data_line

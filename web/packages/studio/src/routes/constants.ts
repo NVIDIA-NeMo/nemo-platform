@@ -9,7 +9,9 @@ export const QUERY_PARAMETERS = {
   rating: 'rating',
   exportJobId: 'exportJobId',
   project: 'project',
+  traceId: 'traceId',
   spanId: 'spanId',
+  compareWith: 'compareWith',
   tab: 'tab',
 } as const;
 

@@ -25,6 +25,18 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
     apiEnvKeys: ['VITE_PLATFORM_BASE_URL'],
     zod: true,
   },
+  anonymizer: {
+    path: 'anonymizer',
+    url: `../../../../plugins/nemo-anonymizer/openapi/openapi.yaml`,
+    apiEnvKeys: ['VITE_PLATFORM_BASE_URL'],
+    zod: true,
+  },
+  customizer: {
+    path: 'customizer',
+    url: `../../../../plugins/nemo-customizer/openapi/openapi.yaml`,
+    apiEnvKeys: ['VITE_PLATFORM_BASE_URL'],
+    zod: true,
+  },
   'data-designer': {
     path: 'data-designer',
     url: `../../../../plugins/nemo-data-designer/openapi/openapi.yaml`,
@@ -53,6 +65,7 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
 
 export const serviceToConfig = {
   agents: 'nemoMicroservices',
+  anonymizer: 'nemoMicroservices',
   customizer: 'nemoMicroservices',
   'data-designer': 'nemoMicroservices',
   'deployment-management': 'nemoMicroservices',

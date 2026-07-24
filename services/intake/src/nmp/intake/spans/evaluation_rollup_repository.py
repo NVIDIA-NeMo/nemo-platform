@@ -11,7 +11,6 @@ from typing import Any
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.span_attribute_catalog import COST_SCALE, SpanAttributeField, spec_for_field
 from nmp.intake.spans.storage import float_or_none, result_rows
-from nmp.intake.spans.trace_repository import current_spans_sql
 
 
 @dataclass(frozen=True)
@@ -185,25 +184,54 @@ def _stat_columns(value_expr: str, *, prefix: str = "", guarded: bool = False) -
 
 
 def _score_rollups_sql(*, trace_index_table: str, evaluator_results_table: str, evaluation_names_sql: str) -> str:
-    # Two-level rollup. Each run (session) contributes one score per evaluator, so first reduce the
-    # per-span evaluator_results rows to one per-(session, evaluator) value; then average those per test
-    # case; then take the distribution across test cases. The mean is test-case-weighted (each test case
-    # counts once regardless of k) and `count` is the number of test cases. Sessions with no test_case_id
-    # aren't attributable to a test case, so they're dropped here.
+    """Test-case-weighted score distribution per (evaluation, evaluator).
+
+    A pipeline of CTEs, each built by its own helper below — read top to bottom:
+      scoped_sessions    — the in-scope sessions (deduped)
+      session_scores     — stage 1: one value per (session, evaluator)
+      test_case_sessions — attempts per test case (the fixed denominator)
+      evaluators         — the evaluator axis of the per-test-case grid
+      test_case_scores   — stage 2: one value per (test case, evaluator), zero-filled
+    The final SELECT takes the distribution (sum/mean/quantiles/count) across test cases. Sessions with
+    no test_case_id can't be attributed to a test case and are dropped.
+    """
     return f"""
         WITH
         scoped_sessions AS (
             {_scoped_sessions_sql(trace_index_table, evaluation_names_sql)}
         ),
         session_scores AS (
-            SELECT
-                sessions.evaluation_id AS evaluation_id,
-                sessions.test_case_id AS test_case_key,
-                results.name AS evaluator_name,
-                avg(results.value) AS value
-            FROM scoped_sessions AS sessions
+            {_session_scores_cte(evaluator_results_table)}
+        ),
+        test_case_sessions AS (
+            {_test_case_sessions_cte()}
+        ),
+        evaluators AS (
+            {_evaluators_cte(evaluator_results_table)}
+        ),
+        test_case_scores AS (
+            {_test_case_scores_cte()}
+        )
+        SELECT
+            evaluation_id,
+            evaluator_name,
+            {_stat_columns("value")}
+        FROM test_case_scores
+        GROUP BY evaluation_id, evaluator_name
+        ORDER BY evaluation_id ASC, evaluator_name ASC
+    """
+
+
+def _sessions_join_scored_results(evaluator_results_table: str, *, columns: str) -> str:
+    """Join scoped ``sessions`` to their scored evaluator_results (NUMERIC/BOOLEAN, non-null values).
+
+    ``columns`` is the projection taken from evaluator_results ("name, value" or "name"). The inner
+    subquery pre-filters to scoped sessions so ClickHouse prunes evaluator_results before the join, and
+    the trailing WHERE keeps only sessions that carry a test_case_id — the ones the rollup is over.
+    """
+    return f"""FROM scoped_sessions AS sessions
             INNER JOIN (
-                SELECT workspace, session_id, name, value
+                SELECT workspace, session_id, {columns}
                 FROM {evaluator_results_table} FINAL
                 WHERE workspace = %(workspace)s
                     AND (workspace, session_id) IN (
@@ -215,25 +243,104 @@ def _score_rollups_sql(*, trace_index_table: str, evaluator_results_table: str, 
             ) AS results
                 ON sessions.workspace = results.workspace
                 AND sessions.session_id = results.session_id
-            WHERE sessions.test_case_id != ''
-            GROUP BY sessions.evaluation_id, sessions.session_id, sessions.test_case_id, results.name
-        ),
-        test_case_scores AS (
+            WHERE sessions.test_case_id != ''"""
+
+
+def _session_scores_cte(evaluator_results_table: str) -> str:
+    """Stage 1 — reduce each (session, evaluator) to one value by averaging its result rows.
+
+    Averaging first means a session that emitted the same evaluator more than once counts once, so it
+    can't inflate the test case's sum downstream.
+    """
+    return f"""
+            SELECT
+                sessions.evaluation_id AS evaluation_id,
+                sessions.test_case_id AS test_case_key,
+                results.name AS evaluator_name,
+                avg(results.value) AS value
+            {_sessions_join_scored_results(evaluator_results_table, columns="name, value")}
+            GROUP BY sessions.evaluation_id, sessions.session_id, sessions.test_case_id, results.name"""
+
+
+def _test_case_sessions_cte() -> str:
+    """Per test case, the number of sessions (attempts) — the fixed denominator for its mean.
+
+    Counting distinct sessions (not scored rows) means unscored attempts still count toward the
+    denominator, so missing scores land as implicit zeros in the test case's mean.
+    """
+    return """
             SELECT
                 evaluation_id,
-                test_case_key,
-                evaluator_name,
-                avg(value) AS value
-            FROM session_scores
-            GROUP BY evaluation_id, test_case_key, evaluator_name
+                test_case_id AS test_case_key,
+                count(DISTINCT session_id) AS session_count
+            FROM scoped_sessions
+            WHERE test_case_id != ''
+            GROUP BY evaluation_id, test_case_id"""
+
+
+def _evaluators_cte(evaluator_results_table: str) -> str:
+    """Distinct (evaluation, evaluator) pairs — the evaluator axis of the per-test-case grid.
+
+    Sourced from evaluator_results rather than ``FROM session_scores``: ClickHouse re-executes a CTE on
+    every reference, so reading session_scores here would redundantly re-run its averaging just to
+    recover evaluator names.
+    """
+    return f"""
+            SELECT DISTINCT
+                sessions.evaluation_id AS evaluation_id,
+                results.name AS evaluator_name
+            {_sessions_join_scored_results(evaluator_results_table, columns="name")}"""
+
+
+def _test_case_scores_cte() -> str:
+    """Stage 2 — one value per (test case, evaluator): summed scores over the test case's session count.
+
+    The fixed denominator (``sum(scores)/session_count``) makes unscored sessions implicit zeros. Crossing
+    every test case with every evaluator (INNER JOIN evaluators) and coalescing keeps a fully-unscored
+    test case in the distribution as 0 instead of dropping it.
+    """
+    return """
+            SELECT
+                test_cases.evaluation_id AS evaluation_id,
+                test_cases.test_case_key AS test_case_key,
+                evaluators.evaluator_name AS evaluator_name,
+                coalesce(sum(scores.value), 0) / test_cases.session_count AS value
+            FROM test_case_sessions AS test_cases
+            INNER JOIN evaluators ON evaluators.evaluation_id = test_cases.evaluation_id
+            LEFT JOIN session_scores AS scores
+                ON scores.evaluation_id = test_cases.evaluation_id
+                AND scores.test_case_key = test_cases.test_case_key
+                AND scores.evaluator_name = evaluators.evaluator_name
+            GROUP BY
+                test_cases.evaluation_id, test_cases.test_case_key, evaluators.evaluator_name, test_cases.session_count"""
+
+
+def _current_session_span_metrics_sql(spans_table: str) -> str:
+    """Latest-version spans for the scoped sessions, projected to *only* the metric inputs.
+
+    The shared ``current_spans_sql`` emits every span column, including the full ``attributes_*`` Maps.
+    The metric rollup then joins that to the sessions, so the join hash table would hold every deduped
+    span with its maps — gigabytes on real agent workloads (long trajectories × many spans), which is
+    what trips ClickHouse's memory limit. Here we ``argMax`` just the cost value (plus a present-flag,
+    to keep an absent cost distinct from a real 0) and the model/agent strings, so the join carries a
+    handful of scalars per span instead. Deduping by span identity picks each span's latest version.
+    """
+    return f"""
+        (
+            SELECT
+                workspace,
+                argMax(session_id, (event_ts, is_deleted)) AS dedup_session_id,
+                argMax(attributes_number[%(cost_key)s], (event_ts, is_deleted)) AS cost_value,
+                argMax(has(mapKeys(attributes_number), %(cost_key)s), (event_ts, is_deleted)) AS cost_present,
+                argMax(attributes_string[%(model_key)s], (event_ts, is_deleted)) AS model_name,
+                argMax(attributes_string[%(agent_name_key)s], (event_ts, is_deleted)) AS agent_name,
+                argMax(attributes_string[%(agent_version_key)s], (event_ts, is_deleted)) AS agent_version,
+                argMax(is_deleted, (event_ts, is_deleted)) AS del_flag
+            FROM {spans_table}
+            WHERE workspace = %(workspace)s
+                AND (workspace, session_id) IN (SELECT DISTINCT workspace, session_id FROM scoped_sessions)
+            GROUP BY workspace, source_format, trace_id, external_span_id, id
         )
-        SELECT
-            evaluation_id,
-            evaluator_name,
-            {_stat_columns("value")}
-        FROM test_case_scores
-        GROUP BY evaluation_id, evaluator_name
-        ORDER BY evaluation_id ASC, evaluator_name ASC
     """
 
 
@@ -247,50 +354,25 @@ def _metric_rollups_sql(*, trace_index_table: str, spans_table: str, evaluation_
         scoped_sessions AS (
             {_scoped_sessions_sql(trace_index_table, evaluation_names_sql)}
         ),
-        current_session_spans AS (
-            {
-        current_spans_sql(
-            spans_table,
-            extra_where_sql=(
-                "(span_versions.workspace, span_versions.session_id) IN "
-                "(SELECT DISTINCT workspace, session_id FROM scoped_sessions)"
-            ),
-        )
-    }
-        ),
+        current_session_spans AS {_current_session_span_metrics_sql(spans_table)},
         session_costs AS (
             SELECT
                 sessions.evaluation_id AS evaluation_id,
                 sessions.test_case_id AS test_case_key,
                 sessions.latency_ms AS latency_ms,
                 if(
-                    countIf(has(mapKeys(spans.attributes_number), %(cost_key)s)) = 0,
+                    countIf(spans.cost_present) = 0,
                     NULL,
-                    sumIf(
-                        spans.attributes_number[%(cost_key)s],
-                        has(mapKeys(spans.attributes_number), %(cost_key)s)
-                    ) / {COST_SCALE}
+                    sumIf(spans.cost_value, spans.cost_present) / {COST_SCALE}
                 ) AS cost_usd,
-                groupUniqArrayIf(
-                    spans.attributes_string[%(model_key)s],
-                    has(mapKeys(spans.attributes_string), %(model_key)s)
-                        AND spans.attributes_string[%(model_key)s] != ''
-                ) AS model_names,
-                groupUniqArrayIf(
-                    spans.attributes_string[%(agent_name_key)s],
-                    has(mapKeys(spans.attributes_string), %(agent_name_key)s)
-                        AND spans.attributes_string[%(agent_name_key)s] != ''
-                ) AS agent_names,
-                groupUniqArrayIf(
-                    spans.attributes_string[%(agent_version_key)s],
-                    has(mapKeys(spans.attributes_string), %(agent_version_key)s)
-                        AND spans.attributes_string[%(agent_version_key)s] != ''
-                ) AS agent_versions
+                groupUniqArrayIf(spans.model_name, spans.model_name != '') AS model_names,
+                groupUniqArrayIf(spans.agent_name, spans.agent_name != '') AS agent_names,
+                groupUniqArrayIf(spans.agent_version, spans.agent_version != '') AS agent_versions
             FROM scoped_sessions AS sessions
             LEFT JOIN current_session_spans AS spans
                 ON sessions.workspace = spans.workspace
-                AND sessions.session_id = spans.session_id
-                AND spans.is_deleted = 0
+                AND sessions.session_id = spans.dedup_session_id
+                AND spans.del_flag = 0
             WHERE sessions.test_case_id != ''
             GROUP BY sessions.evaluation_id, sessions.session_id, sessions.test_case_id, sessions.latency_ms
         ),

@@ -2,6 +2,7 @@
 title: "Customization Concepts"
 description: ""
 ---
+
 <a id="nemo-ms-about-concepts-customization"></a>
 
 This page provides an overview of the customization concepts for the NeMo Platform.
@@ -14,30 +15,30 @@ Supervised fine-tuning (SFT) is a traditional technique for customizing a pre-tr
 
 Full SFT models require a NIM deployment to serve inference. The Deployment Management Service supports two deployment modes:
 
-| Deployment Mode | Image Type | Weight Loading | Best For |
-|-----------------|------------|----------------|----------|
-| **Multi-LLM** (Default) | Generic multi-model NIM | On-the-fly download via Files service | Any HF model, custom fine-tuned models, development |
-| **Model-Specific NIM** | Dedicated model image | Pre-download via model puller | Production, optimized performance and latency |
+| Deployment Mode         | Image Type              | Weight Loading                        | Best For                                                                    |
+| ----------------------- | ----------------------- | ------------------------------------- | --------------------------------------------------------------------------- |
+| **Multi-LLM** (Default) | Generic multi-model NIM | On-the-fly download via Files service | Supported Hugging Face architectures, custom fine-tuned models, development |
+| **Model-Specific NIM**  | Dedicated model image   | Pre-download via model puller         | Production, optimized performance and latency                               |
 
-- **Multi-LLM Image**: Can deploy any HuggingFace-compatible model, providing maximum flexibility for custom fine-tuned models. Does not guarantee optimized inference performance.
+- **Multi-LLM Image**: Can deploy Hugging Face checkpoints whose architectures are supported by the image's inference engine, providing flexibility for custom fine-tuned models. Importing a checkpoint does not guarantee training or deployment compatibility; for example, Automodel LoRA does not support Conv1D-based architectures. It also does not guarantee optimized inference performance.
 
 - **Model-Specific NIM**: Provides optimized inference performance and latency through model-specific optimizations. Recommended for production deployments where performance is critical.
 
 ## Parameter-Efficient Fine-Tuning
 
-Parameter-Efficient Fine-Tuning (PEFT) methods enable efficient model customization by training a small number of parameters while keeping the base model frozen. For example, when customizing LLaMa 3.3 70B:
+Parameter-Efficient Fine-Tuning (PEFT) methods enable efficient model customization by training a small number of parameters while keeping the base model frozen. For example, when customizing Llama 3.3 70B:
 
-- **Traditional SFT**: Trains and stores ~40 GB per task.
-- **PEFT**: Trains and stores only a few MB per task while maintaining comparable performance.
+- **Traditional SFT**: Produces a full BF16 checkpoint of approximately 140 GB per task. During training, budget free disk space separately for the base checkpoint, intermediate checkpoint, and final output—approximately 3× the downloaded base checkpoint size.
+- **PEFT**: Produces an adapter that is approximately 100–500 MB per task while maintaining comparable performance. During training, budget approximately 1.5× the downloaded base checkpoint size.
 
 ```mermaid
 ---
 caption: Traditional Fine-Tuning
 ---
 flowchart TD
- T1[Task 1] --> M1[LLaMa 3.3 - 70B]
- T2[Task 2] --> M2[LLaMa 3.3 - 70B]
- T3[Task 3] --> M3[LLaMa 3.3 - 70B]
+ T1[Task 1] --> M1[Llama 3.3 - 70B]
+ T2[Task 2] --> M2[Llama 3.3 - 70B]
+ T3[Task 3] --> M3[Llama 3.3 - 70B]
 
  style M1 fill:#B8D5F2
  style M2 fill:#B8D5F2
@@ -47,13 +48,13 @@ flowchart TD
 
 ```mermaid
 ---
-caption: Parameter-Efficient Fine Tuning
+caption: Parameter-Efficient Fine-Tuning
 ---
 flowchart TD
  P1[Task 1] --> A1[LoRA 113M]
  P2[Task 2] --> A2[LoRA 20M]
  P3[Task 3] --> A3[LoRA 10M]
- A1 & A2 & A3 --> M[LLaMa 3.3 - 70B]
+ A1 & A2 & A3 --> M[Llama 3.3 - 70B]
 
  style A1 fill:#B8D5F2
  style A2 fill:#B8D5F2
@@ -121,6 +122,7 @@ Additional Resources:
 ## Training with Your Own Data
 
 Use NeMo Customizer to train custom models on your own data. The workflow can be carried out as follows:
+
 - Upload a dataset
 - Train a custom model
 - Perform inference with the trained model
@@ -205,17 +207,17 @@ Hyperparameters are configuration settings used to control the training process.
 
 Common hyperparameters you'll tune include:
 
-| Hyperparameter | Description |
-|----------------|-------------|
-| Epochs | Number of complete passes through the training dataset |
-| Batch size | Number of samples processed before updating model weights |
-| Learning rate | Step size for weight updates during training |
-| LoRA rank | Low-rank dimension of the adapter (lower = fewer parameters, higher = more expressive) |
-| LoRA alpha | LoRA scaling factor |
+| Hyperparameter | Description                                                                            |
+| -------------- | -------------------------------------------------------------------------------------- |
+| Epochs         | Number of complete passes through the training dataset                                 |
+| Batch size     | Number of samples processed before updating model weights                              |
+| Learning rate  | Step size for weight updates during training                                           |
+| LoRA rank      | Low-rank dimension of the adapter (lower = fewer parameters, higher = more expressive) |
+| LoRA alpha     | LoRA scaling factor                                                                    |
 
 <Note>
 
-NeMo Customizer offers **two training backends** — Automodel (multi-GPU) and Unsloth (single-GPU, quantized) — and each accepts its own job configuration. The exact field names, defaults, and available knobs differ between them. For the full per-backend hyperparameter reference, see [Training Configuration](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
+NeMo Customizer offers **two training backends** — Automodel (multi-GPU) and Unsloth (single-GPU, with optional quantized loading for LoRA) — and each accepts its own job configuration. Unsloth full-weight training requires unquantized model loading. The exact field names, defaults, and available knobs differ between them. For the full per-backend hyperparameter reference, see [Training Configuration](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
 
 </Note>
 
@@ -234,23 +236,30 @@ TP can be configured via `parallelism.tensor_parallel_size` in the [training con
 As of release 25.10.0, AutoModel engines including Phi-4, Qwen, and Gemma support tensor parallelism greater than 1 through the multi-GPU LoRA patch. Previous releases only supported `TP=1` for these models.
 
 </Note>
+
+#### Tensor Parallelism Configuration
+
+**Constraints**
+
+- TP must be less than or equal to the total number of GPUs available.
+- TP should divide the total GPU count evenly.
+
+**Multi-node considerations**
+
+TP can span nodes, but doing so increases network communication overhead. For multi-node setups, keep TP within a single node when possible. High-bandwidth inter-node connections such as InfiniBand are important when TP must span nodes.
+
+For example, with 2 nodes and 4 GPUs per node, start with `TP=4` to keep tensor-parallel operations within each node. If the model still requires more memory, increase to `TP=8` to distribute tensor operations across both nodes.
+
+**Performance**
+
+- Smaller TP values generally have less communication overhead.
+- Larger TP values provide more memory savings but increase communication costs.
+
 ### Pipeline Parallelism
 
 [Pipeline Parallelism](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/features/parallelisms.html#pipeline-parallelism) (PP) distributes the layers of a neural network across GPUs. The GPUs then process the different layers sequentially.
 
 PP can be configured via `parallelism.pipeline_parallel_size` in the [training configuration](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
-
-#### Configuration
-
-- Constraints
- - TP must be less than or equal to the total number of GPUs available. It should be a factor of the total GPU count (divisible evenly).
-- Multi-node considerations
- - TP can span across nodes, but this introduces network communication overhead. For multi-node setups, it's often recommended to keep TP within a single node when possible. If using TP across nodes, high-bandwidth inter-node connections (like InfiniBand) become critical.
- 
- Example: if you have 2 nodes with 4 GPUs each, start with TP=4 first. This keeps all tensor parallel operations within a single node. If your model still uses too much GPU memory with this setting, increase to TP=8, which will distribute tensor operations across both nodes.
-- Performance
- - Smaller TP values generally have less communication overhead.
- - Larger TP values provide more memory savings but increase communication costs.
 
 ### Context Parallelism
 
@@ -287,3 +296,10 @@ If sequence packing is enabled for a model that does not support it, fine-tuning
 </Note>
 
 Learn how to create a LoRA customization job with sequence packing by following the [Optimizing for Tokens/GPU](/documentation/customizer-reference/tutorials/optimize-throughput) tutorial.
+
+## Next Steps
+
+- Review all backend-specific options in [Training Configuration](/documentation/customizer-reference/manage-customization-jobs/training-configuration).
+- [Create a LoRA customization job](/documentation/customizer-reference/tutorials/lora-customization-job).
+- [Create a Full SFT customization job](/documentation/customizer-reference/tutorials/sft-customization-job).
+- [Optimize training throughput](/documentation/customizer-reference/tutorials/optimize-throughput) with sequence packing.

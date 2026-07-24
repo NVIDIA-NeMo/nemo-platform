@@ -65,7 +65,7 @@ def test_run_platform_marks_loaded_services_local_before_starting_controllers(mo
     )
     services = [_StubService("jobs"), _StubService("entities")]
 
-    monkeypatch.setattr(runner, "resolve_run_configuration", lambda **_: resolved)
+    monkeypatch.setattr(runner, "resolve_run_configuration", lambda *_args, **_kwargs: resolved)
     monkeypatch.setattr(runner, "apply_run_environment", lambda config: None)
     monkeypatch.setattr(runner, "initialize_obs", lambda *, resource_attributes: None)
     monkeypatch.setattr(runner, "setup_global_instrumentations", lambda: None)
@@ -76,7 +76,7 @@ def test_run_platform_marks_loaded_services_local_before_starting_controllers(mo
         lambda names, registry, kind: {"jobs": lambda stop_signal: None} if kind == "controller" else {},
     )
     monkeypatch.setattr(runner, "_display_banner", lambda **_: None)
-    monkeypatch.setattr(runner, "run_server", lambda services, host, port: None)
+    monkeypatch.setattr(runner, "run_server", lambda services, host, port, socket_path=None: None)
     monkeypatch.setattr(runner.signal, "signal", lambda *args: None)
 
     def capture_controller_start(

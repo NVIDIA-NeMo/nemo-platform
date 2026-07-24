@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
-import type { AutomodelJob, UnslothJob } from '@nemo/sdk/vendored/customizer/schema';
 import { dataset } from '@studio/mocks/datasets';
+import type { AutomodelJob, UnslothJob } from '@studio/util/customizationBackend';
 
 const datasetUri = getURNFromNamedEntityRef(dataset)!;
 
@@ -11,8 +11,14 @@ const completedStatusDetails = {
   phase: 'completed',
   step: 10,
   max_steps: 10,
+  num_epochs: 1,
   epoch: 1,
   percentage_done: 100,
+  train_loss: 0.9,
+  val_loss: 0.9,
+  lr: 0.000005,
+  grad_norm: 1.2345,
+  checkpoint_path: 'default/output-fileset/checkpoints/step-10',
   metrics: {
     train_loss: [
       { value: 0.15, step: 2, epoch: 1 },

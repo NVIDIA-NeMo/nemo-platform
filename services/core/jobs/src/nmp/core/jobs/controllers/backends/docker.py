@@ -89,7 +89,7 @@ from nmp.core.jobs.app.providers import (
     GPUExecutionProvider,
 )
 from nmp.core.jobs.controllers.backends.base import (
-    JOB_LOGS_ENDPOINT_ENVVAR,
+    NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR,
     WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
     WORKLOAD_IDENTITY_TOKEN_FILE_PATH,
     WORKLOAD_IDENTITY_VOLUME_PATH,
@@ -951,8 +951,8 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 EPHEMERAL_TASK_STORAGE_PATH_ENVVAR: DEFAULT_TASK_STORAGE_PATH,
                 CONFIG_TASK_STORAGE_PATH_ENVVAR: DEFAULT_CONFIG_STORAGE_PATH,
                 NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR: DEFAULT_NEMO_JOB_STEP_CONFIG_FILE_PATH,
-                # Endpoint used by jobs-launcher to upload task stdout/stderr logs.
-                JOB_LOGS_ENDPOINT_ENVVAR: get_logs_endpoint_from_fileset(
+                # Private env vars for jobs-launcher to export captured logs.
+                NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR: get_logs_endpoint_from_fileset(
                     platform_config,
                     step.workspace,
                     step.fileset,

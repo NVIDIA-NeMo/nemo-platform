@@ -4,9 +4,12 @@
 import pytest
 from nemo_deployments_plugin.entities import Deployment, Volume
 from nemo_deployments_plugin.types import Endpoint
+from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate
 from nmp.core.models.controllers.backends.deployments_plugin.status import (
     aggregate_status,
+    apply_deleting_timeout,
     apply_pending_timeout,
+    build_deleting_timeout_error,
     build_pending_timeout_error,
     map_status,
     project_host_url,
@@ -105,3 +108,37 @@ def test_build_pending_timeout_error_includes_substrate() -> None:
     assert result.status == "ERROR"
     assert result.error_details is not None
     assert result.error_details["substrate"] == substrate
+
+
+def test_apply_deleting_timeout_escalates_deleting_only() -> None:
+    deleting = DeploymentStatusUpdate(status="DELETING", status_message="waiting")
+    assert (
+        apply_deleting_timeout(
+            deleting,
+            elapsed_seconds=30,
+            timeout_seconds=60,
+            deployment_name="my-dep",
+        ).status
+        == "DELETING"
+    )
+    timed_out = apply_deleting_timeout(
+        deleting,
+        elapsed_seconds=90,
+        timeout_seconds=60,
+        deployment_name="my-dep",
+    )
+    assert timed_out.status == "ERROR"
+    assert timed_out.error_details is not None
+    assert timed_out.error_details["reason"] == "deleting_timeout"
+
+
+def test_build_deleting_timeout_error_message() -> None:
+    result = build_deleting_timeout_error(
+        deployment_name="my-dep",
+        elapsed_seconds=120,
+        timeout_seconds=60,
+    )
+    assert result.status == "ERROR"
+    assert "my-dep" in result.status_message
+    assert result.error_details is not None
+    assert result.error_details["reason"] == "deleting_timeout"
