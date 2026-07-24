@@ -28,6 +28,10 @@ harnesses:
       system_prompt: You are a concise test assistant.
       config_overrides:
         model_reasoning_effort: high
+  nat:
+    kind: nat
+    settings:
+      config_file: ./nat-calculator/workflow.yml
 
 models:
   default:

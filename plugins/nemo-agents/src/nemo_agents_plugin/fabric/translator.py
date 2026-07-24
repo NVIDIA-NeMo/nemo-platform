@@ -92,9 +92,9 @@ def _resolve_model(config: AgentConfig, harness_name: str, harness: HarnessConfi
 
 
 def _validate_nat_harness(config: AgentConfig, harness_name: str, harness: HarnessConfig) -> None:
-    if harness.model is not None or config.models:
+    if harness.model is not None:
         raise FabricTranslationError(
-            f"NAT harness {harness_name!r} cannot define Platform models; configure models in the NAT config file."
+            f"NAT harness {harness_name!r} cannot define a Platform model; configure models in the NAT config file."
         )
 
     config_file = harness.settings.get("config_file")

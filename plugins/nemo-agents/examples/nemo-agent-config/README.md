@@ -15,16 +15,29 @@ Top-level `skills`, `mcp`, and `tools` are Platform-owned shared fields that
 translate into `FabricConfig`. Prompt settings are harness-specific for now and
 should be configured under `harnesses.<name>.settings`.
 
+The shared `agent.yaml` configures Codex, Hermes, and NAT. Select one by setting
+`default_harness` to `codex`, `hermes`, or `nat` before invoking it.
+
 ## NAT
 
 The plugin install includes the Platform-packaged calculator and email phishing
-NAT components. Each integration has its own `agent.yaml` because calculator
-and email phishing are distinct NAT workflows, not alternative harnesses for
-the Codex and Hermes test agent. In each directory, `workflow.yml` remains the
-NAT source of truth and `agent.yaml` selects the Platform-owned NAT Fabric
-adapter.
+NAT components. Each has a dedicated `agent.yaml` because they are distinct NAT
+workflows. For the harness comparison, the shared `agent.yaml` uses calculator
+as its representative NAT harness so all three harness kinds can be exercised
+from one Platform config. In every case, `workflow.yml` remains the NAT source
+of truth.
 
-Run the calculator workflow:
+Set `default_harness: nat` in the shared `agent.yaml`, then run:
+
+```bash
+export NVIDIA_API_KEY="<your NVIDIA API key>"
+
+nemo agents invoke \
+  --agent-config plugins/nemo-agents/examples/nemo-agent-config/agent.yaml \
+  --input "What is 12 multiplied by 8?"
+```
+
+Run the dedicated calculator config:
 
 ```bash
 export NVIDIA_API_KEY="<your NVIDIA API key>"

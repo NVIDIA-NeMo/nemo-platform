@@ -71,17 +71,23 @@ def _example_yaml_config() -> dict[str, Any]:
 
 
 class TestTranslateAgentConfig:
-    def test_repository_example_uses_current_codex_and_isolated_hermes_adapters(self) -> None:
+    def test_repository_example_configures_codex_hermes_and_nat_adapters(self) -> None:
         example_path = Path(__file__).parents[2] / "examples/nemo-agent-config/agent.yaml"
         config = load_agent_config(example_path)
 
-        codex_config = translate_agent_config(config, harness_name="codex")
-        hermes_config = translate_agent_config(config, harness_name="hermes")
+        codex_config = translate_agent_config(config)
+        hermes_config = translate_agent_config(config.model_copy(update={"default_harness": "hermes"}))
+        nat_config = translate_agent_config(config.model_copy(update={"default_harness": "nat"}))
 
         assert codex_config.harness.adapter_id == "nvidia.fabric.codex"
         assert "skip_git_repo_check" not in codex_config.harness.settings
         assert hermes_config.harness.adapter_id == "nvidia.fabric.hermes"
         assert hermes_config.harness.settings["python_env"] == "HERMES_ADAPTER_PYTHON"
+        assert nat_config.harness.adapter_id == "nvidia.nemo.platform.nat"
+        assert nat_config.models == {}
+        nat_workflow = (example_path.parent / nat_config.harness.settings["config_file"]).resolve()
+        assert nat_workflow.is_file()
+        nat_workflow.relative_to(example_path.parent.resolve())
 
     @pytest.mark.parametrize("example_name", ["nat-calculator", "nat-email-phishing"])
     def test_repository_nat_examples_reference_colocated_workflows(self, example_name: str) -> None:
@@ -232,10 +238,10 @@ class TestTranslateAgentConfig:
         payload["models"] = {}
         config = AgentConfig.model_validate(payload)
 
-        with pytest.raises(FabricTranslationError, match="cannot define Platform models"):
+        with pytest.raises(FabricTranslationError, match="cannot define a Platform model"):
             translate_agent_config(config)
 
-    def test_nat_harness_rejects_top_level_platform_models(self) -> None:
+    def test_nat_harness_ignores_top_level_models_owned_by_other_harnesses(self) -> None:
         payload = _example_yaml_config()
         payload["default_harness"] = "nat"
         payload["harnesses"] = {
@@ -246,8 +252,9 @@ class TestTranslateAgentConfig:
         }
         config = AgentConfig.model_validate(payload)
 
-        with pytest.raises(FabricTranslationError, match="cannot define Platform models"):
-            translate_agent_config(config)
+        fabric_config = translate_agent_config(config)
+
+        assert fabric_config.models == {}
 
     def test_nat_harness_translates_shared_capabilities_without_platform_model(self) -> None:
         payload = _example_yaml_config()
