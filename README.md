@@ -18,7 +18,8 @@ NeMo Platform brings NVIDIA NeMo libraries together under one CLI, Python SDK, a
 Quick install from PyPI:
 
 ```bash
-python -m pip install "uv>=0.9.14,<0.10.0"
+curl -LsSf https://astral.sh/uv/0.9.30/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
 uv venv --python 3.13
 source .venv/bin/activate
 uv pip install nemo-platform
