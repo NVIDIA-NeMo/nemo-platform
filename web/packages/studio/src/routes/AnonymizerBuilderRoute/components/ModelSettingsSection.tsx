@@ -3,17 +3,27 @@
 
 import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { useModelsListProviders } from '@nemo/sdk/generated/platform/api';
-import { Stack, Text } from '@nvidia/foundations-react-core';
+import { Divider, Stack, Text } from '@nvidia/foundations-react-core';
 import { modelsFromProviders } from '@studio/components/NewDataDesignerJobForm/utils';
 import { DEFAULT_LARGE_PAGE_SIZE } from '@studio/constants/constants';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import {
+  activeRolesForStrategy,
+  GLINER_ROLE,
+  ROLE_LABELS,
+} from '@studio/routes/AnonymizerBuilderRoute/constants';
 import type { AnonymizerFormData } from '@studio/routes/AnonymizerBuilderRoute/schema';
-import { FC, useMemo } from 'react';
-import { useFormContext } from 'react-hook-form';
+import { FC, useEffect, useMemo } from 'react';
+import { type Path, useFormContext, useWatch } from 'react-hook-form';
+
+const isGliner = (name: string) => /gliner/i.test(name);
 
 export const ModelSettingsSection: FC = () => {
-  const { control, setValue } = useFormContext<AnonymizerFormData>();
+  const { control, setValue, getValues } = useFormContext<AnonymizerFormData>();
   const workspace = useWorkspaceFromPath();
+  const strategy = useWatch({ control, name: 'strategy' });
+
+  const roles = useMemo(() => activeRolesForStrategy(strategy), [strategy]);
 
   const { data: providersPage, isLoading } = useModelsListProviders(
     workspace,
@@ -30,27 +40,55 @@ export const ModelSettingsSection: FC = () => {
     [models]
   );
 
-  const handleChange = (id: string) => {
+  const applyModel = (role: string, id: string) => {
     const selected = models.find((model) => model.id === id);
-    setValue('model', selected?.served_model_name ?? '', { shouldValidate: true });
-    setValue('provider', selected?.model_providers?.[0] ?? '', { shouldValidate: true });
+    setValue(
+      `roleModels.${role}.model` as Path<AnonymizerFormData>,
+      selected?.served_model_name ?? '',
+      { shouldValidate: true }
+    );
+    setValue(
+      `roleModels.${role}.provider` as Path<AnonymizerFormData>,
+      selected?.model_providers?.[0] ?? '',
+      { shouldValidate: true }
+    );
   };
 
+  // Seed sensible defaults once models load: GLiNER for the detector, an LLM for the rest.
+  useEffect(() => {
+    if (!models.length) return;
+    const gliner = models.find((model) => isGliner(model.name)) ?? models[0];
+    const llm = models.find((model) => !isGliner(model.name)) ?? models[0];
+    for (const role of roles) {
+      const current = getValues(`roleModels.${role}.modelId` as Path<AnonymizerFormData>);
+      if (current) continue;
+      const pick = role === GLINER_ROLE ? gliner : llm;
+      setValue(`roleModels.${role}.modelId` as Path<AnonymizerFormData>, pick.id);
+      applyModel(role, pick.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [models, roles, getValues, setValue]);
+
   return (
-    <Stack gap="density-lg">
-      <Text kind="label/bold/lg">Model Settings</Text>
-      <Text kind="body/regular/md">
-        Select the inference provider model the Anonymizer uses for entity detection and generation.
-      </Text>
-      <ControlledSelect
-        aria-label="Model"
-        items={items}
-        loading={isLoading}
-        placeholder="Select a model"
-        onChange={(value) => handleChange(value as string)}
-        useControllerProps={{ name: 'modelId', control }}
-        formFieldProps={{ slotLabel: 'Model', required: true }}
-      />
+    <Stack gap="density-2xl">
+      {roles.map((role, index) => (
+        <Stack key={role} gap="density-lg">
+          {index > 0 && <Divider orientation="horizontal" width="small" />}
+          <Text kind="label/bold/lg">{ROLE_LABELS[role] ?? role}</Text>
+          <ControlledSelect
+            aria-label={ROLE_LABELS[role] ?? role}
+            items={items}
+            loading={isLoading}
+            placeholder="Select a model"
+            onChange={(value) => applyModel(role, value as string)}
+            useControllerProps={{
+              name: `roleModels.${role}.modelId` as Path<AnonymizerFormData>,
+              control,
+            }}
+            formFieldProps={{ slotLabel: 'Model', required: true }}
+          />
+        </Stack>
+      ))}
     </Stack>
   );
 };

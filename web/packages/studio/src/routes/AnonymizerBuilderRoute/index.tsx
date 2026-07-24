@@ -75,7 +75,7 @@ export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
           createJob.mutate({ workspace, data: buildAnonymizerJobRequest(values) });
         },
         (errors) => {
-          if (errors.modelId) setActiveTab(TAB_MODEL_SETTINGS);
+          if (errors.roleModels) setActiveTab(TAB_MODEL_SETTINGS);
         }
       );
 

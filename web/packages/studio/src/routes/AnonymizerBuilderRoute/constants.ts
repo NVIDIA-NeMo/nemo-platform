@@ -60,9 +60,6 @@ export const ENTITY_MODE_OPTIONS: { value: EntityMode; children: string }[] = [
 
 export const DEFAULT_PREVIEW_ROWS = 1;
 
-/** Alias assigned to the single user-selected model in `model_configs`. */
-export const MODEL_ALIAS = 'anonymizer-model';
-
 /** Role names the anonymizer workflows resolve against `model_configs` aliases. */
 export const DETECTION_ROLES = [
   'entity_detector',
@@ -80,3 +77,28 @@ export const REWRITE_ROLES = [
   'repairer',
   'evaluator',
 ];
+
+export const ROLE_LABELS: Record<string, string> = {
+  entity_detector: 'Entity Detector',
+  entity_validator: 'Entity Validator',
+  entity_augmenter: 'Entity Augmenter',
+  latent_detector: 'Latent Detector',
+  replacement_generator: 'Replacement Generator',
+  domain_classifier: 'Domain Classifier',
+  disposition_analyzer: 'Disposition Analyzer',
+  meaning_extractor: 'Meaning Extractor',
+  qa_generator: 'QA Generator',
+  rewriter: 'Rewriter',
+  repairer: 'Repairer',
+  evaluator: 'Evaluator',
+};
+
+/** The role that expects a GLiNER PII detection model rather than an LLM. */
+export const GLINER_ROLE = 'entity_detector';
+
+/** Roles configured for a given strategy: detection always, plus the strategy's generator roles. */
+export const activeRolesForStrategy = (strategy: Strategy): string[] => {
+  if (strategy === STRATEGY_REWRITE) return [...DETECTION_ROLES, ...REWRITE_ROLES];
+  if (strategy === STRATEGY_SUBSTITUTE) return [...DETECTION_ROLES, REPLACE_ROLE];
+  return [...DETECTION_ROLES];
+};
