@@ -14,7 +14,7 @@ clusters, use the NeMo Platform Helm chart on Kubernetes.
 
 | Component | Requirement | Notes |
 |-----------|-------------|-------|
-| Python | 3.11, 3.12, or 3.13 for the documented local setup path | Use an isolated virtual environment. Base SDK and CLI packages retain the package-supported Python 3.11-3.14 range, but `nemo-platform[all]` includes `nemo-safe-synthesizer`, which does not yet support Python 3.14. |
+| Python | 3.11, 3.12, or 3.13 | Use an isolated virtual environment. |
 | Package installer | `uv>=0.9.14,<0.10.0` recommended; `pip` supported | The one-line installer sets up `uv` automatically when needed. |
 | Operating system | Recent Linux or macOS release | See the [Support Matrix](/documentation/reference/support-matrix) for the supported OS list. |
 | Memory | 8 GB RAM minimum | 16 GB or more is recommended for larger local workflows. |

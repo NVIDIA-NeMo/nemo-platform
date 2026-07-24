@@ -25,10 +25,7 @@ Build NeMo Platform plugins in Python.
 pip install nemo-platform-plugin
 ```
 
-To run a local NeMo Platform that loads and serves your plugin while you develop, install [`nemo-platform`](https://pypi.org/project/nemo-platform/) too — it ships the platform services, the `nemo` CLI, and the runtime that wires entity-client injection into your plugin's FastAPI app:
-
-Use Python 3.11–3.13 for this full local install; `nemo-platform[all]`
-includes `nemo-safe-synthesizer`, which does not yet support Python 3.14.
+To run a local NeMo Platform that loads and serves your plugin while you develop, use Python 3.11–3.13 and install [`nemo-platform`](https://pypi.org/project/nemo-platform/) too — it ships the platform services, the `nemo` CLI, and the runtime that wires entity-client injection into your plugin's FastAPI app:
 
 ```bash
 pip install "nemo-platform[all]"
