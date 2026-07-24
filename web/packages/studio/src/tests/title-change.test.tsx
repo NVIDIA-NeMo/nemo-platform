@@ -26,6 +26,7 @@ const pathParams = {
   [RP.safeSynthesizerJobName]: '',
   [RP.dataDesignerJobName]: '',
   [RP.sessionId]: 'session-1',
+  [RP.anonymizerJobName]: 'test-anonymizer-job',
   [RP.deploymentName]: '',
   [RP.deploymentPanelView]: '',
   [RP.agentName]: '',

@@ -16,6 +16,7 @@ export { jobRoutes } from '@studio/routes/groups/jobRoutes';
 export { intakeRoutes } from '@studio/routes/groups/intakeRoutes';
 export { safeSynthesizerRoutes } from '@studio/routes/groups/safeSynthesizerRoutes';
 export { dataDesignerRoutes } from '@studio/routes/groups/dataDesignerRoutes';
+export { anonymizerRoutes } from '@studio/routes/groups/anonymizerRoutes';
 export { agentRoutes } from '@studio/routes/groups/agentRoutes';
 export { settingsRoutes } from '@studio/routes/groups/settingsRoutes';
 export { modelCompareRoutes } from '@studio/routes/groups/modelCompareRoutes';

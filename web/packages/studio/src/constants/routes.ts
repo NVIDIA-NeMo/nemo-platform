@@ -27,6 +27,7 @@ export const ROUTE_PARAMS = {
   safeSynthesizerJobName: 'safeSynthesizerJobName',
   dataDesignerJobName: 'dataDesignerJobName',
   sessionId: 'sessionId',
+  anonymizerJobName: 'anonymizerJobName',
   deploymentConfigName: 'deploymentConfigName',
   deploymentName: 'deploymentName',
   /** Side panel mode under deployments (e.g. `details`). */
@@ -108,6 +109,9 @@ export const ROUTES = {
     dataDesignerJobBuild: `/workspaces/:${P.workspace}/data-designer/new/build`,
     /** Legacy job-creation form, not linked from any UI — reachable only by typing the URL. */
     dataDesignerJobNewLegacy: `/workspaces/:${P.workspace}/data-designer/new/legacy`,
+    anonymizer: `/workspaces/:${P.workspace}/anonymizer`,
+    anonymizerNew: `/workspaces/:${P.workspace}/anonymizer/new`,
+    anonymizerJob: `/workspaces/:${P.workspace}/anonymizer/:${P.anonymizerJobName}`,
     secrets: `/workspaces/:${P.workspace}/secrets`,
     guardrails: `/workspaces/:${P.workspace}/guardrails`,
     guardrailDetail: `/workspaces/:${P.workspace}/guardrails/:${P.guardrailConfigName}`,
