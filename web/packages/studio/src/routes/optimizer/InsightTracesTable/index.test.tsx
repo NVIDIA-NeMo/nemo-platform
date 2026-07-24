@@ -90,9 +90,7 @@ describe('InsightTracesTable', () => {
       )
     );
 
-    renderRoute(
-      <InsightTracesTable workspace={DEFAULT_WORKSPACE} traceIds={[makeTrace(1).id]} />
-    );
+    renderRoute(<InsightTracesTable workspace={DEFAULT_WORKSPACE} traceIds={[makeTrace(1).id]} />);
 
     expect(await screen.findByText('Error')).toBeInTheDocument();
     expect(screen.queryByText('This insight has no linked traces.')).not.toBeInTheDocument();

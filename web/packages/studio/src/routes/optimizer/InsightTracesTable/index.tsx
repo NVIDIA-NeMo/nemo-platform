@@ -98,7 +98,9 @@ export const InsightTracesTable: FC<InsightTracesTableProps> = ({ workspace, tra
               />
             ),
             renderErrorState: () => (
-              <ErrorMessage message={getErrorMessage(error ?? new Error('Failed to load traces'))} />
+              <ErrorMessage
+                message={getErrorMessage(error ?? new Error('Failed to load traces'))}
+              />
             ),
           },
         }}
