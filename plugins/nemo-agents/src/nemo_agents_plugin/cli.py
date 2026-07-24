@@ -150,6 +150,14 @@ def _register_local_commands(app: typer.Typer) -> None:
             help="JSON file containing a list of input queries for batch invocation.",
             exists=True,
         ),
+        profile: Optional[list[Path]] = typer.Option(
+            None,
+            "--profile",
+            help="Agent profile YAML to apply for local Fabric execution. May be repeated.",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+        ),
         agent: Optional[str] = typer.Option(
             None,
             "--agent",
@@ -180,8 +188,18 @@ def _register_local_commands(app: typer.Typer) -> None:
         """Invoke an agent — locally (with --agent-config) or via the platform (with --agent or --agent-deployment)."""
         base_url = _resolve_base_url(base_url)
         if agent_config:
-            _local_invoke(agent_config, input, input_file, workspace=workspace, base_url=base_url)
+            _local_invoke(
+                agent_config,
+                input,
+                input_file,
+                profiles=profile or [],
+                workspace=workspace,
+                base_url=base_url,
+            )
         elif agent or agent_deployment:
+            if profile:
+                typer.echo("Error: --profile is only supported with --agent-config.", err=True)
+                raise typer.Exit(code=1)
             _platform_invoke(
                 base_url,
                 workspace,
@@ -1215,6 +1233,7 @@ def _local_invoke(
     agent_config: Path,
     input: Optional[str],
     input_file: Optional[Path],
+    profiles: list[Path] | None = None,
     workspace: str = _DEFAULT_WORKSPACE,
     base_url: str = _DEFAULT_BASE_URL,
 ) -> None:
@@ -1241,10 +1260,13 @@ def _local_invoke(
     config_dict = _load_yaml(agent_config)
     config_format = config_dict.get("config_format", NAT_WORKFLOW_CONFIG_FORMAT)
     if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
-        _local_fabric_invoke(config_dict, queries, base_dir=agent_config.parent)
+        _local_fabric_invoke(config_dict, queries, base_dir=agent_config.parent, profile_paths=profiles or [])
         return
     if config_format != NAT_WORKFLOW_CONFIG_FORMAT:
         typer.echo(f"Error: unsupported config_format {config_format!r}", err=True)
+        raise typer.Exit(code=1)
+    if profiles:
+        typer.echo("Error: --profile is only supported by nemo-agents-spec-v1 configs.", err=True)
         raise typer.Exit(code=1)
 
     with temp_injected_config(agent_config, workspace, base_url=base_url) as injected_path:
@@ -1260,9 +1282,15 @@ def _local_invoke(
                 raise typer.Exit(code=1)
 
 
-def _local_fabric_invoke(config: dict[str, Any], inputs: list[Any], *, base_dir: Path) -> None:
+def _local_fabric_invoke(
+    config: dict[str, Any],
+    inputs: list[Any],
+    *,
+    base_dir: Path,
+    profile_paths: list[Path],
+) -> None:
     """Invoke a Platform-owned agent config through Fabric and print results."""
-    from nemo_agents_plugin.agent_config import AgentConfig
+    from nemo_agents_plugin.agent_config import AgentConfig, AgentConfigLoadError, load_agent_profile
     from nemo_agents_plugin.fabric.invocation import invoke_agent_config_once
     from nemo_agents_plugin.fabric.runtime import FabricRuntimeExecutionError
     from nemo_agents_plugin.fabric.translator import FabricTranslationError
@@ -1270,8 +1298,9 @@ def _local_fabric_invoke(config: dict[str, Any], inputs: list[Any], *, base_dir:
 
     try:
         agent_config = AgentConfig.model_validate(config)
-        results = asyncio.run(invoke_agent_config_once(agent_config, inputs, base_dir=base_dir))
-    except (FabricRuntimeExecutionError, FabricTranslationError, ValidationError) as error:
+        profiles = [load_agent_profile(path) for path in profile_paths]
+        results = asyncio.run(invoke_agent_config_once(agent_config, inputs, base_dir=base_dir, profiles=profiles))
+    except (AgentConfigLoadError, FabricRuntimeExecutionError, FabricTranslationError, ValidationError) as error:
         typer.echo(f"Error: Fabric invocation failed: {error}", err=True)
         raise typer.Exit(code=1) from error
 

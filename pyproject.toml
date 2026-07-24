@@ -432,6 +432,7 @@ members = [
   "plugins/nemo-deployments",
   "plugins/nemo-insights",
   "plugins/nemo-agents/examples/calculator-agent",
+  "plugins/nemo-agents/examples/fabric-calculator-agent",
   "plugins/nemo-agents/examples/email-phishing-analyzer",
   "plugins/nemo-customizer",
   "plugins/nemo-automodel",

@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 from nemo_agents_plugin.agent_config import AgentConfig, load_agent_config
 from nemo_agents_plugin.fabric.translator import FabricTranslationError, translate_agent_config
-from nemo_fabric import Fabric
+from nemo_fabric import Fabric  # ty: ignore[unresolved-import]
 
 
 def _example_yaml_config() -> dict[str, Any]:
@@ -189,3 +189,19 @@ class TestTranslateAgentConfig:
                 "output_directory": "./artifacts/relay",
             },
         }
+
+    def test_translates_quoted_stdio_command_and_arguments(self) -> None:
+        payload = _example_yaml_config()
+        payload["mcp"] = {
+            "servers": {
+                "calculator": {
+                    "transport": "stdio",
+                    "command": "/path with spaces/calculator",
+                    "args": ["--label", "two words"],
+                }
+            }
+        }
+
+        fabric_config = translate_agent_config(AgentConfig.model_validate(payload))
+
+        assert fabric_config.mcp.servers["calculator"].url == ("'/path with spaces/calculator' --label 'two words'")

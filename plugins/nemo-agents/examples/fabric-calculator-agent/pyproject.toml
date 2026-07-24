@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nemo-agents-example-fabric-calculator"
+version = "0.1.0"
+description = "An MCP calculator server for the NeMo Fabric calculator example."
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.28.1,<2",
+]
+
+[project.scripts]
+fabric-calculator-mcp = "mcps.calculator:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mcps"]

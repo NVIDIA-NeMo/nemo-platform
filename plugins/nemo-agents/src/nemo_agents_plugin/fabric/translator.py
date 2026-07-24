@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import shlex
 from typing import Any
 
 # CI type-checks this plugin via ty extra-paths without installing nemo-agents deps.
@@ -44,10 +45,31 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
             artifacts=config.environment.artifacts,
             settings=config.environment.settings,
         ),
+        mcp=_translate_mcp(config),
     )
 
     _apply_telemetry(fabric_config, config, model)
     return fabric_config
+
+
+def _translate_mcp(config: AgentConfig) -> fabric.McpConfig | None:
+    if not config.mcp.servers:
+        return None
+
+    servers: dict[str, fabric.McpServerConfig] = {}
+    for name, server in config.mcp.servers.items():
+        if server.transport == "stdio":
+            assert server.command is not None
+            target = shlex.join([server.command, *server.args])
+        else:
+            assert server.url is not None
+            target = server.url
+        servers[name] = fabric.McpServerConfig(
+            transport=server.transport,
+            url=target,
+            exposure=server.exposure,
+        )
+    return fabric.McpConfig(servers=servers)
 
 
 def _select_harness(config: AgentConfig, harness_name: str | None) -> tuple[str, HarnessConfig]:
