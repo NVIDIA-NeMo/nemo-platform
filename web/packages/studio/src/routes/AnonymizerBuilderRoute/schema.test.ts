@@ -95,6 +95,21 @@ describe('buildAnonymizerJobRequest', () => {
     }
   });
 
+  it('sets config.detect.entity_labels only for custom labels without defaults', () => {
+    const custom = buildAnonymizerJobRequest(
+      form({ entityMode: 'custom', includeDefaultEntities: false, entityLabels: ['email', 'ssn'] })
+    );
+    expect(custom.spec.config.detect).toEqual({ entity_labels: ['email', 'ssn'] });
+
+    const withDefaults = buildAnonymizerJobRequest(
+      form({ entityMode: 'custom', includeDefaultEntities: true, entityLabels: ['email'] })
+    );
+    expect(withDefaults.spec.config.detect).toBeUndefined();
+
+    const auto = buildAnonymizerJobRequest(form({ entityMode: 'auto', entityLabels: ['email'] }));
+    expect(auto.spec.config.detect).toBeUndefined();
+  });
+
   it('attaches inference_parameters and splits configs when params differ', () => {
     const models = roleModels('openai/gpt-oss-120b', 'default/nvidia');
     models[DETECTION_ROLES[0]] = {

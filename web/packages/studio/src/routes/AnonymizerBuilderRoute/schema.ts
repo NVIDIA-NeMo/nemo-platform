@@ -39,6 +39,7 @@ export const anonymizerFormSchema = z
     dataSummary: z.string().optional(),
     entityMode: z.enum([ENTITY_MODE_CUSTOM, 'auto']),
     includeDefaultEntities: z.boolean(),
+    entityLabels: z.array(z.string()),
     roleModels: z.record(z.string(), roleModelSchema),
   })
   .superRefine((data, ctx) => {
@@ -66,6 +67,7 @@ export const getAnonymizerFormDefaults = (): AnonymizerFormData => ({
   dataSummary: '',
   entityMode: ENTITY_MODE_CUSTOM,
   includeDefaultEntities: true,
+  entityLabels: [],
   roleModels: {},
 });
 
@@ -89,6 +91,16 @@ export const buildAnonymizerJobRequest = (form: AnonymizerFormData): RunJobReque
     form.strategy === REWRITE_STRATEGY
       ? { rewrite: {} }
       : { replace: { kind: form.strategy } as AnonymizerConfigInput['replace'] };
+
+  // Custom mode with a specific label set restricts detection; otherwise the
+  // library default set is used (detect omitted).
+  const useCustomLabels =
+    form.entityMode === ENTITY_MODE_CUSTOM &&
+    !form.includeDefaultEntities &&
+    form.entityLabels.length > 0;
+  if (useCustomLabels) {
+    config.detect = { entity_labels: form.entityLabels };
+  }
 
   const aliasByModel = new Map<string, string>();
   const modelConfigs: ModelConfig[] = [];
