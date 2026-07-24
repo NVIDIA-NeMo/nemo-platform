@@ -14,7 +14,6 @@ description: ""
 - The platform's shared persistent volume is likely full. Budget against the downloaded base checkpoint size: approximately 3× for Full SFT and 1.5× for LoRA. For example, a 70B BF16 checkpoint is approximately 140 GB, so a Full SFT job can require approximately 420 GB of free disk at peak.
 - These peak estimates include the base checkpoint and job artifacts; the final Full SFT output itself is one full checkpoint. If you also retain a deployment copy, include it separately in capacity planning.
 - Clean up completed job artifacts or increase the PVC size (default: 200Gi at `/var/run/scratch/job`).
-- DPO/GRPO jobs also consume ephemeral node storage under `/tmp` via Ray workers — check node disk in addition to the PVC.
 - See [ft-tut-understand-models](/documentation/customizer-reference/tutorials/understanding-models-and-training) for full storage requirement details.
 
 **Job fails with OOM (Out of Memory):**

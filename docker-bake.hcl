@@ -36,6 +36,10 @@ variable "PYTHON_DEV_BASE_TARGET" {
   default = ""
 }
 
+variable "NMP_PYTHON_IMAGE" {
+  default = "python:3.13.14-slim-trixie"
+}
+
 variable "AUTOMODEL_BASE_CONTEXT" {
   default = ""
 }
@@ -429,8 +433,9 @@ target "nmp-python-base" {
   context    = "."
   dockerfile = "docker/base/Dockerfile.nmp-python-base"
   args = {
-    BASE_REGISTRY   = "${BASE_REGISTRY}"
-    BASE_TAG_PYTHON = "${BASE_TAG_PYTHON}"
+    BASE_REGISTRY    = "${BASE_REGISTRY}"
+    BASE_TAG_PYTHON  = "${BASE_TAG_PYTHON}"
+    NMP_PYTHON_IMAGE = "${NMP_PYTHON_IMAGE}"
   }
   cache-from = maybe_registry_cache_from("nmp-python-base")
   platforms  = get_platforms()
@@ -441,8 +446,9 @@ target "nmp-python-base-builder" {
   context    = "."
   dockerfile = "docker/base/Dockerfile.nmp-python-base"
   args = {
-    BASE_REGISTRY   = "${BASE_REGISTRY}"
-    BASE_TAG_PYTHON = "${BASE_TAG_PYTHON}"
+    BASE_REGISTRY    = "${BASE_REGISTRY}"
+    BASE_TAG_PYTHON  = "${BASE_TAG_PYTHON}"
+    NMP_PYTHON_IMAGE = "${NMP_PYTHON_IMAGE}"
   }
   cache-to   = maybe_registry_cache_to("nmp-python-base")
   cache-from = maybe_registry_cache_from("nmp-python-base")
@@ -456,8 +462,9 @@ target "nmp-python-dev-base" {
   context    = "."
   dockerfile = "docker/base/Dockerfile.nmp-python-base"
   args = {
-    BASE_REGISTRY   = "${BASE_REGISTRY}"
-    BASE_TAG_PYTHON = "${BASE_TAG_PYTHON}"
+    BASE_REGISTRY    = "${BASE_REGISTRY}"
+    BASE_TAG_PYTHON  = "${BASE_TAG_PYTHON}"
+    NMP_PYTHON_IMAGE = "${NMP_PYTHON_IMAGE}"
   }
   cache-from = maybe_registry_cache_from("nmp-python-dev-base")
   platforms  = get_platforms()
@@ -468,8 +475,9 @@ target "nmp-python-dev-base-builder" {
   context    = "."
   dockerfile = "docker/base/Dockerfile.nmp-python-base"
   args = {
-    BASE_REGISTRY   = "${BASE_REGISTRY}"
-    BASE_TAG_PYTHON = "${BASE_TAG_PYTHON}"
+    BASE_REGISTRY    = "${BASE_REGISTRY}"
+    BASE_TAG_PYTHON  = "${BASE_TAG_PYTHON}"
+    NMP_PYTHON_IMAGE = "${NMP_PYTHON_IMAGE}"
   }
   cache-to   = maybe_registry_cache_to("nmp-python-dev-base")
   cache-from = maybe_registry_cache_from("nmp-python-dev-base")

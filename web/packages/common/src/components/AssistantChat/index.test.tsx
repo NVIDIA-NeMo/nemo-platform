@@ -64,6 +64,22 @@ const createCompletionChunk = (content: string): ChatCompletionChunk => ({
   ],
 });
 
+const createImageCompletionChunk = (imageUrl: string): ChatCompletionChunk =>
+  ({
+    id: 'completion-id',
+    object: 'chat.completion.chunk',
+    created: 1740419165,
+    model: 'test-image-model',
+    choices: [
+      {
+        index: 0,
+        delta: { images: [{ image_url: { url: imageUrl } }] },
+        finish_reason: null,
+        logprobs: null,
+      },
+    ],
+  }) as unknown as ChatCompletionChunk;
+
 const createHangingStream = (content: string): Stream<ChatCompletionChunk> => {
   const controller = new AbortController();
   const waitForAbort = () =>
@@ -178,6 +194,27 @@ describe('AssistantChat', () => {
     },
     interactionTimeoutMs
   );
+
+  it('renders base64 images returned by an image model stream', async () => {
+    const imageUrl = 'data:image/png;base64,iVBORw0KGgo=';
+    const stream = {
+      controller: new AbortController(),
+      async *[Symbol.asyncIterator]() {
+        yield createImageCompletionChunk(imageUrl);
+      },
+    } as unknown as Stream<ChatCompletionChunk>;
+    mocks.createChatCompletion.mockResolvedValueOnce(stream);
+
+    renderAssistantChat(<AssistantChat model="test-image-model" workspace="default" />);
+
+    await userEvent.type(screen.getByRole('textbox', { name: /Task prompt/i }), 'Make an image');
+    await userEvent.click(screen.getByRole('button', { name: /Submit/i }));
+
+    expect(await screen.findByRole('img', { name: /Attached image/i })).toHaveAttribute(
+      'src',
+      imageUrl
+    );
+  });
 
   it(
     'clears the current thread',

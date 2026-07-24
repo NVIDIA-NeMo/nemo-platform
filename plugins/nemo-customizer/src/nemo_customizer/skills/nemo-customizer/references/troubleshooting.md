@@ -64,7 +64,7 @@ Each entry has `provider`, `profile` (name), and `backend` (e.g. `docker`, `kube
 | Response includes **`provider`: `gpu` or `gpu_distributed`** | **`automodel`** (default) |
 | No GPU profiles (only `subprocess` and/or CPU `provider`) | Report that GPU customization is unavailable |
 
-Automodel and unsloth are **`submit`-only**. After submit, the platform's **Docker executor** runs GPU container steps on the daemon attached to the connected platform host (`platform.runtime: docker`). (rl is also submit-only but runs on Kubernetes/Ray — see `rl-kubernetes-runtime.md`.) Training does not run in the CLI shell — query execution profiles on the platform (`NMP_BASE_URL`), not GPU availability in the agent's terminal.
+Automodel and unsloth are **`submit`-only**. After submit, the platform's **Docker executor** runs GPU container steps on the daemon attached to the connected platform host (`platform.runtime: docker`). Training does not run in the CLI shell — query execution profiles on the platform (`NMP_BASE_URL`), not GPU availability in the agent's terminal.
 
 ### Pick execution profile
 

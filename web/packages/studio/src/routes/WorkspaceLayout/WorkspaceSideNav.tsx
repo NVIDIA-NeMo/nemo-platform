@@ -5,6 +5,7 @@ import SafeSynthesizerLogo from '@nemo/common/src/svgs/safe_synthesizer_logo.svg
 import { NavigationDrawer } from '@studio/components/Layouts/NavigationDrawer';
 import { DataDesignerIconFc } from '@studio/constants/constants';
 import {
+  ANONYMIZER_ENABLED,
   BASE_MODELS_ENABLED,
   CODING_AGENT_STUDIO_ENABLED,
   CUSTOMIZER_ENABLED,
@@ -25,6 +26,7 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { iconColorClass } from '@studio/routes/constants';
 import { getAgentSideNavItems } from '@studio/routes/groups/agentRoutes';
 import {
+  getWorkspaceAnonymizerRoute,
   getDataDesignerJobListRoute,
   getModelCompareRoute,
   getEvaluationResultsRoute,
@@ -54,6 +56,7 @@ import {
   Cog,
   Columns3,
   Rocket,
+  VenetianMask,
   Waypoints,
 } from 'lucide-react';
 import { useMemo } from 'react';
@@ -149,6 +152,17 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
         ]
       : [];
 
+    const anonymizerNav = ANONYMIZER_ENABLED
+      ? [
+          {
+            id: 'anonymizer',
+            slotIcon: <VenetianMask className={iconColorClass} />,
+            slotLabel: 'Anonymizer',
+            href: getWorkspaceAnonymizerRoute(workspace),
+          },
+        ]
+      : [];
+
     const agentItems = getAgentSideNavItems(workspace);
 
     const virtualModelsNav = [
@@ -184,6 +198,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
         : []),
       ...safeSynthesizerNav,
       ...dataDesignerNav,
+      ...anonymizerNav,
     ];
     const evaluateItems = [...evalNav, ...intakeNav, ...experimentNav];
 
