@@ -38,7 +38,7 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getEvaluationDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
-import { ChartScatter, Columns3, FolderPlus, Pin } from 'lucide-react';
+import { Columns3, FolderPlus, Pin } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -464,7 +464,9 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     <>
       {paretoVisible && (
         <div className="mb-4">
-          <ExperimentGroupParetoChart workspace={workspace} group={group} />
+          {/* Key by group id so the axis selection resets (re-seeds from the new group's saved
+              config) when navigating between groups without a route remount. */}
+          <ExperimentGroupParetoChart key={group.id} workspace={workspace} group={group} />
         </div>
       )}
       <StudioDataView
