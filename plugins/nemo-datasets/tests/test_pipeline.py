@@ -147,6 +147,26 @@ def test_profile_multiple_directories_become_partitions(tmp_path):
     assert all(p.file_format == "parquet" for p in result.partitions)
 
 
+def test_profile_splits_mixed_formats_into_separate_partitions(tmp_path):
+    # A directory holding two formats must not profile as one partition: features/stats would be
+    # derived from one format's schema but measured over rows from both. Each format becomes its own
+    # format-homogeneous partition, name-qualified so the two stay distinct.
+    _write_parquet(tmp_path / "data" / "train-00000-of-00001.parquet", [{"prompt": "a"}])
+    (tmp_path / "data" / "extra.jsonl").write_text('{"question": "b"}\n{"question": "c"}\n')
+
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+
+    by_format = {p.file_format: p for p in result.partitions}
+    assert set(by_format) == {"parquet", "jsonl"}
+    assert by_format["parquet"].name == "default:parquet"
+    assert by_format["jsonl"].name == "default:jsonl"
+    # Each partition's schema reflects only its own files.
+    assert [f.name for f in by_format["parquet"].features] == ["prompt"]
+    assert [f.name for f in by_format["jsonl"].features] == ["question"]
+    assert result.sampling.rows_scanned == 3  # 1 parquet + 2 jsonl, each counted once
+    assert result.sampling.exhaustive is True
+
+
 def test_profile_isolates_unreadable_files(tmp_path):
     _write_parquet(tmp_path / "train-00000-of-00001.parquet", [{"a": 1}])
     (tmp_path / "test-00000-of-00001.parquet").write_bytes(b"not a real parquet file")
