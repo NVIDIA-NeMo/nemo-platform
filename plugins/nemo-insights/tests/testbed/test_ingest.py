@@ -185,7 +185,7 @@ def test_create_experiment_posts_full_body():
     assert stub.calls == [
         (
             "POST",
-            "http://x/apis/intake/v2/workspaces/ws/experiments",
+            "http://x/apis/intake/v2/workspaces/ws/evaluations",
             {
                 "name": "tau2-airline-20260626-000000-abcd",
                 "experiment_group_id": "grp-1",

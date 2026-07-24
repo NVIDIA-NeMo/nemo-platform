@@ -77,6 +77,11 @@ export const ExperimentGroupEditModal: FC<ExperimentGroupEditModalProps> = ({
           name: group.name,
           description: description || undefined,
           default_sort: defaultSort,
+          // The endpoint replaces the whole group, so resend the producer-owned fields this
+          // form doesn't edit; omitting them clears the group's summary and insight link.
+          insight_id: group.insight_id,
+          summary: group.summary,
+          metadata: group.metadata,
         },
       });
       onClose();

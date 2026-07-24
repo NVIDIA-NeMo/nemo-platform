@@ -89,7 +89,7 @@ class SpanGroup(BaseModel):
 
 class TraceListFilter(BaseModel):
     workspace: str
-    trace_id: str | None = None
+    trace_ids: list[str] | None = None
     session_id: str | None = None
     source_format: str | None = None
     status: SpanStatus | None = None

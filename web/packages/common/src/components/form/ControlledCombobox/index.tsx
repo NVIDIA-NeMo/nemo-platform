@@ -88,7 +88,7 @@ export const ControlledCombobox = <T extends 'single' | 'multiple' = 'single'>({
       status={error && 'error'}
       {...formFieldProps}
     >
-      {({ status, ...args }) => {
+      {({ status }) => {
         const baseProps = {
           status,
           style: { width },
@@ -104,7 +104,6 @@ export const ControlledCombobox = <T extends 'single' | 'multiple' = 'single'>({
           ...comboboxProps,
           attributes: {
             ComboboxTrigger: {
-              ...args,
               spellCheck: false,
               ...comboboxProps?.attributes?.ComboboxTrigger,
             },

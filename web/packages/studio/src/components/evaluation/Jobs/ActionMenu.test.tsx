@@ -5,7 +5,7 @@ import { EvaluateJob, PlatformJobStatus } from '@nemo/sdk/generated/evaluator/sc
 import { ActionMenu } from '@studio/components/evaluation/Jobs/ActionMenu';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { mockUseParams } from '@studio/tests/util/mockUseParams';
-import { customRender as render, screen } from '@studio/tests/util/render';
+import { customRender as render, screen, waitFor } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 
 const TEST_WORKSPACE = 'test-workspace';
@@ -187,7 +187,9 @@ describe('ActionMenu', () => {
       const cancelButton = await screen.findByRole('button', { name: 'Cancel' });
       await user.click(cancelButton);
 
-      expect(screen.queryByText('Delete Evaluation Job')).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(screen.queryByText('Delete Evaluation Job')).not.toBeInTheDocument()
+      );
     });
 
     it('should handle delete API errors gracefully', async () => {
@@ -267,8 +269,9 @@ describe('ActionMenu', () => {
       const confirmButton = await screen.findByRole('button', { name: 'Delete' });
       await user.click(confirmButton);
 
-      // Should complete without errors
-      expect(screen.queryByText('Delete Evaluation Job')).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(screen.queryByText('Delete Evaluation Job')).not.toBeInTheDocument()
+      );
     });
   });
 });

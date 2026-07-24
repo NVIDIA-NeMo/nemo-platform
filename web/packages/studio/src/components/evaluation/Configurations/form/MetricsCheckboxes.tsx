@@ -102,16 +102,13 @@ const MetricConfigFieldComponent: FC<MetricConfigFieldProps> = ({ fieldConfig, d
           slotError={fieldState.error?.message}
           status={fieldState.error ? 'error' : undefined}
         >
-          {({ status, ...args }) => (
-            <TextInput
-              status={status}
-              disabled={disabled}
-              value={(field.value as string) || ''}
-              onChange={field.onChange}
-              onBlur={field.onBlur}
-              attributes={{ Input: args }}
-            />
-          )}
+          <TextInput
+            status={fieldState.error ? 'error' : undefined}
+            disabled={disabled}
+            value={(field.value as string) || ''}
+            onChange={field.onChange}
+            onBlur={field.onBlur}
+          />
         </FormField>
       )}
     />

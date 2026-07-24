@@ -21,3 +21,4 @@ export { agentRoutes } from '@studio/routes/groups/agentRoutes';
 export { settingsRoutes } from '@studio/routes/groups/settingsRoutes';
 export { modelCompareRoutes } from '@studio/routes/groups/modelCompareRoutes';
 export { memberRoutes } from '@studio/routes/groups/memberRoutes';
+export { optimizerRoutes } from '@studio/routes/groups/optimizerRoutes';

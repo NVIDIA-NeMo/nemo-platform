@@ -13,8 +13,6 @@ from nmp.intake.api.v2.experiments.endpoints import get_evaluation_rollup_reposi
 
 GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
 EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
-# Deprecated URL alias: the child endpoints moved /experiments -> /evaluations.
-EXPERIMENTS_ALIAS = "/apis/intake/v2/workspaces/default/experiments"
 
 
 def _evaluation_body(*, experiment_group_id: str, **overrides: Any) -> dict:
@@ -63,6 +61,19 @@ def test_experiment_group_crud(client: TestClient) -> None:
     assert deleted.status_code == 204
     missing = client.get(f"{GROUPS}/tb2-routing-research")
     assert missing.status_code == 404
+
+
+def test_filter_groups_by_insight_id(client: TestClient) -> None:
+    """The groups list can be filtered server-side by the seeding insight id."""
+    seeded = client.post(GROUPS, json={"name": "seeded-group", "insight_id": "insight-abc"})
+    assert seeded.status_code == 201, seeded.text
+    other = client.post(GROUPS, json={"name": "unseeded-group"})
+    assert other.status_code == 201, other.text
+
+    listed = client.get(GROUPS, params={"filter[insight_id]": "insight-abc"})
+    assert listed.status_code == 200, listed.text
+    names = {g["name"] for g in listed.json()["data"]}
+    assert names == {"seeded-group"}
 
 
 def test_experiment_group_update_description(client: TestClient) -> None:
@@ -218,39 +229,6 @@ def test_delete_group_cascades_to_evaluations(client: TestClient) -> None:
     for child_name in ("exp-doomed-1", "exp-doomed-2"):
         missing = client.get(f"{EVALUATIONS}/{child_name}")
         assert missing.status_code == 404
-
-
-def test_legacy_experiments_url_alias_still_works(client: TestClient) -> None:
-    """The child endpoints moved /experiments -> /evaluations; the old paths remain as hidden aliases."""
-    group = _create_group(client, name="legacy-alias-group")
-
-    # Create via the deprecated /experiments URL.
-    created = client.post(
-        EXPERIMENTS_ALIAS,
-        json=_evaluation_body(name="legacy-alias-eval", experiment_group_id=group["id"]),
-    )
-    assert created.status_code == 201, created.text
-    assert created.json()["name"] == "legacy-alias-eval"
-
-    # The deprecated URL and the canonical URL resolve to the same entity.
-    via_legacy = client.get(f"{EXPERIMENTS_ALIAS}/legacy-alias-eval")
-    via_canonical = client.get(f"{EVALUATIONS}/legacy-alias-eval")
-    assert via_legacy.status_code == 200, via_legacy.text
-    assert via_canonical.status_code == 200
-    assert via_legacy.json() == via_canonical.json()
-
-
-def test_legacy_experiments_url_aliases_are_hidden_from_schema() -> None:
-    from fastapi.routing import APIRoute
-    from nmp.intake.api.v2.experiments.endpoints import router
-
-    alias_routes = [
-        route
-        for route in router.routes
-        if isinstance(route, APIRoute) and "/experiments" in route.path and "/experiment-groups" not in route.path
-    ]
-    assert alias_routes, "expected legacy /experiments alias routes to be registered"
-    assert all(route.include_in_schema is False for route in alias_routes)
 
 
 def test_deprecated_field_aliases_are_backwards_compatible(client: TestClient) -> None:
