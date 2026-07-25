@@ -28,6 +28,7 @@ from nemo_agents_plugin.jobs.evaluate_agent import EvaluateAgentJob, EvaluateAge
 from nemo_agents_plugin.jobs.optimize_agent import OptimizeAgentJob, OptimizeAgentSpec
 from nemo_agents_plugin.refs import AgentRef
 from nemo_agents_plugin.utils import (
+    get_internal_base_url,
     inject_default_model,
     inject_gateway_url,
     merge_agent_config,
@@ -137,6 +138,23 @@ class TestInjectGatewayUrl:
     def test_trailing_slash_stripped_from_base_url(self) -> None:
         result = inject_gateway_url(self._BASE_CONFIG, "default", base_url="http://platform:8080/")
         assert "//apis" not in result["llms"]["llm"]["base_url"]
+
+
+class TestGetInternalBaseUrl:
+    def test_returns_none_when_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("NEMO_INTERNAL_BASE_URL", raising=False)
+        monkeypatch.delenv("NMP_INTERNAL_BASE_URL", raising=False)
+        assert get_internal_base_url() is None
+
+    def test_reads_nmp_internal_base_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("NEMO_INTERNAL_BASE_URL", raising=False)
+        monkeypatch.setenv("NMP_INTERNAL_BASE_URL", "http://nmp-api:8080/")
+        assert get_internal_base_url() == "http://nmp-api:8080"
+
+    def test_nemo_internal_base_url_takes_precedence(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("NEMO_INTERNAL_BASE_URL", "http://nemo:8080")
+        monkeypatch.setenv("NMP_INTERNAL_BASE_URL", "http://nmp:8080")
+        assert get_internal_base_url() == "http://nemo:8080"
 
 
 # ---------------------------------------------------------------------------
