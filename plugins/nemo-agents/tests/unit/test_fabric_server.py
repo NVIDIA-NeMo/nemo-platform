@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from nemo_agents_plugin.agent_config import AgentConfig, AgentConfigLoadError
 from nemo_agents_plugin.fabric import server
 from nemo_agents_plugin.fabric.server import create_fabric_serving_app
+from nemo_agents_plugin.fabric.session_manager import FabricSessionManager
 from nemo_agents_plugin.fabric.session_registry import FabricSessionRegistry
 
 
@@ -66,6 +67,7 @@ def test_startup_loads_and_validates_agent_config(
         assert app.state.base_dir == tmp_path
         assert app.state.validation_result is not None
         assert isinstance(app.state.session_registry, FabricSessionRegistry)
+        assert isinstance(app.state.session_manager, FabricSessionManager)
 
     assert mock_validate_agent_config == [(app.state.agent_config, tmp_path)]
 
@@ -83,7 +85,7 @@ def test_startup_fails_for_invalid_agent_config(
     assert mock_validate_agent_config == []
 
 
-def test_chat_completions_is_unavailable_until_session_manager_is_added(
+def test_chat_completions_is_unavailable_until_invocation_is_added(
     tmp_path: Path,
     mock_validate_agent_config: list[tuple[AgentConfig, Path]],
 ) -> None:
@@ -97,4 +99,4 @@ def test_chat_completions_is_unavailable_until_session_manager_is_added(
         )
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "Fabric runtime session manager is not initialized."}
+    assert response.json() == {"detail": "Fabric runtime invocation is not initialized."}

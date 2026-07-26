@@ -15,6 +15,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from nemo_agents_plugin.agent_config import AgentConfig, load_agent_config
+from nemo_agents_plugin.fabric.session_manager import FabricSessionManager
 from nemo_agents_plugin.fabric.session_registry import FabricSessionRegistry
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,13 @@ def create_fabric_serving_app(agent_config_path: str | Path) -> FastAPI:
         app.state.agent_config = agent_config
         app.state.base_dir = config_path.parent
         app.state.validation_result = validation_result
-        app.state.session_registry = FabricSessionRegistry()
+        session_registry = FabricSessionRegistry()
+        app.state.session_registry = session_registry
+        app.state.session_manager = FabricSessionManager(
+            agent_config,
+            base_dir=config_path.parent,
+            session_registry=session_registry,
+        )
         logger.info("Validated Fabric-backed agent config at %s", config_path)
         yield
 
@@ -49,7 +56,7 @@ def create_fabric_serving_app(agent_config_path: str | Path) -> FastAPI:
 
     @app.post("/v1/chat/completions")
     async def chat_completions() -> None:
-        raise HTTPException(status_code=503, detail="Fabric runtime session manager is not initialized.")
+        raise HTTPException(status_code=503, detail="Fabric runtime invocation is not initialized.")
 
     return app
 
