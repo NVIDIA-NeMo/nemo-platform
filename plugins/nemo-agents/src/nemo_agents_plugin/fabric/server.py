@@ -15,6 +15,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from nemo_agents_plugin.agent_config import AgentConfig, load_agent_config
+from nemo_agents_plugin.fabric.session_registry import FabricSessionRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ def create_fabric_serving_app(agent_config_path: str | Path) -> FastAPI:
         app.state.agent_config = agent_config
         app.state.base_dir = config_path.parent
         app.state.validation_result = validation_result
+        app.state.session_registry = FabricSessionRegistry()
         logger.info("Validated Fabric-backed agent config at %s", config_path)
         yield
 

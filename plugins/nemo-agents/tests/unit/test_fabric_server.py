@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from nemo_agents_plugin.agent_config import AgentConfig, AgentConfigLoadError
 from nemo_agents_plugin.fabric import server
 from nemo_agents_plugin.fabric.server import create_fabric_serving_app
+from nemo_agents_plugin.fabric.session_registry import FabricSessionRegistry
 
 
 @pytest.fixture()
@@ -64,6 +65,7 @@ def test_startup_loads_and_validates_agent_config(
         assert app.state.agent_config.name == "test-agent"
         assert app.state.base_dir == tmp_path
         assert app.state.validation_result is not None
+        assert isinstance(app.state.session_registry, FabricSessionRegistry)
 
     assert mock_validate_agent_config == [(app.state.agent_config, tmp_path)]
 
