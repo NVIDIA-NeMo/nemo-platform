@@ -183,8 +183,19 @@ class AnalysisSkill(Skill):
     | agent-1 | 0.48 | 0.58 | 0.41 | ... | agent-0 | -0.10 |
     | agent-0 | 0.45 | 0.55 | 0.40 | ... | --- | baseline |
 
+    Insight Suite Reward:
+    | Agent | <insight-dim1> | <insight-dim2> | ... | vs. Baseline |
+    | ----- | -------------- | -------------- | --- | ------------ |
+    | agent-3 | 0.80 | 0.67 | ... | +0.40 |
+    | agent-1 | 0.60 | 0.50 | ... | +0.20 |
+    | agent-0 | 0.40 | 0.33 | ... | baseline |
+
     [Columns are the actual reward dimension keys from metadata. Order by any dimension that
-    helps comparison — no dimension is privileged.]
+    helps comparison — no dimension is privileged. Read Insight Suite Reward from
+    `candidate.insight_reward`. Omit that table when `insight_reward` is absent or empty
+    for every agent. Keep Insight Suite Reward separate from train and validation rewards:
+    it reports performance on scenarios authored for the motivating Insight and is not a
+    ranking or Pareto-selection input.]
 
     ## Trajectory Rewards
 
@@ -783,8 +794,16 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
             agent_name=agent_name,
         )
 
+        baseline_entity = next(
+            (node.candidate for node in evolution_tree.nodes.values() if node.round == 0),
+            None,
+        )
         result = ExperimentalistResult(
-            summary=self._render_summary(rounds_completed=round_num, winner=winner_entity),
+            summary=self._render_summary(
+                rounds_completed=round_num,
+                baseline=baseline_entity,
+                winner=winner_entity,
+            ),
             run_id=run_id,
             rounds_completed=round_num,
             winner=winner_entity,
@@ -849,10 +868,19 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
 
         ```python
         rewards = {c.id: self.workspace.get_metadata(c.name).train_reward or {} for c in agent_ids}
+        insight_rewards = {
+            c.id: self.workspace.get_metadata(c.name).insight_reward or {} for c in agent_ids
+        }
+        all_candidates = [
+            self.workspace.get_metadata(agent_id).slim() for agent_id in self.workspace.list_agents()
+        ]
+        baseline = next((candidate for candidate in all_candidates if candidate.round == 0), None)
         ```
 
         - Compare siblings: which optimization strategy worked better this round?
         - Compare to ancestors: did the change actually fix the targeted root cause?
+        - When any Insight Suite rewards are present, compare those dimensions to the
+          round-zero baseline separately from train and validation rewards.
 
         ## Step 2: Analyze divergent and complementary patterns
 
@@ -867,13 +895,18 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
         candidate = self.workspace.get_metadata(agent_ids[0].name).slim()
         train_reward = candidate.train_reward or {}
         dim_keys = sorted(train_reward.keys())
+        insight_dim_keys = sorted({key for reward in insight_rewards.values() for key in reward})
         ```
 
-        Follow the `ext.analysis_skill` format exactly for every section (Rewards table,
-        Trajectory Rewards, Divergent Trial Analysis, Complementary Failures, Failure
-        Patterns, Root Causes, Mechanical/Infrastructure Errors).
+        Follow the `ext.analysis_skill` format exactly for every section (Rewards tables,
+        including the conditional Insight Suite Reward table; Trajectory Rewards; Divergent
+        Trial Analysis; Complementary Failures; Failure Patterns; Root Causes;
+        Mechanical/Infrastructure Errors).
 
-        Fill in every section with real data. No placeholders.
+        If at least one agent has a non-empty `insight_reward`, the round analysis must name
+        every available Insight Suite dimension and show its values in the separate Insight
+        Suite Reward table. Never blend those metrics into train/validation rewards or imply
+        that they affected ranking. Fill in every included section with real data. No placeholders.
         Return the complete markdown content as a string.
         """
         ...
@@ -887,6 +920,7 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
         ```python
         agent_ids = self.workspace.list_agents()
         candidate = self.workspace.get_metadata(agent_id).slim()
+        insight_reward = candidate.insight_reward or {}
         analysis  = self.workspace.read_analysis_file(n)
         ```
 
@@ -897,9 +931,16 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
         4. Write eval-and-optimize/OPTIMIZATION.md with format:
            - Summary (baseline vs best rewards, rounds completed, total agents)
            - Reward Breakdown table (one row per agent, per-dimension columns)
+           - Insight Suite Metrics table when available
            - Lineage Tree (ASCII tree with rewards and optimization type)
            - Round-by-Round Analysis
            - Optimization Insights
+
+        When both the round-zero baseline and best agent have non-empty `insight_reward`,
+        the Summary must state whether the Insight-specific scenarios improved and the
+        Insight Suite Metrics table must show every available dimension with baseline,
+        winner, and signed delta columns. Keep this table separate from generic train and
+        validation rewards. Omit it only when Insight Suite rewards are unavailable.
 
         Fill in every section with real data. Every agent must appear in the lineage tree.
         Mark the best agent with * BEST.
@@ -1741,13 +1782,16 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
     def _render_summary(
         self,
         rounds_completed: int,
+        baseline: Candidate | None,
         winner: Candidate | None,
     ) -> str:
         """Render a human-readable summary of the run outcome."""
         winner_str = winner.name if winner else "none"
-        val_reward = ""
+        details: list[str] = []
         if winner:
-            vr = getattr(winner, "validation_reward", None)
-            if vr:
-                val_reward = f", validation_reward={vr}"
-        return f"Optimization complete: {rounds_completed} round(s) completed, winner={winner_str}{val_reward}"
+            if winner.validation_reward:
+                details.append(f"validation_reward={winner.validation_reward}")
+            if baseline is not None and baseline.insight_reward and winner.insight_reward:
+                details.append(f"insight_suite=(baseline={baseline.insight_reward}, winner={winner.insight_reward})")
+        suffix = f", {', '.join(details)}" if details else ""
+        return f"Optimization complete: {rounds_completed} round(s) completed, winner={winner_str}{suffix}"
