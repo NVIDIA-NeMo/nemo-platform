@@ -112,7 +112,7 @@ def test_directory_seed_dataset_fileset_root() -> None:
     builder.add_column(
         column_config=dd.ExpressionColumnConfig(
             name="expr",
-            expr="{{ source_kind }} :: {{ relative_path }}",
+            expr="{{ source_kind }} :: {{ source_path }} :: {{ relative_path }}",
         )
     )
 
@@ -124,7 +124,9 @@ def test_directory_seed_dataset_fileset_root() -> None:
         preview_results = dd_client.preview(builder, num_records=3)
 
     assert preview_results.dataset is not None
-    assert set(preview_results.dataset["expr"].values) == {f"directory_file :: {u.FILE_PATH}"}
+    assert set(preview_results.dataset["expr"].values) == {
+        f"directory_file :: {u.WORKSPACE_NAME}/{u.FILESET_NAME}#{u.FILE_PATH} :: {u.FILE_PATH}"
+    }
 
 
 def test_directory_seed_dataset_fileset_subdir() -> None:

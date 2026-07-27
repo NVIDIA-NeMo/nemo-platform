@@ -25,6 +25,20 @@ def test_create_context_roots_reader_in_canonical_fileset_ref() -> None:
 
     make_fs.assert_called_once_with(sdk)
     assert str(context.root_path) == "default/docs#corpus"
+    assert str(context.root_path / "data.parquet") == "default/docs#corpus/data.parquet"
+
+
+def test_create_context_uses_canonical_source_paths_for_fileset_root() -> None:
+    sdk = Mock()
+    filesystem = Mock()
+
+    with patch("data_designer_nemo.fileset_filesystem_provider.make_filesystem", return_value=filesystem):
+        filesystem.async_impl = True
+        filesystem.asynchronous = False
+        context = FilesetFileSystemProvider(sdk, workspace="default").create_context(runtime_path="docs")
+
+    assert str(context.root_path) == "default/docs"
+    assert str(context.root_path / "data.parquet") == "default/docs#data.parquet"
 
 
 def test_ensure_root_exists_skips_validated_roots() -> None:

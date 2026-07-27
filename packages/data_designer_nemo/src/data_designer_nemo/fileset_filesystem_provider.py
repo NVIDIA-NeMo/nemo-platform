@@ -1,7 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from os import PathLike
 from pathlib import Path, PurePosixPath
+from typing import Self
 
 from data_designer.engine.resources.seed_reader import (
     FileSystemProvider,
@@ -45,6 +47,23 @@ class _FilesetDirFileSystem(DirFileSystem):
         raise AssertionError(f"Path {path!r} does not start with root {self.path!r}")
 
 
+class _FilesetMetadataRootPath(PurePosixPath):
+    """Metadata root path that preserves canonical fileset refs.
+
+    Data Designer builds row metadata with ``context.root_path / relative_path``.
+    For fileset-root seeds, a plain ``PurePosixPath("ws/fs")`` would produce
+    ``ws/fs/data.parquet``. Fileset refs use ``#`` between the fileset and file
+    path, so this metadata-only path adapter makes that first join render as
+    ``ws/fs#data.parquet`` while later joins stay slash-separated.
+    """
+
+    def __truediv__(self, key: str | PathLike[str]) -> Self:
+        if not key:
+            return self
+        separator = "/" if "#" in str(self) else "#"
+        return type(self)(f"{self}{separator}{key}")
+
+
 class FilesetFileSystemProvider:
     """Filesystem provider that roots directory-style seed readers in a fileset."""
 
@@ -63,10 +82,12 @@ class FilesetFileSystemProvider:
         self._validated_roots = validated_roots or set()
 
     def create_context(self, *, runtime_path: str) -> SeedReaderFileSystemContext:
-        root = self._canonical_root(runtime_path)
+        workspace, fileset, fragment = self._parse(runtime_path)
+        root = build_fileset_ref(fragment, workspace=workspace, fileset=fileset)
         fs = self._get_filesystem()
         rooted_fs = _FilesetDirFileSystem(path=root, fs=fs)
-        return SeedReaderFileSystemContext(fs=rooted_fs, root_path=PurePosixPath(root))
+        root_path = PurePosixPath(root) if fragment else _FilesetMetadataRootPath(root)
+        return SeedReaderFileSystemContext(fs=rooted_fs, root_path=root_path)
 
     def ensure_root_exists(self, *, runtime_path: str) -> None:
         workspace, fileset, fragment = self._parse(runtime_path)
@@ -84,10 +105,6 @@ class FilesetFileSystemProvider:
         if not fs.exists(fileset_root):
             raise SeedReaderConfigError(f"🛑 Fileset {fully_qualified_fileset_name!r} not found.")
         raise SeedReaderConfigError(f"🛑 Path {fragment!r} not found in fileset {fully_qualified_fileset_name!r}.")
-
-    def _canonical_root(self, runtime_path: str) -> str:
-        workspace, fileset, fragment = self._parse(runtime_path)
-        return build_fileset_ref(fragment, workspace=workspace, fileset=fileset)
 
     def _get_filesystem(self) -> FilesetFileSystem:
         if self._filesystem is not None:
