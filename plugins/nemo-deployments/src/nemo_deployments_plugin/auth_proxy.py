@@ -15,6 +15,7 @@ already trusted on the internal network, so no identity header is needed.
 from __future__ import annotations
 
 import logging
+from urllib.parse import urlsplit
 
 from nemo_deployments_plugin.config import DeploymentsConfig
 from nemo_deployments_plugin.entities import (
@@ -26,7 +27,7 @@ from nemo_deployments_plugin.entities import (
     RestartPolicy,
 )
 from nemo_platform_plugin.auth import platform_auth_enabled
-from nemo_platform_plugin.config import get_nemo_config
+from nemo_platform_plugin.config import LOOPBACK_ADDRESSES, get_nemo_config
 from nemo_platform_plugin.jobs.image import get_qualified_image
 
 logger = logging.getLogger(__name__)
@@ -44,18 +45,36 @@ def auth_proxy_port() -> int:
     return get_nemo_config(DeploymentsConfig).auth_proxy_port
 
 
-def _upstream_base_url() -> str:
-    from nemo_platform_plugin.config import get_platform_config
+def _upstream_base_url(*, docker: bool) -> str:
+    """Return the platform base URL the sidecar forwards to, reachable from its container.
 
-    return get_platform_config().base_url.rstrip("/")
+    In docker mode the platform base URL is often a host loopback the container
+    cannot reach; substitute the docker-reachable host (e.g. host.docker.internal)
+    the same way jobs do. In k8s the base URL is the in-cluster Service DNS and is
+    used verbatim.
+    """
+    from nemo_platform_plugin.config import determine_loopback_override, get_platform_config
+
+    base_url = get_platform_config().base_url.rstrip("/")
+    if not docker:
+        return base_url
+    override = determine_loopback_override()
+    if not override:
+        return base_url
+    parts = urlsplit(base_url)
+    if (parts.hostname or "").lower() not in LOOPBACK_ADDRESSES:
+        return base_url
+    netloc = override if parts.port is None else f"{override}:{parts.port}"
+    return parts._replace(netloc=netloc).geturl()
 
 
-def build_auth_proxy_container(config: DeploymentConfig) -> Container | None:
+def build_auth_proxy_container(config: DeploymentConfig, *, docker: bool = False) -> Container | None:
     """Return the auth-proxy sidecar Container for *config*, or None.
 
     Returns None when the config does not request the sidecar, or when platform
     auth is disabled (the sidecar would be pointless — internal calls are already
-    trusted).
+    trusted). Pass ``docker=True`` so the sidecar's upstream is rewritten to a
+    docker-reachable host.
     """
     if not config.auth_proxy_sidecar:
         return None
@@ -73,7 +92,7 @@ def build_auth_proxy_container(config: DeploymentConfig) -> Container | None:
         image=image,
         command=["nemo", "services", "run", "--sidecars", "auth-proxy"],
         env=[
-            EnvVar(name="NMP_BASE_URL", value=_upstream_base_url()),
+            EnvVar(name="NMP_BASE_URL", value=_upstream_base_url(docker=docker)),
             EnvVar(name=_AUTH_PROXY_PRINCIPAL_ENVVAR, value=identity),
             EnvVar(name=_AUTH_PROXY_HOST_ENVVAR, value="127.0.0.1"),
             EnvVar(name=_AUTH_PROXY_PORT_ENVVAR, value=str(port)),
