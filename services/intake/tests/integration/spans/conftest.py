@@ -9,6 +9,7 @@ import asyncio
 from collections.abc import Callable
 from datetime import datetime, timezone
 from importlib.util import find_spec
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -22,6 +23,9 @@ from nmp.intake.spans.clickhouse_client import (
     bootstrap_schema,
 )
 from nmp.testing import create_test_client
+
+_CLICKHOUSE_VERSION_FILE = Path(__file__).resolve().parents[3] / ".clickhouse-version"
+CLICKHOUSE_VERSION = _CLICKHOUSE_VERSION_FILE.read_text(encoding="utf-8").strip()
 
 
 def _run(coro: Any) -> Any:
@@ -55,12 +59,17 @@ def clickhouse_container():
     from testcontainers.clickhouse import ClickHouseContainer
 
     with ClickHouseContainer(
-        "clickhouse/clickhouse-server:24.3",
+        f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}",
         username="test",
         password="test",
         dbname="default",
     ) as container:
         yield container
+
+
+@pytest.fixture(scope="session")
+def clickhouse_version() -> str:
+    return CLICKHOUSE_VERSION
 
 
 @pytest.fixture(scope="session")
