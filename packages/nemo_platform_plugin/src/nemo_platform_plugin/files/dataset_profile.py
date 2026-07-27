@@ -9,7 +9,7 @@ every consumer reads one typed description of a dataset instead of downloading a
 The profile has two stored layers:
 
 * **structure** — predominantly facts: file layout, splits, the derived row schema (``features``),
-  and per-column ``stats``. The one inference living here is the ``FeatureSchema.semantic_role``
+  and per-column ``stats``. The one detected attribute living here is the ``FeatureSchema.semantic_role``
   marker stacked on the feature node it describes.
 * **classification** — an objective description of what the data *is*: ``dataset_type``, the
   ``format`` / ``prompt_form`` axes, and ``verifiability``.
@@ -38,7 +38,7 @@ PROFILE_SCHEMA_VERSION = "1.0"
 
 
 class Evidence(BaseModel):
-    """Why the profiler believes an inference.
+    """Why the profiler believes what it detected.
 
     Captured at profile time — the only moment it is cheap and guaranteed to match the stored
     result; once the data or the profiler version moves, a re-run explains the *new* snapshot, not
@@ -93,7 +93,7 @@ class PartitionClassification(BaseModel):
     )
 
 
-# ---- structure: facts + the stacked semantic_role inference (computed) -------------------------
+# ---- structure: facts + the stacked semantic_role detection (computed) -------------------------
 
 
 class Quantiles(BaseModel):
@@ -156,7 +156,7 @@ class TextQuality(BaseModel):
 class FeatureSchema(BaseModel):
     """One node of the row schema, derived de novo from the data (there is no external JSON-Schema
     store to reference). Carries the measured layout (name, dtype, children) plus at most one
-    inferred ``semantic_role`` marker stacked on the same node.
+    detected ``semantic_role`` marker stacked on the same node.
 
     Recursive and fully expanded: a ``struct`` node has child ``fields``; a ``list`` / ``messages``
     node has an element ``items`` — for ``messages`` the per-message ``{role, content}`` struct is
@@ -175,8 +175,8 @@ class FeatureSchema(BaseModel):
     semantic_role: str | None = Field(
         default=None,
         description=(
-            "Inferred role (from the role vocabulary), valid at any depth of the tree; omitted when nothing "
-            "was detected. The only inferred attribute in the structure layer — its evidence lands in "
+            "Detected role (from the role vocabulary), valid at any depth of the tree; omitted when nothing "
+            "was detected. The only detected attribute in the structure layer — its evidence lands in "
             "PartitionClassification.evidence. Named `semantic_role`, not `role`, so it never collides with a "
             "message struct's `role` key."
         ),
@@ -267,11 +267,11 @@ class FileRecord(BaseModel):
 class SplitProfile(BaseModel):
     """A split within a partition.
 
-    Resolution precedence (declared structure beats inference):
+    Resolution precedence (declared structure beats detection):
 
     1. HF card front-matter when the fileset ships a README — ``configs[].data_files`` maps splits to
        file globs explicitly;
-    2. best-effort inference from file paths (train/test/validation markers, sharded layouts like
+    2. best-effort detection from file paths (train/test/validation markers, sharded layouts like
        ``data/train-00000-of-00003.parquet``); path markers are matched against canonical names and
        common aliases (val/valid/dev -> validation), the normalized concept lands in ``canonical``, and
        the split keeps its on-disk ``name``;
@@ -316,9 +316,9 @@ class PartitionProfile(BaseModel):
 
     name: str = "default"
     file_format: str = Field(description="jsonl | parquet | csv | arrow")
-    splits: list[SplitProfile] = Field(description="card-declared > path-inferred > single 'default' split.")
+    splits: list[SplitProfile] = Field(description="card-declared > path-detected > single 'default' split.")
     features: list[FeatureSchema] = Field(
-        description="The row schema: measured layout plus inferred role markers, derived de novo (nested).",
+        description="The row schema: measured layout plus detected role markers, derived de novo (nested).",
     )
     stats: dict[str, ColumnStats] = Field(
         default_factory=dict,
