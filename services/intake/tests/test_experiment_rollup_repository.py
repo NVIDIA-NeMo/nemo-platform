@@ -68,6 +68,13 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
                         3000.0,
                         3000.0,
                         4,
+                        6000.0,
+                        1500.0,
+                        1500.0,
+                        2500.0,
+                        2500.0,
+                        2500.0,
+                        4,
                     )
                 ],
                 [
@@ -89,6 +96,13 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
                     "latency_p95",
                     "latency_p99",
                     "latency_count",
+                    "tokens_sum",
+                    "tokens_mean",
+                    "tokens_median",
+                    "tokens_p90",
+                    "tokens_p95",
+                    "tokens_p99",
+                    "tokens_count",
                 ],
             ),
         ]
@@ -127,6 +141,14 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
     assert rollup.latency_ms.p95 == 3000
     assert rollup.latency_ms.p99 == 3000
     assert rollup.latency_ms.count == 4
+    assert rollup.tokens is not None
+    assert rollup.tokens.sum == 6000
+    assert rollup.tokens.mean == 1500
+    assert rollup.tokens.median == 1500
+    assert rollup.tokens.p90 == 2500
+    assert rollup.tokens.p95 == 2500
+    assert rollup.tokens.p99 == 2500
+    assert rollup.tokens.count == 4
 
     assert len(client.queries) == 3
     assert "FROM trace_index FINAL" in client.queries[0]
@@ -159,9 +181,12 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
     assert "cost_median" in client.queries[2]
     assert "quantileExactIf(0.99)" in client.queries[2]
     assert "latency_p99" in client.queries[2]
+    assert "tokens_p99" in client.queries[2]
     assert "sessions.trace_id = spans.trace_id" not in client.queries[2]
     assert client.parameters[0]["evaluation_id_0"] == "exp-a"
     assert client.parameters[2]["model_key"] == "gen_ai.request.model"
+    assert "input_tokens_key" in client.parameters[2]
+    assert "output_tokens_key" in client.parameters[2]
 
 
 def test_score_rollup_cte_builders_compose_the_pipeline():

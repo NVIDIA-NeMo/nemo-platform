@@ -399,7 +399,8 @@ async def create_evaluation(
             "Filter by a metadata key/value: filter[metadata.<key>]=<value>. "
             "Filter by a rollup metric with numeric range operators ($gte/$lte/$gt/$lt/$eq): "
             "filter[run_count][$gte]=5, filter[cost_usd.mean][$lte]=0.5, "
-            "filter[latency_ms.p95][$lte]=1000, or filter[evaluators.<name>.mean][$gte]=0.8."
+            "filter[latency_ms.p95][$lte]=1000, filter[tokens.mean][$lte]=5000, "
+            "or filter[evaluators.<name>.mean][$gte]=0.8."
         ),
     ),
 )
@@ -417,8 +418,8 @@ async def list_evaluations(
             "Comma-separated list of fields to sort by, applied in order (the first field dominates); "
             "prefix any field with '-' for descending — e.g. '-evaluators.reward.mean,cost_usd.mean'. "
             "Each field is an evaluation attribute (name, created_at, updated_at, pinned_at) or an "
-            "aggregate metric: run_count, test_case_count, cost_usd.<stat>, latency_ms.<stat>, or "
-            "evaluators.<name>.<stat>, "
+            "aggregate metric: run_count, test_case_count, cost_usd.<stat>, latency_ms.<stat>, "
+            "tokens.<stat>, or evaluators.<name>.<stat>, "
             "where <stat> is one of mean, median, p90, p95, p99, sum, count. When omitted, defaults to "
             "-created_at with pinned evaluations first."
         ),
@@ -1122,7 +1123,7 @@ def _apply_is_pinned_filter(parsed: ParsedFilter) -> None:
 
 # Metric heads whose dotted sub-paths address a ClickHouse rollup (not an entity column). Declared as
 # self-mapping namespaces on EvaluationFilter so paths survive filter validation untranslated.
-_METRIC_NAMESPACES = frozenset({"cost_usd", "latency_ms", "evaluators"})
+_METRIC_NAMESPACES = frozenset({"cost_usd", "latency_ms", "tokens", "evaluators"})
 _NUMERIC_FILTER_OPERATORS = frozenset(
     {FilterOperator.GTE, FilterOperator.LTE, FilterOperator.GT, FilterOperator.LT, FilterOperator.EQ}
 )
@@ -1140,7 +1141,7 @@ def _is_valid_metric_path(field: str) -> bool:
     if field in ("run_count", "test_case_count"):
         return True
     head, _, rest = field.partition(".")
-    if head in ("cost_usd", "latency_ms"):
+    if head in ("cost_usd", "latency_ms", "tokens"):
         return rest in _METRIC_STATS
     if head == "evaluators":
         # Evaluator names can contain dots (e.g. "harbor.verifier"); the stat is the last segment.
@@ -1412,6 +1413,7 @@ def _apply_rollup(response: EvaluationResponse, rollup: EvaluationRollup) -> Non
     response.test_case_count = rollup.test_case_count
     response.cost_usd = _aggregate(rollup.cost_usd) if rollup.cost_usd is not None else None
     response.latency_ms = _aggregate(rollup.latency_ms) if rollup.latency_ms is not None else None
+    response.tokens = _aggregate(rollup.tokens) if rollup.tokens is not None else None
 
 
 def _aggregate(rollup: ScoreRollup) -> EvaluatorAggregate:
