@@ -252,16 +252,25 @@ Before any `nemo` CLI command against a local instance, set:
 export NMP_BASE_URL=http://localhost:8080
 ```
 
-Check for an existing instance before starting (`lsof -iTCP:8080 -sTCP:LISTEN` or `nemo workspaces list`). To start services in the background, use a tmux session:
+Check for an existing instance before starting (`lsof -iTCP:8080 -sTCP:LISTEN` or `nemo workspaces list`). To start all services in the background, use a tmux session:
 
 ```bash
 tmux -f /exec-daemon/tmux.portal.conf new-session -d -s nemo-platform -c /workspace -- \
-  'export NMP_BASE_URL=http://localhost:8080 && uv run nemo services run --services entities,models,inference-gateway,secrets,hello-world --controllers models --port 8080'
+  'export NMP_BASE_URL=http://localhost:8080 && uv run nemo services run --service-group all --port 8080'
 ```
 
-Wait for readiness: `curl -sf http://localhost:8080/health/ready` → `{"status":"ready"}`.
+Wait for readiness: `curl -sf http://localhost:8080/health/ready` → `{"status":"ready"}` (`--service-group all` boots ~20 services in ~15s).
 
-> **`--service-group all` needs a running Docker daemon.** The `nemo-deployments` plugin service initializes its Docker backend at startup, so `--service-group all` (which includes that plugin service) aborts with `docker.errors.DockerException` when no Docker socket is present. Core services and the `models` controller (whose `deployments_plugin` backend connects lazily) start fine without Docker. In a Docker-less VM, start an explicit `--services …` subset instead (the command above covers entities/models/inference-gateway/secrets/hello-world and boots in ~5s).
+> **`--service-group all` needs a running Docker daemon.** The `nemo-deployments` plugin service opens a Docker client at startup, so `--service-group all` aborts with `docker.errors.DockerException` if `/var/run/docker.sock` is absent. Docker (v29) is installed in the VM image but is **not** auto-started (no systemd). Start it once per session before launching the full group:
+>
+> ```bash
+> tmux -f /exec-daemon/tmux.portal.conf new-session -d -s dockerd -c /workspace -- 'sudo dockerd'
+> sleep 8 && sudo chmod 666 /var/run/docker.sock && docker version
+> ```
+>
+> `/etc/docker/daemon.json` is pre-configured for this VM's kernel (`storage-driver: fuse-overlayfs` + `features.containerd-snapshotter: false`, required for Docker 29 + fuse-overlayfs). Pulling public images from Docker Hub is blocked by egress restrictions, but the deployments service only needs to *connect* to the daemon at startup, not pull images.
+>
+> If you don't need the deployments/agents services, skip Docker entirely and start a Docker-less subset — this boots in ~5s: `uv run nemo services run --services entities,models,inference-gateway,secrets,hello-world --controllers models --port 8080`.
 
 Minimal subset for inference-focused work (documented in SETUP.md): `uv run nemo services run --services entities,models,inference-gateway,secrets --controllers models`.
 
