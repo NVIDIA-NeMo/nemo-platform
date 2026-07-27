@@ -446,9 +446,13 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         enableSorting: true,
         meta: { title: false, filter: numberRangeFilter('Avg Tokens') },
         cell: ({ row }) => {
-          const { tokens, run_count } = row.original;
+          const { tokens, run_count: runCount } = row.original;
           return (
-            <MeanValueTooltipCell label="tokens (input + output)" count={tokens?.count} runCount={run_count}>
+            <MeanValueTooltipCell
+              label="tokens (input + output)"
+              count={tokens?.count}
+              runCount={runCount}
+            >
               {tokens?.mean != null ? Math.round(tokens.mean).toLocaleString() : '-'}
             </MeanValueTooltipCell>
           );
