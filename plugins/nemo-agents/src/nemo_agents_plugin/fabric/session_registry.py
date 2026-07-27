@@ -23,6 +23,7 @@ class FabricRuntimeSession:
     runtime: Runtime
     created_at: float
     last_accessed_at: float
+    closing: bool = False
     invocation_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
 
@@ -34,12 +35,17 @@ class FabricSessionAlreadyExistsError(ValueError):
     """Raised when a logical Fabric session ID is registered twice."""
 
 
+class FabricSessionRegistryClosedError(RuntimeError):
+    """Raised when registering a session after shutdown has started."""
+
+
 class FabricSessionRegistry:
     """Maintain the process-local mapping from Platform sessions to runtimes."""
 
     def __init__(self) -> None:
         self._sessions: dict[str, FabricRuntimeSession] = {}
         self._lock = asyncio.Lock()
+        self._closed = False
 
     async def register(
         self,
@@ -58,6 +64,8 @@ class FabricSessionRegistry:
         )
 
         async with self._lock:
+            if self._closed:
+                raise FabricSessionRegistryClosedError("Fabric session registry is closed.")
             if resolved_session_id in self._sessions:
                 raise FabricSessionAlreadyExistsError(f"Fabric session '{resolved_session_id}' is already registered.")
             self._sessions[resolved_session_id] = session
@@ -73,10 +81,42 @@ class FabricSessionRegistry:
             session.last_accessed_at = time.monotonic()
             return session
 
-    async def remove(self, session_id: str) -> FabricRuntimeSession | None:
-        """Remove and return a session without stopping its runtime."""
+    async def refresh_activity(self, session: FabricRuntimeSession) -> None:
+        """Refresh activity for a session that is still registered."""
         async with self._lock:
-            return self._sessions.pop(session_id, None)
+            if self._sessions.get(session.session_id) is session:
+                session.last_accessed_at = time.monotonic()
+
+    async def remove(self, session_id: str) -> FabricRuntimeSession | None:
+        """Mark a session as closing, then remove and return it."""
+        async with self._lock:
+            session = self._sessions.pop(session_id, None)
+            if session is not None:
+                session.closing = True
+            return session
+
+    async def remove_expired(self, *, idle_timeout_seconds: float) -> list[FabricRuntimeSession]:
+        """Remove inactive sessions that are not currently invoking."""
+        cutoff = time.monotonic() - idle_timeout_seconds
+        expired: list[FabricRuntimeSession] = []
+        async with self._lock:
+            for session_id, session in list(self._sessions.items()):
+                if session.last_accessed_at > cutoff or session.invocation_lock.locked():
+                    continue
+                session.closing = True
+                expired.append(session)
+                del self._sessions[session_id]
+        return expired
+
+    async def drain(self) -> list[FabricRuntimeSession]:
+        """Close the registry and remove all remaining sessions."""
+        async with self._lock:
+            self._closed = True
+            sessions = list(self._sessions.values())
+            self._sessions.clear()
+            for session in sessions:
+                session.closing = True
+            return sessions
 
     async def count(self) -> int:
         """Return the number of registered logical sessions."""

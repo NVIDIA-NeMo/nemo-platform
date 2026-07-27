@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 import sys
 import uuid
@@ -28,7 +29,14 @@ from nemo_agents_plugin.fabric.serving_models import (
     ChatCompletionResponse,
     ChatCompletionResponseMessage,
 )
-from nemo_agents_plugin.fabric.session_manager import FabricSessionManager, FabricSessionStartError
+from nemo_agents_plugin.fabric.session_manager import (
+    DEFAULT_IDLE_SESSION_TIMEOUT_SECONDS,
+    DEFAULT_MAX_CONCURRENT_INVOCATIONS,
+    DEFAULT_SESSION_CLEANUP_INTERVAL_SECONDS,
+    FabricSessionManager,
+    FabricSessionStartError,
+    FabricSessionStopError,
+)
 from nemo_agents_plugin.fabric.session_registry import FabricSessionNotFoundError, FabricSessionRegistry
 
 logger = logging.getLogger(__name__)
@@ -86,8 +94,37 @@ async def _validate_agent_config(config: AgentConfig, *, base_dir: Path) -> Any:
     return await validate_platform_agent_config(config, base_dir=base_dir)
 
 
-def create_fabric_serving_app(agent_config_path: str | Path) -> FastAPI:
+async def _run_idle_session_cleanup(
+    manager: FabricSessionManager,
+    *,
+    idle_timeout_seconds: float,
+    cleanup_interval_seconds: float,
+    shutdown_event: asyncio.Event,
+) -> None:
+    """Periodically expire inactive logical sessions until shutdown."""
+    while not shutdown_event.is_set():
+        try:
+            await asyncio.wait_for(shutdown_event.wait(), timeout=cleanup_interval_seconds)
+        except TimeoutError:
+            try:
+                await manager.expire_idle_sessions(idle_timeout_seconds=idle_timeout_seconds)
+            except Exception:
+                logger.exception("Failed to expire idle Fabric sessions.")
+
+
+def create_fabric_serving_app(
+    agent_config_path: str | Path,
+    *,
+    max_concurrent_invocations: int = DEFAULT_MAX_CONCURRENT_INVOCATIONS,
+    idle_session_timeout_seconds: float = DEFAULT_IDLE_SESSION_TIMEOUT_SECONDS,
+    session_cleanup_interval_seconds: float = DEFAULT_SESSION_CLEANUP_INTERVAL_SECONDS,
+) -> FastAPI:
     """Create a serving app that validates its agent definition at startup."""
+    if idle_session_timeout_seconds <= 0:
+        raise ValueError("idle_session_timeout_seconds must be greater than zero.")
+    if session_cleanup_interval_seconds <= 0:
+        raise ValueError("session_cleanup_interval_seconds must be greater than zero.")
+
     config_path = Path(agent_config_path).resolve()
 
     @asynccontextmanager
@@ -99,13 +136,29 @@ def create_fabric_serving_app(agent_config_path: str | Path) -> FastAPI:
         app.state.validation_result = validation_result
         session_registry = FabricSessionRegistry()
         app.state.session_registry = session_registry
-        app.state.session_manager = FabricSessionManager(
+        session_manager = FabricSessionManager(
             agent_config,
             base_dir=config_path.parent,
             session_registry=session_registry,
+            max_concurrent_invocations=max_concurrent_invocations,
+        )
+        app.state.session_manager = session_manager
+        cleanup_shutdown = asyncio.Event()
+        cleanup_task = asyncio.create_task(
+            _run_idle_session_cleanup(
+                session_manager,
+                idle_timeout_seconds=idle_session_timeout_seconds,
+                cleanup_interval_seconds=session_cleanup_interval_seconds,
+                shutdown_event=cleanup_shutdown,
+            )
         )
         logger.info("Validated Fabric-backed agent config at %s", config_path)
-        yield
+        try:
+            yield
+        finally:
+            cleanup_shutdown.set()
+            await cleanup_task
+            await session_manager.close_all_sessions()
 
     app = FastAPI(title="NeMo Agents Fabric Server", lifespan=lifespan)
 
@@ -129,6 +182,12 @@ def create_fabric_serving_app(agent_config_path: str | Path) -> FastAPI:
         invocation_request = _to_fabric_invocation_request(request, session_id=session.session_id)
         try:
             result = await app.state.session_manager.invoke_session(session, invocation_request)
+        except FabricSessionNotFoundError as error:
+            raise HTTPException(
+                status_code=404,
+                detail=str(error),
+                headers=_session_headers(session.session_id),
+            ) from error
         except FabricRuntimeTimeoutError as error:
             raise HTTPException(
                 status_code=504,
@@ -161,6 +220,16 @@ def create_fabric_serving_app(agent_config_path: str | Path) -> FastAPI:
         response.headers[SESSION_ID_HEADER] = session.session_id
         return completion
 
+    @app.delete("/v1/sessions/{session_id}", status_code=204)
+    async def close_session(session_id: str) -> Response:
+        try:
+            await app.state.session_manager.close_session(session_id)
+        except FabricSessionNotFoundError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except FabricSessionStopError as error:
+            raise HTTPException(status_code=502, detail=str(error)) from error
+        return Response(status_code=204)
+
     return app
 
 
@@ -170,13 +239,36 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--agent-config", required=True, type=Path, help="Path to an agent YAML config file.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, required=True)
+    parser.add_argument(
+        "--max-concurrent-invocations",
+        type=int,
+        default=DEFAULT_MAX_CONCURRENT_INVOCATIONS,
+        help="Maximum concurrent Fabric invocations; use 0 for unlimited.",
+    )
+    parser.add_argument(
+        "--idle-session-timeout-seconds",
+        type=float,
+        default=DEFAULT_IDLE_SESSION_TIMEOUT_SECONDS,
+        help="Seconds of inactivity before a logical session expires.",
+    )
+    parser.add_argument(
+        "--session-cleanup-interval-seconds",
+        type=float,
+        default=DEFAULT_SESSION_CLEANUP_INTERVAL_SECONDS,
+        help="Seconds between idle-session cleanup checks.",
+    )
     args = parser.parse_args(argv)
 
     import uvicorn
 
     logging.basicConfig(level=logging.INFO)
     uvicorn.run(
-        create_fabric_serving_app(args.agent_config),
+        create_fabric_serving_app(
+            args.agent_config,
+            max_concurrent_invocations=args.max_concurrent_invocations,
+            idle_session_timeout_seconds=args.idle_session_timeout_seconds,
+            session_cleanup_interval_seconds=args.session_cleanup_interval_seconds,
+        ),
         host=args.host,
         port=args.port,
         log_config=None,

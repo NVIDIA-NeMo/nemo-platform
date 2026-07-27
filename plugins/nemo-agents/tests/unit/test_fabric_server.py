@@ -3,9 +3,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -19,7 +20,11 @@ from nemo_agents_plugin.fabric.runtime import (
 )
 from nemo_agents_plugin.fabric.server import SESSION_ID_HEADER, create_fabric_serving_app
 from nemo_agents_plugin.fabric.serving_models import ChatCompletionRequest
-from nemo_agents_plugin.fabric.session_manager import FabricSessionManager, FabricSessionStartError
+from nemo_agents_plugin.fabric.session_manager import (
+    FabricSessionManager,
+    FabricSessionStartError,
+    FabricSessionStopError,
+)
 from nemo_agents_plugin.fabric.session_registry import FabricSessionNotFoundError, FabricSessionRegistry
 
 
@@ -79,6 +84,31 @@ def test_startup_loads_and_validates_agent_config(
     assert mock_validate_agent_config == [(app.state.agent_config, tmp_path)]
 
 
+def test_shutdown_stops_all_registered_runtimes(
+    tmp_path: Path,
+    mock_validate_agent_config: list[tuple[AgentConfig, Path]],
+) -> None:
+    class _Runtime:
+        def __init__(self) -> None:
+            self.stop_calls = 0
+
+        async def stop(self) -> None:
+            self.stop_calls += 1
+
+    runtime = _Runtime()
+    app = create_fabric_serving_app(_write_agent_config(tmp_path))
+
+    with TestClient(app) as client:
+        registry = app.state.session_registry
+
+        async def register_runtime() -> None:
+            await registry.register(cast(Any, runtime), session_id="session-1")
+
+        client.portal.call(register_runtime)
+
+    assert runtime.stop_calls == 1
+
+
 def test_startup_fails_for_invalid_agent_config(
     tmp_path: Path,
     mock_validate_agent_config: list[tuple[AgentConfig, Path]],
@@ -90,6 +120,15 @@ def test_startup_fails_for_invalid_agent_config(
         pass
 
     assert mock_validate_agent_config == []
+
+
+def test_rejects_non_positive_session_cleanup_settings(tmp_path: Path) -> None:
+    config_path = _write_agent_config(tmp_path)
+
+    with pytest.raises(ValueError, match="idle_session_timeout_seconds"):
+        create_fabric_serving_app(config_path, idle_session_timeout_seconds=0)
+    with pytest.raises(ValueError, match="session_cleanup_interval_seconds"):
+        create_fabric_serving_app(config_path, session_cleanup_interval_seconds=0)
 
 
 def test_chat_completion_without_session_id_opens_and_returns_session(
@@ -289,3 +328,77 @@ def test_chat_completion_request_translates_final_user_turn() -> None:
 
     assert invocation_request.input == "Say hello."
     assert invocation_request.caller_context == {"session_id": "session-1"}
+
+
+def test_close_session_stops_registered_runtime(
+    tmp_path: Path,
+    mock_validate_agent_config: list[tuple[AgentConfig, Path]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_fabric_serving_app(_write_agent_config(tmp_path))
+    close_calls: list[str] = []
+
+    async def close_session(session_id: str) -> None:
+        close_calls.append(session_id)
+
+    with TestClient(app) as client:
+        monkeypatch.setattr(app.state.session_manager, "close_session", close_session)
+        response = client.delete("/v1/sessions/session-1")
+
+    assert response.status_code == 204
+    assert response.content == b""
+    assert close_calls == ["session-1"]
+
+
+@pytest.mark.parametrize(
+    ("error", "status_code"),
+    [
+        (FabricSessionNotFoundError("missing session"), 404),
+        (FabricSessionStopError("shutdown failed"), 502),
+    ],
+)
+def test_close_session_maps_errors(
+    tmp_path: Path,
+    mock_validate_agent_config: list[tuple[AgentConfig, Path]],
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+    status_code: int,
+) -> None:
+    app = create_fabric_serving_app(_write_agent_config(tmp_path))
+
+    async def close_session(session_id: str) -> None:
+        raise error
+
+    with TestClient(app) as client:
+        monkeypatch.setattr(app.state.session_manager, "close_session", close_session)
+        response = client.delete("/v1/sessions/session-1")
+
+    assert response.status_code == status_code
+    assert response.json() == {"detail": str(error)}
+
+
+@pytest.mark.asyncio
+async def test_idle_cleanup_runs_periodically_until_shutdown() -> None:
+    cleanup_calls: list[float] = []
+    cleanup_ran = asyncio.Event()
+    shutdown = asyncio.Event()
+
+    class _Manager:
+        async def expire_idle_sessions(self, *, idle_timeout_seconds: float) -> int:
+            cleanup_calls.append(idle_timeout_seconds)
+            cleanup_ran.set()
+            return 0
+
+    cleanup = asyncio.create_task(
+        server._run_idle_session_cleanup(
+            cast(Any, _Manager()),
+            idle_timeout_seconds=30.0,
+            cleanup_interval_seconds=0.01,
+            shutdown_event=shutdown,
+        )
+    )
+    await asyncio.wait_for(cleanup_ran.wait(), timeout=1)
+    shutdown.set()
+    await cleanup
+
+    assert cleanup_calls == [30.0]
