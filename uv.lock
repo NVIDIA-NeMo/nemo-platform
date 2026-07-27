@@ -39,6 +39,7 @@ members = [
     "nemo-experimentalist-plugin",
     "nemo-guardrails-plugin",
     "nemo-insights-plugin",
+    "nemo-iron-swarm-plugin",
     "nemo-nb",
     "nemo-optimization-plugin",
     "nemo-platform",
@@ -4631,6 +4632,45 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "typer", specifier = ">=0.20.0" },
     { name = "tzdata", specifier = "==2026.2" },
+]
+
+[[package]]
+name = "nemo-iron-swarm-plugin"
+version = "0.1.0"
+source = { editable = "plugins/nemo-iron-swarm" }
+dependencies = [
+    { name = "httpx", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-agents-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-platform", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "pydantic", extra = ["email"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "pyyaml", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "typer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "pytest-asyncio", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "ruff", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "nemo-agents-plugin", editable = "plugins/nemo-agents" },
+    { name = "nemo-platform", editable = "packages/nemo_platform" },
+    { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
+    { name = "pydantic", specifier = ">=2.10.6" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "typer", specifier = ">=0.20.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.3.4" },
+    { name = "pytest-asyncio", specifier = ">=0.25.3" },
+    { name = "ruff", specifier = ">=0.11.8" },
 ]
 
 [[package]]

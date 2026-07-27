@@ -19,6 +19,7 @@ import {
   GUARDRAILS_ENABLED,
   INFERENCE_PROVIDER_ENABLED,
   INTAKE_ENABLED,
+  IRON_SWARM_ENABLED,
   JOBS_ENABLED,
   MEMBERS_ENABLED,
   MODEL_COMPARE_ENABLED,
@@ -71,6 +72,9 @@ export const gateDataDesignerRoutes = (routes: RouteObject | RouteObject[]) =>
 
 export const gateAnonymizerRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(ANONYMIZER_ENABLED, routes);
+
+export const gateIronSwarmRoutes = (routes: RouteObject | RouteObject[]) =>
+  gateRoutes(IRON_SWARM_ENABLED, routes);
 
 export const gateEvaluationRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(EVALUATOR_ENABLED, routes);
@@ -595,6 +599,32 @@ export const getNewAnonymizerRoute = (workspace: string) => {
 
 export const getAnonymizerJobRoute = (workspace: string, anonymizerJobName: string) => {
   return generatePath(ROUTES.workspace.anonymizerJob, { workspace, anonymizerJobName });
+};
+
+export const getIronSwarmRunListRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.ironSwarmRunList, { workspace });
+};
+
+export const getIronSwarmRunDetailsRoute = (workspace: string, ironSwarmRunName: string) => {
+  return generatePath(ROUTES.workspace.ironSwarmRunDetails, { workspace, ironSwarmRunName });
+};
+
+export const getIronSwarmManifestListRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.ironSwarmManifestList, { workspace });
+};
+
+export const getNewIronSwarmManifestRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.ironSwarmManifestNew, { workspace });
+};
+
+export const getIronSwarmManifestDetailRoute = (
+  workspace: string,
+  ironSwarmManifestName: string
+) => {
+  return generatePath(ROUTES.workspace.ironSwarmManifestDetail, {
+    workspace,
+    ironSwarmManifestName,
+  });
 };
 
 export const getModelChatRoute = (model: NamedEntityRef) => {

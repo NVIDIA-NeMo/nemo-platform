@@ -61,6 +61,12 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
     apiEnvKeys: ['VITE_PLATFORM_BASE_URL'],
     zod: true,
   },
+  'iron-swarm': {
+    path: 'iron-swarm',
+    url: `../../../../plugins/nemo-iron-swarm/openapi/openapi.yaml`,
+    apiEnvKeys: ['VITE_PLATFORM_BASE_URL'],
+    zod: true,
+  },
 };
 
 export const serviceToConfig = {
@@ -72,6 +78,7 @@ export const serviceToConfig = {
   'entity-store': 'nemoMicroservices',
   evaluation: 'nemoMicroservices',
   guardrails: 'nemoMicroservices',
+  'iron-swarm': 'nemoMicroservices',
   intake: 'nemoMicroservices',
   jobs: 'nemoMicroservices',
   'safe-synthesizer': 'nemoMicroservices',

@@ -45,6 +45,7 @@ export const EXPERIMENT_ENABLED = featureFlags.experiment !== false;
 export const FILESET_DETAILS_ENABLED = featureFlags.filesetDetailsEnabled !== false;
 export const INFERENCE_PROVIDER_ENABLED = featureFlags.inferenceProviderEnabled !== false;
 export const INTAKE_ENABLED = featureFlags.intakeEnabled !== false;
+export const IRON_SWARM_ENABLED = featureFlags.ironSwarmEnabled !== false;
 export const JOBS_ENABLED = featureFlags.jobsEnabled !== false;
 export const MEMBERS_ENABLED = featureFlags.membersEnabled !== false;
 export const MODEL_COMPARE_ENABLED = featureFlags.modelCompareEnabled !== false;

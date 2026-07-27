@@ -95,6 +95,11 @@ ENV_MAPPINGS: list[EnvMapping] = [
         default="true",
     ),
     EnvMapping(
+        marker="STUDIO_UI_VITE_FF_IRON_SWARM_ENABLED",
+        config_path="studio.feature_flags.iron_swarm_enabled",
+        default="false",
+    ),
+    EnvMapping(
         marker="STUDIO_UI_VITE_FF_DEPLOYMENTS_ENABLED",
         config_path="studio.feature_flags.deployments_enabled",
         default="false",

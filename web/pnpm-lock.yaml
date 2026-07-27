@@ -721,6 +721,9 @@ importers:
       react:
         specifier: 'catalog:'
         version: 19.2.7
+      react-diff-viewer-continued:
+        specifier: ^4.2.2
+        version: 4.4.0(@types/react@19.2.14)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       react-dom:
         specifier: 'catalog:'
         version: 19.2.7(react@19.2.7)
@@ -1228,6 +1231,9 @@ packages:
 
   '@emotion/cache@11.14.0':
     resolution: {integrity: sha512-L/B1lc/TViYk4DcpGxtAVbx0ZyiKM5ktoIyafGkH6zg/tj+mA+NE//aPYKG0k8kCHSHVJrpLpcAlOBEXQ3SavA==}
+
+  '@emotion/css@11.13.5':
+    resolution: {integrity: sha512-wQdD0Xhkn3Qy2VNcIzbLP9MR8TafI0MJb7BEAXKp+w4+XqErksWR4OXomuDzPsN4InLdGhVe6EYcn2ZIUCpB8w==}
 
   '@emotion/hash@0.9.2':
     resolution: {integrity: sha512-MyqliTZGuOm3+5ZRSaaBGP3USLw6+EGykkwZns2EPC5g8jJ4z9OrdZY9apkl3+UP9+sdz76YYkwCKP5gh8iY3g==}
@@ -3988,6 +3994,9 @@ packages:
   '@types/postcss-prefix-selector@1.16.3':
     resolution: {integrity: sha512-YZLPWRkJIrYjwaqojVDXzaRCAEYslRAm8Shznwwn+ZFA4iKQR4LZlS3d+ZMVteFz4iyQnngZZG7k/GIzV1f3mQ==}
 
+  '@types/prismjs@1.26.6':
+    resolution: {integrity: sha512-vqlvI7qlMvcCBbVe0AKAb4f97//Hy0EBTaiW8AalRnG/xAN5zOiWWyrNqNXeq8+KAuvRewjCVY1+IPxk4RdNYw==}
+
   '@types/prop-types@15.7.15':
     resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
 
@@ -5103,6 +5112,10 @@ packages:
   devlop@1.1.0:
     resolution: {integrity: sha512-RWmIqhcFf1lRYBvNmr7qTNuyCt/7/ns2jbpp1+PalgE/rDQcBT0fioSMUpJ93irlUhC5hrg4cYqe6U+0ImW0rA==}
 
+  diff@9.0.0:
+    resolution: {integrity: sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw==}
+    engines: {node: '>=0.3.1'}
+
   doctrine@3.0.0:
     resolution: {integrity: sha512-yS+Q5i3hBf7GBkd4KG8a7eBNNWNGLTaEwwYWUijIYM7zrlYDM0BFXHjjPWlWZ1Rg7UaddZeIDmi9jF3HmqiQ2w==}
     engines: {node: '>=6.0.0'}
@@ -5646,6 +5659,9 @@ packages:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
 
+  hast-util-parse-selector@4.0.0:
+    resolution: {integrity: sha512-wkQCkSYoOGCRKERFWcxMVMOcYE2K1AaNLU8DXS9arxnLOUEWbOXKXiJUNzEpqZ3JOKpnha3jkFrumEjVliDe7A==}
+
   hast-util-to-html@9.0.5:
     resolution: {integrity: sha512-OguPdidb+fbHQSU4Q4ZiLKnzWo8Wwsf5bZfbvu7//a9oTYoqD/fWpe96NuHkoS9h0ccGOTe0C4NGXdtS0iObOw==}
 
@@ -5654,6 +5670,9 @@ packages:
 
   hast-util-whitespace@3.0.0:
     resolution: {integrity: sha512-88JUN06ipLwsnv+dVn+OIYOvAuvBMy/Qoi6O7mQHxdPXpjy+Cd6xRkWwux7DKO+4sYILtLBRIKgsdpS2gQc7qw==}
+
+  hastscript@9.0.1:
+    resolution: {integrity: sha512-g7df9rMFX/SPi34tyGCyUBREQoKkapwdY/T04Qn9TDWfHhAYt4/I0gMVirzK5wEzeUqIjEB+LXC/ypb7Aqno5w==}
 
   he@1.2.0:
     resolution: {integrity: sha512-F/1DnUGPopORZi0ni+CvrCgHQ5FyEAHRLSApuYWMmrbSwoN2Mn/7k+Gl38gJnR7yyDZk6WLXwiGod1JOWNDKGw==}
@@ -6297,6 +6316,9 @@ packages:
   mdurl@2.0.0:
     resolution: {integrity: sha512-Lf+9+2r+Tdp5wXDXC4PcIBjTDtq4UKjCPMQhKIuzpJNW0b96kVqSwW0bT7FhRSfmAiFYgP+SCRvdrDozfh0U5w==}
 
+  memoize-one@6.0.0:
+    resolution: {integrity: sha512-rkpe71W0N0c0Xz6QD0eJETuWAJGnJ9afsl1srmwPrI+yBCkge5EycXXbYRyvL29zZVUWQCY7InPRCv3GDXuZNw==}
+
   micromark-core-commonmark@2.0.3:
     resolution: {integrity: sha512-RDBrHEMSxVFLg6xvnXmb1Ayr2WzLAWjeSATAoxwKYJV94TeNavgoIdA0a9ytzDSVzBy2YKFK+emCPOEibLeCrg==}
 
@@ -6778,6 +6800,13 @@ packages:
     peerDependencies:
       react: '>=16.8.0'
 
+  react-diff-viewer-continued@4.4.0:
+    resolution: {integrity: sha512-ezDte5YNLLLfTuaGaF2mV/8i4FRX7GdxnuA5zt7x1QjwVQHtBY0+NYzHJBwEPboOQNSx9sDU9apH2GfKoDYsyQ==}
+    engines: {node: '>= 16'}
+    peerDependencies:
+      react: ^15.3.0 || ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+      react-dom: ^15.3.0 || ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
   react-docgen-typescript@2.4.0:
     resolution: {integrity: sha512-ZtAp5XTO5HRzQctjPU0ybY0RRCQO19X/8fxn3w7y2VVTUbGHDKULPTL4ky3vB05euSgG5NpALhEhDPvQ56wvXg==}
     peerDependencies:
@@ -6917,6 +6946,9 @@ packages:
   reflect.getprototypeof@1.0.10:
     resolution: {integrity: sha512-00o4I+DVrefhv+nX0ulyi3biSHCPDe+yLv5o/p6d/UVlirijB8E16FtfwSAi4g3tcqrQ4lRAqQSoFEZJehYEcw==}
     engines: {node: '>= 0.4'}
+
+  refractor@5.0.0:
+    resolution: {integrity: sha512-QXOrHQF5jOpjjLfiNk5GFnWhRXvxjUVnlFxkeDmewR5sXkr3iM46Zo+CnRR8B+MDVqkULW4EcLVcRBNOPXHosw==}
 
   regex-recursion@6.0.2:
     resolution: {integrity: sha512-0YCaSCq2VRIebiaUviZNs0cBz1kg5kVS2UKUfNIx8YVs1cN3AV7NTctO5FOKBA+UT2BPJIWZauYHPqJODG50cg==}
@@ -8363,7 +8395,6 @@ snapshots:
       stylis: 4.2.0
     transitivePeerDependencies:
       - supports-color
-    optional: true
 
   '@emotion/cache@11.14.0':
     dependencies:
@@ -8372,6 +8403,16 @@ snapshots:
       '@emotion/utils': 1.4.2
       '@emotion/weak-memoize': 0.4.0
       stylis: 4.2.0
+
+  '@emotion/css@11.13.5':
+    dependencies:
+      '@emotion/babel-plugin': 11.13.5
+      '@emotion/cache': 11.14.0
+      '@emotion/serialize': 1.3.3
+      '@emotion/sheet': 1.4.0
+      '@emotion/utils': 1.4.2
+    transitivePeerDependencies:
+      - supports-color
 
   '@emotion/hash@0.9.2': {}
 
@@ -8397,7 +8438,6 @@ snapshots:
       '@types/react': 19.2.14
     transitivePeerDependencies:
       - supports-color
-    optional: true
 
   '@emotion/serialize@1.3.3':
     dependencies:
@@ -8430,7 +8470,6 @@ snapshots:
   '@emotion/use-insertion-effect-with-fallbacks@1.2.0(react@19.2.7)':
     dependencies:
       react: 19.2.7
-    optional: true
 
   '@emotion/utils@1.4.2': {}
 
@@ -11048,12 +11087,13 @@ snapshots:
     dependencies:
       '@types/node': 25.5.0
 
-  '@types/parse-json@4.0.2':
-    optional: true
+  '@types/parse-json@4.0.2': {}
 
   '@types/postcss-prefix-selector@1.16.3':
     dependencies:
       postcss: 8.5.25
+
+  '@types/prismjs@1.26.6': {}
 
   '@types/prop-types@15.7.15': {}
 
@@ -11784,7 +11824,6 @@ snapshots:
       '@babel/runtime': 7.29.7
       cosmiconfig: 7.1.0
       resolve: 1.22.12
-    optional: true
 
   bail@2.0.2: {}
 
@@ -11960,8 +11999,7 @@ snapshots:
       tree-kill: 1.2.2
       yargs: 18.0.0
 
-  convert-source-map@1.9.0:
-    optional: true
+  convert-source-map@1.9.0: {}
 
   convert-source-map@2.0.0: {}
 
@@ -11976,7 +12014,6 @@ snapshots:
       parse-json: 5.2.0
       path-type: 4.0.0
       yaml: 1.10.3
-    optional: true
 
   cosmiconfig@8.3.6(typescript@7.0.2):
     dependencies:
@@ -12167,6 +12204,8 @@ snapshots:
   devlop@1.1.0:
     dependencies:
       dequal: 2.0.3
+
+  diff@9.0.0: {}
 
   doctrine@3.0.0:
     dependencies:
@@ -12682,8 +12721,7 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  find-root@1.1.0:
-    optional: true
+  find-root@1.1.0: {}
 
   find-up@5.0.0:
     dependencies:
@@ -12877,6 +12915,10 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
+  hast-util-parse-selector@4.0.0:
+    dependencies:
+      '@types/hast': 3.0.4
+
   hast-util-to-html@9.0.5:
     dependencies:
       '@types/hast': 3.0.4
@@ -12915,6 +12957,14 @@ snapshots:
     dependencies:
       '@types/hast': 3.0.4
 
+  hastscript@9.0.1:
+    dependencies:
+      '@types/hast': 3.0.4
+      comma-separated-tokens: 2.0.3
+      hast-util-parse-selector: 4.0.0
+      property-information: 7.1.0
+      space-separated-tokens: 2.0.2
+
   he@1.2.0: {}
 
   headers-polyfill@4.0.3: {}
@@ -12922,7 +12972,6 @@ snapshots:
   hoist-non-react-statics@3.3.2:
     dependencies:
       react-is: 16.13.1
-    optional: true
 
   html-encoding-sniffer@6.0.0:
     dependencies:
@@ -13619,6 +13668,8 @@ snapshots:
 
   mdurl@2.0.0: {}
 
+  memoize-one@6.0.0: {}
+
   micromark-core-commonmark@2.0.3:
     dependencies:
       decode-named-character-reference: 1.3.0
@@ -14214,7 +14265,7 @@ snapshots:
 
   parse-json@5.2.0:
     dependencies:
-      '@babel/code-frame': 7.29.0
+      '@babel/code-frame': 7.29.7
       error-ex: 1.3.4
       json-parse-even-better-errors: 2.3.1
       lines-and-columns: 1.2.4
@@ -14376,6 +14427,21 @@ snapshots:
       date-fns: 4.1.0
       date-fns-jalali: 4.1.0-0
       react: 19.2.7
+
+  react-diff-viewer-continued@4.4.0(@types/react@19.2.14)(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
+    dependencies:
+      '@emotion/css': 11.13.5
+      '@emotion/react': 11.14.0(@types/react@19.2.14)(react@19.2.7)
+      classnames: 2.5.1
+      diff: 9.0.0
+      js-yaml: 4.2.0
+      memoize-one: 6.0.0
+      react: 19.2.7
+      react-dom: 19.2.7(react@19.2.7)
+      refractor: 5.0.0
+    transitivePeerDependencies:
+      - '@types/react'
+      - supports-color
 
   react-docgen-typescript@2.4.0(typescript@7.0.2):
     dependencies:
@@ -14547,6 +14613,13 @@ snapshots:
       get-intrinsic: 1.3.0
       get-proto: 1.0.1
       which-builtin-type: 1.2.1
+
+  refractor@5.0.0:
+    dependencies:
+      '@types/hast': 3.0.4
+      '@types/prismjs': 1.26.6
+      hastscript: 9.0.1
+      parse-entities: 4.0.2
 
   regex-recursion@6.0.2:
     dependencies:
@@ -14862,8 +14935,7 @@ snapshots:
 
   source-map-js@1.2.1: {}
 
-  source-map@0.5.7:
-    optional: true
+  source-map@0.5.7: {}
 
   source-map@0.6.1: {}
 
@@ -15695,8 +15767,7 @@ snapshots:
 
   yallist@3.1.1: {}
 
-  yaml@1.10.3:
-    optional: true
+  yaml@1.10.3: {}
 
   yaml@2.8.3: {}
 

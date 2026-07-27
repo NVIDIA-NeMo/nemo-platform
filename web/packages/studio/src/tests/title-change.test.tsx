@@ -28,6 +28,8 @@ const pathParams = {
   [RP.dataDesignerJobName]: '',
   [RP.sessionId]: 'session-1',
   [RP.anonymizerJobName]: 'test-anonymizer-job',
+  [RP.ironSwarmRunName]: '',
+  [RP.ironSwarmManifestName]: '',
   [RP.deploymentName]: '',
   [RP.deploymentPanelView]: '',
   [RP.agentName]: '',
