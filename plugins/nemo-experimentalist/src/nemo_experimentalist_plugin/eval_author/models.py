@@ -35,6 +35,14 @@ class EvalAuthorResult(BaseModel):
     validation_dataset: Dataset
     insight_suite: Dataset | None = Field(
         default=None,
-        description="Materialized Insight dataset for immediate use by the optimization loop.",
+        description="Finalized content-addressed Insight dataset for use by the optimization loop.",
+    )
+    insight_suite_identity: str | None = Field(
+        default=None,
+        description="SHA-256 identity of the finalized Insight task and verifier content.",
+    )
+    insight_suite_artifact_ref: str | None = Field(
+        default=None,
+        description="Portable reference resolving to the immutable finalized Insight suite.",
     )
     summary: str
