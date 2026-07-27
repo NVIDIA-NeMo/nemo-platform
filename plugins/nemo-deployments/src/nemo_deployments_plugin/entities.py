@@ -295,6 +295,12 @@ class DeploymentConfig(NemoEntity, entity_type=ENTITY_TYPE_DEPLOYMENT_CONFIG):
 
     model_config = {"populate_by_name": True}
 
+    @model_validator(mode="after")
+    def _validate_auth_proxy_identity(self) -> DeploymentConfig:
+        if self.auth_proxy_sidecar and not self.auth_proxy_sidecar_identity:
+            raise ValueError("auth_proxy_sidecar_identity is required when auth_proxy_sidecar is True")
+        return self
+
 
 class Deployment(NemoEntity, entity_type=ENTITY_TYPE_DEPLOYMENT):
     """Desired and observed deployment state."""

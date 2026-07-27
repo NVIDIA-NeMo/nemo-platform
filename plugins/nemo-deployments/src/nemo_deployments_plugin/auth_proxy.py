@@ -37,7 +37,6 @@ _NATIVE_SIDECAR_RESTART_POLICY: RestartPolicy = "Always"
 _AUTH_PROXY_PRINCIPAL_ENVVAR = "NMP_AUTH_PROXY_PRINCIPAL"
 _AUTH_PROXY_HOST_ENVVAR = "NMP_AUTH_PROXY_HOST"
 _AUTH_PROXY_PORT_ENVVAR = "NMP_AUTH_PROXY_PORT"
-_DEFAULT_IDENTITY = "agents"
 
 
 def auth_proxy_port() -> int:
@@ -83,7 +82,8 @@ def build_auth_proxy_container(config: DeploymentConfig, *, docker: bool = False
         return None
 
     deployments_config = get_nemo_config(DeploymentsConfig)
-    identity = config.auth_proxy_sidecar_identity or _DEFAULT_IDENTITY
+    # Guaranteed present: DeploymentConfig validates identity when the sidecar is enabled.
+    identity = config.auth_proxy_sidecar_identity
     port = deployments_config.auth_proxy_port
     image = deployments_config.auth_proxy_image or get_qualified_image(deployments_config.auth_proxy_image_name)
 

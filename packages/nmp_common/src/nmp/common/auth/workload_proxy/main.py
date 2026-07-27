@@ -38,37 +38,28 @@ AUTH_PROXY_PORT_ENVVAR = "NMP_AUTH_PROXY_PORT"
 AUTH_PROXY_PRINCIPAL_ENVVAR = "NMP_AUTH_PROXY_PRINCIPAL"
 DEFAULT_AUTH_PROXY_HOST = "127.0.0.1"
 DEFAULT_AUTH_PROXY_PORT = 8090
-DEFAULT_AUTH_PROXY_PRINCIPAL = "agents"
 
 _READ_TIMEOUT_ENVVAR = "NMP_AUTH_PROXY_READ_TIMEOUT"
 _PRINCIPAL_ID_HEADER = "x-nmp-principal-id"
 
-# Hop-by-hop headers must not be forwarded (RFC 7230). We also drop the
-# workload's own authorization and principal headers (we set the principal), and
-# host/content-length (rewritten by httpx / chunked transfer).
+# Minimal request-header sanitization. We only drop what would be actively wrong:
+# - the workload's own credential / principal header (we set the identity), so it
+#   can't be spoofed or conflict with what we stamp;
+# - host and content-length, which httpx recomputes for the upstream request
+#   (a stale value corrupts routing / the body).
 _STRIP_REQUEST_HEADERS = frozenset(
     {
         "host",
-        "connection",
-        "keep-alive",
-        "proxy-authenticate",
-        "proxy-authorization",
-        "te",
-        "trailers",
-        "transfer-encoding",
-        "upgrade",
-        "authorization",
         "content-length",
+        "authorization",
         _PRINCIPAL_ID_HEADER,
-        "x-nmp-principal-on-behalf-of",
     }
 )
+# We stream the response, so the upstream's framing headers no longer apply.
 _STRIP_RESPONSE_HEADERS = frozenset(
     {
-        "connection",
-        "keep-alive",
-        "transfer-encoding",
         "content-length",
+        "transfer-encoding",
     }
 )
 
@@ -127,7 +118,9 @@ def build_app(*, base_url: str, principal: str) -> FastAPI:
 def run(parent_stop_signal: threading.Event | None = None) -> None:
     """Sidecar entrypoint. Serves the loopback auth-proxy until stopped."""
     base_url = _upstream_base_url()
-    principal = os.environ.get(AUTH_PROXY_PRINCIPAL_ENVVAR, DEFAULT_AUTH_PROXY_PRINCIPAL)
+    principal = os.environ.get(AUTH_PROXY_PRINCIPAL_ENVVAR)
+    if not principal:
+        raise RuntimeError(f"{AUTH_PROXY_PRINCIPAL_ENVVAR} is required for the auth-proxy sidecar")
     host = os.environ.get(AUTH_PROXY_HOST_ENVVAR, DEFAULT_AUTH_PROXY_HOST)
     port = int(os.environ.get(AUTH_PROXY_PORT_ENVVAR, str(DEFAULT_AUTH_PROXY_PORT)))
     app = build_app(base_url=base_url, principal=principal)
