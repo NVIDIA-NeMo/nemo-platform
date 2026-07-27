@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { AgentEvaluateJob } from '@nemo/sdk/generated/evaluator/schema';
+import type { AgentEvaluateJob, AgentEvalResult } from '@nemo/sdk/generated/evaluator/schema';
 import {
   baselineForComparisons,
   candidatesForComparisons,
@@ -125,11 +125,13 @@ describe('comparison score helpers', () => {
         workspace: 'default',
         spec: { benchmark: { eval_config_fileset: 'other-eval' } },
       },
-    ] as AgentEvaluateJob[];
+    ] as unknown as AgentEvaluateJob[];
 
     const comparisons = comparisonsForEvalConfig(
       jobs,
-      new Map([['baseline-run', { name: 'baseline-run', scores: { scores: [] } }]]),
+      new Map([
+        ['baseline-run', { name: 'baseline-run', scores: { scores: [] } }],
+      ]) as unknown as Map<string, AgentEvalResult>,
       'support-eval'
     );
 
