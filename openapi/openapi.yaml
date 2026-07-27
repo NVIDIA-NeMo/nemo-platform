@@ -10172,7 +10172,7 @@ components:
           type: string
           title: Volume Permissions Image
           description: Docker image used to set permissions on the volume
-          default: busybox
+          default: docker.io/library/busybox:stable
         additional_volume_mounts:
           items:
             $ref: '#/components/schemas/DockerVolumeMount'
@@ -13177,7 +13177,7 @@ components:
           type: string
           title: Volume Permissions Image
           description: Image used to set volume permissions
-          default: busybox
+          default: docker.io/library/busybox:stable
         additional_volumes:
           items:
             $ref: '#/components/schemas/KubernetesVolume'
