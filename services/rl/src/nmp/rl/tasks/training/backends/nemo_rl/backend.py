@@ -127,12 +127,12 @@ class NemoRLBackend(TrainingBackend):
         # Environment overrides the driver subprocess inherits. We snapshot and
         # restore them (below) so a reused worker process doesn't leak this run's
         # values — e.g. a stale MLFLOW_URI — into a subsequent run.
-        maybe_set_nccl_ib_hca()
         env_overrides = {
             "BASE_LOG_DIR": str(workspace_dir),
             "GPUS_PER_NODE": str(customizer_config.parallelism.num_gpus_per_node),
         }
-        env_overrides.update(get_nccl_ib_env())
+        if customizer_config.parallelism.num_nodes > 1:
+            env_overrides.update(get_nccl_ib_env())
         # MLflow integration (if configured)
         if customizer_config.integrations and customizer_config.integrations.mlflow:
             mlflow_config = customizer_config.integrations.mlflow

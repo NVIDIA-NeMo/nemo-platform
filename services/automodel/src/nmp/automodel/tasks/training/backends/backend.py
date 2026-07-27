@@ -72,7 +72,6 @@ class AutomodelBackend:
         # Note: The progress parameter is not passed to run_training_with_customizer_recipe
         # because progress reporting now happens inside the subprocess via
         # TrainingProgressCallback using environment variables.
-        maybe_set_nccl_ib_hca()
         command = ["torchrun"]
         command.extend(generate_torchrun_flags_from_env())
         command.extend(
@@ -108,7 +107,8 @@ class AutomodelBackend:
         start_time = time.time()
 
         training_env = os.environ.copy()
-        training_env.update(get_nccl_ib_env())
+        if customizer_config.parallelism.num_nodes > 1:
+            training_env.update(get_nccl_ib_env())
         training_process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
