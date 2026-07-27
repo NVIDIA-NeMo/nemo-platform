@@ -16,7 +16,6 @@ _ALLOWED_RAW_CLIENT_IMPORTS = {
     "service.py",
     "spans/annotations_repository.py",
     "spans/api/dependencies.py",
-    "spans/evaluation_session_repository.py",
     "spans/evaluator_results_repository.py",
     "spans/span_repository.py",
     "spans/trace_repository.py",

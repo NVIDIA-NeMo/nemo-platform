@@ -75,3 +75,9 @@ class ClickHouseExecutor:
         columns: Sequence[str] = result.column_names
         rows: Sequence[Sequence[Any]] = result.result_rows
         return [dict(zip(columns, row, strict=True)) for row in rows]
+
+    async def fetch_scalar(self, query: ClickHouseQuery) -> Any | None:
+        """Return the first column of the first row, or ``None`` when no row exists."""
+
+        rows = await self.fetch_all(query)
+        return next(iter(rows[0].values())) if rows else None

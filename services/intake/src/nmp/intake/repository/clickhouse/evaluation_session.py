@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""ClickHouse repository for per-session rows of an Evaluation.
+"""ClickHouse implementation of per-session Evaluation reads.
 
 Returns one row per ingested session (test case execution), using ``trace_index``
 for root/session membership and per-session aggregates from all spans (tokens +
@@ -10,18 +10,22 @@ cost), plus per-evaluator session-mean scores from ``evaluator_results``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any
 
-from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
+from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor, ClickHouseQuery
+from nmp.intake.repository.clickhouse.tables import ClickHouseTable
+from nmp.intake.repository.evaluation_session import (
+    EvaluationSessionPage,
+    EvaluationSessionRepository,
+    EvaluationSessionRow,
+    MetricSortTooLargeError,
+)
 from nmp.intake.spans.domain import IntakeResponseMode, SpanStatus
 from nmp.intake.spans.span_attribute_catalog import COST_SCALE, SpanAttributeField, spec_for_field
 from nmp.intake.spans.storage import (
     float_or_none,
     int_or_none,
     normalize_span_status,
-    result_rows,
     str_or_none,
     text_query_parameters,
     text_select_for_mode,
@@ -77,51 +81,9 @@ _SORT_EXPR_FINAL: dict[str, str] = {
 _MAX_METRIC_SORT_SESSIONS = 10_000
 
 
-class MetricSortTooLargeError(Exception):
-    """Raised when a cost/tokens sort is requested on more sessions than the pre-metrics cap allows.
-
-    This is a domain exception (not HTTPException) so the repository stays HTTP-agnostic.
-    The endpoint catches it and converts it to 413.
-    """
-
-    def __init__(self, total: int, limit: int) -> None:
-        self.total = total
-        self.limit = limit
-        super().__init__(f"Metric sort requested on {total} sessions, limit is {limit}")
-
-
-@dataclass(frozen=True)
-class EvaluationSessionRow:
-    """One ingested session of an Evaluation."""
-
-    workspace: str
-    evaluation_name: str
-    session_id: str
-    test_case_id: str | None
-    trace_id: str
-    root_span_id: str
-    started_at: datetime
-    ended_at: datetime | None
-    latency_ms: float | None
-    status: SpanStatus
-    input: str | None
-    output: str | None
-    input_tokens: int | None
-    output_tokens: int | None
-    cached_tokens: int | None
-    cost_total_usd: float | None
-    evaluator_scores: dict[str, float] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class EvaluationSessionPage:
-    rows: list[EvaluationSessionRow]
-    total: int
-
-
-class EvaluationSessionRepository:
-    def __init__(self, client: ClickHouseSpanClient) -> None:
-        self._client = client
+class ClickHouseEvaluationSessionRepository(EvaluationSessionRepository):
+    def __init__(self, executor: ClickHouseExecutor) -> None:
+        self._executor = executor
 
     async def list_sessions(
         self,
@@ -135,9 +97,9 @@ class EvaluationSessionRepository:
         mode: IntakeResponseMode,
         sort_keys: list[tuple[str, bool]] | None = None,
     ) -> EvaluationSessionPage:
-        trace_index_table = self._client.table("trace_index")
-        spans_table = self._client.table("spans")
-        evaluator_results_table = self._client.table("evaluator_results")
+        trace_index_table = self._executor.table(ClickHouseTable.TRACE_INDEX)
+        spans_table = self._executor.table(ClickHouseTable.SPANS)
+        evaluator_results_table = self._executor.table(ClickHouseTable.EVALUATOR_RESULTS)
 
         scoped_filter_sql, scoped_filter_parameters = _scoped_filter(test_case_id=test_case_id, status=status)
 
@@ -154,11 +116,14 @@ class EvaluationSessionRepository:
             trace_index_table=trace_index_table,
             scoped_filter_sql=scoped_filter_sql,
         )
-        count_result = await self._client.query(
-            count_sql,
-            parameters={**base_parameters, **scoped_filter_parameters},
+        count_value = await self._executor.fetch_scalar(
+            ClickHouseQuery(
+                name="evaluation_sessions.count",
+                statement=count_sql,
+                parameters={**base_parameters, **scoped_filter_parameters},
+            )
         )
-        total = int(count_result.result_rows[0][0]) if count_result.result_rows else 0
+        total = int(count_value) if count_value is not None else 0
         if total == 0:
             return EvaluationSessionPage(rows=[], total=0)
 
@@ -169,6 +134,7 @@ class EvaluationSessionRepository:
         offset = (page - 1) * page_size
 
         if needs_pre_metrics:
+            assert sort_keys is not None
             # Two-query path for cost/tokens sorts.
             #
             # ClickHouse inlines regular CTEs (does not materialise them), so a single query that
@@ -183,18 +149,21 @@ class EvaluationSessionRepository:
                 trace_index_table=trace_index_table,
                 spans_table=spans_table,
                 scoped_filter_sql=scoped_filter_sql,
-                sort_keys=sort_keys,  # type: ignore[arg-type]  # guaranteed non-None here
+                sort_keys=sort_keys,
             )
-            page_ids_result = await self._client.query(
-                page_ids_sql,
-                parameters={
-                    **base_parameters,
-                    **scoped_filter_parameters,
-                    "limit": page_size,
-                    "offset": offset,
-                },
+            page_id_rows = await self._executor.fetch_all(
+                ClickHouseQuery(
+                    name="evaluation_sessions.metric_sort.page_ids",
+                    statement=page_ids_sql,
+                    parameters={
+                        **base_parameters,
+                        **scoped_filter_parameters,
+                        "limit": page_size,
+                        "offset": offset,
+                    },
+                )
             )
-            ordered_ids = [record["session_id"] for record in result_rows(page_ids_result)]
+            ordered_ids = [record["session_id"] for record in page_id_rows]
 
             if not ordered_ids:
                 return EvaluationSessionPage(rows=[], total=total)
@@ -208,15 +177,18 @@ class EvaluationSessionRepository:
                 evaluator_results_table=evaluator_results_table,
                 mode=mode,
             )
-            hydrate_result = await self._client.query(
-                hydrate_sql,
-                parameters={
-                    **base_parameters,
-                    **text_query_parameters(mode),
-                    "session_ids": ordered_ids,
-                },
+            hydrate_rows = await self._executor.fetch_all(
+                ClickHouseQuery(
+                    name="evaluation_sessions.metric_sort.hydrate",
+                    statement=hydrate_sql,
+                    parameters={
+                        **base_parameters,
+                        **text_query_parameters(mode),
+                        "session_ids": ordered_ids,
+                    },
+                )
             )
-            rows_by_id = {record["session_id"]: _row(record) for record in result_rows(hydrate_result)}
+            rows_by_id = {record["session_id"]: _row(record) for record in hydrate_rows}
             # Restore the order from Query 2. `rows_by_id` may be missing a session_id if a
             # race caused the trace_index to disagree between queries, so guard with `if sid in`.
             rows = [rows_by_id[sid] for sid in ordered_ids if sid in rows_by_id]
@@ -239,8 +211,14 @@ class EvaluationSessionRepository:
                 "limit": page_size,
                 "offset": offset,
             }
-            list_result = await self._client.query(list_sql, parameters=list_parameters)
-            rows = [_row(record) for record in result_rows(list_result)]
+            list_rows = await self._executor.fetch_all(
+                ClickHouseQuery(
+                    name="evaluation_sessions.list",
+                    statement=list_sql,
+                    parameters=list_parameters,
+                )
+            )
+            rows = [_row(record) for record in list_rows]
 
         return EvaluationSessionPage(rows=rows, total=total)
 

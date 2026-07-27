@@ -14,12 +14,12 @@ from typing import Annotated, Self
 
 from nmp.common.entities.values import DatetimeFilter, Filter, NumberFilter, map_entity_field
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup, ParetoConfig
+from nmp.intake.repository.evaluation_session import EvaluationSessionRow
 from nmp.intake.spans.domain import (
     INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT,
     IntakeResponseMode,
     SpanStatus,
 )
-from nmp.intake.spans.evaluation_session_repository import EvaluationSessionRow
 from nmp.intake.spans.storage import text_for_mode
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, computed_field, model_validator
 

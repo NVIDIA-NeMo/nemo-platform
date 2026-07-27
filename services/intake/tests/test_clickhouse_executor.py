@@ -69,6 +69,18 @@ async def test_executor_returns_mapped_rows_and_bound_parameters() -> None:
 
 
 @pytest.mark.asyncio
+async def test_executor_returns_first_scalar() -> None:
+    scalar = await _executor(_Client()).fetch_scalar(
+        ClickHouseQuery(
+            name="sessions.first_id",
+            statement="SELECT session_id",
+        )
+    )
+
+    assert scalar == "session-a"
+
+
+@pytest.mark.asyncio
 async def test_executor_translates_clickhouse_errors_without_sql_details() -> None:
     query = ClickHouseQuery(
         name="sessions.get",
