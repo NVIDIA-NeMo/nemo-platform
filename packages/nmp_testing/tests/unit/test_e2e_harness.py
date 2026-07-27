@@ -64,3 +64,22 @@ def test_with_e2e_instance_paths_namespaces_local_filesystem_paths(tmp_path):
     jobs_config = cast(dict[str, Any], config_data["jobs"])
     executors = cast(list[dict[str, Any]], jobs_config["executors"])
     assert executors[0]["config"]["working_directory"] == ".tmp/e2e/subprocess-jobs"
+
+
+def test_with_e2e_instance_paths_scopes_docker_deployments_executor(tmp_path):
+    data_dir = tmp_path / "data-abc123def456"
+    config_data: dict[str, Any] = {
+        "deployments": {
+            "executors": [
+                {"name": "local-docker", "backend": "docker", "config": {"pull_images": False}},
+                {"name": "local-k8s", "backend": "k8s", "config": {}},
+            ],
+        },
+    }
+
+    rendered = services_pool.with_e2e_instance_paths(config_data, data_dir, resource_scope="e2e-abc123def456")
+
+    deployments = cast(dict[str, Any], rendered["deployments"])
+    executors = cast(list[dict[str, Any]], deployments["executors"])
+    assert executors[0]["config"]["resource_scope"] == "e2e-abc123def456"
+    assert "resource_scope" not in executors[1]["config"]

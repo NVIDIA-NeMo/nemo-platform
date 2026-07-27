@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from backends.docker.docker_helpers import container_attrs, lora_config, sample_config
@@ -14,8 +14,11 @@ from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBack
 from nemo_deployments_plugin.backends.labels import (
     CONFIG_NAME_LABEL,
     CONTAINER_ROLE_LABEL,
+    DEFAULT_RESOURCE_SCOPE,
     DEPLOYMENT_NAME_LABEL,
     DEPLOYMENT_WORKSPACE_LABEL,
+    MANAGED_BY_KEY,
+    RESOURCE_SCOPE_LABEL,
     RESTART_POLICY_LABEL,
     companion_container_name,
     container_name,
@@ -243,8 +246,20 @@ async def test_delete_removes_whole_group(
     """delete_deployment stops+removes every container in the group."""
     server = MagicMock()
     server.name = container_name("default", "srv")
+    server.labels = {
+        "managed-by": MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "srv",
+        RESOURCE_SCOPE_LABEL: DEFAULT_RESOURCE_SCOPE,
+    }
     sidecar = MagicMock()
     sidecar.name = companion_container_name("default", "srv", "lora-adapters")
+    sidecar.labels = {
+        "managed-by": MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "srv",
+        RESOURCE_SCOPE_LABEL: DEFAULT_RESOURCE_SCOPE,
+    }
     mock_docker_client.containers.list.return_value = [server, sidecar]
 
     update = await docker_backend.delete_deployment("default", "srv")
@@ -252,6 +267,108 @@ async def test_delete_removes_whole_group(
     assert update.status == "SUCCEEDED"
     server.remove.assert_called_once()
     sidecar.remove.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_delete_scoped_deployment_does_not_remove_foreign_primary(
+    mock_sdk: MagicMock,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    with (
+        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
+        patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
+        patch("docker.from_env", return_value=mock_docker_client),
+    ):
+        backend = DockerDeploymentBackend(
+            mock_sdk,
+            {"docker_timeout": 60, "pull_images": False, "resource_scope": "e2e-abc123"},
+        )
+
+    foreign = MagicMock()
+    foreign.name = container_name("default", "srv")
+    foreign.labels = {
+        "managed-by": MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "srv",
+        RESOURCE_SCOPE_LABEL: "other-scope",
+    }
+    mock_docker_client.containers.list.return_value = []
+    mock_docker_client.containers.get.return_value = foreign
+
+    update = await backend.delete_deployment("default", "srv")
+
+    assert update.status == "SUCCEEDED"
+    foreign.stop.assert_not_called()
+    foreign.remove.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_delete_default_scoped_deployment_does_not_remove_foreign_primary(
+    docker_backend: DockerDeploymentBackend,
+    mock_docker_client: MagicMock,
+) -> None:
+    scoped = MagicMock()
+    scoped.name = container_name("default", "srv")
+    scoped.labels = {
+        "managed-by": MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "srv",
+        RESOURCE_SCOPE_LABEL: "e2e-abc123",
+    }
+    mock_docker_client.containers.list.return_value = [scoped]
+    mock_docker_client.containers.get.return_value = scoped
+
+    update = await docker_backend.delete_deployment("default", "srv")
+
+    assert update.status == "SUCCEEDED"
+    scoped.stop.assert_not_called()
+    scoped.remove.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_lora_group_does_not_remove_foreign_stale_init_container(
+    mock_sdk: MagicMock,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    with (
+        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
+        patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
+        patch("docker.from_env", return_value=mock_docker_client),
+    ):
+        backend = DockerDeploymentBackend(
+            mock_sdk,
+            {"docker_timeout": 60, "pull_images": False, "resource_scope": "e2e-abc123"},
+        )
+
+    foreign_stale = MagicMock()
+    foreign_stale.labels = {
+        "managed-by": MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "srv",
+        RESOURCE_SCOPE_LABEL: "other-scope",
+    }
+    init_container = MagicMock()
+    init_container.wait.return_value = {"StatusCode": 0}
+    server_container = MagicMock(id="server123")
+    sidecar_container = MagicMock(id="sidecar123")
+    mock_entities.get.return_value = lora_config()
+    mock_docker_client.containers.get.side_effect = [NotFound("missing"), foreign_stale]
+    mock_docker_client.containers.run.side_effect = [init_container, server_container, sidecar_container]
+
+    update = await backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "STARTING"
+    foreign_stale.remove.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -275,6 +392,8 @@ async def test_create_volume_runs_init_chmod_container(
     )
 
     assert update.status == "BOUND"
+    labels = mock_docker_client.volumes.create.call_args.kwargs["labels"]
+    assert labels[RESOURCE_SCOPE_LABEL] == DEFAULT_RESOURCE_SCOPE
     mock_docker_client.containers.run.assert_called_once()
     args, run_kwargs = mock_docker_client.containers.run.call_args
     assert args[0] == "docker.io/library/busybox"
@@ -340,8 +459,11 @@ async def test_read_status_ready_when_running_without_probe(
     container.status = "running"
     container.labels = {
         "managed-by": MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "srv",
         RESTART_POLICY_LABEL: "Always",
         CONFIG_NAME_LABEL: "cfg1",
+        RESOURCE_SCOPE_LABEL: DEFAULT_RESOURCE_SCOPE,
     }
     container.ports = {}
     container.attrs = container_attrs()
@@ -359,8 +481,11 @@ def _running_server_container() -> MagicMock:
     container.status = "running"
     container.labels = {
         "managed-by": MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "srv",
         RESTART_POLICY_LABEL: "Always",
         CONFIG_NAME_LABEL: "cfg1",
+        RESOURCE_SCOPE_LABEL: DEFAULT_RESOURCE_SCOPE,
     }
     container.ports = {}
     container.attrs = container_attrs()
@@ -375,6 +500,7 @@ def _sidecar_container(role: str, status: str) -> MagicMock:
         DEPLOYMENT_WORKSPACE_LABEL: "default",
         DEPLOYMENT_NAME_LABEL: "srv",
         CONTAINER_ROLE_LABEL: role,
+        RESOURCE_SCOPE_LABEL: DEFAULT_RESOURCE_SCOPE,
     }
     return sidecar
 
@@ -462,6 +588,48 @@ async def test_read_status_lost_when_missing_always(
 
 
 @pytest.mark.asyncio
+async def test_read_status_treats_foreign_container_as_missing(
+    mock_sdk: MagicMock,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    with (
+        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
+        patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
+        patch("docker.from_env", return_value=mock_docker_client),
+    ):
+        backend = DockerDeploymentBackend(
+            mock_sdk,
+            {"docker_timeout": 60, "pull_images": False, "resource_scope": "e2e-abc123"},
+        )
+
+    foreign = MagicMock()
+    foreign.labels = {
+        "managed-by": MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "srv",
+        RESOURCE_SCOPE_LABEL: "other-scope",
+    }
+    mock_docker_client.containers.get.return_value = foreign
+
+    deployment_entity = MagicMock()
+    deployment_entity.deployment_config = "cfg1"
+
+    async def get_side_effect(entity_type, name, workspace=None):
+        if entity_type is Deployment:
+            return deployment_entity
+        return sample_config(restart_policy="Always")
+
+    mock_entities.get.side_effect = get_side_effect
+
+    update = await backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "LOST"
+    foreign.reload.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_read_status_unknown_on_transient_docker_error(
     docker_backend: DockerDeploymentBackend,
     mock_docker_client: MagicMock,
@@ -496,12 +664,111 @@ async def test_list_managed_deployment_names(
         "managed-by": MANAGED_BY_LABEL,
         DEPLOYMENT_WORKSPACE_LABEL: "default",
         DEPLOYMENT_NAME_LABEL: "srv",
+        RESOURCE_SCOPE_LABEL: DEFAULT_RESOURCE_SCOPE,
     }
     mock_docker_client.containers.list.return_value = [container]
 
     names = await docker_backend.list_managed_deployment_names()
 
     assert names == ["default/srv"]
+
+
+@pytest.mark.asyncio
+async def test_default_list_managed_deployment_names_ignores_foreign_scoped_resources(
+    docker_backend: DockerDeploymentBackend,
+    mock_docker_client: MagicMock,
+) -> None:
+    default_scoped = MagicMock()
+    default_scoped.labels = {
+        "managed-by": MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "srv",
+        RESOURCE_SCOPE_LABEL: DEFAULT_RESOURCE_SCOPE,
+    }
+    scoped = MagicMock()
+    scoped.labels = {
+        "managed-by": MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "foreign",
+        RESOURCE_SCOPE_LABEL: "e2e-abc123",
+    }
+    mock_docker_client.containers.list.return_value = [default_scoped, scoped]
+
+    names = await docker_backend.list_managed_deployment_names()
+
+    assert names == ["default/srv"]
+
+
+@pytest.mark.asyncio
+async def test_list_managed_deployment_names_scopes_docker_query(
+    mock_sdk: MagicMock,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    with (
+        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
+        patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
+        patch("docker.from_env", return_value=mock_docker_client),
+    ):
+        backend = DockerDeploymentBackend(
+            mock_sdk,
+            {"docker_timeout": 60, "pull_images": False, "resource_scope": "e2e-abc123"},
+        )
+
+    container = MagicMock()
+    container.labels = {
+        "managed-by": MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "srv",
+        RESOURCE_SCOPE_LABEL: "e2e-abc123",
+    }
+    mock_docker_client.containers.list.return_value = [container]
+
+    names = await backend.list_managed_deployment_names()
+
+    assert names == ["default/srv"]
+    mock_docker_client.containers.list.assert_called_once_with(
+        all=True,
+        filters={
+            "label": [
+                f"{MANAGED_BY_KEY}={MANAGED_BY_LABEL}",
+                f"{RESOURCE_SCOPE_LABEL}=e2e-abc123",
+            ]
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_logs_treats_foreign_container_as_missing(
+    mock_sdk: MagicMock,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    with (
+        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
+        patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
+        patch("docker.from_env", return_value=mock_docker_client),
+    ):
+        backend = DockerDeploymentBackend(
+            mock_sdk,
+            {"docker_timeout": 60, "pull_images": False, "resource_scope": "e2e-abc123"},
+        )
+
+    foreign = MagicMock()
+    foreign.labels = {
+        "managed-by": MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "srv",
+        RESOURCE_SCOPE_LABEL: "other-scope",
+    }
+    mock_docker_client.containers.get.return_value = foreign
+
+    logs = await backend.get_logs(workspace="default", name="srv")
+
+    assert logs.lines == [f"Container {container_name('default', 'srv')} not found"]
+    foreign.logs.assert_not_called()
 
 
 @pytest.mark.asyncio

@@ -47,6 +47,7 @@ from nemo_deployments_plugin.backends.labels import (
     DEPLOYMENT_NAME_LABEL,
     DEPLOYMENT_WORKSPACE_LABEL,
     MANAGED_BY_KEY,
+    RESOURCE_SCOPE_LABEL,
     RESTART_POLICY_LABEL,
     companion_container_name,
     container_name,
@@ -245,6 +246,7 @@ class DockerDeploymentBackend(DeploymentBackend):
                 config.restart_policy,
                 config_name=config_name,
                 backoff_limit=config.backoff_limit,
+                resource_scope=self._executor_config.resource_scope,
             ),
         }
 
@@ -391,7 +393,8 @@ class DockerDeploymentBackend(DeploymentBackend):
         # Best-effort clean any stale init container from a prior attempt.
         try:
             stale = await asyncio.to_thread(self._client.containers.get, init_name)
-            await asyncio.to_thread(stale.remove, force=True)
+            if self._container_matches_deployment_group(stale, workspace, name):
+                await asyncio.to_thread(stale.remove, force=True)
         except self._docker_errors.NotFound:
             pass
         except Exception:
@@ -448,6 +451,9 @@ class DockerDeploymentBackend(DeploymentBackend):
         c_name = container_name(workspace, name)
         try:
             container = await asyncio.to_thread(self._client.containers.get, c_name)
+            if not self._container_matches_deployment_group(container, workspace, name):
+                restart_policy = await self._resolve_restart_policy(workspace, name)
+                return missing_container_status(restart_policy, container_name=c_name)
             await asyncio.to_thread(container.reload)
         except self._docker_errors.NotFound:
             restart_policy = await self._resolve_restart_policy(workspace, name)
@@ -586,6 +592,7 @@ class DockerDeploymentBackend(DeploymentBackend):
                         f"{MANAGED_BY_KEY}={MANAGED_BY_LABEL}",
                         f"{DEPLOYMENT_WORKSPACE_LABEL}={workspace}",
                         f"{DEPLOYMENT_NAME_LABEL}={name}",
+                        *self._resource_scope_filter_label(),
                     ]
                 },
             )
@@ -599,6 +606,8 @@ class DockerDeploymentBackend(DeploymentBackend):
 
         running_roles: set[str] = set()
         for container in containers:
+            if not self._container_matches_deployment_group(container, workspace, name):
+                continue
             role = (container.labels or {}).get(CONTAINER_ROLE_LABEL, "")
             if role not in expected_roles:
                 continue
@@ -628,16 +637,20 @@ class DockerDeploymentBackend(DeploymentBackend):
                             f"{MANAGED_BY_KEY}={MANAGED_BY_LABEL}",
                             f"{DEPLOYMENT_WORKSPACE_LABEL}={workspace}",
                             f"{DEPLOYMENT_NAME_LABEL}={name}",
+                            *self._resource_scope_filter_label(),
                         ]
                     },
                 ):
-                    group[container.name] = container
+                    if self._container_matches_deployment_group(container, workspace, name):
+                        group[container.name] = container
             except Exception:
                 logger.warning("Failed to list group containers for %s; falling back to primary", c_name, exc_info=True)
             # Ensure the primary is included even if the label list query missed it.
             if c_name not in group:
                 try:
-                    group[c_name] = self._client.containers.get(c_name)
+                    primary = self._client.containers.get(c_name)
+                    if self._container_matches_deployment_group(primary, workspace, name):
+                        group[c_name] = primary
                 except self._docker_errors.NotFound:
                     pass
             for container in group.values():
@@ -662,7 +675,7 @@ class DockerDeploymentBackend(DeploymentBackend):
             containers = await asyncio.to_thread(
                 self._client.containers.list,
                 all=True,
-                filters=managed_by_filter(),
+                filters=managed_by_filter(resource_scope=self._executor_config.resource_scope),
             )
         except Exception:
             logger.warning("Failed to list managed containers", exc_info=True)
@@ -673,17 +686,36 @@ class DockerDeploymentBackend(DeploymentBackend):
             container_labels = container.labels or {}
             if container_labels.get(MANAGED_BY_KEY) != MANAGED_BY_LABEL:
                 continue
+            if not self._labels_match_resource_scope(container_labels):
+                continue
             ws = container_labels.get(DEPLOYMENT_WORKSPACE_LABEL)
             dep_name = container_labels.get(DEPLOYMENT_NAME_LABEL)
             if ws and dep_name:
                 seen.add(f"{ws}/{dep_name}")
         return sorted(seen)
 
+    def _resource_scope_filter_label(self) -> list[str]:
+        return [f"{RESOURCE_SCOPE_LABEL}={self._executor_config.resource_scope}"]
+
+    def _labels_match_resource_scope(self, labels: dict[str, Any]) -> bool:
+        return labels.get(RESOURCE_SCOPE_LABEL) == self._executor_config.resource_scope
+
+    def _container_matches_deployment_group(self, container: DockerContainer, workspace: str, name: str) -> bool:
+        labels = container.labels or {}
+        return (
+            labels.get(DEPLOYMENT_WORKSPACE_LABEL) == workspace
+            and labels.get(DEPLOYMENT_NAME_LABEL) == name
+            and labels.get(MANAGED_BY_KEY) == MANAGED_BY_LABEL
+            and self._labels_match_resource_scope(labels)
+        )
+
     async def get_logs(self, *, workspace: str, name: str, tail: int = 100) -> LogResult:
         c_name = container_name(workspace, name)
 
         def _logs() -> bytes:
             container = self._client.containers.get(c_name)
+            if not self._container_matches_deployment_group(container, workspace, name):
+                raise self._docker_errors.NotFound(f"Container {c_name} not found")
             return container.logs(tail=tail, timestamps=True)
 
         try:
@@ -729,6 +761,7 @@ class DockerDeploymentBackend(DeploymentBackend):
             driver=driver,
             init_chmod=init_chmod,
             init_image=init_image,
+            resource_scope=self._executor_config.resource_scope,
         )
 
     async def read_volume_status(
@@ -760,10 +793,8 @@ class DockerDeploymentBackend(DeploymentBackend):
     ) -> bool:
         labels = container.labels or {}
         return (
-            labels.get(DEPLOYMENT_WORKSPACE_LABEL) == workspace
-            and labels.get(DEPLOYMENT_NAME_LABEL) == name
+            self._container_matches_deployment_group(container, workspace, name)
             and labels.get(CONFIG_NAME_LABEL) == config_name
-            and labels.get(MANAGED_BY_KEY) == MANAGED_BY_LABEL
         )
 
     async def _pull_image(self, image: str, *, ngc_api_key: str | None) -> str | None:
