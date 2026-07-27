@@ -275,6 +275,23 @@ class DeploymentConfig(NemoEntity, entity_type=ENTITY_TYPE_DEPLOYMENT_CONFIG):
     drift_recovery: DriftRecoveryPolicy = Field(default_factory=DriftRecoveryPolicy, alias="driftRecovery")
     labels: dict[str, str] = Field(default_factory=dict)
     backend_config: DeploymentBackendConfig = Field(default_factory=DeploymentBackendConfig, alias="backendConfig")
+    auth_proxy_sidecar: bool = Field(
+        default=False,
+        alias="authProxySidecar",
+        description=(
+            "Inject a loopback auth-proxy sidecar that stamps a service-principal identity header on the "
+            "workload's platform calls. No-op when platform auth is disabled. The workload must target the "
+            "proxy on localhost (see auth_proxy_sidecar_port)."
+        ),
+    )
+    auth_proxy_sidecar_identity: str | None = Field(
+        default=None,
+        alias="authProxySidecarIdentity",
+        description=(
+            "Service-principal name the auth-proxy sidecar stamps (interpolated into "
+            "'X-NMP-Principal-Id: service:<identity>'). Required when auth_proxy_sidecar is True."
+        ),
+    )
 
     model_config = {"populate_by_name": True}
 

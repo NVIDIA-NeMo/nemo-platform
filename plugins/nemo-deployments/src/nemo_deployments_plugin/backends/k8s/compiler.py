@@ -16,6 +16,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from kubernetes.client.rest import ApiException
+from nemo_deployments_plugin.auth_proxy import build_auth_proxy_container
 from nemo_deployments_plugin.backends.k8s.client import k8s_client_module
 from nemo_deployments_plugin.backends.k8s.status import resource_labels_match
 from nemo_deployments_plugin.backends.labels import k8s_deployment_configmap_name, k8s_volume_resource_name
@@ -383,13 +384,20 @@ def compile_workload(
     if configmap_name is not None:
         volumes = [*volumes, _build_config_file_volume(configmap_name, config.config_files)]
 
+    ordered_init = list(_ordered_init_containers(config))
+    # Auth-proxy sidecar (native sidecar with restartPolicy=Always) is appended so
+    # it starts before the main workload and keeps running. No-op when the config
+    # does not request it or platform auth is disabled.
+    auth_proxy = build_auth_proxy_container(config)
+    if auth_proxy is not None:
+        ordered_init.append(auth_proxy)
     init_containers = [
         build_container(
             container,
             config=config,
             include_probes=container.restart_policy == NATIVE_SIDECAR_RESTART_POLICY,
         )
-        for container in _ordered_init_containers(config)
+        for container in ordered_init
     ]
     main_containers = [
         build_container(container, config=config, include_probes=True) for container in config.containers
