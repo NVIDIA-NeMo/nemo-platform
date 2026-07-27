@@ -27,6 +27,7 @@ import { DataSourceSection } from '@studio/routes/AnonymizerBuilderRoute/compone
 import { EntitiesSection } from '@studio/routes/AnonymizerBuilderRoute/components/EntitiesSection';
 import { GenerationSection } from '@studio/routes/AnonymizerBuilderRoute/components/GenerationSection';
 import { ModelSettingsSection } from '@studio/routes/AnonymizerBuilderRoute/components/ModelSettingsSection';
+import { RoleModelDefaults } from '@studio/routes/AnonymizerBuilderRoute/components/RoleModelDefaults';
 import {
   anonymizerFormSchema,
   buildAnonymizerJobRequest,
@@ -113,6 +114,7 @@ export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
         <AccessibleTitle title="Anonymize Data">
           <FormProvider {...form}>
             <form className="h-full" noValidate onSubmit={onSubmit}>
+              <RoleModelDefaults />
               <Flex className="h-full" gap="0">
                 <Panel
                   className="w-[400px] h-full"
