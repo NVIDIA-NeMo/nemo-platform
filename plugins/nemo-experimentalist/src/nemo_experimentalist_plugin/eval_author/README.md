@@ -58,13 +58,36 @@ scoped to the Insight suite; the user's train and validation datasets remain
 unchanged. The authored verifiers must pass static Harbor validation before the
 local suite is returned to the optimization loop.
 
+After authoring and validation, Eval Author hashes every task file and verifier
+file, derives deterministic suite and scorer identities, and freezes the exact
+content beneath:
+
+```text
+eval-and-optimize/eval_author/<insight-slug>/artifacts/<sha256>/insight-suite/
+```
+
+The returned dataset points at this immutable artifact and carries a portable
+`nemo-experimentalist-insight-suite://.../sha256/...` reference. Candidate Insight
+results persist the same suite identity and artifact reference. Resume reuses
+those results only when the identity still matches; changed task or verifier
+content is re-evaluated.
+
 Task-template inputs may be local paths, `file://` URIs, or NeMo Platform
 `fileset://<workspace>/<fileset>` references. Fileset-backed templates are
 downloaded into the experiment-local staging directory before Harbor parses
 them. The staged template is refreshed on every invocation rather than reused.
 
-`EvalAuthorResult.insight_suite` contains the experiment-local materialized
-`Dataset` for immediate evaluation by the optimization loop.
+`EvalAuthorResult.insight_suite` contains the finalized content-addressed
+`Dataset` for immediate evaluation by the optimization loop. Its identity and
+portable artifact reference are also available as
+`EvalAuthorResult.insight_suite_identity` and
+`EvalAuthorResult.insight_suite_artifact_ref`.
+
+Insight metrics remain adaptive development feedback. They may steer round
+analysis, goal-tree updates, and proposals, but validation remains the direct
+Pareto and winner-selection criterion. Promotion suggestions require complete
+repeated baseline-to-winner improvement evidence, remain advisory, and never
+mutate the canonical validation dataset.
 
 ## Intended Invocation
 

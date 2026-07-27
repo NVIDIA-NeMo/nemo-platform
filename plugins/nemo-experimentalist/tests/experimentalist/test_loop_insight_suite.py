@@ -9,14 +9,56 @@ from unittest.mock import AsyncMock
 import pytest
 from nemo_experimentalist_plugin.entities import Candidate
 from nemo_experimentalist_plugin.experimentalist.components import loop as loop_module
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import Dataset, EvaluationResult, Task
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
+from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
+    Dataset,
+    EvaluationResult,
+    MetricResult,
+    Task,
+    TrialResult,
+)
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef, DataValue
 from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizer
 from nemo_experimentalist_plugin.resolve import EvolutionaryOptimizerConfig
 
 
 class _StopAfterOneRound(Exception):
     pass
+
+
+def _suite_metadata(identity_char: str = "a") -> dict[str, DataValue]:
+    identity = f"sha256:{identity_char * 64}"
+    return {
+        "insight_suite_identity": identity,
+        "insight_suite_scorer_identity": f"sha256:{'b' * 64}",
+        "insight_suite_artifact_ref": (f"nemo-experimentalist-insight-suite://insight-1/sha256/{identity_char * 64}"),
+        "insight_suite_task_hashes": {
+            "insight-task": {
+                "content_hash": f"sha256:{'c' * 64}",
+                "verifier_hash": f"sha256:{'d' * 64}",
+            }
+        },
+    }
+
+
+def _insight_result(label: str, score: float) -> EvaluationResult:
+    return EvaluationResult(
+        id=f"{label}-insight",
+        aggregate_metrics={"uses_required_tool": score},
+        trials=[
+            TrialResult(
+                id=f"{label}-insight-task-1",
+                task_id="insight-task",
+                attempt=1,
+                status="completed",
+                metrics={
+                    "uses_required_tool": MetricResult(
+                        name="uses_required_tool",
+                        value=score,
+                    )
+                },
+            )
+        ],
+    )
 
 
 @pytest.mark.asyncio
@@ -26,7 +68,11 @@ async def test_insight_run_evaluates_and_persists_baseline_and_new_candidate_met
 ) -> None:
     train_dataset = Dataset(id="train")
     validation_dataset = Dataset(id="validation")
-    insight_dataset = Dataset(id="insight-suite", tasks=[Task(id="insight-task")])
+    insight_dataset = Dataset(
+        id="insight-suite",
+        tasks=[Task(id="insight-task")],
+        metadata=_suite_metadata(),
+    )
     datasets = {
         "train": train_dataset,
         "validation": validation_dataset,
@@ -59,14 +105,8 @@ async def test_insight_run_evaluates_and_persists_baseline_and_new_candidate_met
         optimization="use the required tool",
     )
     insight_results = {
-        "agent-0": EvaluationResult(
-            id="agent-0-insight",
-            aggregate_metrics={"uses_required_tool": 0.0},
-        ),
-        "agent-1": EvaluationResult(
-            id="agent-1-insight",
-            aggregate_metrics={"uses_required_tool": 1.0},
-        ),
+        "agent-0": _insight_result("agent-0", 0.0),
+        "agent-1": _insight_result("agent-1", 1.0),
     }
     insight_evaluations: list[tuple[Dataset, list[Candidate]]] = []
 
@@ -200,23 +240,25 @@ async def test_insight_run_evaluates_and_persists_baseline_and_new_candidate_met
     ]
     assert baseline.insight_reward == {"uses_required_tool": 0.0}
     assert new_candidate.insight_reward == {"uses_required_tool": 1.0}
+    assert baseline.insight_suite_identity == f"sha256:{'a' * 64}"
+    assert new_candidate.insight_suite_identity == f"sha256:{'a' * 64}"
+    assert baseline.insight_metric_keys == ["uses_required_tool"]
     insight_persistence = [
         call.kwargs for call in backend.persist_evaluation.await_args_list if call.kwargs["split"] == "insight"
     ]
-    assert insight_persistence == [
-        {
-            "workspace": "default",
-            "result": insight_results["agent-0"],
-            "candidate": baseline,
-            "split": "insight",
-        },
-        {
-            "workspace": "default",
-            "result": insight_results["agent-1"],
-            "candidate": new_candidate,
-            "split": "insight",
-        },
+    assert [call["candidate"] for call in insight_persistence] == [baseline, new_candidate]
+    assert [call["result"].id for call in insight_persistence] == [
+        insight_results["agent-0"].id,
+        insight_results["agent-1"].id,
     ]
+    assert all(
+        call["result"].metadata["insight_suite_identity"] == f"sha256:{'a' * 64}" for call in insight_persistence
+    )
+    assert all(
+        trial.metadata["insight_suite_artifact_ref"].startswith("nemo-experimentalist-insight-suite://")
+        for call in insight_persistence
+        for trial in call["result"].trials
+    )
 
 
 @pytest.mark.asyncio
@@ -229,6 +271,10 @@ async def test_insight_evaluation_skips_cached_candidates_and_empty_suites(
         round=0,
         optimization="baseline",
         insight_reward={"uses_required_tool": 0.0},
+        insight_reward_details=[],
+        insight_suite_identity=f"sha256:{'a' * 64}",
+        insight_suite_artifact_ref=f"nemo-experimentalist-insight-suite://insight-1/sha256/{'a' * 64}",
+        insight_metric_keys=["uses_required_tool"],
     )
     pending = Candidate(
         run_id="run-1",
@@ -236,16 +282,17 @@ async def test_insight_evaluation_skips_cached_candidates_and_empty_suites(
         round=1,
         optimization="use the required tool",
     )
-    result = EvaluationResult(
-        id="agent-1-insight",
-        aggregate_metrics={"uses_required_tool": 1.0},
-    )
+    result = _insight_result("agent-1", 1.0)
     evaluate_agent = AsyncMock(return_value=(pending, result))
     monkeypatch.setattr(EvolutionaryOptimizer, "_evaluate_agent", evaluate_agent)
     optimizer = object.__new__(EvolutionaryOptimizer)
 
     evaluated = await optimizer._evaluate_insight_candidates(
-        dataset=Dataset(id="insight-suite", tasks=[Task(id="insight-task")]),
+        dataset=Dataset(
+            id="insight-suite",
+            tasks=[Task(id="insight-task")],
+            metadata=_suite_metadata(),
+        ),
         evaluator=object(),  # type: ignore[arg-type]
         candidates=[cached, pending],
     )
@@ -261,3 +308,50 @@ async def test_insight_evaluation_skips_cached_candidates_and_empty_suites(
     )
     assert empty == {}
     assert evaluate_agent.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_insight_evaluation_reuses_only_matching_suite_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cached = Candidate(
+        run_id="run-1",
+        label="agent-0",
+        round=0,
+        optimization="baseline",
+        insight_reward={"uses_required_tool": 0.0},
+        insight_reward_details=[],
+        insight_suite_identity=f"sha256:{'a' * 64}",
+        insight_suite_artifact_ref=f"nemo-experimentalist-insight-suite://insight-1/sha256/{'a' * 64}",
+        insight_metric_keys=["uses_required_tool"],
+    )
+    result = _insight_result("agent-0", 0.5)
+    evaluate_agent = AsyncMock(return_value=(cached, result))
+    monkeypatch.setattr(EvolutionaryOptimizer, "_evaluate_agent", evaluate_agent)
+    optimizer = object.__new__(EvolutionaryOptimizer)
+
+    matching = Dataset(
+        id="insight-suite",
+        tasks=[Task(id="insight-task")],
+        metadata=_suite_metadata("a"),
+    )
+    changed = Dataset(
+        id="insight-suite",
+        tasks=[Task(id="insight-task")],
+        metadata=_suite_metadata("e"),
+    )
+
+    assert (
+        await optimizer._evaluate_insight_candidates(
+            dataset=matching,
+            evaluator=object(),  # type: ignore[arg-type]
+            candidates=[cached],
+        )
+        == {}
+    )
+    assert await optimizer._evaluate_insight_candidates(
+        dataset=changed,
+        evaluator=object(),  # type: ignore[arg-type]
+        candidates=[cached],
+    ) == {"agent-0": result}
+    evaluate_agent.assert_awaited_once()

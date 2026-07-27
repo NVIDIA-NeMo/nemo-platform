@@ -42,7 +42,11 @@ from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import
     restore_heldout_splits,
 )
 from nemo_experimentalist_plugin.experimentalist.components.insight_promotion import (
+    insight_suite_provenance,
     select_insight_promotion_suggestions,
+    stamp_insight_evaluation_result,
+    validate_insight_evaluation_result,
+    write_insight_comparison_section,
     write_insight_promotion_section,
 )
 from nemo_experimentalist_plugin.experimentalist.components.model_config import (
@@ -199,7 +203,10 @@ class AnalysisSkill(Skill):
     `candidate.insight_reward`. Omit that table when `insight_reward` is absent or empty
     for every agent. Keep Insight Suite Reward separate from train and validation rewards:
     it reports performance on scenarios authored for the motivating Insight and is not a
-    ranking or Pareto-selection input.]
+    ranking or Pareto-selection input. Insight Suite metrics may steer round analysis,
+    goal-tree updates, and the proposer only as adaptive/development feedback. Label any
+    resulting claim accordingly; never present this adaptive evidence as independent
+    validation evidence.]
 
     ## Trajectory Rewards
 
@@ -911,7 +918,10 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
         If at least one agent has a non-empty `insight_reward`, the round analysis must name
         every available Insight Suite dimension and show its values in the separate Insight
         Suite Reward table. Never blend those metrics into train/validation rewards or imply
-        that they affected ranking. Fill in every included section with real data. No placeholders.
+        that they affected ranking. These metrics may steer this analysis, the goal tree, and
+        the proposer only as adaptive/development feedback; label claims accordingly and never
+        present them as independent validation evidence. Fill in every included section with
+        real data. No placeholders.
         Return the complete markdown content as a string.
         """
         ...
@@ -1356,7 +1366,16 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
         """Evaluate candidates that do not yet have metrics for this Insight suite."""
         if not list(dataset.list_tasks()):
             return {}
-        pending = [candidate for candidate in candidates if candidate.insight_reward is None]
+        provenance = insight_suite_provenance(dataset)
+        pending = [
+            candidate
+            for candidate in candidates
+            if candidate.insight_reward is None
+            or candidate.insight_reward_details is None
+            or candidate.insight_suite_identity != provenance.identity
+            or candidate.insight_suite_artifact_ref != provenance.artifact_ref
+            or not candidate.insight_metric_keys
+        ]
         evaluated = await asyncio.gather(
             *[self._evaluate_agent(candidate, dataset, evaluator) for candidate in pending]
         )
@@ -1373,15 +1392,41 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
         run_id: str,
     ) -> None:
         """Evaluate and persist Insight-suite metrics for the supplied candidates."""
+        provenance = insight_suite_provenance(dataset)
         results = await self._evaluate_insight_candidates(
             dataset=dataset,
             evaluator=evaluator,
             candidates=candidates,
         )
+        dataset_metric_keys = dataset.metadata.get("insight_metric_keys")
+        if dataset_metric_keys is not None and (
+            not isinstance(dataset_metric_keys, list) or not all(isinstance(key, str) for key in dataset_metric_keys)
+        ):
+            raise ValueError("Insight suite runtime metric keys have invalid metadata")
+        cached_metric_key_sets = {
+            tuple(candidate.insight_metric_keys or ())
+            for candidate in candidates
+            if candidate.insight_suite_identity == provenance.identity and candidate.insight_metric_keys
+        }
+        if isinstance(dataset_metric_keys, list):
+            cached_metric_key_sets.add(tuple(dataset_metric_keys))
+        if len(cached_metric_key_sets) > 1:
+            raise ValueError(
+                f"Cached Insight evaluations disagree on required metric keys: {sorted(cached_metric_key_sets)}"
+            )
+        expected_metric_keys = next(iter(cached_metric_key_sets), None)
         for candidate in candidates:
             result = results.get(candidate.label)
             if result is None:
                 continue
+            metric_keys = validate_insight_evaluation_result(
+                result,
+                expected_metric_keys=expected_metric_keys,
+            )
+            if expected_metric_keys is None:
+                expected_metric_keys = metric_keys
+                dataset.metadata["insight_metric_keys"] = list(metric_keys)
+            result = stamp_insight_evaluation_result(result, provenance)
             await backend.persist_evaluation(
                 workspace=workspace,
                 result=result,
@@ -1393,11 +1438,16 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
                 updates={
                     "insight_reward": result.aggregate_metrics,
                     "insight_reward_details": result.trials,
+                    "insight_suite_identity": provenance.identity,
+                    "insight_suite_artifact_ref": provenance.artifact_ref,
+                    "insight_metric_keys": list(metric_keys),
                 },
                 workspace=workspace,
                 backend=backend,
                 run_id=run_id,
             )
+        if expected_metric_keys is not None:
+            dataset.metadata["insight_metric_keys"] = list(expected_metric_keys)
 
     async def _generate_initial_goal_tree(
         self,
@@ -1774,18 +1824,44 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
         evolution_tree.mark_best(best_id)
         self._copy_best_to_workspace(best_id)
 
+        winner = evolution_tree.nodes[best_id].candidate
+        baseline = next(
+            (node.candidate for node in evolution_tree.nodes.values() if node.round == 0),
+            None,
+        )
+        report_path = self.working_dir / "eval-and-optimize" / "OPTIMIZATION.md"
+        final_report_failed = False
         try:
             await self.write_final_report(best_id)
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"[FINAL] Failed to write final report: {exc}")
+            final_report_failed = True
+        if not report_path.exists() or not report_path.read_text().strip():
+            final_report_failed = True
+        if final_report_failed:
+            summary = self._render_summary(
+                rounds_completed=run_entity.rounds_completed,
+                baseline=baseline,
+                winner=winner,
+            )
+            report_path.write_text(f"# Optimization Report\n\n## Compact Run Summary\n\n{summary}\n")
 
         if insight_dataset is not None:
+            provenance = insight_suite_provenance(insight_dataset)
+            if baseline is not None:
+                write_insight_comparison_section(
+                    report_path,
+                    baseline,
+                    winner,
+                    provenance,
+                )
             suggestions = select_insight_promotion_suggestions(
                 insight_dataset,
                 [node.candidate for node in evolution_tree.nodes.values()],
+                winner=winner,
             )
             write_insight_promotion_section(
-                self.working_dir / "eval-and-optimize" / "OPTIMIZATION.md",
+                report_path,
                 suggestions,
             )
 
@@ -1793,7 +1869,7 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
         run_entity.winner_agent = best_id
         await backend.update_run(workspace=workspace, run=run_entity)
 
-        return evolution_tree.nodes[best_id].candidate
+        return winner
 
     def _render_summary(
         self,

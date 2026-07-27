@@ -8,6 +8,7 @@ import inspect
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -189,14 +190,41 @@ def _install_pipeline(
             tasks = [staged.result for staged in staged_tasks]
             if materialized_dataset is not None:
                 materialized_dataset.tasks = tasks
+                self.materialized_dataset = materialized_dataset
                 return materialized_dataset
-            return Dataset(id="insight-suite", tasks=tasks)
+            self.materialized_dataset = Dataset(id="insight-suite", tasks=tasks)
+            return self.materialized_dataset
 
         def discard(self) -> None:
             calls.suite_discards += 1
 
         def record_analysis(self, statuses: dict[str, tuple[str, str | None]]) -> None:
             pass
+
+        def finalize_artifact(self) -> SimpleNamespace:
+            identity = "sha256:" + "a" * 64
+            scorer_identity = "sha256:" + "b" * 64
+            artifact_ref = f"nemo-experimentalist-insight-suite://insight-1/sha256/{'a' * 64}"
+            self.materialized_dataset.metadata.update(
+                {
+                    "insight_suite_identity": identity,
+                    "insight_suite_scorer_identity": scorer_identity,
+                    "insight_suite_artifact_ref": artifact_ref,
+                    "insight_suite_task_hashes": {
+                        task.id: {
+                            "content_hash": "sha256:" + "c" * 64,
+                            "verifier_hash": "sha256:" + "d" * 64,
+                        }
+                        for task in self.materialized_dataset.list_tasks()
+                    },
+                }
+            )
+            return SimpleNamespace(
+                dataset=self.materialized_dataset,
+                identity=identity,
+                scorer_identity=scorer_identity,
+                ref=artifact_ref,
+            )
 
     class FillTaskTemplate:
         async def __call__(
@@ -537,6 +565,9 @@ async def test_run_authors_metrics_on_materialized_insight_suite(
     assert len(calls.discovered_datasets) == 1
     materialized_dataset = calls.discovered_datasets[0]
     assert result.insight_suite is materialized_dataset
+    assert result.insight_suite_identity == f"sha256:{'a' * 64}"
+    assert result.insight_suite_artifact_ref is not None
+    assert result.insight_suite_artifact_ref.startswith("nemo-experimentalist-insight-suite://")
     assert materialized_dataset.id == "insight-suite"
     assert materialized_dataset is not train_dataset
     assert materialized_dataset is not validation_dataset

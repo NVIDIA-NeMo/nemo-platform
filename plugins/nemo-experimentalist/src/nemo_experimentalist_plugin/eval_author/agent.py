@@ -366,10 +366,13 @@ class EvalAuthor(Agent, llm=get_smart_model()):
                     validation_feedback=str(exc),
                 )
             else:
+                artifact = insight_suite.finalize_artifact()
                 return EvalAuthorResult(
                     train_dataset=train_dataset,
                     validation_dataset=validation_dataset,
-                    insight_suite=materialized_dataset,
+                    insight_suite=artifact.dataset,
+                    insight_suite_identity=artifact.identity,
+                    insight_suite_artifact_ref=artifact.ref,
                     summary=summary,
                 )
 
