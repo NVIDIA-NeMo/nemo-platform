@@ -593,6 +593,24 @@ target "nmp-cpu-tasks-docker" {
   platforms  = get_platforms()
 }
 
+# Experimentalist control plane. This target is intentionally not part of the
+# default docker groups while the OpenShell/evaluator split remains a research
+# prototype.
+target "nmp-experimentalist-docker" {
+  target     = "runtime"
+  context    = "."
+  dockerfile = "docker/Dockerfile.nmp-experimentalist"
+  contexts = {
+    nmp-python-base = "target:nmp-python-base"
+    nmp-workspace   = "target:nmp-workspace"
+  }
+  cache-to   = maybe_registry_cache_to("nmp-experimentalist")
+  cache-from = maybe_registry_cache_from("nmp-experimentalist")
+  tags       = sha_and_maybe_latest_tags("nmp-experimentalist")
+  output     = image_output()
+  platforms  = get_platforms()
+}
+
 # Python wheel builders (causal-conv1d, mamba-ssm, av, opencv-python-headless).
 # CUDA extensions only ship source on PyPI; av/opencv bundle FFmpeg. Pre-built for
 # amd64 and arm64. Wheels live at /wheels/*.whl inside each image.

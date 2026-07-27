@@ -1,0 +1,42 @@
+# syntax=docker/dockerfile:1
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Experimentalist control plane. Harbor task execution deliberately does not
+# live in this image: it has no Docker CLI and must never receive a Docker
+# socket. A future platform-evaluator adapter will submit Harbor work to a
+# dedicated evaluator profile instead.
+
+ARG NMP_PYTHON_BASE=nmp-python-base
+
+FROM ${NMP_PYTHON_BASE} AS builder
+COPY --from=nmp-workspace . .
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --only-group experimentalist --no-editable
+
+FROM ${NMP_PYTHON_BASE} AS runtime
+
+# OpenShell's supervisor resolves the sandbox user by name. iproute2 and
+# nftables are required for full network-policy enforcement.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    iproute2 \
+    nftables \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system sandbox \
+    && useradd --system --gid sandbox --create-home --home-dir /home/sandbox --shell /bin/bash sandbox \
+    && mkdir -p /sandbox \
+    && chown sandbox:sandbox /sandbox
+
+COPY --from=builder /app/.venv /app/.venv
+
+ENV HOME=/home/sandbox \
+    PATH="/app/.venv/bin:$PATH" \
+    XDG_CACHE_HOME=/sandbox/.cache \
+    NEMO_EXPERIMENTALIST_RUNTIME_CACHE=/sandbox/.cache/runtime
+
+WORKDIR /sandbox
+USER sandbox
+
+ENTRYPOINT ["nemo", "experimentalist"]
+CMD ["--help"]
