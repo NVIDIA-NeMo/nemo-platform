@@ -147,6 +147,8 @@ See `plugin-service` skill and `example-plugin/middleware_service.py` for the fu
 
 ```python
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, EntityNotFoundError
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.inference_middleware import MiddlewareConfigNotFoundError
 
 async def get_middleware_config(self, config_type: str, config_id: str):
@@ -154,7 +156,7 @@ async def get_middleware_config(self, config_type: str, config_id: str):
         raise ValueError(f"Unknown config_type={config_type!r}")
 
     ws, name = config_id.split("/", 1)
-    client = NemoEntitiesClient()
+    client = NemoEntitiesClient(client_from_platform(sdk, AsyncEntitiesClient))
     try:
         return await client.get(MyPluginConfig, name=name, workspace=ws)
     except EntityNotFoundError as exc:

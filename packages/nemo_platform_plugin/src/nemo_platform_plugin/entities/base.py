@@ -8,7 +8,12 @@ import re
 from datetime import datetime
 from typing import Any, ClassVar, Dict, Generic, List, Optional, Protocol, Set, Type, TypeVar, get_type_hints
 
-from nemo_platform_plugin.client.errors import ConflictError, NotFoundError, UnprocessableEntityError
+from nemo_platform_plugin.client.errors import (
+    ConflictError,
+    NotFoundError,
+    UnprocessableEntityError,
+    raise_for_status,
+)
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entities.types import (
     DeleteResponse,
@@ -379,7 +384,7 @@ class EntityClient:
     Primary lookup is by name (Kubernetes-style), with ID lookup available for debugging.
 
     Example:
-        client = EntityClient(entities_api)
+        client = EntityClient(client_from_platform(sdk, AsyncEntitiesClient))
 
         # Create
         msg = HelloWorldMessage(name="my-message", workspace="default", message="Hello")
@@ -571,6 +576,10 @@ class EntityClient:
         )
         # ``group_counts`` rides on the response envelope rather than the item
         # page, so read it off the raw body instead of ``response.page()``.
+        # Paginated responses defer their status check to ``page()``/``items()``,
+        # neither of which runs here, so a non-2xx would otherwise surface as a
+        # bogus "grouped counts not found" instead of the real HTTP error.
+        raise_for_status(response.http_response)
         group_counts = response.http_response.json().get("group_counts")
         if group_counts is None:
             raise EntityStoreError("Grouped counts not found in response")

@@ -3,7 +3,9 @@
 
 from unittest.mock import AsyncMock, Mock
 
+import httpx
 import pytest
+from nemo_platform_plugin.client.errors import BadRequestError, NotFoundError
 from nemo_platform_plugin.entities import EntityClient, EntityStoreError
 
 
@@ -31,8 +33,22 @@ def _entities_page(group_counts: dict[str, int] | None = None) -> Mock:
         body["group_counts"] = group_counts
 
     resp = Mock()
-    resp.http_response = Mock()
-    resp.http_response.json = Mock(return_value=body)
+    resp.http_response = httpx.Response(200, json=body, request=httpx.Request("GET", "http://testserver"))
+    return resp
+
+
+def _error_page(status_code: int) -> Mock:
+    """Wrap a non-2xx list response.
+
+    Paginated responses defer ``raise_for_status`` to ``page()``/``items()``,
+    which ``count_by`` never calls, so the status check has to be explicit.
+    """
+    resp = Mock()
+    resp.http_response = httpx.Response(
+        status_code,
+        json={"detail": "boom"},
+        request=httpx.Request("GET", "http://testserver"),
+    )
     return resp
 
 
@@ -52,7 +68,9 @@ async def test_count_by_returns_grouped_counts_for_shorthand_filter() -> None:
     )
 
     assert counts == {"insight-a": 2}
-    query_params = mock_api.list_entities.await_args.kwargs["query_params"]
+    call = mock_api.list_entities.await_args
+    assert call is not None
+    query_params = call.kwargs["query_params"]
     assert query_params["filter"] == ('{"data.insight_id": {"$in": ["insight-a"]}, "data.is_deleted": false}')
     assert query_params["count_by"] == "data.insight_id"
     assert query_params["page_size"] == 1
@@ -68,7 +86,26 @@ async def test_count_by_rejects_response_without_grouped_counts() -> None:
         await client.count_by(ExperimentGroup, "insight_id")
 
     # No filter supplied, so the request must omit the filter param entirely.
-    assert "filter" not in mock_api.list_entities.await_args.kwargs["query_params"]
+    call = mock_api.list_entities.await_args
+    assert call is not None
+    assert "filter" not in call.kwargs["query_params"]
+
+
+@pytest.mark.parametrize(
+    ("status_code", "expected"),
+    [(404, NotFoundError), (400, BadRequestError)],
+)
+@pytest.mark.asyncio
+async def test_count_by_raises_http_error_rather_than_missing_counts(
+    status_code: int, expected: type[Exception]
+) -> None:
+    """A failed request must surface as its HTTP error, not "counts not found"."""
+    mock_api = Mock()
+    mock_api.list_entities = AsyncMock(return_value=_error_page(status_code))
+    client = EntityClient(mock_api)
+
+    with pytest.raises(expected):
+        await client.count_by(ExperimentGroup, "insight_id")
 
 
 @pytest.mark.asyncio
