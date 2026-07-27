@@ -6,6 +6,7 @@ import {
   getListEvaluationsQueryKey,
   type ListEvaluationsQueryError,
   useListEvaluations,
+  usePatchEvaluation,
   usePinEvaluation,
   useUnpinEvaluation,
 } from '@nemo/sdk/generated/platform/api';
@@ -50,6 +51,9 @@ export interface ExperimentGroupEvaluations {
   rows: EvaluationRow[];
   /** Pins the row if unpinned, unpins it otherwise, then refetches both lists. */
   togglePin: (row: EvaluationRow) => void;
+  /** Removes the current group from the evaluation's `experiment_ids`, then refetches. Blocks (with a
+   * toast) when this is the evaluation's only group — every evaluation must belong to at least one. */
+  removeFromGroup: (row: EvaluationRow) => void;
   /**
    * Row count that drives pagination: the unpinned total. Pinned rows ride atop every page and are
    * not paginated, so they're excluded; falls back to the pinned count when nothing is unpinned so
@@ -186,6 +190,39 @@ export function useExperimentGroupEvaluations({
     [workspace, pinEvaluation, unpinEvaluation]
   );
 
+  const { mutate: patchEvaluation } = usePatchEvaluation({
+    mutation: {
+      onSuccess: () => {
+        invalidateList();
+        toast.success('Removed the evaluation from this group.');
+      },
+      onError: () => toast.error('Failed to remove the evaluation from this group.'),
+      onSettled: (_data, _error, { name }) => {
+        pendingRef.current.delete(name);
+      },
+    },
+  });
+
+  const removeFromGroup = useCallback(
+    (row: EvaluationRow) => {
+      const { name } = row;
+      if (pendingRef.current.has(name)) return;
+      // The API rejects an empty `experiment_ids`, so block removing an evaluation's only group and
+      // explain why rather than firing a request that would 400.
+      if (row.experiment_ids.length <= 1) {
+        toast.error('This evaluation must belong to at least one experiment group.');
+        return;
+      }
+      pendingRef.current.add(name);
+      patchEvaluation({
+        workspace,
+        name,
+        data: { experiment_ids: row.experiment_ids.filter((id) => id !== experimentGroupId) },
+      });
+    },
+    [workspace, experimentGroupId, patchEvaluation, toast]
+  );
+
   // Pinned first, then the current page of unpinned. Drop any unpinned row already shown as pinned —
   // it can appear in both server lists during the brief window where the two queries refetch out of step.
   const rows = useMemo<EvaluationRow[]>(() => {
@@ -209,5 +246,5 @@ export function useExperimentGroupEvaluations({
   // `keepPreviousData`'s in-flight 'success' doesn't bank an about-to-fail sort as the last good one.
   const isSuccess = isUnpinnedSuccess && !isUnpinnedPlaceholder;
 
-  return { rows, togglePin, totalCount, error, isLoading, isFetching, isSuccess };
+  return { rows, togglePin, removeFromGroup, totalCount, error, isLoading, isFetching, isSuccess };
 }
