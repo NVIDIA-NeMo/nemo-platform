@@ -272,9 +272,11 @@ def validate_llm_models(
     """Pre-flight check that every IGW-routed LLM in *config* exists as a VirtualModel.
 
     Iterates ``config["llms"]`` and, for each block whose ``_type`` is in
-    :data:`_IGW_LLM_TYPES`, calls
-    ``sdk.inference.virtual_models.retrieve(model_name, workspace=workspace)``.
-    Names are deduplicated before lookup so the same model declared under
+    :data:`_IGW_LLM_TYPES`, strips a leading ``{workspace}/`` qualifier from
+    ``model_name`` (mirroring IGW's OpenAI proxy — the VM route takes
+    workspace as its own path segment, so the bare name is what it expects)
+    then calls ``sdk.inference.virtual_models.retrieve(name, workspace=workspace)``.
+    Names are deduplicated *after* stripping so the same model declared under
     multiple LLM keys (e.g. agent + judge) costs one network call.
 
     LLM blocks whose ``model_name`` still contains an unexpanded ``$VAR`` /
@@ -325,6 +327,14 @@ def validate_llm_models(
                 model_name,
             )
             continue
+        # Strip a leading "{workspace}/" qualifier before lookup. The VM route
+        # (GET /v2/workspaces/{workspace}/virtual-models/{name}) takes workspace
+        # as its own path segment, so a qualified name like "default/foo" would
+        # double-specify it and 404. This mirrors IGW's OpenAI proxy
+        # (removeprefix(f"{workspace}/")). removeprefix only strips this exact
+        # prefix, leaving bare names and slashes inside the name (e.g.
+        # "nvidia/nemotron") untouched.
+        model_name = model_name.removeprefix(f"{workspace}/")
         to_check.setdefault(model_name, llm_key)
 
     if not to_check:

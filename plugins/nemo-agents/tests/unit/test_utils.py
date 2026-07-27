@@ -1408,6 +1408,48 @@ class TestValidateLLMModels:
 
         assert vms.calls == [{"name": "shared-model", "workspace": "default"}]
 
+    def test_strips_workspace_qualifier_before_lookup(self) -> None:
+        """A ``{workspace}/model`` value is stripped to bare ``model`` before retrieve.
+
+        Mirrors IGW's OpenAI proxy. ``nemo setup`` stores the qualified form as
+        the default, so ``${NEMO_DEFAULT_MODEL}`` resolves to e.g.
+        ``default/nvidia-nemotron`` — the VM route takes workspace as a separate
+        path segment, so the bare name is what must reach the SDK.
+        """
+        config = {
+            "llms": {
+                "agent_llm": {"_type": "openai", "model_name": "default/nvidia-nemotron"},
+            }
+        }
+        vms = _RecordingVirtualModels()
+        sdk = _StubSDKWithVirtualModels(vms)
+
+        validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
+
+        assert vms.calls == [{"name": "nvidia-nemotron", "workspace": "default"}]
+
+    def test_bare_and_inner_slash_names_are_untouched(self) -> None:
+        """Only the exact ``{workspace}/`` prefix is stripped; other slashes stay.
+
+        A bare name and a name whose slash is not the workspace qualifier (e.g.
+        a foreign-workspace prefix or a vendor path like ``nvidia/x``) must reach
+        the SDK verbatim.
+        """
+        config = {
+            "llms": {
+                "bare": {"_type": "openai", "model_name": "plain-model"},
+                "vendor": {"_type": "nim", "model_name": "nvidia/nemotron"},
+                "other_ws": {"_type": "openai", "model_name": "otherws/foo"},
+            }
+        }
+        vms = _RecordingVirtualModels()
+        sdk = _StubSDKWithVirtualModels(vms)
+
+        validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
+
+        names = sorted(call["name"] for call in vms.calls)
+        assert names == ["nvidia/nemotron", "otherws/foo", "plain-model"]
+
     def test_distinct_model_names_each_get_one_call(self) -> None:
         config = {
             "llms": {
