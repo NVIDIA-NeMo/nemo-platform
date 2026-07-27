@@ -5,6 +5,7 @@ import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName'
 import type {
   AnonymizerConfigInput,
   ModelConfig,
+  Rewrite,
   RunJobRequest,
   SelectedModelsOverrides,
 } from '@nemo/sdk/generated/anonymizer/schema';
@@ -20,10 +21,16 @@ import {
   HASH_ALGORITHM_VALUES,
   HASH_DEFAULT_DIGEST_LENGTH,
   HASH_DEFAULT_TEMPLATE,
+  PRIVACY_GOAL_MODE_CUSTOM,
+  PRIVACY_GOAL_MODE_DEFAULT,
   REDACT_DEFAULT_TEMPLATE,
   REPLACE_ROLE,
+  REWRITE_DEFAULT_MAX_REPAIR_ROUNDS,
+  REWRITE_MIN_MAX_REPAIR_ROUNDS,
   REWRITE_ROLES,
   REWRITE_STRATEGY,
+  RISK_TOLERANCE_DEFAULT,
+  RISK_TOLERANCE_ORDER,
   SOURCE_TYPE_DATASET,
   STRATEGY_ANNOTATE,
   STRATEGY_HASH,
@@ -58,6 +65,13 @@ export const anonymizerFormSchema = z
     hashAlgorithm: z.enum(HASH_ALGORITHM_VALUES),
     hashDigestLength: z.number().int().min(6).max(64),
     hashTemplate: z.string(),
+    privacyGoalMode: z.enum([PRIVACY_GOAL_MODE_DEFAULT, PRIVACY_GOAL_MODE_CUSTOM]),
+    privacyProtect: z.string(),
+    privacyPreserve: z.string(),
+    rewriteInstructions: z.string(),
+    riskTolerance: z.enum(RISK_TOLERANCE_ORDER),
+    maxRepairRounds: z.number().int().min(REWRITE_MIN_MAX_REPAIR_ROUNDS),
+    strictEntityProtection: z.boolean(),
     roleModels: z.record(z.string(), roleModelSchema),
   })
   .superRefine((data, ctx) => {
@@ -92,6 +106,13 @@ export const getAnonymizerFormDefaults = (): AnonymizerFormData => ({
   hashAlgorithm: HASH_ALGORITHM_DEFAULT,
   hashDigestLength: HASH_DEFAULT_DIGEST_LENGTH,
   hashTemplate: HASH_DEFAULT_TEMPLATE,
+  privacyGoalMode: PRIVACY_GOAL_MODE_DEFAULT,
+  privacyProtect: '',
+  privacyPreserve: '',
+  rewriteInstructions: '',
+  riskTolerance: RISK_TOLERANCE_DEFAULT,
+  maxRepairRounds: REWRITE_DEFAULT_MAX_REPAIR_ROUNDS,
+  strictEntityProtection: false,
   roleModels: {},
 });
 
@@ -126,9 +147,32 @@ const buildReplaceConfig = (form: AnonymizerFormData): AnonymizerConfigInput['re
   return replace as AnonymizerConfigInput['replace'];
 };
 
+const buildRewriteConfig = (form: AnonymizerFormData): Rewrite => {
+  const rewrite: Rewrite = {
+    risk_tolerance: form.riskTolerance,
+    max_repair_iterations: form.maxRepairRounds,
+    strict_entity_protection: form.strictEntityProtection,
+  };
+
+  const instructions = trimToUndefined(form.rewriteInstructions);
+  if (instructions) {
+    rewrite.instructions = instructions;
+  }
+  if (form.privacyGoalMode === PRIVACY_GOAL_MODE_CUSTOM) {
+    rewrite.privacy_goal = {
+      protect: form.privacyProtect.trim(),
+      preserve: form.privacyPreserve.trim(),
+    };
+  }
+
+  return rewrite;
+};
+
 export const buildAnonymizerJobRequest = (form: AnonymizerFormData): RunJobRequest => {
   const config: AnonymizerConfigInput =
-    form.strategy === REWRITE_STRATEGY ? { rewrite: {} } : { replace: buildReplaceConfig(form) };
+    form.strategy === REWRITE_STRATEGY
+      ? { rewrite: buildRewriteConfig(form) }
+      : { replace: buildReplaceConfig(form) };
 
   const useCustomLabels =
     form.entityMode === ENTITY_MODE_CUSTOM &&
@@ -172,7 +216,8 @@ export const buildAnonymizerJobRequest = (form: AnonymizerFormData): RunJobReque
   const selectedModels: SelectedModelsOverrides = { detection: toRoleMap(DETECTION_ROLES) };
   if (form.strategy === REWRITE_STRATEGY) {
     selectedModels.rewrite = toRoleMap(REWRITE_ROLES);
-  } else if (form.strategy === STRATEGY_SUBSTITUTE) {
+  }
+  if (form.strategy === REWRITE_STRATEGY || form.strategy === STRATEGY_SUBSTITUTE) {
     selectedModels.replace = { [REPLACE_ROLE]: aliasForRole[REPLACE_ROLE] };
   }
 

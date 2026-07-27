@@ -113,9 +113,10 @@ export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
             <form className="h-full" noValidate onSubmit={onSubmit}>
               <Flex className="h-full" gap="0">
                 <Panel
-                  className="w-[400px] h-full overflow-auto"
+                  className="w-[400px] h-full"
                   elevation="high"
                   density="standard"
+                  attributes={{ PanelContent: { className: 'flex-1 min-h-0 overflow-auto' } }}
                   slotFooter={
                     <Flex gap="density-md" justify="end">
                       <Button
