@@ -16,7 +16,7 @@ runs the top-level Eval Author before beginning optimization.
 ## Current Files
 
 - `agent.py` defines the canonical `EvalAuthor` agent.
-- `materialization.py` stages, validates, and publishes Insight suites.
+- `materialization.py` stages, validates, and persists Insight suites locally.
 - `models.py` defines the lightweight `EvalAuthorConfig` and `EvalAuthorResult` models.
 - `run.py` defines `run_eval_author(...)`, a reusable orchestration function for
   Python callers.
@@ -51,21 +51,20 @@ eval-and-optimize/eval_author/<insight-slug>/insight-suite/
 Each Eval Author invocation fills a fresh candidate suite from the current template
 and traces. The complete suite is Harbor-validated locally, promoted to the
 experiment-local working copy with backup-and-restore failure handling, and
-uploaded to a newly created NeMo Platform Fileset. Eval Author verifies the remote
-file inventory before returning.
-An incomplete Fileset is deleted if upload or verification fails; Filesets from
-earlier successful invocations are never modified or reused.
+analyzed for the Insight's root cause. Eval Author then adds normalized
+Insight-specific verifier metric keys to every materialized task while
+preserving the template's existing task metrics. The metric authoring step is
+scoped to the Insight suite; the user's train and validation datasets remain
+unchanged. The authored verifiers must pass static Harbor validation before the
+local suite is returned to the optimization loop.
 
 Task-template inputs may be local paths, `file://` URIs, or NeMo Platform
 `fileset://<workspace>/<fileset>` references. Fileset-backed templates are
 downloaded into the experiment-local staging directory before Harbor parses
 them. The staged template is refreshed on every invocation rather than reused.
 
-`EvalAuthorResult.insight_suite` contains a durable `DatasetRef` whose URI uses the
-`fileset://<workspace>/<fileset>` form. Downstream agents may store and pass that
-reference without understanding its storage. A component that needs Harbor's
-local filesystem layout must hydrate the Fileset into its own working directory
-before calling `HarborDataset.from_path`.
+`EvalAuthorResult.insight_suite` contains the experiment-local materialized
+`Dataset` for immediate evaluation by the optimization loop.
 
 ## Intended Invocation
 

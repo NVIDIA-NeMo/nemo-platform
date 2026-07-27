@@ -1,13 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 from nemo_experimentalist_plugin.entities import Candidate, ExperimentRun
 from nemo_experimentalist_plugin.experimentalist.experiment_mirror import ExperimentMirror, group_metadata
-from nemo_platform import ConflictError, NotFoundError, omit  # VERIFY-2
+from nemo_platform import AsyncNeMoPlatform, ConflictError, NotFoundError, omit  # VERIFY-2
 
 pytestmark = pytest.mark.asyncio
 
@@ -19,8 +20,8 @@ _NOTFOUND = NotFoundError(
 )
 
 
-def _client(groups: object, experiments: object) -> object:
-    return SimpleNamespace(experiment_groups=groups, evaluations=experiments)
+def _client(groups: object, experiments: object) -> AsyncNeMoPlatform:
+    return cast(AsyncNeMoPlatform, SimpleNamespace(experiment_groups=groups, evaluations=experiments))
 
 
 class _StatefulGroups:
@@ -52,8 +53,8 @@ class _StatefulGroups:
         return SimpleNamespace(id="grp-1", name=self.name, **self.body)
 
 
-def _run(**kw) -> ExperimentRun:
-    base = dict(
+def _run(**kw: Any) -> ExperimentRun:
+    base: dict[str, Any] = dict(
         workspace="default",
         agent="a",
         insight="ins-1",
@@ -68,8 +69,8 @@ def _run(**kw) -> ExperimentRun:
     return run
 
 
-def _cand(**kw) -> Candidate:
-    base = dict(run_id="run-1", label="agent-0", round=0, optimization="baseline")
+def _cand(**kw: Any) -> Candidate:
+    base: dict[str, Any] = dict(run_id="run-1", label="agent-0", round=0, optimization="baseline")
     base.update(kw)
     return Candidate(**base)
 
@@ -114,6 +115,20 @@ async def test_project_candidate_skips_when_no_reward():
     mirror = ExperimentMirror(_client(AsyncMock(), experiments), workspace="default")
     await mirror.project_candidate(_cand())  # no reward set
     experiments.create.assert_not_awaited()
+
+
+async def test_project_candidate_creates_insight_experiment_when_evaluated():
+    experiments = AsyncMock()
+    experiments.create.return_value = SimpleNamespace(id="exp-insight")
+    mirror = ExperimentMirror(_client(AsyncMock(), experiments), workspace="default")
+    candidate = _cand(insight_reward={"uses_required_tool": 0.5}, insight_reward_details=[])
+
+    await mirror.project_candidate(candidate)
+
+    kwargs = experiments.create.await_args.kwargs
+    assert kwargs["name"] == "opt-run-1-agent-0-insight"
+    assert kwargs["dataset_name"] == "insight"
+    assert kwargs["metadata"] == {"round": "0", "candidate_id": "agent-0", "split": "insight"}
 
 
 async def test_project_candidate_conflict_updates_experiment():

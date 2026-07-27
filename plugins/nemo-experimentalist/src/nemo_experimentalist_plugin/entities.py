@@ -149,6 +149,14 @@ class Candidate(NemoEntity, entity_type="candidate"):
         default=None,
         description="Validation split trial results from the last evaluation run.",
     )
+    insight_reward: dict[str, float] | None = Field(
+        default=None,
+        description="Multi-dimensional reward on the materialized Insight suite.",
+    )
+    insight_reward_details: Sequence[TrialResult] | None = Field(
+        default=None,
+        description="Insight-suite trial results from the last evaluation run.",
+    )
     validation_trajectory_reward: dict[str, float] | None = Field(
         default=None,
         description="Validation trajectory reward: aggregate + per-node scores.",
@@ -180,6 +188,9 @@ class Candidate(NemoEntity, entity_type="candidate"):
         if self.validation_reward:
             scores = ", ".join(f"{k}={v:.3f}" for k, v in self.validation_reward.items())
             parts.append(f", validation_reward={{{scores}}}")
+        if self.insight_reward:
+            scores = ", ".join(f"{k}={v:.3f}" for k, v in self.insight_reward.items())
+            parts.append(f", insight_reward={{{scores}}}")
         if self.killed_round is not None:
             parts.append(f", killed_round={self.killed_round}")
         parts.append(")")
@@ -191,6 +202,7 @@ class Candidate(NemoEntity, entity_type="candidate"):
             update={
                 "train_reward_details": None,
                 "validation_reward_details": None,
+                "insight_reward_details": None,
                 "validation_trajectory_reward_details": None,
             }
         )

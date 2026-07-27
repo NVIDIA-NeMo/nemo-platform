@@ -17,12 +17,7 @@ from uuid import uuid4
 import tomlkit
 from harbor.models.task.task import Task as HarborTask
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
-    DatasetRef,
-    Task,
-    local_path_from_uri,
-)
-from nemo_platform import AsyncNeMoPlatform
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import Task, local_path_from_uri
 
 _MANIFEST_SCHEMA_VERSION = 1
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
@@ -49,7 +44,7 @@ class StagedInsightTask:
 
 
 class InsightSuite:
-    """Build and publish one persisted Harbor dataset for an Insight."""
+    """Build one experiment-local persisted Harbor dataset for an Insight."""
 
     def __init__(self, *, experiment_dir: Path, insight_id: str, task_template: Task) -> None:
         """Initialize deterministic paths and template provenance for a suite."""
@@ -95,7 +90,7 @@ class InsightSuite:
         return staged
 
     def discard(self) -> None:
-        """Remove an unpublished candidate suite and reset its staging state."""
+        """Remove an unpromoted candidate suite and reset its staging state."""
         if self._candidate_root is not None and self._candidate_root.exists():
             shutil.rmtree(self._candidate_root)
         self._candidate_root = None
@@ -205,51 +200,3 @@ class InsightSuite:
         pending_path = manifest_path.with_suffix(".json.pending")
         pending_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         os.replace(pending_path, manifest_path)
-
-    async def publish_fileset(self, client: AsyncNeMoPlatform, workspace: str) -> DatasetRef:
-        """Upload the complete local suite to a fresh NeMo Platform Fileset."""
-        fileset_name = (
-            f"nemo-experimentalist-insight-{_slug(self.insight_id, fallback='insight', max_length=80)}-{uuid4().hex}"
-        )
-        fileset = await client.files.filesets.create(
-            workspace=workspace,
-            name=fileset_name,
-            description="Eval Author-built Harbor tasks materialized from Insight production traces.",
-            purpose="dataset",
-        )
-        try:
-            await client.files.upload(
-                local_path=f"{self.suite_dir}{os.sep}",
-                fileset=fileset.name,
-                workspace=workspace,
-            )
-            local_files = {
-                path.relative_to(self.suite_dir).as_posix(): path.stat().st_size
-                for path in self.suite_dir.rglob("*")
-                if path.is_file()
-            }
-            uploaded = await client.files.list(fileset=fileset.name, workspace=workspace)
-            remote_files = {file.path: file.size for file in uploaded.data}
-            if remote_files != local_files:
-                raise RuntimeError(
-                    f"Uploaded Insight suite Fileset {fileset.name!r} does not match the validated local suite"
-                )
-        except BaseException as exc:
-            try:
-                await client.files.filesets.delete(fileset.name, workspace=workspace)
-            except BaseException as cleanup_exc:
-                cleanup_exc.add_note(f"Fileset publication also failed before cleanup: {exc!r}")
-                raise cleanup_exc from exc
-            raise
-
-        return DatasetRef(
-            uri=f"fileset://{workspace}/{fileset.name}",
-            description="Eval Author-built Harbor tasks materialized from Insight production traces.",
-            metadata={
-                "id": f"insight-{_digest(self.insight_id, 12)}",
-                "insight_id": self.insight_id,
-                "fileset_id": fileset.id,
-                "fileset_name": fileset.name,
-                "workspace": workspace,
-            },
-        )

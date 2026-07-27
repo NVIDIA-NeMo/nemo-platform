@@ -9,7 +9,6 @@ before beginning insight-driven optimization.
 
 import asyncio
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -47,37 +46,6 @@ from nooa.config.summarizer_config import TokenBudgetConfig
 from nooa.tools import TodoManager
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class EvalAuthorDatasetValidationFailure:
-    """Validation failure for one Eval Author dataset split."""
-
-    split: str
-    error: DatasetValidationError
-
-
-class EvalAuthorDatasetValidationError(DatasetValidationError):
-    """Validation failures from datasets returned by the Eval Author."""
-
-    def __init__(self, failures: list[EvalAuthorDatasetValidationFailure]) -> None:
-        self.failures = tuple(failures)
-        details = "\n".join(f"{failure.split} dataset:\n{failure.error}" for failure in failures)
-        super().__init__(f"Eval Author dataset validation failed:\n{details}")
-
-
-async def _validate_eval_author_result(result: EvalAuthorResult) -> None:
-    """Validate both Eval Author output splits and aggregate authoring failures."""
-    failures: list[EvalAuthorDatasetValidationFailure] = []
-    for split, dataset in (("train", result.train_dataset), ("validation", result.validation_dataset)):
-        try:
-            await dataset.validate()
-        except DatasetValidationError as exc:
-            failures.append(EvalAuthorDatasetValidationFailure(split=split, error=exc))
-
-    if failures:
-        first_failure = failures[0]
-        raise EvalAuthorDatasetValidationError(failures) from first_failure.error
 
 
 class EvalAuthor(Agent, llm=get_smart_model()):
@@ -131,47 +99,57 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         ...
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=60, cell_timeout=3600.0)))
-    async def augment_dataset(
+    async def author_insight_metrics(
         self,
         insight: Insight,
         diagnostics: list[tuple[str, Diagnostic]],
-        train_dataset: Dataset,
-        validation_dataset: Dataset,
+        insight_suite: Dataset,
         runner_conventions: str,
         validation_feedback: str | None = None,
-    ) -> EvalAuthorResult:
-        """Augment existing dataset tasks with evaluation metrics that capture the insight.
+    ) -> str:
+        """Author verifier metrics for the materialized tasks that capture the insight.
 
         Args:
             insight: The insight whose failure mode the tasks should detect.
             diagnostics: Per-trace ``(trace_ref, Diagnostic)`` pairs for concrete evidence.
-            train_dataset: The train dataset to augment for optimization feedback.
-            validation_dataset: The validation dataset to augment for scoring.
+            insight_suite: The materialized tasks recreated from the Insight's production traces.
             runner_conventions: Summary of how this dataset's runner works (from ``discover_runner``).
                 Use this as the authoritative reference for what artifacts exist at
                 evaluation runtime, how tasks are structured, and how to add metrics.
             validation_feedback: Actionable failures from mandatory validation of
-                the previous augmentation attempt. If provided, repair every reported
+                the previous metric-authoring attempt. If provided, repair every reported
                 file before returning.
 
         Refer to ``self.context["dataset_documentation"]`` for the dataset-specific API
         and metric authoring conventions (file layout, how to add/remove/modify a metric).
 
-        **Scope: every task in both datasets**
+        **Scope: new grades on the materialized Insight tasks**
 
-        Add the metric to every task in ``train_dataset`` and ``validation_dataset``.
-        A metric is only useful as a suite-wide signal, not a per-sample patch.
+        Add at least one new Insight-specific metric key to every task in ``insight_suite``.
+        Use the same new metric key set and shared scoring semantics across the entire
+        suite. Preserve every existing verifier metric, including the task's ordinary
+        ``reward`` or ``score``; append the Insight signal instead of replacing the
+        task's original notion of success.
+
+        Only edit verifier files in the materialized Insight suite. Do not modify the
+        user's train or validation datasets, and do not change task instructions,
+        environments, solutions, or other agent-visible inputs. This work adds new
+        grades to the new rows; it does not add new agent output to old benchmark rows.
+
+        Name each new metric after the root-cause behavior, not a trace id or surface
+        symptom. Measure the current Harbor run from runtime artifacts such as OTLP
+        traces or agent outputs. Do not hard-code scores for the production traces that
+        motivated the Insight.
 
         **Validate while authoring**
 
-        After every verifier edit, call ``await train_dataset.validate()`` and
-        ``await validation_dataset.validate()``. These validation tools perform
+        After every verifier edit, call ``await insight_suite.validate()``. This performs
         evaluator-specific static checks without launching trials or executing verifier
-        code. If either raises ``DatasetValidationError``, use its task, path, and source
-        location diagnostics to repair the files, then call the tools again. Do not return
-        until both datasets pass validation. If ``validation_feedback`` is provided, it
-        means the previous result failed the mandatory validation performed by the caller;
-        fix all reported failures and revalidate both datasets.
+        code. If it raises ``DatasetValidationError``, use its task, path, and source
+        location diagnostics to repair the files, then call it again. Do not return until
+        the suite passes validation. If ``validation_feedback`` is provided, the caller's
+        mandatory validation found errors in the previous attempt; fix every reported
+        failure and revalidate the suite.
 
         **Metric quality**
 
@@ -197,8 +175,9 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         objects for Y, so X is missing from its context.  Measure whether the agent retrieves
         all required objects, not merely whether X appears in the final answer.
 
-        Return an ``EvalAuthorResult(train_dataset=..., validation_dataset=..., summary=...)``
-        with the same dataset objects and a summary of what was added.
+        Return a concise summary naming the new metric key(s), what they measure, and
+        which runtime evidence they score. The caller retains the materialized suite and
+        the user's unchanged train and validation datasets.
         """  # noqa: D413
         ...
 
@@ -291,8 +270,8 @@ class EvalAuthor(Agent, llm=get_smart_model()):
             insight: The Insight to investigate with relevant traces.
             agent_path: Agent root, relative to ``experiment_dir`` or absolute.
             task_template: Parsed evaluator task containing explicit placeholders.
-            train_dataset: The train dataset to augment.
-            validation_dataset: The validation dataset to augment.
+            train_dataset: The train dataset, returned unchanged.
+            validation_dataset: The validation dataset, returned unchanged.
             client: Existing NeMo Platform client used for Intake requests.
         """
         resolved_agent = self.experiment_dir / agent_path
@@ -358,39 +337,41 @@ class EvalAuthor(Agent, llm=get_smart_model()):
             diagnostics.append((ref, result))
             analysis_statuses[task.id] = ("completed", None)
         insight_suite.record_analysis(analysis_statuses)
-        insight_suite_ref = await insight_suite.publish_fileset(client, insight.workspace)
 
-        self.context["dataset_documentation"] = doc(type(train_dataset), inline_depth=1)
-        runner_conventions = await self.discover_runner(train_dataset)
-        result = await self.augment_dataset(
+        self.context["dataset_documentation"] = doc(type(materialized_dataset), inline_depth=1)
+        runner_conventions = await self.discover_runner(materialized_dataset)
+        summary = await self.author_insight_metrics(
             insight,
             diagnostics,
-            train_dataset,
-            validation_dataset,
+            materialized_dataset,
             runner_conventions,
         )
         for repair_attempt in range(self._config.max_validation_repair_attempts + 1):
             try:
-                await _validate_eval_author_result(result)
+                await materialized_dataset.validate()
             except DatasetValidationError as exc:
                 if repair_attempt >= self._config.max_validation_repair_attempts:
                     raise
                 logger.warning(
-                    "Eval Author dataset validation failed; requesting repair attempt %d/%d: %s",
+                    "Eval Author Insight metric validation failed; requesting repair attempt %d/%d: %s",
                     repair_attempt + 1,
                     self._config.max_validation_repair_attempts,
                     exc,
                 )
-                result = await self.augment_dataset(
+                summary = await self.author_insight_metrics(
                     insight,
                     diagnostics,
-                    result.train_dataset,
-                    result.validation_dataset,
+                    materialized_dataset,
                     runner_conventions,
                     validation_feedback=str(exc),
                 )
             else:
-                return result.model_copy(update={"insight_suite": insight_suite_ref})
+                return EvalAuthorResult(
+                    train_dataset=train_dataset,
+                    validation_dataset=validation_dataset,
+                    insight_suite=materialized_dataset,
+                    summary=summary,
+                )
 
         raise AssertionError("unreachable")
 

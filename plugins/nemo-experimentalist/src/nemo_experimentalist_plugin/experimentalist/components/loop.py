@@ -392,6 +392,7 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
         train_dataset_ref = deps.train_dataset
         validation_dataset_ref = deps.validation_dataset
         task_template_ref = deps.task_template
+        insight_eval_dataset: Dataset | None = None
         if deps.insight is not None:
             if task_template_ref is None:
                 raise ValueError("Task template is required for insight trace analysis")
@@ -466,6 +467,7 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
             )
             train_eval_dataset = eval_author_result.train_dataset
             validation_eval_dataset = eval_author_result.validation_dataset
+            insight_eval_dataset = eval_author_result.insight_suite
         else:
             # Mode 2: local agent directory as baseline, no insight required.
             insight = None
@@ -546,6 +548,21 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
                 raise
 
         run_id = run_entity.id or ""
+
+        if insight_eval_dataset is not None:
+            try:
+                await self._evaluate_and_persist_insight_candidates(
+                    dataset=insight_eval_dataset,
+                    evaluator=evaluator,
+                    candidates=candidates,
+                    workspace=workspace,
+                    backend=backend,
+                    run_id=run_entity.id or "",
+                )
+            except Exception:
+                run_entity.status = "failed"
+                await backend.update_run(workspace=workspace, run=run_entity)
+                raise
 
         # ---- Initial goal tree (idempotent) ------------------------------
         await self._generate_initial_goal_tree(
@@ -674,6 +691,15 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
                 for candidate in new_candidates:
                     await self._update_candidate(
                         candidate,
+                        workspace=workspace,
+                        backend=backend,
+                        run_id=run_id,
+                    )
+                if insight_eval_dataset is not None:
+                    await self._evaluate_and_persist_insight_candidates(
+                        dataset=insight_eval_dataset,
+                        evaluator=evaluator,
+                        candidates=new_candidates,
                         workspace=workspace,
                         backend=backend,
                         run_id=run_id,
@@ -947,7 +973,7 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
                 continue
             if (meta.get("round") or 0) > from_round:
                 shutil.rmtree(agent_dir)
-                for suffix in ("-train", "-validation"):
+                for suffix in ("-train", "-validation", "-insight"):
                     rd = results_dir / f"{agent_dir.name}{suffix}"
                     if rd.exists():
                         shutil.rmtree(rd)
@@ -1273,6 +1299,59 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
             for candidate_result in candidate_results
             if candidate_result is not None
         }
+
+    async def _evaluate_insight_candidates(
+        self,
+        *,
+        dataset: Dataset,
+        evaluator: Evaluator,
+        candidates: list[Candidate],
+    ) -> dict[str, EvaluationResult]:
+        """Evaluate candidates that do not yet have metrics for this Insight suite."""
+        if not list(dataset.list_tasks()):
+            return {}
+        pending = [candidate for candidate in candidates if candidate.insight_reward is None]
+        evaluated = await asyncio.gather(
+            *[self._evaluate_agent(candidate, dataset, evaluator) for candidate in pending]
+        )
+        return {candidate.label: result for candidate, result in evaluated}
+
+    async def _evaluate_and_persist_insight_candidates(
+        self,
+        *,
+        dataset: Dataset,
+        evaluator: Evaluator,
+        candidates: list[Candidate],
+        workspace: str,
+        backend: ExperimentalistBackend,
+        run_id: str,
+    ) -> None:
+        """Evaluate and persist Insight-suite metrics for the supplied candidates."""
+        results = await self._evaluate_insight_candidates(
+            dataset=dataset,
+            evaluator=evaluator,
+            candidates=candidates,
+        )
+        for candidate in candidates:
+            result = results.get(candidate.label)
+            if result is None:
+                continue
+            await backend.persist_evaluation(
+                workspace=workspace,
+                result=result,
+                candidate=candidate,
+                split="insight",
+            )
+            await self._update_candidate(
+                candidate,
+                updates={
+                    "insight_reward": result.aggregate_metrics,
+                    "insight_reward_details": result.trials,
+                },
+                workspace=workspace,
+                backend=backend,
+                run_id=run_id,
+            )
 
     async def _generate_initial_goal_tree(
         self,
