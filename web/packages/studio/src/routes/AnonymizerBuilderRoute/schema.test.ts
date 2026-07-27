@@ -26,11 +26,36 @@ const form = (overrides: Partial<AnonymizerFormData> = {}): AnonymizerFormData =
 });
 
 describe('buildAnonymizerJobRequest', () => {
-  it('routes the four replace strategies to config.replace with the kind tag', () => {
+  it('tags each replace strategy with its kind', () => {
     for (const strategy of ['substitute', 'redact', 'annotate', 'hash'] as const) {
       const req = buildAnonymizerJobRequest(form({ strategy }));
-      expect(req.spec.config).toEqual({ replace: { kind: strategy } });
+      expect((req.spec.config.replace as { kind: string }).kind).toBe(strategy);
     }
+  });
+
+  it('substitute sends only the kind', () => {
+    const req = buildAnonymizerJobRequest(form({ strategy: 'substitute' }));
+    expect(req.spec.config).toEqual({ replace: { kind: 'substitute' } });
+  });
+
+  it('carries strategy params for redact and hash, omitting empty templates', () => {
+    const redact = buildAnonymizerJobRequest(
+      form({ strategy: 'redact', redactTemplate: '  <{label}>  ', redactNormalizeLabel: false })
+    );
+    expect(redact.spec.config.replace).toEqual({
+      kind: 'redact',
+      normalize_label: false,
+      format_template: '<{label}>',
+    });
+
+    const hash = buildAnonymizerJobRequest(
+      form({ strategy: 'hash', hashAlgorithm: 'sha1', hashDigestLength: 12, hashTemplate: '' })
+    );
+    expect(hash.spec.config.replace).toEqual({
+      kind: 'hash',
+      algorithm: 'sha1',
+      digest_length: 12,
+    });
   });
 
   it('routes rewrite to config.rewrite', () => {

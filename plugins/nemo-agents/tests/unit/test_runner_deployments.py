@@ -14,10 +14,12 @@ from nemo_agents_plugin.config import AgentsConfig, DeploymentsRunnerConfig
 from nemo_agents_plugin.entities import Endpoint
 from nemo_agents_plugin.runner.deployments_backend import (
     DeploymentsRunnerBackend,
+    UnreachableGatewayURLError,
     build_deployment_config,
-    container_gateway_url,
     executor_for_mode,
     map_status,
+    resolve_agent_gateway_url,
+    rewrite_config_base_urls,
 )
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig
 from nemo_deployments_plugin.types import Endpoint as PluginEndpoint
@@ -41,18 +43,72 @@ def test_map_status(backend: str, expected: str) -> None:
     assert map_status(backend) == expected
 
 
-def test_container_gateway_url_rewrites_loopback_for_docker() -> None:
-    assert container_gateway_url("http://127.0.0.1:8080", mode="docker") == "http://host.docker.internal:8080"
+@pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "0.0.0.0", "[::1]"])
+def test_resolve_docker_rewrites_loopback_to_host(host: str) -> None:
+    assert resolve_agent_gateway_url(f"http://{host}:8080", mode="docker") == "http://host.docker.internal:8080"
 
 
-def test_container_gateway_url_leaves_k8s_unchanged() -> None:
-    assert container_gateway_url("http://127.0.0.1:8080", mode="k8s") == "http://127.0.0.1:8080"
+def test_resolve_docker_passes_through_non_loopback_host() -> None:
+    assert resolve_agent_gateway_url("http://my-platform:8080", mode="docker") == "http://my-platform:8080"
 
 
-def test_container_gateway_url_override_wins() -> None:
+def test_resolve_k8s_uses_internal_base_url_regardless_of_base_url() -> None:
+    # k8s always returns internal_base_url, never the platform base_url.
+    for base_url in (
+        "http://localhost:8080",
+        "http://nemo-platform-envoy.aire-dev.svc.cluster.local:8080",
+        "http://some-other-host:8080",
+    ):
+        assert (
+            resolve_agent_gateway_url(base_url, mode="k8s", internal_base_url="http://nmp-api:8080/")
+            == "http://nmp-api:8080"
+        )
+
+
+def test_resolve_k8s_without_internal_base_url_raises() -> None:
+    with pytest.raises(UnreachableGatewayURLError, match="internal API Service"):
+        resolve_agent_gateway_url("http://localhost:8080", mode="k8s")
+
+
+def test_resolve_rejects_subprocess_mode() -> None:
+    with pytest.raises(ValueError, match="container deployment modes"):
+        resolve_agent_gateway_url("http://localhost:8080", mode="subprocess")
+
+
+def test_resolve_override_wins_verbatim_for_every_mode() -> None:
     assert (
-        container_gateway_url("http://127.0.0.1:8080", mode="docker", override="http://igw:8080/") == "http://igw:8080"
+        resolve_agent_gateway_url("http://127.0.0.1:8080", mode="docker", override="http://igw:8080/")
+        == "http://igw:8080"
     )
+    assert (
+        resolve_agent_gateway_url(
+            "http://localhost:8080", mode="k8s", override="http://igw:8080/", internal_base_url="http://ignored:8080"
+        )
+        == "http://igw:8080"
+    )
+
+
+def test_rewrite_config_base_urls_rebases_igw_host() -> None:
+    config = {
+        "llms": {
+            "llm": {
+                "_type": "openai",
+                "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
+            }
+        }
+    }
+    result = rewrite_config_base_urls(config, "http://nmp-api:8080")
+    assert result["llms"]["llm"]["base_url"] == (
+        "http://nmp-api:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
+    )
+    # Original not mutated.
+    assert "localhost" in config["llms"]["llm"]["base_url"]
+
+
+def test_rewrite_config_base_urls_leaves_third_party_base_url() -> None:
+    config = {"llms": {"llm": {"_type": "openai", "base_url": "https://api.openai.com/v1"}}}
+    result = rewrite_config_base_urls(config, "http://nmp-api:8080")
+    assert result["llms"]["llm"]["base_url"] == "https://api.openai.com/v1"
 
 
 def test_executor_for_mode_prefers_mode_specific() -> None:
@@ -81,7 +137,6 @@ def test_build_deployment_config_always_single_container() -> None:
         nat_config={"llms": {"nim": {"_type": "nim"}}},
         config_mount_path="/workspace/config.yaml",
         mode="docker",
-        gateway_base_url="http://host.docker.internal:8080",
     )
     assert cfg.restart_policy == "Always"
     assert len(cfg.containers) == 1
@@ -107,7 +162,6 @@ def test_build_deployment_config_k8s_uses_nat_entrypoint() -> None:
         nat_config={},
         config_mount_path="/workspace/config.yaml",
         mode="k8s",
-        gateway_base_url="http://nmp:8080",
     )
     assert cfg.containers[0].command == ["nat", "start", "fastapi"]
     assert "--host" in cfg.containers[0].args and "0.0.0.0" in cfg.containers[0].args
@@ -123,7 +177,6 @@ def test_build_deployment_config_k8s_option_b_when_image_set() -> None:
         nat_config={},
         config_mount_path="/workspace/config.yaml",
         mode="k8s",
-        gateway_base_url="http://nmp:8080",
         plugin_wheels_init_image="busybox:1.36",
     )
     assert len(cfg.init_containers) == 1
@@ -140,7 +193,6 @@ def test_build_deployment_config_docker_never_emits_init_containers() -> None:
         nat_config={},
         config_mount_path="/workspace/config.yaml",
         mode="docker",
-        gateway_base_url="http://host.docker.internal:8080",
         plugin_wheels_init_image="busybox:1.36",
     )
     assert cfg.init_containers == []
@@ -177,6 +229,77 @@ async def test_create_deployment_writes_config_and_deployment() -> None:
     assert created_dep.deployment_config == "hello-dep"
     assert created_dep.executor == "local-docker"
     assert created_dep.desired_state == "READY"
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_docker_rewrites_loopback_base_url() -> None:
+    backend = _backend(default_image="nat:latest", default_executor="local-docker")
+    entities = AsyncMock()
+    backend._entities = entities
+    config = {
+        "llms": {
+            "llm": {
+                "_type": "openai",
+                "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
+            }
+        }
+    }
+    with patch("nemo_agents_plugin.runner.deployments_backend.get_base_url", return_value="http://localhost:8080"):
+        info = await backend.create_deployment(
+            workspace="default", name="hello-dep", config=config, port=0, deployment_mode="docker"
+        )
+    assert info.status == "starting"
+    created_config = entities.create.await_args_list[0].args[0]
+    baked = yaml.safe_load(created_config.config_files[0].content)
+    assert baked["llms"]["llm"]["base_url"] == (
+        "http://host.docker.internal:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_k8s_rewrites_loopback_to_internal() -> None:
+    backend = _backend(
+        default_image="nat:latest",
+        default_executor="k8s",
+        k8s_internal_base_url="http://nmp-api:8080",
+    )
+    entities = AsyncMock()
+    backend._entities = entities
+    config = {
+        "llms": {
+            "llm": {
+                "_type": "openai",
+                "base_url": "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
+            }
+        }
+    }
+    with patch("nemo_agents_plugin.runner.deployments_backend.get_base_url", return_value="http://localhost:8080"):
+        info = await backend.create_deployment(
+            workspace="default", name="hello-dep", config=config, port=0, deployment_mode="k8s"
+        )
+    assert info.status == "starting"
+    created_config = entities.create.await_args_list[0].args[0]
+    baked = yaml.safe_load(created_config.config_files[0].content)
+    assert baked["llms"]["llm"]["base_url"] == (
+        "http://nmp-api:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_k8s_without_internal_url_fails() -> None:
+    backend = _backend(default_image="nat:latest", default_executor="k8s")
+    entities = AsyncMock()
+    backend._entities = entities
+    with (
+        patch("nemo_agents_plugin.runner.deployments_backend.get_base_url", return_value="http://localhost:8080"),
+        patch("nemo_agents_plugin.runner.deployments_backend.get_internal_base_url", return_value=None),
+    ):
+        info = await backend.create_deployment(
+            workspace="default", name="hello-dep", config={}, port=0, deployment_mode="k8s"
+        )
+    assert info.status == "failed"
+    assert "internal api service" in info.error.lower()
+    entities.create.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -10,15 +10,24 @@ import type {
 } from '@nemo/sdk/generated/anonymizer/schema';
 import {
   activeRolesForStrategy,
+  ANNOTATE_DEFAULT_TEMPLATE,
   DETECTION_ROLES,
   DEFAULT_MODEL_MAX_TOKENS,
   DEFAULT_MODEL_TIMEOUT_SECONDS,
   DEFAULT_PREVIEW_ROWS,
   ENTITY_MODE_CUSTOM,
+  HASH_ALGORITHM_DEFAULT,
+  HASH_ALGORITHM_VALUES,
+  HASH_DEFAULT_DIGEST_LENGTH,
+  HASH_DEFAULT_TEMPLATE,
+  REDACT_DEFAULT_TEMPLATE,
   REPLACE_ROLE,
   REWRITE_ROLES,
   REWRITE_STRATEGY,
   SOURCE_TYPE_DATASET,
+  STRATEGY_ANNOTATE,
+  STRATEGY_HASH,
+  STRATEGY_REDACT,
   STRATEGY_SUBSTITUTE,
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import { trimToUndefined } from '@studio/util/strings';
@@ -43,6 +52,12 @@ export const anonymizerFormSchema = z
     entityMode: z.enum([ENTITY_MODE_CUSTOM, 'auto']),
     includeDefaultEntities: z.boolean(),
     entityLabels: z.array(z.string()),
+    redactTemplate: z.string(),
+    redactNormalizeLabel: z.boolean(),
+    annotateTemplate: z.string(),
+    hashAlgorithm: z.enum(HASH_ALGORITHM_VALUES),
+    hashDigestLength: z.number().int().min(6).max(64),
+    hashTemplate: z.string(),
     roleModels: z.record(z.string(), roleModelSchema),
   })
   .superRefine((data, ctx) => {
@@ -71,14 +86,49 @@ export const getAnonymizerFormDefaults = (): AnonymizerFormData => ({
   entityMode: ENTITY_MODE_CUSTOM,
   includeDefaultEntities: true,
   entityLabels: [],
+  redactTemplate: REDACT_DEFAULT_TEMPLATE,
+  redactNormalizeLabel: true,
+  annotateTemplate: ANNOTATE_DEFAULT_TEMPLATE,
+  hashAlgorithm: HASH_ALGORITHM_DEFAULT,
+  hashDigestLength: HASH_DEFAULT_DIGEST_LENGTH,
+  hashTemplate: HASH_DEFAULT_TEMPLATE,
   roleModels: {},
 });
 
+const withTemplate = <T extends object>(base: T, template: string): T => {
+  const trimmed = template.trim();
+  return trimmed ? { ...base, format_template: trimmed } : base;
+};
+
+const buildReplaceConfig = (form: AnonymizerFormData): AnonymizerConfigInput['replace'] => {
+  const replace = ((): object => {
+    switch (form.strategy) {
+      case STRATEGY_REDACT:
+        return withTemplate(
+          { kind: STRATEGY_REDACT, normalize_label: form.redactNormalizeLabel },
+          form.redactTemplate
+        );
+      case STRATEGY_ANNOTATE:
+        return withTemplate({ kind: STRATEGY_ANNOTATE }, form.annotateTemplate);
+      case STRATEGY_HASH:
+        return withTemplate(
+          {
+            kind: STRATEGY_HASH,
+            algorithm: form.hashAlgorithm,
+            digest_length: form.hashDigestLength,
+          },
+          form.hashTemplate
+        );
+      default:
+        return { kind: STRATEGY_SUBSTITUTE };
+    }
+  })();
+  return replace as AnonymizerConfigInput['replace'];
+};
+
 export const buildAnonymizerJobRequest = (form: AnonymizerFormData): RunJobRequest => {
   const config: AnonymizerConfigInput =
-    form.strategy === REWRITE_STRATEGY
-      ? { rewrite: {} }
-      : { replace: { kind: form.strategy } as AnonymizerConfigInput['replace'] };
+    form.strategy === REWRITE_STRATEGY ? { rewrite: {} } : { replace: buildReplaceConfig(form) };
 
   const useCustomLabels =
     form.entityMode === ENTITY_MODE_CUSTOM &&
