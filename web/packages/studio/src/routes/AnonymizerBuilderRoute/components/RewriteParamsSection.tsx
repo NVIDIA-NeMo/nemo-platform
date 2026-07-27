@@ -14,7 +14,7 @@ import {
   RISK_TOLERANCE_ORDER,
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import type { AnonymizerFormData } from '@studio/routes/AnonymizerBuilderRoute/schema';
-import { FC } from 'react';
+import type { FC } from 'react';
 import { useController, useFormContext, useWatch } from 'react-hook-form';
 
 const formatRiskToleranceStep = (index: number) =>

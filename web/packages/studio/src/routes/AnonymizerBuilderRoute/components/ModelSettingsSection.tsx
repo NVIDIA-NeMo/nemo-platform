@@ -11,7 +11,7 @@ import {
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import type { AnonymizerFormData } from '@studio/routes/AnonymizerBuilderRoute/schema';
 import { useAnonymizerModels } from '@studio/routes/AnonymizerBuilderRoute/useAnonymizerModels';
-import { FC, useMemo, useState } from 'react';
+import { useMemo, useState, type FC } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 
 export const ModelSettingsSection: FC = () => {
