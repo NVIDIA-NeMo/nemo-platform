@@ -1450,6 +1450,42 @@ class TestValidateLLMModels:
         names = sorted(call["name"] for call in vms.calls)
         assert names == ["nvidia/nemotron", "otherws/foo", "plain-model"]
 
+    def test_qualified_and_bare_forms_dedupe_to_one_lookup(self) -> None:
+        """``default/foo`` and ``foo`` normalize to the same name → one retrieve.
+
+        Dedup happens *after* stripping, so the same model spelled both ways
+        across LLM keys costs a single lookup.
+        """
+        config = {
+            "llms": {
+                "qualified": {"_type": "openai", "model_name": "default/foo"},
+                "bare": {"_type": "openai", "model_name": "foo"},
+            }
+        }
+        vms = _RecordingVirtualModels()
+        sdk = _StubSDKWithVirtualModels(vms)
+
+        validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
+
+        assert vms.calls == [{"name": "foo", "workspace": "default"}]
+
+    def test_bare_workspace_prefix_normalizes_to_empty_and_is_skipped(self) -> None:
+        """A ``model_name`` of exactly ``{workspace}/`` strips to '' and is skipped.
+
+        The empty string is not a routable model name; it must not reach the SDK.
+        """
+        config = {
+            "llms": {
+                "empty_after_strip": {"_type": "openai", "model_name": "default/"},
+            }
+        }
+        vms = _RecordingVirtualModels()
+        sdk = _StubSDKWithVirtualModels(vms)
+
+        validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
+
+        assert vms.calls == []
+
     def test_distinct_model_names_each_get_one_call(self) -> None:
         config = {
             "llms": {

@@ -335,6 +335,11 @@ def validate_llm_models(
         # prefix, leaving bare names and slashes inside the name (e.g.
         # "nvidia/nemotron") untouched.
         model_name = model_name.removeprefix(f"{workspace}/")
+        # A bare "{workspace}/" (e.g. "default/") normalizes to "" — re-check the
+        # non-empty invariant, which was validated before stripping. An empty
+        # name is not a routable model and would otherwise reach the SDK.
+        if not model_name:
+            continue
         to_check.setdefault(model_name, llm_key)
 
     if not to_check:
