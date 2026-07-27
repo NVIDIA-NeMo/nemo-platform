@@ -3,12 +3,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
 from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.fabric import session_manager
+from nemo_agents_plugin.fabric.runtime import FabricInvocationRequest, FabricRuntimeResult
 from nemo_agents_plugin.fabric.session_manager import FabricSessionManager
 from nemo_agents_plugin.fabric.session_registry import FabricSessionRegistry
 
@@ -155,3 +157,122 @@ async def test_resolve_session_reuses_registered_runtime(
     assert session is registered
     assert session.runtime is runtime
     assert fabric.start_calls == []
+
+
+@pytest.mark.asyncio
+async def test_invoke_session_serializes_turns_for_same_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = FabricSessionRegistry()
+    session = await registry.register(cast(Any, _FakeRuntime()), session_id="session-1")
+    manager = FabricSessionManager(
+        _agent_config(),
+        base_dir=tmp_path,
+        session_registry=registry,
+        fabric=_FakeFabric(_FakeRuntime()),
+    )
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    invocation_order: list[str] = []
+    active_invocations = 0
+    max_active_invocations = 0
+
+    async def invoke_fabric_runtime(runtime: Any, request: FabricInvocationRequest) -> FabricRuntimeResult:
+        nonlocal active_invocations, max_active_invocations
+        active_invocations += 1
+        max_active_invocations = max(max_active_invocations, active_invocations)
+        invocation_order.append(request.input)
+        if request.input == "first":
+            first_started.set()
+            await release_first.wait()
+        active_invocations -= 1
+        return FabricRuntimeResult(status="succeeded", response=request.input)
+
+    monkeypatch.setattr(session_manager, "invoke_fabric_runtime", invoke_fabric_runtime)
+
+    first = asyncio.create_task(
+        manager.invoke_session(session, FabricInvocationRequest(input="first")),
+    )
+    await first_started.wait()
+    second = asyncio.create_task(
+        manager.invoke_session(session, FabricInvocationRequest(input="second")),
+    )
+    await asyncio.sleep(0)
+
+    assert invocation_order == ["first"]
+
+    release_first.set()
+    results = await asyncio.gather(first, second)
+
+    assert invocation_order == ["first", "second"]
+    assert max_active_invocations == 1
+    assert [result.response for result in results] == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_invoke_session_releases_lock_after_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = FabricSessionRegistry()
+    session = await registry.register(cast(Any, _FakeRuntime()), session_id="session-1")
+    manager = FabricSessionManager(
+        _agent_config(),
+        base_dir=tmp_path,
+        session_registry=registry,
+        fabric=_FakeFabric(_FakeRuntime()),
+    )
+    invocation_count = 0
+
+    async def invoke_fabric_runtime(runtime: Any, request: FabricInvocationRequest) -> FabricRuntimeResult:
+        nonlocal invocation_count
+        invocation_count += 1
+        if invocation_count == 1:
+            raise RuntimeError("invoke failed")
+        return FabricRuntimeResult(status="succeeded", response="recovered")
+
+    monkeypatch.setattr(session_manager, "invoke_fabric_runtime", invoke_fabric_runtime)
+
+    with pytest.raises(RuntimeError, match="invoke failed"):
+        await manager.invoke_session(session, FabricInvocationRequest(input="first"))
+
+    result = await manager.invoke_session(session, FabricInvocationRequest(input="second"))
+
+    assert result.response == "recovered"
+
+
+@pytest.mark.asyncio
+async def test_invoke_session_releases_lock_after_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = FabricSessionRegistry()
+    session = await registry.register(cast(Any, _FakeRuntime()), session_id="session-1")
+    manager = FabricSessionManager(
+        _agent_config(),
+        base_dir=tmp_path,
+        session_registry=registry,
+        fabric=_FakeFabric(_FakeRuntime()),
+    )
+    invocation_started = asyncio.Event()
+
+    async def invoke_fabric_runtime(runtime: Any, request: FabricInvocationRequest) -> FabricRuntimeResult:
+        if request.input == "cancel":
+            invocation_started.set()
+            await asyncio.Event().wait()
+        return FabricRuntimeResult(status="succeeded", response="recovered")
+
+    monkeypatch.setattr(session_manager, "invoke_fabric_runtime", invoke_fabric_runtime)
+    cancelled = asyncio.create_task(
+        manager.invoke_session(session, FabricInvocationRequest(input="cancel")),
+    )
+    await invocation_started.wait()
+
+    cancelled.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cancelled
+
+    result = await manager.invoke_session(session, FabricInvocationRequest(input="next"))
+
+    assert result.response == "recovered"

@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -23,6 +23,7 @@ class FabricRuntimeSession:
     runtime: Runtime
     created_at: float
     last_accessed_at: float
+    invocation_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
 
 class FabricSessionNotFoundError(LookupError):

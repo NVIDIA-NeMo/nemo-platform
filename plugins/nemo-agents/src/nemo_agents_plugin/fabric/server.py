@@ -21,7 +21,6 @@ from nemo_agents_plugin.fabric.runtime import (
     FabricRuntimeExecutionError,
     FabricRuntimeResult,
     FabricRuntimeTimeoutError,
-    invoke_fabric_runtime,
 )
 from nemo_agents_plugin.fabric.serving_models import (
     ChatCompletionChoice,
@@ -129,7 +128,7 @@ def create_fabric_serving_app(agent_config_path: str | Path) -> FastAPI:
 
         invocation_request = _to_fabric_invocation_request(request, session_id=session.session_id)
         try:
-            result = await invoke_fabric_runtime(session.runtime, invocation_request)
+            result = await app.state.session_manager.invoke_session(session, invocation_request)
         except FabricRuntimeTimeoutError as error:
             raise HTTPException(
                 status_code=504,

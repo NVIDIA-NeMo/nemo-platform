@@ -107,8 +107,8 @@ def test_chat_completion_without_session_id_opens_and_returns_session(
         resolve_calls.append(session_id)
         return SimpleNamespace(session_id="session-1", runtime=runtime)
 
-    async def invoke_fabric_runtime(active_runtime: Any, request: Any) -> FabricRuntimeResult:
-        invocation_calls.append((active_runtime, request))
+    async def invoke_session(session: Any, request: Any) -> FabricRuntimeResult:
+        invocation_calls.append((session, request))
         return FabricRuntimeResult(
             status="succeeded",
             output={"response": "hello", "usage": {"total_tokens": 3}},
@@ -116,10 +116,9 @@ def test_chat_completion_without_session_id_opens_and_returns_session(
             invocation_id="invocation-1",
         )
 
-    monkeypatch.setattr(server, "invoke_fabric_runtime", invoke_fabric_runtime)
-
     with TestClient(app) as client:
         monkeypatch.setattr(app.state.session_manager, "resolve_session", resolve_session)
+        monkeypatch.setattr(app.state.session_manager, "invoke_session", invoke_session)
         response = client.post(
             "/v1/chat/completions",
             json={"messages": [{"role": "user", "content": "hello"}]},
@@ -141,8 +140,8 @@ def test_chat_completion_without_session_id_opens_and_returns_session(
         "usage": {"total_tokens": 3},
     }
     assert resolve_calls == [None]
-    active_runtime, invocation_request = invocation_calls[0]
-    assert active_runtime is runtime
+    resolved_session, invocation_request = invocation_calls[0]
+    assert resolved_session.runtime is runtime
     assert invocation_request.input == "hello"
     assert invocation_request.caller_context == {"session_id": "session-1"}
 
@@ -160,13 +159,12 @@ def test_chat_completion_with_session_id_reuses_session(
         resolve_calls.append(session_id)
         return SimpleNamespace(session_id="session-1", runtime=object())
 
-    async def invoke_fabric_runtime(active_runtime: Any, request: Any) -> FabricRuntimeResult:
+    async def invoke_session(session: Any, request: Any) -> FabricRuntimeResult:
         return FabricRuntimeResult(status="succeeded", response="hello again")
-
-    monkeypatch.setattr(server, "invoke_fabric_runtime", invoke_fabric_runtime)
 
     with TestClient(app) as client:
         monkeypatch.setattr(app.state.session_manager, "resolve_session", resolve_session)
+        monkeypatch.setattr(app.state.session_manager, "invoke_session", invoke_session)
         response = client.post(
             "/v1/chat/completions",
             headers={SESSION_ID_HEADER: "session-1"},
@@ -197,13 +195,12 @@ def test_chat_completion_maps_runtime_errors(
     async def resolve_session(session_id: str | None) -> Any:
         return SimpleNamespace(session_id="session-1", runtime=object())
 
-    async def invoke_fabric_runtime(active_runtime: Any, request: Any) -> FabricRuntimeResult:
+    async def invoke_session(session: Any, request: Any) -> FabricRuntimeResult:
         raise error
-
-    monkeypatch.setattr(server, "invoke_fabric_runtime", invoke_fabric_runtime)
 
     with TestClient(app) as client:
         monkeypatch.setattr(app.state.session_manager, "resolve_session", resolve_session)
+        monkeypatch.setattr(app.state.session_manager, "invoke_session", invoke_session)
         response = client.post(
             "/v1/chat/completions",
             json={"messages": [{"role": "user", "content": "hello"}]},
@@ -256,16 +253,15 @@ def test_chat_completion_maps_failed_run_result(
     async def resolve_session(session_id: str | None) -> Any:
         return SimpleNamespace(session_id="session-1", runtime=object())
 
-    async def invoke_fabric_runtime(active_runtime: Any, request: Any) -> FabricRuntimeResult:
+    async def invoke_session(session: Any, request: Any) -> FabricRuntimeResult:
         return FabricRuntimeResult(
             status="failed",
             error={"stage": "invoke", "message": "adapter failed"},
         )
 
-    monkeypatch.setattr(server, "invoke_fabric_runtime", invoke_fabric_runtime)
-
     with TestClient(app) as client:
         monkeypatch.setattr(app.state.session_manager, "resolve_session", resolve_session)
+        monkeypatch.setattr(app.state.session_manager, "invoke_session", invoke_session)
         response = client.post(
             "/v1/chat/completions",
             json={"messages": [{"role": "user", "content": "hello"}]},

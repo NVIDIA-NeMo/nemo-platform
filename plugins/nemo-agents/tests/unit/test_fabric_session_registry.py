@@ -30,6 +30,16 @@ async def test_register_generates_opaque_session_id() -> None:
 
 
 @pytest.mark.asyncio
+async def test_each_session_has_an_independent_invocation_lock() -> None:
+    registry = FabricSessionRegistry()
+
+    first = await registry.register(cast(Any, object()), session_id="session-1")
+    second = await registry.register(cast(Any, object()), session_id="session-2")
+
+    assert first.invocation_lock is not second.invocation_lock
+
+
+@pytest.mark.asyncio
 async def test_get_returns_session_and_updates_last_accessed_at(monkeypatch: pytest.MonkeyPatch) -> None:
     clock = iter([10.0, 20.0])
     monkeypatch.setattr(session_registry, "time", SimpleNamespace(monotonic=lambda: next(clock)))

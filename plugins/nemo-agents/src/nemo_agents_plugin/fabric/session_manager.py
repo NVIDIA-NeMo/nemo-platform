@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from nemo_agents_plugin.agent_config import AgentConfig
+from nemo_agents_plugin.fabric.runtime import FabricInvocationRequest, FabricRuntimeResult, invoke_fabric_runtime
 from nemo_agents_plugin.fabric.session_registry import FabricRuntimeSession, FabricSessionRegistry
 from nemo_agents_plugin.fabric.translator import FabricTranslationError, translate_agent_config
 
@@ -67,3 +68,12 @@ class FabricSessionManager:
         if session_id is None:
             return await self.open_session()
         return await self._session_registry.get(session_id)
+
+    async def invoke_session(
+        self,
+        session: FabricRuntimeSession,
+        request: FabricInvocationRequest,
+    ) -> FabricRuntimeResult:
+        """Serialize and invoke one turn on a session's active runtime."""
+        async with session.invocation_lock:
+            return await invoke_fabric_runtime(session.runtime, request)
