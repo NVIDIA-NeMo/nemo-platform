@@ -118,7 +118,13 @@ class MessageStats(BaseModel):
     content_chars: Quantiles = Field(description="Per-row total content length -> chat sequence length.")
     roles_seen: list[str] = Field(
         default_factory=list,
-        description='e.g. ["system", "user", "assistant", "tool"].',
+        description=(
+            'The distinct role strings actually present in the sampled rows, verbatim — e.g. ["system", '
+            '"user", "assistant", "tool"], but equally ShareGPT\'s ["human", "gpt"] or a house convention. '
+            "A measurement of row content, not a vocabulary the profiler picks from, so it is deliberately "
+            "not an enum: an unexpected role is the finding worth reporting, and normalizing or dropping it "
+            "would hide exactly what a consumer needs to see before choosing a chat template."
+        ),
     )
     ends_with_assistant_rate: float = Field(
         ge=0.0,
@@ -283,10 +289,20 @@ class SplitProfile(BaseModel):
             "train, with the variant's intent kept in `name`."
         ),
     )
-    files: list[FileRecord]
+    files: list[FileRecord] = Field(
+        description=(
+            "Every file resolved into this split, measured. Partitioning is exhaustive and disjoint: each "
+            "file of the partition lands in exactly one split, so concatenating `files` across splits "
+            "reconstructs the partition's file list with no gaps or repeats."
+        ),
+    )
     num_examples: int | None = Field(
         default=None,
-        description="Exact when exhaustive / from parquet footers, else estimated.",
+        description=(
+            "Rows in this split, counting every file in `files` whether or not it was scanned. Exact when "
+            "read from parquet footers or an exhaustive scan, otherwise extrapolated from the rows sampled — "
+            "check `SamplingInfo.exhaustive` before treating it as a fact. None when nothing usable was found."
+        ),
     )
 
 
@@ -344,12 +360,19 @@ class SamplingInfo(BaseModel):
     rows_scanned: int = Field(description="Total rows actually parsed across all files.")
     rows_total: int | None = Field(
         default=None,
-        description="Exact when cheaply known (parquet footer, exhaustive scan).",
+        description=(
+            "How many rows the whole fileset holds, scanned or not — the denominator `rows_scanned` is a "
+            "fraction of, so a consumer can judge how representative the stats are. Populated only when the "
+            "count is exact and cheap (summed parquet footers, or an exhaustive scan); None means unknown, "
+            "never zero and never an estimate."
+        ),
     )
     files_scanned: int = Field(
         description=(
-            "Every file should be probed (head-sampling a subset of files hides late columns / schema "
-            "drift); < the fileset's file count only when scale forces file-level sampling."
+            "How many files were opened and read from (a count, not a list — the files themselves are "
+            "`SplitProfile.files`). Every file should be probed, since head-sampling a subset hides columns "
+            "that appear only in later shards; expect this to equal the fileset's file count, and be lower "
+            "only when scale forces file-level sampling."
         ),
     )
     per_file_row_cap: int | None = Field(default=None, description="Cap that bounded per-file reads, if any.")
