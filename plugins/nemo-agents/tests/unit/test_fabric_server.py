@@ -109,6 +109,35 @@ def test_shutdown_stops_all_registered_runtimes(
     assert runtime.stop_calls == 1
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cleanup_error", [RuntimeError("cleanup failed"), asyncio.CancelledError()])
+async def test_shutdown_stops_sessions_when_cleanup_task_fails(
+    tmp_path: Path,
+    mock_validate_agent_config: list[tuple[AgentConfig, Path]],
+    monkeypatch: pytest.MonkeyPatch,
+    cleanup_error: BaseException,
+) -> None:
+    close_calls = 0
+
+    async def fail_cleanup(*args: Any, **kwargs: Any) -> None:
+        raise cleanup_error
+
+    async def close_all_sessions(self: FabricSessionManager) -> int:
+        nonlocal close_calls
+        close_calls += 1
+        return 0
+
+    monkeypatch.setattr(server, "_run_idle_session_cleanup", fail_cleanup)
+    monkeypatch.setattr(FabricSessionManager, "close_all_sessions", close_all_sessions)
+    app = create_fabric_serving_app(_write_agent_config(tmp_path))
+
+    with pytest.raises(type(cleanup_error)):
+        async with app.router.lifespan_context(app):
+            pass
+
+    assert close_calls == 1
+
+
 def test_startup_fails_for_invalid_agent_config(
     tmp_path: Path,
     mock_validate_agent_config: list[tuple[AgentConfig, Path]],

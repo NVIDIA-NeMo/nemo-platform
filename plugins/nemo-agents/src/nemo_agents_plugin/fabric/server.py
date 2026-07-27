@@ -157,8 +157,10 @@ def create_fabric_serving_app(
             yield
         finally:
             cleanup_shutdown.set()
-            await cleanup_task
-            await session_manager.close_all_sessions()
+            try:
+                await cleanup_task
+            finally:
+                await session_manager.close_all_sessions()
 
     app = FastAPI(title="NeMo Agents Fabric Server", lifespan=lifespan)
 

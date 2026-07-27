@@ -167,6 +167,20 @@ class TestRunFabricAgentOnce:
 
         assert fake_runtime.exited is True
 
+    async def test_wraps_runtime_timeout_without_configured_deadline(self) -> None:
+        timeout_error = TimeoutError("adapter timed out")
+        fake_runtime = _FakeRuntime(invoke_error=timeout_error)
+        fake_fabric = _FakeFabric(runtime=fake_runtime)
+        request = FabricOneShotRequest(
+            fabric_config=cast(FabricConfig, object()),
+            base_dir=Path("/tmp/agent"),
+        )
+
+        with pytest.raises(FabricRuntimeTimeoutError, match=r"Fabric runtime invocation timed out\.$") as exc_info:
+            await run_fabric_agent_once(request, fabric=fake_fabric)
+
+        assert exc_info.value.__cause__ is timeout_error
+
     async def test_wraps_fabric_lifecycle_errors(self) -> None:
         fake_fabric = _FakeFabric(start_error=fabric_runtime.FabricError("native unavailable"))
         request = FabricOneShotRequest(
@@ -248,6 +262,15 @@ class TestInvokeFabricRuntime:
 
         with pytest.raises(FabricRuntimeTimeoutError, match="timed out after 0.01s"):
             await invoke_fabric_runtime(cast(Any, fake_runtime), request)
+
+    async def test_wraps_active_runtime_timeout_without_configured_deadline(self) -> None:
+        timeout_error = TimeoutError("adapter timed out")
+        fake_runtime = _FakeRuntime(invoke_error=timeout_error)
+
+        with pytest.raises(FabricRuntimeTimeoutError, match=r"Fabric runtime invocation timed out\.$") as exc_info:
+            await invoke_fabric_runtime(cast(Any, fake_runtime), FabricInvocationRequest())
+
+        assert exc_info.value.__cause__ is timeout_error
 
         assert fake_runtime.entered is False
         assert fake_runtime.exited is False

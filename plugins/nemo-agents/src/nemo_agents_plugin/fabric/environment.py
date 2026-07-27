@@ -13,7 +13,13 @@ def ensure_local_workspace_dir(agent_config: AgentConfig, base_dir: Path) -> Non
     if agent_config.environment.provider != "local":
         return
 
-    workspace = Path(agent_config.environment.workspace)
-    if not workspace.is_absolute():
-        workspace = base_dir / workspace
+    configured_workspace = Path(agent_config.environment.workspace)
+    if configured_workspace.is_absolute():
+        raise ValueError("Local workspace path must be relative to the agent base directory.")
+
+    resolved_base_dir = base_dir.resolve()
+    workspace = (resolved_base_dir / configured_workspace).resolve()
+    if not workspace.is_relative_to(resolved_base_dir):
+        raise ValueError("Local workspace path must remain within the agent base directory.")
+
     workspace.mkdir(parents=True, exist_ok=True)

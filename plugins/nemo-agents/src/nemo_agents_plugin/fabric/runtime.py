@@ -84,7 +84,13 @@ class FabricRuntimeExecutionError(RuntimeError):
 
 
 class FabricRuntimeTimeoutError(FabricRuntimeExecutionError):
-    """Raised when a Fabric runtime invocation exceeds the Platform timeout."""
+    """Raised when a Fabric runtime invocation times out."""
+
+
+def _timeout_error_message(timeout_seconds: float | None) -> str:
+    if timeout_seconds is None:
+        return "Fabric runtime invocation timed out."
+    return f"Fabric runtime invocation timed out after {timeout_seconds:g}s."
 
 
 async def invoke_fabric_runtime(
@@ -99,7 +105,7 @@ async def invoke_fabric_runtime(
         )
     except TimeoutError as error:
         raise FabricRuntimeTimeoutError(
-            f"Fabric runtime invocation timed out after {request.timeout_seconds:g}s.",
+            _timeout_error_message(request.timeout_seconds),
         ) from error
     except FabricError as error:
         raise FabricRuntimeExecutionError(
@@ -124,7 +130,7 @@ async def run_fabric_agent_once(
         )
     except TimeoutError as error:
         raise FabricRuntimeTimeoutError(
-            f"Fabric runtime invocation timed out after {request.timeout_seconds:g}s.",
+            _timeout_error_message(request.timeout_seconds),
         ) from error
     except FabricError as error:
         raise FabricRuntimeExecutionError(
