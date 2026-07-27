@@ -35,7 +35,10 @@ def maybe_set_nccl_ib_hca() -> None:
             has_netdev = any((hca / "device" / "net").iterdir())
         except OSError:
             has_netdev = False
-        (usable if has_netdev else phantom).append(hca.name)
+        if has_netdev:
+            usable.append(hca.name)
+        else:
+            phantom.append(hca.name)
 
     if not usable or not phantom:
         return
