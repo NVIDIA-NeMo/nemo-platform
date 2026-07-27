@@ -14,11 +14,12 @@ from __future__ import annotations
 from typing import ClassVar, cast
 
 from nemo_automodel_plugin.config import get_config
-from nemo_automodel_plugin.schema import AutomodelJobInput, AutomodelJobOutput
+from nemo_automodel_plugin.schema import AutomodelJobInput, AutomodelJobOutput, ValidationError
 from nemo_automodel_plugin.transform import transform_input_to_output
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from nemo_platform_plugin.jobs.docker import validate_gpu_available_for_docker
+from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nmp.automodel.compile import platform_job_config_compiler
 from nmp.customization_common.contributor.jobs import BaseSubmitJob, require_container_runtime
 from pydantic import BaseModel
@@ -56,7 +57,10 @@ class AutomodelJob(BaseSubmitJob):
         # Multi-node jobs compile to a gpu_distributed (Volcano) executor, which
         # only exists on Kubernetes; gate here so docker platforms fail fast.
         require_container_runtime(cls.runtime_label, num_nodes=canonical.parallelism.num_nodes)
-        canonical.validate_for_training()
+        try:
+            canonical.validate_for_training()
+        except ValidationError as e:
+            raise PlatformJobCompilationError(str(e)) from e
 
         plugin_config = get_config()
         execution_profile = (

@@ -139,7 +139,7 @@ def k8s_shm_quantity_to_docker(quantity: str) -> str:
     return q
 
 
-DEFAULT_VOLUME_PERMISSIONS_IMAGE = "busybox"
+DEFAULT_VOLUME_PERMISSIONS_IMAGE = "docker.io/library/busybox:stable"
 
 NEMO_JOBS_IMAGE_REGISTRY_PASSWORD = os.getenv("NEMO_JOBS_IMAGE_REGISTRY_PASSWORD")
 NEMO_JOBS_IMAGE_REGISTRY = os.getenv("NEMO_JOBS_IMAGE_REGISTRY")
