@@ -267,7 +267,7 @@ Minimal subset for inference-focused work (documented in SETUP.md): `uv run nemo
 
 Standard commands from repo root (see sections above): `uv run ruff check`, `uv run --frozen ty check`, `make test-unit`, `make test-package PACKAGE=<name>`.
 
-- **Docker:** Not required for core platform smoke tests. One `nmp_common` config test expects Docker and sets runtime to `none` when Docker is unavailable.
+- **Docker:** Available in the cloud VM (Docker Engine `docker-ce` 29.x with the compose plugin). The daemon uses the `fuse-overlayfs` storage driver (`containerd-snapshotter` disabled) because the VM kernel lacks full overlay2/nftables support; iptables is pinned to legacy. There is no systemd (PID 1 is `tini`), so do NOT use `systemctl` — the daemon is started on VM boot via `sudo /etc/init.d/docker start` (part of the environment start command). If the socket is missing, run that command to (re)start it, then verify with `docker info` (works as `ubuntu` without sudo since `ubuntu` is in the `docker` group). Note: registry pulls (e.g. Docker Hub) may be blocked by network egress restrictions; local `FROM scratch` builds work. One `nmp_common` config test expects Docker and sets runtime to `none` when Docker is unavailable.
 - **Inference providers:** `nemo setup`, `nemo chat`, and agent invoke require an API key (`NVIDIA_API_KEY`, `OPENAI_API_KEY`, etc.). Core APIs (workspaces, secrets, hello-world, entities) work without provider credentials.
 
 ### Quick smoke verification
