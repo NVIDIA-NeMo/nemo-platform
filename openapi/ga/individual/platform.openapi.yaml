@@ -9675,12 +9675,13 @@ components:
       properties:
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the adapter. Name must be unique in the workspace.
-            Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens,
-            and dots.'
+          description: Name of the adapter. Name must be unique in the workspace.
+            Name must start with a lowercase letter, be 2-63 characters, and use lowercase
+            letters, digits, hyphens, and dots (no consecutive hyphens, cannot end
+            with a hyphen).
           examples:
           - lora-adapter-v1
           - my-finetune
@@ -9786,12 +9787,13 @@ components:
       properties:
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the adapter. Name must be unique in the workspace.
-            Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens,
-            and dots.'
+          description: Name of the adapter. Name must be unique in the workspace.
+            Name must start with a lowercase letter, be 2-63 characters, and use lowercase
+            letters, digits, hyphens, and dots (no consecutive hyphens, cannot end
+            with a hyphen).
           examples:
           - lora-adapter-v1
           - my-finetune
@@ -9829,11 +9831,12 @@ components:
       properties:
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the deployment configuration. Allowed characters:
-            letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots.'
+          description: Name of the deployment configuration. Name must start with
+            a lowercase letter, be 2-63 characters, and use lowercase letters, digits,
+            hyphens, and dots (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - nim-config-v1
           - production-config
@@ -9879,11 +9882,12 @@ components:
       properties:
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the deployment. Allowed characters: letters (a-z,
-            A-Z), digits (0-9), underscores, hyphens, and dots.'
+          description: Name of the deployment. Name must start with a lowercase letter,
+            be 2-63 characters, and use lowercase letters, digits, hyphens, and dots
+            (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - llama-deploy-v1
           - production-nim
@@ -9913,11 +9917,12 @@ components:
       properties:
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the model entity. Allowed characters: letters (a-z,
-            A-Z), digits (0-9), underscores, hyphens, and dots.'
+          description: Name of the model entity. Name must start with a lowercase
+            letter, be 2-63 characters, and use lowercase letters, digits, hyphens,
+            and dots (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - llama-3.1-8b
           - my-custom-model
@@ -10137,11 +10142,12 @@ components:
       properties:
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the prompt. Allowed characters: letters (a-z, A-Z),
-            digits (0-9), underscores, hyphens, and dots.'
+          description: Name of the prompt. Name must start with a lowercase letter,
+            be 2-63 characters, and use lowercase letters, digits, hyphens, and dots
+            (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - support-bot-system
           - summarizer
@@ -14239,12 +14245,13 @@ components:
           description: Unique identifier for the deployment
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the entity. Name/workspace combo must be unique across
-            all entities. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores,
-            hyphens, and dots.'
+          description: Name of the entity. Name/workspace combo must be unique across
+            all entities. Name must start with a lowercase letter, be 2-63 characters,
+            and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens,
+            cannot end with a hyphen).
           examples:
           - llama-3.1-8b
           - my-custom-model
@@ -14337,12 +14344,13 @@ components:
           description: Unique identifier for the deployment config
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the entity. Name/workspace combo must be unique across
-            all entities. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores,
-            hyphens, and dots.'
+          description: Name of the entity. Name/workspace combo must be unique across
+            all entities. Name must start with a lowercase letter, be 2-63 characters,
+            and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens,
+            cannot end with a hyphen).
           examples:
           - llama-3.1-8b
           - my-custom-model
@@ -14642,12 +14650,13 @@ components:
           description: Autogenerated id
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the entity. Name/workspace combo must be unique across
-            all entities. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores,
-            hyphens, and dots.'
+          description: Name of the entity. Name/workspace combo must be unique across
+            all entities. Name must start with a lowercase letter, be 2-63 characters,
+            and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens,
+            cannot end with a hyphen).
           examples:
           - llama-3.1-8b
           - my-custom-model
@@ -14891,12 +14900,13 @@ components:
           description: Unique identifier for the model provider
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the entity. Name/workspace combo must be unique across
-            all entities. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores,
-            hyphens, and dots.'
+          description: Name of the entity. Name/workspace combo must be unique across
+            all entities. Name must start with a lowercase letter, be 2-63 characters,
+            and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens,
+            cannot end with a hyphen).
           examples:
           - llama-3.1-8b
           - my-custom-model
@@ -16922,12 +16932,13 @@ components:
           description: Unique identifier for the prompt.
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the entity. Name/workspace combo must be unique across
-            all entities. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores,
-            hyphens, and dots.'
+          description: Name of the entity. Name/workspace combo must be unique across
+            all entities. Name must start with a lowercase letter, be 2-63 characters,
+            and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens,
+            cannot end with a hyphen).
           examples:
           - llama-3.1-8b
           - my-custom-model
