@@ -1,0 +1,455 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Routes over the ``IronSwarmManifest`` entity — named, reusable war-game targets.
+
+Mounted at ``/apis/iron-swarm/v2/workspaces/{workspace}``. ``POST /manifests`` runs `init` and persists a
+named record the operator later selects to run against; list/get/delete mirror the runs routes. Two
+sources: ``agent`` resolves a deployed agent (the run re-materializes from the ref, no bundle stored);
+``project`` builds from an uploaded NAT project via ``iron-swarm init --yes`` (``POST /manifests/inspect``
+detects its layout first) and stores the bundle as a fileset the run re-downloads.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import subprocess
+import tempfile
+from pathlib import Path
+
+import yaml
+from fastapi import APIRouter, Depends, HTTPException, Query
+from nemo_iron_swarm_plugin._perms import IronSwarmManifestPerms
+from nemo_iron_swarm_plugin.agent_resolver import (
+    AgentResolutionError,
+    ResolvedManifest,
+    inspect_agent,
+    resolve_agent_to_manifest,
+)
+from nemo_iron_swarm_plugin.api.v2._filters import make_filter_dep
+from nemo_iron_swarm_plugin.api.v2.schemas import (
+    InspectAgentRequest,
+    InspectAgentResponse,
+    InspectProjectRequest,
+    InspectProjectResponse,
+    ManifestFilter,
+    ManifestInit,
+    ManifestUpdate,
+    ValidateModelRequest,
+    ValidateModelResponse,
+)
+from nemo_iron_swarm_plugin.authz import scope
+from nemo_iron_swarm_plugin.cli.client import base_url
+from nemo_iron_swarm_plugin.config import IronSwarmConfig
+from nemo_iron_swarm_plugin.entities import IronSwarmManifest
+from nemo_iron_swarm_plugin.filesets import download_and_extract_project
+from nemo_iron_swarm_plugin.model_config import ModelConfigDefaults, WarGameModels, model_config_defaults
+from nemo_iron_swarm_plugin.model_preflight import validate_choice
+from nemo_platform_plugin.authz import CallerKind, path_rule
+from nemo_platform_plugin.entity_client import (
+    NemoEntitiesClient,
+    NemoEntityConflictError,
+    NemoEntityNotFoundError,
+    get_entity_client,
+)
+from nemo_platform_plugin.jobs.openapi_utils import generate_openapi_extra_params
+from nemo_platform_plugin.sdk_provider import get_platform_sdk
+from starlette.concurrency import run_in_threadpool
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+class _SubprocessError(Exception):
+    """A non-zero ``iron-swarm inspect``/``init`` exit (carries the stderr tail for the API detail)."""
+
+
+# These run inside a request, on a threadpool worker. Unbounded, a wedged subprocess pins its worker
+# for the process's lifetime and enough of them starve the pool — so every call gets a ceiling.
+_SUBPROCESS_TIMEOUT_SECONDS = 120
+
+
+class _SubprocessTimeout(Exception):
+    """``iron-swarm inspect``/``init`` exceeded :data:`_SUBPROCESS_TIMEOUT_SECONDS`."""
+
+
+def _run_iron_swarm(cmd: list[str], cwd: str, action: str) -> subprocess.CompletedProcess[str]:
+    """Run an ``iron-swarm`` subcommand with a bounded runtime, raising on timeout or non-zero exit."""
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, cwd=cwd, check=False, timeout=_SUBPROCESS_TIMEOUT_SECONDS
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise _SubprocessTimeout(f"{action} timed out after {_SUBPROCESS_TIMEOUT_SECONDS}s.") from exc
+    if result.returncode != 0:
+        raise _SubprocessError((result.stderr or result.stdout).strip()[-500:] or f"{action} returned no output.")
+    return result
+
+
+_manifest_filter_dep = make_filter_dep(ManifestFilter)
+
+
+@router.get(
+    "/manifests",
+    tags=["Iron Swarm Manifests"],
+    openapi_extra=generate_openapi_extra_params(filter_schema=ManifestFilter),
+)
+@scope.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[IronSwarmManifestPerms.LIST])
+async def list_manifests(
+    workspace: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    sort: str = Query(default="-created_at"),
+    filter: ManifestFilter = Depends(_manifest_filter_dep),
+    entity_client: NemoEntitiesClient = Depends(get_entity_client),
+) -> dict:
+    """List saved manifests in the workspace, with pagination and an ``agent``/``source_type`` filter."""
+    filter_dict = filter if isinstance(filter, dict) else filter.model_dump(exclude_none=True)
+    try:
+        result = await entity_client.list(
+            IronSwarmManifest,
+            workspace=workspace,
+            page=page,
+            page_size=page_size,
+            sort=sort,
+            filter_obj=filter_dict or None,
+        )
+    except Exception as exc:
+        logger.exception("Failed to list iron-swarm manifests in workspace '%s'", workspace)
+        raise HTTPException(status_code=500, detail="Failed to list iron-swarm manifests.") from exc
+    return {
+        "data": [manifest.model_dump(mode="json") for manifest in result.data],
+        "pagination": result.pagination.model_dump() if result.pagination else None,
+        "sort": sort,
+        "filter": filter or None,
+    }
+
+
+@router.get("/manifests/{name}", response_model=IronSwarmManifest, tags=["Iron Swarm Manifests"])
+@scope.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[IronSwarmManifestPerms.READ])
+async def get_manifest(
+    workspace: str,
+    name: str,
+    entity_client: NemoEntitiesClient = Depends(get_entity_client),
+) -> IronSwarmManifest:
+    """Get a single manifest by name."""
+    try:
+        return await entity_client.get(IronSwarmManifest, name=name, workspace=workspace)
+    except NemoEntityNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail=f"IronSwarmManifest '{name}' not found in workspace '{workspace}'."
+        ) from exc
+    except Exception as exc:
+        logger.exception("Failed to get iron-swarm manifest '%s'", name)
+        raise HTTPException(status_code=500, detail="Failed to get iron-swarm manifest.") from exc
+
+
+@router.get("/model-config-defaults", response_model=ModelConfigDefaults, tags=["Iron Swarm Manifests"])
+@scope.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[IronSwarmManifestPerms.INSPECT])
+async def get_model_config_defaults(workspace: str) -> ModelConfigDefaults:
+    """The built-in per-group model defaults (attack/analysis) the create/run forms pre-fill."""
+    return model_config_defaults()
+
+
+@router.post("/model-config/validate", response_model=ValidateModelResponse, tags=["Iron Swarm Manifests"])
+@scope.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[IronSwarmManifestPerms.INSPECT])
+async def validate_model_config(workspace: str, body: ValidateModelRequest) -> ValidateModelResponse:
+    """Probe a model choice's endpoint/key (the "Test connection" affordance) and list reachable models.
+
+    Resolves the chosen Secret to its value (if any) and lists ``{base_url}/models``. Never leaks the key —
+    only the boolean verdict + the reachable model ids come back, so the UI can offer real options.
+    """
+    sdk = get_platform_sdk(as_service="iron-swarm", internal=True)
+
+    def _validate() -> ValidateModelResponse:
+        api_key: str | None = None
+        if body.api_key_secret:
+            secret = sdk.secrets.access(body.api_key_secret, workspace=workspace)
+            api_key = getattr(secret, "value", None)
+        verdict = validate_choice(body.model, body.base_url, api_key)
+        return ValidateModelResponse(
+            ok=verdict.ok, reason=verdict.reason, available=verdict.available, detail=verdict.detail
+        )
+
+    return await run_in_threadpool(_validate)
+
+
+@router.post("/manifests/inspect", response_model=InspectProjectResponse, tags=["Iron Swarm Manifests"])
+@scope.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[IronSwarmManifestPerms.INSPECT])
+async def inspect_project(
+    workspace: str,
+    body: InspectProjectRequest,
+) -> InspectProjectResponse:
+    """Detect an uploaded NAT project's layout (`iron-swarm inspect`) to pre-fill the create wizard.
+
+    Downloads the project bundle, expands it, and runs the read-only, offline detector — no code is
+    executed. Returns the discovered workflows, launch mode, name, secrets, and egress as defaults.
+    """
+    sdk = get_platform_sdk(as_service="iron-swarm", internal=True)
+    bin_path = IronSwarmConfig.get().iron_swarm_bin
+
+    def _inspect() -> dict:
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = download_and_extract_project(sdk, body.project_fileset, Path(tmp))
+            result = _run_iron_swarm(
+                [str(bin_path), "inspect", "--project-dir", str(project_dir), "--json"],
+                cwd=str(project_dir),
+                action="inspect",
+            )
+            return json.loads(result.stdout)
+
+    try:
+        detected = await run_in_threadpool(_inspect)
+    except _SubprocessTimeout as exc:
+        raise HTTPException(status_code=504, detail=f"Failed to inspect project: {exc}") from exc
+    except _SubprocessError as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to inspect project: {exc}") from exc
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail=f"Could not read the uploaded project: {exc}") from exc
+    return InspectProjectResponse(**detected)
+
+
+@router.post("/manifests/inspect-agent", response_model=InspectAgentResponse, tags=["Iron Swarm Manifests"])
+@scope.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[IronSwarmManifestPerms.INSPECT])
+async def inspect_agent_endpoint(workspace: str, body: InspectAgentRequest) -> InspectAgentResponse:
+    """Derive the deployed-agent create-form defaults (victim port + secret names) for pre-fill.
+
+    Read-only: fetches the stored agent config and its running deployment; nothing is materialized.
+    """
+    sdk = get_platform_sdk(as_service="iron-swarm", internal=True)
+
+    def _inspect() -> tuple[str, int, list[str], list[str]]:
+        return inspect_agent(body.agent, sdk=sdk, default_workspace=workspace)
+
+    try:
+        ref, port, secrets, warnings = await run_in_threadpool(_inspect)
+    except AgentResolutionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return InspectAgentResponse(agent=ref, port=port, secrets=secrets, warnings=warnings)
+
+
+@router.post("/manifests", response_model=IronSwarmManifest, status_code=201, tags=["Iron Swarm Manifests"])
+@scope.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[IronSwarmManifestPerms.WRITE])
+async def create_manifest(
+    workspace: str,
+    body: ManifestInit,
+    entity_client: NemoEntitiesClient = Depends(get_entity_client),
+) -> IronSwarmManifest:
+    """`init`: build a manifest (from a deployed agent or an uploaded project) and persist it by ``name``."""
+    if body.source_type == "project":
+        manifest = await _build_project_manifest(workspace, body)
+    else:
+        manifest = await _build_agent_manifest(workspace, body)
+    try:
+        return await entity_client.create(manifest)
+    except NemoEntityConflictError as exc:
+        raise HTTPException(
+            status_code=409, detail=f"Manifest '{body.name}' already exists in workspace '{workspace}'."
+        ) from exc
+    except Exception as exc:
+        logger.exception("Failed to persist iron-swarm manifest '%s'", body.name)
+        raise HTTPException(status_code=500, detail="Failed to create iron-swarm manifest.") from exc
+
+
+async def _build_agent_manifest(workspace: str, body: ManifestInit) -> IronSwarmManifest:
+    """Resolve a deployed agent into a manifest (the run re-materializes from the stored agent ref)."""
+    if not body.agent:
+        raise HTTPException(status_code=422, detail="source_type 'agent' requires an 'agent' reference.")
+
+    agent_ref = body.agent
+    sdk = get_platform_sdk(as_service="iron-swarm", internal=True)
+
+    # resolve_agent_to_manifest is sync + network-bound (sdk.agents.get); keep it off the event loop.
+    # The scaffold dir is only for validation/preview here — the run re-materializes from the agent ref.
+    def _resolve() -> ResolvedManifest:
+        with tempfile.TemporaryDirectory() as tmp:
+            return resolve_agent_to_manifest(
+                agent_ref,
+                sdk=sdk,
+                base_url=base_url(),
+                default_workspace=workspace,
+                manifest_dir=Path(tmp),
+                egress=body.egress,
+                port=body.port,
+                secrets=body.secrets,
+            )
+
+    try:
+        resolved = await run_in_threadpool(_resolve)
+    except AgentResolutionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return IronSwarmManifest.from_agent_resolution(
+        name=body.name,
+        workspace=workspace,
+        agent_ref=f"{resolved.workspace}/{resolved.agent_name}",
+        manifest_yaml=yaml.safe_dump(resolved.manifest, sort_keys=False),
+        port=resolved.port,
+        secrets=resolved.secrets,
+        warnings=resolved.warnings,
+        models=body.models or WarGameModels(),
+    )
+
+
+async def _build_project_manifest(workspace: str, body: ManifestInit) -> IronSwarmManifest:
+    """Build a manifest from an uploaded NAT project by shelling ``iron-swarm init --yes``.
+
+    The bundle is expanded to a temp dir and ``init`` runs there (so ``project_dir`` resolves to ``.``);
+    the war-game re-downloads the bundle and repoints ``project_dir`` at the restored copy.
+    """
+    fileset = body.project_fileset
+    if not fileset:
+        raise HTTPException(status_code=422, detail="source_type 'project' requires a 'project_fileset'.")
+    if body.launch_mode and body.launch_mode != "workflow":
+        raise HTTPException(status_code=422, detail="Only the 'workflow' launch mode is supported (BYO is Phase 2).")
+
+    sdk = get_platform_sdk(as_service="iron-swarm", internal=True)
+    bin_path = IronSwarmConfig.get().iron_swarm_bin
+    port = body.port or 8000
+
+    def _init() -> str:
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = download_and_extract_project(sdk, fileset, Path(tmp))
+            output = Path(tmp) / "iron-swarm.yaml"
+            cmd = [
+                str(bin_path),
+                "init",
+                "--yes",
+                "--force",
+                "--project-dir",
+                ".",
+                "--name",
+                body.name,
+                "--port",
+                str(port),
+                "-o",
+                str(output),
+            ]
+            if body.workflow:
+                cmd += ["--workflow", body.workflow]
+            if body.secrets:
+                cmd += ["--secrets", ",".join(body.secrets)]
+            if body.secrets_file:
+                cmd += ["--secrets-file", body.secrets_file]
+            for host in body.egress or []:
+                cmd += ["--egress", host]
+            for spec in body.backends or []:
+                cmd += ["--backend", spec]
+            _run_iron_swarm(cmd, cwd=str(project_dir), action="init")
+            return output.read_text(encoding="utf-8")
+
+    try:
+        manifest_yaml = await run_in_threadpool(_init)
+    except _SubprocessTimeout as exc:
+        raise HTTPException(status_code=504, detail=f"Failed to build manifest from project: {exc}") from exc
+    except _SubprocessError as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to build manifest from project: {exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Could not read the uploaded project: {exc}") from exc
+
+    # The persisted manifest can't hold the temp project path; the run repoints it. Force project_dir='.'.
+    manifest_yaml = _with_project_dir_dot(manifest_yaml)
+    return IronSwarmManifest(
+        name=body.name,
+        workspace=workspace,
+        source_type="project",
+        project_fileset=fileset,
+        workflow=body.workflow or "",
+        launch_mode=body.launch_mode or "workflow",
+        manifest_yaml=manifest_yaml,
+        port=port,
+        secrets=body.secrets or [],
+        models=body.models or WarGameModels(),
+    )
+
+
+def _with_project_dir_dot(manifest_yaml: str) -> str:
+    """Return *manifest_yaml* with ``agent.project_dir`` normalized to ``.`` (unchanged if unparseable)."""
+    try:
+        data = yaml.safe_load(manifest_yaml) or {}
+    except yaml.YAMLError:
+        return manifest_yaml
+    if isinstance(data, dict) and isinstance(data.get("agent"), dict):
+        data["agent"]["project_dir"] = "."
+        return yaml.safe_dump(data, sort_keys=False)
+    return manifest_yaml
+
+
+def _yaml_with_port(manifest_yaml: str, port: int) -> str:
+    """Return *manifest_yaml* with ``agent.port`` set to *port* (unchanged if it can't be parsed)."""
+    try:
+        data = yaml.safe_load(manifest_yaml) or {}
+    except yaml.YAMLError:
+        return manifest_yaml
+    if isinstance(data, dict) and isinstance(data.get("agent"), dict):
+        data["agent"]["port"] = port
+        return yaml.safe_dump(data, sort_keys=False)
+    return manifest_yaml
+
+
+@router.patch("/manifests/{name}", response_model=IronSwarmManifest, tags=["Iron Swarm Manifests"])
+@scope.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[IronSwarmManifestPerms.WRITE])
+async def update_manifest(
+    workspace: str,
+    name: str,
+    body: ManifestUpdate,
+    entity_client: NemoEntitiesClient = Depends(get_entity_client),
+) -> IronSwarmManifest:
+    """Edit a manifest's cached benign suite and/or victim port (the agent source is immutable)."""
+    try:
+        existing = await entity_client.get(IronSwarmManifest, name=name, workspace=workspace)
+    except NemoEntityNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail=f"IronSwarmManifest '{name}' not found in workspace '{workspace}'."
+        ) from exc
+    if body.benign_suite is not None:
+        existing.benign_suite = body.benign_suite
+    if body.defenders is not None:
+        existing.defenders = body.defenders
+    if body.attack_intensity is not None:
+        existing.attack_intensity = body.attack_intensity
+    if body.rounds is not None:
+        existing.rounds = body.rounds
+    if body.models is not None:
+        existing.models = body.models
+    if body.port is not None:
+        existing.port = body.port
+        existing.manifest_yaml = _yaml_with_port(existing.manifest_yaml, body.port)
+    try:
+        return await entity_client.update(existing)
+    except NemoEntityNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail=f"IronSwarmManifest '{name}' not found in workspace '{workspace}'."
+        ) from exc
+    except NemoEntityConflictError as exc:
+        raise HTTPException(status_code=409, detail=f"Manifest '{name}' was modified concurrently.") from exc
+
+
+@router.delete("/manifests/{name}", status_code=204, tags=["Iron Swarm Manifests"])
+@scope.write
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[IronSwarmManifestPerms.WRITE])
+async def delete_manifest(
+    workspace: str,
+    name: str,
+    entity_client: NemoEntitiesClient = Depends(get_entity_client),
+) -> None:
+    """Delete a saved manifest by name."""
+    try:
+        await entity_client.delete(IronSwarmManifest, name=name, workspace=workspace)
+    except NemoEntityNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail=f"IronSwarmManifest '{name}' not found in workspace '{workspace}'."
+        ) from exc
+    except Exception as exc:
+        logger.exception("Failed to delete iron-swarm manifest '%s'", name)
+        raise HTTPException(status_code=500, detail="Failed to delete iron-swarm manifest.") from exc
