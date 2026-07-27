@@ -13,19 +13,14 @@ export interface ParetoEvaluations {
   isError: boolean;
 }
 
-/**
- * Loads every evaluation in a group in one unpaginated request for the Pareto chart. Reuses the
- * existing list endpoint — each evaluation already carries the cost/latency/evaluator rollup means the
- * chart plots — so no dedicated endpoint is needed.
- */
+/** Loads every evaluation in a group in one request for the Pareto chart, reusing the list endpoint
+ * (each evaluation already carries the rollup means the chart plots). */
 export function useParetoEvaluations(
   workspace: string,
   experimentGroupId: string,
   options?: { enabled?: boolean }
 ): ParetoEvaluations {
-  // Callers disable the fetch when they already have the whole group loaded (a small group that fit on
-  // the leaderboard's first page), so this all-evaluations request — which re-runs the same server-side
-  // rollup — is skipped entirely.
+  // Disabled by callers that already hold the whole group, to avoid a redundant all-evaluations fetch.
   const enabled = (options?.enabled ?? true) && !!experimentGroupId;
   const { data, isLoading, isError } = useListEvaluations(
     workspace,

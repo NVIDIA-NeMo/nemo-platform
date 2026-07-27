@@ -22,7 +22,6 @@ interface MetricSelectProps {
   onChange: (id: string) => void;
 }
 
-/** A labeled dropdown for choosing the metric on one Pareto axis. */
 export const MetricSelect: FC<MetricSelectProps> = ({ label, value, metrics, onChange }) => (
   <label className="flex items-center gap-2">
     <Text kind="body/regular/sm" color="subtle">

@@ -26,8 +26,6 @@ interface ParetoTooltipProps {
   yMetric: ParetoMetric;
 }
 
-/** Recharts tooltip for a Pareto point: the evaluation name, both plotted metric values, and a
- * frontier badge when the point isn't dominated. */
 export const ParetoTooltip: FC<ParetoTooltipProps> = ({ active, payload, xMetric, yMetric }) => {
   const point = payload?.[0]?.payload;
   if (!active || !point) return null;

@@ -7,10 +7,7 @@ import type { EvaluationRow } from '@studio/components/dataViews/ExperimentGroup
 export type MetricDirection = 'min' | 'max';
 
 export interface ParetoMetric {
-  /**
-   * Stable id, using the same metric vocabulary the API stores in `group.pareto` and the list
-   * sort/filter fields: `cost_usd`, `latency_ms`, or `evaluators.<name>`.
-   */
+  /** Stable id in the API's metric vocabulary: `cost_usd`, `latency_ms`, or `evaluators.<name>`. */
   readonly id: string;
   readonly label: string;
   readonly direction: MetricDirection;
@@ -20,12 +17,8 @@ export interface ParetoMetric {
 const capitalize = (value: string): string =>
   value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 
-/**
- * The display label for a metric id, resolvable synchronously from the id alone (no loaded points
- * needed): `cost_usd` -> "Cost (USD)", `latency_ms` -> "Latency (ms)", `evaluators.<name>` -> the
- * capitalized evaluator name. Used so a saved evaluator axis renders its real label immediately
- * instead of flashing the cost/latency fallback while the chart data loads.
- */
+/** Display label for a metric id, resolved from the id alone: `cost_usd` -> "Cost (USD)",
+ * `latency_ms` -> "Latency (ms)", `evaluators.<name>` -> the capitalized name. */
 export function metricLabel(id: string): string {
   if (id === 'cost_usd') return 'Cost (USD)';
   if (id === 'latency_ms') return 'Latency (ms)';
@@ -46,11 +39,8 @@ const LATENCY_METRIC: ParetoMetric = {
   accessor: (row) => row.latency_ms?.mean,
 };
 
-/**
- * The metrics a user may plot on either axis: cost and latency (always present, minimized), plus one
- * option per evaluator seen across the group's evaluations (maximized). Evaluator names are dynamic —
- * they differ per customer — so they're derived from the data rather than hardcoded.
- */
+/** Metrics selectable on either axis: cost and latency (minimized) plus one per evaluator seen in the
+ * data (maximized). Evaluator names are dynamic, so they're derived from the rows. */
 export function deriveParetoMetrics(rows: readonly EvaluationRow[]): ParetoMetric[] {
   const evaluatorNames = [
     ...new Set(rows.flatMap((row) => Object.keys(row.aggregate_scores ?? {}))),

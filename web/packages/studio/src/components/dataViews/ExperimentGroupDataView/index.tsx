@@ -471,11 +471,8 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     return <ErrorMessage message="Failed to load experiments." />;
   }
 
-  // When the whole group fits on the leaderboard's first page and isn't filtered, those loaded rows are
-  // the complete evaluation set — reuse them for the Pareto chart instead of refetching every
-  // evaluation. `evaluation_count` lets us decide this without waiting on the list query. While the
-  // page loads, `preloadPending` keeps the chart in its loading state; otherwise the chart fetches its
-  // own data in parallel.
+  // When the whole unfiltered group fits on the first page, the loaded rows are the complete set, so we
+  // pass them to the Pareto chart (decided upfront via `evaluation_count`) instead of a second fetch.
   const hasActiveFilter = Object.keys(dataViewState.apiFilter.filter ?? {}).length > 0;
   const groupFitsOnePage =
     group.evaluation_count != null &&
