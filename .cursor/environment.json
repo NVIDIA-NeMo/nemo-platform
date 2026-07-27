@@ -1,0 +1,5 @@
+{
+  "$schema": "https://cursor.com/schemas/environment.schema.json",
+  "install": "uv sync --frozen --all-packages",
+  "start": "sudo /etc/init.d/docker start"
+}

@@ -261,16 +261,11 @@ tmux -f /exec-daemon/tmux.portal.conf new-session -d -s nemo-platform -c /worksp
 
 Wait for readiness: `curl -sf http://localhost:8080/health/ready` → `{"status":"ready"}` (`--service-group all` boots ~20 services in ~15s).
 
-> **`--service-group all` needs a running Docker daemon.** The `nemo-deployments` plugin service opens a Docker client at startup, so `--service-group all` aborts with `docker.errors.DockerException` if `/var/run/docker.sock` is absent. Docker (v29) is installed in the VM image but is **not** auto-started (no systemd). Start it once per session before launching the full group:
+> **`--service-group all` needs a running Docker daemon.** The `nemo-deployments` plugin service opens a Docker client at startup, so `--service-group all` aborts with `docker.errors.DockerException` if `/var/run/docker.sock` is absent. Docker (v29) is installed in the VM image and the daemon is auto-started on every boot by the `start` command in `.cursor/environment.json` (`sudo /etc/init.d/docker start`; systemd is unavailable, PID 1 is `tini`). The `ubuntu` user is in the `docker` group, so `docker` works without sudo. If the daemon isn't running (e.g. an ad-hoc VM launched without the saved environment), start it with `sudo /etc/init.d/docker start`.
 >
-> ```bash
-> tmux -f /exec-daemon/tmux.portal.conf new-session -d -s dockerd -c /workspace -- 'sudo dockerd'
-> sleep 8 && sudo chmod 666 /var/run/docker.sock && docker version
-> ```
+> `/etc/docker/daemon.json` is pre-configured for this kernel (`storage-driver: fuse-overlayfs` + `features.containerd-snapshotter: false`, required for Docker 29 + fuse-overlayfs). Docker Hub image pulls also require `docker-images-prod.s3.dualstack.us-east-1.amazonaws.com` in the egress allowlist (Hub redirects blob downloads there); the deployments service itself only needs to *connect* to the daemon, not pull images.
 >
-> `/etc/docker/daemon.json` is pre-configured for this VM's kernel (`storage-driver: fuse-overlayfs` + `features.containerd-snapshotter: false`, required for Docker 29 + fuse-overlayfs). Pulling public images from Docker Hub is blocked by egress restrictions, but the deployments service only needs to *connect* to the daemon at startup, not pull images.
->
-> If you don't need the deployments/agents services, skip Docker entirely and start a Docker-less subset — this boots in ~5s: `uv run nemo services run --services entities,models,inference-gateway,secrets,hello-world --controllers models --port 8080`.
+> If you don't need the deployments/agents services, skip Docker and start a Docker-less subset (~5s): `uv run nemo services run --services entities,models,inference-gateway,secrets,hello-world --controllers models --port 8080`.
 
 Minimal subset for inference-focused work (documented in SETUP.md): `uv run nemo services run --services entities,models,inference-gateway,secrets --controllers models`.
 
