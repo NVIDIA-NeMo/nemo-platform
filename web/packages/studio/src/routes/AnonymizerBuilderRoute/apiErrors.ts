@@ -40,6 +40,14 @@ const fieldForLoc = (loc: (string | number)[]): FormField | null => {
     if (last === 'algorithm') return 'hashAlgorithm';
     if (last === 'normalize_label') return 'redactNormalizeLabel';
   }
+  if (segments.includes('rewrite')) {
+    if (last === 'protect') return 'privacyProtect';
+    if (last === 'preserve') return 'privacyPreserve';
+    if (last === 'instructions') return 'rewriteInstructions';
+    if (last === 'risk_tolerance') return 'riskTolerance';
+    if (last === 'max_repair_iterations') return 'maxRepairRounds';
+    if (last === 'strict_entity_protection') return 'strictEntityProtection';
+  }
   if (segments.includes('data')) {
     if (last === 'source') return 'source';
     if (last === 'text_column') return 'textColumn';

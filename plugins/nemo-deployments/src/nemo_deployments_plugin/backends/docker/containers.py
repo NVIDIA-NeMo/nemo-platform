@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from nemo_deployments_plugin.auth_proxy import build_auth_proxy_container
 from nemo_deployments_plugin.backends.labels import docker_volume_name
 from nemo_deployments_plugin.entities import Container, DeploymentConfig, DockerDeploymentConfig, VolumeMount
 from nemo_deployments_plugin.types import RestartPolicy
@@ -57,6 +58,13 @@ def build_docker_plan(config: DeploymentConfig) -> DockerDeploymentPlan:
 
     primary = config.containers[0]
     sidecars = list(config.containers[1:])
+
+    # Auth-proxy sidecar (no-op unless requested and platform auth is enabled).
+    # It shares the primary's netns, so the primary reaches it on localhost —
+    # the same loopback address the workload targets in k8s. Declares no ports.
+    auth_proxy = build_auth_proxy_container(config, docker=True)
+    if auth_proxy is not None:
+        sidecars.append(auth_proxy)
 
     # Sidecars share the primary's netns, so they cannot publish their own host
     # ports. (The primary owns the published ports for the whole group.)
