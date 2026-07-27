@@ -85,6 +85,7 @@ async def test_open_session_materializes_config_and_starts_runtime(
     session = await manager.open_session()
 
     assert translation_calls == [agent_config]
+    assert (tmp_path / "workspace").is_dir()
     assert fabric.start_calls == [(fabric_config, tmp_path)]
     assert session.runtime is runtime
     assert await registry.get(session.session_id) is session

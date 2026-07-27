@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from nemo_agents_plugin.agent_config import AgentConfig
+from nemo_agents_plugin.fabric.environment import ensure_local_workspace_dir
 from nemo_agents_plugin.fabric.runtime import FabricInvocationRequest, FabricRuntimeResult, invoke_fabric_runtime
 from nemo_agents_plugin.fabric.session_registry import (
     FabricRuntimeSession,
@@ -67,6 +68,7 @@ class FabricSessionManager:
         except FabricTranslationError as error:
             raise FabricSessionStartError(f"Fabric config translation failed: {error}") from error
 
+        await asyncio.to_thread(ensure_local_workspace_dir, self._agent_config, self._base_dir)
         fabric = self._fabric or Fabric()
         try:
             runtime = await fabric.start_runtime(fabric_config, base_dir=self._base_dir)
