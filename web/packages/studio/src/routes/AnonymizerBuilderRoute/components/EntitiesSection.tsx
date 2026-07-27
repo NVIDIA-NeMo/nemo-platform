@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ControlledCheckbox } from '@nemo/common/src/components/form/ControlledCheckbox';
+import { ControlledCombobox } from '@nemo/common/src/components/form/ControlledCombobox';
 import { ControlledSegmentedControl } from '@nemo/common/src/components/form/ControlledSegmentedControl';
 import { useAnonymizerListEntityLabels } from '@nemo/sdk/generated/anonymizer/api';
-import { Combobox, Flex, FormField, Stack, Tag, Text } from '@nvidia/foundations-react-core';
+import { Flex, Stack, Tag, Text } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import {
   ENTITY_MODE_AUTO,
@@ -19,17 +20,15 @@ import {
 import type { AnonymizerFormData } from '@studio/routes/AnonymizerBuilderRoute/schema';
 import { X } from 'lucide-react';
 import { FC, useMemo, useState } from 'react';
-import { useController, useFormContext, useWatch } from 'react-hook-form';
+import { useFormContext, useWatch } from 'react-hook-form';
 
 export const EntitiesSection: FC = () => {
-  const { control } = useFormContext<AnonymizerFormData>();
+  const { control, setValue } = useFormContext<AnonymizerFormData>();
   const workspace = useWorkspaceFromPath();
   const entityMode = useWatch({ control, name: 'entityMode' });
   const [inputValue, setInputValue] = useState('');
 
-  const {
-    field: { onChange: onLabelsChange, value: selectedLabels },
-  } = useController({ control, name: 'entityLabels' });
+  const selectedLabels = useWatch({ control, name: 'entityLabels' });
 
   const { data, isLoading } = useAnonymizerListEntityLabels(workspace, { query: {} });
   const available = useMemo(() => data?.data ?? [], [data?.data]);
@@ -50,7 +49,11 @@ export const EntitiesSection: FC = () => {
   }, [available, inputValue, selected]);
 
   const removeLabel = (label: string) =>
-    onLabelsChange(selected.filter((value) => value !== label));
+    setValue(
+      'entityLabels',
+      selected.filter((value) => value !== label),
+      { shouldValidate: true }
+    );
 
   return (
     <Stack gap="density-lg">
@@ -68,27 +71,24 @@ export const EntitiesSection: FC = () => {
       </Text>
       {isCustom && (
         <Stack gap="density-md">
-          <FormField
-            slotLabel="Entity Labels"
-            slotInfo="Pick from the detected entity types, or type your own label and select it."
-          >
-            <Combobox
-              multiple
-              aria-label="Entity labels"
-              items={items}
-              value={selected}
-              onValueChange={(next: string[]) => {
-                onLabelsChange(next);
-                setInputValue('');
-              }}
-              inputValue={inputValue}
-              onInputValueChange={setInputValue}
-              placeholder="Select labels..."
-              emptyStateMessage={isLoading ? 'Loading labels...' : 'No matching labels.'}
-              multipleMode="count"
-              formatSummaryLabel={(count) => `${count} selected`}
-            />
-          </FormField>
+          <ControlledCombobox
+            kind="multiple"
+            aria-label="Entity labels"
+            items={items}
+            inputValue={inputValue}
+            onInputValueChange={setInputValue}
+            onChange={() => setInputValue('')}
+            placeholder="Select labels..."
+            emptyStateMessage={isLoading ? 'Loading labels...' : 'No matching labels.'}
+            multipleMode="count"
+            formatSummaryLabel={(count) => `${count} selected`}
+            useControllerProps={{ name: 'entityLabels', control }}
+            formFieldProps={{
+              slotLabel: 'Entity Labels',
+              slotInfo:
+                'Pick from the detected entity types, or type your own label and select it.',
+            }}
+          />
           {selected.length > 0 && (
             <Flex className="flex-wrap" gap="density-sm">
               {selected.map((label) => (
