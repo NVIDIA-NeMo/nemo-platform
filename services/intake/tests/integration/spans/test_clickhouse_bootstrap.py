@@ -11,6 +11,17 @@ from nmp.intake.service import IntakeService
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient, bootstrap_schema
 
 
+def test_clickhouse_server_matches_supported_lts(
+    clickhouse_client: ClickHouseSpanClient,
+    clickhouse_version: str,
+    run_async,
+) -> None:
+    result = run_async(clickhouse_client.query("SELECT version()"))
+
+    assert len(result.result_rows) == 1
+    assert str(result.result_rows[0][0]).startswith(f"{clickhouse_version}.")
+
+
 def test_clickhouse_bootstrap_is_idempotent(clickhouse_client: ClickHouseSpanClient, run_async):
     run_async(bootstrap_schema(clickhouse_client))
     run_async(bootstrap_schema(clickhouse_client))
