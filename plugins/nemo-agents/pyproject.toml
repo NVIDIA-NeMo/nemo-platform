@@ -63,8 +63,7 @@ fabric = [
     # TODO(AIRCORE-932): Move Fabric into the default plugin dependencies once evaluator has migrated
     # to the 0.1.0a20260724+ config-first SDK API and Fabric packaging is stable across Platform environments.
     # TODO(AIRCORE-897): Move this to a stable Fabric version before release once available.
-    # TODO(AIRCORE-897): Add the `relay` extra once nemo-evaluator-sdk's nemo-relay pin allows >=0.5.
-    "nemo-fabric[runtime]>=0.1.0a20260724,<0.2.0",
+    "nemo-fabric[relay,runtime]>=0.1.0a20260724,<0.2.0",
     "nemo-fabric-adapters-codex>=0.1.0a20260724,<0.2.0",
     "nemo-fabric-adapters-hermes>=0.1.0a20260724,<0.2.0; python_version < '3.14'",
 ]
