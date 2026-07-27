@@ -4,11 +4,11 @@
 export {
   ComparisonTable,
   type ComparisonTableProps,
-} from '@studio/routes/agents/AgentEvaluationsRoute/components/ComparisonTable/ComparisonTable';
+} from '@studio/components/dataViews/ComparisonTable/ComparisonTable';
 export {
   ComparisonDeltaCell,
   type ComparisonDeltaCellProps,
-} from '@studio/routes/agents/AgentEvaluationsRoute/components/ComparisonTable/ComparisonDeltaCell';
+} from '@studio/components/dataViews/ComparisonTable/ComparisonDeltaCell';
 export {
   baselineForComparisons,
   candidatesForComparisons,
@@ -17,7 +17,9 @@ export {
   metricNamesForComparisons,
   normalizeScore,
   scoreForMetric,
-  type ComparisonEntry,
-  type ComparisonMetricBounds,
-  type ComparisonMetricDelta,
-} from '@studio/routes/agents/AgentEvaluationsRoute/components/ComparisonTable/types';
+} from '@studio/components/dataViews/ComparisonTable/comparisonScores';
+export type {
+  ComparisonEntry,
+  ComparisonMetricBounds,
+  ComparisonMetricDelta,
+} from '@studio/components/dataViews/ComparisonTable/types';

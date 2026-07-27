@@ -10,8 +10,8 @@ import {
   metricNamesForComparisons,
   normalizeScore,
   scoreForMetric,
-  type ComparisonEntry,
-} from '@studio/routes/agents/AgentEvaluationsRoute/components/ComparisonTable/types';
+} from '@studio/components/dataViews/ComparisonTable/comparisonScores';
+import type { ComparisonEntry } from '@studio/components/dataViews/ComparisonTable/types';
 
 const evaluations: ComparisonEntry[] = [
   {
@@ -108,6 +108,12 @@ describe('comparison score helpers', () => {
     expect(normalizeScore(120, { min: 0, max: 100 })).toBe(1);
     expect(normalizeScore(null, { min: 0, max: 1 })).toBeNull();
     expect(normalizeScore(0.5, { min: 1, max: 1 })).toBeNull();
+  });
+
+  it('rejects non-finite score values rather than propagating them', () => {
+    expect(normalizeScore(Number.NaN, { min: 0, max: 1 })).toBeNull();
+    expect(normalizeScore(Number.POSITIVE_INFINITY, { min: 0, max: 1 })).toBeNull();
+    expect(normalizeScore(Number.NEGATIVE_INFINITY, { min: 0, max: 1 })).toBeNull();
   });
 
   it('only includes jobs that share the requested eval config', () => {

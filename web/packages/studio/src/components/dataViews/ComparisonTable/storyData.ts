@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ComparisonEntry } from '@studio/routes/agents/AgentEvaluationsRoute/components/ComparisonTable/types';
+import type { ComparisonEntry } from '@studio/components/dataViews/ComparisonTable/types';
 
 export const COMPARISON_EVALUATIONS: ComparisonEntry[] = [
   {

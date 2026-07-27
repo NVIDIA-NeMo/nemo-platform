@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Badge, Flex, Text } from '@nvidia/foundations-react-core';
-import type { ComparisonMetricDelta } from '@studio/routes/agents/AgentEvaluationsRoute/components/ComparisonTable/types';
+import type { ComparisonMetricDelta } from '@studio/components/dataViews/ComparisonTable/types';
 import { formatScore } from '@studio/routes/agents/AgentEvaluationsRoute/evalScores';
 import { Equal, Minus, Plus } from 'lucide-react';
 import type { FC } from 'react';
 
 export interface ComparisonDeltaCellProps {
-  delta: ComparisonMetricDelta;
+  readonly delta: ComparisonMetricDelta;
   /** When false, a lower score is the improvement (latency, cost, error rate). */
-  higherIsBetter?: boolean;
+  readonly higherIsBetter?: boolean;
 }
 
 /** A metric value for one run, annotated with its signed change against the baseline run.
@@ -39,7 +39,12 @@ const DeltaBadge: FC<{ difference: number; higherIsBetter: boolean }> = ({
 }) => {
   if (difference === 0) {
     return (
-      <Badge color="gray" kind="solid" data-delta="unchanged">
+      <Badge
+        color="gray"
+        kind="solid"
+        aria-label="No change versus baseline"
+        data-delta="unchanged"
+      >
         <Equal aria-hidden size={12} />
       </Badge>
     );

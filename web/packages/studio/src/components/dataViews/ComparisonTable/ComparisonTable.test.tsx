@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ComparisonTable } from '@studio/routes/agents/AgentEvaluationsRoute/components/ComparisonTable/ComparisonTable';
-import type { ComparisonEntry } from '@studio/routes/agents/AgentEvaluationsRoute/components/ComparisonTable/types';
+import { ComparisonTable } from '@studio/components/dataViews/ComparisonTable/ComparisonTable';
+import type { ComparisonEntry } from '@studio/components/dataViews/ComparisonTable/types';
 import { render, screen, within } from '@studio/tests/util/render';
 
 const score = (name: string, mean: number) => ({
@@ -40,6 +40,10 @@ const rowFor = (metricName: string): HTMLElement => {
   return cell;
 };
 
+vi.mock('lucide-react', async () => {
+  return (await import('@nemo/testing/mocks/lucide')).mockLucideReact(await import('react'));
+});
+
 describe('ComparisonTable', () => {
   it('renders one row per metric and pins the metric and baseline columns', () => {
     render(<ComparisonTable evaluations={evaluations} />);
@@ -74,6 +78,25 @@ describe('ComparisonTable', () => {
   it('shows no delta when a metric is unchanged from the baseline', () => {
     render(<ComparisonTable evaluations={evaluations} />);
 
-    expect(within(rowFor('safety')).getByText('no change')).toBeInTheDocument();
+    const safety = within(rowFor('safety')).getByLabelText('No change versus baseline');
+    expect(safety).toHaveAttribute('data-delta', 'unchanged');
+    expect(within(safety).getByTestId('equal-icon')).toBeInTheDocument();
+  });
+
+  it('keeps column ids distinct for run ids that sanitize to the same string', () => {
+    const colliding: ComparisonEntry[] = [
+      evaluations[0],
+      { ...evaluations[1], id: 'run/one', label: 'Slash run' },
+      { ...evaluations[1], id: 'run:one', label: 'Colon run' },
+    ];
+
+    render(<ComparisonTable evaluations={colliding} />);
+
+    const headerIds = Array.from(
+      document.querySelectorAll<HTMLElement>('thead th[id^="data-view-column-"]')
+    ).map((header) => header.id);
+
+    expect(headerIds).toHaveLength(4);
+    expect(new Set(headerIds).size).toBe(4);
   });
 });

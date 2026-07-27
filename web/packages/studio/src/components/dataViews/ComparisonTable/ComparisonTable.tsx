@@ -5,18 +5,18 @@ import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataV
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { Text } from '@nvidia/foundations-react-core';
-import { ComparisonColumnHeader } from '@studio/routes/agents/AgentEvaluationsRoute/components/ComparisonTable/ComparisonColumnHeader';
-import { ComparisonDeltaCell } from '@studio/routes/agents/AgentEvaluationsRoute/components/ComparisonTable/ComparisonDeltaCell';
-import { ComparisonPinnedCell } from '@studio/routes/agents/AgentEvaluationsRoute/components/ComparisonTable/ComparisonPinnedCell';
-import { ComparisonRunCell } from '@studio/routes/agents/AgentEvaluationsRoute/components/ComparisonTable/ComparisonRunCell';
+import { ComparisonColumnHeader } from '@studio/components/dataViews/ComparisonTable/ComparisonColumnHeader';
+import { ComparisonDeltaCell } from '@studio/components/dataViews/ComparisonTable/ComparisonDeltaCell';
+import { ComparisonPinnedCell } from '@studio/components/dataViews/ComparisonTable/ComparisonPinnedCell';
+import { ComparisonRunCell } from '@studio/components/dataViews/ComparisonTable/ComparisonRunCell';
 import {
   baselineForComparisons,
   candidatesForComparisons,
   deltaFromBaseline,
   metricNamesForComparisons,
   scoreForMetric,
-  type ComparisonEntry,
-} from '@studio/routes/agents/AgentEvaluationsRoute/components/ComparisonTable/types';
+} from '@studio/components/dataViews/ComparisonTable/comparisonScores';
+import type { ComparisonEntry } from '@studio/components/dataViews/ComparisonTable/types';
 import { formatScore } from '@studio/routes/agents/AgentEvaluationsRoute/evalScores';
 import { useMemo, type ComponentProps, type FC } from 'react';
 
@@ -30,8 +30,11 @@ const PINNED_COLUMNS = { left: [METRIC_COLUMN_ID, BASELINE_COLUMN_ID], right: []
 const COLUMN_SIZE = 220;
 
 /** Column widths reach the DOM as a `--col-<id>-size` custom property, so an id has to be a valid
- * CSS identifier. Run ids routinely contain characters that are not. */
-const runColumnId = (evaluationId: string): string => `run-${evaluationId.replace(/[^\w-]/g, '-')}`;
+ * CSS identifier. Run ids routinely contain characters that are not, and sanitizing alone is
+ * lossy — `a/b` and `a:b` would both collapse to `run-a-b`. The candidate's position keeps ids
+ * unique; it is stable for a given `evaluations` list. */
+const runColumnId = (evaluationId: string, index: number): string =>
+  `run-${index}-${evaluationId.replace(/[^\w-]/g, '-')}`;
 
 interface MetricRow {
   metricName: string;
@@ -40,9 +43,9 @@ interface MetricRow {
 export interface ComparisonTableProps {
   /** Runs made with one persisted eval-config fileset. The first entry is the baseline every
    * other run is measured against; order the list to choose it. */
-  evaluations: readonly ComparisonEntry[];
+  readonly evaluations: readonly ComparisonEntry[];
   /** Metrics where a lower score is the improvement (latency, cost, error rate). */
-  lowerIsBetterMetrics?: readonly string[];
+  readonly lowerIsBetterMetrics?: readonly string[];
 }
 
 /** A matrix for comparing aggregate results from a single eval config. Metrics are rows and each
@@ -95,9 +98,9 @@ export const ComparisonTable: FC<ComparisonTableProps> = ({
         </ComparisonPinnedCell>
       ),
     }),
-    ...candidates.map((evaluation) =>
+    ...candidates.map((evaluation, index) =>
       accessor((original) => scoreForMetric(evaluation, original.metricName), {
-        id: runColumnId(evaluation.id),
+        id: runColumnId(evaluation.id, index),
         header: () => (
           <ComparisonRunCell>
             <ComparisonColumnHeader evaluation={evaluation} />

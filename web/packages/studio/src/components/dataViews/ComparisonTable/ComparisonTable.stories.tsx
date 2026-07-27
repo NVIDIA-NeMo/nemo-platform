@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Meta, StoryObj } from '@storybook/react';
-import { ComparisonTable } from '@studio/routes/agents/AgentEvaluationsRoute/components/ComparisonTable/ComparisonTable';
+import { ComparisonTable } from '@studio/components/dataViews/ComparisonTable/ComparisonTable';
 import {
   COMPARISON_EVALUATIONS,
   COMPARISON_EVALUATIONS_WIDE,
-} from '@studio/routes/agents/AgentEvaluationsRoute/components/ComparisonTable/storyData';
+} from '@studio/components/dataViews/ComparisonTable/storyData';
 
 const meta = {
   component: ComparisonTable,

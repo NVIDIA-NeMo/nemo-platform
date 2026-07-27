@@ -3,12 +3,12 @@
 
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { Badge, Flex, Stack, Text } from '@nvidia/foundations-react-core';
-import type { ComparisonEntry } from '@studio/routes/agents/AgentEvaluationsRoute/components/ComparisonTable/types';
+import type { ComparisonEntry } from '@studio/components/dataViews/ComparisonTable/types';
 import type { FC } from 'react';
 
 export interface ComparisonColumnHeaderProps {
-  evaluation: ComparisonEntry;
-  isBaseline?: boolean;
+  readonly evaluation: ComparisonEntry;
+  readonly isBaseline?: boolean;
 }
 
 export const ComparisonColumnHeader: FC<ComparisonColumnHeaderProps> = ({

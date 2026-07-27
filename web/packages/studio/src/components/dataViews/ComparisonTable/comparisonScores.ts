@@ -6,27 +6,13 @@ import {
   agentNameForJob,
   aggregateScoresOf,
   evalConfigName,
-  type AgentEvalAggregateScore,
   type AgentEvalResult,
 } from '@studio/api/evaluation/agent-evaluations';
-
-/** A completed evaluation run, represented in the common shape consumed by comparison views.
- * All entries passed to a comparison component must use the same persisted eval config. */
-export interface ComparisonEntry {
-  id: string;
-  label: string;
-  agentName: string | null;
-  evaluationName: string;
-  createdAt: string | null;
-  scores: readonly AgentEvalAggregateScore[];
-}
-
-/** The expected range for a score. Supplying bounds keeps radar axes meaningful for scores
- * whose scale is not the usual 0–1 range. */
-export interface ComparisonMetricBounds {
-  min: number;
-  max: number;
-}
+import type {
+  ComparisonEntry,
+  ComparisonMetricBounds,
+  ComparisonMetricDelta,
+} from '@studio/components/dataViews/ComparisonTable/types';
 
 /** Creates comparison rows from evaluator API responses and keeps only runs tied to one
  * persisted eval-config fileset. `resultsByJobName` is the map returned by
@@ -59,14 +45,6 @@ export const scoreForMetric = (entry: ComparisonEntry, metricName: string): numb
   return typeof score === 'number' && Number.isFinite(score) ? score : null;
 };
 
-/** One metric's value in a non-baseline run, alongside the baseline it is measured against. */
-export interface ComparisonMetricDelta {
-  value: number | null;
-  baselineValue: number | null;
-  /** `value - baselineValue`, or null when either side has no score. */
-  difference: number | null;
-}
-
 /** The run every other run is compared against. Callers control this by ordering the list. */
 export const baselineForComparisons = (
   entries: readonly ComparisonEntry[]
@@ -90,13 +68,13 @@ export const deltaFromBaseline = (
   };
 };
 
-/** Converts a metric value into a 0–1 chart value. Missing values remain null so callers can
- * make their missing-data policy explicit. */
+/** Converts a metric value into a 0–1 chart value. Missing and non-finite values remain null so
+ * callers can make their missing-data policy explicit. */
 export const normalizeScore = (
   value: number | null,
   bounds: ComparisonMetricBounds | undefined
 ): number | null => {
-  if (value === null) return null;
+  if (value === null || !Number.isFinite(value)) return null;
   const min = bounds?.min ?? 0;
   const max = bounds?.max ?? 1;
   if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
