@@ -13,6 +13,7 @@ import asyncio
 import json
 import traceback
 from pathlib import Path
+from typing import cast
 from unittest.mock import AsyncMock
 
 import httpx
@@ -27,10 +28,15 @@ from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import 
     RemoteExperimentalistBackend,
 )
 from nemo_insights_plugin.entities import Insight
+from nemo_platform import AsyncNeMoPlatform
 
 
 def _local_backend(tmp_path: Path) -> LocalExperimentalistBackend:
     return LocalExperimentalistBackend(path=tmp_path / "backend")
+
+
+def _as_platform_client(value: object) -> AsyncNeMoPlatform:
+    return cast(AsyncNeMoPlatform, value)
 
 
 # ---------------------------------------------------------------------------
@@ -82,7 +88,7 @@ async def test_get_insight_reads_local_file(tmp_path: Path) -> None:
 async def test_get_insight_fetches_platform_id_via_client(tmp_path: Path) -> None:
     platform_insight = Insight(workspace="ws", title="platform", description="d", agent="a")
     client = _StubClient(platform_insight)
-    backend = LocalExperimentalistBackend(client=client, path=tmp_path / "backend")  # type: ignore[arg-type]
+    backend = LocalExperimentalistBackend(client=_as_platform_client(client), path=tmp_path / "backend")
 
     insight = await backend.get_insight(workspace="ws", insight_id="insight-remote-123")
 
@@ -100,7 +106,10 @@ async def test_get_insight_platform_404_raises_value_error(tmp_path: Path) -> No
     request = httpx.Request("GET", "http://platform.test/insights/missing")
     response = httpx.Response(404, request=request)
     error = httpx.HTTPStatusError("not found", request=request, response=response)
-    backend = LocalExperimentalistBackend(client=_ErrorStubClient(error), path=tmp_path / "backend")  # type: ignore[arg-type]
+    backend = LocalExperimentalistBackend(
+        client=_as_platform_client(_ErrorStubClient(error)),
+        path=tmp_path / "backend",
+    )
 
     with pytest.raises(ValueError, match="Insight not found on the platform"):
         await backend.get_insight(workspace="w", insight_id="missing")
@@ -140,7 +149,7 @@ def test_get_agent_code_git_dispatches_to_clone(backend_factory, tmp_path, monke
     backend = (
         _local_backend(tmp_path)
         if backend_factory == "local"
-        else RemoteExperimentalistBackend(client=None, path=tmp_path / "backend")  # type: ignore[arg-type]
+        else RemoteExperimentalistBackend(client=_as_platform_client(None), path=tmp_path / "backend")
     )
     spec = "ssh://git@h/g/r.git@main"
     dest = tmp_path / "agent-src"
@@ -202,7 +211,7 @@ async def test_get_agent_code_git_suppresses_legacy_called_process_error(
 
 
 async def test_get_agent_code_remote_nongit_raises(tmp_path: Path) -> None:
-    backend = RemoteExperimentalistBackend(client=None, path=tmp_path / "backend")  # type: ignore[arg-type]
+    backend = RemoteExperimentalistBackend(client=_as_platform_client(None), path=tmp_path / "backend")
     with pytest.raises(NotImplementedError):
         await backend.get_agent_code(workspace="w", agent="some-live-agent-name", dest=tmp_path / "d")
 
@@ -239,7 +248,7 @@ async def test_get_agent_spec_remote_delegates_to_files(tmp_path: Path) -> None:
     spec_file = tmp_path / "AGENT-SPEC.md"
     spec_file.write_text("# Remote Agent\n")
     dest = tmp_path / "workspace" / "AGENT-SPEC.md"
-    backend = RemoteExperimentalistBackend(client=None, path=tmp_path / "backend")  # type: ignore[arg-type]
+    backend = RemoteExperimentalistBackend(client=_as_platform_client(None), path=tmp_path / "backend")
 
     result = await backend.get_agent_spec(workspace="w", spec=str(spec_file), dest=dest)
 
@@ -344,6 +353,20 @@ async def test_persist_result_writes_run_summary(tmp_path: Path) -> None:
 
     saved = json.loads((backend._eo / "run.json").read_text())
     assert saved["summary"] == "the real run summary"
+    assert (backend._eo / "OPTIMIZATION.md").read_text() == "the real run summary"
+
+
+async def test_persist_result_preserves_generated_optimization_report(tmp_path: Path) -> None:
+    from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistResult
+
+    backend = _local_backend(tmp_path)
+    report_path = backend._eo / "OPTIMIZATION.md"
+    report_path.write_text("# Full optimization report\n\nInsight Suite Metrics")
+
+    result = ExperimentalistResult(summary="compact run summary", run_id="run-1", rounds_completed=2, winner=None)
+    await backend.persist_result(workspace="w", result=result)
+
+    assert report_path.read_text() == "# Full optimization report\n\nInsight Suite Metrics"
 
 
 # ---------------------------------------------------------------------------
@@ -353,7 +376,7 @@ async def test_persist_result_writes_run_summary(tmp_path: Path) -> None:
 
 async def test_remote_forwards_to_local(tmp_path: Path) -> None:
     """Remote delegates persist_evaluation verbatim to its local file backend."""
-    backend = RemoteExperimentalistBackend(client=None, path=tmp_path / "backend")  # type: ignore[arg-type]
+    backend = RemoteExperimentalistBackend(client=_as_platform_client(None), path=tmp_path / "backend")
     delegate = AsyncMock()
     backend._files.persist_evaluation = delegate
     result = EvaluationResult(id="r1")
