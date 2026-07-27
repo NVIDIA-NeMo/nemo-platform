@@ -1,0 +1,13 @@
+# Single pre-tool gate. `tool_call_judge` (actions.py) judges the tool call with
+# the user turn already available (injected by the Relay middleware), so there is
+# no intent/args split -- one flow serves every check. On "block" the flow
+# refuses and stops, which surfaces to the caller as a guardrail rejection.
+
+define flow tool call gate
+  $decision = execute tool_call_judge
+  if $decision == "block"
+    bot refuse request
+    stop
+
+define bot refuse request
+  "I cannot fulfill that request."
