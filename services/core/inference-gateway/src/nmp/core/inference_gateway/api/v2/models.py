@@ -23,6 +23,7 @@ from nmp.core.inference_gateway.api.mock_provider import (
 from nmp.core.inference_gateway.api.model_cache import ModelCache
 from nmp.core.inference_gateway.api.proxy import (
     PROXY_OPENAPI_EXTRA,
+    mark_model_provider_auth_error,
     virtual_model_proxy,
 )
 from nmp.core.inference_gateway.api.validation import validate_entity_name, validate_model_entity_name
@@ -93,7 +94,8 @@ async def model_entity_proxy(
     """
     # If mock mode enabled and request has explicit mock response, skip model lookup
     if is_mock_request(request):
-        return await handle_mock_request(request=request, trailing_uri=trailing_uri)
+        response = await handle_mock_request(request=request, trailing_uri=trailing_uri)
+        return mark_model_provider_auth_error(response)
 
     # ``name`` may be a composite LoRA model_entity_name like
     # ``base&adapters/{adapter_ws}/{adapter_name}``; ``validate_model_entity_name``

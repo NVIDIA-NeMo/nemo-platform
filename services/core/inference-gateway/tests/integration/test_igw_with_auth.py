@@ -68,6 +68,7 @@ class TestIGWUnauthenticated:
             json={"model": "test", "messages": [{"role": "user", "content": "hi"}]},
         )
         assert response.status_code == 401
+        assert "x-nemo-error-source" not in response.headers
 
     def test_openai_list_models_without_auth_fails(self, sdk: NeMoPlatform):
         response = sdk._client.get(
@@ -441,6 +442,7 @@ class TestIGWUnauthorizedWorkspace:
             },
         )
         assert response.status_code == 403
+        assert "x-nemo-error-source" not in response.headers
 
     def test_no_role_denied_model_proxy(self, sdk: NeMoPlatform):
         workspace = short_unique_name("igw-nm")
@@ -494,6 +496,69 @@ class TestIGWUnauthorizedWorkspace:
             },
         )
         assert response.status_code == 403
+
+
+@pytest.mark.integration
+class TestIGWBackendAuthErrors:
+    """Authorized requests can distinguish ModelProvider auth failures from platform auth failures."""
+
+    @pytest.mark.parametrize("status_code", [401, 403])
+    @pytest.mark.parametrize("route_type", ["provider", "model", "openai"])
+    def test_backend_auth_error_preserves_origin(
+        self,
+        sdk: NeMoPlatform,
+        status_code: int,
+        route_type: str,
+    ):
+        workspace = short_unique_name("igw-be")
+        viewer_email = unique_email("viewer")
+        model_name = short_unique_name("mdl")
+        error_body = {
+            "error": {
+                "message": "ModelProvider rejected its configured credentials",
+                "status": status_code,
+            }
+        }
+
+        admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        admin_sdk.workspaces.create(name=workspace)
+        provider = add_mock_provider(
+            admin_sdk,
+            workspace=workspace,
+            name=model_name,
+            mock_response_body=error_body,
+            mock_status=status_code,
+        )
+        grant_workspace_role(
+            admin_sdk,
+            workspace=workspace,
+            principal=viewer_email,
+            roles=["Viewer"],
+        )
+
+        if route_type == "provider":
+            path = f"/apis/inference-gateway/v2/workspaces/{workspace}/provider/{provider.name}/-/v1/chat/completions"
+            request_model = "test"
+        elif route_type == "model":
+            path = f"/apis/inference-gateway/v2/workspaces/{workspace}/model/{model_name}/-/v1/chat/completions"
+            request_model = model_name
+        else:
+            path = f"/apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1/chat/completions"
+            request_model = f"{workspace}/{model_name}"
+
+        viewer_sdk = as_user(sdk, viewer_email)
+        response = viewer_sdk._client.post(
+            path,
+            json={"model": request_model, "messages": [{"role": "user", "content": "hi"}]},
+            headers={
+                "X-NMP-Principal-Id": viewer_email,
+                "X-NMP-Principal-Email": viewer_email,
+            },
+        )
+
+        assert response.status_code == status_code
+        assert response.json() == error_body
+        assert response.headers["x-nemo-error-source"] == "model-provider"
 
 
 # --- Scope test helpers (mirrors models test pattern with patched_authz_data) ---

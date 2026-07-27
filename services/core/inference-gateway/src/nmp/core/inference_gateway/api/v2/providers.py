@@ -14,7 +14,12 @@ from nmp.core.inference_gateway.api.mock_provider import (
     is_mock_request,
 )
 from nmp.core.inference_gateway.api.model_cache import ModelCache
-from nmp.core.inference_gateway.api.proxy import PROXY_OPENAPI_EXTRA, build_next_request, proxy_request
+from nmp.core.inference_gateway.api.proxy import (
+    PROXY_OPENAPI_EXTRA,
+    build_next_request,
+    mark_model_provider_auth_error,
+    proxy_request,
+)
 from nmp.core.inference_gateway.api.validation import validate_workspace_and_name
 
 logger = logging.getLogger(__name__)
@@ -116,7 +121,8 @@ async def provider_proxy(
     """
     # If mock mode enabled and request has explicit mock response, skip provider lookup
     if is_mock_request(request):
-        return await handle_mock_request(request=request, trailing_uri=trailing_uri)
+        response = await handle_mock_request(request=request, trailing_uri=trailing_uri)
+        return mark_model_provider_auth_error(response)
 
     validate_workspace_and_name(workspace, name)
     model_info = model_cache.get_from_provider(workspace, name)
@@ -128,11 +134,12 @@ async def provider_proxy(
 
     # Check if this specific provider is a mock provider based on name prefix
     if is_mock_provider(name):
-        return await handle_mock_request(
+        response = await handle_mock_request(
             request=request,
             trailing_uri=trailing_uri,
             default_extra_headers=model_info.model_provider.default_extra_headers,
         )
+        return mark_model_provider_auth_error(response)
 
     next_request_info = await build_next_request(
         request,

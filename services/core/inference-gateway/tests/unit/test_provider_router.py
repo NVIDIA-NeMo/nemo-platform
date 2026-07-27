@@ -7,6 +7,7 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
+from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from multidict import CIMultiDict, CIMultiDictProxy
 from nmp.core.inference_gateway.api.model_cache import ModelCache
@@ -22,6 +23,46 @@ def test_provider_proxy_endpoint(client: TestClient, mock_proxy_client, mock_pro
     mock_proxy_client.request.assert_called_once()
     assert response.status_code == 200
     assert response.content == content
+
+
+@pytest.mark.parametrize("status_code", [401, 403])
+def test_provider_proxy_marks_and_normalizes_explicit_mock_auth_error(
+    client: TestClient,
+    mocker,
+    status_code: int,
+):
+    """The provider router marks mock auth errors and corrects body framing."""
+    error_body = {"error": "ModelProvider authentication failed"}
+    mocker.patch(
+        "nmp.core.inference_gateway.api.v2.providers.is_mock_request",
+        return_value=True,
+    )
+    mocker.patch(
+        "nmp.core.inference_gateway.api.v2.providers.handle_mock_request",
+        new=AsyncMock(
+            return_value=JSONResponse(
+                error_body,
+                status_code=status_code,
+                headers={
+                    "content-length": "999",
+                    "content-encoding": "gzip",
+                    "transfer-encoding": "chunked",
+                },
+            )
+        ),
+    )
+
+    response = client.post(
+        "/v2/workspaces/default/provider/unknown/-/v1/chat/completions",
+        json={"model": "unknown", "messages": []},
+    )
+
+    assert response.status_code == status_code
+    assert response.json() == error_body
+    assert response.headers["x-nemo-error-source"] == "model-provider"
+    assert response.headers["content-length"] == str(len(response.content))
+    assert "content-encoding" not in response.headers
+    assert "transfer-encoding" not in response.headers
 
 
 @pytest.mark.parametrize("status_code", [401, 403])
@@ -41,6 +82,9 @@ def test_provider_proxy_propagates_backend_auth_error(
             [
                 ("content-type", "application/problem+json"),
                 ("www-authenticate", 'Bearer realm="inference"'),
+                ("www-authenticate", 'Basic realm="fallback"'),
+                ("set-cookie", "first=one"),
+                ("set-cookie", "second=two"),
             ]
         )
     )
@@ -54,7 +98,12 @@ def test_provider_proxy_propagates_backend_auth_error(
     assert response.status_code == status_code
     assert response.content == body
     assert response.headers["content-type"] == "application/problem+json"
-    assert response.headers["www-authenticate"] == 'Bearer realm="inference"'
+    assert response.headers.get_list("www-authenticate") == [
+        'Bearer realm="inference"',
+        'Basic realm="fallback"',
+    ]
+    assert response.headers.get_list("set-cookie") == ["first=one", "second=two"]
+    assert response.headers["x-nemo-error-source"] == "model-provider"
 
 
 def test_provider_proxy_with_headers(client: TestClient, mock_proxy_client):

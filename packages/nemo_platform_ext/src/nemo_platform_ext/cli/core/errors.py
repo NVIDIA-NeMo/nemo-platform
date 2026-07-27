@@ -75,6 +75,13 @@ def _format_api_error(error: APIError) -> str:
     return str(error)
 
 
+def _is_model_provider_error(error: APIError) -> bool:
+    """Return whether the inference gateway attributed an error to a ModelProvider."""
+    response = getattr(error, "response", None)
+    headers = getattr(response, "headers", None)
+    return headers is not None and headers.get("x-nemo-error-source") == "model-provider"
+
+
 def _format_api_request(error: APIError) -> str | None:
     request = getattr(error, "request", None)
     method = getattr(request, "method", None)
@@ -233,6 +240,24 @@ def handle_exception(error: Exception, ctx: click.Context | None = None) -> None
     if isinstance(error, typer.Exit):
         # Re-raise typer.Exit with its original exit code (don't treat Exit(0) as error)
         raise error
+    if isinstance(error, AuthenticationError) and _is_model_provider_error(error):
+        console.print(
+            f"[bold red]Model provider authentication error:[/] ({error.status_code}) {_format_api_error(error)}"
+        )
+        console.print(
+            "[yellow]Hint:[/] The ModelProvider rejected its configured credentials. "
+            "Check the provider's API key secret and authentication configuration."
+        )
+        raise typer.Exit(code=1)
+    if isinstance(error, PermissionDeniedError) and _is_model_provider_error(error):
+        console.print(
+            f"[bold red]Model provider permission denied:[/] ({error.status_code}) {_format_api_error(error)}"
+        )
+        console.print(
+            "[yellow]Hint:[/] The ModelProvider denied access for its configured credentials. "
+            "Check the configured credential's permissions and model access."
+        )
+        raise typer.Exit(code=1)
     if isinstance(error, AuthenticationError):
         console.print(f"[bold red]Authentication error:[/] ({error.status_code}) {_format_api_error(error)}")
         console.print(

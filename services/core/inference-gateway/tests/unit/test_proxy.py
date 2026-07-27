@@ -174,7 +174,6 @@ async def test_build_next_request(mock_request):
     assert "x-forwarded-for" not in result.headers
 
 
-# Below was claudes work that I need to fix up massively
 @pytest.mark.asyncio
 async def test_proxy_request_success(mock_proxy_client, next_request_info):
     response = await proxy_request(mock_proxy_client, next_request_info)
@@ -1444,6 +1443,9 @@ async def test_proxy_request_propagates_backend_auth_errors(
                 ("content-length", "999"),
                 ("content-encoding", "gzip"),
                 ("www-authenticate", 'Bearer realm="inference"'),
+                ("www-authenticate", 'Basic realm="fallback"'),
+                ("set-cookie", "first=one"),
+                ("set-cookie", "second=two"),
             ]
         )
     )
@@ -1455,7 +1457,12 @@ async def test_proxy_request_propagates_backend_auth_errors(
     assert await _read_streaming_response(response) == error_body
     assert response.headers["content-type"] == "application/problem+json"
     assert response.headers["content-length"] == str(len(error_body))
-    assert response.headers["www-authenticate"] == 'Bearer realm="inference"'
+    assert response.headers.getlist("www-authenticate") == [
+        'Bearer realm="inference"',
+        'Basic realm="fallback"',
+    ]
+    assert response.headers.getlist("set-cookie") == ["first=one", "second=two"]
+    assert response.headers["x-nemo-error-source"] == "model-provider"
     assert "content-encoding" not in response.headers
     assert "transfer-encoding" not in response.headers
 
@@ -1477,6 +1484,7 @@ async def test_proxy_request_preserves_non_json_backend_auth_body(
     assert response.status_code == 401
     assert await _read_streaming_response(response) == error_body
     assert response.headers["content-type"] == "text/html"
+    assert response.headers["x-nemo-error-source"] == "model-provider"
 
 
 @pytest.mark.asyncio
@@ -1606,6 +1614,7 @@ async def test_virtual_model_proxy_auth_errors_bypass_response_middleware_and_mo
     assert await _read_streaming_response(response) == raw_error_body
     assert response.headers["content-type"] == "application/problem+json"
     assert response.headers["www-authenticate"] == 'Bearer realm="inference"'
+    assert response.headers["x-nemo-error-source"] == "model-provider"
     assert middleware_calls == []
 
 
@@ -1651,6 +1660,7 @@ async def test_virtual_model_proxy_mock_provider_auth_errors_bypass_response_mid
     assert response.status_code == status_code
     assert json.loads(await _read_streaming_response(response)) == error_body
     assert response.headers["www-authenticate"] == 'Bearer realm="inference"'
+    assert response.headers["x-nemo-error-source"] == "model-provider"
     assert middleware_calls == []
 
 
@@ -1693,6 +1703,7 @@ async def test_virtual_model_proxy_mock_streaming_auth_error_is_returned_unchang
     assert await _read_streaming_response(response) == b"Authentication failed"
     assert response.headers["content-type"] == "text/plain; charset=utf-8"
     assert response.headers["www-authenticate"] == 'Bearer realm="inference"'
+    assert response.headers["x-nemo-error-source"] == "model-provider"
 
 
 @pytest.mark.asyncio
