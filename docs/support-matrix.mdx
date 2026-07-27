@@ -12,7 +12,7 @@ self-managed Kubernetes deployments installed with the NeMo Platform Helm chart.
 | Area | Supported | Notes |
 |------|-----------|-------|
 | Deployment mode | `nemo setup` local install; Helm chart on Kubernetes | `nemo setup` starts local services, registers a model provider, and configures the CLI and SDK. The Helm chart is the supported path for self-managed Kubernetes clusters. |
-| Python | 3.11, 3.12, 3.13, 3.14 (`>=3.11,<3.15`) | Use an isolated virtual environment. On Python 3.14, prefix `pip install "nemo-platform[all]"` with `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` while the transitive `litellm` Rust extension catches up to Python 3.14. Python 3.11 is the lowest supported Python version and Python 3.14 is the highest supported Python version for the OSS local install path. |
+| Python | 3.11, 3.12, 3.13 | Use an isolated virtual environment. Python 3.11 is the lowest supported Python version and Python 3.13 is the highest supported Python version. |
 | Linux | Ubuntu 22.04 LTS, Ubuntu 24.04 LTS, RHEL 9, Rocky Linux 9, Debian 12 | Supported for CLI, SDK, local services, and NVIDIA GPU workloads. |
 | macOS | [macOS Tahoe 26](https://support.apple.com/en-us/122868) and macOS Sequoia 15 | Supported for CLI, SDK, local services, and cloud/provider workflows. Local NVIDIA GPU workloads are not supported on macOS. |
 | Architecture | x86_64 Linux; Apple Silicon and Intel macOS | NVIDIA GPU workloads require x86_64 Linux. |
@@ -23,7 +23,7 @@ self-managed Kubernetes deployments installed with the NeMo Platform Helm chart.
 
 | Area | Supported | Notes |
 |------|-----------|-------|
-| Package installation | `uv` recommended; `pip` supported | The one-line installer sets up `uv` automatically. Published packages can also be installed with `pip install "nemo-platform[all]"`. |
+| Package installation | `uv>=0.9.14,<0.10.0` recommended; `pip` supported | The one-line installer sets up `uv` automatically. Published packages can also be installed with `pip install "nemo-platform[all]"`. |
 | Shell | Bash or zsh | Used by the installer, setup commands, and documented examples. |
 | Browser | Current Chrome, Edge, Firefox, or Safari | Required for the Studio UI and generated documentation. |
 
@@ -63,5 +63,5 @@ The following are not part of the OSS support matrix:
 - Docker Compose deployment guides.
 - WSL-based local install or GPU validation.
 - macOS local GPU workloads.
-- Python earlier than 3.11 or Python 3.15 and later for the documented OSS local install path.
+- Python earlier than 3.11 or Python 3.14 and later.
 - CUDA versions earlier than 13 for GPU workloads.
