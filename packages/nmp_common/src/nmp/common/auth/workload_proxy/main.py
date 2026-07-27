@@ -22,12 +22,12 @@ import logging
 import os
 import threading
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import httpx
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
-from starlette.background import BackgroundTask
 
 logger = logging.getLogger(__name__)
 
@@ -75,11 +75,19 @@ def _upstream_base_url() -> str:
 
 def build_app(*, base_url: str, principal: str) -> FastAPI:
     """Build the forwarding FastAPI app for the given upstream and service principal."""
-    app = FastAPI(title="nmp-auth-proxy")
     principal_id = principal if principal.startswith("service:") else f"service:{principal}"
     read_timeout = float(os.environ.get(_READ_TIMEOUT_ENVVAR, "300"))
     timeout = httpx.Timeout(connect=10.0, read=read_timeout, write=60.0, pool=10.0)
     client = httpx.AsyncClient(base_url=base_url, timeout=timeout, follow_redirects=False)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        try:
+            yield
+        finally:
+            await client.aclose()
+
+    app = FastAPI(title="nmp-auth-proxy", lifespan=lifespan)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
@@ -98,6 +106,9 @@ def build_app(*, base_url: str, principal: str) -> FastAPI:
         response = await client.send(upstream, stream=True)
 
         async def _body() -> AsyncIterator[bytes]:
+            # The finally runs on normal completion, exception, and client
+            # disconnect (Starlette closes the generator), so this is the only
+            # cleanup the response needs.
             try:
                 async for chunk in response.aiter_raw():
                     yield chunk
@@ -109,7 +120,6 @@ def build_app(*, base_url: str, principal: str) -> FastAPI:
             _body(),
             status_code=response.status_code,
             headers=resp_headers,
-            background=BackgroundTask(response.aclose),
         )
 
     return app
