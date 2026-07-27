@@ -41,6 +41,10 @@ from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import
     ensure_heldout_hidden,
     restore_heldout_splits,
 )
+from nemo_experimentalist_plugin.experimentalist.components.insight_promotion import (
+    select_insight_promotion_suggestions,
+    write_insight_promotion_section,
+)
 from nemo_experimentalist_plugin.experimentalist.components.model_config import (
     get_fast_model,
     get_smart_model,
@@ -792,6 +796,7 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
             run_entity=run_entity,
             evolution_tree=evolution_tree,
             agent_name=agent_name,
+            insight_dataset=insight_eval_dataset,
         )
 
         baseline_entity = next(
@@ -1750,6 +1755,7 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
         run_entity: ExperimentRun,
         evolution_tree: EvolutionTree,
         agent_name: str,
+        insight_dataset: Dataset | None,
     ) -> Candidate | None:
         """Select the winner, copy to workspace root, write final report."""
         # Only survivors that actually have a validation reward are eligible winners.
@@ -1772,6 +1778,16 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
             await self.write_final_report(best_id)
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"[FINAL] Failed to write final report: {exc}")
+
+        if insight_dataset is not None:
+            suggestions = select_insight_promotion_suggestions(
+                insight_dataset,
+                [node.candidate for node in evolution_tree.nodes.values()],
+            )
+            write_insight_promotion_section(
+                self.working_dir / "eval-and-optimize" / "OPTIMIZATION.md",
+                suggestions,
+            )
 
         run_entity.status = "completed"
         run_entity.winner_agent = best_id
