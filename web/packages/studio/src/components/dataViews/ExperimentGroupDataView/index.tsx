@@ -55,6 +55,7 @@ const STATIC_SORT_FIELD_MAP: Readonly<Record<string, string>> = {
   created_at: 'created_at',
   cost_usd: 'cost_usd.mean',
   latency_ms: 'latency_ms.mean',
+  tokens: 'tokens.mean',
   test_case_count: 'test_case_count',
 };
 
@@ -67,6 +68,7 @@ const sortFieldToColumnId = (field: string): string | undefined => {
   if (field === 'name' || field === 'created_at' || field === 'test_case_count') return field;
   if (field.startsWith('cost_usd.')) return 'cost_usd';
   if (field.startsWith('latency_ms.')) return 'latency_ms';
+  if (field.startsWith('tokens.')) return 'tokens';
   const evaluatorMatch = field.match(/^evaluators\.(.+)\.[^.]+$/);
   if (evaluatorMatch) return `evaluator-${evaluatorMatch[1]}`;
   return undefined;
@@ -96,6 +98,7 @@ const seedSortFromDefault = (
 const getEvaluationFilterField = (id: string): string | undefined => {
   if (id === 'cost_usd') return 'cost_usd.mean';
   if (id === 'latency_ms') return 'latency_ms.mean';
+  if (id === 'tokens') return 'tokens.mean';
   const evaluatorMatch = id.match(/^evaluator-(.+)$/);
   if (evaluatorMatch) return `evaluators.${evaluatorMatch[1]}.mean`;
   return undefined;
@@ -433,6 +436,24 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
           return (
             <MeanValueTooltipCell label="latency" count={latency_ms?.count} runCount={run_count}>
               {latency_ms?.mean != null ? formatDurationMs(latency_ms.mean) : '-'}
+            </MeanValueTooltipCell>
+          );
+        },
+      }),
+      accessor((original) => original.tokens?.mean, {
+        id: 'tokens',
+        header: 'Avg Tokens',
+        enableSorting: true,
+        meta: { title: false, filter: numberRangeFilter('Avg Tokens') },
+        cell: ({ row }) => {
+          const { tokens, run_count: runCount } = row.original;
+          return (
+            <MeanValueTooltipCell
+              label="tokens (input + output)"
+              count={tokens?.count}
+              runCount={runCount}
+            >
+              {tokens?.mean != null ? Math.round(tokens.mean).toLocaleString() : '-'}
             </MeanValueTooltipCell>
           );
         },

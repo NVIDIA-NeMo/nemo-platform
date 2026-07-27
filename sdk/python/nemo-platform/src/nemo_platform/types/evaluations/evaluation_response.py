@@ -100,6 +100,9 @@ class EvaluationResponse(BaseModel):
     test case before pooling across test cases.
     """
 
+    tokens: Optional[EvaluatorAggregate] = None
+    """Aggregate statistics over evaluator scores or session-level metric values."""
+
     updated_at: Optional[datetime] = None
 
     if not PYDANTIC_V1:

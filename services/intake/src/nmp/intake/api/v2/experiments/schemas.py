@@ -273,6 +273,10 @@ class EvaluationResponse(BaseModel):
     )
     cost_usd: EvaluatorAggregate | None = None
     latency_ms: EvaluatorAggregate | None = None
+    tokens: EvaluatorAggregate | None = Field(
+        default=None,
+        description="Average total tokens (input + output) per test case, aggregated across the evaluation.",
+    )
 
     @computed_field(deprecated=True, description="Deprecated alias for parent_evaluation_id.")  # type: ignore[prop-decorator]
     @property
@@ -389,6 +393,9 @@ class EvaluationFilter(Filter):
     )
     latency_ms: Annotated[MetricStatFilters | None, map_entity_field("latency_ms", namespace=True)] = Field(
         default=None, description="Filter by a latency_ms rollup stat, e.g. filter[latency_ms.p95][$lte]=1000."
+    )
+    tokens: Annotated[MetricStatFilters | None, map_entity_field("tokens", namespace=True)] = Field(
+        default=None, description="Filter by a tokens rollup stat, e.g. filter[tokens.mean][$lte]=5000."
     )
     evaluators: Annotated[dict[str, MetricStatFilters] | None, map_entity_field("evaluators", namespace=True)] = Field(
         default=None,
