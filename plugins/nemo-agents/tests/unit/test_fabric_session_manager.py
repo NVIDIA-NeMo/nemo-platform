@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from nemo_agents_plugin.agent_config import AgentConfig
@@ -111,3 +111,47 @@ async def test_open_session_stops_runtime_when_registration_fails(
 
     assert runtime.stop_calls == 1
     assert await registry.count() == 0
+
+
+@pytest.mark.asyncio
+async def test_resolve_session_opens_session_when_id_is_absent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(session_manager, "translate_agent_config", lambda config: object())
+    runtime = _FakeRuntime()
+    fabric = _FakeFabric(runtime)
+    registry = FabricSessionRegistry()
+    manager = FabricSessionManager(
+        _agent_config(),
+        base_dir=tmp_path,
+        session_registry=registry,
+        fabric=fabric,
+    )
+
+    session = await manager.resolve_session(None)
+
+    assert session.runtime is runtime
+    assert len(fabric.start_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_resolve_session_reuses_registered_runtime(
+    tmp_path: Path,
+) -> None:
+    runtime = _FakeRuntime()
+    fabric = _FakeFabric(_FakeRuntime())
+    registry = FabricSessionRegistry()
+    registered = await registry.register(cast(Any, runtime), session_id="session-1")
+    manager = FabricSessionManager(
+        _agent_config(),
+        base_dir=tmp_path,
+        session_registry=registry,
+        fabric=fabric,
+    )
+
+    session = await manager.resolve_session("session-1")
+
+    assert session is registered
+    assert session.runtime is runtime
+    assert fabric.start_calls == []

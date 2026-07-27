@@ -61,3 +61,9 @@ class FabricSessionManager:
             except FabricError:
                 logger.exception("Failed to stop Fabric runtime after session registration failed.")
             raise
+
+    async def resolve_session(self, session_id: str | None) -> FabricRuntimeSession:
+        """Open a new session or resolve an existing session by its opaque ID."""
+        if session_id is None:
+            return await self.open_session()
+        return await self._session_registry.get(session_id)
