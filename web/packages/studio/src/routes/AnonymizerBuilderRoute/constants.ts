@@ -1,14 +1,16 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { RiskTolerance } from '@nemo/sdk/generated/anonymizer/schema';
+
 export const SOURCE_TYPE_URL = 'url';
 export const SOURCE_TYPE_DATASET = 'dataset';
 
 export type SourceType = typeof SOURCE_TYPE_URL | typeof SOURCE_TYPE_DATASET;
 
-export const SOURCE_TYPE_OPTIONS: { label: string; value: SourceType }[] = [
-  { label: 'Dataset', value: SOURCE_TYPE_DATASET },
-  { label: 'URL', value: SOURCE_TYPE_URL },
+export const SOURCE_TYPE_OPTIONS: { children: string; value: SourceType }[] = [
+  { children: 'Dataset', value: SOURCE_TYPE_DATASET },
+  { children: 'URL', value: SOURCE_TYPE_URL },
 ];
 
 export const STRATEGY_SUBSTITUTE = 'substitute';
@@ -26,17 +28,13 @@ export type Strategy =
 
 export const REWRITE_STRATEGY: Strategy = STRATEGY_REWRITE;
 
-export const STRATEGY_OPTIONS: { label: string; value: Strategy }[] = [
-  { label: 'Substitute', value: STRATEGY_SUBSTITUTE },
-  { label: 'Redact', value: STRATEGY_REDACT },
-  { label: 'Annotate', value: STRATEGY_ANNOTATE },
-  { label: 'Hash', value: STRATEGY_HASH },
-  { label: 'Rewrite', value: STRATEGY_REWRITE },
+export const STRATEGY_OPTIONS: { children: string; value: Strategy }[] = [
+  { children: 'Substitute', value: STRATEGY_SUBSTITUTE },
+  { children: 'Redact', value: STRATEGY_REDACT },
+  { children: 'Annotate', value: STRATEGY_ANNOTATE },
+  { children: 'Hash', value: STRATEGY_HASH },
+  { children: 'Rewrite', value: STRATEGY_REWRITE },
 ];
-
-export const AVAILABLE_STRATEGY_OPTIONS = STRATEGY_OPTIONS.filter(
-  (option) => option.value !== STRATEGY_REWRITE
-);
 
 export const STRATEGY_DESCRIPTIONS: Record<Strategy, string> = {
   [STRATEGY_SUBSTITUTE]:
@@ -64,8 +62,36 @@ const HASH_ALGORITHM_LABELS: Record<HashAlgorithmOption, string> = {
   sha1: 'SHA-1',
   md5: 'MD5',
 };
-export const HASH_ALGORITHM_OPTIONS: { label: string; value: HashAlgorithmOption }[] =
-  HASH_ALGORITHM_VALUES.map((value) => ({ label: HASH_ALGORITHM_LABELS[value], value }));
+export const HASH_ALGORITHM_OPTIONS: { children: string; value: HashAlgorithmOption }[] =
+  HASH_ALGORITHM_VALUES.map((value) => ({ children: HASH_ALGORITHM_LABELS[value], value }));
+
+export const PRIVACY_GOAL_MODE_DEFAULT = 'default';
+export const PRIVACY_GOAL_MODE_CUSTOM = 'custom';
+
+export type PrivacyGoalMode = typeof PRIVACY_GOAL_MODE_DEFAULT | typeof PRIVACY_GOAL_MODE_CUSTOM;
+
+export const PRIVACY_GOAL_MODE_OPTIONS: { value: PrivacyGoalMode; children: string }[] = [
+  { value: PRIVACY_GOAL_MODE_DEFAULT, children: 'Default' },
+  { value: PRIVACY_GOAL_MODE_CUSTOM, children: 'Custom' },
+];
+
+export const RISK_TOLERANCE_ORDER = [
+  RiskTolerance.minimal,
+  RiskTolerance.low,
+  RiskTolerance.moderate,
+  RiskTolerance.high,
+] as const;
+
+export const RISK_TOLERANCE_LABELS: Record<RiskTolerance, string> = {
+  minimal: 'Minimal',
+  low: 'Low',
+  moderate: 'Moderate',
+  high: 'High',
+};
+
+export const RISK_TOLERANCE_DEFAULT: RiskTolerance = RiskTolerance.low;
+export const REWRITE_DEFAULT_MAX_REPAIR_ROUNDS = 3;
+export const REWRITE_MIN_MAX_REPAIR_ROUNDS = 0;
 
 export const ENTITY_MODE_CUSTOM = 'custom';
 export const ENTITY_MODE_AUTO = 'auto';
@@ -120,7 +146,8 @@ export const ROLE_LABELS: Record<string, string> = {
 export const GLINER_ROLE = 'entity_detector';
 
 export const activeRolesForStrategy = (strategy: Strategy): string[] => {
-  if (strategy === STRATEGY_REWRITE) return [...DETECTION_ROLES, ...REWRITE_ROLES];
+  // rewrite reuses the replacement generator, so the backend validates that role too
+  if (strategy === STRATEGY_REWRITE) return [...DETECTION_ROLES, ...REWRITE_ROLES, REPLACE_ROLE];
   if (strategy === STRATEGY_SUBSTITUTE) return [...DETECTION_ROLES, REPLACE_ROLE];
   return [...DETECTION_ROLES];
 };
