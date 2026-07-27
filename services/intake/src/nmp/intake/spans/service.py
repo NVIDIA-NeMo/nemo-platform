@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from nmp.common.api.common import PaginatedResult
+from nmp.intake.repository.session import SessionRepository
 from nmp.intake.spans.annotations_repository import AnnotationsRepository
 from nmp.intake.spans.domain import (
     Annotation,
@@ -25,7 +26,6 @@ from nmp.intake.spans.domain import (
     TraceMode,
 )
 from nmp.intake.spans.evaluator_results_repository import EvaluatorResultsRepository
-from nmp.intake.spans.session_repository import SessionRepository
 from nmp.intake.spans.span_repository import SpanRepository
 from nmp.intake.spans.trace_repository import TraceRepository
 

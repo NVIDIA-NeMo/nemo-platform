@@ -8,11 +8,13 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request, status
 from nemo_platform import AsyncNeMoPlatform
 from nmp.common.service.dependencies import get_sdk_client
+from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor
+from nmp.intake.repository.clickhouse.session import ClickHouseSessionRepository
+from nmp.intake.repository.session import SessionRepository
 from nmp.intake.spans.annotations_repository import AnnotationsRepository
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient, get_clickhouse_client
 from nmp.intake.spans.evaluator_results_repository import EvaluatorResultsRepository
 from nmp.intake.spans.service import IntakeSpansService
-from nmp.intake.spans.session_repository import SessionRepository
 from nmp.intake.spans.span_repository import SpanRepository
 from nmp.intake.spans.trace_repository import TraceRepository
 
@@ -58,10 +60,16 @@ def get_trace_repository(
     return TraceRepository(client)
 
 
-def get_session_repository(
+def get_clickhouse_executor(
     client: Annotated[ClickHouseSpanClient, Depends(get_clickhouse_client)],
+) -> ClickHouseExecutor:
+    return ClickHouseExecutor(client)
+
+
+def get_session_repository(
+    executor: Annotated[ClickHouseExecutor, Depends(get_clickhouse_executor)],
 ) -> SessionRepository:
-    return SessionRepository(client)
+    return ClickHouseSessionRepository(executor)
 
 
 def get_evaluator_results_repository(

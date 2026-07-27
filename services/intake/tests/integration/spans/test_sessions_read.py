@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
+from nmp.intake.repository.clickhouse.session import _session_detail_query
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
-from nmp.intake.spans.session_repository import session_detail_sql
 
 
 def test_session_detail_rolls_up_all_current_spans(
@@ -93,11 +93,11 @@ def test_session_detail_rolls_up_all_current_spans(
     assert "input" not in session
     assert "output" not in session
 
-    query, parameters = session_detail_sql(clickhouse_client.table("spans"))
+    query = _session_detail_query(clickhouse_client.table("spans"))
     plan = run_async(
         clickhouse_client.query(
-            f"EXPLAIN indexes = 1 {query}",
-            parameters={**parameters, "workspace": "default", "session_id": session_id},
+            f"EXPLAIN indexes = 1 {query.statement}",
+            parameters={**query.parameters, "workspace": "default", "session_id": session_id},
         )
     )
     plan_text = "\n".join(str(row[0]) for row in plan.result_rows)
