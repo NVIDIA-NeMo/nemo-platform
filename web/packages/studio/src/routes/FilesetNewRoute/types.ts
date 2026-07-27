@@ -1,15 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { FILESET_NAME_MAX_LENGTH, FILESET_NAME_REGEXP } from '@nemo/common/src/utils/filesetName';
+import { entityNameSchema } from '@nemo/common/src/utils/entityName';
 import { FilesetPurpose } from '@nemo/sdk/generated/platform/schema';
 import { FilesCreateFilesetBody } from '@nemo/sdk/generated/platform/zod/files';
-import {
-  DATASET_NAME_PATTERN_MESSAGE,
-  DATASET_NAME_REQUIRED_MESSAGE,
-  DATASET_TYPE_CUSTOM,
-  DATASET_TYPE_SAMPLE,
-} from '@studio/routes/FilesetNewRoute/constants';
+import { DATASET_TYPE_CUSTOM, DATASET_TYPE_SAMPLE } from '@studio/routes/FilesetNewRoute/constants';
 import { z } from 'zod';
 
 /**
@@ -19,12 +14,7 @@ import { z } from 'zod';
  * strict pattern here so the user sees a useful inline error instead of a 422.
  */
 export const DatasetCreateFilesetFormSchema = FilesCreateFilesetBody.extend({
-  name: z
-    .string()
-    .trim()
-    .min(1, DATASET_NAME_REQUIRED_MESSAGE)
-    .max(FILESET_NAME_MAX_LENGTH)
-    .regex(FILESET_NAME_REGEXP, DATASET_NAME_PATTERN_MESSAGE),
+  name: z.string().trim().pipe(entityNameSchema('Name')),
   purpose: z.nativeEnum(FilesetPurpose),
 });
 

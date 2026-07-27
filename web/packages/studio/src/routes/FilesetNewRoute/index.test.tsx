@@ -177,7 +177,9 @@ describe('FilesetNewRoute', () => {
     await user.type(nameInput, 'tiny-gpt2-A');
     await user.tab();
 
-    expect(await screen.findByText(/must start with a lowercase letter/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Name must be lowercase\. Try "tiny-gpt2-a"\./)
+    ).toBeInTheDocument();
   });
 
   it('shows inline validation error when fileset name starts with a digit', async () => {

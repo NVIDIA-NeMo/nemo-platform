@@ -14,12 +14,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { ENTITY_NAME_HELP, entityNameSchema } from '@nemo/common/src/utils/entityName';
 import {
   getModelsListProvidersQueryKey,
   useModelsCreateProvider,
   useModelsListProviders,
 } from '@nemo/sdk/generated/platform/api';
-import { modelsCreateProviderBodyNameRegExp } from '@nemo/sdk/generated/platform/zod/model-providers';
 import { Button, Flex, FormField, SidePanel, Stack, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { InferenceModelProviderSelect } from '@studio/routes/InferenceProvidersListRoute/CreateInferenceProviderSidePanel/InferenceModelProviderSelect';
@@ -37,14 +37,7 @@ import { z } from 'zod';
 const PROVIDERS_PAGE_SIZE = 100;
 
 const createProviderFormSchema = z.object({
-  name: z
-    .string()
-    .min(1, 'Name is required')
-    .max(255)
-    .regex(
-      modelsCreateProviderBodyNameRegExp,
-      'Use only letters, numbers, hyphens, underscores, or dots.'
-    ),
+  name: entityNameSchema('Name'),
   host_url: z.string().min(1, 'Host URL is required').url('Enter a valid URL').max(2048),
   api_key_secret_name: z.string().max(255).optional().or(z.literal('')),
 });
@@ -130,6 +123,15 @@ export const CreateInferenceProviderSidePanel: FC<CreateInferenceProviderSidePan
     },
   });
 
+  const formSchema = useMemo(
+    () =>
+      createProviderFormSchema.refine((data) => !existingNames.has(data.name), {
+        path: ['name'],
+        message: 'A provider with this name already exists.',
+      }),
+    [existingNames]
+  );
+
   const {
     control,
     reset: resetForm,
@@ -137,7 +139,7 @@ export const CreateInferenceProviderSidePanel: FC<CreateInferenceProviderSidePan
     setValue,
     formState: { errors },
   } = useForm({
-    resolver: zodResolver(createProviderFormSchema),
+    resolver: zodResolver(formSchema),
     defaultValues,
     disabled: isPending,
     mode: 'onChange',
@@ -269,7 +271,7 @@ export const CreateInferenceProviderSidePanel: FC<CreateInferenceProviderSidePan
               name="name"
               label="Name"
               formFieldProps={{
-                slotInfo: 'Letters, numbers, hyphens, underscores, or dots. Max 255 characters.',
+                slotInfo: ENTITY_NAME_HELP,
                 slotError: errors.name?.message,
               }}
             />
