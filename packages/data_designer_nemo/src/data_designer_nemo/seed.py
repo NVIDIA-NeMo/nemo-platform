@@ -90,15 +90,14 @@ async def _validate_seed_from_files_service(
         ) from e
 
     canonical_root = build_fileset_ref(fragment, workspace=workspace, fileset=fileset_name)
-    if not fragment:
-        return canonical_root
 
     fully_qualified_fileset_name = f"{workspace}/{fileset_name}"
+    query_params = ListFilesQueryParams(path=fragment) if fragment else None
     try:
         response = await files.list_files(
             workspace=workspace,
             name=fileset_name,
-            query_params=ListFilesQueryParams(path=fragment),
+            query_params=query_params,
         )
     except NotFoundError as e:
         raise NDDInvalidConfigError(f"Path {fragment!r} not found in fileset {fully_qualified_fileset_name!r}") from e
@@ -113,18 +112,27 @@ async def _validate_seed_from_files_service(
             f"An unexpected error occurred while listing path {fragment!r} in fileset {fully_qualified_fileset_name!r}: {e}"
         ) from e
 
+    files_response = response.data()
+
     # A path that resolves to no files provides nothing to seed from, so it is
     # invalid regardless of whether the path itself exists. A FilesetFileSeedSource
     # points at a single file, while the directory-style sources enumerate files
     # under a directory; tailor the message accordingly.
-    if not response.data:
+    if not files_response.data:
         if isinstance(seed_source, FilesetFileSeedSource):
+            # FilesetFileSeedSource already validates that fragment is present
             raise NDDInvalidConfigError(f"File {fragment!r} not found in fileset {fully_qualified_fileset_name!r}")
-        raise NDDInvalidConfigError(
-            f"Path {fragment!r} in fileset {fully_qualified_fileset_name!r} contains no files to use as seed data"
-        )
+        raise NDDInvalidConfigError(_no_files_error_message(fully_qualified_fileset_name, fragment))
 
     return canonical_root
+
+
+def _no_files_error_message(fileset: str, fragment: str | None) -> str:
+    msg = f"Fileset {fileset!r} contains no files to use as seed data"
+    if fragment:
+        msg += f" under path {fragment!r}"
+
+    return msg
 
 
 def validate_seed_source_for_execution_context(data: Any, *, is_local: bool) -> None:

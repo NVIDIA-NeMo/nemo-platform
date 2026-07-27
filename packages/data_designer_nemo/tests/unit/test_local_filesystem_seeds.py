@@ -17,6 +17,10 @@ from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.client.errors import NotFoundError
 
 
+def _list_files_response(paths: list[str]) -> Mock:
+    return Mock(data=Mock(return_value=Mock(data=[Mock(path=path) for path in paths])))
+
+
 def _make_config(source: Any) -> dd.DataDesignerConfig:
     builder = dd.DataDesignerConfigBuilder()
     builder.with_seed_dataset(source)
@@ -41,7 +45,7 @@ async def test_local_validate_seed_validates_fileset_for_non_local_path() -> Non
     sdk = AsyncMock(spec=AsyncNeMoPlatform)
     files = Mock()
     files.get_fileset = AsyncMock()
-    files.list_files = AsyncMock(return_value=Mock(data=[Mock(path="corpus/a.md")]))
+    files.list_files = AsyncMock(return_value=_list_files_response(["corpus/a.md"]))
 
     with patch("data_designer_nemo.seed.client_from_platform", return_value=files):
         validated_root = await validate_seed(
@@ -86,7 +90,7 @@ async def test_local_context_validate_caches_fileset_root() -> None:
     sdk = AsyncMock(spec=AsyncNeMoPlatform)
     files = Mock()
     files.get_fileset = AsyncMock()
-    files.list_files = AsyncMock(return_value=Mock(data=[Mock(path="corpus/a.md")]))
+    files.list_files = AsyncMock(return_value=_list_files_response(["corpus/a.md"]))
     ctx = LocalDataDesignerContext(sdk, "default")
 
     with patch("data_designer_nemo.seed.client_from_platform", return_value=files):

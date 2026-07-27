@@ -16,6 +16,10 @@ from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.files.types import ListFilesQueryParams
 
 
+def _list_files_response(paths: list[str]) -> Mock:
+    return Mock(data=Mock(return_value=Mock(data=[Mock(path=path) for path in paths])))
+
+
 def test_remote_context_includes_filesystem_seed_readers() -> None:
     readers = RemoteDataDesignerContext(Mock(), "default").get_seed_readers()
 
@@ -28,7 +32,7 @@ async def test_validate_seed_returns_canonical_validated_filesystem_root() -> No
     sdk = AsyncMock(spec=AsyncNeMoPlatform)
     files = Mock()
     files.get_fileset = AsyncMock()
-    files.list_files = AsyncMock(return_value=Mock(data=[Mock(path="corpus/a.md")]))
+    files.list_files = AsyncMock(return_value=_list_files_response(["corpus/a.md"]))
 
     builder = dd.DataDesignerConfigBuilder()
     builder.with_seed_dataset(dd.FileContentsSeedSource(path="docs#corpus", file_pattern="*.md"))
@@ -47,11 +51,33 @@ async def test_validate_seed_returns_canonical_validated_filesystem_root() -> No
 
 
 @pytest.mark.asyncio
+async def test_validate_seed_rejects_fileset_root_with_no_files() -> None:
+    sdk = AsyncMock(spec=AsyncNeMoPlatform)
+    files = Mock()
+    files.get_fileset = AsyncMock()
+    files.list_files = AsyncMock(return_value=_list_files_response([]))
+
+    builder = dd.DataDesignerConfigBuilder()
+    builder.with_seed_dataset(dd.DirectorySeedSource(path="docs"))
+    config = builder.build()
+
+    with pytest.raises(NDDInvalidConfigError, match="contains no files to use as seed data"):
+        with patch("data_designer_nemo.seed.client_from_platform", return_value=files):
+            await validate_seed(config, "default", sdk, is_local=False)
+
+    files.list_files.assert_awaited_once_with(
+        workspace="default",
+        name="docs",
+        query_params=None,
+    )
+
+
+@pytest.mark.asyncio
 async def test_validate_seed_rejects_path_with_no_files() -> None:
     sdk = AsyncMock(spec=AsyncNeMoPlatform)
     files = Mock()
     files.get_fileset = AsyncMock()
-    files.list_files = AsyncMock(return_value=Mock(data=[]))
+    files.list_files = AsyncMock(return_value=_list_files_response([]))
 
     builder = dd.DataDesignerConfigBuilder()
     builder.with_seed_dataset(dd.FileContentsSeedSource(path="docs#corpus", file_pattern="*.md"))
@@ -69,7 +95,7 @@ async def test_validate_seed_reports_missing_fileset_file() -> None:
     sdk = AsyncMock(spec=AsyncNeMoPlatform)
     files = Mock()
     files.get_fileset = AsyncMock()
-    files.list_files = AsyncMock(return_value=Mock(data=[]))
+    files.list_files = AsyncMock(return_value=_list_files_response([]))
 
     seed_source = FilesetFileSeedSource(path="docs#corpus/missing.parquet")
 

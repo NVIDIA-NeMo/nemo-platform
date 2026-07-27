@@ -133,6 +133,22 @@ async def test_validate_remote_only_aggregates_seed_and_tool_errors() -> None:
     assert any(("seed" in m.lower()) or ("df" in m) for m in messages)
 
 
+async def test_validate_remote_only_rejects_empty_fileset_root_seed() -> None:
+    builder = dd.DataDesignerConfigBuilder()
+    builder.with_seed_dataset(dd.DirectorySeedSource(path=f"{u.WORKSPACE_NAME}/{u.FILESET_NAME}"))
+    builder.add_column(column_config=dd.ExpressionColumnConfig(name="full_name", expr=u.FULL_NAME_EXPR))
+
+    with u.make_mock_client_context() as client_context:
+        client_context.sdk.files.filesets.create(name=u.FILESET_NAME, workspace=u.WORKSPACE_NAME)
+        dd_client = AsyncDataDesignerResource(client_context.async_sdk)
+        report = await dd_client.validate(builder, execution_context="remote")
+
+    assert not report.ok
+    [result] = report.results
+    assert result.context == "remote"
+    assert any("contains no files to use as seed data" in err.message for err in result.errors)
+
+
 async def test_sdk_validate_method_aggregates_df_seed_with_other_remote_errors() -> None:
     """Regression: ``DataDesignerResource.validate`` itself (not just the
     underlying ``validate_config`` core) must accept a ``df``-seed config and
