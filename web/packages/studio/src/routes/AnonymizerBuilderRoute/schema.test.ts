@@ -14,6 +14,7 @@ import {
 } from '@studio/routes/AnonymizerBuilderRoute/schema';
 
 const ALL_ROLES = [...DETECTION_ROLES, REPLACE_ROLE, ...REWRITE_ROLES];
+const DEFAULT_LABELS = ['email', 'ssn', 'first_name'];
 
 const roleModels = (model: string, provider: string): AnonymizerFormData['roleModels'] =>
   Object.fromEntries(ALL_ROLES.map((role) => [role, { modelId: role, model, provider }]));
@@ -185,18 +186,47 @@ describe('buildAnonymizerJobRequest', () => {
     }
   });
 
-  it('sets config.detect.entity_labels only for custom labels without defaults', () => {
+  it('sends only the picked labels when defaults are excluded', () => {
     const custom = buildAnonymizerJobRequest(
-      form({ entityMode: 'custom', includeDefaultEntities: false, entityLabels: ['email', 'ssn'] })
+      form({ entityMode: 'custom', includeDefaultEntities: false, entityLabels: ['email', 'ssn'] }),
+      DEFAULT_LABELS
     );
     expect(custom.spec.config.detect).toEqual({ entity_labels: ['email', 'ssn'] });
+  });
 
-    const withDefaults = buildAnonymizerJobRequest(
-      form({ entityMode: 'custom', includeDefaultEntities: true, entityLabels: ['email'] })
+  it('merges defaults with custom picks when defaults are included', () => {
+    const merged = buildAnonymizerJobRequest(
+      form({
+        entityMode: 'custom',
+        includeDefaultEntities: true,
+        entityLabels: ['email', 'ice_cream_flavor'],
+      }),
+      DEFAULT_LABELS
     );
-    expect(withDefaults.spec.config.detect).toBeUndefined();
+    expect(merged.spec.config.detect).toEqual({
+      entity_labels: [...DEFAULT_LABELS, 'ice_cream_flavor'],
+    });
+  });
 
-    const auto = buildAnonymizerJobRequest(form({ entityMode: 'auto', entityLabels: ['email'] }));
+  it('omits detect when the selection adds nothing to the defaults', () => {
+    const defaultsOnly = buildAnonymizerJobRequest(
+      form({ entityMode: 'custom', includeDefaultEntities: true, entityLabels: [] }),
+      DEFAULT_LABELS
+    );
+    expect(defaultsOnly.spec.config.detect).toBeUndefined();
+
+    const subsetOfDefaults = buildAnonymizerJobRequest(
+      form({ entityMode: 'custom', includeDefaultEntities: true, entityLabels: ['email'] }),
+      DEFAULT_LABELS
+    );
+    expect(subsetOfDefaults.spec.config.detect).toBeUndefined();
+  });
+
+  it('ignores entity labels in auto-detect mode', () => {
+    const auto = buildAnonymizerJobRequest(
+      form({ entityMode: 'auto', entityLabels: ['email'] }),
+      DEFAULT_LABELS
+    );
     expect(auto.spec.config.detect).toBeUndefined();
   });
 

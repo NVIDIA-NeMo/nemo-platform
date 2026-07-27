@@ -168,18 +168,39 @@ const buildRewriteConfig = (form: AnonymizerFormData): Rewrite => {
   return rewrite;
 };
 
-export const buildAnonymizerJobRequest = (form: AnonymizerFormData): RunJobRequest => {
+/**
+ * entity_labels replaces the default set server-side, so "include defaults" has to send the
+ * defaults alongside the custom picks. Omitted entirely when the selection adds nothing, which
+ * leaves the server on its own defaults.
+ */
+const buildDetectConfig = (
+  form: AnonymizerFormData,
+  defaultEntityLabels: string[]
+): AnonymizerConfigInput['detect'] => {
+  if (form.entityMode !== ENTITY_MODE_CUSTOM) return undefined;
+
+  const labels = form.includeDefaultEntities
+    ? [...new Set([...defaultEntityLabels, ...form.entityLabels])]
+    : form.entityLabels;
+
+  if (!labels.length) return undefined;
+  if (form.includeDefaultEntities && labels.length === defaultEntityLabels.length) return undefined;
+
+  return { entity_labels: labels };
+};
+
+export const buildAnonymizerJobRequest = (
+  form: AnonymizerFormData,
+  defaultEntityLabels: string[] = []
+): RunJobRequest => {
   const config: AnonymizerConfigInput =
     form.strategy === REWRITE_STRATEGY
       ? { rewrite: buildRewriteConfig(form) }
       : { replace: buildReplaceConfig(form) };
 
-  const useCustomLabels =
-    form.entityMode === ENTITY_MODE_CUSTOM &&
-    !form.includeDefaultEntities &&
-    form.entityLabels.length > 0;
-  if (useCustomLabels) {
-    config.detect = { entity_labels: form.entityLabels };
+  const detect = buildDetectConfig(form, defaultEntityLabels);
+  if (detect) {
+    config.detect = detect;
   }
 
   const aliasByModel = new Map<string, string>();
