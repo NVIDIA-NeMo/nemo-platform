@@ -17,6 +17,9 @@ import type { AnonymizerFormData } from '@studio/routes/AnonymizerBuilderRoute/s
 import { FC } from 'react';
 import { useController, useFormContext, useWatch } from 'react-hook-form';
 
+const formatRiskToleranceStep = (index: number) =>
+  RISK_TOLERANCE_LABELS[RISK_TOLERANCE_ORDER[index]];
+
 export const RewriteParamsSection: FC = () => {
   const { control } = useFormContext<AnonymizerFormData>();
   const privacyGoalMode = useWatch({ control, name: 'privacyGoalMode' });
@@ -56,7 +59,6 @@ export const RewriteParamsSection: FC = () => {
         useControllerProps={{ name: 'rewriteInstructions', control }}
         formFieldProps={{ slotLabel: 'LLM Instructions' }}
       />
-      {/* end tick labels overhang the track, so inset it to keep them inside the scroll box */}
       <FormField slotLabel="Risk Tolerance">
         <Slider
           aria-label="Risk tolerance"
@@ -66,7 +68,7 @@ export const RewriteParamsSection: FC = () => {
           min={0}
           max={RISK_TOLERANCE_ORDER.length - 1}
           step={1}
-          stepFormatFn={(index) => RISK_TOLERANCE_LABELS[RISK_TOLERANCE_ORDER[index]]}
+          stepFormatFn={formatRiskToleranceStep}
           value={RISK_TOLERANCE_ORDER.indexOf(riskTolerance)}
           onValueChange={(index) => onRiskToleranceChange(RISK_TOLERANCE_ORDER[index])}
         />

@@ -45,6 +45,8 @@ const PANEL_TABS = [
   { value: TAB_MODEL_SETTINGS, children: 'Model Settings' },
 ];
 
+const PANEL_ATTRIBUTES = { PanelContent: { className: 'flex-1 min-h-0 overflow-auto' } };
+
 export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
   ? () => {
       const navigate = useNavigate();
@@ -116,7 +118,7 @@ export const AnonymizerBuilderRoute: FC | null = ANONYMIZER_ENABLED
                   className="w-[400px] h-full"
                   elevation="high"
                   density="standard"
-                  attributes={{ PanelContent: { className: 'flex-1 min-h-0 overflow-auto' } }}
+                  attributes={PANEL_ATTRIBUTES}
                   slotFooter={
                     <Flex gap="density-md" justify="end">
                       <Button
