@@ -1029,10 +1029,9 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
                 continue
             if (meta.get("round") or 0) > from_round:
                 shutil.rmtree(agent_dir)
-                for suffix in ("-train", "-validation", "-insight"):
-                    rd = results_dir / f"{agent_dir.name}{suffix}"
-                    if rd.exists():
-                        shutil.rmtree(rd)
+                for result_dir in results_dir.glob(f"{agent_dir.name}-*"):
+                    if result_dir.is_dir():
+                        shutil.rmtree(result_dir)
                 for rd in (
                     smoke_results_dir / agent_dir.name,
                     smoke_dataset_dir / agent_dir.name,
@@ -1263,6 +1262,7 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
         dataset: Dataset,
         evaluator: Evaluator,
         task_ids: list[str] | None = None,
+        minimum_attempts: int | None = None,
     ) -> tuple[Candidate, EvaluationResult]:
         """Run evaluator for one candidate and return the candidate/result pair."""
         eval_dataset = dataset.subset(task_ids) if task_ids is not None else dataset
@@ -1270,6 +1270,11 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
         # collide on the same results directory when the user sets a fixed job_name.
         options_dict = evaluator.options.model_dump()
         options_dict["job_name"] = f"{candidate.label}-{eval_dataset.id}"
+        if minimum_attempts is not None:
+            configured_attempts = options_dict.get("n_attempts")
+            if not isinstance(configured_attempts, int):
+                raise ValueError("Insight evaluator options must define integer n_attempts")
+            options_dict["n_attempts"] = max(configured_attempts, minimum_attempts)
         per_candidate_options = type(evaluator.options).model_validate(options_dict)
         result = await evaluator.run(
             agent=self.working_dir / "eval-and-optimize" / "agents" / candidate.label,
@@ -1373,11 +1378,18 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
             if candidate.insight_reward is None
             or candidate.insight_reward_details is None
             or candidate.insight_suite_identity != provenance.identity
-            or candidate.insight_suite_artifact_ref != provenance.artifact_ref
             or not candidate.insight_metric_keys
         ]
         evaluated = await asyncio.gather(
-            *[self._evaluate_agent(candidate, dataset, evaluator) for candidate in pending]
+            *[
+                self._evaluate_agent(
+                    candidate,
+                    dataset,
+                    evaluator,
+                    minimum_attempts=2,
+                )
+                for candidate in pending
+            ]
         )
         return {candidate.label: result for candidate, result in evaluated}
 
@@ -1404,12 +1416,12 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
         ):
             raise ValueError("Insight suite runtime metric keys have invalid metadata")
         cached_metric_key_sets = {
-            tuple(candidate.insight_metric_keys or ())
+            tuple(sorted(candidate.insight_metric_keys or ()))
             for candidate in candidates
             if candidate.insight_suite_identity == provenance.identity and candidate.insight_metric_keys
         }
         if isinstance(dataset_metric_keys, list):
-            cached_metric_key_sets.add(tuple(dataset_metric_keys))
+            cached_metric_key_sets.add(tuple(sorted(dataset_metric_keys)))
         if len(cached_metric_key_sets) > 1:
             raise ValueError(
                 f"Cached Insight evaluations disagree on required metric keys: {sorted(cached_metric_key_sets)}"
@@ -1425,7 +1437,6 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
             )
             if expected_metric_keys is None:
                 expected_metric_keys = metric_keys
-                dataset.metadata["insight_metric_keys"] = list(metric_keys)
             result = stamp_insight_evaluation_result(result, provenance)
             await backend.persist_evaluation(
                 workspace=workspace,
@@ -1439,7 +1450,6 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
                     "insight_reward": result.aggregate_metrics,
                     "insight_reward_details": result.trials,
                     "insight_suite_identity": provenance.identity,
-                    "insight_suite_artifact_ref": provenance.artifact_ref,
                     "insight_metric_keys": list(metric_keys),
                 },
                 workspace=workspace,
@@ -1847,23 +1857,26 @@ class EvolutionaryOptimizer(Agent, llm=get_smart_model()):
             report_path.write_text(f"# Optimization Report\n\n## Compact Run Summary\n\n{summary}\n")
 
         if insight_dataset is not None:
-            provenance = insight_suite_provenance(insight_dataset)
-            if baseline is not None:
-                write_insight_comparison_section(
-                    report_path,
-                    baseline,
-                    winner,
-                    provenance,
+            try:
+                provenance = insight_suite_provenance(insight_dataset)
+                if baseline is not None:
+                    write_insight_comparison_section(
+                        report_path,
+                        baseline,
+                        winner,
+                        provenance,
+                    )
+                suggestions = select_insight_promotion_suggestions(
+                    insight_dataset,
+                    [node.candidate for node in evolution_tree.nodes.values()],
+                    winner=winner,
                 )
-            suggestions = select_insight_promotion_suggestions(
-                insight_dataset,
-                [node.candidate for node in evolution_tree.nodes.values()],
-                winner=winner,
-            )
-            write_insight_promotion_section(
-                report_path,
-                suggestions,
-            )
+                write_insight_promotion_section(
+                    report_path,
+                    suggestions,
+                )
+            except ValueError as exc:
+                logger.warning(f"[FINAL] Skipping Insight Suite report sections: {exc}")
 
         run_entity.status = "completed"
         run_entity.winner_agent = best_id

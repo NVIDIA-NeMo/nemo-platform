@@ -18,6 +18,7 @@ runs the top-level Eval Author before beginning optimization.
 - `agent.py` defines the canonical `EvalAuthor` agent.
 - `materialization.py` stages, validates, and persists Insight suites locally.
 - `models.py` defines the lightweight `EvalAuthorConfig` and `EvalAuthorResult` models.
+- `REFERENCE.md` documents the Python return contract.
 - `run.py` defines `run_eval_author(...)`, a reusable orchestration function for
   Python callers.
 - `config.yaml` is a default run preset for future CLI or job wiring.
@@ -59,16 +60,9 @@ unchanged. The authored verifiers must pass static Harbor validation before the
 local suite is returned to the optimization loop.
 
 After authoring and validation, Eval Author hashes every task file and verifier
-file, derives deterministic suite and scorer identities, and freezes the exact
-content beneath:
-
-```text
-eval-and-optimize/eval_author/<insight-slug>/artifacts/<sha256>/insight-suite/
-```
-
-The returned dataset points at this immutable artifact and carries a portable
-`nemo-experimentalist-insight-suite://.../sha256/...` reference. Candidate Insight
-results persist the same suite identity and artifact reference. Resume reuses
+file and persists deterministic suite and scorer identities in the local suite's
+manifest. The returned dataset continues to point at the single experiment-local
+suite. Candidate Insight results persist the suite identity, and resume reuses
 those results only when the identity still matches; changed task or verifier
 content is re-evaluated.
 
@@ -77,11 +71,8 @@ Task-template inputs may be local paths, `file://` URIs, or NeMo Platform
 downloaded into the experiment-local staging directory before Harbor parses
 them. The staged template is refreshed on every invocation rather than reused.
 
-`EvalAuthorResult.insight_suite` contains the finalized content-addressed
-`Dataset` for immediate evaluation by the optimization loop. Its identity and
-portable artifact reference are also available as
-`EvalAuthorResult.insight_suite_identity` and
-`EvalAuthorResult.insight_suite_artifact_ref`.
+The returned Python contract is documented in the
+[Eval Author Python Reference](REFERENCE.md#evalauthorresult).
 
 Insight metrics remain adaptive development feedback. They may steer round
 analysis, goal-tree updates, and proposals, but validation remains the direct

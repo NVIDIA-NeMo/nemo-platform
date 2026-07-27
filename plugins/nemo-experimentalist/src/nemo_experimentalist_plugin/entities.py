@@ -161,10 +161,6 @@ class Candidate(NemoEntity, entity_type="candidate"):
         default=None,
         description="Content identity of the Insight suite associated with insight_reward.",
     )
-    insight_suite_artifact_ref: str | None = Field(
-        default=None,
-        description="Portable reference to the immutable Insight suite associated with insight_reward.",
-    )
     insight_metric_keys: list[str] | None = Field(
         default=None,
         description="Validated runtime metric keys associated with insight_reward.",

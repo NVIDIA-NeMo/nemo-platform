@@ -11,10 +11,7 @@ from pathlib import Path
 
 import pytest
 from nemo_experimentalist_plugin.eval_author import materialization as materialization_module
-from nemo_experimentalist_plugin.eval_author.materialization import (
-    InsightSuite,
-    resolve_insight_suite_artifact,
-)
+from nemo_experimentalist_plugin.eval_author.materialization import InsightSuite
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import Task
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
 
@@ -212,7 +209,7 @@ def test_insight_suite_records_analysis_without_removing_failed_tasks(tmp_path: 
     assert len(HarborDataset.from_path(suite.suite_dir).list_tasks()) == 2
 
 
-def test_finalized_suite_is_content_addressed_durable_and_resolvable(tmp_path: Path) -> None:
+def test_finalized_suite_persists_identities_in_the_local_suite(tmp_path: Path) -> None:
     template = _write_template(tmp_path / "template")
     refs = ["trace-1"]
     suite = InsightSuite(experiment_dir=tmp_path, insight_id="insight-1", task_template=template)
@@ -221,28 +218,31 @@ def test_finalized_suite_is_content_addressed_durable_and_resolvable(tmp_path: P
     suite.validate(staged[0])
     suite.promote_local(refs, staged)
 
-    artifact = suite.finalize_artifact()
-    manifest = json.loads((artifact.path / "manifest.json").read_text(encoding="utf-8"))
+    finalized = suite.finalize()
+    manifest = json.loads((finalized.path / "manifest.json").read_text(encoding="utf-8"))
 
-    assert artifact.identity.startswith("sha256:")
-    assert artifact.scorer_identity.startswith("sha256:")
-    assert artifact.ref.startswith("nemo-experimentalist-insight-suite://")
-    assert manifest["suite_identity"] == artifact.identity
+    assert finalized.identity.startswith("sha256:")
+    assert finalized.scorer_identity.startswith("sha256:")
+    assert finalized.path == suite.suite_dir
+    assert manifest["suite_identity"] == finalized.identity
     assert manifest["scorer"] == {
-        "identity": artifact.scorer_identity,
+        "identity": finalized.scorer_identity,
         "metric_contract_version": 1,
     }
     assert manifest["tasks"][0]["content_hash"].startswith("sha256:")
     assert manifest["tasks"][0]["verifier"]["content_hash"].startswith("sha256:")
-    assert resolve_insight_suite_artifact(tmp_path, artifact.ref) == artifact.path
-    assert artifact.dataset.metadata["insight_suite_identity"] == artifact.identity
-    assert artifact.dataset.metadata["insight_suite_artifact_ref"] == artifact.ref
-    assert list(artifact.dataset.list_tasks())[0].uri.startswith(artifact.path.as_uri())
+    assert "files" not in manifest["tasks"][0]
+    assert "files" not in manifest["tasks"][0]["verifier"]
+    assert "artifact" not in manifest
+    assert not (suite.root / "artifacts").exists()
+    assert finalized.dataset.metadata["insight_suite_identity"] == finalized.identity
+    assert "insight_suite_artifact_ref" not in finalized.dataset.metadata
+    assert list(finalized.dataset.list_tasks())[0].uri.startswith(finalized.path.as_uri())
 
-    artifact_instruction = next(path for path in artifact.path.iterdir() if path.is_dir()) / "instruction.md"
-    artifact_instruction.write_text("tampered\n")
-    with pytest.raises(ValueError, match="content does not match reference"):
-        resolve_insight_suite_artifact(tmp_path, artifact.ref)
+    instruction = next(path for path in finalized.path.iterdir() if path.is_dir()) / "instruction.md"
+    instruction.write_text("changed after finalization\n")
+    changed = suite.finalize()
+    assert changed.identity != finalized.identity
 
 
 def test_finalized_suite_identity_is_stable_and_changes_with_task_or_verifier_content(
@@ -263,15 +263,16 @@ def test_finalized_suite_identity_is_stable_and_changes_with_task_or_verifier_co
             verifier_path.write_text(verifier_path.read_text() + verifier_suffix)
         suite.validate(staged[0])
         suite.promote_local(["trace-1"], staged)
-        artifact = suite.finalize_artifact()
-        return artifact.identity, artifact.ref
+        finalized = suite.finalize()
+        return finalized.identity, finalized.scorer_identity
 
-    first_identity, first_ref = build("Same authored task.\n")
-    identical_identity, identical_ref = build("Same authored task.\n")
+    first_identity, first_scorer_identity = build("Same authored task.\n")
+    identical_identity, identical_scorer_identity = build("Same authored task.\n")
     changed_task_identity, _ = build("Changed authored task.\n")
-    changed_verifier_identity, _ = build("Same authored task.\n", "\n# changed scorer\n")
+    changed_verifier_identity, changed_scorer_identity = build("Same authored task.\n", "\n# changed scorer\n")
 
-    assert (identical_identity, identical_ref) == (first_identity, first_ref)
+    assert (identical_identity, identical_scorer_identity) == (first_identity, first_scorer_identity)
     assert changed_task_identity != first_identity
     assert changed_verifier_identity != first_identity
-    assert resolve_insight_suite_artifact(tmp_path, first_ref).is_dir()
+    assert changed_scorer_identity != first_scorer_identity
+    assert list((tmp_path / "eval-and-optimize" / "eval_author").glob("*/artifacts")) == []

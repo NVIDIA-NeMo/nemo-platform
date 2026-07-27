@@ -8,7 +8,7 @@ import httpx
 import pytest
 from nemo_experimentalist_plugin.entities import Candidate, ExperimentRun
 from nemo_experimentalist_plugin.experimentalist.experiment_mirror import ExperimentMirror, group_metadata
-from nemo_platform import AsyncNeMoPlatform, ConflictError, NotFoundError, omit  # VERIFY-2
+from nemo_platform import AsyncNeMoPlatform, ConflictError, NotFoundError, omit
 
 pytestmark = pytest.mark.asyncio
 

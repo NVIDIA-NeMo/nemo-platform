@@ -17,6 +17,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
     Task,
     TrialResult,
 )
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import local_path_from_uri
 
 _GENERIC_METRIC_NAMES = frozenset({"reward", "score"})
 _MAX_REPEAT_SPREAD = 0.1
@@ -29,11 +30,11 @@ _COMPARISON_SECTION_END = "<!-- insight-suite-comparison:end -->"
 
 @dataclass(frozen=True, slots=True)
 class InsightSuiteProvenance:
-    """Runtime identity and portable location for one finalized Insight suite."""
+    """Runtime identities and local location for one finalized Insight suite."""
 
     identity: str
     scorer_identity: str
-    artifact_ref: str
+    suite_path: Path
     task_hashes: dict[str, dict[str, str]]
 
 
@@ -42,7 +43,8 @@ class InsightPromotionSuggestion:
     """Evidence-backed recommendation to review one Insight-suite task."""
 
     task_id: str
-    suite_artifact_ref: str
+    task_path: str
+    suite_identity: str
     task_content_hash: str
     verifier_hash: str
     metric_name: str
@@ -66,14 +68,14 @@ def insight_suite_provenance(dataset: Dataset) -> InsightSuiteProvenance:
     """Return validated content provenance carried by a finalized suite dataset."""
     identity = dataset.metadata.get("insight_suite_identity")
     scorer_identity = dataset.metadata.get("insight_suite_scorer_identity")
-    artifact_ref = dataset.metadata.get("insight_suite_artifact_ref")
     raw_task_hashes = dataset.metadata.get("insight_suite_task_hashes")
     if not isinstance(identity, str) or not identity.startswith("sha256:"):
         raise ValueError("Finalized Insight suite is missing its content identity")
     if not isinstance(scorer_identity, str) or not scorer_identity.startswith("sha256:"):
         raise ValueError("Finalized Insight suite is missing its scorer identity")
-    if not isinstance(artifact_ref, str) or not artifact_ref:
-        raise ValueError("Finalized Insight suite is missing its portable artifact reference")
+    if dataset.source is None:
+        raise ValueError("Finalized Insight suite is missing its local source path")
+    suite_path = local_path_from_uri(dataset.source.uri, context="Finalized Insight suite").resolve()
     if not isinstance(raw_task_hashes, dict):
         raise ValueError("Finalized Insight suite is missing task and verifier hashes")
     task_hashes: dict[str, dict[str, str]] = {}
@@ -91,7 +93,7 @@ def insight_suite_provenance(dataset: Dataset) -> InsightSuiteProvenance:
     return InsightSuiteProvenance(
         identity=identity,
         scorer_identity=scorer_identity,
-        artifact_ref=artifact_ref,
+        suite_path=suite_path,
         task_hashes=task_hashes,
     )
 
@@ -148,7 +150,6 @@ def stamp_insight_evaluation_result(
     suite_metadata = {
         "insight_suite_identity": provenance.identity,
         "insight_suite_scorer_identity": provenance.scorer_identity,
-        "insight_suite_artifact_ref": provenance.artifact_ref,
     }
     return result.model_copy(
         update={
@@ -167,7 +168,7 @@ def _task_metric_values(
 ) -> dict[str, list[float]] | None:
     if len(trials) < 2 or any(trial.status != "completed" for trial in trials):
         return None
-    values = {metric_name: [] for metric_name in required_metrics}
+    values: dict[str, list[float]] = {metric_name: [] for metric_name in required_metrics}
     for trial in trials:
         if set(trial.metrics) != required_metrics:
             return None
@@ -191,11 +192,10 @@ def _task_evidence(
     winner: Candidate,
     provenance: InsightSuiteProvenance,
 ) -> _TaskEvidence | None:
-    metric_key_sets = {
-        tuple(candidate.insight_metric_keys or ())
-        for candidate in candidates
-        if candidate.insight_suite_identity == provenance.identity
-    }
+    suite_candidates = [
+        candidate for candidate in candidates if candidate.insight_suite_identity == provenance.identity
+    ]
+    metric_key_sets = {tuple(sorted(candidate.insight_metric_keys or ())) for candidate in suite_candidates}
     if len(metric_key_sets) != 1:
         return None
     required_metrics = set(next(iter(metric_key_sets), ()))
@@ -205,7 +205,7 @@ def _task_evidence(
 
     trials_by_candidate = {
         candidate.label: [trial for trial in candidate.insight_reward_details or () if trial.task_id == task.id]
-        for candidate in candidates
+        for candidate in suite_candidates
     }
     values_by_candidate: dict[str, dict[str, list[float]]] = {}
     for label, trials in trials_by_candidate.items():
@@ -217,10 +217,7 @@ def _task_evidence(
     if baseline.label not in values_by_candidate or winner.label not in values_by_candidate:
         return None
     total_attempts = sum(len(trials) for trials in trials_by_candidate.values())
-    completed_attempts = sum(
-        1 for trials in trials_by_candidate.values() for trial in trials if trial.status == "completed"
-    )
-    if not total_attempts or completed_attempts != total_attempts:
+    if not total_attempts:
         return None
 
     profile: dict[tuple[str, str], float] = {}
@@ -251,23 +248,28 @@ def _task_evidence(
     if baseline_score >= 1.0 or discrimination <= _MIN_DISCRIMINATION:
         return None
     hashes = provenance.task_hashes.get(task.id)
-    if hashes is None:
+    if hashes is None or not task.uri:
+        return None
+    try:
+        task_path = str(local_path_from_uri(task.uri, context=f"Insight task {task.id!r}").resolve())
+    except ValueError:
         return None
 
     return _TaskEvidence(
         suggestion=InsightPromotionSuggestion(
             task_id=task.id,
-            suite_artifact_ref=provenance.artifact_ref,
+            task_path=task_path,
+            suite_identity=provenance.identity,
             task_content_hash=hashes["content_hash"],
             verifier_hash=hashes["verifier_hash"],
             metric_name=metric_name,
             discrimination=discrimination,
             baseline_score=baseline_score,
             winner_score=winner_score,
-            completed_attempts=completed_attempts,
+            completed_attempts=total_attempts,
             total_attempts=total_attempts,
             repeat_spread=repeat_spread,
-            candidate_count=len(candidates),
+            candidate_count=len(suite_candidates),
         ),
         profile=profile,
     )
@@ -386,7 +388,7 @@ def render_insight_promotion_section(
 
     lines.extend(
         [
-            "| Task | Content-addressed suite | Evidence |",
+            "| Task | Local task path | Evidence |",
             "| --- | --- | --- |",
         ]
     )
@@ -402,11 +404,12 @@ def render_insight_promotion_section(
             f"{suggestion.candidate_count} candidates; "
             f"{suggestion.completed_attempts}/{suggestion.total_attempts} attempts completed; "
             f"repeat spread {suggestion.repeat_spread:.2f}; "
-            f"task {suggestion.task_content_hash}; verifier {suggestion.verifier_hash}; {diversity}"
+            f"suite {suggestion.suite_identity}; task {suggestion.task_content_hash}; "
+            f"verifier {suggestion.verifier_hash}; {diversity}"
         )
         lines.append(
             f"| `{_markdown_cell(suggestion.task_id)}` | "
-            f"`{_markdown_cell(suggestion.suite_artifact_ref)}` | {_markdown_cell(evidence)} |"
+            f"`{_markdown_cell(suggestion.task_path)}` | {_markdown_cell(evidence)} |"
         )
     return "\n".join(lines)
 
@@ -450,10 +453,7 @@ def render_insight_comparison_section(
 ) -> str:
     """Render the deterministic baseline-versus-winner Insight comparison."""
     for candidate in (baseline, winner):
-        if (
-            candidate.insight_suite_identity != provenance.identity
-            or candidate.insight_suite_artifact_ref != provenance.artifact_ref
-        ):
+        if candidate.insight_suite_identity != provenance.identity:
             raise ValueError(
                 f"Candidate {candidate.label!r} Insight evidence does not match finalized suite {provenance.identity}"
             )
@@ -468,7 +468,7 @@ def render_insight_comparison_section(
             "Pareto and winner-selection criterion."
         ),
         "",
-        f"Suite: `{provenance.artifact_ref}` (`{provenance.identity}`)",
+        (f"Suite: `{provenance.suite_path}` (suite `{provenance.identity}`; scorer `{provenance.scorer_identity}`)"),
         "",
         "| Metric | Baseline | Winner | Delta |",
         "| --- | ---: | ---: | ---: |",

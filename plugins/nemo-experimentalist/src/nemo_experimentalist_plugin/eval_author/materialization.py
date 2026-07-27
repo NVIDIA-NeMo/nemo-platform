@@ -14,7 +14,6 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
-from urllib.parse import urlparse
 from uuid import uuid4
 
 import tomlkit
@@ -22,12 +21,10 @@ from harbor.models.task.task import Task as HarborTask
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import Task, local_path_from_uri
 
-_MANIFEST_SCHEMA_VERSION = 2
+_MANIFEST_SCHEMA_VERSION = 3
 _CONTENT_HASH_SCHEMA_VERSION = 1
 _METRIC_CONTRACT_VERSION = 1
-_ARTIFACT_SCHEME = "nemo-experimentalist-insight-suite"
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
-_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _slug(value: str, *, fallback: str, max_length: int = 48) -> str:
@@ -104,16 +101,17 @@ def _content_provenance(suite_dir: Path, manifest: dict[str, object]) -> tuple[l
         verifier_files = _file_hashes(verifier_dir)
         content_hash = f"sha256:{_canonical_digest(files)}"
         verifier_hash = f"sha256:{_canonical_digest(verifier_files)}"
+        task_metadata = {
+            key: value for key, value in task_entry.items() if key not in {"content_hash", "files", "verifier"}
+        }
         tasks.append(
             {
-                **task_entry,
+                **task_metadata,
                 "content_hash": content_hash,
                 "verifier": {
                     "path": verifier_path,
                     "content_hash": verifier_hash,
-                    "files": verifier_files,
                 },
-                "files": files,
             }
         )
         scorer_inputs.append({"path": relative_path, "verifier_hash": verifier_hash})
@@ -149,50 +147,13 @@ class StagedInsightTask:
 
 
 @dataclass(frozen=True, slots=True)
-class InsightSuiteArtifact:
-    """Immutable, content-addressed result of an authored Insight suite."""
+class FinalizedInsightSuite:
+    """Experiment-local Insight suite with deterministic content identities."""
 
     identity: str
     scorer_identity: str
-    ref: str
     path: Path
     dataset: HarborDataset
-
-
-def resolve_insight_suite_artifact(experiment_dir: Path, artifact_ref: str) -> Path:
-    """Resolve and verify a portable Insight-suite artifact reference."""
-    parsed = urlparse(artifact_ref)
-    parts = parsed.path.strip("/").split("/")
-    if (
-        parsed.scheme != _ARTIFACT_SCHEME
-        or not parsed.netloc
-        or len(parts) != 2
-        or parts[0] != "sha256"
-        or not _SHA256_RE.fullmatch(parts[1])
-    ):
-        raise ValueError(f"Invalid Insight suite artifact reference: {artifact_ref!r}")
-
-    suite_dir = (
-        experiment_dir.resolve()
-        / "eval-and-optimize"
-        / "eval_author"
-        / parsed.netloc
-        / "artifacts"
-        / parts[1]
-        / "insight-suite"
-    )
-    manifest_path = suite_dir / "manifest.json"
-    if not manifest_path.is_file():
-        raise FileNotFoundError(f"Insight suite artifact not found: {artifact_ref}")
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    _, scorer_identity, suite_identity = _content_provenance(suite_dir, manifest)
-    expected_identity = f"sha256:{parts[1]}"
-    if manifest.get("suite_identity") != expected_identity or suite_identity != expected_identity:
-        raise ValueError(f"Insight suite artifact content does not match reference: {artifact_ref}")
-    scorer = manifest.get("scorer")
-    if not isinstance(scorer, dict) or scorer.get("identity") != scorer_identity:
-        raise ValueError(f"Insight suite scorer content does not match reference: {artifact_ref}")
-    return suite_dir
 
 
 class InsightSuite:
@@ -354,14 +315,13 @@ class InsightSuite:
         pending_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         os.replace(pending_path, manifest_path)
 
-    def finalize_artifact(self) -> InsightSuiteArtifact:
-        """Freeze the authored suite under a verified content-addressed reference."""
+    def finalize(self) -> FinalizedInsightSuite:
+        """Persist content identities on the experiment-local authored suite."""
         manifest_path = self.suite_dir / "manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         tasks, scorer_identity, suite_identity = _content_provenance(self.suite_dir, manifest)
         digest = suite_identity.removeprefix("sha256:")
-        artifact_ref = f"{_ARTIFACT_SCHEME}://{self.root.name}/sha256/{digest}"
-        artifact_path = self.root / "artifacts" / digest / "insight-suite"
+        manifest.pop("artifact", None)
         manifest.update(
             {
                 "schema_version": _MANIFEST_SCHEMA_VERSION,
@@ -372,10 +332,6 @@ class InsightSuite:
                     "identity": scorer_identity,
                     "metric_contract_version": _METRIC_CONTRACT_VERSION,
                 },
-                "artifact": {
-                    "ref": artifact_ref,
-                    "relative_path": artifact_path.relative_to(self.experiment_dir).as_posix(),
-                },
                 "tasks": tasks,
             }
         )
@@ -383,22 +339,8 @@ class InsightSuite:
         pending_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         os.replace(pending_path, manifest_path)
 
-        if artifact_path.exists():
-            resolved = resolve_insight_suite_artifact(self.experiment_dir, artifact_ref)
-            if resolved != artifact_path.resolve():
-                raise ValueError(f"Insight suite artifact resolved to unexpected path: {resolved}")
-        else:
-            artifact_path.parent.mkdir(parents=True, exist_ok=True)
-            candidate_artifact = artifact_path.parent / f".candidate-{uuid4().hex}"
-            shutil.copytree(self.suite_dir, candidate_artifact)
-            try:
-                os.replace(candidate_artifact, artifact_path)
-            finally:
-                if candidate_artifact.exists():
-                    shutil.rmtree(candidate_artifact)
-
         dataset = HarborDataset.from_path(
-            artifact_path,
+            self.suite_dir,
             dataset_id=f"insight-{digest[:12]}",
         )
         task_hashes: dict[str, dict[str, str]] = {}
@@ -421,14 +363,12 @@ class InsightSuite:
             {
                 "insight_suite_identity": suite_identity,
                 "insight_suite_scorer_identity": scorer_identity,
-                "insight_suite_artifact_ref": artifact_ref,
                 "insight_suite_task_hashes": task_hashes,
             }
         )
-        return InsightSuiteArtifact(
+        return FinalizedInsightSuite(
             identity=suite_identity,
             scorer_identity=scorer_identity,
-            ref=artifact_ref,
-            path=artifact_path,
+            path=self.suite_dir,
             dataset=dataset,
         )

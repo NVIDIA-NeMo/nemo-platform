@@ -201,15 +201,13 @@ def _install_pipeline(
         def record_analysis(self, statuses: dict[str, tuple[str, str | None]]) -> None:
             pass
 
-        def finalize_artifact(self) -> SimpleNamespace:
+        def finalize(self) -> SimpleNamespace:
             identity = "sha256:" + "a" * 64
             scorer_identity = "sha256:" + "b" * 64
-            artifact_ref = f"nemo-experimentalist-insight-suite://insight-1/sha256/{'a' * 64}"
             self.materialized_dataset.metadata.update(
                 {
                     "insight_suite_identity": identity,
                     "insight_suite_scorer_identity": scorer_identity,
-                    "insight_suite_artifact_ref": artifact_ref,
                     "insight_suite_task_hashes": {
                         task.id: {
                             "content_hash": "sha256:" + "c" * 64,
@@ -223,7 +221,6 @@ def _install_pipeline(
                 dataset=self.materialized_dataset,
                 identity=identity,
                 scorer_identity=scorer_identity,
-                ref=artifact_ref,
             )
 
     class FillTaskTemplate:
@@ -566,8 +563,6 @@ async def test_run_authors_metrics_on_materialized_insight_suite(
     materialized_dataset = calls.discovered_datasets[0]
     assert result.insight_suite is materialized_dataset
     assert result.insight_suite_identity == f"sha256:{'a' * 64}"
-    assert result.insight_suite_artifact_ref is not None
-    assert result.insight_suite_artifact_ref.startswith("nemo-experimentalist-insight-suite://")
     assert materialized_dataset.id == "insight-suite"
     assert materialized_dataset is not train_dataset
     assert materialized_dataset is not validation_dataset
