@@ -7,23 +7,15 @@ import {
   useUpdateExperimentGroup,
 } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
-import {
-  Button,
-  SelectContent,
-  SelectItem,
-  SelectListbox,
-  SelectRoot,
-  SelectTrigger,
-  Text,
-} from '@nvidia/foundations-react-core';
+import { Button, Text } from '@nvidia/foundations-react-core';
+import { MetricSelect } from '@studio/components/charts/ExperimentGroupParetoChart/MetricSelect';
+import { ParetoTooltip } from '@studio/components/charts/ExperimentGroupParetoChart/ParetoTooltip';
+import { useParetoEvaluations } from '@studio/components/charts/ExperimentGroupParetoChart/useParetoEvaluations';
 import {
   buildParetoPoints,
   deriveParetoMetrics,
   metricLabel,
-  type ParetoMetric,
-  type ParetoPlotPoint,
-} from '@studio/components/charts/ExperimentGroupParetoChart/paretoMetrics';
-import { useParetoEvaluations } from '@studio/components/charts/ExperimentGroupParetoChart/useParetoEvaluations';
+} from '@studio/components/charts/ExperimentGroupParetoChart/utils';
 import type { EvaluationRow } from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupEvaluations';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, Save } from 'lucide-react';
@@ -66,81 +58,6 @@ const formatAxisTick = (value: number): string =>
   Math.abs(value) >= 1000
     ? value.toLocaleString(undefined, { notation: 'compact', maximumFractionDigits: 1 })
     : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
-
-/** Format a metric value for tooltips: cost as USD, latency in ms, evaluator scores as-is. */
-const formatMetricValue = (metric: ParetoMetric, value: number): string => {
-  if (metric.id === 'cost_usd') {
-    return `$${value.toLocaleString(undefined, { maximumFractionDigits: 4 })}`;
-  }
-  if (metric.id === 'latency_ms') {
-    return `${Math.round(value).toLocaleString()} ms`;
-  }
-  return value.toLocaleString(undefined, { maximumFractionDigits: 3 });
-};
-
-interface ParetoTooltipProps {
-  active?: boolean;
-  payload?: ReadonlyArray<{ payload: ParetoPlotPoint }>;
-  xMetric: ParetoMetric;
-  yMetric: ParetoMetric;
-}
-
-const ParetoTooltip: FC<ParetoTooltipProps> = ({ active, payload, xMetric, yMetric }) => {
-  const point = payload?.[0]?.payload;
-  if (!active || !point) return null;
-  return (
-    <div className="rounded border border-base bg-surface p-2 shadow-md">
-      <Text kind="body/semibold/sm">{point.name}</Text>
-      <div className="mt-1 flex flex-col gap-0.5">
-        <Text kind="body/regular/xs">
-          {xMetric.label}: {formatMetricValue(xMetric, point.x)}
-        </Text>
-        <Text kind="body/regular/xs">
-          {yMetric.label}: {formatMetricValue(yMetric, point.y)}
-        </Text>
-        {point.onFrontier && (
-          <Text kind="body/regular/xs" color="brand">
-            On the Pareto frontier
-          </Text>
-        )}
-      </div>
-    </div>
-  );
-};
-
-interface MetricSelectProps {
-  label: string;
-  value: string;
-  metrics: readonly ParetoMetric[];
-  onChange: (id: string) => void;
-}
-
-const MetricSelect: FC<MetricSelectProps> = ({ label, value, metrics, onChange }) => (
-  <label className="flex items-center gap-2">
-    <Text kind="body/regular/sm" color="subtle">
-      {label}
-    </Text>
-    <SelectRoot value={value} onValueChange={onChange} size="small">
-      <SelectTrigger
-        className="w-26"
-        size="small"
-        aria-label={label}
-        // The trigger shows the raw value by default; map it back to the metric's label.
-        renderValue={(v) => (typeof v === 'string' && v ? metricLabel(v) : undefined)}
-      />
-      {/* Keep the dropdown readable even when the trigger is compact/narrow. */}
-      <SelectContent className="min-w-48">
-        <SelectListbox>
-          {metrics.map((metric) => (
-            <SelectItem key={metric.id} value={metric.id}>
-              {metric.label}
-            </SelectItem>
-          ))}
-        </SelectListbox>
-      </SelectContent>
-    </SelectRoot>
-  </label>
-);
 
 /**
  * Cost-vs-accuracy Pareto view for an experiment group: one point per evaluation with the Pareto

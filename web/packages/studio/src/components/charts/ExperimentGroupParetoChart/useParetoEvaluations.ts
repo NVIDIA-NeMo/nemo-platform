@@ -4,11 +4,8 @@
 import { useListEvaluations } from '@nemo/sdk/generated/platform/api';
 import type { EvaluationFilter } from '@nemo/sdk/generated/platform/schema';
 import type { EvaluationRow } from '@studio/components/dataViews/ExperimentGroupDataView/useExperimentGroupEvaluations';
+import { DEFAULT_LARGE_PAGE_SIZE } from '@studio/constants/constants';
 import { useMemo } from 'react';
-
-/** The list endpoint caps page_size at 1000; a group's evaluation set is far smaller, so one page
- * covers every point the Pareto chart needs (the leaderboard, by contrast, is paginated). */
-const MAX_EVALUATIONS = 1000;
 
 export interface ParetoEvaluations {
   rows: EvaluationRow[];
@@ -34,7 +31,7 @@ export function useParetoEvaluations(
     workspace,
     {
       page: 1,
-      page_size: MAX_EVALUATIONS,
+      page_size: DEFAULT_LARGE_PAGE_SIZE,
       filter: { experiment_group_id: experimentGroupId } as EvaluationFilter,
     },
     { query: { enabled } }
