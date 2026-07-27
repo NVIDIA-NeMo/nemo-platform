@@ -32,12 +32,12 @@ from harbor.models.job.config import AgentConfig, ArtifactConfig, RetryConfig
 from harbor.models.task.task import Task as HarborTaskModel
 from harbor.models.trial.config import ServiceVolumeConfig
 from harbor.models.trial.paths import EnvironmentPaths, TrialPaths
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
+from nemo_eval_author_plugin.evaluator.base import (
     Evaluator,
     EvaluatorConfig,
     EvaluatorType,
 )
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
+from nemo_eval_author_plugin.evaluator.models import (
     Dataset,
     DatasetRef,
     DatasetValidationError,

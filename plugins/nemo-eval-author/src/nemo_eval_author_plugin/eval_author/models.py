@@ -3,7 +3,7 @@
 
 """Shared models for the top-level Eval Author."""
 
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import Dataset
+from nemo_eval_author_plugin.evaluator import Dataset
 from pydantic import BaseModel, ConfigDict, Field
 
 

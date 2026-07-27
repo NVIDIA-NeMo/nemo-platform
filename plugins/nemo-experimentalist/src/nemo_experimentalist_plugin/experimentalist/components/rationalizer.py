@@ -9,8 +9,8 @@ from collections import Counter, defaultdict  # noqa: F401
 from pathlib import Path
 from typing import Any
 
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import Task
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DependencyRuntime
+from nemo_eval_author_plugin.evaluator import Task
+from nemo_eval_author_plugin.evaluator.models import DependencyRuntime
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
 from nooa.agents import TokenBudgetSummarizer

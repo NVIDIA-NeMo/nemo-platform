@@ -45,12 +45,23 @@ eventual `nemo agents experimentalist`. The platform's `nemo.cli` entry-point
 group is flat — only `nemo.jobs` and `nemo.functions` are dot-scoped — so
 nesting under `nemo agents` needs a Platform-side change first.
 
+### 2026-07-27: Eval Author extracted to `nemo-eval-author-plugin`
+
+Eval Author, the Harbor evaluator stack, trace analysis, and dataset staging now live in
+`plugins/nemo-eval-author/` (`nemo-eval-author-plugin`). Experimentalist is a one-way
+consumer:
+
+- import from `nemo_eval_author_plugin.eval_author`, `nemo_eval_author_plugin.evaluator`, etc.
+- do not restore in-tree `eval_author/` or `components/evaluator/` under Experimentalist
+- `tools.py`, `model_config.py`, `cache.py`, and `client.py` remain duplicated in both
+  plugins until a shared module lands (see TODO markers in eval-author)
+
 ### 2026-07-21: Curator renamed to Eval Author
 
 The Curator agent was renamed directly to Eval Author in ASE-643. This is a
 breaking rename with no compatibility aliases or migration layer:
 
-- `nemo_experimentalist_plugin.curator` → `nemo_experimentalist_plugin.eval_author`
+- `nemo_experimentalist_plugin.curator` → `nemo_eval_author_plugin.eval_author` (was `nemo_experimentalist_plugin.eval_author` before extraction)
 - `Curator`, `CuratorConfig`, and `CuratorResult` → `EvalAuthor`,
   `EvalAuthorConfig`, and `EvalAuthorResult`
 - `run_curator(...)` and `build_curator_agent(...)` →

@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal, TypeAlias
 
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
+from nemo_eval_author_plugin.evaluator.models import (
     Dataset,
     EvaluationResult,
     TrialResult,

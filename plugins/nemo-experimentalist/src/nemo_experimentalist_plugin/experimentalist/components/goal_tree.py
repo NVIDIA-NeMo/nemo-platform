@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import Dataset
+from nemo_eval_author_plugin.evaluator import Dataset
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
 from nooa.agents import TokenBudgetSummarizer

@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Eval Author
 
-The top-level `nemo_experimentalist_plugin.eval_author` package is the canonical Eval Author
+The top-level `nemo_eval_author_plugin.eval_author` package is the canonical Eval Author
 implementation. It turns an Experimentalist Insight and its production trace refs into
 evaluator dataset changes, creating or augmenting regression signals that
 capture the failure mode before optimization begins.
@@ -89,9 +89,9 @@ directly:
 import asyncio
 from pathlib import Path
 
-from nemo_experimentalist_plugin.eval_author.models import EvalAuthorConfig
-from nemo_experimentalist_plugin.eval_author.run import run_eval_author
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
+from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
+from nemo_eval_author_plugin.eval_author.run import run_eval_author
+from nemo_eval_author_plugin.evaluator.models import DatasetRef
 
 
 async def main() -> None:

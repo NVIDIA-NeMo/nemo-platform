@@ -5,7 +5,7 @@
 
 from typing import Any, Literal, Sequence
 
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import TrialResult
+from nemo_eval_author_plugin.evaluator.models import TrialResult
 from nemo_platform_plugin.entity import NemoEntity
 from pydantic import ConfigDict, Field, model_validator
 

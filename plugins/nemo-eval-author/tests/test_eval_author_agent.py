@@ -12,17 +12,16 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-from nemo_experimentalist_plugin.eval_author import agent as eval_author_module
-from nemo_experimentalist_plugin.eval_author.agent import EvalAuthor
-from nemo_experimentalist_plugin.eval_author.models import EvalAuthorConfig
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
+from nemo_eval_author_plugin.eval_author import agent as eval_author_module
+from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
+from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
+from nemo_eval_author_plugin.evaluator import (
     Dataset,
     DatasetValidationError,
     Task,
     TrialResult,
 )
-from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizerConfig
-from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (
+from nemo_eval_author_plugin.trace_analyzer import (
     Diagnostic,
     TraceAnalyzerConfig,
 )
@@ -679,21 +678,7 @@ async def test_run_raises_after_validation_repair_budget_is_exhausted(
     assert insight_dataset.validate_calls == 2
 
 
-def test_evolutionary_optimizer_uses_top_level_eval_author_config() -> None:
-    config = EvolutionaryOptimizerConfig().eval_author
-
-    assert type(config) is EvalAuthorConfig
-    assert config.max_validation_repair_attempts == 5
+def test_eval_author_config_bounds_validation_repair_attempts() -> None:
     assert EvalAuthorConfig(max_validation_repair_attempts=10).max_validation_repair_attempts == 10
     with pytest.raises(ValueError, match="less than or equal to 10"):
         EvalAuthorConfig(max_validation_repair_attempts=11)
-
-
-def test_evolutionary_optimizer_tolerates_unknown_eval_author_config() -> None:
-    config = EvolutionaryOptimizerConfig.model_validate({"eval_author": {"bogus": 1}})
-    assert type(config.eval_author) is EvalAuthorConfig
-
-
-def test_evolutionary_optimizer_rejects_legacy_curator_config() -> None:
-    with pytest.raises(ValueError, match="'curator' was renamed to 'eval_author'"):
-        EvolutionaryOptimizerConfig.model_validate({"curator": {"max_traces": 1}})

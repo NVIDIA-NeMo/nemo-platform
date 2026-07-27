@@ -368,6 +368,7 @@ nmp-testing = { workspace = true }
 nmp-build-tools = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 nemo-insights-plugin = { workspace = true }
+nemo-eval-author-plugin = { workspace = true }
 nemo-experimentalist-plugin = { workspace = true }
 # Not published to PyPI yet; pinned to an immutable public tag.
 nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", tag = "v0.0.6" }
@@ -437,6 +438,7 @@ members = [
   "plugins/nemo-agents",
   "plugins/nemo-deployments",
   "plugins/nemo-insights",
+  "plugins/nemo-eval-author",
   "plugins/nemo-experimentalist",
   "plugins/nemo-agents/examples/calculator-agent",
   "plugins/nemo-agents/examples/email-phishing-analyzer",
@@ -560,6 +562,8 @@ extra-paths = [
   "plugins/nemo-evaluator/src",
   # The optional Insights analyst is not part of the default environment.
   "plugins/nemo-insights/src",
+  # Same for the optional Eval Author plugin.
+  "plugins/nemo-eval-author/src",
   # Same for the optional Experimentalist; its tests also import the benchmark runner.
   "plugins/nemo-experimentalist/src",
   # Agentic-use tests place both tests/agentic-use and tests/agentic-use/shared

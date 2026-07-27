@@ -11,8 +11,14 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import unquote, urlparse
 
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import MetricResult, Task, TrialResult
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DependencyRuntime
+from nemo_eval_author_plugin import cache
+from nemo_eval_author_plugin.evaluator import MetricResult, Task, TrialResult
+from nemo_eval_author_plugin.evaluator.models import DependencyRuntime
+from nemo_eval_author_plugin.model_config import get_fast_model, get_smart_model
+from nemo_eval_author_plugin.rationale import Rationale
+from nemo_eval_author_plugin.tools import GuardedShellTools, WorkspaceTool
+from nemo_eval_author_plugin.trace_explorer import SearchResult, SessionData, SessionSummary, TraceExplorer, TurnInfo
+from nemo_eval_author_plugin.util import load_framework_skills
 from nemo_insights_plugin.entities import Insight
 from nemo_platform import AsyncNeMoPlatform
 from nooa import Agent, CodeActStrategy, strategy
@@ -23,13 +29,6 @@ from nooa.config.summarizer_config import TokenBudgetConfig
 from nooa.skill_registry import SkillRegistry
 from nooa.tools import Match, TodoManager
 from pydantic import BaseModel, Field
-
-from . import cache
-from .model_config import get_fast_model, get_smart_model
-from .rationalizer import Rationale
-from .tools import GuardedShellTools, WorkspaceTool
-from .trace_explorer import SearchResult, SessionData, SessionSummary, TraceExplorer, TurnInfo
-from .util import load_framework_skills
 
 
 class TraceAnalyzerConfig(BaseModel):

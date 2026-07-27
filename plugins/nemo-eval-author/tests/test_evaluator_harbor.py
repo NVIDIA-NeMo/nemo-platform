@@ -10,7 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
+from nemo_eval_author_plugin.evaluator.harbor import (
     _TRACE_ARTIFACT_DESTINATION,
     _TRACE_ARTIFACT_SOURCE,
     HarborDataset,
@@ -32,7 +32,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor imp
     _trial_resources,
     _with_trace_artifact,
 )
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
+from nemo_eval_author_plugin.evaluator.models import (
     CommandSpec,
     Dataset,
     DatasetRef,
@@ -720,7 +720,7 @@ async def test_harbor_evaluator_runs_job_and_maps_output(tmp_path: Path, monkeyp
         async def run(self):
             return SimpleNamespace(id="job-id", stats=FakeStats())
 
-    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", FakeJob)
+    monkeypatch.setattr("nemo_eval_author_plugin.evaluator.harbor.Job", FakeJob)
 
     result = await evaluator.run(
         agent=tmp_path / "agent",
@@ -845,7 +845,7 @@ async def test_harbor_evaluator_rejects_invalid_python_verifiers_before_job_crea
 
     dataset = HarborDataset.from_path(dataset_dir)
     fake_job = _recording_job(tmp_path / "jobs" / "preflight")
-    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", fake_job)
+    monkeypatch.setattr("nemo_eval_author_plugin.evaluator.harbor.Job", fake_job)
     compile_calls = 0
     original_compile = compile
 
@@ -900,7 +900,7 @@ async def test_shell_syntax_failure_kills_process_on_timeout(monkeypatch: pytest
     monkeypatch.setenv("NVIDIA_API_KEY", "secret")
     monkeypatch.setattr("asyncio.create_subprocess_exec", create_process)
     monkeypatch.setattr(
-        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor._SHELL_SYNTAX_TIMEOUT_SEC",
+        "nemo_eval_author_plugin.evaluator.harbor._SHELL_SYNTAX_TIMEOUT_SEC",
         0.01,
     )
 
@@ -966,7 +966,7 @@ async def test_harbor_evaluator_accepts_valid_python_verifier(
     _write(task_dir / "tests" / "check.py", "def check():\n    return True\n")
     dataset = HarborDataset.from_path(task_dir)
     fake_job = _recording_job(tmp_path / "jobs" / "valid-python")
-    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", fake_job)
+    monkeypatch.setattr("nemo_eval_author_plugin.evaluator.harbor.Job", fake_job)
 
     trials = await HarborEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
 
@@ -988,7 +988,7 @@ async def test_harbor_evaluator_rejects_invalid_configured_test_sh_before_job_cr
     _write(task_dir / "test" / "test.sh", "if true; then\n  echo broken\n")
     dataset = HarborDataset.from_path(task_dir)
     fake_job = _recording_job(tmp_path / "jobs" / "invalid-shell")
-    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", fake_job)
+    monkeypatch.setattr("nemo_eval_author_plugin.evaluator.harbor.Job", fake_job)
 
     with pytest.raises(HarborVerifierValidationError) as exc_info:
         await HarborEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
@@ -1013,7 +1013,7 @@ async def test_harbor_evaluator_accepts_valid_legacy_test_sh(
     _write(task_dir / "test" / "test.sh", "if true; then\n  echo valid\nfi\n")
     dataset = HarborDataset.from_path(task_dir)
     fake_job = _recording_job(tmp_path / "jobs" / "valid-shell")
-    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", fake_job)
+    monkeypatch.setattr("nemo_eval_author_plugin.evaluator.harbor.Job", fake_job)
 
     trials = await HarborEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
 
@@ -1180,19 +1180,19 @@ async def test_harbor_dependency_context_start_runtime(tmp_path, monkeypatch):
         config = SimpleNamespace(environment=SimpleNamespace(os="linux", healthcheck=None, build_timeout_sec=None))
 
     monkeypatch.setattr(
-        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.HarborTaskModel",
+        "nemo_eval_author_plugin.evaluator.harbor.HarborTaskModel",
         lambda p: FakeHarborTask(),
     )
     monkeypatch.setattr(
-        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.TrialPaths",
+        "nemo_eval_author_plugin.evaluator.harbor.TrialPaths",
         FakeTrialPaths,
     )
     monkeypatch.setattr(
-        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.EnvironmentPaths",
+        "nemo_eval_author_plugin.evaluator.harbor.EnvironmentPaths",
         SimpleNamespace(for_os=staticmethod(lambda os: FakeEnvPaths())),
     )
     monkeypatch.setattr(
-        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.EnvironmentFactory",
+        "nemo_eval_author_plugin.evaluator.harbor.EnvironmentFactory",
         SimpleNamespace(create_environment=staticmethod(lambda *a, **kw: FakeEnv())),
     )
 
@@ -1252,19 +1252,19 @@ async def test_harbor_dependency_context_start_runtime_mounted(tmp_path, monkeyp
         config = SimpleNamespace(environment=SimpleNamespace(os="linux", healthcheck=None, build_timeout_sec=None))
 
     monkeypatch.setattr(
-        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.HarborTaskModel",
+        "nemo_eval_author_plugin.evaluator.harbor.HarborTaskModel",
         lambda p: FakeHarborTask(),
     )
     monkeypatch.setattr(
-        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.TrialPaths",
+        "nemo_eval_author_plugin.evaluator.harbor.TrialPaths",
         FakeTrialPaths,
     )
     monkeypatch.setattr(
-        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.EnvironmentPaths",
+        "nemo_eval_author_plugin.evaluator.harbor.EnvironmentPaths",
         SimpleNamespace(for_os=staticmethod(lambda os: FakeEnvPaths())),
     )
     monkeypatch.setattr(
-        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.EnvironmentFactory",
+        "nemo_eval_author_plugin.evaluator.harbor.EnvironmentFactory",
         SimpleNamespace(create_environment=staticmethod(lambda *a, **kw: FakeEnv())),
     )
 
@@ -1400,9 +1400,7 @@ async def test_harbor_evaluator_force_rerun(tmp_path, monkeypatch):
     def fake_rmtree(path, **kwargs):
         rmtree_calls.append(path)
 
-    monkeypatch.setattr(
-        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.shutil.rmtree", fake_rmtree
-    )
+    monkeypatch.setattr("nemo_eval_author_plugin.evaluator.harbor.shutil.rmtree", fake_rmtree)
 
     class FakeJob:
         created_config = None
@@ -1419,7 +1417,7 @@ async def test_harbor_evaluator_force_rerun(tmp_path, monkeypatch):
         async def run(self):
             return SimpleNamespace(id="job-id", stats=None)
 
-    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", FakeJob)
+    monkeypatch.setattr("nemo_eval_author_plugin.evaluator.harbor.Job", FakeJob)
 
     trials = await evaluator._run(
         agent=agent_dir,
@@ -1583,7 +1581,7 @@ def test_dataset_subset_missing_raises():
 
 
 def test_dataset_from_ref_not_implemented():
-    from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
+    from nemo_eval_author_plugin.evaluator.models import DatasetRef
 
     class ConcreteDataset(Dataset):
         pass
@@ -1821,19 +1819,19 @@ async def test_harbor_dependency_context_start_runtime_with_healthcheck(tmp_path
         )
 
     monkeypatch.setattr(
-        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.HarborTaskModel",
+        "nemo_eval_author_plugin.evaluator.harbor.HarborTaskModel",
         lambda p: FakeHarborTask(),
     )
     monkeypatch.setattr(
-        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.TrialPaths",
+        "nemo_eval_author_plugin.evaluator.harbor.TrialPaths",
         FakeTrialPaths,
     )
     monkeypatch.setattr(
-        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.EnvironmentPaths",
+        "nemo_eval_author_plugin.evaluator.harbor.EnvironmentPaths",
         SimpleNamespace(for_os=staticmethod(lambda os: FakeEnvPaths())),
     )
     monkeypatch.setattr(
-        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.EnvironmentFactory",
+        "nemo_eval_author_plugin.evaluator.harbor.EnvironmentFactory",
         SimpleNamespace(create_environment=staticmethod(lambda *a, **kw: FakeEnv())),
     )
 
@@ -1853,7 +1851,7 @@ def test_cleanup_scoped_imports_with_sibling_prevents_parent_removal():
 
 
 def test_trial_task_path_from_config_dict():
-    from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import _trial_task_path
+    from nemo_eval_author_plugin.evaluator.harbor import _trial_task_path
 
     trial_data = {"config": {"task": {"path": "/tmp/task-x"}}}
     result = _trial_task_path(trial_data)
@@ -1862,7 +1860,7 @@ def test_trial_task_path_from_config_dict():
 
 
 def test_resolve_trial_task_id_invalid_uri_in_task(tmp_path):
-    from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import _resolve_trial_task_id
+    from nemo_eval_author_plugin.evaluator.harbor import _resolve_trial_task_id
 
     task_map = {"task-x": Task(id="task-x", uri="s3://bad-uri/task-x")}
     trial_data = {"task_id": {"path": str(tmp_path / "task-x")}}
@@ -1871,7 +1869,7 @@ def test_resolve_trial_task_id_invalid_uri_in_task(tmp_path):
 
 
 def test_resolve_trial_task_id_fallback_to_trial_base():
-    from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import _resolve_trial_task_id
+    from nemo_eval_author_plugin.evaluator.harbor import _resolve_trial_task_id
 
     task_map = {"task-x": Task(id="task-x")}
     trial_data = {"task_name": "unknown/nonexistent"}

@@ -5,7 +5,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import Dataset, TrialResult
+from nemo_eval_author_plugin.evaluator import Dataset, TrialResult
+from nemo_eval_author_plugin.trace_explorer import TraceExplorer  # noqa: F401
 from nemo_platform import AsyncNeMoPlatform
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc
@@ -14,7 +15,6 @@ from pydantic import BaseModel, Field
 
 from .goal_tree import GoalNode
 from .model_config import get_mid_model
-from .trace_explorer import TraceExplorer  # noqa: F401
 
 logger = logging.getLogger(__name__)
 

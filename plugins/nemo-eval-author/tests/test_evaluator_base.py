@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Sequence
 
 import pytest
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
+from nemo_eval_author_plugin.evaluator import (
     Dataset,
     Evaluator,
     EvaluatorConfig,

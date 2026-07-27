@@ -11,12 +11,14 @@ from collections import Counter, defaultdict  # noqa: F401
 from pathlib import Path
 from typing import Any, Literal, Sequence
 
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
+from nemo_eval_author_plugin.evaluator import (
     Dataset,
     EvaluationResult,
     Task,
     TrialResult,
 )
+from nemo_eval_author_plugin.trace_analyzer import Diagnostic, TraceAnalyzer, TraceAnalyzerConfig  # noqa: F401
+from nemo_eval_author_plugin.trace_explorer import TraceExplorer  # noqa: F401
 from nemo_platform import AsyncNeMoPlatform
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
@@ -31,8 +33,6 @@ from . import cache
 from .model_config import get_fast_model, get_smart_model
 from .rationalizer import Rationale, Rationalizer, RationalizerConfig  # noqa: F401
 from .tools import GuardedShellTools
-from .trace_analyzer import Diagnostic, TraceAnalyzer, TraceAnalyzerConfig  # noqa: F401
-from .trace_explorer import TraceExplorer  # noqa: F401
 from .util import load_framework_skills
 
 

@@ -12,24 +12,24 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from nemo_experimentalist_plugin.eval_author.materialization import InsightSuite
-from nemo_experimentalist_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
-from nemo_experimentalist_plugin.experimentalist.components import cache
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
+from nemo_eval_author_plugin import cache
+from nemo_eval_author_plugin.eval_author.materialization import InsightSuite
+from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
+from nemo_eval_author_plugin.evaluator import (
     Dataset,
     DatasetValidationError,
     Task,
     TrialResult,
 )
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import ResourceRef
-from nemo_experimentalist_plugin.experimentalist.components.model_config import get_fast_model, get_smart_model
-from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools
-from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (
+from nemo_eval_author_plugin.evaluator.models import ResourceRef
+from nemo_eval_author_plugin.model_config import get_fast_model, get_smart_model
+from nemo_eval_author_plugin.tools import GuardedShellTools
+from nemo_eval_author_plugin.trace_analyzer import (
     Diagnostic,
     TraceAnalyzer,
     TraceAnalyzerConfig,
 )
-from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import (
+from nemo_eval_author_plugin.trace_explorer import (
     SearchResult,
     SessionData,
     SessionSummary,

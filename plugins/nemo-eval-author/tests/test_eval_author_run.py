@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 import pytest
-from nemo_experimentalist_plugin.eval_author import run as eval_author_run
-from nemo_experimentalist_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import Dataset, DatasetRef, Task
+from nemo_eval_author_plugin.eval_author import run as eval_author_run
+from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
+from nemo_eval_author_plugin.evaluator.models import Dataset, DatasetRef, Task
 from nemo_insights_plugin.entities import Insight
 
 
@@ -147,7 +147,7 @@ async def test_run_eval_author_builds_and_runs_complete_contract(
         return eval_author
 
     monkeypatch.setattr(eval_author_run, "make_client", lambda base_url: client)
-    monkeypatch.setattr(eval_author_run, "make_experimentalist_backend", make_backend)
+    monkeypatch.setattr(eval_author_run, "make_eval_author_backend", make_backend)
     monkeypatch.setattr(eval_author_run, "DatasetFactory", lambda: dataset_factory)
     monkeypatch.setattr(eval_author_run, "build_eval_author_agent", build_eval_author_agent)
     monkeypatch.setattr(eval_author_run, "_enable_litellm_drop_params", lambda: litellm_calls.append(True))
@@ -227,7 +227,7 @@ async def test_run_eval_author_hydrates_fileset_task_template(
     eval_author = FakeEvalAuthor()
 
     monkeypatch.setattr(eval_author_run, "make_client", lambda base_url: client)
-    monkeypatch.setattr(eval_author_run, "make_experimentalist_backend", lambda **_: backend)
+    monkeypatch.setattr(eval_author_run, "make_eval_author_backend", lambda **_: backend)
     monkeypatch.setattr(eval_author_run, "DatasetFactory", lambda: dataset_factory)
     monkeypatch.setattr(eval_author_run, "build_eval_author_agent", lambda **_: eval_author)
     monkeypatch.setattr(eval_author_run, "_enable_litellm_drop_params", lambda: None)
@@ -269,7 +269,7 @@ async def test_run_eval_author_uses_agent_override(
     eval_author = FakeEvalAuthor()
 
     monkeypatch.setattr(eval_author_run, "make_client", lambda base_url: client)
-    monkeypatch.setattr(eval_author_run, "make_experimentalist_backend", lambda **_: backend)
+    monkeypatch.setattr(eval_author_run, "make_eval_author_backend", lambda **_: backend)
     monkeypatch.setattr(eval_author_run, "DatasetFactory", lambda: dataset_factory)
     monkeypatch.setattr(eval_author_run, "build_eval_author_agent", lambda **_: eval_author)
     monkeypatch.setattr(eval_author_run, "_enable_litellm_drop_params", lambda: None)
@@ -304,7 +304,7 @@ async def test_run_eval_author_closes_client_when_backend_creation_fails(
         raise RuntimeError("backend creation failed")
 
     monkeypatch.setattr(eval_author_run, "make_client", lambda base_url: client)
-    monkeypatch.setattr(eval_author_run, "make_experimentalist_backend", fail_backend_creation)
+    monkeypatch.setattr(eval_author_run, "make_eval_author_backend", fail_backend_creation)
 
     with pytest.raises(RuntimeError, match="backend creation failed"):
         await eval_author_run.run_eval_author(

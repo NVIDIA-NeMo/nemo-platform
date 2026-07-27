@@ -16,6 +16,7 @@ dependencies = [
     "nooa ; python_full_version >= '3.12'",
     "pyyaml>=6.0.3",
     "nemo-insights-plugin",
+    "nemo-eval-author-plugin",
     "nemo-platform",
     "nemo-platform-plugin",
     "tomlkit>=0.13.3",
