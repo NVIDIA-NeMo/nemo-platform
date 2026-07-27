@@ -1,0 +1,31 @@
+# ConfigMap mounted by opensandbox-server-kata.
+# Pins BatchSandbox pods onto kata-deploy-labeled H100 nodes.
+# RuntimeClass/kata-qemu already carries the same scheduling.nodeSelector;
+# repeating it here fails faster and keeps labels visible on the CR.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensandbox-batchsandbox-template-kata-qemu
+  namespace: opensandbox-system
+  labels:
+    app.kubernetes.io/part-of: opensandbox
+    opensandbox.nvidia.com/isolation-class: kata-qemu
+data:
+  batchsandbox-template.yaml: |
+    metadata:
+      labels:
+        opensandbox.nvidia.com/isolation-class: kata-qemu
+        opensandbox.nvidia.com/runtime: kata-qemu
+    spec:
+      replicas: 1
+      template:
+        spec:
+          restartPolicy: Never
+          terminationGracePeriodSeconds: 60
+          # Must match RuntimeClass/kata-qemu scheduling.nodeSelector on nemo-dev-blue.
+          nodeSelector:
+            katacontainers.io/kata-runtime: "true"
+            node.kubernetes.io/instance-type: BM.GPU.H100.8
+            feature.node.kubernetes.io/cpu-cpuid.VMX: "true"
+          tolerations:
+            - operator: Exists

@@ -1,0 +1,50 @@
+# OpenSandbox controller — shared by both crun and kata-qemu server profiles.
+# Target: nemo-dev-blue (OCI / CRI-O).
+#
+# Snapshot/commit uses containerd by default upstream; this cluster is cri-o,
+# so clear the socket path (pause/resume not wired unless you add a CRI-O path).
+
+controller:
+  replicaCount: 1
+  logLevel: info
+
+  image:
+    repository: docker.io/opensandbox/controller
+    tag: "v0.2.0"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+  # Prefer CPU workers; leave H100 / kata nodes for sandbox workloads.
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: nvidia.com/gpu.present
+                operator: NotIn
+                values: ["true"]
+
+  snapshot:
+    imageCommitterImage: "docker.io/opensandbox/image-committer:v0.1.1"
+    containerdSocketPath: ""
+    registry: ""
+    registryInsecure: false
+    snapshotPushSecret: ""
+    resumePullSecret: ""
+
+crds:
+  install: true
+  keep: true
+
+rbac:
+  create: true
+
+serviceAccount:
+  create: true

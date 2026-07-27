@@ -1,0 +1,41 @@
+# ConfigMap mounted by opensandbox-server-crun.
+# Shared-kernel profile: no runtimeClassName → cluster default (crun on this CRI-O cluster).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensandbox-batchsandbox-template-crun
+  namespace: opensandbox-system
+  labels:
+    app.kubernetes.io/part-of: opensandbox
+    opensandbox.nvidia.com/isolation-class: shared-kernel
+data:
+  batchsandbox-template.yaml: |
+    metadata:
+      labels:
+        opensandbox.nvidia.com/isolation-class: shared-kernel
+        opensandbox.nvidia.com/runtime: crun
+    spec:
+      replicas: 1
+      template:
+        spec:
+          restartPolicy: Never
+          terminationGracePeriodSeconds: 30
+          # Prefer non-GPU / non-kata workers so H100 capacity stays for kata-qemu
+          # and GPU training. Soft preference only — still schedules if needed.
+          affinity:
+            nodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                      - key: katacontainers.io/kata-runtime
+                        operator: NotIn
+                        values: ["true"]
+                - weight: 80
+                  preference:
+                    matchExpressions:
+                      - key: nvidia.com/gpu.present
+                        operator: NotIn
+                        values: ["true"]
+          tolerations:
+            - operator: Exists

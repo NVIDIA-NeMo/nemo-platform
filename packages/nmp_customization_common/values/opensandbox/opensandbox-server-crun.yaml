@@ -1,0 +1,93 @@
+# OpenSandbox server — shared-kernel / crun profile for nemo-dev-blue.
+#
+# OpenSandbox [secure_runtime] is server-global, so crun and kata-qemu each get
+# their own Helm release. This release leaves secure_runtime unset so pods use
+# the cluster default OCI runtime (crun under cri-o).
+#
+# API key comes from Secret opensandbox-server-crun-api-key (key: api-key),
+# injected as OPENSANDBOX_SERVER_API_KEY (overrides any TOML api_key).
+
+fullnameOverride: opensandbox-server-crun
+
+server:
+  replicaCount: 1
+  image:
+    repository: docker.io/opensandbox/server
+    tag: "v0.2.1"
+
+  env:
+    - name: OPENSANDBOX_SERVER_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: opensandbox-server-crun-api-key
+          key: api-key
+
+  resources:
+    requests:
+      cpu: "500m"
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: nvidia.com/gpu.present
+                operator: NotIn
+                values: ["true"]
+
+  # Mount the crun BatchSandbox template ConfigMap.
+  volumeMounts:
+    - name: batchsandbox-template
+      mountPath: /etc/opensandbox/batchsandbox-template-crun.yaml
+      subPath: batchsandbox-template.yaml
+      readOnly: true
+  volumes:
+    - name: batchsandbox-template
+      configMap:
+        name: opensandbox-batchsandbox-template-crun
+
+  # In-cluster clients use the Service + use_server_proxy; gateway optional.
+  gateway:
+    enabled: false
+
+configToml: |
+  [server]
+  host = "0.0.0.0"
+  port = 80
+  # api_key intentionally omitted — set via OPENSANDBOX_SERVER_API_KEY Secret
+  max_sandbox_timeout_seconds = 86400
+
+  [log]
+  level = "INFO"
+
+  [runtime]
+  type = "kubernetes"
+  execd_image = "docker.io/opensandbox/execd:v1.0.21"
+
+  [storage]
+  allowed_host_paths = []
+  volume_default_size = "1Gi"
+
+  [kubernetes]
+  kubeconfig_path = ""
+  namespace = "opensandbox-crun"
+  informer_enabled = true
+  informer_resync_seconds = 300
+  informer_watch_timeout_seconds = 60
+  snapshot_create_timeout_seconds = 900
+  workload_provider = "batchsandbox"
+  image_pull_policy = "IfNotPresent"
+  batchsandbox_template_file = "/etc/opensandbox/batchsandbox-template-crun.yaml"
+
+  [egress]
+  image = "docker.io/opensandbox/egress:v1.1.4"
+  mode = "dns+nft"
+  # Prefer dual-stack deny rules over privileged IPv6-disable init.
+  disable_ipv6 = false
+
+  # Intentionally NO [secure_runtime] — shared-kernel / crun.
