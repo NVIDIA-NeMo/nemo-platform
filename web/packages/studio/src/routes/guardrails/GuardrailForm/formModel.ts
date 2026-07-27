@@ -43,10 +43,12 @@ export const applyFormToConfig = (
   values: GuardrailFormValues
 ): RailsConfigOutput => {
   const base = data ?? {};
-  const instructions = setGeneralInstruction(base.instructions, values.generalInstruction);
   return {
     ...base,
-    instructions: instructions.length ? instructions : base.instructions,
+    // Use the computed list directly: an empty result means the user cleared the
+    // sole general instruction, so we must persist the removal rather than fall
+    // back to the (still-populated) base instructions.
+    instructions: setGeneralInstruction(base.instructions, values.generalInstruction),
     sample_conversation: values.sampleConversation === '' ? undefined : values.sampleConversation,
   };
 };

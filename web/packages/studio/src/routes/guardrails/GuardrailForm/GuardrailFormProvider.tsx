@@ -85,14 +85,23 @@ export const GuardrailFormProvider: FC<{ config: GuardrailConfig; children: Reac
         const data = applyFormToConfig(config.data, submitted);
         try {
           await updateConfig({ workspace, name, data: { data: { ...data } } });
+        } catch {
+          toast.error('Failed to save the guardrail. Please try again.');
+          return;
+        }
+        // The PATCH landed — the save is complete. Commit the local state and
+        // report success regardless of what the cache refresh below does.
+        clearStored();
+        form.reset(submitted); // new baseline = saved values → isDirty false.
+        toast.success('Guardrail saved.');
+        // Refresh the cached config; a refetch failure doesn't undo the save,
+        // and the cache resyncs on the next fetch, so it stays silent.
+        try {
           await queryClient.invalidateQueries({
             queryKey: getGuardrailsGetGuardrailConfigQueryKey(workspace, name),
           });
-          clearStored();
-          form.reset(submitted); // new baseline = saved values → isDirty false.
-          toast.success('Guardrail saved.');
         } catch {
-          toast.error('Failed to save the guardrail. Please try again.');
+          // ignore — save already succeeded
         }
       }),
     [form, config.data, updateConfig, workspace, name, queryClient, clearStored, toast]
