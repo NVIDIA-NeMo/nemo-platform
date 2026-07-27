@@ -26,7 +26,6 @@ from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
 from nmp.common.auth import AuthClient, get_auth_client
 from nmp.common.entities.client import EntityConflictError, EntityNotFoundError, EntityValidationError
-from nmp.common.sdk_factory import get_async_platform_sdk
 from nmp.common.service.dependencies import get_sdk_client
 from nmp.core.models.api.dependencies import get_adapter_entity_service, get_model_entity_service
 from nmp.core.models.api.permissions import check_fileset_access
@@ -156,7 +155,7 @@ async def create_model(
 
     # add sdk job creation here for checkpoint metadata
     if created_model.fileset:
-        await start_update_model_spec_job(created_model)
+        await start_update_model_spec_job(created_model, nmp_sdk)
     return created_model
 
 
@@ -264,8 +263,7 @@ async def get_model(
     return model_entity
 
 
-async def start_update_model_spec_job(model_entity: ModelEntity):
-    sdk = get_async_platform_sdk(as_service="models", internal=True)
+async def start_update_model_spec_job(model_entity: ModelEntity, sdk: AsyncNeMoPlatform) -> None:
     model_spec_task_config = ModelSpecTaskConfig(workspace=model_entity.workspace, name=model_entity.name)
     task_spec = PlatformJobSpec(
         steps=[
@@ -421,7 +419,7 @@ async def update_model(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update model entity")
 
     if updated_model.fileset and (updated_model.fileset != original_fileset or not updated_model.spec):
-        await start_update_model_spec_job(updated_model)
+        await start_update_model_spec_job(updated_model, nmp_sdk)
 
     return updated_model
 

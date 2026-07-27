@@ -3,7 +3,7 @@
 
 import os
 import tarfile
-from typing import Literal, overload
+from typing import Literal, cast, overload
 
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.jobs.constants import NEMO_JOB_WORKSPACE_ENVVAR
@@ -60,21 +60,41 @@ def result_manager_factory(
             raise ValueError(f"{NEMO_JOB_WORKSPACE_ENVVAR} environment variable is not set")
         workspace = workspace_env
 
+    if is_async:
+        owns_files_sdk = files_sdk is None
+        if files_sdk is None:
+            files_sdk = get_async_platform_sdk()
+        if jobs_sdk is None:
+            jobs_sdk = files_sdk
+        async_files_sdk = cast(AsyncNeMoPlatform, files_sdk)
+        async_jobs_sdk = cast(AsyncNeMoPlatform, jobs_sdk)
+        return AsyncResultManager(
+            job_name=job_name,
+            workspace=workspace,
+            attempt_id=attempt_id,
+            file_manager_cls=AsyncFilesetFileManager,
+            files_sdk=async_files_sdk,
+            jobs_sdk=async_jobs_sdk,
+            owns_files_sdk=owns_files_sdk,
+            owns_jobs_sdk=False,
+        )
+
+    owns_files_sdk = files_sdk is None
     if files_sdk is None:
-        files_sdk = get_async_platform_sdk() if is_async else get_platform_sdk()
-
+        files_sdk = get_platform_sdk()
     if jobs_sdk is None:
-        jobs_sdk = get_async_platform_sdk() if is_async else get_platform_sdk()
-
-    file_manager_cls = AsyncFilesetFileManager if is_async else FilesetFileManager
-    result_manager_cls = AsyncResultManager if is_async else ResultManager
-    return result_manager_cls(
+        jobs_sdk = files_sdk
+    sync_files_sdk = cast(NeMoPlatform, files_sdk)
+    sync_jobs_sdk = cast(NeMoPlatform, jobs_sdk)
+    return ResultManager(
         job_name=job_name,
         workspace=workspace,
         attempt_id=attempt_id,
-        file_manager_cls=file_manager_cls,
-        files_sdk=files_sdk,
-        jobs_sdk=jobs_sdk,
+        file_manager_cls=FilesetFileManager,
+        files_sdk=sync_files_sdk,
+        jobs_sdk=sync_jobs_sdk,
+        owns_files_sdk=owns_files_sdk,
+        owns_jobs_sdk=False,
     )
 
 
@@ -92,24 +112,31 @@ async def download_from_result_info(
     in tests also affects download_from_result_info, preserving the old monkeypatch
     behavior.
     """
+    owns_files_sdk = files_sdk is None
+    owned_files_sdk: AsyncNeMoPlatform | None = None
     if files_sdk is None:
         files_sdk = get_async_platform_sdk()
+        owned_files_sdk = files_sdk
 
-    mgr = result_manager_factory(
-        job_name=job_name,
-        workspace=workspace,
-        files_sdk=files_sdk,
-    )
+    try:
+        mgr = result_manager_factory(
+            job_name=job_name,
+            workspace=workspace,
+            files_sdk=files_sdk,
+        )
 
-    tmp_dir_path = await mgr.download_artifact(artifact_url=artifact_url)
-    filename = result_name
+        tmp_dir_path = await mgr.download_artifact(artifact_url=artifact_url)
+        filename = result_name
 
-    if tmp_dir_path.path.is_dir():
-        filename = f"{filename}.tar.gz"
-        tar_path = tmp_dir_path.tmp_dir / filename
-        with tarfile.open(tar_path, "w:gz") as tar:
-            tar.add(tmp_dir_path.path, arcname=os.path.basename(tmp_dir_path.path))
+        if tmp_dir_path.path.is_dir():
+            filename = f"{filename}.tar.gz"
+            tar_path = tmp_dir_path.tmp_dir / filename
+            with tarfile.open(tar_path, "w:gz") as tar:
+                tar.add(tmp_dir_path.path, arcname=os.path.basename(tmp_dir_path.path))
 
-        tmp_dir_path.path = tar_path
+            tmp_dir_path.path = tar_path
 
-    return filename, tmp_dir_path
+        return filename, tmp_dir_path
+    finally:
+        if owns_files_sdk and owned_files_sdk is not None:
+            await owned_files_sdk.close()

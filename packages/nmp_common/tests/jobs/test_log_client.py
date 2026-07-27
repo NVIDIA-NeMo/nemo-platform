@@ -3,15 +3,17 @@
 
 """Tests for JobLogsClient SDK wrapper and PageCursor."""
 
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 from nemo_platform_plugin.client.errors import NotFoundError
-from nmp.common.jobs.log_client import JobLogsClient
+from nmp.common.jobs.log_client import JobLogsClient, dep_job_logs_client
 from nmp.common.jobs.schemas import (
     PageCursor,
     PaginationDirection,
+    PlatformJobLog,
     PlatformJobLogPage,
 )
 
@@ -78,13 +80,13 @@ async def test_query_logs_success(log_client):
 
     page = PlatformJobLogPage(
         data=[
-            {
-                "timestamp": "2024-01-01T12:00:00",
-                "job": "job-123",
-                "job_step": "step1",
-                "job_task": "task1",
-                "message": "Test log message",
-            }
+            PlatformJobLog(
+                timestamp=datetime.fromisoformat("2024-01-01T12:00:00"),
+                job="job-123",
+                job_step="step1",
+                job_task="task1",
+                message="Test log message",
+            )
         ],
         total=1,
         next_page=None,
@@ -186,3 +188,33 @@ def test_sdk_created_in_constructor():
         client = JobLogsClient(sdk=sdk)
     assert client._sdk is sdk
     mock_adapter.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_aclose_does_not_close_injected_sdk() -> None:
+    sdk = MagicMock()
+    sdk.close = AsyncMock()
+    with patch("nmp.common.jobs.log_client.client_from_platform"):
+        client = JobLogsClient(sdk=sdk)
+
+    await client.aclose()
+
+    sdk.close.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_dependency_closes_owned_sdk() -> None:
+    sdk = MagicMock()
+    sdk.close = AsyncMock()
+    with (
+        patch("nmp.common.jobs.log_client.get_async_platform_sdk", return_value=sdk),
+        patch("nmp.common.jobs.log_client.client_from_platform"),
+    ):
+        dependency = dep_job_logs_client()
+        client = await anext(dependency)
+
+        assert isinstance(client, JobLogsClient)
+        with pytest.raises(StopAsyncIteration):
+            await anext(dependency)
+
+    sdk.close.assert_awaited_once_with()

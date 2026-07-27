@@ -420,7 +420,6 @@ class TestWorkloadTokenExchangeProvider:
                 "scope": "openid email groups",
             },
             timeout=5.0,
-            verify=True,
         )
 
     def test_token_exchange_grant_uses_docker_opaque_subject_token_type(self, monkeypatch):

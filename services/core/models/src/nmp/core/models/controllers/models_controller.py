@@ -6,14 +6,11 @@ import threading
 from logging import getLogger
 from typing import Optional
 
-from nemo_platform import DefaultAsyncHttpxClient  # type: ignore[deprecated]
+from nemo_platform._exceptions import NotFoundError
 from nemo_platform.types.inference import ModelDeploymentStatus
 from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
-from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.client.errors import NotFoundError
-from nemo_platform_plugin.models.client import AsyncModelsClient
-from nemo_platform_plugin.models.types import ModelEntity
+from nemo_platform.types.models.model_entity import ModelEntity
 from nmp.common.controller import Controller, HeartbeatMixin
 from nmp.common.entities.utils import parse_entity_ref
 from nmp.common.sdk_factory import get_async_platform_sdk
@@ -64,7 +61,6 @@ class ModelsController(HeartbeatMixin, Controller):
         self._models_sdk = get_async_platform_sdk(
             as_service="models",
             internal=True,
-            http_client=DefaultAsyncHttpxClient(),
         )
         self._service_backends = backend_registry.list_backends()
 
@@ -238,13 +234,10 @@ class ModelsController(HeartbeatMixin, Controller):
             if revision or not self._entity_cache.loaded:
                 # A revision resolves server-side and does not correspond to an
                 # cache key, so it has to be fetched directly.
-                models = client_from_platform(self._models_sdk, AsyncModelsClient)
-                model_entity = (
-                    await models.get_model(
-                        name=full_model_name,
-                        workspace=workspace,
-                    )
-                ).data()
+                model_entity = await self._models_sdk.models.retrieve(
+                    name=full_model_name,
+                    workspace=workspace,
+                )
             else:
                 model_entity = self._entity_cache.get(workspace, model_name)
                 if model_entity is None:
@@ -316,7 +309,9 @@ class ModelsController(HeartbeatMixin, Controller):
                         if deployment.config and deployment.config_version:
                             try:
                                 config = await self._retrieve_deployment_config(
-                                    deployment.config, deployment.config_version, deployment.workspace
+                                    deployment.config,
+                                    str(deployment.config_version),
+                                    deployment.workspace,
                                 )
                             except Exception as e:
                                 logger.warning(
@@ -471,9 +466,10 @@ class ModelsController(HeartbeatMixin, Controller):
                 logger.debug(f"Found {len(deployment_contexts)} total deployment(s) in non-terminal states")
                 await self._deployment_reconciler.reconcile_deployments(deployment_contexts)
 
-            known_deployment_ids = {
-                f"{ctx.model_deployment.workspace}/{ctx.model_deployment.name}" for ctx in deployment_contexts
-            }
+            known_deployment_ids = set()
+            for ctx in deployment_contexts:
+                if ctx.model_deployment is not None:
+                    known_deployment_ids.add(f"{ctx.model_deployment.workspace}/{ctx.model_deployment.name}")
             await self._deployment_reconciler.reconcile_orphans(known_deployment_ids)
             self.emit_heartbeat()
 

@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Generator, Optional
+from typing import Any, Generator, Optional, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -160,12 +160,20 @@ class MockServiceBackend(ServiceBackend):
 
     async def create_model_deployment(self, ctx: ModelContext) -> DeploymentStatusUpdate:
         """Record call and return configured response."""
-        self.create_calls.append((ctx.model_deployment, ctx.model_deployment_config, ctx.model_entity))
+        deployment = ctx.model_deployment
+        config = ctx.model_deployment_config
+        assert deployment is not None
+        assert config is not None
+        self.create_calls.append((deployment, config, ctx.model_entity))
         return self.create_response
 
     async def update_model_deployment(self, ctx: ModelContext) -> DeploymentStatusUpdate:
         """Record call and return configured response."""
-        self.update_calls.append((ctx.model_deployment, ctx.model_deployment_config, ctx.model_entity))
+        deployment = ctx.model_deployment
+        config = ctx.model_deployment_config
+        assert deployment is not None
+        assert config is not None
+        self.update_calls.append((deployment, config, ctx.model_entity))
         return self.create_response  # Update returns same as create
 
     async def get_model_deployment_status(self, ctx: ModelContext) -> DeploymentStatusUpdate:
@@ -179,6 +187,7 @@ class MockServiceBackend(ServiceBackend):
         otherwise falls back to default_status_response.
         """
         deployment = ctx.model_deployment
+        assert deployment is not None
         self.status_calls.append(deployment)
         return self.status_responses.get(deployment.name, self.default_status_response)
 
@@ -243,7 +252,7 @@ def controller_with_mock_backend(
     Yields:
         Tuple of (controller, mock_backend, sync_sdk) for testing
     """
-    mock_backend = mock_backend_registry.get_backend()
+    mock_backend = cast(MockServiceBackend, mock_backend_registry.get_backend())
 
     # Create controller with mock backend registry
     # We need to patch the SDK factory and platform config (used in config and main modules)
@@ -445,11 +454,15 @@ def controller_with_deployments_plugin(
             return_value=mock_platform_config,
         ),
         patch("nmp.core.models.controllers.models_controller.get_async_platform_sdk") as mock_models_sdk,
-        patch("nemo_platform_plugin.sdk_provider.get_async_platform_sdk") as mock_sdk,
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.backend.get_async_platform_sdk"
+        ) as mock_backend_sdk,
+        patch("nemo_deployments_plugin.controller.get_async_platform_sdk") as mock_deployments_sdk,
         patch("nemo_deployments_plugin.config.DeploymentsConfig.get", return_value=deployments_config),
     ):
         mock_models_sdk.return_value = test_clients.async_sdk
-        mock_sdk.return_value = test_clients.async_sdk
+        mock_backend_sdk.return_value = test_clients.async_sdk
+        mock_deployments_sdk.return_value = test_clients.async_sdk
 
         models_controller = ModelsController(
             backend_registry=backend_registry,
@@ -479,7 +492,7 @@ def controller_with_deployments_plugin(
 
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
-def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]) -> Generator[None, None, None]:
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]) -> Generator[None, Any, None]:
     """Store test results on the item for fixture access."""
     outcome = yield
     rep = outcome.get_result()

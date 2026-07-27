@@ -9,11 +9,11 @@ import webbrowser
 from dataclasses import dataclass
 
 import httpx
+from nemo_platform_plugin.client.tls import httpx_tls_config_from_env
 from rich.console import Console
 from rich.panel import Panel
 
 from nemo_platform_ext.auth.token_provider import refresh_token_grant
-from nemo_platform_ext.client.tls import client_verify_from_env
 
 console = Console()
 
@@ -74,7 +74,7 @@ class DeviceFlow:
 
     async def start_device_authorization(self) -> DeviceCodeResponse:
         """Start the device authorization flow."""
-        async with httpx.AsyncClient(verify=client_verify_from_env()) as client:
+        async with httpx.AsyncClient(**httpx_tls_config_from_env()) as client:
             response = await client.post(
                 self.device_authorization_endpoint,
                 data={
@@ -104,7 +104,7 @@ class DeviceFlow:
         """Poll the token endpoint until authorization is complete."""
         start_time = time.time()
 
-        async with httpx.AsyncClient(verify=client_verify_from_env()) as client:
+        async with httpx.AsyncClient(**httpx_tls_config_from_env()) as client:
             while time.time() - start_time < expires_in:
                 await _async_pause(interval)
 
@@ -284,7 +284,7 @@ def authenticate_with_password_grant(
         "password": password,
         "scope": scope,
     }
-    with httpx.Client(verify=client_verify_from_env()) as client:
+    with httpx.Client(**httpx_tls_config_from_env()) as client:
         response = client.post(token_endpoint, data=data, timeout=30.0)
 
     if response.status_code != 200:

@@ -43,7 +43,6 @@ def controller(tmp_path):
         ctrl = AdaptersController()
         ctrl.nim_peft_source = str(tmp_path)
         ctrl._sdk = MagicMock()
-        ctrl._models = MagicMock()
         ctrl.workspace = "default"
         ctrl.model_name = "base-model"
         # Default to NIM behavior (no rewrite, no eager vLLM load); vLLM tests
@@ -400,7 +399,7 @@ class TestUpdateLoraAdaptersRedownload:
         mock_model_entity = MagicMock()
         mock_model_entity.workspace = "default"
         mock_model_entity.adapters = [adapter]
-        controller._models.get_model.return_value.data.return_value = mock_model_entity
+        controller._sdk.models.retrieve.return_value = mock_model_entity
 
         mock_files_response = MagicMock()
         mock_files_response.data = [MagicMock()]
@@ -432,7 +431,7 @@ class TestUpdateLoraAdaptersRedownload:
         mock_model_entity = MagicMock()
         mock_model_entity.workspace = "default"
         mock_model_entity.adapters = [adapter]
-        controller._models.get_model.return_value.data.return_value = mock_model_entity
+        controller._sdk.models.retrieve.return_value = mock_model_entity
 
         dirs_to_keep: set[str] = set()
         controller._update_lora_adapters(dirs_to_keep)
@@ -449,7 +448,7 @@ class TestUpdateLoraAdaptersRedownload:
         mock_model_entity = MagicMock()
         mock_model_entity.workspace = "default"
         mock_model_entity.adapters = [adapter]
-        controller._models.get_model.return_value.data.return_value = mock_model_entity
+        controller._sdk.models.retrieve.return_value = mock_model_entity
 
         mock_files_response = MagicMock()
         mock_files_response.data = [MagicMock()]
@@ -478,7 +477,7 @@ class TestUpdateLoraAdaptersRedownload:
         mock_model_entity = MagicMock()
         mock_model_entity.workspace = "default"
         mock_model_entity.adapters = [adapter]
-        controller._models.get_model.return_value.data.return_value = mock_model_entity
+        controller._sdk.models.retrieve.return_value = mock_model_entity
 
         mock_files_response = MagicMock()
         mock_files_response.data = [MagicMock()]
@@ -499,7 +498,7 @@ class TestUpdateLoraAdaptersRedownload:
         mock_model_entity = MagicMock()
         mock_model_entity.workspace = "default"
         mock_model_entity.adapters = [adapter]
-        controller._models.get_model.return_value.data.return_value = mock_model_entity
+        controller._sdk.models.retrieve.return_value = mock_model_entity
 
         mock_files_response = MagicMock()
         mock_files_response.data = []
@@ -528,7 +527,7 @@ class TestUpdateLoraAdaptersRedownload:
         mock_model_entity = MagicMock()
         mock_model_entity.workspace = "default"
         mock_model_entity.adapters = [adapter]
-        controller._models.get_model.return_value.data.return_value = mock_model_entity
+        controller._sdk.models.retrieve.return_value = mock_model_entity
 
         mock_files_response = MagicMock()
         mock_files_response.data = []
@@ -557,7 +556,7 @@ class TestUpdateLoraAdaptersCrossWorkspace:
         mock_model_entity = MagicMock()
         mock_model_entity.workspace = "base-ws"
         mock_model_entity.adapters = [adapter_a, adapter_b]
-        controller._models.get_model.return_value.data.return_value = mock_model_entity
+        controller._sdk.models.retrieve.return_value = mock_model_entity
 
         mock_files_response = MagicMock()
         mock_files_response.data = [MagicMock()]
@@ -579,7 +578,7 @@ class TestUpdateLoraAdaptersCrossWorkspace:
         mock_model_entity = MagicMock()
         mock_model_entity.workspace = "base-ws"
         mock_model_entity.adapters = [adapter]
-        controller._models.get_model.return_value.data.return_value = mock_model_entity
+        controller._sdk.models.retrieve.return_value = mock_model_entity
 
         mock_files_response = MagicMock()
         mock_files_response.data = [MagicMock()]
@@ -614,7 +613,7 @@ class TestUpdateLoraAdaptersCrossWorkspace:
         mock_model_entity = MagicMock()
         mock_model_entity.workspace = "base-ws"
         mock_model_entity.adapters = [adapter]
-        controller._models.get_model.return_value.data.return_value = mock_model_entity
+        controller._sdk.models.retrieve.return_value = mock_model_entity
 
         mock_files_response = MagicMock()
         mock_files_response.data = [MagicMock()]
@@ -642,14 +641,14 @@ class TestUpdateLoraAdaptersCrossWorkspace:
         mock_model_entity = MagicMock()
         mock_model_entity.workspace = "base-ws"
         mock_model_entity.adapters = [adapter]
-        controller._models.get_model.return_value.data.return_value = mock_model_entity
+        controller._sdk.models.retrieve.return_value = mock_model_entity
 
         mock_files_response = MagicMock()
         mock_files_response.data = [MagicMock()]
         controller._sdk.files.list.return_value = mock_files_response
 
         # No prompt-tuned models in this scenario.
-        controller._models.list_models.return_value.items.return_value = iter([])
+        controller._sdk.models.list.return_value = MagicMock(data=[])
 
         controller.step()
 
@@ -671,7 +670,7 @@ class TestUpdateLoraAdaptersCrossWorkspace:
         mock_model_entity = MagicMock()
         mock_model_entity.workspace = "base-ws"
         mock_model_entity.adapters = [adapter]
-        controller._models.get_model.return_value.data.return_value = mock_model_entity
+        controller._sdk.models.retrieve.return_value = mock_model_entity
 
         dirs_to_keep: set[str] = set()
         controller._update_lora_adapters(dirs_to_keep)
@@ -693,7 +692,7 @@ class TestEagerVllmAdapterLoad:
         me = MagicMock()
         me.workspace = "default"
         me.adapters = [adapter]
-        controller._models.get_model.return_value.data.return_value = me
+        controller._sdk.models.retrieve.return_value = me
         files_resp = MagicMock()
         files_resp.data = [MagicMock()]
         controller._sdk.files.list.return_value = files_resp
@@ -824,7 +823,7 @@ class TestEagerVllmAdapterLoad:
 
         adapter = _make_adapter("kept-adapter", "default/fs", updated_at=None, workspace="default")
         self._model_entity(controller, adapter)
-        controller._models.list_models.return_value.items.return_value = iter([])  # no prompt-tuned models
+        controller._sdk.models.list.return_value = MagicMock(data=[])  # no prompt-tuned models
 
         with patch.object(controller, "_vllm_api_call", return_value=(200, "")) as api:
             controller.step()
@@ -844,7 +843,7 @@ class TestEagerVllmAdapterLoad:
 
         adapter = _make_adapter("kept-adapter", "default/fs", updated_at=None, workspace="default")
         self._model_entity(controller, adapter)
-        controller._models.list_models.return_value.items.return_value = iter([])  # no prompt-tuned models
+        controller._sdk.models.list.return_value = MagicMock(data=[])  # no prompt-tuned models
 
         # vLLM unreachable: both the kept adapter's load and the stale one's unload
         # hit a transport error.
@@ -865,7 +864,7 @@ class TestEagerVllmAdapterLoad:
 
         adapter = _make_adapter("kept-adapter", "default/fs", updated_at=None, workspace="default")
         self._model_entity(controller, adapter)
-        controller._models.list_models.return_value.items.return_value = iter([])  # no prompt-tuned models
+        controller._sdk.models.list.return_value = MagicMock(data=[])  # no prompt-tuned models
 
         def _responses(route, payload):
             if route == "/v1/unload_lora_adapter":
@@ -888,7 +887,7 @@ class TestEagerVllmAdapterLoad:
 
         adapter = _make_adapter("kept-adapter", "default/fs", updated_at=None, workspace="default")
         self._model_entity(controller, adapter)
-        controller._models.list_models.return_value.items.return_value = iter([])  # no prompt-tuned models
+        controller._sdk.models.list.return_value = MagicMock(data=[])  # no prompt-tuned models
 
         def _responses(route, payload):
             if route == "/v1/unload_lora_adapter":
@@ -986,7 +985,7 @@ class TestResolveAdapterWorkspaceFallback:
         mock_model_entity = MagicMock()
         mock_model_entity.workspace = "base-ws"
         mock_model_entity.adapters = [adapter]
-        controller._models.get_model.return_value.data.return_value = mock_model_entity
+        controller._sdk.models.retrieve.return_value = mock_model_entity
 
         mock_files_response = MagicMock()
         mock_files_response.data = [MagicMock()]

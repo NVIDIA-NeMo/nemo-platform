@@ -12,7 +12,7 @@ from nmp.core.models.config import config as models_config
 from nmp.core.models.controllers.context import ModelContext
 from nmp.core.models.controllers.models_controller import NON_TERMINAL_STATES, ModelsController
 
-from .conftest import _ModelResponse, make_async_models_client
+from .conftest import make_async_models_client
 
 
 class MockAsyncPaginator:
@@ -32,20 +32,12 @@ class MockAsyncPaginator:
 
 @pytest.fixture(autouse=True)
 def _patch_typed_model_client(mock_models_sdk):
-    """Route ``client_from_platform(sdk, AsyncModelsClient)`` in the models controller
-    and entity cache back to a typed ``AsyncModelsClient`` mock on
-    ``mock_models_sdk.models_client``, so tests drive ``get_model``/``list_models``
-    directly instead of the legacy SDK resource."""
+    """Route entity-cache typed client calls while controller tests use generated SDK resources directly."""
     mock_models_sdk.models_client = make_async_models_client()
-    with (
-        patch(
-            "nmp.core.models.controllers.models_controller.client_from_platform",
-            side_effect=lambda sdk, cls: sdk.models_client,
-        ),
-        patch(
-            "nmp.core.models.controllers.entity_cache.client_from_platform",
-            side_effect=lambda sdk, cls: sdk.models_client,
-        ),
+    mock_models_sdk.models.retrieve = AsyncMock()
+    with patch(
+        "nmp.core.models.controllers.entity_cache.client_from_platform",
+        side_effect=lambda sdk, cls: sdk.models_client,
     ):
         yield
 
@@ -467,7 +459,7 @@ async def test_retrieve_model_entity_for_config_uses_model_entity_id_when_set(
     mock_entity = MagicMock()
     mock_entity.workspace = "my-ws"
     mock_entity.name = "my-model"
-    mock_models_sdk.models_client.get_model = AsyncMock(return_value=_ModelResponse(mock_entity))
+    mock_models_sdk.models.retrieve = AsyncMock(return_value=mock_entity)
 
     config = MagicMock()
     config.model_entity_id = "my-ws/my-model"
@@ -481,7 +473,7 @@ async def test_retrieve_model_entity_for_config_uses_model_entity_id_when_set(
         result = await controller._retrieve_model_entity_for_config(config)
 
     assert result is mock_entity
-    mock_models_sdk.models_client.get_model.assert_awaited_once_with(name="my-model", workspace="my-ws")
+    mock_models_sdk.models.retrieve.assert_awaited_once_with(name="my-model", workspace="my-ws")
 
 
 @pytest.mark.asyncio
@@ -490,7 +482,7 @@ async def test_retrieve_model_entity_for_config_uses_model_entity_id_with_revisi
 ):
     """When config.model_entity_id includes @revision, revision is passed to retrieve."""
     mock_entity = MagicMock()
-    mock_models_sdk.models_client.get_model = AsyncMock(return_value=_ModelResponse(mock_entity))
+    mock_models_sdk.models.retrieve = AsyncMock(return_value=mock_entity)
 
     config = MagicMock()
     config.model_entity_id = "my-ws/my-model@v2"
@@ -501,8 +493,8 @@ async def test_retrieve_model_entity_for_config_uses_model_entity_id_with_revisi
         result = await controller._retrieve_model_entity_for_config(config)
 
     assert result is mock_entity
-    mock_models_sdk.models_client.get_model.assert_awaited_once_with(name="my-model@v2", workspace="my-ws")
-    call = mock_models_sdk.models_client.get_model.await_args
+    mock_models_sdk.models.retrieve.assert_awaited_once_with(name="my-model@v2", workspace="my-ws")
+    call = mock_models_sdk.models.retrieve.await_args
     assert call is not None
     call_kw = call.kwargs
     assert call_kw["name"] == "my-model@v2"
@@ -515,7 +507,7 @@ async def test_retrieve_model_entity_for_config_falls_back_to_nim_deployment_whe
 ):
     """When config.model_entity_id is not set, entity is derived from nim_deployment."""
     mock_entity = MagicMock()
-    mock_models_sdk.models_client.get_model = AsyncMock(return_value=_ModelResponse(mock_entity))
+    mock_models_sdk.models.retrieve = AsyncMock(return_value=mock_entity)
 
     config = MagicMock()
     config.model_entity_id = None
@@ -529,7 +521,7 @@ async def test_retrieve_model_entity_for_config_falls_back_to_nim_deployment_whe
         result = await controller._retrieve_model_entity_for_config(config)
 
     assert result is mock_entity
-    mock_models_sdk.models_client.get_model.assert_awaited_once_with(name="nim-model@v1", workspace="nim-ns")
+    mock_models_sdk.models.retrieve.assert_awaited_once_with(name="nim-model@v1", workspace="nim-ns")
 
 
 @pytest.mark.asyncio
@@ -546,7 +538,7 @@ async def test_retrieve_model_entity_for_config_returns_none_when_no_nim_deploym
         result = await controller._retrieve_model_entity_for_config(config)
 
     assert result is None
-    mock_models_sdk.models_client.get_model.assert_not_awaited()
+    mock_models_sdk.models.retrieve.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -555,7 +547,7 @@ async def test_retrieve_model_entity_for_config_invalid_model_entity_id_falls_ba
 ):
     """When model_entity_id is set but unparseable (e.g. no slash), fall back to nim_deployment."""
     mock_entity = MagicMock()
-    mock_models_sdk.models_client.get_model = AsyncMock(return_value=_ModelResponse(mock_entity))
+    mock_models_sdk.models.retrieve = AsyncMock(return_value=mock_entity)
 
     config = MagicMock()
     config.model_entity_id = "bogus"
@@ -569,7 +561,7 @@ async def test_retrieve_model_entity_for_config_invalid_model_entity_id_falls_ba
         result = await controller._retrieve_model_entity_for_config(config)
 
     assert result is mock_entity
-    mock_models_sdk.models_client.get_model.assert_awaited_once_with(name="fallback-model", workspace="fallback-ns")
+    mock_models_sdk.models.retrieve.assert_awaited_once_with(name="fallback-model", workspace="fallback-ns")
 
 
 # =============================================================================

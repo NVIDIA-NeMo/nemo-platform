@@ -4,8 +4,8 @@
 """Tests for :mod:`nmp.common.client_factory` — the rich NemoClient provider.
 
 Covers what the platform provider adds over the plugin's env-var default:
-per-service URL routing, shared HTTP clients, principal/auth + internal +
-OTEL headers, workspace defaults, and test-client injection.
+per-service URL routing, endpoint-aware HTTP clients, principal/auth + internal +
+OTEL headers, workspace defaults, and explicit test-client injection.
 """
 
 from unittest.mock import patch
@@ -16,20 +16,21 @@ from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.types import PreparedRequest
 from nemo_platform_plugin.client_provider import NemoClientProvider
 from nmp.common import client_factory as cf
-from nmp.common.config import Configuration
+from nmp.common.config import Configuration, PlatformConfig
 from nmp.common.observability.otel import scoped_otel_headers
+from nmp.common.platform_endpoint import _SyncPlatformEndpointRoutingTransport
+from nmp.testing.http_clients import routed_async_mock_client, routed_mock_client
 
 
 @pytest.fixture(autouse=True)
 def _reset_client_factory_state():
-    """Keep tests order-independent: clear the injected test client and config cache."""
-    old = cf._test_http_client
-    cf._test_http_client = None
+    """Keep tests order-independent: clear config cache."""
     Configuration.clear_cache()
+    Configuration.clear_override(PlatformConfig)
     try:
         yield
     finally:
-        cf._test_http_client = old
+        Configuration.clear_override(PlatformConfig)
         Configuration.clear_cache()
 
 
@@ -44,12 +45,12 @@ def _get(path_template: str, **path_params: str) -> PreparedRequest:
     )
 
 
-def _mock_client(sink: list[httpx.Request]) -> httpx.Client:
+def _capture_request_client(sink: list[httpx.Request]) -> httpx.Client:
     def handler(request: httpx.Request) -> httpx.Response:
         sink.append(request)
         return httpx.Response(200, json={"ok": True})
 
-    return httpx.Client(transport=httpx.MockTransport(handler))
+    return routed_mock_client(handler)
 
 
 # ---------------------------------------------------------------------------
@@ -76,14 +77,15 @@ class TestSyncConstruction:
         client = cf.get_nemo_client(workspace="team-a")
         assert client.workspace == "team-a"
 
-    def test_reuses_shared_sync_http_client(self):
+    def test_builds_endpoint_owned_sync_http_client(self):
         client = cf.get_nemo_client()
-        assert client._http is cf.shared_sync_http_client()
+        assert isinstance(client._http, httpx.Client)
 
     def test_explicit_http_client_wins(self):
         with httpx.Client() as explicit:
             client = cf.get_nemo_client(http_client=explicit)
             assert client._http is explicit
+            assert client._url_resolver is None
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +104,7 @@ class TestAsyncConstruction:
         assert client._default_headers["X-NMP-Principal-Id"] == "service:evaluator"
         assert client._default_headers["X-NMP-Internal"] == "true"
 
-    def test_falls_back_to_shared_async_client(self):
+    def test_builds_endpoint_owned_async_http_client(self):
         client = cf.get_async_nemo_client()
         assert isinstance(client._http, httpx.AsyncClient)
 
@@ -115,11 +117,16 @@ class TestAsyncConstruction:
 class TestUrlRouting:
     def test_routes_service_path_to_discovered_origin(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("NMP_BASE_URL", "https://nemo-gateway:8080")
-        monkeypatch.setenv("NMP_ENTITIES_URL", "http://entities-svc:9999")
+        Configuration.set_override(
+            PlatformConfig(
+                base_url="https://nemo-gateway:8080",
+                service_discovery={"entities": "http://entities-svc:9999"},
+            )
+        )
         Configuration.clear_cache()
 
         captured: list[httpx.Request] = []
-        client = cf.get_nemo_client(as_service="entities", internal=True, http_client=_mock_client(captured))
+        client = cf.get_nemo_client(as_service="entities", internal=True, http_client=_capture_request_client(captured))
         client.send(_get("/apis/entities/v2/foo"))
 
         assert str(captured[0].url) == "http://entities-svc:9999/apis/entities/v2/foo"
@@ -128,11 +135,16 @@ class TestUrlRouting:
 
     def test_preserves_query_string_when_routing(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("NMP_BASE_URL", "https://nemo-gateway:8080")
-        monkeypatch.setenv("NMP_ENTITIES_URL", "http://entities-svc:9999")
+        Configuration.set_override(
+            PlatformConfig(
+                base_url="https://nemo-gateway:8080",
+                service_discovery={"entities": "http://entities-svc:9999"},
+            )
+        )
         Configuration.clear_cache()
 
         captured: list[httpx.Request] = []
-        client = cf.get_nemo_client(http_client=_mock_client(captured))
+        client = cf.get_nemo_client(http_client=_capture_request_client(captured))
         client.send(_get("/apis/entities/v2/models?limit=5"))
 
         assert str(captured[0].url) == "http://entities-svc:9999/apis/entities/v2/models?limit=5"
@@ -143,17 +155,32 @@ class TestUrlRouting:
         Configuration.clear_cache()
 
         captured: list[httpx.Request] = []
-        client = cf.get_nemo_client(http_client=_mock_client(captured))
+        client = cf.get_nemo_client(http_client=_capture_request_client(captured))
         client.send(_get("/apis/models/v1/bar"))
 
         assert str(captured[0].url) == "https://nemo-gateway:8080/apis/models/v1/bar"
 
     def test_workspace_default_fills_path_param(self):
         captured: list[httpx.Request] = []
-        client = cf.get_nemo_client(workspace="team-a", http_client=_mock_client(captured))
+        client = cf.get_nemo_client(workspace="team-a", http_client=_capture_request_client(captured))
         client.send(_get("/apis/entities/v2/workspaces/{workspace}/models"))
 
         assert "/workspaces/team-a/models" in str(captured[0].url)
+
+    def test_endpoint_owned_client_uses_transport_routing_once(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("NMP_BASE_URL", "http://nemo-gateway:8080")
+        Configuration.set_override(
+            PlatformConfig(
+                base_url="http://nemo-gateway:8080",
+                service_discovery={"entities": "http://entities-svc:9999/entities-prefix"},
+            )
+        )
+        Configuration.clear_cache()
+
+        client = cf.get_nemo_client()
+
+        assert client._url_resolver is None
+        assert isinstance(client._http._transport, _SyncPlatformEndpointRoutingTransport)
 
 
 # ---------------------------------------------------------------------------
@@ -205,25 +232,34 @@ class TestHeadersAuth:
 # ---------------------------------------------------------------------------
 
 
-class TestTestClientInjection:
-    def test_async_uses_module_level_test_client(self):
-        test_client = httpx.AsyncClient(base_url="http://testserver")
-        cf._test_http_client = test_client
-        try:
-            client = cf.get_async_nemo_client(as_service="evaluator")
-            assert client._http is test_client
-        finally:
-            cf._test_http_client = None
-
-    def test_async_explicit_http_client_beats_module_level(self):
-        module_client = httpx.AsyncClient(base_url="http://module")
-        explicit = httpx.AsyncClient(base_url="http://explicit")
-        cf._test_http_client = module_client
-        try:
+class TestExplicitClientInjection:
+    async def test_async_explicit_http_client_is_used(self):
+        async with httpx.AsyncClient(base_url="http://explicit") as explicit:
             client = cf.get_async_nemo_client(http_client=explicit)
+
             assert client._http is explicit
-        finally:
-            cf._test_http_client = None
+            assert client._url_resolver is None
+
+    async def test_async_explicit_test_client_can_route_service_urls(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("NMP_BASE_URL", "https://nemo-gateway:8080")
+        Configuration.set_override(
+            PlatformConfig(
+                base_url="https://nemo-gateway:8080",
+                service_discovery={"entities": "http://entities-svc:9999"},
+            )
+        )
+        Configuration.clear_cache()
+        captured: list[httpx.Request] = []
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            captured.append(request)
+            return httpx.Response(200, json={"ok": True})
+
+        async with routed_async_mock_client(handler) as explicit:
+            client = cf.get_async_nemo_client(http_client=explicit)
+            await client.send(_get("/apis/entities/v2/foo"))
+
+        assert str(captured[0].url) == "http://entities-svc:9999/apis/entities/v2/foo"
 
 
 # ---------------------------------------------------------------------------
@@ -328,7 +364,7 @@ class TestTaskClientWorkloadIdentity:
         token_file.write_text("subject-token")
         monkeypatch.setenv("NMP_WORKLOAD_IDENTITY_TOKEN_FILE", str(token_file))
         monkeypatch.setenv("NMP_BASE_URL", "http://platform:8080")
-        monkeypatch.setenv("NMP_PRINCIPAL", '{"id": "user:alice@acme.com"}')  # ignored in WI mode
+        monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
         Configuration.clear_cache()
 
         client = cf.get_task_nemo_client("evaluator")
@@ -338,22 +374,16 @@ class TestTaskClientWorkloadIdentity:
         assert "X-NMP-Principal-Id" not in client._default_headers
         assert client._default_headers.get("X-NMP-Internal") == "true"
 
-    def test_uds_does_not_bootstrap_workload_identity(self, monkeypatch, tmp_path, _stub_exchange):
-        # Matches get_task_sdk exactly: with the WI token file set the task path
-        # delegates to get_nemo_client(internal=True); on UDS transport that skips
-        # bearer exchange and propagates the env principal as its own identity
-        # (no service principal, no bearer auth).
+    def test_task_client_rejects_workload_identity_with_principal_env(self, monkeypatch, tmp_path, _stub_exchange):
         token_file = tmp_path / "token"
         token_file.write_text("subject-token")
         monkeypatch.setenv("NMP_WORKLOAD_IDENTITY_TOKEN_FILE", str(token_file))
-        monkeypatch.setenv("NMP_BASE_URL", "unix:///tmp/nemo-platform.sock")
+        monkeypatch.setenv("NMP_BASE_URL", "http://platform:8080")
         monkeypatch.setenv("NMP_PRINCIPAL", '{"id": "user:alice@acme.com"}')
         Configuration.clear_cache()
 
-        client = cf.get_task_nemo_client("evaluator")
-        assert client._auth is None
-        assert client._default_headers["X-NMP-Principal-Id"] == "user:alice@acme.com"
-        assert "X-NMP-Principal-On-Behalf-Of" not in client._default_headers
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            cf.get_task_nemo_client("evaluator")
 
 
 # ---------------------------------------------------------------------------
@@ -377,7 +407,7 @@ class TestUdsTransport:
         client = cf.get_nemo_client()
         transport = client._http._transport
         assert isinstance(transport, httpx.HTTPTransport)
-        assert transport._pool._uds == "/tmp/nemo-platform.sock"
+        assert getattr(transport._pool, "_uds") == "/tmp/nemo-platform.sock"
 
     async def test_uds_async_client_binds_socket_transport(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("NMP_BASE_URL", "unix:///tmp/nemo-platform.sock")
@@ -385,10 +415,11 @@ class TestUdsTransport:
         client = cf.get_async_nemo_client()
         transport = client._http._transport
         assert isinstance(transport, httpx.AsyncHTTPTransport)
-        assert transport._pool._uds == "/tmp/nemo-platform.sock"
+        assert getattr(transport._pool, "_uds") == "/tmp/nemo-platform.sock"
 
-    def test_tcp_client_uses_shared_client(self, monkeypatch: pytest.MonkeyPatch):
+    def test_tcp_client_uses_default_client(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("NMP_BASE_URL", "http://platform:8080")
         Configuration.clear_cache()
         client = cf.get_nemo_client()
         assert client.base_url == "http://platform:8080"
+        assert isinstance(client._http, httpx.Client)

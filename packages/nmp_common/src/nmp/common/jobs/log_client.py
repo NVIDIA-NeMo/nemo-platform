@@ -9,6 +9,7 @@ OTLP query endpoint using the typed FilesClient.
 """
 
 import logging
+from collections.abc import AsyncIterator
 
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
@@ -35,8 +36,13 @@ class JobLogsClient:
             sdk: AsyncNeMoPlatform SDK instance. If not provided,
                  creates one using platform config.
         """
+        self._owns_sdk = sdk is None
         self._sdk = sdk or get_async_platform_sdk()
         self._files_client = client_from_platform(self._sdk, AsyncFilesClient)
+
+    async def aclose(self) -> None:
+        if self._owns_sdk:
+            await self._sdk.close()
 
     async def query_logs(
         self,
@@ -81,6 +87,10 @@ class JobLogsClient:
             raise
 
 
-def dep_job_logs_client() -> JobLogsClient:
+async def dep_job_logs_client() -> AsyncIterator[JobLogsClient]:
     """FastAPI dependency for JobLogsClient."""
-    return JobLogsClient()
+    client = JobLogsClient()
+    try:
+        yield client
+    finally:
+        await client.aclose()

@@ -3,7 +3,7 @@
 
 """Unit tests for auth-service Scoped Access Key lifecycle validation."""
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -20,7 +20,7 @@ def _config() -> AuthConfig:
 
 
 @pytest.mark.asyncio
-async def test_authenticator_uses_sdk_routing_and_returns_trusted_claims() -> None:
+async def test_authenticator_uses_injected_client_and_returns_trusted_claims() -> None:
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -51,7 +51,34 @@ async def test_authenticator_uses_sdk_routing_and_returns_trusted_claims() -> No
     assert result.claims.subject == "alice@example.com"
     assert result.claims.groups == ["team-ml"]
     assert result.claims.scopes == ["models:read"]
-    assert requests[0].url == httpx.URL("http://auth.internal:8080/apis/auth/authenticate")
+    assert requests[0].url == httpx.URL("http://platform.example.com/apis/auth/authenticate")
+
+
+@pytest.mark.asyncio
+async def test_aclose_closes_owned_sdk() -> None:
+    sdk = MagicMock()
+    sdk.close = AsyncMock()
+    authenticator = AccessKeyLifecycleAuthenticator(_config())
+    authenticator._sdk = sdk
+
+    await authenticator.aclose()
+
+    sdk.close.assert_awaited_once_with()
+    assert authenticator._sdk is None
+
+
+@pytest.mark.asyncio
+async def test_aclose_does_not_close_sdk_with_injected_http_client() -> None:
+    sdk = MagicMock()
+    sdk.close = AsyncMock()
+    async with httpx.AsyncClient() as http_client:
+        authenticator = AccessKeyLifecycleAuthenticator(_config(), http_client=http_client)
+        authenticator._sdk = sdk
+
+        await authenticator.aclose()
+
+    sdk.close.assert_not_awaited()
+    assert authenticator._sdk is None
 
 
 @pytest.mark.asyncio
@@ -76,6 +103,39 @@ async def test_authenticator_rejects_successful_non_access_key_response(token_ki
             return_value=PlatformConfig(base_url="http://platform.example.com", services=""),
         ):
             assert await authenticator.authenticate("candidate-token") is None
+
+
+@pytest.mark.asyncio
+async def test_authenticator_can_accept_workload_token_response() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "principal": "system:serviceaccount:nemo:job",
+                "groups": ["team-ml"],
+                "scopes": ["openid", "email"],
+                "token_kind": "workload_access_token",
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        authenticator = AccessKeyLifecycleAuthenticator(_config(), http_client=http_client)
+        with patch.object(
+            Configuration,
+            "get_platform_config",
+            return_value=PlatformConfig(base_url="http://platform.example.com", services=""),
+        ):
+            result = await authenticator.authenticate_token(
+                "workload-access-token",
+                token_kinds=("workload_access_token",),
+            )
+
+    assert isinstance(result, ResolvedBearerToken)
+    assert result.token_kind == "workload_access_token"
+    assert result.claims.subject == "system:serviceaccount:nemo:job"
+    assert result.claims.groups == ["team-ml"]
+    assert result.claims.raw_claims["nmp_token_type"] == "workload_access_token"
+    assert "jti" not in result.claims.raw_claims
 
 
 @pytest.mark.asyncio

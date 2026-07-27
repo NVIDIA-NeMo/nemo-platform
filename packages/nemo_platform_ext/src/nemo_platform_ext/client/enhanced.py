@@ -22,7 +22,7 @@ from nemo_platform import (
 )
 from nemo_platform._base_client import AsyncAPIClient, SyncAPIClient
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
-from nemo_platform_plugin.client.tls import client_verify_from_env
+from nemo_platform_plugin.client.tls import httpx_tls_config_from_env
 
 
 def _should_bootstrap_config(
@@ -185,9 +185,9 @@ class NeMoPlatform(SyncAPIClient):
         if base_url is None:
             raise RuntimeError("NeMoPlatform client initialization failed: base_url is required")
 
-        client_verify = client_verify_from_env()
-        if http_client is None and client_verify is not True:
-            http_client = DefaultHttpxClient(verify=client_verify)
+        tls_config = httpx_tls_config_from_env()
+        if http_client is None and tls_config:
+            http_client = DefaultHttpxClient(**tls_config)
 
         self.workspace = workspace
 
@@ -426,9 +426,9 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         if base_url is None:
             raise RuntimeError("NeMoPlatform client initialization failed: base_url is required")
 
-        client_verify = client_verify_from_env()
-        if http_client is None and client_verify is not True:
-            http_client = DefaultAsyncHttpxClient(verify=client_verify)
+        tls_config = httpx_tls_config_from_env()
+        if http_client is None and tls_config:
+            http_client = DefaultAsyncHttpxClient(**tls_config)
 
         self.workspace = workspace
 

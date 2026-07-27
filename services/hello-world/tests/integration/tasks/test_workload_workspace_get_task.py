@@ -33,7 +33,6 @@ def platform_base_url():
     finally:
         Configuration.clear_override(PlatformConfig)
 
-
 class _StubWorkspaces:
     """Recording fake matching the typed WorkspacesClient shape (get_workspace + .data())."""
 

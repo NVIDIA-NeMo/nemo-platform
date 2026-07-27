@@ -42,7 +42,7 @@ class _DummyService(Service):
 
 
 def _sidecar_with_events(started: threading.Event, stopped: threading.Event) -> Callable[[threading.Event], None]:
-    """Return a sidecar ``run(stop_signal)`` that signals start/stop via events."""
+    """Return a sidecar run function that signals start/stop via events."""
 
     def run(stop_signal: threading.Event) -> None:
         started.set()
@@ -71,7 +71,7 @@ def patched_registry(
     test sidecar, plus minimal auth/platform config stubs."""
     started, stopped = sidecar_events
     dummy_services: dict[str, Service] = {"models": _DummyService()}
-    dummy_sidecars: dict[str, Callable] = {"adapters": _sidecar_with_events(started, stopped)}
+    dummy_sidecars: dict[str, Callable[[threading.Event], None]] = {"adapters": _sidecar_with_events(started, stopped)}
 
     monkeypatch.setattr(runner_config, "get_available_services", lambda: dummy_services)
     monkeypatch.setattr(runner_config, "get_available_controllers", lambda: {})
@@ -95,6 +95,7 @@ def patched_registry(
     monkeypatch.setattr(server, "get_auth_config", lambda: auth_cfg)
     monkeypatch.setattr("nmp.common.auth.middleware.get_auth_config", lambda: auth_cfg)
     platform_cfg = MagicMock()
+    platform_cfg.base_url = "http://platform.local"
     platform_cfg.seed_on_startup = False
     platform_cfg.redirect_root_to_studio = False
     monkeypatch.setattr(server, "get_platform_config", lambda: platform_cfg)

@@ -155,12 +155,12 @@ def _assert_controller_healthy(controller, is_healthy=True):
 
 def _assert_sdk_initialized_correctly(mock_sdk_class_patch):
     """Assert that get_async_platform_sdk was called with correct args for Models API."""
-    # Controller initializes ONE SDK for Models API (base_url is resolved from config inside the factory)
+    # Controller initializes one SDK and lets the factory own endpoint/client selection.
     assert mock_sdk_class_patch.call_count == 1
     call_kwargs = mock_sdk_class_patch.call_args.kwargs
     assert call_kwargs["as_service"] == "models"
     assert call_kwargs["internal"] is True
-    assert "http_client" in call_kwargs
+    assert "http_client" not in call_kwargs
 
 
 def _assert_asyncio_run_called_once(mock_asyncio_run_patch):

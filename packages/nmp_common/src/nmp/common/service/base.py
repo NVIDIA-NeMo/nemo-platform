@@ -10,21 +10,43 @@ import logging
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from threading import RLock
-from typing import ClassVar, Dict, Generic, List, Optional, Self, Type, TypeVar, cast, get_args, get_origin
+from typing import Any, ClassVar, Dict, Generic, List, Optional, Self, Type, TypeVar, get_args, get_origin
 
 import httpx
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.openapi.utils import get_openapi
+from fastapi.routing import APIRoute
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.client.client import AsyncNemoClient
 from nmp.common.api.utils import register_query_param_schemas
 from nmp.common.config import Configuration, PlatformConfig, ServiceConfig
+from nmp.common.config import get_platform_config as load_platform_config
 from nmp.common.controller import Controller
 from nmp.common.entities.client import EntityClient
-from nmp.common.platform_endpoint import resolve_platform_endpoint, resolve_service_endpoint
+from nmp.common.platform_endpoint import PlatformEndpoint, resolve_platform_endpoint, resolve_service_endpoint
 
 logger = logging.getLogger(__name__)
+
+
+class _ServiceFastAPI(FastAPI):
+    """FastAPI app with NeMo Platform OpenAPI post-processing."""
+
+    nmp_openapi_summary: str | None = None
+    nmp_openapi_description: str | None = None
+
+    def openapi(self) -> dict[str, Any]:
+        if self.openapi_schema:
+            return self.openapi_schema
+        openapi_schema = get_openapi(
+            title=self.title,
+            version=self.version,
+            summary=self.nmp_openapi_summary or self.summary,
+            description=self.description if self.nmp_openapi_description is None else self.nmp_openapi_description,
+            routes=self.routes,
+            tags=self.openapi_tags,
+        )
+        self.openapi_schema = register_query_param_schemas(openapi_schema)
+        return self.openapi_schema
 
 
 @dataclass
@@ -40,7 +62,7 @@ class RouterConfig:
 TConfig = TypeVar("TConfig", bound=ServiceConfig)
 
 
-def _get_config_class_from_generic(cls: type) -> Type[ServiceConfig] | None:
+def _get_config_class_from_generic(cls: type) -> Type[TConfig] | None:
     """Extract the config class from Service[TConfig] generic parameter.
 
     Args:
@@ -62,38 +84,81 @@ class DependencyProvider:
     """
     Manages SDK, NemoClient, entity client, HTTP client, and config lifecycle for NeMo Platform services.
 
-    Provides lazy initialization, FastAPI dependency wiring, and cleanup.
+    Provides explicit lifecycle initialization, FastAPI dependency wiring, and cleanup.
 
-    The `_http_client` field supports test injection - when set, it's passed to
-    `get_async_platform_sdk()` to route requests through ASGI transport in tests.
-    See architecture/docs/http-client-injection.md for details.
+    The PlatformEndpoint owns service routing for the current PlatformConfig.
+    Tests and embedded platform assembly can still inject an explicit endpoint
+    or HTTP client before initialization.
     """
 
-    def __init__(self) -> None:
-        self._client_lock = RLock()
-        self._http_client: Optional[httpx.AsyncClient] = None
+    def __init__(self, service_name: str = "platform") -> None:
+        self._configured_http_client: Optional[httpx.AsyncClient] = None
+        self._platform_endpoint: Optional[PlatformEndpoint] = None
+        self._service_http_client: Optional[httpx.AsyncClient] = None
+        self._owns_service_http_client = False
         self._sdk_client: Optional[AsyncNeMoPlatform] = None
         self._platform_config: Optional[PlatformConfig] = None
-        self._service_name: str = "platform"
+        self._service_name = service_name
+
+    def configure_service_name(self, service_name: str) -> None:
+        """Set the service name used for downstream service-principal headers."""
+        self._service_name = service_name
+
+    def initialize(self) -> None:
+        """Create service-owned clients before request handling starts."""
+        if self._service_http_client is not None and self._sdk_client is not None:
+            return
+
+        from nmp.common.sdk_factory import get_async_platform_sdk
+
+        endpoint = self.get_platform_endpoint()
+        if self._configured_http_client is not None:
+            self._service_http_client = self._configured_http_client
+            self._owns_service_http_client = False
+        else:
+            self._service_http_client = endpoint.async_sdk_http_client()
+            self._owns_service_http_client = True
+        self._sdk_client = get_async_platform_sdk(
+            http_client=self._service_http_client,
+            base_url=endpoint.connect_base_url,
+        )
+
+    def _require_initialized(self) -> None:
+        if self._service_http_client is None or self._sdk_client is None:
+            raise RuntimeError("DependencyProvider is not initialized. Call initialize() during service startup.")
 
     def get_http_client(self) -> httpx.AsyncClient:
-        """Return the httpx.AsyncClient for this provider, creating it lazily.
+        """Return the initialized httpx.AsyncClient for this provider.
 
-        The client is transport-aware: for a ``unix://`` platform endpoint it is
-        bound to the Unix domain socket, otherwise it is the SDK's default TCP
-        client. Because this cached client is injected into the SDK and
-        NemoClient factories (which skip their own transport selection when a
-        client is supplied), building it endpoint-aware here is what makes
-        service-to-service requests work over UDS.
-
-        Each DependencyProvider manages its own HTTP client by default.
-        If you need to share a client across providers (e.g., for connection
-        pooling), you can inject the same client via _http_client.
+        The PlatformEndpoint carries resolved routing state. ``initialize()``
+        creates the concrete client before requests are handled.
         """
-        with self._client_lock:
-            if self._http_client is None:
-                self._http_client = resolve_platform_endpoint().async_sdk_http_client()
-            return self._http_client
+        self._require_initialized()
+        http_client = self._service_http_client
+        assert http_client is not None
+        return http_client
+
+    def get_platform_endpoint(self) -> PlatformEndpoint:
+        """Return the resolved PlatformEndpoint for this provider."""
+        if self._platform_endpoint is None:
+            self._platform_endpoint = resolve_platform_endpoint(self.get_platform_config())
+        return self._platform_endpoint
+
+    def configure_platform_endpoint(self, platform_endpoint: PlatformEndpoint) -> None:
+        """Use an externally resolved PlatformEndpoint before SDK/client creation."""
+        if self._service_http_client is not None or self._sdk_client is not None:
+            raise RuntimeError("Cannot configure DependencyProvider PlatformEndpoint after initialization")
+        self._platform_endpoint = platform_endpoint
+
+    def configure_http_client(self, http_client: httpx.AsyncClient) -> None:
+        """Use an externally managed HTTP client before SDK creation.
+
+        This is used by platform assembly and tests to route all service-owned
+        SDK calls through the same transport and connection pool.
+        """
+        if self._service_http_client is not None or self._sdk_client is not None:
+            raise RuntimeError("Cannot configure DependencyProvider HTTP client after initialization")
+        self._configured_http_client = http_client
 
     def get_sdk_client(self, as_service: str | None = None) -> AsyncNeMoPlatform:
         """Return the async platform SDK client.
@@ -108,18 +173,19 @@ class DependencyProvider:
         Returns:
             SDK client - cached instance if as_service is None, new instance otherwise.
         """
-        from nmp.common.sdk_factory import get_async_platform_sdk
+        self._require_initialized()
 
         # When as_service is specified, return a fresh SDK with service credentials.
         # This is needed for startup/background code where no user auth context exists.
         if as_service is not None:
-            return get_async_platform_sdk(as_service=as_service, internal=True, http_client=self.get_http_client())
+            from nmp.common.sdk_factory import get_service_scoped_sdk
+
+            return get_service_scoped_sdk(self.get_sdk_client(), as_service)
 
         # For request handling, use cached SDK. EntityClient adds auth headers per-request.
-        with self._client_lock:
-            if self._sdk_client is None:
-                self._sdk_client = get_async_platform_sdk(http_client=self.get_http_client())
-            return self._sdk_client
+        sdk_client = self._sdk_client
+        assert sdk_client is not None
+        return sdk_client
 
     def get_entity_client(self, as_service: str | None = None) -> Optional[EntityClient]:
         """Return the EntityClient.
@@ -157,19 +223,20 @@ class DependencyProvider:
         Uses the cached base SDK and applies per-request headers via .with_options()
         (lightweight — reuses the HTTP connection pool).
         """
-        from nmp.common.sdk_factory import with_options_preserving_request_router
+        from nmp.common.sdk_factory import with_options_reusing_http_client
         from nmp.common.service.headers import build_downstream_service_headers
 
         base_sdk = self.get_sdk_client()
         headers = build_downstream_service_headers(self._service_name)
 
-        return with_options_preserving_request_router(base_sdk, set_default_headers=headers)
+        return with_options_reusing_http_client(base_sdk, set_default_headers=headers)
 
     def get_platform_config(self) -> PlatformConfig:
         """Return the PlatformConfig (lazily initialized)."""
         if self._platform_config is None:
-            self._platform_config = Configuration.get_platform_config()
-        return self._platform_config
+            self._platform_config = load_platform_config()
+        platform_config = self._platform_config
+        return platform_config
 
     def get_request_scoped_sdk(self) -> AsyncNeMoPlatform:
         """Return a request-scoped SDK with current auth and OTEL headers.
@@ -214,14 +281,22 @@ class DependencyProvider:
             app.dependency_overrides[get_service_config] = lambda: service._service_config
 
     async def close(self) -> None:
-        """Close the provider-owned HTTP transport and clear cached wrappers."""
-        with self._client_lock:
-            http_client = self._http_client
-            self._http_client = None
-            self._sdk_client = None
+        """Close managed clients.
 
-        if http_client is not None:
-            await http_client.aclose()
+        Provider-created HTTP clients are closed here. Externally configured
+        clients are caller-owned and only detached from this provider.
+        """
+        service_http_client = self._service_http_client
+        sdk_client = self._sdk_client
+        owns_service_http_client = self._owns_service_http_client
+        self._service_http_client = None
+        self._configured_http_client = None
+        self._owns_service_http_client = False
+        self._sdk_client = None
+        if service_http_client is not None and owns_service_http_client:
+            await service_http_client.aclose()
+        elif service_http_client is None and sdk_client is not None:
+            await sdk_client.close()
 
 
 class Service(ABC, Generic[TConfig]):
@@ -280,7 +355,10 @@ class Service(ABC, Generic[TConfig]):
         self.module_name = module_name
         self._app: Optional[FastAPI] = None
         self._startup_background_tasks: list[asyncio.Task] = []
-        self._dependency_provider = dependency_provider if dependency_provider is not None else DependencyProvider()
+        self._dependency_provider = (
+            dependency_provider if dependency_provider is not None else DependencyProvider(service_name=name)
+        )
+        self._dependency_provider.configure_service_name(name)
         if dependencies is not None:
             self._dependencies = list(dependencies)
         else:
@@ -288,9 +366,7 @@ class Service(ABC, Generic[TConfig]):
 
         # Extract config class from generic type parameter and load config
         config_class = _get_config_class_from_generic(type(self))
-        self._service_config = (
-            cast(TConfig | None, Configuration.get_service_config(config_class)) if config_class else None
-        )
+        self._service_config = Configuration.get_service_config(config_class) if config_class else None
 
     @property
     def dependency_provider(self) -> DependencyProvider:
@@ -445,6 +521,7 @@ class Service(ABC, Generic[TConfig]):
         async def lifespan(app: FastAPI):
             """Lifespan context manager for the FastAPI app."""
             logger.info("Starting service...", extra={"service": self.name})
+            self._dependency_provider.initialize()
 
             # Run service-specific startup initialization (e.g., database setup)
             await self.on_startup()
@@ -470,13 +547,14 @@ class Service(ABC, Generic[TConfig]):
         router_configs = self.get_routers()
         openapi_tags: List[Dict[str, str]] = [{"name": rc.tag, "description": rc.description} for rc in router_configs]
 
-        app = FastAPI(
+        app = _ServiceFastAPI(
             title=self.title,
             description=self.description,
             version=self.version,
             openapi_tags=openapi_tags,
             lifespan=lifespan,
         )
+        app.nmp_openapi_summary = f"This is the OpenAPI Schema for the {self.title}."
 
         # Store reference to app for use in on_startup
         self._app = app
@@ -497,34 +575,11 @@ class Service(ABC, Generic[TConfig]):
         # Include service-specific routers, tagging any routes that have no tags yet
         for rc in router_configs:
             for route in rc.router.routes:
-                if hasattr(route, "tags") and not route.tags:
+                if isinstance(route, APIRoute) and not route.tags:
                     route.tags = [rc.tag]
             app.include_router(rc.router, prefix=rc.prefix)
 
-        # Setup custom OpenAPI schema
-        self._setup_custom_openapi(app, openapi_tags)
-
         return app
-
-    def _setup_custom_openapi(self, app: FastAPI, openapi_tags: List[Dict[str, str]]) -> None:
-        """Configure custom OpenAPI schema generation."""
-
-        def custom_openapi():
-            if app.openapi_schema:
-                return app.openapi_schema
-            openapi_schema = get_openapi(
-                title=self.title,
-                version=self.version,
-                summary=f"This is the OpenAPI Schema for the {self.title}.",
-                description="",
-                routes=app.routes,
-                tags=openapi_tags,
-            )
-            openapi_schema = register_query_param_schemas(openapi_schema)
-            app.openapi_schema = openapi_schema
-            return app.openapi_schema
-
-        app.openapi = custom_openapi  # type: ignore[method-assign]
 
     # =========================================================================
     # Startup and readiness

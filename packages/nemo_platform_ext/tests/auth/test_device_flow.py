@@ -26,7 +26,7 @@ from nemo_platform_ext.auth.device_flow import (
     authenticate_with_password_grant,
     refresh_access_token,
 )
-from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
+from nemo_platform_plugin.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
 
 
 class TestDeviceCodeResponse:

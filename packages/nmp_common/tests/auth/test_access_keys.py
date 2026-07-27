@@ -4,6 +4,7 @@
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock
 
 import httpx
 import jwt
@@ -14,17 +15,18 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from nemo_platform_plugin.auth.access_keys.issuer import AccessKeyFeatureDisabledError
 from nemo_platform_plugin.auth.access_keys.types import AccessKeyCreateRequest
-from nmp.common import http_clients
 from nmp.common.auth.access_keys import (
     ACCESS_KEY_TOKEN_TYPE,
     AccessKeyIssuerService,
     AccessKeyValidationError,
     access_key_jwks_uri,
     clear_access_key_signing_key_cache,
+    close_access_key_jwks_clients,
     public_jwk_from_private_key_pem,
     public_jwk_from_private_key_pem_async,
     validate_access_key_token,
 )
+from nmp.common.auth.jwks import AsyncJWKSClient
 from nmp.common.auth.models import Principal
 from nmp.common.config import AuthConfig
 from nmp.common.config.base import AccessKeyConfig, TokenSigningConfig
@@ -268,6 +270,16 @@ def test_access_key_public_jwk_uses_cached_private_key_file(
     assert first == second
     assert first["kid"] == "access-key"
     assert load_count == 1
+
+
+async def test_close_access_key_jwks_clients_closes_cached_clients() -> None:
+    client = AsyncMock()
+    access_keys_mod._ACCESS_KEY_JWKS_CLIENTS["https://auth.example.test/jwks"] = client
+
+    await close_access_key_jwks_clients()
+
+    client.aclose.assert_awaited_once_with()
+    assert access_keys_mod._ACCESS_KEY_JWKS_CLIENTS == {}
 
 
 def test_access_key_private_key_uses_cached_private_key_file_for_token_creation(
@@ -565,38 +577,36 @@ async def test_validate_access_key_token_fetches_remote_jwks_once_with_async_cli
 
     class ForbiddenPyJWKClient:
         def __init__(self, *args, **kwargs):
-            raise AssertionError("Access-key validation should use the shared async HTTP client")
+            raise AssertionError("Access-key validation should use async JWKS fetching")
 
-    class FakeResponse:
-        def raise_for_status(self) -> None:
-            pass
+    calls = 0
 
-        def json(self) -> dict:
-            return jwks
+    async def jwks_handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        assert str(request.url) == jwks_uri
+        timeout = request.extensions["timeout"]
+        assert all(value == 10.0 for value in timeout.values())
+        calls += 1
+        return httpx.Response(200, json=jwks, request=request)
 
-    class FakeAsyncClient:
-        def __init__(self) -> None:
-            self.calls = 0
+    async with httpx.AsyncClient(transport=httpx.MockTransport(jwks_handler)) as http_client:
 
-        async def get(self, url: str, *, timeout: float) -> FakeResponse:
-            assert url == jwks_uri
-            assert timeout == 10.0
-            self.calls += 1
-            return FakeResponse()
+        def jwks_client_factory(uri: str, *, lifespan: int) -> AsyncJWKSClient:
+            assert uri == jwks_uri
+            return AsyncJWKSClient(uri, lifespan=lifespan, http_client=http_client)
 
-    fake_client = FakeAsyncClient()
-    monkeypatch.setattr(access_keys_mod, "access_key_jwks_uri", lambda config: jwks_uri)
-    monkeypatch.setattr(http_clients, "shared_async_http_client", lambda: fake_client)
-    monkeypatch.setattr(access_keys_mod.jwt, "PyJWKClient", ForbiddenPyJWKClient)
+        monkeypatch.setattr(access_keys_mod, "access_key_jwks_uri", lambda config: jwks_uri)
+        monkeypatch.setattr(access_keys_mod, "AsyncJWKSClient", jwks_client_factory)
+        monkeypatch.setattr(access_keys_mod.jwt, "PyJWKClient", ForbiddenPyJWKClient)
 
-    first_claims = await validate_access_key_token(config, created.token)
-    second_claims = await validate_access_key_token(config, created.token)
+        first_claims = await validate_access_key_token(config, created.token)
+        second_claims = await validate_access_key_token(config, created.token)
 
-    assert first_claims is not None
-    assert second_claims is not None
-    assert first_claims.subject == "alice@example.com"
-    assert second_claims.subject == "alice@example.com"
-    assert fake_client.calls == 1
+        assert first_claims is not None
+        assert second_claims is not None
+        assert first_claims.subject == "alice@example.com"
+        assert second_claims.subject == "alice@example.com"
+        assert calls == 1
 
 
 async def test_validate_access_key_token_propagates_remote_jwks_fetch_failure(tmp_path, monkeypatch):
@@ -606,23 +616,23 @@ async def test_validate_access_key_token_propagates_remote_jwks_fetch_failure(tm
     created = await issuer.create_async(AccessKeyCreateRequest(name="ci-intake", expires_in_seconds=None))
     jwks_uri = "https://auth.example.test/jwks"
 
-    class FakeResponse:
-        def raise_for_status(self) -> None:
-            request = httpx.Request("GET", jwks_uri)
-            response = httpx.Response(503, request=request)
-            raise httpx.HTTPStatusError("JWKS unavailable", request=request, response=response)
+    async def jwks_handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == jwks_uri
+        timeout = request.extensions["timeout"]
+        assert all(value == 10.0 for value in timeout.values())
+        return httpx.Response(503, request=request)
 
-    class FakeAsyncClient:
-        async def get(self, url: str, *, timeout: float) -> FakeResponse:
-            assert url == jwks_uri
-            assert timeout == 10.0
-            return FakeResponse()
+    async with httpx.AsyncClient(transport=httpx.MockTransport(jwks_handler)) as http_client:
 
-    monkeypatch.setattr(access_keys_mod, "access_key_jwks_uri", lambda config: jwks_uri)
-    monkeypatch.setattr(http_clients, "shared_async_http_client", lambda: FakeAsyncClient())
+        def jwks_client_factory(uri: str, *, lifespan: int) -> AsyncJWKSClient:
+            assert uri == jwks_uri
+            return AsyncJWKSClient(uri, lifespan=lifespan, http_client=http_client)
 
-    with pytest.raises(httpx.HTTPStatusError):
-        await validate_access_key_token(config, created.token)
+        monkeypatch.setattr(access_keys_mod, "access_key_jwks_uri", lambda config: jwks_uri)
+        monkeypatch.setattr(access_keys_mod, "AsyncJWKSClient", jwks_client_factory)
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await validate_access_key_token(config, created.token)
 
 
 async def test_validate_access_key_token_rejects_wrong_audience(tmp_path):

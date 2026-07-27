@@ -17,7 +17,6 @@ from nmp.common.api.parsed_filter import ParsedFilter
 from nmp.common.auth import AuthClient
 from nmp.common.entities import ALL_WORKSPACES, ListResponse
 from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError
-from nmp.common.sdk_factory import get_async_platform_sdk
 from nmp.core.models.api.permissions import can_set_tool_call_plugin, check_fileset_access
 from nmp.core.models.config import config
 from nmp.core.models.entities import Adapter, Model, ModelDeploymentConfig
@@ -235,9 +234,9 @@ async def validate_tool_call_plugin_allowed(auth_client: AuthClient, workspace: 
 class ModelEntityService:
     """Service layer for Model Entity operations."""
 
-    def __init__(self, entity_client: EntityClient, sdk: AsyncNeMoPlatform | None = None):
+    def __init__(self, entity_client: EntityClient, sdk: AsyncNeMoPlatform):
         self.entity_client = entity_client
-        self.sdk = sdk or get_async_platform_sdk()
+        self.sdk = sdk
 
     async def _fetch_all_entities(
         self,

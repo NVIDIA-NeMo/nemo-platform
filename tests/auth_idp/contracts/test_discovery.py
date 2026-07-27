@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pytest
 from nemo_platform_ext.auth.helpers import discover_nmp_config
-from nemo_platform_ext.client.tls import client_verify_from_env
+from nemo_platform_plugin.client.tls import httpx_tls_config_from_env
 
 from tests.auth_idp.common import require_capability
 from tests.auth_idp.device_flow import (
@@ -23,10 +23,14 @@ pytestmark = [
 ]
 
 
+def _runtime_verify(auth_idp_runtime) -> str | bool:
+    return getattr(auth_idp_runtime, "verify", httpx_tls_config_from_env().get("verify", True))
+
+
 def test_provider_gateway_serves_oidc_discovery(auth_idp_case, auth_idp_runtime):
     require_capability(auth_idp_case, "gateway_discovery")
 
-    verify = getattr(auth_idp_runtime, "verify", client_verify_from_env())
+    verify = _runtime_verify(auth_idp_runtime)
     response = httpx.get(auth_idp_runtime.discovery_url, timeout=10.0, verify=verify)
 
     response.raise_for_status()
@@ -51,7 +55,7 @@ def test_provider_device_authorization_endpoint_issues_user_code(auth_idp_case, 
     require_capability(auth_idp_case, "device_flow")
 
     oidc = discover_nmp_config(auth_idp_runtime.gateway_base_url)
-    verify = getattr(auth_idp_runtime, "verify", client_verify_from_env())
+    verify = _runtime_verify(auth_idp_runtime)
     device_authorization_endpoint = with_url_origin(
         oidc.device_authorization_endpoint,
         auth_idp_runtime.gateway_base_url,
@@ -88,7 +92,7 @@ def test_provider_device_flow_returns_refresh_token(auth_idp_case, auth_idp_runt
     assert oidc.device_authorization_endpoint
     assert "offline_access" in oidc.default_scopes.split()
 
-    verify = getattr(auth_idp_runtime, "verify", client_verify_from_env())
+    verify = _runtime_verify(auth_idp_runtime)
     device_authorization_endpoint = with_url_origin(
         oidc.device_authorization_endpoint,
         auth_idp_runtime.gateway_base_url,

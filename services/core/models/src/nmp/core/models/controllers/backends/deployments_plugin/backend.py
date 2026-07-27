@@ -3,6 +3,7 @@
 
 """Models ServiceBackend backed by nemo-deployments plugin entities."""
 
+import asyncio
 import logging
 from typing import Any
 
@@ -41,6 +42,7 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
     def __init__(self, nmp_sdk: AsyncNeMoPlatform, config: dict[str, Any], huggingface_model_puller: str) -> None:
         self._backend_config: DeploymentsPluginConfig | None = None
         self._entities: NemoEntitiesClient | None = None
+        self._entities_sdk: AsyncNeMoPlatform | None = None
         self._huggingface_model_puller = huggingface_model_puller
         super().__init__(nmp_sdk, config)
 
@@ -48,11 +50,16 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
         self._backend_config = DeploymentsPluginConfig(**self._config)
 
     def shutdown(self) -> None:
+        entities_sdk = self._entities_sdk
         self._entities = None
+        self._entities_sdk = None
+        if entities_sdk is not None:
+            asyncio.run(entities_sdk.close())
 
     def _entity_client(self) -> NemoEntitiesClient:
         if self._entities is None:
             sdk = get_async_platform_sdk(as_service="models", internal=True)
+            self._entities_sdk = sdk
             self._entities = NemoEntitiesClient(client_from_platform(sdk, AsyncEntitiesClient))
         return self._entities
 

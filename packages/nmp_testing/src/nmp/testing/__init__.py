@@ -15,6 +15,7 @@ API testing:
 - create_test_client: Helper for creating FastAPI test clients with in-memory storage
 - ClientContext: Container for all client types returned by create_test_client
 - TEST_USER_EMAIL, TEST_ADMIN_EMAIL: Constants for test principals
+- routed_mock_client / routed_async_mock_client: Mock httpx clients that apply platform endpoint routing
 - subprocess_job_executor_patch: Opt into cpu/default to subprocess/default translation
 
 Utilities:
@@ -60,6 +61,7 @@ from .docker import (
     ensure_mock_sidecar_image,
     get_worker_port_range,
 )
+from .http_clients import RoutedMockTransport, routed_async_mock_client, routed_mock_client, routed_mock_transport
 from .jobs import subprocess_job_executor_patch
 from .notebooks import (
     cleanup_temp_venv_and_kernel,
@@ -96,6 +98,10 @@ __all__ = [
     "SDKTestClientAdapter",
     "TEST_USER_EMAIL",
     "TEST_ADMIN_EMAIL",
+    "RoutedMockTransport",
+    "routed_mock_transport",
+    "routed_mock_client",
+    "routed_async_mock_client",
     "subprocess_job_executor_patch",
     # Utilities
     "short_unique_name",

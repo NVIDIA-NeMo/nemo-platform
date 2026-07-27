@@ -17,8 +17,8 @@ import yaml
 from nemo_platform import AsyncNeMoPlatform, DefaultHttpxClient, NeMoPlatform, not_given
 from nemo_platform_ext.auth.helpers import NMPOIDCConfig, decode_jwt_claims
 from nemo_platform_ext.client.factory import create_client
-from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+from nemo_platform_plugin.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
 
 
 def _make_jwt(claims: dict) -> str:
@@ -810,7 +810,7 @@ class TestClientConstructorBootstrapBypass:
 
 class TestAsyncNeMoPlatformInit:
     @pytest.mark.asyncio
-    @patch("nemo_platform.client.factory.discover_nmp_config", return_value=_MOCK_NMP_CONFIG)
+    @patch("nemo_platform_ext.client.factory.discover_nmp_config", return_value=_MOCK_NMP_CONFIG)
     async def test_async_client_uses_config_for_api_key(self, _mock_discover, tmp_path):
         config_path = _write_config(tmp_path, user_type="api-key", api_key="nvapi-test-key-123")
 

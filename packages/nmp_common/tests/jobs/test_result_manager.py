@@ -67,6 +67,70 @@ def test_result_manager_factory_fileset_async(mock_platform_config, mock_fs_clas
     assert mgr.workspace == "my-workspace"
 
 
+@patch("nmp.common.jobs.result_manager.get_async_platform_sdk")
+def test_result_manager_factory_defaults_to_one_owned_async_sdk(mock_get_sdk):
+    mock_sdk = MagicMock()
+    mock_get_sdk.return_value = mock_sdk
+
+    mgr = rm.result_manager_factory(job_name="test-job", workspace="my-workspace")
+
+    mock_get_sdk.assert_called_once_with()
+    assert mgr.files_sdk is mock_sdk
+    assert mgr.jobs_sdk is mock_sdk
+    assert mgr.owns_files_sdk is True
+    assert mgr.owns_jobs_sdk is False
+
+
+@patch("nmp.common.jobs.result_manager.get_platform_sdk")
+def test_result_manager_factory_defaults_to_one_owned_sync_sdk(mock_get_sdk):
+    mock_sdk = MagicMock()
+    mock_get_sdk.return_value = mock_sdk
+
+    mgr = rm.result_manager_factory(job_name="test-job", workspace="my-workspace", is_async=False)
+
+    mock_get_sdk.assert_called_once_with()
+    assert mgr.files_sdk is mock_sdk
+    assert mgr.jobs_sdk is mock_sdk
+    assert mgr.owns_files_sdk is True
+    assert mgr.owns_jobs_sdk is False
+
+
+def test_result_manager_close_closes_owned_sync_sdk_once():
+    mock_sdk = MagicMock()
+    mgr = rm.ResultManager(
+        job_name="test-job",
+        workspace="my-workspace",
+        file_manager_cls=FilesetFileManager,
+        files_sdk=mock_sdk,
+        jobs_sdk=mock_sdk,
+        owns_files_sdk=True,
+        owns_jobs_sdk=True,
+    )
+
+    mgr.close()
+
+    mock_sdk.close.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_result_manager_aclose_closes_owned_async_sdk_once():
+    mock_sdk = MagicMock()
+    mock_sdk.close = AsyncMock()
+    mgr = rm.AsyncResultManager(
+        job_name="test-job",
+        workspace="my-workspace",
+        file_manager_cls=AsyncFilesetFileManager,
+        files_sdk=mock_sdk,
+        jobs_sdk=mock_sdk,
+        owns_files_sdk=True,
+        owns_jobs_sdk=True,
+    )
+
+    await mgr.aclose()
+
+    mock_sdk.close.assert_awaited_once_with()
+
+
 @pytest.mark.asyncio
 @patch("nmp.common.jobs.result_manager.result_manager_factory")
 async def test_download_from_result_info(mock_factory, tmp_path, mock_sdk):
@@ -267,6 +331,7 @@ async def test_create_result_wraps_transport_errors_async(
 async def test_download_from_result_info_defaults_sdk(mock_get_sdk, mock_factory, tmp_path):
     """Test that download_from_result_info auto-creates SDK when files_sdk is None."""
     mock_sdk = MagicMock()
+    mock_sdk.close = AsyncMock()
     mock_get_sdk.return_value = mock_sdk
 
     test_file = tmp_path / "artifact.bin"
@@ -288,3 +353,4 @@ async def test_download_from_result_info_defaults_sdk(mock_get_sdk, mock_factory
         workspace="workspace",
         files_sdk=mock_sdk,
     )
+    mock_sdk.close.assert_awaited_once_with()

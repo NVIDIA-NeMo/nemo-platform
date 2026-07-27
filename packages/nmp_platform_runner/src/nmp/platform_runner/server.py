@@ -10,9 +10,8 @@ import inspect
 import logging
 import os
 import threading
-from collections.abc import Callable, Mapping, MutableMapping
+from collections.abc import Mapping, MutableMapping
 from contextlib import asynccontextmanager
-from typing import cast
 
 import httpx
 import uvicorn
@@ -22,7 +21,6 @@ from fastapi.responses import JSONResponse
 from nmp.common.api.utils import install_query_param_schema_openapi_hook
 from nmp.common.auth import AuthorizationMiddleware
 from nmp.common.config import get_auth_config, get_platform_config
-from nmp.common.http_clients import close_shared_http_clients
 from nmp.common.observability import initialize_obs, setup_fastapi_instrumentations, setup_global_instrumentations
 from nmp.common.observability.context import create_app_context_dependency
 from nmp.common.pyleak import detect_blocking
@@ -160,11 +158,17 @@ def create_app(
             )
         )
 
+    if http_client is not None:
+        for service_instance in services:
+            service_instance.dependency_provider.configure_http_client(http_client)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logger.info("Starting Nemo Platform server")
         controller_threads = []
         platform_seed_task: asyncio.Task[None] | None = None
+        for service_instance in services:
+            service_instance.dependency_provider.initialize()
         if controller_run_funcs:
             logger.info("Starting controllers in lifespan: %s", list(controller_run_funcs))
             for name, run_func in controller_run_funcs.items():
@@ -217,8 +221,9 @@ def create_app(
         for thread in controller_threads:
             thread.join(timeout=5)
 
-        await close_shared_http_clients()
         logger.info("Shutting down Nemo Platform API server")
+        for service_instance in reversed(services):
+            await service_instance.on_shutdown()
 
     app = FastAPI(
         title="Nemo Platform API",
@@ -289,9 +294,9 @@ def create_app(
 
 def _load_run_functions(
     names: list[str],
-    registry: Mapping[str, str | Callable[[threading.Event], object]],
-) -> dict[str, Callable[[threading.Event], object]]:
-    run_funcs: dict[str, Callable[[threading.Event], object]] = {}
+    registry: Mapping[str, str | ControllerRunFunc],
+) -> dict[str, ControllerRunFunc]:
+    run_funcs: dict[str, ControllerRunFunc] = {}
     for name in names:
         value = registry[name]
         if isinstance(value, str):
@@ -485,9 +490,9 @@ def create_default_app() -> FastAPI:
                 "Unknown controller %r requested via NMP_CONTROLLERS=%r. Available controllers: %s"
                 % (controller_name, controller_names_env, available)
             )
-        if callable(controller_value):
-            controller_run_funcs[controller_name] = cast(ControllerRunFunc, controller_value)
-        else:
+        if isinstance(controller_value, str):
             controller_run_funcs[controller_name] = load_controller_run_func(controller_name, controller_value)
+        else:
+            controller_run_funcs[controller_name] = controller_value
 
     return create_app(services, controller_run_funcs=controller_run_funcs)

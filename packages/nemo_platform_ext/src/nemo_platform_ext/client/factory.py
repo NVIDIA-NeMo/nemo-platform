@@ -67,6 +67,7 @@ from nemo_platform import (
     not_given,
 )
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+from nemo_platform_plugin.client.tls import httpx_tls_config_from_env
 
 from nemo_platform_ext.auth.helpers import NMPOIDCConfig, build_effective_scope, discover_nmp_config
 from nemo_platform_ext.auth.token_provider import (
@@ -74,7 +75,6 @@ from nemo_platform_ext.auth.token_provider import (
     TokenSet,
 )
 from nemo_platform_ext.auth.workload_exchange import WorkloadTokenExchangeProvider
-from nemo_platform_ext.client.tls import client_verify_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -634,7 +634,7 @@ def build_client_init_kwargs(
     http_client = DefaultHttpxClient(
         event_hooks={"request": [hook], "response": []},
         follow_redirects=True,
-        verify=client_verify_from_env(),
+        **httpx_tls_config_from_env(),
     )
     return ClientInitConfig(
         base_url=bootstrap.base_url,
@@ -677,7 +677,7 @@ def build_async_client_init_kwargs(
     http_client = DefaultAsyncHttpxClient(
         event_hooks={"request": [hook], "response": []},
         follow_redirects=True,
-        verify=client_verify_from_env(),
+        **httpx_tls_config_from_env(),
     )
     return ClientInitConfig(
         base_url=bootstrap.base_url,

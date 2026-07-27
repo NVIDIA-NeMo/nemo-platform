@@ -3,8 +3,9 @@
 
 """Backend registry for Models Controller service."""
 
+from collections.abc import Mapping
 from logging import getLogger
-from typing import Dict, Self
+from typing import Any, Dict, Protocol, Self
 
 from nemo_platform import AsyncNeMoPlatform
 from nmp.core.models.controllers.backends.backends import ServiceBackend
@@ -23,9 +24,19 @@ BackendConfig = DeploymentsPluginBackendConfigModel
 # Type alias for the backend name
 BackendName = str
 
+
+class BackendFactory(Protocol):
+    def __call__(
+        self,
+        nmp_sdk: AsyncNeMoPlatform,
+        config: dict[str, Any],
+        huggingface_model_puller: str,
+    ) -> ServiceBackend: ...
+
+
 # The deployments_plugin backend is resolved lazily because it imports the
 # optional `nemo_deployments_plugin` package.
-backend_classes: Dict[BackendName, type[ServiceBackend]] = {}
+backend_classes: Dict[BackendName, BackendFactory] = {}
 
 _LAZY_BACKEND_NAMES = frozenset({"deployments_plugin"})
 
@@ -37,8 +48,8 @@ _DEPLOYMENTS_PLUGIN_IMPORT_ERROR = (
 
 
 def _resolve_backend_class(
-    name: BackendName, available_backends: Dict[BackendName, type[ServiceBackend]]
-) -> type[ServiceBackend]:
+    name: BackendName, available_backends: Mapping[BackendName, BackendFactory]
+) -> BackendFactory:
     """Return the backend class for ``name``, importing optional backends lazily."""
     if name in available_backends:
         return available_backends[name]
@@ -83,9 +94,9 @@ class BackendRegistry:
     def from_config(
         cls,
         nmp_sdk: AsyncNeMoPlatform,
-        backend_configs: Dict[BackendName, BackendConfig],
+        backend_configs: Mapping[BackendName, BackendConfig],
         huggingface_model_puller: str,
-        available_backends: Dict[BackendName, type[ServiceBackend]] | None = None,
+        available_backends: Mapping[BackendName, BackendFactory] | None = None,
     ) -> Self:
         """Create a BackendRegistry from backend configurations.
 

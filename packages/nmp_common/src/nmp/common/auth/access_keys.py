@@ -93,6 +93,13 @@ def clear_access_key_signing_key_cache() -> None:
     _ACCESS_KEY_JWKS_CLIENTS.clear()
 
 
+async def close_access_key_jwks_clients() -> None:
+    clients = list(_ACCESS_KEY_JWKS_CLIENTS.values())
+    _ACCESS_KEY_JWKS_CLIENTS.clear()
+    for client in clients:
+        await client.aclose()
+
+
 def _groups_claim_for_gateway_header(groups: list[str]) -> str | None:
     groups_claim = ",".join(group.strip() for group in groups if group.strip())
     return groups_claim or None

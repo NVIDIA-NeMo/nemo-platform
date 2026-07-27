@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -19,6 +20,30 @@ from nemo_platform_plugin.sdk_provider import (
     get_task_sdk,
     set_sdk_provider,
 )
+
+
+class _FakeExchangeProvider:
+    def get_access_token(self) -> str:
+        return "exchanged-token"
+
+    async def get_access_token_async(self) -> str:
+        return "exchanged-token"
+
+
+@pytest.fixture
+def stub_workload_exchange(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+    captured: dict[str, str] = {}
+
+    def _fake(*, base_url, subject_token_file):
+        captured["base_url"] = base_url
+        captured["subject_token_file"] = str(subject_token_file)
+        return _FakeExchangeProvider()
+
+    monkeypatch.setattr(
+        "nemo_platform_plugin.client.oidc_factory.resolve_workload_exchange_provider",
+        _fake,
+    )
+    return captured
 
 
 def _xnmp(sdk) -> dict[str, str]:
@@ -128,15 +153,15 @@ class TestDefaultSDKProvider:
         sdk = provider.get_task_sdk("test")
         assert sdk.base_url == "http://localhost:8080"
 
-    def test_get_task_sdk_uses_workload_identity_when_token_file_configured(self, monkeypatch, tmp_path):
+    def test_get_task_sdk_uses_workload_identity_when_token_file_configured(
+        self, monkeypatch, tmp_path, caplog, stub_workload_exchange
+    ):
         subject_token_file = tmp_path / "workload-token"
         subject_token_file.write_text("subject-token-from-file\n", encoding="utf-8")
         monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
         monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
-        monkeypatch.setenv(
-            "NMP_PRINCIPAL",
-            json.dumps({"id": "creator@ex.com", "email": "creator@ex.com", "groups": ["team"]}),
-        )
+        monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
+        caplog.set_level(logging.WARNING, logger="nemo_platform_plugin.sdk_provider")
 
         provider = DefaultSDKProvider()
         sdk = provider.get_task_sdk("evaluator")
@@ -144,8 +169,17 @@ class TestDefaultSDKProvider:
             assert sdk.default_headers["X-NMP-Internal"] == "true"
             assert "X-NMP-Principal-Id" not in sdk.default_headers
             assert "X-NMP-Principal-On-Behalf-Of" not in sdk.default_headers
+            request = sdk._client.build_request("GET", "http://test:9090/apis/entities/v2/workspaces/default")
+            auth = sdk._client.auth
+            assert auth is not None
+            response = next(auth.sync_auth_flow(request))
+            assert response is request
+            assert request.headers["Authorization"] == "Bearer exchanged-token"
         finally:
             sdk.close()
+        assert stub_workload_exchange["base_url"] == "http://test:9090"
+        assert stub_workload_exchange["subject_token_file"] == str(subject_token_file)
+        assert "will authenticate as service:evaluator without on-behalf-of delegation" not in caplog.text
 
     def test_get_platform_sdk_as_service(self, monkeypatch):
         monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
@@ -156,6 +190,29 @@ class TestDefaultSDKProvider:
 
         assert sdk.default_headers["X-NMP-Principal-Id"] == "service:my-svc"
         assert sdk.default_headers["X-NMP-Internal"] == "true"
+
+    def test_get_platform_sdk_rejects_workload_identity_with_principal_env(self, monkeypatch, tmp_path):
+        subject_token_file = tmp_path / "workload-token"
+        subject_token_file.write_text("subject-token-from-file\n", encoding="utf-8")
+        monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+        monkeypatch.setenv(
+            "NMP_PRINCIPAL",
+            json.dumps({"id": "creator@ex.com", "email": "creator@ex.com", "groups": ["team"]}),
+        )
+
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            DefaultSDKProvider().get_platform_sdk()
+
+    def test_get_platform_sdk_rejects_workload_identity_with_service_headers(self, monkeypatch, tmp_path):
+        subject_token_file = tmp_path / "workload-token"
+        subject_token_file.write_text("subject-token-from-file\n", encoding="utf-8")
+        monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+        monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
+
+        with pytest.raises(ValueError, match="trusted principal headers"):
+            DefaultSDKProvider().get_platform_sdk(as_service="my-svc", internal=True)
 
     def test_get_platform_sdk_on_behalf_of(self, monkeypatch):
         monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
@@ -218,7 +275,33 @@ class TestAsyncTaskSdk:
         assert _xnmp(provider.get_async_task_sdk("evaluator")) == _xnmp(provider.get_task_sdk("evaluator"))
 
     @pytest.mark.asyncio
-    async def test_async_task_sdk_uses_workload_identity_when_token_file_configured(self, monkeypatch, tmp_path):
+    async def test_async_task_sdk_uses_workload_identity_when_token_file_configured(
+        self, monkeypatch, tmp_path, stub_workload_exchange
+    ):
+        subject_token_file = tmp_path / "workload-token"
+        subject_token_file.write_text("subject-token-from-file\n", encoding="utf-8")
+        monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+        monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
+
+        sdk = DefaultSDKProvider().get_async_task_sdk("evaluator")
+        try:
+            assert sdk.default_headers["X-NMP-Internal"] == "true"
+            assert "X-NMP-Principal-Id" not in sdk.default_headers
+            assert "X-NMP-Principal-On-Behalf-Of" not in sdk.default_headers
+            request = sdk._client.build_request("GET", "http://test:9090/apis/entities/v2/workspaces/default")
+            auth = sdk._client.auth
+            assert auth is not None
+            response = await anext(auth.async_auth_flow(request))
+            assert response is request
+            assert request.headers["Authorization"] == "Bearer exchanged-token"
+        finally:
+            await sdk.close()
+        assert stub_workload_exchange["base_url"] == "http://test:9090"
+        assert stub_workload_exchange["subject_token_file"] == str(subject_token_file)
+
+    @pytest.mark.asyncio
+    async def test_async_task_sdk_rejects_workload_identity_with_principal_env(self, monkeypatch, tmp_path):
         subject_token_file = tmp_path / "workload-token"
         subject_token_file.write_text("subject-token-from-file\n", encoding="utf-8")
         monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
@@ -228,13 +311,8 @@ class TestAsyncTaskSdk:
             json.dumps({"id": "creator@ex.com", "email": "creator@ex.com", "groups": ["team"]}),
         )
 
-        sdk = DefaultSDKProvider().get_async_task_sdk("evaluator")
-        try:
-            assert sdk.default_headers["X-NMP-Internal"] == "true"
-            assert "X-NMP-Principal-Id" not in sdk.default_headers
-            assert "X-NMP-Principal-On-Behalf-Of" not in sdk.default_headers
-        finally:
-            await sdk.close()
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            DefaultSDKProvider().get_async_task_sdk("evaluator")
 
 
 # ---------------------------------------------------------------------------
@@ -246,8 +324,14 @@ class _CustomProvider:
     def get_task_sdk(self, service_name: str) -> NeMoPlatform:
         return NeMoPlatform(base_url="http://custom:1234")
 
+    def get_async_task_sdk(self, service_name: str) -> AsyncNeMoPlatform:
+        return AsyncNeMoPlatform(base_url="http://custom:1234")
+
     def get_platform_sdk(self, **kwargs) -> NeMoPlatform:
         return NeMoPlatform(base_url="http://custom:1234")
+
+    def get_async_platform_sdk(self, **kwargs) -> AsyncNeMoPlatform:
+        return AsyncNeMoPlatform(base_url="http://custom:1234")
 
 
 class _FakeEntryPoint:

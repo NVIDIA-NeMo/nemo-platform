@@ -9,12 +9,12 @@ import importlib
 import logging
 import threading
 from collections.abc import Callable
-from typing import cast
 
 from nmp.common.service import Service
 from nmp.common.service.deptree import resolve_service_loading_order
 
 logger = logging.getLogger(__name__)
+
 
 ControllerRunFunc = Callable[[threading.Event], object]
 
@@ -66,4 +66,4 @@ def load_controller_run_func(controller_name: str, import_path: str) -> Controll
         raise TypeError(f"Controller {controller_name} must be a callable, got {type(run_func)}")
 
     logger.debug("Loaded controller %s", controller_name)
-    return cast(ControllerRunFunc, run_func)
+    return run_func

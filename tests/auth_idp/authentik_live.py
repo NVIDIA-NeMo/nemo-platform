@@ -12,7 +12,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
-from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
+from nemo_platform_plugin.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AUTHENTIK_ROOT = REPO_ROOT / "contrib/auth/authentik"

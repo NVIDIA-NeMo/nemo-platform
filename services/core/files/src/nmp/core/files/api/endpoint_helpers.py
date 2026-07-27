@@ -302,7 +302,13 @@ async def resolve_storage_secrets_for_user(
     auth_client: AuthClient,
 ) -> dict[str, str]:
     """Resolve storage secrets using delegated headers on request-scoped SDK."""
-    service_sdk = get_async_platform_sdk(as_service="files", internal=True, on_behalf_of=auth_client.principal.id)
+    service_sdk = get_async_platform_sdk(
+        as_service="files",
+        internal=True,
+        http_client=sdk._client,
+        on_behalf_of=auth_client.principal.id,
+        base_url=str(sdk.base_url).rstrip("/"),
+    )
     return await resolve_storage_secrets(storage, workspace, service_sdk)
 
 

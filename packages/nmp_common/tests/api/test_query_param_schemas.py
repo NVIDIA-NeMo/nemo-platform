@@ -4,17 +4,16 @@
 """Tests for register_query_param_schemas / clear_query_param_schemas.
 
 These schemas are attached to FastAPI endpoints via ``openapi_extra`` and are
-not reachable through Pydantic's response-model walk. The runtime
-``custom_openapi`` hook has to call ``register_query_param_schemas`` explicitly
-or the live ``/openapi.json`` will contain dangling ``$ref``s to the filter
-classes.
+not reachable through Pydantic's response-model walk. The runtime OpenAPI path
+has to call ``register_query_param_schemas`` or the live ``/openapi.json`` will
+contain dangling ``$ref``s to the filter classes.
 """
 
 from typing import Optional
 
 import nemo_platform_plugin.jobs.openapi_utils as job_openapi_utils
 import pytest
-from fastapi import FastAPI, Query, Request
+from fastapi import APIRouter, FastAPI, Query, Request
 from fastapi.testclient import TestClient
 from nmp.common.api.utils import (
     clear_query_param_schemas,
@@ -22,6 +21,7 @@ from nmp.common.api.utils import (
     install_query_param_schema_openapi_hook,
     register_query_param_schemas,
 )
+from nmp.common.service import RouterConfig, Service
 from pydantic import BaseModel, create_model
 
 
@@ -106,23 +106,26 @@ def test_clear_resets_registry_between_services():
     assert "_DummyFilter" not in spec["components"]["schemas"]
 
 
-def test_custom_openapi_hook_resolves_filter_ref():
-    """End-to-end: a FastAPI app that wires ``register_query_param_schemas``
-    into its ``custom_openapi`` hook emits a spec where the filter $ref
-    resolves — which is exactly the regression the runtime was missing.
-    """
-    app = FastAPI()
+def test_service_openapi_resolves_filter_ref():
+    """End-to-end: service OpenAPI generation resolves generated filter refs."""
 
-    @app.get(
-        "/items",
-        openapi_extra=generate_openapi_extra_params(filter_schema=_DummyFilter),
-    )
-    async def list_items(request: Request, page: int = Query(default=1)):
-        return {"data": []}
+    class _QueryParamService(Service):
+        def __init__(self):
+            super().__init__(name="query-param-test", module_name="nmp.test")
 
-    install_query_param_schema_openapi_hook(app)
+        def get_routers(self) -> list[RouterConfig]:
+            router = APIRouter()
 
-    spec = TestClient(app).get("/openapi.json").json()
+            @router.get(
+                "/items",
+                openapi_extra=generate_openapi_extra_params(filter_schema=_DummyFilter),
+            )
+            async def list_items(request: Request, page: int = Query(default=1)):
+                return {"data": []}
+
+            return [RouterConfig(router, tag="Items", description="Item endpoints")]
+
+    spec = TestClient(_QueryParamService().create_app()).get("/openapi.json").json()
 
     assert "_DummyFilter" in spec["components"]["schemas"]
     param = next(p for p in spec["paths"]["/items"]["get"]["parameters"] if p["name"] == "filter")

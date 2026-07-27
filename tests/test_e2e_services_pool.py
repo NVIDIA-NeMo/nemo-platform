@@ -22,7 +22,7 @@ def test_render_e2e_config_for_docker_preserves_container_paths(tmp_path) -> Non
         "files": {"default_storage_config": {"type": "local", "path": "/data/files"}},
     }
 
-    rendered = services_pool._render_e2e_config_for_backend(config, tmp_path, {"backend": "docker"})
+    rendered = services_pool._render_e2e_config_for_backend(config, tmp_path, {"backend": "docker"}, "abc123")
 
     assert rendered["jobs"]["executors"][0]["config"]["working_directory"] == "/data/subprocess-jobs"
     assert rendered["files"]["default_storage_config"]["path"] == "/data/files"
@@ -41,7 +41,7 @@ def test_render_e2e_config_for_subprocess_rewrites_instance_paths(tmp_path) -> N
         "files": {"default_storage_config": {"type": "local", "path": ".tmp/e2e/files"}},
     }
 
-    rendered = services_pool._render_e2e_config_for_backend(config, tmp_path, {"backend": "subprocess"})
+    rendered = services_pool._render_e2e_config_for_backend(config, tmp_path, {"backend": "subprocess"}, "abc123")
 
     assert rendered["jobs"]["executors"][0]["config"]["working_directory"] == str(tmp_path / "subprocess-jobs")
     assert rendered["files"]["default_storage_config"]["path"] == str(tmp_path / "files")
@@ -88,7 +88,7 @@ def test_render_e2e_config_for_docker_compose_preserves_container_paths(tmp_path
         "files": {"default_storage_config": {"type": "local", "path": "/data/files"}},
     }
 
-    rendered = services_pool._render_e2e_config_for_backend(config, tmp_path, {"backend": "docker_compose"})
+    rendered = services_pool._render_e2e_config_for_backend(config, tmp_path, {"backend": "docker_compose"}, "abc123")
 
     assert rendered["jobs"]["executors"][0]["config"]["working_directory"] == "/data/subprocess-jobs"
     assert rendered["files"]["default_storage_config"]["path"] == "/data/files"

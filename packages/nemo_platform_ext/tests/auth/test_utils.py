@@ -19,7 +19,7 @@ from nemo_platform_ext.auth.helpers import (
     normalize_scope_prefix,
     validate_requested_scopes_granted,
 )
-from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
+from nemo_platform_plugin.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
 from pytest_httpserver import HTTPServer
 
 

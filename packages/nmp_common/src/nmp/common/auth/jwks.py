@@ -8,8 +8,9 @@ from __future__ import annotations
 import time
 from typing import Any
 
+import httpx
 import jwt
-from nmp.common import http_clients
+from nemo_platform import DefaultAsyncHttpxClient
 
 from .loading_cache import AsyncCoalescingLoader
 
@@ -46,9 +47,17 @@ def signing_jwk_from_jwks(token: str, jwks: dict[str, Any]) -> Any:
 class AsyncJWKSClient:
     """Async JWKS client with TTL caching and one refresh on unknown key IDs."""
 
-    def __init__(self, jwks_uri: str, *, lifespan: int = DEFAULT_JWKS_CACHE_LIFESPAN) -> None:
+    def __init__(
+        self,
+        jwks_uri: str,
+        *,
+        lifespan: int = DEFAULT_JWKS_CACHE_LIFESPAN,
+        http_client: httpx.AsyncClient | None = None,
+    ) -> None:
         self._jwks_uri = jwks_uri
         self._lifespan = lifespan
+        self._owns_http_client = http_client is None
+        self._http_client: httpx.AsyncClient = http_client if http_client is not None else DefaultAsyncHttpxClient()
         self._jwks: dict[str, Any] | None = None
         self._jwks_cache_time = 0.0
         self._unknown_kid_refresh_loader: AsyncCoalescingLoader[dict[str, Any]] = AsyncCoalescingLoader(
@@ -76,6 +85,10 @@ class AsyncJWKSClient:
             min_interval_seconds=UNKNOWN_KID_REFRESH_MIN_INTERVAL_SECONDS
         )
 
+    async def aclose(self) -> None:
+        if self._owns_http_client:
+            await self._http_client.aclose()
+
     async def _refresh_jwks_for_unknown_kid(self) -> dict[str, Any]:
         return await self._unknown_kid_refresh_loader.load(
             self._force_refresh_jwks,
@@ -91,17 +104,21 @@ class AsyncJWKSClient:
         jwks, _ = await self._fetch_jwks(refresh=True)
         return jwks
 
+    async def _request_jwks(self, http_client: httpx.AsyncClient) -> dict[str, Any]:
+        response = await http_client.get(self._jwks_uri, timeout=10.0)
+        response.raise_for_status()
+        jwks = response.json()
+        if not isinstance(jwks, dict):
+            raise jwt.InvalidTokenError("JWKS response was not an object")
+        return jwks
+
     async def _fetch_jwks(self, *, refresh: bool = False) -> tuple[dict[str, Any], bool]:
         now = time.monotonic()
         if self._jwks is not None and not refresh and self._lifespan > 0:
             if now - self._jwks_cache_time < self._lifespan:
                 return self._jwks, True
 
-        response = await http_clients.shared_async_http_client().get(self._jwks_uri, timeout=10.0)
-        response.raise_for_status()
-        jwks = response.json()
-        if not isinstance(jwks, dict):
-            raise jwt.InvalidTokenError("JWKS response was not an object")
+        jwks = await self._request_jwks(self._http_client)
         validate_jwks(jwks)
         if self._lifespan > 0:
             self._jwks = jwks

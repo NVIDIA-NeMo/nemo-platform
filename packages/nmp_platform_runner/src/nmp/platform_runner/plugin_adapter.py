@@ -11,7 +11,8 @@
     Wraps a :class:`~nemo_platform_plugin.controller.NemoController` (async) as a
     platform-native :class:`~nmp.common.controller.Controller` (sync /
     thread-based).  Use :func:`make_controller_run_func` to create the
-    ``run(stop_signal)`` callable expected by :func:`~nmp.platform_runner.server.create_app`.
+    ``run(stop_signal)`` callable expected by
+    :func:`~nmp.platform_runner.server.create_app`.
 """
 
 from __future__ import annotations
@@ -166,7 +167,6 @@ def make_controller_run_func(controller_cls: type[NemoController]) -> Callable[[
     The returned callable matches the signature expected by
     :func:`~nmp.platform_runner.server.create_app` (same as core controller
     run functions registered in ``AVAILABLE_CONTROLLERS``).
-
     Lifecycle inside the returned function:
 
     1. Instantiate *controller_cls*.

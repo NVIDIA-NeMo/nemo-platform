@@ -412,18 +412,16 @@ def test_create_model_entity_validation_error_returns_422(client, mock_model_ent
 
 
 @pytest.mark.asyncio
-async def test_model_spec_job_transport_failure_does_not_fail_persisted_model(sample_model_entity):
+async def test_start_update_model_spec_job_swallows_nemo_transport_error(sample_model_entity):
     request = httpx.Request("POST", "http://test/apis/jobs/v2/workspaces/nvidia/jobs")
+    sdk = MagicMock()
     jobs = MagicMock()
     jobs.create_job = AsyncMock(
         side_effect=NemoTransportError(httpx.ConnectError("Connection refused", request=request))
     )
 
-    with (
-        patch("nmp.core.models.api.v2.models.get_async_platform_sdk"),
-        patch("nmp.core.models.api.v2.models.client_from_platform", return_value=jobs),
-    ):
-        await start_update_model_spec_job(sample_model_entity)
+    with patch("nmp.core.models.api.v2.models.client_from_platform", return_value=jobs):
+        await start_update_model_spec_job(sample_model_entity, sdk)
 
     jobs.create_job.assert_awaited_once()
 

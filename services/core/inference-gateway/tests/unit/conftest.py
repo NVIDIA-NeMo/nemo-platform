@@ -170,9 +170,8 @@ def app_and_client(
         ],
     )
 
-    mocker.patch("nmp.core.inference_gateway.service.get_async_platform_sdk", return_value=mock_nmp_sdk)
-
     service = InferenceGatewayService()
+    mocker.patch.object(service.dependency_provider, "get_sdk_client", return_value=mock_nmp_sdk)
     app = service.app
     app.dependency_overrides[global_http_client] = lambda: mock_proxy_client
     app.dependency_overrides[global_model_cache] = lambda: model_cache
