@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { AgentEvaluateJob, AgentEvalResult } from '@nemo/sdk/generated/evaluator/schema';
+import type { ComparisonEntry } from '@studio/components/dataViews/ComparisonTable/types';
 import {
   baselineForComparisons,
   candidatesForComparisons,
@@ -10,8 +11,7 @@ import {
   metricNamesForComparisons,
   normalizeScore,
   scoreForMetric,
-} from '@studio/components/dataViews/ComparisonTable/comparisonScores';
-import type { ComparisonEntry } from '@studio/components/dataViews/ComparisonTable/types';
+} from '@studio/components/dataViews/ComparisonTable/utils';
 
 const evaluations: ComparisonEntry[] = [
   {

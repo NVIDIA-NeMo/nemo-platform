@@ -9,14 +9,14 @@ import { ComparisonColumnHeader } from '@studio/components/dataViews/ComparisonT
 import { ComparisonDeltaCell } from '@studio/components/dataViews/ComparisonTable/ComparisonDeltaCell';
 import { ComparisonPinnedCell } from '@studio/components/dataViews/ComparisonTable/ComparisonPinnedCell';
 import { ComparisonRunCell } from '@studio/components/dataViews/ComparisonTable/ComparisonRunCell';
+import type { ComparisonEntry } from '@studio/components/dataViews/ComparisonTable/types';
 import {
   baselineForComparisons,
   candidatesForComparisons,
   deltaFromBaseline,
   metricNamesForComparisons,
   scoreForMetric,
-} from '@studio/components/dataViews/ComparisonTable/comparisonScores';
-import type { ComparisonEntry } from '@studio/components/dataViews/ComparisonTable/types';
+} from '@studio/components/dataViews/ComparisonTable/utils';
 import { formatScore } from '@studio/routes/agents/AgentEvaluationsRoute/evalScores';
 import { useMemo, type ComponentProps, type FC } from 'react';
 
