@@ -24,7 +24,6 @@ on:
       - 'docs/**'
     tags:
       - '*.*.*'
-      - '!*-*'
       - 'docs/v*'
   workflow_dispatch: {}
 
@@ -51,11 +50,28 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install Fern dependencies
+        working-directory: ./docs/fern
+        run: npm ci
+
+      - name: Check release tag eligibility
+        id: release-tag
+        if: ${{ github.ref_type == 'tag' && !startsWith(github.ref_name, 'docs/') }}
+        working-directory: ./docs/fern
+        run: |
+          node scripts/materialize-release-versions.mjs --check-tag "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+
       - name: Materialize release versions
+        if: ${{ steps.release-tag.outputs.eligible != 'false' }}
         working-directory: ./docs/fern
         run: npm run materialize:versions
 
+      - name: Check Fern docs
+        if: ${{ steps.release-tag.outputs.eligible != 'false' }}
+        run: make docs-check
+
       - name: Publish Docs
+        if: ${{ steps.release-tag.outputs.eligible != 'false' }}
         env:
           FERN_TOKEN: ${{ secrets.DOCS_FERN_TOKEN }}
         working-directory: ./docs/fern
