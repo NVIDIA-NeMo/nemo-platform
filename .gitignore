@@ -157,3 +157,12 @@ docs/helm/index.mdx
 # nektos/act files commonly used
 .act-variables
 .act-secrets
+
+# iron-swarm CLI run artifacts (builds, policies, run-logs) written into the working dir
+.iron-swarm/
+iron-swarm.yaml
+# Playwright MCP session output
+.playwright-mcp/
+# superpowers skill scratch (local plans/state)
+.superpowers/
+docs/superpowers/
