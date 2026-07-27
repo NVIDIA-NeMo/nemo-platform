@@ -276,7 +276,7 @@ class DockerDeploymentBackend(DeploymentBackend):
             network=docker_cfg.network,
         )
         try:
-            await asyncio.to_thread(self._client.containers.run, **server_run_kwargs)
+            server_container = await asyncio.to_thread(self._client.containers.run, **server_run_kwargs)
         except Exception as exc:
             if gpu_ids and gpu_pool is not None:
                 gpu_pool.release_gpu(dep_key)
@@ -318,6 +318,15 @@ class DockerDeploymentBackend(DeploymentBackend):
                 )
 
         endpoints = self._build_endpoints(container_spec, host_ports)
+        if config.restart_policy in _ONE_SHOT_RESTART_POLICIES:
+            return await self._observe_one_shot_primary_after_create(
+                workspace=workspace,
+                name=name,
+                config=config,
+                container=server_container,
+                dep_key=dep_key,
+                endpoints=endpoints,
+            )
         return BackendStatusUpdate(
             status="STARTING",
             status_message=f"Container {c_name} created",
@@ -526,40 +535,13 @@ class DockerDeploymentBackend(DeploymentBackend):
 
         if state in ("exited", "dead"):
             exit_code = int(container.attrs.get("State", {}).get("ExitCode", 1))
-            if exit_code == 0 and restart_policy in ("Never", "OnFailure"):
-                if self._gpu_pool is not None:
-                    self._gpu_pool.release_gpu(dep_key)
-                return BackendStatusUpdate(
-                    status="SUCCEEDED",
-                    status_message="Container exited successfully (code 0)",
-                    exit_code=exit_code,
-                    endpoints=endpoints,
-                )
-            if restart_policy == "Always":
-                return BackendStatusUpdate(
-                    status="STARTING",
-                    status_message=f"Container exited (code {exit_code}); restart policy will recreate it",
-                    exit_code=exit_code,
-                    endpoints=endpoints,
-                )
-            if restart_policy == "OnFailure":
-                restart_count = int(container.attrs.get("RestartCount", 0))
-                backoff_limit = int(labels.get(BACKOFF_LIMIT_LABEL, "6"))
-                if restart_count < backoff_limit:
-                    return BackendStatusUpdate(
-                        status="STARTING",
-                        status_message=f"Container exited (code {exit_code}); retry {restart_count}/{backoff_limit}",
-                        exit_code=exit_code,
-                        endpoints=endpoints,
-                    )
-            if self._gpu_pool is not None:
-                self._gpu_pool.release_gpu(dep_key)
-            status = map_exited_status(exit_code, restart_policy)
-            message = f"Container exited with code {exit_code}"
-            return BackendStatusUpdate(
-                status=status,
-                status_message=message,
+            restart_count = int(container.attrs.get("RestartCount", 0))
+            return self._status_from_exited_container(
                 exit_code=exit_code,
+                restart_policy=restart_policy,
+                labels=labels,
+                dep_key=dep_key,
+                restart_count=restart_count,
                 endpoints=endpoints,
             )
 
@@ -567,6 +549,137 @@ class DockerDeploymentBackend(DeploymentBackend):
             return BackendStatusUpdate(status="DELETING", status_message=f"Container removing (ID: {container_id})")
 
         return BackendStatusUpdate(status="STARTING", status_message=f"Container state: {state}")
+
+    def _status_from_exited_container(
+        self,
+        *,
+        exit_code: int,
+        restart_policy: RestartPolicy,
+        labels: dict[str, str],
+        dep_key: str,
+        restart_count: int = 0,
+        endpoints: list[Endpoint] | None = None,
+    ) -> BackendStatusUpdate:
+        """Map a stopped container's exit code to a deployment status update."""
+        resolved_endpoints = endpoints or []
+        if exit_code == 0 and restart_policy in ("Never", "OnFailure"):
+            if self._gpu_pool is not None:
+                self._gpu_pool.release_gpu(dep_key)
+            return BackendStatusUpdate(
+                status="SUCCEEDED",
+                status_message="Container exited successfully (code 0)",
+                exit_code=exit_code,
+                endpoints=resolved_endpoints,
+            )
+        if restart_policy == "Always":
+            return BackendStatusUpdate(
+                status="STARTING",
+                status_message=f"Container exited (code {exit_code}); restart policy will recreate it",
+                exit_code=exit_code,
+                endpoints=resolved_endpoints,
+            )
+        if restart_policy == "OnFailure":
+            backoff_limit = int(labels.get(BACKOFF_LIMIT_LABEL, "6"))
+            if restart_count < backoff_limit:
+                return BackendStatusUpdate(
+                    status="STARTING",
+                    status_message=(f"Container exited (code {exit_code}); retry {restart_count}/{backoff_limit}"),
+                    exit_code=exit_code,
+                    endpoints=resolved_endpoints,
+                )
+        if self._gpu_pool is not None:
+            self._gpu_pool.release_gpu(dep_key)
+        status = map_exited_status(exit_code, restart_policy)
+        return BackendStatusUpdate(
+            status=status,
+            status_message=f"Container exited with code {exit_code}",
+            exit_code=exit_code,
+            endpoints=resolved_endpoints,
+        )
+
+    async def _observe_one_shot_primary_after_create(
+        self,
+        *,
+        workspace: str,
+        name: str,
+        config: DeploymentConfig,
+        container: DockerContainer,
+        dep_key: str,
+        endpoints: list[Endpoint],
+    ) -> BackendStatusUpdate:
+        """Observe a one-shot primary container immediately after create."""
+        restart_policy = config.restart_policy
+        labels = container.labels or {}
+
+        if restart_policy == "Never":
+
+            def _wait_for_exit() -> int:
+                result = container.wait(timeout=self._executor_config.docker_timeout)
+                return int(result.get("StatusCode", 1)) if isinstance(result, dict) else int(result)
+
+            try:
+                exit_code = await asyncio.to_thread(_wait_for_exit)
+            except (
+                ReadTimeout,
+                Urllib3ReadTimeoutError,
+                RequestsConnectionError,
+                self._docker_errors.APIError,
+            ):
+                return BackendStatusUpdate(
+                    status="STARTING",
+                    status_message=(
+                        f"Container {container.name} still running or status unavailable "
+                        f"after wait ({self._executor_config.docker_timeout}s)"
+                    ),
+                    endpoints=endpoints,
+                )
+            except Exception as exc:
+                logger.exception("Failed waiting for one-shot container %s to exit", container.name)
+                await self.delete_deployment(workspace, name)
+                return BackendStatusUpdate(
+                    status="FAILED",
+                    status_message=f"Failed waiting for container to exit: {exc}",
+                )
+            return self._status_from_exited_container(
+                exit_code=exit_code,
+                restart_policy=restart_policy,
+                labels=labels,
+                dep_key=dep_key,
+                endpoints=endpoints,
+            )
+
+        try:
+            await asyncio.to_thread(container.reload)
+        except (
+            self._docker_errors.APIError,
+            ReadTimeout,
+            Urllib3ReadTimeoutError,
+            RequestsConnectionError,
+        ) as exc:
+            return BackendStatusUpdate(
+                status="STARTING",
+                status_message=f"Container created but status check failed: {exc}",
+                endpoints=endpoints,
+            )
+        if container.status in _EXITED_CONTAINER_STATES:
+            attrs = container.attrs or {}
+            exit_code = int(attrs.get("State", {}).get("ExitCode", 1))
+            restart_count = int(attrs.get("RestartCount", 0))
+            return self._status_from_exited_container(
+                exit_code=exit_code,
+                restart_policy=restart_policy,
+                labels=labels,
+                dep_key=dep_key,
+                restart_count=restart_count,
+                endpoints=endpoints,
+            )
+
+        container_name_label = container.name or "primary"
+        return BackendStatusUpdate(
+            status="STARTING",
+            status_message=f"Container {container_name_label} created",
+            endpoints=endpoints,
+        )
 
     async def _sidecars_healthy(self, workspace: str, name: str, config: DeploymentConfig | None) -> tuple[bool, str]:
         """Return (all_healthy, reason) for a deployment's expected sidecar containers.

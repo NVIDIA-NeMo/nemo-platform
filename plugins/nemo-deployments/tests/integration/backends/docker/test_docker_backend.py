@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -89,7 +88,7 @@ async def test_volume_lifecycle(docker_backend: DockerDeploymentBackend) -> None
 @pytest.mark.asyncio
 async def test_never_deployment_succeeds(docker_backend: DockerDeploymentBackend) -> None:
     config = _never_config()
-    docker_backend._entities.get.return_value = config  # type: ignore[attr-defined]
+    docker_backend._entities.get.return_value = config  # ty: ignore[unresolved-attribute]
     c_name = container_name("itest", "echo-job")
     client = docker.from_env()
 
@@ -101,14 +100,10 @@ async def test_never_deployment_succeeds(docker_backend: DockerDeploymentBackend
             labels={"managed-by": MANAGED_BY_LABEL},
             backend_config={},
         )
-        assert created.status == "STARTING"
+        assert created.status == "SUCCEEDED"
+        assert created.exit_code == 0
 
-        for _ in range(30):
-            status = await docker_backend.read_status(workspace="itest", name="echo-job")
-            if status.status in ("SUCCEEDED", "FAILED"):
-                break
-            await asyncio.sleep(0.5)
-
+        status = await docker_backend.read_status(workspace="itest", name="echo-job")
         assert status.status == "SUCCEEDED"
         assert status.exit_code == 0
     finally:
@@ -126,7 +121,7 @@ async def test_lost_detection_for_always(docker_backend: DockerDeploymentBackend
             return deployment
         return config
 
-    docker_backend._entities.get.side_effect = get_side_effect  # type: ignore[attr-defined]
+    docker_backend._entities.get.side_effect = get_side_effect  # ty: ignore[unresolved-attribute]
     c_name = container_name("itest", "lost-srv")
     client = docker.from_env()
 

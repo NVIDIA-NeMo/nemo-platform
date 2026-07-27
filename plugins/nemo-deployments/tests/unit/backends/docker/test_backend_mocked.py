@@ -10,8 +10,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from backends.docker.docker_helpers import container_attrs, lora_config, sample_config
 from docker.errors import APIError, NotFound
+from nemo_deployments_plugin.backends.base import BackendStatusUpdate
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
 from nemo_deployments_plugin.backends.labels import (
+    BACKOFF_LIMIT_LABEL,
     CONFIG_NAME_LABEL,
     CONTAINER_ROLE_LABEL,
     DEFAULT_RESOURCE_SCOPE,
@@ -27,6 +29,8 @@ from nemo_deployments_plugin.backends.labels import (
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import Deployment
 from nemo_deployments_plugin.types import RestartPolicy
+from requests.exceptions import ConnectionError as RequestsConnectionError
+from requests.exceptions import ReadTimeout
 
 
 @pytest.mark.asyncio
@@ -709,6 +713,257 @@ async def test_list_managed_deployment_names(
     names = await docker_backend.list_managed_deployment_names()
 
     assert names == ["default/srv"]
+
+
+def _one_shot_server_container(
+    *,
+    restart_policy: str,
+    status: str = "exited",
+    exit_code: int = 0,
+    restart_count: int = 0,
+    backoff_limit: str = "6",
+) -> MagicMock:
+    container = MagicMock()
+    container.name = container_name("default", "job")
+    container.wait.return_value = {"StatusCode": exit_code}
+    container.labels = {
+        RESTART_POLICY_LABEL: restart_policy,
+        BACKOFF_LIMIT_LABEL: backoff_limit,
+    }
+    container.status = status
+    container.attrs = {
+        **container_attrs(exit_code=exit_code),
+        "RestartCount": restart_count,
+    }
+    return container
+
+
+@pytest.mark.asyncio
+async def test_create_never_job_returns_succeeded_when_container_exits_immediately(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    mock_entities.get.return_value = sample_config(restart_policy="Never")
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    mock_docker_client.containers.run.return_value = _one_shot_server_container(
+        restart_policy="Never",
+        exit_code=0,
+    )
+
+    update = await docker_backend.create_deployment(
+        workspace="default",
+        name="job",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "SUCCEEDED"
+    assert update.exit_code == 0
+    mock_docker_client.containers.run.return_value.wait.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_create_never_job_returns_failed_on_non_zero_exit(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    mock_entities.get.return_value = sample_config(restart_policy="Never")
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    mock_docker_client.containers.run.return_value = _one_shot_server_container(
+        restart_policy="Never",
+        exit_code=42,
+    )
+
+    update = await docker_backend.create_deployment(
+        workspace="default",
+        name="job",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "FAILED"
+    assert update.exit_code == 42
+
+
+@pytest.mark.asyncio
+async def test_create_on_failure_returns_succeeded_when_already_exited_zero(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    mock_entities.get.return_value = sample_config(restart_policy="OnFailure")
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    server = _one_shot_server_container(restart_policy="OnFailure", exit_code=0)
+    mock_docker_client.containers.run.return_value = server
+
+    update = await docker_backend.create_deployment(
+        workspace="default",
+        name="job",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "SUCCEEDED"
+    assert update.exit_code == 0
+    server.wait.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_on_failure_returns_starting_when_failed_under_backoff(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    mock_entities.get.return_value = sample_config(restart_policy="OnFailure")
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    server = _one_shot_server_container(
+        restart_policy="OnFailure",
+        exit_code=1,
+        restart_count=2,
+        backoff_limit="6",
+    )
+    mock_docker_client.containers.run.return_value = server
+
+    update = await docker_backend.create_deployment(
+        workspace="default",
+        name="job",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "STARTING"
+    assert update.exit_code == 1
+    assert "retry 2/6" in update.status_message
+
+
+@pytest.mark.asyncio
+async def test_create_on_failure_returns_starting_when_still_running(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    mock_entities.get.return_value = sample_config(restart_policy="OnFailure")
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    server = _one_shot_server_container(restart_policy="OnFailure", status="running", exit_code=0)
+    mock_docker_client.containers.run.return_value = server
+
+    update = await docker_backend.create_deployment(
+        workspace="default",
+        name="job",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "STARTING"
+    assert "created" in update.status_message.lower()
+    server.wait.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_never_job_returns_starting_when_wait_times_out(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    mock_entities.get.return_value = sample_config(restart_policy="Never")
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    server = _one_shot_server_container(restart_policy="Never", exit_code=0)
+    server.wait.side_effect = ReadTimeout("timed out")
+    mock_docker_client.containers.run.return_value = server
+
+    update = await docker_backend.create_deployment(
+        workspace="default",
+        name="job",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "STARTING"
+    assert "after wait" in update.status_message
+
+
+@pytest.mark.asyncio
+async def test_create_never_job_returns_starting_when_wait_connection_error(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    mock_entities.get.return_value = sample_config(restart_policy="Never")
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    server = _one_shot_server_container(restart_policy="Never", exit_code=0)
+    server.wait.side_effect = RequestsConnectionError("connection reset")
+    mock_docker_client.containers.run.return_value = server
+
+    update = await docker_backend.create_deployment(
+        workspace="default",
+        name="job",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "STARTING"
+    assert "after wait" in update.status_message
+
+
+@pytest.mark.asyncio
+async def test_create_never_job_cleans_up_on_wait_error(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    mock_entities.get.return_value = sample_config(restart_policy="Never")
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    server = _one_shot_server_container(restart_policy="Never", exit_code=0)
+    server.wait.side_effect = RuntimeError("boom")
+    mock_docker_client.containers.run.return_value = server
+
+    with patch.object(
+        docker_backend,
+        "delete_deployment",
+        new_callable=AsyncMock,
+        return_value=BackendStatusUpdate(status="SUCCEEDED", status_message="deleted"),
+    ) as mock_delete:
+        update = await docker_backend.create_deployment(
+            workspace="default",
+            name="job",
+            config_name="cfg1",
+            labels={"managed-by": MANAGED_BY_LABEL},
+            backend_config={},
+        )
+
+    assert update.status == "FAILED"
+    mock_delete.assert_awaited_once_with("default", "job")
+
+
+@pytest.mark.asyncio
+async def test_create_always_still_returns_starting(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    mock_entities.get.return_value = sample_config(restart_policy="Always")
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    mock_docker_client.containers.run.return_value = MagicMock(id="abc123")
+
+    update = await docker_backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "STARTING"
+    mock_docker_client.containers.run.return_value.wait.assert_not_called()
 
 
 @pytest.mark.asyncio
