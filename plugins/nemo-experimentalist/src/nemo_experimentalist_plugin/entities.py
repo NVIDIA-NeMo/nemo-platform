@@ -157,6 +157,18 @@ class Candidate(NemoEntity, entity_type="candidate"):
         default=None,
         description="Insight-suite trial results from the last evaluation run.",
     )
+    insight_suite_identity: str | None = Field(
+        default=None,
+        description="Content identity of the Insight suite associated with insight_reward.",
+    )
+    insight_suite_artifact_ref: str | None = Field(
+        default=None,
+        description="Portable reference to the immutable Insight suite associated with insight_reward.",
+    )
+    insight_metric_keys: list[str] | None = Field(
+        default=None,
+        description="Validated runtime metric keys associated with insight_reward.",
+    )
     validation_trajectory_reward: dict[str, float] | None = Field(
         default=None,
         description="Validation trajectory reward: aggregate + per-node scores.",

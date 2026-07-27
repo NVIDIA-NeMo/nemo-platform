@@ -11,7 +11,10 @@ from pathlib import Path
 
 import pytest
 from nemo_experimentalist_plugin.eval_author import materialization as materialization_module
-from nemo_experimentalist_plugin.eval_author.materialization import InsightSuite
+from nemo_experimentalist_plugin.eval_author.materialization import (
+    InsightSuite,
+    resolve_insight_suite_artifact,
+)
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import Task
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
 
@@ -207,3 +210,68 @@ def test_insight_suite_records_analysis_without_removing_failed_tasks(tmp_path: 
         {"error": "analysis failed", "status": "failed"},
     ]
     assert len(HarborDataset.from_path(suite.suite_dir).list_tasks()) == 2
+
+
+def test_finalized_suite_is_content_addressed_durable_and_resolvable(tmp_path: Path) -> None:
+    template = _write_template(tmp_path / "template")
+    refs = ["trace-1"]
+    suite = InsightSuite(experiment_dir=tmp_path, insight_id="insight-1", task_template=template)
+    staged = suite.stage(refs)
+    (staged[0].path / "instruction.md").write_text("Reproduce the motivating failure.\n")
+    suite.validate(staged[0])
+    suite.promote_local(refs, staged)
+
+    artifact = suite.finalize_artifact()
+    manifest = json.loads((artifact.path / "manifest.json").read_text(encoding="utf-8"))
+
+    assert artifact.identity.startswith("sha256:")
+    assert artifact.scorer_identity.startswith("sha256:")
+    assert artifact.ref.startswith("nemo-experimentalist-insight-suite://")
+    assert manifest["suite_identity"] == artifact.identity
+    assert manifest["scorer"] == {
+        "identity": artifact.scorer_identity,
+        "metric_contract_version": 1,
+    }
+    assert manifest["tasks"][0]["content_hash"].startswith("sha256:")
+    assert manifest["tasks"][0]["verifier"]["content_hash"].startswith("sha256:")
+    assert resolve_insight_suite_artifact(tmp_path, artifact.ref) == artifact.path
+    assert artifact.dataset.metadata["insight_suite_identity"] == artifact.identity
+    assert artifact.dataset.metadata["insight_suite_artifact_ref"] == artifact.ref
+    assert list(artifact.dataset.list_tasks())[0].uri.startswith(artifact.path.as_uri())
+
+    artifact_instruction = next(path for path in artifact.path.iterdir() if path.is_dir()) / "instruction.md"
+    artifact_instruction.write_text("tampered\n")
+    with pytest.raises(ValueError, match="content does not match reference"):
+        resolve_insight_suite_artifact(tmp_path, artifact.ref)
+
+
+def test_finalized_suite_identity_is_stable_and_changes_with_task_or_verifier_content(
+    tmp_path: Path,
+) -> None:
+    template = _write_template(tmp_path / "template")
+
+    def build(instruction: str, verifier_suffix: str = "") -> tuple[str, str]:
+        suite = InsightSuite(
+            experiment_dir=tmp_path,
+            insight_id="insight-1",
+            task_template=template,
+        )
+        staged = suite.stage(["trace-1"])
+        (staged[0].path / "instruction.md").write_text(instruction)
+        if verifier_suffix:
+            verifier_path = staged[0].path / "tests" / "test.sh"
+            verifier_path.write_text(verifier_path.read_text() + verifier_suffix)
+        suite.validate(staged[0])
+        suite.promote_local(["trace-1"], staged)
+        artifact = suite.finalize_artifact()
+        return artifact.identity, artifact.ref
+
+    first_identity, first_ref = build("Same authored task.\n")
+    identical_identity, identical_ref = build("Same authored task.\n")
+    changed_task_identity, _ = build("Changed authored task.\n")
+    changed_verifier_identity, _ = build("Same authored task.\n", "\n# changed scorer\n")
+
+    assert (identical_identity, identical_ref) == (first_identity, first_ref)
+    assert changed_task_identity != first_identity
+    assert changed_verifier_identity != first_identity
+    assert resolve_insight_suite_artifact(tmp_path, first_ref).is_dir()
