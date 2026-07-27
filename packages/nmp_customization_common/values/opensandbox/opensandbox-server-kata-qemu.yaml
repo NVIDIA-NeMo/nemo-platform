@@ -1,0 +1,97 @@
+# OpenSandbox server — kata-qemu profile for nemo-dev-blue.
+#
+# Pins every sandbox to RuntimeClass/kata-qemu. Scheduling is enforced both by
+# [secure_runtime] (pod.spec.runtimeClassName) and by the BatchSandbox template
+# nodeSelector matching kata-deploy / RuntimeClass scheduling on this cluster:
+#   katacontainers.io/kata-runtime=true
+#   node.kubernetes.io/instance-type=BM.GPU.H100.8
+#   feature.node.kubernetes.io/cpu-cpuid.VMX=true
+#
+# API key comes from Secret opensandbox-server-kata-api-key (key: api-key),
+# injected as OPENSANDBOX_SERVER_API_KEY (overrides any TOML api_key).
+
+fullnameOverride: opensandbox-server-kata
+
+server:
+  replicaCount: 1
+  image:
+    repository: docker.io/opensandbox/server
+    tag: "v0.2.1"
+
+  env:
+    - name: OPENSANDBOX_SERVER_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: opensandbox-server-kata-api-key
+          key: api-key
+
+  resources:
+    requests:
+      cpu: "500m"
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: nvidia.com/gpu.present
+                operator: NotIn
+                values: ["true"]
+
+  volumeMounts:
+    - name: batchsandbox-template
+      mountPath: /etc/opensandbox/batchsandbox-template-kata-qemu.yaml
+      subPath: batchsandbox-template.yaml
+      readOnly: true
+  volumes:
+    - name: batchsandbox-template
+      configMap:
+        name: opensandbox-batchsandbox-template-kata-qemu
+
+  gateway:
+    enabled: false
+
+configToml: |
+  [server]
+  host = "0.0.0.0"
+  port = 80
+  # api_key intentionally omitted — set via OPENSANDBOX_SERVER_API_KEY Secret
+  max_sandbox_timeout_seconds = 86400
+
+  [log]
+  level = "INFO"
+
+  [runtime]
+  type = "kubernetes"
+  execd_image = "docker.io/opensandbox/execd:v1.0.21"
+
+  [storage]
+  allowed_host_paths = []
+  volume_default_size = "1Gi"
+
+  [kubernetes]
+  kubeconfig_path = ""
+  namespace = "opensandbox-kata"
+  informer_enabled = true
+  informer_resync_seconds = 300
+  informer_watch_timeout_seconds = 60
+  snapshot_create_timeout_seconds = 900
+  workload_provider = "batchsandbox"
+  image_pull_policy = "IfNotPresent"
+  batchsandbox_template_file = "/etc/opensandbox/batchsandbox-template-kata-qemu.yaml"
+
+  [egress]
+  image = "docker.io/opensandbox/egress:v1.1.4"
+  mode = "dns+nft"
+  # QEMU can run privileged IPv6-disable init, but RFC Phase 1 prefers
+  # disable_ipv6=false + dual-stack local/metadata denies.
+  disable_ipv6 = false
+
+  [secure_runtime]
+  type = "kata"
+  k8s_runtime_class = "kata-qemu"
