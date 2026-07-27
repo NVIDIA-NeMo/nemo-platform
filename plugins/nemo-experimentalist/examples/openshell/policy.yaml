@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Fail-closed policy for the Experimentalist control plane. Harbor evaluation
+# does not run here, so neither the Docker socket nor a Docker daemon endpoint
+# is allowed.
+version: 1
+
+filesystem_policy:
+  include_workdir: true
+  read_only:
+    - /app
+    - /bin
+    - /dev/urandom
+    - /etc
+    - /lib
+    - /opt
+    - /proc
+    - /usr
+    - /var/log
+  read_write:
+    - /dev/null
+    - /dev/shm
+    - /home/sandbox
+    - /sandbox
+    - /tmp
+
+landlock:
+  compatibility: hard_requirement
+
+process:
+  run_as_user: sandbox
+  run_as_group: sandbox
+
+# Model calls use the gateway-managed inference.local route. Direct Platform
+# access is limited to the readiness probe. Add the future evaluation endpoint
+# only after it exposes a narrow, validated Harbor request contract.
+network_policies:
+  nemo_platform:
+    name: nemo-platform
+    endpoints:
+      - host: host.docker.internal
+        port: 8080
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow:
+              method: GET
+              path: /health/ready
+    binaries:
+      - path: /app/.venv/bin/python
+      - path: /app/.venv/bin/python3.13
+      - path: /usr/local/bin/python3.13
