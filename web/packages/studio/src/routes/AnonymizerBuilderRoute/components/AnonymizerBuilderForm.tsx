@@ -50,7 +50,8 @@ export const AnonymizerBuilderForm: FC = () => {
   const [submitError, setSubmitError] = useState<string | undefined>(undefined);
 
   const { isLoading: isLoadingModels } = useDefaultRoleModels();
-  const { data: defaultEntityLabels } = useAnonymizerListEntityLabels(workspace, { query: {} });
+  const { data: defaultEntityLabels, isLoading: isLoadingEntityLabels } =
+    useAnonymizerListEntityLabels(workspace, { query: {} });
 
   const createJob = useAnonymizerCreateRunJob({
     mutation: {
@@ -116,7 +117,7 @@ export const AnonymizerBuilderForm: FC = () => {
                 kind="primary"
                 color="brand"
                 type="submit"
-                disabled={createJob.isPending || isLoadingModels}
+                disabled={createJob.isPending || isLoadingModels || isLoadingEntityLabels}
               >
                 Full Run
               </Button>

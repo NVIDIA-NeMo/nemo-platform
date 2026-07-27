@@ -100,7 +100,7 @@ export const EntitiesSection: FC = () => {
                   onClick={() => removeLabel(label)}
                 >
                   {label}
-                  <X fontSize="small" />
+                  <X size={14} />
                 </Tag>
               ))}
             </Flex>

@@ -85,6 +85,20 @@ export const anonymizerFormSchema = z
         });
       }
     }
+
+    // Without this the request would carry no detect config and the server would fall back to
+    // its own defaults — the opposite of the restricted set Custom mode promises.
+    if (
+      data.entityMode === ENTITY_MODE_CUSTOM &&
+      !data.includeDefaultEntities &&
+      !data.entityLabels.length
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['entityLabels'],
+        message: 'Select at least one entity label, or include the default entities',
+      });
+    }
   });
 
 export type AnonymizerFormData = z.infer<typeof anonymizerFormSchema>;
@@ -184,7 +198,9 @@ const buildDetectConfig = (
     : form.entityLabels;
 
   if (!labels.length) return undefined;
-  if (form.includeDefaultEntities && labels.length === defaultEntityLabels.length) return undefined;
+  if (form.includeDefaultEntities && labels.length === new Set(defaultEntityLabels).size) {
+    return undefined;
+  }
 
   return { entity_labels: labels };
 };

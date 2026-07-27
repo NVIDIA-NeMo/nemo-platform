@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { RiskTolerance } from '@nemo/sdk/generated/anonymizer/schema';
+import type { Tag } from '@nvidia/foundations-react-core';
+import type { ComponentProps } from 'react';
 
 export const SOURCE_TYPE_URL = 'url';
 export const SOURCE_TYPE_DATASET = 'dataset';
@@ -103,7 +105,7 @@ export const ENTITY_MODE_OPTIONS: { value: EntityMode; children: string }[] = [
   { value: ENTITY_MODE_AUTO, children: 'Auto-detect' },
 ];
 
-export type EntityTagColor = 'blue' | 'gray' | 'green' | 'purple' | 'red' | 'teal' | 'yellow';
+export type EntityTagColor = NonNullable<ComponentProps<typeof Tag>['color']>;
 
 interface EntityCategory {
   readonly label: string;

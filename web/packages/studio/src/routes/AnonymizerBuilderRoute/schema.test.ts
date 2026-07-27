@@ -9,6 +9,7 @@ import {
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import {
   AnonymizerFormData,
+  anonymizerFormSchema,
   buildAnonymizerJobRequest,
   getAnonymizerFormDefaults,
 } from '@studio/routes/AnonymizerBuilderRoute/schema';
@@ -222,6 +223,14 @@ describe('buildAnonymizerJobRequest', () => {
     expect(subsetOfDefaults.spec.config.detect).toBeUndefined();
   });
 
+  it('treats a duplicated default as no addition', () => {
+    const req = buildAnonymizerJobRequest(
+      form({ entityMode: 'custom', includeDefaultEntities: true, entityLabels: ['email'] }),
+      [...DEFAULT_LABELS, 'email']
+    );
+    expect(req.spec.config.detect).toBeUndefined();
+  });
+
   it('ignores entity labels in auto-detect mode', () => {
     const auto = buildAnonymizerJobRequest(
       form({ entityMode: 'auto', entityLabels: ['email'] }),
@@ -248,5 +257,35 @@ describe('buildAnonymizerJobRequest', () => {
       max_tokens: 16384,
       temperature: 0.1,
     });
+  });
+});
+
+describe('anonymizerFormSchema', () => {
+  const parse = (overrides: Partial<AnonymizerFormData>) =>
+    anonymizerFormSchema.safeParse({
+      ...getAnonymizerFormDefaults(),
+      source: 'https://example.com/data.csv',
+      roleModels: roleModels('openai/gpt-oss-120b', 'default/nvidia'),
+      ...overrides,
+    });
+
+  it('rejects custom mode with neither labels nor defaults', () => {
+    const result = parse({
+      entityMode: 'custom',
+      includeDefaultEntities: false,
+      entityLabels: [],
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.some((i) => i.path.join('.') === 'entityLabels')).toBe(true);
+  });
+
+  it('accepts custom mode with labels, or with defaults included', () => {
+    expect(
+      parse({ entityMode: 'custom', includeDefaultEntities: false, entityLabels: ['email'] })
+        .success
+    ).toBe(true);
+    expect(
+      parse({ entityMode: 'custom', includeDefaultEntities: true, entityLabels: [] }).success
+    ).toBe(true);
   });
 });
