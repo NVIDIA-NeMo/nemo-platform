@@ -790,7 +790,7 @@ describe('AdvancedParameters', () => {
         </TestWrapper>
       );
 
-      expect(await screen.findByText('model')).toBeInTheDocument();
+      expect(await screen.findByText('Model')).toBeInTheDocument();
       expect(screen.getByTestId('nv-select-trigger')).toHaveTextContent('HuggingFaceTB/SmolLM3-3B');
     });
 
