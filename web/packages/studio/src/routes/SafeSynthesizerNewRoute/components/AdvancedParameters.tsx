@@ -174,7 +174,7 @@ export const AdvancedParameters = () => {
           formFieldProps={{
             slotLabel: (
               <>
-                model
+                Model
                 <Tooltip
                   slotContent="Model that gets fine-tuned to generate synthetic data."
                   side="bottom"
