@@ -30,6 +30,7 @@ from nemo_agents_plugin.entities import (
 )
 from nemo_agents_plugin.runner.backend import DeploymentInfo, ExternalLog, LogLocation, RunnerBackend
 from nemo_agents_plugin.utils import get_base_url, get_internal_base_url
+from nemo_deployments_plugin.auth_proxy import auth_proxy_port
 from nemo_deployments_plugin.entities import (
     ConfigFile,
     Container,
@@ -42,6 +43,7 @@ from nemo_deployments_plugin.entities import (
     VolumeMount,
 )
 from nemo_platform.resources.entities import AsyncEntitiesResource
+from nemo_platform_plugin.auth import platform_auth_enabled
 from nemo_platform_plugin.config import LOOPBACK_ADDRESSES
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
@@ -53,6 +55,8 @@ _HTTP_PORT_NAME = "http"
 _PLUGIN_WHEELS_VOLUME = "plugin-wheels"
 _PLUGIN_WHEELS_MOUNT = "/opt/nemo/plugin-wheels"
 _NAT_CONFIG_ENV = "NAT_CONFIG_PATH"
+_AUTH_PROXY_IDENTITY = "agents"
+
 
 # On delete, wait up to this long for the deployments controller to tear down the
 # container and remove the Deployment entity before we drop the DeploymentConfig.
@@ -199,6 +203,7 @@ def build_deployment_config(
     mode: DeploymentMode,
     plugin_wheels_init_image: str | None = None,
     labels: dict[str, str] | None = None,
+    auth_proxy_identity: str | None = None,
 ) -> DeploymentConfig:
     """Compile an agent into a long-running ``DeploymentConfig`` (Always).
 
@@ -295,6 +300,8 @@ def build_deployment_config(
         }
     )
 
+    # Request the auth-proxy sidecar via the DeploymentConfig flags; the
+    # deployments plugin compiles and injects it (and no-ops when auth is off).
     return DeploymentConfig(
         name=name,
         workspace=workspace,
@@ -307,6 +314,8 @@ def build_deployment_config(
                 ConfigFile(path=config_mount_path, content=nat_yaml),
             ],
             "restart_policy": "Always",
+            "auth_proxy_sidecar": auth_proxy_identity is not None,
+            "auth_proxy_sidecar_identity": auth_proxy_identity,
         }
     )
 
@@ -366,7 +375,19 @@ class DeploymentsRunnerBackend(RunnerBackend):
         except UnreachableGatewayURLError as exc:
             logger.error("Refusing to deploy agent %r: %s", name, exc)
             return DeploymentInfo(name=name, status="failed", error=str(exc))
-        config = rewrite_config_base_urls(config, gateway)
+
+        # When platform auth is enabled, the agent carries no platform credential,
+        # so route its inference calls through a loopback auth-proxy sidecar (the
+        # deployments plugin compiles the sidecar from the auth_proxy flags). The
+        # agent targets the sidecar on localhost; the sidecar forwards to the
+        # platform with a service-principal identity header.
+        auth_proxy_identity: str | None = None
+        if platform_auth_enabled():
+            auth_proxy_identity = _AUTH_PROXY_IDENTITY
+            config = rewrite_config_base_urls(config, f"http://127.0.0.1:{auth_proxy_port()}")
+        else:
+            config = rewrite_config_base_urls(config, gateway)
+
         deployment_config = build_deployment_config(
             name=name,
             workspace=workspace,
@@ -380,6 +401,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
                 "nemo.agents/deployment": name,
                 "nemo.agents/mode": deployment_mode,
             },
+            auth_proxy_identity=auth_proxy_identity,
         )
         await entities.create(deployment_config)
         try:

@@ -31,6 +31,24 @@ describe('parseAnonymizerApiError', () => {
     expect(fieldErrors.map((f) => f.field)).toEqual(['hashDigestLength', 'source']);
   });
 
+  it('maps rewrite params, including nested privacy goal fields', () => {
+    const rewriteLoc = (...tail: string[]) => ['body', 'spec', 'config', 'rewrite', ...tail];
+    const { fieldErrors } = parseAnonymizerApiError(
+      apiError([
+        { loc: rewriteLoc('privacy_goal', 'protect'), msg: 'too short' },
+        { loc: rewriteLoc('privacy_goal', 'preserve'), msg: 'too short' },
+        { loc: rewriteLoc('max_repair_iterations'), msg: 'negative' },
+        { loc: rewriteLoc('risk_tolerance'), msg: 'bad preset' },
+      ])
+    );
+    expect(fieldErrors.map((f) => f.field)).toEqual([
+      'privacyProtect',
+      'privacyPreserve',
+      'maxRepairRounds',
+      'riskTolerance',
+    ]);
+  });
+
   it('collects unmapped errors as general messages', () => {
     const { fieldErrors, generalMessages } = parseAnonymizerApiError(
       apiError([{ loc: ['body', 'spec', 'model_configs', 0, 'provider'], msg: 'bad provider' }])

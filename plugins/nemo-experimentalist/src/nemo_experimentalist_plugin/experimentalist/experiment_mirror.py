@@ -25,7 +25,7 @@ from nemo_platform import AsyncNeMoPlatform, ConflictError, NotFoundError, omit
 
 logger = logging.getLogger(__name__)
 
-SPLITS: tuple[str, str] = ("train", "validation")
+SPLITS: tuple[str, ...] = ("train", "validation", "insight")
 _NAME_RE = re.compile(r"[^a-z0-9-]+")
 
 
@@ -94,10 +94,15 @@ def experiment_metadata(candidate: Candidate, split: str) -> dict[str, str]:
 
 
 def _split_reward(candidate: Candidate, split: str) -> Any:
-    """The candidate's reward object for *split* — an explicit lookup over the two known
-    split fields (``train_reward``/``validation_reward``) rather than a dynamic attribute
-    read. Used only as a presence check: the reward value itself is never projected."""
-    return {"train": candidate.train_reward, "validation": candidate.validation_reward}[split]
+    """The candidate's reward object for *split* — an explicit lookup over the known
+    split fields (``train_reward``/``validation_reward``/``insight_reward``) rather
+    than a dynamic attribute read. Used only as a presence check: the reward value
+    itself is never projected."""
+    return {
+        "train": candidate.train_reward,
+        "validation": candidate.validation_reward,
+        "insight": candidate.insight_reward,
+    }[split]
 
 
 class ExperimentMirror:
