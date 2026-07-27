@@ -28,6 +28,7 @@ from nemo_platform_plugin.files.dataset_profile import (
     SplitProfile,
     Verifiability,
 )
+from pydantic import ValidationError
 
 # --- Fixture: trl-lib/OpenMathReasoning (conversational prompt_completion, verifiable) ---
 OPENMATHREASONING = """
@@ -310,6 +311,26 @@ def test_vocabularies_are_open():
     assert classification.dataset_type == "some_future_type"
     feature = FeatureSchema(dtype="tensor", semantic_role="a_role_added_next_year")
     assert feature.semantic_role == "a_role_added_next_year"
+
+
+def test_fields_and_items_are_mutually_exclusive():
+    """A node cannot be both a named-field container and a single-element container."""
+    with pytest.raises(ValidationError, match="mutually exclusive"):
+        FeatureSchema(
+            name="broken",
+            dtype="struct",
+            fields=[FeatureSchema(name="a", dtype="string")],
+            items=FeatureSchema(dtype="string"),
+        )
+
+
+def test_container_shape_is_not_pinned_to_known_dtypes():
+    """The exclusivity check must not become a dtype whitelist: a container dtype added by a newer
+    profiler still loads on an older reader, which is what the open vocabulary buys."""
+    future_map = FeatureSchema(name="attrs", dtype="map", fields=[FeatureSchema(name="k", dtype="string")])
+    assert [field.name for field in future_map.fields or []] == ["k"]
+    future_tensor = FeatureSchema(name="embedding", dtype="tensor", fixed_length=768)
+    assert future_tensor.fixed_length == 768
 
 
 def test_unknown_fields_are_ignored_for_forward_compat():

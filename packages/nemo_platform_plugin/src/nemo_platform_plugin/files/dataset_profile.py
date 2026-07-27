@@ -185,6 +185,19 @@ class FeatureSchema(BaseModel):
     fields: list[FeatureSchema] | None = Field(default=None, description="dtype == struct: named child fields.")
     items: FeatureSchema | None = Field(default=None, description="dtype in {list, messages}: element schema.")
 
+    @model_validator(mode="after")
+    def _fields_and_items_are_exclusive(self) -> FeatureSchema:
+        """A node is either a named-field container or has a single element schema, never both.
+
+        Deliberately the only structural check here: it holds for *any* dtype, so it costs no
+        forward compatibility. Tying `fields` / `items` / `fixed_length` to specific dtype values
+        would instead reject a profile written by a newer profiler that added a container dtype,
+        which is exactly what the open vocabulary exists to prevent.
+        """
+        if self.fields is not None and self.items is not None:
+            raise ValueError(f"feature {self.name!r}: `fields` and `items` are mutually exclusive")
+        return self
+
 
 class CategoricalStats(BaseModel):
     """Cardinality signals for string / int columns.
@@ -301,7 +314,7 @@ class PartitionProfile(BaseModel):
     classification: PartitionClassification
 
     @model_validator(mode="after")
-    def _stats_keys_subset_of_features(self) -> "PartitionProfile":
+    def _stats_keys_subset_of_features(self) -> PartitionProfile:
         """``stats`` is keyed by top-level column name, so every key must name a top-level feature
         (the producer keys stats by ``feature.name``); a stray key is a malformed profile."""
         unknown = set(self.stats) - {feature.name for feature in self.features}
