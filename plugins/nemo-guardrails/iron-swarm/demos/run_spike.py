@@ -1,22 +1,22 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Path 1 proof: context injected into the tool boundary, judged by the built-in
-``nemo_guardrails`` plugin's worker.
+"""Fast, deterministic check of the guardrail logic -- no agent, no Fabric.
 
-Drives ``tools.execute`` for each case, injecting the conversation context the way
-the Relay middleware would (under RELAY_CONTEXT_KEY). It proves the whole Path 1
-chain with the real judge across ALL FOUR tools / SIX checks:
+Drives ``tools.execute`` directly for each case, injecting the conversation context
+the way the Relay intercepts would (under ``RELAY_CONTEXT_KEY``), so all four tools
+and six checks run against the real judge on every invocation. This is the
+regression loop for iterating on ``guardrails_config/prompts.yml``.
 
-  * the worker judge sees injected USER TURNS (list_saved_queries, describe_schema),
-  * it judges tool ARGS (run_sql tables, export_query_result destinations), and
-  * ``register_context_strip`` removes the smuggled key before the tool runs
-    (allowed cases report ``_context_leaked=False``).
+It exercises the full chain:
+  * the worker judge sees injected user turns (list_saved_queries, describe_schema),
+  * it judges tool args (run_sql tables, export_query_result destinations), and
+  * the context key is stripped before the tool runs (allowed cases report
+    ``_context_leaked=False``).
 
-Run (real judge — needs INFERENCE_API_KEY):
-
-    export IRON_SWARM_WORKER_PYTHON=/path/to/worker-venv/bin/python   # nemoguardrails==0.22.0
-    OPENAI_API_KEY="$INFERENCE_API_KEY" python run_spike.py
+Requires ``INFERENCE_API_KEY`` and a worker interpreter
+(``IRON_SWARM_WORKER_PYTHON`` -> nemoguardrails==0.22.0). Usually run via
+``make spike``.
 """
 
 from __future__ import annotations

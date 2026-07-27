@@ -3,14 +3,15 @@
 
 """Build the built-in ``nemo_guardrails`` Relay component that does the judging.
 
-The same component config is used two ways:
+The same component config is exposed two ways:
   * ``nemo_guardrails_component_spec()`` -> a ``plugin.ComponentSpec`` for direct
-    activation via ``plugin.plugin(...)`` (run_spike.py).
+    activation via ``plugin.plugin(...)`` (used by demos/run_spike.py).
   * ``guardrails_component_config()`` -> the raw config dict for Fabric's
-    ``RelayComponentConfig(kind="nemo_guardrails", config=...)`` (fabric_demo.py).
+    ``RelayComponentConfig(kind="nemo_guardrails", config=...)`` (used by
+    demos/fabric_demo.py).
 
-Only the ``tool_input`` boundary is enabled: every check runs pre-tool-call (a
-single unified gate). The worker interpreter (nemoguardrails==0.22.0) is resolved
+Only the ``tool_input`` boundary is enabled, so every check runs pre-tool-call
+through a single gate. The worker interpreter (nemoguardrails==0.22.0) is resolved
 from ``IRON_SWARM_WORKER_PYTHON``.
 """
 

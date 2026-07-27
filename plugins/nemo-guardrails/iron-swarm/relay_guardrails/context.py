@@ -1,29 +1,25 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""The context workaround, as GLOBAL Relay intercepts (Fabric-compatible).
+"""The context workaround: global Relay intercepts that give the judge the user turn.
 
-Relay does not carry conversation context across the tool boundary, so the
-built-in ``nemo_guardrails`` plugin's worker can't see the user turn when it
-judges a tool call. This module supplies it with three global intercepts that
-fire during any managed run -- including Fabric's deepagents harness, whose
-middleware routes model calls through ``nemo_relay.llm.execute`` and tool calls
-through ``nemo_relay.typed.tool_execute`` (both run the global intercept
-pipeline). No middleware subclassing, no Fabric fork.
+Relay does not carry conversation context across the tool boundary, so the built-in
+``nemo_guardrails`` plugin's worker can't see the user turn when it judges a tool
+call. These three intercepts supply it. They fire during any managed run, including
+Fabric's deepagents harness (whose model and tool calls both go through Relay's
+managed execution), so no middleware subclassing or Fabric fork is needed.
 
-  1. capture (LLM request intercept)   -- read the user turn off each model call.
-  2. inject  (tool request intercept)  -- put it into the tool args, so the
-                                          plugin serializes it into the worker
-                                          payload and the judge can read it.
-  3. strip   (tool execution intercept) -- remove it before the real tool runs.
+  1. capture (LLM request)     -- read the user turn off each model call.
+  2. inject  (tool request)    -- add it to the tool args, so the plugin serializes
+                                  it into the worker payload for the judge to read.
+  3. strip   (tool execution)  -- remove it before the real tool runs.
 
-Ordering is deterministic: within one agent turn the model call (capture) runs
-before the tool call (inject/strip), and Relay's tool pipeline runs request
-intercepts (inject) before execution intercepts, with the high-priority strip
-nested inside the plugin's own tool intercept (which judges first).
+Ordering is deterministic: the model call (capture) precedes the tool call within a
+turn, and Relay runs request intercepts (inject) before execution intercepts, with
+the strip nested inside the plugin's own tool intercept (which judges first).
 
-This whole module is the throwaway workaround: it disappears when Relay carries
-context across the tool boundary natively (the feature request).
+This is a workaround; it is removed once Relay carries conversation context across
+the tool boundary natively.
 """
 
 from __future__ import annotations

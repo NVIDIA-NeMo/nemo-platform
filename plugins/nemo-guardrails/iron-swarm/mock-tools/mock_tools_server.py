@@ -3,14 +3,13 @@
 
 """Mock Quill tools as a local stdio MCP server (for the Fabric demo).
 
-Fabric's deepagents adapter cannot take in-process Python tools (executable
-objects can't cross the config->JSON boundary), so tools come from an MCP server.
-This is a tiny stdio server exposing Quill's four tools with CANNED results, so
-``fabric_demo.py`` is a real end-to-end run: the model makes a real tool call, the
-guardrail gates it, and the mock just returns stub data.
+Fabric's deepagents adapter can't take in-process Python tools, so tools come from
+an MCP server. This tiny stdio server exposes Quill's four tools with canned
+results, so ``demos/fabric_demo.py`` is a real end-to-end run: the model makes a
+real tool call, the guardrail gates it, and the mock returns stub data.
 
 Tool names must match the ``guardrail__<tool>__*`` tasks in
-guardrails_config/prompts.yml (and your real tool names when you swap this out).
+``guardrails_config/prompts.yml`` (and the real tool names when this is swapped out).
 """
 
 from __future__ import annotations

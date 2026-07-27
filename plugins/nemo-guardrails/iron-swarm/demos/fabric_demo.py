@@ -1,33 +1,26 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Phase 3: run the agent through NeMo Fabric (deepagents harness) with guardrails.
+"""Run the agent through NeMo Fabric (deepagents harness) with guardrails attached.
 
-This is how Iron Swarm actually deploys — not a standalone driver script. The
-agent runs on Fabric's deepagents (LangGraph) harness; the guardrails are
-attached entirely through the typed ``FabricConfig``:
+This is the deployment shape. The agent runs on Fabric's deepagents (LangGraph)
+harness, and the guardrails are attached entirely through the typed ``FabricConfig``
+-- no middleware is hand-wired into the agent, so the agent's own code is unchanged.
 
+Two pieces wire the guardrails in:
   * ``enable_relay(components=[RelayComponentConfig(kind="nemo_guardrails", ...)])``
-    activates the built-in plugin (the judge) at the tool boundary, and
-  * a **custom Fabric adapter** (``adapters/quill-relay/fabric-adapter.json`` ->
+    activates the built-in plugin (the judge) at the tool boundary.
+  * a custom Fabric adapter (``adapters/quill-relay/fabric-adapter.json`` ->
     ``relay_guardrails/fabric_adapter.py``) registers the capture/inject/strip
-    intercepts INSIDE the adapter subprocess, where the agent actually runs. The
-    driver process can't reach it, which is why the plain global-intercept wiring
-    failed (the judge saw an empty user turn).
+    context intercepts inside the adapter subprocess, where the agent actually runs.
 
-Tools: the deepagents adapter can't take in-process Python tools (executable
-objects can't cross the config->JSON boundary), so Quill's tools are provided by
-a local **stdio MCP server** (``mock-tools/mock_tools_server.py``) with canned results.
-Real end-to-end: the model makes a real tool call, the guardrail gates it.
+Tools come from a local stdio MCP server (``mock-tools/mock_tools_server.py``),
+because the deepagents adapter can't take in-process Python tools. The run is real
+end-to-end: the model makes a real tool call and the guardrail gates it.
 
-No middleware is hand-attached to the agent; Fabric owns the agent build. That is
-the "no agent code change" story.
-
-Requires: ``nemo-fabric[deepagents]`` + ``mcp`` (stdio server) in this interpreter,
-a worker interpreter (``IRON_SWARM_WORKER_PYTHON`` -> nemoguardrails==0.22.0), and
-``INFERENCE_API_KEY``. See README for the exact command.
-
-    python fabric_demo.py
+Requires ``nemo-fabric[deepagents]`` + ``mcp`` in this interpreter, a worker
+interpreter (``IRON_SWARM_WORKER_PYTHON`` -> nemoguardrails==0.22.0), and
+``INFERENCE_API_KEY``. Usually run via ``make fabric`` (see the README).
 """
 
 from __future__ import annotations
