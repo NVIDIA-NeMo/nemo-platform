@@ -217,7 +217,12 @@ def _register_local_commands(app: typer.Typer) -> None:
         """Run an agent locally as a persistent FastAPI server."""
         import subprocess
 
-        config_format = _load_yaml(agent_config).get("config_format", NAT_WORKFLOW_CONFIG_FORMAT)
+        config = _load_yaml(agent_config)
+        if not isinstance(config, dict):
+            typer.echo(f"Error: agent config {agent_config} root must be a YAML mapping.", err=True)
+            raise typer.Exit(code=1)
+
+        config_format = config.get("config_format", NAT_WORKFLOW_CONFIG_FORMAT)
         if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
             cmd = [
                 sys.executable,

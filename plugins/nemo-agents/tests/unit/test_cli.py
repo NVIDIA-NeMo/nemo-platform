@@ -106,6 +106,19 @@ def test_run_starts_fabric_server_for_platform_config(tmp_path: Path) -> None:
     )
 
 
+def test_run_rejects_empty_yaml_config(tmp_path: Path) -> None:
+    config = tmp_path / "agent.yaml"
+    config.write_text("")
+
+    app = AgentsCLI().get_cli()
+    with patch("subprocess.run") as run:
+        result = CliRunner().invoke(app, ["run", "--agent-config", str(config)])
+
+    assert result.exit_code == 1
+    assert f"agent config {config} root must be a YAML mapping" in result.stderr
+    run.assert_not_called()
+
+
 def test_list_404_prints_request_context_and_hint() -> None:
     def handler(req: httpx.Request) -> httpx.Response:
         return httpx.Response(404, json={"detail": "Not Found"})
