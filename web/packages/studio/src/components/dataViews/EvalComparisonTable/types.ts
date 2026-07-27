@@ -5,6 +5,12 @@
 export interface EvalComparisonScore {
   readonly name: string;
   readonly mean: number | null;
+  /** Optional aggregate metadata retained when adapting agent evaluation results. */
+  readonly count?: number;
+  readonly nan_count?: number;
+  readonly min?: number;
+  readonly max?: number;
+  readonly score_type?: string;
 }
 
 /** A completed evaluation run, represented in the common shape consumed by comparison views.
