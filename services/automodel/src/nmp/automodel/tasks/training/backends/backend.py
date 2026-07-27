@@ -24,6 +24,7 @@ from nmp.automodel.tasks.training.schemas import (
 )
 from nmp.automodel.tasks.training.utils import generate_torchrun_flags_from_env
 from nmp.customization_common.service.context import NMPJobContext
+from nmp.customization_common.training.nccl import maybe_set_nccl_ib_hca
 
 from .checkpoints import ModelType, find_best_checkpoint, process_checkpoint
 from .config import compile_automodel_config
@@ -70,6 +71,7 @@ class AutomodelBackend:
         # Note: The progress parameter is not passed to run_training_with_customizer_recipe
         # because progress reporting now happens inside the subprocess via
         # TrainingProgressCallback using environment variables.
+        maybe_set_nccl_ib_hca()
         command = ["torchrun"]
         command.extend(generate_torchrun_flags_from_env())
         command.extend(

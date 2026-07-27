@@ -18,6 +18,7 @@ from typing import Any, Optional, cast
 
 from nemo_rl.utils.checkpoint import CheckpointingConfig, CheckpointManager
 from nmp.customization_common.service.context import NMPJobContext
+from nmp.customization_common.training.nccl import maybe_set_nccl_ib_hca
 from nmp.customization_common.training.progress import JobsServiceProgressReporter
 from nmp.rl.app.jobs.training.schemas import (
     CheckpointFormat,
@@ -126,6 +127,7 @@ class NemoRLBackend(TrainingBackend):
         # Environment overrides the driver subprocess inherits. We snapshot and
         # restore them (below) so a reused worker process doesn't leak this run's
         # values — e.g. a stale MLFLOW_URI — into a subsequent run.
+        maybe_set_nccl_ib_hca()
         env_overrides = {
             "BASE_LOG_DIR": str(workspace_dir),
             "GPUS_PER_NODE": str(customizer_config.parallelism.num_gpus_per_node),
