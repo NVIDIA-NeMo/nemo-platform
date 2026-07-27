@@ -13,7 +13,7 @@ from nemo_agents_plugin.agent_config import AgentConfig, HarnessConfig, ModelCon
 
 HARNESS_ADAPTER_IDS = {
     "claude": "nvidia.fabric.claude",
-    "codex": "nvidia.fabric.codex.cli",
+    "codex": "nvidia.fabric.codex",
     "deepagents": "nvidia.fabric.langchain.deepagents",
     "hermes": "nvidia.fabric.hermes",
 }
@@ -27,6 +27,7 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
     """Translate Platform-owned agent config into a typed in-memory FabricConfig."""
     selected_harness_name, harness = _select_harness(config, harness_name)
     model = _resolve_model(config, selected_harness_name, harness)
+    _validate_untranslated_shared_fields(config)
 
     fabric_config = fabric.FabricConfig(
         metadata=fabric.MetadataConfig(name=config.name, description=config.description or None),
@@ -44,6 +45,9 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
             artifacts=config.environment.artifacts,
             settings=config.environment.settings,
         ),
+        skills=_skills_config(config),
+        mcp=_mcp_config(config),
+        tools=_tools_config(config),
     )
 
     _apply_telemetry(fabric_config, config, model)
@@ -83,6 +87,33 @@ def _resolve_model(config: AgentConfig, harness_name: str, harness: HarnessConfi
 
 def _model_payload(model: ModelConfig) -> dict[str, Any]:
     return model.model_dump(exclude_none=True)
+
+
+def _validate_untranslated_shared_fields(config: AgentConfig) -> None:
+    if config.prompts:
+        raise FabricTranslationError(
+            "Top-level prompts are not translated yet. Configure prompt settings under the selected harness instead."
+        )
+
+
+def _skills_config(config: AgentConfig) -> Any:
+    if config.skills is None:
+        return None
+    return fabric.SkillConfig(paths=config.skills.paths)
+
+
+def _mcp_config(config: AgentConfig) -> Any:
+    if config.mcp is None:
+        return None
+    return fabric.McpConfig(
+        servers={name: fabric.McpServerConfig(**server.model_dump()) for name, server in config.mcp.servers.items()}
+    )
+
+
+def _tools_config(config: AgentConfig) -> Any:
+    if config.tools is None:
+        return None
+    return fabric.ToolsConfig(blocked=config.tools.blocked)
 
 
 def _apply_telemetry(fabric_config: Any, config: AgentConfig, model: ModelConfig) -> None:

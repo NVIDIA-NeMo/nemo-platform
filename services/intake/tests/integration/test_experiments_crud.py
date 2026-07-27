@@ -13,8 +13,6 @@ from nmp.intake.api.v2.experiments.endpoints import get_evaluation_rollup_reposi
 
 GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
 EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
-# Deprecated URL alias: the child endpoints moved /experiments -> /evaluations.
-EXPERIMENTS_ALIAS = "/apis/intake/v2/workspaces/default/experiments"
 
 
 def _evaluation_body(*, experiment_group_id: str, **overrides: Any) -> dict:
@@ -65,6 +63,19 @@ def test_experiment_group_crud(client: TestClient) -> None:
     assert missing.status_code == 404
 
 
+def test_filter_groups_by_insight_id(client: TestClient) -> None:
+    """The groups list can be filtered server-side by the seeding insight id."""
+    seeded = client.post(GROUPS, json={"name": "seeded-group", "insight_id": "insight-abc"})
+    assert seeded.status_code == 201, seeded.text
+    other = client.post(GROUPS, json={"name": "unseeded-group"})
+    assert other.status_code == 201, other.text
+
+    listed = client.get(GROUPS, params={"filter[insight_id]": "insight-abc"})
+    assert listed.status_code == 200, listed.text
+    names = {g["name"] for g in listed.json()["data"]}
+    assert names == {"seeded-group"}
+
+
 def test_experiment_group_update_description(client: TestClient) -> None:
     client.post(GROUPS, json={"name": "grp", "description": "old"})
     updated = client.put(f"{GROUPS}/grp", json={"name": "grp", "description": "new"})
@@ -75,6 +86,44 @@ def test_experiment_group_update_description(client: TestClient) -> None:
     assert renamed.status_code == 409
     missing = client.put(f"{GROUPS}/missing", json={"name": "missing"})
     assert missing.status_code == 404
+
+
+def test_experiment_group_pareto_defaults_and_round_trips(client: TestClient) -> None:
+    # Omitting pareto defaults to cost (x) vs latency (y), so the chart always has something to render.
+    created = client.post(GROUPS, json={"name": "pareto-cfg"})
+    assert created.status_code == 201, created.text
+    assert created.json()["pareto"] == {"x_metric": "cost_usd", "y_metric": "latency_ms"}
+    assert client.get(f"{GROUPS}/pareto-cfg").json()["pareto"] == {
+        "x_metric": "cost_usd",
+        "y_metric": "latency_ms",
+    }
+
+    # A custom selection round-trips through PUT.
+    updated = client.put(
+        f"{GROUPS}/pareto-cfg",
+        json={"name": "pareto-cfg", "pareto": {"x_metric": "cost_usd", "y_metric": "evaluators.reward"}},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["pareto"] == {"x_metric": "cost_usd", "y_metric": "evaluators.reward"}
+
+    # An update that omits pareto preserves the saved axes rather than resetting them to the default.
+    preserved = client.put(f"{GROUPS}/pareto-cfg", json={"name": "pareto-cfg", "summary": "unrelated edit"})
+    assert preserved.status_code == 200, preserved.text
+    assert preserved.json()["pareto"] == {"x_metric": "cost_usd", "y_metric": "evaluators.reward"}
+
+
+def test_experiment_group_pareto_rejects_unknown_metric(client: TestClient) -> None:
+    # Studio can only plot cost_usd, latency_ms, or evaluators.<name>; anything else is rejected so it
+    # can't be persisted as an unusable chart default.
+    rejected = client.post(
+        GROUPS, json={"name": "bad-pareto", "pareto": {"x_metric": "made_up", "y_metric": "latency_ms"}}
+    )
+    assert rejected.status_code == 422, rejected.text
+    # A dynamic evaluator metric is allowed.
+    ok = client.post(
+        GROUPS, json={"name": "ok-pareto", "pareto": {"x_metric": "evaluators.safety", "y_metric": "cost_usd"}}
+    )
+    assert ok.status_code == 201, ok.text
 
 
 def test_evaluation_update_moves_between_groups_and_edits(client: TestClient) -> None:
@@ -180,39 +229,6 @@ def test_delete_group_cascades_to_evaluations(client: TestClient) -> None:
     for child_name in ("exp-doomed-1", "exp-doomed-2"):
         missing = client.get(f"{EVALUATIONS}/{child_name}")
         assert missing.status_code == 404
-
-
-def test_legacy_experiments_url_alias_still_works(client: TestClient) -> None:
-    """The child endpoints moved /experiments -> /evaluations; the old paths remain as hidden aliases."""
-    group = _create_group(client, name="legacy-alias-group")
-
-    # Create via the deprecated /experiments URL.
-    created = client.post(
-        EXPERIMENTS_ALIAS,
-        json=_evaluation_body(name="legacy-alias-eval", experiment_group_id=group["id"]),
-    )
-    assert created.status_code == 201, created.text
-    assert created.json()["name"] == "legacy-alias-eval"
-
-    # The deprecated URL and the canonical URL resolve to the same entity.
-    via_legacy = client.get(f"{EXPERIMENTS_ALIAS}/legacy-alias-eval")
-    via_canonical = client.get(f"{EVALUATIONS}/legacy-alias-eval")
-    assert via_legacy.status_code == 200, via_legacy.text
-    assert via_canonical.status_code == 200
-    assert via_legacy.json() == via_canonical.json()
-
-
-def test_legacy_experiments_url_aliases_are_hidden_from_schema() -> None:
-    from fastapi.routing import APIRoute
-    from nmp.intake.api.v2.experiments.endpoints import router
-
-    alias_routes = [
-        route
-        for route in router.routes
-        if isinstance(route, APIRoute) and "/experiments" in route.path and "/experiment-groups" not in route.path
-    ]
-    assert alias_routes, "expected legacy /experiments alias routes to be registered"
-    assert all(route.include_in_schema is False for route in alias_routes)
 
 
 def test_deprecated_field_aliases_are_backwards_compatible(client: TestClient) -> None:

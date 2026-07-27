@@ -20,6 +20,8 @@ from __future__ import annotations
 from typing import Dict
 from typing_extensions import Required, TypedDict
 
+from .pareto_config_param import ParetoConfigParam
+
 __all__ = ["ExperimentGroupCreateParams"]
 
 
@@ -47,6 +49,15 @@ class ExperimentGroupCreateParams(TypedDict, total=False):
 
     metadata: Dict[str, str]
     """Free-form producer metadata for the group."""
+
+    pareto: ParetoConfigParam
+    """Default X/Y metrics for a group's cost-vs-accuracy Pareto view.
+
+    Metric ids use the same vocabulary as the evaluations list sort/filter fields —
+    `cost_usd`, `latency_ms`, or `evaluators.<name>`. Defaults to cost (x) vs
+    latency (y): both exist for every group, so the chart always has something to
+    render before anyone customizes it.
+    """
 
     summary: str
     """Human- or agent-authored summary of the group's findings."""

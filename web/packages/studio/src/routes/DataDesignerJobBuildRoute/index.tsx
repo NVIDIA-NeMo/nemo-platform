@@ -11,6 +11,7 @@ import { getErrorMessage } from '@studio/api/common/utils';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { findTemplate } from '@studio/components/CreateFilesetStart/templates';
 import { usePreview } from '@studio/components/NewDataDesignerJobForm/usePreview';
+import { getCloneJobRequestFromState } from '@studio/components/NewDataDesignerJobForm/utils';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { BuilderCanvas } from '@studio/routes/DataDesignerJobBuildRoute/BuilderCanvas';
@@ -22,15 +23,20 @@ import {
   type BuilderViewMode,
 } from '@studio/routes/DataDesignerJobBuildRoute/BuilderToolbar';
 import {
+  buildColumnsFromConfig,
   buildDataDesignerConfig,
   validateColumns,
 } from '@studio/routes/DataDesignerJobBuildRoute/columns';
 import {
+  buildModelsFromConfig,
   buildServedModelNames,
   validateModels,
 } from '@studio/routes/DataDesignerJobBuildRoute/models';
 import { SchemaList } from '@studio/routes/DataDesignerJobBuildRoute/SchemaList';
-import { useJobBuilder } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
+import {
+  type JobBuilderSeed,
+  useJobBuilder,
+} from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
 import {
   getDataDesignerJobDetailsRoute,
   getDataDesignerJobListRoute,
@@ -39,7 +45,7 @@ import {
 import { type FC, useCallback, useMemo, useState } from 'react';
 import { FormProvider } from 'react-hook-form';
 import { useAuth } from 'react-oidc-context';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
 /**
  * Edges are derived from entered values: Jinja2 `{{ column_name }}` references (and
@@ -50,14 +56,30 @@ export const DataDesignerJobBuildRoute: FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
+  const { state: locationState } = useLocation();
 
-  // `?template=<id>` seeds the canvas from a template recipe; absent = empty canvas.
   const template = useMemo(() => {
     const templateId = searchParams.get('template');
     return templateId ? (findTemplate(templateId) ?? null) : null;
   }, [searchParams]);
 
-  const heading = template ? template.title : 'Build from scratch';
+  const cloneSeed = useMemo<JobBuilderSeed | null>(() => {
+    const cloneRequest = getCloneJobRequestFromState(locationState);
+    if (!cloneRequest?.spec) return null;
+    const { config, num_records } = cloneRequest.spec;
+    return {
+      name: cloneRequest.name ?? 'untitled-dataset',
+      rows: String(num_records),
+      columns: buildColumnsFromConfig(config),
+      models: buildModelsFromConfig(config.model_configs),
+    };
+  }, [locationState]);
+
+  const heading = cloneSeed
+    ? `Clone of ${cloneSeed.name}`
+    : template
+      ? template.title
+      : 'Build from scratch';
 
   useBreadcrumbs({
     items: [
@@ -82,7 +104,7 @@ export const DataDesignerJobBuildRoute: FC = () => {
   );
   const modelsSettled = !isLoadingModels && !hasNextPage && !isFetchingNextPage;
 
-  const builder = useJobBuilder(template, modelGroups, modelsSettled);
+  const builder = useJobBuilder(template, modelGroups, modelsSettled, cloneSeed);
   const { data: providersPage } = useModelsListProviders(
     workspace,
     { page_size: DEFAULT_LARGE_PAGE_SIZE },

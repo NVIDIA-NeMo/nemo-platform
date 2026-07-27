@@ -1,0 +1,195 @@
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+import { Flex } from '@nvidia/foundations-react-core';
+import type { SessionDetailRouteContext } from '@studio/components/IntakeDetail/SessionDetailView';
+import { ROUTE_PARAMS } from '@studio/constants/routes';
+import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { QUERY_PARAMETERS } from '@studio/routes/constants';
+import { CompareRunSelect } from '@studio/routes/EvaluationSessionDetailRoute/CompareRunSelect';
+import { TestCaseCompare } from '@studio/routes/EvaluationSessionDetailRoute/TestCaseCompare';
+import { useSessionCompareRuns } from '@studio/routes/EvaluationSessionDetailRoute/useSessionCompareRuns';
+import { SessionDetailContent } from '@studio/routes/IntakeSessionDetailRoute';
+import {
+  getEvaluationDetailRoute,
+  getEvaluationSessionDetailRoute,
+  getExperimentGroupDetailRoute,
+  getExperimentRoute,
+} from '@studio/routes/utils';
+import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
+import { type FC, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
+
+/**
+ * Compare mode: the current session on the left, a picked run of the same test case on the right.
+ * Fans out over the group's sibling evaluations to gather every run of the test case (Option A).
+ */
+const EvaluationSessionCompare: FC<{
+  workspace: string;
+  experimentGroupName: string;
+  sessionId: string;
+  compareWith: string;
+  onSelectCompare: (sessionId: string) => void;
+  onClearCompare: () => void;
+}> = ({
+  workspace,
+  experimentGroupName,
+  sessionId,
+  compareWith,
+  onSelectCompare,
+  onClearCompare,
+}) => {
+  const { testCaseId, runs, isRunsLoading } = useSessionCompareRuns(
+    workspace,
+    experimentGroupName,
+    sessionId
+  );
+  const primaryRun = runs.find((run) => run.session_id === sessionId);
+  const compareRun = runs.find((run) => run.session_id === compareWith);
+
+  return (
+    <TestCaseCompare
+      workspace={workspace}
+      experimentGroupName={experimentGroupName}
+      testCaseId={testCaseId}
+      primarySessionId={sessionId}
+      primaryRun={primaryRun}
+      compareSessionId={compareWith}
+      compareRun={compareRun}
+      isRunsLoading={isRunsLoading}
+      slotHeaderActions={
+        <Flex align="center" gap="density-md">
+          <CompareRunSelect
+            runs={runs}
+            currentSessionId={sessionId}
+            value={compareWith}
+            onChange={onSelectCompare}
+            isLoading={isRunsLoading}
+          />
+          <button
+            type="button"
+            className="text-sm text-secondary hover:underline"
+            onClick={onClearCompare}
+          >
+            Clear
+          </button>
+        </Flex>
+      }
+    />
+  );
+};
+
+/**
+ * Single session (test case) view with the "Compare against…" entry point in its
+ * header. Picking a run sets ?compareWith, which flips the route into compare mode.
+ */
+const EvaluationSessionDetail: FC<{
+  workspace: string;
+  experimentGroupName: string;
+  sessionId: string;
+  routeContext: SessionDetailRouteContext;
+  onSelectCompare: (sessionId: string) => void;
+}> = ({ workspace, experimentGroupName, sessionId, routeContext, onSelectCompare }) => {
+  const { runs, isRunsLoading } = useSessionCompareRuns(workspace, experimentGroupName, sessionId);
+
+  const contextWithCompare = useMemo<SessionDetailRouteContext>(
+    () =>
+      routeContext.kind === 'evaluation'
+        ? {
+            ...routeContext,
+            headerActions: (
+              <CompareRunSelect
+                runs={runs}
+                currentSessionId={sessionId}
+                value={null}
+                onChange={onSelectCompare}
+                isLoading={isRunsLoading}
+              />
+            ),
+          }
+        : routeContext,
+    [routeContext, runs, sessionId, onSelectCompare, isRunsLoading]
+  );
+
+  return <SessionDetailContent sessionId={sessionId} routeContext={contextWithCompare} />;
+};
+
+export const EvaluationSessionDetailRoute: FC = () => {
+  const workspace = useWorkspaceFromPath();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // compareWith carries the session_id of the run to show in the right column.
+  const compareWith = searchParams.get(QUERY_PARAMETERS.compareWith);
+
+  const { sessionId, experimentGroupName, evaluationName } = useRequiredPathParams([
+    ROUTE_PARAMS.sessionId,
+    ROUTE_PARAMS.experimentGroupName,
+    ROUTE_PARAMS.evaluationName,
+  ]);
+
+  const onSelectCompare = useCallback(
+    (targetSessionId: string) => {
+      setSearchParams((previous) => {
+        const next = new URLSearchParams(previous);
+        next.set(QUERY_PARAMETERS.compareWith, targetSessionId);
+        return next;
+      });
+    },
+    [setSearchParams]
+  );
+
+  const onClearCompare = useCallback(() => {
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous);
+      next.delete(QUERY_PARAMETERS.compareWith);
+      return next;
+    });
+  }, [setSearchParams]);
+
+  const routeContext = useMemo<SessionDetailRouteContext>(
+    () => ({
+      kind: 'evaluation',
+      parentBreadcrumbs: [
+        { slotLabel: 'Experiment Groups', href: getExperimentRoute(workspace) },
+        {
+          slotLabel: experimentGroupName,
+          href: getExperimentGroupDetailRoute(workspace, experimentGroupName),
+        },
+        {
+          slotLabel: evaluationName,
+          href: getEvaluationDetailRoute(workspace, experimentGroupName, evaluationName),
+        },
+      ],
+      getSessionHref: (targetSessionId) =>
+        getEvaluationSessionDetailRoute(
+          workspace,
+          experimentGroupName,
+          evaluationName,
+          targetSessionId
+        ),
+    }),
+    [workspace, experimentGroupName, evaluationName]
+  );
+
+  if (compareWith) {
+    return (
+      <EvaluationSessionCompare
+        workspace={workspace}
+        experimentGroupName={experimentGroupName}
+        sessionId={sessionId}
+        compareWith={compareWith}
+        onSelectCompare={onSelectCompare}
+        onClearCompare={onClearCompare}
+      />
+    );
+  }
+
+  return (
+    <EvaluationSessionDetail
+      workspace={workspace}
+      experimentGroupName={experimentGroupName}
+      sessionId={sessionId}
+      routeContext={routeContext}
+      onSelectCompare={onSelectCompare}
+    />
+  );
+};

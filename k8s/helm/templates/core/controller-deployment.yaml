@@ -59,6 +59,10 @@ spec:
               value: /etc/nmp/config.yaml
             - name: NMP_BASE_URL
               value: {{ include "nemo-platform.internalBaseUrl" . | quote }}
+            # In-cluster API Service DNS. Deployed agents use this as their inference
+            # endpoint, since NMP_BASE_URL may not be reachable from an agent pod.
+            - name: NMP_INTERNAL_BASE_URL
+              value: {{ include "nemo-platform.internalBaseUrl" . | quote }}
             {{- if include "nemo-platform.embeddedPdpEnabled" . }}
             - name: NMP_AUTH_POLICY_DECISION_POINT_BASE_URL
               value: {{ include "nemo-platform.internalBaseUrl" . | quote }}

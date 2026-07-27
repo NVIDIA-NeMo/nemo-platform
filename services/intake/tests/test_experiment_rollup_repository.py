@@ -149,9 +149,11 @@ async def test_evaluation_rollups_anchor_on_root_session_membership():
     assert "WHERE sessions.test_case_id != ''" in client.queries[1]
     assert "test_case_metrics AS" in client.queries[2]
     assert "current_session_spans AS" in client.queries[2]
-    assert "(span_versions.workspace, span_versions.session_id) IN" in client.queries[2]
+    assert (
+        "(workspace, session_id) IN (SELECT DISTINCT workspace, session_id FROM scoped_sessions)" in client.queries[2]
+    )
     assert "LEFT JOIN current_session_spans AS spans" in client.queries[2]
-    assert "sessions.session_id = spans.session_id" in client.queries[2]
+    assert "sessions.session_id = spans.dedup_session_id" in client.queries[2]
     assert "arraySort(arrayDistinct(arrayFlatten(groupArray(model_names)))) AS model_names" in client.queries[2]
     assert "quantileExactIf(0.5)" in client.queries[2]
     assert "cost_median" in client.queries[2]

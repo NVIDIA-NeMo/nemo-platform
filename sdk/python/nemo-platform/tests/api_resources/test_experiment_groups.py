@@ -54,6 +54,10 @@ class TestExperimentGroups:
             description="description",
             insight_id="insight_id",
             metadata={"foo": "string"},
+            pareto={
+                "x_metric": "x_metric",
+                "y_metric": "y_metric",
+            },
             summary="summary",
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
@@ -168,6 +172,10 @@ class TestExperimentGroups:
             description="description",
             insight_id="insight_id",
             metadata={"foo": "string"},
+            pareto={
+                "x_metric": "x_metric",
+                "y_metric": "y_metric",
+            },
             summary="summary",
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
@@ -233,6 +241,7 @@ class TestExperimentGroups:
         experiment_group = client.experiment_groups.list(
             workspace="workspace",
             filter={
+                "insight_id": "insight_id",
                 "is_deleted": True,
                 "metadata": {"foo": "string"},
                 "name": "name",
@@ -354,6 +363,10 @@ class TestAsyncExperimentGroups:
             description="description",
             insight_id="insight_id",
             metadata={"foo": "string"},
+            pareto={
+                "x_metric": "x_metric",
+                "y_metric": "y_metric",
+            },
             summary="summary",
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
@@ -468,6 +481,10 @@ class TestAsyncExperimentGroups:
             description="description",
             insight_id="insight_id",
             metadata={"foo": "string"},
+            pareto={
+                "x_metric": "x_metric",
+                "y_metric": "y_metric",
+            },
             summary="summary",
         )
         assert_matches_type(ExperimentGroupResponse, experiment_group, path=["response"])
@@ -533,6 +550,7 @@ class TestAsyncExperimentGroups:
         experiment_group = await async_client.experiment_groups.list(
             workspace="workspace",
             filter={
+                "insight_id": "insight_id",
                 "is_deleted": True,
                 "metadata": {"foo": "string"},
                 "name": "name",

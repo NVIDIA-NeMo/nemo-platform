@@ -5,6 +5,7 @@ import SafeSynthesizerLogo from '@nemo/common/src/svgs/safe_synthesizer_logo.svg
 import { NavigationDrawer } from '@studio/components/Layouts/NavigationDrawer';
 import { DataDesignerIconFc } from '@studio/constants/constants';
 import {
+  ANONYMIZER_ENABLED,
   BASE_MODELS_ENABLED,
   CODING_AGENT_STUDIO_ENABLED,
   CUSTOMIZER_ENABLED,
@@ -18,6 +19,7 @@ import {
   INTAKE_ENABLED,
   JOBS_ENABLED,
   MODEL_COMPARE_ENABLED,
+  OPTIMIZER_ENABLED,
   SAFE_SYNTHESIZER_ENABLED,
   SETTINGS_ENABLED,
 } from '@studio/constants/environment';
@@ -25,12 +27,14 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { iconColorClass } from '@studio/routes/constants';
 import { getAgentSideNavItems } from '@studio/routes/groups/agentRoutes';
 import {
+  getWorkspaceAnonymizerRoute,
   getDataDesignerJobListRoute,
-  getModelCompareRoute,
   getEvaluationResultsRoute,
   getExperimentRoute,
   getGuardrailsRoute,
   getIntakeRoute,
+  getModelCompareRoute,
+  getOptimizerRoute,
   getWorkspaceBaseModelsRoute,
   getWorkspaceCustomizationJobListRoute,
   getWorkspaceDashboardRoute,
@@ -54,6 +58,8 @@ import {
   Cog,
   Columns3,
   Rocket,
+  VenetianMask,
+  Gauge,
   Waypoints,
 } from 'lucide-react';
 import { useMemo } from 'react';
@@ -149,8 +155,29 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
         ]
       : [];
 
+    const anonymizerNav = ANONYMIZER_ENABLED
+      ? [
+          {
+            id: 'anonymizer',
+            slotIcon: <VenetianMask className={iconColorClass} />,
+            slotLabel: 'Anonymizer',
+            href: getWorkspaceAnonymizerRoute(workspace),
+          },
+        ]
+      : [];
+
     const agentItems = getAgentSideNavItems(workspace);
 
+    const optimizerNav = OPTIMIZER_ENABLED
+      ? [
+          {
+            id: 'optimizer',
+            slotIcon: <Gauge className={iconColorClass} />,
+            slotLabel: 'Insights',
+            href: getOptimizerRoute(workspace),
+          },
+        ]
+      : [];
     const virtualModelsNav = [
       {
         id: 'virtual-models',
@@ -184,6 +211,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
         : []),
       ...safeSynthesizerNav,
       ...dataDesignerNav,
+      ...anonymizerNav,
     ];
     const evaluateItems = [...evalNav, ...intakeNav, ...experimentNav];
 
@@ -201,11 +229,11 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
     return [
       ...dashboardNav,
       ...modelCompareNav,
-      ...(agentItems.length > 0
+      ...(agentItems.length > 0 || optimizerNav.length > 0
         ? [
             {
               group: 'Agents',
-              items: agentItems,
+              items: [...agentItems, ...optimizerNav],
             },
           ]
         : []),

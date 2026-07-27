@@ -3,26 +3,18 @@
 
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import {
-  getGetTraceQueryKey,
-  getListSpansQueryKey,
+  type ListSpansQueryError,
   useGetSpan,
   useListAnnotations,
-  useListSpans,
 } from '@nemo/sdk/generated/platform/api';
 import {
   AnnotationSortField,
   type FeedbackAnnotationInputValue,
+  type Span,
   SpanStatus,
   type Trace,
 } from '@nemo/sdk/generated/platform/schema';
-import {
-  Button,
-  Flex,
-  SegmentedControl,
-  Spinner,
-  Stack,
-  Text,
-} from '@nvidia/foundations-react-core';
+import { Flex, Spinner, Stack, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { IntakeErrorBanner } from '@studio/components/IntakeDetail/IntakeComponents/IntakeErrorBanner';
 import { SpanListView } from '@studio/components/IntakeDetail/TraceSpanListView';
@@ -33,64 +25,58 @@ import {
 } from '@studio/components/IntakeDetail/traceSpanShared';
 import { SpanTreeView } from '@studio/components/IntakeDetail/TraceSpanTreeView';
 import {
+  type TraceViewMode,
+  TraceViewToolbar,
+} from '@studio/components/IntakeDetail/TraceViewToolbar';
+import { QUERY_PARAMETERS } from '@studio/routes/constants';
+import {
   buildSpanHierarchyRows,
-  buildSpanTree,
   getSpansDurationMs,
+  type SessionTrajectory,
 } from '@studio/util/intakeTelemetry';
-import { useQueryClient } from '@tanstack/react-query';
-import { ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
 import { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-
-/** Render prop passed to TraceSpanAccordions for injecting a custom header above the span list. */
-export type SlotHeaderRenderProp = (props: {
-  expandAll: () => void;
-  collapseAll: () => void;
-}) => React.ReactNode;
+import { useSearchParams } from 'react-router-dom';
 
 const TRACE_SPANS_PAGE_SIZE = 1000;
-
-/** Params for the trace's span-list query; shared with the reload invalidation so the keys always match. */
-const traceSpansParams = (traceId: string) =>
-  ({
-    filter: { trace_id: traceId },
-    mode: 'summary',
-    page: 1,
-    page_size: TRACE_SPANS_PAGE_SIZE,
-    sort: 'started_at',
-  }) as const;
-
-type ViewMode = 'tree' | 'list';
+const EMPTY_SPANS: Span[] = [];
 
 // ── Explorer: toolbar (Tree/List + expand/collapse) over the chosen view ─────
 
 interface TraceSpanAccordionsProps {
   workspace: string;
   trace: Trace;
-  /** Currently linked (selected) span id. Owned by the parent — single view binds it to ?spanId=, compare view keeps one slot per column. */
-  linkedSpanId: string | null;
-  /** Called when the selection changes (span click, accordion open, add-note, session reload). */
-  onLinkedSpanIdChange: (spanId: string | null) => void;
-  /** When true, forces list view and hides the Tree/List toggle. Used in compare mode where columns don't have room for the tree layout. */
-  forceListView?: boolean;
-  /** When true, the first span accordion is opened by default once spans load. Used in compare mode. */
-  defaultOpenFirst?: boolean;
-  /** Render prop called with expandAll/collapseAll; rendered above the span list. When provided, the built-in toolbar is suppressed. */
-  slotHeader?: SlotHeaderRenderProp;
+  explorer: SessionExplorerData;
+  onSelectSession: () => void;
+  onSelectTrace: (traceId: string) => void;
+  sessionDurationMs?: number;
+  sessionErrored: boolean;
+  viewMode: TraceViewMode;
+  onViewModeChange: (viewMode: TraceViewMode) => void;
+}
+
+export interface SessionExplorerData {
+  readonly trajectories: SessionTrajectory[];
+  readonly spansLoaded: boolean;
+  readonly spansError: ListSpansQueryError | null;
+  readonly isSpansFetching: boolean;
+  readonly spanPageSize: number;
+  readonly spanTotal: number;
 }
 
 export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({
   workspace,
   trace,
-  linkedSpanId,
-  onLinkedSpanIdChange,
-  forceListView = false,
-  defaultOpenFirst = false,
-  slotHeader,
+  explorer,
+  onSelectSession,
+  onSelectTrace,
+  sessionDurationMs,
+  sessionErrored,
+  viewMode,
+  onViewModeChange,
 }) => {
-  const queryClient = useQueryClient();
-  const [viewMode, setViewMode] = useState<ViewMode>(forceListView ? 'list' : 'tree');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedSpanId = searchParams.get(QUERY_PARAMETERS.spanId) || null;
   const [openSpanIds, setOpenSpanIds] = useState<string[]>([]);
-  const didOpenFirstRef = useRef(false);
   // Bumped to broadcast expand/collapse-all to the selected span's sections in
   // tree view (list view drives the span rows via `openSpanIds` instead).
   const [sectionExpandToken, setSectionExpandToken] = useState(0);
@@ -102,28 +88,16 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({
   // manually toggling an accordion doesn't yank the viewport around.
   const scrollToActiveRef = useRef(false);
 
-  const {
-    data: spansResponse,
-    isFetching,
-    error,
-  } = useListSpans(workspace, traceSpansParams(trace.id));
+  const { trajectories, spansLoaded, spansError, isSpansFetching, spanPageSize, spanTotal } =
+    explorer;
+  const spans =
+    trajectories.find(({ trace: sessionTrace }) => sessionTrace.id === trace.id)?.spans ??
+    EMPTY_SPANS;
 
-  const spans = spansResponse?.data;
-  const spanRows = useMemo(() => buildSpanHierarchyRows(spans ?? []), [spans]);
-  const spanTree = useMemo(() => buildSpanTree(spans ?? []), [spans]);
-
-  // In compare mode, open the first span accordion once spans arrive so the
-  // content is immediately visible without a manual click.
-  useEffect(() => {
-    if (!defaultOpenFirst || didOpenFirstRef.current) return;
-    const firstId = spanRows[0]?.span_id;
-    if (!firstId) return;
-    didOpenFirstRef.current = true;
-    setOpenSpanIds([firstId]);
-  }, [defaultOpenFirst, spanRows]);
-  const sessionDurationMs = useMemo(
-    () => trace.duration_ms ?? getSpansDurationMs(spans ?? []),
-    [trace.duration_ms, spans]
+  const spanRows = useMemo(() => buildSpanHierarchyRows(spans), [spans]);
+  const resolvedSessionDurationMs = useMemo(
+    () => sessionDurationMs ?? trace.duration_ms ?? getSpansDurationMs(spans),
+    [sessionDurationMs, trace.duration_ms, spans]
   );
   // Tree view shows one span at a time. Default to the first/root span when no
   // deep link is present, while preserving an out-of-page deep link for the
@@ -133,7 +107,7 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({
     [spanRows, linkedSpanId]
   );
   const shouldFetchLinkedSpan =
-    linkedSpanId !== null && spans !== undefined && selectedSpanFromPage === undefined;
+    linkedSpanId !== null && spansLoaded && selectedSpanFromPage === undefined;
   const {
     data: linkedSpanDetail,
     error: linkedSpanError,
@@ -143,8 +117,8 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({
   });
   const linkedSpanMatchesTrace =
     linkedSpanDetail === undefined ||
-    linkedSpanDetail.trace_id === undefined ||
-    linkedSpanDetail.trace_id === trace.id;
+    ((linkedSpanDetail.trace_id === undefined || linkedSpanDetail.trace_id === trace.id) &&
+      linkedSpanDetail.session_id === trace.session_id);
   const linkedSpanFromDetail = useMemo(
     () =>
       linkedSpanDetail && linkedSpanMatchesTrace
@@ -165,7 +139,7 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({
   // The trace's own error lives on its root span (the trace status derives from
   // it); used to decide whether to surface a trace-level error banner.
   const rootSpan = useMemo(
-    () => spanRows.find((span) => span.span_id === trace.root_span_id) ?? spanRows[0],
+    () => spanRows.find((span) => span.span_id === trace.root_span_id),
     [spanRows, trace.root_span_id]
   );
 
@@ -193,15 +167,30 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({
     return { feedbackBySpan: feedback, annotationCountBySpan: counts, notesBySpan: notes };
   }, [annotationsResponse]);
 
-  const updateLinkedSpanId = onLinkedSpanIdChange;
+  const updateLinkedSpanId = useCallback(
+    (spanId: string | null) => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (spanId) next.set(QUERY_PARAMETERS.spanId, spanId);
+        else next.delete(QUERY_PARAMETERS.spanId);
+        return next;
+      });
+    },
+    [setSearchParams]
+  );
 
   const handleSelectSpan = useCallback(
-    (spanId: string) => {
+    (spanId: string, targetTraceId: string) => {
       scrollToActiveRef.current = true;
-      updateLinkedSpanId(spanId);
+      setSearchParams((previous) => {
+        const next = new URLSearchParams(previous);
+        next.set(QUERY_PARAMETERS.traceId, targetTraceId);
+        next.set(QUERY_PARAMETERS.spanId, spanId);
+        return next;
+      });
       setOpenSpanIds((open) => (open.includes(spanId) ? open : [...open, spanId]));
     },
-    [updateLinkedSpanId]
+    [setSearchParams]
   );
 
   const handleAccordionChange = useCallback(
@@ -214,16 +203,15 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({
   );
 
   const handleViewModeChange = useCallback(
-    (value: string) => {
-      const nextViewMode = value as ViewMode;
-      setViewMode(nextViewMode);
+    (nextViewMode: TraceViewMode) => {
+      onViewModeChange(nextViewMode);
       if (nextViewMode === 'list' && selectedSpanId) {
         setOpenSpanIds((open) =>
           open.includes(selectedSpanId) ? open : [...open, selectedSpanId]
         );
       }
     },
-    [selectedSpanId]
+    [onViewModeChange, selectedSpanId]
   );
 
   // In list view, expand/collapse opens every span row; in tree view it opens
@@ -250,36 +238,15 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({
   );
 
   useEffect(() => {
-    if (selectedSpanId && linkedSpanId !== selectedSpanId) {
-      updateLinkedSpanId(selectedSpanId);
-    }
     if (selectedSpanId && scrollToActiveRef.current) {
       scrollToActiveRef.current = false;
       document
         .getElementById(spanAccordionId(selectedSpanId))
         ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  }, [linkedSpanId, selectedSpanId, updateLinkedSpanId]);
+  }, [selectedSpanId]);
 
-  // Clicking the tree's "Session" root reloads the view: return to the
-  // default span, close every accordion, scroll to top, and refetch trace data.
-  const handleReloadSession = useCallback(() => {
-    scrollToActiveRef.current = false;
-    updateLinkedSpanId(null);
-    setOpenSpanIds([]);
-    void queryClient.invalidateQueries({ queryKey: getGetTraceQueryKey(workspace, trace.id) });
-    // Scoped to this trace's spans query — a workspace-wide key would refetch
-    // every column in compare mode.
-    void queryClient.invalidateQueries({
-      queryKey: getListSpansQueryKey(workspace, traceSpansParams(trace.id)),
-    });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [queryClient, updateLinkedSpanId, workspace, trace.id]);
-
-  const showSpanLimitMessage =
-    trace.span_count !== undefined &&
-    trace.span_count !== null &&
-    trace.span_count > TRACE_SPANS_PAGE_SIZE;
+  const showSpanLimitMessage = spanTotal > spanPageSize;
 
   // Only surface a trace-level error banner when the trace itself has an error
   // message (carried on its root span). A child-span error alone no longer
@@ -301,91 +268,52 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({
         ) : linkedSpanError ? (
           <ErrorMessage message={getErrorMessage(linkedSpanError)} />
         ) : !linkedSpanMatchesTrace ? (
-          <ErrorMessage
-            message="The linked span does not belong to this trace."
-            slotFooter={
-              <Button kind="secondary" onClick={handleReloadSession}>
-                Refresh
-              </Button>
-            }
-          />
+          <ErrorMessage message="The linked span does not belong to this trace." />
         ) : null}
       </div>
     ) : undefined;
-
-  if (error) {
-    return <ErrorMessage message={getErrorMessage(error)} />;
-  }
+  const spansStatusContent = spansError ? (
+    <div className="min-h-[200px] p-density-lg">
+      <ErrorMessage message={getErrorMessage(spansError)} />
+    </div>
+  ) : isSpansFetching && spanRows.length === 0 ? (
+    <Flex align="center" justify="center" className="min-h-[200px]">
+      <Spinner size="medium" aria-label="Loading spans" />
+    </Flex>
+  ) : spanRows.length === 0 && !shouldFetchLinkedSpan ? (
+    <Text kind="body/regular/sm" className="text-secondary p-density-lg">
+      No spans were found for this trace.
+    </Text>
+  ) : undefined;
 
   return (
     <Stack gap="density-lg" className="min-w-0">
-      {slotHeader ? (
-        slotHeader({ expandAll, collapseAll })
-      ) : (
-        <Flex align="center" justify="between" gap="density-lg" className="min-w-0">
-          {!forceListView && (
-            <SegmentedControl
-              size="tiny"
-              value={viewMode}
-              onValueChange={handleViewModeChange}
-              items={[
-                { value: 'tree', children: 'Tree' },
-                { value: 'list', children: 'List' },
-              ]}
-            />
-          )}
-          {spanRows.length > 0 && (
-            <Flex align="center" gap="density-xs">
-              <Button
-                kind="tertiary"
-                size="tiny"
-                type="button"
-                aria-label="Collapse all"
-                title="Collapse all"
-                onClick={collapseAll}
-              >
-                <ChevronsDownUp size={14} aria-hidden />
-              </Button>
-              <Button
-                kind="tertiary"
-                size="tiny"
-                type="button"
-                aria-label="Expand all"
-                title="Expand all"
-                onClick={expandAll}
-              >
-                <ChevronsUpDown size={14} aria-hidden />
-              </Button>
-            </Flex>
-          )}
-        </Flex>
-      )}
+      <TraceViewToolbar
+        viewMode={viewMode}
+        onViewModeChange={handleViewModeChange}
+        onCollapseAll={spanRows.length > 0 ? collapseAll : undefined}
+        onExpandAll={spanRows.length > 0 ? expandAll : undefined}
+      />
+
       {showSpanLimitMessage && (
         <Text kind="body/regular/sm" className="text-secondary">
-          Showing first {TRACE_SPANS_PAGE_SIZE.toLocaleString()} of{' '}
-          {trace.span_count?.toLocaleString()} spans. Parent spans outside this page are marked in
-          the hierarchy.
+          Showing first {spanPageSize.toLocaleString()} of {spanTotal.toLocaleString()} spans in
+          this session. Parent spans outside this page are marked in the hierarchy.
         </Text>
       )}
 
-      {isFetching && spanRows.length === 0 ? (
-        <Flex align="center" justify="center" className="min-h-[200px]">
-          <Spinner size="medium" aria-label="Loading spans" />
-        </Flex>
-      ) : spanRows.length === 0 && !shouldFetchLinkedSpan ? (
-        <Text kind="body/regular/sm" className="text-secondary">
-          No spans were found for this trace.
-        </Text>
-      ) : viewMode === 'tree' ? (
+      {viewMode === 'tree' ? (
         <SpanTreeView
-          spanTree={spanTree}
+          trajectories={trajectories}
+          activeTraceId={trace.id}
           selectedSpan={selectedSpan}
           workspace={workspace}
-          sessionDurationMs={sessionDurationMs}
-          sessionErrored={trace.status === SpanStatus.error}
-          activeSpanId={selectedSpanId}
+          sessionDurationMs={resolvedSessionDurationMs}
+          sessionErrored={sessionErrored || trace.status === SpanStatus.error}
+          activeSpanId={linkedSpanId}
           onSelectSpan={handleSelectSpan}
-          onSelectSession={handleReloadSession}
+          onSelectTrace={onSelectTrace}
+          onSelectSession={onSelectSession}
           banner={banner}
           expandToken={sectionExpandToken}
           collapseToken={sectionCollapseToken}
@@ -398,8 +326,10 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({
             selectedSpan ? noteFocusNonce(noteRequest, selectedSpan.span_id) : undefined
           }
           onAddNote={() => selectedSpan && handleAddNote(selectedSpan.span_id)}
-          emptyContent={linkedSpanStatusContent}
+          emptyContent={spansStatusContent ?? linkedSpanStatusContent}
         />
+      ) : spansStatusContent ? (
+        spansStatusContent
       ) : (
         <SpanListView
           spanRows={listSpanRows}

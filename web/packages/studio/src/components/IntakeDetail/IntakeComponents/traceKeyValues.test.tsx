@@ -3,11 +3,10 @@
 
 import {
   buildEvaluationContextEntries,
-  buildTraceHighlightMetrics,
+  buildSessionHighlightMetrics,
   buildTraceSummaryEntries,
 } from '@studio/components/IntakeDetail/IntakeComponents/traceKeyValues';
-import { mockTraceById } from '@studio/mocks/intake/telemetry';
-import { EMPTY_VALUE } from '@studio/util/intakeTelemetry';
+import { mockSessionById, mockTraceById } from '@studio/mocks/intake/telemetry';
 
 describe('traceKeyValues', () => {
   it('builds trace summary entries without headline metrics', () => {
@@ -34,35 +33,17 @@ describe('traceKeyValues', () => {
     );
   });
 
-  it('builds headline metrics for the top metrics card', () => {
-    const trace = mockTraceById('trace-agent-run-001');
-    expect(trace).toBeDefined();
+  it('builds session headline metrics without a trace error count', () => {
+    const session = mockSessionById('session-agent-run-001');
+    expect(session).toBeDefined();
 
-    const metrics = buildTraceHighlightMetrics(trace!);
+    const metrics = buildSessionHighlightMetrics(session!);
 
-    expect(metrics).toEqual([
-      { id: 'span_count', label: 'Spans', value: '4' },
-      { id: 'error_count', label: 'Errors', value: '0' },
-      { id: 'duration_ms', label: 'Duration', value: '12s 230ms' },
-      {
-        id: 'total_tokens',
-        label: 'Total Tokens',
-        value: '1,754',
-        details: [
-          { id: 'input_tokens', label: 'Input Tokens', value: '1,240' },
-          { id: 'output_tokens', label: 'Output Tokens', value: '386' },
-          { id: 'cached_tokens', label: 'Cached Tokens', value: '128' },
-        ],
-      },
-      {
-        id: 'cost_usd',
-        label: 'Total Cost',
-        value: '$0.0032',
-        details: [
-          { id: 'cost_input_usd', label: 'Input Cost', value: EMPTY_VALUE },
-          { id: 'cost_output_usd', label: 'Output Cost', value: EMPTY_VALUE },
-        ],
-      },
+    expect(metrics.map(({ id }) => id)).toEqual([
+      'span_count',
+      'duration_ms',
+      'total_tokens',
+      'cost_usd',
     ]);
   });
 

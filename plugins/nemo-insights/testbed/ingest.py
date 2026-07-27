@@ -127,7 +127,7 @@ def create_experiment(
     409 here is a genuine collision and is surfaced as ``RuntimeError`` along
     with every other non-2xx. No auth header.
     """
-    url = f"{base_url.rstrip('/')}/apis/intake/v2/workspaces/{workspace}/experiments"
+    url = f"{base_url.rstrip('/')}/apis/intake/v2/workspaces/{workspace}/evaluations"
     body = {
         "name": name,
         "experiment_group_id": experiment_group_id,

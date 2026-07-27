@@ -60,6 +60,11 @@ ENV_MAPPINGS: list[EnvMapping] = [
         marker="STUDIO_UI_VITE_FF_AGENTS_ENABLED", config_path="studio.feature_flags.agents_enabled", default="true"
     ),
     EnvMapping(
+        marker="STUDIO_UI_VITE_FF_ANONYMIZER_ENABLED",
+        config_path="studio.feature_flags.anonymizer_enabled",
+        default="false",
+    ),
+    EnvMapping(
         marker="STUDIO_UI_VITE_FF_BASE_MODELS_ENABLED",
         config_path="studio.feature_flags.base_models_enabled",
         default="true",
@@ -136,6 +141,11 @@ ENV_MAPPINGS: list[EnvMapping] = [
     EnvMapping(
         marker="STUDIO_UI_VITE_FF_MODEL_COMPARE_ENABLED",
         config_path="studio.feature_flags.model_compare_enabled",
+        default="false",
+    ),
+    EnvMapping(
+        marker="STUDIO_UI_VITE_FF_OPTIMIZER_ENABLED",
+        config_path="studio.feature_flags.optimizer_enabled",
         default="false",
     ),
     EnvMapping(

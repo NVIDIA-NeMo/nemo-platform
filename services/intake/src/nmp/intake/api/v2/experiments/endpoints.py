@@ -18,7 +18,6 @@ from datetime import datetime, timezone
 from typing import Annotated, Any, Literal, NamedTuple, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.routing import APIRoute
 from nmp.common.api.common import Page, PaginationData
 from nmp.common.api.filter import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
@@ -149,6 +148,7 @@ async def create_experiment_group(
         summary=body.summary,
         metadata=body.metadata,
         default_sort=body.default_sort,
+        pareto=body.pareto,
     )
     try:
         created = await entity_client.create(entity)
@@ -167,7 +167,9 @@ async def create_experiment_group(
     openapi_extra=generate_openapi_extra_params(
         filter_schema=ExperimentGroupFilter,
         filter_description=(
-            "Filter experiment groups by name, or by a metadata key/value: filter[metadata.<key>]=<value>."
+            "Filter experiment groups by name, insight_id, is_deleted, or a metadata key/value "
+            "(filter[metadata.<key>]=<value>). "
+            "Pass is_deleted=true to return only soft-deleted groups; omit to see only live ones."
         ),
     ),
 )
@@ -266,6 +268,10 @@ async def update_experiment_group(
     existing.summary = body.summary
     existing.metadata = body.metadata
     existing.default_sort = body.default_sort
+    # Only overwrite the saved axes when the client actually sent them; an omitted `pareto` (older
+    # clients) must not silently reset customized axes to the cost/latency default.
+    if body.pareto is not None:
+        existing.pareto = body.pareto
     updated = await entity_client.update(existing)
     response = ExperimentGroupResponse.from_entity(updated)
     response.evaluation_count = await _count_live_evaluations_in_group(
@@ -1418,23 +1424,3 @@ def _aggregate(rollup: ScoreRollup) -> EvaluatorAggregate:
         p99=rollup.p99,
         count=rollup.count,
     )
-
-
-# ---------------------------------------------------------------------------
-# Backwards-compatible URL aliases (TEMPORARY — remove in a follow-up PR)
-#
-# The child endpoints moved from `/experiments` to `/evaluations`. Register the old
-# `/experiments...` paths as hidden aliases (``include_in_schema=False``) that point at the
-# same handlers, so existing callers keep working until they migrate to `/evaluations`.
-# ---------------------------------------------------------------------------
-for _legacy_route in list(router.routes):
-    if isinstance(_legacy_route, APIRoute) and "/evaluations" in _legacy_route.path:
-        router.add_api_route(
-            _legacy_route.path.replace("/evaluations", "/experiments", 1),
-            _legacy_route.endpoint,
-            methods=sorted(_legacy_route.methods),
-            response_model=_legacy_route.response_model,
-            status_code=_legacy_route.status_code,
-            include_in_schema=False,
-            name=f"{_legacy_route.name}_experiments_alias",
-        )
