@@ -65,6 +65,7 @@ from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.common.observability import start_span_with_ctx
 from nmp.common.resources import SharedResourceManager
 from nmp.core.jobs.app.constants import (
+    DEFAULT_VOLUME_PERMISSIONS_IMAGE,
     JOB_ATTEMPT_ID_LABEL,
     JOB_CONTROLLER_INSTANCE_ID_LABEL,
     JOB_EXECUTION_BACKEND_LABEL,
@@ -138,8 +139,6 @@ def k8s_shm_quantity_to_docker(quantity: str) -> str:
         return q
     return q
 
-
-DEFAULT_VOLUME_PERMISSIONS_IMAGE = "docker.io/library/busybox:stable"
 
 NEMO_JOBS_IMAGE_REGISTRY_PASSWORD = os.getenv("NEMO_JOBS_IMAGE_REGISTRY_PASSWORD")
 NEMO_JOBS_IMAGE_REGISTRY = os.getenv("NEMO_JOBS_IMAGE_REGISTRY")
