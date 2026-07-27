@@ -612,9 +612,10 @@ class DockerDeploymentBackend(DeploymentBackend):
         labels = container.labels or {}
 
         if restart_policy == "Never":
+            observe_timeout = self._executor_config.oneshot_observe_timeout_seconds
 
             def _wait_for_exit() -> int:
-                result = container.wait(timeout=self._executor_config.docker_timeout)
+                result = container.wait(timeout=observe_timeout)
                 return int(result.get("StatusCode", 1)) if isinstance(result, dict) else int(result)
 
             try:
@@ -629,7 +630,7 @@ class DockerDeploymentBackend(DeploymentBackend):
                     status="STARTING",
                     status_message=(
                         f"Container {container.name} still running or status unavailable "
-                        f"after wait ({self._executor_config.docker_timeout}s)"
+                        f"after observe wait ({observe_timeout}s)"
                     ),
                     endpoints=endpoints,
                 )

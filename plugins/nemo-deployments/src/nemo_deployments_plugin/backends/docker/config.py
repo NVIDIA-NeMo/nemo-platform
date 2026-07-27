@@ -18,6 +18,15 @@ class DockerExecutorConfig(BaseModel):
         ge=1,
         description="Docker client timeout in seconds for pull/create/status operations (default: 10 minutes).",
     )
+    oneshot_observe_timeout_seconds: int = Field(
+        default=5,
+        ge=1,
+        description=(
+            "Max seconds to wait for a Never one-shot container to exit during create. "
+            "Should stay near the deployments controller reconcile interval (default 5s). "
+            "Longer jobs return STARTING and finish via read_status polling."
+        ),
+    )
     pull_images: bool = Field(default=True, description="Pull container images before run when missing locally.")
     resource_scope: str = Field(
         default=DEFAULT_RESOURCE_SCOPE,

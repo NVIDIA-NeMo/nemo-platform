@@ -761,7 +761,44 @@ async def test_create_never_job_returns_succeeded_when_container_exits_immediate
 
     assert update.status == "SUCCEEDED"
     assert update.exit_code == 0
-    mock_docker_client.containers.run.return_value.wait.assert_called_once()
+    mock_docker_client.containers.run.return_value.wait.assert_called_once_with(timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_create_never_job_uses_configured_oneshot_observe_timeout(
+    mock_sdk: MagicMock,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    with (
+        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
+        patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
+        patch("docker.from_env", return_value=mock_docker_client),
+    ):
+        backend = DockerDeploymentBackend(
+            mock_sdk,
+            {"docker_timeout": 600, "oneshot_observe_timeout_seconds": 7, "pull_images": False},
+        )
+        backend._client = mock_docker_client
+
+    mock_entities.get.return_value = sample_config(restart_policy="Never")
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    mock_docker_client.containers.run.return_value = _one_shot_server_container(
+        restart_policy="Never",
+        exit_code=0,
+    )
+
+    update = await backend.create_deployment(
+        workspace="default",
+        name="job",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "SUCCEEDED"
+    mock_docker_client.containers.run.return_value.wait.assert_called_once_with(timeout=7)
 
 
 @pytest.mark.asyncio
@@ -887,7 +924,8 @@ async def test_create_never_job_returns_starting_when_wait_times_out(
     )
 
     assert update.status == "STARTING"
-    assert "after wait" in update.status_message
+    assert "after observe wait (5s)" in update.status_message
+    server.wait.assert_called_once_with(timeout=5)
 
 
 @pytest.mark.asyncio
@@ -911,7 +949,8 @@ async def test_create_never_job_returns_starting_when_wait_connection_error(
     )
 
     assert update.status == "STARTING"
-    assert "after wait" in update.status_message
+    assert "after observe wait (5s)" in update.status_message
+    server.wait.assert_called_once_with(timeout=5)
 
 
 @pytest.mark.asyncio
