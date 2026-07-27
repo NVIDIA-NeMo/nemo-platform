@@ -43,14 +43,12 @@ from nmp.intake.api.v2.experiments.schemas import (
 # layer uses; only the entity's own field names (e.g. parent_experiment_id) reference Experiment directly.
 from nmp.intake.entities.experiments import Experiment as Evaluation
 from nmp.intake.entities.experiments import ExperimentGroup
+from nmp.intake.repository.clickhouse.evaluation_rollup import ClickHouseEvaluationRollupRepository
+from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor
+from nmp.intake.repository.evaluation_rollup import EvaluationRollup, EvaluationRollupRepository, ScoreRollup
 from nmp.intake.spans.api.dependencies import require_workspace_access, validate_list_query_params
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import SpanStatus
-from nmp.intake.spans.evaluation_rollup_repository import (
-    EvaluationRollup,
-    EvaluationRollupRepository,
-    ScoreRollup,
-)
 from nmp.intake.spans.evaluation_session_repository import EvaluationSessionRepository, MetricSortTooLargeError
 from nmp.intake.spans.storage import make_pagination
 
@@ -111,7 +109,7 @@ def get_evaluation_rollup_repository(request: Request) -> EvaluationRollupReposi
     # Rollups are enrichment only. Evaluation entity reads should continue when
     # ClickHouse is disabled or temporarily unavailable.
     client = _get_clickhouse_client(request)
-    return EvaluationRollupRepository(client) if client is not None else None
+    return ClickHouseEvaluationRollupRepository(ClickHouseExecutor(client)) if client is not None else None
 
 
 EvaluationRollupRepositoryDep = Annotated[EvaluationRollupRepository | None, Depends(get_evaluation_rollup_repository)]

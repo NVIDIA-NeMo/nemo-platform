@@ -1,49 +1,22 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""ClickHouse rollups for Evaluation read models."""
+"""ClickHouse implementation of Evaluation rollup reads."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any
 
-from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
+from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor, ClickHouseQuery
+from nmp.intake.repository.clickhouse.tables import ClickHouseTable
+from nmp.intake.repository.evaluation_rollup import EvaluationRollup, EvaluationRollupRepository, ScoreRollup
 from nmp.intake.spans.span_attribute_catalog import COST_SCALE, SpanAttributeField, spec_for_field
-from nmp.intake.spans.storage import float_or_none, result_rows
+from nmp.intake.spans.storage import float_or_none
 
 
-@dataclass(frozen=True)
-class ScoreRollup:
-    sum: float | None
-    mean: float | None
-    median: float | None
-    p90: float | None
-    p95: float | None
-    p99: float | None
-    count: int
-
-
-@dataclass
-class EvaluationRollup:
-    evaluation_id: str
-    run_count: int = 0
-    test_case_count: int = 0
-    model_names: list[str] = field(default_factory=list)
-    agent_names: list[str] = field(default_factory=list)
-    agent_versions: list[str] = field(default_factory=list)
-    evaluator_scores: dict[str, ScoreRollup] = field(default_factory=dict)
-    cost_usd: ScoreRollup | None = None
-    latency_ms: ScoreRollup | None = None
-
-    @property
-    def evaluator_names(self) -> list[str]:
-        return sorted(self.evaluator_scores)
-
-
-class EvaluationRollupRepository:
-    def __init__(self, client: ClickHouseSpanClient) -> None:
-        self._client = client
+class ClickHouseEvaluationRollupRepository(EvaluationRollupRepository):
+    def __init__(self, executor: ClickHouseExecutor) -> None:
+        self._executor = executor
 
     async def get_rollups(self, *, workspace: str, evaluation_ids: list[str]) -> dict[str, EvaluationRollup]:
         evaluation_ids = list(dict.fromkeys(evaluation_ids))
@@ -53,22 +26,24 @@ class EvaluationRollupRepository:
 
         evaluation_names_sql, evaluation_parameters = _evaluation_id_parameters(evaluation_ids)
         parameters = {"workspace": workspace, **evaluation_parameters}
-        trace_index_table = self._client.table("trace_index")
+        trace_index_table = self._executor.table(ClickHouseTable.TRACE_INDEX)
 
-        for row in result_rows(
-            await self._client.query(
-                _run_counts_sql(trace_index_table, evaluation_names_sql),
+        for row in await self._executor.fetch_all(
+            ClickHouseQuery(
+                name="evaluation_rollups.run_counts",
+                statement=_run_counts_sql(trace_index_table, evaluation_names_sql),
                 parameters=parameters,
             )
         ):
             rollups[row["evaluation_id"]].run_count = int(row["run_count"])
             rollups[row["evaluation_id"]].test_case_count = int(row["test_case_count"])
 
-        for row in result_rows(
-            await self._client.query(
-                _score_rollups_sql(
+        for row in await self._executor.fetch_all(
+            ClickHouseQuery(
+                name="evaluation_rollups.scores",
+                statement=_score_rollups_sql(
                     trace_index_table=trace_index_table,
-                    evaluator_results_table=self._client.table("evaluator_results"),
+                    evaluator_results_table=self._executor.table(ClickHouseTable.EVALUATOR_RESULTS),
                     evaluation_names_sql=evaluation_names_sql,
                 ),
                 parameters=parameters,
@@ -84,11 +59,12 @@ class EvaluationRollupRepository:
                 count=int(row["count"]),
             )
 
-        for row in result_rows(
-            await self._client.query(
-                _metric_rollups_sql(
+        for row in await self._executor.fetch_all(
+            ClickHouseQuery(
+                name="evaluation_rollups.metrics",
+                statement=_metric_rollups_sql(
                     trace_index_table=trace_index_table,
-                    spans_table=self._client.table("spans"),
+                    spans_table=self._executor.table(ClickHouseTable.SPANS),
                     evaluation_names_sql=evaluation_names_sql,
                 ),
                 parameters={
