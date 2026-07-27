@@ -21,10 +21,11 @@ from fastapi import APIRouter
 from nemo_iron_swarm_plugin._perms import IronSwarmRunPerms
 from nemo_iron_swarm_plugin.authz import scope
 from nemo_iron_swarm_plugin.config import IronSwarmConfig
-from nemo_iron_swarm_plugin.entities import IRON_SWARM_RUN_TYPE, IronSwarmRun
+from nemo_iron_swarm_plugin.entities import IRON_SWARM_RUN_TYPE
 from nemo_iron_swarm_plugin.filesets import download_fileset
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 logger = logging.getLogger(__name__)
 
@@ -137,17 +138,30 @@ async def get_events(workspace: str, name: str, after: int = 0) -> EventsRespons
     result = stream.history(after_id=after)
 
     if not result and not stream._path.exists():
-        try:
-            sdk = _get_sdk()
-            run: IronSwarmRun = sdk.entities.get_entity_by_name(
-                name=name,
-                entity_type=IRON_SWARM_RUN_TYPE,
-                workspace=workspace,
-            )
-            if run.events_fileset:
-                download_fileset(sdk, run.events_fileset, stream._path.parent)
-                result = stream.history(after_id=after)
-        except Exception:
-            logger.warning("Fileset fallback failed for run %r events; returning empty", name)
+        # The fallback does blocking sync I/O (SDK entity lookup + fileset download) that calls back into
+        # this same platform. Running it on the event loop self-deadlocks — the server can't answer its own
+        # lookup, so the SDK retries for ~181s while every other request (incl. the inference gateway) is
+        # frozen. Offload to a worker thread so the loop stays free and the lookup resolves promptly.
+        result = await run_in_threadpool(_fileset_fallback, workspace, name, stream, after)
 
     return EventsResponse(events=[{"id": seq, **event} for seq, event in result])
+
+
+def _fileset_fallback(workspace: str, name: str, stream: Any, after: int) -> list[tuple[int, dict[str, Any]]]:
+    """Blocking: fetch the run's ``events_fileset`` and re-read history. Must run off the event loop."""
+    try:
+        sdk = _get_sdk()
+        # get_entity_by_name returns a generic Entity — its domain fields live under `.data`
+        # (same access pattern as sdk.py::_run_to_dict), not as top-level attributes.
+        run = sdk.entities.get_entity_by_name(
+            name=name,
+            entity_type=IRON_SWARM_RUN_TYPE,
+            workspace=workspace,
+        )
+        fileset_ref = (getattr(run, "data", None) or {}).get("events_fileset")
+        if fileset_ref:
+            download_fileset(sdk, fileset_ref, stream._path.parent)
+            return stream.history(after_id=after)
+    except Exception:
+        logger.warning("Fileset fallback failed for run %r events; returning empty", name, exc_info=True)
+    return []

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -92,8 +93,9 @@ def test_get_events_falls_back_to_fileset_when_local_missing(tmp_path: Path) -> 
     missing_path = tmp_path / "missing" / "events.jsonl"
 
     mock_sdk = MagicMock()
-    mock_run = MagicMock()
-    mock_run.events_fileset = "default/my-events-fs"
+    # Shaped like the real entity-store record: get_entity_by_name returns a generic Entity whose
+    # domain fields live under `.data` (a bare MagicMock would falsely expose `.events_fileset`).
+    mock_run = SimpleNamespace(name="my-run", data={"events_fileset": "default/my-events-fs"})
     mock_sdk.entities.get_entity_by_name.return_value = mock_run
 
     def fake_download(sdk, ref, dest):
@@ -123,8 +125,7 @@ def test_get_events_returns_empty_when_no_local_and_no_fileset(tmp_path: Path) -
     missing_path = tmp_path / "missing" / "events.jsonl"
 
     mock_sdk = MagicMock()
-    mock_run = MagicMock()
-    mock_run.events_fileset = ""
+    mock_run = SimpleNamespace(name="my-run", data={"events_fileset": ""})
     mock_sdk.entities.get_entity_by_name.return_value = mock_run
 
     with (

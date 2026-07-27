@@ -19,6 +19,7 @@ from nemo_iron_swarm_plugin.entities import (
     IronSwarmManifest,
     IronSwarmRun,
 )
+from nemo_iron_swarm_plugin.jobs import benign_suite
 from nemo_iron_swarm_plugin.jobs.errors import RunFailure
 from nemo_platform_plugin.entity_client import NemoEntitiesClient
 from nemo_platform_plugin.job_context import JobContext
@@ -110,6 +111,24 @@ async def _precreate_run(
         return None
 
 
+def _run_facts(sdk: Any, *, workspace: str, name: str) -> tuple[str, int]:
+    """The ``(agent, port)`` already recorded on run *name*, or ``("", 0)`` (best-effort).
+
+    Updates replace the whole record (see :func:`_run_data`), so a failure finalizing a pre-created
+    row must carry these forward or the run is left showing no agent.
+    """
+    if sdk is None or not hasattr(sdk, "entities"):
+        return "", 0
+    try:
+        record = sdk.entities.get_entity_by_name(name=name, entity_type=IRON_SWARM_RUN_TYPE, workspace=workspace)
+        data = getattr(record, "data", {}) or {}
+        port = data.get("port")
+        return str(data.get("agent") or ""), int(port) if isinstance(port, int) else 0
+    except Exception:  # reading back is best-effort; worst case the failure record loses the agent label
+        logger.warning("failed to read back IronSwarmRun %s", name, exc_info=True)
+        return "", 0
+
+
 def _update_run(sdk: Any, *, workspace: str, name: str, data: dict[str, Any]) -> None:
     """Overwrite an existing IronSwarmRun record (e.g. running -> completed); best-effort."""
     if sdk is None or not hasattr(sdk, "entities"):
@@ -163,6 +182,26 @@ def _cached_benign_suite(sdk: Any, manifest_id: str, ctx: JobContext) -> list[di
     except Exception:  # reading the cache is best-effort; a miss just re-generates
         logger.warning("failed to read cached benign suite for manifest %s", manifest_id, exc_info=True)
         return []
+
+
+def read_and_persist_suite(
+    sdk: Any,
+    ctx: JobContext,
+    manifest_id: str | None,
+    csv_path: Any,
+    *,
+    interview: list[dict[str, Any]] | None = None,
+) -> list[dict[str, str]]:
+    """Parse the synthesized ``requests.csv`` and cache it on the manifest; return the suite rows.
+
+    The shared line both the CLI ``synth-benign`` and Studio's serve-driven HITL converge on: read the
+    suite iron-swarm wrote, then (when a ``manifest_id`` is known) persist it on the manifest entity.
+    Persistence is best-effort — an empty suite or missing manifest is simply not cached.
+    """
+    suite = benign_suite.read_suite(csv_path)
+    if manifest_id and suite:
+        _persist_benign_suite(sdk, workspace=ctx.workspace, manifest_id=manifest_id, suite=suite, interview=interview)
+    return suite
 
 
 def _persist_benign_suite(

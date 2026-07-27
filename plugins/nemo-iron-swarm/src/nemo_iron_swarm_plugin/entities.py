@@ -111,3 +111,33 @@ class IronSwarmManifest(NemoEntity, entity_type=IRON_SWARM_MANIFEST_TYPE):
         description="Stored default model selection (attack/analysis/agent groups); an unset group uses "
         "iron-swarm's built-in default. A run may override these per-launch.",
     )
+
+    @classmethod
+    def from_agent_resolution(
+        cls,
+        *,
+        name: str,
+        workspace: str,
+        agent_ref: str,
+        manifest_yaml: str,
+        port: int,
+        secrets: list[str],
+        warnings: list[str],
+        models: WarGameModels | None = None,
+    ) -> IronSwarmManifest:
+        """Build an ``agent``-source manifest entity from a resolved agent scaffold.
+
+        Shared by the CLI ``init`` and the Studio ``POST /manifests`` handler so both persist the same
+        shape from :func:`resolve_agent_to_manifest`'s output (the run re-materializes from ``agent_ref``).
+        """
+        return cls(
+            name=name,
+            workspace=workspace,
+            agent=agent_ref,
+            source_type="agent",
+            manifest_yaml=manifest_yaml,
+            port=port,
+            secrets=secrets,
+            warnings=warnings,
+            models=models or WarGameModels(),
+        )

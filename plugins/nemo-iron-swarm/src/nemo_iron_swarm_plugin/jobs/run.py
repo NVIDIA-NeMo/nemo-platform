@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, ClassVar, cast
 
 from nemo_iron_swarm_plugin.config import IronSwarmConfig
-from nemo_iron_swarm_plugin.jobs import _common
+from nemo_iron_swarm_plugin.jobs import _common, benign_suite
 from nemo_iron_swarm_plugin.jobs.artifacts import (
     _replay_args,
     _save_composed_workflow,
@@ -46,6 +46,7 @@ from nemo_iron_swarm_plugin.jobs.records import (
     _manifest_rounds,
     _precreate_run,
     _run_data,
+    _run_facts,
     _update_run,
 )
 from nemo_iron_swarm_plugin.jobs.spec import WarGameSpec
@@ -137,6 +138,11 @@ def _preflight_message(label: str, choice: ModelChoice, verdict: Any) -> str:
         return f"The {label} model credentials were rejected by {endpoint} ({verdict.detail or 'unauthorized'})."
     if verdict.reason == "unreachable":
         return f"Could not reach the {label} model endpoint {endpoint} ({verdict.detail or 'no response'})."
+    if verdict.reason == "provider_error":
+        return (
+            f"The {label} model endpoint {endpoint} returned an error ({verdict.detail or 'unknown'}); "
+            "the credentials were accepted, so this is the provider's side — retry shortly."
+        )
     available = ", ".join(verdict.available[:20]) or "none"
     return (
         f"The {label} model {choice.model!r} is not available at {endpoint}. "
@@ -238,10 +244,15 @@ class IronSwarmRunJob(NemoJob):
         Reuses the pre-created record (``run_name``) when present so its live view resolves to the failure
         instead of a perpetual ``running``; otherwise creates a failed record now. Also reports terminal
         ``failed`` progress with the error details. Recording stays best-effort — it must not mask the cause.
+
+        The update replaces the whole record, so the pre-created ``agent``/``port`` are read back and
+        carried forward — otherwise a failure would blank the agent the run was targeting.
         """
+        prepared = config.get("run_name")
+        agent, port = _run_facts(sdk, workspace=ctx.workspace, name=str(prepared)) if prepared else ("", 0)
         data = _run_data(
-            "",
-            0,
+            agent,
+            port or int(config.get("port") or 0),
             str(config.get("config") or ""),
             "failed",
             1,
@@ -250,7 +261,6 @@ class IronSwarmRunJob(NemoJob):
             source_run=str(config.get("source_run") or ""),
             failure=failure,
         )
-        prepared = config.get("run_name")
         if prepared:
             _update_run(sdk, workspace=ctx.workspace, name=str(prepared), data=data)
         else:
@@ -341,8 +351,15 @@ class IronSwarmRunJob(NemoJob):
                 model_env=model_env,
             )
         else:
+            # One-shot `iron-swarm run` consumes a suite; it never synthesizes. Prefer an uploaded override,
+            # else fall back to the manifest's cached suite (from a prior `synth-benign`), written to a CSV.
+            suite_for_run = benign_override
+            if suite_for_run is None and cached_suite:
+                suite_csv = ctx.storage.persistent / "benign-suite.csv"
+                benign_suite.write_suite(suite_csv, cached_suite)
+                suite_for_run = str(suite_csv)
             outcome = _run_one_shot(
-                manifest, env_file, plugin_config, ctx, replay_args, benign_suite=benign_override, model_env=model_env
+                manifest, env_file, plugin_config, ctx, replay_args, benign_suite=suite_for_run, model_env=model_env
             )
 
         # A validate-only run generates no mitigations (defenders: []); it produces the sanity-check
