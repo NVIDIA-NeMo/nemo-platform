@@ -231,26 +231,6 @@ def test_delete_group_cascades_to_evaluations(client: TestClient) -> None:
         assert missing.status_code == 404
 
 
-def test_deprecated_field_aliases_are_backwards_compatible(client: TestClient) -> None:
-    """Renamed fields keep deprecated aliases: requests accept the old name, responses return both."""
-    group = _create_group(client, name="alias-compat-group")
-    # Group response carries both the canonical count and the deprecated experiment_count alias.
-    assert group["experiment_count"] == group["evaluation_count"]
-
-    parent = client.post(EVALUATIONS, json=_evaluation_body(name="parent-eval", experiment_group_id=group["id"])).json()
-
-    # Create a child referencing the parent via the DEPRECATED parent_experiment_id request field.
-    body = _evaluation_body(name="child-eval", experiment_group_id=group["id"])
-    body["parent_experiment_id"] = parent["id"]
-    created = client.post(EVALUATIONS, json=body)
-    assert created.status_code == 201, created.text
-
-    payload = created.json()
-    # The response echoes both the canonical and deprecated parent field, coalesced from the old input.
-    assert payload["parent_evaluation_id"] == parent["id"]
-    assert payload["parent_experiment_id"] == parent["id"]
-
-
 def test_evaluation_conflict_and_not_found(client: TestClient) -> None:
     group = _create_group(client)
     created = client.post(EVALUATIONS, json=_evaluation_body(experiment_group_id=group["id"]))

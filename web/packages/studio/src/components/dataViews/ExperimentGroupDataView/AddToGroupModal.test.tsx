@@ -33,7 +33,6 @@ const makeGroup = (id: string, name: string): ExperimentGroupResponse => ({
   name,
   workspace: 'default',
   default_sort: '-created_at',
-  experiment_count: 0,
 });
 
 const GROUPS: ExperimentGroupResponse[] = [

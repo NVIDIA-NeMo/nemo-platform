@@ -19,7 +19,6 @@ export const mockExperimentGroup = (name: string): ExperimentGroupResponse => ({
   description: '',
   default_sort: 'started_at',
   evaluation_count: 2,
-  experiment_count: 2,
 });
 
 /** Evaluation names that live in the mock group (each fans out one runs query). */
@@ -31,8 +30,7 @@ const mockEvaluation = (name: string): EvaluationResponse => ({
   workspace: WORKSPACE,
   experiment_ids: ['grp_my-group'],
   dataset_name: 'sample-dataset',
-  // Deprecated readonly aliases the generated type still requires.
-  parent_experiment_id: '',
+  // Deprecated readonly alias the generated type still requires.
   experiment_group_id: 'grp_my-group',
 });
 
@@ -47,7 +45,6 @@ const mockRun = (
 ): EvaluationSessionResponse => ({
   workspace: WORKSPACE,
   evaluation_name: evaluationName,
-  experiment_name: evaluationName,
   session_id: sessionId,
   test_case_id: testCaseId,
   trace_id: `trace-${sessionId}`,

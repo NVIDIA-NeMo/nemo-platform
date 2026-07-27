@@ -21,7 +21,6 @@ const group: ExperimentGroupResponse = {
   metadata: { producer: 'optimizer' },
   default_sort: '-created_at',
   evaluation_count: 0,
-  experiment_count: 0,
 };
 
 describe('ExperimentGroupEditModal', () => {

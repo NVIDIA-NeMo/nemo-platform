@@ -87,11 +87,6 @@ class EvaluationRequest(BaseModel):
         default=None,
         description="Entity id of the evaluation this one was derived from (e.g. a variant of a baseline), if any.",
     )
-    parent_experiment_id: str | None = Field(
-        default=None,
-        deprecated=True,
-        description="Deprecated alias for parent_evaluation_id.",
-    )
     status: str | None = Field(default=None, description="Producer-defined lifecycle status of the evaluation.")
     root_cause: str | None = Field(
         default=None,
@@ -115,18 +110,6 @@ class EvaluationRequest(BaseModel):
             )
         # Membership is a set — drop duplicate group ids (order-preserving) so counts aren't inflated.
         self.experiment_ids = list(dict.fromkeys(self.experiment_ids))
-        return self
-
-    @model_validator(mode="after")
-    def _coalesce_deprecated_parent(self) -> Self:
-        """Accept the deprecated ``parent_experiment_id`` alias; the canonical field wins if both are set.
-
-        Read the raw value via ``__dict__`` to avoid tripping the field's deprecation warning on
-        every request.
-        """
-        deprecated_parent = self.__dict__.get("parent_experiment_id")
-        if self.parent_evaluation_id is None and deprecated_parent is not None:
-            self.parent_evaluation_id = deprecated_parent
         return self
 
 
@@ -179,11 +162,6 @@ class ExperimentGroupResponse(BaseModel):
         default=0,
         description="Number of live (non-soft-deleted) evaluations in this group.",
     )
-
-    @computed_field(deprecated=True, description="Deprecated alias for evaluation_count.")  # type: ignore[prop-decorator]
-    @property
-    def experiment_count(self) -> int:
-        return self.evaluation_count
 
     @classmethod
     def from_entity(cls, entity: ExperimentGroup) -> ExperimentGroupResponse:
@@ -277,11 +255,6 @@ class EvaluationResponse(BaseModel):
         default=None,
         description="Average total tokens (input + output) per test case, aggregated across the evaluation.",
     )
-
-    @computed_field(deprecated=True, description="Deprecated alias for parent_evaluation_id.")  # type: ignore[prop-decorator]
-    @property
-    def parent_experiment_id(self) -> str | None:
-        return self.parent_evaluation_id
 
     @computed_field(  # type: ignore[prop-decorator]
         deprecated=True,
@@ -421,12 +394,6 @@ class EvaluationSessionResponse(BaseModel):
 
     workspace: str
     evaluation_name: str
-
-    @computed_field(deprecated=True, description="Deprecated alias for evaluation_name.")  # type: ignore[prop-decorator]
-    @property
-    def experiment_name(self) -> str:
-        return self.evaluation_name
-
     session_id: str
     test_case_id: str | None = Field(
         default=None,

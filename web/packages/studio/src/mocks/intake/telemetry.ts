@@ -39,10 +39,6 @@ const trace1: Trace = {
     evaluation_id: 'support-policy-smoke',
     test_case_id: 'case-0042',
   },
-  experiment_context: {
-    experiment_id: 'support-policy-smoke',
-    test_case_id: 'case-0042',
-  },
 };
 
 const trace2: Trace = {

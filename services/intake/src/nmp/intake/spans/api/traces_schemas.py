@@ -16,7 +16,7 @@ from nmp.intake.spans.domain import (
     IntakeTrace,
     SpanStatus,
 )
-from nmp.intake.spans.ingest.evaluation_context import EvaluationContext, ExperimentContext
+from nmp.intake.spans.ingest.evaluation_context import EvaluationContext
 from nmp.intake.spans.storage import text_for_mode
 from pydantic import BaseModel, Field
 
@@ -35,11 +35,6 @@ class TraceFilter(BaseModel):
     status: SpanStatus | None = Field(default=None, description="Filter by root span status.")
     started_at: DatetimeFilter | None = Field(default=None, description="Filter by root span start timestamp.")
     evaluation_id: str | None = Field(default=None, description="Filter by root-span evaluation id.")
-    experiment_id: str | None = Field(
-        default=None,
-        deprecated=True,
-        description="Deprecated alias for evaluation_id. Filter by root-span evaluation id.",
-    )
     test_case_id: str | None = Field(default=None, description="Filter by root-span evaluation test case id.")
 
 
@@ -64,11 +59,6 @@ class Trace(BaseModel):
         ),
     )
     evaluation_context: EvaluationContext | None = None
-    experiment_context: ExperimentContext | None = Field(
-        default=None,
-        deprecated=True,
-        description="Deprecated alias for evaluation_context; will be removed in a future release.",
-    )
     started_at: datetime
     ended_at: datetime | None = None
     duration_ms: float | None = None
@@ -94,7 +84,6 @@ class Trace(BaseModel):
             input=text_for_mode(trace.input, mode=mode),
             output=text_for_mode(trace.output, mode=mode),
             evaluation_context=_evaluation_context(trace),
-            experiment_context=_experiment_context(trace),
             started_at=trace.started_at,
             ended_at=trace.ended_at,
             duration_ms=trace.duration_ms,
@@ -120,11 +109,3 @@ def _evaluation_context(trace: IntakeTrace) -> EvaluationContext | None:
     )
 
 
-def _experiment_context(trace: IntakeTrace) -> ExperimentContext | None:
-    """Deprecated alias for ``_evaluation_context``; populated from the same evaluation id."""
-    if trace.evaluation_id is None:
-        return None
-    return ExperimentContext(
-        experiment_id=trace.evaluation_id,
-        test_case_id=trace.test_case_id,
-    )
