@@ -71,5 +71,6 @@ authoritative input shape; `nemo customization rl explain` prints it live.
   (`plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer/`).
 - **Design:** [`docs/customizer/nemo-rl-dpo-plugin-design.md`](../../docs/customizer/nemo-rl-dpo-plugin-design.md).
 - **GPU e2e smoke test:** [`scripts/gpu-dpo-smoke/`](../../scripts/gpu-dpo-smoke).
-- **Images:** [`docker/Dockerfile.nmp-rl-base`](../../docker/Dockerfile.nmp-rl-base),
-  `Dockerfile.nmp-rl-training`, `Dockerfile.nmp-customizer-tasks`.
+- **Images:** [`docker/rl/Dockerfile.nmp-rl-base`](../../docker/rl/Dockerfile.nmp-rl-base),
+  [`docker/rl/Dockerfile.nmp-rl-training`](../../docker/rl/Dockerfile.nmp-rl-training),
+  `docker/Dockerfile.nmp-customizer-tasks`.
