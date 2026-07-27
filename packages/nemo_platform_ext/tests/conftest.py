@@ -8,6 +8,12 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def _disable_cli_telemetry_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep CLI telemetry side effects out of non-telemetry tests."""
+    monkeypatch.setenv("NEMO_TELEMETRY_ENABLED", "false")
+
+
+@pytest.fixture(autouse=True)
 def isolated_config(request: pytest.FixtureRequest, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Isolate tests from local config files and env vars.
 

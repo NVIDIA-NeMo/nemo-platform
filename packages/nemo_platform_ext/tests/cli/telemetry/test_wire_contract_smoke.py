@@ -81,8 +81,8 @@ class TestWireContractSmoke:
             f"Envelope keys mismatch: {set(payload.keys()) ^ EXPECTED_ENVELOPE_KEYS}"
         )
 
-        # Schema version must be 1.9.
-        assert payload["eventSchemaVer"] == "1.9"
+        # Schema version must be 1.10.
+        assert payload["eventSchemaVer"] == "1.10"
 
         # Must be JSON serializable.
         json_str = json.dumps(payload)
@@ -118,8 +118,8 @@ class TestWireContractSmoke:
             f"Envelope keys mismatch: {set(payload.keys()) ^ EXPECTED_ENVELOPE_KEYS}"
         )
 
-        # Schema version must be 1.9.
-        assert payload["eventSchemaVer"] == "1.9"
+        # Schema version must be 1.10.
+        assert payload["eventSchemaVer"] == "1.10"
 
         # Must be JSON serializable.
         json_str = json.dumps(payload)
@@ -144,7 +144,7 @@ class TestWireContractSmoke:
             job_type="evaluate",
             duration_sec=15.75,
             plugins=["garak", "llm_judge"],
-            model="nemotron-4-8b",
+            model="defined",
             input_tokens=2048,
             output_tokens=512,
         )
@@ -156,8 +156,8 @@ class TestWireContractSmoke:
             f"Envelope keys mismatch: {set(payload.keys()) ^ EXPECTED_ENVELOPE_KEYS}"
         )
 
-        # Schema version must be 1.9.
-        assert payload["eventSchemaVer"] == "1.9"
+        # Schema version must be 1.10.
+        assert payload["eventSchemaVer"] == "1.10"
 
         # Must be JSON serializable.
         json_str = json.dumps(payload)
@@ -173,7 +173,7 @@ class TestWireContractSmoke:
         assert params["jobType"] == "evaluate"
         assert params["durationSec"] == 15.75
         assert params["plugins"] == ["garak", "llm_judge"]
-        assert params["model"] == "nemotron-4-8b"
+        assert params["model"] == "defined"
         assert params["inputTokens"] == 2048
         assert params["outputTokens"] == 512
         assert event_entry["name"] == "job_run"

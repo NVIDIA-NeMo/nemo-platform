@@ -34,19 +34,29 @@ pytestmark = [
 
 ALPINE_IMAGE = "alpine:3.20"
 
-# Keep these tests in a dedicated range that nothing else in CI claims, separate
-# from both service ports and the product's dynamic/private default range.
+# Keep these tests in dedicated ranges that nothing else in CI claims, separate
+# from both service ports and the product's dynamic/private default range. Each
+# xdist worker gets its own 100-port slice.
 TEST_PORT_RANGE_START = 21000
-TEST_PORT_RANGE_END = 21100
+TEST_PORT_RANGE_SIZE = 100
 
 
-def _build_docker_backend(**config_overrides: Any) -> DockerDeploymentBackend:
+def _worker_port_base(worker_id: str) -> int:
+    if worker_id == "master":
+        worker_index = 0
+    else:
+        worker_index = int(worker_id.removeprefix("gw"))
+    return TEST_PORT_RANGE_START + worker_index * TEST_PORT_RANGE_SIZE
+
+
+def _build_docker_backend(worker_id: str = "master", **config_overrides: Any) -> DockerDeploymentBackend:
     mock_entities = AsyncMock()
     mock_sdk = MagicMock()
+    port_base = _worker_port_base(worker_id)
     executor_config: dict[str, Any] = {
         "pull_images": True,
-        "port_range_start": TEST_PORT_RANGE_START,
-        "port_range_end": TEST_PORT_RANGE_END,
+        "port_range_start": port_base,
+        "port_range_end": port_base + TEST_PORT_RANGE_SIZE - 1,
         **config_overrides,
     }
     with (
@@ -60,8 +70,8 @@ def _build_docker_backend(**config_overrides: Any) -> DockerDeploymentBackend:
 
 
 @pytest.fixture
-def docker_backend() -> DockerDeploymentBackend:
-    return _build_docker_backend()
+def docker_backend(worker_id: str) -> DockerDeploymentBackend:
+    return _build_docker_backend(worker_id)
 
 
 def _never_config() -> DeploymentConfig:
@@ -90,6 +100,7 @@ def _never_sleep_config(*, sleep_seconds: int) -> DeploymentConfig:
 
 
 def _docker_backend_with_observe_timeout(
+    worker_id: str,
     *,
     oneshot_observe_timeout_seconds: int,
 ) -> DockerDeploymentBackend:
@@ -163,7 +174,7 @@ async def test_never_deployment_succeeds(docker_backend: DockerDeploymentBackend
 
 
 @pytest.mark.asyncio
-async def test_never_deployment_outlives_observe_wait_then_succeeds() -> None:
+async def test_never_deployment_outlives_observe_wait_then_succeeds(worker_id: str) -> None:
     """Long Never jobs return STARTING on create and finish via read_status polling."""
     # The job has to outlive the observe wait by a wide enough margin that a
     # create_deployment which blocked until exit is unmistakable. The margin is
@@ -174,6 +185,7 @@ async def test_never_deployment_outlives_observe_wait_then_succeeds() -> None:
     job_sleep_seconds = 20
     observe_timeout_seconds = 1
     docker_backend = _docker_backend_with_observe_timeout(
+        worker_id,
         oneshot_observe_timeout_seconds=observe_timeout_seconds,
     )
     config = _never_sleep_config(sleep_seconds=job_sleep_seconds)
