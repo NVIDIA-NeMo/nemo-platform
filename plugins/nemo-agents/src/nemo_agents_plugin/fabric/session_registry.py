@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from nemo_fabric import Runtime
+    from nemo_fabric import Runtime  # ty: ignore[unresolved-import]
 
 
 @dataclass(slots=True)
