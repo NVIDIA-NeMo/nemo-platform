@@ -16,8 +16,9 @@ runs the top-level Eval Author before beginning optimization.
 ## Current Files
 
 - `agent.py` defines the canonical `EvalAuthor` agent.
-- `materialization.py` stages, validates, and publishes Insight suites.
+- `materialization.py` stages, validates, and persists Insight suites locally.
 - `models.py` defines the lightweight `EvalAuthorConfig` and `EvalAuthorResult` models.
+- `REFERENCE.md` documents the Python return contract.
 - `run.py` defines `run_eval_author(...)`, a reusable orchestration function for
   Python callers.
 - `config.yaml` is a default run preset for future CLI or job wiring.
@@ -51,21 +52,33 @@ eval-and-optimize/eval_author/<insight-slug>/insight-suite/
 Each Eval Author invocation fills a fresh candidate suite from the current template
 and traces. The complete suite is Harbor-validated locally, promoted to the
 experiment-local working copy with backup-and-restore failure handling, and
-uploaded to a newly created NeMo Platform Fileset. Eval Author verifies the remote
-file inventory before returning.
-An incomplete Fileset is deleted if upload or verification fails; Filesets from
-earlier successful invocations are never modified or reused.
+analyzed for the Insight's root cause. Eval Author then adds normalized
+Insight-specific verifier metric keys to every materialized task while
+preserving the template's existing task metrics. The metric authoring step is
+scoped to the Insight suite; the user's train and validation datasets remain
+unchanged. The authored verifiers must pass static Harbor validation before the
+local suite is returned to the optimization loop.
+
+After authoring and validation, Eval Author hashes every task file and verifier
+file and persists deterministic suite and scorer identities in the local suite's
+manifest. The returned dataset continues to point at the single experiment-local
+suite. Candidate Insight results persist the suite identity, and resume reuses
+those results only when the identity still matches; changed task or verifier
+content is re-evaluated.
 
 Task-template inputs may be local paths, `file://` URIs, or NeMo Platform
 `fileset://<workspace>/<fileset>` references. Fileset-backed templates are
 downloaded into the experiment-local staging directory before Harbor parses
 them. The staged template is refreshed on every invocation rather than reused.
 
-`EvalAuthorResult.insight_suite` contains a durable `DatasetRef` whose URI uses the
-`fileset://<workspace>/<fileset>` form. Downstream agents may store and pass that
-reference without understanding its storage. A component that needs Harbor's
-local filesystem layout must hydrate the Fileset into its own working directory
-before calling `HarborDataset.from_path`.
+The returned Python contract is documented in the
+[Eval Author Python Reference](REFERENCE.md#evalauthorresult).
+
+Insight metrics remain adaptive development feedback. They may steer round
+analysis, goal-tree updates, and proposals, but validation remains the direct
+Pareto and winner-selection criterion. Promotion suggestions require complete
+repeated baseline-to-winner improvement evidence, remain advisory, and never
+mutate the canonical validation dataset.
 
 ## Intended Invocation
 
