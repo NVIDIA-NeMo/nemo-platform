@@ -37,6 +37,7 @@ from nemo_deployments_plugin.entities import (
     Deployment,
     DeploymentConfig,
     EnvVar,
+    ExecAction,
     HTTPGetAction,
     Probe,
     VolumeMount,
@@ -44,6 +45,7 @@ from nemo_deployments_plugin.entities import (
 from nemo_platform.resources.entities import AsyncEntitiesResource
 from nemo_platform_plugin.config import LOOPBACK_ADDRESSES
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
+from nemo_platform_plugin.jobs.image import get_qualified_image
 from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 
 logger = logging.getLogger(__name__)
@@ -53,6 +55,24 @@ _HTTP_PORT_NAME = "http"
 _PLUGIN_WHEELS_VOLUME = "plugin-wheels"
 _PLUGIN_WHEELS_MOUNT = "/opt/nemo/plugin-wheels"
 _NAT_CONFIG_ENV = "NAT_CONFIG_PATH"
+_AUTH_PROXY_CONTAINER_NAME = "auth-proxy"
+_AUTH_PROXY_HOST_ENVVAR = "NMP_AUTH_PROXY_HOST"
+_AUTH_PROXY_PORT_ENVVAR = "NMP_AUTH_PROXY_PORT"
+_AUTH_PROXY_PRINCIPAL_ENVVAR = "NMP_AUTH_PROXY_PRINCIPAL"
+_AUTH_PROXY_PRINCIPAL = "agents"
+_NATIVE_SIDECAR_RESTART_POLICY = "Always"
+
+
+def _platform_auth_enabled() -> bool:
+    """Return whether platform auth is enabled (deployed agents then need a principal)."""
+    try:
+        from nmp.common.config import get_auth_config
+
+        return bool(get_auth_config().enabled)
+    except Exception:
+        logger.debug("Could not resolve auth config; assuming auth disabled", exc_info=True)
+        return False
+
 
 # On delete, wait up to this long for the deployments controller to tear down the
 # container and remove the Deployment entity before we drop the DeploymentConfig.
@@ -188,6 +208,51 @@ def _info_from_deployment(deployment: Deployment) -> DeploymentInfo:
     return info
 
 
+class AuthProxySpec:
+    """Parameters for injecting the service-principal auth-proxy sidecar."""
+
+    def __init__(self, *, image: str, port: int, upstream_base_url: str, principal: str) -> None:
+        self.image = image
+        self.port = port
+        self.upstream_base_url = upstream_base_url
+        self.principal = principal
+
+
+def _build_auth_proxy_sidecar(spec: AuthProxySpec) -> Container:
+    """Build the native-sidecar Container that runs the service-principal auth proxy.
+
+    The sidecar forwards the agent's loopback platform calls to *upstream_base_url*
+    with an ``X-NMP-Principal-Id: service:<principal>`` header so they authorize
+    under the ServiceSystem role. The deployed agent targets it on localhost.
+    """
+    return Container(
+        name=_AUTH_PROXY_CONTAINER_NAME,
+        image=spec.image,
+        command=["nemo", "services", "run", "--sidecars", "auth-proxy"],
+        env=[
+            EnvVar(name="NMP_BASE_URL", value=spec.upstream_base_url),
+            EnvVar(name=_AUTH_PROXY_PRINCIPAL_ENVVAR, value=spec.principal),
+            EnvVar(name=_AUTH_PROXY_HOST_ENVVAR, value="127.0.0.1"),
+            EnvVar(name=_AUTH_PROXY_PORT_ENVVAR, value=str(spec.port)),
+        ],
+    ).model_copy(
+        update={
+            "restart_policy": _NATIVE_SIDECAR_RESTART_POLICY,
+            # The proxy binds loopback only (reachable solely by the co-located
+            # agent), so an httpGet probe against the pod IP would be refused. Use
+            # an exec probe that curls localhost from inside the container netns.
+            "readiness_probe": Probe(
+                exec=ExecAction(
+                    command=["sh", "-c", f"curl -sf http://127.0.0.1:{spec.port}/healthz"],
+                ),
+                initialDelaySeconds=1,
+                periodSeconds=5,
+                failureThreshold=12,
+            ),
+        }
+    )
+
+
 def build_deployment_config(
     *,
     name: str,
@@ -199,6 +264,7 @@ def build_deployment_config(
     mode: DeploymentMode,
     plugin_wheels_init_image: str | None = None,
     labels: dict[str, str] | None = None,
+    auth_proxy: AuthProxySpec | None = None,
 ) -> DeploymentConfig:
     """Compile an agent into a long-running ``DeploymentConfig`` (Always).
 
@@ -295,6 +361,14 @@ def build_deployment_config(
         }
     )
 
+    if auth_proxy is not None:
+        # Native sidecar (init container with restartPolicy=Always): starts before
+        # the agent and forwards its loopback platform calls with a service-principal
+        # identity header so they authorize when auth is on. Modeled as an init
+        # container because the deployments plugin only allows per-container
+        # restart_policy there (matches the LoRA adapters sidecar pattern).
+        init_containers.append(_build_auth_proxy_sidecar(auth_proxy))
+
     return DeploymentConfig(
         name=name,
         workspace=workspace,
@@ -366,7 +440,29 @@ class DeploymentsRunnerBackend(RunnerBackend):
         except UnreachableGatewayURLError as exc:
             logger.error("Refusing to deploy agent %r: %s", name, exc)
             return DeploymentInfo(name=name, status="failed", error=str(exc))
-        config = rewrite_config_base_urls(config, gateway)
+
+        # When platform auth is enabled, the agent carries no platform credential,
+        # so route its inference calls through a loopback auth-proxy sidecar that
+        # stamps a service-principal identity header. The agent targets the sidecar
+        # on localhost; the sidecar forwards to *gateway* (the reachable platform).
+        auth_proxy: AuthProxySpec | None = None
+        if _platform_auth_enabled():
+            proxy_port = self._config.auth_proxy_port
+            proxy_base_url = f"http://127.0.0.1:{proxy_port}"
+            # The sidecar runs the nmp-api image (it needs the `nemo` CLI), NOT the
+            # agent runtime image. Qualify with the platform registry/tag unless an
+            # explicit override is configured.
+            proxy_image = self._config.auth_proxy_image or get_qualified_image(self._config.auth_proxy_image_name)
+            auth_proxy = AuthProxySpec(
+                image=proxy_image,
+                port=proxy_port,
+                upstream_base_url=gateway,
+                principal=_AUTH_PROXY_PRINCIPAL,
+            )
+            config = rewrite_config_base_urls(config, proxy_base_url)
+        else:
+            config = rewrite_config_base_urls(config, gateway)
+
         deployment_config = build_deployment_config(
             name=name,
             workspace=workspace,
@@ -380,6 +476,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
                 "nemo.agents/deployment": name,
                 "nemo.agents/mode": deployment_mode,
             },
+            auth_proxy=auth_proxy,
         )
         await entities.create(deployment_config)
         try:

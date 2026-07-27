@@ -106,6 +106,25 @@ class DeploymentsRunnerConfig(BaseModel):
             "via a ConfigMap subPath. Matches the image's NAT_CONFIG_FILE convention."
         ),
     )
+    auth_proxy_image_name: str = Field(
+        default="nmp-api",
+        description=(
+            "Image name for the auth-proxy sidecar injected when platform auth is enabled. Qualified "
+            "with the platform image registry/tag. Must be an nmp-api image (runs "
+            "`nemo services run --sidecars auth-proxy`)."
+        ),
+    )
+    auth_proxy_image: str = Field(
+        default="",
+        description=(
+            "Optional fully-qualified image override for the auth-proxy sidecar. When set, used "
+            "verbatim instead of qualifying auth_proxy_image_name with the platform registry/tag."
+        ),
+    )
+    auth_proxy_port: int = Field(
+        default=8090,
+        description="Loopback port the auth-proxy sidecar listens on; deployed agents target it as their inference base URL.",
+    )
 
 
 class AgentsConfig(NemoConfig):

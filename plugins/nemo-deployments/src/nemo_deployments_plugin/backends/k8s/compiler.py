@@ -199,7 +199,8 @@ def _build_probe(probe: Probe | None) -> Any | None:
         "failure_threshold": probe.failure_threshold,
     }
     if probe.exec_action is not None:
-        kwargs["exec"] = k8s.client.V1ExecAction(command=list(probe.exec_action.command))
+        # V1Probe uses `_exec` (Python keyword `exec` cannot be a kwarg name).
+        kwargs["_exec"] = k8s.client.V1ExecAction(command=list(probe.exec_action.command))
     elif probe.http_get is not None:
         kwargs["http_get"] = k8s.client.V1HTTPGetAction(
             path=probe.http_get.path,
