@@ -12,7 +12,7 @@ self-managed Kubernetes deployments installed with the NeMo Platform Helm chart.
 | Area | Supported | Notes |
 |------|-----------|-------|
 | Deployment mode | `nemo setup` local install; Helm chart on Kubernetes | `nemo setup` starts local services, registers a model provider, and configures the CLI and SDK. The Helm chart is the supported path for self-managed Kubernetes clusters. |
-| Python | 3.11, 3.12, 3.13, 3.14 (`>=3.11,<3.15`) | Use an isolated virtual environment. On Python 3.14, prefix `pip install "nemo-platform[all]"` with `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` while the transitive `litellm` Rust extension catches up to Python 3.14. Python 3.11 is the lowest supported Python version and Python 3.14 is the highest supported Python version for the OSS local install path. |
+| Python | 3.11, 3.12, 3.13, 3.14 (`>=3.11,<3.15`) | Use an isolated virtual environment. On Python 3.14, prefix `pip install "nemo-platform[all]"` with `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` while the transitive `litellm` Rust extension catches up to Python 3.14. Python 3.11 is the lowest supported Python version and Python 3.14 is the highest supported Python version for the OSS local install path. Published release wheels (`nemo-platform`, `nemo-platform-plugin`) and their CI matrix target this range. Self-managed container images built from this repo use Python 3.13 in `nmp-python-base`; that runtime version is independent of the wheel `requires-python` floor. |
 | Linux | Ubuntu 22.04 LTS, Ubuntu 24.04 LTS, RHEL 9, Rocky Linux 9, Debian 12 | Supported for CLI, SDK, local services, and NVIDIA GPU workloads. |
 | macOS | [macOS Tahoe 26](https://support.apple.com/en-us/122868) and macOS Sequoia 15 | Supported for CLI, SDK, local services, and cloud/provider workflows. Local NVIDIA GPU workloads are not supported on macOS. |
 | Architecture | x86_64 Linux; Apple Silicon and Intel macOS | NVIDIA GPU workloads require x86_64 Linux. |
@@ -43,6 +43,17 @@ self-managed Kubernetes deployments installed with the NeMo Platform Helm chart.
 |---------|----------------|---------|-----|
 | CLI, SDK, and hosted-provider setup | 8 GB RAM minimum | 16 GB free disk space | Not required |
 | Local GPU workloads | 16 GB RAM minimum; 32 GB recommended | Additional tens to hundreds of GB for model artifacts and job outputs | 40 GB VRAM minimum; 80 GB recommended |
+
+## Optional components (stricter Python)
+
+These features are **not** bundled in published `nemo-platform` wheels or default Helm/local service images. They install only from a source checkout (or a future dedicated extra/wheel) and impose a **higher** Python floor than the core platform.
+
+| Component | Python | Notes |
+|-----------|--------|-------|
+| NeMo Experimentalist (agent optimization) | 3.12 or 3.13 (`>=3.12,<3.14`) | Depends on [NOOA](https://github.com/NVIDIA-NeMo/labs-OO-Agents) (`requires-python >=3.12,<3.14`) and Harbor. In the monorepo: Python 3.12+, then `uv sync --group insights --group experimentalist`. Not in the `enabled-plugins` set used for release containers. |
+| Harbor agent-eval runner | ≥ 3.12 | `harbor` is optional (`nemo-evaluator-sdk[harbor]`). See [Harbor runner](/documentation/evaluate-models/agent-eval/harbor-runner). |
+
+Core Platform on Python 3.11 remains fully supported without these components. On Python 3.14, Experimentalist is unavailable because NOOA caps below 3.14.
 
 ## Model Providers
 
